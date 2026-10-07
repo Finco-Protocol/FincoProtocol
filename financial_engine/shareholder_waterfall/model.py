@@ -405,6 +405,26 @@ def run_project_shareholder_waterfall_model(
 
         return _new_wp_list, _uc_out, _gd_out, _re_out, _lr_out, _next_fi_out, _fi_sched_out
 
+    # run_project_financing_model is a pure function of the financing-income vector here
+    # (project_inputs / source_id / baseline are fixed for this evaluation). An identical
+    # vector requested twice in a row (e.g. the final re-run after a U2 loop that converged
+    # on its first pass with no financing income) returns the result already computed.
+    _last_financing_key: tuple | None = None
+    _last_financing: object | None = None
+
+    def _financing_for(fi_inputs: tuple):
+        nonlocal _last_financing_key, _last_financing
+        if _last_financing is not None and fi_inputs == _last_financing_key:
+            return _last_financing
+        result = run_project_financing_model(
+            project_inputs,
+            source_id=source_id,
+            baseline_commit_sha=baseline_commit_sha,
+            _u2_period_financing_income=fi_inputs if fi_inputs else None,
+        )
+        _last_financing_key, _last_financing = fi_inputs, result
+        return result
+
     for _u2_iter in range(1, _MAX_U2_ITER + 2):
         # Build PeriodFinancingIncomeInput tuple from current state
         _fi_inputs: tuple = tuple(
@@ -416,12 +436,7 @@ def run_project_shareholder_waterfall_model(
             for idx, val in _fi_by_idx.items()
             if val != 0.0
         )
-        financing = run_project_financing_model(
-            project_inputs,
-            source_id=source_id,
-            baseline_commit_sha=baseline_commit_sha,
-            _u2_period_financing_income=_fi_inputs if _fi_inputs else None,
-        )
+        financing = _financing_for(_fi_inputs)
 
         model_result: ProjectModelResult = financing.project_model_result  # type: ignore[assignment]
 
@@ -1165,12 +1180,7 @@ def run_project_shareholder_waterfall_model(
         for idx, val in _fi_by_idx.items()
         if val != 0.0
     )
-    financing = run_project_financing_model(
-        project_inputs,
-        source_id=source_id,
-        baseline_commit_sha=baseline_commit_sha,
-        _u2_period_financing_income=_fi_inputs_final if _fi_inputs_final else None,
-    )
+    financing = _financing_for(_fi_inputs_final)
 
     _final1_fi_sched = None
     if _dist_accounting_enabled and _cash_reserve_policy is not None:
@@ -1195,12 +1205,7 @@ def run_project_shareholder_waterfall_model(
             for idx, val in _f1_next_fi.items()
             if val != 0.0
         )
-        _financing2 = run_project_financing_model(
-            project_inputs,
-            source_id=source_id,
-            baseline_commit_sha=baseline_commit_sha,
-            _u2_period_financing_income=_f2_fi_inputs if _f2_fi_inputs else None,
-        )
+        _financing2 = _financing_for(_f2_fi_inputs)
         _f2_mr: ProjectModelResult = _financing2.project_model_result  # type: ignore[assignment]
         _f2_shl_pik = getattr(_financing2, "shl_construction_pik_keur", 0.0) or 0.0
         _f2_const_pl = getattr(project_inputs.tax, "construction_pl", None)

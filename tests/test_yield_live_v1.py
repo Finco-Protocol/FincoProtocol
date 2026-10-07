@@ -1055,9 +1055,18 @@ def web(tmp_path, monkeypatch):
 
 
 class TestWebProvenance:
-    def test_default_explorer_is_labelled_reference_not_live(self, web):
+    def test_default_explorer_is_live_only_and_never_lists_reference_fixtures(self, web):
         client, _ = web
         page = client.get("/yield").text
+        assert 'data-testid="yield-live-only-note"' in page and 'data-research-mode="off"' in page
+        body = page.split("<tbody>")[1].split("</tbody>")[0]
+        assert "Reference fixture" not in body and "REFERENCE" not in body
+        assert 'data-testid="yield-result-count">0<' in page            # nothing fabricated to fill the table
+
+    def test_research_mode_labels_reference_sample_not_live(self, web):
+        client, _ = web
+        page = client.get("/yield?include_reference=1").text
+        assert 'data-research-mode="on"' in page
         assert 'data-testid="yield-source-status"' in page and 'data-origin="REFERENCE_FIXTURE"' in page
         assert "not live data" in page
         assert "Reference fixture — not live" in page

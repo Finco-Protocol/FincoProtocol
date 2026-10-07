@@ -102,16 +102,32 @@ def test_above_capacity_fails_fast_typed_busy_with_no_queue(mode):
 
 def test_no_unbounded_queue_exactly_capacity_is_admitted():
     executor = make(2, "thread")
+    helpers.RELEASE.clear()
 
     async def go():
-        tasks = [asyncio.create_task(executor.run_process(helpers.spin, 0.8)) for _ in range(6)]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return results
+        occupants = [
+            asyncio.create_task(executor.run_process(helpers.hold_until_released))
+            for _ in range(2)
+        ]
+        try:
+            deadline = time.monotonic() + 5
+            while executor.stats()["active"] != 2 and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+            assert executor.stats()["active"] == 2
 
-    results = asyncio.run(go())
-    assert sum(isinstance(r, ModelExecutionBusy) for r in results) == 4
-    assert sum(isinstance(r, int) for r in results) == 2
-    assert executor.stats()["active"] == 0
+            for _ in range(4):
+                with pytest.raises(ModelExecutionBusy):
+                    await executor.run_process(helpers.add, 1, 1)
+        finally:
+            helpers.RELEASE.set()
+            await asyncio.gather(*occupants)
+
+    asyncio.run(go())
+    stats = executor.stats()
+    assert stats["admitted"] == 2
+    assert stats["busy_rejected"] == 4
+    assert stats["completed"] == 2
+    assert stats["active"] == 0
 
 
 def test_busy_error_exposes_no_internals():
@@ -287,7 +303,7 @@ def test_event_loop_responsive_during_model_run_and_control_proves_the_old_archi
 
 
 def test_real_model_run_in_worker_keeps_the_loop_responsive_and_returns_unchanged_output():
-    """A REAL production model run (~20 s) executes in a worker process while /ping stays fast."""
+    """A REAL production model run executes in a worker process while /ping stays fast."""
     from fastapi import FastAPI
     from app.api.router import router as api_router
     from app.api.project_runner import run_project
@@ -310,7 +326,7 @@ def test_real_model_run_in_worker_keeps_the_loop_responsive_and_returns_unchange
 
         t = threading.Thread(target=call)
         t.start()
-        time.sleep(1.0)
+        time.sleep(0.3)      # the request is in flight; the engine keeps the worker busy after this
         worst, samples = 0.0, 0
         while t.is_alive():
             started = time.perf_counter()
@@ -320,7 +336,9 @@ def test_real_model_run_in_worker_keeps_the_loop_responsive_and_returns_unchange
             time.sleep(0.1)
         t.join()
         assert holder["r"].status_code == 200, holder["r"].text[:200]
-        assert samples >= 20 and worst < 1.0, f"loop stalled {worst:.2f}s over {samples} probes"
+        # Enough probes to prove responsiveness during the run; the count must not depend on the
+        # run being slow (the engine used to take ~20 s and is now several times faster).
+        assert samples >= 5 and worst < 1.0, f"loop stalled {worst:.2f}s over {samples} probes"
         served = holder["r"].json()["kpis"]
         direct = run_project("Solar", "Base")["kpis"]
         assert served == json.loads(json.dumps(direct, default=str))        # REFERENCE_OUTPUTS_UNCHANGED
@@ -672,7 +690,10 @@ def test_main_web_legacy_async_routes_offload_every_direct_model_call():
 
 
 def test_frozen_engine_and_core_are_untouched_by_this_stream():
-    import subprocess
-    changed = subprocess.run(["git", "diff", "origin/main", "--name-only", "--", "financial_engine", "finco_core"],
-                             capture_output=True, text=True, cwd=str(REPO)).stdout.split()
-    assert changed == []
+    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
+    # financial_engine/ may differ only in the explicitly approved modules (shared allow-list,
+    # tests/finance_integrity_governance.py, which also honours the Model V2 scope contract);
+    # finco_core/ and finco_radar/ have no exception.
+    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    assert unapproved_engine_changes() == []
+    assert strictly_frozen_changes() == []

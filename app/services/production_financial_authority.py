@@ -229,6 +229,10 @@ class CleanProductionRun:
     decision: AuthorityDecision
     authority_metadata: dict = field(default_factory=dict)
     financial_statements_result: object | None = None
+    # Developer Economics V1: separate developer-ledger result (financial_engine.
+    # developer_economics), computed ONCE here from the effective inputs. None when
+    # Developer Economics is absent or disabled. Presentation layers pass it through.
+    developer_economics_result: object | None = None
 
 
 _POLICY_RUN_CACHE: "dict[str, tuple]" = {}
@@ -317,22 +321,25 @@ def run_clean_production(
         run_project_shareholder_waterfall_model,
     )
 
+    from financial_engine.run_scope import engine_run_scope
+
     policy = DEFAULT_GENERIC_FINANCING_POLICY if financing_policy is None else financing_policy
     try:
         # H-1: apply the project's declared construction financing (IDC, commitment
         # and structuring fees) and DSRA policy. One production calculation; the
         # policy owns the initial-DSRA fixed point around the single engine entry.
-        g2c, effective_inputs, policy_evidence = _memoised_policy_run(
-            effective_inputs,
-            policy,
-            lambda: run_with_generic_financing_policy(
+        with engine_run_scope():
+            g2c, effective_inputs, policy_evidence = _memoised_policy_run(
                 effective_inputs,
-                lambda applied: run_project_shareholder_waterfall_model(
-                    applied, source_id="pr8_clean_production_authority"
-                ),
                 policy,
-            ),
-        )
+                lambda: run_with_generic_financing_policy(
+                    effective_inputs,
+                    lambda applied: run_project_shareholder_waterfall_model(
+                        applied, source_id="pr8_clean_production_authority"
+                    ),
+                    policy,
+                ),
+            )
     except CleanProductionRunUnavailable:
         raise
     except Exception as exc:  # fail closed — never fall back to legacy
@@ -372,6 +379,8 @@ def run_clean_production(
         g2c, effective_inputs
     )
 
+    from financial_engine.developer_economics.model import compute_developer_economics
+
     return CleanProductionRun(
         g2c_result=g2c,
         project_inputs=effective_inputs,
@@ -380,4 +389,5 @@ def run_clean_production(
         decision=decision,
         authority_metadata=metadata,
         financial_statements_result=financial_statements_result,
+        developer_economics_result=compute_developer_economics(effective_inputs),
     )

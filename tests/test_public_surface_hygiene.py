@@ -143,9 +143,12 @@ def test_no_bound_readonly_badge_on_debt_sheet(hygiene_client):
 
 def test_reference_working_copy_language_intact(hygiene_client):
     html = hygiene_client.get("/library", cookies=_cookies()).text
-    assert "Reference Templates" in html
+    # UX Foundation renames the product copy: "Reference Models" with an
+    # explicit PREVIEW state for the not-yet-editable runtime (Storage).
+    assert "Reference Models" in html
     assert html.count("Create working copy") == 4
-    assert "Working-copy runtime coming soon" in html  # Storage guard
+    assert "Editable runtime not yet supported" in html  # Storage guard
+    assert "PREVIEW" in html
 
 
 # ── §D: status language stays consistent ────────────────────────────────────

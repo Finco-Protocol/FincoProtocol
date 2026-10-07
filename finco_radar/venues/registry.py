@@ -20,12 +20,14 @@ Derived status semantics:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from finco_radar.venues.models import (
     CanonicalUnderlying,
+    InstrumentType,
     RegistryStatus,
     RepresentationEntry,
+    SourceAssertion,
 )
 from finco_radar.venues.seed_loader import (
     load_registry_entries,
@@ -37,6 +39,75 @@ def _norm_symbol(value) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip().upper()
     return None
+
+
+_FINCO_INSTRUMENT_TYPES = frozenset(
+    t.value for t in InstrumentType if t is not InstrumentType.OTHER)
+
+
+def _collapse_same_identity(
+        entries: list[RepresentationEntry]) -> list[RepresentationEntry]:
+    """Collapse rows that are ONE exact representation described by
+    several sources.
+
+    Identity (RepresentationEntry.identity_key) is platform + exact
+    representation symbol + network + exact contract; ``instrument_type`` is
+    descriptive taxonomy and NOT identity-defining.  Rows from different
+    sources are collapsed only when EVERY identity/safety-relevant fact
+    agrees: same identity_key, chain_id, underlying symbol, underlying ISIN,
+    ISIN, decimals, deployment status, trading-halt state and name.  Any
+    disagreement on those leaves the rows separate, so the exact lookup stays
+    ambiguous and fails closed (a real conflict is never merged away).
+
+    Taxonomy resolution is structural, never source priority: if exactly one
+    contributing ``instrument_type`` is a FINCO-recognised InstrumentType
+    that value is used; if none is recognised and all agree it is kept; if
+    none is recognised and they differ it becomes "other"; two different
+    recognised types are an unresolved conflict (rows stay separate).  Every
+    source's own claim is retained in ``source_assertions``.  The result is
+    independent of input order.
+    """
+    groups: dict[tuple, list[int]] = {}
+    for index, entry in enumerate(entries):
+        if entry.contract_address and not entry.deployments:
+            groups.setdefault(entry.identity_key, []).append(index)
+    collapsed_at: dict[int, RepresentationEntry] = {}
+    dropped: set[int] = set()
+    for indexes in groups.values():
+        if len(indexes) < 2:
+            continue
+        rows = [entries[i] for i in indexes]
+        if len({r.source for r in rows}) != len(rows):
+            continue  # same source twice: not a cross-source agreement
+        facts = {(
+            r.chain_id, _norm_symbol(r.underlying_symbol), r.underlying_isin,
+            r.isin, r.decimals, (r.deployment_status or "").lower(),
+            r.trading_halted, r.name) for r in rows}
+        if len(facts) != 1:
+            continue
+        recognised = {r.instrument_type for r in rows
+                      if r.instrument_type in _FINCO_INSTRUMENT_TYPES}
+        if len(recognised) > 1:
+            continue
+        if recognised:
+            instrument_type = next(iter(recognised))
+        else:
+            types = {r.instrument_type for r in rows}
+            instrument_type = next(iter(types)) if len(types) == 1 else "other"
+        ordered = sorted(rows, key=lambda r: (r.source, r.source_ref))
+        merged = replace(
+            ordered[0],
+            instrument_type=instrument_type,
+            source="+".join(r.source for r in ordered),
+            source_ref="+".join(r.source_ref for r in ordered),
+            source_assertions=tuple(SourceAssertion(
+                source=r.source, source_ref=r.source_ref,
+                instrument_type=r.instrument_type, name=r.name,
+                underlying_symbol=r.underlying_symbol) for r in ordered))
+        collapsed_at[indexes[0]] = merged
+        dropped.update(indexes[1:])
+    return [collapsed_at.get(i, e) for i, e in enumerate(entries)
+            if i not in dropped]
 
 
 @dataclass(frozen=True)
@@ -57,7 +128,9 @@ class VenueRegistry:
         quarantines: list[dict],
     ) -> None:
         self._underlyings = dict(underlyings)
-        self._entries = list(entries)
+        # Raw per-source rows (audit/provenance) vs exact representations.
+        self._source_rows = list(entries)
+        self._entries = _collapse_same_identity(self._source_rows)
 
         # Quarantine keys: (network, contract) and (chain_id, contract).
         self._quarantine_by_network = {
@@ -94,7 +167,7 @@ class VenueRegistry:
         # representation into a conflict.
         self._conflict_keys: set[tuple] = set()
         groups: dict[tuple, dict[str, set[str]]] = {}
-        for entry in self._entries:
+        for entry in self._source_rows:
             if self.status_for(entry) is RegistryStatus.QUARANTINED:
                 continue
             if entry.contract_address and entry.network:

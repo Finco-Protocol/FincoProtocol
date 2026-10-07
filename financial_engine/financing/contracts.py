@@ -17,6 +17,12 @@ class ProjectUses:
     reserve_account_funding_keur: float
     other_explicit_project_uses_keur: float
     total_project_uses_keur: float
+    # Developer Economics V1 (typed PROJECT uses, FC-date; included in
+    # total_project_uses_keur when active). Never collapsed into one field and
+    # never routed through other_explicit_project_uses_keur, which the project
+    # return authority rejects as UNCLASSIFIED. Default 0.0 = no developer use.
+    development_cost_reimbursement_keur: float = 0.0
+    developer_fee_keur: float = 0.0
 
 
 @dataclass(frozen=True)

@@ -6,6 +6,7 @@
   <title>{{ project_name }} — Workbook</title>
   <script src="/static/vendor/htmx.min.js"></script>
   <link rel="stylesheet" href="/static/css/workbook_v2.css">
+  <link rel="stylesheet" href="/static/css/model_v2_run_history.css">
 </head>
 <body>
   {# sessionStorage hydration: re-populates schedule data on load without re-run #}
@@ -61,6 +62,11 @@
     </div>
     {% endif %}
   </div>
+
+  {# ── UX Foundation: compact workspace header (UX-2) — state from the
+     canonical freshness authority; Run binds #v2-canonical-run-form. ── #}
+  {% include "partials/_model_workspace_header.html" %}
+
   {# ── Formula / value bar (UI-2B) ──────────────────────────────────── #}
   <div class="fc-value-bar" id="fc-value-bar" role="status" aria-label="Active cell address and value">
     <span class="fc-value-bar-addr" id="fc-value-bar-addr" aria-label="Cell address"></span>
@@ -68,8 +74,20 @@
     <span class="fc-value-bar-value" id="fc-value-bar-value" aria-label="Cell value"></span>
   </div>
 
+  {# ── UX Foundation: workspace body — persistent left navigation (UX-2)
+     beside the existing sheet surface (#model-workspace-main). The nav
+     owns no economics; every available item activates an existing tab. ── #}
+  <div class="v2-workspace-body">
+  {% include "partials/_model_workspace_nav.html" %}
+  <div id="model-workspace-main" class="v2-workspace-main">
+
   {# ── Sheet tab navigation ──────────────────────────────────────────── #}
-  <nav class="v2-tabs" role="tablist" aria-label="Workbook sheets" id="v2-sheet-tabs">
+  {# UX Correction A9: the persistent left navigation (#model-workspace-nav)
+     is the ONE primary section navigation.  This horizontal strip is
+     retained as the internal activation control surface the existing
+     JS/HTMX contract depends on (tab ids, aria wiring, deep links) and is
+     visually demoted to a compact secondary bar. #}
+  <nav class="v2-tabs v2-tabs--secondary" role="tablist" aria-label="Workbook sheets (secondary)" id="v2-sheet-tabs">
     {# ANALYSIS group #}
     <span class="v2-tab-group-label" aria-hidden="true">Analysis</span>
     <button class="v2-tab" role="tab" aria-selected="true"  tabindex="0"  aria-controls="panel-overview"       id="tab-overview">Overview</button>
@@ -101,6 +119,8 @@
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-fs"              id="tab-fs">Financial Statements</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-returns"         id="tab-returns">Returns</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-trust"           id="tab-trust">Trust Pack</button>
+    {# Run Intelligence V1: read-only run history + historical compare #}
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-run-history"      id="tab-run-history">Run History</button>
   </nav>
 
   {# ── Status banner — OOB-swappable ────────────────────────────────── #}
@@ -211,7 +231,19 @@
       </div>
     </div>
 
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-run-history" aria-labelledby="tab-run-history" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_run_history.html" %}
+      </div>
+    </div>
+
   </div>{# v2-workbook-shell #}
+
+  {# ── UX Foundation: contextual Smart Panel (UX-3) — availability +
+     navigation only; links activate existing tabs. ── #}
+  {% include "partials/_model_smart_panel.html" %}
+  </div>{# model-workspace-main #}
+  </div>{# v2-workspace-body #}
 
   <script src="/static/js/workbook_v2.js"></script>
 

@@ -376,6 +376,7 @@ async def yield_explore(
     min_history_days: str | None = None,
     max_reward_dependency: str | None = None,
     evidence: str | None = None,
+    include_reference: str | None = None,
 ):
     if not yield_enabled():
         return _templates.TemplateResponse(
@@ -442,6 +443,15 @@ async def yield_explore(
         history_days_by_uid=history_days,
     )
 
+    # PUBLIC DEFAULT = live, source-observed opportunities only. REFERENCE_FIXTURE rows are a development /
+    # research sample and never appear beside live opportunities unless explicitly requested.
+    research_mode = (include_reference or "").strip() == "1"
+    hidden_reference_count = 0
+    if not research_mode:
+        live_rows = [o for o in rows if o.data_origin == DATA_ORIGIN_SOURCE_OBSERVED]
+        hidden_reference_count = len(rows) - len(live_rows)
+        rows = live_rows
+
     intel_by_uid = market.pools if path else {}
     view_rows = []
     for opportunity in rows:
@@ -507,6 +517,8 @@ async def yield_explore(
             "user": user,
             "csrf_token": generate_csrf_token(),
             "source_status": source_status,
+            "research_mode": research_mode,
+            "hidden_reference_count": hidden_reference_count,
             "result_count": len(view_rows),
             "chain_choices": CHAIN_FILTERS,
             "evidence_choices": EVIDENCE_FILTERS,

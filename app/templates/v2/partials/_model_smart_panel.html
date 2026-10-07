@@ -1,0 +1,105 @@
+{#
+  Contextual Smart Panel (UX-3 OVERVIEW + SMART PANEL).
+  Ownership: UX-3 — docs/model_v2/UX_FOUNDATION_CONTRACT.md.
+
+  Presentation only: availability + navigation over EXISTING authorities
+  (repository validation tier, Trust Pack, Assumption Register, Calculation
+  Trace).  No financial arithmetic, no engine execution, no duplicated
+  register/lineage.  Links activate the EXISTING Trust Pack tab via the
+  same mechanism as the workspace navigation.  Rendered from
+  `smart_panel` (SmartPanelProjection).
+
+  Validation summary: server-composed classes (STALE Last Run, unavailable
+  authority) render as-is; "live" classes (missing / invalid / out-of-bounds /
+  rejected / read-only) start hidden and are filled by workbook_v2.js from the
+  field rows the sheets actually rendered.  Field entries are jump buttons
+  ([data-jump-field]) handled by the existing workbook script — no editable
+  controls are duplicated here.
+#}
+<aside id="model-smart-panel" class="v2-smart-panel" aria-label="Smart panel" data-testid="smart-panel">
+  {% if smart_panel.stale_note %}
+  <div class="v2-smart-panel-note v2-smart-panel-note--{{ smart_panel.run_state | lower }}"
+       data-testid="smart-panel-note">{{ smart_panel.stale_note }}</div>
+  {% endif %}
+
+  {% if smart_panel.validation_summary %}
+  <div class="v2-smart-panel-section" id="v2-validation-summary"
+       data-testid="smart-panel-section-validation">
+    <div class="v2-smart-panel-section-title">Validation</div>
+    <ul class="v2-smart-panel-rows">
+      {% for item in smart_panel.validation_summary %}
+      <li class="v2-smart-panel-row v2-summary-row{% if item.tone %} v2-summary-row--{{ item.tone }}{% endif %}"
+          data-summary-class="{{ item.key.value }}"
+          {% if item.live %}data-summary-live="true" hidden{% endif %}
+          data-testid="smart-panel-summary-{{ item.key.value | lower | replace('_', '-') }}">
+        <span class="v2-smart-panel-row-label">{{ item.label }}</span>
+        <span class="v2-smart-panel-row-value"{% if item.live %} data-summary-count{% endif %}>{{ item.value }}</span>
+        {% if item.detail %}<span class="v2-smart-panel-row-detail">{{ item.detail }}</span>{% endif %}
+        {% if item.live and item.key.value != 'NON_EDITABLE' %}<ul class="v2-summary-fields" data-summary-fields></ul>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="v2-summary-empty" data-summary-empty
+         data-testid="smart-panel-summary-empty">No rejected edits in this session.</div>
+  </div>
+  {% endif %}
+
+  {% for section in smart_panel.sections %}
+  <div class="v2-smart-panel-section" data-testid="smart-panel-section-{{ section.key }}">
+    <div class="v2-smart-panel-section-title">{{ section.title }}</div>
+    {% if section.available and section.rows %}
+    <ul class="v2-smart-panel-rows">
+      {% for row in section.rows %}
+      <li class="v2-smart-panel-row{% if row.tone %} v2-smart-panel-row--{{ row.tone }}{% endif %}"
+          data-testid="smart-panel-row-{{ row.label | lower | replace(' ', '-') }}">
+        <span class="v2-smart-panel-row-label">{{ row.label }}</span>
+        <span class="v2-smart-panel-row-value">{{ row.value }}</span>
+        {% if row.detail %}<span class="v2-smart-panel-row-detail">{{ row.detail }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="v2-smart-panel-empty">{{ section.empty_text }}</div>
+    {% endif %}
+    {% for breakdown in section.breakdowns %}
+    <details class="v2-smart-panel-breakdown"
+             data-testid="smart-panel-breakdown-{{ breakdown.title | lower | replace(' ', '-') }}">
+      <summary>{{ breakdown.title }}</summary>
+      <ul>
+        {% for row in breakdown.rows %}
+        <li><span>{{ row.label }}</span><span>{{ row.value }}</span></li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endfor %}
+    {% if section.link %}
+    <button type="button" class="v2-smart-panel-link" data-nav-tab="{{ section.link.tab_id }}"
+            {% if section.link.anchor %}data-nav-anchor="{{ section.link.anchor }}"{% endif %}
+            data-testid="smart-panel-link-{{ section.key }}">{{ section.link.label }}</button>
+    {% endif %}
+  </div>
+  {% endfor %}
+</aside>
+<script>
+(function () {
+  var panel = document.getElementById('model-smart-panel');
+  if (!panel) return;
+  panel.addEventListener('click', function (evt) {
+    var btn = evt.target.closest('[data-nav-tab]');
+    if (!btn || btn.disabled) return;
+    var tab = document.getElementById(btn.getAttribute('data-nav-tab'));
+    if (!tab) return;
+    tab.click();
+    var anchorSel = btn.getAttribute('data-nav-anchor');
+    if (anchorSel) {
+      var target = document.querySelector(anchorSel);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.classList.remove('v2-anchor-highlight');
+        void target.offsetWidth;
+        target.classList.add('v2-anchor-highlight');
+      }
+    }
+  });
+})();
+</script>

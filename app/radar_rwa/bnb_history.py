@@ -330,6 +330,166 @@ def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
 
 
 
+def _verified_last_canonical_r_live_point(
+    row, uid: str, key: AssetKey,
+) -> dict | None:
+    """Digest-check one complete canonical R-LIVE observation for fallback.
+
+    This is deliberately stricter than a chart/range row: the outer B1.3
+    identity, embedded token identity, component prices, component clocks and
+    premium sources must all belong to the same persisted AVAILABLE snapshot.
+    Nothing is recomputed or borrowed from a newer source.
+    """
+    if row is None:
+        return None
+    digest, payload = row
+    if hashlib.sha256(payload.encode("utf-8")).hexdigest() != digest:
+        raise ValueError("history digest does not reconstruct")
+    try:
+        point = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError("history payload is invalid JSON") from exc
+
+    try:
+        point_uid = normalize_asset_uid(point.get("economic_asset_uid"))
+    except (TypeError, ValueError):
+        return None
+    if (point_uid != uid or point.get("asset_key") != key.canonical_id
+            or point.get("state") != "AVAILABLE"):
+        return None
+
+    basis = point.get("robinhood_basis")
+    reference = point.get("independent_token_reference")
+    if not isinstance(basis, dict) or not isinstance(reference, dict):
+        return None
+    if (reference.get("state") != "AVAILABLE"
+            or reference.get("assetKey") != key.canonical_id
+            or reference.get("assetUid") != uid):
+        return None
+
+    evidence = reference.get("evidence")
+    if not isinstance(evidence, dict):
+        return None
+    if (evidence.get("assetKey") != key.canonical_id
+            or evidence.get("registryAssetUid") != uid):
+        return None
+
+    try:
+        token_price = Decimal(str(reference["priceUsdPerToken"]))
+        basis_price = Decimal(str(basis["price_usd_per_token"]))
+        premium = Decimal(str(point["reference_premium_bps"]))
+    except (KeyError, TypeError, ValueError, InvalidOperation):
+        return None
+    if (not token_price.is_finite() or token_price <= 0
+            or not basis_price.is_finite() or basis_price <= 0
+            or not premium.is_finite()):
+        return None
+
+    def aware_iso(value) -> datetime | None:
+        if not isinstance(value, str):
+            return None
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+
+    token_at = aware_iso(reference.get("observedAt"))
+    basis_at = aware_iso(basis.get("observed_at"))
+    effective_at = aware_iso(point.get("observed_at"))
+    if token_at is None or basis_at is None or effective_at is None:
+        return None
+    if token_at != effective_at:
+        return None
+
+    sources = point.get("premium_sources")
+    clocks = point.get("premium_evidence_at")
+    if (not isinstance(sources, list) or len(sources) != 2
+            or not all(isinstance(source, str) and source for source in sources)
+            or sources[0] != basis.get("source")
+            or not isinstance(clocks, list) or len(clocks) != 2
+            or aware_iso(clocks[0]) != basis_at
+            or aware_iso(clocks[1]) != token_at):
+        return None
+
+    collection_clock = _history_collection_datetime(point)
+    if collection_clock is None:
+        return None
+    return {
+        "digest": digest,
+        "point": point,
+        "collection_clock": collection_clock.isoformat(),
+    }
+
+
+def read_latest_r_live_observations_batch_readonly(
+    pairs, *, as_of: datetime | None = None, path: str | None = None,
+) -> dict[str, dict]:
+    """Latest complete canonical R-LIVE snapshot for each exact UID/AssetKey.
+
+    This is the read-time last-price authority. It opens the existing B1.3
+    append-only ledger read-only, verifies the row digest and exact embedded
+    identity, and returns the original persisted snapshot unchanged. It never
+    creates a database, appends history, refreshes a timestamp, or combines
+    evidence from different observations.
+    """
+    checked: list[tuple[str, str, AssetKey]] = []
+    for uid, key in pairs:
+        if key.chain_id != 4663:
+            raise ValueError("exact Robinhood key required")
+        checked.append((normalize_asset_uid(uid), key.canonical_id, key))
+    if not checked:
+        return {}
+
+    now = as_of or datetime.now(timezone.utc)
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("last-price read clock must be timezone-aware")
+    now = now.astimezone(timezone.utc)
+
+    location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
+    if location == ":memory:" or not Path(location).is_file():
+        return {}
+
+    pair_clause = " OR ".join(
+        "(economic_asset_uid = ? AND asset_key = ?)" for _ in checked)
+    pair_params = [value for uid, asset_key, _key in checked
+                   for value in (uid, asset_key)]
+    clock_sql = (
+        "COALESCE(json_extract(payload, '$.collected_at'), "
+        "json_extract(payload, '$.independent_token_reference.evidence.retrievedAt'), "
+        "observed_at)"
+    )
+    query = (
+        "SELECT economic_asset_uid, asset_key, digest, payload FROM ("
+        " SELECT economic_asset_uid, asset_key, digest, payload,"
+        " ROW_NUMBER() OVER (PARTITION BY economic_asset_uid, asset_key "
+        f"ORDER BY {clock_sql} DESC, digest DESC) AS rn "
+        " FROM bnb_intelligence_history "
+        f" WHERE ({pair_clause}) "
+        " AND json_extract(payload, '$.state') = 'AVAILABLE' "
+        f" AND {clock_sql} IS NOT NULL AND {clock_sql} <= ?"
+        ") WHERE rn = 1"
+    )
+
+    uri = Path(location).resolve().as_uri() + "?mode=ro"
+    with sqlite3.connect(uri, uri=True, timeout=5) as conn:
+        rows = conn.execute(query, [*pair_params, now.isoformat()]).fetchall()
+
+    keys = {(uid, asset_key): key for uid, asset_key, key in checked}
+    out: dict[str, dict] = {}
+    for uid, asset_key, digest, payload in rows:
+        key = keys.get((uid, asset_key))
+        if key is None:
+            continue
+        verified = _verified_last_canonical_r_live_point(
+            (digest, payload), uid, key)
+        if verified is not None:
+            out[key.canonical_id] = verified
+    return out
+
+
 def _history_collection_datetime(point: dict) -> datetime | None:
     """Return source acquisition time only; never synthesize a history clock."""
     raw = point.get("collected_at")

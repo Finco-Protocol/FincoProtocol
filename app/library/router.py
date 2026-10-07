@@ -93,6 +93,47 @@ def _reference_templates(search: str | None, role: str | None):
 # GET /library — full page
 # ---------------------------------------------------------------------------
 
+def _model_home_payload(user_id: str, records, references) -> dict:
+    """Presentation rows for Model Home from PERSISTED authorities only.
+
+    Reads the per-project WorkspaceState Last Run evidence (Workflow 07)
+    for the current page's projects and the reference models.  Pure reads:
+    no engine execution, no recomputation.  A missing workspace record
+    simply means no persisted evidence — never a fabricated value.
+
+    Workspace OWNER authority (Correction A1): canonical reference
+    projects persist their workspace rows under their own owner
+    (``record.user_id`` — the canonical ``__reference__`` user), so their
+    Last Run evidence is read under that owner.  The logged-in user's
+    recent projects are read under the logged-in user.  No cross-user
+    lookup ever happens for arbitrary projects: only records returned by
+    the canonical reference repository use the reference owner.
+    """
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.library.model_home import (
+        build_recent_project_rows,
+        build_reference_cards,
+    )
+
+    states: dict[str, Any] = {}
+    for record in records:  # user's recent projects — logged-in owner
+        try:
+            states[record.project_id] = get_workspace_state(
+                user_id, record.project_id)
+        except Exception:  # evidence read failure == no evidence
+            states[record.project_id] = None
+    for record in references:  # canonical references — their own owner
+        try:
+            states[record.project_id] = get_workspace_state(
+                record.user_id, record.project_id)
+        except Exception:  # evidence read failure == no evidence
+            states[record.project_id] = None
+    return {
+        "recent_rows": build_recent_project_rows(records, states),
+        "reference_cards": build_reference_cards(references, states),
+    }
+
+
 @router.get("/library", response_class=HTMLResponse)
 async def project_library_page(
     request: Request,
@@ -126,6 +167,8 @@ async def project_library_page(
         "user": user,
         "projects": records,
         "references": _reference_templates(search, role),
+        **_model_home_payload(user.user_id, records,
+                              _reference_templates(search, role)),
         "search": search or "",
         "role_filter": role or "",
         "page": page,
@@ -177,10 +220,12 @@ async def project_library_list(
     )
     total_pages = max(1, math.ceil(total / PAGE_SIZE))
 
+    references = _reference_templates(search, role)
     ctx = {
         "user": user,
         "projects": records,
-        "references": _reference_templates(search, role),
+        "references": references,
+        **_model_home_payload(user.user_id, records, references),
         "search": search or "",
         "role_filter": role or "",
         "page": page,

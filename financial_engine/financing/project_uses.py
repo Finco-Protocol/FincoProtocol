@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from finco_core.inputs import DebtServiceReserveSupportMode, ProjectInputs
 
+from financial_engine.developer_economics.model import resolve_developer_project_uses
 from financial_engine.financing.contracts import ProjectUses
 from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
 
@@ -20,6 +21,8 @@ def compute_project_uses(project_inputs: ProjectInputs) -> ProjectUses:
 
     Authority: G2A financing stack definition.
       Total Project Uses = hard_capex + explicit_financing_costs + cash_reserve_funding
+                           + developer uses (reimbursement + fee; zero unless
+                             Developer Economics is enabled)
 
     DSRA modes:
       NONE      → reserve_use = 0 (requirement and legacy_cap must both be 0)
@@ -66,7 +69,13 @@ def compute_project_uses(project_inputs: ProjectInputs) -> ProjectUses:
                 f"{computed_non_reserve_total}."
             )
 
-    total = computed_non_reserve_total + reserve_use
+    # Developer Economics V1: development cost reimbursement and developer fee are
+    # PROJECT uses at Financial Close. They enter the canonical total here — the one
+    # Sources & Uses composition point — so the financing policy (gearing, senior
+    # sizing, sponsor funding) funds them like every other use. Zero when inactive.
+    developer_uses = resolve_developer_project_uses(project_inputs)
+
+    total = computed_non_reserve_total + reserve_use + developer_uses.total_keur
 
     return ProjectUses(
         hard_project_capex_keur=capex.hard_capex_keur,
@@ -74,4 +83,6 @@ def compute_project_uses(project_inputs: ProjectInputs) -> ProjectUses:
         reserve_account_funding_keur=reserve_use,
         other_explicit_project_uses_keur=0.0,
         total_project_uses_keur=total,
+        development_cost_reimbursement_keur=developer_uses.development_cost_reimbursement_keur,
+        developer_fee_keur=developer_uses.developer_fee_keur,
     )

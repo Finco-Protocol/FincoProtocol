@@ -210,7 +210,9 @@ def from_project_inputs(
     else:
         # Delegate to the canonical builder — not directly to book_depreciable_capex_items().
         from financial_engine.book_basis import build_book_depreciable_asset_basis
-        _fallback_basis = build_book_depreciable_asset_basis(inputs.capex)
+        from financial_engine.developer_economics.model import resolve_developer_project_uses
+        _fallback_basis = build_book_depreciable_asset_basis(
+            inputs.capex, developer_uses=resolve_developer_project_uses(inputs))
         book_capex_items_for_dep = tuple(
             CapexItemForDep(
                 name=c.name,

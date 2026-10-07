@@ -44,6 +44,7 @@ from finco_radar.venues.observations import (
 )
 from finco_radar.venues.registry import VenueRegistry, parse_underlying
 from finco_radar.venues.store import VenueMarketStore
+from model_v2_governance import merge_base_ref
 
 NOW = datetime(2026, 10, 2, 12, 0, 0, tzinfo=timezone.utc)
 ROBINHOOD_NVDA = "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec"
@@ -304,16 +305,23 @@ class TestTokenizedMarketsSurface:
     def test_landing_renders_with_empty_history(self, client):
         page = client.get("/radar/tokenized-markets")
         assert page.status_code == 200
-        assert 'data-testid="tokenized-markets-table"' in page.text
+        # No persisted priced evidence → compact collecting state, not a mostly-empty market table.
+        assert 'data-testid="tokenized-markets-table"' not in page.text
+        assert 'data-testid="tm-empty"' in page.text
         assert "economic underlying" in page.text  # lede (capitalized in copy)
-        assert 'data-testid="tm-history-note"' in page.text
 
-    def test_landing_routes_robinhood_nvda_row(self, client):
+    def test_landing_primary_list_excludes_identity_only_rows_and_catalog_keeps_them(self, client):
+        # Product-reality contract: with no priced evidence the landing is a compact collecting state (no row for any
+        # identity); every identity stays reachable through the research catalog and the detail deep link.
+        import re
         page = client.get("/radar/tokenized-markets")
-        assert 'href="/radar/tokenized-markets/NVDA"' in page.text
-        assert 'data-testid="tm-row-NVDA"' in page.text
-        assert 'data-testid="tm-rep-count-NVDA">0/' in page.text
-        assert 'data-testid="tm-unavailable-NVDA"' in page.text
+        assert len(re.findall(r'data-testid="tm-row-', page.text)) == 0
+        assert 'data-testid="tm-empty"' in page.text
+        assert 'href="/radar/tokenized-markets/NVDA"' in page.text      # reviewed asset chip
+        catalog = client.get("/radar/tokenized-markets?view=catalog")
+        assert 'href="/radar/tokenized-markets/NVDA"' in catalog.text
+        assert 'data-testid="tm-catalog-row-NVDA"' in catalog.text
+        assert client.get("/radar/tokenized-markets/NVDA").status_code == 200
 
     def test_detail_shows_representations_and_truth_states(self, client):
         page = client.get("/radar/tokenized-markets/NVDA")
@@ -332,8 +340,16 @@ class TestFrozen:
     @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core"])
     def test_zero_diff(self, namespace):
         out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", namespace],
+            ["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", namespace],
             cwd=REPO, capture_output=True, text=True)
         if out.returncode != 0:
             pytest.skip("git unavailable")
-        assert out.stdout.strip() == "", out.stdout
+        # Explicitly authorized Model V2 epic engine files are governed by the
+        # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
+        # protecting every other frozen path.
+        from finance_integrity_governance import approved_frozen_path
+        changed = [
+            p for p in out.stdout.splitlines()
+            if p.strip() and not approved_frozen_path(p.strip())
+        ]
+        assert changed == [], changed

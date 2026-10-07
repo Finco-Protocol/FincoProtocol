@@ -1,9 +1,12 @@
 {# ── Protocol Shell Navigation  (_protocol_nav.html)
    Shared across FINCO Protocol surfaces:
-   Home · Model · Radar · Yield · Crypto · API · Docs · Roadmap · $FINCO
+   Primary: Radar · Model · API · Docs   Secondary (More): Yield · Account & access · Roadmap · $FINCO
+   Radar is the single global entry to the Radar domain; /radar opens R-LIVE (the default surface) and the
+   Radar domain nav (radar/domain_nav.html) identifies the active sub-surface (R-LIVE · Tokenized · Stocks · Crypto · Economy).
 
    Context variables used (all optional — nav degrades gracefully):
-     proto_active_page : str  — "home" | "model" | "radar" | "yield" | "crypto" | "api" | "docs" | "roadmap" | "finco"
+     proto_active_page : str  — "home" | "rlive" | "tokenized" | "model" | "radar" | "yield" | "crypto" | "api" | "docs" | "roadmap" | "finco"
+                        ("rlive", "tokenized" and "radar" all mark the global Radar entry active)
      user              : obj  — the authenticated user (F05 session)
 
    This partial loads protocol-shell.css; the calling page must also
@@ -18,31 +21,17 @@
       {% endwith %}
       <span class="proto-nav__brand-wordmark">FINCO <span>Protocol</span></span>
     </a>
-    <div class="proto-nav__links">
-      <a href="/"
-         class="proto-nav__link{% if proto_active_page == 'home' %} proto-nav__link--active{% endif %}"
-         {% if proto_active_page == 'home' %}aria-current="page"{% endif %}>
-        Home
+    <div class="proto-nav__links" data-testid="proto-nav-primary">
+      {% set _radar_active = proto_active_page in ('radar', 'rlive', 'tokenized') %}
+      <a href="/radar"
+         class="proto-nav__link{% if _radar_active %} proto-nav__link--active{% endif %}"
+         {% if _radar_active %}aria-current="page"{% endif %}>
+        Radar
       </a>
       <a href="/library"
          class="proto-nav__link{% if proto_active_page == 'model' %} proto-nav__link--active{% endif %}"
          {% if proto_active_page == 'model' %}aria-current="page"{% endif %}>
         Model
-      </a>
-      <a href="/radar"
-         class="proto-nav__link{% if proto_active_page == 'radar' %} proto-nav__link--active{% endif %}"
-         {% if proto_active_page == 'radar' %}aria-current="page"{% endif %}>
-        Radar
-      </a>
-      <a href="/yield"
-         class="proto-nav__link{% if proto_active_page == 'yield' %} proto-nav__link--active{% endif %}"
-         {% if proto_active_page == 'yield' %}aria-current="page"{% endif %}>
-        Yield
-      </a>
-      <a href="/crypto"
-         class="proto-nav__link{% if proto_active_page == 'crypto' %} proto-nav__link--active{% endif %}"
-         {% if proto_active_page == 'crypto' %}aria-current="page"{% endif %}>
-        Crypto
       </a>
       <a href="/api"
          class="proto-nav__link{% if proto_active_page == 'api' %} proto-nav__link--active{% endif %}"
@@ -54,17 +43,27 @@
          {% if proto_active_page == 'docs' %}aria-current="page"{% endif %}>
         Docs
       </a>
-      <a href="/roadmap"
-         class="proto-nav__link{% if proto_active_page == 'roadmap' %} proto-nav__link--active{% endif %}"
-         {% if proto_active_page == 'roadmap' %}aria-current="page"{% endif %}>
-        Roadmap
-      </a>
-      <a href="/protocol/finco"
-         class="proto-nav__link{% if proto_active_page == 'finco' %} proto-nav__link--active{% endif %}"
-         {% if proto_active_page == 'finco' %}aria-current="page"{% endif %}>
-        $FINCO
-      </a>
     </div>
+    {# Secondary navigation: reachable, but not presented as equal top-level products.
+       When the current page is a secondary one, ONLY that entry is shown in the primary row (as the single
+       active link) and omitted from the menu, so the active page is always visible and appears exactly once. #}
+    {% if proto_active_page in ('yield', 'crypto', 'roadmap', 'finco') %}
+    <div class="proto-nav__links proto-nav__links--current" data-testid="proto-nav-current">
+      {% if proto_active_page == 'yield' %}<a href="/yield" class="proto-nav__link proto-nav__link--active" aria-current="page">Yield</a>{% endif %}
+      {% if proto_active_page == 'crypto' %}<a href="/crypto" class="proto-nav__link proto-nav__link--active" aria-current="page">Account &amp; access</a>{% endif %}
+      {% if proto_active_page == 'roadmap' %}<a href="/roadmap" class="proto-nav__link proto-nav__link--active" aria-current="page">Roadmap</a>{% endif %}
+      {% if proto_active_page == 'finco' %}<a href="/protocol/finco" class="proto-nav__link proto-nav__link--active" aria-current="page">$FINCO</a>{% endif %}
+    </div>
+    {% endif %}
+    <details class="proto-nav__more" data-testid="proto-nav-secondary">
+      <summary class="proto-nav__link">More</summary>
+      <div class="proto-nav__more-menu">
+        {% if proto_active_page != 'yield' %}<a href="/yield" class="proto-nav__link">Yield</a>{% endif %}
+        {% if proto_active_page != 'crypto' %}<a href="/crypto" class="proto-nav__link">Account &amp; access</a>{% endif %}
+        {% if proto_active_page != 'roadmap' %}<a href="/roadmap" class="proto-nav__link">Roadmap</a>{% endif %}
+        {% if proto_active_page != 'finco' %}<a href="/protocol/finco" class="proto-nav__link">$FINCO</a>{% endif %}
+      </div>
+    </details>
     {% if user and not user.is_demo %}
     <div class="proto-nav__right">
       <form method="POST" action="/logout" style="display:inline;">

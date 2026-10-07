@@ -80,7 +80,9 @@ def _fresh_row(canonical_id: str = "4663:0xapple", *, now=None) -> tuple[str, st
 def snapshot_db(tmp_path, monkeypatch):
     """Isolated snapshot store per test (durable file, never :memory:)."""
     path = tmp_path / "r_live_snapshots.db"
+    history = tmp_path / "r_live_history.db"
     monkeypatch.setenv("R_LIVE_SNAPSHOT_DB_PATH", str(path))
+    monkeypatch.setenv("RADAR_BNB_INTELLIGENCE_DB_PATH", str(history))
     return str(path)
 
 
@@ -431,7 +433,7 @@ def test_rwa_overview_has_no_duplicate_aapl_premium_panel(client_for_rwa):
     assert 'id="r-live-aapl"' not in html
     assert "Premium history" not in html
     # replaced by one small informational link card to the canonical terminal
-    assert "Robinhood tokenized equities" in html
+    assert "Robinhood Stock Tokens" in html
     assert 'href="/radar/r-live"' in html
     assert "View R-LIVE" in html
     # the duplicate live-acquisition wiring is gone from this page

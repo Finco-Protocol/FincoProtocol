@@ -67,6 +67,10 @@ class ProjectRecord:
     project_role: str = "user_project"           # "reference" | "working_copy" | "user_project"
     is_protected: bool = False                   # True for reference projects
     source_project_id: Optional[str] = None      # lineage: working_copy → source reference
+    # Model V2 foundation: non-economic metadata. None = not set (never
+    # inferred). Validated against app.model_v2.project_metadata vocabularies.
+    project_stage: Optional[str] = None
+    model_perspective: Optional[str] = None
 
     @classmethod
     def from_row(cls, row) -> "ProjectRecord":
@@ -92,6 +96,8 @@ class ProjectRecord:
             project_role=row["project_role"] if "project_role" in keys else "user_project",
             is_protected=bool(row["is_protected"]) if "is_protected" in keys else False,
             source_project_id=row["source_project_id"] if "source_project_id" in keys else None,
+            project_stage=row["project_stage"] if "project_stage" in keys else None,
+            model_perspective=row["model_perspective"] if "model_perspective" in keys else None,
         )
 
 
@@ -242,6 +248,11 @@ class WorkspaceStateRecord:
     last_runtime_identity: Optional[dict] = None  # decoded last_runtime_identity_json
     # H-4b: Run Integrity evidence recorded at commit ({} for Last Runs committed earlier).
     last_integrity_evidence: dict[str, Any] = field(default_factory=dict)
+    # Workflow 07: raw Model V2 Working Copy selection payload (versioned JSON
+    # typed by app.model_v2.persistence). '' = no Model V2 state (legacy
+    # absence). Decoding is lazy + fail-closed — see
+    # workspace_repository.get_workspace_model_v2_state.
+    model_v2_working_state_json: str = ""
 
     @classmethod
     def from_row(cls, row) -> "WorkspaceStateRecord":
@@ -274,6 +285,7 @@ class WorkspaceStateRecord:
             last_runtime_composite_hash=row["last_runtime_composite_hash"] if "last_runtime_composite_hash" in row.keys() else None,
             last_runtime_identity=_from_json(row["last_runtime_identity_json"] if "last_runtime_identity_json" in row.keys() else None, None),
             last_integrity_evidence=_from_json(row["last_integrity_evidence_json"] if "last_integrity_evidence_json" in row.keys() else "{}", {}),
+            model_v2_working_state_json=(row["model_v2_working_state_json"] if "model_v2_working_state_json" in row.keys() else "") or "",
         )
 
 

@@ -94,6 +94,7 @@ from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
 from app.workbook.workbook_identity import assemble_consistent_for_get, assemble_for_workspace
 from app.workbook.update_service import (
+    FieldErrorClass,
     FieldValidationError,
     NonEditableFieldError,
     ProtectedReferenceError,
@@ -173,10 +174,26 @@ def _add_field_saved_trigger(resp: HTMLResponse, field_id: str, new_hash: str) -
     return resp
 
 
-def _add_field_error_trigger(resp: HTMLResponse, field_id: str, message: str) -> HTMLResponse:
+def _add_field_error_trigger(
+    resp: HTMLResponse, field_id: str, message: str,
+    error_class: Optional[FieldErrorClass] = None,
+) -> HTMLResponse:
+    """Attach the field-error HX event.
+
+    ``error_class`` is the canonical server classification
+    (``FieldValidationError.error_class``) and is the ONLY typed authority the
+    browser may use.  It is JSON ``null`` for every rejection that is not a typed
+    field-value validation outcome (stale draft, protected project, non-editable
+    field, authority gate) — never fabricated.  Only a real ``FieldErrorClass``
+    is serialised, so nothing else can reach the browser as a class.
+    """
     import json as _json
     resp.headers["HX-Trigger"] = _json.dumps({
-        "workbook-field-error": {"field_id": field_id, "message": message}
+        "workbook-field-error": {
+            "field_id": field_id,
+            "message": message,
+            "error_class": error_class.value if isinstance(error_class, FieldErrorClass) else None,
+        }
     })
     return resp
 
@@ -404,6 +421,103 @@ def _get_inputs_summary(project_record, pis, ws) -> dict:
     formulas, and no ViewModel construction live here.
     """
     return build_inputs_summary(project_record, pis, ws)
+
+
+def _format_assumption_display(value):
+    """UX Correction B1: presentation-only assumption value formatting.
+
+    The canonical ``AssumptionEntry.value`` is NEVER touched — this renders
+    the display string only (no parse-format-reparse, no rounding of stored
+    values, no financial calculation):
+
+    - ``None``           → em dash (missing is never zero)
+    - ``bool``           → Yes / No (truthful display)
+    - ``str`` / ``int``  → verbatim
+    - ``float``          → institutional finite display (max 4 decimals,
+      thousands separators, trailing zeros trimmed); non-finite → em dash
+    - ``list`` / ``dict`` → recursive: numeric leaves formatted the same
+      way, so raw long float reprs never reach the UI
+    """
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return "—"
+        rounded = round(value, 4)
+        if rounded == 0:
+            return "0"
+        text = f"{rounded:,.4f}"
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_format_assumption_display(v) for v in value)
+    if isinstance(value, dict):
+        return ", ".join(
+            f"{k}: {_format_assumption_display(v)}"
+            for k, v in value.items())
+    return str(value)
+
+
+def _build_assumption_register_view(pis):
+    """UX Correction A4/B1/B2: read-only Workflow 04 Assumption Register view.
+
+    Pure construction over the working-copy ProjectInputs
+    (``build_assumption_register`` — no I/O, no engine execution).  Used by
+    the Trust sheet section (#assumption-register).  Fail closed: any
+    construction failure renders a typed UNAVAILABLE view — never a
+    fabricated register.
+
+    B1: values render through the presentation formatter — raw float
+    precision never reaches the UI and stored/canonical values stay
+    byte-identical.  B2: on EV workbooks the register rows pass through the
+    existing EV presentation authority (``app.v2.ev_labels``) — charging
+    terminology for the internal compatibility price fields, and
+    compatibility-only generation/PPA rows omitted (canonical identities
+    unchanged).
+    """
+    try:
+        from app.model_v2.assumption_register import (
+            AssumptionSourceKind,
+            RegisterContext,
+            build_assumption_register,
+        )
+        inputs = pis.to_projectinputs()
+        register = build_assumption_register(
+            inputs,
+            RegisterContext.for_working_copy(
+                state_provenance=AssumptionSourceKind.USER_INPUT,
+                workbook_composite_hash=getattr(pis, "content_hash", None),
+            ),
+        )
+        rows = []
+        for e in register.entries:
+            rows.append({
+                "section": e.section,
+                "path": e.canonical_path,
+                "label": e.label,
+                "value": _format_assumption_display(e.value),
+                "unit": e.unit or "",
+                "source": e.source_ref or e.source_kind.value,
+            })
+        from app.v2.ev_labels import is_ev_pis, apply_ev_register_presentation
+        if is_ev_pis(pis):
+            rows = apply_ev_register_presentation(rows)
+        return {
+            "available": True,
+            "entry_count": len(rows),
+            "fingerprint": register.fingerprint,
+            "rows": rows,
+        }
+    except Exception:
+        return {"available": False, "entry_count": 0,
+                "fingerprint": "", "rows": []}
 
 
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
@@ -1474,6 +1588,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     from app.ui.trust_pack import build_trust_pack
     try:
         context["trust_pack"] = build_trust_pack(
+
             workspace_owner,
             project_record.project_id,
             project_code=project_record.project_code,
@@ -1512,6 +1627,42 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     context["overview"] = build_overview_projection(
         _rr, runtime_freshness.is_stale, pis,
         active_scenario_name=ws.active_scenario_name or "")
+
+    # UX Foundation: compact workspace header + persistent left navigation.
+    # Presentation projections only — identity comes from the same pis the
+    # overview uses; state comes from the canonical freshness authority.
+    context["assumption_register_view"] = _build_assumption_register_view(pis)
+
+    from app.v2.workspace_shell_projection import (
+        build_workspace_header_projection,
+        workspace_nav_groups,
+    )
+    context["header"] = build_workspace_header_projection(
+        project_name=project_record.project_name or project,
+        technology=context.get("project_type", ""),
+        country_iso=getattr(context.get("overview"), "country_iso", ""),
+        capacity_mw=getattr(context.get("overview"), "capacity_mw", None),
+        project_editable=context.get("project_editable", True),
+        runtime_state=runtime_freshness.state.value,
+        has_runtime=bool(context.get("has_runtime")),
+        last_runtime_at_display=context.get("last_runtime_at", "") or "",
+        active_scenario_name=context.get("active_scenario_name", "") or "",
+    )
+    context["ws_nav_groups"] = workspace_nav_groups()
+
+    # UX Foundation Phase C: contextual Smart Panel (availability +
+    # navigation over existing authorities; never an engine call).
+    from app.v2.smart_panel_projection import build_smart_panel_projection
+    # Run Intelligence V1: read-only run history listing on its own tab.
+    context.update(_run_history_listing_ctx(project_record, ws, pis))
+
+    context["smart_panel"] = build_smart_panel_projection(
+        trust_pack=context.get("trust_pack"),
+        runtime_state=runtime_freshness.state.value,
+        has_runtime=bool(context.get("has_runtime")),
+        project_key=str(getattr(pis, "template_source", "") or ""),
+        assumption_register_view=context.get("assumption_register_view"),
+    )
 
     # UI-3B: inject scenario presentations for the Scenarios tab.
     # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
@@ -1612,7 +1763,10 @@ async def v2_inputs_slice1_update(
         resp.status_code = status_code
         return resp
 
-    def _render_field_error(message: str, status_code: int, *, preserve_submitted: bool = False) -> HTMLResponse:
+    def _render_field_error(
+        message: str, status_code: int, *, preserve_submitted: bool = False,
+        error_class: Optional[FieldErrorClass] = None,
+    ) -> HTMLResponse:
         pis_for_render = _build_pis_with_composite_identity(
             ws, project_record, workspace_owner
         )
@@ -1622,7 +1776,7 @@ async def v2_inputs_slice1_update(
             preserve_submitted=preserve_submitted,
             pis_for_render=pis_for_render,
         )
-        return _add_field_error_trigger(resp, field_id, message)
+        return _add_field_error_trigger(resp, field_id, message, error_class)
 
     field_classification = classify_slice1_field_id(field_id)
     if field_classification != KNOWN_SLICE1_EDITABLE:
@@ -1665,7 +1819,8 @@ async def v2_inputs_slice1_update(
         )
     except FieldValidationError as exc:
         return (
-            _render_field_error(str(exc), 422, preserve_submitted=True)
+            _render_field_error(
+                str(exc), 422, preserve_submitted=True, error_class=exc.error_class)
             if is_htmx else _json_error(str(exc), 422)
         )
 
@@ -1831,7 +1986,7 @@ async def v2_workbook_update(
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
             resp = _htmx_error(pis, str(exc))
-            return _add_field_error_trigger(resp, field_id, str(exc))
+            return _add_field_error_trigger(resp, field_id, str(exc), exc.error_class)
         return _redirect_with_error(str(exc))
 
     # Success path — reload workspace and assemble composite identity consistently
@@ -3133,6 +3288,237 @@ async def v2_scenario_remove_override(
         return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
             request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Run Intelligence V1 — Run History surface (read-only consumers of the
+# append-only run-history authority).  No engine execution, no mutation,
+# no reconstruction of missing metrics.
+# ---------------------------------------------------------------------------
+
+def _run_history_listing_ctx(project_record, ws, pis):
+    """Shared Run History listing context (workbook GET + OOB + route).
+
+    Read-only composition over the append-only history authority; fails
+    closed to a typed error row set on malformed stored payloads.
+    """
+    from app.persistence.run_history_repository import (
+        RunHistoryError,
+        get_run_history,
+    )
+    from app.v2.run_history_projection import (
+        HISTORY_LIST_LIMIT,
+        build_run_history_rows,
+    )
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+
+    freshness = resolve_runtime_freshness(ws, current_composite_hash=pis.content_hash)
+    # the workspace record carries its owner (canonical history key)
+    workspace_owner = getattr(ws, "user_id", None)
+    try:
+        entries = get_run_history(
+            workspace_owner, project_record.project_id,
+            limit=HISTORY_LIST_LIMIT)
+        rows = build_run_history_rows(
+            entries, ws=ws, current_composite_hash=pis.content_hash,
+            project_code=project_record.project_code)
+        available, error_code = True, ""
+    except RunHistoryError as exc:  # malformed stored payload — fail closed
+        rows, available, error_code = [], False, str(exc)
+    return {
+        "rows": rows,
+        "available": available,
+        "error_code": error_code,
+        "failed_note": True,
+        "project_code": project_record.project_code,
+        "project_editable": not is_protected_reference(project_record),
+        "last_run_state": freshness.state.value,
+        "last_run_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        "last_run_snapshot_short": str(
+            getattr(ws, "last_runtime_snapshot_id", "") or "")[:8] or "—",
+        "limit": HISTORY_LIST_LIMIT,
+    }
+
+
+@router.get("/workbook/run-history", response_class=HTMLResponse)
+async def v2_run_history(
+    request: Request,
+    project: Optional[str] = None,
+):
+    """Read-only Run History listing for one project.
+
+    Newest-first immutable successful runs with institutional metadata.
+    CURRENT/STALE describe only the canonical Last Run (rendered by the
+    workspace header/banner authorities); every listed row is HISTORICAL,
+    optionally flagged MATCHES WORKING COPY when its stored identity equals
+    the current Working Copy identity.  No engine execution, no mutation.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+    if not project:
+        return HTMLResponse(content="<p>No project specified.</p>", status_code=400)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import (
+        RunHistoryError,
+        get_run_history,
+    )
+    from app.v2.run_history_projection import (
+        HISTORY_LIST_LIMIT,
+        build_run_history_rows,
+    )
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return HTMLResponse(content="<p>No workspace state.</p>", status_code=404)
+
+    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    ctx = _run_history_listing_ctx(project_record, ws, pis)
+    return _templates.TemplateResponse(
+        request=request, name="partials/sheet_run_history.html", context=ctx)
+
+
+@router.get("/workbook/run-history/detail", response_class=HTMLResponse)
+async def v2_run_history_detail(
+    request: Request,
+    project: Optional[str] = None,
+    history_id: Optional[str] = None,
+):
+    """Read-only historical run detail: identity, canonical KPIs, integrity
+    evidence.  No restore / rerun / mutation functionality exists."""
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+    if not project or not history_id:
+        return HTMLResponse(
+            content="<p>Project and history_id required.</p>", status_code=400)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.run_history_repository import (
+        RunHistoryError,
+        get_run_history_entry,
+    )
+    from app.v2.run_history_projection import run_history_metrics
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+
+    try:
+        entry = get_run_history_entry(
+            workspace_owner, project_record.project_id, history_id)
+    except RunHistoryError as exc:  # malformed stored payload — fail closed
+        return HTMLResponse(
+            content=f"<p role=\"alert\">RUN_HISTORY_PAYLOAD_MALFORMED: {exc}</p>",
+            status_code=422)
+    if entry is None:  # unknown or foreign id — fail closed
+        return HTMLResponse(
+            content="<p>Run history entry not found.</p>", status_code=404)
+
+    integrity = getattr(entry, "integrity_evidence", None) or {}
+    identity = getattr(entry, "last_runtime_identity", None) or {}
+    ctx = {
+        "entry": entry,
+        "metrics": run_history_metrics(entry),
+        "ran_at_display": str(getattr(entry, "ran_at", "") or "")[:16].replace("T", " "),
+        "scenario_name": getattr(entry, "active_scenario_name", None) or "Base",
+        "origin": str(getattr(entry, "runtime_origin", "") or "—"),
+        "engine_version": str(getattr(entry, "engine_version", "") or "—"),
+        "workbook_version": str(getattr(entry, "workbook_version", "") or "—"),
+        "snapshot_short": str(getattr(entry, "runtime_snapshot_id", "") or "")[:8],
+        "composite_short": str(getattr(entry, "composite_hash", "") or "")[:8],
+        "integrity_items": (
+            sorted(integrity.items()) if isinstance(integrity, dict) else []),
+        "project_code": project_record.project_code,
+    }
+    return _templates.TemplateResponse(
+        request=request, name="partials/run_history_detail.html", context=ctx)
+
+
+@router.get("/workbook/run-history/compare", response_class=HTMLResponse)
+async def v2_run_history_compare(
+    request: Request,
+    project: Optional[str] = None,
+    history_id: Optional[str] = None,
+):
+    """Canonical Last Run vs one selected immutable historical run.
+
+    Read-only data-source substitution over the existing compare machinery —
+    no financial recomputation, no engine execution, UNAVAILABLE stays
+    unavailable.  If the Last Run is STALE relative to the Working Copy that
+    is displayed honestly: the comparison compares persisted runs.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+    if not project or not history_id:
+        return HTMLResponse(
+            content="<p>Project and history_id required.</p>", status_code=400)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import (
+        RunHistoryError,
+        get_run_history_entry,
+    )
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+    from app.v2.run_history_projection import (
+        _enriched_kpis,
+        build_run_compare,
+    )
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return HTMLResponse(content="<p>No workspace state.</p>", status_code=404)
+
+    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    freshness = resolve_runtime_freshness(ws, current_composite_hash=pis.content_hash)
+
+    try:
+        entry = get_run_history_entry(
+            workspace_owner, project_record.project_id, history_id)
+    except RunHistoryError as exc:
+        return HTMLResponse(
+            content=f"<p role=\"alert\">RUN_HISTORY_PAYLOAD_MALFORMED: {exc}</p>",
+            status_code=422)
+    if entry is None:
+        return HTMLResponse(
+            content="<p>Run history entry not found.</p>", status_code=404)
+
+    class _LastRunView:
+        """Scheduling-source view over the workspace's persisted Last Run."""
+        runtime_summary = dict(getattr(ws, "last_runtime_summary", None) or {})
+        debt_schedule = getattr(ws, "last_debt_schedule", None) or {}
+        sponsor_schedule = getattr(ws, "last_sponsor_schedule", None) or {}
+
+    compare = build_run_compare(
+        last_run_kpis=_enriched_kpis(_LastRunView()),
+        last_run_ran_at=_fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        last_run_is_stale=freshness.is_stale,
+        history_entry=entry,
+    )
+    matches = bool(
+        entry.composite_hash and pis.content_hash
+        and str(entry.composite_hash) == str(pis.content_hash)
+    )
+    ctx = {
+        "compare": compare,
+        "history_id": entry.history_id,
+        "project_code": project_record.project_code,
+        "matches_working_copy": matches,
+        "last_run_state": freshness.state.value,
+    }
+    return _templates.TemplateResponse(
+        request=request, name="partials/run_history_compare.html", context=ctx)
 
 
 @router.get("/workbook/scenarios/compare", response_class=HTMLResponse)

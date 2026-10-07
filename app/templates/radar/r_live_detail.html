@@ -11,7 +11,7 @@
 </head>
 <body class="radar">
 
-{% with proto_active_page="radar" %}
+{% with proto_active_page="rlive" %}
 {% include "partials/_protocol_nav.html" %}
 {% endwith %}
 {% include "radar/domain_nav.html" %}
@@ -45,9 +45,12 @@
       <div class="rlive-kpi"><span class="rlive-kpi__label">Economic Basis</span><span class="rlive-kpi__value mono" id="kpi-basis">—</span><span class="rlive-kpi__meta" id="kpi-basis-asof">—</span></div>
       <div class="rlive-kpi"><span class="rlive-kpi__label">Independent Token Ref.</span><span class="rlive-kpi__value mono" id="kpi-token">—</span><span class="rlive-kpi__meta" id="kpi-token-asof">—</span></div>
       <div class="rlive-kpi"><span class="rlive-kpi__label">24h Range</span><span class="rlive-kpi__value mono" id="kpi-range">—</span><span class="rlive-kpi__meta" id="kpi-range-meta">—</span></div>
-      <div class="rlive-kpi"><span class="rlive-kpi__label">Freshness</span><span class="rlive-kpi__value mono" id="kpi-freshness">—</span><span class="rlive-kpi__meta" id="kpi-source">—</span></div>
+      <div class="rlive-kpi"><span class="rlive-kpi__label">Evidence age (per leg)</span><span class="rlive-kpi__value mono" id="kpi-freshness">—</span><span class="rlive-kpi__meta" id="kpi-source">—</span></div>
     </div>
   </section>
+
+  <p class="muted small" id="history-current-note" data-testid="history-historical-note" role="status" hidden
+     style="margin:0 0 14px;padding:8px 12px;border:1px solid var(--radar-border,#252b33);border-radius:6px"></p>
 
   <section style="margin-bottom:28px">
     <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
@@ -75,6 +78,31 @@
     </div>
   </section>
 
+  <section style="margin-bottom:28px" data-testid="source-legs">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
+      Source legs — Market · Official reference · Oracle
+    </h2>
+    <p class="muted small" style="margin:0 0 10px">
+      Three independent evidence roles. Each leg has its own status, value and age; a fresh leg never makes another leg current.
+      States are those recorded by the collector (see collected time); ages are measured from each source timestamp.
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px" id="source-legs-table">
+      <thead><tr style="border-bottom:1px solid var(--radar-border,#252b33)">
+        <th style="text-align:left;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Leg</th>
+        <th style="text-align:left;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Status</th>
+        <th style="text-align:right;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Value (USD / Stock Token)</th>
+        <th style="text-align:left;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Age</th>
+        <th style="text-align:left;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Detail</th>
+      </tr></thead>
+      <tbody>
+        <tr data-leg="MARKET"><td style="padding:8px 10px">Market</td><td>—</td><td></td><td></td><td></td></tr>
+        <tr data-leg="OFFICIAL_REFERENCE"><td style="padding:8px 10px">Reference</td><td>—</td><td></td><td></td><td></td></tr>
+        <tr data-leg="ORACLE"><td style="padding:8px 10px">Oracle</td><td>—</td><td></td><td></td><td></td></tr>
+      </tbody>
+    </table>
+    <p class="muted small" id="source-legs-note" style="margin:8px 0 0"></p>
+  </section>
+
   <section style="margin-bottom:28px">
     <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
       Live Reference
@@ -99,7 +127,8 @@
     </dl>
     <p class="muted small" style="margin-top:10px">
       Reference observation only — not a tradeable or executable price.
-      Numeric values are suppressed when STALE or UNAVAILABLE.
+      The latest canonical price remains visible with its original evidence age.
+      Missing values are never shown as zero.
     </p>
     <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <button type="button" id="detail-refresh-now" data-testid="detail-refresh-now"
@@ -260,11 +289,97 @@
       if (panel) { panel.setAttribute("data-jev-state", "AVAILABLE"); }
     })
     .catch(function () { unavailable("JEV_TRANSPORT_UNAVAILABLE"); });
+
+})();
+</script>
+{% endif %}
+
+{# Source legs: canonical source-evidence presentation. Gated ONLY on an approved asset — never on JEV visibility. #}
+{% if row.approved %}
+<script>
+(function () {
+  "use strict";
+  // Read-only, network-free route: the server evaluates EFFECTIVE status at read time (no browser-clock authority).
+  var CANONICAL_ID = {{ row.canonical_id | tojson }};
+  var EVIDENCE_URL = "/radar/r-live/" + encodeURIComponent(CANONICAL_ID) + "/evidence";
+  var LEG_LABELS = { MARKET: "Market", OFFICIAL_REFERENCE: "Reference", ORACLE: "Oracle" };
+  var REASON_TEXT = {
+    ORACLE_FEED_NOT_REVIEWED: "Not reviewed — no official oracle feed binding yet",
+    ORACLE_HEARTBEAT_NOT_REVIEWED: "Heartbeat not reviewed",
+    ORACLE_HEARTBEAT_EXCEEDED: "Older than the feed heartbeat",
+    ORACLE_SOURCE_TIMESTAMP_UNAVAILABLE: "Source timestamp unavailable",
+    REFERENCE_STALE: "Older than the reference policy",
+    REFERENCE_SOURCE_TIMESTAMP_UNAVAILABLE: "Source timestamp unavailable"
+  };
+
+  function fmt_age(secs) {
+    if (secs == null) return "—";
+    if (secs < 60) return secs + "s";
+    if (secs < 3600) return Math.floor(secs / 60) + "m";
+    return Math.floor(secs / 3600) + "h";
+  }
+
+  function render_source_legs(payload) {
+    var legs = (payload && payload.legs) || {};
+    Object.keys(LEG_LABELS).forEach(function (role) {
+      var row = document.querySelector("#source-legs-table tr[data-leg='" + role + "']");
+      if (!row) return;
+      var leg = legs[role];
+      var cells = row.querySelectorAll("td");
+      var state, detail, value = null, age = "—";
+      if (!leg) {
+        state = role === "ORACLE" && payload.oracle_binding === "ORACLE_FEED_NOT_REVIEWED" ? "NOT REVIEWED" : "NOT COLLECTED";
+        detail = role === "ORACLE" ? REASON_TEXT.ORACLE_FEED_NOT_REVIEWED.replace(/^Not reviewed — /, "") : "No persisted evidence yet";
+        if (role === "ORACLE" && payload.oracle_binding !== "ORACLE_FEED_NOT_REVIEWED") detail = "No persisted evidence yet";
+      } else {
+        state = leg.reason === "ORACLE_FEED_NOT_REVIEWED" ? "NOT REVIEWED" : leg.state;
+        detail = (leg.reason && (REASON_TEXT[leg.reason] || leg.reason)) || "";
+        if (leg.state === "AVAILABLE" && leg.value != null && !isNaN(parseFloat(leg.value))) {
+          value = parseFloat(leg.value);          // numbers are shown only while the EFFECTIVE status is AVAILABLE
+        }
+        age = fmt_age(leg.age_seconds);
+        if (role === "ORACLE" && leg.l2_liveness_guard === "PINNED_BLOCK_FRESHNESS_ONLY") {
+          // Factual limitation recorded with the observation: no official sequencer feed is published for this chain.
+          detail += (detail ? " · " : "") + "no sequencer feed published — chain block freshness only";
+        }
+        if (leg.collected_at) {
+          detail += (detail ? " · " : "") + "collected " + String(leg.collected_at).replace("T", " ").slice(0, 16) + " UTC";
+        }
+      }
+      cells[1].textContent = state;
+      cells[2].textContent = value != null ? "$" + value.toFixed(4) : "—";
+      cells[3].textContent = age;
+      cells[4].textContent = detail;
+      row.setAttribute("data-effective-state", state);
+    });
+    var note = document.getElementById("source-legs-note");
+    if (note) note.textContent = "";
+  }
+
+  function render_unavailable() {
+    Object.keys(LEG_LABELS).forEach(function (role) {
+      var row = document.querySelector("#source-legs-table tr[data-leg='" + role + "']");
+      if (!row) return;
+      var cells = row.querySelectorAll("td");
+      cells[1].textContent = "UNAVAILABLE";
+      cells[2].textContent = "—";
+      cells[3].textContent = "—";
+      cells[4].textContent = "Source legs could not be loaded";
+    });
+    var note = document.getElementById("source-legs-note");
+    if (note) note.textContent = "Source legs are unavailable right now.";
+  }
+
+  fetch(EVIDENCE_URL, { headers: { accept: "application/json" } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (payload) { if (payload) render_source_legs(payload); else render_unavailable(); })
+    .catch(render_unavailable);
 })();
 </script>
 {% endif %}
 
 {% if row.approved %}
+<script src="/static/radar/r_live_history_order.js"></script>
 <script>
 (function() {
   // SNAPSHOT FIRST, CONTINUOUSLY FRESH, READ-ONLY.
@@ -301,8 +416,9 @@
   function set_badge(state) {
     var badge = document.getElementById("detail-status-badge");
     if (!badge) return;
-    badge.className = "rlive-badge rlive-badge--" + state.toLowerCase();
-    badge.textContent = state;
+    var live = state === "AVAILABLE";
+    badge.className = "rlive-badge rlive-badge--" + (live ? "available" : "unavailable");
+    badge.textContent = live ? "LIVE" : "UNAVAILABLE";
   }
 
   function set_text(id, val) {
@@ -315,12 +431,13 @@
     if (el) el.textContent = msg;
   }
 
-  function populate(state, data, read_time_ages) {
+  function populate(state, data, read_time_ages, presentation_source) {
     state = (state || "UNAVAILABLE").toUpperCase();
     data = data || {};
     set_badge(state);
 
     var is_current = (state === "AVAILABLE");
+    var is_policy_fresh = is_current && presentation_source !== "CANONICAL_B1_3_HISTORY";
 
     var ref_txt = null, basis_txt = null, prem_txt = null;
     if (is_current) {
@@ -353,7 +470,8 @@
       ? fresh.last_pool_activity_at + " · " + fmt_age(market_age) : null);
     set_text("detail-oracle", fresh.quote_updated_at &&
       quote_age != null
-      ? fresh.quote_updated_at + " · " + fmt_age(quote_age) : null);
+      ? fresh.quote_updated_at + " · " + fmt_age(quote_age)
+        + (is_policy_fresh ? " · AVAILABLE · within source heartbeat policy" : "") : null);
     set_text("detail-effective-evidence", fresh.effective_evidence_at);
     // Source provenance: canonical per-observation source labels, shown only
     // when the payload actually carries them — never invented.
@@ -369,16 +487,34 @@
     set_text("kpi-premium", prem_txt);
     var state_chip = document.getElementById("kpi-state");
     if (state_chip) {
-      state_chip.className = "rlive-chip rlive-chip--" + state.toLowerCase();
-      state_chip.textContent = state;
+      var product_state = is_current ? "LIVE" : "UNAVAILABLE";
+      state_chip.className = "rlive-chip rlive-chip--" + (is_current ? "available" : "unavailable");
+      state_chip.textContent = product_state;
     }
     set_text("kpi-basis", basis_txt);
     set_text("kpi-basis-asof", rb && rb.observed_at ? "as of " + String(rb.observed_at).replace("T", " ").slice(0, 16) : null);
     set_text("kpi-token", ref_txt);
     set_text("kpi-token-asof", tr && tr.observed_at ? "as of " + String(tr.observed_at).replace("T", " ").slice(0, 16) : null);
     var market_age = (ages.market_activity_age_seconds != null) ? ages.market_activity_age_seconds : fresh.market_activity_age_seconds;
-    set_text("kpi-freshness", market_age != null ? ("Market " + fmt_age(market_age)) : null);
-    set_text("kpi-source", tok_source || rb_source || state);
+    // Each evidence leg keeps its OWN age — a fresh market leg must never read as a fresh oracle/reference leg.
+    var quote_age_kpi = (ages.quote_feed_age_seconds != null) ? ages.quote_feed_age_seconds : fresh.quote_feed_age_seconds;
+    var legs = [];
+    // Source-specific legs: state · age. The AVAILABLE claim is only made when the canonical overall state is AVAILABLE,
+    // which is assigned only if EVERY leg is inside its reviewed freshness policy; otherwise only the age is shown.
+    var leg_state = is_policy_fresh ? "AVAILABLE · " : "";
+    if (market_age != null) legs.push("Market " + leg_state + fmt_age(market_age));
+    if (quote_age_kpi != null) legs.push("Oracle " + leg_state + fmt_age(quote_age_kpi));
+    set_text("kpi-freshness", legs.length ? legs.join(" · ") : null);
+    set_text("kpi-source", (is_policy_fresh ? "each leg within its source freshness policy · " : "")
+      + (tok_source || rb_source || (is_current ? "LIVE" : "UNAVAILABLE")));
+
+    // Historical visuals: when the current state is not AVAILABLE the charts below show stored history, not current evidence.
+    var hist_note = document.getElementById("history-current-note");
+    if (hist_note) {
+      hist_note.hidden = is_current;
+      hist_note.textContent = is_current ? "" :
+        "Historical · last observed history. The current state is " + state + "; the charts below are stored observations, not current evidence.";
+    }
   }
 
   // ── Snapshot-first render + continuous snapshot polling ──────────────────
@@ -422,10 +558,12 @@
       return;
     }
     saw_snapshot_row = true;
-    populate(row.state, row.data, row.read_time_ages);
+    populate(row.state, row.data, row.read_time_ages, row.source);
     if (!row.data || !row.data.freshness) {
       set_status("No canonical observation collected yet for this identity. "
         + "Use Refresh now for an explicit live acquisition.");
+    } else if (row.source === "CANONICAL_B1_3_HISTORY") {
+      set_status("Showing latest canonical on-chain price · original evidence age shown above.");
     } else {
       set_status("Showing latest canonical snapshot · polling for updates.");
     }
@@ -464,13 +602,18 @@
       })
       .then(function(env) {
         var state = (env && env.state || "UNAVAILABLE").toUpperCase();
-        // Observation timestamps inside env.data remain authoritative; a
-        // completed request never rewrites them into "new" data.
-        populate(state, (env && env.data) || {}, null);
-        set_status(state === "AVAILABLE"
-          ? "Live observation acquired · timestamps above are canonical."
-          : "Live request completed — canonical state is " + state
-            + ". Previous values were never overwritten.");
+        // A raw acquisition result is NOT the product last-price read model.
+        // Render it directly only when it is genuinely AVAILABLE. If it is
+        // STALE/UNAVAILABLE, preserve the existing canonical display and
+        // re-read the snapshot endpoint, which applies last-canonical fallback.
+        if (state === "AVAILABLE") {
+          populate(state, (env && env.data) || {}, null, "LIVE_ACQUISITION");
+          set_status("Live observation acquired · timestamps above are canonical.");
+          return refresh_snapshot();
+        }
+        set_status("Live request completed — no new fresh observation. "
+          + "Keeping the latest canonical on-chain price.");
+        return refresh_snapshot();
       })
       .catch(function(err) {
         // Fail closed: the prior canonical render stays exactly as it was.
@@ -518,7 +661,8 @@
     thead.appendChild(hrow);
     table.appendChild(thead);
     var tbody = document.createElement("tbody");
-    points.slice(0, 20).forEach(function(pt) {
+    // TABLE order: newest canonical observation first (the chart below uses the opposite, oldest-first axis).
+    FincoRLiveHistoryOrder.tableOrder(points).slice(0, 20).forEach(function(pt) {
       var tr = document.createElement("tr");
       // Canonical B1.3 history schema: nested objects, camelCase token reference.
       var basis_val = (pt.robinhood_basis && pt.robinhood_basis.price_usd_per_token != null)
@@ -626,7 +770,9 @@
   // table above shows: gaps stay gaps, values are never altered, no
   // interpolation, no synthetic points, timestamps never rewritten.
   function chart_points(points, picker) {
-    return points.map(function(pt) {
+    // CHART order: oldest -> newest (natural left-to-right time axis). The history TABLE deliberately uses the
+    // opposite, newest-first order. Both come from the one tested helper in /static/radar/r_live_history_order.js.
+    return FincoRLiveHistoryOrder.chartOrder(points).map(function(pt) {
       return { t: pt.collected_at || "", v: picker(pt) };
     });
   }

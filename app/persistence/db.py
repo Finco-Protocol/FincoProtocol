@@ -237,6 +237,12 @@ def _init_schema(conn):
     _ensure_column(conn, "projects", "project_role", "TEXT NOT NULL DEFAULT 'user_project'")
     _ensure_column(conn, "projects", "is_protected", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "projects", "source_project_id", "TEXT")
+    # Model V2 foundation: non-economic project metadata. Nullable — existing
+    # rows keep NULL ("not set"); no stage/perspective value is ever inferred
+    # for legacy projects. Stored values are validated at the app boundary
+    # (app.model_v2.project_metadata), never inside the financial engine.
+    _ensure_column(conn, "projects", "project_stage", "TEXT")
+    _ensure_column(conn, "projects", "model_perspective", "TEXT")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_projects_role"
         " ON projects(user_id, project_role, archived, updated_at DESC)"
@@ -311,6 +317,49 @@ def _init_schema(conn):
     #   re-reading mutable live tables.
     _ensure_column(conn, "workspace_states", "last_runtime_composite_hash", "TEXT")
     _ensure_column(conn, "workspace_states", "last_runtime_identity_json", "TEXT")
+    # Workflow 07: Model V2 Working Copy selections — versioned typed payload
+    # (app.model_v2.persistence). '' (empty) means NO Model V2 state: the exact
+    # legacy absence. Rows are never defaulted with invented V2 economics.
+    _ensure_column(conn, "workspace_states", "model_v2_working_state_json", "TEXT NOT NULL DEFAULT ''")
+    # Run History V1: append-only canonical ledger of successful runs.
+    # One immutable row per successful canonical run, appended INSIDE the
+    # same transaction that promotes the Last Run (never a second commit
+    # path). History starts prospectively: existing workspaces are never
+    # back-filled and no row is synthesized from the current Last Run.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS model_run_history (
+            history_id                  TEXT PRIMARY KEY,
+            user_id                     TEXT NOT NULL,
+            project_id                  TEXT NOT NULL,
+            project_code                TEXT NOT NULL,
+            runtime_snapshot_id         TEXT NOT NULL,
+            runtime_origin              TEXT,
+            ran_at                      TEXT NOT NULL,
+            engine_version              TEXT,
+            workbook_version            TEXT,
+            active_scenario_id          TEXT,
+            active_scenario_name        TEXT,
+            last_runtime_scenario_id    TEXT,
+            composite_hash              TEXT,
+            last_runtime_identity_json  TEXT,
+            runtime_summary_json        TEXT NOT NULL,
+            financial_statements_json   TEXT NOT NULL,
+            debt_schedule_json          TEXT NOT NULL,
+            tax_schedule_json           TEXT NOT NULL,
+            distribution_schedule_json  TEXT NOT NULL,
+            sponsor_schedule_json       TEXT NOT NULL,
+            integrity_evidence_json     TEXT NOT NULL DEFAULT '{}',
+            replay_metadata_json        TEXT NOT NULL DEFAULT '{}',
+            created_at                  TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_model_run_history_project"
+        " ON model_run_history(user_id, project_id, ran_at DESC, history_id DESC)"
+    )
     conn.commit()
 
 

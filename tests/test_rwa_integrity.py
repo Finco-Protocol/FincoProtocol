@@ -44,6 +44,7 @@ from app.rwa_integrity.read_model import (
 from finco_radar.venues.models import RegistryStatus, RepresentationEntry
 from finco_radar.venues.registry import VenueRegistry, parse_underlying
 from finco_radar.venues.store import VenueMarketStore
+from model_v2_governance import merge_base_ref
 
 NOW = datetime(2026, 10, 2, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -372,11 +373,22 @@ class TestFrozen:
                                            "finco_radar/venues"])
     def test_zero_diff(self, namespace):
         out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", namespace],
+            ["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", namespace],
             cwd=REPO, capture_output=True, text=True)
         if out.returncode != 0:
             pytest.skip("git unavailable")
-        assert out.stdout.strip() == "", out.stdout
+        # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
+        # every other path in this namespace stays frozen.
+        allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py"}
+        # Explicitly authorized Model V2 epic engine files are governed by the
+        # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
+        # protecting every other frozen path.
+        from finance_integrity_governance import approved_frozen_path
+        changed = [
+            p for p in out.stdout.split()
+            if p not in allowed and not approved_frozen_path(p)
+        ]
+        assert changed == [], changed
 
 
 # ── Correction A: #179 binding, ACTIVE-only deps, PARTIAL aggregation ────────

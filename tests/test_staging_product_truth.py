@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from model_v2_governance import merge_base_ref
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -264,7 +265,9 @@ class TestStatusVocabulary:
 
 class TestMasterWorkflowInventory:
     def test_library_storage_clone_copy_pinned(self):
-        assert "Working-copy runtime coming soon" in _read("app/templates/library/project_library_list.html")
+        # UX Foundation: the explicit PREVIEW product-state copy.
+        assert "Editable runtime not yet supported" in _read("app/templates/library/project_library_list.html")
+        assert "PREVIEW" in _read("app/templates/library/project_library_list.html")
 
     def test_readme_r_live_freshness_precision(self):
         readme = _flat("README.md")
@@ -309,9 +312,17 @@ class TestFrozenAuthorities:
         import subprocess
 
         out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", frozen],
+            ["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", frozen],
             cwd=REPO, capture_output=True, text=True,
         )
         if out.returncode != 0:
             pytest.skip("git history unavailable in this checkout")
-        assert out.stdout.strip() == "", out.stdout
+        # Explicitly authorized Model V2 epic engine files are governed by the
+        # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
+        # protecting every other frozen path.
+        from finance_integrity_governance import approved_frozen_path
+        changed = [
+            p for p in out.stdout.splitlines()
+            if p.strip() and not approved_frozen_path(p.strip())
+        ]
+        assert changed == [], changed

@@ -205,8 +205,11 @@ def test_supported_today_library_1280(app_server, browser):
     # Storage, if seeded, must show clone-unavailable guard, not a clone button
     storage_cards = [t for t in card_texts if "storage" in t.lower()]
     for sc_text in storage_cards:
-        assert "working-copy runtime coming soon" in sc_text.lower(), (
-            f"Storage reference must show 'Working-copy runtime coming soon'; got: {sc_text!r}"
+        # Authoritative Model Home copy (Model V2 UX-1, UX_HOME_PREVIEW_STATE;
+        # asserted in test_model_v2_ux_home): unsupported verticals render PREVIEW
+        # and an honest "Editable runtime not yet supported" guard.
+        assert "editable runtime not yet supported" in sc_text.lower(), (
+            f"Storage reference must show 'Editable runtime not yet supported'; got: {sc_text!r}"
         )
         assert "create working copy" not in sc_text.lower(), (
             f"Storage reference must NOT have a Create working copy button; got: {sc_text!r}"

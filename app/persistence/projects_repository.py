@@ -441,6 +441,8 @@ def save_project(
     project_role: Any = _UNSET,                     # Project Library — preserved on update when omitted
     is_protected: Any = _UNSET,                     # Project Library — preserved on update when omitted
     source_project_id: Any = _UNSET,                # Project Library — preserved on update when omitted
+    project_stage: Any = _UNSET,                    # Model V2 metadata — preserved on update when omitted
+    model_perspective: Any = _UNSET,                # Model V2 metadata — preserved on update when omitted
 ) -> "ProjectRecord":
     now = _now_utc()
     governance_state = governance_state or {}
@@ -454,7 +456,8 @@ def save_project(
             """
             SELECT project_id, created_at, project_type, project_origin, template_source,
                    baseline_snapshot_json, archived, full_inputs_json,
-                   project_role, is_protected, source_project_id
+                   project_role, is_protected, source_project_id,
+                   project_stage, model_perspective
             FROM projects
             WHERE user_id=? AND project_code=?
             """,
@@ -482,6 +485,16 @@ def save_project(
                 is_protected = bool(existing["is_protected"]) if "is_protected" in _keys else False
             if source_project_id is _UNSET:
                 source_project_id = existing["source_project_id"] if "source_project_id" in _keys else None
+            # Model V2 metadata: preserve explicitly-set values on update when omitted.
+            if project_stage is _UNSET:
+                project_stage = existing["project_stage"] if "project_stage" in _keys else None
+            if model_perspective is _UNSET:
+                model_perspective = existing["model_perspective"] if "model_perspective" in _keys else None
+            # Fail closed: only canonical metadata values reach SQL. Explicit
+            # None clears; _UNSET was already resolved to the existing value.
+            from app.model_v2.project_metadata import perspective_value, stage_value
+            project_stage = stage_value(project_stage)
+            model_perspective = perspective_value(model_perspective)
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
@@ -489,7 +502,7 @@ def save_project(
                 SET project_name=?, project_type=?, project_origin=?, source_project_template=?, template_source=?,
                     baseline_snapshot_json=?, archived=?, is_readonly=?, governance_state_json=?, last_run_summary_json=?,
                     replay_metadata_json=?, full_inputs_json=?, project_role=?, is_protected=?, source_project_id=?,
-                    updated_at=?
+                    project_stage=?, model_perspective=?, updated_at=?
                 WHERE project_id=? AND user_id=?
                 """,
                 (
@@ -508,6 +521,8 @@ def save_project(
                     project_role,
                     int(bool(is_protected)),
                     source_project_id,
+                    project_stage,
+                    model_perspective,
                     now.isoformat(),
                     project_id,
                     user_id,
@@ -523,6 +538,16 @@ def save_project(
                 is_protected = False
             if source_project_id is _UNSET:
                 source_project_id = None
+            # Model V2 metadata: insert-time default is "not set" (NULL) —
+            # never a guessed stage or perspective. Fail closed on
+            # non-canonical values before any SQL write.
+            if project_stage is _UNSET:
+                project_stage = None
+            if model_perspective is _UNSET:
+                model_perspective = None
+            from app.model_v2.project_metadata import perspective_value, stage_value
+            project_stage = stage_value(project_stage)
+            model_perspective = perspective_value(model_perspective)
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
@@ -530,8 +555,9 @@ def save_project(
                     project_id, user_id, project_code, project_name, project_type, project_origin,
                     source_project_template, template_source, baseline_snapshot_json, archived, is_readonly,
                     governance_state_json, last_run_summary_json, replay_metadata_json,
-                    full_inputs_json, project_role, is_protected, source_project_id, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    full_inputs_json, project_role, is_protected, source_project_id,
+                    project_stage, model_perspective, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project_id,
@@ -552,6 +578,8 @@ def save_project(
                     project_role,
                     int(bool(is_protected)),
                     source_project_id,
+                    project_stage,
+                    model_perspective,
                     created_at.isoformat(),
                     now.isoformat(),
                 ),
@@ -624,6 +652,8 @@ def save_project(
         project_role=project_role,
         is_protected=bool(is_protected),
         source_project_id=source_project_id,
+        project_stage=project_stage,
+        model_perspective=model_perspective,
     )
 
 
@@ -686,6 +716,8 @@ def update_project_record(
         governance_state=governance_state or existing.governance_state,
         last_run_summary=last_run_summary or existing.last_run_summary,
         replay_metadata=replay_metadata or existing.replay_metadata,
+        project_stage=existing.project_stage,
+        model_perspective=existing.model_perspective,
     )
 
 

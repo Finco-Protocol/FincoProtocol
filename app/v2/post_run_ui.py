@@ -27,6 +27,8 @@ Surfaces refreshed (all runtime-dependent):
     #v2-sheet-financial-statements  FS runtime state (canonical unavailable stays unavailable)
     #v2-sheet-returns           persisted sponsor/distribution Last Run evidence
     #v2-sheet-scenarios         per-scenario last-run status (persisted in run step 12b)
+    #model-workspace-header     compact header state (UX Foundation)
+    #v2-sheet-run-history       run history listing (Run Intelligence V1)
 
 Inputs-only sheets (project_setup, inputs, revenue, CAPEX, OPEX) are NOT
 refreshed by a Run — they hold no runtime-derived values.
@@ -148,7 +150,116 @@ def build_post_run_ui_state(
         workspace_owner, project_record.project_id, project, ws_fresh)
     fragments.append(_as_oob(scenarios_html, "v2-sheet-scenarios"))
 
+    # J. Workspace header (UX Foundation): CURRENT after a successful run.
+    from app.ui.protected_reference_service import is_protected_reference
+    fragments.append(_build_workspace_header_oob(
+        pis_fresh, ws_fresh, project_record=project_record, project=project,
+        project_editable=not is_protected_reference(project_record),
+        freshness=freshness))
+
+    # K. Smart Panel (UX Foundation): run-state note + availability refresh.
+    fragments.append(_build_smart_panel_oob(
+        ws_fresh, workspace_owner=workspace_owner,
+        project_record=project_record, project=project,
+        project_editable=not is_protected_reference(project_record),
+        freshness=freshness))
+
+    # L. Run History (Run Intelligence V1): the successful run just appended
+    #    an immutable history entry atomically — refresh the listing without
+    #    any engine execution.
+    fragments.append(_build_run_history_oob(
+        ws_fresh, pis_fresh, project_record=project_record))
+
     return "\n".join(fragments)
+
+
+def _build_workspace_header_oob(pis, ws_fresh, *, project_record,
+                                project: str, project_editable: bool,
+                                freshness) -> str:
+    """OOB refresh for the compact workspace header.
+
+    Same single-read contract as every other post-run fragment: state
+    from the canonical freshness authority, identity from the same pis.
+    """
+    from app.v2.router import _fmt_runtime_at, _templates
+    from app.v2.workspace_shell_projection import (
+        build_workspace_header_from_pis,
+    )
+    header = build_workspace_header_from_pis(
+        pis,
+        project_name=getattr(project_record, "project_name", "") or project,
+        project_type=getattr(project_record, "project_type", "") or "",
+        project_editable=project_editable,
+        runtime_state=freshness.state.value,
+        has_runtime=bool(getattr(ws_fresh, "last_runtime_snapshot_id", None)),
+        last_runtime_at_display=_fmt_runtime_at(
+            getattr(ws_fresh, "last_runtime_at", None) or ""),
+        active_scenario_name=getattr(ws_fresh, "active_scenario_name", None) or "",
+    )
+    return _templates.get_template(
+        "partials/_model_workspace_header.html"
+    ).render({"header": header}).replace(
+        '<div id="model-workspace-header"',
+        '<div id="model-workspace-header" hx-swap-oob="true"', 1)
+
+
+def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
+                           project_record, project: str,
+                           project_editable: bool, freshness) -> str:
+    """OOB refresh for the Smart Panel (runtime-state note + availability).
+
+    Rebuilds the panel from the SAME single workspace read; Trust Pack
+    composition is a pure read (no engine execution) by contract.
+    """
+    from app.ui.trust_pack import build_trust_pack
+    from app.v2.router import _templates
+    from app.v2.smart_panel_projection import build_smart_panel_projection
+    try:
+        pack = build_trust_pack(
+            workspace_owner, project_record.project_id,
+            project_code=project,
+            any_run_committed=bool(
+                getattr(ws_fresh, "any_run_committed", False)),
+        )
+    except Exception:
+        pack = None
+    from app.workbook.service import WorkbookService
+    register_view = None
+    try:
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
+        template_source = str(getattr(pis, "template_source", "") or "")
+        from app.v2.router import _build_assumption_register_view
+        register_view = _build_assumption_register_view(pis)
+    except Exception:
+        template_source = ""
+    panel = build_smart_panel_projection(
+        trust_pack=pack,
+        runtime_state=freshness.state.value,
+        has_runtime=bool(getattr(ws_fresh, "last_runtime_snapshot_id", None)),
+        project_key=template_source,
+        assumption_register_view=register_view,
+    )
+    return _templates.get_template(
+        "partials/_model_smart_panel.html"
+    ).render({"smart_panel": panel}).replace(
+        '<aside id="model-smart-panel"',
+        '<aside id="model-smart-panel" hx-swap-oob="true"', 1)
+
+
+def _build_run_history_oob(ws_fresh, pis_fresh, *, project_record) -> str:
+    """OOB refresh for the Run History listing (#v2-sheet-run-history).
+
+    Same single-read contract as every other post-run fragment: the listing
+    is rebuilt from the freshly persisted workspace + the history rows the
+    run commit itself appended.  Pure read + render — no engine execution.
+    """
+    from app.v2.router import _run_history_listing_ctx, _templates
+    ctx = _run_history_listing_ctx(project_record, ws_fresh, pis_fresh)
+    return _templates.get_template(
+        "partials/sheet_run_history.html"
+    ).render(ctx).replace(
+        '<div id="v2-sheet-run-history"',
+        '<div id="v2-sheet-run-history" hx-swap-oob="true"', 1)
 
 
 def _as_oob(html: str, dom_id: str) -> str:
@@ -300,6 +411,22 @@ def build_post_save_ui_state(
         scenarios_html = _scenario_list_html(
             workspace_owner, project_record.project_id, project, ws_fresh)
         fragments.append(_as_oob(scenarios_html, "v2-sheet-scenarios"))
+
+    # Workspace header (UX Foundation): STALE after a financially causal
+    # save — Last Run values remain visible but never classified current.
+    if project_record is not None and pis_fresh is not None:
+        from app.ui.protected_reference_service import is_protected_reference
+        fragments.append(_build_workspace_header_oob(
+            pis_fresh, ws_fresh, project_record=project_record,
+            project=project,
+            project_editable=not is_protected_reference(project_record),
+            freshness=freshness))
+        if workspace_owner:
+            fragments.append(_build_smart_panel_oob(
+                ws_fresh, workspace_owner=workspace_owner,
+                project_record=project_record, project=project,
+                project_editable=not is_protected_reference(project_record),
+                freshness=freshness))
 
     return chr(10).join(fragments)
 

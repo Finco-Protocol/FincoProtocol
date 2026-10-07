@@ -100,6 +100,15 @@ from finco_core.inputs.construction_financing import (
     ConstructionStructuringFeeBasisMode,
 )
 
+from finco_core.inputs.development import (
+    DeveloperBookBasisMode,
+    DeveloperFeeMode,
+    DeveloperSettlementAuthority,
+    DevelopmentEconomicsInput,
+    DevelopmentOutcome,
+    DevelopmentSpendEntry,
+)
+
 _SCHEMA_VERSION = "v3-6"
 
 
@@ -375,6 +384,46 @@ def _deser_construction_financing(d: dict | None) -> ConstructionFinancingInput 
         convergence_tolerance_keur=d.get("convergence_tolerance_keur", 1e-9),
         max_iterations=d.get("max_iterations", 100),
         vat_deferred=d.get("vat_deferred", True),
+    )
+
+
+def _ser_development_economics(d: DevelopmentEconomicsInput | None) -> dict | None:
+    if d is None:
+        return None
+    return {
+        "enabled": d.enabled,
+        "outcome": d.outcome.value,
+        "spend_schedule": [
+            {"spend_date": e.spend_date.isoformat(), "amount_keur": e.amount_keur}
+            for e in d.spend_schedule
+        ],
+        "reimbursed_development_cost_keur": d.reimbursed_development_cost_keur,
+        "developer_fee_mode": d.developer_fee_mode.value,
+        "developer_fee_value": d.developer_fee_value,
+        "settlement": d.settlement.value,
+        "book_basis_mode": d.book_basis_mode.value,
+    }
+
+
+def _deser_development_economics(d: dict | None) -> DevelopmentEconomicsInput | None:
+    """Absent key / None => None (backward compatible with all pre-existing data)."""
+    if d is None:
+        return None
+    return DevelopmentEconomicsInput(
+        enabled=d["enabled"],
+        outcome=DevelopmentOutcome(d["outcome"]),
+        spend_schedule=tuple(
+            DevelopmentSpendEntry(
+                spend_date=date.fromisoformat(item["spend_date"]),
+                amount_keur=item["amount_keur"],
+            )
+            for item in d.get("spend_schedule", ())
+        ),
+        reimbursed_development_cost_keur=d.get("reimbursed_development_cost_keur", 0.0),
+        developer_fee_mode=DeveloperFeeMode(d["developer_fee_mode"]),
+        developer_fee_value=d.get("developer_fee_value", 0.0),
+        settlement=DeveloperSettlementAuthority(d["settlement"]),
+        book_basis_mode=DeveloperBookBasisMode(d["book_basis_mode"]),
     )
 
 
@@ -878,6 +927,12 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
         },
         "valuation": _ser_valuation_policies(inputs.valuation),
         "accounting_policy_config": _ser_accounting_policy_config(inputs.accounting_policy_config),
+        # Developer Economics V1: key present only when configured, so every
+        # pre-existing serialized payload (and its bytes) is unchanged.
+        **(
+            {"development_economics": _ser_development_economics(inputs.development_economics)}
+            if inputs.development_economics is not None else {}
+        ),
     }
 
 
@@ -1306,4 +1361,5 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         tax=tax,
         valuation=_deser_valuation_policies(d.get("valuation")),
         accounting_policy_config=_deser_accounting_policy_config(d.get("accounting_policy_config")),
+        development_economics=_deser_development_economics(d.get("development_economics")),
     )

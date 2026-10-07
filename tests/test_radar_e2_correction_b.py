@@ -1000,16 +1000,12 @@ class TestB15FrozenP3Gate:
     """B15: gate rejects arbitrary non-equity finco_radar changes on HEAD."""
 
     def _get_changed_files(self):
-        import subprocess
-        try:
-            result = subprocess.run(
-                ["git", "diff", "--name-only",
-                 "aca630821ae64dba55c35ae12ae5c48401b6aa67", "HEAD"],
-                capture_output=True, text=True, check=True,
-            )
-            return result.stdout.splitlines()
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pytest.skip("base commit unavailable in shallow checkout")
+        # Branch-owned changes only: merge-base(origin/main, HEAD)..HEAD. The former
+        # hard-coded historical baseline attributed later legitimate main evolution
+        # to the branch under test (it was only green in shallow CI because the base
+        # was unreachable and the test skipped).
+        from model_v2_governance import branch_owned_changes_or_skip
+        return branch_owned_changes_or_skip()
 
     # Permitted finco_radar sub-packages (explicitly authorized PRs):
     #   finco_radar/equity/         — E2 equity enrichment (PR #34 base)
@@ -1044,7 +1040,10 @@ class TestB15FrozenP3Gate:
 
     def test_b15_equity_additions_are_permitted(self):
         """Gate does NOT flag finco_radar/equity/** changes."""
-        changed = self._get_changed_files()
+        # Branch-owned scope never contains the historical E2 equity additions
+        # (they are baseline on main), so exercise the permit rule with a synthetic
+        # permitted path.
+        changed = self._get_changed_files() + ["finco_radar/equity/batch_synthetic.py"]
         equity_changes = [
             p for p in changed if p.startswith("finco_radar/equity/")
         ]

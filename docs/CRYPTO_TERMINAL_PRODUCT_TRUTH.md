@@ -4,16 +4,42 @@ One canonical statement of what the FINCO Crypto terminal supports today.
 This file is pinned by `tests/test_unified_crypto_terminal_v1.py`; wording
 here is product truth, not marketing.
 
+## Code capability vs operational data availability
+
+These are different facts and are never merged into one claim:
+
+- **CODE CAPABILITY** — a route, read model or authority exists and is tested.
+- **OPERATIONAL DATA AVAILABILITY** — persisted evidence currently exists. It is
+  derived at read time from persisted authorities (registry, collector health,
+  market store), never assumed from the presence of code.
+
 ## Domains (one terminal, three product domains)
 
-- **Radar** (`/radar`, `/radar/crypto`) — AVAILABLE TODAY. Market discovery
-  over canonical Radar authorities (R-LIVE, Radar crypto overview).
-  Observations are reference evidence, never executable prices.
-- **Tokenized Markets** (`/radar/tokenized-markets`) — AVAILABLE TODAY.
-  Cross-venue tokenized-equity composition over the exact venue registry and
-  persisted collector observations: reference evidence, representations,
-  basis (basis bps = (token price / underlying reference − 1) × 10,000),
-  24h/7d basis movement, cross-venue divergence, dislocation events.
+- **Radar / R-LIVE** (`/radar`, `/radar/r-live`) — AVAILABLE TODAY. R-LIVE is the
+  primary FINCO crypto product: a reviewed set of tokenized equities (exact
+  AssetKeys only) with token price against its economic reference, premium /
+  discount, the age of EACH evidence leg (market activity and oracle age are
+  shown separately) and a permanent observation history. Values depend on the
+  background collector; observations are reference evidence, never executable
+  prices.
+- **Tokenized Markets** (`/radar/tokenized-markets`) — UI and authorities:
+  SHIPPED. Live collector: runtime-dependent. Market coverage: derived from
+  current persisted observations. The surface is presented as a **PREVIEW**
+  unless the operational state is PARTIAL_LIVE or LIVE. The operational state
+  is one of `IDENTITY_ONLY`, `COLLECTOR_NOT_STARTED`, `COLLECTOR_UNHEALTHY`,
+  `NO_PRICED_OBSERVATIONS`, `PARTIAL_LIVE`, `LIVE` and is computed from the
+  collector health store, the market store and the reviewed live-collection
+  universe — see "Tokenized operational state" below. Four counts are shown
+  separately and never conflated: identity catalog, live-collector eligible,
+  priced now, history available.
+  The seeded `VenueRegistry` is a **research identity source** (third-party
+  seeded). It is NOT FINCO-verified market coverage and no seed fact becomes
+  market evidence. Malformed / numeric-only identities and representations whose
+  exact chain+contract disagree (type or underlying) are excluded from the
+  public list but stay inspectable in the audit view.
+  Cross-venue basis (basis bps = (token price / underlying reference − 1) ×
+  10,000), 24h/7d basis movement, cross-venue divergence and dislocation events
+  exist as capabilities and only render where persisted evidence exists.
   **Access**: `tokenized.basic` is PUBLIC (identity + current market state).
   `tokenized.history` and `tokenized.dislocation` are holder resources
   resolved through canonical entitlement; denials remove the payload at the
@@ -24,12 +50,45 @@ here is product truth, not marketing.
   identity state, market/reference evidence state, ACTIVE-set dependency facts,
   and an attestation/backing evidence contract with explicit
   UNAVAILABLE/STALE/CONFLICT states. There is no composite trust score.
-- **Yield** (`/yield`) — AVAILABLE TODAY. Opportunity listing with canonical
-  market intelligence: movers (TVL floor), 30d stability (sigma),
-  Morpho-native 30d averages where the provider exposes them, Treasury
-  (DGS3MO) spread where both sides are current. **Execution remains OFF.**
+- **Yield** (`/yield`) — code capability: SHIPPED. The default public Explore
+  shows **live, source-observed opportunities only**; the bundled reference
+  sample is a development / research aid reachable only through an explicit
+  research-mode opt-in and is never shown beside live rows. If few live rows
+  exist the live universe is small — FINCO does not fill it with fixtures.
+  Opportunity listing with canonical market intelligence: movers (TVL floor),
+  30d stability (sigma), Morpho-native 30d averages where the provider exposes
+  them, Treasury (DGS3MO) spread where both sides are current.
+  **Execution remains OFF.**
 
-## Crypto API V1 (`/api/v1/crypto/*`) — CONFIGURABLE BUT INACTIVE BY DEFAULT
+## Tokenized operational state
+
+| State | Meaning |
+|---|---|
+| `IDENTITY_ONLY` | No reviewed live-collection universe can be collected (identity catalog only) |
+| `COLLECTOR_NOT_STARTED` | Collector health is `NEVER_RUN` |
+| `COLLECTOR_UNHEALTHY` | Collector ran but never succeeded, or is currently unhealthy |
+| `NO_PRICED_OBSERVATIONS` | Collector healthy but the store holds nothing priced |
+| `PARTIAL_LIVE` | Some, not all, reviewed assets have fresh priced evidence (or health is degraded) |
+| `LIVE` | Every reviewed asset has fresh priced evidence and the collector is healthy |
+
+Only `PARTIAL_LIVE` and `LIVE` present Tokenized Markets as an operating
+product; every other state is labelled PREVIEW / DATA COLLECTION NOT ACTIVE.
+
+## Known data limitations (public, plain language)
+
+- Two seed sources describe each reviewed R-LIVE Robinhood token (same chain,
+  contract, symbol and underlying) but classify it differently
+  (`debt-security` vs `tokenized-equity`). Instrument type is descriptive, not
+  identity-defining, so the registry resolves them to one exact representation
+  and keeps both source assertions (audit view). The live-collector eligible
+  count is 13; with the collector never run, Tokenized Markets is
+  `COLLECTOR_NOT_STARTED`, not live. Sources that disagree on contract or
+  underlying are never merged.
+- R-LIVE chart ranges are shown as stored. No generic outlier rule is defined
+  yet (a defensible bound needs a reviewed data-quality decision), so extreme
+  observations are neither deleted nor flagged automatically.
+
+## Crypto API V1 (`/api/v1/crypto/*`) — CONFIGURABLE BUT INACTIVE BY DEFAULT (developer documentation)
 
 Read-only endpoints adapting the same canonical read models as the UI:
 

@@ -64,6 +64,33 @@ def _collector_health():
         }
 
 
+def _rlive_source_summary():
+    """Read-only summary of the existing R-LIVE snapshot authority (never acquires; None when unavailable)."""
+    try:
+        from app.radar_rwa.r_live_snapshot_view import build_snapshot_view
+        view = build_snapshot_view()
+        if view.get("state") != "AVAILABLE":
+            return None
+        counts: dict[str, int] = {}
+        for row in view.get("rows", []):
+            state = str(row.get("state") or "UNKNOWN")
+            counts[state] = counts.get(state, 0) + 1
+        return {"total": sum(counts.values()), "states": dict(sorted(counts.items()))}
+    except Exception:
+        return None
+
+
+def _collector_health_object():
+    """Typed collector health (read-only); a read failure is NEVER_RUN-equivalent UNHEALTHY, never healthy."""
+    try:
+        from finco_radar.venues.health import read_tokenized_collector_health
+        return read_tokenized_collector_health()
+    except Exception:
+        from types import SimpleNamespace
+        return SimpleNamespace(outcome="UNAVAILABLE", health_state="UNHEALTHY", last_success_at=None,
+                               failure_reason="COLLECTOR_HEALTH_UNAVAILABLE")
+
+
 def _intelligence(canonical_asset_id: str, registry, store, *,
                   include_points: bool, as_of: datetime | None = None):
     if store is None:
@@ -125,13 +152,20 @@ def _persisted_reference_reader(store, *, as_of: datetime):
 
 @router.get("/radar/tokenized-markets", response_class=HTMLResponse)
 async def tokenized_markets_landing(request: Request):
-    """UNDERLYING → REPRESENTATIONS cross-venue composition landing."""
-    from app.radar_ui.tokenized_composition import (
-        compose_underlying, list_supported_underlyings,
+    """Operational Tokenized Markets landing.
+
+    Default view = the PRIMARY public universe: reviewed live-collector assets and assets with persisted
+    priced evidence that also pass the public identity-eligibility rule. The seeded identity catalog is a
+    research identity source (``?view=catalog``) and excluded/conflicting identities stay inspectable
+    (``?view=audit``). Nothing here acquires data; counts come from the persisted authorities.
+    """
+    from app.radar_ui.tokenized_composition import compose_underlying
+    from app.radar_ui.tokenized_gating import redact_landing_row, resolve_tokenized_gates
+    from app.radar_ui.tokenized_operational import (
+        build_operational_view, classify_identity_catalog, live_eligible_ids,
+        representation_conflicts, resolved_taxonomy_disagreements, symbols_with_market_evidence,
     )
     from app.auth import resolve_request_session
-
-    from app.radar_ui.tokenized_gating import redact_landing_row, resolve_tokenized_gates
 
     user = resolve_request_session(request)
     registry = _registry()
@@ -142,38 +176,62 @@ async def tokenized_markets_landing(request: Request):
     # existing ungated behaviour; protected payload is removed from the context when denied.
     gates = await resolve_tokenized_gates(request)
 
-    universe = list_supported_underlyings(registry)
-    featured_first = _order_featured_first(universe)
-    limit = int(os.getenv("RADAR_TOKENIZED_LANDING_LIMIT",
-                          str(_DEFAULT_LANDING_LIMIT)))
-    page_rows = featured_first[:limit]
+    mode = (request.query_params.get("view") or "").strip().lower()
+    mode = mode if mode in ("catalog", "audit") else "primary"
 
-    # Browser path is network-free: all market/reference evidence comes from
-    # VenueMarketStore populated by the separate collector.
+    included, excluded = classify_identity_catalog(registry)
+    included_ids = {row["canonical_asset_id"] for row in included}
+    try:
+        eligible_ids = live_eligible_ids(registry)
+    except Exception:
+        eligible_ids = ()
+    from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
+    eligible_symbols = {APPROVED_BY_CANONICAL_ID[i].symbol for i in eligible_ids
+                        if i in APPROVED_BY_CANONICAL_ID}
+    covered = (eligible_symbols | symbols_with_market_evidence(registry, store)) & included_ids
+    primary = [row for row in _order_featured_first(included)
+               if row["canonical_asset_id"] in covered]
 
+    views = []
     composed = []
-    for row in page_rows:
+    for row in primary:
         try:
             view = compose_underlying(
                 row["canonical_asset_id"], registry=registry,
                 reference_reader=reference_reader, store=store, now=now)
         except Exception:
             continue  # a row that cannot compose never breaks the page
+        views.append(view)
         intel = (_intelligence(
             row["canonical_asset_id"], registry, store,
             include_points=False, as_of=now) if gates.any_premium_allowed else None)
         composed.append(redact_landing_row(_landing_row(view, intel), gates))
 
+    operational = build_operational_view(
+        registry, store, _collector_health_object(), now=now, primary_views=views,
+        catalog_count=len(included) + len(excluded), excluded_count=len(excluded),
+        eligible_ids=eligible_ids)
+
+    limit = int(os.getenv("RADAR_TOKENIZED_LANDING_LIMIT", str(_DEFAULT_LANDING_LIMIT)))
     return _templates.TemplateResponse(
         request=request,
         name="radar/tokenized_markets.html",
         context={
             "user": user,
-            "rows": composed,
-            "total_underlyings": len(universe),
+            "rows": composed if mode == "primary" else [],
+            "landing_view": mode,
+            "catalog_rows": _order_featured_first(included)[: max(limit, 200)] if mode == "catalog" else [],
+            "catalog_total": len(included),
+            "audit_rows": excluded if mode == "audit" else [],
+            "audit_conflicts": representation_conflicts(registry) if mode == "audit" else [],
+            "audit_taxonomy": resolved_taxonomy_disagreements(registry) if mode == "audit" else [],
+            "operational": operational,
+            "operating": operational.operating,
             "showing": len(composed),
             "history_available": store is not None and store.count() > 0,
             "collector_health": _collector_health(),
+            "rlive_source": _rlive_source_summary() if mode == "primary" else None,
+            "reviewed_symbols": sorted(eligible_symbols),
             "access": gates.public_view(),
         },
     )

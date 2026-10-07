@@ -14,7 +14,8 @@
  * Identity authority is canonical_id from registry-rendered rows, never symbol.
  *
  * Read-only: never writes R-LIVE history, never modifies authority state.
- * STALE/UNAVAILABLE numeric values are suppressed (missing != 0).
+ * The snapshot read model already resolves current-vs-last-canonical evidence;
+ * presentation exposes only LIVE or UNAVAILABLE while evidence age carries recency.
  * API response data is only ever assigned via textContent — no raw HTML
  * injection path exists in this script.
  */
@@ -64,27 +65,12 @@
     window.FoCharts.renderElement(box);
   }
 
-  function set_historical_cell(row_el, field, text, collected_at) {
-    var cell = row_el.querySelector("[data-field='" + field + "']");
-    if (!cell || text == null) return;
-    cell.textContent = "";
-    var value = document.createElement("span");
-    value.className = "rlive-historical-value";
-    value.textContent = text;
-    var note = document.createElement("small");
-    note.className = "rlive-historical-label";
-    var time = collected_at ? new Date(collected_at).getTime() : NaN;
-    var age = isFinite(time) ? fmt_age(Math.max(0, Math.floor((Date.now() - time) / 1000))) : null;
-    note.textContent = "HISTORICAL · Last available" + (age ? " · " + age + " ago" : " · time unavailable");
-    cell.appendChild(value);
-    cell.appendChild(note);
-  }
-
   function set_badge(row_el, state) {
     var badge = row_el.querySelector("[data-testid^='rlive-status-']");
     if (!badge) return;
-    badge.className = "rlive-badge rlive-badge--" + state.toLowerCase();
-    badge.textContent = state;
+    var live = state === "AVAILABLE";
+    badge.className = "rlive-badge rlive-badge--" + (live ? "available" : "unavailable");
+    badge.textContent = live ? "LIVE" : "UNAVAILABLE";
   }
 
   function fmt_range(summary) {
@@ -124,15 +110,6 @@
     if (is_current && prem) prem_txt = fmt_bps(prem.value_bps);
     set_cell(row_el, "premium_bps", prem_txt);
 
-    // Display-only fallback for an exact-key STALE market. Never change the
-    // current badge or feed historical values into current calculations.
-    var last = ranges && ranges.last_available;
-    if (snap_state === "STALE" && last) {
-      set_historical_cell(row_el, "basis_price", fmt_usd(last.basis_price_usd_per_token), last.collected_at);
-      set_historical_cell(row_el, "reference_price", fmt_usd(last.token_price_usd_per_token), last.collected_at);
-      set_historical_cell(row_el, "premium_bps", fmt_bps(last.premium_bps), last.collected_at);
-    }
-
     set_cell(row_el, "range_1h", fmt_range(ranges && ranges.range_1h));
     set_cell(row_el, "range_24h_text", fmt_range(ranges && ranges.range_24h));
 
@@ -158,9 +135,9 @@
       chart_cell(row_el, "range_24h", null);
     }
 
-    // Market activity and oracle ages are distinct. Read-time ages from the
-    // snapshot view are preferred; observed_at is the conservative oldest
-    // evidence timestamp, not market-activity age.
+    // Market activity and oracle ages are distinct. For a last-canonical
+    // fallback these ages are computed from that observation's ORIGINAL
+    // evidence clocks; no collection/read timestamp can make it look newer.
     var freshness_txt = null;
     var freshness = (read_time_ages && read_time_ages.market_activity_age_seconds != null)
       ? read_time_ages : snap_data.freshness;
@@ -172,6 +149,18 @@
       }
     }
     set_cell(row_el, "freshness", freshness_txt);
+    if (is_current && freshness_txt && snap_data.presentation_source === "LATEST_SNAPSHOT") {
+      // Only a genuinely current acquisition earns the within-policy note.
+      // Last-canonical history is LIVE product data but its age is intentionally
+      // allowed to exceed the NEW-observation admission window.
+      var fresh_cell = row_el.querySelector("[data-field='freshness']");
+      if (fresh_cell) {
+        var policy_note = document.createElement("small");
+        policy_note.style.display = "block";
+        policy_note.textContent = "each leg within its source freshness policy";
+        fresh_cell.appendChild(policy_note);
+      }
+    }
   }
 
   function init() {
@@ -191,7 +180,7 @@
       var rank = function(row) {
         var snap = snapshots[row.getAttribute("data-canonical-id")];
         if (!snap) return 1; // LOADING is UI-only, not an authority state.
-        return snap.state === "AVAILABLE" ? 0 : snap.state === "STALE" ? 2 : 3;
+        return snap.state === "AVAILABLE" ? 0 : 3;
       };
       ordered.sort(function(a, b) {
         var ra = rank(a), rb = rank(b);
@@ -250,7 +239,10 @@
       rows_data.forEach(function(view_row) {
         var row = byId[view_row.canonical_id];
         if (!row) return;
-        var snap = Object.assign({state: view_row.state}, view_row.data || {});
+        var snap = Object.assign(
+          {state: view_row.state, presentation_source: view_row.source},
+          view_row.data || {}
+        );
         snapshots[view_row.canonical_id] = snap;
         populate_row(row, snap, history[view_row.canonical_id], view_row.read_time_ages);
       });

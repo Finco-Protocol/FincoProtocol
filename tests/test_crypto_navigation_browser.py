@@ -57,13 +57,35 @@ def test_home_architecture_and_shared_nav_are_consistent(live_url, browser):
     page = browser.new_page(viewport={"width": 1280, "height": 800})
     page.goto(f"{live_url}/")
     page.wait_for_load_state("domcontentloaded")
-    assert "MODEL · RADAR · YIELD · CRYPTO" in page.inner_text("body")
+    # Product-reality reset: home leads with R-LIVE; Yield / account & access live in the secondary menu.
+    assert "R-LIVE · RADAR · MODEL" in page.inner_text("body")
     nav = page.locator(".proto-nav")
-    for label, href in (("Model", "/library"), ("Radar", "/radar"),
-                        ("Yield", "/yield"), ("Crypto", "/crypto")):
-        link = nav.locator(f'a[href="{href}"]')
-        assert link.count() == 1, f"missing shared-nav {label} link"
+    for label, href in (("Radar", "/radar"), ("Model", "/library"),
+                        ("API", "/api"), ("Docs", "/docs")):
+        link = nav.locator(f'[data-testid="proto-nav-primary"] a[href="{href}"]')
+        assert link.count() == 1, f"missing primary-nav {label} link"
         assert label in link.inner_text()
+    for label, href in (("Yield", "/yield"), ("Account", "/crypto")):
+        link = nav.locator(f'[data-testid="proto-nav-secondary"] a[href="{href}"]')
+        assert link.count() == 1, f"missing secondary-nav {label} link"
+        assert label in (link.text_content() or "")      # in the DOM; visible once the menu is opened
+    assert nav.locator('[data-testid="proto-nav-primary"] a[href="/protocol/finco"]').count() == 0
+    # R-LIVE is the default Radar surface: no duplicate global R-LIVE entry.
+    assert nav.locator('[data-testid="proto-nav-primary"] a[href="/radar/r-live"]').count() == 0
+    page.close()
+
+
+def test_radar_pages_share_one_hierarchy_with_radar_globally_active(live_url, browser):
+    page = browser.new_page(viewport={"width": 1280, "height": 800})
+    for path, domain_testid in (("/radar/r-live", "nav-rlive"), ("/radar/tokenized-markets", "nav-tokenized")):
+        page.goto(f"{live_url}{path}")
+        page.wait_for_load_state("domcontentloaded")
+        radar = page.locator('.proto-nav [data-testid="proto-nav-primary"] a[href="/radar"]')
+        assert "proto-nav__link--active" in (radar.get_attribute("class") or ""), path
+        assert page.locator('[data-testid="proto-nav-primary"] a[href="/radar/r-live"]').count() == 0
+        active = page.locator('[data-testid="radar-domain-nav"] a.is-active')
+        assert active.count() == 1 and active.get_attribute("data-testid") == domain_testid, path
+        assert page.locator('[data-testid="crypto-domain-nav"]').count() == 0, path
     page.close()
 
 
