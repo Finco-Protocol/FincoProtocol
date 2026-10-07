@@ -132,7 +132,7 @@ def _counts(base, project_type: str, pfa, real_clean) -> dict:
 
     def policy_wrapper(*a, **k):
         result, applied, ev = real_policy(*a, **k)
-        evidence["dsra_iterations"] = ev.iterations
+        evidence["dsra_iterations"] = ev.dsra_iterations
         return result, applied, ev
 
     policy.run_with_generic_financing_policy = policy_wrapper
