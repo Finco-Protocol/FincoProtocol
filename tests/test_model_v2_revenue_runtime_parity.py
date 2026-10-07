@@ -1035,4 +1035,8 @@ class TestNoFrozenDiff:
         import model_v2_governance as gov
         changed = gov.changed_paths_vs_main()
         assert gov.model_v2_frozen_violations(changed) == []
-        assert gov.unauthorized_model_v2_changes(changed) == []
+        assert gov.model_v2_unapproved_engine_changes(changed) == []
+        # The branch-wide scope-completeness contract only exists while a temporary
+        # ACTIVE epic scope exists; frozen/engine protection above always applies.
+        if gov.active_scope() is not None:
+            assert gov.unauthorized_model_v2_changes(changed) == []

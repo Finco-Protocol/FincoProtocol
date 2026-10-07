@@ -184,13 +184,14 @@ class TestFrozen:
     @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core",
                                            "finco_yield"])
     def test_zero_diff(self, namespace):
-        import subprocess
-        out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", namespace],
-            cwd=REPO, capture_output=True, text=True)
-        if out.returncode != 0:
-            pytest.skip("git unavailable")
-        assert out.stdout.strip() == "", out.stdout
+        # Branch-owned changes only (merge-base boundary). Exact released Model V2
+        # engine authorities (pinned to their reviewed content) are exempt; every
+        # other path in the namespace stays frozen.
+        from finance_integrity_governance import changed_paths_vs_main
+        from model_v2_governance import approved_by_active_model_v2_scope
+        changed = [p for p in changed_paths_vs_main()
+                   if p.startswith(namespace + "/") and not approved_by_active_model_v2_scope(p)]
+        assert changed == [], changed
 
 
 class TestShippedRegistryFileIsUntouchedByCorrectionB:

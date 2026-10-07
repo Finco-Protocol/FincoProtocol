@@ -103,15 +103,32 @@ def test_cb_allowed_files_still_pass(diverged_repo: Path):
     assert changed == []
 
 
-def test_cd_scope_exempt_files_still_pass(diverged_repo: Path):
-    """D: ACTIVE Model V2 scope exemptions still pass (the scope authority
-    is read from the real repository, independent of the temp cwd)."""
+def test_cd_scope_exempt_files_still_pass(diverged_repo: Path, monkeypatch):
+    """D: a file explicitly approved by an ACTIVE scope is exempt (mechanism proof
+    with an injected scope, independent of any real marker file)."""
+    import model_v2_governance as gov
+    monkeypatch.setattr(gov, "active_scope", lambda: {
+        "status": "ACTIVE", "approved_engine_paths": [SCOPE_EXEMPT_FILE],
+        "approved_support_paths": []})
     (diverged_repo / SCOPE_EXEMPT_FILE).write_text("# branch model edit\n")
     _feature_commit(diverged_repo, "branch-side scope-exempt edit")
     changed = parallel_stream_frozen_changes(
         SCOPE_EXEMPT_DIR, main_ref="main", head_ref="feature",
         repo=diverged_repo)
     assert changed == []
+
+
+def test_cd_without_active_scope_the_same_edit_is_flagged(diverged_repo: Path, monkeypatch):
+    """After the epic scope is retired nothing is scope-approved: the same engine
+    edit (content that is NOT the pinned reviewed content) is flagged."""
+    import model_v2_governance as gov
+    monkeypatch.setattr(gov, "active_scope", lambda: None)
+    (diverged_repo / SCOPE_EXEMPT_FILE).write_text("# unreviewed engine edit\n")
+    _feature_commit(diverged_repo, "branch-side engine edit")
+    changed = parallel_stream_frozen_changes(
+        SCOPE_EXEMPT_DIR, main_ref="main", head_ref="feature",
+        repo=diverged_repo)
+    assert changed == [SCOPE_EXEMPT_FILE]
 
 
 def test_ce_merge_base_unresolvable_fails_closed(diverged_repo: Path):
@@ -200,10 +217,25 @@ def test_i_missing_merge_base_fails_closed_in_ci(tmp_path, monkeypatch):
     assert _mv2.changed_paths_vs_main() == []     # local checkout without origin: historical skip convention
 
 
-def test_j_radar_historical_guard_only_switches_on_committed_scope(monkeypatch):
-    # authority comes from the committed scope marker, never a branch name
+def test_j_radar_historical_guards_use_branch_owned_semantics_everywhere(monkeypatch):
+    """The historical Radar stream guards no longer depend on a stale hard-coded
+    baseline or on any scope marker: they always evaluate branch-owned changes."""
     monkeypatch.setattr(_mv2, "active_scope", lambda: None)
-    assert _mv2.branch_owned_changes_if_model_v2_active() is None
-    monkeypatch.setattr(_mv2, "active_scope", lambda: {"status": "ACTIVE"})
-    monkeypatch.setattr(_mv2, "changed_paths_vs_main", lambda: ["finco_radar/x.py"])
-    assert _mv2.branch_owned_changes_if_model_v2_active() == ["finco_radar/x.py"]
+    monkeypatch.setattr(_mv2, "merge_base_ref", lambda *a, **k: "BASE")
+    seen = {}
+
+    class _Done:
+        returncode = 0
+        stdout = "a/one.py\n\nb/two.py\n"
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return _Done()
+
+    monkeypatch.setattr(_mv2.subprocess, "run", fake_run)
+    assert _mv2.branch_owned_changes_or_skip() == ["a/one.py", "b/two.py"]
+    assert seen["cmd"][:3] == ["git", "diff", "BASE"]          # merge-base boundary, never a fixed SHA
+    for rel in ("tests/test_radar_e2_correction_b.py", "tests/test_radar_p3_settlement_quote_context.py"):
+        text = (REPO / rel).read_text(encoding="utf-8")
+        assert "aca630821ae64dba55c35ae12ae5c48401b6aa67" not in text, rel
+        assert "branch_owned_changes_or_skip" in text, rel

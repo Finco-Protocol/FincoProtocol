@@ -94,6 +94,20 @@ before adapters.
 
 ## 6b. Active epic scope (temporary governance authority)
 
+> **Release-candidate closure.** The temporary scope marker described below was
+> **deleted** at the Model V2 release candidate (deletion is the canonical
+> retirement path: the live-checkout gate requires an ACTIVE marker on any
+> non-main development checkout, so `RETIRED` cannot represent a pre-main
+> state). The two reviewed canonical financial-statement engine files
+> (`financial_engine/financial_statements/assembly.py` and `contracts.py`)
+> graduate into the baseline through an explicit code-level rule,
+> `RELEASED_MODEL_V2_ENGINE_AUTHORITIES` in `tests/model_v2_governance.py`:
+> exact paths, additionally pinned to the exact reviewed git blob SHA. It is
+> not a continuation of the marker: any further edit of those files, or of any
+> other `financial_engine` path, is an unauthorized engine change again. The
+> permanent hard-deny and every frozen boundary are unchanged.
+
+
 `docs/model_v2/ACTIVE_EPIC_SCOPE.json` declares the explicit Model V2 epic
 scope: program, base SHA, approved engine files, approved support files, and
 two distinct freeze concepts. It replaces the false blanket "authorities are
