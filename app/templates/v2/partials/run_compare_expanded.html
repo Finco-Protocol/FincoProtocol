@@ -1,0 +1,98 @@
+{#
+  Decision Support V1 — expanded same-project run comparison (Run A vs Run B).
+  Read-only: persisted canonical runs, variance sections, changed assumptions
+  and a deterministic factual Drivers-of-Change summary.  Status labels follow
+  Run Intelligence semantics — only the canonical Last Run is CURRENT/STALE;
+  historical runs stay HISTORICAL regardless of input identity.
+#}
+<div id="v2-run-compare-expanded" class="v2-ds" data-testid="run-compare-expanded">
+  <div class="v2-rh-head">
+    <span class="v2-rh-title">Compare Runs — {{ project_name }}</span>
+    <span class="v2-rh-sub">persisted canonical runs · read-only</span>
+    <button type="button" class="v2-rh-link"
+            hx-get="{{ back_url }}" hx-target="#v2-sheet-run-history"
+            hx-swap="outerHTML" data-testid="ds-back-to-history">← Run History</button>
+    <a class="v2-rh-link" href="{{ workspace_url }}"
+       data-testid="ds-open-workspace">Open workspace</a>
+  </div>
+
+  <div class="v2-rh-cmp-columns" data-testid="ds-run-sides">
+    <div class="v2-rh-cmp-col">
+      <span class="v2-rh-cmp-name">Run A · {{ side_a.label }}</span>
+      <span class="v2-rh-chip {% if side_a.state == 'STALE' %}v2-rh-chip--stale{% elif side_a.is_last %}v2-rh-chip--lastrun{% else %}v2-rh-chip--historical{% endif %}"
+            data-testid="ds-side-a-state">{{ side_a.state }}</span>
+      <span class="v2-rh-cmp-ts">{{ side_a.ran_at }} · {{ side_a.scenario }} · {{ side_a.snapshot }}</span>
+    </div>
+    <div class="v2-rh-cmp-col">
+      <span class="v2-rh-cmp-name">Run B · {{ side_b.label }}</span>
+      <span class="v2-rh-chip v2-rh-chip--historical" data-testid="ds-side-b-state">HISTORICAL</span>
+      {% if side_b.matches_working_copy %}
+      <span class="v2-rh-chip v2-rh-chip--matches">MATCHES WORKING COPY</span>
+      {% endif %}
+      <span class="v2-rh-cmp-ts">{{ side_b.ran_at }} · {{ side_b.scenario }} · {{ side_b.snapshot }}</span>
+    </div>
+  </div>
+
+  {% for section in sections %}
+  <div class="v2-ds-section" data-testid="ds-section-{{ section.key }}">
+    <div class="v2-ds-section-title">{{ section.title }}</div>
+    <table class="v2-rh-table">
+      <thead><tr><th>Metric</th><th>Run A</th><th>Run B</th><th>Δ absolute</th><th>Δ pp</th><th>Δ %</th></tr></thead>
+      <tbody>
+        {% for row in section.rows %}
+        <tr data-testid="ds-var-{{ row.label | lower | replace(' ', '-') }}"
+            data-direction="{{ row.direction }}">
+          <td>{{ row.label }}</td>
+          <td class="v2-rh-mono">{{ row.value_a }}</td>
+          <td class="v2-rh-mono">{{ row.value_b }}</td>
+          <td class="v2-rh-mono">{{ row.abs_delta }}</td>
+          <td class="v2-rh-mono">{{ row.pp_delta }}</td>
+          <td class="v2-rh-mono">{{ row.pct_delta }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+
+  <div class="v2-ds-section" data-testid="ds-assumptions">
+    <div class="v2-ds-section-title">Changed assumptions</div>
+    {% if assumptions %}
+    <table class="v2-rh-table">
+      <thead><tr><th>Category</th><th>Assumption</th><th>Run A</th><th>Run B</th></tr></thead>
+      <tbody>
+        {% for a in assumptions %}
+        <tr data-assumption-category="{{ a.category }}">
+          <td>{{ a.category }}</td><td>{{ a.name }}</td>
+          <td class="v2-rh-mono">{{ a.value_a }}</td>
+          <td class="v2-rh-mono">{{ a.value_b }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="v2-rh-empty">No assumption differences between the two runs.</div>
+    {% endif %}
+  </div>
+
+  <div class="v2-ds-section" data-testid="ds-drivers">
+    <div class="v2-ds-section-title">Drivers of Change (factual summary)</div>
+    {% if drivers.no_assumption_changes %}
+    <div class="v2-rh-empty">
+      The two runs share the same recorded input identity — result movement
+      comes from the iterative solve path, not from input changes.
+    </div>
+    {% else %}
+    <div class="v2-rh-note">Changed assumptions:
+      {% for name in drivers.changed_assumptions %}{{ name }}{% if not loop.last %}, {% endif %}{% endfor %}.
+    </div>
+    <div class="v2-rh-note">Result movement:
+      {% for label, delta in drivers.moved_outputs %}
+      <span class="v2-ds-driver">{{ label }} {{ delta }}</span>{% if not loop.last %}; {% endif %}
+      {% endfor %}.
+      {% if drivers.more_outputs > 0 %} (+{{ drivers.more_outputs }} more){% endif %}
+      Factual summary only — not a causal attribution.
+    </div>
+    {% endif %}
+  </div>
+</div>
