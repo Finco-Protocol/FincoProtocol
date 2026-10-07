@@ -122,6 +122,55 @@ class TestOverviewStaleQuarantine:
 
 
 # ---------------------------------------------------------------------------
+# Correction A6 — adversarial return-metric wiring through the REAL
+# production projection builder (intentionally distinct persisted values;
+# this test failed against pre-correction HEAD where sponsor MOIC read XIRR)
+# ---------------------------------------------------------------------------
+
+class TestReturnMetricAuthorityWiring:
+    def _projections(self):
+        from app.v2.output_metric_projection import (
+            build_overview_metric_projections,
+        )
+        return build_overview_metric_projections(
+            {},  # runtime_summary empty on purpose
+            {},  # debt summary empty on purpose
+            {
+                "total_sponsor_xirr": 0.1475,
+                "total_sponsor_moic": 1.83,
+                "pure_equity_moic": 2.11,
+            },
+            freshness="current",
+        )
+
+    def test_distinct_persisted_fields_map_to_distinct_metrics(self):
+        m = self._projections()
+        # raw values — each metric reads ONLY its own persisted field
+        assert m["sponsor_irr"].raw_value == pytest.approx(0.1475, abs=1e-12)
+        assert m["sponsor_moic"].raw_value == pytest.approx(1.83, abs=1e-12)
+        assert m["pure_equity_moic"].raw_value == pytest.approx(2.11, abs=1e-12)
+        # display — canonical formatter pass-through, no recomputation
+        assert m["sponsor_irr"].display_value == "14.75%"
+        assert m["sponsor_moic"].display_value == "1.83x"
+        assert m["pure_equity_moic"].display_value == "2.11x"
+
+    def test_sponsor_moic_is_not_the_xirr_value(self):
+        m = self._projections()
+        assert m["sponsor_moic"].raw_value != m["sponsor_irr"].raw_value
+
+    def test_missing_persisted_field_reads_unavailable_never_sibling(self):
+        """A missing MOIC field never falls back to the XIRR value."""
+        from app.v2.output_metric_projection import (
+            build_overview_metric_projections,
+        )
+        m = build_overview_metric_projections(
+            {}, {}, {"total_sponsor_xirr": 0.1475}, freshness="current")
+        assert m["sponsor_moic"].raw_value is None
+        assert m["pure_equity_moic"].raw_value is None
+        assert m["sponsor_moic"].display_value == "—"
+
+
+# ---------------------------------------------------------------------------
 # Smart Panel projection
 # ---------------------------------------------------------------------------
 
@@ -165,12 +214,43 @@ class TestSmartPanelProjection:
         assert values["Reference regression"].value == "UNAVAILABLE"
         assert values["Last Run identity"].tone == "warn"
 
-    def test_trace_unavailable_without_run_with_empty_state(self):
-        p = self._build(has_runtime=False, runtime_state="NOT_RUN")
+    def test_trace_typed_unavailable_never_fake(self):
+        """Correction A4/A8: the full trace needs the clean production run
+        object (not persisted after a run; re-execution is forbidden) —
+        TRACE is a typed unavailable/future section with NO navigation."""
+        p = self._build(has_runtime=True, runtime_state="CURRENT")
         trace = p.sections[-1]
+        assert trace.key == "trace"
         assert trace.available is False
-        assert "No calculation trace yet" in trace.empty_text
+        assert "not persisted after a run" in trace.empty_text
         assert trace.link is None  # no fake navigation into nothing
+
+    def test_assumptions_availability_is_authority_based(self):
+        """Correction A8: availability comes from the ACTUAL register
+        construction result — never asserted unconditionally."""
+        ok = self._build(assumption_register_view={
+            "available": True, "entry_count": 24})
+        assumptions = ok.sections[1]
+        assert assumptions.key == "assumptions"
+        assert assumptions.available is True
+        assert "24 entries" in assumptions.rows[0].value
+        assert assumptions.link is not None
+        assert assumptions.link.anchor == "#assumption-register"
+
+        failed = self._build(assumption_register_view={
+            "available": False, "entry_count": 0})
+        assumptions_failed = failed.sections[1]
+        assert assumptions_failed.available is False
+        assert assumptions_failed.rows == ()
+        assert assumptions_failed.link is None
+        assert "unavailable" in assumptions_failed.empty_text.lower()
+
+    def test_no_available_in_trust_pack_claim_for_missing_surface(self):
+        """Correction A4: the misleading 'Available in the Trust Pack'
+        wording is gone — assumptions now name the actual register state."""
+        p = self._build(project_key="")
+        all_values = [r.value for sec in p.sections for r in sec.rows]
+        assert "Available in the Trust Pack" not in all_values
 
     def test_links_only_target_existing_tabs(self):
         p = self._build()

@@ -100,6 +100,14 @@ def _model_home_payload(user_id: str, records, references) -> dict:
     for the current page's projects and the reference models.  Pure reads:
     no engine execution, no recomputation.  A missing workspace record
     simply means no persisted evidence — never a fabricated value.
+
+    Workspace OWNER authority (Correction A1): canonical reference
+    projects persist their workspace rows under their own owner
+    (``record.user_id`` — the canonical ``__reference__`` user), so their
+    Last Run evidence is read under that owner.  The logged-in user's
+    recent projects are read under the logged-in user.  No cross-user
+    lookup ever happens for arbitrary projects: only records returned by
+    the canonical reference repository use the reference owner.
     """
     from app.persistence.workspace_repository import get_workspace_state
     from app.library.model_home import (
@@ -108,10 +116,16 @@ def _model_home_payload(user_id: str, records, references) -> dict:
     )
 
     states: dict[str, Any] = {}
-    for record in (*records, *references):
+    for record in records:  # user's recent projects — logged-in owner
         try:
             states[record.project_id] = get_workspace_state(
                 user_id, record.project_id)
+        except Exception:  # evidence read failure == no evidence
+            states[record.project_id] = None
+    for record in references:  # canonical references — their own owner
+        try:
+            states[record.project_id] = get_workspace_state(
+                record.user_id, record.project_id)
         except Exception:  # evidence read failure == no evidence
             states[record.project_id] = None
     return {

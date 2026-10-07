@@ -203,6 +203,84 @@ class TestReferenceKpiEvidence:
         assert cards[0].kpis[0][2] == "0.00x"
 
 
+# ---------------------------------------------------------------------------
+# Correction A1 — reference Last Run evidence is read under the CANONICAL
+# REFERENCE OWNER (__reference__), not the logged-in user.
+# ---------------------------------------------------------------------------
+
+class TestReferenceEvidenceAuthority:
+    def test_reference_kpis_render_from_canonical_owner_workspace(
+            self, seeded_db):
+        """Real Model Home integration: the canonical reference persists its
+        Last Run under __reference__; a normal user's /library must surface
+        that evidence on the Solar card — with NO engine call at render."""
+        from unittest import mock
+        from datetime import datetime, timezone
+        from app.persistence.projects_repository import (
+            REFERENCE_USER_ID,
+            get_reference_by_template_source,
+        )
+        from app.persistence.workspace_repository import save_workspace_state
+        from app.services.project_library_service import ensure_reference_models
+
+        ensure_reference_models()
+        reference = get_reference_by_template_source(
+            "generic_solar_reference")
+        assert reference is not None
+        assert reference.user_id == REFERENCE_USER_ID
+        save_workspace_state(
+            user_id=REFERENCE_USER_ID,
+            project_id=reference.project_id,
+            project_code=reference.project_code,
+            draft_snapshot={},
+            saved_snapshot={},
+            last_runtime_summary={
+                "project_irr": 0.087,
+                "min_dscr": 1.42,
+                "senior_debt_keur": None,  # documented gap → omitted
+            },
+            last_runtime_snapshot_id="snap-ref-1",
+            last_runtime_origin="v2_run",
+            last_financial_statements={},
+            last_debt_schedule={},
+            last_tax_schedule={},
+            last_distribution_schedule={},
+            last_sponsor_schedule={},
+            last_runtime_at=datetime(2026, 10, 6, 21, 14,
+                                     tzinfo=timezone.utc),
+        )
+
+        client, cookies = _client_and_cookie("ux-ref-evidence-user")
+        with mock.patch("app.api.project_runner.run_project",
+                        side_effect=AssertionError("engine ran")):
+            html = client.get("/library", cookies=cookies).text
+        assert 'data-testid="reference-kpis-generic_solar_reference-reference"' in html
+        assert "8.70%" in html       # Project IRR from __reference__ evidence
+        assert "1.42x" in html       # Min DSCR from __reference__ evidence
+
+    def test_missing_reference_evidence_is_omitted_never_zero(
+            self, seeded_db):
+        """A reference with NO persisted workspace shows NO KPI rows and no
+        zero-formatted substitutes — missing != 0."""
+        from app.persistence.projects_repository import (
+            get_reference_by_template_source,
+        )
+        from app.services.project_library_service import ensure_reference_models
+
+        ensure_reference_models()
+        reference = get_reference_by_template_source(
+            "generic_wind_reference")
+        assert reference is not None
+        client, cookies = _client_and_cookie("ux-ref-missing-user")
+        html = client.get("/library", cookies=cookies).text
+        card_html = html.split(
+            'data-testid="library-row-generic_wind_reference-reference"')[1]
+        card_html = card_html.split("</article>")[0]
+        assert 'data-testid="reference-kpis-generic_wind_reference-reference"' not in card_html
+        assert "0.00%" not in card_html
+        assert "0.00x" not in card_html
+
+
 class TestNoEngineOnModelHome:
     def test_engine_never_runs_when_rendering_library(self, seeded_db):
         user = "ux-home-noengine"

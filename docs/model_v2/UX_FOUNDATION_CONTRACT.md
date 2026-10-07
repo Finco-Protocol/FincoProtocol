@@ -79,7 +79,12 @@ The workspace header shows ONE compact state row with exactly four states:
 ## 7. Workspace navigation
 
 Persistent left navigation, finance-native groups, desktop-first density
-(32–40 px rows, small chips, subtle borders):
+(32–40 px rows, small chips, subtle borders).  Correction A9: the left
+navigation is the ONE primary section navigation; the historical horizontal
+sheet strip is retained only as the internal activation control surface the
+existing JS/HTMX contract depends on (tab ids, aria wiring, compare fetch,
+deep links) and is visually demoted to a compact secondary bar — its
+ids/behavior are unchanged:
 
 - **Overview** — Overview
 - **Model** — Project · Timeline & Discounting* · Escalation* · Revenue ·
@@ -125,9 +130,17 @@ architecture supports it.
     (fail → warn → pass); Trust Pack section availability (Last Run
     identity, reference regression — which always loads on demand, never on
     render).
-  - Assumptions: availability + "Review assumptions" → the Trust Pack sheet
-    (the register stays THE authority).
-  - Trace: available only with a persisted run; typed empty state otherwise.
+  - Assumptions (Correction A4/A8): availability comes from the ACTUAL
+    Workflow 04 register construction — the Trust sheet renders the
+    read-only Working Copy Assumption Register (`#assumption-register`),
+    and the panel links there with an anchor + highlight.  Construction
+    failure renders a typed UNAVAILABLE — never a fabricated register.
+  - Trace: typed unavailable/future. A full Calculation Trace is bound to
+    the clean production run object, which is NOT persisted after a run;
+    loading it on demand would execute the engine (forbidden at render).
+    The Trust sheet carries the honest `#calculation-trace` unavailable
+    section; the panel renders no navigation action for it.  Derivation
+    lineage remains visible in the Trust Pack KPIs and Run Certificate.
 - **Go to field**: rendered ONLY where evidence carries an existing reliable
   field/sheet identity (stable `data-field-id`). No such persisted check
   evidence exists yet, so no Go-to-field action is rendered — a fake action
@@ -165,3 +178,6 @@ evidence is inspectable; **Create working copy** is the editing path.
   surfaces (declared future navigation, no fake pages).
 - Model Home row country/capacity columns (no list-scale persisted
   authority; shown inside the workspace instead).
+- Full Calculation Trace surface (Correction A4: bound to the clean
+  production run object, which is not persisted after a run — a loadable
+  trace needs a Workflow 07 persistence seam, never engine-on-render).

@@ -217,9 +217,12 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
     except Exception:
         pack = None
     from app.workbook.service import WorkbookService
+    register_view = None
     try:
         pis = WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
         template_source = str(getattr(pis, "template_source", "") or "")
+        from app.v2.router import _build_assumption_register_view
+        register_view = _build_assumption_register_view(pis)
     except Exception:
         template_source = ""
     panel = build_smart_panel_projection(
@@ -227,6 +230,7 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
         runtime_state=freshness.state.value,
         has_runtime=bool(getattr(ws_fresh, "last_runtime_snapshot_id", None)),
         project_key=template_source,
+        assumption_register_view=register_view,
     )
     return _templates.get_template(
         "partials/_model_smart_panel.html"

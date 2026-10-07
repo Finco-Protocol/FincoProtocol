@@ -242,6 +242,70 @@ class TestProtectedReferenceHeader:
 
 
 # ---------------------------------------------------------------------------
+# UX Correction A4 — Trust sheet carries the REAL Workflow 04 surfaces and
+# the Smart Panel availability is authority-based
+# ---------------------------------------------------------------------------
+
+class TestTrustSheetWorkflow04Surfaces:
+    def test_assumption_register_renders_from_real_authority(self, seeded_db):
+        client, cookies, record = _client_with_project(*VERTICALS[0])
+        page = client.get(f"/v2/workbook?project={record.project_code}",
+                          cookies=cookies)
+        assert page.status_code == 200
+        assert 'id="assumption-register"' in page.text
+        assert 'data-testid="trust-assumption-register"' in page.text
+        # Real register content: sections and a fingerprint, no fabrication.
+        assert "exposed input authorities" in page.text
+        assert "fingerprint" in page.text
+        assert "PROJECT" in page.text  # register section rows present
+        assert 'data-assumption-section=' in page.text
+
+    def test_trace_surface_is_typed_unavailable(self, seeded_db):
+        client, cookies, record = _client_with_project(*VERTICALS[0])
+        page = client.get(f"/v2/workbook?project={record.project_code}",
+                          cookies=cookies)
+        assert 'id="calculation-trace"' in page.text
+        trace_html = page.text.split('id="calculation-trace"')[1]
+        assert "UNAVAILABLE" in trace_html
+        assert "not persisted after a run" in trace_html
+
+    def test_smart_panel_assumptions_link_targets_register_anchor(
+            self, seeded_db):
+        client, cookies, record = _client_with_project(*VERTICALS[0])
+        page = client.get(f"/v2/workbook?project={record.project_code}",
+                          cookies=cookies)
+        panel_html = page.text.split('id="model-smart-panel"')[1]
+        assert 'data-nav-anchor="#assumption-register"' in panel_html
+        assert "entries" in panel_html  # authority-based count shown
+
+
+# ---------------------------------------------------------------------------
+# UX Correction A9 — ONE primary navigation; the horizontal strip is the
+# demoted internal activation control (ids/behavior unchanged)
+# ---------------------------------------------------------------------------
+
+class TestNavigationHierarchy:
+    def test_left_nav_primary_and_tab_strip_demoted(self, seeded_db):
+        client, cookies, record = _client_with_project(*VERTICALS[0])
+        page = client.get(f"/v2/workbook?project={record.project_code}",
+                          cookies=cookies)
+        assert 'id="model-workspace-nav"' in page.text
+        assert 'class="v2-tabs v2-tabs--secondary"' in page.text
+
+    def test_tab_activation_contract_unchanged(self, seeded_db):
+        """Demotion must not break ids, roles, panels or deep links."""
+        client, cookies, record = _client_with_project(*VERTICALS[0])
+        page = client.get(f"/v2/workbook?project={record.project_code}",
+                          cookies=cookies)
+        for tab_id in ("tab-overview", "tab-revenue", "tab-debt",
+                       "tab-trust"):
+            assert f'id="{tab_id}"' in page.text
+        assert 'id="v2-sheet-tabs"' in page.text
+        assert 'hx-get="/v2/workbook/scenarios/compare"' in page.text
+        assert "location.hash" in page.text  # deep-link contract intact
+
+
+# ---------------------------------------------------------------------------
 # Post-run / post-save coherence through the ONE post-run authority
 # ---------------------------------------------------------------------------
 

@@ -2821,3 +2821,35 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
     border-top: 1px solid #e5e7eb;
   }
 }
+
+/* ── UX Correction A4: anchor highlight for panel navigation ─────────── */
+.v2-anchor-highlight {
+  animation: v2-anchor-flash 1.6s ease-out 1;
+}
+
+@keyframes v2-anchor-flash {
+  0% { background-color: #fff7d6; }
+  100% { background-color: transparent; }
+}
+
+/* ── UX Correction A9: single primary navigation ──────────────────────── */
+/* The left workspace navigation is primary; the horizontal sheet strip is
+   an internal activation control — compact, muted, non-hero.  All ids,
+   roles and activation behavior unchanged. */
+.v2-tabs--secondary {
+  border-top: 1px solid #f0f2f4;
+  background: #fafafa;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.v2-tabs--secondary .v2-tab {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  color: #6b7280;
+}
+
+.v2-tabs--secondary .v2-tab-group-label {
+  font-size: 0.625rem;
+  color: #9ca3af;
+}

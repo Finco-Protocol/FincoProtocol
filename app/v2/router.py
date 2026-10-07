@@ -406,6 +406,49 @@ def _get_inputs_summary(project_record, pis, ws) -> dict:
     return build_inputs_summary(project_record, pis, ws)
 
 
+def _build_assumption_register_view(pis):
+    """UX Correction A4: read-only Workflow 04 Assumption Register view.
+
+    Pure construction over the working-copy ProjectInputs
+    (``build_assumption_register`` — no I/O, no engine execution).  Used by
+    the Trust sheet section (#assumption-register).  Fail closed: any
+    construction failure renders a typed UNAVAILABLE view — never a
+    fabricated register.
+    """
+    try:
+        from app.model_v2.assumption_register import (
+            AssumptionSourceKind,
+            RegisterContext,
+            build_assumption_register,
+        )
+        inputs = pis.to_projectinputs()
+        register = build_assumption_register(
+            inputs,
+            RegisterContext.for_working_copy(
+                state_provenance=AssumptionSourceKind.USER_INPUT,
+                workbook_composite_hash=getattr(pis, "content_hash", None),
+            ),
+        )
+        rows = []
+        for e in register.entries:
+            rows.append({
+                "section": e.section,
+                "label": e.label,
+                "value": "—" if e.value is None else str(e.value),
+                "unit": e.unit or "",
+                "source": e.source_ref or e.source_kind.value,
+            })
+        return {
+            "available": True,
+            "entry_count": len(rows),
+            "fingerprint": register.fingerprint,
+            "rows": rows,
+        }
+    except Exception:
+        return {"available": False, "entry_count": 0,
+                "fingerprint": "", "rows": []}
+
+
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
     """Shared context dict for both sheet partials."""
     from app.workbook.registry import is_data_center_project_type as _is_dc_type_bsc
@@ -1474,6 +1517,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     from app.ui.trust_pack import build_trust_pack
     try:
         context["trust_pack"] = build_trust_pack(
+
             workspace_owner,
             project_record.project_id,
             project_code=project_record.project_code,
@@ -1516,6 +1560,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     # UX Foundation: compact workspace header + persistent left navigation.
     # Presentation projections only — identity comes from the same pis the
     # overview uses; state comes from the canonical freshness authority.
+    context["assumption_register_view"] = _build_assumption_register_view(pis)
+
     from app.v2.workspace_shell_projection import (
         build_workspace_header_projection,
         workspace_nav_groups,
@@ -1541,6 +1587,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         runtime_state=runtime_freshness.state.value,
         has_runtime=bool(context.get("has_runtime")),
         project_key=str(getattr(pis, "template_source", "") or ""),
+        assumption_register_view=context.get("assumption_register_view"),
     )
 
     # UI-3B: inject scenario presentations for the Scenarios tab.

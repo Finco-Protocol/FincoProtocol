@@ -52,6 +52,7 @@
   "app/templates/v2/partials/_model_workspace_header.html",
   "app/templates/v2/partials/_model_workspace_nav.html",
   "app/templates/v2/partials/sheet_overview.html",
+  "app/templates/v2/partials/sheet_trust.html",
   "app/templates/v2/workbook.html",
   "app/v2/output_metric_projection.py",
   "app/v2/post_run_ui.py",

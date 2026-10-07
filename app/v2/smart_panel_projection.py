@@ -42,6 +42,10 @@ class SmartPanelRow:
 class SmartPanelLink:
     label: str
     tab_id: str
+    # Optional in-page anchor inside the target tab panel (e.g.
+    # "#assumption-register"); navigation scrolls to it after activating
+    # the tab.  Only rendered when the target section actually exists.
+    anchor: str = ""
 
 
 @dataclass(frozen=True)
@@ -91,13 +95,19 @@ def build_smart_panel_projection(
     runtime_state: str,
     has_runtime: bool,
     project_key: str = "",
+    assumption_register_view: Optional[dict[str, Any]] = None,
 ) -> SmartPanelProjection:
     """Build the Smart Panel display payload from existing authorities.
 
     ``trust_pack`` is the workbook route's already-composed Trust Pack dict
-    (its sections fail closed to UNAVAILABLE independently).  Nothing here
-    executes the engine or the reference validation — the panel only reports
-    availability and links to the on-demand authority.
+    (its sections fail closed to UNAVAILABLE independently).
+    ``assumption_register_view`` is the route's Workflow 04 register view
+    (Correction A4/A8): availability is taken from the ACTUAL authority
+    construction result — never asserted unconditionally.  The Calculation
+    Trace needs the clean production run object, which is not persisted
+    after a run and must never be re-executed at render time, so TRACE is
+    a typed unavailable/future section.  Nothing here executes the engine
+    or the reference validation.
     """
     state = str(runtime_state or "").strip().upper()
     if state == "STALE":
@@ -143,29 +153,46 @@ def build_smart_panel_projection(
         link=SmartPanelLink("Open Trust Pack", TRUST_TAB_ID),
     ))
 
-    # ── ASSUMPTIONS — availability + navigation (register stays authority) ─
-    has_state = has_runtime or state == "STALE"
-    sections.append(SmartPanelSection(
-        key="assumptions", title="Assumptions", available=True,
-        rows=(SmartPanelRow(
-            label="Assumption Register",
-            value="Available in the Trust Pack",
-            detail="Review assumptions against their reference sources.",
-        ),),
-        empty_text="Assumptions unavailable.",
-        link=SmartPanelLink("Review assumptions", TRUST_TAB_ID),
-    ))
+    # ── ASSUMPTIONS — availability from the ACTUAL Workflow 04 register
+    # construction (Correction A4/A8); the register itself stays THE
+    # authority — the panel only reports and navigates to it. ─────────────
+    register_ok = bool(assumption_register_view
+                       and assumption_register_view.get("available"))
+    if register_ok:
+        sections.append(SmartPanelSection(
+            key="assumptions", title="Assumptions", available=True,
+            rows=(SmartPanelRow(
+                label="Assumption Register",
+                value=("Working Copy register · "
+                       f"{assumption_register_view.get('entry_count', 0)} entries"),
+                detail="Review assumptions against their reference sources.",
+            ),),
+            empty_text="Assumptions unavailable.",
+            link=SmartPanelLink("Review assumptions", TRUST_TAB_ID,
+                                anchor="#assumption-register"),
+        ))
+    else:
+        sections.append(SmartPanelSection(
+            key="assumptions", title="Assumptions", available=False,
+            rows=(),
+            empty_text=("Assumption Register unavailable for the current "
+                        "Working Copy state."),
+            link=None,
+        ))
 
-    # ── TRACE — needs a persisted run; typed unavailable otherwise ────────
+    # ── TRACE — typed unavailable: the full trace is bound to the clean
+    # production run object, which is not persisted after a run; loading it
+    # on demand would execute the engine.  Honest future surface, no fake
+    # navigation. ──────────────────────────────────────────────────────────
     sections.append(SmartPanelSection(
-        key="trace", title="Trace", available=has_runtime,
-        rows=((SmartPanelRow(
-            label="Calculation Trace",
-            value="Available for the Last Run",
-        ),) if has_runtime else ()),
-        empty_text=("No calculation trace yet — run the model to produce "
-                    "traceable derivation evidence."),
-        link=SmartPanelLink("Open calculation trace", TRUST_TAB_ID) if has_runtime else None,
+        key="trace", title="Trace", available=False,
+        rows=(),
+        empty_text=("Full Calculation Trace is not available in this "
+                    "surface yet — it requires the clean production run "
+                    "object, which is not persisted after a run. "
+                    "Derivation lineage is visible in the Trust Pack KPIs "
+                    "and the Run Certificate."),
+        link=None,
     ))
 
     return SmartPanelProjection(

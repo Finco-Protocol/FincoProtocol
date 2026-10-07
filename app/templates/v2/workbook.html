@@ -81,7 +81,12 @@
   <div id="model-workspace-main" class="v2-workspace-main">
 
   {# ── Sheet tab navigation ──────────────────────────────────────────── #}
-  <nav class="v2-tabs" role="tablist" aria-label="Workbook sheets" id="v2-sheet-tabs">
+  {# UX Correction A9: the persistent left navigation (#model-workspace-nav)
+     is the ONE primary section navigation.  This horizontal strip is
+     retained as the internal activation control surface the existing
+     JS/HTMX contract depends on (tab ids, aria wiring, deep links) and is
+     visually demoted to a compact secondary bar. #}
+  <nav class="v2-tabs v2-tabs--secondary" role="tablist" aria-label="Workbook sheets (secondary)" id="v2-sheet-tabs">
     {# ANALYSIS group #}
     <span class="v2-tab-group-label" aria-hidden="true">Analysis</span>
     <button class="v2-tab" role="tab" aria-selected="true"  tabindex="0"  aria-controls="panel-overview"       id="tab-overview">Overview</button>

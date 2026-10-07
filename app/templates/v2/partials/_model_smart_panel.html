@@ -34,6 +34,7 @@
     {% endif %}
     {% if section.link %}
     <button type="button" class="v2-smart-panel-link" data-nav-tab="{{ section.link.tab_id }}"
+            {% if section.link.anchor %}data-nav-anchor="{{ section.link.anchor }}"{% endif %}
             data-testid="smart-panel-link-{{ section.key }}">{{ section.link.label }}</button>
     {% endif %}
   </div>
@@ -47,7 +48,18 @@
     var btn = evt.target.closest('[data-nav-tab]');
     if (!btn || btn.disabled) return;
     var tab = document.getElementById(btn.getAttribute('data-nav-tab'));
-    if (tab) { tab.click(); }
+    if (!tab) return;
+    tab.click();
+    var anchorSel = btn.getAttribute('data-nav-anchor');
+    if (anchorSel) {
+      var target = document.querySelector(anchorSel);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.classList.remove('v2-anchor-highlight');
+        void target.offsetWidth;
+        target.classList.add('v2-anchor-highlight');
+      }
+    }
   });
 })();
 </script>
