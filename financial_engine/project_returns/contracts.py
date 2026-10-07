@@ -73,10 +73,11 @@ class ProjectReturnResult:
     terminal_component_keur: float
     hard_capex_timing_authority: str | None
     methodology_authority: str
-    # Developer Economics V1: typed developer project uses (reimbursement + fee),
-    # classified and EXCLUDED from the C1 hard-CAPEX project-return investment, like
-    # financing-cost uses and reserve funding. 0.0 when Developer Economics is inactive.
-    excluded_developer_economics_uses_keur: float = 0.0
+    # Developer Economics V1: development cost reimbursement + developer fee are
+    # economic project costs INCLUDED in the unlevered project investment outflow at
+    # the canonical Financial Close date (hard CAPEX is reported separately and not
+    # re-counted). 0.0 when Developer Economics is inactive.
+    included_developer_economics_uses_keur: float = 0.0
 
 
 @dataclass(frozen=True)

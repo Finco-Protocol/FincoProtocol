@@ -111,6 +111,7 @@ def resolve_developer_project_uses(project_inputs: "ProjectInputs") -> Developer
     return DeveloperProjectUses(
         development_cost_reimbursement_keur=float(config.reimbursed_development_cost_keur),
         developer_fee_keur=_fee_evidence(config, project_inputs).fee_keur,
+        book_basis_mode=config.book_basis_mode.value,
     )
 
 

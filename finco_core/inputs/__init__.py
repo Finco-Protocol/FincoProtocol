@@ -124,6 +124,7 @@ from finco_core.inputs.senior_sculpting import (
     validate_explicit_debt_service_schedule,
 )
 from finco_core.inputs.development import (
+    DeveloperBookBasisMode,
     DeveloperFeeMode,
     DeveloperSettlementAuthority,
     DevelopmentEconomicsInput,
@@ -230,6 +231,7 @@ __all__ = [
     "DevelopmentEconomicsInput",
     "DevelopmentSpendEntry",
     "DevelopmentOutcome",
+    "DeveloperBookBasisMode",
     "DeveloperFeeMode",
     "DeveloperSettlementAuthority",
 ]

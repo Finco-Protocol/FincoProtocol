@@ -40,6 +40,10 @@ Developer fee basis (V1) is non-circular by construction:
                            reserves nor the developer uses, so the fee can never
                            recursively size itself.
 
+Book basis (V1): reimbursement and fee are capitalised as SOFT_COSTS through the
+explicit typed ``book_basis_mode``; depreciation then flows through the existing
+asset-class useful-life authority (no Developer-Economics-owned life or formula).
+
 Fail closed: every numeric is finite and non-negative, flags are strict bool,
 dates are real dates in strictly increasing order, an ABANDONED case carries no
 receipts, reimbursement can never exceed the eligible (spent) amount, and an
@@ -75,6 +79,18 @@ class DeveloperSettlementAuthority(str, Enum):
     """Settlement-date authority.  V1 has exactly one: the canonical FC date."""
 
     AT_FINANCIAL_CLOSE = "AT_FINANCIAL_CLOSE"
+
+
+class DeveloperBookBasisMode(str, Enum):
+    """Explicit book-basis treatment of the developer project uses.
+
+    V1 has exactly one mode: reimbursement and fee are capitalised into the
+    depreciable asset base as soft costs (``AssetClass.SOFT_COSTS``), whose useful
+    life is owned by the existing asset-class authority.  Never inferred from the
+    existence of a fee and never silently defaulted to another asset class.
+    """
+
+    CAPITALISE_AS_SOFT_COSTS = "CAPITALISE_AS_SOFT_COSTS"
 
 
 @dataclass(frozen=True)
@@ -114,6 +130,9 @@ class DevelopmentEconomicsInput:
     settlement: DeveloperSettlementAuthority = (
         DeveloperSettlementAuthority.AT_FINANCIAL_CLOSE
     )
+    book_basis_mode: DeveloperBookBasisMode = (
+        DeveloperBookBasisMode.CAPITALISE_AS_SOFT_COSTS
+    )
 
     def __post_init__(self) -> None:
         require_bool("enabled", self.enabled, error_code=f"{_ERR}_ENABLED")
@@ -121,6 +140,7 @@ class DevelopmentEconomicsInput:
             ("outcome", self.outcome, DevelopmentOutcome),
             ("developer_fee_mode", self.developer_fee_mode, DeveloperFeeMode),
             ("settlement", self.settlement, DeveloperSettlementAuthority),
+            ("book_basis_mode", self.book_basis_mode, DeveloperBookBasisMode),
         ):
             if not isinstance(value, kind):
                 raise ValueError(
@@ -206,4 +226,5 @@ def cache_key(value: "DevelopmentEconomicsInput | None") -> "tuple | None":
         value.developer_fee_mode.value,
         value.developer_fee_value,
         value.settlement.value,
+        value.book_basis_mode.value,
     )

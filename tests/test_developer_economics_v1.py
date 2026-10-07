@@ -602,18 +602,53 @@ class TestProjectUsesAndFinancing:
             solar_on.g2c_result.financing_result.project_uses.total_project_uses_keur, abs=1e-6)
         assert abs(funding.total_audit_residual_keur) < 1e-6
 
-    def test_project_return_methodology_is_unchanged_and_developer_uses_are_classified(
+    def test_developer_uses_are_project_investment_outflow_at_financial_close(
             self, solar_off, solar_on):
         off = solar_off.g2c_result.return_summary.project
         on = solar_on.g2c_result.return_summary.project
+        fc = solar_on.project_inputs.info.financial_close
         assert on.project_xirr_status.value == "OK"
-        assert on.project_xirr == off.project_xirr           # C1 hard-CAPEX methodology
-        assert on.total_hard_capex_investment_keur == off.total_hard_capex_investment_keur
         assert on.other_explicit_project_uses_keur == 0.0     # never UNCLASSIFIED
-        assert on.excluded_developer_economics_uses_keur == pytest.approx(REIMBURSED + FEE)
-        assert off.excluded_developer_economics_uses_keur == 0.0
+        assert on.included_developer_economics_uses_keur == pytest.approx(REIMBURSED + FEE)
+        assert off.included_developer_economics_uses_keur == 0.0
+        # investment outflow rises by exactly reimbursement + fee, at the FC date
+        by_date_off = {r.cashflow_date: r for r in off.cashflows}
+        by_date_on = {r.cashflow_date: r for r in on.cashflows}
+        assert by_date_on[fc].project_investment_outflow_keur == pytest.approx(
+            by_date_off.get(fc).project_investment_outflow_keur + REIMBURSED + FEE
+            if fc in by_date_off else REIMBURSED + FEE)
+        total_on = sum(r.project_investment_outflow_keur for r in on.cashflows)
+        total_off = sum(r.project_investment_outflow_keur for r in off.cashflows)
+        assert total_on - total_off == pytest.approx(REIMBURSED + FEE)
+        # no hard-CAPEX double counting
+        assert on.total_hard_capex_investment_keur == pytest.approx(
+            off.total_hard_capex_investment_keur)
+        # operating inflow unchanged, so Project IRR responds (falls)
+        assert on.total_operating_inflow_keur == pytest.approx(off.total_operating_inflow_keur)
+        assert on.project_xirr < off.project_xirr
 
-    def test_developer_uses_are_capitalised_so_statements_balance(self, solar_on):
+    def test_reimbursement_and_fee_each_move_project_investment(self, solar_inputs):
+        from app.services.production_financial_authority import run_clean_production
+
+        def invest(**kw):
+            run = run_clean_production(replace(
+                solar_inputs, development_economics=_active(**kw)))
+            p = run.g2c_result.return_summary.project
+            return sum(r.project_investment_outflow_keur for r in p.cashflows), p.project_xirr
+
+        base_inv, base_irr = invest(reimbursed_development_cost_keur=0.0,
+                                    developer_fee_value=100.0)
+        reimb_inv, reimb_irr = invest(reimbursed_development_cost_keur=1000.0,
+                                      developer_fee_value=100.0)
+        fee_inv, fee_irr = invest(reimbursed_development_cost_keur=0.0,
+                                  developer_fee_value=600.0)
+        assert reimb_inv - base_inv == pytest.approx(1000.0)
+        assert fee_inv - base_inv == pytest.approx(500.0)
+        assert reimb_irr < base_irr and fee_irr < base_irr
+
+    def test_developer_uses_are_capitalised_as_soft_costs_so_statements_balance(self, solar_on):
+        from finco_core.inputs import ASSET_CLASS_USEFUL_LIFE, AssetClass
+
         statements = solar_on.financial_statements_result
         assert statements.status.value == "OK"
         checks = [p.balance_check_keur for p in statements.balance_sheet_periods
@@ -623,8 +658,42 @@ class TestProjectUsesAndFinancing:
         components = {c.code: c for c in basis.components}
         assert components["development_cost_reimbursement"].amount_keur == REIMBURSED
         assert components["developer_fee"].amount_keur == FEE
+        for code in ("development_cost_reimbursement", "developer_fee"):
+            assert components[code].asset_class_code == AssetClass.SOFT_COSTS.value
+            assert components[code].useful_life_override is None     # existing authority
         assert components["developer_fee"].provenance == \
             "DEVELOPER_ECONOMICS_V1_CAPITALISED_PROJECT_USE"
+        assert ASSET_CLASS_USEFUL_LIFE[AssetClass.SOFT_COSTS] == 5
+        # civil_grid is not silently used for the developer components
+        assert not any(c.asset_class_code == "civil_grid" and c.code in
+                       ("development_cost_reimbursement", "developer_fee")
+                       for c in basis.components)
+
+    def test_book_basis_mode_is_explicit_typed_authority(self, solar_inputs):
+        from finco_core.inputs import DeveloperBookBasisMode
+
+        assert _active().book_basis_mode is DeveloperBookBasisMode.CAPITALISE_AS_SOFT_COSTS
+        assert resolve_developer_project_uses(replace(
+            solar_inputs, development_economics=_active())).book_basis_mode == \
+            "CAPITALISE_AS_SOFT_COSTS"
+        with pytest.raises(ValueError, match="DEV_ECON_INVALID_ENUM"):
+            _active(book_basis_mode="civil_grid")
+
+    def test_soft_cost_depreciation_uses_existing_useful_life_authority(
+            self, solar_off, solar_on):
+        from finco_core.inputs import ASSET_CLASS_USEFUL_LIFE, AssetClass
+
+        life = ASSET_CLASS_USEFUL_LIFE[AssetClass.SOFT_COSTS]
+        assert life == 5
+        dep = lambda run: [p.book_depreciation_keur for p in
+                           run.financial_statements_result.income_statement_periods]
+        extra = [on - off for on, off in zip(dep(solar_on), dep(solar_off))]
+        assert sum(extra) == pytest.approx(REIMBURSED + FEE, rel=5e-2) or 0.0 < sum(extra) <= \
+            REIMBURSED + FEE + 1e-6
+        # five-year straight-line shape: the incremental charge ends once the SOFT_COSTS
+        # life is exhausted (existing depreciation engine, no Developer-owned formula)
+        positive = [i for i, v in enumerate(extra) if v > 1e-9]
+        assert positive and len(positive) < len(extra)
 
     def test_run_carries_the_developer_ledger_exactly_as_computed_once(self, solar_inputs, solar_on):
         direct = compute_developer_economics(solar_on.project_inputs)

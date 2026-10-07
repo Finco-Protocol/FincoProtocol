@@ -53,11 +53,13 @@ existing payloads are byte-identical. Absent and disabled both hash to `None`.
 `ProjectUses` and to `total_project_uses_keur`. The G2A fixed point, senior debt
 sizing, IDC and sponsor funding therefore respond through existing logic.
 
-* The unlevered project return keeps its hard-CAPEX-only methodology and records
-  the developer uses explicitly as `excluded_developer_economics_uses_keur`
-  (never `UNCLASSIFIED`).
+* Reimbursement and fee are economic project costs: they are INCLUDED in the
+  unlevered Project IRR investment outflow at the canonical Financial Close date
+  (reported as `included_developer_economics_uses_keur`; hard CAPEX is not
+  re-counted). Active Developer Economics may therefore lower Project IRR.
+  Financing costs and reserve funding keep their established exclusions.
 * The developer uses are capitalised into the book depreciable asset basis as two
-  `civil_grid` components so the balance sheet stays balanced.
+  `soft_costs` components (typed `DeveloperBookBasisMode.CAPITALISE_AS_SOFT_COSTS`; useful life from the existing asset-class authority) so the balance sheet stays balanced.
 
 ## Developer metrics
 

@@ -46,6 +46,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from finco_core.inputs._models import AssetClass
 from finco_core.inputs.book_depreciable_asset_basis import (
     BookDepreciableAssetBasis,
     BookDepreciableAssetComponent,
@@ -68,10 +69,12 @@ _PROV_VAT = "CONSTRUCTION_FINANCING_RESULT_VAT_CAPITALIZED"
 
 
 _PROV_DEVELOPER = "DEVELOPER_ECONOMICS_V1_CAPITALISED_PROJECT_USE"
-# Same asset class as the model's existing project-rights / project-acquisition
-# CAPEX lines (CapexStructure.project_rights / project_acquisition): paying the
-# developer is the acquisition of the project's development rights.
-_DEVELOPER_ASSET_CLASS_CODE = "civil_grid"
+# Explicit typed treatment (DeveloperBookBasisMode): soft costs. The asset class is
+# the existing AssetClass authority; its useful life is resolved downstream by the
+# existing asset-class useful-life authority (no life is duplicated here).
+_DEVELOPER_ASSET_CLASS_BY_MODE = {
+    "CAPITALISE_AS_SOFT_COSTS": AssetClass.SOFT_COSTS.value,
+}
 
 
 def build_book_depreciable_asset_basis(
@@ -111,6 +114,12 @@ def _with_developer_uses(
     No-op (same object) when there are no developer uses."""
     if developer_uses is None or developer_uses.total_keur == 0.0:
         return basis
+    asset_class_code = _DEVELOPER_ASSET_CLASS_BY_MODE.get(developer_uses.book_basis_mode)
+    if asset_class_code is None:
+        raise ValueError(
+            "DEV_ECON_BOOK_BASIS_MODE_MISSING: developer project uses require an "
+            f"explicit typed book_basis_mode, got {developer_uses.book_basis_mode!r}"
+        )
     extra: list[BookDepreciableAssetComponent] = []
     for code, name, amount in (
         ("development_cost_reimbursement", "Development Cost Reimbursement",
@@ -120,7 +129,7 @@ def _with_developer_uses(
         if amount > 0.0:
             extra.append(BookDepreciableAssetComponent(
                 code=code, name=name, amount_keur=amount,
-                asset_class_code=_DEVELOPER_ASSET_CLASS_CODE,
+                asset_class_code=asset_class_code,
                 useful_life_override=None, provenance=_PROV_DEVELOPER,
             ))
     return BookDepreciableAssetBasis(

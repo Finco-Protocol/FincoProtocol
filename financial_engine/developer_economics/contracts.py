@@ -41,6 +41,8 @@ class DeveloperProjectUses:
 
     development_cost_reimbursement_keur: float = 0.0
     developer_fee_keur: float = 0.0
+    # Typed book-basis treatment (DeveloperBookBasisMode value); None only when no uses.
+    book_basis_mode: str | None = None
 
     @property
     def total_keur(self) -> float:

@@ -95,7 +95,8 @@ def _construction_investment_rows(
     period_uses = tuple(float(period.project_cash_uses_keur) for period in periods)
     uses = financing.project_uses
     # Developer Economics V1: typed developer uses are FC-date project uses outside the
-    # hard-CAPEX construction vector; they are classified here (never "unclassified").
+    # hard-CAPEX construction vector; they are classified here (never "unclassified")
+    # and enter the project investment outflow separately in _project_return.
     developer_uses = _developer_uses_keur(uses)
     non_construction_use = financing.construction_funding.non_construction_fc_use
     construction_funding_is_hard_capex_only = (
@@ -208,7 +209,7 @@ def _project_return_failure(
         other_explicit_project_uses_keur=float(
             uses.other_explicit_project_uses_keur
         ),
-        excluded_developer_economics_uses_keur=_developer_uses_keur(uses),
+        included_developer_economics_uses_keur=_developer_uses_keur(uses),
         total_operating_inflow_keur=sum(
             float(period.ebitda_keur)
             for period in financing.project_model_result.periods
@@ -255,6 +256,15 @@ def _project_return(
     for cash_date, amount in construction_rows:
         by_date[cash_date][0] += amount
 
+    # Developer Economics V1: development cost reimbursement and developer fee are
+    # economic project costs (not financing cost / reserve funding), so they are part
+    # of the unlevered project investment outflow at the canonical Financial Close
+    # date. Hard CAPEX is NOT re-counted: the construction vector above is hard CAPEX
+    # only and the developer uses are separate typed project uses.
+    developer_investment = _developer_uses_keur(uses)
+    if developer_investment > 0.0:
+        by_date[project_inputs.info.financial_close][0] += developer_investment
+
     for period in model.periods:
         if not period.is_operation:
             continue
@@ -290,7 +300,7 @@ def _project_return(
         project_xirr_status=status,
         total_hard_capex_investment_keur=sum(
             row.project_investment_outflow_keur for row in rows
-        ),
+        ) - developer_investment,
         excluded_financing_cost_uses_keur=(
             financing.project_uses.explicit_financing_cost_uses_keur
         ),
@@ -300,9 +310,7 @@ def _project_return(
         other_explicit_project_uses_keur=(
             financing.project_uses.other_explicit_project_uses_keur
         ),
-        excluded_developer_economics_uses_keur=_developer_uses_keur(
-            financing.project_uses
-        ),
+        included_developer_economics_uses_keur=developer_investment,
         total_operating_inflow_keur=sum(
             row.project_operating_inflow_keur for row in rows
         ),

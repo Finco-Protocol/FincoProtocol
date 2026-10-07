@@ -101,6 +101,7 @@ from finco_core.inputs.construction_financing import (
 )
 
 from finco_core.inputs.development import (
+    DeveloperBookBasisMode,
     DeveloperFeeMode,
     DeveloperSettlementAuthority,
     DevelopmentEconomicsInput,
@@ -400,6 +401,7 @@ def _ser_development_economics(d: DevelopmentEconomicsInput | None) -> dict | No
         "developer_fee_mode": d.developer_fee_mode.value,
         "developer_fee_value": d.developer_fee_value,
         "settlement": d.settlement.value,
+        "book_basis_mode": d.book_basis_mode.value,
     }
 
 
@@ -421,6 +423,7 @@ def _deser_development_economics(d: dict | None) -> DevelopmentEconomicsInput | 
         developer_fee_mode=DeveloperFeeMode(d["developer_fee_mode"]),
         developer_fee_value=d.get("developer_fee_value", 0.0),
         settlement=DeveloperSettlementAuthority(d["settlement"]),
+        book_basis_mode=DeveloperBookBasisMode(d["book_basis_mode"]),
     )
 
 

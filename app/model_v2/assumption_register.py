@@ -1308,6 +1308,9 @@ def _collect_developer(inputs, sec) -> None:
     sec.enum_add("developer.settlement", config.settlement,
                  path="development_economics.settlement",
                  label="Developer Settlement Authority")
+    sec.enum_add("developer.book_basis_mode", config.book_basis_mode,
+                 path="development_economics.book_basis_mode",
+                 label="Developer Book Basis Treatment")
 
 
 # ---------------------------------------------------------------------------
