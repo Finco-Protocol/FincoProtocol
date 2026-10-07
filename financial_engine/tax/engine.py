@@ -64,16 +64,12 @@ def _build_adj_map(period_adjustments: tuple) -> dict[int, float]:
     }
 
 
-def _period_alloc_fraction(
-    period_index: int,
-    frags_for_year: tuple,
-) -> float:
-    """Sum of allocation_fraction for fragments of ``period_index`` in one year."""
-    return sum(
-        f.allocation_fraction
-        for f in frags_for_year
-        if f.source_period_index == period_index
-    )
+def _fragments_by_period(frags_for_year: tuple) -> dict[int, list]:
+    """Group one year's fragments by source period, preserving fragment order."""
+    grouped: dict[int, list] = {}
+    for f in frags_for_year:
+        grouped.setdefault(f.source_period_index, []).append(f)
+    return grouped
 
 
 def calculate_tax(
@@ -263,12 +259,28 @@ def calculate_tax(
     # For each year, the sum of per-period allocation fractions may exceed 1.0
     # (e.g. two full-year periods each have frac=1.0 in the same year → sum=2.0).
     # Normalise so that: sum_over_periods(cit_accrual_from_year_Y) == AR_Y.CIT.
+    # Per-year fragment index, built once: replaces repeated O(periods x fragments)
+    # scans. Each sum() below runs over the same elements in the same order as before.
+    frags_by_period_by_year: dict[int, dict[int, list]] = {
+        b.tax_year: _fragments_by_period(b.fragments) for b in bases  # type: ignore[attr-defined]
+    }
+    raw_frac_by_year: dict[int, dict[int, float]] = {
+        yr: {idx: sum(f.allocation_fraction for f in frs) for idx, frs in by_idx.items()}
+        for yr, by_idx in frags_by_period_by_year.items()
+    }
+
+    first_pos_by_year: dict[int, dict[int, int]] = {}
+    for ar in annual_results:
+        first_pos: dict[int, int] = {}
+        for i, pidx in enumerate(ar.period_indices):
+            first_pos.setdefault(pidx, i)
+        first_pos_by_year[ar.tax_year] = first_pos
+
     year_alloc_sum: dict[int, float] = {}
     for ar in annual_results:
-        basis = basis_by_tax_year[ar.tax_year]
-        frags_for_year = basis.fragments  # type: ignore[union-attr]
+        raw_fracs = raw_frac_by_year[ar.tax_year]
         year_alloc_sum[ar.tax_year] = sum(
-            _period_alloc_fraction(idx, frags_for_year) for idx in ar.period_indices
+            raw_fracs.get(idx, 0) for idx in ar.period_indices
         )
 
     # Build per-period → list of (tax_year, alloc_fraction_normalised, annual_result).
@@ -277,11 +289,10 @@ def calculate_tax(
         idx: [] for idx in all_period_indices
     }
     for ar in annual_results:
-        basis = basis_by_tax_year[ar.tax_year]
-        frags_for_year = basis.fragments  # type: ignore[union-attr]
+        raw_fracs = raw_frac_by_year[ar.tax_year]
         denom = year_alloc_sum.get(ar.tax_year, 1.0) or 1.0
         for idx in ar.period_indices:
-            raw_frac = _period_alloc_fraction(idx, frags_for_year)
+            raw_frac = raw_fracs.get(idx, 0)
             norm_frac = raw_frac / denom
             period_year_contributions[idx].append((ar.tax_year, norm_frac, ar))
 
@@ -316,13 +327,9 @@ def calculate_tax(
         # ensuring sum(cit_accrual_keur over all periods) == AR_Y.CIT for each year.
         allocations: list[PeriodTaxYearAllocation] = []
         for yr, alloc_frac, ar in contributions:
-            basis = basis_by_tax_year[yr]
-            frags_for_year = basis.fragments  # type: ignore[union-attr]
-
             # Per-year ATAD for this period (from ar.period_atad_* arrays).
-            yr_idx_list = list(ar.period_indices)
-            if idx in yr_idx_list:
-                pos = yr_idx_list.index(idx)
+            pos = first_pos_by_year[yr].get(idx)
+            if pos is not None:
                 yr_ded = ar.period_atad_deductible[pos]
                 yr_dis = ar.period_atad_disallowed[pos]
             else:
@@ -330,25 +337,12 @@ def calculate_tax(
                 yr_dis = 0.0
 
             # Allocated amounts for this period in this year (from fragment amounts).
-            yr_ebitda = sum(
-                f.ebitda_keur for f in frags_for_year if f.source_period_index == idx
-            )
-            yr_reint = sum(
-                f.other_fiscal_reintegration_keur
-                for f in frags_for_year if f.source_period_index == idx
-            )
-            yr_shl_tax_eligible = sum(
-                f.shl_tax_eligible_interest_keur
-                for f in frags_for_year if f.source_period_index == idx
-            )
-            yr_shl_non_deductible = sum(
-                f.shl_non_deductible_interest_keur
-                for f in frags_for_year if f.source_period_index == idx
-            )
-            yr_financing_income = sum(
-                f.financing_income_keur
-                for f in frags_for_year if f.source_period_index == idx
-            )
+            frs = frags_by_period_by_year[yr].get(idx, ())
+            yr_ebitda = sum(f.ebitda_keur for f in frs)
+            yr_reint = sum(f.other_fiscal_reintegration_keur for f in frs)
+            yr_shl_tax_eligible = sum(f.shl_tax_eligible_interest_keur for f in frs)
+            yr_shl_non_deductible = sum(f.shl_non_deductible_interest_keur for f in frs)
+            yr_financing_income = sum(f.financing_income_keur for f in frs)
             yr_ti_share = ar.taxable_income_before_lcf_keur * alloc_frac
             yr_cit = ar.current_tax_liability_keur * alloc_frac
 
