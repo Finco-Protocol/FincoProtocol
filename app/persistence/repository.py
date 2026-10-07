@@ -318,6 +318,40 @@ def record_workspace_runtime(
     saved_snapshot = existing.saved_snapshot if existing else runtime_snapshot
     draft_snapshot = existing.draft_snapshot if existing else runtime_snapshot
     dirty = existing.dirty if existing else False
+    # Run History V1: a successful LEGACY canonical run appends its
+    # immutable history row inside the same save transaction. The legacy
+    # path has NO Model V2 binding and NO captured composite identity —
+    # both stay absent (never invented); engine/workbook versions come
+    # from the canonical version authorities at commit time.
+    from app.persistence.run_history_repository import (
+        prepare_run_history_payload as _prepare_history,
+    )
+    from financial_engine.version import ENGINE_VERSION as _engine_version
+    from app.workbook.registry import WORKBOOK as _workbook_registry
+    _history_payload = _prepare_history(
+        user_id=user_id,
+        project_id=project_id,
+        project_code=project_code,
+        runtime_snapshot_id=runtime_snapshot_id,
+        runtime_origin=runtime_origin,
+        ran_at=_now_utc().isoformat(),
+        runtime_summary=runtime_summary,
+        financial_statements=financial_statements or {},
+        debt_schedule=debt_schedule or {},
+        tax_schedule=tax_schedule or {},
+        distribution_schedule=distribution_schedule or {},
+        sponsor_schedule=sponsor_schedule or {},
+        engine_version=str(_engine_version),
+        workbook_version=str(getattr(_workbook_registry, "version", "unknown")),
+        composite_hash=None,
+        last_runtime_identity=None,
+        active_scenario_id=active_scenario_id,
+        active_scenario_name=active_scenario_name,
+        last_runtime_scenario_id=(
+            active_scenario_id if runtime_origin == "saved_state" else None
+        ),
+        replay_metadata=replay_metadata,
+    )
     return save_workspace_state(
         user_id=user_id,
         project_id=project_id,
@@ -340,6 +374,7 @@ def record_workspace_runtime(
         governance_state=governance_state or (existing.governance_state if existing else {}),
         replay_metadata=replay_metadata,
         last_runtime_at=_now_utc(),
+        run_history_payload=_history_payload,
     )
 
 

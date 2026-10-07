@@ -321,6 +321,45 @@ def _init_schema(conn):
     # (app.model_v2.persistence). '' (empty) means NO Model V2 state: the exact
     # legacy absence. Rows are never defaulted with invented V2 economics.
     _ensure_column(conn, "workspace_states", "model_v2_working_state_json", "TEXT NOT NULL DEFAULT ''")
+    # Run History V1: append-only canonical ledger of successful runs.
+    # One immutable row per successful canonical run, appended INSIDE the
+    # same transaction that promotes the Last Run (never a second commit
+    # path). History starts prospectively: existing workspaces are never
+    # back-filled and no row is synthesized from the current Last Run.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS model_run_history (
+            history_id                  TEXT PRIMARY KEY,
+            user_id                     TEXT NOT NULL,
+            project_id                  TEXT NOT NULL,
+            project_code                TEXT NOT NULL,
+            runtime_snapshot_id         TEXT NOT NULL,
+            runtime_origin              TEXT,
+            ran_at                      TEXT NOT NULL,
+            engine_version              TEXT,
+            workbook_version            TEXT,
+            active_scenario_id          TEXT,
+            active_scenario_name        TEXT,
+            last_runtime_scenario_id    TEXT,
+            composite_hash              TEXT,
+            last_runtime_identity_json  TEXT,
+            runtime_summary_json        TEXT NOT NULL,
+            financial_statements_json   TEXT NOT NULL,
+            debt_schedule_json          TEXT NOT NULL,
+            tax_schedule_json           TEXT NOT NULL,
+            distribution_schedule_json  TEXT NOT NULL,
+            sponsor_schedule_json       TEXT NOT NULL,
+            integrity_evidence_json     TEXT NOT NULL DEFAULT '{}',
+            replay_metadata_json        TEXT NOT NULL DEFAULT '{}',
+            created_at                  TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_model_run_history_project"
+        " ON model_run_history(user_id, project_id, ran_at DESC, history_id DESC)"
+    )
     conn.commit()
 
 

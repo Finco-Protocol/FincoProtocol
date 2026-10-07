@@ -254,6 +254,13 @@ def save_workspace_state(
     # ModelV2WorkingState to write it — or use
     # clear_workspace_model_v2_state to remove it explicitly.
     model_v2_working_state: "Optional[ModelV2WorkingState]" = None,
+    # Run History V1: a fully-validated history payload (built by
+    # app.persistence.run_history_repository.prepare_run_history_payload).
+    # When provided, the immutable history row is appended INSIDE this
+    # save's transaction so a legacy Last Run promotion and its history
+    # append commit or roll back together. Ordinary (non-run) saves never
+    # pass it, so they never append history.
+    run_history_payload: "Optional[Mapping[str, Any]]" = None,
 ) -> "WorkspaceStateRecord":
     from app.persistence.records import WorkspaceStateRecord
     now = _now_utc()
@@ -341,6 +348,11 @@ def save_workspace_state(
         _model_v2_json = _model_v2_state_json(
             model_v2_working_state, existing.model_v2_working_state_json)
         with get_cursor() as cur:
+            if run_history_payload is not None:
+                # Run History V1: the connection runs in autocommit mode, so
+                # an atomic history append needs an explicit transaction -
+                # a history failure must roll back the Last Run promotion.
+                cur.execute("BEGIN IMMEDIATE")
             cur.execute(
                 """
                 UPDATE workspace_states
@@ -381,12 +393,20 @@ def save_workspace_state(
                     user_id,
                 ),
             )
+            if run_history_payload is not None:
+                from app.persistence.run_history_repository import (
+                    append_run_history_cursor as _append_history,
+                )
+                _append_history(cur, run_history_payload)
+                cur.execute("COMMIT")
     else:
         workspace_id = uuid.uuid4().hex[:16]
         created_at = now
         replay_metadata.setdefault("workspace_id", workspace_id)
         _model_v2_json = _model_v2_state_json(model_v2_working_state, "")
         with get_cursor() as cur:
+            if run_history_payload is not None:
+                cur.execute("BEGIN IMMEDIATE")
             cur.execute(
                 """
                 INSERT INTO workspace_states (
@@ -428,6 +448,12 @@ def save_workspace_state(
                     _model_v2_json,
                 ),
             )
+            if run_history_payload is not None:
+                from app.persistence.run_history_repository import (
+                    append_run_history_cursor as _append_history,
+                )
+                _append_history(cur, run_history_payload)
+                cur.execute("COMMIT")
 
     return WorkspaceStateRecord(
         workspace_id=workspace_id,
@@ -984,6 +1010,48 @@ def v2_atomic_run_commit(
                 user_id,
             ),
         )
+        # Run History V1: append the immutable successful-run ledger row
+        # INSIDE the same exclusive transaction as the Last Run promotion.
+        # If the append fails, the generic rollback below reverts the Last
+        # Run promotion too - Last Run=C with History C missing (and the
+        # inverse) is unrepresentable.
+        from app.persistence.run_history_repository import (
+            append_run_history_cursor as _append_history,
+            prepare_run_history_payload as _prepare_history,
+        )
+        _history_payload = _prepare_history(
+            user_id=user_id,
+            project_id=project_id,
+            project_code=project_code,
+            runtime_snapshot_id=runtime_snapshot_id,
+            runtime_origin=runtime_origin,
+            ran_at=(
+                ran_at.isoformat() if hasattr(ran_at, "isoformat")
+                else str(ran_at)
+            ),
+            runtime_summary=runtime_summary or {},
+            financial_statements=financial_statements or {},
+            debt_schedule=debt_schedule or {},
+            tax_schedule=tax_schedule or {},
+            distribution_schedule=distribution_schedule or {},
+            sponsor_schedule=sponsor_schedule or {},
+            engine_version=_identity_payload.get("engine_version"),
+            workbook_version=_identity_payload.get(
+                "workbook_version", WORKBOOK.version
+            ),
+            composite_hash=identity.composite_hash,
+            last_runtime_identity=_identity_payload,
+            active_scenario_id=active_scenario_id,
+            active_scenario_name=active_scenario_name,
+            last_runtime_scenario_id=(
+                last_runtime_scenario_id
+                if last_runtime_scenario_id is not None
+                else active_scenario_id
+            ),
+            integrity_evidence=integrity_evidence or {},
+            replay_metadata=replay_metadata,
+        )
+        _append_history(cur, _history_payload)
         conn.execute("COMMIT")
 
         cur.execute(
