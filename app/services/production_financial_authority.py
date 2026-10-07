@@ -229,6 +229,10 @@ class CleanProductionRun:
     decision: AuthorityDecision
     authority_metadata: dict = field(default_factory=dict)
     financial_statements_result: object | None = None
+    # Developer Economics V1: separate developer-ledger result (financial_engine.
+    # developer_economics), computed ONCE here from the effective inputs. None when
+    # Developer Economics is absent or disabled. Presentation layers pass it through.
+    developer_economics_result: object | None = None
 
 
 _POLICY_RUN_CACHE: "dict[str, tuple]" = {}
@@ -372,6 +376,8 @@ def run_clean_production(
         g2c, effective_inputs
     )
 
+    from financial_engine.developer_economics.model import compute_developer_economics
+
     return CleanProductionRun(
         g2c_result=g2c,
         project_inputs=effective_inputs,
@@ -380,4 +386,5 @@ def run_clean_production(
         decision=decision,
         authority_metadata=metadata,
         financial_statements_result=financial_statements_result,
+        developer_economics_result=compute_developer_economics(effective_inputs),
     )

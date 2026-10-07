@@ -53,6 +53,7 @@ from finco_core.inputs.book_depreciable_asset_basis import (
 
 if TYPE_CHECKING:
     from finco_core.inputs._models import CapexStructure
+    from financial_engine.developer_economics.contracts import DeveloperProjectUses
     from financial_engine.financing.contracts import ConstructionFinancingResult
 
 _GENERIC_AUTHORITY = "GENERIC_CAPEX_STRUCTURE_BOOK_BASIS"
@@ -66,9 +67,17 @@ _PROV_STRUCT = "CONSTRUCTION_FINANCING_RESULT_STRUCTURING_FEE"
 _PROV_VAT = "CONSTRUCTION_FINANCING_RESULT_VAT_CAPITALIZED"
 
 
+_PROV_DEVELOPER = "DEVELOPER_ECONOMICS_V1_CAPITALISED_PROJECT_USE"
+# Same asset class as the model's existing project-rights / project-acquisition
+# CAPEX lines (CapexStructure.project_rights / project_acquisition): paying the
+# developer is the acquisition of the project's development rights.
+_DEVELOPER_ASSET_CLASS_CODE = "civil_grid"
+
+
 def build_book_depreciable_asset_basis(
     capex_structure: "CapexStructure",
     construction_financing_result: "ConstructionFinancingResult | None" = None,
+    developer_uses: "DeveloperProjectUses | None" = None,
 ) -> BookDepreciableAssetBasis:
     """Build the canonical book depreciable asset basis for one project.
 
@@ -85,8 +94,39 @@ def build_book_depreciable_asset_basis(
         BookDepreciableAssetBasis with one component per depreciable line item.
     """
     if construction_financing_result is not None:
-        return _build_typed_construction_basis(capex_structure, construction_financing_result)
-    return _build_generic_basis(capex_structure)
+        basis = _build_typed_construction_basis(capex_structure, construction_financing_result)
+    else:
+        basis = _build_generic_basis(capex_structure)
+    return _with_developer_uses(basis, developer_uses)
+
+
+def _with_developer_uses(
+    basis: BookDepreciableAssetBasis,
+    developer_uses: "DeveloperProjectUses | None",
+) -> BookDepreciableAssetBasis:
+    """Developer Economics V1: development cost reimbursement and developer fee are
+    project uses paid to the developer for the project's development rights. They
+    are capitalised into the depreciable asset base (two separate typed components,
+    never collapsed) so the balance sheet carries the asset the funding paid for.
+    No-op (same object) when there are no developer uses."""
+    if developer_uses is None or developer_uses.total_keur == 0.0:
+        return basis
+    extra: list[BookDepreciableAssetComponent] = []
+    for code, name, amount in (
+        ("development_cost_reimbursement", "Development Cost Reimbursement",
+         developer_uses.development_cost_reimbursement_keur),
+        ("developer_fee", "Developer Fee", developer_uses.developer_fee_keur),
+    ):
+        if amount > 0.0:
+            extra.append(BookDepreciableAssetComponent(
+                code=code, name=name, amount_keur=amount,
+                asset_class_code=_DEVELOPER_ASSET_CLASS_CODE,
+                useful_life_override=None, provenance=_PROV_DEVELOPER,
+            ))
+    return BookDepreciableAssetBasis(
+        components=tuple(basis.components) + tuple(extra),
+        authority=basis.authority,
+    )
 
 
 def _build_generic_basis(capex_structure: "CapexStructure") -> BookDepreciableAssetBasis:

@@ -228,10 +228,16 @@ def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
     return compute_project_uses(project_inputs)
 
 
-def _build_generic_book_basis(capex_structure):
+def _developer_uses(project_inputs: ProjectInputs):
+    from financial_engine.developer_economics.model import resolve_developer_project_uses
+    return resolve_developer_project_uses(project_inputs)
+
+
+def _build_generic_book_basis(capex_structure, developer_uses=None):
     """Build BookDepreciableAssetBasis for the generic (Solar/Wind) path."""
     from financial_engine.book_basis import build_book_depreciable_asset_basis
-    return build_book_depreciable_asset_basis(capex_structure, construction_financing_result=None)
+    return build_book_depreciable_asset_basis(
+        capex_structure, construction_financing_result=None, developer_uses=developer_uses)
 
 
 def _provisional_typed_construction_funding(
@@ -871,7 +877,11 @@ def _run_with_construction_idc(
     )
 
     from financial_engine.book_basis import build_book_depreciable_asset_basis
-    construction_basis = build_book_depreciable_asset_basis(orig_capex, construction_result)
+    from financial_engine.developer_economics.model import resolve_developer_project_uses
+    construction_basis = build_book_depreciable_asset_basis(
+        orig_capex, construction_result,
+        developer_uses=resolve_developer_project_uses(project_inputs),
+    )
 
     return ProjectFinancingResult(
         project_model_result=inner_result.project_model_result,
@@ -1436,5 +1446,8 @@ def run_project_financing_model(
         fixed_point_iteration_count=iteration,
         fixed_point_maximum_difference_keur=maximum_difference,
         shareholder_loan_model_input=funded_model_input.shareholder_loan,
-        book_depreciable_asset_basis=_build_generic_book_basis(project_inputs.capex),
+        book_depreciable_asset_basis=_build_generic_book_basis(
+            project_inputs.capex,
+            developer_uses=_developer_uses(project_inputs),
+        ),
     )

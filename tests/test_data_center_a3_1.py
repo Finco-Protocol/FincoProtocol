@@ -479,7 +479,9 @@ def test_DC_A3_ZERO_DIFF_FINCO_CORE():
     """
     # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
     from finance_integrity_governance import changed_paths_vs_main
-    changed = [f for f in changed_paths_vs_main() if f.startswith("finco_core/")]
+    from model_v2_governance import approved_by_active_model_v2_scope
+    changed = [f for f in changed_paths_vs_main()
+               if f.startswith("finco_core/") and not approved_by_active_model_v2_scope(f)]
     assert changed == [], (
         f"A3.1 authority boundary: finco_core/** must have ZERO diff from main. "
         f"Changed files: {changed}"

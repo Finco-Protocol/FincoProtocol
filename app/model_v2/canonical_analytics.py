@@ -35,8 +35,7 @@ Deterministic: the same canonical run produces a byte-identical serialized
 snapshot; the fingerprint is a content-integrity helper only and never
 replaces run identity (Workflow 04 principle).
 
-Governance: exact-path authorized support file under
-docs/model_v2/ACTIVE_EPIC_SCOPE.json. domain/analytics/** remains frozen
+Governance: released Model V2 support file. domain/analytics/** remains frozen
 and untouched; no Revenue Runtime (Workflow 05B) files are used.
 """
 from __future__ import annotations
@@ -83,6 +82,8 @@ class MetricCategory(str, Enum):
     DEBT_COVERAGE = "DEBT_COVERAGE"
     OPERATING = "OPERATING"
     UNIT_ECONOMICS = "UNIT_ECONOMICS"
+    # Developer Economics V1: the separate developer ledger (never sponsor/project).
+    DEVELOPER = "DEVELOPER"
     FUTURE = "FUTURE"
 
 
@@ -103,6 +104,17 @@ _TRACE_BACKED_METRICS: tuple[tuple[str, str, str], ...] = (
     ("total_opex_keur", "OPERATING", "kEUR"),
     ("total_ebitda_keur", "OPERATING", "kEUR"),
     ("total_tax_keur", "OPERATING", "kEUR"),
+)
+
+# Developer Economics V1 metrics: trace-backed (same stable output identity),
+# emitted only when the run carries a developer-ledger result.
+_DEVELOPER_METRICS: tuple[tuple[str, str, str], ...] = (
+    ("developer_total_development_spend_keur", "DEVELOPER", "kEUR"),
+    ("developer_reimbursed_development_cost_keur", "DEVELOPER", "kEUR"),
+    ("developer_fee_keur", "DEVELOPER", "kEUR"),
+    ("developer_total_receipts_keur", "DEVELOPER", "kEUR"),
+    ("developer_moic", "DEVELOPER", "multiple"),
+    ("developer_xirr", "DEVELOPER", "fraction"),
 )
 
 # Canonical MOIC authorities live on the G2C result but are not (yet) trace
@@ -346,6 +358,10 @@ def build_canonical_analytics(clean_run, *, run_identity, trace=None,
     for metric_id, category, unit in _TRACE_BACKED_METRICS:
         entries.append(_metric_from_trace_entry(trace.entry(metric_id),
                                                 category, unit))
+    if getattr(clean_run, "developer_economics_result", None) is not None:
+        for metric_id, category, unit in _DEVELOPER_METRICS:
+            entries.append(_metric_from_trace_entry(trace.entry(metric_id),
+                                                    category, unit))
     g2c = clean_run.g2c_result
     for metric_id, category, unit, attribute in _G2C_METRICS:
         entries.append(_moic_metric(g2c, metric_id, category, unit, attribute))

@@ -61,6 +61,11 @@ class _ProjectReturnAuthorityError(ValueError):
         self.status = status
 
 
+def _developer_uses_keur(uses: object) -> float:
+    return float(getattr(uses, "development_cost_reimbursement_keur", 0.0) or 0.0) + float(
+        getattr(uses, "developer_fee_keur", 0.0) or 0.0)
+
+
 def _construction_investment_rows(
     project_inputs: "ProjectInputs",
     financing: "ProjectFinancingResult",
@@ -89,12 +94,23 @@ def _construction_investment_rows(
     periods = financing.construction_funding.periods
     period_uses = tuple(float(period.project_cash_uses_keur) for period in periods)
     uses = financing.project_uses
+    # Developer Economics V1: typed developer uses are FC-date project uses outside the
+    # hard-CAPEX construction vector; they are classified here (never "unclassified").
+    developer_uses = _developer_uses_keur(uses)
+    non_construction_use = financing.construction_funding.non_construction_fc_use
     construction_funding_is_hard_capex_only = (
         abs(uses.explicit_financing_cost_uses_keur) <= _TOL
         and abs(uses.reserve_account_funding_keur) <= _TOL
         and abs(uses.other_explicit_project_uses_keur) <= _TOL
-        and abs(uses.total_project_uses_keur - hard_capex) <= _TOL
-        and financing.construction_funding.non_construction_fc_use is None
+        and abs(uses.total_project_uses_keur - developer_uses - hard_capex) <= _TOL
+        and (
+            non_construction_use is None
+            if developer_uses <= _TOL
+            else (
+                non_construction_use is not None
+                and abs(non_construction_use.uses_keur - developer_uses) <= _TOL
+            )
+        )
     )
     if (
         periods
@@ -192,6 +208,7 @@ def _project_return_failure(
         other_explicit_project_uses_keur=float(
             uses.other_explicit_project_uses_keur
         ),
+        excluded_developer_economics_uses_keur=_developer_uses_keur(uses),
         total_operating_inflow_keur=sum(
             float(period.ebitda_keur)
             for period in financing.project_model_result.periods
@@ -282,6 +299,9 @@ def _project_return(
         ),
         other_explicit_project_uses_keur=(
             financing.project_uses.other_explicit_project_uses_keur
+        ),
+        excluded_developer_economics_uses_keur=_developer_uses_keur(
+            financing.project_uses
         ),
         total_operating_inflow_keur=sum(
             row.project_operating_inflow_keur for row in rows

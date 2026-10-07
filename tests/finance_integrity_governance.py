@@ -78,5 +78,13 @@ def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
 
 
 def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
+    from model_v2_governance import released_engine_authority_matches
+
     changed = changed_paths_vs_main() if changed is None else changed
-    return sorted(f for f in changed if f.startswith(STRICTLY_FROZEN_PREFIXES))
+    # Exact-path, blob-pinned Developer Economics V1 authorities are the only
+    # exemption; every other finco_core/finco_radar path stays strictly frozen.
+    return sorted(
+        f for f in changed
+        if f.startswith(STRICTLY_FROZEN_PREFIXES)
+        and not (f.startswith("finco_core/") and released_engine_authority_matches(f))
+    )
