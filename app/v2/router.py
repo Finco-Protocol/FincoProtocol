@@ -3521,6 +3521,295 @@ async def v2_run_history_compare(
         request=request, name="partials/run_history_compare.html", context=ctx)
 
 
+# ---------------------------------------------------------------------------
+# Decision Support V1 — expanded same-project run compare (Run A vs Run B)
+# and cross-project canonical Last Run comparison.  READ ONLY over
+# persisted successful canonical runs; no engine execution, no mutation.
+# ---------------------------------------------------------------------------
+
+def _run_identity_of(entry):
+    return getattr(entry, "last_runtime_identity", None) or {}
+
+
+def _run_side_view(entry):
+    """One comparison side from an immutable history entry."""
+    from app.v2.run_history_projection import _enriched_kpis
+
+    class _EntryView:
+        runtime_summary = dict(getattr(entry, "runtime_summary", None) or {})
+        debt_schedule = getattr(entry, "debt_schedule", None) or {}
+        sponsor_schedule = getattr(entry, "sponsor_schedule", None) or {}
+
+    return {
+        "kpis": _enriched_kpis(_EntryView()),
+        "ran_at": str(getattr(entry, "ran_at", "") or "")[:16].replace("T", " "),
+        "scenario": getattr(entry, "active_scenario_name", None) or "Base",
+        "snapshot": str(getattr(entry, "runtime_snapshot_id", "") or "")[:8],
+        "identity": _run_identity_of(entry),
+        "sponsor_summary": (getattr(entry, "sponsor_schedule", None) or {}).get("summary", {}),
+        "debt_summary": (getattr(entry, "debt_schedule", None) or {}).get("summary", {}),
+    }
+
+
+def _last_run_side(ws, freshness):
+    """The canonical Last Run side from the workspace record."""
+    from app.v2.run_history_projection import _enriched_kpis
+
+    class _LastView:
+        runtime_summary = dict(getattr(ws, "last_runtime_summary", None) or {})
+        debt_schedule = getattr(ws, "last_debt_schedule", None) or {}
+        sponsor_schedule = getattr(ws, "last_sponsor_schedule", None) or {}
+
+    return {
+        "kpis": _enriched_kpis(_LastView()),
+        "ran_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        "scenario": getattr(ws, "active_scenario_name", None) or "Base",
+        "snapshot": str(getattr(ws, "last_runtime_snapshot_id", "") or "")[:8],
+        "identity": getattr(ws, "last_runtime_identity", None) or {},
+        "sponsor_summary": (getattr(ws, "last_sponsor_schedule", None) or {}).get("summary", {}),
+        "debt_summary": (getattr(ws, "last_debt_schedule", None) or {}).get("summary", {}),
+        "state": freshness.state.value,
+    }
+
+
+@router.get("/workbook/run-compare", response_class=HTMLResponse)
+async def v2_run_compare_expanded(
+    request: Request,
+    project: Optional[str] = None,
+    run_a: Optional[str] = None,      # "last" (default) or a history_id
+    run_b: Optional[str] = None,      # a history_id (required)
+):
+    """Expanded same-project run comparison (Decision Support V1).
+
+    Default: canonical Last Run (A) vs a selected immutable historical
+    successful run (B).  Run A may also be an older history_id
+    (historical-vs-historical).  Sections: variance over persisted canonical
+    metrics, changed assumptions from the persisted run-bound input
+    identities, and a deterministic factual Drivers-of-Change summary.
+    Labels follow Run Intelligence semantics: only the canonical Last Run is
+    CURRENT/STALE; every selected historical run stays HISTORICAL.
+    No engine execution, no mutation.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+    if not project or not run_b:
+        return HTMLResponse(
+            content="<p>Project and run_b required.</p>", status_code=400)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import (
+        RunHistoryError,
+        get_run_history_entry,
+    )
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+    from app.v2.decision_support_projection import (
+        build_assumption_diff,
+        build_drivers_of_change,
+        build_run_variance,
+        run_metric_view,
+    )
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return HTMLResponse(content="<p>No workspace state.</p>", status_code=404)
+
+    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    freshness = resolve_runtime_freshness(ws, current_composite_hash=pis.content_hash)
+
+    def _entry_or_404(history_id):
+        try:
+            return get_run_history_entry(
+                workspace_owner, project_record.project_id, history_id)
+        except RunHistoryError as exc:  # malformed payload — fail closed
+            return ("error", f"RUN_HISTORY_PAYLOAD_MALFORMED: {exc}")
+        # None handled by caller (404)
+
+    entry_a = None
+    if run_a and run_a != "last":
+        got = _entry_or_404(run_a)
+        if isinstance(got, tuple):
+            return HTMLResponse(content=f"<p role=\"alert\">{got[1]}</p>", status_code=422)
+        if got is None:
+            return HTMLResponse(content="<p>Run A history entry not found.</p>", status_code=404)
+        entry_a = got
+    got_b = _entry_or_404(run_b)
+    if isinstance(got_b, tuple):
+        return HTMLResponse(content=f"<p role=\"alert\">{got_b[1]}</p>", status_code=422)
+    if got_b is None:
+        return HTMLResponse(content="<p>Run B history entry not found.</p>", status_code=404)
+    entry_b = got_b
+
+    side_a_view = (_run_side_view(entry_a) if entry_a is not None
+                   else _last_run_side(ws, freshness))
+    side_a_label = ("Last Run" if entry_a is None
+                    else f"Historical Run · {side_a_view['ran_at']}")
+    side_a_is_last = entry_a is None
+    side_b_view = _run_side_view(entry_b)
+
+    view_a = run_metric_view(side_a_view["kpis"], side_a_view["sponsor_summary"],
+                             side_a_view["debt_summary"])
+    view_b = run_metric_view(side_b_view["kpis"], side_b_view["sponsor_summary"],
+                             side_b_view["debt_summary"])
+    sections = build_run_variance(view_a, view_b)
+    assumptions = build_assumption_diff(
+        side_a_view["identity"], side_b_view["identity"])
+    drivers = build_drivers_of_change(assumptions, sections)
+
+    ctx = {
+        "project_code": project_record.project_code,
+        "project_name": project_record.project_name,
+        "side_a": {"label": side_a_label, "ran_at": side_a_view["ran_at"],
+                   "scenario": side_a_view["scenario"],
+                   "snapshot": side_a_view["snapshot"],
+                   "is_last": side_a_is_last,
+                   "state": (freshness.state.value if side_a_is_last
+                             else "HISTORICAL")},
+        "side_b": {"label": f"Historical Run · {side_b_view['ran_at']}",
+                   "ran_at": side_b_view["ran_at"],
+                   "scenario": side_b_view["scenario"],
+                   "snapshot": side_b_view["snapshot"],
+                   "state": "HISTORICAL",
+                   "matches_working_copy": bool(
+                       entry_b.composite_hash and pis.content_hash
+                       and str(entry_b.composite_hash) == str(pis.content_hash))},
+        "sections": sections,
+        "assumptions": assumptions,
+        "drivers": drivers,
+        "back_url": f"/v2/workbook/run-history?project={project_record.project_code}",
+        "workspace_url": f"/v2/workbook?project={project_record.project_code}",
+    }
+    return _templates.TemplateResponse(
+        request=request, name="partials/run_compare_expanded.html", context=ctx)
+
+
+def _ds_country(record) -> str:
+    base = getattr(record, "baseline_snapshot", None) or {}
+    return str(base.get("country_iso", "") or base.get("country", "") or "")
+
+
+def _ds_capacity(record) -> str:
+    base = getattr(record, "baseline_snapshot", None) or {}
+    cap = base.get("capacity_mw")
+    try:
+        return f"{float(cap):.1f} MW" if cap else ""
+    except (TypeError, ValueError):
+        return ""
+
+
+def _ds_sort_num(display: str) -> float:
+    """Deterministic sort key from a formatted display value ('—' sorts last)."""
+    try:
+        return float(str(display).replace(",", "").rstrip("%x"))
+    except (ValueError, TypeError):
+        return float("-inf")
+
+
+@router.get("/compare-projects", response_class=HTMLResponse)
+async def compare_projects_page(
+    request: Request,
+    projects: Optional[str] = None,
+    sort: Optional[str] = None,
+    technology: Optional[str] = None,
+):
+    """Cross-project canonical Last Run comparison (Decision Support V1).
+
+    Read-only comparison of the LATEST SUCCESSFUL canonical Last Run for up
+    to five selected projects.  A project without a successful canonical Run
+    is shown as unavailable — never calculated, never sourced from the
+    Working Copy.  No engine execution on this surface.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    from app.persistence.projects_repository import (
+        get_reference_projects,
+        list_workspace_projects_paged,
+    )
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.project_library_service import ensure_reference_models
+    from app.v2.decision_support_projection import (
+        CROSS_PROJECT_MAX,
+        build_cross_project_rows,
+    )
+
+    ensure_reference_models()
+    selected_codes = [c for c in (projects or "").split(",") if c][:CROSS_PROJECT_MAX]
+
+    candidates: dict[str, dict] = {}
+    records, _total = list_workspace_projects_paged(
+        user_id=user.user_id, page=1, page_size=200)
+    for record in records:
+        candidates[record.project_code] = {"record": record,
+                                           "owner": user.user_id}
+    for record in get_reference_projects():
+        candidates.setdefault(record.project_code,
+                              {"record": record, "owner": record.user_id})
+
+    payloads: list[dict] = []
+    for code in selected_codes:
+        cand = candidates.get(code)
+        if cand is None:
+            continue
+        record = cand["record"]
+        try:
+            ws = get_workspace_state(cand["owner"], record.project_id)
+        except Exception:  # evidence read failure == unavailable
+            ws = None
+        ran_at = getattr(ws, "last_runtime_at", None) if ws else None
+        _base = getattr(record, "baseline_snapshot", None) or {}
+        _cap_raw = _base.get("capacity_mw")
+        try:
+            _cap_num = float(_cap_raw) if _cap_raw else None
+        except (TypeError, ValueError):
+            _cap_num = None
+        payloads.append({
+            "project_code": record.project_code,
+            "project_name": record.project_name,
+            "technology": record.project_type or "",
+            "country": _ds_country(record),
+            "capacity_display": _ds_capacity(record),
+            "capacity_mw": _cap_num,
+            "runnable": bool(ran_at is not None),
+            "ran_at_display": (str(ran_at)[:16].replace("T", " ")
+                               if ran_at else ""),
+            "runtime_summary": (getattr(ws, "last_runtime_summary", None) or {}) if ws else {},
+            "sponsor_summary": ((getattr(ws, "last_sponsor_schedule", None) or {})
+                                .get("summary", {})) if ws else {},
+            "debt_summary": ((getattr(ws, "last_debt_schedule", None) or {})
+                             .get("summary", {})) if ws else {},
+        })
+
+    rows = build_cross_project_rows(payloads)
+    if sort:
+        rows = sorted(rows, key=lambda r: _ds_sort_num(r.metrics.get(sort)),
+                      reverse=(sort not in ("total_capex_keur", "total_tax_keur")))
+    techs = sorted({r.technology for r in rows if r.technology != "—"})
+    if technology:
+        rows = [r for r in rows if r.technology == technology]
+
+    from main_web import templates as _main_templates
+
+    ctx = {
+        "rows": rows,
+        "projects": selected_codes,
+        "selected": selected_codes,
+        "sort": sort or "",
+        "technology_filter": technology or "",
+        "technologies": techs,
+        "max_projects": CROSS_PROJECT_MAX,
+        "user": user,
+    }
+    # the page extends base.html — render from the ROOT template directory
+    return _main_templates.TemplateResponse(
+        request=request, name="compare_projects.html", context=ctx)
+
+
 @router.get("/workbook/scenarios/compare", response_class=HTMLResponse)
 async def v2_scenario_compare(
     request: Request,

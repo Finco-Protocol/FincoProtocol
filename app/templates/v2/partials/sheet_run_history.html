@@ -63,6 +63,10 @@
                   hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
                   data-testid="run-history-detail-{{ loop.index }}">Detail</button>
           <button type="button" class="v2-rh-link"
+                  hx-get="/v2/workbook/run-compare?project={{ project_code }}&run_a=last&run_b={{ row.history_id }}"
+                  hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
+                  data-testid="run-history-compare-expanded-{{ loop.index }}">Compare vs Last</button>
+          <button type="button" class="v2-rh-link"
                   hx-get="{{ row.compare_url }}"
                   hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
                   data-testid="run-history-compare-{{ loop.index }}">Compare</button>
