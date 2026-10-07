@@ -1,35 +1,45 @@
 {% extends "base.html" %}
-{% block title %}Project Library — FINCO Protocol{% endblock %}
+{% block title %}Model Home — FINCO Protocol{% endblock %}
 
 {% block body %}
 <div class="fo-library-page">
 
-  <div class="fo-library-header">
+  {#
+    Model Home hero — Model entry is LIBRARY-FIRST (UX_FOUNDATION_CONTRACT):
+    "Model" opens Model Home; the previously opened project is never
+    auto-reopened. New Project is the primary call to action; search stays
+    subordinate to project management.
+  #}
+  <div class="fo-library-header fo-library-header--home">
     <div>
-      <p class="fo-library-eyebrow">FINCO Model</p>
-      <h1 class="fo-library-title">Model Workspace</h1>
-      <p class="fo-library-subtitle">Open a working project or start from a reference template.</p>
+      <p class="fo-library-eyebrow">FINCO PROTOCOL</p>
+      <h1 class="fo-library-title fo-library-title--home">FINCO MODEL</h1>
+      <p class="fo-library-subtitle">Build, run and review project-finance models.</p>
     </div>
     <a href="/projects/new" class="fo-library-cta-new">+ New Project</a>
   </div>
 
-  {# Filter / search bar #}
+  {#
+    Project management controls — functional search/filter/paging is
+    preserved (same form id and HTMX contract); visually secondary to the
+    New Project action and the project lists.
+  #}
   <form id="library-filter-form"
         hx-get="/library/list"
         hx-target="#library-list-region"
         hx-push-url="false"
         hx-trigger="submit, change from:[data-auto-submit]"
-        class="fo-library-filter-bar">
+        class="fo-library-filter-bar fo-library-filter-bar--secondary">
     <div class="fo-library-filter-group">
       <label class="fo-library-filter-label">SEARCH</label>
-      <input type="text" name="search" value="{{ search }}" placeholder="Project name…"
+      <input type="text" name="search" value="{{ search }}" placeholder="Find a project…"
              class="fo-library-input" />
     </div>
     <div class="fo-library-filter-group" style="flex:0 0 auto;min-width:auto;">
       <label class="fo-library-filter-label">FILTER</label>
       <select name="role" data-auto-submit class="fo-library-select">
         <option value="" {% if not role_filter %}selected{% endif %}>All</option>
-        <option value="reference"    {% if role_filter=='reference'    %}selected{% endif %}>References</option>
+        <option value="reference"    {% if role_filter=='reference'    %}selected{% endif %}>Reference models</option>
         <option value="working_copy" {% if role_filter=='working_copy' %}selected{% endif %}>Working copies</option>
         <option value="user_project" {% if role_filter=='user_project' %}selected{% endif %}>My projects</option>
       </select>

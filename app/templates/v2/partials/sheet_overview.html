@@ -88,86 +88,61 @@
 {# ── KPI strip + charts (shown when any runtime result exists) ─────────── #}
 {% else %}
 
-  {# ── KPI strip ─────────────────────────────────────────────────────── #}
+  {# ── KPI strip — decision groups (UX Foundation) ───────────────────── #}
+  {# Groups: RETURNS / DEBT & COVERAGE / OPERATING. Every tile renders only
+     when the canonical persisted metric is AVAILABLE (raw_value is not
+     none); unavailable metrics are omitted — never shown as zero. All
+     values are OutputMetricProjection display strings (pass-through). #}
+  {% macro kpi_tile(key, testid, title='') -%}
+    {% if key in ov.output_metrics and ov.output_metrics[key].raw_value is not none %}
+    <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+         data-testid="kpi-{{ testid }}"{% if title %} title="{{ title }}"{% endif %}>
+      <span class="v2-kpi-label">{{ ov.output_metrics[key].label }}</span>
+      <span class="v2-kpi-value">{{ kpi_metric(key) }}</span>
+    </div>
+    {% endif %}
+  {%- endmacro %}
+
   <section class="v2-overview-section" aria-label="Key metrics">
     <div class="v2-overview-section-title">Key Metrics
       {% if is_stale %}
         <span class="v2-overview-stale-badge" title="Inputs changed since last run">Prior run</span>
       {% endif %}
     </div>
-    <div class="v2-kpi-grid v2-overview-kpi-grid">
 
-      {% if "project_irr" in ov.output_metrics and ov.output_metrics["project_irr"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
-           data-testid="kpi-project-irr">
-        <span class="v2-kpi-label">Project IRR</span>
-        <span class="v2-kpi-value">{{ kpi_metric("project_irr") }}</span>
+    <div class="v2-kpi-group" data-testid="kpi-group-returns">
+      <div class="v2-kpi-group-label">Returns</div>
+      <div class="v2-kpi-grid v2-overview-kpi-grid">
+        {{ kpi_tile("project_irr", "project-irr") }}
+        {{ kpi_tile("equity_irr", "equity-irr") }}
+        {{ kpi_tile("sponsor_irr", "total-sponsor-irr",
+                    "Sponsor return including equity and shareholder-loan cash flows.") }}
+        {{ kpi_tile("project_npv_keur", "project-npv") }}
+        {{ kpi_tile("sponsor_moic", "total-sponsor-moic",
+                    "Total sponsor multiple on contributed capital (persisted sponsor schedule).") }}
+        {{ kpi_tile("pure_equity_moic", "pure-equity-moic",
+                    "Pure equity multiple on contributed capital (persisted sponsor schedule).") }}
       </div>
-      {% endif %}
+    </div>
 
-      {% if "equity_irr" in ov.output_metrics and ov.output_metrics["equity_irr"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
-           data-testid="kpi-equity-irr">
-      <span class="v2-kpi-label">Pure Equity IRR</span>
-        <span class="v2-kpi-value">{{ kpi_metric("equity_irr") }}</span>
+    <div class="v2-kpi-group" data-testid="kpi-group-debt">
+      <div class="v2-kpi-group-label">Debt &amp; Coverage</div>
+      <div class="v2-kpi-grid v2-overview-kpi-grid">
+        {{ kpi_tile("senior_debt_keur", "senior-debt") }}
+        {{ kpi_tile("min_dscr", "min-dscr") }}
+        {{ kpi_tile("avg_dscr", "avg-dscr") }}
+        {{ kpi_tile("min_llcr", "min-llcr") }}
       </div>
-      {% endif %}
+    </div>
 
-      {% if "sponsor_irr" in ov.output_metrics and ov.output_metrics["sponsor_irr"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
-           data-testid="kpi-total-sponsor-irr"
-           title="Sponsor return including equity and shareholder-loan cash flows.">
-        <span class="v2-kpi-label">Total Sponsor IRR</span>
-        <span class="v2-kpi-value">{{ kpi_metric("sponsor_irr") }}</span>
+    <div class="v2-kpi-group" data-testid="kpi-group-operating">
+      <div class="v2-kpi-group-label">Operating</div>
+      <div class="v2-kpi-grid v2-overview-kpi-grid">
+        {{ kpi_tile("total_revenue_keur", "total-revenue") }}
+        {{ kpi_tile("total_ebitda_keur", "total-ebitda") }}
+        {{ kpi_tile("total_cfads_keur", "total-cfads") }}
+        {{ kpi_tile("total_capex_keur", "total-capex") }}
       </div>
-      {% endif %}
-
-      {% if "project_npv_keur" in ov.output_metrics and ov.output_metrics["project_npv_keur"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}" data-testid="kpi-project-npv">
-        <span class="v2-kpi-label">Project NPV</span>
-        <span class="v2-kpi-value">{{ kpi_metric("project_npv_keur") }}</span>
-      </div>
-      {% endif %}
-
-      {% if "total_capex_keur" in ov.output_metrics and ov.output_metrics["total_capex_keur"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}" data-testid="kpi-total-capex">
-        <span class="v2-kpi-label">Total CAPEX</span>
-        <span class="v2-kpi-value">{{ kpi_metric("total_capex_keur") }}</span>
-      </div>
-      {% endif %}
-
-      {% if "senior_debt_keur" in ov.output_metrics and ov.output_metrics["senior_debt_keur"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}" data-testid="kpi-senior-debt">
-        <span class="v2-kpi-label">Senior Debt</span>
-        <span class="v2-kpi-value">{{ kpi_metric("senior_debt_keur") }}</span>
-      </div>
-      {% endif %}
-
-      <div class="v2-kpi-break" aria-hidden="true"></div>
-      {% if "min_dscr" in ov.output_metrics and ov.output_metrics["min_dscr"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
-           data-testid="kpi-min-dscr">
-        <span class="v2-kpi-label">Min DSCR</span>
-        <span class="v2-kpi-value">{{ kpi_metric("min_dscr") }}</span>
-      </div>
-      {% endif %}
-
-      {% if "avg_dscr" in ov.output_metrics and ov.output_metrics["avg_dscr"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
-           data-testid="kpi-avg-dscr">
-        <span class="v2-kpi-label">Avg DSCR</span>
-        <span class="v2-kpi-value">{{ kpi_metric("avg_dscr") }}</span>
-      </div>
-      {% endif %}
-
-      {% if "min_llcr" in ov.output_metrics and ov.output_metrics["min_llcr"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
-           data-testid="kpi-min-llcr">
-        <span class="v2-kpi-label">Min LLCR</span>
-        <span class="v2-kpi-value">{{ kpi_metric("min_llcr") }}</span>
-      </div>
-      {% endif %}
-
     </div>
   </section>
 

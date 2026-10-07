@@ -126,11 +126,26 @@ KPI_CATALOG: list[tuple] = [
     ("total_revenue_keur", "Total Revenue",  "kEUR", "keur",  "runtime_summary"),
     ("total_ebitda_keur",  "Total EBITDA",   "kEUR", "keur",  "runtime_summary"),
     ("total_cfads_keur",   "Total CFADS",    "kEUR", "keur",  "runtime_summary"),
+    # UX Foundation (Correction A2/A3): sponsor-schedule summary metrics.
+    # Each key maps to its EXPLICIT persisted summary field (see
+    # SPONSOR_SUMMARY_SOURCE_KEYS below) — one is never inferred from
+    # another, and no arithmetic is performed.
+    ("sponsor_moic",       "Total Sponsor MOIC", "x", "ratio", "sponsor_schedule.summary"),
+    ("pure_equity_moic",   "Pure Equity MOIC", "x",   "ratio", "sponsor_schedule.summary"),
     ("equity_npv_keur",    "Equity NPV",     "kEUR", "keur",  "runtime_summary"),
     ("project_npv_keur",   "Project NPV",    "kEUR", "keur",  "runtime_summary"),
 ]
 
 # Fast lookup sets derived from catalog
+# Correction A2: persisted sponsor_schedule.summary field per catalog key.
+# A sponsor-sourced key WITHOUT an entry here reads as unavailable —
+# never defaulted to another field's value.
+SPONSOR_SUMMARY_SOURCE_KEYS: dict[str, str] = {
+    "sponsor_irr":     "total_sponsor_xirr",
+    "sponsor_moic":    "total_sponsor_moic",
+    "pure_equity_moic": "pure_equity_moic",
+}
+
 _PCT_KEYS   = frozenset(k for k, *_, fmt, _ in KPI_CATALOG if fmt == "pct")
 _RATIO_KEYS = frozenset(k for k, *_, fmt, _ in KPI_CATALOG if fmt == "ratio")
 _KEUR_KEYS  = frozenset(k for k, *_, fmt, _ in KPI_CATALOG if fmt == "keur")
@@ -268,7 +283,11 @@ def build_overview_metric_projections(
         if source == "runtime_summary":
             val = runtime_summary.get(key)
         elif source == "sponsor_schedule.summary":
-            val = (sponsor_summary or {}).get("total_sponsor_xirr")
+            # Correction A2: explicit per-key source-field mapping —
+            # sponsor IRR and the MOICs are DIFFERENT persisted summary
+            # fields; none is ever inferred from another.
+            field = SPONSOR_SUMMARY_SOURCE_KEYS.get(key)
+            val = (sponsor_summary or {}).get(field) if field else None
         else:
             val = debt_summary.get(key)
         projections[key] = build_output_metric_projection(

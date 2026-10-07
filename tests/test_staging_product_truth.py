@@ -265,7 +265,9 @@ class TestStatusVocabulary:
 
 class TestMasterWorkflowInventory:
     def test_library_storage_clone_copy_pinned(self):
-        assert "Working-copy runtime coming soon" in _read("app/templates/library/project_library_list.html")
+        # UX Foundation: the explicit PREVIEW product-state copy.
+        assert "Editable runtime not yet supported" in _read("app/templates/library/project_library_list.html")
+        assert "PREVIEW" in _read("app/templates/library/project_library_list.html")
 
     def test_readme_r_live_freshness_precision(self):
         readme = _flat("README.md")

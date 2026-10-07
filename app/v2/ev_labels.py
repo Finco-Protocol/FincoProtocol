@@ -111,6 +111,64 @@ def _bridge_rows(pis) -> list[dict]:
     return rows
 
 
+# ── Assumption Register presentation (UX Correction B2) ──────────────────
+# Workflow 04 canonical assumption identities are technology-neutral and are
+# NOT changed here.  The rendered register is a presentation surface: on EV
+# workbooks the internal compatibility authorities relabel to charging
+# terminology and compatibility-only generation/PPA rows are omitted —
+# exactly mirroring the workbook field contract above.
+_EV_REGISTER_LABELS: dict[str, str] = {
+    "revenue.ppa_base_tariff": "Charging Price",
+    "revenue.ppa_index": "Charging Price Escalation",
+    "revenue.ppa_term_years": "Charging Price Schedule Horizon",
+    "technical.operating_hours_p50": "Equivalent Full-Load Hours",
+    "technical.capacity_mw": "Installed Charging Capacity",
+}
+
+# Compatibility-only rows omitted from the rendered EV register (their
+# workbook field counterparts are hidden by _EV_HIDDEN; same contract).
+_EV_REGISTER_HIDDEN: frozenset[str] = frozenset({
+    "revenue.ppa_production_share",
+    "revenue.ppa_tariff_by_operating_period",
+    "revenue.ppa_indexation_start_policy",
+    "revenue.ppa_indexation_start_date",
+    "revenue.market_prices_curve",
+    "revenue.market_prices_by_calendar_year_eur_mwh",
+    "revenue.first_merchant_operating_period_index",
+    "revenue.balancing_cost_pv",
+    "revenue.balancing_cost_wind_eur_mwh",
+    "revenue.balancing_cost_bess",
+    "revenue.balancing_cost_eur_per_mwh",
+    "revenue.co2_enabled",
+    "revenue.co2_price_eur",
+    "revenue.co2_certificate_price_eur_per_mwh",
+    "financing.debt_sizing_case.production_yield_scenario",
+    "technical.operating_hours_p90_10y",
+    "technical.operating_hours_p90_1y",
+    "technical.operating_hours_p99_1y",
+    "technical.yield_scenario",
+})
+
+
+def apply_ev_register_presentation(rows: list[dict]) -> list[dict]:
+    """Return register display rows with EV presentation applied.
+
+    ``rows`` are presentation dicts carrying the canonical ``path``.  Hidden
+    compatibility-only rows are omitted; known paths relabel to EV charging
+    terminology.  Canonical identities and stored values are untouched.
+    """
+    out: list[dict] = []
+    for row in rows:
+        path = str(row.get("path", ""))
+        if path in _EV_REGISTER_HIDDEN:
+            continue
+        relabeled = dict(row)
+        if path in _EV_REGISTER_LABELS:
+            relabeled["label"] = _EV_REGISTER_LABELS[path]
+        out.append(relabeled)
+    return out
+
+
 def apply_ev_presentation(fields: list[dict], pis) -> list[dict]:
     """Return the sheet-field list with EV presentation applied (no-op otherwise)."""
     if not is_ev_pis(pis):
