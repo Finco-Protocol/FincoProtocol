@@ -261,6 +261,28 @@ async def _bootstrap_reference_models():
 
 
 @app.on_event("startup")
+async def _prewarm_model_workers():
+    """Runtime V2: prewarm the canonical ModelExecutor process pool at startup.
+
+    Every configured worker is spawned and completes the canonical Run import
+    graph (non-financial probe — no project model is executed) BEFORE the app
+    reports itself ready, so the first user Run never pays process-spawn /
+    import overhead.  A prewarm failure never blocks startup: the executor
+    stays cold and the first Run warms lazily exactly as before.
+    """
+    import time as _time
+
+    from app.runtime.model_execution import get_model_executor
+
+    started = _time.monotonic()
+    state = get_model_executor().warm_up()
+    print("startup model_worker_prewarm complete warm=%s workers=%s duration_s=%.3f (total %.3f)"
+          % (state.get("warm"), state.get("warm_workers"),
+             state.get("warmup_duration_s") or 0.0,
+             _time.monotonic() - started), flush=True)
+
+
+@app.on_event("startup")
 async def _schedule_demo_cleanup():
     """Schedule recurring demo TTL cleanup in a daemon thread (P6.5).
 

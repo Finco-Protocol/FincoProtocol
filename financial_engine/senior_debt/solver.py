@@ -90,7 +90,8 @@ No random damping. No mutable global state.
 from __future__ import annotations
 
 import math
-from typing import Callable, TYPE_CHECKING
+from dataclasses import dataclass
+from typing import Callable, NamedTuple, TYPE_CHECKING
 
 from financial_engine.senior_debt.interest import (
     build_rate_map,
@@ -205,6 +206,185 @@ def _compute_max_abs_diff(
         max_diff = max(max_diff, abs(cfads_a.get(idx, 0.0) - cfads_b.get(idx, 0.0)))
         max_diff = max(max_diff, abs(cash_tax_a.get(idx, 0.0) - cash_tax_b.get(idx, 0.0)))
     return max_diff
+
+
+# ---------------------------------------------------------------------------
+# Runtime V2: precomputed roll plan + numeric kernel
+# ---------------------------------------------------------------------------
+# The iterative solvers roll the schedule thousands of times per model run.
+# Two exact-semantics optimisations (Performance V2), both confined to this
+# module:
+#
+#   1. SeniorDebtRollPlan precomputes the per-solve STATIC roll geometry
+#      (rates, day fractions, repayment membership, resolved DSCR targets /
+#      availabilities, explicit schedule) once per solver scope.
+#   2. _forward_roll_numeric executes the SAME arithmetic in the SAME order
+#      as the authoritative _forward_roll but returns lightweight rows with
+#      only the fields the solver consumes between iterations (period index,
+#      opening, interest, principal, closing) — no dataclass construction,
+#      no debt_service/dscr computation for discarded candidates.  The final
+#      authoritative schedule is always built by _forward_roll itself.
+#
+# Patch safety: tests patch module attributes (e.g. _backward_dscr_capacity)
+# or import _forward_roll directly.  The hot paths detect replacement by
+# identity against _AUTHENTIC_FORWARD_ROLL and fall back to the (possibly
+# patched) module-level function, so patched behaviour is preserved bit-exact.
+
+class _NumericDebtRow(NamedTuple):
+    """Solver-internal roll row: exactly the fields convergence consumes."""
+
+    period_index: int
+    opening_keur: float
+    interest_keur: float
+    principal_keur: float
+    closing_keur: float
+
+
+@dataclass(frozen=True)
+class SeniorDebtRollPlan:
+    """Static per-solve roll geometry (immutable, built once per solver scope).
+
+    Arithmetic-order contract: rate and day fraction are consumed SEPARATELY
+    (``balance * rate * day_frac``, same evaluation order as the authoritative
+    roll) — never pre-multiplied into a combined factor.
+    """
+
+    period_indices: tuple[int, ...]
+    rates: tuple[float, ...]
+    day_fracs: tuple[float, ...]
+    in_repayment: tuple[bool, ...]
+    n_repayment: int
+    repayment_method: str
+    dscr_targets: tuple[float, ...] | None = None
+    availabilities: tuple[float, ...] | None = None
+    explicit: tuple[float, ...] | None = None
+    debt_service_scale: float = 1.0
+
+
+def build_roll_plan(
+    *,
+    policy: SeniorDebtPolicy,
+    period_indices: tuple[int, ...],
+    period_start_end: dict,
+    rate_map: dict[int, float],
+    repayment_method_str: str,
+    dscr_map: dict[int, float] | None = None,
+    availability_map: dict[int, float] | None = None,
+    explicit_by: dict[int, float] | None = None,
+    debt_service_scale: float = 1.0,
+) -> SeniorDebtRollPlan:
+    """Precompute the static per-solve roll geometry once."""
+    rates = tuple(rate_map.get(idx, 0.0) for idx in period_indices)
+    day_fracs = tuple(
+        period_day_fraction(
+            period_start_end[idx][0], period_start_end[idx][1],
+            policy.day_count_convention,
+        )
+        for idx in period_indices
+    )
+    in_repayment = tuple(
+        policy.repayment_start_period_index <= idx <= policy.maturity_period_index
+        for idx in period_indices
+    )
+    dscr_targets = None
+    availabilities = None
+    explicit = None
+    if repayment_method_str == "dscr_sculpted":
+        dscr_targets = tuple(
+            (dscr_map[idx] if dscr_map is not None else policy.target_dscr)
+            for idx in period_indices
+        )
+        availabilities = tuple(
+            (availability_map[idx] if availability_map is not None else 1.0)
+            for idx in period_indices
+        )
+    elif repayment_method_str == "explicit":
+        explicit_source = explicit_by or {}
+        explicit = tuple(explicit_source.get(idx, 0.0) for idx in period_indices)
+    return SeniorDebtRollPlan(
+        period_indices=tuple(period_indices),
+        rates=rates,
+        day_fracs=day_fracs,
+        in_repayment=in_repayment,
+        n_repayment=sum(in_repayment),
+        repayment_method=repayment_method_str,
+        dscr_targets=dscr_targets,
+        availabilities=availabilities,
+        explicit=explicit,
+        debt_service_scale=debt_service_scale,
+    )
+
+
+def _forward_roll_numeric(
+    plan: SeniorDebtRollPlan,
+    opening_keur: float,
+    cfads_by: dict[int, float],
+) -> tuple[_NumericDebtRow, ...]:
+    """Numeric forward roll — SAME formulas, SAME arithmetic order as
+    _forward_roll, minus the fields no solver iteration consumes.
+
+    Per period (identical evaluation order):
+        interest = balance * rate * day_frac
+        dscr_sculpted: ds = max(0, cfads/target) * availability * scale
+                       principal = min(max(0, ds - interest), balance)
+        level_principal: principal = min(opening/n, balance)
+        explicit: principal = schedule[p]
+        closing = max(0, balance - principal)
+    """
+    rows: list[_NumericDebtRow] = []
+    append = rows.append
+    balance = opening_keur
+    method = plan.repayment_method
+    rates = plan.rates
+    day_fracs = plan.day_fracs
+    in_repayment = plan.in_repayment
+    indices = plan.period_indices
+    get_cfads = cfads_by.get
+    scale = plan.debt_service_scale
+    sculpted = method == "dscr_sculpted"
+    level = method == "level_principal"
+    explicit = method == "explicit"
+    n_repayment = plan.n_repayment
+    dscr_targets = plan.dscr_targets
+    availabilities = plan.availabilities
+    explicit_schedule = plan.explicit
+
+    for i in range(len(indices)):
+        interest = balance * rates[i] * day_fracs[i]
+        if in_repayment[i]:
+            if sculpted:
+                cfads = get_cfads(indices[i], 0.0)
+                target = dscr_targets[i]
+                if target > 0:
+                    ds = max(0.0, cfads / target) * availabilities[i]
+                else:
+                    ds = 0.0
+                ds = ds * scale
+                principal = max(0.0, ds - interest)
+                if principal > balance:
+                    principal = balance
+            elif level:
+                installment = opening_keur / n_repayment
+                principal = installment
+                if principal > balance:
+                    principal = balance
+            elif explicit:
+                principal = explicit_schedule[i]
+            else:
+                raise ValueError(f"Unknown repayment_method_str: {method!r}")
+        else:
+            principal = 0.0
+        closing = balance - principal
+        if closing < 0.0:
+            closing = 0.0
+        append(_NumericDebtRow(indices[i], balance, interest, principal, closing))
+        balance = closing
+
+    return tuple(rows)
+
+
+def _level_installment(opening_keur: float, n_repayment: int) -> float:
+    return opening_keur / n_repayment if n_repayment > 0 else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -387,6 +567,12 @@ def _forward_roll(
     return tuple(rows)
 
 
+# Identity capture for patch detection (Runtime V2): tests may replace the
+# module attribute; internal hot paths use the numeric kernel only while the
+# attribute still IS this authentic implementation.
+_AUTHENTIC_FORWARD_ROLL = _forward_roll
+
+
 # ---------------------------------------------------------------------------
 # Issue 1: Finalisation sub-loop — enforce interest/CFADS self-consistency
 # ---------------------------------------------------------------------------
@@ -422,9 +608,43 @@ def _finalise_authoritative(
     rel_tol = policy.convergence_relative_tolerance
     prev_cash_tax: dict[int, float] = {idx: 0.0 for idx in period_indices}
 
-    def _roll(cf: dict[int, float]) -> tuple[PeriodDebtRow, ...]:
+    # Runtime V2: the finalisation handshake may iterate up to
+    # _MAX_FINALISATION_ITERATIONS × 2 rolls, but only the RETURNED schedule
+    # needs full PeriodDebtRow objects — intermediate candidate/verify rolls
+    # feed convergence (opening/interest/principal/closing) and interest
+    # extraction only.  Intermediates therefore run through the numeric
+    # kernel (same arithmetic, same order); on convergence the returned
+    # candidate schedule is rebuilt by the authentic _forward_roll from the
+    # exact same inputs (pure function → bit-identical), preserving the
+    # interest/CFADS handshake invariant.  A patched _forward_roll disables
+    # the numeric path entirely.
+    authentic = (
+        roll is None
+        and repayment_str == "dscr_sculpted"
+        and _forward_roll is _AUTHENTIC_FORWARD_ROLL
+    )
+    plan = (
+        build_roll_plan(
+            policy=policy, period_indices=period_indices,
+            period_start_end=period_start_end, rate_map=rate_map,
+            repayment_method_str=repayment_str,
+            dscr_map=dscr_map, availability_map=availability_map,
+        )
+        if authentic else None
+    )
+
+    def _roll(cf: dict[int, float]):
         if roll is not None:
             return roll(cf)
+        if authentic:
+            return _forward_roll_numeric(plan, D, cf)
+        return _forward_roll(
+            D, period_indices, rate_map, period_start_end,
+            cf, policy, repayment_str, explicit_by=explicit_by,
+            dscr_map=dscr_map, availability_map=availability_map,
+        )
+
+    def _roll_full(cf: dict[int, float]) -> tuple[PeriodDebtRow, ...]:
         return _forward_roll(
             D, period_indices, rate_map, period_start_end,
             cf, policy, repayment_str, explicit_by=explicit_by,
@@ -449,13 +669,18 @@ def _finalise_authoritative(
         ):
             # Return candidate_rows: last tax call received candidate_interest,
             # which is EXACTLY the interest in candidate_rows. Invariant holds.
-            return candidate_rows, new_cfads, new_cash_tax, True
+            # (Numeric intermediates are rebuilt identically by _roll_full.)
+            return (
+                _roll_full(cfads_by) if authentic else candidate_rows
+            ), new_cfads, new_cash_tax, True
         prev_cash_tax = new_cash_tax
         cfads_by = new_cfads
 
     # Exhausted finalisation iterations — not self-consistent
     candidate_rows = _roll(cfads_by)
-    return candidate_rows, cfads_by, prev_cash_tax, False
+    return (
+        _roll_full(cfads_by) if authentic else candidate_rows
+    ), cfads_by, prev_cash_tax, False
 
 
 # ---------------------------------------------------------------------------
@@ -680,19 +905,47 @@ def _solve_dscr(
     cfads_by: dict[int, float] = {idx: 0.0 for idx in period_indices}
     cash_tax_by: dict[int, float] = {idx: 0.0 for idx in period_indices}
 
-    prev_rows: tuple[PeriodDebtRow, ...] | None = None
+    prev_rows = None
     prev_cfads: dict[int, float] | None = None
     prev_cash_tax: dict[int, float] | None = None
     prev_D: float | None = None
     max_abs_diff = float("inf")
 
-    for iteration in range(1, max_iter + 1):
-        # Step 1: forward roll (interest from rolling balance at D, using cfads_by for sculpting)
-        rows = _forward_roll(
-            D, period_indices, rate_map, period_start_end,
-            cfads_by, policy, "dscr_sculpted",
+    # Runtime V2: static roll geometry precomputed once per solve; the numeric
+    # kernel replaces _forward_roll on the iteration hot path while the
+    # attribute is unpatched (tests may substitute it — behaviour preserved).
+    plan = build_roll_plan(
+        policy=policy, period_indices=period_indices,
+        period_start_end=period_start_end, rate_map=rate_map,
+        repayment_method_str="dscr_sculpted",
+        dscr_map=dscr_map, availability_map=availability_map,
+    )
+    authentic = _forward_roll is _AUTHENTIC_FORWARD_ROLL
+
+    def _roll_fast(opening: float, cfads: dict[int, float]):
+        if authentic:
+            return _forward_roll_numeric(plan, opening, cfads)
+        return _forward_roll(
+            opening, period_indices, rate_map, period_start_end,
+            cfads, policy, "dscr_sculpted",
             dscr_map=dscr_map, availability_map=availability_map,
         )
+
+    # Exact-input identity (Performance V2): iteration k+1's Step 1 rolls at
+    # (new_D, new_cfads) from iteration k — the very same arguments the
+    # convergence check already rolled.  The check result is therefore reused
+    # instead of recomputed; _forward_roll is a pure function of its inputs,
+    # so the reused object is bit-identical to a fresh roll.
+    cached_rows = None
+    new_rows_check = None
+
+    for iteration in range(1, max_iter + 1):
+        # Step 1: forward roll (interest from rolling balance at D, using cfads_by for sculpting)
+        if cached_rows is not None:
+            rows = cached_rows
+            cached_rows = None
+        else:
+            rows = _roll_fast(D, cfads_by)
         interest_by = {r.period_index: r.interest_keur for r in rows}
 
         # Step 2: tax feedback
@@ -721,11 +974,7 @@ def _solve_dscr(
         # Step 5: convergence check (Issue 2 — all fields, abs OR rel per field)
         if prev_rows is not None:
             # Build rows at new_D with new_cfads for comparison
-            new_rows_check = _forward_roll(
-                new_D, period_indices, rate_map, period_start_end,
-                new_cfads, policy, "dscr_sculpted",
-                dscr_map=dscr_map, availability_map=availability_map,
-            )
+            new_rows_check = _roll_fast(new_D, new_cfads)
             converged = _schedules_converged(
                 rows, new_rows_check,
                 cfads_by, new_cfads,
@@ -782,8 +1031,14 @@ def _solve_dscr(
         D = new_D
         cfads_by = new_cfads
         cash_tax_by = new_cash_tax
+        # exact-input reuse for the next iteration's Step 1 (see above) —
+        # only iteration k>=2 ran a check; iteration 1 has no cached roll
+        if new_rows_check is not None:
+            cached_rows = new_rows_check
+            new_rows_check = None
 
-    # Max iterations reached
+    # Max iterations reached — the RETURNED schedule is authoritative:
+    # full PeriodDebtRow construction via the (possibly patched) roll.
     final_rows = _forward_roll(
         D, period_indices, rate_map, period_start_end,
         cfads_by, policy, "dscr_sculpted",

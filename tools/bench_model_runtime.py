@@ -179,11 +179,52 @@ def _table(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _worker_section(project_type: str, factory_name: str) -> dict:
+    """Runtime V2: process-worker spawn/import cost with and without prewarm.
+
+    Measured through the REAL ModelExecutor path (run_process_sync), fresh
+    executor each time:
+      cold_first_run_s       — lazy pool: first Run pays spawn + import
+      prewarm_s              — executor.warm_up() duration (spawn + imports)
+      prewarmed_first_run_s  — first Run after prewarm (no spawn/import)
+    """
+    import time
+
+    from app.runtime.model_execution import ModelExecutor, _worker_warmup_probe
+    from app.api import project_runner
+    from app import project_factories
+
+    factory = getattr(project_factories, factory_name)
+    pi = factory()
+    out: dict = {}
+
+    cold = ModelExecutor()
+    t0 = time.perf_counter()
+    cold.run_process_sync(project_runner.run_project, project_type, "Base",
+                          project_inputs_override=pi)
+    out["cold_first_run_s"] = round(time.perf_counter() - t0, 3)
+    cold.shutdown()
+
+    warm = ModelExecutor()
+    t0 = time.perf_counter()
+    state = warm.warm_up()
+    out["prewarm_s"] = round(time.perf_counter() - t0, 3)
+    out["prewarm_ok"] = bool(state.get("warm"))
+    t0 = time.perf_counter()
+    warm.run_process_sync(project_runner.run_project, project_type, "Base",
+                          project_inputs_override=pi)
+    out["prewarmed_first_run_s"] = round(time.perf_counter() - t0, 3)
+    warm.shutdown()
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--child", help=argparse.SUPPRESS)
     parser.add_argument("--only", choices=sorted(SCENARIOS))
     parser.add_argument("--json", help="also write structured results to this path")
+    parser.add_argument("--workers", action="store_true",
+                        help="also measure process-worker spawn/import prewarm (Runtime V2)")
     args = parser.parse_args()
     if args.child:
         print(json.dumps(_child(args.child)))
@@ -191,9 +232,18 @@ def main() -> None:
     labels = [args.only] if args.only else list(SCENARIOS)
     results = [_run_child(label) for label in labels]
     print(_table(results))
+    worker_info = None
+    if args.workers:
+        worker_info = _worker_section(labels[0], SCENARIOS[labels[0]][1])
+        print("")
+        print(f"worker spawn/import (Runtime V2, {labels[0]}): "
+              f"cold_first_run={worker_info['cold_first_run_s']}s  "
+              f"prewarm={worker_info['prewarm_s']}s (ok={worker_info['prewarm_ok']})  "
+              f"prewarmed_first_run={worker_info['prewarmed_first_run_s']}s")
     if args.json:
         with open(args.json, "w", encoding="utf-8") as handle:
-            json.dump({"python": sys.version.split()[0], "results": results}, handle, indent=2)
+            json.dump({"python": sys.version.split()[0], "results": results,
+                       "worker": worker_info}, handle, indent=2)
 
 
 if __name__ == "__main__":

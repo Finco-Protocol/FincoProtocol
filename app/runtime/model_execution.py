@@ -172,6 +172,29 @@ def _worker_init() -> None:
     import app.api.project_runner  # noqa: F401
 
 
+def _worker_warmup_probe() -> dict:
+    """Runtime V2 prewarm probe — NON-FINANCIAL.
+
+    Executed once per worker process at application startup.  Forces the
+    worker to spawn and complete the import graph the canonical Run needs
+    (engine orchestration, tax engine, production authority) WITHOUT
+    executing any project model.  Returns a small readiness payload.
+    """
+    import app.api.project_runner  # noqa: F401  (canonical run entry)
+    from financial_engine.orchestrator import run_operating_model  # noqa: F401
+    from financial_engine.tax.engine import (  # noqa: F401
+        calculate_cfads_and_cash_tax,
+        calculate_tax,
+    )
+    from financial_engine.senior_debt.solver import solve_senior_debt  # noqa: F401
+    from app.services.production_financial_authority import (  # noqa: F401
+        classify_production_authority,
+    )
+    from financial_engine.version import ENGINE_VERSION
+
+    return {"engine_version": ENGINE_VERSION, "warm": True}
+
+
 class ModelExecutor:
     """Admission gate + bounded process pool + bounded thread pool (shared gate, no queue)."""
 
@@ -184,6 +207,9 @@ class ModelExecutor:
         self._active = 0
         self._counters = {"admitted": 0, "busy_rejected": 0, "completed": 0, "failed": 0, "timed_out": 0}
         self._durations: deque[float] = deque(maxlen=100)
+        self._warm = False
+        self._warmup_duration_s: float | None = None
+        self._warm_workers: int = 0
 
     # ── admission ─────────────────────────────────────────────────────────────────────
     def _admit(self) -> None:
@@ -206,6 +232,60 @@ class ModelExecutor:
             self._durations.append(elapsed)
         self._gate.release()  # ALWAYS released when the calculation actually ends
         LOG.info("model_execution %s duration_s=%.1f", "failed" if failed else "completed", elapsed)
+
+    # ── startup prewarm (Runtime V2) ──────────────────────────────────────────────
+    def warm_up(self) -> dict:
+        """Spawn every configured worker and complete its import warmup NOW.
+
+        Runtime V2: the pool was previously created lazily on the first user
+        Run, so the first request paid process spawn + the full canonical
+        import graph.  ``warm_up`` runs at application startup: it creates
+        the process pool, submits the dedicated NON-FINANCIAL
+        ``_worker_warmup_probe`` to every configured worker and waits for
+        completion, so the first user Run never pays spawn/import cost.
+
+        Preserved semantics: admission gating is bypassed ONLY for this
+        internal pre-serving operation (user admission slots, counters and
+        failure semantics untouched); no project model is executed; a
+        warmup failure logs a warning and leaves the executor cold — the
+        lazy path then serves the first Run exactly as before.
+        """
+        if self.config.mode != "process" or self._warm:
+            return self.warm_state()
+        started = time.monotonic()
+        workers = max(1, self.config.concurrency)
+        try:
+            pool = self._pool("process")
+            futures = [pool.submit(_worker_warmup_probe) for _ in range(workers)]
+            results = [f.result(timeout=self.config.timeout_seconds) for f in futures]
+            with self._lock:
+                self._warm = True
+                self._warmup_duration_s = round(time.monotonic() - started, 3)
+                self._warm_workers = workers
+            LOG.info("model_execution prewarm complete workers=%s duration_s=%.3f versions=%s",
+                     workers, self._warmup_duration_s,
+                     sorted({r.get("engine_version") for r in results}))
+        except Exception as exc:  # noqa: BLE001 — never block startup on prewarm
+            with self._lock:
+                self._warm = False
+                self._warmup_duration_s = round(time.monotonic() - started, 3)
+            LOG.warning("model_execution prewarm failed — first Run will warm lazily: %s", exc)
+            self._discard_broken_process_pool()
+        return self.warm_state()
+
+    def warm_state(self) -> dict:
+        with self._lock:
+            return {
+                "warm": self._warm,
+                "mode": self.config.mode,
+                "warm_workers": self._warm_workers,
+                "warmup_duration_s": self._warmup_duration_s,
+            }
+
+    @property
+    def is_warm(self) -> bool:
+        with self._lock:
+            return self._warm
 
     # ── pools ─────────────────────────────────────────────────────────────────────────
     def _pool(self, kind: str):
@@ -321,6 +401,8 @@ class ModelExecutor:
                 "concurrency": self.config.concurrency, "active": self._active,
                 **self._counters,
                 "duration_p50_s": round(durations[len(durations) // 2], 2) if durations else None,
+                "warm": self._warm,
+                "warmup_duration_s": self._warmup_duration_s,
             }
 
     def shutdown(self) -> None:

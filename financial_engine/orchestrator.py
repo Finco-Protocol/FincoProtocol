@@ -835,6 +835,97 @@ _PHASE_2C_UNAVAILABLE = ("financial_statements", "returns")
 
 
 
+def _make_solver_tax_cfads_fn(
+    *,
+    periods: tuple,
+    base_tax_input: object,
+    shl_interest_by_period: dict[int, float] | None = None,
+    limitation_by_period: dict[int, object] | None = None,
+    tax_periodisation_mode_override: str | None = None,
+    reset_candidate_components: bool = False,
+):
+    """Build the senior-solver tax callable with a precomputed merge template.
+
+    Runtime V2 (§8): within one senior-debt solve, every merge input EXCEPT
+    the candidate senior-interest map is constant (SHL guess, limitation
+    state, base tax input, policy override).  The merged template is
+    therefore built ONCE per callable — with the exact
+    ``_merge_financing_tax_input`` semantics including the SHL limitation
+    gross-interest validation — and each candidate re-stamps only
+    ``senior_interest_keur`` on the periods the candidate supplies.  For
+    every other field this is identical to the per-call merge:
+      - idx in candidate        → senior = candidate[idx]
+      - idx not in candidate    → senior = base existing senior (kept)
+      - shl/limitation/other    → template (candidate never supplied them)
+    """
+    from dataclasses import replace as _replace
+    from financial_engine.tax.engine import calculate_cfads_and_cash_tax
+
+    template = _merge_financing_tax_input(
+        base_tax_input,
+        {},  # the candidate is applied per call below
+        shl_interest_by_period,
+        limitation_by_period,
+        tax_periodisation_mode_override=tax_periodisation_mode_override,
+    )
+    template_periods = template.period_interest
+    template_keys = frozenset(pi.period_index for pi in template_periods)
+
+    def tax_cfads_fn(
+        senior_interest_by_period: dict[int, float],
+    ) -> tuple[dict[int, float], dict[int, float]]:
+        if not senior_interest_by_period:
+            # empty candidate ≡ merge(base, {}, ...) == template (same inputs)
+            return calculate_cfads_and_cash_tax(periods, template)
+        if not template_keys.issuperset(senior_interest_by_period):
+            # the template does not cover every candidate period (e.g. a
+            # base tax input with no pre-existing interest entries): the
+            # stamp would DROP candidate interest — take the canonical
+            # per-call merge exactly as before.
+            tax_input = _merge_financing_tax_input(
+                base_tax_input,
+                senior_interest_by_period,
+                shl_interest_by_period,
+                limitation_by_period,
+                tax_periodisation_mode_override=tax_periodisation_mode_override,
+            )
+            return calculate_cfads_and_cash_tax(periods, tax_input)
+        if True:
+            if reset_candidate_components:
+                # bank-debt-sizing semantics: a candidate period is rebuilt
+                # from the bare constructor (senior only) exactly as the
+                # original manual pre-merge did before the merge — every
+                # other component resets to the constructor default.
+                period_interest = tuple(
+                    _replace(
+                        pi,
+                        senior_interest_keur=senior_interest_by_period[idx],
+                        shl_interest_keur=0.0,
+                        other_interest_keur=0.0,
+                        shl_deductible_interest_keur=None,
+                        capitalisation_ratio=None,
+                        capitalisation_gate_active=None,
+                        absolute_limit_component_keur=0.0,
+                        ebitda_limit_component_keur=0.0,
+                        additional_non_deductible_component_keur=0.0,
+                    )
+                    if (idx := pi.period_index) in senior_interest_by_period
+                    else pi
+                    for pi in template_periods
+                )
+            else:
+                period_interest = tuple(
+                    _replace(pi, senior_interest_keur=senior_interest_by_period[idx])
+                    if (idx := pi.period_index) in senior_interest_by_period
+                    else pi
+                    for pi in template_periods
+                )
+            tax_input = _replace(template, period_interest=period_interest)
+            return calculate_cfads_and_cash_tax(periods, tax_input)
+
+    return tax_cfads_fn
+
+
 def _merge_financing_tax_input(
     base_tax_input: object,
     senior_interest_by_period: dict[int, float] | None = None,
@@ -1784,17 +1875,13 @@ def _run_senior_debt_model_with_shl(
     last_gate_mismatch_count = 0
 
     for iteration in range(1, shl_input.maximum_iterations + 1):
-        def tax_cfads_fn(
-            senior_interest_by_period: dict[int, float],
-        ) -> tuple[dict[int, float], dict[int, float]]:
-            tax_input = _merge_financing_tax_input(
-                base_tax_input,
-                senior_interest_by_period,
-                shl_interest_guess,
-                bank_limitation_state.limitation_by_period,
-                tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
-            )
-            return calculate_cfads_and_cash_tax(bank_phase2a_result.periods, tax_input)
+        tax_cfads_fn = _make_solver_tax_cfads_fn(
+            periods=bank_phase2a_result.periods,
+            base_tax_input=base_tax_input,
+            shl_interest_by_period=shl_interest_guess,
+            limitation_by_period=bank_limitation_state.limitation_by_period,
+            tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
+        )
 
         senior_result = solve_senior_debt(
             policy=policy,
@@ -2418,25 +2505,6 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         Uses bank operating periods (bank_phase2a_result.periods) so that EBITDA
         entering the tax base reflects the bank-case yield scenario, not Base.
         """
-        # Merge solver-provided senior interest into PeriodInterestInput.
-        merged_interest: dict[int, "PeriodInterestInput"] = {}
-        for pi in base_tax_input.period_interest:
-            merged_interest[pi.period_index] = pi
-        for idx, senior_keur in senior_interest_by_period.items():
-            existing = merged_interest.get(idx)
-            if existing is not None:
-                merged_interest[idx] = PeriodInterestInput(
-                    period_index=idx,
-                    senior_interest_keur=senior_keur,
-                    shl_interest_keur=existing.shl_interest_keur,
-                    other_interest_keur=existing.other_interest_keur,
-                )
-            else:
-                merged_interest[idx] = PeriodInterestInput(
-                    period_index=idx,
-                    senior_interest_keur=senior_keur,
-                )
-
         updated_tax_input = _merge_financing_tax_input(
             base_tax_input,
             senior_interest_by_period,
