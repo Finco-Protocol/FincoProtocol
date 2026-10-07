@@ -838,144 +838,28 @@ def _numeric_tax_static_token(
     opening_loss_vintages: tuple,
     plan: _TaxPlan,
 ) -> int:
-    """Value-structural identity for every immutable static tax dependency.
+    """Run-local exact identity for immutable static tax dependencies.
 
-    Per-object keys are built once and retained in the Run scope; equivalent
-    immutable contexts created by separate financing passes therefore share a
-    token, while every float is represented with float.hex() so signed zero
-    and binary identity are preserved.
+    The refs are retained for the life of the Run, so Python object-id reuse
+    cannot create a false cache hit. Equal-but-distinct contexts simply miss
+    the cache; they are never conflated.
     """
-    def cached(name: str, obj, build):
-        table = scope.get(name)
-        if table is None:
-            table = scope[name] = {}
-        raw = id(obj)
-        entry = table.get(raw)
-        if entry is not None and entry[0] is obj:
-            return entry[1]
-        value = build()
-        table[raw] = (obj, value)
-        return value
-
-    periods_key = cached(
-        "numeric_tax_period_keys_v4",
-        periods,
-        lambda: tuple(
-            (
-                p.period_index,
-                p.period_start.toordinal(),
-                p.period_end.toordinal(),
-                float(p.ebitda_keur).hex(),
-                float(p.tax_depreciation_keur).hex(),
-            )
-            for p in periods
-        ),
-    )
-
-    def policy_key_build():
-        limitation = policy.interest_limitation_policy
-        if limitation is None:
-            limitation_key = None
-        else:
-            gate = limitation.capitalisation_gate_policy
-            limitation_key = (
-                limitation.enabled,
-                float(limitation.absolute_interest_limit_keur).hex(),
-                float(limitation.ebitda_interest_limit_pct).hex(),
-                (
-                    gate.enabled,
-                    float(gate.threshold).hex(),
-                    gate.subtotal_is_reincluded_in_denominator,
-                ),
-                limitation.combination_mode.value,
-                limitation.carryforward_mode.value,
-                float(limitation.additional_non_deductible_share).hex(),
-                limitation.source_model_convention,
-            )
-        return (
-            policy.policy_id,
-            policy.policy_version,
-            float(policy.corporate_rate).hex(),
-            policy.periods_per_tax_year,
-            policy.loss_carryforward_years,
-            policy.atad_enabled,
-            float(policy.atad_ebitda_limit).hex(),
-            float(policy.atad_de_minimis_threshold_keur_annual).hex(),
-            policy.cash_tax_timing.value,
-            policy.cash_tax_payment_lag_periods,
-            policy.shl_interest_tax_treatment_enabled,
-            policy.shl_interest_deductibility.value,
-            (
-                None
-                if policy.shl_interest_deductible_pct is None
-                else float(policy.shl_interest_deductible_pct).hex()
-            ),
-            policy.tax_basis_periodisation.value,
-            policy.loss_utilisation_gate.value,
-            policy.thin_cap_enabled,
-            limitation_key,
-        )
-
-    policy_key = cached(
-        "numeric_tax_policy_keys_v4", policy, policy_key_build,
-    )
-    opening_key = cached(
-        "numeric_tax_opening_loss_keys_v4",
-        opening_loss_vintages,
-        lambda: tuple(
-            (
-                v.origin_tax_year,
-                float(v.amount_keur).hex(),
-                v.source_label,
-            )
-            for v in opening_loss_vintages
-        ),
-    )
-
-    def plan_key_build():
-        contributions = plan.same_period_contributions
-        contribution_key = (
-            None
-            if contributions is None
-            else tuple(
-                (
-                    idx,
-                    tuple((pos, float(frac).hex()) for pos, frac in contributions[idx]),
-                )
-                for idx in plan.sorted_idx
-            )
-        )
-        return (
-            plan.fallback,
-            plan.year_keys,
-            tuple(
-                (
-                    idx,
-                    kind,
-                    tuple((pos, float(frac).hex()) for pos, frac in slots),
-                )
-                for idx, kind, slots in plan.rows
-            ),
-            tuple(float(v).hex() for v in plan.y_ebitda),
-            tuple(float(v).hex() for v in plan.y_dep),
-            plan.payment_idx,
-            plan.sorted_idx,
-            plan.max_idx,
-            contribution_key,
-        )
-
-    plan_key = cached(
-        "numeric_tax_plan_keys_v4", plan, plan_key_build,
-    )
-    context_key = (periods_key, policy_key, opening_key, plan_key)
-
-    by_value = scope.get("numeric_tax_static_context_v4")
-    if by_value is None:
-        by_value = scope["numeric_tax_static_context_v4"] = {}
-    token = by_value.get(context_key)
-    if token is None:
-        token = len(by_value) + 1
-        by_value[context_key] = token
+    table = scope.get("numeric_tax_static_context_v4")
+    if table is None:
+        table = scope["numeric_tax_static_context_v4"] = {}
+    raw = (id(periods), id(policy), id(opening_loss_vintages), id(plan))
+    entry = table.get(raw)
+    if entry is not None:
+        refs, token = entry
+        if (
+            refs[0] is periods
+            and refs[1] is policy
+            and refs[2] is opening_loss_vintages
+            and refs[3] is plan
+        ):
+            return token
+    token = len(table) + 1
+    table[raw] = ((periods, policy, opening_loss_vintages, plan), token)
     return token
 
 
