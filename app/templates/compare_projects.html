@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Compare Projects — FINCO Model{% endblock %}
+
+{% block body %}
+<div class="fo-library-page">
+  <div class="fo-library-header fo-library-header--home">
+    <div>
+      <p class="fo-library-eyebrow">DECISION SUPPORT</p>
+      <h1 class="fo-library-title fo-library-title--home">Compare Projects</h1>
+      <p class="fo-library-subtitle">
+        Canonical Last Run side by side — persisted results, read-only,
+        no recalculation.
+      </p>
+    </div>
+    <a href="/library" class="fo-library-cta-new" data-testid="ds-back-to-library">← Model Home</a>
+  </div>
+
+  <form method="get" action="/compare-projects" class="fo-library-filter-bar"
+        data-testid="ds-select-form">
+    <div class="fo-library-filter-group">
+      <label class="fo-library-filter-label">PROJECTS (comma-separated codes, max {{ max_projects }})</label>
+      <input type="text" name="projects" value="{{ projects|join(',') if projects else '' }}"
+             placeholder="e.g. solar-ref-reference, wind-ref-reference"
+             class="fo-library-input" data-testid="ds-projects-input" />
+    </div>
+    <div class="fo-library-filter-group" style="flex:0 0 auto;min-width:auto;">
+      <label class="fo-library-filter-label">SORT BY</label>
+      <select name="sort" class="fo-library-select" data-testid="ds-sort-select">
+        <option value="" {% if not sort %}selected{% endif %}>Project (selection order)</option>
+        <option value="project_irr" {% if sort=='project_irr' %}selected{% endif %}>Project IRR</option>
+        <option value="total_sponsor_xirr" {% if sort=='total_sponsor_xirr' %}selected{% endif %}>Sponsor IRR</option>
+        <option value="min_dscr" {% if sort=='min_dscr' %}selected{% endif %}>Min DSCR</option>
+        <option value="total_capex_keur" {% if sort=='total_capex_keur' %}selected{% endif %}>Total CAPEX</option>
+        <option value="gearing_cap_pct" {% if sort=='gearing_cap_pct' %}selected{% endif %}>Gearing</option>
+      </select>
+    </div>
+    {% if technologies %}
+    <div class="fo-library-filter-group" style="flex:0 0 auto;min-width:auto;">
+      <label class="fo-library-filter-label">TECHNOLOGY</label>
+      <select name="technology" class="fo-library-select" data-testid="ds-tech-select">
+        <option value="">All</option>
+        {% for t in technologies %}
+        <option value="{{ t }}" {% if technology_filter == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <button type="submit" style="padding:6px 14px;border-radius:var(--fo-r-sm,5px);border:1px solid var(--fo-line,#d1d5db);background:var(--fo-surface,#fff);font-size:var(--fo-text-md,.875rem);cursor:pointer;align-self:flex-end;">Compare</button>
+  </form>
+
+  {% if rows %}
+  <div class="fo-library-table-wrapper" data-testid="ds-cross-table">
+    <table class="fo-library-table fo-library-table--recent">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          {% for r in rows %}<th data-testid="ds-col-{{ r.project_code }}">{{ r.project_name }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="fo-library-row-name">Technology</td>
+          {% for r in rows %}<td>{{ r.technology }}</td>{% endfor %}</tr>
+        <tr><td class="fo-library-row-name">Country</td>
+          {% for r in rows %}<td>{{ r.country }}</td>{% endfor %}</tr>
+        <tr><td class="fo-library-row-name">Capacity</td>
+          {% for r in rows %}<td>{{ r.capacity_display }}</td>{% endfor %}</tr>
+        <tr data-ds-metric="total_capex_keur"><td>Total CAPEX (kEUR)</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('total_capex_keur', '—') }}</td>{% endfor %}</tr>
+        <tr><td>CAPEX / MW</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('capex_per_mw', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Operating Revenue (kEUR)</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('total_revenue_keur', '—') }}</td>{% endfor %}</tr>
+        <tr><td>EBITDA (kEUR)</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('total_ebitda_keur', '—') }}</td>{% endfor %}</tr>
+        <tr><td>EBITDA margin</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.ebitda_margin }}</td>{% endfor %}</tr>
+        <tr><td>Project IRR</td>
+          {% for r in rows %}<td class="v2-rh-mono" data-ds-metric="project_irr">{{ r.metrics.get('project_irr', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Pure Equity IRR</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('equity_irr', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Total Sponsor IRR</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('total_sponsor_xirr', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Pure Equity MOIC</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('pure_equity_moic', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Total Sponsor MOIC</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('sponsor_moic', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Senior Debt (kEUR)</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('senior_debt_keur', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Gearing</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('gearing_cap_pct', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Minimum DSCR</td>
+          {% for r in rows %}<td class="v2-rh-mono" data-ds-metric="min_dscr">{{ r.metrics.get('min_dscr', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Min LLCR</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('min_llcr', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Total Cash Tax (kEUR)</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('total_tax_keur', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Last Run</td>
+          {% for r in rows %}<td class="v2-rh-mono">{{ r.ran_at_display }}</td>{% endfor %}</tr>
+        <tr><td>Status</td>
+          {% for r in rows %}
+          <td>{% if r.runnable %}<span class="v2-rh-chip v2-rh-chip--lastrun">CANONICAL LAST RUN</span>
+              {% else %}<span class="v2-rh-chip v2-rh-chip--stale" data-testid="ds-unavailable-{{ loop.index }}">NO CANONICAL RUN — unavailable for comparison</span>{% endif %}</td>
+          {% endfor %}</tr>
+        <tr><td class="fo-library-col-action">Open</td>
+          {% for r in rows %}
+          <td>{% if r.runnable %}<a href="/v2/workbook?project={{ r.project_code }}"
+                 data-testid="ds-open-{{ r.project_code }}" class="fo-library-open">Open</a>{% else %}—{% endif %}</td>
+          {% endfor %}</tr>
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="fo-library-empty fo-library-empty--compact" data-testid="ds-no-selection">
+    Select up to {{ max_projects }} projects above (comma-separated codes from
+    Model Home) and press Compare.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

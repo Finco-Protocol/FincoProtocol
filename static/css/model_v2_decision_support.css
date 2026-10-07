@@ -1,0 +1,40 @@
+/* ==========================================================================
+   Decision Support V1 — dense presentation for run compare + cross-project
+   compare. Additive; model_v2_run_history.css conventions reused.
+   ========================================================================== */
+
+.v2-ds {
+  padding: 10px 14px 20px;
+  font-size: 0.8125rem;
+}
+
+.v2-ds-section {
+  margin-bottom: 14px;
+}
+
+.v2-ds-section-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 3px;
+  margin-bottom: 6px;
+}
+
+.v2-ds-driver {
+  display: inline-block;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 1px 7px;
+  margin: 2px 2px 2px 0;
+  font-size: 0.72rem;
+  color: #111827;
+}
+
+/* movement direction communicated by symbol + label, not color alone */
+.v2-rh-table td[data-direction="up"]::before { content: "▲ "; color: #6b7280; font-size: 0.625rem; }
+.v2-rh-table td[data-direction="down"]::before { content: "▼ "; color: #6b7280; font-size: 0.625rem; }
+.v2-rh-table td[data-direction="flat"]::before { content: "＝ "; color: #9ca3af; font-size: 0.625rem; }
