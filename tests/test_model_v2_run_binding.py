@@ -66,13 +66,25 @@ CODE = "solar-64"
 
 
 def _plan(merchant_price=65.0, ppa_price=57.0):
-    ppa = PPAParams(ppa_enabled=True, ppa_base_price_eur_mwh=ppa_price,
-                    ppa_term_years=15, ppa_volume_share=0.7, ppa_price_index=0.02)
+    # Correction C: Workflow 07 validates persistence/run binding semantics,
+    # not revenue features that the production runtime cannot express exactly.
+    # Keep the typed PPA economics used by the fixture, but explicitly
+    # neutralize unsupported balancing/floor/cap seams.
+    ppa = PPAParams(
+        ppa_enabled=True, ppa_base_price_eur_mwh=ppa_price,
+        ppa_term_years=15, ppa_volume_share=0.7, ppa_price_index=0.02,
+        balancing_cost_pct=0.0, imbalance_penalty_pct=0.0,
+        ppa_price_floor=0.0, ppa_price_cap=0.0,
+    )
     mkt = MerchantParams(merchant_enabled=True, base_price_eur_mwh=merchant_price,
                          price_escalation_annual=0.02)
     return RevenuePlan.create((
-        RevenueStream("ppa", RevenueStreamType.PPA, volume_share=0.7,
-                      ppa=ppa, term_years=15),
+        # The generic-solar COD is not aligned to a semestrial boundary, so a
+        # finite RevenueStream lifecycle would exercise the separate
+        # RUNTIME_TARIFF_TERM_ALIGNMENT seam. WF07 does not test tariff-term
+        # economics; leave the stream unlimited while retaining the nested
+        # typed PPA term above for fixture fidelity.
+        RevenueStream("ppa", RevenueStreamType.PPA, volume_share=0.7, ppa=ppa),
         RevenueStream("merchant", RevenueStreamType.MERCHANT,
                       volume_share=None, merchant=mkt),
     ))

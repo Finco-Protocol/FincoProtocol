@@ -68,107 +68,62 @@ def _revenue_params_from_plan(
     plan: Any,
     base_inputs: Any,
     diag: list[CompositionDiagnostic],
+    *,
+    technology: str = "solar",
 ) -> Any:
     """Bridge a validated RevenuePlan onto the canonical RevenueParams
-    fields the engine already reads. Engine-expressible structures only:
-    one PPA stream + merchant sales. Everything else fails closed."""
+    fields the production path reads (Correction A: verified through
+    from_project_inputs → RevenueInput → orchestrator). The runtime-parity
+    authority returns a COMPLETE plan-governed override set — explicit
+    supersession of every plan-governed base field — and fails closed on
+    structures the production chain cannot express exactly."""
     from domain.revenue.plan import (
-        ContractRole,
         RevenueStreamType,
     )
 
-    ppa_streams = [s for s in plan.ordered_streams()
-                   if s.stream_type is RevenueStreamType.PPA and s.enabled]
-    merchant_streams = [s for s in plan.ordered_streams()
-                        if s.stream_type is RevenueStreamType.MERCHANT and s.enabled]
+    # Overlay stream types have no additive field in the frozen core
+    # RevenueParams: fail closed before any field is touched.
     unsupported = [
         s for s in plan.ordered_streams()
-        if s.enabled and s.stream_type not in (
-            RevenueStreamType.PPA, RevenueStreamType.MERCHANT)
+        if s.enabled and s.stream_type in (
+            RevenueStreamType.CFD, RevenueStreamType.FIT_PREMIUM)
     ]
     if unsupported:
         raise RevenuePlanBridgeError(
             CompositionErrorCode.REVENUE_PLAN_STREAM_UNSUPPORTED,
-            "plan contains stream types the canonical ProjectInputs cannot "
-            f"express yet: {sorted(s.stream_type.value for s in unsupported)}; "
+            "plan contains overlay stream types (CfD settlement / premium "
+            "support) with no additive field in the frozen core "
+            f"RevenueParams: {sorted(s.stream_type.value for s in unsupported)}; "
             "composition refuses to approximate their economics"
-        )
-    if len(ppa_streams) > 1:
-        raise RevenuePlanBridgeError(
-            CompositionErrorCode.REVENUE_PLAN_STREAM_UNSUPPORTED,
-            "the canonical RevenueParams authority expresses exactly one PPA; "
-            f"the plan carries {len(ppa_streams)} enabled PPA streams"
         )
 
     revenue = base_inputs.revenue
+
+    # Correction A: the runtime-parity authority produces the COMPLETE
+    # plan-governed override set (explicit supersession — no stale base
+    # PPA / merchant / schedule authority survives a selection) and fails
+    # closed on structures the production chain cannot express exactly.
+    from app.services.model_v2_composition.runtime_parity import (
+        bridge_plan_to_runtime_revenue, RevenueRuntimeSeamMissing,
+    )
+    try:
+        runtime_overrides = bridge_plan_to_runtime_revenue(
+            plan, base_inputs=base_inputs, technology=technology)
+    except RevenueRuntimeSeamMissing as exc:
+        raise RevenuePlanBridgeError(
+            CompositionErrorCode.REVENUE_PLAN_STREAM_UNSUPPORTED,
+            str(exc),
+        )
+
     diag.append(CompositionDiagnostic(
         layer="revenue_plan",
-        detail="resolved plan streams onto canonical RevenueParams fields",
+        detail="resolved plan streams onto canonical RevenueParams fields "
+               "via the runtime-parity authority (full supersession)",
         source_ref="domain.revenue.plan",
     ))
 
-    if ppa_streams:
-        ppa = ppa_streams[0].ppa
-        revenue = replace(
-            revenue,
-            ppa_base_tariff=_finite(
-                ppa.ppa_base_price_eur_mwh,
-                CompositionErrorCode.REVENUE_PLAN_VALUE_NON_FINITE,
-                "ppa_base_price_eur_mwh"),
-            ppa_term_years=_finite(
-                ppa.ppa_term_years if ppa.ppa_term_years > 0 else 0.0,
-                CompositionErrorCode.REVENUE_PLAN_VALUE_NON_FINITE,
-                "ppa_term_years"),
-            ppa_index=_finite(
-                ppa.ppa_price_index,
-                CompositionErrorCode.REVENUE_PLAN_VALUE_NON_FINITE,
-                "ppa_price_index"),
-            ppa_production_share=_finite(
-                ppa.ppa_volume_share,
-                CompositionErrorCode.REVENUE_PLAN_VALUE_NON_FINITE,
-                "ppa_volume_share"),
-        )
-        diag.append(CompositionDiagnostic(
-            layer="revenue_plan",
-            detail="PPA stream applied (base tariff / term / index / share)",
-        ))
-
-    if merchant_streams:
-        merchant = merchant_streams[0].merchant
-        # Existing authority: expand the merchant price path through
-        # MerchantParams.price_at_year for the project horizon. Custom
-        # curves are honored; a base scenario without any curve and without
-        # a base price is a missing authority (fail closed).
-        if merchant.price_scenario == "custom" and not merchant.custom_price_curve:
-            raise RevenuePlanBridgeError(
-                CompositionErrorCode.REVENUE_PLAN_MERCHANT_CURVE_MISSING,
-                "merchant stream uses the custom scenario without a curve"
-            )
-        horizon = int(getattr(base_inputs.info, "horizon_years", 0) or 0)
-        curve = tuple(
-            float(merchant.price_at_year(year)) for year in range(1, horizon + 1)
-        )
-        if not curve or any(
-            not isinstance(p, (int, float)) or p != p or p in (float("inf"), float("-inf"))
-            for p in curve
-        ):
-            raise RevenuePlanBridgeError(
-                CompositionErrorCode.REVENUE_PLAN_MERCHANT_CURVE_MISSING,
-                "merchant price expansion produced no usable curve"
-            )
-        revenue = replace(
-            revenue,
-            market_prices_curve=curve,
-            market_inflation=_finite(
-                merchant.price_escalation_annual,
-                CompositionErrorCode.REVENUE_PLAN_VALUE_NON_FINITE,
-                "price_escalation_annual"),
-        )
-        diag.append(CompositionDiagnostic(
-            layer="revenue_plan",
-            detail="merchant stream applied (price curve from existing "
-                   "price_at_year authority)",
-        ))
+    for field_name, value in runtime_overrides.items():
+        revenue = replace(revenue, **{field_name: value})
 
     return revenue
 
@@ -560,9 +515,15 @@ def _selection_plan_json(plan: Any) -> str:
     from dataclasses import asdict, is_dataclass
     from enum import Enum
 
+    # Documented non-economic RevenueStream fields (domain/revenue/plan.py):
+    # contract presentation/taxonomy metadata excluded from the economic
+    # identity hash — changing them must not change the composition hash.
+    non_economic = frozenset({"counterparty", "lender_eligible"})
+
     def enc(o: Any) -> Any:
         if is_dataclass(o) and not isinstance(o, type):
-            return {k: enc(v) for k, v in asdict(o).items()}
+            return {k: enc(v) for k, v in asdict(o).items()
+                    if k not in non_economic}
         if isinstance(o, Enum):
             return o.value
         if isinstance(o, tuple):
@@ -583,6 +544,8 @@ def compose_project_inputs(
     state: ModelV2WorkingState,
     context: ModelV2CompositionContext,
     base_inputs: Any,
+    *,
+    technology: str = "solar",
 ) -> ModelV2CompositionResult:
     """Compose the canonical ProjectInputs for one run.
 
@@ -631,7 +594,8 @@ def compose_project_inputs(
         revenue_plan = selection.plan
         try:
             revenue_plan.validate()
-            revenue = _revenue_params_from_plan(revenue_plan, inputs, diag)
+            revenue = _revenue_params_from_plan(
+                revenue_plan, inputs, diag, technology=technology)
         except RevenuePlanBridgeError:
             raise
         inputs = replace(inputs, revenue=revenue)
