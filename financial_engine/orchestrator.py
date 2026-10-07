@@ -48,6 +48,7 @@ from financial_engine.results import (
     TaxAndCfadsSchedules,
 )
 from financial_engine.validation import validate_operating_model_input, has_errors
+from financial_engine.run_scope import scoped_memo
 from financial_engine.provenance import (
     EngineProvenance,
     DerivationEvidence,
@@ -435,6 +436,7 @@ def derive_debt_sizing_operating_input(
     return _replace(base_op, technical=new_technical, revenue=new_revenue)
 
 
+@scoped_memo(maxsize=32)
 def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     """Run the Phase 2A clean operating model.
 
@@ -720,6 +722,7 @@ def _assemble_tax_cfads_schedules(
     )
 
 
+@scoped_memo(maxsize=32)
 def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
     """Phase 2B orchestrator: operating core + annual tax + canonical CFADS.
 
