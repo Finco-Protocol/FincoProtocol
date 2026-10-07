@@ -1,0 +1,87 @@
+{
+ "alt_tax_rate": {
+  "error_type": "CleanProductionRunUnavailable",
+  "kind": "fail_closed",
+  "reason": "PR8_CLEAN_ENGINE_FAIL_CLOSED"
+ },
+ "atad_on": {
+  "kind": "digest",
+  "lines": 7601,
+  "sha256": "8b0caf51eb787a016a2d441a086067fa8056202d4cf326407e22ef62f7861c24"
+ },
+ "data_center": {
+  "kind": "digest",
+  "lines": 7941,
+  "sha256": "5e6bdd394159ae901148e462e55fcf6550462d36fed48ec00c95e994a462416d"
+ },
+ "ev_charging": {
+  "kind": "digest",
+  "lines": 7601,
+  "sha256": "fb3bb8227c41ff225a0e6f82656b7d185d41a3c8da92612a652a8d9c0ecf99ca"
+ },
+ "gearing_high": {
+  "kind": "digest",
+  "lines": 9551,
+  "sha256": "28d4c6ca704be0fe70aaeb82476dce3171f57dea344dd2c859bb00eba12b1df8"
+ },
+ "gearing_low": {
+  "kind": "digest",
+  "lines": 9551,
+  "sha256": "153c6e3cc0953ea1fd79efb2372a9e20f5227c127cac3354233e27e10dd6c42a"
+ },
+ "infeasible_debt": {
+  "error_type": "CleanProductionRunUnavailable",
+  "kind": "fail_closed",
+  "reason": "PR8_CLEAN_ENGINE_FAIL_CLOSED"
+ },
+ "lockup": {
+  "kind": "digest",
+  "lines": 7601,
+  "sha256": "3a2c7ffcc6e4141b9170a6f0075b53cb30399a20512a773e88bc2dc4ae4546d5"
+ },
+ "loss_carryforward": {
+  "kind": "digest",
+  "lines": 7601,
+  "sha256": "19269918f4f9494f5b1c982a8f5f41e629ec5d83d8407dce26cbe1ecad2d487a"
+ },
+ "shl_deductible": {
+  "kind": "digest",
+  "lines": 9551,
+  "sha256": "184a339b1d828af36776346caca9a5cc01d8720ce248280b77b5a192afa409c9"
+ },
+ "shl_non_deductible": {
+  "kind": "digest",
+  "lines": 9551,
+  "sha256": "00857d9783a431cc2ae856adf0f10f761b2ff4af84df8d4ea47e67fed19ef480"
+ },
+ "solar": {
+  "kind": "digest",
+  "lines": 7601,
+  "sha256": "8b0caf51eb787a016a2d441a086067fa8056202d4cf326407e22ef62f7861c24"
+ },
+ "solar_opex_edit": {
+  "kind": "digest",
+  "lines": 7601,
+  "sha256": "3943abcd052f3705317741420dba79bef96c4b73d18bf7967418a86e1ce5d81e"
+ },
+ "solar_ref": {
+  "kind": "digest",
+  "lines": 9551,
+  "sha256": "f4786e1b8fb85d9333d137b61661e3e7f17d9a41c974780ec5e2a1da979ed4d9"
+ },
+ "wind": {
+  "kind": "digest",
+  "lines": 9551,
+  "sha256": "184a339b1d828af36776346caca9a5cc01d8720ce248280b77b5a192afa409c9"
+ },
+ "wind_opex_edit": {
+  "kind": "digest",
+  "lines": 9551,
+  "sha256": "433351f57b8f6e63b27c46bc51444f090b96b3ad56ab00abc5bd412f9e59a085"
+ },
+ "wind_ref": {
+  "kind": "digest",
+  "lines": 10433,
+  "sha256": "ca44069910201efa6e223d850f477e411aff1fe5614751e45f27e8d5dd61b86f"
+ }
+}
