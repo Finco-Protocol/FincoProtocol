@@ -38,7 +38,9 @@ TAX_YEAR_LAST_PERIOD the full annual CIT lands in a single payment period.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from datetime import timedelta
+import struct
 from typing import NamedTuple
 
 from financial_engine.cfads import calculate_canonical_cfads, calculate_canonical_cfads_value
@@ -658,7 +660,7 @@ def _prepare_numeric_tax_vectors(
     )
 
 
-def _evaluate_numeric_tax_vectors(
+def _evaluate_numeric_tax_vectors_uncached(
     periods: tuple,
     *,
     policy: TaxPolicy,
@@ -821,6 +823,109 @@ def _evaluate_numeric_tax_vectors(
         cash_tax_out[idx] = cash_tax
 
     return cfads_by_period, cash_tax_out
+
+
+def _pack_numeric_tax_vector(values: tuple[float, ...]) -> bytes:
+    if not values:
+        return b""
+    return struct.pack("!" + str(len(values)) + "d", *values)
+
+
+def _numeric_tax_static_token(
+    scope: dict,
+    periods: tuple,
+    policy: TaxPolicy,
+    opening_loss_vintages: tuple,
+    plan: _TaxPlan,
+) -> int:
+    """Run-local exact identity for immutable static tax dependencies.
+
+    The refs are retained for the life of the Run, so Python object-id reuse
+    cannot create a false cache hit. Equal-but-distinct contexts simply miss
+    the cache; they are never conflated.
+    """
+    table = scope.get("numeric_tax_static_context_v4")
+    if table is None:
+        table = scope["numeric_tax_static_context_v4"] = {}
+    raw = (id(periods), id(policy), id(opening_loss_vintages), id(plan))
+    entry = table.get(raw)
+    if entry is not None:
+        refs, token = entry
+        if (
+            refs[0] is periods
+            and refs[1] is policy
+            and refs[2] is opening_loss_vintages
+            and refs[3] is plan
+        ):
+            return token
+    token = len(table) + 1
+    table[raw] = ((periods, policy, opening_loss_vintages, plan), token)
+    return token
+
+
+def _evaluate_numeric_tax_vectors(
+    periods: tuple,
+    *,
+    policy: TaxPolicy,
+    opening_loss_vintages: tuple,
+    plan: _TaxPlan,
+    gross_interest_by_row: tuple[float, ...],
+    shl_non_deductible_by_row: tuple[float, ...],
+    reintegration_by_row: tuple[float, ...],
+    financing_income_by_row: tuple[float, ...],
+) -> tuple[dict[int, float], dict[int, float]]:
+    """Shared numeric fiscal kernel with bounded Run-scoped exact-input reuse.
+
+    The dynamic key is a compact IEEE byte representation of every numeric
+    vector read by the kernel. Static dependencies are immutable objects kept
+    alive by the Run scope. Results are copied on cache hits so callers cannot
+    mutate cached state. Exceptions are never cached.
+    """
+    scope = _current_run_scope()
+    if scope is None:
+        return _evaluate_numeric_tax_vectors_uncached(
+            periods,
+            policy=policy,
+            opening_loss_vintages=opening_loss_vintages,
+            plan=plan,
+            gross_interest_by_row=gross_interest_by_row,
+            shl_non_deductible_by_row=shl_non_deductible_by_row,
+            reintegration_by_row=reintegration_by_row,
+            financing_income_by_row=financing_income_by_row,
+        )
+
+    token = _numeric_tax_static_token(
+        scope, periods, policy, opening_loss_vintages, plan,
+    )
+    key = (
+        token,
+        _pack_numeric_tax_vector(gross_interest_by_row),
+        _pack_numeric_tax_vector(shl_non_deductible_by_row),
+        _pack_numeric_tax_vector(reintegration_by_row),
+        _pack_numeric_tax_vector(financing_income_by_row),
+    )
+    cache = scope.get("numeric_tax_exact_v4")
+    if cache is None:
+        cache = scope["numeric_tax_exact_v4"] = OrderedDict()
+    hit = cache.get(key)
+    if hit is not None:
+        cache.move_to_end(key)
+        return dict(hit[0]), dict(hit[1])
+
+    result = _evaluate_numeric_tax_vectors_uncached(
+        periods,
+        policy=policy,
+        opening_loss_vintages=opening_loss_vintages,
+        plan=plan,
+        gross_interest_by_row=gross_interest_by_row,
+        shl_non_deductible_by_row=shl_non_deductible_by_row,
+        reintegration_by_row=reintegration_by_row,
+        financing_income_by_row=financing_income_by_row,
+    )
+    cache[key] = (tuple(result[0].items()), tuple(result[1].items()))
+    if len(cache) > 4096:
+        cache.popitem(last=False)
+    return result
 
 
 class SolverTaxPlan:
