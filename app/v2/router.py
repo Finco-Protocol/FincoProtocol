@@ -3552,9 +3552,18 @@ def _run_side_view(entry):
 
 
 def _last_run_side(ws, freshness):
-    """The canonical Last Run side from the workspace record."""
+    """The canonical Last Run side from the workspace record.
+
+    Correction A5: the scenario label comes from the PERSISTED run-bound
+    identity (``last_runtime_identity["scenario_name"]``) — never from the
+    workspace's current ``active_scenario_name``, which describes the later,
+    mutable Working Copy selection.  Legacy-safe fallback only when the
+    persisted identity genuinely lacks the field.
+    """
     from app.v2.run_history_projection import _enriched_kpis
 
+    identity = getattr(ws, "last_runtime_identity", None) or {}
+    persisted_scenario = identity.get("scenario_name")
     class _LastView:
         runtime_summary = dict(getattr(ws, "last_runtime_summary", None) or {})
         debt_schedule = getattr(ws, "last_debt_schedule", None) or {}
@@ -3563,9 +3572,10 @@ def _last_run_side(ws, freshness):
     return {
         "kpis": _enriched_kpis(_LastView()),
         "ran_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
-        "scenario": getattr(ws, "active_scenario_name", None) or "Base",
+        "scenario": persisted_scenario or getattr(
+            ws, "active_scenario_name", None) or "Base",
         "snapshot": str(getattr(ws, "last_runtime_snapshot_id", "") or "")[:8],
-        "identity": getattr(ws, "last_runtime_identity", None) or {},
+        "identity": identity,
         "sponsor_summary": (getattr(ws, "last_sponsor_schedule", None) or {}).get("summary", {}),
         "debt_summary": (getattr(ws, "last_debt_schedule", None) or {}).get("summary", {}),
         "state": freshness.state.value,
@@ -3693,10 +3703,15 @@ def _ds_country(record) -> str:
 
 
 def _ds_capacity(record) -> str:
+    """Capacity display with explicit None semantics — numeric zero is a
+    valid persisted value, never silently treated as missing (Correction
+    §4 of DS post-merge review)."""
     base = getattr(record, "baseline_snapshot", None) or {}
     cap = base.get("capacity_mw")
+    if cap is None:
+        return ""
     try:
-        return f"{float(cap):.1f} MW" if cap else ""
+        return f"{float(cap):.1f} MW"
     except (TypeError, ValueError):
         return ""
 
@@ -3727,53 +3742,57 @@ async def compare_projects_page(
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    from app.persistence.projects_repository import (
-        get_reference_projects,
-        list_workspace_projects_paged,
-    )
+    from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
-    from app.services.project_library_service import ensure_reference_models
     from app.v2.decision_support_projection import (
         CROSS_PROJECT_MAX,
         build_cross_project_rows,
     )
 
-    ensure_reference_models()
-    selected_codes = [c for c in (projects or "").split(",") if c][:CROSS_PROJECT_MAX]
+    # Correction A4/A5(post-merge): normalize selection — strip whitespace,
+    # drop empties, de-duplicate preserving first-seen order over ALL raw
+    # tokens; the CROSS_PROJECT_MAX cap applies AFTER accessibility
+    # resolution, so garbage prefixes (unknown/inaccessible codes) never
+    # crowd out a valid later selection.  Duplicates never consume a second
+    # column.
+    raw_codes: list[str] = []
+    for raw_code in (projects or "").split(","):
+        code = raw_code.strip()
+        if code and code not in raw_codes:
+            raw_codes.append(code)
 
-    candidates: dict[str, dict] = {}
-    records, _total = list_workspace_projects_paged(
-        user_id=user.user_id, page=1, page_size=200)
-    for record in records:
-        candidates[record.project_code] = {"record": record,
-                                           "owner": user.user_id}
-    for record in get_reference_projects():
-        candidates.setdefault(record.project_code,
-                              {"record": record, "owner": record.user_id})
-
+    # Correction A3: resolve each candidate code DIRECTLY through the
+    # existing authorization authority (bounded: raw_codes length is the
+    # only loop bound, resolved rows capped at 5) — no fixed-size page
+    # scan.  Bootstrap authorities are NEVER invoked: a GET comparison
+    # render performs zero database writes.
     payloads: list[dict] = []
-    for code in selected_codes:
-        cand = candidates.get(code)
-        if cand is None:
-            continue
-        record = cand["record"]
+    resolved_count = 0
+    for code in raw_codes:
+        if resolved_count >= CROSS_PROJECT_MAX:
+            break
+        project_record, workspace_owner = resolve_accessible_project(
+            user.user_id, code)
+        if project_record is None:
+            continue  # unknown / inaccessible code stays unavailable
+        resolved_count += 1
         try:
-            ws = get_workspace_state(cand["owner"], record.project_id)
+            ws = get_workspace_state(workspace_owner, project_record.project_id)
         except Exception:  # evidence read failure == unavailable
             ws = None
         ran_at = getattr(ws, "last_runtime_at", None) if ws else None
-        _base = getattr(record, "baseline_snapshot", None) or {}
+        _base = getattr(project_record, "baseline_snapshot", None) or {}
         _cap_raw = _base.get("capacity_mw")
         try:
             _cap_num = float(_cap_raw) if _cap_raw else None
         except (TypeError, ValueError):
             _cap_num = None
         payloads.append({
-            "project_code": record.project_code,
-            "project_name": record.project_name,
-            "technology": record.project_type or "",
-            "country": _ds_country(record),
-            "capacity_display": _ds_capacity(record),
+            "project_code": project_record.project_code,
+            "project_name": project_record.project_name,
+            "technology": project_record.project_type or "",
+            "country": _ds_country(project_record),
+            "capacity_display": _ds_capacity(project_record),
             "capacity_mw": _cap_num,
             "runnable": bool(ran_at is not None),
             "ran_at_display": (str(ran_at)[:16].replace("T", " ")
@@ -3797,8 +3816,8 @@ async def compare_projects_page(
 
     ctx = {
         "rows": rows,
-        "projects": selected_codes,
-        "selected": selected_codes,
+        "projects": [r.project_code for r in rows],
+        "selected": [r.project_code for r in rows],
         "sort": sort or "",
         "technology_filter": technology or "",
         "technologies": techs,
