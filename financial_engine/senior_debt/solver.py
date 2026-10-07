@@ -398,6 +398,65 @@ def _forward_roll_numeric_uncached(
     return tuple(rows)
 
 
+
+def _roll_plan_exact_key(plan: SeniorDebtRollPlan):
+    return (
+        plan.period_indices,
+        tuple(float(v).hex() for v in plan.rates),
+        tuple(float(v).hex() for v in plan.day_fracs),
+        plan.in_repayment,
+        plan.n_repayment,
+        plan.repayment_method,
+        None if plan.dscr_targets is None else tuple(
+            None if v is None else float(v).hex() for v in plan.dscr_targets
+        ),
+        None if plan.availabilities is None else tuple(
+            None if v is None else float(v).hex() for v in plan.availabilities
+        ),
+        None if plan.explicit is None else tuple(float(v).hex() for v in plan.explicit),
+        float(plan.debt_service_scale).hex(),
+    )
+
+
+def _forward_roll_numeric(
+    plan: SeniorDebtRollPlan,
+    opening_keur: float,
+    cfads_by: dict[int, float],
+) -> tuple[_NumericDebtRow, ...]:
+    """Run-scoped exact-input reuse around the numeric roll kernel."""
+    scope = _current_run_scope()
+    if scope is None:
+        return _forward_roll_numeric_uncached(plan, opening_keur, cfads_by)
+
+    plan_keys = scope.get("senior_roll_plan_keys_v4")
+    if plan_keys is None:
+        plan_keys = scope["senior_roll_plan_keys_v4"] = {}
+    entry = plan_keys.get(id(plan))
+    if entry is not None and entry[0] is plan:
+        plan_key = entry[1]
+    else:
+        plan_key = _roll_plan_exact_key(plan)
+        plan_keys[id(plan)] = (plan, plan_key)
+
+    cfads_bits = tuple(
+        float(cfads_by.get(idx, 0.0)).hex() for idx in plan.period_indices
+    )
+    key = (plan_key, float(opening_keur).hex(), cfads_bits)
+
+    cache = scope.get("senior_forward_roll_exact_v4")
+    if cache is None:
+        cache = scope["senior_forward_roll_exact_v4"] = OrderedDict()
+    hit = cache.get(key)
+    if hit is not None:
+        cache.move_to_end(key)
+        return hit
+
+    rows = _forward_roll_numeric_uncached(plan, opening_keur, cfads_by)
+    cache[key] = rows
+    if len(cache) > 1024:
+        cache.popitem(last=False)
+    return rows
+
 def _level_installment(opening_keur: float, n_repayment: int) -> float:
     return opening_keur / n_repayment if n_repayment > 0 else 0.0
 
