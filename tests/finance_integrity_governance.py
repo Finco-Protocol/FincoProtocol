@@ -91,3 +91,15 @@ def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
 def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
     changed = changed_paths_vs_main() if changed is None else changed
     return sorted(f for f in changed if f.startswith(STRICTLY_FROZEN_PREFIXES))
+
+
+def approved_frozen_path(path: str) -> bool:
+    """Exemption for stream-specific "frozen namespace" guards.
+
+    True when the path is authorised by the ACTIVE Model V2 scope, or is a ``financial_engine``
+    module on the shared approved allow-list above. Nothing else is exempt: ``finco_core/``,
+    ``finco_radar/`` and every other engine module stay frozen for those guards.
+    """
+    from model_v2_governance import approved_by_active_model_v2_scope
+
+    return path in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS or approved_by_active_model_v2_scope(path)

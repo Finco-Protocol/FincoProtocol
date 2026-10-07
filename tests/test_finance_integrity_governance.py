@@ -37,3 +37,18 @@ def test_allow_list_entries_exist():
     from finance_integrity_governance import REPO
     for path in APPROVED:
         assert (REPO / path).is_file(), path
+
+
+def test_stream_guard_exemption_covers_only_allow_listed_engine_files():
+    """approved_frozen_path is what the per-stream 'frozen namespace' guards consult."""
+    from finance_integrity_governance import approved_frozen_path
+
+    assert all(approved_frozen_path(path) for path in APPROVED)
+    for path in (
+        "financial_engine/tax/atad.py",        # engine module NOT on the allow-list
+        "financial_engine/cfads.py",
+        "finco_core/tax/engine.py",            # strictly frozen
+        "finco_radar/venues/registry.py",
+        "app/services/anything.py",
+    ):
+        assert not approved_frozen_path(path), path

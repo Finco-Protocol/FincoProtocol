@@ -934,9 +934,9 @@ class TestDeploymentContract:
         # Explicitly authorized Model V2 epic engine files are governed by the
         # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
         # protecting every other frozen path.
-        from model_v2_governance import approved_by_active_model_v2_scope
+        from finance_integrity_governance import approved_frozen_path
         changed = [
             p for p in out.stdout.splitlines()
-            if p.strip() and not approved_by_active_model_v2_scope(p.strip())
+            if p.strip() and not approved_frozen_path(p.strip())
         ]
         assert changed == [], changed

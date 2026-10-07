@@ -238,8 +238,8 @@ def test_frozen_authority_namespaces_unchanged_from_canonical_base():
     # Explicitly authorized Model V2 epic engine files are governed by the
     # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
     # protecting every other frozen path.
-    from model_v2_governance import approved_by_active_model_v2_scope
+    from finance_integrity_governance import approved_frozen_path
     for path in changed:
-        if approved_by_active_model_v2_scope(path):
+        if approved_frozen_path(path):
             continue
         assert not any(path == prefix.rstrip("/") or path.startswith(prefix) for prefix in frozen), path
