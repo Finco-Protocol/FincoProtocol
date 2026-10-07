@@ -44,6 +44,11 @@ def engine_run_scope() -> Iterator[None]:
         _SCOPE.reset(token)
 
 
+def current_run_scope() -> "dict[str, OrderedDict] | None":
+    """The open run scope's cache table, or None when no scope is open."""
+    return _SCOPE.get()
+
+
 def scoped_memo(maxsize: int) -> Callable[[F], F]:
     """Memoise a pure function for the lifetime of the current ``engine_run_scope``."""
 

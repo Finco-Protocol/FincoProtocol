@@ -42,6 +42,7 @@ from datetime import timedelta
 from typing import NamedTuple
 
 from financial_engine.cfads import calculate_canonical_cfads
+from financial_engine.run_scope import current_run_scope as _current_run_scope
 from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
 from financial_engine.policies.tax import (
     CashTaxTiming,
@@ -481,6 +482,129 @@ def _payment_period_for_year_lean(
     return max(period_fracs, key=lambda k: (period_fracs[k], k))
 
 
+# Fragment kinds: how a period's amounts are distributed over calendar years.
+_PASS_THROUGH = 0      # zero-length period: amounts unchanged (``_split_period``)
+_SINGLE_FRAGMENT = 1   # one calendar year: the remainder fragment, amount - 0.0
+_MULTI_FRAGMENT = 2    # spans 31 Dec: amount * fraction, last fragment takes the remainder
+
+
+class _TaxPlan:
+    """Everything ``calculate_cfads_and_cash_tax`` derives from the period axis alone.
+
+    Depends only on ``periods`` (indices, dates, EBITDA, tax depreciation) — never on
+    interest, adjustments, financing income or policy — so it is built once per period
+    axis and reused by every solver evaluation of the run.
+    """
+
+    __slots__ = (
+        "fallback", "year_keys", "rows", "y_ebitda", "y_dep", "payment_idx",
+        "sorted_idx", "max_idx", "same_period_contributions",
+    )
+
+
+def _build_tax_plan(periods: tuple) -> _TaxPlan:
+    plan = _TaxPlan()
+    plan.fallback = True
+    plan.same_period_contributions = None
+    try:
+        all_idx = [p.period_index for p in periods]  # type: ignore[attr-defined]
+        if not periods or len(set(all_idx)) != len(all_idx):
+            return plan
+
+        # year -> [ebitda list, tax_dep list, [(period_index, allocation_fraction), ...]]
+        years: dict[int, list] = {}
+        raw_rows: list[tuple] = []
+        for p in periods:
+            idx = p.period_index          # type: ignore[attr-defined]
+            p_start = p.period_start      # type: ignore[attr-defined]
+            p_end = p.period_end          # type: ignore[attr-defined]
+            ebitda = p.ebitda_keur        # type: ignore[attr-defined]
+            tax_dep = p.tax_depreciation_keur  # type: ignore[attr-defined]
+            total_days = (p_end - p_start).days
+            if total_days < 0:
+                return plan               # malformed axis: the full path reports it
+            if total_days == 0:
+                yr = p_end.year
+                acc = years.setdefault(yr, [[], [], []])
+                acc[0].append(ebitda)
+                acc[1].append(tax_dep)
+                acc[2].append((idx, 1.0))
+                raw_rows.append((idx, _PASS_THROUGH, ((yr, 1.0),)))
+                continue
+            frag_geometry, fracs, _total = _period_geometry(p_start, p_end)
+            last = len(frag_geometry) - 1
+            acc_e = acc_d = 0.0
+            slots = []
+            for i, (yr, _fs, _fe, _fd) in enumerate(frag_geometry):
+                frac = fracs[i]
+                if i < last:
+                    f_e = ebitda * frac
+                    f_d = tax_dep * frac
+                    acc_e += f_e
+                    acc_d += f_d
+                else:
+                    f_e = ebitda - acc_e
+                    f_d = tax_dep - acc_d
+                acc = years.setdefault(yr, [[], [], []])
+                acc[0].append(f_e)
+                acc[1].append(f_d)
+                acc[2].append((idx, frac))
+                slots.append((yr, frac))
+            raw_rows.append(
+                (idx, _SINGLE_FRAGMENT if last == 0 else _MULTI_FRAGMENT, tuple(slots))
+            )
+
+        year_keys = sorted(years)
+        pos_of_year = {yr: k for k, yr in enumerate(year_keys)}
+        period_end_by_index = {p.period_index: p.period_end for p in periods}  # type: ignore[attr-defined]
+        plan.year_keys = tuple(year_keys)
+        plan.rows = tuple(
+            (idx, kind, tuple((pos_of_year[yr], frac) for yr, frac in slots))
+            for idx, kind, slots in raw_rows
+        )
+        plan.y_ebitda = tuple(sum(years[yr][0]) for yr in year_keys)
+        plan.y_dep = tuple(sum(years[yr][1]) for yr in year_keys)
+        plan.payment_idx = tuple(
+            _payment_period_for_year_lean(yr, years[yr][2], period_end_by_index)
+            for yr in year_keys
+        )
+        plan.sorted_idx = tuple(sorted(all_idx))
+        plan.max_idx = max(all_idx)
+        # SAME_PERIOD: per period, the (year position, normalised fraction) it contributes to.
+        contributions: dict[int, list[tuple[int, float]]] = {idx: [] for idx in plan.sorted_idx}
+        for k, yr in enumerate(year_keys):
+            idx_fracs = years[yr][2]
+            grouped: dict[int, list[float]] = {}
+            for idx, frac in idx_fracs:
+                grouped.setdefault(idx, []).append(frac)
+            raw_fracs = {idx: sum(fr) for idx, fr in grouped.items()}
+            period_indices = tuple(dict.fromkeys(idx for idx, _f in idx_fracs))
+            year_alloc_sum = sum(raw_fracs.get(idx, 0) for idx in period_indices)
+            denom = year_alloc_sum or 1.0
+            for idx in period_indices:
+                contributions[idx].append((k, raw_fracs.get(idx, 0) / denom))
+        plan.same_period_contributions = contributions
+        plan.fallback = False
+        return plan
+    except Exception:  # anything unexpected: let the full path behave exactly as before
+        plan.fallback = True
+        return plan
+
+
+def _tax_plan_for(periods: tuple) -> _TaxPlan:
+    """The plan for this period axis — reused within the current engine run scope."""
+    scope = _current_run_scope()
+    if scope is None:
+        return _build_tax_plan(periods)
+    plans = scope.setdefault("tax_plan", {})
+    entry = plans.get(id(periods))
+    if entry is not None and entry[0] is periods:
+        return entry[1]
+    plan = _build_tax_plan(periods)
+    plans[id(periods)] = (periods, plan)   # keeps `periods` alive, so its id stays unique
+    return plan
+
+
 def calculate_cfads_and_cash_tax(
     periods: tuple,                 # tuple[OperatingPeriodResult]
     tax_input: TaxCalculationInput,
@@ -493,36 +617,33 @@ def calculate_cfads_and_cash_tax(
     and per-period allocation records) it then discards. This performs the same
     arithmetic in the same order — period splitting, annual aggregation, ATAD annual
     capacity, FIFO loss ledger, cash-tax timing — without constructing them, so every
-    float is bit-identical. Anything outside the plain calendar-year basis
-    (MODEL_YEAR_PAIRING, duplicate period indices, no policy, no periods) is
-    delegated to the full path, so unusual or malformed inputs fail exactly as before.
+    float is bit-identical. Quantities that depend only on the period axis are taken
+    from a ``_TaxPlan`` built once per run. Anything outside the plain calendar-year
+    basis (MODEL_YEAR_PAIRING, duplicate period indices, no policy, no periods, a
+    malformed axis) is delegated to the full path, so unusual or malformed inputs fail
+    exactly as before.
     """
     policy: TaxPolicy = tax_input.policy  # type: ignore[assignment]
     if (
         policy is None
-        or not periods
         or policy.tax_basis_periodisation == TaxBasisPeriodisation.MODEL_YEAR_PAIRING
     ):
         return _cfads_and_cash_tax_via_full_tax(periods, tax_input)
-    all_idx = [p.period_index for p in periods]  # type: ignore[attr-defined]
-    if len(set(all_idx)) != len(all_idx):
+    plan = _tax_plan_for(periods)
+    if plan.fallback:
         return _cfads_and_cash_tax_via_full_tax(periods, tax_input)
 
     interest_map = _build_interest_map(tax_input.period_interest)
     adj_map = _build_adj_map(tax_input.period_adjustments)
     financing_income_map = _build_financing_income_map(tax_input)
 
-    # ── Steps 1-2: split periods on 31 Dec, aggregate per calendar year ──────────
-    # years[yr] = [ebitda, tax_dep, interest, reint, shl_non_deductible, fin_income,
-    #              (period_index, allocation_fraction) per fragment]
-    years: dict[int, list] = {}
-    for p in periods:
-        idx: int = p.period_index          # type: ignore[attr-defined]
-        p_start = p.period_start           # type: ignore[attr-defined]
-        p_end = p.period_end               # type: ignore[attr-defined]
-        ebitda = p.ebitda_keur             # type: ignore[attr-defined]
-        tax_dep = p.tax_depreciation_keur  # type: ignore[attr-defined]
-
+    # ── Steps 1-2: distribute the period amounts over calendar years ─────────────
+    n_years = len(plan.year_keys)
+    y_interest_lists: list[list[float]] = [[] for _ in range(n_years)]
+    y_reint_lists: list[list[float]] = [[] for _ in range(n_years)]
+    y_shl_nd_lists: list[list[float]] = [[] for _ in range(n_years)]
+    y_fin_lists: list[list[float]] = [[] for _ in range(n_years)]
+    for idx, kind, slots in plan.rows:
         pi_obj = interest_map.get(idx)
         if pi_obj:
             shl_tax_eligible, shl_non_deductible = _resolve_shl_tax_eligible_interest(
@@ -539,77 +660,56 @@ def calculate_cfads_and_cash_tax(
         reint = adj_map.get(idx, 0.0)
         fin_income = financing_income_map.get(idx, 0.0)
 
-        total_days = (p_end - p_start).days
-        if total_days == 0:
-            acc = years.get(p_end.year)
-            if acc is None:
-                acc = years[p_end.year] = [[], [], [], [], [], [], []]
-            acc[0].append(ebitda)
-            acc[1].append(tax_dep)
-            acc[2].append(gross_int)
-            acc[3].append(reint)
-            acc[4].append(shl_non_deductible)
-            acc[5].append(fin_income)
-            acc[6].append((idx, 1.0))
-            continue
-
-        assert total_days > 0, (
-            f"Internal error: fragments sum to 0 for period {idx} "
-            f"({p_start} → {p_end}, total_days={total_days})"
-        )
-        frag_geometry, fracs, _total_frag_days = _period_geometry(p_start, p_end)
-        last = len(frag_geometry) - 1
-        acc_e = acc_d = acc_i = acc_r = acc_n = acc_f = 0.0
-        for i, (yr, _fs, _fe, _fd) in enumerate(frag_geometry):
-            frac = fracs[i]
-            if i < last:
-                f_e = ebitda * frac
-                f_d = tax_dep * frac
-                f_i = gross_int * frac
-                f_r = reint * frac
-                f_n = shl_non_deductible * frac
-                f_f = fin_income * frac
-                acc_e += f_e
-                acc_d += f_d
-                acc_i += f_i
-                acc_r += f_r
-                acc_n += f_n
-                acc_f += f_f
-            else:
-                f_e = ebitda - acc_e
-                f_d = tax_dep - acc_d
-                f_i = gross_int - acc_i
-                f_r = reint - acc_r
-                f_n = shl_non_deductible - acc_n
-                f_f = fin_income - acc_f
-            acc = years.get(yr)
-            if acc is None:
-                acc = years[yr] = [[], [], [], [], [], [], []]
-            acc[0].append(f_e)
-            acc[1].append(f_d)
-            acc[2].append(f_i)
-            acc[3].append(f_r)
-            acc[4].append(f_n)
-            acc[5].append(f_f)
-            acc[6].append((idx, frac))
-
-    year_keys = sorted(years)
+        if kind == _MULTI_FRAGMENT:
+            acc_i = acc_r = acc_n = acc_f = 0.0
+            last = len(slots) - 1
+            for i, (pos, frac) in enumerate(slots):
+                if i < last:
+                    f_i = gross_int * frac
+                    f_r = reint * frac
+                    f_n = shl_non_deductible * frac
+                    f_f = fin_income * frac
+                    acc_i += f_i
+                    acc_r += f_r
+                    acc_n += f_n
+                    acc_f += f_f
+                else:
+                    f_i = gross_int - acc_i
+                    f_r = reint - acc_r
+                    f_n = shl_non_deductible - acc_n
+                    f_f = fin_income - acc_f
+                y_interest_lists[pos].append(f_i)
+                y_reint_lists[pos].append(f_r)
+                y_shl_nd_lists[pos].append(f_n)
+                y_fin_lists[pos].append(f_f)
+        elif kind == _SINGLE_FRAGMENT:
+            pos = slots[0][0]
+            y_interest_lists[pos].append(gross_int - 0.0)
+            y_reint_lists[pos].append(reint - 0.0)
+            y_shl_nd_lists[pos].append(shl_non_deductible - 0.0)
+            y_fin_lists[pos].append(fin_income - 0.0)
+        else:
+            pos = slots[0][0]
+            y_interest_lists[pos].append(gross_int)
+            y_reint_lists[pos].append(reint)
+            y_shl_nd_lists[pos].append(shl_non_deductible)
+            y_fin_lists[pos].append(fin_income)
 
     # ── Step 3: ATAD annual capacity, taxable income, FIFO loss ledger, CIT ──────
     taxable_before_lcf: list[float] = []
     loss_gate = policy.loss_utilisation_gate == TaxLossUtilisationGate.EBT_POSITIVE
     loss_use_allowed_list: list[bool] = []
-    for yr in year_keys:
-        acc = years[yr]
-        y_ebitda = sum(acc[0])
-        y_dep = sum(acc[1])
-        y_interest = sum(acc[2])
-        y_reint = sum(acc[3])
-        y_shl_nd = sum(acc[4])
-        y_fin = sum(acc[5])
+    atad_enabled = policy.atad_enabled
+    for k in range(n_years):
+        y_ebitda = plan.y_ebitda[k]
+        y_dep = plan.y_dep[k]
+        y_interest = sum(y_interest_lists[k])
+        y_reint = sum(y_reint_lists[k])
+        y_shl_nd = sum(y_shl_nd_lists[k])
+        y_fin = sum(y_fin_lists[k])
 
         total = y_interest
-        if not policy.atad_enabled or total <= 0:
+        if not atad_enabled or total <= 0:
             deductible = total
         else:
             ebitda_based = y_ebitda * policy.atad_ebitda_limit
@@ -640,7 +740,7 @@ def calculate_cfads_and_cash_tax(
 
     taxable_after_lcf = taxable_income_after_lcf_series(
         taxable_income_before_lcf=tuple(taxable_before_lcf),
-        tax_year_indices=tuple(year_keys),
+        tax_year_indices=plan.year_keys,
         opening_inputs=tax_input.opening_loss_vintages,
         loss_carryforward_years=policy.loss_carryforward_years,
         loss_use_allowed=tuple(loss_use_allowed_list) if loss_gate else None,
@@ -650,46 +750,26 @@ def calculate_cfads_and_cash_tax(
     ]
 
     # ── Step 4: allocate cash tax to periods ─────────────────────────────────────
-    all_period_indices = sorted(all_idx)
-    max_period_idx = max(all_period_indices)
-    cash_tax_by_period: dict[int, float] = {idx: 0.0 for idx in all_period_indices}
+    cash_tax_by_period: dict[int, float] = {idx: 0.0 for idx in plan.sorted_idx}
 
     if policy.cash_tax_timing in (
         CashTaxTiming.TAX_YEAR_LAST_PERIOD,
         CashTaxTiming.MODEL_YEAR_PAYMENT_PERIOD,
     ):
-        period_end_by_index = {p.period_index: p.period_end for p in periods}  # type: ignore[attr-defined]
-        for yr, liability in zip(year_keys, liabilities):
-            acc = years[yr]
-            if not acc[6]:
-                continue
-            payment_period = (
-                _payment_period_for_year_lean(yr, acc[6], period_end_by_index)
-                + policy.cash_tax_payment_lag_periods
-            )
+        lag = policy.cash_tax_payment_lag_periods
+        max_period_idx = plan.max_idx
+        for base_payment, liability in zip(plan.payment_idx, liabilities):
+            payment_period = base_payment + lag
             if payment_period <= max_period_idx:
                 cash_tax_by_period[payment_period] = (
                     cash_tax_by_period[payment_period] + liability
                 )
     else:
         # SAME_PERIOD: each period's share = sum(annual_CIT x normalised alloc_frac).
-        contributions: dict[int, list[tuple[float, float]]] = {
-            idx: [] for idx in all_period_indices
-        }
-        for yr, liability in zip(year_keys, liabilities):
-            idx_fracs = years[yr][6]
-            grouped: dict[int, list[float]] = {}
-            for idx, frac in idx_fracs:
-                grouped.setdefault(idx, []).append(frac)
-            raw_fracs = {idx: sum(fr) for idx, fr in grouped.items()}
-            period_indices = tuple(dict.fromkeys(idx for idx, _f in idx_fracs))
-            year_alloc_sum = sum(raw_fracs.get(idx, 0) for idx in period_indices)
-            denom = year_alloc_sum or 1.0
-            for idx in period_indices:
-                contributions[idx].append((liability, raw_fracs.get(idx, 0) / denom))
-        for idx in all_period_indices:
-            for liability, alloc_frac in contributions[idx]:
-                cash_tax_by_period[idx] = cash_tax_by_period[idx] + liability * alloc_frac
+        contributions = plan.same_period_contributions
+        for idx in plan.sorted_idx:
+            for k, norm_frac in contributions[idx]:
+                cash_tax_by_period[idx] = cash_tax_by_period[idx] + liabilities[k] * norm_frac
 
     # ── Step 5: canonical CFADS — the formula stays in cfads.py (single authority) ──
     rows = tuple(
