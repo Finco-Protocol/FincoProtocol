@@ -46,6 +46,43 @@ If the history insert fails, the whole transaction — including the Last
 Run promotion — rolls back. "Last Run = C but History C missing" and
 "History C without its Last Run promotion" are unrepresentable.
 
+**Commit correlation (Correction A1).** A history payload supplied to
+`save_workspace_state` must describe EXACTLY the Last Run that save
+commits: user_id, project_id, project_code, runtime_snapshot_id,
+runtime_origin, last_runtime_scenario_id and the active-scenario metadata
+are compared against the effective commit values BEFORE the workspace row
+is mutated; any disagreement raises typed
+`RUN_HISTORY_COMMIT_CORRELATION_MISMATCH` — the payload is never silently
+rewritten to agree. The V2 path builds its payload from the same
+in-transaction locals, so the invariant holds by construction there.
+
+**One run timestamp (Correction A2).** `record_workspace_runtime` captures
+ONE timezone-aware run timestamp used verbatim for the history row's
+`ran_at` and the committed `last_runtime_at` — a single run can never
+carry different times in Last Run vs Run History.
+
+**Binding validation (Correction A3).** A `model_v2` binding in the
+identity payload is first validated by the canonical Workflow 07
+validator (`validate_run_binding_payload`) — schema, key set, hash
+shapes — and only then checked against the correlation invariants. A
+malformed binding fails closed even when its correlation fields happen
+to match.
+
+**No unvalidated append (Correction A4).** The standalone
+`append_run_history` entry point was removed: the only writer is the
+transaction primitive `append_run_history_cursor`, called exclusively by
+the two canonical commit paths with payloads produced by
+`prepare_run_history_payload`.
+
+**Strict typed ledger (Corrections A5/A7).** Reads fail closed
+(`RUN_HISTORY_PAYLOAD_MALFORMED`) unless EVERY structured JSON column
+(runtime summary, the five schedule snapshots, integrity evidence,
+replay metadata) decodes to a JSON object, and the identity payload is
+null (legacy) or an object. Prepared payloads accept typed optional
+identity fields (`runtime_origin`, `engine_version`, `workbook_version`,
+scenario ids, `composite_hash`) only as non-empty strings or contractual
+None — SQLite TEXT affinity is never trusted to coerce values.
+
 ## Record contract
 
 One row per successful canonical run capturing the canonical evidence that

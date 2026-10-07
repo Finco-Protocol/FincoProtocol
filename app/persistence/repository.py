@@ -328,13 +328,17 @@ def record_workspace_runtime(
     )
     from financial_engine.version import ENGINE_VERSION as _engine_version
     from app.workbook.registry import WORKBOOK as _workbook_registry
+    # Correction A2: ONE authoritative timezone-aware run timestamp for the
+    # successful run - the history row and the committed Last Run evidence
+    # must never carry different times for the same run.
+    _run_at = _now_utc()
     _history_payload = _prepare_history(
         user_id=user_id,
         project_id=project_id,
         project_code=project_code,
         runtime_snapshot_id=runtime_snapshot_id,
         runtime_origin=runtime_origin,
-        ran_at=_now_utc().isoformat(),
+        ran_at=_run_at.isoformat(),
         runtime_summary=runtime_summary,
         financial_statements=financial_statements or {},
         debt_schedule=debt_schedule or {},
@@ -373,7 +377,7 @@ def record_workspace_runtime(
         dirty=dirty,
         governance_state=governance_state or (existing.governance_state if existing else {}),
         replay_metadata=replay_metadata,
-        last_runtime_at=_now_utc(),
+        last_runtime_at=_run_at,
         run_history_payload=_history_payload,
     )
 

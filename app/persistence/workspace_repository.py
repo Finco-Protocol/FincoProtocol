@@ -220,6 +220,42 @@ def clear_workspace_model_v2_state(
 # save_workspace_state
 # -----------------------------------------------------------------
 
+def _prove_history_commit_correlation(
+    payload, *, user_id, project_id, project_code,
+    last_runtime_snapshot_id, last_runtime_origin,
+    last_runtime_scenario_id, active_scenario_id, active_scenario_name,
+):
+    """Correction A1: the history payload must describe EXACTLY the Last
+    Run this save commits. Any disagreement is a typed fail-closed error
+    before the workspace row is mutated - never silently rewritten."""
+    from app.persistence.run_history_repository import (
+        RunHistoryError as _RunHistoryError,
+    )
+
+    mismatches = []
+
+    def _eq(field, expected):
+        if payload.get(field) != expected:
+            mismatches.append(
+                f"{field}: payload {payload.get(field)!r} != commit {expected!r}"
+            )
+
+    _eq("user_id", user_id)
+    _eq("project_id", project_id)
+    _eq("project_code", project_code)
+    _eq("runtime_snapshot_id", last_runtime_snapshot_id)
+    _eq("runtime_origin", last_runtime_origin)
+    _eq("last_runtime_scenario_id", last_runtime_scenario_id)
+    _eq("active_scenario_id", active_scenario_id)
+    _eq("active_scenario_name", active_scenario_name)
+    if mismatches:
+        raise _RunHistoryError(
+            "RUN_HISTORY_COMMIT_CORRELATION_MISMATCH: the run history "
+            "payload does not describe the Last Run being committed - "
+            + "; ".join(mismatches)
+        )
+
+
 def save_workspace_state(
     *,
     user_id: str,
@@ -347,6 +383,18 @@ def save_workspace_state(
         _dch = v2_draft_content_hash or _draft_content_hash(draft_snapshot or {})
         _model_v2_json = _model_v2_state_json(
             model_v2_working_state, existing.model_v2_working_state_json)
+        if run_history_payload is not None:
+            _prove_history_commit_correlation(
+                run_history_payload,
+                user_id=user_id,
+                project_id=project_id,
+                project_code=project_code,
+                last_runtime_snapshot_id=last_runtime_snapshot_id,
+                last_runtime_origin=last_runtime_origin,
+                last_runtime_scenario_id=last_runtime_scenario_id,
+                active_scenario_id=active_scenario_id,
+                active_scenario_name=active_scenario_name,
+            )
         with get_cursor() as cur:
             if run_history_payload is not None:
                 # Run History V1: the connection runs in autocommit mode, so
@@ -404,6 +452,18 @@ def save_workspace_state(
         created_at = now
         replay_metadata.setdefault("workspace_id", workspace_id)
         _model_v2_json = _model_v2_state_json(model_v2_working_state, "")
+        if run_history_payload is not None:
+            _prove_history_commit_correlation(
+                run_history_payload,
+                user_id=user_id,
+                project_id=project_id,
+                project_code=project_code,
+                last_runtime_snapshot_id=last_runtime_snapshot_id,
+                last_runtime_origin=last_runtime_origin,
+                last_runtime_scenario_id=last_runtime_scenario_id,
+                active_scenario_id=active_scenario_id,
+                active_scenario_name=active_scenario_name,
+            )
         with get_cursor() as cur:
             if run_history_payload is not None:
                 cur.execute("BEGIN IMMEDIATE")

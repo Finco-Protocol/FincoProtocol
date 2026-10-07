@@ -506,3 +506,194 @@ def test_p_malformed_stored_payload_fails_closed(workspace):
             ("{}", "[broken", entry.history_id))
     with pytest.raises(RunHistoryError, match="RUN_HISTORY_PAYLOAD_MALFORMED"):
         get_run_history(USER, pid)
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION A: persistence-boundary correlation + strict typed ledger
+# ---------------------------------------------------------------------------
+
+
+def _payload_for(snapshot_id, project_id, **overrides):
+    from app.persistence.run_history_repository import (
+        prepare_run_history_payload,
+    )
+
+    kwargs = dict(
+        user_id=USER, project_id=project_id,
+        project_code=CODE, runtime_snapshot_id=snapshot_id,
+        runtime_origin="v2_run", ran_at=NOW.isoformat(),
+        runtime_summary={"n": 1}, financial_statements={}, debt_schedule={},
+        tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+    )
+    kwargs.update(overrides)
+    return prepare_run_history_payload(**kwargs)
+
+
+def test_corr_a_snapshot_mismatch_fails_closed(workspace):
+    """CORRECTION A: a payload describing a different snapshot can never
+    ride a committing save - typed mismatch, nothing mutated."""
+    pid = workspace.project_id
+    _v2_run(pid, "snap-A")
+    history_before = get_run_history(USER, pid)
+    last_run_before = get_workspace_state(USER, pid).last_runtime_snapshot_id
+    forged = _payload_for("snap-FAKE", pid)
+    with pytest.raises(
+        RunHistoryError, match="RUN_HISTORY_COMMIT_CORRELATION_MISMATCH"
+    ):
+        save_workspace_state(
+            user_id=USER, project_id=pid, project_code=CODE,
+            draft_snapshot={"active_project": CODE, "capacity_mw": "64"},
+            saved_snapshot={"active_project": CODE, "capacity_mw": "64"},
+            last_runtime_snapshot={"cap": 2},
+            last_runtime_summary={"npv_keur": 2.0},
+            last_runtime_snapshot_id="snap-REAL",
+            last_runtime_origin="v2_run",
+            run_history_payload=forged,
+        )
+    assert get_run_history(USER, pid) == history_before
+    assert get_workspace_state(USER, pid).last_runtime_snapshot_id == (
+        last_run_before)
+
+
+def test_corr_b_project_code_mismatch_fails_closed(workspace):
+    """CORRECTION A: foreign project_code in the payload fails closed."""
+    pid = workspace.project_id
+    _v2_run(pid, "snap-A")
+    before = get_run_history(USER, pid)
+    forged = _payload_for("snap-B", pid, project_code="other-project")
+    with pytest.raises(
+        RunHistoryError, match="RUN_HISTORY_COMMIT_CORRELATION_MISMATCH"
+    ):
+        save_workspace_state(
+            user_id=USER, project_id=pid, project_code=CODE,
+            draft_snapshot={"active_project": CODE},
+            saved_snapshot={"active_project": CODE},
+            last_runtime_snapshot={"cap": 3},
+            last_runtime_summary={}, last_runtime_snapshot_id="snap-B",
+            last_runtime_origin="v2_run",
+            run_history_payload=forged,
+        )
+    assert get_run_history(USER, pid) == before
+
+
+def test_corr_c_user_project_mismatch_fails_closed(workspace):
+    """CORRECTION A: wrong owner/project identity fails closed."""
+    pid = workspace.project_id
+    forged = _payload_for("snap-C", "some-other-project-id")
+    with pytest.raises(
+        RunHistoryError, match="RUN_HISTORY_COMMIT_CORRELATION_MISMATCH"
+    ):
+        save_workspace_state(
+            user_id=USER, project_id=pid, project_code=CODE,
+            draft_snapshot={"active_project": CODE},
+            saved_snapshot={"active_project": CODE},
+            last_runtime_snapshot={}, last_runtime_summary={},
+            last_runtime_snapshot_id="snap-C", last_runtime_origin="v2_run",
+            run_history_payload=forged,
+        )
+    forged_user = _payload_for("snap-C2", pid)
+    forged_user["user_id"] = "someone-else"
+    with pytest.raises(
+        RunHistoryError, match="RUN_HISTORY_COMMIT_CORRELATION_MISMATCH"
+    ):
+        save_workspace_state(
+            user_id=USER, project_id=pid, project_code=CODE,
+            draft_snapshot={"active_project": CODE},
+            saved_snapshot={"active_project": CODE},
+            last_runtime_snapshot={}, last_runtime_summary={},
+            last_runtime_snapshot_id="snap-C2", last_runtime_origin="v2_run",
+            run_history_payload=forged_user,
+        )
+
+
+def test_corr_d_scenario_mismatch_fails_closed(workspace):
+    """CORRECTION A: scenario-active metadata must agree."""
+    pid = workspace.project_id
+    scenario_id = _real_scenario(pid)
+    forged = _payload_for("snap-D", pid, last_runtime_scenario_id=scenario_id)
+    with pytest.raises(
+        RunHistoryError, match="RUN_HISTORY_COMMIT_CORRELATION_MISMATCH"
+    ):
+        save_workspace_state(
+            user_id=USER, project_id=pid, project_code=CODE,
+            draft_snapshot={"active_project": CODE},
+            saved_snapshot={"active_project": CODE},
+            last_runtime_snapshot={}, last_runtime_summary={},
+            last_runtime_snapshot_id="snap-D", last_runtime_origin="v2_run",
+            last_runtime_scenario_id=None,
+            run_history_payload=forged,
+        )
+
+
+def test_corr_e_legacy_single_run_timestamp(workspace):
+    """CORRECTION A2: history.ran_at == committed last_runtime_at exactly."""
+    pid = workspace.project_id
+    _legacy_run(pid, "snap-LEG-TS")
+    entry = get_run_history(USER, pid)[0]
+    workspace_row = get_workspace_state(USER, pid)
+    committed_at = workspace_row.last_runtime_at
+    if hasattr(committed_at, "isoformat"):
+        assert entry.ran_at == committed_at.isoformat()
+    else:
+        assert entry.ran_at == str(committed_at)
+
+
+def test_corr_f_incomplete_binding_fails_closed(workspace):
+    """CORRECTION A3: correlation-matching but schema-invalid bindings are
+    rejected via the canonical Workflow 07 validator."""
+    pid = workspace.project_id
+    # correlation fields all match; the binding is structurally incomplete
+    incomplete = {
+        "_schema": "finco.model-v2.run-binding", "schema_version": 1,
+        "working_copy_ref": CODE, "snapshot_id": "snap-F2",
+        "scenario_id": None,
+        "composition_hash": "not-a-sha256",
+        "economic_identity": "also-not",
+    }
+    with pytest.raises(RunHistoryError, match="RUN_HISTORY_BINDING_INVALID"):
+        rh.prepare_run_history_payload(
+            user_id=USER, project_id=pid, project_code=CODE,
+            runtime_snapshot_id="snap-F2", runtime_origin="v2_run",
+            ran_at=NOW.isoformat(), runtime_summary={},
+            financial_statements={}, debt_schedule={}, tax_schedule={},
+            distribution_schedule={}, sponsor_schedule={},
+            last_runtime_identity={"model_v2": incomplete},
+            last_runtime_scenario_id=None,
+        )
+
+
+def test_corr_g_h_wrong_json_shapes_fail_closed(workspace):
+    """CORRECTION A5: every structured column must be a JSON object."""
+    pid = workspace.project_id
+    _v2_run(pid, "snap-A")
+    entry = get_run_history(USER, pid)[0]
+    for column, bad in (
+        ("financial_statements_json", "[]"),
+        ("debt_schedule_json", '"x"'),
+        ("tax_schedule_json", "5"),
+        ("distribution_schedule_json", "false"),
+        ("sponsor_schedule_json", "[]"),
+        ("integrity_evidence_json", '"str"'),
+        ("replay_metadata_json", "[1, 2]"),
+        ("runtime_summary_json", "null"),
+    ):
+        with get_cursor() as cur:
+            cur.execute(
+                "UPDATE model_run_history SET runtime_summary_json='{}', "
+                f"{column}=? WHERE history_id=?",
+                (bad, entry.history_id))
+        with pytest.raises(
+            RunHistoryError, match="RUN_HISTORY_PAYLOAD_MALFORMED"
+        ):
+            get_run_history(USER, pid)
+
+def test_corr_i_no_public_unvalidated_append():
+    """CORRECTION A4: the standalone unvalidated append path is gone; only
+    the transaction primitive (used by the commit paths) remains."""
+    assert not hasattr(rh, "append_run_history")
+    assert "append_run_history" not in rh.__all__
+    assert hasattr(rh, "append_run_history_cursor")
+    source = open(
+        "app/persistence/run_history_repository.py", encoding="utf-8"
+    ).read()
+    assert "def append_run_history(" not in source

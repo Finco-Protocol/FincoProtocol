@@ -48,7 +48,6 @@ from typing import Any, Mapping, Optional
 __all__ = [
     "RunHistoryError",
     "RunHistoryEntry",
-    "append_run_history",
     "append_run_history_cursor",
     "get_latest_history_entry",
     "get_run_history",
@@ -171,6 +170,17 @@ def _require_text(value: Any, field: str) -> str:
     return value
 
 
+_OPTIONAL_TEXT_FIELDS = (
+    "runtime_origin",
+    "engine_version",
+    "workbook_version",
+    "active_scenario_id",
+    "active_scenario_name",
+    "last_runtime_scenario_id",
+    "composite_hash",
+)
+
+
 def prepare_run_history_payload(
     *,
     user_id: str,
@@ -208,6 +218,27 @@ def prepare_run_history_payload(
     _require_text(project_code, "project_code")
     _require_text(runtime_snapshot_id, "runtime_snapshot_id")
     _require_text(ran_at, "ran_at")
+    # Correction A: typed optional identity fields are canonical strings or
+    # contractually-absent None - never bool/list/dict coerced by SQLite
+    # TEXT affinity.
+    scope = dict(
+        runtime_origin=runtime_origin,
+        engine_version=engine_version,
+        workbook_version=workbook_version,
+        active_scenario_id=active_scenario_id,
+        active_scenario_name=active_scenario_name,
+        last_runtime_scenario_id=last_runtime_scenario_id,
+        composite_hash=composite_hash,
+    )
+    for field in _OPTIONAL_TEXT_FIELDS:
+        value = scope[field]
+        if value is not None and (
+            not isinstance(value, str) or isinstance(value, bool) or not value.strip()
+        ):
+            raise RunHistoryError(
+                f"RUN_HISTORY_FIELD_INVALID: {field} must be a non-empty "
+                "string or None"
+            )
     for name, mapping in (
         ("runtime_summary", runtime_summary),
         ("financial_statements", financial_statements),
@@ -234,6 +265,22 @@ def prepare_run_history_payload(
                 "RUN_HISTORY_BINDING_CORRUPT: model_v2 binding is not a "
                 "mapping"
             )
+        # Correction A3: prove the binding IS a valid Workflow 07 run
+        # binding via the canonical validator (schema, key set, hash
+        # shapes) BEFORE any correlation check - a malformed binding fails
+        # closed even when its correlation fields happen to match.
+        from app.model_v2.persistence import (
+            validate_run_binding_payload as _validate_v2_binding,
+        )
+
+        try:
+            binding = _validate_v2_binding(dict(binding))
+        except Exception as exc:
+            raise RunHistoryError(
+                f"RUN_HISTORY_BINDING_INVALID: the Model V2 binding is not "
+                f"a valid Workflow 07 run binding ({exc})"
+            ) from exc
+        identity_dict["model_v2"] = binding
         # Correlation invariants (contract section 11) - fail closed before
         # the commit so a misattributed history row is unrepresentable.
         if binding.get("snapshot_id") != runtime_snapshot_id:
@@ -313,19 +360,6 @@ def append_run_history_cursor(cur, payload: Mapping[str, Any]) -> str:
     return row["history_id"]
 
 
-def append_run_history(payload: Mapping[str, Any]) -> str:
-    """Standalone validated append on its own transaction (narrow API).
-
-    The canonical run-commit paths use :func:`append_run_history_cursor`
-    inside their own transaction instead; this standalone form exists for
-    the module's narrow public surface and for tooling.
-    """
-    from app.persistence.db import get_cursor
-
-    with get_cursor() as cur:
-        return append_run_history_cursor(cur, payload)
-
-
 
 def _decode_entry(row) -> RunHistoryEntry:
     """Fail-closed row decoder: malformed stored JSON never half-decodes."""
@@ -359,6 +393,22 @@ def _decode_entry(row) -> RunHistoryEntry:
             raise RunHistoryError(
                 "RUN_HISTORY_PAYLOAD_MALFORMED: last_runtime_identity_json "
                 "is not a JSON object"
+            )
+    for column in (
+        "runtime_summary_json",
+        "financial_statements_json",
+        "debt_schedule_json",
+        "tax_schedule_json",
+        "distribution_schedule_json",
+        "sponsor_schedule_json",
+        "integrity_evidence_json",
+        "replay_metadata_json",
+    ):
+        decoded = _load(column)
+        if not isinstance(decoded, dict):
+            raise RunHistoryError(
+                "RUN_HISTORY_PAYLOAD_MALFORMED: column "
+                f"{column} is not a JSON object"
             )
     entry = RunHistoryEntry(
         history_id=row["history_id"],
