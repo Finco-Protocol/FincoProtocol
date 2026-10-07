@@ -35,17 +35,12 @@ jobs:
       - name: Compile profiling probe
         run: python -m compileall -q tools/profile_model_runtime_v4.py
 
-      - name: Existing canonical benchmark
+      - name: Deep Solar profile and exact-input duplicate census
         env:
           FINCO_MODEL_WORKERS: "2"
-        run: python tools/bench_model_runtime.py --workers
+        run: python tools/profile_model_runtime_v4.py --only solar --repeats 1
 
-      - name: Real workbook route benchmark
+      - name: Deep Wind profile and exact-input duplicate census
         env:
           FINCO_MODEL_WORKERS: "2"
-        run: python tools/bench_first_request.py
-
-      - name: Deep runtime profile and exact-input duplicate census
-        env:
-          FINCO_MODEL_WORKERS: "2"
-        run: python tools/profile_model_runtime_v4.py --repeats 3
+        run: python tools/profile_model_runtime_v4.py --only wind --repeats 1
