@@ -14,10 +14,11 @@ def test_approved_engine_paths_are_allowed():
 
 def test_unrelated_engine_modules_stay_protected():
     for path in (
-        "financial_engine/tax/engine.py",
+        "financial_engine/tax/atad.py",
         "financial_engine/cfads.py",
-        "financial_engine/shl/production.py",
+        "financial_engine/shl/waterfall.py",
         "financial_engine/operating/model.py",
+        "financial_engine/project_returns/model.py",
     ):
         assert unapproved_engine_changes([path]) == [path]
 
