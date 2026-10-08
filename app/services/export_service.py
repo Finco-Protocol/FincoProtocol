@@ -227,7 +227,8 @@ def _apply_capex_opex_folds_from_identity(project_inputs, project_id, identity_d
     run-time effective inputs without touching mutable tables.
 
     CAPEX fold uses REPLACE semantics (zero base, then add sub-lines).
-    OPEX fold uses ADDITIVE semantics (append sub-lines to existing tuple).
+    OPEX fold replays the Run's recorded seed-replacement provenance via the
+    same function the Run uses (no separate export formula).
     """
     if not identity_dict:
         return project_inputs
@@ -277,10 +278,24 @@ def _apply_capex_opex_folds_from_identity(project_inputs, project_id, identity_d
         if folded_capex is not project_inputs.capex:
             project_inputs = _dc.replace(project_inputs, capex=folded_capex)
 
-    # OPEX: ADDITIVE semantics — append persisted sub-line rows.
-    if opex_rows_data:
+    # OPEX: replay the Run's own fold (seeded rows replace their canonical base;
+    # custom rows add) from the provenance committed with the Run.
+    from app.services.opex_sub_lines_integration import (
+        fold_opex_with_provenance,
+        run_predates_opex_seed_replacement,
+    )
+
+    opex_fold = identity_dict.get("opex_fold")
+    if not opex_fold and run_predates_opex_seed_replacement(project_id, identity_dict):
+        raise ValueError(
+            "CANONICAL_LAST_RUN_UNAVAILABLE: OPEX_FOLD_PROVENANCE_MISSING — this Run "
+            "was committed before OPEX seed-replacement provenance was recorded, so "
+            "its OPEX inputs cannot be reproduced exactly. Run the model again."
+        )
+    if opex_rows_data or (opex_fold and (
+        opex_fold.get("replaced_canonical_keys") or opex_fold.get("replaces_aggregate")
+    )):
         from app.persistence.opex_sub_lines import OpexSubLine
-        from app.services.opex_sub_lines_integration import fold_sub_lines_into_opex
 
         opex_sub_lines = tuple(
             OpexSubLine(
@@ -296,10 +311,16 @@ def _apply_capex_opex_folds_from_identity(project_inputs, project_id, identity_d
             )
             for r in opex_rows_data
         )
-
+        _order = {sid: i for i, sid in enumerate((opex_fold or {}).get("active_order") or ())}
+        if _order:
+            opex_sub_lines = tuple(sorted(
+                opex_sub_lines, key=lambda r: _order.get(r.sub_line_id, len(_order))))
         opex_line_overrides = (sc_overrides.get("_opex_sub_line_overrides") or {}) if sc_overrides else {}
-        folded_opex = fold_sub_lines_into_opex(project_inputs.opex, opex_sub_lines, scenario_overrides=opex_line_overrides)
-        if folded_opex is not project_inputs.opex:
+        folded_opex = fold_opex_with_provenance(
+            project_inputs.opex, opex_sub_lines, opex_fold or {},
+            scenario_overrides=opex_line_overrides,
+        )
+        if folded_opex != tuple(project_inputs.opex):
             project_inputs = _dc.replace(project_inputs, opex=folded_opex)
 
     # Typed contingency authority captured at run commit (None = reference).

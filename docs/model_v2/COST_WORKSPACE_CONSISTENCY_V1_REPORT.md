@@ -23,8 +23,9 @@ is unchanged.
 | Routes | `app/v2/capex_router.py`, `app/v2/opex_router.py` | `POST /v2/capex/line/reactivate`, `POST /v2/opex/line/reactivate` (generated from the deactivate handlers: same stale / conflict / render behaviour) |
 | Context | `app/v2/router.py` | `_inactive_cost_lines` feeds both sheet contexts (full page and HTMX swaps) |
 | Presentation | `app/templates/v2/partials/sheet_capex.html`, `sheet_opex.html`, `static/css/workbook_v2.css` | "Inactive lines" block with Reactivate; explained read-only category total where lines own the total; calculated rows show the live derived value; "Year 1 kEUR" / "Escalation %" headers; readable hints in dark mode |
-| Run boundary | `app/services/opex_sub_lines_integration.py` | seeded rows replace the base consistently (see §5) |
-| Tests | `tests/test_cost_workspace_consistency_v1.py`, `tests/test_cost_workspace_browser_v1.py`, one assertion in `tests/test_staging_acceptance_a.py` | see §9 |
+| Run boundary | `app/services/opex_sub_lines_integration.py` | seeded rows replace the base consistently (see §5); shared `fold_opex_with_provenance`, `opex_fold_provenance`, legacy-Run predicate (§11) |
+| Run commit / export / freshness | `app/persistence/workspace_repository.py`, `app/services/export_service.py`, `app/workbook/runtime_authority.py` | `opex_fold` record in the Run identity; export replays it; superseded-fold Runs are STALE / export fails closed (§11) |
+| Tests | `tests/test_cost_workspace_consistency_v1.py`, `tests/test_cost_workspace_browser_v1.py`, `tests/test_cost_workspace_parity_v1.py`, one assertion in `tests/test_staging_acceptance_a.py` | see §9 |
 
 ## 2. Line lifecycle
 
@@ -146,10 +147,7 @@ It also found, and this PR fixes, an unreadable hint in the new dark category-to
 
 ## 10. Outstanding limitations / findings not changed here
 
-* **Last Run export input reconstruction** (`app/services/export_service.py`, OPEX fold
-  at ~L283–305) appends all persisted lines to the base with no seed replacement, so its
-  reconstructed OPEX inputs may differ from the run's for seeded projects. Not verified
-  end to end; flagged for the next workstream.
+* **Last Run export input reconstruction** — resolved in Correction A (§11).
 * **Data Center seeding scale**: with capacity 40 MW the B.08 derived power is 8,769
   while the seeded scalar is 17,538 (other categories scale ×2). The driver values do
   not appear to scale with capacity. Not changed (driver-seeding decision).
@@ -159,6 +157,93 @@ It also found, and this PR fixes, an unreadable hint in the new dark category-to
   derived items, the remaining audit findings (run-integrity messaging, Investor tab,
   interest-rate unit, navigation).
 
-## 11. GitHub status
+## 11. Correction A — OPEX economic authority, export parity, freshness
+
+Independent review found two authority defects in this PR's first head
+(`10a04a39`). Both are corrected in the same PR.
+
+### 11.1 Export parity (root cause and fix)
+
+`_apply_capex_opex_folds_from_identity` (canonical Last Run export) still used the
+additive OPEX fold, while the Run used the seed-replacement fold. Reproduced on the
+first head with real committed Runs: the effective `ProjectInputs.opex` of the Run and
+of the reconstructed export differed on **all four technologies** (export kept the
+adapter's aggregate item / named base items *and* added the seeded decomposition; a
+Y1-total comparison would have hidden the ordering difference found as well).
+
+Fix: one fold function, `fold_opex_with_provenance`, is now used by the Run
+(`_fold_user_sub_lines_to_opex`) and by the export. The Run commits, inside the same
+exclusive transaction as the composite CAS, an `opex_fold` record in
+`last_runtime_identity_json`: `semantics`, `replaced_canonical_keys` (from immutable
+seed provenance of ALL seeded rows), `replaces_aggregate`, `active_order` (the
+order the Run appended rows, which fixes float summation order). Export replays that
+record; it never reads current mutable cost values. A Run without the record fails
+closed (below). There is no separate export formula.
+
+### 11.2 Freshness (root cause and fix)
+
+The composite hash covers values and active rows, not the fold semantics. A Run
+committed before this correction therefore kept the same composite hash as its
+unchanged Working Copy and displayed CURRENT although a new Run calculates different
+OPEX (reproduced: after stripping the `opex_fold` record from a fresh Run, i.e. the
+exact persisted shape of an old Run, the first head reports CURRENT).
+
+Fix (no hash change, no workbook-wide invalidation): a Run is distinguished by the
+presence of `opex_fold` in its identity. `resolve_runtime_freshness` reports STALE
+(`source = opex_fold_semantics_superseded`) only when the Run lacks the record **and**
+the project has reference-seeded OPEX rows. Projects without seeded OPEX rows fold
+identically under both semantics and stay CURRENT. Nothing is rewritten and nothing is
+re-run; Run History is untouched. The pre_scenario Base-equivalence path (#219) is
+subject to the same check, so it cannot re-label such a Run CURRENT.
+
+### 11.3 Historical Runs
+
+| Persisted Run | Freshness | Canonical export |
+|---|---|---|
+| committed after this correction (`opex_fold` present) | by composite hash, as before | exact reconstruction |
+| committed before, project has seeded OPEX rows | STALE (`opex_fold_semantics_superseded`) | fails closed: `CANONICAL_LAST_RUN_UNAVAILABLE: OPEX_FOLD_PROVENANCE_MISSING` |
+| committed before, no seeded OPEX rows | unchanged | unchanged (additive == replacement when nothing is seeded) |
+| committed before scenarios / pre-composite identity | unchanged | unchanged |
+
+Affected existing Runs are those of projects seeded since #221 (reference clones and
+New Project). Re-running them is the only path to CURRENT; the old values are not
+reproduced or relabelled.
+
+### 11.4 Reconciliation evidence
+
+`tests/test_cost_workspace_parity_v1.py` (40 tests) captures the exact
+`ProjectInputs` handed to the engine by the real V2 Run and compares them with the
+canonical export, field by field and item by item (name, Y1, escalation, order), for
+Solar / Wind / Data Center / EV in: fresh, custom additive row (OPEX and CAPEX),
+partial deactivation, a whole category deactivated, deactivate + reactivate, and a
+non-Base scenario with an amount override plus OPEX/CAPEX contingency (the test
+asserts the override and the contingency item reached the Run); Solar and Wind at two
+non-reference capacities. Plus: seeded decomposition counts once (Run total equals the
+active line sum), a custom row adds exactly its amount, export resolution leaves the
+committed identity/hash/snapshot id untouched, legacy-Run freshness and fail-closed
+export, re-Run restores CURRENT, and an unseeded project is not invalidated. On the
+first head 36 of these 40 fail; with the correction all 40 pass.
+
+### 11.5 Focused tests (Correction A)
+
+19 modules (cost workspace consistency / browser / parity, staging acceptance A, run
+binding, run history, export lineage, canonical export authority, V2 export, XLSX
+reconciliation, reference canonical Last Run, scenario and compare freshness,
+contingency identity, reference seeding, scenario overrides, DC export, OPEX display):
+**443 passed, 4 skipped, 0 failed.**
+
+### 11.6 Limitations
+
+* Over-invalidation is bounded but real: a pre-correction Run on a seeded Data Center
+  or EV project with no inactive category and no aggregate would fold identically, yet
+  is reported STALE because the project is seeded (proving equality would need the
+  base inputs at freshness time). One Run restores CURRENT.
+* Reordering rows between Run start and commit does not change the composite hash; the
+  recorded `active_order` is the commit-time order.
+* The three `tests/test_ui_protocol_shell.py` failures (NVDA terminal navigation x2,
+  API placeholders) reproduce identically on clean `main` `5de76e5b` in this
+  environment (3 failed / 80 passed with the local Chromium) and are unrelated.
+
+## 12. GitHub status
 
 Recorded on the PR (head SHA and the five required workflows).
