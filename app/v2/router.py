@@ -2142,6 +2142,42 @@ async def v2_workbook_update(
     )
 
 
+# Presentation-only: typed engine fail-closed reasons -> plain language.
+# The engine's decision (and its typed reason) is unchanged; nothing is saved
+# on a failed run and the previous Last Run stays exactly as it was.
+_ENGINE_FAIL_CLOSED_MESSAGES = (
+    ("SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+     "These inputs leave part of the shareholder loan unpaid at its maturity, so "
+     "the model did not produce a result. Review OPEX, CAPEX, revenue or "
+     "shareholder-loan terms and run again. Your edits are saved; the previous "
+     "Last Run is unchanged."),
+)
+_ENGINE_FAIL_CLOSED_GENERIC = (
+    "The model's integrity checks stopped this run for the current inputs, so no "
+    "result was produced. Review your recent changes and run again. Your edits "
+    "are saved; the previous Last Run is unchanged."
+)
+
+
+def _engine_failure_message(exc: BaseException) -> str:
+    """Safe user message for an engine failure (never raw internals).
+
+    Reads only the TYPED reason the engine already produced (process mode:
+    ``ModelWorkerError.reason_code/detail``; thread mode: the engine exception
+    text). Unknown failures keep the generic message."""
+    evidence = " ".join(
+        str(part) for part in (
+            getattr(exc, "reason_code", ""), getattr(exc, "detail", ""), exc,
+        ) if part
+    )
+    for token, message in _ENGINE_FAIL_CLOSED_MESSAGES:
+        if token in evidence:
+            return message
+    if "FAIL_CLOSED" in evidence:
+        return _ENGINE_FAIL_CLOSED_GENERIC
+    return "Engine run failed — please try again or contact support."
+
+
 @router.post("/workbook/run")
 async def v2_workbook_run(
     request: Request,
@@ -2453,7 +2489,7 @@ async def v2_workbook_run(
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("v2_workbook_run: engine failure")
-        msg = "Engine run failed — please try again or contact support."
+        msg = _engine_failure_message(exc)
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
     # ── Step 11b: enrich runtime_summary with derivation evidence ────────────── #
@@ -4348,17 +4384,20 @@ def _render_goal_seek_results(ctx: dict) -> HTMLResponse:
 
 
 def _goal_seek_resolve_tariff_field(variable, pis_draft) -> tuple[str, object]:
-    """Server-side resolution of the ONE permitted Goal Seek field and the
-    current tariff raw value, from the typed solve variable and the draft
-    state. The canonical field is used; the supported legacy fallback only when
-    the canonical key is genuinely absent on this draft."""
+    """Server-side resolution of the ONE permitted Goal Seek apply field and the
+    current tariff raw value.
+
+    The apply field is ALWAYS the canonical solve-variable field: it is the
+    editable, BOUND field, and the canonical key wins over the legacy snapshot
+    key in canonical input composition. The legacy key is read-only evidence
+    for the STARTING value only (projects seeded before the canonical key
+    existed carry only ``tariff_eur_mwh``); the legacy field is PARTIAL /
+    non-editable and can never be an apply target."""
     snapshot_origin = dict(getattr(pis_draft, "snapshot_origin", {}) or {})
     raw_current = snapshot_origin.get("rev_ppa_base_tariff")
-    field_id = variable.field_id
     if raw_current is None and variable.fallback_field_id:
         raw_current = snapshot_origin.get("tariff_eur_mwh")
-        field_id = variable.fallback_field_id or variable.field_id
-    return field_id, raw_current
+    return variable.field_id, raw_current
 
 
 def _goal_seek_apply_ctx(*, project: str, field_id: str, solved_display: str,
