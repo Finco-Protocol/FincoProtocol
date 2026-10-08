@@ -1,0 +1,80 @@
+/* Financing-owned surfaces only; no shared workbook or cost-grid overrides. */
+:is(#v2-sheet-senior-debt, #v2-sheet-investor, #v2-sheet-overview) {
+  --fb-bg: #ffffff;
+  --fb-text: #20252a;
+  --fb-muted: #515a64;
+  --fb-border: #bcc4cc;
+  --fb-field: #f7f8fa;
+  --fb-link: #185a78;
+  --fb-fail: #a01828;
+  --fb-pass: #176344;
+}
+:is(#v2-sheet-senior-debt, #v2-sheet-investor) {
+  color: var(--fb-text);
+  background: var(--fb-bg);
+  padding: 12px;
+  min-width: 0;
+}
+:is(#v2-sheet-senior-debt, #v2-sheet-investor) :is(.v2-inputs-section, .v2-field-row, .v2-debt-context-panel, .v2-authority-panel, .v2-sponsor-funding-panel) {
+  color: var(--fb-text);
+  background: var(--fb-bg);
+  border-color: var(--fb-border);
+}
+#v2-sheet-senior-debt .v2-field-input {
+  background: var(--fb-field);
+  color: var(--fb-text);
+  border: 1px solid var(--fb-border);
+}
+#v2-sheet-senior-debt .v2-inputs-section-summary {
+  background: var(--fb-field);
+  color: var(--fb-text);
+}
+#v2-sheet-senior-debt .v2-debt-context-panel :is(h3, dd) {
+  color: var(--fb-text);
+}
+#v2-sheet-senior-debt .v2-debt-context-panel dt { color: var(--fb-muted); }
+:is(#v2-sheet-senior-debt, #v2-sheet-investor) :is(.v2-field-label, .v2-field-value, .v2-inputs-section-summary, .v2-authority-label, .v2-unit, .v2-binding-badge) {
+  color: var(--fb-text);
+}
+:is(#v2-sheet-senior-debt, #v2-sheet-investor) :is(p, small, dt, .v2-field-empty, .v2-section-label) {
+  color: var(--fb-muted);
+}
+.fb-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 12px 24px;
+  margin: 12px 0 20px;
+}
+.fb-facts > div { min-width: 0; border-bottom: 1px solid var(--fb-border); padding-bottom: 10px; }
+.fb-facts dd { margin: 5px 0 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fb-facts small { display: block; margin-top: 6px; font-size: 12px; }
+.fb-evidence { margin: 20px 0; }
+.fb-evidence h3 { font-size: 16px; }
+.fb-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--fb-border); }
+.fb-scroll table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fb-scroll :is(th, td) { padding: 9px 12px; border-bottom: 1px solid var(--fb-border); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fb-scroll th { background: var(--fb-field); font-weight: 600; }
+.fb-scroll :is(th, td):first-child { text-align: left; }
+.fb-integrity { border-left: 4px solid var(--fb-border); background: var(--fb-bg); color: var(--fb-text); padding: 10px 14px; margin-bottom: 8px; }
+.fb-integrity > div { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.fb-integrity p { margin: 5px 0; font-size: 13px; overflow-wrap: anywhere; }
+.fb-integrity small { display: block; color: var(--fb-muted); font-size: 12px; margin-top: 6px; }
+.fb-integrity--fail { border-color: var(--fb-fail); }
+.fb-integrity--fail strong:last-child { color: var(--fb-fail); }
+.fb-integrity--pass { border-color: var(--fb-pass); }
+.fb-integrity--pass strong:last-child { color: var(--fb-pass); }
+:is(.fb-integrity, #v2-sheet-overview) a { color: var(--fb-link); }
+.fb-prior { font-weight: 600; }
+.fb-cfads-link { display: inline-block; margin: 0 0 12px; font-size: 13px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :is(#v2-sheet-senior-debt, #v2-sheet-investor, #v2-sheet-overview) {
+    --fb-bg: #171b1f; --fb-text: #f1f4f6; --fb-muted: #c2cbd3;
+    --fb-border: #697580; --fb-field: #252c33; --fb-link: #8ccee9;
+    --fb-fail: #ff9fa9; --fb-pass: #8ad6b0;
+  }
+}
+:root[data-theme="dark"] :is(#v2-sheet-senior-debt, #v2-sheet-investor, #v2-sheet-overview) {
+  --fb-bg: #171b1f; --fb-text: #f1f4f6; --fb-muted: #c2cbd3;
+  --fb-border: #697580; --fb-field: #252c33; --fb-link: #8ccee9;
+  --fb-fail: #ff9fa9; --fb-pass: #8ad6b0;
+}

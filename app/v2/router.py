@@ -1140,8 +1140,10 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
     # the legacy configured amount as a runtime authority or create a second
     # write path.
     try:
-        fin = pis.to_projectinputs().financing
+        finance_pi = pis.to_projectinputs()
+        fin = finance_pi.financing
     except Exception:
+        finance_pi = None
         fin = None
     rr_for_sponsor = context.runtime_result if context is not None else WorkbookService.get_runtime_result(ws)
     sponsor_funding = _build_sponsor_funding_presentation(
@@ -1150,34 +1152,17 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
     # R8/N02: policy-governed editability — calibrated schedules lock the
     # scalar Senior controls with the honest reason.
     senior_pricing_mode, senior_dscr_mode = _classify_senior_authority(pis)
-    debt_fields = _lock_senior_fields_if_calibrated(
-        _build_sheet_fields("debt", pis),
-        senior_pricing_mode, senior_dscr_mode)
-    # Actual gearing presentation: derive from the runtime derivation evidence
-    # when a last-run result exists.  Total CAPEX from pis is always available as
-    # the denominator (it is the gearing basis for a senior-debt-only capital
-    # structure with no financing-cost uses).
-    _rs = d.runtime_summary or {}
-    _senior_debt_evidence = (_rs.get("senior_debt_derivation") or {})
-    _actual_senior_keur: float | None = None
-    try:
-        _sd_raw = _senior_debt_evidence.get("display_value_keur") or _rs.get("senior_debt_keur")
-        if _sd_raw is not None and str(_sd_raw) not in ("NOT_AVAILABLE", "", "—"):
-            _actual_senior_keur = float(str(_sd_raw).replace(",", "").replace(" kEUR", "").strip())
-    except (TypeError, ValueError):
-        _actual_senior_keur = None
-    _actual_gearing_pct: str | None = None
-    if _actual_senior_keur is not None:
-        try:
-            _total_capex = float(pis.values.get("capex.summary.total") or
-                                 pis.values.get("total_capex_keur") or 0)
-            if _total_capex > 0:
-                _actual_gearing_pct = f"{_actual_senior_keur / _total_capex * 100:.1f}%"
-        except (TypeError, ValueError):
-            pass
-    _actual_senior_display = (
-        f"{_actual_senior_keur:,.0f} kEUR" if _actual_senior_keur is not None else None
+    from app.v2.financing_projection import (
+        build_financing_evidence, build_reserve_view, build_sponsor_view,
+        senior_editor_fields,
     )
+    debt_fields = _lock_senior_fields_if_calibrated(
+        senior_editor_fields(_build_sheet_fields("debt", pis), finance_pi),
+        senior_pricing_mode, senior_dscr_mode)
+    financing_evidence = build_financing_evidence(rr_for_sponsor)
+    _actual_senior, _actual_gearing = financing_evidence["metrics"][:2]
+    from app.input_adapter import senior_rate_authority
+    _flat_senior_rate = senior_rate_authority(finance_pi)[1] if finance_pi else None
     return {
         "debt_fields": debt_fields,
         "debt_state": d.state.value,
@@ -1186,11 +1171,14 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
         "runtime_summary": d.runtime_summary,
         "senior_pricing_mode": senior_pricing_mode,
         "senior_dscr_mode": senior_dscr_mode,
-        "debt_actual_senior_keur_display": _actual_senior_display,
-        "debt_actual_gearing_pct_display": _actual_gearing_pct,
+        "debt_actual_senior_keur_display": _actual_senior.display if _actual_senior.value is not None else None,
+        "debt_actual_gearing_pct_display": _actual_gearing.display if _actual_gearing.value is not None else None,
+        "financing_evidence": financing_evidence,
+        "reserve_view": build_reserve_view(fin),
+        "sponsor_view": build_sponsor_view(fin, rr_for_sponsor),
         "senior_detail_rows": (
             ("Max. gearing cap", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
-            ("All-in interest rate", _pct(getattr(fin, "base_rate", 0.0) + getattr(fin, "margin_bps", 0) / 10_000) if fin else None),
+            ("All-in interest rate", _pct(_flat_senior_rate)),
             ("Base rate", f"{getattr(fin, 'base_rate', 0.0) * 100:.2f}%" if fin else None),
             ("Margin", f"{getattr(fin, 'margin_bps', 0)} bps" if fin else None),
             ("Commitment fee", f"{getattr(fin, 'commitment_fee', 0.0) * 100:.2f}%" if fin else None),
@@ -2841,6 +2829,64 @@ async def v2_workbook_export(
 # vertical validation executes the reference production model inside
 # app.model_validation, so it must never run during workbook page rendering.
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/workbook/financing/investor")
+async def v2_financing_investor(request: Request, project: str):
+    """Refresh the owned, read-only Investor surface without a shared OOB edit."""
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
+    from app.workbook.workbook_identity import WorkbookIdentityError
+
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return HTMLResponse("Project not found.", status_code=404)
+    try:
+        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        ctx = _base_sheet_ctx(request, context.inputs, context.workspace, context.project_record,
+                              project, freshness=context.freshness)
+        ctx.update(_build_debt_ctx(context.inputs, context.workspace,
+                                  projection=context.projection, context=context))
+        html = _templates.get_template("partials/sheet_investor.html").render(ctx)
+        context.validate_current()
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        html = '<div id="v2-sheet-investor" role="status">Financing evidence unavailable: workspace changed during response assembly. Reload the workbook to refresh.</div>'
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/workbook/financing/integrity")
+async def v2_financing_integrity(request: Request, project: str):
+    """Authorized, read-only near-KPI view of the canonical integrity authority.
+
+    Loaded independently so existing post-run OOB assembly stays untouched.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
+    from app.workbook.workbook_identity import WorkbookIdentityError
+    from app.api.v1_1.institutional import get_run_integrity_checks
+    from app.v2.financing_projection import integrity_view
+
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return HTMLResponse("Project not found.", status_code=404)
+    try:
+        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        # Same institutional read used by Trust, with V6's coherent authorized snapshot.
+        state, report = get_run_integrity_checks(owner, record.project_id, context=context)
+        view = integrity_view(report if state == "AVAILABLE" else {}, context.freshness.state.value)
+        context.validate_current()
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        # Never pair one run's verdict with another run's freshness.
+        view = integrity_view({}, "UNAVAILABLE")
+    html = _templates.get_template("partials/_financing_integrity.html").render(
+        financing_integrity=view, project_code=project)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/workbook/trust/certificate")
