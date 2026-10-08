@@ -3002,6 +3002,13 @@ async def v2_reference_seed_reset(
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
+def _scenario_history_unreadable_html() -> str:
+    return ('<p class="v2-scenario-empty" data-testid="scenario-history-unreadable">'
+            "This scenario's latest saved run could not be read, so it was not "
+            "restored and the active scenario is unchanged. Run the scenario "
+            "again to create a fresh result.</p>")
+
+
 @router.post("/workbook/scenarios/select")
 async def v2_scenario_select(
     request: Request,
@@ -3026,7 +3033,18 @@ async def v2_scenario_select(
     if sc is None or sc.project_id != project_record.project_id or sc.archived:
         return JSONResponse({"error": "Scenario not found or archived."}, status_code=404)
 
-    select_scenario(user_id=workspace_owner, project_id=project_record.project_id, scenario_id=scenario_id)
+    from app.persistence.run_history_repository import RunHistoryError
+
+    try:
+        selected = select_scenario(user_id=workspace_owner, project_id=project_record.project_id, scenario_id=scenario_id)
+    except RunHistoryError:
+        # The scenario's newest Run History row is unreadable: selection is
+        # refused (nothing was written) and an older run is never substituted.
+        return HTMLResponse(
+            content=_scenario_history_unreadable_html(),
+            status_code=409)
+    if not selected:
+        return JSONResponse({"error": "Scenario not found or archived."}, status_code=404)
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
 
     is_htmx = request.headers.get("HX-Request") == "true"
@@ -3106,13 +3124,20 @@ async def v2_scenario_archive(
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     archived_active = bool(ws and ws.active_scenario_id == scenario_id)
-    archive_scenario(user_id=workspace_owner, scenario_id=scenario_id)
 
-    # If the archived scenario was active, switch to Base Case
-    if ws and ws.active_scenario_id == scenario_id:
+    # If the archived scenario is active, switch to Base Case FIRST (a
+    # refused/unreadable Base restore must not leave a half-done archive).
+    if archived_active:
+        from app.persistence.run_history_repository import RunHistoryError
+
         base = get_base_case_scenario(user_id=workspace_owner, project_id=project_record.project_id)
         if base:
-            select_scenario(user_id=workspace_owner, project_id=project_record.project_id, scenario_id=base.scenario_id)
+            try:
+                select_scenario(user_id=workspace_owner, project_id=project_record.project_id, scenario_id=base.scenario_id)
+            except RunHistoryError:
+                return HTMLResponse(content=_scenario_history_unreadable_html(), status_code=409)
+    archive_scenario(user_id=workspace_owner, scenario_id=scenario_id)
+    if archived_active:
         ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
 
     is_htmx = request.headers.get("HX-Request") == "true"
