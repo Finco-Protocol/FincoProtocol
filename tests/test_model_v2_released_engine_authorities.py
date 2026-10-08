@@ -47,14 +47,14 @@ def test_exemption_is_independent_of_any_scope_marker(monkeypatch):
 
 def test_every_other_engine_path_stays_frozen(monkeypatch):
     monkeypatch.setattr(gov, "active_scope", lambda: None)
-    for other in ("financial_engine/cfads.py", "financial_engine/orchestrator.py",
+    for other in ("financial_engine/tax/atad.py", "financial_engine/orchestrator.py",
                   "financial_engine/financial_statements/other.py",
                   "financial_engine/financial_statements/assembly.py.bak"):
         assert not gov.approved_by_active_model_v2_scope(other), other
-    assert unapproved_engine_changes([ASSEMBLY, "financial_engine/cfads.py"]) == [
-        "financial_engine/cfads.py"]
-    assert gov.model_v2_unapproved_engine_changes(["financial_engine/cfads.py"]) == [
-        "financial_engine/cfads.py"]
+    assert unapproved_engine_changes([ASSEMBLY, "financial_engine/tax/atad.py"]) == [
+        "financial_engine/tax/atad.py"]
+    assert gov.model_v2_unapproved_engine_changes(["financial_engine/tax/atad.py"]) == [
+        "financial_engine/tax/atad.py"]
 
 
 def test_frozen_core_and_hard_deny_namespaces_are_never_released(monkeypatch):

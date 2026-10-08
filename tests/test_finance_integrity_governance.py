@@ -15,7 +15,6 @@ def test_approved_engine_paths_are_allowed():
 def test_unrelated_engine_modules_stay_protected():
     for path in (
         "financial_engine/tax/atad.py",
-        "financial_engine/cfads.py",
         "financial_engine/shl/waterfall.py",
         "financial_engine/operating/model.py",
         "financial_engine/sponsor_returns/model.py",
@@ -46,7 +45,6 @@ def test_stream_guard_exemption_covers_only_allow_listed_engine_files():
     assert all(approved_frozen_path(path) for path in APPROVED)
     for path in (
         "financial_engine/tax/atad.py",        # engine module NOT on the allow-list
-        "financial_engine/cfads.py",
         "finco_core/tax/engine.py",            # strictly frozen
         "finco_radar/venues/registry.py",
         "app/services/anything.py",

@@ -46,13 +46,49 @@ def _solar_full_run():
 
 # ── Layer 1: Source-level authority ──────────────────────────────────────────
 
-def test_trust_cfads_formula_authority():
-    """TRUST_PACK_CFADS_FORMULA_SOURCED — cfads.py must declare the exact formula."""
-    src = _read_source("financial_engine/cfads.py")
-    assert "cfads_keur=ebitda + fin_income - cash_tax" in src, (
-        "canonical CFADS formula not found in financial_engine/cfads.py"
+def test_trust_cfads_formula_authority(monkeypatch):
+    """TRUST_PACK_CFADS_FORMULA_SOURCED — shared scalar authority owns exact CFADS arithmetic."""
+    import inspect
+    from types import SimpleNamespace
+    from financial_engine import cfads as cfads_module
+
+    # A. The typed canonical assembler must delegate to the shared scalar authority.
+    assembler_src = inspect.getsource(cfads_module.calculate_canonical_cfads)
+    assert "calculate_canonical_cfads_value(" in assembler_src, (
+        "calculate_canonical_cfads must use the shared canonical scalar CFADS authority"
     )
-    assert "calculate_canonical_cfads" in src
+    calls = []
+    real_value = cfads_module.calculate_canonical_cfads_value
+
+    def _tracked_value(ebitda_keur, financing_income_keur, cash_tax_keur):
+        calls.append((ebitda_keur, financing_income_keur, cash_tax_keur))
+        return real_value(ebitda_keur, financing_income_keur, cash_tax_keur)
+
+    monkeypatch.setattr(cfads_module, "calculate_canonical_cfads_value", _tracked_value)
+    periods = (SimpleNamespace(period_index=1, ebitda_keur=100.0),)
+    tax_rows = (
+        SimpleNamespace(
+            period_index=1,
+            cash_tax_keur=20.0,
+            financing_income_keur=5.0,
+        ),
+    )
+    result = cfads_module.calculate_canonical_cfads(periods, tax_rows)
+    assert calls == [(100.0, 5.0, 20.0)]
+    assert result[0].cfads_keur.hex() == (100.0 + 5.0 - 20.0).hex()
+
+    # B. The scalar helper remains the single arithmetic authority:
+    # EBITDA + financing income - cash tax, in that operation order.
+    helper_src = inspect.getsource(real_value)
+    assert "return ebitda_keur + financing_income_keur - cash_tax_keur" in helper_src
+    for ebitda, fin_income, cash_tax in (
+        (100.0, 5.0, 20.0),
+        (-0.0, 0.0, 0.0),
+        (1.25, -0.5, 0.125),
+    ):
+        assert real_value(ebitda, fin_income, cash_tax).hex() == (
+            ebitda + fin_income - cash_tax
+        ).hex()
 
 
 def test_trust_ebitda_formula_authority():
