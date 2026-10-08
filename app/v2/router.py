@@ -701,12 +701,45 @@ def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "")
         capex_section_fields.setdefault(f["section_id"], []).append(f)
 
     return {
+        "capex_inactive_lines": _inactive_cost_lines(project_record.project_id, "capex"),
         "capex_vm": capex_vm,
         "capex_group_to_field": capex_group_to_field,
         "capex_section_fields": capex_section_fields,
         "capex_alias_groups": capex_alias_groups,
         "capex_scenario_error": capex_scenario_error,
     }
+
+
+def _inactive_cost_lines(project_id: str, kind: str) -> dict[str, list[dict]]:
+    """Deactivated CAPEX/OPEX lines grouped by parent code, for the Reactivate
+    list. Read-only presentation data straight from the persisted rows (the
+    same rows the Reactivate command acts on); inactive lines are never part of
+    any total."""
+    from app.persistence.db import get_cursor
+
+    if kind == "capex":
+        from app.persistence.capex_sub_lines import list_inactive_sub_lines
+        group_attr = "parent_category_code"
+    else:
+        from app.persistence.opex_sub_lines import list_inactive_sub_lines
+        group_attr = "parent_group_code"
+    try:
+        with get_cursor() as cur:
+            rows = list_inactive_sub_lines(cur, project_id)
+    except Exception:  # presentation helper: never break the sheet
+        return {}
+    grouped: dict[str, list[dict]] = {}
+    for r in rows:
+        grouped.setdefault(getattr(r, group_attr), []).append({
+            "sub_line_id": r.sub_line_id,
+            "row_version": r.updated_at or "",
+            "code": r.business_code,
+            "label": r.label,
+            "amount_keur": float(r.amount_keur or 0.0),
+            "inflation_pct": getattr(r, "inflation_pct", None),
+            "source": r.source,
+        })
+    return grouped
 
 
 def _render_capex_htmx_sheet(
@@ -831,6 +864,7 @@ def _build_opex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "") 
         _esc_label = "varies by line — per-line rates are authoritative"
 
     return {
+        "opex_inactive_lines": _inactive_cost_lines(project_record.project_id, "opex"),
         "opex_scenario_error": _ox_err,
         "opex_vm": opex_vm,
         "opex_sheet_groups": opex_sheet_groups,

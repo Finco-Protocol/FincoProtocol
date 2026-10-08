@@ -49,6 +49,11 @@ from app.persistence.opex_sub_lines import (
 
 logger = logging.getLogger(__name__)
 
+# Name of the single aggregate OpexItem the input adapter emits when the working
+# copy's Y1 OPEX total differs from the factory per-item sum (e.g. any capacity
+# other than the reference). ``app.input_adapter`` is the authority for the name.
+_AGGREGATE_Y1_OPEX_NAME = "User provided year 1 operating expense"
+
 # Reserved key in ``scenario.overrides_json`` for per-sub-line amount overrides.
 _RESERVED_SUB_LINE_OVERRIDES_KEY = "_opex_sub_line_overrides"
 
@@ -85,6 +90,15 @@ def _load_active_sub_lines(project_id: str) -> tuple[OpexSubLine, ...]:
     """Load active OPEX sub-lines for a project (is_active=1 only)."""
     rows = get_active_sub_lines_for_project(project_id)
     return tuple(rows)
+
+
+def _load_all_sub_lines(project_id: str) -> tuple[OpexSubLine, ...]:
+    """All OPEX sub-lines of a project, active and inactive (read-only)."""
+    from app.persistence.db import get_cursor
+    from app.persistence.opex_sub_lines import list_sub_lines_for_project
+
+    with get_cursor() as cur:
+        return tuple(list_sub_lines_for_project(cur, project_id, include_inactive=True))
 
 
 def _resolve_effective_amount(
@@ -188,25 +202,37 @@ def _fold_user_sub_lines_to_opex(
     if not project_id:
         return opex
 
-    user_sub_lines = _load_active_sub_lines(project_id)
-    if not user_sub_lines:
-        return opex
-
-    sub_line_overrides = _extract_sub_line_overrides(scenario_overrides)
+    all_rows = _load_all_sub_lines(project_id)
+    user_sub_lines = tuple(r for r in all_rows if r.is_active)
 
     # Reference seed rows are a detailed representation of canonical items,
     # not additive user costs.  Identity comes only from immutable replay
     # provenance; the editable display label is never an authority key.
-    seeded_canonical_keys = {
-        sub.replay_metadata.get("canonical_key")
-        for sub in user_sub_lines
+    # The set is derived from ALL seeded rows (active AND inactive): deactivating
+    # every seeded line of a category must remove that category's cost, not
+    # bring the replaced base item back.
+    seeded_rows = [
+        sub for sub in all_rows
         if sub.source in {"reference_seed", "user_override"}
         and sub.replay_metadata.get("reference_seed") is True
-        and sub.replay_metadata.get("canonical_key")
+    ]
+    if not user_sub_lines and not seeded_rows:
+        return opex
+
+    sub_line_overrides = _extract_sub_line_overrides(scenario_overrides)
+
+    seeded_canonical_keys = {
+        sub.replay_metadata.get("canonical_key")
+        for sub in seeded_rows
+        if sub.replay_metadata.get("canonical_key")
     }
+    # The seeded rows decompose the project's whole Y1 OPEX, so when the adapter
+    # collapsed the base into its single aggregate item, that aggregate is the
+    # thing the rows replace — keeping it would count the same cost twice.
     base_opex = tuple(
         item for item in opex
         if getattr(item, "name", None) not in seeded_canonical_keys
+        and not (seeded_rows and getattr(item, "name", None) == _AGGREGATE_Y1_OPEX_NAME)
     )
 
     result = fold_sub_lines_into_opex(

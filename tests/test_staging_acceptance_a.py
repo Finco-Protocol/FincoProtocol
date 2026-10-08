@@ -572,7 +572,9 @@ class TestCapexControls:
                         (fields["sub_line_id"],))
             assert cur.fetchone()["is_active"] == 0         # persisted
         after = _tokens(client, cookies, code)[0].text      # fresh page load == reload
-        assert fields["sub_line_id"] not in after
+        # no longer an ACTIVE row (it is now listed under Inactive lines, reactivatable)
+        assert f'data-sub-line-id="{fields["sub_line_id"]}"' not in after
+        assert f'data-testid="capex-reactivate-{fields["sub_line_id"]}"' in after
         total_after = float(re.search(r'data-testid="total-capex-keur">\s*([\d,\.]+)', after)
                             .group(1).replace(",", ""))
         assert total_after == pytest.approx(total_before - amount, abs=1.0)

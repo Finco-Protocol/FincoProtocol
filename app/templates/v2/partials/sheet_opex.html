@@ -80,6 +80,33 @@
 </div>
 {% endmacro %}
 
+{# Macro: deactivated (inactive) lines of one group with a guarded Reactivate command #}
+{% macro opex_inactive_block(group_code, inactive_map, project_code, workbook_version, content_hash, project_editable) %}
+{%- set inactive = (inactive_map or {}).get(group_code, []) -%}
+{%- if inactive and project_editable -%}
+<details class="v2-inactive-lines" data-testid="opex-inactive-{{ group_code }}">
+  <summary>Inactive lines ({{ inactive|length }}) — excluded from totals</summary>
+  {% for ln in inactive %}
+  <form class="v2-inactive-line-form" hx-post="/v2/opex/line/reactivate"
+        hx-target="#v2-sheet-opex" hx-swap="outerHTML"
+        data-testid="opex-inactive-row-{{ ln.sub_line_id }}">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" name="sub_line_id" value="{{ ln.sub_line_id }}">
+    <input type="hidden" name="row_version" value="{{ ln.row_version }}">
+    <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+    <input type="hidden" name="content_hash" value="{{ content_hash }}">
+    <span class="v2-inactive-code">{{ ln.code }}</span>
+    <span class="v2-inactive-label">{{ ln.label }}</span>
+    <span class="v2-inactive-amount">{{ "%.0f"|format(ln.amount_keur) }} kEUR/yr{% if ln.inflation_pct is not none %} · {{ "%.1f"|format(ln.inflation_pct) }}% escalation{% endif %}</span>
+    <button type="submit" class="v2-inactive-reactivate-btn"
+            aria-label="Reactivate {{ ln.code }}"
+            data-testid="opex-reactivate-{{ ln.sub_line_id }}">Reactivate</button>
+  </form>
+  {% endfor %}
+</details>
+{%- endif -%}
+{% endmacro %}
+
 {# Macro: custom user-added row #}
 {% macro opex_custom_row(line, project_code, workbook_version, content_hash, project_editable) %}
 <details class="v2-opex-custom-row" data-testid="opex-custom-row-{{ line.sub_line_id }}"
@@ -322,8 +349,8 @@
   <div class="v2-opex-col-header" aria-hidden="true">
     <span class="v2-opex-col-code">Code</span>
     <span class="v2-opex-col-desc">Description<span class="fc-col-resize-handle" data-col="desc"></span></span>
-    <span class="v2-opex-col-y1">Y1 kEUR<span class="fc-col-resize-handle" data-col="y1"></span></span>
-    <span class="v2-opex-col-escl">Escl %</span>
+    <span class="v2-opex-col-y1">Year 1 kEUR<span class="fc-col-resize-handle" data-col="y1"></span></span>
+    <span class="v2-opex-col-escl">Escalation %</span>
     <span class="v2-opex-col-status">Status</span>
   </div>
 
@@ -388,12 +415,24 @@
         {%- elif not sg.has_vm_data -%}
           {{ opex_ro_row(sg.display_name, none, badge="Calculated") }}
 
+        {%- elif sg.is_bound and project_editable and (sg.custom_lines or (opex_inactive_lines or {}).get(sg.code)) -%}
+          {# A category with line items takes its cost from those lines; the
+             category-level value is not an input to canonical OPEX, so no category
+             editor is offered (it would save with no effect on the model). #}
+          <div class="v2-field-row v2-field-readonly" data-testid="opex-category-total-{{ sg.code }}">
+            <span class="v2-field-label">{{ sg.field.label }} (category total)</span>
+            <span class="v2-field-value">{{ grouped_keur(sg.subtotal_y1) }} <small>kEUR/yr</small></span>
+            <span class="v2-field-hint">Sum of the line items below. Edit a line, or add a custom line, to change this total.</span>
+          </div>
+
         {%- elif sg.is_bound and project_editable -%}
           {{ render_field(sg.field, project_code, workbook_version, content_hash, project_editable,
                           hx_target="#panel-opex", sheet_id="opex") }}
 
         {%- elif sg.field -%}
-          {{ opex_ro_row(sg.field.label, sg.field.value, badge="Calculated") }}
+          {# Calculated category: show the LIVE derived group Y1 (the same number as the
+             group header and totals), never the stale seeded registry scalar. #}
+          {{ opex_ro_row(sg.field.label, sg.subtotal_y1, badge="Calculated") }}
 
         {%- elif sg.has_vm_data -%}
           {{ opex_ro_row(sg.display_name, sg.subtotal_y1, badge="Calculated") }}
@@ -426,6 +465,8 @@
           </details>
           {%- endif -%}
         {%- endif -%}
+
+        {{ opex_inactive_block(sg.code, opex_inactive_lines, project_code, workbook_version, content_hash, project_editable) }}
 
       </div>
     </details>
