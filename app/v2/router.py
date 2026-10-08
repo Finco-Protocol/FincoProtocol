@@ -65,7 +65,7 @@ import os
 import urllib.parse
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -3724,12 +3724,25 @@ def _ds_sort_num(display: str) -> float:
         return float("-inf")
 
 
+def _ds_picker_projects(user_id: str) -> list[dict]:
+    """Bounded list of the user's own projects for the Compare picker."""
+    from app.persistence.projects_repository import list_projects
+
+    try:
+        records = list_projects(user_id)
+    except Exception:  # picker is a convenience; manual tokens still work
+        return []
+    return [{"code": r.project_code, "name": r.project_name,
+             "technology": r.project_type or ""} for r in records[:100]]
+
+
 @router.get("/compare-projects", response_class=HTMLResponse)
 async def compare_projects_page(
     request: Request,
     projects: Optional[str] = None,
     sort: Optional[str] = None,
     technology: Optional[str] = None,
+    pick: list[str] = Query(default=[]),
 ):
     """Cross-project canonical Last Run comparison (Decision Support V1).
 
@@ -3756,7 +3769,7 @@ async def compare_projects_page(
     # crowd out a valid later selection.  Duplicates never consume a second
     # column.
     raw_codes: list[str] = []
-    for raw_code in (projects or "").split(","):
+    for raw_code in [*(projects or "").split(","), *pick]:
         code = raw_code.strip()
         if code and code not in raw_codes:
             raw_codes.append(code)
@@ -3823,6 +3836,11 @@ async def compare_projects_page(
         "technologies": techs,
         "max_projects": CROSS_PROJECT_MAX,
         "user": user,
+        # Picker options: the user's own accessible (non-archived) projects.
+        # Selection still resolves through resolve_accessible_project; no engine.
+        "picker_projects": _ds_picker_projects(user.user_id),
+        "unresolved_tokens": [c for c in raw_codes if c not in
+                              {p["project_code"] for p in payloads}],
     }
     # the page extends base.html — render from the ROOT template directory
     return _main_templates.TemplateResponse(

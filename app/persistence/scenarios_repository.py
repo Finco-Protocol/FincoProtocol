@@ -332,9 +332,8 @@ def select_scenario(
     ws = get_workspace_state(user_id, project_id)
     if ws is None:
         return False
-    # P1-UX-FIX-1: Direct DB update so we can clear fields to NULL/empty
-    # without the merge semantics of save_workspace_state (which would
-    # otherwise keep the previous scenario's runtime evidence).
+    # Direct DB update so we can clear fields to NULL/empty without the merge
+    # semantics of save_workspace_state.
     from app.persistence.workspace_repository import _now_utc
     now = _now_utc()
     merged_replay_metadata = dict(ws.replay_metadata or {})
@@ -343,7 +342,25 @@ def select_scenario(
         "scenario_id": scenario_id,
         "p1_ux_fix_1": "cleared_runtime_evidence",
     })
+    base_params = (
+        scenario_id,
+        record.scenario_name,
+        # saved_snapshot preserved (form state is project-level);
+        # use existing snapshot, never fall back to draft
+        _workspace_state_to_json(ws.saved_snapshot if ws.saved_snapshot else ws.draft_snapshot),
+    )
     with get_cursor() as cur:
+        # Scenario-aware Last Run authority: the latest valid canonical
+        # successful Run of THIS project + scenario (append-only Run History).
+        restored = _latest_scenario_run_entry(
+            cur, user_id, project_id, scenario_id,
+            include_pre_scenario_base=bool(record.is_base_case))
+        if restored is not None:
+            _restore_scenario_last_run(
+                cur, ws=ws, entry=restored, scenario_id=scenario_id,
+                scenario_name=record.scenario_name, is_base_case=bool(record.is_base_case), base_params=base_params,
+                replay_metadata=merged_replay_metadata, now=now)
+            return True
         cur.execute(
             """
             UPDATE workspace_states
@@ -360,11 +377,7 @@ def select_scenario(
             WHERE workspace_id=? AND user_id=?
             """,
             (
-                scenario_id,
-                record.scenario_name,
-                # saved_snapshot preserved (form state is project-level)
-                # use existing snapshot, never fall back to draft
-                _workspace_state_to_json(ws.saved_snapshot if ws.saved_snapshot else ws.draft_snapshot),
+                *base_params,
                 # R9/N03: last_runtime_scenario_id is NOT updated here.
                 # It records which scenario produced the LAST RUN, not the
                 # newly selected scenario. Preserving it allows stale-scenario
@@ -376,6 +389,140 @@ def select_scenario(
             ),
         )
     return True
+
+
+def _latest_scenario_run_entry(cur, user_id: str, project_id: str, scenario_id: str,
+                               include_pre_scenario_base: bool = False):
+    """Latest decodable successful Run History entry for project + scenario.
+
+    Never cross-scenario: only rows whose recorded Last Run scenario is the
+    selected scenario qualify. A malformed row is skipped (fail closed to
+    "no evidence"), never half-decoded or guessed.
+    """
+    from app.persistence.run_history_repository import RunHistoryError, _decode_entry
+
+    # A Base Case run committed before any scenario row existed records no
+    # scenario id (None == Base Case in the canonical identity); it belongs to
+    # the Base scenario and to no other.
+    scope = ("(last_runtime_scenario_id=? OR last_runtime_scenario_id IS NULL)"
+             if include_pre_scenario_base else "last_runtime_scenario_id=?")
+    cur.execute(
+        "SELECT * FROM model_run_history WHERE user_id=? AND project_id=? "
+        f"AND {scope} ORDER BY ran_at DESC, history_id DESC",
+        (user_id, project_id, scenario_id),
+    )
+    for row in cur.fetchall():
+        try:
+            return _decode_entry(row)
+        except RunHistoryError:
+            continue
+    return None
+
+
+def _restore_scenario_last_run(cur, *, ws, entry, scenario_id, scenario_name,
+                               is_base_case, base_params, replay_metadata, now) -> None:
+    """Promote the scenario's own canonical Run to the workspace Last Run.
+
+    Pointers/payloads are copied verbatim from the immutable history row
+    (no recomputation, no other scenario's evidence). Freshness is decided
+    by the canonical composite-hash comparison: CURRENT only when the current
+    composite identity (draft + CAPEX/OPEX rows + scenario) equals the identity
+    the run was committed with; otherwise STALE. The run-input snapshot is
+    restorable only when provably identical to the current draft; a stale
+    restore carries no input snapshot (exports of stale evidence stay
+    unavailable rather than silently using different inputs).
+    """
+    import json
+
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_transactional
+
+    draft_json = json.dumps(ws.draft_snapshot if ws.draft_snapshot is not None else {})
+    identity = assemble_transactional(
+        draft_snapshot_json=draft_json,
+        project_id=ws.project_id, user_id=ws.user_id,
+        active_scenario_id=scenario_id, active_scenario_name=scenario_name,
+        cursor=cur, workbook_version=WORKBOOK.version,
+    )
+    stored_hash = entry.composite_hash
+    is_current = bool(stored_hash) and identity.composite_hash == stored_hash
+    restored_scenario_id = entry.last_runtime_scenario_id
+    if not is_current and is_base_case and not entry.last_runtime_scenario_id and stored_hash:
+        # Pre-scenario Base run: identity was committed with scenario None. The
+        # Base Case has empty overrides, so the effective inputs are identical
+        # under the Base scenario row; compare under the same convention and,
+        # when equal, record the run under the Base id exactly as a Base run
+        # committed today would be (hash + scenario id coalesced to the Base id).
+        legacy = assemble_transactional(
+            draft_snapshot_json=draft_json,
+            project_id=ws.project_id, user_id=ws.user_id,
+            active_scenario_id=None, active_scenario_name=None,
+            cursor=cur, workbook_version=WORKBOOK.version,
+        )
+        if legacy.composite_hash == stored_hash:
+            is_current = True
+            stored_hash = identity.composite_hash
+            restored_scenario_id = scenario_id
+    if not entry.last_runtime_scenario_id and is_base_case:
+        restored_scenario_id = scenario_id
+    snapshot_json = (_workspace_state_to_json(ws.draft_snapshot) if is_current else "{}")
+    dump = lambda v: json.dumps(v if v is not None else {}, sort_keys=True)  # noqa: E731
+    cur.execute(
+        """
+        UPDATE workspace_states
+        SET active_scenario_id=?, active_scenario_name=?,
+            saved_snapshot_json=?,
+            last_runtime_snapshot_json=?,
+            last_runtime_summary_json=?,
+            last_runtime_snapshot_id=?,
+            last_runtime_origin=?,
+            last_runtime_scenario_id=?,
+            last_runtime_at=?,
+            last_runtime_composite_hash=?,
+            last_runtime_identity_json=?,
+            last_financial_statements_json=?,
+            last_debt_schedule_json=?,
+            last_tax_schedule_json=?,
+            last_distribution_schedule_json=?,
+            last_sponsor_schedule_json=?,
+            last_integrity_evidence_json=?,
+            any_run_committed=1,
+            dirty=?,
+            replay_metadata_json=?,
+            updated_at=?
+        WHERE workspace_id=? AND user_id=?
+        """,
+        (
+            *base_params,
+            snapshot_json,
+            dump(entry.runtime_summary),
+            entry.runtime_snapshot_id,
+            entry.runtime_origin,
+            restored_scenario_id,
+            entry.ran_at,
+            stored_hash,
+            (dump(entry.last_runtime_identity)
+             if entry.last_runtime_identity is not None else None),
+            dump(entry.financial_statements),
+            dump(entry.debt_schedule),
+            dump(entry.tax_schedule),
+            dump(entry.distribution_schedule),
+            dump(entry.sponsor_schedule),
+            dump(entry.integrity_evidence),
+            0 if is_current else 1,
+            dump({**replacement_meta(replay_metadata)}),
+            now.isoformat(),
+            ws.workspace_id,
+            ws.user_id,
+        ),
+    )
+
+
+def replacement_meta(meta: dict) -> dict:
+    """Replay metadata for a restored (not cleared) Last Run."""
+    out = dict(meta)
+    out["p1_ux_fix_1"] = "restored_scenario_last_run"
+    return out
 
 
 def _workspace_state_to_json(value) -> str:
