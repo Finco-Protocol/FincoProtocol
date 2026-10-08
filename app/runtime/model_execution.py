@@ -448,6 +448,41 @@ class ModelExecutor:
             if pool is not None:
                 pool.shutdown(wait=False, cancel_futures=True)
 
+    def shutdown_and_join(self, timeout: float = 30.0) -> list[str]:
+        """TEST/SUITE lifecycle: shut the pools down and PROVE their workers are gone.
+
+        ``shutdown(wait=False)`` only requests termination; it does not show that
+        worker processes/threads actually ended, and an interpreter that exits with a
+        live worker can block in ``concurrent.futures`` exit handlers.  This joins every
+        worker within ``timeout``; a process worker still alive after that is terminated
+        (a test fixture may do this, a production request path never does) and reported.
+        Returns descriptions of workers that did not end on their own.
+        """
+        with self._lock:
+            process, thread = self._process_pool, self._thread_pool
+            self._process_pool = self._thread_pool = None
+        procs = list(getattr(process, "_processes", {}).values()) if process is not None else []
+        threads = list(getattr(thread, "_threads", ())) if thread is not None else []
+        for pool in (process, thread):
+            if pool is not None:
+                pool.shutdown(wait=False, cancel_futures=True)
+        deadline = time.monotonic() + timeout
+        stragglers: list[str] = []
+        for p in procs:
+            # The pool's own manager thread joins these same Process objects; a join racing
+            # with it can return early (waitpid lost the race), so poll to the deadline.
+            while p.is_alive() and time.monotonic() < deadline:
+                p.join(0.05)
+            if p.is_alive():
+                stragglers.append(f"process pid={p.pid}")
+                p.terminate()
+                p.join(5.0)
+        for t in threads:
+            t.join(max(0.0, deadline - time.monotonic()))
+            if t.is_alive():
+                stragglers.append(f"thread {t.name}")
+        return stragglers
+
 
 _EXECUTOR: ModelExecutor | None = None
 _EXECUTOR_LOCK = threading.Lock()
@@ -461,12 +496,15 @@ def get_model_executor() -> ModelExecutor:
         return _EXECUTOR
 
 
-def reset_model_executor_for_tests(executor: ModelExecutor | None = None) -> None:
+def reset_model_executor_for_tests(executor: ModelExecutor | None = None) -> list[str]:
+    """Swap the global executor (tests only) and join the previous one's workers.
+
+    Returns workers that had to be forced down (empty when the pools ended cleanly).
+    """
     global _EXECUTOR
     with _EXECUTOR_LOCK:
         old, _EXECUTOR = _EXECUTOR, executor
-    if old is not None:
-        old.shutdown()
+    return old.shutdown_and_join() if old is not None else []
 
 
 atexit.register(lambda: _EXECUTOR.shutdown() if _EXECUTOR is not None else None)

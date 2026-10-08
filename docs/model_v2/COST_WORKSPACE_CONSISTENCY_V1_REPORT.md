@@ -244,6 +244,68 @@ contingency identity, reference seeding, scenario overrides, DC export, OPEX dis
   API placeholders) reproduce identically on clean `main` `5de76e5b` in this
   environment (3 failed / 80 passed with the local Chromium) and are unrelated.
 
-## 12. GitHub status
+## 12. Correction B — CI lifecycle fix (post-pytest shutdown hang)
+
+**Old head** `fd0647c9` (Correction A). **Evidence** (job 113333375444, run
+37783831444): pytest printed `8406 passed, 49 skipped` at 13:46 UTC (1268 s); the step
+never ended; cancelled 14:29 UTC. The runner's orphan cleanup then listed one `pytest`
+and three `python` processes (resource tracker + two spawn workers). Classification:
+tests and fixtures finished, `pytest.main()` returned, **the interpreter did not exit**
+with child processes alive. The initial #222 head (`10a04a39`) exited normally.
+
+**Mechanism (reproduced on Linux, Python 3.12, CI dependency set):** a
+`ProcessPoolExecutor` that is only asked to stop (`shutdown(wait=False,
+cancel_futures=True)`) while a worker is still inside a call keeps the interpreter from
+exiting: `concurrent.futures`' exit handler joins the pool's manager thread, which waits
+for that worker. Experiment: idle pool + `shutdown()` -> exit 0 in 1 s; busy worker +
+`shutdown()` -> still running after 25 s (killed by an external timeout). A second
+defect found while building the repair: `Process.join` on pool workers can return early
+(the pool's manager thread races to `waitpid` the same process), so "join returned" is
+not proof that a worker ended.
+
+**Not proven:** which single test left the busy process worker in the CI run. GitHub
+logs of the cancelled job contain no thread stacks and the local full run (Python 3.12,
+8404 passed) exited 0 with no process children, so the leak is order/timing dependent.
+The repair therefore removes the whole class and names the owner if it recurs.
+
+**Repair**
+* `ModelExecutor.shutdown_and_join(timeout)` (new; production `shutdown()` and request
+  paths unchanged): requests shutdown, then *polls* every pool worker to a deadline,
+  terminates a process worker that is still alive and reports it. Used only by the test
+  helper `reset_model_executor_for_tests` (now returns the forced workers).
+* `tests/conftest.py`: one suite-owned lifecycle authority: after **every test module**
+  the global executor is shut down and joined (forced workers are recorded with the
+  module name); at session end any leaked model worker/process fails the session
+  (exit status 1) with its pid/stacks, so a leak can no longer surface as a silent hang.
+* `tools/ci_pytest_runner.py` + `tools/ci_pytest_child.py`: external supervisor (own
+  process group). Markers `PYTEST_MAIN_STARTED`, `PYTEST_MAIN_RETURNED`,
+  `PYTHON_PROCESS_EXITED`; faulthandler + SIGUSR1 all-thread stacks; on budget overrun
+  or on "pytest returned but interpreter still alive after 180 s" it records the
+  session's process tree and native thread states, sends SIGUSR1, terminates the group
+  and exits **124** (never 0, never `os._exit`). pytest's own exit code is otherwise
+  propagated. No test is excluded.
+* `.github/workflows/public_safety_and_smoke.yml`: the full `pytest -q --junitxml=...`
+  now runs under the supervisor; budget 2700 s (normal run ~21 min = 1268 s, 2.1x
+  headroom), step `timeout-minutes: 75`; the whole `artifacts/` directory (JUnit and
+  `ci-hang-diagnostics.txt`) is uploaded with `if: always()`.
+* `tests/test_suite_lifecycle_v1.py` (3 tests): thread and process mode workers are
+  joined and gone; a busy process worker is reported and removed within bounded time.
+
+**Linux evidence (Python 3.12 venv from `requirements.txt`/`constraints.txt`)**
+* Supervisor self-test with a non-daemon leaked thread: `PYTEST_MAIN_RETURNED`, then
+  `TIMEOUT ... shutdown hang`, process tree + stacks captured, supervisor exit **124**.
+* Focused ring (parity, consistency, staging acceptance A, p0a model execution, suite
+  lifecycle, goal seek, post-run request context, staging preflight, runtime v2, cross
+  system isolation) run twice: **300 passed, 1 skipped; real process exit code 0 both
+  times**, no live children or threads after `pytest.main`.
+* Frozen namespaces (`financial_engine`, `finco_core`, `finco_radar`, `finco_yield`,
+  `finco_protocol`): zero diff. Correction A behaviour untouched.
+
+**Limitations:** the specific leaking test in the CI run remains unidentified; if it
+recurs, the session-end check fails with module name/pid and the supervisor job
+artifact holds the stacks. A busy production worker is never interrupted (only the
+test helper terminates stragglers).
+
+## 13. GitHub status
 
 Recorded on the PR (head SHA and the five required workflows).
