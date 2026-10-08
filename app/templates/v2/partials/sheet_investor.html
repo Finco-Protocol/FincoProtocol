@@ -1,7 +1,11 @@
 {# Investor / Sponsor capital is intentionally separate from bank debt. #}
 {% from "partials/_money_format.html" import grouped_keur %}
 
-<div id="v2-sheet-investor" data-sheet="investor" data-testid="investor-sheet">
+<div id="v2-sheet-investor" data-sheet="investor" data-testid="investor-sheet"
+     hx-get="/v2/workbook/financing/investor?project={{ project_code | urlencode }}"
+     hx-trigger="click from:#tab-investor, htmx:afterRequest[detail.successful &amp;&amp; detail.requestConfig &amp;&amp; detail.requestConfig.verb === 'post'] from:body"
+     hx-swap="outerHTML">
+  <link rel="stylesheet" href="/static/css/model_financing.css">
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">Reference project — create a working copy to edit.
       <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
@@ -14,12 +18,28 @@
     <section class="v2-sponsor-funding-section" aria-labelledby="investor-working-title">
       <h4 id="investor-working-title">Working financing inputs</h4>
       <p>Current typed ProjectInputs. These do not recalculate persisted Last Run evidence.</p>
+      {% if sponsor_view is defined %}
+      <p>Funding structure: {{ sponsor_view.mode }}. Read-only assumptions; no supported Investor write contract exists yet.</p>
+      {% for title, metrics in [('Sponsor equity', sponsor_view.equity), ('Shareholder loan', sponsor_view.shl), ('Other funding', sponsor_view.other)] %}
+        <h4>{{ title }}</h4><dl class="fb-facts">
+          {% for m in metrics %}<div><dt>{{ m.label }}</dt><dd title="{{ m.source }}">{{ m.display }}</dd></div>{% endfor %}
+        </dl>
+      {% endfor %}
+      <dl class="fb-facts">
+        <div><dt>SHL repayment</dt><dd>{{ sponsor_view.repayment }}</dd></div>
+        <div><dt>Interest day count</dt><dd>{{ sponsor_view.day_count }}</dd></div>
+        <div><dt>Principal eligibility</dt><dd>Model period {{ sponsor_view.eligibility if sponsor_view.eligibility is not none else 'not exposed' }}</dd></div>
+        <div><dt>SHL maturity</dt><dd>Model period {{ sponsor_view.maturity if sponsor_view.maturity is not none else 'not exposed' }}</dd></div>
+      </dl>
+      <p>SHL principal is runtime-derived where supported; a legacy configured amount is not a funding output.</p>
+      {% else %}
       <dl data-testid="investor-working-inputs">
       {% for label, value, status in sponsor_working_rows %}
         <div><dt>{{ label }}</dt><dd>{% if value is number %}{{ grouped_keur(value) }}{% elif value is not none and value != '' %}{{ value }}{% else %}—{% endif %}
           <span class="v2-binding-badge v2-sponsor-status">{{ status }}</span></dd></div>
       {% endfor %}
       </dl>
+      {% endif %}
     </section>
     <section class="v2-sponsor-funding-section" aria-labelledby="investor-evidence-title">
       <h4 id="investor-evidence-title">Last Run evidence</h4>
@@ -30,6 +50,19 @@
           <span class="v2-binding-badge v2-sponsor-status">{{ status }}</span></dd></div>
       {% endfor %}
       </dl>
+      {% if sponsor_view is defined %}
+      <h4>Equity-only vs sponsor-inclusive returns</h4>
+      <p>Pure Equity IRR and MOIC cover legal equity contributions and equity distributions only.
+        Total Sponsor IRR and MOIC include equity plus shareholder-loan cash contributions and receipts.
+        MOIC is a cash multiple, not an annualised return. Timing is reflected in IRR.</p>
+      <dl class="fb-facts" data-testid="investor-return-evidence">
+        {% for m in sponsor_view.returns %}
+        <div><dt>{{ m.label }}</dt><dd title="{{ m.source }}">{{ m.display }}</dd></div>
+        {% endfor %}
+      </dl>
+      <p>A high equity-only multiple can reflect a small legal-equity denominator and substantial SHL funding;
+        compare it with sponsor-inclusive returns. Unavailable metrics are not recalculated here.</p>
+      {% endif %}
     </section>
   </section>
 </div>

@@ -1,0 +1,19 @@
+<section class="fb-evidence" data-testid="financing-cfads">
+  <h3>CFADS &amp; reserve cash evidence</h3>
+  <p>Last Run model-period values in kEUR. CFADS is cash available for Senior debt service;
+    debt service is a separate use of cash. Cash-flow signs are preserved.</p>
+  {% if runtime_is_stale %}<p class="fb-prior">Prior-run evidence - inputs changed since this Run.</p>{% endif %}
+  {% if financing_evidence.cash_rows %}
+    <div class="fb-scroll" tabindex="0" aria-label="Model-period CFADS cash evidence">
+      <table><thead><tr><th>Model period</th><th>Date</th><th>CFADS to Senior (kEUR)</th>
+        <th>Senior service cash (kEUR)</th><th>DSRA net funding / draw (kEUR)</th><th>DSRA release cash (kEUR)</th></tr></thead>
+        <tbody>{% for row in financing_evidence.cash_rows %}<tr>
+          <td>{{ row.period if row.period is not none else 'Not exposed' }}</td><td>{{ row.date or 'Not exposed' }}</td>
+          <td data-testid="cfads-period-{{ loop.index }}">{{ row.cfads.display }}</td><td>{{ row.service.display }}</td>
+          <td>{{ row.funding.display }}</td><td>{{ row.release.display }}</td>
+        </tr>{% endfor %}</tbody></table>
+    </div>
+    <small>Source: RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur.
+      No annual aggregation or reconstruction from revenue / OPEX.</small>
+  {% else %}<p>CFADS model-period evidence is not available in the persisted PF Cash Waterfall.</p>{% endif %}
+</section>

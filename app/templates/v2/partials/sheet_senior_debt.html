@@ -116,6 +116,7 @@
 
 <div id="v2-sheet-senior-debt" data-sheet="debt"
      data-fc-grid="senior_debt" data-fc-scroll-container>
+  <link rel="stylesheet" href="/static/css/model_financing.css">
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
@@ -193,13 +194,25 @@
 
   <details class="v2-inputs-section">
     <summary class="v2-inputs-section-summary" id="nav-debt-additional">
-      Additional assumptions <span class="v2-future-tag" style="margin-left:.4rem">Planned inputs</span>
+      Reserve policy &amp; assumptions
     </summary>
     <div class="v2-section-fields">
-      {{ placeholder_row("Base Rate") }}
-      {{ placeholder_row("Grace Period") }}
-      {{ placeholder_row("Repayment Profile") }}
-      {{ placeholder_row("DSRA (months)") }}
+      {% if reserve_view is defined %}
+      <section class="fb-evidence" data-testid="reserve-policy">
+        <h3>Working DSRA policy</h3>
+        <dl class="fb-facts">
+          <div><dt>Support instrument</dt><dd>{{ reserve_view.support }}</dd></div>
+          <div><dt>Target policy</dt><dd>{{ reserve_view.target }}</dd></div>
+          <div><dt>Operating coverage</dt><dd>{{ reserve_view.months if reserve_view.months is not none else 'Not available' }} months</dd></div>
+          <div><dt>Configured requirement</dt><dd>{{ reserve_view.requirement.display }}</dd></div>
+          <div><dt>Reserve facility commitment</dt><dd>{{ reserve_view.facility.display }}</dd></div>
+        </dl>
+        <p>Read-only typed policy. Coverage is not writable through the current workbook registry.
+          The configured requirement is not the dynamic Last Run target.
+          Actual balances are in the debt schedule; funding and release cash are shown below.</p>
+        <p>Reserve interest and the calculated target series are not exposed in this persisted runtime view.</p>
+      </section>
+      {% endif %}
     </div>
   </details>
 
@@ -210,7 +223,21 @@
     </summary>
     <div class="v2-section-fields">
 
-      {% if debt_schedule is not none and runtime_summary is not none %}
+      {% if financing_evidence is defined %}
+        <p>Requested gearing is a Working input, not a promise of debt capacity.
+          Actual gearing uses Last Run Total Project Uses, including financing costs and initial reserve funding.</p>
+        {% if runtime_is_stale %}<p class="fb-prior">Prior-run sizing and coverage evidence - inputs changed.</p>{% endif %}
+        <dl class="fb-facts" data-testid="debt-kpi-bar">
+          {% for m in financing_evidence.metrics %}
+          <div><dt>{{ m.label }}</dt><dd title="{{ m.source }}">{{ m.display }}</dd>
+            {% if m.reason %}<small>{{ m.reason }}</small>{% endif %}</div>
+          {% endfor %}
+        </dl>
+        <p>Sizing / binding constraint status: {{ financing_evidence.sizing_status }}.
+          {{ financing_evidence.sizing_reason }}</p>
+        {# Compatibility context: debt_actual_senior_keur_display and
+           debt_actual_gearing_pct_display now use raw persisted authority only. #}
+      {% elif debt_schedule is not none and runtime_summary is not none %}
         <div class="v2-kpi-grid" data-testid="debt-kpi-bar"
              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.75rem;padding:.5rem 0;">
 
@@ -284,6 +311,8 @@
 
     </div>
   </details>
+
+  {% if financing_evidence is defined %}{% include "partials/_financing_cash.html" %}{% endif %}
 
   {# ── C. Debt Schedule table ────────────────────────────────────────── #}
   <details class="v2-inputs-section">
