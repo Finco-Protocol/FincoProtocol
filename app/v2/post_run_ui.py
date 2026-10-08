@@ -308,6 +308,23 @@ def _as_oob(html: str, dom_id: str) -> str:
     return html.replace(marker, marker + ' hx-swap-oob="true"', 1)
 
 
+def _scenario_edit_authority_oob(pis, ws) -> str:
+    """Publish canonical composite identity without changing transactional CAS.
+
+    Scenario selection rotates the identity, not the shared draft snapshot.
+    Other browser tabs retain their old token and correctly receive 409.
+    """
+    from markupsafe import escape
+
+    return (
+        '<div id="v2-scenario-edit-authority" hx-swap-oob="true" hidden'
+        f' data-content-hash="{escape(str(pis.content_hash))}"'
+        f' data-workbook-version="{escape(str(pis.workbook_version))}"'
+        f' data-active-scenario-id="{escape(str(getattr(ws, "active_scenario_id", None) or ""))}">'
+        '</div>'
+    )
+
+
 def build_post_save_ui_state(
     *,
     ws_fresh,
@@ -391,6 +408,15 @@ def build_post_save_ui_state(
         fragments.append(_build_toolbar_state_oob(ctx))
         fragments.append(_build_run_controls_oob(ctx))
         fragments.append(_build_export_controls_oob(ctx))
+        # The list/Run controls were refreshed but the remaining editable sheet
+        # forms retained their previous scenario's composite hash. Publish one
+        # post-swap authority to update those hidden tokens without a reload.
+        scenario_label_html = _templates.get_template(
+            "partials/_v2_toolbar_scenario.html").render(ctx)
+        fragments.append(scenario_label_html.replace(
+            'id="v2-toolbar-scenario-label"',
+            'id="v2-toolbar-scenario-label" hx-swap-oob="true"', 1))
+        fragments.append(_scenario_edit_authority_oob(pis_fresh, ws_fresh))
     else:
         # Toolbar-only OOB (banner/controls are already emitted by the sheet
         # renderer on every mutation response).
