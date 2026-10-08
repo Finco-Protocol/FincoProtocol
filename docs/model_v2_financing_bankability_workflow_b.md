@@ -159,8 +159,9 @@ Ignored evidence: `artifacts/model-financing-bankability/acceptance.json`,
 - `solar-investor-after-save.png` and `solar-investor-after-run.png`
 - `wind-investor-after-save.png` and `wind-investor-after-run.png`
 
-Final focused ring: **281 passed**, normal exit 0 in 111.56 seconds, including
-35 new bankability cases. Browser acceptance: **48 views and two HTMX lifecycle
+Initial focused ring: **281 passed**, normal exit 0 in 111.56 seconds. Final
+focused ring: **291 passed**, normal exit 0 in 124.06 seconds, including the entire
+public surface hygiene suite and 36 new bankability cases. Browser acceptance: **48 views and two HTMX lifecycle
 flows passed**, normal exit 0 with 52 screenshots. Python compile and diff hygiene
 pass. Public safety and exact-head CI run IDs are recorded in the Draft PR delivery
 report after validation. The full local suite is intentionally not run; all five
@@ -174,5 +175,13 @@ no new write routes, no original assertion weakening, owner binding and final
 coherence guards. Browser lifecycle coverage was added when review identified
 that Investor was not an existing post-run OOB target. This is resolved solely
 through the owned read-only partial; no global integration was changed.
+
+The first full exact-head CI run `37834051564` exited normally with 8447 passed,
+49 skipped and one failed existing public-surface test. Native Investor grouping
+had removed the old row-level `Reference model` wording. The test's meaningful
+reference-language requirement is retained unchanged: the protected Investor
+notice now says `Reference model`, and an additional test explicitly proves that
+notice and absence of editors. No financial or access behavior changed. Fresh
+exact-head CI, rather than the first run, is required for final acceptance.
 
 Final state: one OPEN DRAFT PR. No deployment, merge, rebase, squash or force push.

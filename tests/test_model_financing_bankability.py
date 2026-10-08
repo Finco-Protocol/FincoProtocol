@@ -138,6 +138,16 @@ def test_no_checks_cannot_be_presented_as_pass():
     assert integrity_view({"overall": "PASS"}, "CURRENT")["status"] == "UNAVAILABLE"
 
 
+def test_protected_investor_keeps_reference_model_notice_without_editors():
+    from app.v2.router import _templates
+    html = _templates.get_template("partials/sheet_investor.html").render(
+        project_editable=False, project_code="finance-reference",
+        sponsor_funding_freshness={"state": "NOT_RUN", "label": "Not run"},
+        sponsor_view=build_sponsor_view(None, None), sponsor_last_run_rows=())
+    assert "Reference model" in html and "Create working copy" in html
+    assert 'name="value"' not in html and "BOUND READ-ONLY" not in html
+
+
 def test_sponsor_native_labels_and_units_do_not_reclassify_cash():
     from app.project_factories import create_generic_solar_reference
     view = build_sponsor_view(create_generic_solar_reference().financing, runtime())
