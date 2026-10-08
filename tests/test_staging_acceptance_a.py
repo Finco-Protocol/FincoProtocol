@@ -383,3 +383,137 @@ class TestRestoreAuthorityHardening:
             assert probe(base, last_sid=base_id) is False               # not pre-scenario
             assert probe(base, last_hash="0" * 64) is False             # hash not reproduced
             assert probe(None) is False
+
+
+# ── Wave B: Goal Seek on a legacy-seeded Wind project ─────────────────────────
+
+class TestGoalSeekWindLegacySeed:
+    """A seeded Wind project carries only the legacy ``tariff_eur_mwh`` key.
+    Goal Seek must read it as the starting value but APPLY through the canonical,
+    editable ``revenue.ppa.base_tariff`` field (the legacy field is PARTIAL and
+    non-editable) — the applied value then reaches canonical ProjectInputs."""
+
+    def test_resolver_reads_legacy_start_but_applies_to_canonical_field(self, seeded_db):
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.services.goal_seek import resolve_solve_variable
+        from app.v2.router import _goal_seek_resolve_tariff_field
+        from app.workbook.service import WorkbookService
+
+        _, _, wind = _client_for(user_id="u-wave-b-w0", template="generic_wind_reference",
+                                 capacity=50.0, name="Wave B Wind")
+        ws = get_workspace_state(wind.user_id, wind.project_id)
+        assert "rev_ppa_base_tariff" not in ws.draft_snapshot       # legacy-only seed
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        field_id, raw = _goal_seek_resolve_tariff_field(resolve_solve_variable("wind"), pis)
+        assert field_id == "revenue.ppa.base_tariff"
+        assert float(raw) == float(ws.draft_snapshot["tariff_eur_mwh"])
+
+    def test_apply_reaches_canonical_inputs_and_marks_stale(self, seeded_db):
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.workbook.service import WorkbookService
+
+        client, cookies, wind = _client_for(user_id="u-wave-b-w1", template="generic_wind_reference",
+                                            capacity=50.0, name="Wave B Wind")
+        code = wind.project_code
+        _run(client, cookies, code)
+        _, h, v = _tokens(client, cookies, code)
+        r = client.post("/v2/workbook/goal-seek/apply", cookies=cookies,
+                        data={"project": code, "field_id": "revenue.ppa.base_tariff",
+                              "value": "55.125", "content_hash": h, "workbook_version": v},
+                        headers={"HX-Request": "true"})
+        assert 'data-testid="gs-applied-note"' in r.text
+        ws = get_workspace_state(wind.user_id, wind.project_id)
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        assert WorkbookService.to_projectinputs(pis).revenue.ppa_base_tariff == 55.125
+        assert _state(client, cookies, code) == "Stale"
+        # the legacy field is never an apply target
+        _, h, v = _tokens(client, cookies, code)
+        r = client.post("/v2/workbook/goal-seek/apply", cookies=cookies,
+                        data={"project": code, "field_id": "revenue.ppa.tariff_legacy",
+                              "value": "40", "content_hash": h, "workbook_version": v},
+                        headers={"HX-Request": "true"})
+        assert 'data-status="INVALID_REQUEST"' in r.text
+        assert get_workspace_state(wind.user_id, wind.project_id).draft_snapshot.get(
+            "tariff_eur_mwh") == "60.0"
+
+    def test_real_wind_solve_apply_rerun_closes_to_target(self, seeded_db):
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client, cookies, wind = _client_for(user_id="u-wave-b-w2", template="generic_wind_reference",
+                                            capacity=50.0, name="Wave B Wind")
+        code = wind.project_code
+        _run(client, cookies, code)
+        summary = get_workspace_state(wind.user_id, wind.project_id).last_runtime_summary
+
+        def find(d, key):
+            if isinstance(d, dict):
+                if isinstance(d.get(key), (int, float)):
+                    return d[key]
+                for x in d.values():
+                    got = find(x, key)
+                    if got is not None:
+                        return got
+        base = find(summary, "equity_irr")
+        target = base * 100 - 1.0
+        r = client.post("/v2/workbook/goal-seek/run", cookies=cookies,
+                        data={"project": code, "target_metric": "pure_equity_irr",
+                              "target_value": f"{target:.4f}"}, headers={"HX-Request": "true"})
+        assert 'data-status="SOLVED"' in r.text
+        value = re.search(r'name="value" value="([^"]+)"', r.text).group(1)
+        field = re.search(r'name="field_id" value="([^"]+)"', r.text).group(1)
+        ch = re.search(r'name="content_hash" value="([^"]*)"', r.text).group(1)
+        ver = re.search(r'name="workbook_version" value="([^"]*)"', r.text).group(1)
+        assert field == "revenue.ppa.base_tariff"
+        a = client.post("/v2/workbook/goal-seek/apply", cookies=cookies,
+                        data={"project": code, "field_id": field, "value": value,
+                              "content_hash": ch, "workbook_version": ver},
+                        headers={"HX-Request": "true"})
+        assert 'data-testid="gs-applied-note"' in a.text
+        assert _state(client, cookies, code) == "Stale"
+        _run(client, cookies, code)
+        achieved = find(get_workspace_state(wind.user_id, wind.project_id).last_runtime_summary,
+                        "equity_irr")
+        assert abs(achieved * 100 - target) <= 0.01            # advertised 1e-4 fraction
+        assert _state(client, cookies, code) == "Current"
+
+
+# ── Wave B: typed engine fail-closed reasons reach the user in plain language ──
+
+class TestEngineFailClosedMessage:
+    def test_unit_mapping_never_exposes_internals(self):
+        from app.runtime.model_execution import ModelWorkerError
+        from app.v2.router import _engine_failure_message
+
+        shl = ModelWorkerError("CleanProductionRunUnavailable", "m", "PR8_CLEAN_ENGINE_FAIL_CLOSED",
+                               "ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 1.0 kEUR")
+        text = _engine_failure_message(shl)
+        assert "shareholder loan" in text and "Last Run is unchanged" in text
+        assert "kEUR" not in text and "ValueError" not in text and "PR8_" not in text
+        other = ModelWorkerError("X", "m", "PR8_CLEAN_ENGINE_FAIL_CLOSED", "ValueError: SOMETHING_ELSE")
+        assert "integrity checks" in _engine_failure_message(other)
+        assert "contact support" in _engine_failure_message(RuntimeError("boom"))
+        assert "shareholder loan" in _engine_failure_message(
+            ValueError("PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: x"))
+
+    def test_data_center_opex_edit_that_breaks_shl_maturity_is_explained_and_safe(self, seeded_db):
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client, cookies, dc = _client_for(user_id="u-wave-b-dc", template="generic_data_center_reference",
+                                          capacity=40.0, name="Wave B DC")
+        code, uid, pid = dc.project_code, dc.user_id, dc.project_id
+        _run(client, cookies, code)
+        last = get_workspace_state(uid, pid).last_runtime_snapshot_id
+        rows = _history_count(uid, pid)
+        page, h, v = _tokens(client, cookies, code)
+        add = client.post("/v2/opex/line/add", cookies=cookies, headers={"HX-Request": "true"},
+                          data={"project": code, "parent_group_code": "B.02", "label": "Stress",
+                                "amount_keur": "1000", "inflation_pct": "0", "notes": "",
+                                "workbook_version": v, "content_hash": h})
+        assert add.status_code == 200
+        failed = _run(client, cookies, code)
+        assert "shareholder loan" in failed.text
+        assert "contact support" not in failed.text and "Traceback" not in failed.text
+        ws = get_workspace_state(uid, pid)
+        assert ws.last_runtime_snapshot_id == last           # Last Run untouched
+        assert _history_count(uid, pid) == rows               # failure never appends
+        assert _state(client, cookies, code) == "Stale"       # the edit is real and saved
