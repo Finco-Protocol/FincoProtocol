@@ -16,6 +16,7 @@ from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD, create_sub_
 from app.persistence.opex_sub_lines import create_sub_line as create_opex_line
 from app.persistence.projects_repository import get_reference_by_template_source, update_project_record
 from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+from app.services import project_library_service as _pls
 from app.services.project_library_service import create_working_copy, ensure_reference_models
 from app.reference_detail_catalog import (
     PUBLIC_GENERIC_DETAIL_V1,
@@ -282,7 +283,9 @@ def create_seeded_working_copy(user_id: str, source_reference_id: str,
             return create_reference_seeded_project(
                 user_id=user_id, template_source=template_source,
                 requested_name=name, capacity_mw=capacity)
-    return create_working_copy(user_id, source_reference_id, requested_name)
+    return _pls.create_working_copy(
+        user_id=user_id, source_reference_id=source_reference_id,
+        requested_name=requested_name)
 
 
 def create_reference_seeded_project(
@@ -313,7 +316,9 @@ def create_reference_seeded_project(
     pi = _reference_inputs(template_source)
     reference_capacity = float(pi.technical.capacity_mw)
     ratio = float(capacity_mw) / reference_capacity
-    record = create_working_copy(user_id, reference.project_id, requested_name.strip())
+    record = _pls.create_working_copy(
+        user_id=user_id, source_reference_id=reference.project_id,
+        requested_name=requested_name.strip())
     ws = get_workspace_state(user_id, record.project_id)
     if ws is None:
         raise RuntimeError("Working-copy workspace was not initialized.")
