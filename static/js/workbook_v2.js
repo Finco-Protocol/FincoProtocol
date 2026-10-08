@@ -50,6 +50,41 @@
   });
 })();
 
+// Scenario-switch coherence: read the server-issued composite identity only
+// AFTER the primary scenario sheet and all HTMX OOB fragments have settled.
+// No economic writes, no CAS retries, and no cross-tab token broadcasts.
+(function () {
+  var scenarioResponse = /^\/v2\/workbook\/scenarios\/(?:create|select|archive|update-overrides|remove-override)$/;
+  document.addEventListener('htmx:afterSettle', function (event) {
+    var xhr = event.detail && event.detail.xhr;
+    if (!xhr || xhr.status !== 200 || !xhr.responseURL) return;
+    var path;
+    try { path = new URL(xhr.responseURL, window.location.href).pathname; }
+    catch (_) { return; }
+    if (!scenarioResponse.test(path)) return;
+
+    var authority = document.getElementById('v2-scenario-edit-authority');
+    if (!authority) return;
+    var hash = authority.getAttribute('data-content-hash');
+    var version = authority.getAttribute('data-workbook-version');
+    if (!hash || !version) return;  // Missing authority: do not guess a hash.
+
+    document.querySelectorAll('input[name="content_hash"]').forEach(function (input) {
+      input.value = hash;
+    });
+    document.querySelectorAll('input[name="workbook_version"]').forEach(function (input) {
+      input.value = version;
+    });
+    var shell = document.getElementById('v2-workbook-shell');
+    if (shell) {
+      shell.setAttribute('data-content-hash', hash);
+      shell.setAttribute('data-workbook-version', version);
+      shell.setAttribute('data-active-scenario-id',
+                         authority.getAttribute('data-active-scenario-id') || '');
+    }
+  });
+})();
+
 // Scoped HTMX handling for controlled Slice 1 application errors.
 (function () {
   var SLICE1_UPDATE_ENDPOINT = '/v2/workbook/inputs-slice1/update';

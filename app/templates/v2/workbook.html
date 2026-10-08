@@ -37,8 +37,7 @@
         <span class="v2-toolbar-badge v2-toolbar-wc-badge">Working Copy</span>
       {% endif %}
       <span class="v2-toolbar-sep">·</span>
-      <button class="v2-toolbar-scenario-link" type="button"
-              onclick="document.getElementById('tab-scenarios').click()">Scenario: <strong>{{ active_scenario_name or "Base" }}</strong></button>
+      {% include "partials/_v2_toolbar_scenario.html" %}
     </div>
     <nav class="v2-protocol-nav" aria-label="Protocol navigation">
       <a href="/library" aria-current="page">Model</a>
@@ -132,6 +131,11 @@
   </div>
 
   {# ── Sheet panels ─────────────────────────────────────────────────── #}
+  {# Canonical scenario-edit token; HTMX scenario mutations replace this marker OOB. #}
+  <div id="v2-scenario-edit-authority" hidden
+       data-content-hash="{{ content_hash }}"
+       data-workbook-version="{{ workbook_version }}"
+       data-active-scenario-id="{{ active_scenario_id or '' }}"></div>
   <div id="v2-workbook-shell"
        data-project="{{ project_code }}"
        data-workbook-version="{{ workbook_version }}"
