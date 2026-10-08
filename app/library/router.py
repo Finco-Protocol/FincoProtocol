@@ -256,9 +256,11 @@ async def project_library_clone(
         return JSONResponse({"error": "Login required"}, status_code=401)
 
     from app.services.project_library_service import (
-        create_working_copy,
         ProtectedProjectError,
         UnsupportedProjectRuntimeError,
+    )
+    from app.services.reference_seed_service import (
+        create_seeded_working_copy as create_working_copy,
     )
 
     try:

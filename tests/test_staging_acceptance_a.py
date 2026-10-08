@@ -598,3 +598,55 @@ class TestCapexControls:
                           "value": "600", "project": code,
                           "workbook_version": v, "content_hash": h})
         assert canonical_total() == before
+
+
+# ── Wave B: library "create working copy" seeds like the New Project form ────
+
+class TestLibraryCloneSeeding:
+    @pytest.mark.parametrize("template,driver_key", [
+        ("generic_solar_reference", None),
+        ("generic_wind_reference", None),
+        ("generic_data_center_reference", "opex_power_expenses_y1_keur"),
+        ("generic_ev_charging_reference", None),
+    ])
+    def test_clone_route_seeds_editable_line_items(self, seeded_db, template, driver_key):
+        from app.persistence.db import get_cursor
+        from app.persistence.projects_repository import get_reference_by_template_source
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client, cookies, _seed = _client_for(user_id=f"u-clone-{template[8:12]}", template=template)
+        ref = get_reference_by_template_source(template)
+        resp = client.post(f"/library/clone/{ref.project_id}", cookies=cookies,
+                           headers={"HX-Request": "true"})
+        assert resp.status_code in (200, 204, 303), resp.text[:200]
+        from app.persistence.projects_repository import list_project_records
+        clone = next(p for p in list_project_records(user_id=f"u-clone-{template[8:12]}")
+                     if p.project_role == "working_copy")
+        with get_cursor() as cur:
+            cur.execute("SELECT COUNT(*) c FROM capex_sub_lines WHERE project_id=? AND is_active=1",
+                        (clone.project_id,))
+            capex_rows = cur.fetchone()["c"]
+            cur.execute("SELECT COUNT(*) c FROM opex_sub_lines WHERE project_id=? AND is_active=1",
+                        (clone.project_id,))
+            opex_rows = cur.fetchone()["c"]
+        assert capex_rows > 0 and opex_rows > 0
+        if driver_key:
+            assert driver_key in get_workspace_state(clone.user_id, clone.project_id).draft_snapshot
+        page = client.get(f"/v2/workbook?project={clone.project_code}", cookies=cookies).text
+        assert len(re.findall(r'data-testid="opex-custom-row-', page)) == opex_rows
+        assert "technical_management" not in re.sub(r'(name|value|data-[a-z-]+|id|for)="[^"]*"', "", page)
+
+    def test_storage_and_non_reference_sources_keep_their_guards(self, seeded_db):
+        from app.persistence.projects_repository import get_reference_by_template_source
+
+        client, cookies, own = _client_for(user_id="u-clone-guard")
+        storage = get_reference_by_template_source("generic_storage_reference")
+        r = client.post(f"/library/clone/{storage.project_id}", cookies=cookies,
+                        headers={"HX-Request": "true"})
+        assert r.status_code == 400
+        r = client.post(f"/library/clone/{own.project_id}", cookies=cookies,
+                        headers={"HX-Request": "true"})
+        assert r.status_code == 400                      # a user-owned project is not clonable
+        r = client.post("/library/clone/does-not-exist", cookies=cookies,
+                        headers={"HX-Request": "true"})
+        assert r.status_code == 400
