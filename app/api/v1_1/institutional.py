@@ -26,7 +26,10 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.v2.post_run_context import PostRunRequestContext
 
 
 STATE_AVAILABLE = "AVAILABLE"
@@ -35,8 +38,11 @@ STATE_UNAVAILABLE = "UNAVAILABLE"
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
-def _load_workspace(user_id: str, project_id: str) -> Tuple[Any, Any]:
+def _load_workspace(user_id: str, project_id: str, *, context: Optional[PostRunRequestContext] = None) -> Tuple[Any, Any]:
     """Return (project_record, workspace_state) — both may be None."""
+    if context is not None:
+        context.require_scope(user_id, project_id)
+        return context.project_record, context.workspace
     from app.persistence.projects_repository import get_project
     from app.persistence.workspace_repository import get_workspace_state
 
@@ -56,14 +62,16 @@ def _availability_state(ws: Any) -> str:
     return STATE_AVAILABLE
 
 
-def _runtime_result_adapter(ws: Any) -> Optional[Any]:
+def _runtime_result_adapter(ws: Any, *, context: Optional[PostRunRequestContext] = None) -> Optional[Any]:
     """Return _RuntimeResultAdapter wrapping persisted RuntimeResult, or None."""
     if ws is None:
         return None
+    if context is not None:
+        context.require_binding(ws, context.project_record, context.runtime_result)
     try:
         from app.workbook.runtime_result import RuntimeResult
         from app.services.v2_export_service import _RuntimeResultAdapter
-        rr = RuntimeResult.from_workspace_state(ws)
+        rr = context.runtime_result if context is not None else RuntimeResult.from_workspace_state(ws)
         if rr is None:
             return None
         return _RuntimeResultAdapter(rr.runtime_summary, rr.debt_schedule)
@@ -148,9 +156,10 @@ def get_last_run_summary(user_id: str, project_id: str) -> Tuple[str, dict]:
     }
 
 
-def get_run_identity(user_id: str, project_id: str) -> Tuple[str, dict]:
+def get_run_identity(user_id: str, project_id: str, *, context: Optional[PostRunRequestContext] = None) -> Tuple[str, dict]:
     """Return (state, data) for run identity / certificate metadata."""
-    pr, ws = _load_workspace(user_id, project_id)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {}
 
@@ -162,12 +171,13 @@ def get_run_identity(user_id: str, project_id: str) -> Tuple[str, dict]:
     return state, run_identity_out(ws)
 
 
-def get_kpis(user_id: str, project_id: str) -> Tuple[str, dict]:
+def get_kpis(user_id: str, project_id: str, *, context: Optional[PostRunRequestContext] = None) -> Tuple[str, dict]:
     """Return (state, kpis_dict) for core institutional KPIs.
 
     Reads persisted last_runtime_summary only — no engine call.
     """
-    pr, ws = _load_workspace(user_id, project_id)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {}
 
@@ -175,7 +185,8 @@ def get_kpis(user_id: str, project_id: str) -> Tuple[str, dict]:
     if state == STATE_UNAVAILABLE:
         return STATE_UNAVAILABLE, {}
 
-    adapter = _runtime_result_adapter(ws)
+    adapter = (_runtime_result_adapter(ws, context=context) if context is not None
+               else _runtime_result_adapter(ws))
     if adapter is None:
         return STATE_UNAVAILABLE, {}
 
@@ -183,12 +194,13 @@ def get_kpis(user_id: str, project_id: str) -> Tuple[str, dict]:
     return state, kpis_out(ws, adapter)
 
 
-def get_export_metadata(user_id: str, project_id: str) -> Tuple[str, dict]:
+def get_export_metadata(user_id: str, project_id: str, *, context: Optional[PostRunRequestContext] = None) -> Tuple[str, dict]:
     """Return (state, metadata) for XLSX export contract metadata.
 
     Does NOT produce the file.
     """
-    pr, ws = _load_workspace(user_id, project_id)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {}
 
@@ -281,7 +293,7 @@ def get_institutional_validation(user_id: str, project_id: str) -> Tuple[str, di
     return STATE_AVAILABLE, validation_out(vr)
 
 
-def get_run_integrity_checks(user_id: str, project_id: str) -> Tuple[str, dict]:
+def get_run_integrity_checks(user_id: str, project_id: str, *, context: Optional[PostRunRequestContext] = None) -> Tuple[str, dict]:
     """Return (state, evidence) for Run Integrity Checks on the committed Last Run.
 
     /integrity — read-only. Checks the INTERNAL CONSISTENCY of the committed Last Run from
@@ -289,7 +301,8 @@ def get_run_integrity_checks(user_id: str, project_id: str) -> Tuple[str, dict]:
     Copy or Last Run, never issues a Signed Run and never touches Verify or Radar. It is a
     separate authority from the Reference Regression Check (/validation).
     """
-    pr, ws = _load_workspace(user_id, project_id)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {"reason": "PROJECT_NOT_FOUND"}
     if ws is None or not getattr(ws, "any_run_committed", False):
@@ -304,14 +317,15 @@ def get_run_integrity_checks(user_id: str, project_id: str) -> Tuple[str, dict]:
         return STATE_UNAVAILABLE, {"reason": "INTEGRITY_CHECKS_UNAVAILABLE"}
 
 
-def get_verify_state(user_id: str, project_id: str) -> Tuple[str, dict]:
+def get_verify_state(user_id: str, project_id: str, *, context: Optional[PostRunRequestContext] = None) -> Tuple[str, dict]:
     """Return (state, evidence) from canonical Verify authority for this project.
 
     /verify — delegates to app.verified (asset_registry + composer).
     Fails closed when no source-proven binding exists in the registry.
     PRODUCTION_VERIFIED_ASSET_COUNT must not increase.
     """
-    pr, ws = _load_workspace(user_id, project_id)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {"reason": "PROJECT_NOT_FOUND"}
 

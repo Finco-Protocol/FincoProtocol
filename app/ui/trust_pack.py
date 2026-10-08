@@ -24,7 +24,10 @@ increases PRODUCTION_VERIFIED_ASSET_COUNT.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.v2.post_run_context import PostRunRequestContext
 
 from app.api.v1_1 import institutional as _v11
 from app.api.v1_1.institutional import (
@@ -314,6 +317,7 @@ def build_trust_pack(
     *,
     project_code: str,
     any_run_committed: bool = False,
+    context: PostRunRequestContext | None = None,
 ) -> dict[str, Any]:
     """Compose the Model Trust Pack from existing canonical read services.
 
@@ -321,12 +325,15 @@ def build_trust_pack(
     mutation.  Every section fails closed to UNAVAILABLE independently.
     """
     # ── A. Last Run identity ────────────────────────────────────────────
-    id_state, identity = _v11.get_run_identity(user_id, project_id)
+    shared = {"context": context} if context is not None else {}
+    if context is not None:
+        context.require_scope(user_id, project_id)
+    id_state, identity = _v11.get_run_identity(user_id, project_id, **shared)
     if id_state != STATE_AVAILABLE:
         identity = {}
 
     # ── B. Core KPIs (same canonical Last Run authority) ────────────────
-    kpi_state, kpis = _v11.get_kpis(user_id, project_id)
+    kpi_state, kpis = _v11.get_kpis(user_id, project_id, **shared)
     if kpi_state != STATE_AVAILABLE:
         kpis = {}
 
@@ -350,17 +357,17 @@ def build_trust_pack(
     }
 
     # ── D. FINCO VERIFY (separate authority — never implied by validation) ──
-    ver_state, verify = _v11.get_verify_state(user_id, project_id)
+    ver_state, verify = _v11.get_verify_state(user_id, project_id, **shared)
     verify_section = _verify_section(ver_state, verify if ver_state == STATE_AVAILABLE else {})
     verify_section["verify_url"] = f"/verify/run/{project_code}"
 
     # ── E. Institutional export metadata (action = existing V2 export) ──
-    exp_state, export_meta = _v11.get_export_metadata(user_id, project_id)
+    exp_state, export_meta = _v11.get_export_metadata(user_id, project_id, **shared)
 
     # ── Run Integrity Checks (H-4b): internal consistency of the committed Last Run.
     # Read-only recomputation over evidence recorded at commit; never runs the model.
     # Separate authority from the Reference Regression Check and FINCO VERIFY.
-    integ_state, integrity = _v11.get_run_integrity_checks(user_id, project_id)
+    integ_state, integrity = _v11.get_run_integrity_checks(user_id, project_id, **shared)
     integrity_section = _integrity_section(
         integ_state, integrity if integ_state == STATE_AVAILABLE else {})
 

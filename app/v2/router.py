@@ -520,10 +520,11 @@ def _build_assumption_register_view(pis):
                 "fingerprint": "", "rows": []}
 
 
-def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
+def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *, freshness=None):
     """Shared context dict for both sheet partials."""
     from app.workbook.registry import is_data_center_project_type as _is_dc_type_bsc
-    freshness = _runtime_freshness(ws, pis)
+    if freshness is None:
+        freshness = _runtime_freshness(ws, pis)
     _dc_tmpl = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
     _dc_type = _is_dc_type_bsc(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
     _ev_tmpl = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_ev_charging_reference"
@@ -1083,7 +1084,7 @@ def _build_sponsor_funding_presentation(fin, rr, freshness) -> dict:
     }
 
 
-def _build_debt_ctx(pis, ws, projection=None) -> dict:
+def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
     """Build Senior Debt sheet context: registry fields + RuntimeResult output.
 
     When a pre-built WorkbookRuntimeProjection bundle is supplied (GET handler),
@@ -1092,6 +1093,8 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
     """
     from app.workbook.runtime_projection import build_runtime_projection_bundle
     from app.workbook.service import WorkbookService
+    if context is not None:
+        context.require_binding(ws, context.project_record, context.runtime_result)
     if projection is None:
         rr = WorkbookService.get_runtime_result(ws)
         from app.workbook.runtime_projection import build_runtime_projection_bundle
@@ -1106,9 +1109,9 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
         fin = pis.to_projectinputs().financing
     except Exception:
         fin = None
-    rr_for_sponsor = WorkbookService.get_runtime_result(ws)
+    rr_for_sponsor = context.runtime_result if context is not None else WorkbookService.get_runtime_result(ws)
     sponsor_funding = _build_sponsor_funding_presentation(
-        fin, rr_for_sponsor, _runtime_freshness(ws, pis)
+        fin, rr_for_sponsor, context.freshness if context is not None else _runtime_freshness(ws, pis)
     )
     # R8/N02: policy-governed editability — calibrated schedules lock the
     # scalar Senior controls with the honest reason.
@@ -2669,16 +2672,20 @@ async def v2_workbook_run(
     # Overview KPIs, debt, tax, FS, scenario last-run statuses).  The
     # previous hand-rolled assembly here omitted the Overview sheet, which
     # left stale pre-Run KPIs presented as current after a new Run.
-    from app.v2.post_run_ui import build_post_run_ui_state
+    from app.v2.post_run_ui import build_coherent_post_run_ui_state
+    from app.v2.post_run_context import PostRunContextChanged
+    from app.workbook.workbook_identity import WorkbookIdentityError
 
-    combined = build_post_run_ui_state(
-        request=request,
-        ws_fresh=ws_fresh,
-        project_record=project_record,
-        project=project,
-        workspace_owner=workspace_owner,
-        rr=rr,
-    )
+    try:
+        combined = build_coherent_post_run_ui_state(
+            request=request, ws_fresh=ws_fresh, project_record=project_record,
+            project=project, workspace_owner=workspace_owner, rr=rr)
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        # The Run remains committed. Do not emit a mixed CURRENT response or
+        # overwrite a concurrent scenario's evidence; existing GET reconciles.
+        return HTMLResponse(
+            "Run saved. Workspace changed while updating the view; reload the workbook.",
+            status_code=409)
     _stage_mark("response_generated")
     log_run_stages(project_type=project_record.project_type, origin="v2_workbook_run")
     return HTMLResponse(content=combined)
@@ -2878,19 +2885,23 @@ async def v2_trust_validation_fragment(request: Request, project: str):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws) -> str:
+def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws, *, context=None) -> str:
     """Render the scenario list partial HTML (used by multiple endpoints)."""
     from app.persistence.scenarios_repository import list_scenarios
     from app.v2.scenario_presentation import build_scenario_presentations
     from app.workbook.runtime_authority import resolve_runtime_freshness
     from app.workbook.workbook_identity import assemble_consistent_for_get
-    scenarios = list_scenarios(user_id=user_id, project_id=project_id, include_archived=False)
+    if context is not None:
+        context.require_scope(user_id, project_id)
+        context.require_binding(ws, context.project_record, context.runtime_result)
+    scenarios = (context.scenarios if context is not None else
+                 list_scenarios(user_id=user_id, project_id=project_id, include_archived=False))
     active_id = ws.active_scenario_id if ws else None
     # GF-F04/F05: resolve canonical freshness with the REAL composite hash so
     # that a post-Run CURRENT workspace is not incorrectly forced to STALE.
     # Fail closed (STALE) only when identity assembly genuinely fails.
     try:
-        identity = assemble_consistent_for_get(
+        identity = context.identity if context is not None else assemble_consistent_for_get(
             user_id=user_id,
             project_id=project_id,
             workbook_version=WORKBOOK.version,
@@ -2898,12 +2909,13 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws) ->
         current_hash = identity.composite_hash
     except Exception:
         current_hash = None  # fail closed per runtime-authority semantics
-    freshness = resolve_runtime_freshness(ws, current_composite_hash=current_hash)
+    freshness = (context.freshness if context is not None else
+                 resolve_runtime_freshness(ws, current_composite_hash=current_hash))
     presentations = build_scenario_presentations(
         scenarios, active_id, global_is_stale=freshness.is_stale)
     from app.persistence.projects_repository import get_project_by_id
     from app.workbook.registry import is_data_center_project_type
-    _scen_record = get_project_by_id(project_id)
+    _scen_record = context.project_record if context is not None else get_project_by_id(project_id)
     ctx = {
         "scenarios": presentations,
         "active_scenario_id": active_id,
@@ -3357,7 +3369,7 @@ async def v2_scenario_remove_override(
 # no reconstruction of missing metrics.
 # ---------------------------------------------------------------------------
 
-def _run_history_listing_ctx(project_record, ws, pis):
+def _run_history_listing_ctx(project_record, ws, pis, *, freshness=None):
     """Shared Run History listing context (workbook GET + OOB + route).
 
     Read-only composition over the append-only history authority; fails
@@ -3373,7 +3385,8 @@ def _run_history_listing_ctx(project_record, ws, pis):
     )
     from app.workbook.runtime_authority import resolve_runtime_freshness
 
-    freshness = resolve_runtime_freshness(ws, current_composite_hash=pis.content_hash)
+    if freshness is None:
+        freshness = resolve_runtime_freshness(ws, current_composite_hash=pis.content_hash)
     # the workspace record carries its owner (canonical history key)
     workspace_owner = getattr(ws, "user_id", None)
     try:
