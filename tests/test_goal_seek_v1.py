@@ -38,6 +38,18 @@ from app.services.goal_seek import (
     solve_tariff_for_metric,
 )
 
+@pytest.fixture(scope="module", autouse=True)
+def _goal_seek_executor_cleanup():
+    """Real canonical Goal Seek tests run candidates through the global
+    ModelExecutor (ProcessPoolExecutor). Close it through the repository's
+    existing test reset authority after this module so no worker pool is left
+    alive at pytest interpreter exit (an orphaned pool keeps the process, and
+    the CI step, from terminating). Production keeps its long-lived executor."""
+    yield
+    from app.runtime import model_execution as me
+    me.reset_model_executor_for_tests(None)
+
+
 # ── Synthetic evaluators ─────────────────────────────────────────────────────
 
 
