@@ -2475,22 +2475,43 @@ def test_reference_driven_correction_a_23_capture_journey(
     shot("06-solar-detailed-opex", page.locator("#v2-sheet-opex"))
     shot("07-opex-year-projection", page.locator('[data-testid="opex-projection-panel"]'))
 
-    # Rename and override one immutable-provenance OPEX seed through the UI.
-    seed_row = page.locator('[data-testid^="opex-custom-row-"]').first
+    # Rename and override one immutable-provenance OPEX seed through the direct-cell grid.
+    from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as _active_opex
+
+    seed_row = page.locator('form[data-cost-row="opex"]').first
     seed_row.wait_for()
-    seed_row.locator("summary").click()
-    label_input = seed_row.locator(".v2-opex-custom-label-input")
-    amount_input = seed_row.locator(".v2-opex-custom-amount-input")
+    seed_id = seed_row.get_attribute("data-sub-line-id")
+    assert seed_id and seed_row.get_attribute("data-testid") == f"opex-custom-row-{seed_id}"
+    seed_before = next(r for r in _active_opex(solar.project_id) if r.sub_line_id == seed_id)
+    assert seed_before.replay_metadata.get("reference_seed") is True
+    label_input = seed_row.locator('input[name="label"]')
+    amount_input = seed_row.locator('input[name="amount_keur"]')
     overridden_label = "Renamed operating line — immutable seed identity"
-    overridden_amount = float(amount_input.input_value()) + 37.0
-    label_input.fill(overridden_label)
-    amount_input.fill(f"{overridden_amount:.6f}")
-    with page.expect_response(lambda response: "/v2/opex/line/update" in response.url):
-        seed_row.locator(".v2-opex-custom-save-btn").click()
-    renamed_row = page.locator('[data-testid^="opex-custom-row-"]').filter(
-        has_text=overridden_label
-    ).first
-    renamed_row.locator("summary").wait_for()
+    overridden_amount = float(amount_input.get_attribute("data-exact")) + 37.0
+    update_posts = []
+    page.on("request", lambda r: update_posts.append(r.url)
+            if r.method == "POST" and "/v2/opex/line/update" in r.url else None)
+    label_input.click()
+    page.keyboard.press("Control+A")
+    page.keyboard.type(overridden_label)
+    page.keyboard.press("Tab")                      # next cell, same row: nothing is sent yet
+    assert update_posts == []
+    page.keyboard.press("Control+A")
+    page.keyboard.type(f"{overridden_amount:.6f}")
+    with page.expect_response(lambda response: "/v2/opex/line/update" in response.url) as resp_info:
+        page.keyboard.press("Enter")               # the supported commit gesture
+    assert resp_info.value.status == 200
+    saved_row = page.locator(f"#opex-row-{seed_id}")
+    expect(saved_row.locator('input[name="label"]')).to_have_value(overridden_label, timeout=10000)
+    expect(saved_row.locator('input[name="amount_keur"]')).to_have_attribute(
+        "data-original", f"{overridden_amount:.4f}".rstrip("0").rstrip("."), timeout=10000)
+    expect(saved_row).to_have_attribute("data-save-state", "saved", timeout=10000)
+    assert len(update_posts) == 1                   # exactly one guarded mutation
+    seed_after = next(r for r in _active_opex(solar.project_id) if r.sub_line_id == seed_id)
+    assert seed_after.label == overridden_label
+    assert seed_after.amount_keur == pytest.approx(overridden_amount)
+    assert seed_after.source == "user_override"
+    assert seed_after.replay_metadata == seed_before.replay_metadata   # immutable seed identity
 
     # Change MW through the actual bound Project Setup control.
     page.locator("#tab-project-setup").click()
@@ -2509,15 +2530,15 @@ def test_reference_driven_correction_a_23_capture_journey(
     shot("08-capacity-change")
 
     page.locator("#tab-opex").click()
-    survivor_row = page.locator('[data-testid^="opex-custom-row-"]').filter(
-        has_text=overridden_label
-    ).first
-    survivor_row.locator("summary").click()
-    survivor_row.locator(".v2-opex-custom-label-input").wait_for()
-    assert float(survivor_row.locator(".v2-opex-custom-amount-input").input_value()) == pytest.approx(
+    survivor_row = page.locator(f"#opex-row-{seed_id}")
+    survivor_row.wait_for()
+    expect(survivor_row.locator('input[name="label"]')).to_have_value(overridden_label)
+    assert float(survivor_row.locator('input[name="amount_keur"]').get_attribute("data-exact")) == pytest.approx(
         overridden_amount
     )
-    survivor_row.locator("summary").click()
+    seed_survived = next(r for r in _active_opex(solar.project_id) if r.sub_line_id == seed_id)
+    assert seed_survived.replay_metadata == seed_before.replay_metadata
+    assert seed_survived.amount_keur == pytest.approx(overridden_amount)
     shot("09-override-survival", survivor_row)
 
     page.goto(f"{live_url}/v2/workbook?project={wind.project_code}")

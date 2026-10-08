@@ -3224,3 +3224,99 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 :root[data-theme="dark"] .v2-field-editable .v2-field-hint { color: #9ca3af; }
 :root[data-theme="light"] .v2-field-readonly .v2-field-hint,
 :root[data-theme="light"] .v2-field-editable .v2-field-hint { color: var(--v2-text-subtle); }
+
+/* ── Cost grid: compact direct-cell editing rows (CAPEX / OPEX) ───────────────────────
+   Fixed-light surface with its own foreground so contrast holds in both themes. */
+form.v2-cost-row, div.v2-cost-row {
+  --cost-cols: 4.2rem minmax(9rem, 1fr) 6.6rem 7.2rem 5.6rem 2.6rem;
+  display: grid; grid-template-columns: var(--cost-cols);
+  align-items: center; column-gap: .35rem;
+  min-height: 32px; height: auto; padding: 0 .45rem; margin: 0;
+  background: #fff; color: #111827; font-size: .78rem;
+  border-bottom: 1px solid #e5e7eb; box-sizing: border-box;
+}
+form.v2-cost-row[data-cost-row="opex"], div.v2-opex-custom-row.v2-cost-row {
+  --cost-cols: 4.2rem minmax(9rem, 1fr) 6.2rem 7.2rem 5.4rem 5.6rem 4.6rem 3.6rem;
+}
+form.v2-cost-row[data-cost-row="capex"] { --cost-cols: 4.2rem minmax(9rem, 1fr) 6.6rem 7.2rem 5.8rem 4.8rem 3.6rem; }
+div.v2-capex-custom-row.v2-cost-row { --cost-cols: 4.2rem minmax(9rem, 1fr) 6.6rem 7.2rem 5.8rem; }
+form.v2-cost-row:hover, div.v2-cost-row:hover { background: #f9fafb; }
+form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #2563eb; }
+.v2-cost-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2-cost-code { color: #1d4ed8; font-size: .7rem; }
+.v2-cost-driver { color: #4b5563; text-align: right; font-variant-numeric: tabular-nums; }
+.v2-cost-driver small { color: #6b7280; }
+.v2-cost-amount, .v2-cost-escl { text-align: right; font-variant-numeric: tabular-nums; }
+.v2-cost-input {
+  width: 100%; box-sizing: border-box; height: 26px; padding: 0 .35rem;
+  font: inherit; color: #111827; background: transparent;
+  border: 1px solid transparent; border-radius: 3px;
+}
+.v2-cost-input.v2-cost-num { text-align: right; font-variant-numeric: tabular-nums; }
+.v2-cost-row:hover .v2-cost-input { border-color: #d1d5db; }
+.v2-cost-input:focus { background: #fff; border-color: #2563eb; outline: 2px solid #bfdbfe; outline-offset: 0; }
+.v2-cost-row[data-save-state="dirty"] .v2-cost-input,
+.v2-cost-row[data-save-state="queued"] .v2-cost-input { background: #fffbeb; border-color: #f59e0b; }
+.v2-cost-row[data-save-state="saving"] .v2-cost-input { background: #eff6ff; border-color: #60a5fa; }
+.v2-cost-row[data-save-state="failed"] .v2-cost-input,
+.v2-cost-row[data-save-state="invalid"] .v2-cost-input { background: #fef2f2; border-color: #dc2626; }
+.v2-cost-state { font-size: .68rem; color: #4b5563; }
+.v2-cost-row[data-save-state="failed"] .v2-cost-state,
+.v2-cost-row[data-save-state="invalid"] .v2-cost-state { color: #b91c1c; font-weight: 600; white-space: normal; }
+.v2-cost-row[data-save-state="saved"] .v2-cost-state { color: #047857; }
+.v2-cost-row[data-save-state="saving"] .v2-cost-state { color: #1d4ed8; }
+.v2-cost-actions { display: flex; gap: .2rem; justify-content: flex-end; }
+.v2-cost-action {
+  width: 1.5rem; height: 1.5rem; line-height: 1; padding: 0; cursor: pointer;
+  border: 1px solid #d1d5db; border-radius: 3px; background: #f9fafb; color: #374151; font-size: .8rem;
+}
+.v2-cost-action:hover { background: #e5e7eb; }
+.v2-cost-action.v2-capex-deactivate-btn, .v2-cost-action.v2-opex-deactivate-btn {
+  border-color: #fca5a5; background: #fef2f2; color: #991b1b;
+}
+.v2-cost-grid-hint { margin: .25rem .5rem; font-size: .72rem; color: var(--v2-text-subtle, #6b7280); }
+.v2-cost-grid-hint kbd { font: inherit; padding: 0 .25rem; border: 1px solid currentColor; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) {
+  .v2-cost-input { transition: background-color .12s, border-color .12s; }
+}
+@media (max-width: 720px) {
+  form.v2-cost-row, div.v2-cost-row { grid-template-columns: 1fr 1fr; row-gap: .15rem; padding: .3rem .45rem; }
+  .v2-cost-desc { grid-column: 1 / -1; }
+  .v2-cost-input { height: 34px; }
+}
+.v2-capex-duplicate-btn, .v2-opex-duplicate-btn { font-size: .85rem; }
+
+/* Header, group and total rows share the editable rows' column template (desktop) so
+   Description / Driver / Amount line up in one grid. */
+@media (min-width: 721px) {
+  .v2-capex-col-header, .v2-capex-group-header, .v2-capex-grand-total-row {
+    grid-template-columns: 4.2rem minmax(9rem, 1fr) 6.6rem 7.2rem 1fr;
+    column-gap: .35rem; padding-left: .45rem; padding-right: .45rem;
+  }
+  .v2-capex-col-header > .v2-capex-col-code, .v2-capex-group-header > .v2-capex-col-code,
+  .v2-capex-grand-total-row > .v2-capex-col-code { grid-column: 1; }
+  .v2-capex-col-header > .v2-capex-col-desc, .v2-capex-group-header > .v2-capex-col-desc,
+  .v2-capex-grand-total-row > .v2-capex-col-desc { grid-column: 2; }
+  .v2-capex-col-header > .v2-capex-col-permw, .v2-capex-group-header > .v2-capex-col-permw,
+  .v2-capex-grand-total-row > .v2-capex-col-permw { grid-column: 3; min-width: 0; }
+  .v2-capex-col-header > .v2-capex-col-amount, .v2-capex-group-header > .v2-capex-col-amount,
+  .v2-capex-grand-total-row > .v2-capex-col-amount { grid-column: 4; min-width: 0; padding-right: .35rem; }
+  .v2-capex-col-header > .v2-capex-col-status, .v2-capex-group-header > .v2-capex-col-status,
+  .v2-capex-grand-total-row > .v2-capex-col-status { grid-column: 5; min-width: 0; text-align: left; }
+
+  .v2-opex-col-header, .v2-opex-group-header, .v2-opex-grand-total-row {
+    grid-template-columns: 4.2rem minmax(9rem, 1fr) 6.2rem 7.2rem 5.4rem 1fr;
+    column-gap: .35rem; padding-left: .45rem; padding-right: .45rem;
+  }
+  .v2-opex-col-header > .v2-opex-col-code, .v2-opex-group-header > .v2-opex-col-code,
+  .v2-opex-grand-total-row > .v2-opex-col-code { grid-column: 1; }
+  .v2-opex-col-header > .v2-opex-col-desc, .v2-opex-group-header > .v2-opex-col-desc,
+  .v2-opex-grand-total-row > .v2-opex-col-desc { grid-column: 2; }
+  .v2-opex-col-header > .v2-opex-col-y1, .v2-opex-group-header > .v2-opex-col-y1,
+  .v2-opex-grand-total-row > .v2-opex-col-y1 { grid-column: 4; min-width: 0; padding-right: .35rem; }
+  .v2-opex-col-header > .v2-opex-col-escl, .v2-opex-group-header > .v2-opex-col-escl,
+  .v2-opex-grand-total-row > .v2-opex-col-escl { grid-column: 5; min-width: 0; }
+  .v2-opex-col-header > .v2-opex-col-status, .v2-opex-group-header > .v2-opex-col-status,
+  .v2-opex-grand-total-row > .v2-opex-col-status { grid-column: 6; min-width: 0; text-align: left; }
+}
+.v2-contingency-reference-note { margin: .25rem .5rem; font-size: .75rem; color: var(--v2-text-subtle, #6b7280); }

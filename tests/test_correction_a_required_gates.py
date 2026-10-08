@@ -672,8 +672,13 @@ class TestGenericWorkingCopyLineEditingHttp:
         # HTTP reload is the persistence proof, not only the project_editable flag.
         reloaded = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
         assert reloaded.status_code == 200
-        assert f'value="{capex_new_amount + capex_second_delta:.0f}"' in reloaded.text
-        assert f'value="{opex_new_amount + opex_second_delta:.0f}"' in reloaded.text
+        # Editable cells show the exact stored amount (shortest text, up to 4 decimals):
+        # a rounded display would hide the real value from the person editing it.
+        def _shown(v):
+            t = f"{v:.4f}".rstrip("0").rstrip(".")
+            return f'value="{t}"'
+        assert _shown(capex_new_amount + capex_second_delta) in reloaded.text
+        assert _shown(opex_new_amount + opex_second_delta) in reloaded.text
 
     def test_canonical_reference_remains_readonly_and_fails_closed_on_mutation(self, seeded_db):
         """A working-copy edit path must never make the canonical model mutable."""
