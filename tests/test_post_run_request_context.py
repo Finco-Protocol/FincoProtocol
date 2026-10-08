@@ -154,6 +154,27 @@ def test_context_never_grants_cross_owner_or_project_access(state_db, service):
     assert institutional.get_run_identity(other.user_id, pr.project_id)[0] == "UNAVAILABLE"
 
 
+@pytest.mark.parametrize("service", ["get_run_identity", "get_kpis", "get_verify_state",
+                                      "get_export_metadata", "get_run_integrity_checks"])
+def test_non_context_institutional_calls_keep_legacy_call_shapes(state_db, monkeypatch, service):
+    from app.api.v1_1 import institutional
+    pr = state_db["solar"]
+    call = getattr(institutional, service)
+    expected = call(pr.user_id, pr.project_id)
+    original_loader = institutional._load_workspace
+    original_adapter = institutional._runtime_result_adapter
+
+    def legacy_loader(owner_id, project_id):
+        return original_loader(owner_id, project_id)
+
+    def legacy_adapter(workspace):
+        return original_adapter(workspace)
+
+    monkeypatch.setattr(institutional, "_load_workspace", legacy_loader)
+    monkeypatch.setattr(institutional, "_runtime_result_adapter", legacy_adapter)
+    assert call(pr.user_id, pr.project_id) == expected
+
+
 def test_same_owner_two_projects_no_binding_reuse(state_db):
     from app.services.reference_seed_service import create_reference_seeded_project
     pr = state_db["solar"]

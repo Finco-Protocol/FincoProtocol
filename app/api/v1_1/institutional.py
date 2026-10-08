@@ -158,7 +158,8 @@ def get_last_run_summary(user_id: str, project_id: str) -> Tuple[str, dict]:
 
 def get_run_identity(user_id: str, project_id: str, *, context: Optional[PostRunRequestContext] = None) -> Tuple[str, dict]:
     """Return (state, data) for run identity / certificate metadata."""
-    pr, ws = _load_workspace(user_id, project_id, context=context)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {}
 
@@ -175,7 +176,8 @@ def get_kpis(user_id: str, project_id: str, *, context: Optional[PostRunRequestC
 
     Reads persisted last_runtime_summary only — no engine call.
     """
-    pr, ws = _load_workspace(user_id, project_id, context=context)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {}
 
@@ -183,7 +185,8 @@ def get_kpis(user_id: str, project_id: str, *, context: Optional[PostRunRequestC
     if state == STATE_UNAVAILABLE:
         return STATE_UNAVAILABLE, {}
 
-    adapter = _runtime_result_adapter(ws, context=context)
+    adapter = (_runtime_result_adapter(ws, context=context) if context is not None
+               else _runtime_result_adapter(ws))
     if adapter is None:
         return STATE_UNAVAILABLE, {}
 
@@ -196,7 +199,8 @@ def get_export_metadata(user_id: str, project_id: str, *, context: Optional[Post
 
     Does NOT produce the file.
     """
-    pr, ws = _load_workspace(user_id, project_id, context=context)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {}
 
@@ -297,7 +301,8 @@ def get_run_integrity_checks(user_id: str, project_id: str, *, context: Optional
     Copy or Last Run, never issues a Signed Run and never touches Verify or Radar. It is a
     separate authority from the Reference Regression Check (/validation).
     """
-    pr, ws = _load_workspace(user_id, project_id, context=context)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {"reason": "PROJECT_NOT_FOUND"}
     if ws is None or not getattr(ws, "any_run_committed", False):
@@ -319,7 +324,8 @@ def get_verify_state(user_id: str, project_id: str, *, context: Optional[PostRun
     Fails closed when no source-proven binding exists in the registry.
     PRODUCTION_VERIFIED_ASSET_COUNT must not increase.
     """
-    pr, ws = _load_workspace(user_id, project_id, context=context)
+    pr, ws = (_load_workspace(user_id, project_id, context=context) if context is not None
+              else _load_workspace(user_id, project_id))
     if pr is None:
         return STATE_UNAVAILABLE, {"reason": "PROJECT_NOT_FOUND"}
 
