@@ -3201,3 +3201,26 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-fs-period-note { color: var(--v2-text-muted); }
 .v2-capex-badge-calc { background: #4b5563; }
 .v2-capex-badge-inherited { background: #6b7280; }
+
+/* ── Cost Workspace: inactive (deactivated) lines + Reactivate ─────────── */
+.v2-inactive-lines { margin: .35rem 0 .15rem; padding: .25rem .5rem; border: 1px dashed var(--v2-border);
+                     border-radius: 4px; font-size: .82rem; color: var(--v2-text-subtle); }
+.v2-inactive-lines > summary { cursor: pointer; }
+.v2-inactive-line-form { display: grid; grid-template-columns: 6rem 1fr auto auto; gap: .5rem;
+                         align-items: center; padding: .2rem 0; }
+.v2-inactive-code { font-variant-numeric: tabular-nums; }
+.v2-inactive-amount { text-align: right; font-variant-numeric: tabular-nums; }
+.v2-inactive-reactivate-btn { padding: .15rem .6rem; border-radius: 4px; border: 1px solid var(--v2-border);
+                              background: transparent; color: inherit; cursor: pointer; }
+.v2-inactive-reactivate-btn:hover, .v2-inactive-reactivate-btn:focus-visible { border-color: #2563eb; color: #2563eb; }
+@media (max-width: 600px) { .v2-inactive-line-form { grid-template-columns: 1fr auto; } .v2-inactive-code, .v2-inactive-amount { grid-column: 1; } }
+
+/* Field hints sit on the same surface as their row: readable on both. */
+.v2-field-hint { color: var(--v2-text-subtle); }
+@media (prefers-color-scheme: dark) {
+  .v2-field-readonly .v2-field-hint, .v2-field-editable .v2-field-hint { color: #9ca3af; }
+}
+:root[data-theme="dark"] .v2-field-readonly .v2-field-hint,
+:root[data-theme="dark"] .v2-field-editable .v2-field-hint { color: #9ca3af; }
+:root[data-theme="light"] .v2-field-readonly .v2-field-hint,
+:root[data-theme="light"] .v2-field-editable .v2-field-hint { color: var(--v2-text-subtle); }

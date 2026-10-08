@@ -100,10 +100,18 @@ def resolve_runtime_freshness(
 
     if last_hash:
         stale = not current_composite_hash or current_composite_hash != last_hash
-        if stale and current_composite_hash and _base_equivalence_holds(ws, last_hash):
+        if stale and current_composite_hash and _base_equivalence_holds(ws, last_hash) \
+                and not _opex_fold_superseded(ws):
             return RuntimeFreshness(
                 True, False, RuntimeAuthorityState.CURRENT,
                 current_composite_hash, last_hash, "pre_scenario_base_equivalence",
+            )
+        if not stale and _opex_fold_superseded(ws):
+            # Same inputs, but the Run was computed under an OPEX fold that has
+            # since been corrected: a new Run would calculate different economics.
+            return RuntimeFreshness(
+                True, True, RuntimeAuthorityState.STALE,
+                current_composite_hash, last_hash, "opex_fold_semantics_superseded",
             )
         return RuntimeFreshness(
             True, stale,
@@ -125,6 +133,16 @@ def resolve_runtime_freshness(
         RuntimeAuthorityState.STALE if stale else RuntimeAuthorityState.CURRENT,
         current_composite_hash, None, "legacy_scalar_fallback",
     )
+
+
+def _opex_fold_superseded(ws: Any) -> bool:
+    """Run committed under the superseded OPEX fold on a project it affects."""
+    identity = getattr(ws, "last_runtime_identity", None)
+    if not isinstance(identity, dict):
+        return False
+    from app.services.opex_sub_lines_integration import run_predates_opex_seed_replacement
+
+    return run_predates_opex_seed_replacement(getattr(ws, "project_id", None), identity)
 
 
 def _base_equivalence_holds(ws: Any, last_hash: str) -> bool:

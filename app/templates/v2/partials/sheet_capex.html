@@ -75,6 +75,33 @@
 </div>
 {% endmacro %}
 
+{# Macro: deactivated (inactive) lines of one group with a guarded Reactivate command #}
+{% macro capex_inactive_block(group_code, inactive_map, project_code, workbook_version, content_hash, project_editable) %}
+{%- set inactive = (inactive_map or {}).get(group_code, []) -%}
+{%- if inactive and project_editable -%}
+<details class="v2-inactive-lines" data-testid="capex-inactive-{{ group_code }}">
+  <summary>Inactive lines ({{ inactive|length }}) — excluded from totals</summary>
+  {% for ln in inactive %}
+  <form class="v2-inactive-line-form" hx-post="/v2/capex/line/reactivate"
+        hx-target="#v2-sheet-capex" hx-swap="outerHTML"
+        data-testid="capex-inactive-row-{{ ln.sub_line_id }}">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" name="sub_line_id" value="{{ ln.sub_line_id }}">
+    <input type="hidden" name="row_version" value="{{ ln.row_version }}">
+    <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+    <input type="hidden" name="content_hash" value="{{ content_hash }}">
+    <span class="v2-inactive-code">{{ ln.code }}</span>
+    <span class="v2-inactive-label">{{ ln.label }}</span>
+    <span class="v2-inactive-amount">{{ "%.0f"|format(ln.amount_keur) }} kEUR</span>
+    <button type="submit" class="v2-inactive-reactivate-btn"
+            aria-label="Reactivate {{ ln.code }}"
+            data-testid="capex-reactivate-{{ ln.sub_line_id }}">Reactivate</button>
+  </form>
+  {% endfor %}
+</details>
+{%- endif -%}
+{% endmacro %}
+
 {# Macro: user-added custom row with edit/deactivate controls #}
 {% macro custom_row(line, project_code, workbook_version, content_hash, project_editable) %}
 <details class="v2-capex-custom-row" data-sub-line-id="{{ line.sub_line_id }}"
@@ -325,10 +352,12 @@
 
         {# Standard groups: single registry field (BOUND or DISPLAY_ONLY) #}
         {% elif gf %}
-          {% if gf.binding_label == "bound" and group.lines %}
-            {# A category with line items takes its total from those lines (the
-               category-level value is not an input to canonical CAPEX), so no
-               category editor is offered: it would save without any effect. #}
+          {% if gf.binding_label == "bound" and (group.lines | selectattr("is_custom", "equalto", true) | list) %}
+            {# A category with ACTIVE persisted (editable) line items takes its total
+               from those lines (the category-level value is not an input to canonical
+               CAPEX), so no category editor is offered: it would save without any
+               effect. Categories whose lines are read-only reference context keep
+               the editor: it is their only edit path. #}
             <div class="v2-field-row v2-field-readonly" data-testid="capex-category-total-{{ group.code }}">
               <span class="v2-field-label">{{ gf.label }} (category total)</span>
               <span class="v2-field-value">{{ grouped_keur(group.subtotal_keur) }} <small>kEUR</small></span>
@@ -362,6 +391,8 @@
             {% endfor %}
           </div>
         {% endif %}
+
+        {{ capex_inactive_block(group.code, capex_inactive_lines, project_code, workbook_version, content_hash, project_editable) }}
 
         {# Add Row control — eligible groups only, no controls on protected references #}
         {% if is_eligible %}

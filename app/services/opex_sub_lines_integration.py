@@ -49,6 +49,11 @@ from app.persistence.opex_sub_lines import (
 
 logger = logging.getLogger(__name__)
 
+# Name of the single aggregate OpexItem the input adapter emits when the working
+# copy's Y1 OPEX total differs from the factory per-item sum (e.g. any capacity
+# other than the reference). ``app.input_adapter`` is the authority for the name.
+_AGGREGATE_Y1_OPEX_NAME = "User provided year 1 operating expense"
+
 # Reserved key in ``scenario.overrides_json`` for per-sub-line amount overrides.
 _RESERVED_SUB_LINE_OVERRIDES_KEY = "_opex_sub_line_overrides"
 
@@ -85,6 +90,15 @@ def _load_active_sub_lines(project_id: str) -> tuple[OpexSubLine, ...]:
     """Load active OPEX sub-lines for a project (is_active=1 only)."""
     rows = get_active_sub_lines_for_project(project_id)
     return tuple(rows)
+
+
+def _load_all_sub_lines(project_id: str) -> tuple[OpexSubLine, ...]:
+    """All OPEX sub-lines of a project, active and inactive (read-only)."""
+    from app.persistence.db import get_cursor
+    from app.persistence.opex_sub_lines import list_sub_lines_for_project
+
+    with get_cursor() as cur:
+        return tuple(list_sub_lines_for_project(cur, project_id, include_inactive=True))
 
 
 def _resolve_effective_amount(
@@ -152,6 +166,87 @@ def fold_sub_lines_into_opex(
 # Public entry point for run_service
 # ---------------------------------------------------------------------------
 
+# Marker persisted in a committed Run's identity (``opex_fold``).  Its presence
+# proves the Run used the seed-replacement fold below; a Run without it used the
+# earlier fold and cannot be reproduced exactly from its identity alone.
+OPEX_FOLD_SEMANTICS = "seed_replace_v1"
+
+
+def _is_seeded(sub: OpexSubLine) -> bool:
+    return (
+        sub.source in {"reference_seed", "user_override"}
+        and sub.replay_metadata.get("reference_seed") is True
+    )
+
+
+def opex_fold_provenance(all_rows: Sequence[OpexSubLine]) -> dict:
+    """Typed, JSON-safe record of what the seeded rows replace at the Run boundary.
+
+    Derived only from immutable reference-seed provenance (``canonical_key``),
+    never from editable labels.  Computed from ALL rows, active and inactive.
+    """
+    seeded = [r for r in all_rows if _is_seeded(r)]
+    return {
+        "semantics": OPEX_FOLD_SEMANTICS,
+        "replaced_canonical_keys": sorted({
+            r.replay_metadata["canonical_key"]
+            for r in seeded if r.replay_metadata.get("canonical_key")
+        }),
+        "replaces_aggregate": bool(seeded),
+        # Order in which the Run appended active rows (float summation order).
+        "active_order": [r.sub_line_id for r in all_rows if r.is_active],
+    }
+
+
+def fold_opex_with_provenance(
+    opex: Sequence,
+    active_rows: Sequence[OpexSubLine],
+    provenance: Mapping[str, Any],
+    *,
+    scenario_overrides: Optional[Mapping[str, Any]] = None,
+) -> tuple:
+    """The single OPEX fold used by the Run and by canonical Last Run export.
+
+    Base items named by a replaced ``canonical_key`` (and the adapter's aggregate
+    item when seeded rows exist) are dropped; active rows are appended.
+    """
+    replaced = set(provenance.get("replaced_canonical_keys") or ())
+    drop_aggregate = bool(provenance.get("replaces_aggregate"))
+    base_opex = tuple(
+        item for item in opex
+        if getattr(item, "name", None) not in replaced
+        and not (drop_aggregate and getattr(item, "name", None) == _AGGREGATE_Y1_OPEX_NAME)
+    )
+    return fold_sub_lines_into_opex(
+        base_opex, active_rows, scenario_overrides=dict(scenario_overrides or {}),
+    )
+
+
+def project_has_seeded_opex_rows(project_id: str) -> bool:
+    """True when the project carries reference-seeded OPEX rows (any state)."""
+    return any(_is_seeded(r) for r in _load_all_sub_lines(project_id))
+
+
+def run_predates_opex_seed_replacement(project_id: Optional[str], identity: Any) -> bool:
+    """True when a committed Run used the superseded OPEX fold and its project is affected.
+
+    A Run is *affected* only if its identity lacks the ``opex_fold`` marker AND
+    the project has seeded OPEX rows (where the earlier fold added the seeded
+    decomposition on top of its base).  Projects without seeded rows fold
+    identically under both semantics and are never invalidated.  A lookup
+    failure is treated as affected (currency cannot be proven).
+    """
+    if not isinstance(identity, Mapping) or identity.get("opex_fold"):
+        return False
+    if not project_id:
+        return False
+    try:
+        return project_has_seeded_opex_rows(project_id)
+    except Exception:
+        logger.exception("OPEX fold semantics lookup failed; project_id=%s", project_id)
+        return True
+
+
 def _fold_user_sub_lines_to_opex(
     opex: Any,
     *,
@@ -188,31 +283,21 @@ def _fold_user_sub_lines_to_opex(
     if not project_id:
         return opex
 
-    user_sub_lines = _load_active_sub_lines(project_id)
-    if not user_sub_lines:
-        return opex
-
-    sub_line_overrides = _extract_sub_line_overrides(scenario_overrides)
+    all_rows = _load_all_sub_lines(project_id)
+    user_sub_lines = tuple(r for r in all_rows if r.is_active)
 
     # Reference seed rows are a detailed representation of canonical items,
     # not additive user costs.  Identity comes only from immutable replay
-    # provenance; the editable display label is never an authority key.
-    seeded_canonical_keys = {
-        sub.replay_metadata.get("canonical_key")
-        for sub in user_sub_lines
-        if sub.source in {"reference_seed", "user_override"}
-        and sub.replay_metadata.get("reference_seed") is True
-        and sub.replay_metadata.get("canonical_key")
-    }
-    base_opex = tuple(
-        item for item in opex
-        if getattr(item, "name", None) not in seeded_canonical_keys
-    )
+    # provenance; the editable display label is never an authority key.  The
+    # replaced set is derived from ALL seeded rows (active AND inactive) so that
+    # deactivating every seeded line of a category removes its cost for good.
+    provenance = opex_fold_provenance(all_rows)
+    if not user_sub_lines and not provenance["replaces_aggregate"]:
+        return opex
 
-    result = fold_sub_lines_into_opex(
-        base_opex,
-        user_sub_lines,
-        scenario_overrides=sub_line_overrides,
+    sub_line_overrides = _extract_sub_line_overrides(scenario_overrides)
+    result = fold_opex_with_provenance(
+        opex, user_sub_lines, provenance, scenario_overrides=sub_line_overrides,
     )
 
     if sub_line_overrides:

@@ -35,6 +35,7 @@ from app.v2.opex_commands import (
     OpexVersionMismatchError,
     add_opex_line,
     deactivate_opex_line,
+    reactivate_opex_line,
     reorder_opex_lines,
     update_opex_line,
 )
@@ -307,6 +308,56 @@ async def opex_line_deactivate(
 
     try:
         _, new_hash = deactivate_opex_line(
+            project_record=project_record,
+            user_id=user.user_id,
+            sub_line_id=sub_line_id,
+            row_version=row_version,
+            workbook_version=workbook_version,
+            expected_content_hash=content_hash,
+        )
+    except OpexStaleIdentityError:
+        return _stale_identity_response(request, project_record, user, project, ws, is_htmx)
+    except OpexCommandError as exc:
+        if is_htmx:
+            err = str(exc)
+            if isinstance(exc, OpexConcurrentEditError):
+                err = "Row was modified concurrently — values refreshed. Try again."
+            from app.workbook.service import WorkbookService
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws).with_composite_hash(content_hash)
+            return _render_opex_sheet(request, project_record, pis, ws, project, field_error=err)
+        return _handle_command_error(exc)
+
+    from app.persistence.workspace_repository import get_workspace_state
+    ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
+    if is_htmx:
+        pis = _build_pis_with_hash(ws, project_record, user, new_hash)
+        return _render_opex_sheet_with_oob(request, project_record, pis, ws, project, workspace_owner=user.user_id)
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+@opex_router.post("/line/reactivate")
+async def opex_line_reactivate(
+    request: Request,
+    project: str = Form(...),
+    sub_line_id: str = Form(...),
+    row_version: str = Form(...),
+    workbook_version: str = Form(...),
+    content_hash: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    try:
+        project_record, ws = _load_project_and_ws(user, project)
+    except LookupError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+
+    try:
+        _, new_hash = reactivate_opex_line(
             project_record=project_record,
             user_id=user.user_id,
             sub_line_id=sub_line_id,

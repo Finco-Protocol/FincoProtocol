@@ -57,6 +57,7 @@ from app.persistence.capex_sub_lines import (
     assert_project_allows_capex_sub_lines,
     create_sub_line,
     deactivate_sub_line_with_version,
+    reactivate_sub_line_with_version,
     list_sub_lines_for_project,
     reorder_sub_lines,
     update_sub_line,
@@ -446,6 +447,56 @@ def deactivate_capex_line(
                 )
             raise CapexConcurrentEditError(
                 f"Sub-line {sub_line_id!r} was modified concurrently. "
+                "Reload and try again."
+            )
+
+    return True, hash_out.value
+
+
+def reactivate_capex_line(
+    *,
+    project_record: Any,
+    user_id: str,
+    sub_line_id: str,
+    row_version: str,
+    workbook_version: str,
+    expected_content_hash: str,
+) -> tuple[bool, str]:
+    """Reactivate a previously deactivated CAPEX sub-line.
+
+    Exact inverse of :func:`deactivate_capex_line`: same exclusive transaction,
+    same composite-identity CAS, same ``row_version`` guard. The line returns
+    with its original identity and data and enters canonical economics again;
+    the Working Copy identity changes (Last Run becomes STALE).
+
+    Returns ``(True, new_composite_hash)`` on success.
+
+    Raises
+    ------
+    CapexProtectedReferenceError / CapexVersionMismatchError /
+    CapexStaleIdentityError / CapexConcurrentEditError / CapexRowNotFoundError
+    """
+    _check_project_allows(project_record)
+    _check_workbook_version(workbook_version)
+
+    project_id: str = project_record.project_id
+    hash_out = _HashOut()
+
+    with _exclusive_tx(user_id, project_id, expected_content_hash=expected_content_hash, hash_out=hash_out) as cur:
+        ok = reactivate_sub_line_with_version(
+            cur,
+            project_id=project_id,
+            sub_line_id=sub_line_id,
+            row_version=row_version,
+        )
+        if not ok:
+            rows = list_sub_lines_for_project(cur, project_id, include_inactive=True)
+            if not any(r.sub_line_id == sub_line_id for r in rows):
+                raise CapexRowNotFoundError(
+                    f"Sub-line {sub_line_id!r} not found for project {project_id!r}."
+                )
+            raise CapexConcurrentEditError(
+                f"Sub-line {sub_line_id!r} is not inactive or was modified concurrently. "
                 "Reload and try again."
             )
 

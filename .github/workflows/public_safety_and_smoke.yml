@@ -57,13 +57,22 @@ jobs:
       - name: Compile
         run: python -m compileall -q .
       - name: Synthetic reference and regression tests
+        # Full suite, supervised from OUTSIDE the pytest process.  A normal run takes
+        # ~21 min; if pytest (or interpreter shutdown after it) exceeds the budget the
+        # supervisor records the process tree and every Python thread stack, terminates
+        # the group and FAILS the step (exit 124).  A timeout is never reported as success.
+        timeout-minutes: 75
+        env:
+          FINCO_CI_PYTEST_BUDGET_S: "2700"
+          FINCO_CI_EXIT_GRACE_S: "180"
+          FINCO_CI_DIAG_PATH: artifacts/ci-hang-diagnostics.txt
         run: |
           mkdir -p artifacts
-          pytest -q --junitxml=artifacts/public-test-results.xml
+          python tools/ci_pytest_runner.py -q --junitxml=artifacts/public-test-results.xml
       - name: Upload public verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: public-verification-results
-          path: artifacts/public-test-results.xml
+          path: artifacts/
           if-no-files-found: error

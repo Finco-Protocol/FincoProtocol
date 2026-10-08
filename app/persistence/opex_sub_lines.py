@@ -440,6 +440,66 @@ def deactivate_sub_line_with_version(
     return cur.rowcount > 0
 
 
+def reactivate_sub_line_with_version(
+    cur: Any,
+    *,
+    project_id: str,
+    sub_line_id: str,
+    row_version: str,
+) -> bool:
+    """Reactivate a previously deactivated sub-line, guarded by row_version.
+
+    Exact inverse of :func:`deactivate_sub_line_with_version`: only a row that is
+    currently INACTIVE and whose ``updated_at`` equals ``row_version`` flips back
+    to active. Identity (``sub_line_id``, ``business_code``), the parent
+    category/group, source, amount and every other stored attribute are left
+    untouched, so the line returns exactly as it was. ``display_order`` is kept
+    unless an active line in the same group already uses it, in which case the
+    line is placed after the last active line so ordering stays unambiguous.
+
+    Returns ``True`` when reactivated, ``False`` when no matching inactive row
+    with that version exists (stale token / concurrent edit / already active).
+    The caller owns the (exclusive) transaction.
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    cur.execute(
+        "SELECT parent_group_code, display_order FROM opex_sub_lines "
+        "WHERE project_id = ? AND sub_line_id = ? AND is_active = 0 AND updated_at = ?",
+        (project_id, sub_line_id, row_version),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return False
+    group_code, order = row[0], row[1]
+    cur.execute(
+        "SELECT MAX(display_order) AS mx, "
+        "SUM(CASE WHEN display_order = ? THEN 1 ELSE 0 END) AS clash "
+        "FROM opex_sub_lines WHERE project_id = ? AND parent_group_code = ? AND is_active = 1",
+        (order, project_id, group_code),
+    )
+    agg = cur.fetchone()
+    new_order = order
+    if agg is not None and (agg[1] or 0) > 0:
+        new_order = int(agg[0] or 0) + 1
+    cur.execute(
+        "UPDATE opex_sub_lines SET is_active = 1, display_order = ?, updated_at = ? "
+        "WHERE project_id = ? AND sub_line_id = ? AND is_active = 0 AND updated_at = ?",
+        (new_order, now, project_id, sub_line_id, row_version),
+    )
+    return cur.rowcount > 0
+
+
+def list_inactive_sub_lines(cur: Any, project_id: str) -> "Tuple[OpexSubLine, ...]":
+    """Deactivated (soft-deleted) sub-lines, in group + display order."""
+    cur.execute(
+        "SELECT * FROM opex_sub_lines WHERE project_id = ? AND is_active = 0 "
+        "ORDER BY parent_group_code ASC, display_order ASC, business_code ASC",
+        (project_id,),
+    )
+    return tuple(OpexSubLine.from_row(row) for row in cur.fetchall())
+
+
 class ReorderConflictError(ValueError):
     """Raised when a reorder operation detects stale, unknown, duplicate,
     or missing row IDs. The transaction must be rolled back by the caller."""

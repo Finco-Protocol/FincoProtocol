@@ -896,6 +896,21 @@ def v2_atomic_run_commit(
             "scenario_name": identity.scenario.scenario_name,
             "composite_hash": identity.composite_hash,
         }
+        # OPEX fold authority: record which seeded reference items this Run's OPEX
+        # fold replaced, from immutable seed provenance only.  Canonical export
+        # replays the SAME fold from this record; a Run without it used the
+        # earlier fold and is reported unavailable/stale rather than guessed.
+        try:
+            from app.persistence.opex_sub_lines import list_sub_lines_for_project as _list_opex
+            from app.services.opex_sub_lines_integration import opex_fold_provenance as _opex_prov
+            _identity_payload["opex_fold"] = _opex_prov(
+                _list_opex(cur, project_id, include_inactive=True)
+            )
+        except Exception as _exc:  # fail closed
+            conn.execute("ROLLBACK")
+            raise V2RunCommitConflictError(
+                f"OPEX fold authority could not be captured for run identity: {_exc}"
+            ) from _exc
         # Typed contingency authority (C.13 / B.13): capture the EFFECTIVE pct
         # (scenario override beats project value) so canonical export replays the
         # same economics even if the authority is edited after the run.
