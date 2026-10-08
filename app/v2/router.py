@@ -4906,7 +4906,7 @@ async def v2_workbook_goal_seek_apply(
             fresh_hash = identity.composite_hash
         except Exception:
             pass
-        return _render_goal_seek_results({
+        response = _render_goal_seek_results({
             "result": {
                 "status": "APPLIED" if applied else GoalSeekStatus.INVALID_REQUEST.value,
                 "target_metric_label": target_metric,
@@ -4929,6 +4929,22 @@ async def v2_workbook_goal_seek_apply(
             "project": project,
             "request": request,
         })
+        if applied:
+            # Reuse the existing post-save UI authority: Apply changed the
+            # composite hash, so the next normal Run must receive fresh tokens.
+            from app.v2.post_run_ui import build_post_save_ui_state
+            fresh_ws = get_workspace_state(
+                user_id=workspace_owner, project_id=project_record.project_id)
+            if fresh_ws is None:
+                return HTMLResponse(content=response.body.decode() +
+                    "<p>Input applied; workspace unavailable for control refresh. Reopen the workbook.</p>",
+                    status_code=409)
+            refresh = build_post_save_ui_state(
+                ws_fresh=fresh_ws, project_record=project_record, project=project,
+                workspace_owner=workspace_owner, request=request,
+                include_banner_and_controls=True)
+            response = HTMLResponse(content=response.body.decode() + "\n" + refresh)
+        return response
 
     try:
         WorkbookUpdateService.apply_draft_update(

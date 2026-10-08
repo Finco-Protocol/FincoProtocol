@@ -34,7 +34,7 @@ def main():
     evidence = []
     cookie = create_session_token(user_id="decision-browser", username="admin")
     def settled(page):
-        page.wait_for_function("!document.querySelector('.htmx-request')")
+        expect(page.locator('.htmx-request')).to_have_count(0)
     with tempfile.TemporaryDirectory() as tmp:
         try:
             db.DB_PATH = str(Path(tmp) / "browser.db")
@@ -67,7 +67,7 @@ def main():
                 kwargs = {"executable_path": os.environ["FINCO_TEST_CHROMIUM_PATH"]} if os.environ.get("FINCO_TEST_CHROMIUM_PATH") else {}
                 browser = pw.chromium.launch(**kwargs)
                 try:
-                    for kind, record in records:
+                    for kind, record in ([] if os.environ.get('FINCO_DECISION_JOURNEY_ONLY') else records):
                         for theme, width in (("light", 1440), ("dark", 1440), ("light", 390), ("dark", 390)):
                             ctx = browser.new_context(viewport={"width": width, "height": 1000}, color_scheme=theme)
                             ctx.add_init_script("document.addEventListener('DOMContentLoaded', () => document.documentElement.dataset.theme = " + json.dumps(theme) + ")")
@@ -86,7 +86,9 @@ def main():
                                 assert not errors, errors
                                 evidence.append({"kind": kind, "sheet": sheet, "theme": theme, "width": width, "screenshot": filename})
                             ctx.close()
-                    for kind, record in records[:2]:
+                    if evidence:
+                        (out/'visual-acceptance.json').write_text(json.dumps(evidence,indent=2),encoding='utf-8')
+                    for kind, record in ([] if os.environ.get('FINCO_DECISION_VISUAL_ONLY') else records[:2]):
                         ctx = browser.new_context(viewport={"width":1440,"height":1000})
                         ctx.add_cookies([{"name": COOKIE_NAME, "value": cookie, "url": f"http://127.0.0.1:{port}"}])
                         page = ctx.new_page()
@@ -101,7 +103,8 @@ def main():
                         page.wait_for_timeout(500)
                         assert form.locator('tbody tr').count() == count  # idempotent initializer
                         price = form.locator('[data-key=price_eur_mwh]').first
-                        price.fill(str(float(price.input_value()) + 1))
+                        expected_price = float(price.input_value()) + 1
+                        price.fill(str(expected_price))
                         with page.expect_response(lambda r: '/v2/workbook/update' in r.url and r.request.method == 'POST'):
                             price.press('Enter')
                         settled(page)
@@ -109,6 +112,7 @@ def main():
                         page.locator('#nav-rev-merchant').click()
                         saved = get_workspace_state('decision-browser', record.project_id)
                         assert 'rev_merchant_price_curve_json' in saved.draft_snapshot
+                        assert json.loads(saved.draft_snapshot['rev_merchant_price_curve_json'])[0]['price_eur_mwh'] == expected_price
                         with page.expect_response(lambda r: '/v2/workbook/run' in r.url and r.request.method == 'POST', timeout=120000):
                             page.locator('[data-testid=header-run-btn]').click()
                         page.reload()
@@ -135,8 +139,22 @@ def main():
                         run_html = run_response.value.text()
                         assert 'id="v2-sheet-returns"' in run_html, run_html[:2000]
                         expect(page.locator('.v2-scenario-row[data-scenario-id="' + sid + '"] .v2-scenario-state')).to_have_text('Current',timeout=120000)
+                        page.locator('.v2-scenario-create-form input[name=scenario_name]').fill('Pricing Downside')
+                        with page.expect_response(lambda r:'/scenarios/create' in r.url):
+                            page.locator('.v2-scenario-create-form button').click()
+                        settled(page)
+                        downside = page.locator('.v2-scenario-row').filter(has_text='Pricing Downside')
+                        downside_id = downside.get_attribute('data-scenario-id')
+                        downside.locator('button.v2-scenario-action-btn--edit').click()
+                        page.locator('#ov-tariff_eur_mwh').fill('45')
+                        with page.expect_response(lambda r:'/scenarios/update-overrides' in r.url):
+                            page.locator('#v2-scenario-override-form button[type=submit]').click()
+                        settled(page)
+                        with page.expect_response(lambda r:'/v2/workbook/run' in r.url and r.request.method=='POST', timeout=120000):
+                            page.locator('[data-testid=header-run-btn]').click()
+                        expect(page.locator('.v2-scenario-row[data-scenario-id="' + downside_id + '"] .v2-scenario-state')).to_have_text('Current', timeout=120000)
                         page.locator('#tab-compare').click()
-                        expect(page.locator('.v2-compare-chip')).to_have_count(2,timeout=30000)
+                        expect(page.locator('.v2-compare-chip')).to_have_count(3,timeout=30000)
                         for chip in page.locator('.v2-compare-chip').all(): chip.click()
                         with page.expect_response(lambda r:'/scenarios/compare' in r.url): page.locator('#v2-compare-submit-btn').click()
                         expect(page.locator('[data-testid=cmp-project_irr-delta-s2]')).to_contain_text('pp')
@@ -161,7 +179,7 @@ def main():
                         before = get_workspace_state('decision-browser',record.project_id)
                         history = get_run_history('decision-browser',record.project_id)
                         with page.expect_response(lambda r:'/decision/goal-seek' in r.url): page.locator('#tab-goal-seek').click()
-                        target = float(before.last_runtime_summary['project_irr']) * 100 + .25
+                        target = round(float(before.last_runtime_summary['project_irr']) * 100 + .25, 2)
                         page.locator('#gs-target-value').fill(str(target))
                         page.locator('[data-testid=gs-run-btn]').click()
                         expect(page.locator('[data-testid=gs-apply-btn]')).to_be_visible(timeout=180000)
@@ -170,9 +188,11 @@ def main():
                         page.screenshot(path=str(out/f'{kind}-tender.png'),full_page=True)
                         page.locator('[data-testid=gs-apply-btn]').click()
                         expect(page.locator('[data-testid=gs-applied-note]')).to_be_visible(timeout=60000)
+                        settled(page)
                         assert get_workspace_state('decision-browser',record.project_id).dirty
-                        with page.expect_response(lambda r:'/v2/workbook/run' in r.url and r.request.method=='POST', timeout=120000):
+                        with page.expect_response(lambda r:'/v2/workbook/run' in r.url and r.request.method=='POST', timeout=120000) as final_run:
                             page.locator('[data-testid=header-run-btn]').click()
+                        assert 'id="v2-sheet-returns"' in final_run.value.text()
                         page.reload()
                         expect(page.locator('[data-testid=revenue-state-clean]')).to_be_attached(timeout=120000)
                         assert not get_workspace_state('decision-browser',record.project_id).dirty
@@ -180,11 +200,13 @@ def main():
                         assert abs(achieved - target) < .01, (achieved, target)
                         page.reload()
                         evidence.append({'kind':kind,'workflow':'Curve Save/reload -> Run -> Scenario override/select/Run -> Compare -> Sensitivity -> Goal Seek -> Apply STALE -> Run CURRENT',
-                                         'target_percent':target})
+                                         'target_percent':target, 'achieved_percent':achieved,
+                                         'applied_tariff':get_workspace_state('decision-browser',record.project_id).draft_snapshot['rev_ppa_base_tariff']})
                         ctx.close()
                 finally:
                     browser.close()
-            (out/'acceptance.json').write_text(json.dumps(evidence,indent=2),encoding='utf-8')
+            filename = 'journey-acceptance.json' if os.environ.get('FINCO_DECISION_JOURNEY_ONLY') else 'acceptance.json'
+            (out/filename).write_text(json.dumps(evidence,indent=2),encoding='utf-8')
             print(f'{len(evidence)} browser checks passed; evidence: {out}')
         finally:
             if server: server.should_exit=True

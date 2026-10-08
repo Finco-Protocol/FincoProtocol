@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import re
 from types import SimpleNamespace
 
@@ -72,6 +73,14 @@ def test_failed_baseline_never_inferred_from_neighbors():
     view = sensitivity_presentation(points(True), "tariff", "Tariff")
     assert not view["has_baseline"]
     assert view["chart"] == view["tornado"] == view["delta_rows"] == []
+
+
+def test_scoped_javascript_is_only_canonical_input_serialization():
+    source = (Path(__file__).resolve().parents[1] / "static/js/model_merchant_curve.js").read_text(encoding="utf-8")
+    assert "JSON.stringify" in source and "htmx:configRequest" in source
+    assert "seen.has(year)" in source and "Number.isFinite(price)" in source
+    assert "stopImmediatePropagation" in source
+    assert not re.search(r"\b(irr|dscr|npv|cfads|ebitda|debt_service)\b", source, re.I)
 
 
 def test_working_and_run_bound_overrides_are_independent():
@@ -256,3 +265,32 @@ def test_sensitivity_real_canonical_points_do_not_write_workspace_or_history(env
     assert " pp" in response.text
     assert get_workspace_state("decision-user", record.project_id) == before
     assert not get_run_history(user_id="decision-user", project_id=record.project_id)
+
+
+def test_tender_apply_refreshes_canonical_run_tokens_without_touching_last_run(env):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import get_run_history
+    record = env.create()
+    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    run = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+                          data={"project": record.project_code, **tokens(page.text)})
+    assert run.status_code == 200 and 'id="v2-sheet-returns"' in run.text
+    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    before = get_workspace_state("decision-user", record.project_id)
+    history = get_run_history("decision-user", record.project_id)
+    result = env.client.post("/v2/workbook/goal-seek/apply", headers={"HX-Request": "true"}, data={
+        "project": record.project_code, "field_id": "revenue.ppa.base_tariff", "value": "51.23456789",
+        "target_metric": "project_irr", "target_value": "9", **tokens(page.text)})
+    assert result.status_code == 200
+    after = get_workspace_state("decision-user", record.project_id)
+    assert after.dirty
+    assert float(after.draft_snapshot["rev_ppa_base_tariff"]) == 51.23456789
+    assert after.last_runtime_snapshot_id == before.last_runtime_snapshot_id
+    assert after.last_runtime_at == before.last_runtime_at
+    assert get_run_history("decision-user", record.project_id) == history
+    assert 'hx-swap-oob="true"' in result.text
+    assert tokens(result.text)["content_hash"] != tokens(page.text)["content_hash"]
+    rerun = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+                            data={"project": record.project_code, **tokens(result.text)})
+    assert rerun.status_code == 200 and 'id="v2-sheet-returns"' in rerun.text
+    assert not get_workspace_state("decision-user", record.project_id).dirty
