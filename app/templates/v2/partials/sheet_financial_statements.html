@@ -46,7 +46,7 @@
     field_error            str
 #}
 
-{% from "partials/_money_format.html" import grouped_keur %}
+{% from "partials/_money_format.html" import grouped_keur, statement_keur %}
 
 {# fmt_period: convert YYYY-MM → "Jan 2028" style labels #}
 {% macro fmt_period(lbl) %}
@@ -104,14 +104,15 @@
          data-period-view="model" aria-selected="false"
          onclick="v2FsPeriodSwitch('model')"
          onkeydown="v2FsPeriodKeydown(event,'model')">
-      Model periods
+      Model periods{% if fs_pnl_period_labels %} <span class="v2-fs-period-count">({{ fs_pnl_period_labels | length }})</span>{% endif %}
     </div>
     <div role="tab" tabindex="0" class="v2-fs-period-tab v2-fs-period-tab-active"
          data-period-view="annual" aria-selected="true"
          onclick="v2FsPeriodSwitch('annual')"
          onkeydown="v2FsPeriodKeydown(event,'annual')">
-      Annual
+      Annual{% if fs_pnl_annual_labels %} <span class="v2-fs-period-count">({{ fs_pnl_annual_labels | length }} yrs)</span>{% endif %}
     </div>
+    <span class="v2-fs-period-note" data-testid="fs-period-note">Full tenor shown; no periods are dropped.</span>
   </div>
 
   {# ── Inner statement tab bar ─────────────────────────────────────────── #}
@@ -158,14 +159,20 @@
   </div>
 
   {# ── Helper macro: statement table (model or annual) ─────────────────── #}
-  {%- macro statement_table(rows, period_labels, testid_prefix) -%}
+  {%- macro statement_table(rows, period_labels, testid_prefix, basis='') -%}
   {%- if rows is not none and period_labels -%}
-    <div class="v2-statement-scroll" data-testid="{{ testid_prefix }}-table-wrapper">
+    <div class="v2-statement-meta" data-testid="{{ testid_prefix }}-meta">
+      <span class="v2-statement-unit">kEUR</span>
+      <span class="v2-statement-basis">{{ basis }}</span>
+      <span class="v2-statement-periods">{{ period_labels | length }} period{{ '' if period_labels | length == 1 else 's' }}</span>
+    </div>
+    <div class="v2-statement-scroll" data-testid="{{ testid_prefix }}-table-wrapper" tabindex="0"
+         role="region" aria-label="Statement table, scrollable">
       <table class="v2-statement-table" data-testid="{{ testid_prefix }}-table">
         <thead>
           <tr>
             <th class="v2-statement-corner v2-fs-sticky-header">
-              Line (kEUR)
+              Line item (kEUR)
             </th>
             {% for lbl in period_labels %}
             <th class="v2-statement-period-header">{{ fmt_period(lbl) }}</th>
@@ -175,12 +182,14 @@
         <tbody>
           {% for row in rows %}
           {% if row.key != "balance_check_keur" %}
-          <tr data-testid="{{ testid_prefix }}-row-{{ row.key }}">
+          <tr class="v2-statement-row{% if row.is_total %} v2-statement-row--total{% endif %}{% if row.key == 'share_capital_keur' %} v2-statement-row--placeholder{% endif %}"
+              data-testid="{{ testid_prefix }}-row-{{ row.key }}"
+              {% if row.key == 'share_capital_keur' %}title="Placeholder — share capital is not modelled in this version"{% endif %}>
             <td class="v2-statement-row-label v2-fs-sticky-cell{% if row.is_total %} v2-statement-total{% endif %}">
               {{ row.label }}
             </td>
             {% for v in row['values'] %}
-            <td class="v2-statement-num">{{ grouped_keur(v) }}</td>
+            <td class="v2-statement-num{% if v is number and v is not sameas true and v is not sameas false and v < 0 %} v2-statement-neg{% elif not (v is number and v is not sameas true and v is not sameas false) %} v2-statement-na{% endif %}">{{ statement_keur(v) }}</td>
             {% endfor %}
           </tr>
           {% endif %}
@@ -199,7 +208,7 @@
               {% else %}<span style="margin-left:.35rem;">&#9888;</span>{% endif %}
             </td>
             {% for v in bc['values'] %}
-            <td class="v2-statement-num">{{ grouped_keur(v) }}</td>
+            <td class="v2-statement-num">{{ statement_keur(v) }}</td>
             {% endfor %}
           </tr>
           {% endif %}
@@ -218,11 +227,11 @@
 
     {% if fs_pnl_rows is not none %}
       <div class="v2-fs-table-model" style="display:none;">
-        {{ statement_table(fs_pnl_rows, fs_pnl_period_labels, 'fs-pnl') }}
+        {{ statement_table(fs_pnl_rows, fs_pnl_period_labels, 'fs-pnl', 'Model periods · flows per period, balances at period end') }}
       </div>
       <div class="v2-fs-table-annual">
         {% if fs_pnl_annual_rows is not none and fs_pnl_annual_labels %}
-          {{ statement_table(fs_pnl_annual_rows, fs_pnl_annual_labels, 'fs-pnl-annual') }}
+          {{ statement_table(fs_pnl_annual_rows, fs_pnl_annual_labels, 'fs-pnl-annual', 'Annual · flows summed per calendar year, balances at year end') }}
         {% elif fs_pnl_annual_rows is not none %}
           <div class="v2-field-row v2-field-readonly" data-testid="fs-pnl-annual-empty">
             <span class="v2-field-value"><span class="v2-field-empty">No annual periods available.</span></span>
@@ -246,11 +255,11 @@
 
     {% if fs_pf_cf_rows is not none %}
       <div class="v2-fs-table-model" style="display:none;">
-        {{ statement_table(fs_pf_cf_rows, fs_pf_cf_period_labels, 'fs-pf-cf') }}
+        {{ statement_table(fs_pf_cf_rows, fs_pf_cf_period_labels, 'fs-pf-cf', 'Model periods · flows per period, balances at period end') }}
       </div>
       <div class="v2-fs-table-annual">
         {% if fs_pf_cf_annual_rows is not none and fs_pf_cf_annual_labels %}
-          {{ statement_table(fs_pf_cf_annual_rows, fs_pf_cf_annual_labels, 'fs-pf-cf-annual') }}
+          {{ statement_table(fs_pf_cf_annual_rows, fs_pf_cf_annual_labels, 'fs-pf-cf-annual', 'Annual · flows summed per calendar year, balances at year end') }}
         {% elif fs_pf_cf_annual_rows is not none %}
           <div class="v2-field-row v2-field-readonly" data-testid="fs-pf-cf-annual-empty">
             <span class="v2-field-value"><span class="v2-field-empty">No annual periods available.</span></span>
@@ -274,11 +283,11 @@
 
     {% if fs_bs_rows is not none %}
       <div class="v2-fs-table-model" style="display:none;">
-        {{ statement_table(fs_bs_rows, fs_bs_period_labels, 'fs-bs') }}
+        {{ statement_table(fs_bs_rows, fs_bs_period_labels, 'fs-bs', 'Model periods · balances at period end') }}
       </div>
       <div class="v2-fs-table-annual">
         {% if fs_bs_annual_rows is not none and fs_bs_annual_labels %}
-          {{ statement_table(fs_bs_annual_rows, fs_bs_annual_labels, 'fs-bs-annual') }}
+          {{ statement_table(fs_bs_annual_rows, fs_bs_annual_labels, 'fs-bs-annual', 'Annual · balances at year end') }}
         {% elif fs_bs_annual_rows is not none %}
           <div class="v2-field-row v2-field-readonly" data-testid="fs-bs-annual-empty">
             <span class="v2-field-value"><span class="v2-field-empty">No annual periods available.</span></span>

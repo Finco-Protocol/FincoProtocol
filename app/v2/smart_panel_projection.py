@@ -60,6 +60,10 @@ class SummaryClass(str, Enum):
     AUTHORITY_UNAVAILABLE = "AUTHORITY_UNAVAILABLE"
     STALE_LAST_RUN = "STALE_LAST_RUN"
     NOT_RUN = "NOT_RUN"
+    INTEGRITY_CHECK = "INTEGRITY_CHECK"      # committed Last Run integrity verdict not PASS
+
+
+from app.v2.kpi_strip_projection import KpiStrip, build_kpi_strip
 
 
 @dataclass(frozen=True)
@@ -84,6 +88,7 @@ class SmartPanelLink:
 class SmartPanelBreakdown:
     title: str
     rows: tuple[SmartPanelRow, ...]
+    open: bool = False
 
 
 @dataclass(frozen=True)
@@ -105,6 +110,40 @@ class SmartPanelSummaryItem:
     value: str = ""         # static value for server-composed items
     tone: str = ""          # repository tone vocabulary
     detail: str = ""
+    group: str = ""         # worklist group (see WORKLIST_GROUPS); presentation only
+    group_label: str = ""
+
+
+# Validation worklist groups — each keeps its own meaning; a group is never merged into
+# another and freshness is never an integrity verdict (nor the reverse).
+WORKLIST_GROUPS: tuple[tuple[str, str], ...] = (
+    ("input", "Economic input errors"),
+    ("integrity", "Financial integrity"),
+    ("evidence", "Missing assumptions / evidence"),
+    ("protected", "Protected / calculated inputs"),
+    ("freshness", "Last Run freshness"),
+)
+_GROUP_OF = {
+    SummaryClass.REQUIRED_MISSING: "input",
+    SummaryClass.INVALID: "input",
+    SummaryClass.OUT_OF_BOUNDS: "input",
+    SummaryClass.SAVE_REJECTED: "input",
+    SummaryClass.INTEGRITY_CHECK: "integrity",
+    SummaryClass.AUTHORITY_UNAVAILABLE: "evidence",
+    SummaryClass.NON_EDITABLE: "protected",
+    SummaryClass.STALE_LAST_RUN: "freshness",
+    SummaryClass.NOT_RUN: "freshness",
+}
+_GROUP_ORDER = {g: i for i, (g, _l) in enumerate(WORKLIST_GROUPS)}
+
+
+def _grouped(items: "list[SmartPanelSummaryItem]") -> tuple["SmartPanelSummaryItem", ...]:
+    from dataclasses import replace
+    labels = dict(WORKLIST_GROUPS)
+    tagged = [replace(it, group=_GROUP_OF.get(it.key, ""),
+                      group_label=labels.get(_GROUP_OF.get(it.key, ""), ""))
+              for it in items]
+    return tuple(sorted(tagged, key=lambda it: _GROUP_ORDER.get(it.group, 99)))
 
 
 @dataclass(frozen=True)
@@ -113,6 +152,7 @@ class SmartPanelProjection:
     run_state: str                      # NOT_RUN | CURRENT | STALE
     sections: tuple[SmartPanelSection, ...]
     validation_summary: tuple[SmartPanelSummaryItem, ...] = ()
+    kpi_strip: Optional[KpiStrip] = None   # persistent Key-metrics strip (Workflow C)
 
     @property
     def ordered_rows(self) -> tuple[SmartPanelRow, ...]:
@@ -233,7 +273,19 @@ def _validation_summary(
             S.AUTHORITY_UNAVAILABLE, "Authority unavailable",
             value=str(len(unavailable)), tone="warn",
             detail=", ".join(unavailable) + ". Unavailable is not a validation error."))
-    return tuple(items)
+    # Committed Last Run integrity verdict (separate authority): listed only when it is not
+    # PASS, with its typed reason codes.  Freshness (CURRENT / STALE) never changes it.
+    if isinstance(integrity, dict) and integrity \
+            and str(integrity.get("state", "")).upper() == "AVAILABLE":
+        overall = str(integrity.get("overall") or "").upper()
+        if overall and overall != "PASS":
+            row = _integrity_row(integrity)
+            items.append(SmartPanelSummaryItem(
+                S.INTEGRITY_CHECK, "Run integrity", value=overall,
+                tone="fail" if overall == "FAIL" else "warn",
+                detail=(row.detail if row is not None else "")
+                + " Independent of whether the Last Run is CURRENT or STALE."))
+    return _grouped(items)
 
 
 def build_smart_panel_projection(
@@ -338,6 +390,52 @@ def build_smart_panel_projection(
             link=None,
         ))
 
+    # ── EVIDENCE & LINEAGE — what is actually known about where a displayed number
+    # comes from.  Five levels are kept distinct and never blended:
+    #   1. exact persisted value   (Key metrics: raw persisted output, hover = source/unit)
+    #   2. typed derivation evidence (Trust Pack methodology rows)
+    #   3. navigation to the source (metric buttons / links)
+    #   4. full Calculation Trace   (see TRACE: unavailable unless genuinely present)
+    #   5. unavailable evidence     (listed below; never read as PASS or zero)
+    lr_pack: dict[str, Any] = (trust_pack or {}).get("last_run", {}) or {}
+    lineage_rows: list[SmartPanelRow] = []
+    if isinstance(lr_pack, dict) and str(lr_pack.get("state", "")).upper() == "AVAILABLE":
+        bits = []
+        if lr_pack.get("snapshot_id"):
+            bits.append(f"Snapshot {lr_pack['snapshot_id']}")
+        if lr_pack.get("composite_hash_short"):
+            bits.append(f"hash {lr_pack['composite_hash_short']}")
+        if lr_pack.get("run_at_display"):
+            bits.append(str(lr_pack["run_at_display"]))
+        if lr_pack.get("engine_version"):
+            bits.append(f"engine {lr_pack['engine_version']}")
+        lineage_rows.append(SmartPanelRow(
+            label="Last Run identity", value="AVAILABLE", detail=" · ".join(bits)))
+    else:
+        lineage_rows.append(SmartPanelRow(
+            label="Last Run identity", value="UNAVAILABLE", tone="warn",
+            detail="No committed Last Run: nothing to trace yet."))
+    lineage_rows.append(SmartPanelRow(
+        label="Exact persisted values", value="Key metrics",
+        detail=("Each metric is the raw persisted output (runtime_summary / "
+                "sponsor_schedule.summary) formatted without recomputation; hover "
+                "a metric for its source and unit.")))
+    lineage_rows.append(SmartPanelRow(
+        label="Derivation evidence", value="Trust Pack methodology",
+        detail="Period timing and sign convention per KPI are listed in the Trust Pack."))
+    strip_src = (trust_pack or {}).get("kpi_strip_source") or {}
+    gap_rows = [
+        SmartPanelRow(label="Project NPV", value="Not persisted",
+                      detail="No Last Run value; never derived here."),
+        SmartPanelRow(label="Total CFADS", value="Not persisted",
+                      detail="No aggregate Last Run value; not summed from periods."),
+        SmartPanelRow(label="LCOE", value="No canonical authority",
+                      detail="A reviewed authority decision is required first."),
+        SmartPanelRow(label="WACC", value="Reserved", detail="No canonical authority yet."),
+        SmartPanelRow(label="Payback / discounted payback", value="Reserved",
+                      detail="No canonical authority yet."),
+    ]
+
     # ── TRACE — typed unavailable: the full trace is bound to the clean
     # production run object, which is not persisted after a run; loading it
     # on demand would execute the engine.  Honest future surface, no fake
@@ -351,15 +449,28 @@ def build_smart_panel_projection(
                     "Derivation lineage is visible in the Trust Pack KPIs "
                     "and the Run Certificate."),
         link=None,
+        # What IS known instead of a full trace (kept distinct from it, never blended).
+        breakdowns=(
+            SmartPanelBreakdown("Available evidence (not a full trace)", tuple(lineage_rows)),
+            SmartPanelBreakdown("Authority gaps (not persisted, never derived)", tuple(gap_rows)),
+        ),
     ))
 
     run_state = state if state in ("NOT_RUN", "CURRENT", "STALE") else "NOT_RUN"
+    pack = trust_pack or {}
+    strip_source = pack.get("kpi_strip_source")
+    kpi_strip = build_kpi_strip(
+        strip_source, runtime_state=run_state,
+        integrity=pack.get("integrity"), last_run=pack.get("last_run"),
+        scenario_name=str((strip_source or {}).get("run_scenario_name") or ""),
+    ) if strip_source is not None else None
     return SmartPanelProjection(
         stale_note=stale_note,
         run_state=run_state,
         sections=tuple(sections),
         validation_summary=_validation_summary(
             run_state=run_state, trust_pack=trust_pack, register_ok=register_ok),
+        kpi_strip=kpi_strip,
     )
 
 

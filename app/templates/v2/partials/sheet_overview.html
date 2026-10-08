@@ -102,10 +102,19 @@
      when the canonical persisted metric is AVAILABLE (raw_value is not
      none); unavailable metrics are omitted — never shown as zero. All
      values are OutputMetricProjection display strings (pass-through). #}
+  {# Drill-down (Workflow C): a tile opens the sheet holding its authoritative detail.  Only an
+     existing tab id is ever targeted; handled by the delegated listener in the workspace nav. #}
   {% macro kpi_tile(key, testid, title='') -%}
+    {% set drill = {"project_irr": "tab-returns", "equity_irr": "tab-returns", "sponsor_irr": "tab-returns",
+                    "project_npv_keur": "tab-returns", "sponsor_moic": "tab-returns", "pure_equity_moic": "tab-returns",
+                    "senior_debt_keur": "tab-debt", "min_dscr": "tab-debt", "avg_dscr": "tab-debt",
+                    "min_llcr": "tab-debt", "total_cfads_keur": "tab-debt",
+                    "total_revenue_keur": "tab-revenue", "total_ebitda_keur": "tab-fs",
+                    "total_capex_keur": "tab-capex"}.get(key) %}
     {% if key in ov.output_metrics and ov.output_metrics[key].raw_value is not none %}
     <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
-         data-testid="kpi-{{ testid }}"{% if title %} title="{{ title }}"{% endif %}>
+         data-testid="kpi-{{ testid }}"{% if title %} title="{{ title }}"{% endif %}
+         {% if drill %}data-kpi-drill="{{ drill }}" role="button" tabindex="0"{% endif %}>
       <span class="v2-kpi-label">{{ ov.output_metrics[key].label }}</span>
       <span class="v2-kpi-value">{{ kpi_metric(key) }}</span>
     </div>

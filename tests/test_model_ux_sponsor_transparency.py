@@ -79,9 +79,13 @@ def test_financial_statements_and_returns_share_grouped_keur_formatter():
     returns = (root / "app/templates/v2/partials/sheet_returns.html").read_text()
 
     assert '"{:,.0f}".format(value)' in formatter
-    assert 'import grouped_keur' in statements
     assert 'import grouped_keur' in returns
-    assert 'grouped_keur(v)' in statements
+    # Statements share the SAME formatter module and whole-kEUR rounding; Workflow C adds the
+    # finance convention for negatives (parentheses) as a sibling macro, not a second formatter.
+    assert 'macro statement_keur' in formatter
+    assert '"{:,.0f}".format(r | abs)' in formatter
+    assert 'import grouped_keur, statement_keur' in statements
+    assert 'statement_keur(v)' in statements
 
 
 def test_tax_uses_shared_grouped_formatter_and_preserves_non_integer_precision():

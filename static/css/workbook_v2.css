@@ -3320,3 +3320,126 @@ form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #
   .v2-opex-grand-total-row > .v2-opex-col-status { grid-column: 6; min-width: 0; text-align: left; }
 }
 .v2-contingency-reference-note { margin: .25rem .5rem; font-size: .75rem; color: var(--v2-text-subtle, #6b7280); }
+
+/* ── Workflow C: persistent Key-metrics strip (inside the Smart Panel) ─────────────────
+   Fixed-light card with its own foreground (same contrast contract as the cost grid). */
+.v2-kpi-strip { background: #fff; color: #111827; border: 1px solid #e5e7eb; border-radius: 6px;
+  padding: 8px 10px; margin-bottom: 12px; }
+.v2-kpi-strip--stale { border-color: #f59e0b; background: #fffbeb; }
+.v2-kpi-strip-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+.v2-kpi-strip-title { font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #4b5563; }
+.v2-kpi-strip-state { font-size: .6875rem; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
+.v2-kpi-strip-state--current { background: #dcfce7; color: #166534; }
+.v2-kpi-strip-state--stale { background: #fef3c7; color: #92400e; }
+.v2-kpi-strip-state--not_run { background: #e5e7eb; color: #374151; }
+.v2-kpi-strip-caption { font-size: .72rem; color: #4b5563; margin-bottom: 6px; }
+.v2-kpi-strip-lineage { display: block; color: #6b7280; }
+.v2-kpi-strip-items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 1px; }
+.v2-kpi-strip-link { display: flex; justify-content: space-between; align-items: baseline; width: 100%;
+  background: transparent; border: 0; border-bottom: 1px solid #f3f4f6; padding: 4px 2px; cursor: pointer;
+  font: inherit; color: inherit; text-align: left; }
+.v2-kpi-strip-link:hover, .v2-kpi-strip-link:focus-visible { background: #eff6ff; outline: none; }
+.v2-kpi-strip-link:focus-visible { box-shadow: inset 0 0 0 2px #2563eb; }
+.v2-kpi-strip-label { font-size: .75rem; color: #374151; }
+.v2-kpi-strip-value { font-size: .8125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.v2-kpi-strip-item--stale .v2-kpi-strip-value { color: #92400e; }
+.v2-kpi-strip-item--unavailable .v2-kpi-strip-value { color: #6b7280; font-weight: 500; }
+.v2-kpi-strip-integrity { margin-top: 6px; font-size: .72rem; display: flex; gap: .4rem; align-items: baseline;
+  padding: 3px 6px; border-radius: 4px; background: #f3f4f6; }
+.v2-kpi-strip-integrity-value { font-weight: 700; }
+.v2-kpi-strip-integrity--pass .v2-kpi-strip-integrity-value { color: #166534; }
+.v2-kpi-strip-integrity--fail { background: #fef2f2; }
+.v2-kpi-strip-integrity--fail .v2-kpi-strip-integrity-value { color: #b91c1c; }
+.v2-kpi-strip-integrity--warn .v2-kpi-strip-integrity-value { color: #92400e; }
+.v2-kpi-strip-integrity-note { color: #6b7280; margin-left: auto; }
+.v2-worklist-group { list-style: none; font-size: .6875rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--v2-text-subtle, #6b7280); margin: 8px 0 2px; }
+.v2-smart-panel-breakdown li { flex-wrap: wrap; }
+.v2-smart-panel-breakdown li > small { flex: 1 0 100%; font-size: .68rem; color: var(--v2-text-subtle, #6b7280); }
+
+/* ── Workflow C: Financial Statements presentation ───────────────────────────────────── */
+.v2-statement-scroll { overflow: auto; max-height: calc(100vh - 280px); border: 1px solid var(--v2-border); border-radius: 4px; }
+.v2-statement-scroll:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.v2-statement-meta { display: flex; gap: .75rem; align-items: baseline; font-size: .72rem; color: var(--v2-text-muted);
+  margin: .25rem 0 .25rem; }
+.v2-statement-unit { font-weight: 600; color: var(--v2-text); }
+.v2-statement-num.v2-statement-neg { color: #b91c1c; }
+:root[data-theme="dark"] .v2-statement-num.v2-statement-neg { color: #fca5a5; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .v2-statement-num.v2-statement-neg { color: #fca5a5; } }
+.v2-statement-num.v2-statement-na { color: var(--v2-text-muted); text-align: right; }
+.v2-statement-row--total > td { font-weight: 700; border-top: 1px solid var(--v2-text-muted); }
+.v2-statement-row--total .v2-statement-num { background: var(--v2-sticky-bg); }
+.v2-statement-row--placeholder > td { font-style: italic; color: var(--v2-text-muted); }
+.v2-statement-row-label.v2-fs-sticky-cell { box-shadow: 1px 0 0 var(--v2-border); }
+.v2-fs-period-count { color: var(--v2-text-muted); font-weight: 400; }
+.v2-fs-state-badge { display: inline-block; font-size: .6875rem; font-weight: 700; padding: 1px 8px; border-radius: 3px;
+  margin-right: .5rem; letter-spacing: .03em; }
+.v2-fs-state-badge--clean { background: #dcfce7; color: #166534; }
+.v2-fs-state-badge--stale { background: #fef3c7; color: #92400e; }
+.v2-fs-state-badge--not_run { background: #e5e7eb; color: #374151; }
+.v2-fs-state-badge--fs_unavailable { background: #fee2e2; color: #991b1b; }
+/* A stale Last Run's statements stay visible but are visibly NOT current. */
+#v2-sheet-financial-statements:has(#fs-runtime-bar [data-fs-state="STALE"]) .v2-statement-scroll { border-color: #f59e0b; }
+#v2-sheet-financial-statements:has(#fs-runtime-bar [data-fs-state="STALE"]) .v2-statement-table { opacity: .82; }
+@media (max-width: 720px) {
+  .v2-statement-scroll { max-height: none; }
+  .v2-statement-row-label { min-width: 9rem; }
+  .v2-statement-corner { min-width: 9rem; }
+}
+
+/* ── Workflow C: workspace navigation refinements ───────────────────────────────────── */
+.v2-ws-nav-item--active { background: #eff6ff; border-left-color: #2563eb; font-weight: 600; color: #1e3a8a; }
+.v2-ws-nav-item:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; }
+/* Readable labels on mid-width screens (previously collapsed to a single letter). */
+@media (max-width: 1100px) and (min-width: 721px) {
+  .v2-ws-nav { flex-basis: 148px; }
+  .v2-ws-nav .v2-ws-nav-item, .v2-ws-nav .v2-ws-nav-group-label { font-size: .75rem; padding-left: 10px; padding-right: 6px; }
+  .v2-ws-nav .v2-ws-nav-group-label { font-size: .625rem; }
+  .v2-ws-nav .v2-ws-nav-item::first-letter { font-size: inherit; }
+}
+/* Narrow screens: the navigation becomes one horizontally scrolling strip above the sheet. */
+@media (max-width: 720px) {
+  .v2-workspace-body { flex-direction: column; }
+  .v2-ws-nav { flex: 0 0 auto; position: static; max-height: none; width: 100%; box-sizing: border-box;
+    display: flex; flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0;
+    border-bottom: 1px solid #e5e7eb; padding: 4px 6px; gap: 2px; }
+  .v2-ws-nav .v2-ws-nav-group { display: flex; flex-direction: row; margin: 0; align-items: center; flex: 0 0 auto; }
+  .v2-ws-nav .v2-ws-nav-group-label { display: none; }
+  .v2-ws-nav .v2-ws-nav-item { width: auto; white-space: nowrap; font-size: .8125rem; min-height: 36px;
+    border-left: 0; border-bottom: 2px solid transparent; padding: 6px 10px; }
+  .v2-ws-nav .v2-ws-nav-item--active { border-bottom-color: #2563eb; }
+  .v2-ws-nav .v2-ws-nav-item--future { display: none; }
+}
+.v2-fs-inner-tabs { overflow-x: auto; scrollbar-width: thin; }
+.v2-fs-inner-tab { white-space: nowrap; flex: 0 0 auto; }
+@media (max-width: 720px) {
+  .v2-fs-inner-tab .v2-future-tag { display: none; }
+  .v2-fs-period-selector { flex-wrap: wrap; }
+}
+
+/* ── Workflow C: the Smart Panel (with the Key-metrics strip) is a persistent right column ──
+   It is the last child of #model-workspace-main, which was a plain block, so the panel sat
+   below the whole sheet (out of sight).  Two-column grid on wide screens; on narrow screens
+   the panel dissolves into the flow and only the Key-metrics strip moves to the top. */
+@media (min-width: 901px) {
+  .v2-workspace-main { display: grid; grid-template-columns: minmax(0, 1fr) 264px; align-items: start; }
+  .v2-workspace-main > * { grid-column: 1; min-width: 0; }
+  .v2-workspace-main > #model-smart-panel { grid-column: 2; grid-row: 1 / span 12; align-self: start;
+    position: sticky; top: 0; max-height: 100vh; overflow-y: auto; }
+}
+@media (min-width: 901px) and (max-width: 1100px) {
+  .v2-workspace-main { grid-template-columns: minmax(0, 1fr) 224px; }
+}
+@media (max-width: 900px) {
+  .v2-workspace-main { display: flex; flex-direction: column; }
+  .v2-workspace-main > #model-smart-panel { display: contents; }
+  .v2-workspace-main > #model-smart-panel > .v2-kpi-strip { order: -1; margin: 6px 8px; }
+  .v2-kpi-strip-items { grid-template-columns: 1fr 1fr; column-gap: 8px; }
+}
+/* The meta line sits directly on the (light) sheet surface in both schemes. */
+.v2-statement-meta { color: #4b5563; }
+.v2-statement-unit { color: #111827; }
+.v2-fs-period-note { color: #4b5563; }
+.v2-kpi-tile[data-kpi-drill] { cursor: pointer; }
+.v2-kpi-tile[data-kpi-drill]:hover { box-shadow: 0 0 0 1px #93c5fd; }
+.v2-kpi-tile[data-kpi-drill]:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }

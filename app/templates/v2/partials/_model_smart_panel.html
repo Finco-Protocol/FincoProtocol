@@ -17,6 +17,11 @@
   controls are duplicated here.
 #}
 <aside id="model-smart-panel" class="v2-smart-panel" aria-label="Smart panel" data-testid="smart-panel">
+  {% if smart_panel.kpi_strip %}
+  {% set strip = smart_panel.kpi_strip %}
+  {% include "partials/_model_kpi_strip.html" %}
+  {% endif %}
+
   {% if smart_panel.stale_note %}
   <div class="v2-smart-panel-note v2-smart-panel-note--{{ smart_panel.run_state | lower }}"
        data-testid="smart-panel-note">{{ smart_panel.stale_note }}</div>
@@ -27,7 +32,12 @@
        data-testid="smart-panel-section-validation">
     <div class="v2-smart-panel-section-title">Validation</div>
     <ul class="v2-smart-panel-rows">
+      {% set ns = namespace(group=none) %}
       {% for item in smart_panel.validation_summary %}
+      {% if item.group and item.group != ns.group %}
+      {% set ns.group = item.group %}
+      <li class="v2-worklist-group" role="presentation" data-testid="smart-panel-group-{{ item.group }}">{{ item.group_label }}</li>
+      {% endif %}
       <li class="v2-smart-panel-row v2-summary-row{% if item.tone %} v2-summary-row--{{ item.tone }}{% endif %}"
           data-summary-class="{{ item.key.value }}"
           {% if item.live %}data-summary-live="true" hidden{% endif %}
@@ -62,12 +72,12 @@
     <div class="v2-smart-panel-empty">{{ section.empty_text }}</div>
     {% endif %}
     {% for breakdown in section.breakdowns %}
-    <details class="v2-smart-panel-breakdown"
-             data-testid="smart-panel-breakdown-{{ breakdown.title | lower | replace(' ', '-') }}">
+    <details class="v2-smart-panel-breakdown"{% if breakdown.open %} open{% endif %}
+             data-testid="smart-panel-breakdown-{{ breakdown.title | lower | replace(' ', '-') | replace('(', '') | replace(')', '') | replace(',', '') }}">
       <summary>{{ breakdown.title }}</summary>
       <ul>
         {% for row in breakdown.rows %}
-        <li><span>{{ row.label }}</span><span>{{ row.value }}</span></li>
+        <li><span>{{ row.label }}</span><span>{{ row.value }}</span>{% if row.detail %}<small class="v2-smart-panel-row-detail">{{ row.detail }}</small>{% endif %}</li>
         {% endfor %}
       </ul>
     </details>
@@ -80,26 +90,6 @@
   </div>
   {% endfor %}
 </aside>
-<script>
-(function () {
-  var panel = document.getElementById('model-smart-panel');
-  if (!panel) return;
-  panel.addEventListener('click', function (evt) {
-    var btn = evt.target.closest('[data-nav-tab]');
-    if (!btn || btn.disabled) return;
-    var tab = document.getElementById(btn.getAttribute('data-nav-tab'));
-    if (!tab) return;
-    tab.click();
-    var anchorSel = btn.getAttribute('data-nav-anchor');
-    if (anchorSel) {
-      var target = document.querySelector(anchorSel);
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        target.classList.remove('v2-anchor-highlight');
-        void target.offsetWidth;
-        target.classList.add('v2-anchor-highlight');
-      }
-    }
-  });
-})();
-</script>
+{# Navigation from the panel ([data-nav-tab] / data-nav-anchor) is handled by ONE delegated
+   listener in _model_workspace_nav.html: this fragment is replaced out-of-band after every Save
+   and Run, so an inline script here would be lost with the swapped element. #}
