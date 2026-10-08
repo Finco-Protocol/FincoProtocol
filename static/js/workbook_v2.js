@@ -950,3 +950,391 @@ document.addEventListener('htmx:afterSettle', function (e) {
   };
   window.v2JumpToField = jump;
 })();
+
+// ── Cost grid (CAPEX / OPEX): direct-cell editing ────────────────────────────────────────
+// One guarded save per committed row edit (existing composite-hash + row_version CAS),
+// a serial save queue (each save needs the fresh tokens from the previous one), at most
+// one focused editor, explicit dirty/saving/saved/failed state, and no automatic retry of
+// an economic write after a failure.  No financial value is calculated here: totals come
+// from the server response that is swapped in.
+(function () {
+  if (window.__v2CostGridInit) return;
+  window.__v2CostGridInit = true;
+
+  var ROW = 'form[data-cost-row]';
+  var queue = [];          // row ids waiting to be saved (FIFO)
+  var activeId = null;     // row id currently in flight
+  var snapshots = {};      // row id -> {vals, failed, message}
+  var idleCallbacks = [];  // actions waiting for the grid to become idle
+  var hadFailure = false;
+
+  function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function rowOf(el) { return el && el.closest ? el.closest(ROW) : null; }
+  function cellsOf(row) { return qsa('input[data-cost-cell]', row); }
+  function visible(el) { return !!(el && (el.offsetParent !== null || el.getClientRects().length)); }
+
+  function normNumber(raw) {
+    var v = String(raw == null ? '' : raw).replace(/\s+/g, '');
+    if (v.indexOf(',') >= 0 && v.indexOf('.') >= 0) v = v.replace(/,/g, '');
+    else if (v.indexOf(',') >= 0) v = v.replace(',', '.');
+    return v;
+  }
+  function isNumeric(input) { return input.getAttribute('data-cost-cell') !== 'label'; }
+  function valueOf(input) { return isNumeric(input) ? normNumber(input.value) : input.value.trim(); }
+  function originalOf(input) {
+    var o = input.getAttribute('data-original') || '';
+    return isNumeric(input) ? normNumber(o) : o.trim();
+  }
+  function isDirty(row) {
+    return cellsOf(row).some(function (i) { return valueOf(i) !== originalOf(i); });
+  }
+  function valuesOf(row) {
+    var out = {};
+    cellsOf(row).forEach(function (i) { out[i.name] = i.value; });
+    return out;
+  }
+
+  function setState(row, kind, text) {
+    if (!row) return;
+    row.setAttribute('data-save-state', kind || '');
+    var el = row.querySelector('[data-cost-state]');
+    if (el) el.textContent = text || '';
+    if (kind === 'saving') row.setAttribute('aria-busy', 'true'); else row.removeAttribute('aria-busy');
+    if (row.__stateTimer) { clearTimeout(row.__stateTimer); row.__stateTimer = null; }
+    if (kind === 'saved') {
+      row.__stateTimer = setTimeout(function () {
+        if (row.getAttribute('data-save-state') === 'saved') setState(row, '', '');
+      }, 2500);
+    }
+  }
+
+  function gridBusy() {
+    return !!activeId || queue.length > 0 || qsa(ROW).some(function (r) {
+      return isDirty(r) && r.getAttribute('data-save-state') !== 'failed';
+    });
+  }
+
+  // ── tokens ────────────────────────────────────────────────────────────────────────
+  function syncTokens(authority) {
+    if (!authority) return;
+    var hash = authority.getAttribute('data-content-hash');
+    var version = authority.getAttribute('data-workbook-version');
+    if (!hash || !version) return;   // never guess a token
+    qsa('input[name="content_hash"]').forEach(function (i) { i.value = hash; });
+    qsa('input[name="workbook_version"]').forEach(function (i) { i.value = version; });
+    var shell = document.getElementById('v2-workbook-shell');
+    if (shell) { shell.setAttribute('data-content-hash', hash); shell.setAttribute('data-workbook-version', version); }
+  }
+
+  // ── queue ─────────────────────────────────────────────────────────────────────────
+  function commitRow(row) {
+    if (!row || !row.id) return;
+    var st = row.getAttribute('data-save-state');
+    if (st === 'queued' || st === 'saving') return;          // Enter + blur never double-submit
+    if (st === 'failed' && !row.__explicit) return;          // failed values are never auto-resubmitted
+    if (!isDirty(row)) { if (st === 'dirty') setState(row, '', ''); return; }
+    var bad = null;
+    cellsOf(row).forEach(function (i) {
+      if (isNumeric(i) && !/^[-+]?(\d+\.?\d*|\.\d+)$/.test(normNumber(i.value))) bad = i;
+      if (!isNumeric(i) && i.required && !i.value.trim()) bad = i;
+    });
+    if (bad) {
+      setState(row, 'invalid', isNumeric(bad) ? 'Enter a number' : 'Description required');
+      row.setAttribute('data-invalid', 'true');
+      return;
+    }
+    row.removeAttribute('data-invalid');
+    cellsOf(row).forEach(function (i) {
+      if (!isNumeric(i)) return;
+      // An untouched number is submitted with its exact stored value, never the rounded
+      // display text (editing another cell must not silently round this one).
+      if (valueOf(i) === originalOf(i) && i.getAttribute('data-exact')) i.value = i.getAttribute('data-exact');
+      else i.value = normNumber(i.value);
+    });
+    row.__explicit = false;
+    setState(row, 'queued', 'Waiting…');
+    queue.push(row.id);
+    pump();
+  }
+
+  function pump() {
+    if (activeId) return;
+    while (queue.length) {
+      var id = queue.shift();
+      var row = document.getElementById(id);
+      if (!row || !document.body.contains(row)) continue;
+      activeId = id;
+      var focused = document.activeElement && row.contains(document.activeElement) ? document.activeElement : null;
+      snapshots[id] = { vals: valuesOf(row), focusName: focused ? focused.name : null, failed: false, message: '' };
+      setState(row, 'saving', 'Saving…');
+      if (!row.checkValidity()) { finishFailed(row, 'Check the highlighted value'); return; }
+      row.requestSubmit();
+      return;
+    }
+    idleCheck();
+  }
+
+  function idleCheck() {
+    if (activeId || queue.length) return;
+    if (!idleCallbacks.length) return;
+    var failed = hadFailure; hadFailure = false;
+    var cbs = idleCallbacks.splice(0, idleCallbacks.length);
+    if (failed) return;                // a failed save cancels the waiting action (never silently proceed)
+    cbs.forEach(function (cb) { try { cb(); } catch (e) { /* ignore */ } });
+  }
+
+  function flushDirty() {
+    qsa(ROW).forEach(function (r) { r.__explicit = true; commitRow(r); });
+  }
+
+  // Run an action once all edits are saved (saves them first). Returns false if it must wait.
+  window.v2CostGridWhenIdle = function (fn) {
+    if (!gridBusy()) { fn(); return true; }
+    idleCallbacks.push(fn);
+    flushDirty();
+    idleCheck();
+    return false;
+  };
+
+  function finishFailed(row, message) {
+    var id = row.id;
+    var snap = snapshots[id] || { vals: {} };
+    Object.keys(snap.vals || {}).forEach(function (name) {   // keep what the user typed
+      var inp = row.querySelector('input[name="' + name + '"][data-cost-cell]');
+      if (inp) inp.value = snap.vals[name];
+    });
+    row.setAttribute('data-failed', 'true');
+    setState(row, 'failed', 'Failed' + (message ? ': ' + message : ''));
+    hadFailure = true;
+    // Distinct queued edits are NOT replayed against whatever caused the failure.
+    queue.splice(0, queue.length).forEach(function (qid) {
+      var q = document.getElementById(qid);
+      if (q) setState(q, 'failed', 'Not saved — resolve the earlier error, then press Enter');
+    });
+    activeId = null;
+    delete snapshots[id];
+    idleCheck();
+  }
+
+  // ── navigation / key handling ─────────────────────────────────────────────────────
+  function grid(el) { return el.closest('[data-cost-grid]'); }
+  function focusables(g, kind) {
+    return qsa(ROW + ' input[data-cost-cell="' + kind + '"]', g).filter(visible);
+  }
+  function moveFocus(input, delta) {
+    var g = grid(input); if (!g) return;
+    var list = focusables(g, input.getAttribute('data-cost-cell'));
+    var i = list.indexOf(input);
+    var t = list[i + delta];
+    if (t) t.focus();
+  }
+  function adjust(input, dir, big) {
+    var step = parseFloat(input.getAttribute('data-step') || '1') || 1;
+    var cur = parseFloat(normNumber(input.value));
+    if (!isFinite(cur)) return;
+    var decimals = (String(step).split('.')[1] || '').length;
+    var next = cur + dir * step * (big ? 10 : 1);
+    input.value = next.toFixed(decimals);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.select();
+  }
+
+  // Excel-like: entering a cell selects its value so typing replaces it.  A mouse press on a
+  // cell that is not yet focused is taken over (focus + select synchronously) because the
+  // browser would otherwise place the caret after focus and collapse the selection.
+  document.addEventListener('mousedown', function (e) {
+    var t = e.target;
+    if (e.button !== 0 || !t || !t.matches || !t.matches('input[data-cost-cell]')) return;
+    if (document.activeElement === t) return;
+    e.preventDefault();
+    t.focus();
+    t.select();
+  });
+  document.addEventListener('focusin', function (e) {
+    var t = e.target;
+    if (t.matches && t.matches('input[data-cost-cell]')) t.select();
+  });
+
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    if (!t.matches || !t.matches('input[data-cost-cell]')) return;
+    var row = rowOf(t);
+    if (!row) return;
+    row.removeAttribute('data-failed');
+    row.removeAttribute('data-invalid');
+    var st = row.getAttribute('data-save-state');
+    if (st === 'saving' || st === 'queued') return;
+    if (isDirty(row)) setState(row, 'dirty', 'Unsaved'); else setState(row, '', '');
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (!t.matches || !t.matches('input[data-cost-cell]')) return;
+    var row = rowOf(t);
+    if (!row) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.repeat) return;
+      row.__explicit = true;
+      commitRow(row);
+      moveFocus(t, e.shiftKey ? -1 : 1);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cellsOf(row).forEach(function (i) { i.value = i.getAttribute('data-original') || ''; });
+      row.removeAttribute('data-failed'); row.removeAttribute('data-invalid');
+      var st = row.getAttribute('data-save-state');
+      if (st !== 'saving' && st !== 'queued') setState(row, '', '');
+      t.select();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      var dir = e.key === 'ArrowUp' ? 1 : -1;
+      if (isNumeric(t)) { e.preventDefault(); adjust(t, dir, e.shiftKey); }
+      else { e.preventDefault(); moveFocus(t, -dir); }
+    }
+  });
+
+  document.addEventListener('focusout', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var row = rowOf(t);
+    if (!row) return;
+    var next = e.relatedTarget;
+    if (next && row.contains(next)) return;        // still inside the same row
+    commitRow(row);                                // leaving the row commits it (never double-submits)
+  });
+
+  // ── htmx lifecycle ───────────────────────────────────────────────────────────────
+  document.addEventListener('htmx:beforeSwap', function (e) {
+    var d = e.detail || {};
+    var target = d.target;
+    if (!target) return;
+    if (target.matches && target.matches(ROW)) {
+      var snap = snapshots[target.id];
+      if (snap) {
+        snap.live = valuesOf(target);
+        var f = document.activeElement && target.contains(document.activeElement) ? document.activeElement : null;
+        snap.focusName = f ? f.name : null;
+        snap.sel = f && f.selectionStart != null ? [f.selectionStart, f.selectionEnd] : null;
+        var text = d.xhr && d.xhr.responseText || '';
+        var m = /data-cost-error="true"[^>]*>([^<]*)</.exec(text);
+        snap.failed = !!m;
+        snap.message = m ? m[1].trim() : '';
+      }
+    } else if (target.matches && target.matches('[data-cost-grid]')) {
+      var openMap = {};
+      qsa('details[data-group-code]', target).forEach(function (dd) { openMap[dd.getAttribute('data-group-code')] = dd.open; });
+      var f2 = document.activeElement && target.contains(document.activeElement) ? document.activeElement : null;
+      target.__view = {
+        id: target.id, open: openMap, y: window.scrollY,
+        top: target.scrollTop, focusId: f2 && f2.closest(ROW) ? f2.closest(ROW).id : null,
+        focusName: f2 ? f2.name : null
+      };
+      window.__v2CostView = target.__view;
+    }
+  });
+
+  document.addEventListener('htmx:afterSettle', function (e) {
+    var t = e.target;
+    if (!t || !t.matches) return;
+    if (t.id && t.id.indexOf('v2-cost-authority-') === 0) { syncTokens(t); return; }
+    if (t.matches(ROW)) { rowSettled(t); return; }
+    if (t.matches('[data-cost-grid]')) {
+      syncTokens(t.querySelector('[id^="v2-cost-authority-"]'));
+      var v = window.__v2CostView;
+      if (v && v.id === t.id) {
+        qsa('details[data-group-code]', t).forEach(function (dd) {
+          var code = dd.getAttribute('data-group-code');
+          if (Object.prototype.hasOwnProperty.call(v.open, code)) dd.open = v.open[code];
+        });
+        window.scrollTo(0, v.y);
+        if (v.focusId) {
+          var r = document.getElementById(v.focusId);
+          var inp = r && r.querySelector('input[name="' + v.focusName + '"]');
+          if (inp) inp.focus({ preventScroll: true });
+        }
+        window.__v2CostView = null;
+      }
+    }
+  });
+
+  function rowSettled(row) {
+    var snap = snapshots[row.id];
+    if (!snap) return;
+    delete snapshots[row.id];
+    if (snap.failed) {
+      snapshots[row.id] = snap;
+      activeId = row.id;
+      finishFailed(row, snap.message);
+      return;
+    }
+    // Saved: the swapped-in row carries the server's values and the new row_version.
+    setState(row, 'saved', 'Saved');
+    var live = snap.live || {};
+    var changed = false;
+    cellsOf(row).forEach(function (i) {
+      var l = live[i.name];
+      var sent = snap.vals[i.name];
+      if (l !== undefined && l !== sent) { i.value = l; changed = true; }   // typed while saving
+    });
+    if (snap.focusName && (!document.activeElement || document.activeElement === document.body)) {
+      var f = row.querySelector('input[name="' + snap.focusName + '"][data-cost-cell]');
+      if (f) { f.focus({ preventScroll: true }); if (snap.sel && f.setSelectionRange) { try { f.setSelectionRange(snap.sel[0], snap.sel[1]); } catch (_) {} } }
+    }
+    activeId = null;
+    syncTokens(authorityFor(row));
+    if (changed) { setState(row, 'dirty', 'Unsaved'); row.__explicit = false; }
+    pump();
+    idleCheck();
+  }
+
+  function authorityFor(row) {
+    var g = row.closest('[data-cost-grid]');
+    return g ? g.querySelector('[id^="v2-cost-authority-"]') : null;
+  }
+
+  function transportFailure(e) {
+    var elt = e.detail && e.detail.elt;
+    var row = rowOf(elt) || (elt && elt.matches && elt.matches(ROW) ? elt : null);
+    if (!row || row.id !== activeId) return;
+    finishFailed(row, 'connection problem — nothing was saved');
+  }
+  document.addEventListener('htmx:sendError', transportFailure);
+  document.addEventListener('htmx:responseError', transportFailure);
+  document.addEventListener('htmx:timeout', transportFailure);
+
+  // ── Structural actions and Run wait for pending edits ─────────────────────────────
+  document.addEventListener('htmx:confirm', function (e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || !elt.matches) return;
+    var structural = elt.closest && elt.closest('[data-cost-grid]') && !elt.matches(ROW) && elt.getAttribute('hx-post');
+    var isRun = elt.classList && elt.classList.contains('v2-run-form');
+    if (!structural && !isRun) return;
+    if (!gridBusy()) return;
+    e.preventDefault();
+    // Saving swaps rows / run controls, so re-locate the control when the grid is idle.
+    var rowId = elt.closest && elt.closest(ROW) ? elt.closest(ROW).id : null;
+    var testId = elt.getAttribute('data-testid');
+    var formEl = elt.tagName === 'FORM' && elt.id ? elt.id : null;
+    v2CostGridWhenIdle(function () {
+      if (isRun) {
+        var rf = document.querySelector('.v2-run-form');
+        if (rf) { rf.requestSubmit ? rf.requestSubmit() : htmx.trigger(rf, 'submit'); }
+        return;
+      }
+      var target = elt.isConnected ? elt : null;
+      if (!target && rowId && testId) {
+        var r = document.getElementById(rowId);
+        target = r && r.querySelector('[data-testid="' + testId + '"]');
+      }
+      if (!target && testId) target = document.querySelector('[data-testid="' + testId + '"]');
+      if (!target && formEl) target = document.getElementById(formEl);
+      if (!target) return;
+      if (target.tagName === 'FORM') target.requestSubmit(); else htmx.trigger(target, 'click');
+    });
+  });
+
+  window.addEventListener('beforeunload', function (e) {
+    if (gridBusy()) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  window.v2CostGrid = { busy: gridBusy, state: function () { return { active: activeId, queued: queue.slice() }; } };
+}());

@@ -28,6 +28,11 @@
 #}
 {% from "partials/field_editor.html" import render_field %}
 {% from "partials/_money_format.html" import grouped_keur %}
+{# Macro: shortest exact text for an editable number (no thousands separators, no trailing zeros) #}
+{% macro plain_num(v) -%}
+{%- set t = "%.4f"|format(v|float) -%}
+{%- if "." in t -%}{{ t.rstrip("0").rstrip(".") }}{%- else -%}{{ t }}{%- endif -%}
+{%- endmacro %}
 
 {# Macro: Calculated / read-only row (engine-computed or derived value) #}
 {% macro engine_row(label, value, badge="ENGINE", unit="kEUR") %}
@@ -102,68 +107,74 @@
 {%- endif -%}
 {% endmacro %}
 
-{# Macro: user-added custom row with edit/deactivate controls #}
-{% macro custom_row(line, project_code, workbook_version, content_hash, project_editable) %}
-<details class="v2-capex-custom-row" data-sub-line-id="{{ line.sub_line_id }}"
-     data-row-version="{{ line.row_version }}" data-testid="custom-row-{{ line.code }}"
-     data-fc-row>
-  <summary class="v2-capex-compact-edit-row">
-    <span class="v2-capex-custom-code" data-canonical-code="{{ line.code }}">{{ line.display_code or line.code }}</span>
-    <span class="v2-capex-custom-label-ro">{{ line.name }}</span>
-    <span class="v2-capex-custom-amount-ro v2-capex-amount-cell">{{ grouped_keur(line.amount_keur) }}</span>
-    <span class="v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }}</span>
-    <span class="v2-binding-badge {% if line.source == 'reference_seed' %}v2-capex-badge-reference{% elif line.source == 'user_override' %}v2-capex-badge-override{% else %}v2-capex-badge-custom{% endif %}">{% if line.source == 'reference_seed' %}REFERENCE{% elif line.source == 'user_override' %}OVERRIDE{% else %}CUSTOM{% endif %}</span>
-  </summary>
-  {% if project_editable %}
-  <form class="v2-field-form v2-capex-custom-form"
-        hx-post="/v2/capex/line/update"
-        hx-target="#v2-sheet-capex"
-        hx-swap="outerHTML">
-    <input type="hidden" name="project" value="{{ project_code }}">
-    <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
-    <input type="hidden" name="row_version" value="{{ line.row_version }}">
-    <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
-    <input type="hidden" name="content_hash" value="{{ content_hash }}">
-    <span class="v2-capex-custom-code" data-canonical-code="{{ line.code }}">{{ line.display_code or line.code }}</span>
-    <span class="v2-fc-cell-wrap"
-          data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.label"
-          data-fc-editable="true" data-fc-kind="text">
-      <input class="v2-field-input v2-capex-custom-label"
-             type="text" name="label" value="{{ line.name }}"
-             placeholder="Description" aria-label="Custom row description">
-    </span>
-    <span class="v2-fc-cell-wrap"
-          data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.amount"
-          data-fc-editable="true" data-fc-kind="amount">
-      <input class="v2-field-input v2-capex-custom-amount"
-             type="number" name="amount_keur"
-             value="{{ "%.0f"|format(line.amount_keur) }}"
-             step="1" aria-label="Amount kEUR">
-    </span>
-    <span class="v2-fc-cell-wrap"
-          data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.notes"
-          data-fc-editable="true" data-fc-kind="text">
-      <input class="v2-field-input v2-capex-custom-notes"
-             type="text" name="notes" value="{{ line.notes }}"
-             placeholder="Notes" aria-label="Notes">
-    </span>
-    <button type="submit" class="v2-field-save" aria-label="Save {{ line.display_code or line.code }}">Save</button>
-  </form>
-  <form class="v2-capex-deactivate-form"
-        hx-post="/v2/capex/line/deactivate"
-        hx-target="#v2-sheet-capex"
-        hx-swap="outerHTML">
-    <input type="hidden" name="project" value="{{ project_code }}">
-    <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
-    <input type="hidden" name="row_version" value="{{ line.row_version }}">
-    <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
-    <input type="hidden" name="content_hash" value="{{ content_hash }}">
-    <button type="submit" class="v2-capex-deactivate-btn"
-            aria-label="Deactivate {{ line.display_code or line.code }}"
+{# Macro: persisted CAPEX line as a compact, directly editable grid row.
+
+   Code | Description | Driver | Amount | Source | State | Actions
+
+   The row is ONE form (one request per committed edit).  The edit is posted to the
+   existing guarded command (composite hash + row_version CAS) and ONLY this row plus
+   the dependent totals are swapped (hx-select / hx-select-oob), so other rows, their
+   focus, scroll position and uncommitted input are never disturbed.  Structural
+   actions (duplicate / deactivate) change the group's membership and re-render the
+   sheet; the client restores open groups, scroll and focus. #}
+{% macro custom_row(line, project_code, workbook_version, content_hash, project_editable, oob_ids="") %}
+{%- set rid = "capex-row-" ~ line.sub_line_id -%}
+{%- set src = 'REFERENCE' if line.source == 'reference_seed' else ('OVERRIDE' if line.source == 'user_override' else 'CUSTOM') -%}
+{%- set src_cls = 'v2-capex-badge-reference' if line.source == 'reference_seed' else ('v2-capex-badge-override' if line.source == 'user_override' else 'v2-capex-badge-custom') -%}
+{%- set shown_code = line.display_code or line.code -%}
+{% if project_editable %}
+<form id="{{ rid }}" class="v2-cost-row v2-capex-custom-row v2-capex-custom-form"
+      data-cost-row="capex" data-sub-line-id="{{ line.sub_line_id }}"
+      data-row-version="{{ line.row_version }}" data-testid="custom-row-{{ line.code }}"
+      data-fc-row autocomplete="off"
+      hx-post="/v2/capex/line/update" hx-target="this" hx-swap="outerHTML"
+      hx-select="#{{ rid }}" hx-select-oob="{{ oob_ids }}">
+  <input type="hidden" name="project" value="{{ project_code }}">
+  <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
+  <input type="hidden" name="row_version" value="{{ line.row_version }}">
+  <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+  <input type="hidden" name="content_hash" value="{{ content_hash }}">
+  <input type="hidden" name="notes" value="{{ line.notes }}" aria-label="Notes">
+  <span class="v2-cost-cell v2-cost-code v2-capex-custom-code" data-canonical-code="{{ line.code }}">{{ shown_code }}</span>
+  <span class="v2-cost-cell v2-cost-desc">
+    <input class="v2-cost-input v2-capex-custom-label" type="text" name="label"
+           value="{{ line.name }}" data-cost-cell="label" data-original="{{ line.name }}"
+           placeholder="Description" aria-label="Description {{ shown_code }}">
+  </span>
+  <span class="v2-cost-cell v2-cost-driver v2-capex-subline-permw" title="Calculated: amount divided by project capacity">{{ "%.1f"|format(line.per_mw) }} <small>kEUR/MW</small></span>
+  <span class="v2-cost-cell v2-cost-amount">
+    <input class="v2-cost-input v2-cost-num v2-capex-custom-amount" type="text" inputmode="decimal"
+           name="amount_keur" value="{{ plain_num(line.amount_keur) }}"
+           data-cost-cell="amount" data-step="1" data-original="{{ plain_num(line.amount_keur) }}" data-exact="{{ line.amount_keur }}"
+           aria-label="Amount kEUR {{ shown_code }}">
+  </span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+  <span class="v2-cost-cell v2-cost-state" data-cost-state role="status" aria-live="polite"></span>
+  <span class="v2-cost-cell v2-cost-actions">
+    <button type="button" class="v2-cost-action v2-capex-duplicate-btn"
+            hx-post="/v2/capex/line/add" hx-include="closest form" hx-target="#v2-sheet-capex"
+            hx-swap="outerHTML" hx-select="#v2-sheet-capex" hx-select-oob="unset"
+            hx-vals='{{ {"parent_category_code": line.parent_code, "label": (line.name ~ " (copy)")} | tojson | forceescape }}'
+            title="Duplicate line" aria-label="Duplicate {{ shown_code }}"
+            data-testid="duplicate-{{ line.code }}">⧉</button>
+    <button type="button" class="v2-capex-deactivate-btn v2-cost-action"
+            hx-post="/v2/capex/line/deactivate" hx-include="closest form" hx-target="#v2-sheet-capex"
+            hx-swap="outerHTML" hx-select="#v2-sheet-capex" hx-select-oob="unset"
+            title="Deactivate line (excluded from totals; can be reactivated)"
+            aria-label="Deactivate {{ shown_code }}"
             data-testid="deactivate-{{ line.code }}">×</button>
-  </form>
-  {% endif %}
-</details>
+  </span>
+</form>
+{% else %}
+<div class="v2-cost-row v2-capex-custom-row v2-cost-row-readonly" data-sub-line-id="{{ line.sub_line_id }}"
+     data-testid="custom-row-{{ line.code }}" data-fc-row>
+  <span class="v2-cost-cell v2-cost-code v2-capex-custom-code" data-canonical-code="{{ line.code }}">{{ shown_code }}</span>
+  <span class="v2-cost-cell v2-cost-desc v2-capex-custom-label-ro">{{ line.name }}</span>
+  <span class="v2-cost-cell v2-cost-driver v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }} <small>kEUR/MW</small></span>
+  <span class="v2-cost-cell v2-cost-amount v2-capex-custom-amount-ro v2-capex-amount-cell">{{ grouped_keur(line.amount_keur) }}</span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+</div>
+{% endif %}
 {% endmacro %}
 
 {# Macro: Add Row form for eligible groups #}
@@ -188,8 +199,22 @@
 </form>
 {% endmacro %}
 
+{#- ids refreshed together with a saved row (all derived totals the row can move) -#}
+{%- set capex_oob = ["v2-capex-feedback", "v2-cost-authority-capex", "capex-totals-region", "capex-parent-summary", "capex-grand-total-row"] -%}
+{%- for g in capex_vm.groups -%}
+  {%- set _a = capex_oob.append("capex-hdr-" ~ (g.code | replace(".", "-"))) -%}
+  {%- set _b = capex_oob.append("capex-cattotal-" ~ (g.code | replace(".", "-"))) -%}
+  {%- set _c = capex_oob.append("capex-cont-" ~ (g.code | replace(".", "-"))) -%}
+{%- endfor -%}
+{%- set capex_oob_ids = capex_oob | join(",") -%}
+
 <div id="v2-sheet-capex" data-sheet="capex"
-     data-fc-grid="capex" data-fc-scroll-container>
+     data-fc-grid="capex" data-fc-scroll-container data-cost-grid="capex">
+
+  {# Authoritative tokens for the NEXT command: the client copies them into every
+     content_hash / workbook_version input after each successful cost save. #}
+  <span id="v2-cost-authority-capex" hidden data-content-hash="{{ content_hash }}"
+        data-workbook-version="{{ workbook_version }}"></span>
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
@@ -198,9 +223,11 @@
     </div>
   {% endif %}
 
+  <div id="v2-capex-feedback" data-testid="capex-feedback">
   {% if field_error %}
-    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+    <div class="v2-field-error-banner" role="alert" data-cost-error="true">{{ field_error }}</div>
   {% endif %}
+  </div>
 
   {% if capex_scenario_error %}
     <div class="v2-capex-scenario-error" role="alert" data-testid="capex-scenario-error">
@@ -211,7 +238,7 @@
 
   {# ── Summary totals bar ──────────────────────────────────────────── #}
   <div class="v2-sheet-section-heading"><span>CAPEX Summary</span><small>Reference-scaled totals and unit cost</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
-  <div class="v2-capex-totals-bar" data-testid="capex-totals-bar">
+  <div id="capex-totals-region" class="v2-capex-totals-bar" data-testid="capex-totals-bar">
     <div class="v2-capex-total-item">
       <span class="v2-capex-total-label">Hard CAPEX</span>
       <span class="v2-capex-total-value" data-testid="hard-capex-keur">
@@ -245,7 +272,7 @@
     </div>
   </div>
 
-  <section class="v2-parent-summary" aria-labelledby="capex-parent-summary-title" data-testid="capex-parent-summary">
+  <section id="capex-parent-summary" class="v2-parent-summary" aria-labelledby="capex-parent-summary-title" data-testid="capex-parent-summary">
     <div class="v2-sheet-section-heading"><span id="capex-parent-summary-title">CAPEX parent summary</span><small>Parent totals reconcile to the detailed decomposition below</small></div>
     <div class="v2-parent-summary-scroll"><table class="v2-parent-summary-table">
       <thead><tr><th>Code</th><th>Parent category</th><th class="v2-num">kEUR</th><th class="v2-num">kEUR/MW</th></tr></thead>
@@ -265,6 +292,7 @@
     <span class="v2-capex-col-permw">kEUR/MW</span>
     <span class="v2-capex-col-status">Status</span>
   </div>
+  <p class="v2-cost-grid-hint" data-testid="cost-grid-hint">Click an amount to edit. <kbd>Enter</kbd> saves and moves down, <kbd>Shift+Enter</kbd> up, <kbd>Esc</kbd> cancels, <kbd>Tab</kbd> moves across.</p>
 
   {# ── C.01–C.18 groups ────────────────────────────────────────────── #}
   {% for group in capex_vm.groups %}
@@ -274,7 +302,7 @@
     <details class="v2-capex-group{% if group.is_readonly %} v2-capex-group-engine{% endif %}{% if alias %} v2-capex-group-alias{% endif %}"
              data-group-code="{{ group.code }}">
 
-      <summary class="v2-capex-group-header">
+      <summary id="capex-hdr-{{ group.code | replace(".", "-") }}" class="v2-capex-group-header">
         <span class="v2-capex-col-code">{{ group.code }}</span>
         <span class="v2-capex-col-desc">{{ group.name }}</span>
         <span class="v2-capex-col-amount v2-capex-subtotal"
@@ -323,7 +351,7 @@
         {% elif group.is_contingency %}
           {% set cl = group.contingency %}
           {% if cl and cl.mode == "percentage" %}
-            <div class="v2-contingency-authority" data-testid="capex-contingency-authority"
+            <div id="capex-cont-{{ group.code | replace(".", "-") }}" class="v2-contingency-authority" data-testid="capex-contingency-authority"
                  data-basis-mode="{{ cl.basis_mode }}" data-status="{{ cl.status }}" data-source="{{ cl.source }}">
               <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Contingency %</span><span class="v2-field-value">{{ "%g"|format(cl.pct) }}%</span></div>
               <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Basis</span><span class="v2-field-value">{{ cl.basis_mode }}</span></div>
@@ -358,7 +386,7 @@
                CAPEX), so no category editor is offered: it would save without any
                effect. Categories whose lines are read-only reference context keep
                the editor: it is their only edit path. #}
-            <div class="v2-field-row v2-field-readonly" data-testid="capex-category-total-{{ group.code }}">
+            <div id="capex-cattotal-{{ group.code | replace(".", "-") }}" class="v2-field-row v2-field-readonly" data-testid="capex-category-total-{{ group.code }}">
               <span class="v2-field-label">{{ gf.label }} (category total)</span>
               <span class="v2-field-value">{{ grouped_keur(group.subtotal_keur) }} <small>kEUR</small></span>
               <span class="v2-field-hint">Sum of the line items below. Edit a line, or add a custom line, to change this total.</span>
@@ -387,7 +415,7 @@
           <div class="v2-capex-custom-rows-container" data-group="{{ group.code }}"
                data-testid="custom-rows-{{ group.code }}">
             {% for line in custom_lines %}
-              {{ custom_row(line, project_code, workbook_version, content_hash, project_editable) }}
+              {{ custom_row(line, project_code, workbook_version, content_hash, project_editable, capex_oob_ids) }}
             {% endfor %}
           </div>
         {% endif %}
@@ -408,7 +436,7 @@
   {% endfor %}
 
   {# ── Grand total row ─────────────────────────────────────────────── #}
-  <div class="v2-capex-grand-total-row" data-testid="grand-total-row">
+  <div id="capex-grand-total-row" class="v2-capex-grand-total-row" data-testid="grand-total-row">
     <span class="v2-capex-col-code"></span>
     <span class="v2-capex-col-desc v2-capex-total-label-cell">Total CAPEX</span>
     <span class="v2-capex-col-amount v2-capex-grand-total-amount"

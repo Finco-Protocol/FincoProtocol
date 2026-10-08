@@ -101,17 +101,21 @@ def _summary_total_field(ctx: dict) -> dict:
 # The competing-authority defect is real (pre-fix this failed)
 # ---------------------------------------------------------------------------
 
-def test_stale_anchor_diverges_from_live_total_after_scalar_override():
-    """A per-line override is engine-effective but never updates the persisted
-    anchor — proving the two displayed values genuinely drift apart."""
+def test_stale_anchor_diverges_from_live_total_after_scalar_override(monkeypatch):
+    """A live economic change never updates the persisted anchor - proving the two
+    displayed values genuinely drift apart.  The change used is a typed B.13
+    contingency (applied to the Run), because on an untouched Wind reference the
+    reference 6 % is NOT applied and the live total correctly equals the anchor."""
     snapshot, anchor, _pi = _wind_reference_snapshot()
     snapshot["opex_insurance_y1_keur"] = "999.0"  # B.06 override, engine-effective
 
+    from app import contingency_authority as _ca
+    monkeypatch.setattr(_ca, "resolve_pct", lambda meta, ov, kind: (6.0, "project") if kind == "opex" else (None, "reference_amount"))
     ctx = _build_ctx(snapshot)
     live_total = ctx["opex_vm"].y1_total_opex
     assert live_total != pytest.approx(anchor), (
         "test premise: live sheet total must diverge from the stale persisted "
-        "anchor after a per-line override — otherwise F06 has no defect"
+        "anchor after a live economic change - otherwise F06 has no defect"
     )
 
 
@@ -142,20 +146,18 @@ def test_summary_field_matches_kpi_strip_and_grand_total():
     assert ctx["opex_vm"].total_incl_contingency[0] == pytest.approx(ctx["opex_vm"].y1_total_opex)
 
 
-def test_anchor_deviates_from_authority_even_without_edits():
-    """The persisted anchor's seed convention (sum of item y1 amounts) misses
-    the percentage-derived contingency that both the engine and the display
-    VM compute — so the anchor was never a faithful 'Total OPEX Y1', even on
-    an untouched project. The fix therefore aligns the summary display to the
-    live VM authority, not to the anchor."""
+def test_anchor_equals_authority_when_reference_contingency_is_not_applied():
+    """On an untouched reference the persisted anchor (sum of item y1 amounts) IS the
+    canonical Y1 OPEX: the reference contingency (6 % Wind) is not part of the model's
+    inputs, so the sheet shows it separately as 'not applied' instead of adding it to
+    the total.  The summary display still follows the live VM authority."""
     snapshot, anchor, _pi = _wind_reference_snapshot()
     ctx = _build_ctx(snapshot)
     field = _summary_total_field(ctx)
-    assert ctx["opex_vm"].y1_total_opex != pytest.approx(anchor), (
-        "test premise: anchor convention (no contingency) must differ from the "
-        "VM/engine authority (incl. contingency) on an untouched reference"
-    )
-    assert field["value"] == pytest.approx(ctx["opex_vm"].y1_total_opex), (
+    vm = ctx["opex_vm"]
+    assert vm.y1_total_opex == pytest.approx(anchor)
+    assert vm.contingency_rate == 0.0 and vm.reference_contingency_pct == 6.0
+    assert field["value"] == pytest.approx(vm.y1_total_opex), (
         "summary 'Total OPEX Y1' must still display the live sheet authority"
     )
 
