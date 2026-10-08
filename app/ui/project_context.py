@@ -117,6 +117,10 @@ class ProjectContext:
     opex_y1_total_keur: float = 0.0
     opex_contingency_method: str = ""
     opex_contingency_pct: float = 0.0
+    # False when the effective ProjectInputs carry NO contingency item: the reference rate
+    # above is then an informational estimate that the Run does not apply (a typed B.13 %
+    # is the only way it enters a user project's economics).
+    opex_contingency_applied: bool = True
     total_capex_keur: float = 0.0
     epc_contract_keur: float = 0.0
     idc_keur: float = 0.0
@@ -1501,6 +1505,12 @@ def build_project_context_for_record(
         opex_items=opex_items,
         opex_y1_total_keur=opex_y1_total_keur,
         opex_detail_items=canonical_opex_detail_items,
+        opex_contingency_applied=(
+            True if effective_project_inputs is None else any(
+                float(getattr(i, "percentage_of_opex", 0.0) or 0.0) > 0
+                for i in effective_project_inputs.opex
+            )
+        ),
         capex_items=base.capex_items,
         capex_detail_items=canonical_capex_detail_items,
         total_capex_keur=total_capex_keur,

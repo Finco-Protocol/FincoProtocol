@@ -389,7 +389,7 @@ def test_save_marks_stale_then_run_makes_current_and_totals_follow(make, kind):
     s.wait_saved_value(rid, str(int(old) + 100))
     assert s.state() == "Stale"                               # economic edit -> Last Run is stale
     total_after = float(s.page.locator(total_sel).first.inner_text().replace(",", "").strip())
-    assert total_after > total_before + 99                    # the row edit moved the total
+    assert total_after - total_before == pytest.approx(100, abs=1.5)   # exactly the edit (whole-kEUR display); no hidden contingency
     s.open(kind)                                              # a full server render shows the SAME total
     assert float(s.page.locator(total_sel).first.inner_text().replace(",", "").strip()) == total_after
     s.page.click('[data-testid="v2-run-btn"]')
@@ -529,3 +529,109 @@ def test_editing_one_cell_does_not_round_another_stored_value(make):
     s.page.wait_for_function(
         f"document.querySelector('#{rid} input[name=label]').dataset.original === 'Renamed line'")
     assert s.db_amount(rid) == before
+
+
+# ───────── acceptance integrity: the row-form Deactivate button (was a separate form) ─────────
+
+def _record_line_posts(s):
+    posts = []
+
+    def on_request(r):
+        if r.method == "POST" and "/line/" in r.url:
+            posts.append((r.url.rsplit("/line/", 1)[1], dict(
+                pair.split("=", 1) for pair in (r.post_data or "").split("&") if "=" in pair)))
+
+    s.page.on("request", on_request)
+    return posts
+
+
+def _unquote(v):
+    from urllib.parse import unquote_plus
+    return unquote_plus(v)
+
+
+@pytest.mark.parametrize("kind,btn", [("capex", "button.v2-capex-deactivate-btn"),
+                                      ("opex", "button.v2-opex-deactivate-btn")])
+def test_deactivate_button_posts_deactivate_with_exact_guard_fields_and_reactivate_restores(make, kind, btn):
+    from app.persistence.db import get_cursor
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    uid = f"u-grid-deact-{kind}"
+    s = make(uid)
+    s.open(kind)
+    posts = _record_line_posts(s)
+    rid = s.rid(0)
+    sid = rid.split("-row-", 1)[1]
+    table = "capex_sub_lines" if kind == "capex" else "opex_sub_lines"
+    with get_cursor() as cur:
+        cur.execute(f"SELECT updated_at, amount_keur FROM {table} WHERE sub_line_id=?", (sid,))
+        row = cur.fetchone()
+    version, amount = row["updated_at"], row["amount_keur"]
+    comp = assemble_consistent_for_get(uid, s.rec.project_id, WORKBOOK.version).composite_hash
+    total_sel = '[data-testid="total-capex-keur"]' if kind == "capex" else '[data-testid="opex-y1-total"]'
+    before = float(s.page.locator(total_sel).first.inner_text().replace(",", ""))
+
+    s.rows().nth(0).locator(btn).click()
+    s.page.wait_for_selector(f'[data-testid="{kind}-reactivate-{sid}"]', state="attached", timeout=15000)
+
+    assert [p[0] for p in posts] == ["deactivate"]                    # the deactivate command, once; no update
+    fields = {k: _unquote(v) for k, v in posts[0][1].items()}
+    assert fields["project"] == s.rec.project_code
+    assert fields["sub_line_id"] == sid
+    assert fields["row_version"] == version                           # current row_version token
+    assert fields["content_hash"] == comp                             # current composite identity
+    assert fields["workbook_version"] == WORKBOOK.version
+    with get_cursor() as cur:
+        cur.execute(f"SELECT is_active, amount_keur FROM {table} WHERE sub_line_id=?", (sid,))
+        r = cur.fetchone()
+    assert r["is_active"] == 0 and r["amount_keur"] == amount         # soft state change, value untouched
+    after = float(s.page.locator(total_sel).first.inner_text().replace(",", ""))
+    assert after < before                                             # excluded from active totals
+    assert s.page.locator(f"#{rid}").count() == 0                     # the row left the active grid
+
+    s.page.evaluate(f"document.querySelector('[data-testid=\"{kind}-reactivate-{sid}\"]').closest('details').open = true")
+    s.page.click(f'[data-testid="{kind}-reactivate-{sid}"]')
+    s.page.wait_for_selector(f"#{rid}", state="attached", timeout=15000)
+    assert [p[0] for p in posts] == ["deactivate", "reactivate"]
+    with get_cursor() as cur:
+        cur.execute(f"SELECT is_active, amount_keur FROM {table} WHERE sub_line_id=?", (sid,))
+        r = cur.fetchone()
+    assert r["is_active"] == 1 and r["amount_keur"] == amount
+    assert float(s.page.locator(total_sel).first.inner_text().replace(",", "")) == pytest.approx(before)
+
+
+def test_deactivate_with_a_stale_identity_fails_closed_in_the_browser(make):
+    from app.persistence.db import get_cursor
+
+    s = make("u-grid-deact-stale")
+    s.open("capex")
+    posts = _record_line_posts(s)
+    rid0, rid1 = s.rid(0), s.rid(1)
+    # another actor changes the workbook (row 1) after this page was rendered
+    form = s.page.evaluate(f"() => Object.fromEntries([...new FormData(document.getElementById('{rid1}'))])")
+    form["amount_keur"] = "123"
+    assert s.page.request.post(f"{s.base}/v2/capex/line/update", form=form,
+                               headers={"HX-Request": "true"}).status == 200
+    s.rows().nth(0).locator("button.v2-capex-deactivate-btn").click()
+    s.page.wait_for_selector('#v2-capex-feedback [data-cost-error="true"]', state="attached", timeout=15000)
+    sid0 = rid0.split("-row-", 1)[1]
+    with get_cursor() as cur:
+        cur.execute("SELECT is_active FROM capex_sub_lines WHERE sub_line_id=?", (sid0,))
+        assert cur.fetchone()["is_active"] == 1                       # nothing was mutated
+    assert [p[0] for p in posts] == ["deactivate"]                    # and nothing was retried
+
+
+def test_uncommitted_edit_is_saved_before_a_deactivate_runs(make):
+    s = make("u-grid-deact-order")
+    s.open("capex")
+    posts = _record_line_posts(s)
+    rid1 = s.rid(1)
+    s.amount(1).click()
+    s.page.keyboard.type("6543")                                      # typed, never committed
+    s.rows().nth(0).locator("button.v2-capex-deactivate-btn").click()
+    s.page.wait_for_function("document.querySelectorAll('#v2-sheet-capex form[data-cost-row]').length > 0")
+    s.wait_idle(timeout=30000)
+    s.page.wait_for_timeout(1500)
+    assert [p[0] for p in posts][:2] == ["update", "deactivate"]       # saved first, then the structural action
+    assert s.db_amount(rid1) == 6543

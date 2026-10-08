@@ -184,6 +184,10 @@ class OpexViewModel:
     # B.13 typed percentage authority lineage (period-by-period basis)
     contingency: "object | None" = None
 
+    # Reference contingency rate (%) that is shown for information only: the effective model
+    # inputs carry no contingency, so it is NOT part of any total or of the Run.
+    reference_contingency_pct: float = 0.0
+
 
 # ---------------------------------------------------------------------------
 # Mutation contract
@@ -348,8 +352,14 @@ def build_opex_view_model(
     # Typed B.13 authority (user projects only): overrides the reference rate.
     # Reference models never carry one, so their rate is untouched.
     _authority_pct = contingency_pct if is_user_project else None
+    reference_contingency_pct = 0.0
     if _authority_pct is not None:
         contingency_rate = float(_authority_pct)
+    elif is_user_project and not getattr(project_ctx, "opex_contingency_applied", True):
+        # Reference estimate only (the Run's inputs have no contingency item): keep it out of
+        # every total and show it separately, labelled as not applied.
+        reference_contingency_pct = contingency_rate
+        contingency_rate = 0.0
     project_code: str = project_ctx.code
 
     # Index active custom sub-lines by parent group code for O(1) injection.
@@ -523,4 +533,5 @@ def build_opex_view_model(
         opex_per_mwh_y1=opex_per_mwh_y1,
         is_user_project=is_user_project,
         contingency=contingency_lineage,
+        reference_contingency_pct=reference_contingency_pct,
     )

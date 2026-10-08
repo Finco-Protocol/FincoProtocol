@@ -285,6 +285,13 @@
       </span>
     </div>
   </div>
+  {% if opex_vm.reference_contingency_pct %}
+  <p class="v2-contingency-reference-note" data-testid="opex-reference-contingency-note">
+    Reference contingency estimate: {{ "%g"|format(opex_vm.reference_contingency_pct) }}% —
+    <strong>not applied</strong>: it is excluded from the totals above and from the model's economics.
+    Set a B.13 contingency % to include contingency in the Run.
+  </p>
+  {% endif %}
   {% if opex_scenario_error %}<div class="v2-scenario-error" role="alert" data-testid="opex-scenario-error">⚠ Scenario OPEX unavailable — {{ opex_scenario_error }}</div>{% endif %}
   {% set ocl = opex_vm.contingency %}
   {% if ocl and ocl.mode == "percentage" %}
@@ -481,7 +488,7 @@
   {# ── Grand total row ──────────────────────────────────────────── #}
   <div id="opex-grand-total-row" class="v2-opex-grand-total-row" data-testid="opex-grand-total-row">
     <span class="v2-opex-col-code"></span>
-    <span class="v2-opex-col-desc v2-opex-total-label-cell">Total OPEX (incl. contingency)</span>
+    <span class="v2-opex-col-desc v2-opex-total-label-cell">Total OPEX{% if opex_vm.contingency_rate %} (incl. contingency){% endif %}</span>
     <span class="v2-opex-col-y1 v2-opex-grand-total-amount v2-opex-amount-cell"
           data-testid="opex-grand-total-y1">
       {{ grouped_keur(opex_vm.y1_total_opex) }}

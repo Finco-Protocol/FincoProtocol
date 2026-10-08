@@ -32,18 +32,11 @@ def _canonical_total(uid, rec, kind):  # noqa: F811  (OPEX shown INCLUDING the e
 
 
 def _sheet_total(client, code, kind):
-    """Sheet total.  For OPEX the reference B.13 contingency row (a presentation-layer
-    estimate at the reference rate that the Run's inputs do not carry for seeded Solar/Wind
-    projects - documented gap, see the report) is shown separately and excluded here."""
+    """The total exactly as the sheet shows it (no adjustment)."""
     pg = client.get(f"/v2/workbook?project={code}").text
     pat = (r'data-testid="total-capex-keur">\s*([\d,\.]+)' if kind == "capex"
            else r'data-testid="opex-y1-total">\s*([\d,\.]+)')
-    total = float(re.search(pat, pg).group(1).replace(",", ""))
-    if kind == "opex":
-        m = re.search(r'data-testid="opex-contingency-rate">\s*([\d\.]+)%', pg)
-        if m:
-            total = total / (1.0 + float(m.group(1)) / 100.0)
-    return total
+    return float(re.search(pat, pg).group(1).replace(",", ""))
 
 
 @pytest.mark.parametrize("capacity", [20.0, 40.0])

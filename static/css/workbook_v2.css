@@ -3319,3 +3319,4 @@ form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #
   .v2-opex-col-header > .v2-opex-col-status, .v2-opex-group-header > .v2-opex-col-status,
   .v2-opex-grand-total-row > .v2-opex-col-status { grid-column: 6; min-width: 0; text-align: left; }
 }
+.v2-contingency-reference-note { margin: .25rem .5rem; font-size: .75rem; color: var(--v2-text-subtle, #6b7280); }

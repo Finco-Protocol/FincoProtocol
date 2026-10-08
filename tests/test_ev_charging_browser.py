@@ -179,8 +179,7 @@ def test_ev_browser_full_journey(ev_app, browser):
         assert "Total CAPEX" in page.locator("#panel-capex").inner_text()
         # Persisted lines are directly editable grid rows: the description is an input value.
         capex = page.locator("#panel-capex")
-        assert (capex.locator("text=DC Fast Chargers").count()
-                + capex.locator('input[name="label"][value="DC Fast Chargers"]').count()) >= 1
+        assert capex.locator('input[name="label"][value="DC Fast Chargers"]').count() >= 1
 
         page.locator("#tab-opex").click()
         opex_panel = page.locator("#panel-opex")

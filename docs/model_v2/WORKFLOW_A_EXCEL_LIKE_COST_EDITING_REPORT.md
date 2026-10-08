@@ -124,3 +124,58 @@ scenario-switch token synchronisation is untouched and a browser test covers the
 * Pre-existing in this environment and unrelated (also fail on clean `main` `f763ba2` under the same conditions):
   `test_ui_protocol_shell` NVDA / API-placeholder tests (3), `test_DC_HTMX_WORKING_COPY_WORKFLOW`,
   `test_golden_flow_b_reference_to_working_copy_causal_run_reopen`.
+
+## 9. Correction A (browser CI, B.13 truthfulness, acceptance-test integrity)
+
+### 9.1 Protocol UI Browser Acceptance (run 37838621968)
+
+`test_reference_driven_correction_a_23_capture_journey` clicked `seed_row.locator("summary")` on the OPEX
+row; the grid row is a form with no `details/summary`. Journey rewritten for the new product behaviour (not skipped,
+not weakened, no obsolete markup restored): the persisted row is located by `form[data-cost-row="opex"]` /
+`data-testid="opex-custom-row-<id>"`; description and amount are edited through the inline inputs
+(Ctrl+A, type, Tab, type — nothing is sent while moving inside the row), committed with Enter, with exactly one guarded
+`POST /v2/opex/line/update` (200); the swapped row shows the new description, `data-original` and `saved` state; the
+database row has the new label/amount, `source = user_override` and **identical `replay_metadata`** (immutable
+reference-seed identity); capacity is changed; OPEX is reopened and label, amount and seed identity are re-asserted.
+All 23 screenshots of the inventory are still produced; the Radar/Model capture remainder is unchanged.
+
+### 9.2 B.13 authority trace (Solar / Wind)
+
+* Factory Solar and Wind reference `ProjectInputs.opex` have **no** contingency item; seeded user projects
+  (aggregate `User provided year 1 operating expense` replaced by seeded lines) have none either.
+* Engine evidence (`test_engine_applies_no_contingency_to_the_reference_unless_it_is_typed`): the factory reference run equals a
+  run on its own items; adding an explicit 6 % raises total OPEX by exactly 6 %.
+* Therefore the 2 % (Solar) / 6 % (Wind) figures are **a reference-only informational estimate** (presentation constants in
+  `app/ui/project_context.py`), not an effective cost. The only way contingency enters a user project's Run is a
+  **typed B.13 %** (project value or scenario override) via `apply_opex_contingency`.
+* Application-layer correction (no engine, no formula, no input change): when the effective inputs carry no contingency
+  item and no typed B.13 % exists, the sheet's contingency rate is 0, totals equal the canonical inputs, the label reads
+  "Total OPEX" (not "incl. contingency"), and the reference estimate is shown separately:
+  *"Reference contingency estimate: X% — not applied: it is excluded from the totals above and from the model's economics."*
+  With a typed B.13 % (or a scenario override) it is applied, labelled "(incl. contingency)", and equals the Run's inputs.
+  Data Center and EV (reference rate 0) are unchanged. Factory/reference-project pages keep their legacy presentation (not
+  user projects; not Run).
+* The earlier reconciliation test no longer divides the contingency out: sheet total == canonical total, unadjusted.
+* `tests/test_cost_opex_b13_authority_v1.py` (12): no override (Solar, Wind: sheet = Run inputs, note shown, no hidden
+  contingency item), explicit override (applied, no note, Run + export parity), Data Center / EV unchanged, deactivate /
+  reactivate before and after a Run, scenario B.13 override (sheet = Run, export parity), engine fact. Two of them and the
+  Solar/Wind reconciliation cases fail on the previous presentation code.
+* `tests/test_f06_opex_display_authority.py` encoded the same wrong premise ("the engine computes the contingency", the
+  anchor "misses" it): two premise tests were corrected to the verified facts (anchor == canonical total on an untouched
+  reference; divergence demonstrated with a *typed* contingency); the four assertions on the summary field following the live
+  VM authority are unchanged.
+
+### 9.3 Acceptance-test integrity
+
+Changed assertions versus `main` (all other lines of those files untouched): `test_staging_acceptance_a.py` — the form is
+located by class token and the Deactivate fields are read from the row form that the button includes
+(`hx-include="closest form"`), then posted unchanged to `/v2/capex/line/deactivate`; `test_correction_a_required_gates.py` —
+`.0f` rounding → exact stored value (stronger); `test_data_center_browser_acceptance.py`, `test_ev_charging_browser.py` —
+description asserted as the **input value** (stronger than the previous "text anywhere"). New real-Chromium evidence
+(`test_cost_grid_editing_browser_v1.py`): the Deactivate button POSTs `…/line/deactivate` (never `update`) exactly once with
+the correct `project`, `sub_line_id`, current `row_version`, current composite `content_hash` and `workbook_version`; the row
+becomes inactive (soft state, amount untouched) and leaves the active totals; Reactivate restores row and total; a stale
+identity fails closed with the error banner, no mutation and no retry; an uncommitted edit is saved before a Deactivate runs;
+untouched decimals are not rounded when another field is edited. Cross-owner and protected-reference rejection plus stale CAS on
+the command endpoints remain covered by `test_cost_workspace_consistency_v1.py`; the reference project renders no inputs
+(`test_reference_project_is_read_only_no_inputs`).
