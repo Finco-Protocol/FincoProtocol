@@ -3107,3 +3107,97 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-smart-panel-breakdown li span:last-child { font-weight: 600; font-variant-numeric: tabular-nums; }
 /* A row being re-edited shows its pending state, not the previous failure text. */
 #v2-workbook-shell .v2-field-row.v2-field-pending .v2-field-error-msg { display: none; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Staging Acceptance A — shared legibility contract
+   Every text colour is paired with the surface it renders on:
+     * token-driven surfaces (--v2-sched-*, --v2-sticky-*, dark field rows)
+       take their text from --v2-text / --v2-text-muted, so they flip together;
+     * fixed light surfaces keep light-surface text, with muted greys raised
+       from #9ca3af / #d1d5db (<3:1) to --v2-text-subtle (>=4.5:1 on white).
+   No palette redesign: only text colour is bound to its surface.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --v2-text-subtle: #6b7280;   /* muted text on fixed-light surfaces */
+  --v2-toolbar-text-muted: #94a3b8;   /* muted text on the dark toolbar */
+  --v2-toolbar-link: #93c5fd;
+}
+
+/* 1. Token-driven tables: headers, sticky row labels, numeric cells. */
+.v2-schedule-table,
+.v2-schedule-table th,
+.v2-schedule-table td,
+.v2-statement-table,
+.v2-statement-corner,
+.v2-statement-period-header,
+.v2-statement-row-label,
+.v2-statement-num,
+.v2-fs-sticky-header,
+.v2-fs-sticky-cell,
+.v2-schedule-table .v2-num { color: var(--v2-text); }
+
+/* 2. Field rows whose background is dark in the dark scheme. */
+@media (prefers-color-scheme: dark) {
+  .v2-field-readonly .v2-field-label,
+  .v2-field-editable .v2-field-label { color: #d1d5db; }
+  .v2-field-readonly .v2-field-value,
+  .v2-field-editable .v2-field-value { color: #e5e7eb; }
+}
+:root[data-theme="dark"] .v2-field-readonly .v2-field-label,
+:root[data-theme="dark"] .v2-field-editable .v2-field-label { color: #d1d5db; }
+:root[data-theme="dark"] .v2-field-readonly .v2-field-value,
+:root[data-theme="dark"] .v2-field-editable .v2-field-value { color: #e5e7eb; }
+/* an explicit light theme wins back over the OS dark preference */
+:root[data-theme="light"] .v2-field-readonly .v2-field-label,
+:root[data-theme="light"] .v2-field-editable .v2-field-label { color: #374151; }
+:root[data-theme="light"] .v2-field-readonly .v2-field-value,
+:root[data-theme="light"] .v2-field-editable .v2-field-value { color: #111; }
+
+/* 3. Muted text on fixed-light surfaces. */
+.v2-unit,
+.v2-future-tag,
+.v2-field-empty,
+.v2-kpi-value--na,
+.v2-inputs-placeholder-row .v2-field-label,
+.v2-capex-col-permw, .v2-capex-col-code, .v2-capex-col-amount.v2-capex-subtotal,
+.v2-capex-total-permw, .v2-capex-shared-note,
+.v2-capex-subline-code, .v2-capex-subline-permw, .v2-capex-subline-notes,
+.v2-opex-col-code, .v2-opex-col-desc, .v2-opex-col-y1, .v2-opex-col-escl,
+.v2-opex-col-status, .v2-opex-line-code, .v2-opex-line-escl, .v2-opex-line-notes,
+.v2-smart-panel-row-detail, .v2-smart-panel-empty,
+.v2-ws-nav-item--future, .v2-tab-group-label,
+.v2-overview-footer-label, .v2-scenario-ts, .v2-scenario-state--notrun,
+.v2-runtime-label.not-run { color: var(--v2-text-subtle); }
+.v2-fs-inner-tab { color: var(--v2-text-subtle); }
+.v2-fs-inner-tab[aria-selected="true"] { color: var(--v2-text); }
+
+/* 4. Dark toolbar surface. */
+.v2-toolbar-sep { color: var(--v2-toolbar-text-muted); }
+.v2-toolbar-lastrun { color: var(--v2-toolbar-text-muted); }
+.v2-toolbar .last-run-indicator__cert-link,
+.last-run-indicator__cert-link { color: var(--v2-toolbar-link); }
+
+/* 5. The "Editable" CAPEX badge had white text and no surface. */
+.v2-capex-badge-edit { background: #047857; }
+
+/* 6. Token-driven table bodies carry their own surface (the page behind them
+   stays as it is), so token text never lands on a different surface. */
+.v2-schedule-table tbody td,
+.v2-statement-num { background: var(--v2-sched-cell-bg); }
+.v2-schedule-table tbody tr:nth-child(even) td,
+.v2-statement-table tbody tr:nth-child(even) .v2-statement-num { background: var(--v2-sched-row-alt); }
+
+/* 7. Column-header strips and group labels (carried colour is inherited by
+   every column, so bind it on the strip itself). */
+.v2-capex-col-header, .v2-opex-col-header,
+.v2-tabs--secondary .v2-tab-group-label,
+.v2-opex-group-contingency > summary .v2-opex-subtotal,
+.v2-opex-subtotal.v2-opex-amount-cell,
+.v2-capex-subtotal { color: var(--v2-text-subtle); }
+.v2-capex-group-engine > summary .v2-capex-subtotal,
+.v2-capex-group > summary .v2-capex-subtotal { color: var(--v2-text-subtle); }
+/* FS period selector sits on the token sticky surface. */
+.v2-fs-period-selector { color: var(--v2-text); }
+.v2-fs-period-note { color: var(--v2-text-muted); }
+.v2-capex-badge-calc { background: #4b5563; }
+.v2-capex-badge-inherited { background: #6b7280; }

@@ -15,12 +15,27 @@
     <a href="/library" class="fo-library-cta-new" data-testid="ds-back-to-library">← Model Home</a>
   </div>
 
-  <form method="get" action="/compare-projects" class="fo-library-filter-bar"
+  <form method="get" action="/v2/compare-projects" class="fo-library-filter-bar"
         data-testid="ds-select-form">
+    {% if picker_projects %}
+    <div class="fo-library-filter-group" data-testid="ds-picker">
+      <label class="fo-library-filter-label">CHOOSE PROJECTS (up to {{ max_projects }})</label>
+      <div class="fo-ds-picker-list" style="display:flex;flex-wrap:wrap;gap:6px 14px;max-height:9.5rem;overflow:auto;">
+        {% for p in picker_projects %}
+        <label class="fo-ds-picker-item" style="display:flex;gap:6px;align-items:center;font-size:var(--fo-text-md,.875rem);">
+          <input type="checkbox" name="pick" value="{{ p.code }}"
+                 {% if p.code in selected %}checked{% endif %}
+                 data-testid="ds-pick-{{ p.code }}" />
+          <span>{{ p.name }}{% if p.technology %} <span class="fo-ds-picker-tech" style="opacity:.7;">· {{ p.technology }}</span>{% endif %}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
     <div class="fo-library-filter-group">
-      <label class="fo-library-filter-label">PROJECTS (comma-separated codes, max {{ max_projects }})</label>
-      <input type="text" name="projects" value="{{ projects|join(',') if projects else '' }}"
-             placeholder="e.g. solar-ref-reference, wind-ref-reference"
+      <label class="fo-library-filter-label">OR ENTER PROJECT CODES (comma-separated)</label>
+      <input type="text" name="projects" value=""
+             placeholder="Project codes from Model Home, e.g. my-project-code"
              class="fo-library-input" data-testid="ds-projects-input" />
     </div>
     <div class="fo-library-filter-group" style="flex:0 0 auto;min-width:auto;">
@@ -47,6 +62,13 @@
     {% endif %}
     <button type="submit" style="padding:6px 14px;border-radius:var(--fo-r-sm,5px);border:1px solid var(--fo-line,#d1d5db);background:var(--fo-surface,#fff);font-size:var(--fo-text-md,.875rem);cursor:pointer;align-self:flex-end;">Compare</button>
   </form>
+
+  {% if unresolved_tokens %}
+  <p class="fo-library-empty fo-library-empty--compact" data-testid="ds-unresolved">
+    Not found or not accessible: {{ unresolved_tokens|join(', ') }}. Only
+    projects you can open can be compared.
+  </p>
+  {% endif %}
 
   {% if rows %}
   <div class="fo-library-table-wrapper" data-testid="ds-cross-table">
@@ -111,8 +133,8 @@
   </div>
   {% else %}
   <div class="fo-library-empty fo-library-empty--compact" data-testid="ds-no-selection">
-    Select up to {{ max_projects }} projects above (comma-separated codes from
-    Model Home) and press Compare.
+    Choose up to {{ max_projects }} projects above and press Compare.
+    Projects without a canonical Run are shown as unavailable.
   </div>
   {% endif %}
 </div>
