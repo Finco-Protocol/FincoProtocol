@@ -9,6 +9,18 @@ import re
 import pytest
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _staging_acceptance_executor_cleanup():
+    """These tests run real canonical models through the global ModelExecutor
+    (ProcessPoolExecutor). Close it with the existing test reset authority
+    after this module (never during a test: pytest runs tests sequentially) so
+    no worker pool is left alive at pytest interpreter exit, which would keep
+    the process - and the CI step - from terminating."""
+    yield
+    from app.runtime import model_execution as me
+    me.reset_model_executor_for_tests(None)
+
+
 @pytest.fixture
 def seeded_db(tmp_path, monkeypatch):
     from app.persistence import db
