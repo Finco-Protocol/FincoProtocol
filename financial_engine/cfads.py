@@ -37,6 +37,20 @@ class PeriodCfadsResult:
     financing_income_keur: float = 0.0
 
 
+def calculate_canonical_cfads_value(
+    ebitda_keur: float,
+    financing_income_keur: float,
+    cash_tax_keur: float,
+) -> float:
+    """Canonical scalar CFADS primitive.
+
+    This is the single arithmetic authority used by both the full typed
+    assembler and solver-only numeric consumers.  Keep the operation order
+    exactly as written for IEEE/signed-zero parity.
+    """
+    return ebitda_keur + financing_income_keur - cash_tax_keur
+
+
 def calculate_canonical_cfads(
     periods: tuple,                      # tuple[OperatingPeriodResult]
     period_results: tuple[PeriodCashTaxResult, ...],
@@ -88,6 +102,8 @@ def calculate_canonical_cfads(
             ebitda_keur=ebitda,
             cash_tax_keur=cash_tax,
             financing_income_keur=fin_income,
-            cfads_keur=ebitda + fin_income - cash_tax,
+            cfads_keur=calculate_canonical_cfads_value(
+                ebitda, fin_income, cash_tax,
+            ),
         ))
     return tuple(results)

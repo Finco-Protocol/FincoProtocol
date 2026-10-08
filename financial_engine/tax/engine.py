@@ -38,10 +38,12 @@ TAX_YEAR_LAST_PERIOD the full annual CIT lands in a single payment period.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from datetime import timedelta
+import struct
 from typing import NamedTuple
 
-from financial_engine.cfads import calculate_canonical_cfads
+from financial_engine.cfads import calculate_canonical_cfads, calculate_canonical_cfads_value
 from financial_engine.run_scope import current_run_scope as _current_run_scope
 from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
 from financial_engine.policies.tax import (
@@ -605,60 +607,98 @@ def _tax_plan_for(periods: tuple) -> _TaxPlan:
     return plan
 
 
-def calculate_cfads_and_cash_tax(
-    periods: tuple,                 # tuple[OperatingPeriodResult]
+def _prepare_numeric_tax_vectors(
+    plan: _TaxPlan,
     tax_input: TaxCalculationInput,
-) -> tuple[dict[int, float], dict[int, float]]:
-    """Per-period ``(cfads_keur, cash_tax_keur)`` maps, numerically identical to
-    ``calculate_tax`` followed by ``calculate_canonical_cfads``.
+    policy: TaxPolicy,
+) -> tuple[
+    tuple[float, ...],
+    tuple[float, ...],
+    tuple[float, ...],
+    tuple[float, ...],
+]:
+    """Translate canonical typed tax inputs into positional numeric vectors.
 
-    The senior-debt solver only consumes these two vectors, yet the full
-    ``calculate_tax`` builds thousands of frozen result objects (fragments, annual
-    and per-period allocation records) it then discards. This performs the same
-    arithmetic in the same order — period splitting, annual aggregation, ATAD annual
-    capacity, FIFO loss ledger, cash-tax timing — without constructing them, so every
-    float is bit-identical. Quantities that depend only on the period axis are taken
-    from a ``_TaxPlan`` built once per run. Anything outside the plain calendar-year
-    basis (MODEL_YEAR_PAIRING, duplicate period indices, no policy, no periods, a
-    malformed axis) is delegated to the full path, so unusual or malformed inputs fail
-    exactly as before.
+    This is the only typed-to-numeric bridge used by the lean tax evaluator.
+    Solver-specific consumers may precompute the static components, but the
+    fiscal arithmetic itself stays in _evaluate_numeric_tax_vectors.
     """
-    policy: TaxPolicy = tax_input.policy  # type: ignore[assignment]
-    if (
-        policy is None
-        or policy.tax_basis_periodisation == TaxBasisPeriodisation.MODEL_YEAR_PAIRING
-    ):
-        return _cfads_and_cash_tax_via_full_tax(periods, tax_input)
-    plan = _tax_plan_for(periods)
-    if plan.fallback:
-        return _cfads_and_cash_tax_via_full_tax(periods, tax_input)
-
     interest_map = _build_interest_map(tax_input.period_interest)
     adj_map = _build_adj_map(tax_input.period_adjustments)
     financing_income_map = _build_financing_income_map(tax_input)
 
-    # ── Steps 1-2: distribute the period amounts over calendar years ─────────────
-    n_years = len(plan.year_keys)
-    y_interest_lists: list[list[float]] = [[] for _ in range(n_years)]
-    y_reint_lists: list[list[float]] = [[] for _ in range(n_years)]
-    y_shl_nd_lists: list[list[float]] = [[] for _ in range(n_years)]
-    y_fin_lists: list[list[float]] = [[] for _ in range(n_years)]
-    for idx, kind, slots in plan.rows:
+    gross_interest: list[float] = []
+    shl_non_deductible: list[float] = []
+    reintegration: list[float] = []
+    financing_income: list[float] = []
+
+    for idx, _kind, _slots in plan.rows:
         pi_obj = interest_map.get(idx)
         if pi_obj:
-            shl_tax_eligible, shl_non_deductible = _resolve_shl_tax_eligible_interest(
-                pi_obj, policy
+            shl_tax_eligible, shl_non_deductible_value = (
+                _resolve_shl_tax_eligible_interest(pi_obj, policy)
             )
-            gross_int = (
+            gross_interest_value = (
                 pi_obj.senior_interest_keur
                 + pi_obj.other_interest_keur
                 + shl_tax_eligible
             )
         else:
-            gross_int = 0.0
-            shl_non_deductible = 0.0
-        reint = adj_map.get(idx, 0.0)
-        fin_income = financing_income_map.get(idx, 0.0)
+            gross_interest_value = 0.0
+            shl_non_deductible_value = 0.0
+
+        gross_interest.append(gross_interest_value)
+        shl_non_deductible.append(shl_non_deductible_value)
+        reintegration.append(adj_map.get(idx, 0.0))
+        financing_income.append(financing_income_map.get(idx, 0.0))
+
+    return (
+        tuple(gross_interest),
+        tuple(shl_non_deductible),
+        tuple(reintegration),
+        tuple(financing_income),
+    )
+
+
+def _evaluate_numeric_tax_vectors_uncached(
+    periods: tuple,
+    *,
+    policy: TaxPolicy,
+    opening_loss_vintages: tuple,
+    plan: _TaxPlan,
+    gross_interest_by_row: tuple[float, ...],
+    shl_non_deductible_by_row: tuple[float, ...],
+    reintegration_by_row: tuple[float, ...],
+    financing_income_by_row: tuple[float, ...],
+) -> tuple[dict[int, float], dict[int, float]]:
+    """Shared deterministic numeric fiscal kernel.
+
+    Both the ordinary lean tax path and the solver positional fast path enter
+    here. Therefore ATAD, taxable income, loss utilisation and cash-tax timing
+    have one mathematical authority. The operation order mirrors the previous
+    lean implementation exactly.
+    """
+    n_rows = len(plan.rows)
+    if not (
+        len(gross_interest_by_row)
+        == len(shl_non_deductible_by_row)
+        == len(reintegration_by_row)
+        == len(financing_income_by_row)
+        == n_rows
+    ):
+        raise ValueError("NUMERIC_TAX_VECTOR_AXIS_MISMATCH")
+
+    n_years = len(plan.year_keys)
+    y_interest_lists: list[list[float]] = [[] for _ in range(n_years)]
+    y_reint_lists: list[list[float]] = [[] for _ in range(n_years)]
+    y_shl_nd_lists: list[list[float]] = [[] for _ in range(n_years)]
+    y_fin_lists: list[list[float]] = [[] for _ in range(n_years)]
+
+    for row_pos, (_idx, kind, slots) in enumerate(plan.rows):
+        gross_int = gross_interest_by_row[row_pos]
+        reint = reintegration_by_row[row_pos]
+        shl_non_deductible = shl_non_deductible_by_row[row_pos]
+        fin_income = financing_income_by_row[row_pos]
 
         if kind == _MULTI_FRAGMENT:
             acc_i = acc_r = acc_n = acc_f = 0.0
@@ -695,11 +735,11 @@ def calculate_cfads_and_cash_tax(
             y_shl_nd_lists[pos].append(shl_non_deductible)
             y_fin_lists[pos].append(fin_income)
 
-    # ── Step 3: ATAD annual capacity, taxable income, FIFO loss ledger, CIT ──────
     taxable_before_lcf: list[float] = []
     loss_gate = policy.loss_utilisation_gate == TaxLossUtilisationGate.EBT_POSITIVE
     loss_use_allowed_list: list[bool] = []
     atad_enabled = policy.atad_enabled
+
     for k in range(n_years):
         y_ebitda = plan.y_ebitda[k]
         y_dep = plan.y_dep[k]
@@ -741,7 +781,7 @@ def calculate_cfads_and_cash_tax(
     taxable_after_lcf = taxable_income_after_lcf_series(
         taxable_income_before_lcf=tuple(taxable_before_lcf),
         tax_year_indices=plan.year_keys,
-        opening_inputs=tax_input.opening_loss_vintages,
+        opening_inputs=opening_loss_vintages,
         loss_carryforward_years=policy.loss_carryforward_years,
         loss_use_allowed=tuple(loss_use_allowed_list) if loss_gate else None,
     )
@@ -749,7 +789,6 @@ def calculate_cfads_and_cash_tax(
         policy.corporate_rate * max(0.0, ti_after) for ti_after in taxable_after_lcf
     ]
 
-    # ── Step 4: allocate cash tax to periods ─────────────────────────────────────
     cash_tax_by_period: dict[int, float] = {idx: 0.0 for idx in plan.sorted_idx}
 
     if policy.cash_tax_timing in (
@@ -765,23 +804,320 @@ def calculate_cfads_and_cash_tax(
                     cash_tax_by_period[payment_period] + liability
                 )
     else:
-        # SAME_PERIOD: each period's share = sum(annual_CIT x normalised alloc_frac).
         contributions = plan.same_period_contributions
         for idx in plan.sorted_idx:
             for k, norm_frac in contributions[idx]:
                 cash_tax_by_period[idx] = cash_tax_by_period[idx] + liabilities[k] * norm_frac
 
-    # ── Step 5: canonical CFADS — the formula stays in cfads.py (single authority) ──
-    rows = tuple(
-        _CashTaxRow(
-            p.period_index,  # type: ignore[attr-defined]
-            cash_tax_by_period.get(p.period_index, 0.0),  # type: ignore[attr-defined]
-            financing_income_map.get(p.period_index, 0.0),  # type: ignore[attr-defined]
+    cfads_by_period: dict[int, float] = {}
+    cash_tax_out: dict[int, float] = {}
+    for row_pos, p in enumerate(periods):
+        idx = p.period_index
+        cash_tax = cash_tax_by_period.get(idx, 0.0)
+        financing_income = financing_income_by_row[row_pos]
+        cfads_by_period[idx] = calculate_canonical_cfads_value(
+            p.ebitda_keur,
+            financing_income,
+            cash_tax,
         )
-        for p in periods
+        cash_tax_out[idx] = cash_tax
+
+    return cfads_by_period, cash_tax_out
+
+
+def _pack_numeric_tax_vector(values: tuple[float, ...]) -> bytes:
+    if not values:
+        return b""
+    return struct.pack("!" + str(len(values)) + "d", *values)
+
+
+def _numeric_tax_static_token(
+    scope: dict,
+    periods: tuple,
+    policy: TaxPolicy,
+    opening_loss_vintages: tuple,
+    plan: _TaxPlan,
+) -> int:
+    """Run-local exact identity for immutable static tax dependencies.
+
+    The refs are retained for the life of the Run, so Python object-id reuse
+    cannot create a false cache hit. Equal-but-distinct contexts simply miss
+    the cache; they are never conflated.
+    """
+    table = scope.get("numeric_tax_static_context_v4")
+    if table is None:
+        table = scope["numeric_tax_static_context_v4"] = {}
+    raw = (id(periods), id(policy), id(opening_loss_vintages), id(plan))
+    entry = table.get(raw)
+    if entry is not None:
+        refs, token = entry
+        if (
+            refs[0] is periods
+            and refs[1] is policy
+            and refs[2] is opening_loss_vintages
+            and refs[3] is plan
+        ):
+            return token
+    token = len(table) + 1
+    table[raw] = ((periods, policy, opening_loss_vintages, plan), token)
+    return token
+
+
+def _evaluate_numeric_tax_vectors(
+    periods: tuple,
+    *,
+    policy: TaxPolicy,
+    opening_loss_vintages: tuple,
+    plan: _TaxPlan,
+    gross_interest_by_row: tuple[float, ...],
+    shl_non_deductible_by_row: tuple[float, ...],
+    reintegration_by_row: tuple[float, ...],
+    financing_income_by_row: tuple[float, ...],
+) -> tuple[dict[int, float], dict[int, float]]:
+    """Shared numeric fiscal kernel with bounded Run-scoped exact-input reuse.
+
+    The dynamic key is a compact IEEE byte representation of every numeric
+    vector read by the kernel. Static dependencies are immutable objects kept
+    alive by the Run scope. Results are copied on cache hits so callers cannot
+    mutate cached state. Exceptions are never cached.
+    """
+    scope = _current_run_scope()
+    if scope is None:
+        return _evaluate_numeric_tax_vectors_uncached(
+            periods,
+            policy=policy,
+            opening_loss_vintages=opening_loss_vintages,
+            plan=plan,
+            gross_interest_by_row=gross_interest_by_row,
+            shl_non_deductible_by_row=shl_non_deductible_by_row,
+            reintegration_by_row=reintegration_by_row,
+            financing_income_by_row=financing_income_by_row,
+        )
+
+    token = _numeric_tax_static_token(
+        scope, periods, policy, opening_loss_vintages, plan,
     )
-    cfads_results = calculate_canonical_cfads(periods, rows)  # type: ignore[arg-type]
-    return (
-        {cr.period_index: cr.cfads_keur for cr in cfads_results},
-        {row.period_index: row.cash_tax_keur for row in rows},
+    key = (
+        token,
+        _pack_numeric_tax_vector(gross_interest_by_row),
+        _pack_numeric_tax_vector(shl_non_deductible_by_row),
+        _pack_numeric_tax_vector(reintegration_by_row),
+        _pack_numeric_tax_vector(financing_income_by_row),
     )
+    cache = scope.get("numeric_tax_exact_v4")
+    if cache is None:
+        cache = scope["numeric_tax_exact_v4"] = OrderedDict()
+    hit = cache.get(key)
+    if hit is not None:
+        cache.move_to_end(key)
+        return dict(hit[0]), dict(hit[1])
+
+    result = _evaluate_numeric_tax_vectors_uncached(
+        periods,
+        policy=policy,
+        opening_loss_vintages=opening_loss_vintages,
+        plan=plan,
+        gross_interest_by_row=gross_interest_by_row,
+        shl_non_deductible_by_row=shl_non_deductible_by_row,
+        reintegration_by_row=reintegration_by_row,
+        financing_income_by_row=financing_income_by_row,
+    )
+    cache[key] = (tuple(result[0].items()), tuple(result[1].items()))
+    if len(cache) > 4096:
+        cache.popitem(last=False)
+    return result
+
+
+class SolverTaxPlan:
+    """Solve-scoped positional tax consumer for candidate senior interest."""
+
+    __slots__ = (
+        "periods",
+        "policy",
+        "opening_loss_vintages",
+        "tax_plan",
+        "template_keys",
+        "base_senior",
+        "other_interest",
+        "shl_tax_eligible",
+        "shl_non_deductible",
+        "reintegration",
+        "financing_income",
+        "row_pos_by_index",
+        "reset_candidate_components",
+    )
+
+    def __init__(
+        self,
+        periods: tuple,
+        tax_input: TaxCalculationInput,
+        *,
+        reset_candidate_components: bool = False,
+    ) -> None:
+        policy: TaxPolicy = tax_input.policy
+        if (
+            policy is None
+            or policy.tax_basis_periodisation == TaxBasisPeriodisation.MODEL_YEAR_PAIRING
+        ):
+            raise ValueError("SOLVER_TAX_PLAN_UNSUPPORTED_PERIODISATION")
+
+        plan = _tax_plan_for(periods)
+        if plan.fallback:
+            raise ValueError("SOLVER_TAX_PLAN_UNAVAILABLE")
+
+        interest_map = _build_interest_map(tax_input.period_interest)
+        adj_map = _build_adj_map(tax_input.period_adjustments)
+        financing_income_map = _build_financing_income_map(tax_input)
+
+        base_senior: list[float] = []
+        other_interest: list[float] = []
+        shl_tax_eligible: list[float] = []
+        shl_non_deductible: list[float] = []
+        reintegration: list[float] = []
+        financing_income: list[float] = []
+        row_pos_by_index: dict[int, int] = {}
+
+        for row_pos, (idx, _kind, _slots) in enumerate(plan.rows):
+            row_pos_by_index[idx] = row_pos
+            pi_obj = interest_map.get(idx)
+            if pi_obj:
+                shl_eligible, shl_non_deductible_value = (
+                    _resolve_shl_tax_eligible_interest(pi_obj, policy)
+                )
+                base_senior.append(pi_obj.senior_interest_keur)
+                other_interest.append(pi_obj.other_interest_keur)
+                shl_tax_eligible.append(shl_eligible)
+                shl_non_deductible.append(shl_non_deductible_value)
+            else:
+                base_senior.append(0.0)
+                other_interest.append(0.0)
+                shl_tax_eligible.append(0.0)
+                shl_non_deductible.append(0.0)
+
+            reintegration.append(adj_map.get(idx, 0.0))
+            financing_income.append(financing_income_map.get(idx, 0.0))
+
+        self.periods = periods
+        self.policy = policy
+        self.opening_loss_vintages = tax_input.opening_loss_vintages
+        self.tax_plan = plan
+        self.template_keys = frozenset(interest_map)
+        self.base_senior = tuple(base_senior)
+        self.other_interest = tuple(other_interest)
+        self.shl_tax_eligible = tuple(shl_tax_eligible)
+        self.shl_non_deductible = tuple(shl_non_deductible)
+        self.reintegration = tuple(reintegration)
+        self.financing_income = tuple(financing_income)
+        self.row_pos_by_index = row_pos_by_index
+        self.reset_candidate_components = reset_candidate_components
+
+    def supports(self, senior_interest_by_period: dict[int, float]) -> bool:
+        return self.template_keys.issuperset(senior_interest_by_period)
+
+    def evaluate(
+        self,
+        senior_interest_by_period: dict[int, float],
+    ) -> tuple[dict[int, float], dict[int, float]]:
+        gross_interest: list[float] = []
+        shl_non_deductible: list[float] = []
+        candidate = senior_interest_by_period
+        reset = self.reset_candidate_components
+
+        for row_pos, (idx, _kind, _slots) in enumerate(self.tax_plan.rows):
+            if idx in candidate:
+                senior = candidate[idx]
+                if reset:
+                    gross = senior + 0.0 + 0.0
+                    shl_nd = 0.0
+                else:
+                    gross = (
+                        senior
+                        + self.other_interest[row_pos]
+                        + self.shl_tax_eligible[row_pos]
+                    )
+                    shl_nd = self.shl_non_deductible[row_pos]
+            else:
+                gross = (
+                    self.base_senior[row_pos]
+                    + self.other_interest[row_pos]
+                    + self.shl_tax_eligible[row_pos]
+                )
+                shl_nd = self.shl_non_deductible[row_pos]
+
+            gross_interest.append(gross)
+            shl_non_deductible.append(shl_nd)
+
+        return _evaluate_numeric_tax_vectors(
+            self.periods,
+            policy=self.policy,
+            opening_loss_vintages=self.opening_loss_vintages,
+            plan=self.tax_plan,
+            gross_interest_by_row=tuple(gross_interest),
+            shl_non_deductible_by_row=tuple(shl_non_deductible),
+            reintegration_by_row=self.reintegration,
+            financing_income_by_row=self.financing_income,
+        )
+
+
+def build_solver_tax_plan(
+    periods: tuple,
+    tax_input: TaxCalculationInput,
+    *,
+    reset_candidate_components: bool = False,
+) -> SolverTaxPlan | None:
+    """Build a positional solver plan when the lean calendar-year path is valid."""
+    policy: TaxPolicy = tax_input.policy
+    if (
+        policy is None
+        or policy.tax_basis_periodisation == TaxBasisPeriodisation.MODEL_YEAR_PAIRING
+    ):
+        return None
+    plan = _tax_plan_for(periods)
+    if plan.fallback:
+        return None
+    return SolverTaxPlan(
+        periods,
+        tax_input,
+        reset_candidate_components=reset_candidate_components,
+    )
+
+
+def calculate_cfads_and_cash_tax(
+    periods: tuple,
+    tax_input: TaxCalculationInput,
+) -> tuple[dict[int, float], dict[int, float]]:
+    """Lean typed tax/CFADS path sharing one numeric fiscal kernel with solver use."""
+    policy: TaxPolicy = tax_input.policy
+    if (
+        policy is None
+        or policy.tax_basis_periodisation == TaxBasisPeriodisation.MODEL_YEAR_PAIRING
+    ):
+        return _cfads_and_cash_tax_via_full_tax(periods, tax_input)
+
+    plan = _tax_plan_for(periods)
+    if plan.fallback:
+        return _cfads_and_cash_tax_via_full_tax(periods, tax_input)
+
+    (
+        gross_interest,
+        shl_non_deductible,
+        reintegration,
+        financing_income,
+    ) = _prepare_numeric_tax_vectors(plan, tax_input, policy)
+
+    return _evaluate_numeric_tax_vectors(
+        periods,
+        policy=policy,
+        opening_loss_vintages=tax_input.opening_loss_vintages,
+        plan=plan,
+        gross_interest_by_row=gross_interest,
+        shl_non_deductible_by_row=shl_non_deductible,
+        reintegration_by_row=reintegration,
+        financing_income_by_row=financing_income,
+    )
+
+
+# Patch-safety sentinel: solver fast paths are enabled only while the public
+# lean evaluator remains the authentic module function. Tests/integrations
+# that monkeypatch it continue to observe the patched callable.
+_AUTHENTIC_CALCULATE_CFADS_AND_CASH_TAX = calculate_cfads_and_cash_tax
