@@ -36,8 +36,27 @@ refreshed by a Run — they hold no runtime-derived values.
 from __future__ import annotations
 
 from typing import Any, Optional
+from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
 
 _NOTSET = object()  # sentinel: distinguishes "caller passed rr=None" from "caller did not pass rr"
+
+
+def build_coherent_post_run_ui_state(**kwargs) -> str:
+    """Reconcile once after a concurrent edit/select; never rerun the engine."""
+    for attempt in range(2):
+        context = PostRunRequestContext.capture(
+            owner_id=kwargs["workspace_owner"],
+            project_id=kwargs["project_record"].project_id,
+            expected_workspace=kwargs["ws_fresh"], runtime_result=kwargs.get("rr"))
+        try:
+            return build_post_run_ui_state(
+                **{**kwargs, "ws_fresh": context.workspace,
+                   "project_record": context.project_record, "rr": context.runtime_result},
+                context=context)
+        except PostRunContextChanged:
+            if attempt:
+                raise
+    raise AssertionError("Unreachable post-run reconciliation state")
 
 
 def build_post_run_ui_state(
@@ -48,6 +67,7 @@ def build_post_run_ui_state(
     project: str,
     workspace_owner: str,
     rr: Any = None,
+    context: Optional[PostRunRequestContext] = None,
 ) -> str:
     """Build the complete post-run HTMX response for one completed Run.
 
@@ -73,20 +93,26 @@ def build_post_run_ui_state(
         _build_returns_ctx,
     )
 
-    pis_fresh = _build_pis_with_composite_identity(
-        ws_fresh, project_record, workspace_owner)
+    if context is not None:
+        context.require_scope(workspace_owner, project_record.project_id)
+        context.require_binding(ws_fresh, project_record, rr)
+        if project != context.project_record.project_code:
+            raise PermissionError("Post-run project-code binding mismatch")
+    pis_fresh = (context.inputs if context is not None else
+                 _build_pis_with_composite_identity(ws_fresh, project_record, workspace_owner))
     from app.workbook.runtime_authority import resolve_runtime_freshness
-    freshness = resolve_runtime_freshness(
-        ws_fresh, current_composite_hash=pis_fresh.content_hash)
+    freshness = (context.freshness if context is not None else resolve_runtime_freshness(
+        ws_fresh, current_composite_hash=pis_fresh.content_hash))
     # R6 Correction A/F: the router validates that a persisted RuntimeResult
     # exists and passes it in — exactly ONE RuntimeProjectionBundle is built
     # here for the whole successful Run response.
-    if rr is None:
+    if rr is None and context is None:
         rr = WorkbookService.get_runtime_result(ws_fresh)
-    projection = (
+    projection = context.projection if context is not None else (
         build_runtime_projection_bundle(rr, freshness.is_stale) if rr is not None else None
     )
-    ctx = _base_sheet_ctx(request, pis_fresh, ws_fresh, project_record, project)
+    ctx = _base_sheet_ctx(request, pis_fresh, ws_fresh, project_record, project,
+                          **({"freshness": freshness} if context is not None else {}))
 
     fragments: list[str] = []
 
@@ -123,7 +149,8 @@ def build_post_run_ui_state(
     fragments.append(_as_oob(ov_html, "v2-sheet-overview"))
 
     # E. Senior Debt runtime presentation.
-    ctx.update(_build_debt_ctx(pis_fresh, ws_fresh, projection=projection))
+    ctx.update(_build_debt_ctx(pis_fresh, ws_fresh, projection=projection,
+                              **({"context": context} if context is not None else {})))
     debt_html = _templates.get_template("partials/sheet_senior_debt.html").render(ctx)
     fragments.append(_as_oob(debt_html, "v2-sheet-senior-debt"))
 
@@ -147,7 +174,8 @@ def build_post_run_ui_state(
 
     # I. Scenario last-run statuses (persisted during run step 12b).
     scenarios_html = _scenario_list_html(
-        workspace_owner, project_record.project_id, project, ws_fresh)
+        workspace_owner, project_record.project_id, project, ws_fresh,
+        **({"context": context} if context is not None else {}))
     fragments.append(_as_oob(scenarios_html, "v2-sheet-scenarios"))
 
     # J. Workspace header (UX Foundation): CURRENT after a successful run.
@@ -162,13 +190,17 @@ def build_post_run_ui_state(
         ws_fresh, workspace_owner=workspace_owner,
         project_record=project_record, project=project,
         project_editable=not is_protected_reference(project_record),
-        freshness=freshness))
+        freshness=freshness, context=context))
 
     # L. Run History (Run Intelligence V1): the successful run just appended
     #    an immutable history entry atomically — refresh the listing without
     #    any engine execution.
     fragments.append(_build_run_history_oob(
-        ws_fresh, pis_fresh, project_record=project_record))
+        ws_fresh, pis_fresh, project_record=project_record,
+        **({"freshness": freshness} if context is not None else {})))
+
+    if context is not None:
+        context.validate_current()
 
     return "\n".join(fragments)
 
@@ -205,7 +237,7 @@ def _build_workspace_header_oob(pis, ws_fresh, *, project_record,
 
 def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
                            project_record, project: str,
-                           project_editable: bool, freshness) -> str:
+                           project_editable: bool, freshness, context=None) -> str:
     """OOB refresh for the Smart Panel (runtime-state note + availability).
 
     Rebuilds the panel from the SAME single workspace read; Trust Pack
@@ -214,19 +246,23 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
     from app.ui.trust_pack import build_trust_pack
     from app.v2.router import _templates
     from app.v2.smart_panel_projection import build_smart_panel_projection
+    if context is not None:
+        context.require_scope(workspace_owner, project_record.project_id)
+        context.require_binding(ws_fresh, project_record, context.runtime_result)
     try:
         pack = build_trust_pack(
             workspace_owner, project_record.project_id,
             project_code=project,
             any_run_committed=bool(
                 getattr(ws_fresh, "any_run_committed", False)),
+            **({"context": context} if context is not None else {}),
         )
     except Exception:
         pack = None
     from app.workbook.service import WorkbookService
     register_view = None
     try:
-        pis = WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
+        pis = context.draft_inputs if context is not None else WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
         template_source = str(getattr(pis, "template_source", "") or "")
         from app.v2.router import _build_assumption_register_view
         register_view = _build_assumption_register_view(pis)
@@ -246,7 +282,7 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
         '<aside id="model-smart-panel" hx-swap-oob="true"', 1)
 
 
-def _build_run_history_oob(ws_fresh, pis_fresh, *, project_record) -> str:
+def _build_run_history_oob(ws_fresh, pis_fresh, *, project_record, freshness=None) -> str:
     """OOB refresh for the Run History listing (#v2-sheet-run-history).
 
     Same single-read contract as every other post-run fragment: the listing
@@ -254,7 +290,8 @@ def _build_run_history_oob(ws_fresh, pis_fresh, *, project_record) -> str:
     run commit itself appended.  Pure read + render — no engine execution.
     """
     from app.v2.router import _run_history_listing_ctx, _templates
-    ctx = _run_history_listing_ctx(project_record, ws_fresh, pis_fresh)
+    ctx = _run_history_listing_ctx(project_record, ws_fresh, pis_fresh,
+                                   **({"freshness": freshness} if freshness is not None else {}))
     return _templates.get_template(
         "partials/sheet_run_history.html"
     ).render(ctx).replace(
