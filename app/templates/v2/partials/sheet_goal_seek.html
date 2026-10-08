@@ -1,0 +1,43 @@
+<div id="v2-sheet-goal-seek" class="v2-gs" data-sheet="goal-seek" data-testid="goal-seek-panel">
+  <section class="v2-gs-section" aria-labelledby="gs-title">
+    <div class="v2-gs-section-title" id="gs-title">Goal Seek — target-return pricing (Tender)</div>
+    <p class="v2-gs-note">
+      Solve the tariff / revenue price so the canonical model reaches a target return.
+      Decision support only: candidate solves never write Run History, Last Run or your
+      Working Copy — only an explicit Apply does, and the model stays STALE until you Run.
+    </p>
+    <form class="v2-gs-form"
+          hx-post="/v2/workbook/goal-seek/run"
+          hx-target="#v2-goal-seek-results"
+          hx-swap="innerHTML"
+          hx-indicator="#v2-goal-seek-spinner">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <div class="v2-gs-row">
+        <label class="v2-gs-label" for="gs-target-metric">Target metric</label>
+        <select class="v2-gs-input" id="gs-target-metric" name="target_metric" data-testid="gs-target-metric">
+          <option value="project_irr">Project IRR</option>
+          <option value="pure_equity_irr">Pure Equity IRR</option>
+          <option value="total_sponsor_irr">Total Sponsor IRR</option>
+        </select>
+      </div>
+      <div class="v2-gs-row">
+        <label class="v2-gs-label" for="gs-target-value">Target (%)</label>
+        <input class="v2-gs-input" type="number" id="gs-target-value" name="target_value"
+               step="0.01" min="-100" max="1000" placeholder="8.00"
+               data-testid="gs-target-value" required>
+      </div>
+      <div class="v2-gs-row">
+        <span class="v2-gs-label">Solve</span>
+        <span class="v2-gs-static" data-testid="gs-solve-variable">Tariff / Revenue Price (EUR/MWh)</span>
+      </div>
+      <button class="v2-run-btn" type="submit" data-testid="gs-run-btn">
+        <span class="v2-run-label">Run Goal Seek</span>
+        <span class="v2-run-loading" aria-hidden="true">Solving…</span>
+      </button>
+      <div id="v2-goal-seek-spinner" class="v2-gs-loading htmx-indicator" role="status" aria-live="polite">
+        Running bounded deterministic solve on the canonical model…
+      </div>
+    </form>
+    <div id="v2-goal-seek-results" class="v2-gs-results" data-testid="gs-results"></div>
+  </section>
+</div>
