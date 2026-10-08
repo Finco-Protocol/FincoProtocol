@@ -32,6 +32,15 @@
 {% macro kpi_metric(key) %}{{ ov.output_metrics[key].display_value if key in ov.output_metrics else "—" }}{% endmacro %}
 
 <div id="v2-sheet-overview" class="v2-overview" data-sheet="overview">
+<link rel="stylesheet" href="/static/css/model_financing.css">
+
+{% if project_code is defined and project_code %}
+<div hx-get="/v2/workbook/financing/integrity?project={{ project_code | urlencode }}"
+     hx-trigger="load" hx-swap="innerHTML" data-testid="overview-integrity-loader">
+  <section class="fb-integrity" role="status">Financial integrity: UNAVAILABLE - awaiting canonical Checks evidence.</section>
+</div>
+<a class="fb-cfads-link" href="/v2/workbook?project={{ project_code | urlencode }}&amp;sheet=debt">CFADS &amp; bankability evidence</a>
+{% endif %}
 
 {% set ov = overview %}
 {% set is_no_run = ov.state.value in ("NOT_RUN", "UNAVAILABLE") %}

@@ -1,0 +1,25 @@
+<section class="fb-integrity fb-integrity--{{ financing_integrity.status | lower }}"
+         data-testid="financing-integrity" aria-label="Run financial integrity" role="status">
+  <div><strong>Inputs: {{ financing_integrity.inputs | replace('_', ' ') }}</strong>
+    <strong data-testid="financial-integrity-status">Financial integrity: {{ financing_integrity.status }}</strong></div>
+  {% if financing_integrity.prior %}<p>Prior-run evidence. Working inputs have changed.</p>{% endif %}
+  {% if financing_integrity.status == 'UNAVAILABLE' %}
+    <p>No evaluable integrity report is available. Input freshness is not financial approval.</p>
+  {% else %}
+    <p>{{ financing_integrity.counts.get('PASS', 0) }} passed;
+       {{ financing_integrity.counts.get('FAIL', 0) }} failed;
+       {{ financing_integrity.counts.get('UNAVAILABLE', 0) }} unavailable;
+       {{ financing_integrity.counts.get('NOT_APPLICABLE', 0) }} not applicable.</p>
+    {% for check in financing_integrity.reasons[:1] %}
+      <p>{{ check.title }}: {{ check.detail or check.reason_code }}</p>
+    {% endfor %}
+    <details><summary>Detailed check evidence</summary>
+      {% for check in financing_integrity.checks %}
+        <p><code>{{ check.check_id }}</code>: {{ check.status }}
+          {% if check.reason_code %}<code>{{ check.reason_code }}</code>{% endif %}</p>
+      {% endfor %}
+    </details>
+  {% endif %}
+  <a href="/v2/workbook?project={{ project_code | urlencode }}&amp;sheet=trust">Trust / Checks</a>
+  <small>Internal consistency of the committed Last Run; not asset verification or validation of assumptions.</small>
+</section>
