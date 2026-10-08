@@ -29,6 +29,7 @@ import pytest
 from app.services.goal_seek import (
     DEFAULT_MAX_ITERATIONS,
     DEFAULT_MAX_MODEL_EVALUATIONS,
+    DEFAULT_TARGET_TOLERANCE,
     GoalSeekModelRunError,
     GoalSeekStatus,
     make_canonical_evaluator,
@@ -170,6 +171,39 @@ class TestTypedStatuses:
         r = _solve(target=0.5, evaluator=counting, max_evaluations=40)
         assert r.status == GoalSeekStatus.NO_SOLUTION_IN_BOUNDS.value
         assert seen["count"] <= 40
+
+
+    def test_budget_exhaustion_is_typed_non_success_never_raw(self):
+        """A budget too small for even the first ladder is a typed result:
+        no RuntimeError, no fabricated SOLVED, evaluations <= budget, and the
+        outcome is deterministic."""
+        seen = {"count": 0}
+
+        async def counting(tariffs):
+            seen["count"] += len(tariffs)
+            return [0.02 + 0.001 * t for t in tariffs]
+
+        results = [_solve(target=0.09, evaluator=counting, max_evaluations=2)
+                   for _ in range(2)]
+        for r in results:
+            assert r.status == GoalSeekStatus.NO_SOLUTION_IN_BOUNDS.value
+            assert not r.solved and r.solved_input_value is None
+            assert "budget exhausted" in r.message.lower()
+            assert r.model_evaluations <= 2
+        assert results[0] == results[1]
+        assert seen["count"] <= 4          # two runs, each within budget 2
+
+    def test_budget_exhausted_mid_solve_is_typed(self):
+        """Budget large enough for the bracket but not the bisection."""
+        async def slow_curve(tariffs):
+            return [0.02 + 0.001 * t for t in tariffs]
+
+        r = _solve(target=0.0851234, evaluator=slow_curve, max_evaluations=5)
+        assert r.status in (GoalSeekStatus.NO_SOLUTION_IN_BOUNDS.value,
+                            GoalSeekStatus.SOLVED.value)
+        assert r.model_evaluations <= 5
+        if r.status == GoalSeekStatus.NO_SOLUTION_IN_BOUNDS.value:
+            assert r.solved_input_value is None
 
 
 class TestTypedRegistries:
@@ -494,6 +528,91 @@ class TestGoalSeekRoutes:
         assert after.last_runtime_snapshot_id is None
         assert after.any_run_committed is False
 
+    def test_apply_payload_carries_exact_solved_value(self, goal_seek_env, monkeypatch):
+        import re
+
+        ws = _workspace(goal_seek_env)
+        current_tariff = float(ws.draft_snapshot["rev_ppa_base_tariff"])
+        target_pct = (0.02 + 0.001 * current_tariff) * 100 + 1.2345
+        client, cookies = _client()
+        _synthetic_monkeypatch(monkeypatch)
+        resp = client.post("/v2/workbook/goal-seek/run", cookies=cookies,
+                           data={"project": goal_seek_env.record.project_code,
+                                 "target_metric": "project_irr",
+                                 "target_value": f"{target_pct:.4f}"})
+        assert 'data-status="SOLVED"' in resp.text
+        hidden = re.search(r'name="value" value="([^"]+)"', resp.text).group(1)
+        display = re.search(r'data-testid="gs-solved-value">([0-9.]+) EUR/MWh',
+                            resp.text).group(1)
+        # display stays 2dp; the canonical apply value is the exact float
+        assert display == f"{float(hidden):.2f}"
+        assert hidden == repr(float(hidden))
+        assert hidden != display          # not the rounded display string
+        assert len(hidden.split(".")[-1]) > 2
+
+        identity_hash = re.search(r'name="content_hash" value="([^"]*)"', resp.text).group(1)
+        from app.workbook.registry import WORKBOOK
+        applied = client.post("/v2/workbook/goal-seek/apply", cookies=cookies,
+                              data={"project": goal_seek_env.record.project_code,
+                                    "field_id": "revenue.ppa.base_tariff",
+                                    "value": hidden,
+                                    "content_hash": identity_hash,
+                                    "workbook_version": WORKBOOK.version})
+        assert 'data-testid="gs-applied-note"' in applied.text
+        after = _workspace(goal_seek_env)
+        assert float(after.draft_snapshot["rev_ppa_base_tariff"]) == float(hidden)
+
+    @pytest.mark.parametrize("bad_field", [
+        "revenue.ppa.term_years", "revenue.ppa.index",
+        "project_setup.technical.capacity_mw", "rev_ppa_base_tariff",
+        "not.a.field"])
+    def test_apply_rejects_any_field_other_than_the_solve_variable(
+            self, goal_seek_env, monkeypatch, bad_field):
+        from app.workbook.registry import WORKBOOK
+        from app.workbook.workbook_identity import assemble_consistent_for_get
+
+        before = _workspace(goal_seek_env)
+        identity = assemble_consistent_for_get(
+            user_id=goal_seek_env.user_id,
+            project_id=goal_seek_env.record.project_id,
+            workbook_version=WORKBOOK.version)
+        client, cookies = _client()
+        _synthetic_monkeypatch(monkeypatch)
+        resp = client.post("/v2/workbook/goal-seek/apply", cookies=cookies,
+                           data={"project": goal_seek_env.record.project_code,
+                                 "field_id": bad_field,
+                                 "value": "7",
+                                 "content_hash": identity.composite_hash,
+                                 "workbook_version": WORKBOOK.version})
+        assert 'data-status="INVALID_REQUEST"' in resp.text
+        assert 'data-testid="gs-applied-note"' not in resp.text
+        after = _workspace(goal_seek_env)
+        assert after.draft_snapshot == before.draft_snapshot       # NO mutation
+        assert after.dirty == before.dirty
+
+    @pytest.mark.parametrize("bad_value", ["nan", "inf", "-inf", "abc", ""])
+    def test_apply_rejects_non_finite_or_non_numeric_value(
+            self, goal_seek_env, monkeypatch, bad_value):
+        from app.workbook.registry import WORKBOOK
+        from app.workbook.workbook_identity import assemble_consistent_for_get
+
+        before = _workspace(goal_seek_env)
+        identity = assemble_consistent_for_get(
+            user_id=goal_seek_env.user_id,
+            project_id=goal_seek_env.record.project_id,
+            workbook_version=WORKBOOK.version)
+        client, cookies = _client()
+        _synthetic_monkeypatch(monkeypatch)
+        resp = client.post("/v2/workbook/goal-seek/apply", cookies=cookies,
+                           data={"project": goal_seek_env.record.project_code,
+                                 "field_id": "revenue.ppa.base_tariff",
+                                 "value": bad_value,
+                                 "content_hash": identity.composite_hash,
+                                 "workbook_version": WORKBOOK.version})
+        assert resp.status_code in (200, 422)
+        assert 'data-testid="gs-applied-note"' not in resp.text
+        assert _workspace(goal_seek_env).draft_snapshot == before.draft_snapshot
+
     def test_apply_with_stale_hash_fails_closed(self, goal_seek_env, monkeypatch):
         from app.workbook.input_set import ProjectInputSet
         from app.workbook.registry import WORKBOOK
@@ -598,7 +717,7 @@ class TestApplyThenCanonicalRun:
         WorkbookUpdateService.apply_draft_update(
             ws=ws,
             field_id="revenue.ppa.base_tariff",
-            raw_value=f"{result.solved_input_value:.2f}",
+            raw_value=repr(float(result.solved_input_value)),
             content_hash=identity.composite_hash,
             workbook_version=WORKBOOK.version,
             project_record=record,
@@ -613,4 +732,5 @@ class TestApplyThenCanonicalRun:
         _, run_override = canonical_override()
         payload = run_project("Solar", "Base", project_inputs_override=run_override)
         achieved = payload["kpis"]["project_irr"]
-        assert abs(achieved - target) <= 2e-3, (achieved, target)
+        # Closure at the ADVERTISED Goal Seek precision (no loosened bound).
+        assert abs(achieved - target) <= DEFAULT_TARGET_TOLERANCE, (achieved, target)

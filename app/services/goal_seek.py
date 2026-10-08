@@ -206,6 +206,13 @@ def _ladder(lower: float, start: float, upper: float, points: int = LADDER_POINT
     return sorted(v for v in raw if v >= 0.0)
 
 
+class _EvaluationBudgetExhausted(Exception):
+    """Internal control flow: the requested evaluation would exceed the budget.
+
+    Never escapes the Goal Seek solver contract; converted to a typed
+    non-success result by :func:`solve_tariff_for_metric`."""
+
+
 async def solve_tariff_for_metric(
     *,
     project_type: str,
@@ -217,6 +224,56 @@ async def solve_tariff_for_metric(
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     max_evaluations: int = DEFAULT_MAX_MODEL_EVALUATIONS,
 ) -> GoalSeekResult:
+    """Deterministic bracketed solve (see :func:`_solve_impl`).
+
+    Genuine evaluation-budget exhaustion is returned as the typed bounded
+    non-success status ``NO_SOLUTION_IN_BOUNDS`` — never a raw exception and
+    never a fabricated ``SOLVED``."""
+    budget = {"evaluations": 0}
+    try:
+        return await _solve_impl(
+            project_type=project_type, current_tariff=current_tariff,
+            target_value=target_value, metric_key=metric_key,
+            evaluate_batch=evaluate_batch, tolerance=tolerance,
+            max_iterations=max_iterations, max_evaluations=max_evaluations,
+            budget=budget)
+    except _EvaluationBudgetExhausted:
+        metric = resolve_metric(metric_key)
+        variable = resolve_solve_variable(project_type)
+        return GoalSeekResult(
+            status=GoalSeekStatus.NO_SOLUTION_IN_BOUNDS.value,
+            solve_variable=variable.key if variable else "ppa_base_tariff",
+            solve_variable_label=variable.label if variable else "Tariff / Revenue Price",
+            solve_variable_unit=variable.unit if variable else "EUR/MWh",
+            solve_field_id=variable.field_id if variable else "revenue.ppa.base_tariff",
+            target_metric=metric.key if metric else str(metric_key),
+            target_metric_label=metric.label if metric else str(metric_key),
+            target_value=target_value,
+            solved_input_value=None,
+            achieved_metric_value=None,
+            absolute_target_error=None,
+            iterations=0,
+            model_evaluations=budget["evaluations"],
+            lower_bound=0.0,
+            upper_bound=0.0,
+            bracket_lower=None,
+            bracket_upper=None,
+            started_from_value=current_tariff,
+            message="Evaluation budget exhausted before the target could be solved.")
+
+
+async def _solve_impl(
+    *,
+    project_type: str,
+    current_tariff: float,
+    target_value: float,
+    metric_key: str,
+    evaluate_batch: Evaluator,
+    tolerance: float,
+    max_iterations: int,
+    max_evaluations: int,
+    budget: dict,
+) -> GoalSeekResult:
     """Deterministic bracketed solve of the tariff for a target metric.
 
     ``evaluate_batch(tariffs)`` must return one metric value (fraction) or
@@ -226,8 +283,6 @@ async def solve_tariff_for_metric(
     """
     metric = resolve_metric(metric_key)
     variable = resolve_solve_variable(project_type)
-
-    budget = {"evaluations": 0}
 
     def _result(**kwargs: Any) -> GoalSeekResult:
         base = dict(
@@ -277,7 +332,7 @@ async def solve_tariff_for_metric(
 
     async def _eval(tariffs: Sequence[float]) -> list[Optional[float]]:
         if budget["evaluations"] + len(tariffs) > max_evaluations:
-            raise RuntimeError("GOAL_SEEK_EVALUATION_BUDGET_EXHAUSTED")
+            raise _EvaluationBudgetExhausted()
         budget["evaluations"] += len(tariffs)
         raw_list = await evaluate_batch(tariffs)
         if len(raw_list) != len(tariffs):

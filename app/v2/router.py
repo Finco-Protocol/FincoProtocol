@@ -4304,6 +4304,20 @@ def _render_goal_seek_results(ctx: dict) -> HTMLResponse:
         content=_templates.get_template("partials/goal_seek_results.html").render(ctx))
 
 
+def _goal_seek_resolve_tariff_field(variable, pis_draft) -> tuple[str, object]:
+    """Server-side resolution of the ONE permitted Goal Seek field and the
+    current tariff raw value, from the typed solve variable and the draft
+    state. The canonical field is used; the supported legacy fallback only when
+    the canonical key is genuinely absent on this draft."""
+    snapshot_origin = dict(getattr(pis_draft, "snapshot_origin", {}) or {})
+    raw_current = snapshot_origin.get("rev_ppa_base_tariff")
+    field_id = variable.field_id
+    if raw_current is None and variable.fallback_field_id:
+        raw_current = snapshot_origin.get("tariff_eur_mwh")
+        field_id = variable.fallback_field_id or variable.field_id
+    return field_id, raw_current
+
+
 def _goal_seek_apply_ctx(*, project: str, field_id: str, solved_display: str,
                          content_hash: str, workbook_version: str,
                          target_metric: str, target_value: str) -> dict:
@@ -4492,12 +4506,7 @@ async def v2_workbook_goal_seek_run(
         override = dc_replace(override, opex=folded_opex)
 
     # ── Current canonical tariff (draft state the user sees) ──────────────── #
-    snapshot_origin = dict(getattr(pis_draft, "snapshot_origin", {}) or {})
-    raw_current = snapshot_origin.get(variable.key and "rev_ppa_base_tariff")
-    apply_field_id = variable.field_id
-    if raw_current is None and variable.fallback_field_id:
-        raw_current = snapshot_origin.get("tariff_eur_mwh")
-        apply_field_id = variable.fallback_field_id or variable.field_id
+    apply_field_id, raw_current = _goal_seek_resolve_tariff_field(variable, pis_draft)
     try:
         current_tariff = float(str(raw_current).strip())
         if not math.isfinite(current_tariff) or current_tariff <= 0:
@@ -4555,7 +4564,9 @@ async def v2_workbook_goal_seek_run(
 
     apply_ctx = None
     if result.solved and result.solved_input_value is not None:
-        solved_display = f"{result.solved_input_value:.2f}"
+        # CANONICAL APPLY VALUE (exact float that was evaluated and proven);
+        # the 2-decimal figure is display-only (template). repr() round-trips.
+        solved_display = repr(float(result.solved_input_value))
         content_hash = ""
         workbook_version = WORKBOOK.version
         try:
@@ -4625,6 +4636,38 @@ async def v2_workbook_goal_seek_apply(
     if ws is None:
         return HTMLResponse(content="<p>Workspace not found.</p>", status_code=404)
 
+    # ── Server-side contract: Goal Seek Apply is NOT a generic edit endpoint ─ #
+    import math as _math
+
+    from app.services.goal_seek import resolve_solve_variable as _resolve_var
+
+    def _reject(message: str) -> HTMLResponse:
+        return _render_goal_seek_results({
+            "result": {
+                "status": GoalSeekStatus.INVALID_REQUEST.value,
+                "target_metric_label": target_metric,
+                "message": message,
+            },
+            "apply": None,
+            "request": request,
+        })
+
+    _variable = _resolve_var((project_record.project_type or "").strip().lower())
+    if _variable is None:
+        return _reject("This project type has no supported Goal Seek solve "
+                       "variable; nothing was applied.")
+    _permitted_field, _ = _goal_seek_resolve_tariff_field(
+        _variable, WorkbookService.build_draft_input_set_from_workspace(ws))
+    if field_id != _permitted_field:
+        return _reject("Submitted field is not the Goal Seek solve variable "
+                       "for this project; nothing was applied.")
+    try:
+        _numeric = float(str(value).strip())
+        if not _math.isfinite(_numeric):
+            raise ValueError("not finite")
+    except (TypeError, ValueError):
+        return _reject("Solved value is not a finite number; nothing was applied.")
+
     def _ctx(message: str, *, applied: bool, error: bool = False) -> HTMLResponse:
         fresh_hash = content_hash
         try:
@@ -4652,7 +4695,7 @@ async def v2_workbook_goal_seek_apply(
                 target_value=target_value,
             ),
             "applied": applied,
-            "applied_value": value,
+            "applied_value": f"{_numeric:.2f} EUR/MWh",
             "applied_field_id": field_id,
             "content_hash": fresh_hash,
             "workbook_version": workbook_version,
