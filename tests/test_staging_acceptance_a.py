@@ -517,3 +517,84 @@ class TestEngineFailClosedMessage:
         assert ws.last_runtime_snapshot_id == last           # Last Run untouched
         assert _history_count(uid, pid) == rows               # failure never appends
         assert _state(client, cookies, code) == "Stale"       # the edit is real and saved
+
+
+# ── Wave B: CAPEX row deactivation + category editor (staging findings P0 #3/#4) ──
+
+def _form_fields(html: str, form_class: str, index: int = 0) -> dict:
+    forms = re.findall(rf'<form[^>]*class="{form_class}"[^>]*>(.*?)</form>', html, re.S)
+    body = forms[index]
+    return {m.group(1): m.group(2) for m in re.finditer(
+        r'<input[^>]*type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"', body)}
+
+
+class TestCapexControls:
+    def test_deactivate_form_carries_every_field_the_endpoint_requires(self, seeded_db):
+        client, cookies, record = _client_for(user_id="u-wave-b-cx0")
+        page = _tokens(client, cookies, record.project_code)[0].text
+        fields = _form_fields(page, "v2-capex-deactivate-form")
+        # Form(...) parameters of POST /v2/capex/line/deactivate
+        assert {"project", "sub_line_id", "row_version",
+                "workbook_version", "content_hash"} <= set(fields)
+
+    def test_deactivate_as_submitted_by_the_browser_persists_and_reaches_totals(self, seeded_db):
+        from app.persistence.db import get_cursor
+
+        client, cookies, record = _client_for(user_id="u-wave-b-cx1")
+        code, uid, pid = record.project_code, record.user_id, record.project_id
+        _run(client, cookies, code)
+        page = _tokens(client, cookies, code)[0].text
+        fields = _form_fields(page, "v2-capex-deactivate-form")
+        with get_cursor() as cur:
+            cur.execute("SELECT amount_keur FROM capex_sub_lines WHERE sub_line_id=?",
+                        (fields["sub_line_id"],))
+            amount = cur.fetchone()["amount_keur"]
+        total_before = float(re.search(r'data-testid="total-capex-keur">\s*([\d,\.]+)', page)
+                             .group(1).replace(",", ""))
+
+        resp = client.post("/v2/capex/line/deactivate", data=fields, cookies=cookies,
+                           headers={"HX-Request": "true"})
+        assert resp.status_code == 200                      # was 422: content_hash missing
+        with get_cursor() as cur:
+            cur.execute("SELECT is_active FROM capex_sub_lines WHERE sub_line_id=?",
+                        (fields["sub_line_id"],))
+            assert cur.fetchone()["is_active"] == 0         # persisted
+        after = _tokens(client, cookies, code)[0].text      # fresh page load == reload
+        assert fields["sub_line_id"] not in after
+        total_after = float(re.search(r'data-testid="total-capex-keur">\s*([\d,\.]+)', after)
+                            .group(1).replace(",", ""))
+        assert total_after == pytest.approx(total_before - amount, abs=1.0)
+        assert _state(client, cookies, code) == "Stale"     # a causal edit marks the Run STALE
+
+    def test_category_without_effect_editor_is_replaced_by_an_explained_total(self, seeded_db):
+        client, cookies, record = _client_for(user_id="u-wave-b-cx2")
+        page = _tokens(client, cookies, record.project_code)[0].text
+        # production units has seeded line items -> its category total is derived from them
+        assert 'data-field-id="capex.C.production_units"' not in page
+        assert 'data-testid="capex-category-total-C.01"' in page
+        assert "Sum of the line items below" in page
+
+    def test_category_editor_save_was_inert_for_canonical_capex(self, seeded_db):
+        """Documents WHY the editor was removed: with line items present the
+        category scalar never reaches canonical CAPEX, yet it marked STALE."""
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
+        from app.workbook.service import WorkbookService
+
+        client, cookies, record = _client_for(user_id="u-wave-b-cx3")
+        code, uid, pid = record.project_code, record.user_id, record.project_id
+
+        def canonical_total():
+            ws = get_workspace_state(uid, pid)
+            pi = WorkbookService.to_projectinputs(
+                WorkbookService.build_draft_input_set_from_workspace(ws))
+            return apply_user_sub_lines_replacing_base(
+                pi.capex, project_id=pid, scenario_overrides=None).total_capex
+
+        before = canonical_total()
+        _, h, v = _tokens(client, cookies, code)
+        client.post("/v2/workbook/update", cookies=cookies, headers={"HX-Request": "true"},
+                    data={"sheet_id": "capex", "field_id": "capex.C.production_units",
+                          "value": "600", "project": code,
+                          "workbook_version": v, "content_hash": h})
+        assert canonical_total() == before
