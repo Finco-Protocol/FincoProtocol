@@ -51,6 +51,11 @@
 #}
 {% from "partials/field_editor.html" import render_field %}
 {% from "partials/_money_format.html" import grouped_keur %}
+{# Macro: shortest exact text for an editable number (no thousands separators, no trailing zeros) #}
+{% macro plain_num(v) -%}
+{%- set t = "%.4f"|format(v|float) -%}
+{%- if "." in t -%}{{ t.rstrip("0").rstrip(".") }}{%- else -%}{{ t }}{%- endif -%}
+{%- endmacro %}
 
 {# Macro: read-only calculated row #}
 {% macro opex_ro_row(label, value, badge="ENGINE", unit="kEUR") %}
@@ -107,86 +112,75 @@
 {%- endif -%}
 {% endmacro %}
 
-{# Macro: custom user-added row #}
-{% macro opex_custom_row(line, project_code, workbook_version, content_hash, project_editable) %}
-<details class="v2-opex-custom-row" data-testid="opex-custom-row-{{ line.sub_line_id }}"
-     data-fc-row>
-  <summary class="v2-opex-compact-edit-row">
-    <span class="v2-opex-line-code">{{ line.code }}</span>
-    <span class="v2-opex-line-name">{{ line.name }}</span>
-    <span class="v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
-    <span class="v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
-    <span class="v2-binding-badge {% if line.source == 'reference_seed' %}v2-opex-badge-reference{% elif line.source == 'user_override' %}v2-opex-badge-override{% else %}v2-opex-badge-custom{% endif %}">{% if line.source == 'reference_seed' %}REFERENCE{% elif line.source == 'user_override' %}OVERRIDE{% else %}CUSTOM{% endif %}</span>
-  </summary>
-  {%- if project_editable %}
-    {# The form is deliberately off the resting table row. #}
-    <form class="v2-opex-custom-row-form"
-          hx-post="/v2/opex/line/update"
-          hx-target="#v2-sheet-opex"
-          hx-swap="outerHTML">
-      <input type="hidden" name="project" value="{{ project_code }}">
-      <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
-      <input type="hidden" name="row_version" value="{{ line.row_version }}">
-      <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
-      <input type="hidden" name="content_hash" value="{{ content_hash }}">
-      <span class="v2-fc-cell-wrap"
-            data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.label"
-            data-fc-editable="true" data-fc-kind="text">
-        <input class="v2-opex-custom-label-input v2-field-input"
-               type="text"
-               name="label"
-               value="{{ line.name }}"
-               required
-               aria-label="Label"
-               data-testid="opex-custom-label-{{ line.sub_line_id }}">
-      </span>
-      <span class="v2-fc-cell-wrap"
-            data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.amount"
-            data-fc-editable="true" data-fc-kind="amount">
-        <input class="v2-opex-custom-amount-input v2-opex-amount-cell v2-field-input"
-               type="number"
-               name="amount_keur"
-               value="{{ "%.0f"|format(line.y1_keur) }}"
-               step="any"
-               aria-label="Y1 kEUR"
-               data-testid="opex-custom-amount-{{ line.sub_line_id }}">
-      </span>
-      <span class="v2-fc-cell-wrap"
-            data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.escl"
-            data-fc-editable="true" data-fc-kind="amount">
-        <input class="v2-opex-custom-escl-input v2-field-input"
-               type="number"
-               name="inflation_pct"
-               value="{{ "%.2f"|format(line.inflation_pct) }}"
-               step="0.1"
-               aria-label="Escalation %"
-               data-testid="opex-custom-escl-{{ line.sub_line_id }}">
-      </span>
-      <input class="v2-opex-custom-notes-input"
-             type="text"
-             name="notes"
-             value="{{ line.notes }}"
-             placeholder="Notes…"
-             aria-label="Notes"
-             data-testid="opex-custom-notes-{{ line.sub_line_id }}">
-      <button type="submit" class="v2-opex-custom-save-btn" data-testid="opex-custom-save-{{ line.sub_line_id }}">Save</button>
-    </form>
-    {# Deactivate form #}
-    <form class="v2-opex-deactivate-form"
-          hx-post="/v2/opex/line/deactivate"
-          hx-target="#v2-sheet-opex"
-          hx-swap="outerHTML"
-          hx-confirm="Deactivate this fee line?">
-      <input type="hidden" name="project" value="{{ project_code }}">
-      <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
-      <input type="hidden" name="row_version" value="{{ line.row_version }}">
-      <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
-      <input type="hidden" name="content_hash" value="{{ content_hash }}">
-      <button type="submit" class="v2-opex-deactivate-btn" aria-label="Deactivate"
-              data-testid="opex-custom-deactivate-{{ line.sub_line_id }}">✕</button>
-    </form>
-  {%- endif %}
-</details>
+{# Macro: persisted OPEX line as a compact, directly editable grid row.
+
+   Code | Description | Driver | Year 1 kEUR | Escalation % | Source | State | Actions
+
+   One form per row; a committed edit posts to the guarded command and swaps ONLY this
+   row plus the derived OPEX totals (see the CAPEX partial for the contract). #}
+{% macro opex_custom_row(line, project_code, workbook_version, content_hash, project_editable, oob_ids="") %}
+{%- set rid = "opex-row-" ~ line.sub_line_id -%}
+{%- set src = 'REFERENCE' if line.source == 'reference_seed' else ('OVERRIDE' if line.source == 'user_override' else 'CUSTOM') -%}
+{%- set src_cls = 'v2-opex-badge-reference' if line.source == 'reference_seed' else ('v2-opex-badge-override' if line.source == 'user_override' else 'v2-opex-badge-custom') -%}
+{%- if project_editable %}
+<form id="{{ rid }}" class="v2-cost-row v2-opex-custom-row v2-opex-custom-row-form"
+      data-cost-row="opex" data-sub-line-id="{{ line.sub_line_id }}"
+      data-row-version="{{ line.row_version }}" data-testid="opex-custom-row-{{ line.sub_line_id }}"
+      data-fc-row autocomplete="off"
+      hx-post="/v2/opex/line/update" hx-target="this" hx-swap="outerHTML"
+      hx-select="#{{ rid }}" hx-select-oob="{{ oob_ids }}">
+  <input type="hidden" name="project" value="{{ project_code }}">
+  <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
+  <input type="hidden" name="row_version" value="{{ line.row_version }}">
+  <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+  <input type="hidden" name="content_hash" value="{{ content_hash }}">
+  <input type="hidden" name="notes" value="{{ line.notes }}" aria-label="Notes">
+  <span class="v2-cost-cell v2-cost-code v2-opex-line-code">{{ line.code }}</span>
+  <span class="v2-cost-cell v2-cost-desc">
+    <input class="v2-cost-input v2-opex-custom-label-input" type="text" name="label" required
+           value="{{ line.name }}" data-cost-cell="label" data-original="{{ line.name }}"
+           aria-label="Description {{ line.code }}" data-testid="opex-custom-label-{{ line.sub_line_id }}">
+  </span>
+  <span class="v2-cost-cell v2-cost-driver" title="Fixed annual cost, escalated each year">Fixed <small>kEUR/yr</small></span>
+  <span class="v2-cost-cell v2-cost-amount">
+    <input class="v2-cost-input v2-cost-num v2-opex-custom-amount-input v2-opex-amount-cell" type="text" inputmode="decimal"
+           name="amount_keur" value="{{ plain_num(line.y1_keur) }}" data-cost-cell="amount" data-step="1"
+           data-original="{{ plain_num(line.y1_keur) }}" data-exact="{{ line.y1_keur }}" aria-label="Year 1 kEUR {{ line.code }}"
+           data-testid="opex-custom-amount-{{ line.sub_line_id }}">
+  </span>
+  <span class="v2-cost-cell v2-cost-escl">
+    <input class="v2-cost-input v2-cost-num v2-opex-custom-escl-input" type="text" inputmode="decimal"
+           name="inflation_pct" value="{{ plain_num(line.inflation_pct) }}" data-cost-cell="escalation" data-step="0.1"
+           data-original="{{ plain_num(line.inflation_pct) }}" data-exact="{{ line.inflation_pct }}" aria-label="Escalation % {{ line.code }}"
+           data-testid="opex-custom-escl-{{ line.sub_line_id }}">
+  </span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+  <span class="v2-cost-cell v2-cost-state" data-cost-state role="status" aria-live="polite"></span>
+  <span class="v2-cost-cell v2-cost-actions">
+    <button type="button" class="v2-cost-action v2-opex-duplicate-btn"
+            hx-post="/v2/opex/line/add" hx-include="closest form" hx-target="#v2-sheet-opex"
+            hx-swap="outerHTML" hx-select="#v2-sheet-opex" hx-select-oob="unset"
+            hx-vals='{{ {"parent_group_code": line.parent_code, "label": (line.name ~ " (copy)")} | tojson | forceescape }}'
+            title="Duplicate line" aria-label="Duplicate {{ line.code }}"
+            data-testid="opex-custom-duplicate-{{ line.sub_line_id }}">⧉</button>
+    <button type="button" class="v2-opex-deactivate-btn v2-cost-action"
+            hx-post="/v2/opex/line/deactivate" hx-include="closest form" hx-target="#v2-sheet-opex"
+            hx-swap="outerHTML" hx-select="#v2-sheet-opex" hx-select-oob="unset"
+            hx-confirm="Deactivate this line? It is excluded from totals and can be reactivated."
+            title="Deactivate line (excluded from totals; can be reactivated)" aria-label="Deactivate {{ line.code }}"
+            data-testid="opex-custom-deactivate-{{ line.sub_line_id }}">✕</button>
+  </span>
+</form>
+{%- else %}
+<div class="v2-cost-row v2-opex-custom-row v2-cost-row-readonly" data-testid="opex-custom-row-{{ line.sub_line_id }}" data-fc-row>
+  <span class="v2-cost-cell v2-cost-code v2-opex-line-code">{{ line.code }}</span>
+  <span class="v2-cost-cell v2-cost-desc v2-opex-line-name">{{ line.name }}</span>
+  <span class="v2-cost-cell v2-cost-driver">Fixed <small>kEUR/yr</small></span>
+  <span class="v2-cost-cell v2-cost-amount v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
+  <span class="v2-cost-cell v2-cost-escl v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+</div>
+{%- endif %}
 {% endmacro %}
 
 {# Macro: Add Row form #}
@@ -225,8 +219,18 @@
 </form>
 {% endmacro %}
 
+{%- set opex_oob = ["v2-opex-feedback", "v2-cost-authority-opex", "opex-kpi-region", "opex-contingency-region", "opex-parent-summary", "opex-runtime-bar", "opex-grand-total-row", "opex-projection-panel"] -%}
+{%- for g in opex_sheet_groups -%}
+  {%- set _a = opex_oob.append("opex-hdr-" ~ (g.code | replace(".", "-"))) -%}
+  {%- set _b = opex_oob.append("opex-cattotal-" ~ (g.code | replace(".", "-"))) -%}
+{%- endfor -%}
+{%- set opex_oob_ids = opex_oob | join(",") -%}
+
 <div id="v2-sheet-opex" data-sheet="opex"
-     data-fc-grid="opex" data-fc-scroll-container>
+     data-fc-grid="opex" data-fc-scroll-container data-cost-grid="opex">
+
+  <span id="v2-cost-authority-opex" hidden data-content-hash="{{ content_hash }}"
+        data-workbook-version="{{ workbook_version }}"></span>
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
@@ -235,13 +239,15 @@
     </div>
   {% endif %}
 
+  <div id="v2-opex-feedback" data-testid="opex-feedback">
   {% if field_error %}
-    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+    <div class="v2-field-error-banner" role="alert" data-cost-error="true">{{ field_error }}</div>
   {% endif %}
+  </div>
 
   {# ── KPI strip ────────────────────────────────────────────────── #}
   <div class="v2-sheet-section-heading"><span>OPEX Summary</span><small>Year 1 cost, unit metrics and contingency</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
-  <div class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
+  <div id="opex-kpi-region" class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
     <div class="v2-opex-kpi-item">
       <span class="v2-opex-kpi-label">OPEX Y1</span>
       <span class="v2-opex-kpi-value" data-testid="opex-y1-total">
@@ -282,7 +288,7 @@
   {% if opex_scenario_error %}<div class="v2-scenario-error" role="alert" data-testid="opex-scenario-error">⚠ Scenario OPEX unavailable — {{ opex_scenario_error }}</div>{% endif %}
   {% set ocl = opex_vm.contingency %}
   {% if ocl and ocl.mode == "percentage" %}
-  <div class="v2-contingency-authority" data-testid="opex-contingency-authority"
+  <div id="opex-contingency-region" class="v2-contingency-authority" data-testid="opex-contingency-authority"
        data-basis-mode="{{ ocl.basis_mode }}" data-status="{{ ocl.status }}" data-source="{{ ocl.source }}">
     <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Contingency %</span><span class="v2-field-value">{{ "%g"|format(ocl.pct) }}%</span></div>
     <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Basis</span><span class="v2-field-value">{{ ocl.basis_mode }} (period by period)</span></div>
@@ -307,7 +313,7 @@
   </form>
   {% endif %}
 
-  <section class="v2-parent-summary" aria-labelledby="opex-parent-summary-title" data-testid="opex-parent-summary">
+  <section id="opex-parent-summary" class="v2-parent-summary" aria-labelledby="opex-parent-summary-title" data-testid="opex-parent-summary">
     <div class="v2-sheet-section-heading"><span id="opex-parent-summary-title">OPEX parent summary</span><small>Year 1 parent totals and per-line escalation authority</small></div>
     <div class="v2-parent-summary-scroll"><table class="v2-parent-summary-table">
       <thead><tr><th>Code</th><th>Parent category</th><th class="v2-num">Y1 kEUR</th><th class="v2-num">Escalation</th></tr></thead>
@@ -320,7 +326,7 @@
   </section>
 
   {# ── Runtime status bar ────────────────────────────────────────── #}
-  <div class="v2-opex-runtime-bar" data-testid="opex-runtime-bar">
+  <div id="opex-runtime-bar" class="v2-opex-runtime-bar" data-testid="opex-runtime-bar">
     <div class="v2-field-row v2-field-readonly" data-testid="opex-runtime-status-row">
       <span class="v2-field-label">Runtime Status</span>
       <span class="v2-field-value">
@@ -362,7 +368,7 @@
              data-group-code="{{ sg.code }}"
              data-testid="opex-group-{{ sg.code }}">
 
-      <summary class="v2-opex-group-header">
+      <summary id="opex-hdr-{{ sg.code | replace(".", "-") }}" class="v2-opex-group-header">
         <span class="v2-opex-col-code">{{ sg.code }}</span>
         <span class="v2-opex-col-desc">{{ sg.display_name }}</span>
         <span class="v2-opex-col-y1 v2-opex-subtotal v2-opex-amount-cell"
@@ -419,7 +425,7 @@
           {# A category with line items takes its cost from those lines; the
              category-level value is not an input to canonical OPEX, so no category
              editor is offered (it would save with no effect on the model). #}
-          <div class="v2-field-row v2-field-readonly" data-testid="opex-category-total-{{ sg.code }}">
+          <div id="opex-cattotal-{{ sg.code | replace(".", "-") }}" class="v2-field-row v2-field-readonly" data-testid="opex-category-total-{{ sg.code }}">
             <span class="v2-field-label">{{ sg.field.label }} (category total)</span>
             <span class="v2-field-value">{{ grouped_keur(sg.subtotal_y1) }} <small>kEUR/yr</small></span>
             <span class="v2-field-hint">Sum of the line items below. Edit a line, or add a custom line, to change this total.</span>
@@ -453,7 +459,7 @@
             <div class="v2-opex-custom-lines-container"
                  data-testid="opex-custom-lines-{{ sg.code }}">
               {% for line in sg.custom_lines %}
-                {{ opex_custom_row(line, project_code, workbook_version, content_hash, project_editable) }}
+                {{ opex_custom_row(line, project_code, workbook_version, content_hash, project_editable, opex_oob_ids) }}
               {% endfor %}
             </div>
           {%- endif -%}
@@ -473,7 +479,7 @@
   {% endfor %}
 
   {# ── Grand total row ──────────────────────────────────────────── #}
-  <div class="v2-opex-grand-total-row" data-testid="opex-grand-total-row">
+  <div id="opex-grand-total-row" class="v2-opex-grand-total-row" data-testid="opex-grand-total-row">
     <span class="v2-opex-col-code"></span>
     <span class="v2-opex-col-desc v2-opex-total-label-cell">Total OPEX (incl. contingency)</span>
     <span class="v2-opex-col-y1 v2-opex-grand-total-amount v2-opex-amount-cell"
@@ -496,7 +502,7 @@
 
   {# ── Year projection table ─────────────────────────────────────── #}
   <div class="v2-sheet-section-heading"><span>Year Projection</span><small>Escalated annual operating costs</small></div>
-  <details class="v2-opex-projection-panel" open data-testid="opex-projection-panel">
+  <details id="opex-projection-panel" class="v2-opex-projection-panel" open data-testid="opex-projection-panel">
     <summary class="v2-opex-projection-toggle">
       Year Projection (Y1–Y{{ opex_vm.display_years }})
     </summary>

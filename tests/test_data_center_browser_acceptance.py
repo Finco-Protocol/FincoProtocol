@@ -168,7 +168,9 @@ def test_data_center_reference_browser_acceptance(dc_app, browser):
         capex_panel = page.locator("#panel-capex")
         assert "Total CAPEX" in capex_panel.inner_text()
         # Data Center detail taxonomy is present in the DOM (UPS child).
-        assert capex_panel.locator("text=UPS and Electrical Distribution").count() >= 1
+        # Persisted lines are directly editable grid rows: the description is an input value.
+        assert (capex_panel.locator("text=UPS and Electrical Distribution").count()
+                + capex_panel.locator('input[name="label"][value="UPS and Electrical Distribution"]').count()) >= 1
 
         page.locator("#tab-opex").click()
         page.locator("#panel-opex").wait_for(state="visible")

@@ -534,7 +534,7 @@ class TestEngineFailClosedMessage:
 # ── Wave B: CAPEX row deactivation + category editor (staging findings P0 #3/#4) ──
 
 def _form_fields(html: str, form_class: str, index: int = 0) -> dict:
-    forms = re.findall(rf'<form[^>]*class="{form_class}"[^>]*>(.*?)</form>', html, re.S)
+    forms = re.findall(rf'<form[^>]*class="[^"]*\b{form_class}\b[^"]*"[^>]*>(.*?)</form>', html, re.S)
     body = forms[index]
     return {m.group(1): m.group(2) for m in re.finditer(
         r'<input[^>]*type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"', body)}
@@ -544,7 +544,7 @@ class TestCapexControls:
     def test_deactivate_form_carries_every_field_the_endpoint_requires(self, seeded_db):
         client, cookies, record = _client_for(user_id="u-wave-b-cx0")
         page = _tokens(client, cookies, record.project_code)[0].text
-        fields = _form_fields(page, "v2-capex-deactivate-form")
+        fields = _form_fields(page, "v2-capex-custom-form")
         # Form(...) parameters of POST /v2/capex/line/deactivate
         assert {"project", "sub_line_id", "row_version",
                 "workbook_version", "content_hash"} <= set(fields)
@@ -556,7 +556,7 @@ class TestCapexControls:
         code, uid, pid = record.project_code, record.user_id, record.project_id
         _run(client, cookies, code)
         page = _tokens(client, cookies, code)[0].text
-        fields = _form_fields(page, "v2-capex-deactivate-form")
+        fields = _form_fields(page, "v2-capex-custom-form")
         with get_cursor() as cur:
             cur.execute("SELECT amount_keur FROM capex_sub_lines WHERE sub_line_id=?",
                         (fields["sub_line_id"],))

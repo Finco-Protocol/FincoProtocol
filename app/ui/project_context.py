@@ -626,9 +626,16 @@ def _build_opex_detail_items(
         inflation_rate = item.annual_inflation or 0.0
         yearly_values = []
         active_flags = []
+        # An item with explicit per-year steps (Data Center B.08 power, EV electricity) is
+        # defined year by year: the amount of year y is the latest step at or before y.
+        steps = sorted((int(sy), float(sa)) for sy, sa in (getattr(item, "step_changes", None) or ()))
         for y in range(1, horizon_years + 1):
             active_flags.append(1)
-            inflated = budget_display * ((1 + inflation_rate) ** (y - 1))
+            if steps and not is_contingency:
+                applicable = [sa for sy, sa in steps if sy <= y]
+                inflated = applicable[-1] if applicable else budget_display
+            else:
+                inflated = budget_display * ((1 + inflation_rate) ** (y - 1))
             yearly_values.append(round(inflated, 4))
 
         child_item = {
@@ -1462,6 +1469,20 @@ def build_project_context_for_record(
         canonical_opex_detail_items = _build_opex_detail_items(
             effective_project_inputs, code=project_code, horizon_years=horizon_years
         )["categories"]
+
+    # Data Center (Workflow A): B.08 power is DERIVED from IT MW x occupancy x PUE x price
+    # for THIS project's capacity.  The template detail still carries the reference-capacity
+    # amount, so the sheet showed half of what the Run uses at 40 MW.  Take B.08 (only) from
+    # the effective inputs; every other category keeps its template/seeded presentation.
+    if effective_project_inputs is not None and technology == "Data Center":
+        rebuilt = _build_opex_detail_items(
+            effective_project_inputs, code=project_code, horizon_years=horizon_years
+        )["categories"]
+        b08 = next((c for c in rebuilt if c.get("code") == "B.08"), None)
+        if b08 is not None:
+            canonical_opex_detail_items = tuple(
+                b08 if c.get("code") == "B.08" else c for c in base.opex_detail_items
+            )
 
     return replace(
         base,
