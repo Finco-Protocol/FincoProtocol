@@ -130,6 +130,7 @@
     <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
     <input type="hidden" name="row_version" value="{{ line.row_version }}">
     <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+    <input type="hidden" name="content_hash" value="{{ content_hash }}">
     <button type="submit" class="v2-capex-deactivate-btn"
             aria-label="Deactivate {{ line.display_code or line.code }}"
             data-testid="deactivate-{{ line.code }}">×</button>
@@ -324,7 +325,16 @@
 
         {# Standard groups: single registry field (BOUND or DISPLAY_ONLY) #}
         {% elif gf %}
-          {% if gf.binding_label == "bound" %}
+          {% if gf.binding_label == "bound" and group.lines %}
+            {# A category with line items takes its total from those lines (the
+               category-level value is not an input to canonical CAPEX), so no
+               category editor is offered: it would save without any effect. #}
+            <div class="v2-field-row v2-field-readonly" data-testid="capex-category-total-{{ group.code }}">
+              <span class="v2-field-label">{{ gf.label }} (category total)</span>
+              <span class="v2-field-value">{{ grouped_keur(group.subtotal_keur) }} <small>kEUR</small></span>
+              <span class="v2-field-hint">Sum of the line items below. Edit a line, or add a custom line, to change this total.</span>
+            </div>
+          {% elif gf.binding_label == "bound" %}
             {{ render_field(gf, project_code, workbook_version, content_hash, project_editable,
                             hx_target="#v2-sheet-capex", sheet_id="capex") }}
           {% else %}

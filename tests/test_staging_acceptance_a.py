@@ -9,6 +9,18 @@ import re
 import pytest
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _staging_acceptance_executor_cleanup():
+    """These tests run real canonical models through the global ModelExecutor
+    (ProcessPoolExecutor). Close it with the existing test reset authority
+    after this module (never during a test: pytest runs tests sequentially) so
+    no worker pool is left alive at pytest interpreter exit, which would keep
+    the process - and the CI step - from terminating."""
+    yield
+    from app.runtime import model_execution as me
+    me.reset_model_executor_for_tests(None)
+
+
 @pytest.fixture
 def seeded_db(tmp_path, monkeypatch):
     from app.persistence import db
@@ -383,3 +395,270 @@ class TestRestoreAuthorityHardening:
             assert probe(base, last_sid=base_id) is False               # not pre-scenario
             assert probe(base, last_hash="0" * 64) is False             # hash not reproduced
             assert probe(None) is False
+
+
+# ── Wave B: Goal Seek on a legacy-seeded Wind project ─────────────────────────
+
+class TestGoalSeekWindLegacySeed:
+    """A seeded Wind project carries only the legacy ``tariff_eur_mwh`` key.
+    Goal Seek must read it as the starting value but APPLY through the canonical,
+    editable ``revenue.ppa.base_tariff`` field (the legacy field is PARTIAL and
+    non-editable) — the applied value then reaches canonical ProjectInputs."""
+
+    def test_resolver_reads_legacy_start_but_applies_to_canonical_field(self, seeded_db):
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.services.goal_seek import resolve_solve_variable
+        from app.v2.router import _goal_seek_resolve_tariff_field
+        from app.workbook.service import WorkbookService
+
+        _, _, wind = _client_for(user_id="u-wave-b-w0", template="generic_wind_reference",
+                                 capacity=50.0, name="Wave B Wind")
+        ws = get_workspace_state(wind.user_id, wind.project_id)
+        assert "rev_ppa_base_tariff" not in ws.draft_snapshot       # legacy-only seed
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        field_id, raw = _goal_seek_resolve_tariff_field(resolve_solve_variable("wind"), pis)
+        assert field_id == "revenue.ppa.base_tariff"
+        assert float(raw) == float(ws.draft_snapshot["tariff_eur_mwh"])
+
+    def test_apply_reaches_canonical_inputs_and_marks_stale(self, seeded_db):
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.workbook.service import WorkbookService
+
+        client, cookies, wind = _client_for(user_id="u-wave-b-w1", template="generic_wind_reference",
+                                            capacity=50.0, name="Wave B Wind")
+        code = wind.project_code
+        _run(client, cookies, code)
+        _, h, v = _tokens(client, cookies, code)
+        r = client.post("/v2/workbook/goal-seek/apply", cookies=cookies,
+                        data={"project": code, "field_id": "revenue.ppa.base_tariff",
+                              "value": "55.125", "content_hash": h, "workbook_version": v},
+                        headers={"HX-Request": "true"})
+        assert 'data-testid="gs-applied-note"' in r.text
+        ws = get_workspace_state(wind.user_id, wind.project_id)
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        assert WorkbookService.to_projectinputs(pis).revenue.ppa_base_tariff == 55.125
+        assert _state(client, cookies, code) == "Stale"
+        # the legacy field is never an apply target
+        _, h, v = _tokens(client, cookies, code)
+        r = client.post("/v2/workbook/goal-seek/apply", cookies=cookies,
+                        data={"project": code, "field_id": "revenue.ppa.tariff_legacy",
+                              "value": "40", "content_hash": h, "workbook_version": v},
+                        headers={"HX-Request": "true"})
+        assert 'data-status="INVALID_REQUEST"' in r.text
+        assert get_workspace_state(wind.user_id, wind.project_id).draft_snapshot.get(
+            "tariff_eur_mwh") == "60.0"
+
+    def test_real_wind_solve_apply_rerun_closes_to_target(self, seeded_db):
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client, cookies, wind = _client_for(user_id="u-wave-b-w2", template="generic_wind_reference",
+                                            capacity=50.0, name="Wave B Wind")
+        code = wind.project_code
+        _run(client, cookies, code)
+        summary = get_workspace_state(wind.user_id, wind.project_id).last_runtime_summary
+
+        def find(d, key):
+            if isinstance(d, dict):
+                if isinstance(d.get(key), (int, float)):
+                    return d[key]
+                for x in d.values():
+                    got = find(x, key)
+                    if got is not None:
+                        return got
+        base = find(summary, "equity_irr")
+        target = base * 100 - 1.0
+        r = client.post("/v2/workbook/goal-seek/run", cookies=cookies,
+                        data={"project": code, "target_metric": "pure_equity_irr",
+                              "target_value": f"{target:.4f}"}, headers={"HX-Request": "true"})
+        assert 'data-status="SOLVED"' in r.text
+        value = re.search(r'name="value" value="([^"]+)"', r.text).group(1)
+        field = re.search(r'name="field_id" value="([^"]+)"', r.text).group(1)
+        ch = re.search(r'name="content_hash" value="([^"]*)"', r.text).group(1)
+        ver = re.search(r'name="workbook_version" value="([^"]*)"', r.text).group(1)
+        assert field == "revenue.ppa.base_tariff"
+        a = client.post("/v2/workbook/goal-seek/apply", cookies=cookies,
+                        data={"project": code, "field_id": field, "value": value,
+                              "content_hash": ch, "workbook_version": ver},
+                        headers={"HX-Request": "true"})
+        assert 'data-testid="gs-applied-note"' in a.text
+        assert _state(client, cookies, code) == "Stale"
+        _run(client, cookies, code)
+        achieved = find(get_workspace_state(wind.user_id, wind.project_id).last_runtime_summary,
+                        "equity_irr")
+        assert abs(achieved * 100 - target) <= 0.01            # advertised 1e-4 fraction
+        assert _state(client, cookies, code) == "Current"
+
+
+# ── Wave B: typed engine fail-closed reasons reach the user in plain language ──
+
+class TestEngineFailClosedMessage:
+    def test_unit_mapping_never_exposes_internals(self):
+        from app.runtime.model_execution import ModelWorkerError
+        from app.v2.router import _engine_failure_message
+
+        shl = ModelWorkerError("CleanProductionRunUnavailable", "m", "PR8_CLEAN_ENGINE_FAIL_CLOSED",
+                               "ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 1.0 kEUR")
+        text = _engine_failure_message(shl)
+        assert "shareholder loan" in text and "Last Run is unchanged" in text
+        assert "kEUR" not in text and "ValueError" not in text and "PR8_" not in text
+        other = ModelWorkerError("X", "m", "PR8_CLEAN_ENGINE_FAIL_CLOSED", "ValueError: SOMETHING_ELSE")
+        assert "integrity checks" in _engine_failure_message(other)
+        assert "contact support" in _engine_failure_message(RuntimeError("boom"))
+        assert "shareholder loan" in _engine_failure_message(
+            ValueError("PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: x"))
+
+    def test_data_center_opex_edit_that_breaks_shl_maturity_is_explained_and_safe(self, seeded_db):
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client, cookies, dc = _client_for(user_id="u-wave-b-dc", template="generic_data_center_reference",
+                                          capacity=40.0, name="Wave B DC")
+        code, uid, pid = dc.project_code, dc.user_id, dc.project_id
+        _run(client, cookies, code)
+        last = get_workspace_state(uid, pid).last_runtime_snapshot_id
+        rows = _history_count(uid, pid)
+        page, h, v = _tokens(client, cookies, code)
+        add = client.post("/v2/opex/line/add", cookies=cookies, headers={"HX-Request": "true"},
+                          data={"project": code, "parent_group_code": "B.02", "label": "Stress",
+                                "amount_keur": "1000", "inflation_pct": "0", "notes": "",
+                                "workbook_version": v, "content_hash": h})
+        assert add.status_code == 200
+        failed = _run(client, cookies, code)
+        assert "shareholder loan" in failed.text
+        assert "contact support" not in failed.text and "Traceback" not in failed.text
+        ws = get_workspace_state(uid, pid)
+        assert ws.last_runtime_snapshot_id == last           # Last Run untouched
+        assert _history_count(uid, pid) == rows               # failure never appends
+        assert _state(client, cookies, code) == "Stale"       # the edit is real and saved
+
+
+# ── Wave B: CAPEX row deactivation + category editor (staging findings P0 #3/#4) ──
+
+def _form_fields(html: str, form_class: str, index: int = 0) -> dict:
+    forms = re.findall(rf'<form[^>]*class="{form_class}"[^>]*>(.*?)</form>', html, re.S)
+    body = forms[index]
+    return {m.group(1): m.group(2) for m in re.finditer(
+        r'<input[^>]*type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"', body)}
+
+
+class TestCapexControls:
+    def test_deactivate_form_carries_every_field_the_endpoint_requires(self, seeded_db):
+        client, cookies, record = _client_for(user_id="u-wave-b-cx0")
+        page = _tokens(client, cookies, record.project_code)[0].text
+        fields = _form_fields(page, "v2-capex-deactivate-form")
+        # Form(...) parameters of POST /v2/capex/line/deactivate
+        assert {"project", "sub_line_id", "row_version",
+                "workbook_version", "content_hash"} <= set(fields)
+
+    def test_deactivate_as_submitted_by_the_browser_persists_and_reaches_totals(self, seeded_db):
+        from app.persistence.db import get_cursor
+
+        client, cookies, record = _client_for(user_id="u-wave-b-cx1")
+        code, uid, pid = record.project_code, record.user_id, record.project_id
+        _run(client, cookies, code)
+        page = _tokens(client, cookies, code)[0].text
+        fields = _form_fields(page, "v2-capex-deactivate-form")
+        with get_cursor() as cur:
+            cur.execute("SELECT amount_keur FROM capex_sub_lines WHERE sub_line_id=?",
+                        (fields["sub_line_id"],))
+            amount = cur.fetchone()["amount_keur"]
+        total_before = float(re.search(r'data-testid="total-capex-keur">\s*([\d,\.]+)', page)
+                             .group(1).replace(",", ""))
+
+        resp = client.post("/v2/capex/line/deactivate", data=fields, cookies=cookies,
+                           headers={"HX-Request": "true"})
+        assert resp.status_code == 200                      # was 422: content_hash missing
+        with get_cursor() as cur:
+            cur.execute("SELECT is_active FROM capex_sub_lines WHERE sub_line_id=?",
+                        (fields["sub_line_id"],))
+            assert cur.fetchone()["is_active"] == 0         # persisted
+        after = _tokens(client, cookies, code)[0].text      # fresh page load == reload
+        assert fields["sub_line_id"] not in after
+        total_after = float(re.search(r'data-testid="total-capex-keur">\s*([\d,\.]+)', after)
+                            .group(1).replace(",", ""))
+        assert total_after == pytest.approx(total_before - amount, abs=1.0)
+        assert _state(client, cookies, code) == "Stale"     # a causal edit marks the Run STALE
+
+    def test_category_without_effect_editor_is_replaced_by_an_explained_total(self, seeded_db):
+        client, cookies, record = _client_for(user_id="u-wave-b-cx2")
+        page = _tokens(client, cookies, record.project_code)[0].text
+        # production units has seeded line items -> its category total is derived from them
+        assert 'data-field-id="capex.C.production_units"' not in page
+        assert 'data-testid="capex-category-total-C.01"' in page
+        assert "Sum of the line items below" in page
+
+    def test_category_editor_save_was_inert_for_canonical_capex(self, seeded_db):
+        """Documents WHY the editor was removed: with line items present the
+        category scalar never reaches canonical CAPEX, yet it marked STALE."""
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
+        from app.workbook.service import WorkbookService
+
+        client, cookies, record = _client_for(user_id="u-wave-b-cx3")
+        code, uid, pid = record.project_code, record.user_id, record.project_id
+
+        def canonical_total():
+            ws = get_workspace_state(uid, pid)
+            pi = WorkbookService.to_projectinputs(
+                WorkbookService.build_draft_input_set_from_workspace(ws))
+            return apply_user_sub_lines_replacing_base(
+                pi.capex, project_id=pid, scenario_overrides=None).total_capex
+
+        before = canonical_total()
+        _, h, v = _tokens(client, cookies, code)
+        client.post("/v2/workbook/update", cookies=cookies, headers={"HX-Request": "true"},
+                    data={"sheet_id": "capex", "field_id": "capex.C.production_units",
+                          "value": "600", "project": code,
+                          "workbook_version": v, "content_hash": h})
+        assert canonical_total() == before
+
+
+# ── Wave B: library "create working copy" seeds like the New Project form ────
+
+class TestLibraryCloneSeeding:
+    @pytest.mark.parametrize("template,driver_key", [
+        ("generic_solar_reference", None),
+        ("generic_wind_reference", None),
+        ("generic_data_center_reference", "opex_power_expenses_y1_keur"),
+        ("generic_ev_charging_reference", None),
+    ])
+    def test_clone_route_seeds_editable_line_items(self, seeded_db, template, driver_key):
+        from app.persistence.db import get_cursor
+        from app.persistence.projects_repository import get_reference_by_template_source
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client, cookies, _seed = _client_for(user_id=f"u-clone-{template[8:12]}", template=template)
+        ref = get_reference_by_template_source(template)
+        resp = client.post(f"/library/clone/{ref.project_id}", cookies=cookies,
+                           headers={"HX-Request": "true"})
+        assert resp.status_code in (200, 204, 303), resp.text[:200]
+        from app.persistence.projects_repository import list_project_records
+        clone = next(p for p in list_project_records(user_id=f"u-clone-{template[8:12]}")
+                     if p.project_role == "working_copy")
+        with get_cursor() as cur:
+            cur.execute("SELECT COUNT(*) c FROM capex_sub_lines WHERE project_id=? AND is_active=1",
+                        (clone.project_id,))
+            capex_rows = cur.fetchone()["c"]
+            cur.execute("SELECT COUNT(*) c FROM opex_sub_lines WHERE project_id=? AND is_active=1",
+                        (clone.project_id,))
+            opex_rows = cur.fetchone()["c"]
+        assert capex_rows > 0 and opex_rows > 0
+        if driver_key:
+            assert driver_key in get_workspace_state(clone.user_id, clone.project_id).draft_snapshot
+        page = client.get(f"/v2/workbook?project={clone.project_code}", cookies=cookies).text
+        assert len(re.findall(r'data-testid="opex-custom-row-', page)) == opex_rows
+        assert "technical_management" not in re.sub(r'(name|value|data-[a-z-]+|id|for)="[^"]*"', "", page)
+
+    def test_storage_and_non_reference_sources_keep_their_guards(self, seeded_db):
+        from app.persistence.projects_repository import get_reference_by_template_source
+
+        client, cookies, own = _client_for(user_id="u-clone-guard")
+        storage = get_reference_by_template_source("generic_storage_reference")
+        r = client.post(f"/library/clone/{storage.project_id}", cookies=cookies,
+                        headers={"HX-Request": "true"})
+        assert r.status_code == 400
+        r = client.post(f"/library/clone/{own.project_id}", cookies=cookies,
+                        headers={"HX-Request": "true"})
+        assert r.status_code == 400                      # a user-owned project is not clonable
+        r = client.post("/library/clone/does-not-exist", cookies=cookies,
+                        headers={"HX-Request": "true"})
+        assert r.status_code == 400

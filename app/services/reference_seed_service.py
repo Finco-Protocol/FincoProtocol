@@ -16,6 +16,7 @@ from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD, create_sub_
 from app.persistence.opex_sub_lines import create_sub_line as create_opex_line
 from app.persistence.projects_repository import get_reference_by_template_source, update_project_record
 from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+from app.services import project_library_service as _pls
 from app.services.project_library_service import create_working_copy, ensure_reference_models
 from app.reference_detail_catalog import (
     PUBLIC_GENERIC_DETAIL_V1,
@@ -250,6 +251,43 @@ def _data_center_driver_block(pi) -> dict:
     }
 
 
+def create_seeded_working_copy(user_id: str, source_reference_id: str,
+                               requested_name: str | None = None):
+    """Library "create working copy" through the SAME seeding authority as the
+    New Project form.
+
+    A bare ``create_working_copy`` copies only the reference snapshot: no
+    detailed CAPEX/OPEX line items and (Data Center / EV) no seeded driver keys,
+    so such a copy is a different product from a form-created project. For a
+    cloneable canonical reference this delegates to
+    :func:`create_reference_seeded_project` at the reference's own capacity
+    (scale ratio 1.0). Anything else (non-canonical source, Storage preview,
+    unknown id) keeps the original ``create_working_copy`` behaviour and its
+    typed errors unchanged.
+    """
+    from app.persistence.projects_repository import get_project_by_id
+    from app.services.project_library_service import _is_canonical_reference
+
+    source = get_project_by_id(source_reference_id)
+    if (source is not None and _is_canonical_reference(source)
+            and getattr(source, "template_source", None) in CLONEABLE_SEED_TEMPLATE_SOURCES):
+        template_source = source.template_source
+        reference = get_reference_by_template_source(template_source)
+        if reference is not None and reference.project_id == source.project_id:
+            name = (requested_name or "").strip()
+            if not name:
+                name = source.project_name.replace(" Reference", " Working Copy")
+                if "Working Copy" not in name:
+                    name = f"{source.project_name} Working Copy"
+            capacity = float(_reference_inputs(template_source).technical.capacity_mw)
+            return create_reference_seeded_project(
+                user_id=user_id, template_source=template_source,
+                requested_name=name, capacity_mw=capacity)
+    return _pls.create_working_copy(
+        user_id=user_id, source_reference_id=source_reference_id,
+        requested_name=requested_name)
+
+
 def create_reference_seeded_project(
     *, user_id: str, template_source: str, requested_name: str, capacity_mw: float,
     country_market: str | None = None,
@@ -278,7 +316,9 @@ def create_reference_seeded_project(
     pi = _reference_inputs(template_source)
     reference_capacity = float(pi.technical.capacity_mw)
     ratio = float(capacity_mw) / reference_capacity
-    record = create_working_copy(user_id, reference.project_id, requested_name.strip())
+    record = _pls.create_working_copy(
+        user_id=user_id, source_reference_id=reference.project_id,
+        requested_name=requested_name.strip())
     ws = get_workspace_state(user_id, record.project_id)
     if ws is None:
         raise RuntimeError("Working-copy workspace was not initialized.")
