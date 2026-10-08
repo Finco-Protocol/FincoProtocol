@@ -24,7 +24,10 @@
     active_scenario_id str | None
     is_data_center bool
 #}
-<div id="v2-sheet-sensitivity" class="v2-sensitivity" data-sheet="sensitivity">
+<link rel="stylesheet" href="/static/css/model_decision_workspace.css">
+<div id="v2-sheet-sensitivity" class="v2-sensitivity v2-d-workspace" data-sheet="sensitivity"
+     hx-get="/v2/workbook/decision/sensitivity?project={{ project_code | urlencode }}"
+     hx-trigger="click from:#tab-sensitivity" hx-target="this" hx-swap="outerHTML">
 
   <div class="v2-sheet-section-header">
     <div class="v2-overview-section-title">Sensitivity Analysis</div>
@@ -35,6 +38,11 @@
   </div>
 
   {# ── Driver descriptions ──────────────────────────────────────────── #}
+  {% if is_ev_charging %}
+  <p class="d-context" data-testid="sensitivity-unsupported">EV Charging sensitivity is not supported by this workspace's candidate runner. No renewable driver is substituted.</p>
+  {% elif project_editable is defined and not project_editable %}
+  <p class="d-context">Reference model — create a working copy to run sensitivity.</p>
+  {% else %}
   <div class="v2-sensitivity-driver-guide" aria-label="Driver guide">
     <table class="v2-sensitivity-driver-table">
       <thead>
@@ -48,6 +56,9 @@
         {% if is_data_center %}
         <tr><td>Service Price (EUR/kW/month)</td><td>−20% → Base → +20%</td><td>5 steps of 10%</td></tr>
         <tr><td>Stabilised Occupancy</td>         <td>−10 pp → Base → +10 pp</td><td>5 steps of 5 pp</td></tr>
+        <tr><td>IT Load Capacity (MW)</td><td>−20% → Base → +20%</td><td>5 points</td></tr>
+        <tr><td>PUE</td><td>−10% → Base → +10%</td><td>5 points</td></tr>
+        <tr><td>Electricity Price (EUR/MWh)</td><td>−20% → Base → +20%</td><td>5 points</td></tr>
         {% else %}
         <tr><td>Tariff / Energy Price</td><td>−20% → Base → +20%</td><td>5 steps of 10%</td></tr>
         <tr><td>Generation / P50</td>    <td>−10% → Base → +10%</td><td>5 steps of 5%</td></tr>
@@ -73,6 +84,9 @@
         {% if is_data_center %}
         <option value="service_price">Service Price EUR/kW/month (±20%)</option>
         <option value="dc_occupancy">Stabilised Occupancy (±10 pp)</option>
+        <option value="dc_it_mw">IT Load Capacity MW (±20%)</option>
+        <option value="dc_pue">PUE (±10%)</option>
+        <option value="dc_electricity_price">Electricity Price EUR/MWh (±20%)</option>
         {% else %}
         <option value="tariff">Tariff / Energy Price (±20%)</option>
         <option value="generation">Generation / P50 (±10%)</option>
@@ -121,4 +135,8 @@
     </div>
   </div>
 
+  {% endif %}
+  <p class="d-context">Evaluation budget: five canonical points per request. Temporary analysis only; no Working Copy, Last Run, Run History or scenario writes.
+    Two-driver matrices are not available. Breakeven is established only by supported bounded Goal Seek, not interpolation.</p>
+  <div class="d-actions"><button type="button" onclick="document.getElementById('tab-compare').click()">Compare</button><button type="button" onclick="document.getElementById('tab-goal-seek').click()">Tender Pricing</button></div>
 </div>{# v2-sheet-sensitivity #}

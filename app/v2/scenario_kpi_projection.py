@@ -14,6 +14,7 @@ No separate KPI catalog — imports from output_metric_projection.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any, Optional
 
 from app.v2.output_metric_projection import (
@@ -51,8 +52,9 @@ class ScenarioKpiRow:
     label: str
     fmt: str
     values: list[str]      # formatted display strings, one per scenario
-    deltas: list[str]      # delta vs first scenario ("—" for base, "+1.23%" etc.)
+    deltas: list[str]      # delta vs first scenario ("—" for base, "+1.23 pp" etc.)
     raw_values: list[Optional[float]]
+    variances: list[str] = None  # relative amount variance only; rates use pp
 
 
 @dataclass(frozen=True)
@@ -91,7 +93,10 @@ def build_scenario_projection(
     freshness = "not_run" if state == "NOT_RUN" else "stale" if state == "STALE" else "current"
     for entry in KPI_CATALOG:
         key, _label, _unit, fmt, _source = entry
-        v = rs.get(key)
+        value = rs.get(key)
+        # A scenario evidence surface accepts finite raw numerics only, not
+        # booleans or formatted display strings masquerading as run evidence.
+        v = value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
         metrics[key] = build_output_metric_projection(
             key, v, freshness=freshness, run_timestamp=ran_at
         )
@@ -119,7 +124,7 @@ def build_compare_rows(projections: list[ScenarioProjection]) -> list[ScenarioKp
     dictionaries consulted.
 
     Delta rule: raw float delta, formatted with sign — never string parsing.
-    0.085 vs 0.070 → raw delta -0.015 → display "-1.50%".
+    0.085 vs 0.070 → raw delta -0.015 → display "-1.50 pp".
     """
     rows: list[ScenarioKpiRow] = []
     for entry in KPI_CATALOG:
@@ -140,7 +145,13 @@ def build_compare_rows(projections: list[ScenarioProjection]) -> list[ScenarioKp
         base_raw = raw_vals[0] if raw_vals else None
 
         deltas: list[str] = []
+        variances: list[str] = []
         for i, rv in enumerate(raw_vals):
+            variances.append(
+                f"{(rv - base_raw) / abs(base_raw) * 100:+.1f}%"
+                if i and fmt == "keur" and rv is not None and base_raw is not None and base_raw > 0
+                else _NA
+            )
             if i == 0:
                 deltas.append("—")
             elif rv is None or base_raw is None:
@@ -148,7 +159,7 @@ def build_compare_rows(projections: list[ScenarioProjection]) -> list[ScenarioKp
             else:
                 d = rv - base_raw
                 if fmt == "pct":
-                    deltas.append(f"{d * 100:+.2f}%")
+                    deltas.append(f"{d * 100:+.2f} pp")
                 elif fmt == "ratio":
                     deltas.append(f"{d:+.2f}x")
                 elif fmt == "keur":
@@ -163,5 +174,6 @@ def build_compare_rows(projections: list[ScenarioProjection]) -> list[ScenarioKp
             values=vals,
             deltas=deltas,
             raw_values=raw_vals,
+            variances=variances,
         ))
     return rows

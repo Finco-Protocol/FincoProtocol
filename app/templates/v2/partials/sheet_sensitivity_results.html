@@ -11,12 +11,19 @@
     results         list[dict]   — [{label, status, kpis, error?}]
     kpi_catalog     list[dict]   — [{key, label, fmt}]
 #}
+<link rel="stylesheet" href="/static/css/model_decision_workspace.css">
+<div class="v2-d-workspace">
 <div class="v2-sens-results-header">
   <span class="v2-sens-driver-label">{{ driver_label }}</span>
   <span class="v2-sens-scenario-label">on {{ scenario_display }}</span>
 </div>
 
 {% set ok_results = results | selectattr("status", "equalto", "OK") | list %}
+{% if sensitivity_input is defined %}
+<p class="d-context">Analysis input: {{ sensitivity_input.field }} = {{ sensitivity_input.value if sensitivity_input.value is not none else 'Not available' }}.
+  Shocks: {{ sensitivity_input.mode }}. Scenario: {{ scenario_display }}. Base is the unshocked analysis scenario, not necessarily the project Base Case.</p>
+{% endif %}
+{% if sensitivity_view is defined and not sensitivity_view.has_baseline %}<p role="status">Unshocked Base evaluation unavailable. No baseline deltas or chart are inferred.</p>{% endif %}
 
 {% if not ok_results %}
 <div class="v2-sensitivity-empty v2-sensitivity-error">
@@ -25,12 +32,13 @@
 {% else %}
 
 <div class="v2-compare-table-wrap">
-  <table class="v2-compare-table v2-sens-table">
+  <table class="v2-compare-table v2-sens-table d-table">
     <thead>
       <tr>
         <th class="v2-sens-step-col">Case</th>
+        <th>Driver input</th>
         {% for item in kpi_catalog %}
-        <th class="v2-compare-kpi-col">{{ item.label }}</th>
+        <th class="v2-compare-kpi-col">{{ item.label }}{% if item.unit %}<span class="d-muted">{{ item.unit }}</span>{% endif %}</th>
         {% endfor %}
       </tr>
     </thead>
@@ -43,10 +51,16 @@
             <span class="v2-sens-fail-badge" title="{{ r.get('error', '') }}">FAILED</span>
           {% endif %}
         </td>
+        <td>{{ r.get('input_value') if r.get('input_value') is not none else '—' }}</td>
         {% if r.status == "OK" %}
           {% for item in kpi_catalog %}
           <td class="v2-compare-kpi-val {% if r.kpis.get(item.key, '—') == '—' %}v2-kpi-value--na{% endif %}">
             {{ r.kpis.get(item.key, '—') }}
+            {% if sensitivity_view is defined and sensitivity_view.has_baseline %}
+            {% set ri = loop.index0 %}{% set point = results.index(r) + 1 %}
+            <span class="d-muted">Δ {{ sensitivity_view.delta_rows[ri].deltas[point] }}</span>
+            {% if sensitivity_view.delta_rows[ri].variances[point] != '—' %}<span class="d-muted">{{ sensitivity_view.delta_rows[ri].variances[point] }} variance</span>{% endif %}
+            {% endif %}
           </td>
           {% endfor %}
         {% else %}
@@ -68,3 +82,13 @@
 </div>
 
 {% endif %}
+{% if sensitivity_view is defined and sensitivity_view.chart %}
+<section class="d-context" data-testid="sensitivity-range"><h3>Project IRR response</h3>
+  <span class="d-muted">Single-driver observed range. No interpolation or multi-driver ranking. Failed / unavailable points are excluded from bars, not replaced with zero.</span>
+  {% for row in sensitivity_view.chart %}<div class="d-chart-row"><span>{{ row.label }}</span>
+    <div class="d-chart-track"><span class="d-chart-bar {% if row.negative %}negative{% endif %}" style="width:{{ row.width }}%"></span></div>
+    <span>{{ row.value }} <small>{{ row.delta }}</small></span></div>{% endfor %}
+  {% for row in sensitivity_view.tornado %}<p>Low/high observed cases: {{ row.min_level }} / {{ row.max_level }}. Baseline: unshocked scenario Project IRR.</p>{% endfor %}
+</section>
+{% endif %}
+</div>

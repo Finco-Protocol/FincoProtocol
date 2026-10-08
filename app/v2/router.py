@@ -976,20 +976,17 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
             ("CO2 certificate price", _value("revenue.balancing.co2_price_eur_mwh"), "EUR/MWh"),
         ),
         "merchant_curve_rows": curve_rows,
+        "merchant_start_year": str(pis.get("project_setup.technical.cod_date") or "")[:4],
         # Data Center transparent revenue reconciliation (spec M): shown only
         # for Data Center projects; power cost belongs to OPEX (B.08), never
         # to Revenue.
         "revenue_dc_reconciliation": _build_dc_revenue_reconciliation(pis),
         "revenue_output_context": {
-            "generation": (
-                lambda _g: (
-                    f"{float(_g):,.0f}"
-                    if _g is not None and str(_g) not in ("NOT_AVAILABLE", "")
-                    else None
-                )
-            )((_rev_ctx := ((rs or {}).get("revenue") or {})).get("sample_generation_mwh")),
-            "period": _rev_ctx.get("sample_period_label"),
-            "persisted_revenue": _rev_ctx.get("display_value_keur"),
+            # Already-formatted persisted evidence is displayed verbatim,
+            # never parsed or used as an input to presentation arithmetic.
+            "generation": (revenue_derivation or {}).get("sample_generation_mwh"),
+            "period": (revenue_derivation or {}).get("sample_period_label"),
+            "persisted_revenue": (revenue_derivation or {}).get("display_value_keur"),
         },
     }
 
@@ -3004,6 +3001,7 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws, *,
         "is_data_center": is_data_center_project_type(
             getattr(_scen_record, "project_type", "")
         ),
+        "is_ev_charging": str(getattr(_scen_record, "project_type", "")).lower() in ("ev charging", "ev_charging"),
     }
     return _templates.get_template("partials/sheet_scenarios.html").render(ctx)
 
@@ -4030,15 +4028,26 @@ async def v2_scenario_compare(
     if project_record is None:
         return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
 
-    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
-    all_scenarios = list_scenarios(user_id=workspace_owner, project_id=project_record.project_id, include_archived=False)
+    from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
+    from app.workbook.workbook_identity import WorkbookIdentityError
+    try:
+        read_context = PostRunRequestContext.capture(owner_id=workspace_owner, project_id=project_record.project_id)
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        return HTMLResponse("Scenario comparison unavailable: coherent workspace evidence could not be read.", status_code=409)
+    ws = read_context.workspace
+    all_scenarios = [sc for sc in read_context.scenarios if not sc.archived]
+    by_id = {sc.scenario_id: sc for sc in all_scenarios}
+    selected_ids = list(dict.fromkeys(sid for sid in [s1, s2, s3] if sid))
+    selected_scenarios = [by_id[sid] for sid in selected_ids if sid in by_id]
 
-    selected_ids = [sid for sid in [s1, s2, s3] if sid]
-    selected_scenarios = []
-    for sid in selected_ids:
-        sc = get_scenario(scenario_id=sid, user_id=workspace_owner)
-        if sc and sc.project_id == project_record.project_id and not sc.archived:
-            selected_scenarios.append(sc)
+    # The selected Base Case is always the comparison reference. When it is
+    # absent the first selected alternative is labelled explicitly as reference.
+    selected_scenarios.sort(key=lambda sc: not sc.is_base_case)
+    selected_ids = [sc.scenario_id for sc in selected_scenarios]
+    from app.v2.scenario_presentation import build_scenario_presentations
+    global_stale = read_context.freshness.is_stale
+    states = {sc.scenario_id: sc for sc in build_scenario_presentations(
+        selected_scenarios, ws.active_scenario_id if ws else None, global_is_stale=global_stale)}
 
     projections = []
     for sc in selected_scenarios:
@@ -4048,8 +4057,7 @@ async def v2_scenario_compare(
         if not has_result:
             is_stale = False  # will show as NOT_RUN
         else:
-            from app.v2.scenario_presentation import _is_stale as _snap_is_stale
-            is_stale = _snap_is_stale(sc)
+            is_stale = states[sc.scenario_id].is_stale
         proj = build_scenario_projection(
             scenario_name=sc.scenario_name,
             runtime_summary=rs.get("kpis") if has_result else None,
@@ -4062,6 +4070,7 @@ async def v2_scenario_compare(
         projections.append(proj)
 
     rows = build_compare_rows(projections) if len(projections) >= 2 else []
+    from app.v2.decision_workspace import scenario_assumptions
 
     ctx = {
         "project_code": project,
@@ -4071,9 +4080,46 @@ async def v2_scenario_compare(
         "selected_ids": selected_ids,
         "projections": projections,
         "compare_rows": rows,
+        "compare_assumptions": scenario_assumptions(selected_scenarios),
         "request": request,
     }
-    return HTMLResponse(content=_templates.get_template("partials/sheet_compare.html").render(ctx))
+    html = _templates.get_template("partials/sheet_compare.html").render(ctx)
+    try:
+        read_context.validate_current()
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        return HTMLResponse("Scenario comparison unavailable: workspace changed during assembly. Reopen Compare.",
+                            status_code=409, headers={"Cache-Control": "no-store"})
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/workbook/decision/{surface}", response_class=HTMLResponse)
+async def v2_decision_sheet(request: Request, surface: str, project: str):
+    """Refresh analysis controls from one authorized coherent read snapshot."""
+    if surface not in ("sensitivity", "goal-seek"):
+        return HTMLResponse("Decision surface not found.", status_code=404)
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse("Unauthenticated.", status_code=401)
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
+    from app.workbook.workbook_identity import WorkbookIdentityError
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return HTMLResponse("Project not found.", status_code=404)
+    try:
+        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        ctx = _base_sheet_ctx(request, context.inputs, context.workspace, context.project_record,
+                              project, freshness=context.freshness)
+        ctx["scenarios"] = context.scenarios
+        ctx["active_scenario_id"] = context.workspace.active_scenario_id
+        ctx["revenue_fields"] = _build_sheet_fields("revenue", context.inputs)
+        filename = "sheet_sensitivity.html" if surface == "sensitivity" else "sheet_goal_seek.html"
+        html = _templates.get_template("partials/" + filename).render(ctx)
+        context.validate_current()
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        return HTMLResponse("Analysis controls unavailable: workspace changed. Reopen this tab to refresh.",
+                            status_code=409, headers={"Cache-Control": "no-store"})
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/workbook/scenarios/sensitivity/run", response_class=HTMLResponse)
@@ -4378,7 +4424,8 @@ async def v2_scenario_sensitivity_run(
 
             # P0-A: do not run the engine inline. Queue the point; the whole grid executes as ONE
             # admitted, ordered task in the model executor (see below).
-            results.append({"label": step_label, "status": "PENDING", "_pi": pi_override})
+            results.append({"label": step_label, "status": "PENDING", "_pi": pi_override,
+                            "input_value": new_val if new_val is not None else base_val})
 
         except Exception as exc:
             _logging.getLogger(__name__).exception(
@@ -4452,6 +4499,9 @@ async def v2_scenario_sensitivity_run(
         "is_data_center": _is_dc_sens,
         "request": request,
     }
+    from app.v2.decision_workspace import sensitivity_presentation
+    ctx["sensitivity_view"] = sensitivity_presentation(results, driver, spec["label"])
+    ctx["sensitivity_input"] = {"field": field_id, "value": base_val, "mode": spec["mode"]}
     return HTMLResponse(content=_templates.get_template("partials/sheet_sensitivity_results.html").render(ctx))
 
 
@@ -4472,6 +4522,8 @@ async def v2_scenario_sensitivity_run(
 
 
 def _render_goal_seek_results(ctx: dict) -> HTMLResponse:
+    from app.v2.decision_workspace import tender_presentation
+    ctx["tender"] = tender_presentation(ctx.get("result"))
     return HTMLResponse(
         content=_templates.get_template("partials/goal_seek_results.html").render(ctx))
 

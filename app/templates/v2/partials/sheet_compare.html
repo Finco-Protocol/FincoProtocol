@@ -15,7 +15,8 @@
     compare_rows       list[ScenarioKpiRow]
     request            Request
 #}
-<div id="v2-sheet-compare" class="v2-compare" data-sheet="compare">
+<link rel="stylesheet" href="/static/css/model_decision_workspace.css">
+<div id="v2-sheet-compare" class="v2-compare v2-d-workspace" data-sheet="compare">
 
   <div class="v2-overview-section-title" style="padding:1rem 1.5rem 0.5rem">
     Scenario Compare
@@ -145,12 +146,12 @@
             {% endif %}
           </th>
           {% endfor %}
-          {% if projections | length >= 2 %}
+          {% for proj in projections[1:] %}
           <th class="v2-compare-delta-col"
-              title="Delta of last column vs first (base) scenario">
-            Δ vs {{ projections[0].scenario_name }}
+              title="{{ proj.scenario_name }} minus {{ projections[0].scenario_name }}">
+            Δ {{ proj.scenario_name }}<span class="d-muted">vs {{ projections[0].scenario_name }}</span>
           </th>
-          {% endif %}
+          {% endfor %}
         </tr>
       </thead>
       <tbody>
@@ -165,13 +166,13 @@
           </td>
           {% endfor %}
           {# Delta column shows the last non-base scenario vs first #}
-          {% if row.deltas | length >= 2 %}
-          {% set last_delta = row.deltas[-1] %}
+          {% for delta in row.deltas[1:] %}
           <td class="v2-compare-kpi-delta v2-delta-neutral"
-              data-testid="cmp-{{ row.key }}-delta">
-            {{ last_delta }}
+              data-testid="cmp-{{ row.key }}-delta-s{{ loop.index + 1 }}">
+            {{ delta }}
+            {% if row.variances and row.variances[loop.index] != '—' %}<span class="d-muted">{{ row.variances[loop.index] }} variance</span>{% endif %}
           </td>
-          {% endif %}
+          {% endfor %}
         </tr>
         {% endfor %}
       </tbody>
@@ -179,6 +180,22 @@
   </div>
 
   <div class="v2-compare-footer">
+    <p class="d-context">Reference: {{ projections[0].scenario_name }}{% if selected_scenarios[0].is_base_case %} (Base Case){% else %} (selected alternative; Base Case not selected){% endif %}.
+      Rate deltas are percentage points; amount variances require a positive reference amount.</p>
+    <details class="d-context" open><summary>Assumptions and Run binding</summary>
+      <p>Working overrides and inputs bound to each Last Run are distinct. KPI movement is not causal attribution.</p>
+      <div class="d-assumptions">
+      {% for item in compare_assumptions %}
+        <section><strong>{{ item.name }}</strong>
+          <span class="d-muted">Working scenario overrides</span><dl>
+          {% for label,value,unit in item.working %}<dt>{{ label }}</dt><dd>{{ value }} {{ unit }}</dd>{% else %}<dt>Base inputs inherited</dt>{% endfor %}</dl>
+          <span class="d-muted">Overrides bound to Last Run</span><dl>
+          {% if item.bound_available %}{% for label,value,unit in item.bound %}<dt>{{ label }}</dt><dd>{{ value }} {{ unit }}</dd>{% else %}<dt>No financial overrides</dt>{% endfor %}
+          {% else %}<dt>Run-bound override evidence unavailable</dt>{% endif %}</dl>
+        </section>
+      {% endfor %}
+      </div>
+    </details>
     <span class="v2-compare-authority-note">
       All values are authoritative engine outputs sourced from each scenario's
       persisted RuntimeResult.  Δ = display arithmetic between already-authoritative scalars.
@@ -187,5 +204,6 @@
   </div>
 
   {% endif %}{# selected_scenarios #}
+  <div class="d-actions"><button type="button" onclick="document.getElementById('tab-scenarios').click()">Scenarios</button><button type="button" onclick="document.getElementById('tab-sensitivity').click()">Sensitivity</button><button type="button" onclick="document.getElementById('tab-goal-seek').click()">Tender Pricing</button></div>
 
 </div>{# v2-sheet-compare #}
