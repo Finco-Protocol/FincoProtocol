@@ -343,11 +343,14 @@ def build_cross_project_rows(
             capex, ebitda, revenue = (view.get("total_capex_keur"),
                                       view.get("total_ebitda_keur"),
                                       view.get("total_revenue_keur"))
-            if capex and ebitda and revenue:
-                # EBITDA margin on revenue — presentation ratio of persisted values
+            # Correction A6: legitimate ZERO is a valid value — use explicit
+            # None checks, never numeric truthiness (0 != N/A).
+            if revenue is not None and revenue != 0 and ebitda is not None:
                 margin = f"{(ebitda / revenue) * 100:.1f}%"
+            else:
+                margin = _NA
             cap_mw = p.get("capacity_mw")
-            if capex and isinstance(cap_mw, (int, float)) and cap_mw > 0:
+            if capex is not None and isinstance(cap_mw, (int, float)) and cap_mw > 0:
                 metrics["capex_per_mw"] = f"{capex / float(cap_mw):,.0f}"
         rows.append(CrossProjectRow(
             project_code=p.get("project_code", ""),
