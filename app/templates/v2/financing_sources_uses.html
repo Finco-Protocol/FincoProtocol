@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Sources & Uses — FINCO Model{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="/static/css/model_financing_sources_uses.css?v={{ asset_version }}">
+<main class="su-page" data-testid="su-page" data-run-kind="{{ view.run_kind }}">
+  <header class="su-header">
+    <div>
+      <p class="su-eyebrow">FINCO MODEL · FINANCING F1</p>
+      <h1>Sources &amp; Uses</h1>
+      <p class="su-subtitle">{{ project_name }} · Reconciliation and bankability evidence</p>
+    </div>
+    <a class="su-back" href="/v2/workbook?project={{ project_code | urlencode }}">← Back to Model workspace</a>
+  </header>
+
+  <section class="su-banner" aria-labelledby="su-lineage-title" data-testid="su-lineage">
+    <div>
+      <h2 id="su-lineage-title">Run evidence</h2>
+      <p><strong>{{ 'Historical Run' if is_historical else 'Last Run' }}</strong> ·
+         <span data-testid="su-freshness">{{ view.freshness }}</span>
+         · {{ run_at or 'Not run' }} · Snapshot {{ run_id or 'unavailable' }}</p>
+      <p>Run scenario: <strong>{{ run_scenario }}</strong>
+         {% if not is_historical %} · Working scenario: <strong>{{ active_scenario }}</strong>{% endif %}</p>
+      {% if view.freshness == 'STALE' %}
+        <p class="su-warning">Working Copy has changed. All calculated amounts below belong to the prior Run; run the model again for new results.</p>
+      {% elif is_historical %}
+        <p class="su-warning">Historical numbers are immutable evidence from the selected Run. No current Working Copy amounts are applied.</p>
+      {% elif view.freshness == 'NOT_RUN' %}
+        <p class="su-warning">No canonical Last Run has been committed for this Working Copy.</p>
+      {% endif %}
+    </div>
+    <div class="su-status">
+      <small>Financial integrity</small>
+      <strong data-testid="su-integrity">{{ view.integrity }}</strong>
+      <small>Not equivalent to S&amp;U balance</small>
+    </div>
+  </section>
+
+  {% if view.legacy_financing %}
+  <p class="su-warning" data-testid="su-legacy-gap">LEGACY RUN — FINANCING EVIDENCE UNAVAILABLE. Historical Runs are not reconstructed from current assumptions.</p>
+  {% endif %}
+  <section class="su-summary" aria-label="Reconciliation totals" data-testid="su-totals">
+    {% for item in (view.total_sources, view.total_uses, view.residual) %}
+    <div class="su-total" data-testid="su-total-{{ loop.index }}">
+      <span>{{ item.label }}</span>
+      <b data-available="{{ 'true' if item.available else 'false' }}">{{ item.display }}</b>
+      <small>kEUR · {{ item.reason if not item.available else item.authority }}</small>
+    </div>
+    {% endfor %}
+  </section>
+
+  <p data-testid="su-balance-status" class="su-help">Canonical funding reconciliation: <strong>{{ view.balance_status }}</strong>.
+     Funding balance is separate from financial integrity and input freshness.</p>
+  <section class="su-grid" aria-label="Sources and uses">
+    <div class="su-panel" data-testid="su-sources">
+      <h2>Financing sources</h2>
+      <p class="su-help">Canonical source totals and classifications from this exact persisted Run, where available. Aggregate equity is not subdivided into unsupported categories.</p>
+      <div class="su-table-scroll">
+        <table><thead><tr><th scope="col">Source</th><th scope="col" class="su-num">kEUR</th></tr></thead>
+          <tbody>{% for item in view.sources %}
+          <tr><th scope="row">{{ item.label }}</th><td class="su-num" data-available="{{ 'true' if item.available else 'false' }}" title="{{ item.reason or item.authority }}">{{ item.display }}</td></tr>
+          {% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="su-panel" data-testid="su-uses">
+      <h2>Project uses</h2>
+      <p class="su-help">Canonical project uses from this exact Run, with IDC, financing fees, DSRA and developer costs included under the engine’s existing categories.</p>
+      <div class="su-table-scroll">
+        <table><thead><tr><th scope="col">Use</th><th scope="col" class="su-num">kEUR</th></tr></thead>
+          <tbody>{% for item in view.uses %}
+          <tr><th scope="row">{{ item.label }}</th><td class="su-num" data-available="{{ 'true' if item.available else 'false' }}" title="{{ item.reason or item.authority }}">{{ item.display }}</td></tr>
+          {% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="su-panel" data-testid="su-bankability">
+    <h2>Debt capacity and bankability</h2>
+    <p class="su-help">Same Run: DSCR/gearing capacities, senior sizing, binding constraint and solver diagnostics where produced. Independent of the financial integrity verdict.</p>
+    <div class="su-table-scroll"><table><thead><tr><th scope="col">Indicator</th><th scope="col" class="su-num">Value</th><th scope="col">Evidence</th></tr></thead>
+      <tbody>{% for item in view.bankability %}
+      <tr><th scope="row">{{ item.label }}</th><td class="su-num" data-available="{{ 'true' if item.available else 'false' }}">{{ item.display }}</td>
+        <td class="su-source">{{ item.authority }}{% if not item.available %} · {{ item.reason }}{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% if view.integrity_codes %}
+      <p class="su-warning">Existing Run Integrity reasons: {{ view.integrity_codes | join(', ') }}</p>
+    {% endif %}
+    <p class="su-help">{{ view.integrity_note }}</p>
+  </section>
+
+  <details class="su-panel" data-testid="su-construction">
+    <summary>Construction funding schedule {% if view.has_financing_evidence %}· {{ view.construction_rows | length }} periods{% else %}· unavailable{% endif %}</summary>
+    <p class="su-help">{{ view.funding_waterfall_reason }}</p>
+    {% if view.has_financing_evidence %}
+    <p class="su-help">Allocation policy: {{ view.construction_policy }}. All amounts kEUR. Senior, legal equity and SHL entries are recorded engine allocations; sponsor SHL cash timing is shown separately.</p>
+    <div class="su-table-scroll">
+      <table data-testid="su-construction-table">
+        <thead><tr><th>Period</th><th>Cashflow date</th>
+        {% for title in view.construction_fields %}<th class="su-num">{{ title }}</th>{% endfor %}
+        </tr></thead>
+        <tbody>
+        {% for period in view.construction_rows %}
+        <tr><th>{{ period.period }}</th><td>{{ period.date }}</td>
+          {% for metric in period.fields %}<td class="su-num" title="{{ metric.authority }}">{{ metric.display }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if view.non_construction %}
+    <h3>Additional Financial Close / COD funding</h3>
+    <p class="su-help">Separate from the construction period schedule: {{ view.non_construction.policy }}</p>
+    <div class="su-summary" data-testid="su-non-construction">
+      {% for metric in (view.non_construction.uses, view.non_construction.sources, view.non_construction.residual) %}
+      <div class="su-total"><span>{{ metric.label }}</span><b>{{ metric.display }}</b><small>kEUR</small></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endif %}
+  </details>
+
+  {% if not is_historical %}
+  <section class="su-panel" data-testid="su-working">
+    <h2>Current Working Copy assumptions</h2>
+    <p class="su-help">Separate typed input values, not the historic Run's funding allocation. Active scenario overrides and financing fixed-point results are not reconstructed here.</p>
+    <p class="su-help">Sponsor funding mode: <strong>{{ view.sponsor_mode }}</strong></p>
+    <div class="su-table-scroll"><table>
+      <thead><tr><th scope="col">Working input</th><th scope="col" class="su-num">Value</th><th scope="col">Source</th></tr></thead>
+      <tbody>{% for item in view.working %}
+      <tr><th scope="row">{{ item.label }}</th><td class="su-num" title="{{ item.reason }}">{{ item.display }}</td><td class="su-source">{{ item.authority }}</td></tr>
+      {% endfor %}</tbody></table></div>
+    <p class="su-help">Changing an input leaves Last Run immutable and requires a new canonical Run to change financing results.</p>
+  </section>
+  {% endif %}
+
+  <section class="su-panel" data-testid="su-balance">
+    <h2>Balance Sources &amp; Uses</h2>
+    <p><strong>Read-only — Apply not enabled.</strong> {{ view.balance_write_gap }}</p>
+    <p class="su-help">A future balancing preview must identify the funding source to change, the current authorized requirement and outstanding constraints, and seek explicit user approval before an atomic persisted update. It must never edit displayed totals.</p>
+  </section>
+
+  <section class="su-panel" data-testid="su-history">
+    <h2>Historical run evidence</h2>
+    <p class="su-help">Choose a committed Run to inspect its own stored numbers; current inputs never backfill historical evidence.</p>
+    <div class="su-history-actions"><a href="/v2/financing/sources-uses?project={{ project_code | urlencode }}">Last Run</a>
+      {% for run in history %}
+      <a {% if history_id == run.history_id %}aria-current="page"{% endif %}
+         href="/v2/financing/sources-uses?project={{ project_code | urlencode }}&amp;history_id={{ run.history_id | urlencode }}">{{ run.ran_at }} · {{ run.runtime_snapshot_id }}</a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <details class="su-panel su-evidence" data-testid="su-authority">
+    <summary>Evidence lineage and missing authorities</summary>
+    <p>{{ view.su_authority_gap }}</p>
+    <p><strong>Funding waterfall:</strong> {{ view.funding_waterfall_reason }}</p>
+    <p>Working input, persisted canonical result and engine-only field are different classes of evidence. Unavailable does not mean zero; CURRENT does not imply financial integrity PASS; STALE does not imply FAIL.</p>
+  </details>
+</main>
+{% endblock %}
