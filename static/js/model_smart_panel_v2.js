@@ -8,6 +8,7 @@
   var mode = 'solutions';
   var selected = '';
   var previousTab = '';
+  var previousFieldId = '';
 
   function panel() { return document.getElementById('model-smart-panel'); }
   function fieldRow(id) {
@@ -163,10 +164,19 @@
       setMode(tab.getAttribute('data-sp-mode'), true);
       return;
     }
+    var jumpMode = event.target.closest && event.target.closest('#model-smart-panel [data-sp-jump-mode]');
+    if (jumpMode) {
+      event.preventDefault();
+      setMode(jumpMode.getAttribute('data-sp-jump-mode'), false);
+      return;
+    }
     var back = event.target.closest && event.target.closest('#model-smart-panel [data-sp-return]');
     if (back) {
       var dest = document.getElementById(back.getAttribute('data-sp-return'));
       if (dest) dest.click();
+      if (previousFieldId && window.v2FieldValidationUx && window.v2FieldValidationUx.jump) {
+        window.v2FieldValidationUx.jump(previousFieldId);
+      }
       return;
     }
   });
@@ -197,6 +207,8 @@
     var meta = elementByAttr(p, '[data-sp-field-meta]', 'data-path', id);
     if (!meta) return; // never guess a canonical mapping
     selected = 'f:' + id;
+    previousTab = currentTab();
+    previousFieldId = id;
     if (mode === 'inspector') inspect(p);
   });
   document.addEventListener('htmx:afterSwap', refresh);
