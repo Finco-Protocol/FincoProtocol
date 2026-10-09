@@ -4,6 +4,8 @@
 
 - Starting main: `521ee0f4589b7163dd1bd0b39642b57556669a18`, after PR #224.
 - Integrated main: `bc9652b0cb620d07ed51df2e4fa329efccea7c13`, after PR #225.
+- Correction A integrated main: `bf9b71ee6e2c8b952dd0d9da7f995fa9c80bd3bf`,
+  after independently merged PR #227, by normal merge without conflicts.
 - Branch: `feat/model-v2-revenue-scenario-decision-ux`.
 - Integration uses a normal merge, not rebase, squash or cherry-pick.
 - One consolidated Draft PR. No merge or deployment authorized.
@@ -258,6 +260,54 @@ render tests prove both exclusions and preserve generic financing controls.
 
 PR #227's integration is a normal main merge after its independent merge;
 all Workflow C-owned files remain untouched by Workflow D.
+
+Correction A validation:
+
+- Final integrated focused ring: 406 passed, normal exit (587.18s).
+  Includes complete DC integrity, four-vertical render, Revenue A/B/C,
+  scenario override/switch, real tariff authority, Goal Seek V1, DC sensitivity,
+  F07-B/U2.1 export, Workflow C statements/trace, Run binding and Run History.
+- Targeted final tariff/export ring: 54 passed, normal exit (90.40s).
+  These overlap with the integrated ring and are not additive unique counts.
+- After the normal merge of main `bf9b71ee6e2c8b952dd0d9da7f995fa9c80bd3bf`:
+  64 authenticated Chromium visual cases passed and two complete corrected
+  Solar/Wind economic journeys passed, in separate normally terminating runs.
+  The journey harness checks the existing active-scenario resolved snapshot,
+  not a potentially older stored scenario snapshot. Selected-scenario
+  sensitivity reads the effective price 85 without changing Last Run/history.
+  Final evidence: `artifacts/model-decision-workspace/visual-acceptance.json`,
+  `artifacts/model-decision-workspace/journey-acceptance.json`, and
+  `artifacts/correction-a-journeys-final.log` (ignored, not committed).
+- 14 new tariff-authority cases, plus the 35 original Workflow D cases.
+- The legacy export snapshot object contract is retained for older Runs;
+  no existing assertion was weakened to accommodate the new binding.
+- Working versus Last Run export proof uses a real XLSX with actual tariff 45
+  after Working scenario override becomes 46; production engine sentinels
+  prove zero export-time execution. Contradictory effective-price evidence fails.
+- Frozen engine namespaces, atomic Run/history/CAS/certificate authority,
+  global assets and both parallel-PR file ownership sets remain zero diff.
+- Synthetic downside scenarios may expose a genuine
+  `DSCR_SCULPTING_INFEASIBLE_SCHEDULE` integrity failure. That existing
+  backend result remains visible and independent of CURRENT freshness;
+  workflow acceptance is not a claim of lender feasibility.
+
+Real browser economics (revenue in kEUR; IRR shown as the raw backend ratio):
+
+| Project | Case | Effective tariff EUR/MWh | Revenue kEUR | Project IRR |
+| --- | --- | ---: | ---: | ---: |
+| Solar | Base | 50 | 197986.72971342798 | 0.13140461201275142 |
+| Solar | Upside | 85 | 234760.42930653293 | 0.18985065871677745 |
+| Solar | Downside | 45 | 192733.34405727015 | 0.12401072288878043 |
+| Wind | Base | 60 | 333160.62211374054 | 0.14103599066611075 |
+| Wind | Upside | 85 | 382139.4453345081 | 0.18340740713737771 |
+| Wind | Downside | 45 | 303773.32818127994 | 0.11763047473665511 |
+
+For both technologies, the Working override and immutable Run-bound override
+are 85/45 for Upside/Downside and match actual materialized tariff evidence.
+The shared Working Copy is unchanged. Compare reads persisted per-scenario
+results, not computed presentation deltas masquerading as model outputs.
+Tender acceptance remains Solar 13.388630211088598% at 51.640625 EUR/MWh
+and Wind 14.355176234459458% at 61.546875 EUR/MWh after the normal rerun.
 
 ## Remaining upstream work
 

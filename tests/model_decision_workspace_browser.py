@@ -23,7 +23,8 @@ def main():
     from app.persistence import db
     from app.persistence.workspace_repository import get_workspace_state
     from app.persistence.run_history_repository import get_run_history
-    from app.persistence.scenarios_repository import get_scenario
+    from app.persistence.scenarios_repository import get_scenario, resolve_active_scenario_runtime_snapshot
+    from app.workbook.service import WorkbookService
     from app.services.export_service import resolve_canonical_last_run_from_workspace
     from app.services.reference_seed_service import create_reference_seeded_project
     from app.runtime.model_execution import reset_model_executor_for_tests
@@ -193,7 +194,10 @@ def main():
                         history = get_run_history('decision-browser',record.project_id)
                         page.locator('[data-testid=sensitivity-run-btn]').click()
                         expect(page.locator('[data-testid=sensitivity-range]')).to_be_visible(timeout=120000)
-                        expect(page.locator('#v2-sensitivity-results')).to_contain_text('revenue.ppa.base_tariff = 85.0')
+                        _, scenario_snapshot, _ = resolve_active_scenario_runtime_snapshot('decision-browser', record.project_id, sid)
+                        scenario_inputs = WorkbookService.build_input_set(scenario_snapshot)
+                        tariff_field = 'base_tariff' if scenario_inputs.get('revenue.ppa.base_tariff') is not None else 'tariff_legacy'
+                        expect(page.locator('#v2-sensitivity-results')).to_contain_text('revenue.ppa.' + tariff_field + ' = 85.0')
                         assert get_workspace_state('decision-browser',record.project_id)==before
                         assert get_run_history('decision-browser',record.project_id)==history
                         page.screenshot(path=str(out/f'{kind}-sensitivity.png'),full_page=True)
