@@ -478,6 +478,45 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
 
     _sources_uses = build_sources_and_uses(clean_run.g2c_result.financing_result)
     payload["sources_uses"] = {k: round(v, 6) for k, v in _asdict(_sources_uses).items()}
+
+    # F1 Correction A: same completed clean run, full-precision typed finance
+    # evidence (no second calculation and no alternative S&U reconciliation).
+    # Legacy payload["sources_uses"] remains unchanged for API compatibility.
+    from datetime import date as _finance_date
+
+    _fin = clean_run.g2c_result.financing_result
+    _fund = _fin.construction_funding
+
+    def _fin_json(value):
+        if isinstance(value, _finance_date):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {k: _fin_json(v) for k, v in value.items()}
+        if isinstance(value, (tuple, list)):
+            return [_fin_json(v) for v in value]
+        return value
+
+    payload["financing_evidence"] = {
+        "schema_version": "FINANCING_F1_V1",
+        "authority": "CANONICAL_PROJECT_FINANCING_RESULT",
+        "units": "kEUR",
+        "sources_uses": _asdict(_sources_uses),
+        "bankability": {
+            key: getattr(_fin, key, None)
+            for key in (
+                "dscr_debt_capacity_keur",
+                "gearing_debt_capacity_keur",
+                "final_senior_commitment_keur",
+                "binding_senior_constraint",
+                "gearing_basis_keur",
+                "gearing_ratio",
+                "fixed_point_iteration_count",
+                "fixed_point_maximum_difference_keur",
+            )
+        },
+        "construction_funding": _fin_json(_asdict(_fund)),
+    }
+
     # H-4b: full-precision evidence recorded with the committed Last Run so integrity can
     # be checked later without re-running the model.
     from app.run_integrity import build_run_integrity_evidence
