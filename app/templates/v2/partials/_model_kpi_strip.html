@@ -1,0 +1,50 @@
+{#
+  Persistent Key-metrics strip (Workflow C).  Rendered inside the Smart Panel so it
+  stays visible on every sheet and refreshes with the panel after each Save and Run
+  (no second refresh path, no Run, no engine call).  Values are raw persisted outputs
+  formatted by the canonical OutputMetricProjection; unavailable is "—" with the reason
+  in the tooltip (never 0); a STALE Working Copy marks every value as the PRIOR run's.
+  Each metric is a button that activates the sheet holding its authoritative detail
+  (handled by the Smart Panel's existing [data-nav-tab] click handler).
+  Rendered from `strip` (KpiStrip).
+#}
+<section id="v2-kpi-strip" class="v2-kpi-strip v2-kpi-strip--{{ strip.state | lower }}"
+         data-testid="kpi-strip" data-run-state="{{ strip.state }}" aria-label="Key metrics">
+  <div class="v2-kpi-strip-head">
+    <span class="v2-kpi-strip-title">Key metrics</span>
+    <span class="v2-kpi-strip-state v2-kpi-strip-state--{{ strip.state | lower }}"
+          data-testid="kpi-strip-state">{{ 'PRIOR RUN' if strip.state == 'STALE' else ('CURRENT' if strip.state == 'CURRENT' else 'NOT RUN') }}</span>
+  </div>
+  <div class="v2-kpi-strip-caption" data-testid="kpi-strip-caption">{{ strip.caption }}
+    {% if strip.has_values and (strip.run_at_display or strip.scenario_name or strip.snapshot_short) %}
+    <span class="v2-kpi-strip-lineage" data-testid="kpi-strip-lineage">
+      {%- if strip.run_at_display %} Run {{ strip.run_at_display }}{% endif -%}
+      {%- if strip.scenario_name %} · Scenario {{ strip.scenario_name }}{% endif -%}
+      {%- if strip.snapshot_short %} · {{ strip.snapshot_short }}{% endif -%}
+    </span>
+    {% endif %}
+  </div>
+  <ul class="v2-kpi-strip-items">
+    {% for it in strip.items %}
+    <li class="v2-kpi-strip-item v2-kpi-strip-item--{{ it.freshness }}{% if not it.available %} v2-kpi-strip-item--unavailable{% endif %}"
+        data-testid="kpi-strip-{{ it.key }}" data-metric="{{ it.key }}"
+        data-available="{{ 'true' if it.available else 'false' }}"
+        {% if it.raw_value is not none %}data-raw="{{ it.raw_value }}"{% endif %}>
+      <button type="button" class="v2-kpi-strip-link" data-nav-tab="{{ it.drill_tab }}"
+              title="{{ it.title }}" aria-label="{{ it.label }}: {{ it.display }}. Open details.">
+        <span class="v2-kpi-strip-label">{{ it.label }}</span>
+        <span class="v2-kpi-strip-value">{{ it.display }}</span>
+      </button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if strip.integrity_value %}
+  <div class="v2-kpi-strip-integrity v2-kpi-strip-integrity--{{ strip.integrity_tone or 'warn' }}"
+       data-testid="kpi-strip-integrity" data-integrity="{{ strip.integrity_value }}"
+       title="{{ strip.integrity_detail }}">
+    <span class="v2-kpi-strip-integrity-label">Run integrity</span>
+    <span class="v2-kpi-strip-integrity-value">{{ strip.integrity_value }}</span>
+    <span class="v2-kpi-strip-integrity-note">separate from freshness</span>
+  </div>
+  {% endif %}
+</section>

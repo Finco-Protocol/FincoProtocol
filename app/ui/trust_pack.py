@@ -140,6 +140,31 @@ def _kpi_section(state: str, kpis: dict[str, Any], identity: dict[str, Any]) -> 
     }
 
 
+def _kpi_strip_source(user_id: str, project_id: str, shared: dict[str, Any]) -> dict[str, Any]:
+    """Raw persisted Last Run payloads for the persistent Key-metrics strip.
+
+    Pure read of the SAME workspace record the other Trust Pack sections read (the request
+    context's single read when one is supplied).  No engine call, no Run; the strip builder
+    (app.v2.kpi_strip_projection) formats these through the canonical metric projection.
+    """
+    try:
+        _pr, ws = _v11._load_workspace(user_id, project_id, **shared)
+    except Exception:
+        return {"state": STATE_UNAVAILABLE}
+    if ws is None or not getattr(ws, "any_run_committed", False) \
+            or not getattr(ws, "last_runtime_snapshot_id", None):
+        return {"state": STATE_UNAVAILABLE}
+    sponsor = getattr(ws, "last_sponsor_schedule", None) or {}
+    identity = getattr(ws, "last_runtime_identity", None) or {}
+    return {
+        "state": STATE_AVAILABLE,
+        "runtime_summary": dict(getattr(ws, "last_runtime_summary", None) or {}),
+        "sponsor_summary": dict(sponsor.get("summary") or {}) if isinstance(sponsor, dict) else {},
+        "run_scenario_name": str(identity.get("scenario_name") or ""),
+        "engine_version": str(identity.get("engine_version") or ""),
+    }
+
+
 def _validation_section(state: str, evidence: dict[str, Any]) -> dict[str, Any]:
     gaps = evidence.get("gaps") or []
     return {
@@ -410,6 +435,7 @@ def build_trust_pack(
             ),
         },
         "kpis": _kpi_section(kpi_state, kpis, identity),
+        "kpi_strip_source": _kpi_strip_source(user_id, project_id, shared),
         "validation": _validation_section(validation["state"], validation),
         "verify": verify_section,
         "export": _export_section(exp_state, export_meta),

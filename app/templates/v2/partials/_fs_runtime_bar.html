@@ -9,6 +9,8 @@
     STALE           — rr + fs payload + workspace dirty
     FS_UNAVAILABLE  — run completed but no fs payload persisted
 #}
+<span class="v2-fs-state-badge v2-fs-state-badge--{{ (fs_state or 'NOT_RUN') | lower }}" data-fs-state="{{ fs_state }}"
+      data-testid="fs-state-badge">{%- if fs_state == "CLEAN" -%}CURRENT{%- elif fs_state == "STALE" -%}STALE · prior Last Run{%- elif fs_state == "FS_UNAVAILABLE" -%}UNAVAILABLE{%- else -%}NOT RUN{%- endif -%}</span>
 {% if fs_state == "NOT_RUN" %}
   <span class="v2-field-empty" data-testid="fs-runtime-state-a">Not run</span>
 {% elif fs_state == "CLEAN" %}

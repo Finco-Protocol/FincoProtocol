@@ -1,23 +1,27 @@
 {#
-  Persistent finance workspace navigation (UX-2 WORKSPACE SHELL).
+  Persistent finance workspace navigation (UX-2 WORKSPACE SHELL; Workflow C refinements).
   Ownership: UX-2 — docs/model_v2/UX_FOUNDATION_CONTRACT.md.
 
   Groups map onto EXISTING workbook sheet tabs only.  Items without a safe
   current presentation seam render disabled with a truthful title — they
   are never presented as shipped pages.  Clicking an item activates the
-  real tab (the same tab buttons as the sheet bar); the hash is kept in
-  sync for deep links where the existing architecture supports it.
+  real tab (the same tab buttons as the sheet bar).
+  Workflow C: the item for the active sheet is highlighted (aria-current) whichever
+  control changed the sheet (nav, tab bar, deep link, back/forward); nav clicks add a
+  history entry so Back/Forward move between sheets; a #hash deep link is applied
+  after the tab handlers exist; items are keyboard-operable (Up/Down move between items).
   Rendered from `ws_nav_groups` (workspace_nav_groups()).
 #}
 <nav id="model-workspace-nav" class="v2-ws-nav" aria-label="Workspace sections" data-testid="workspace-nav">
   {% for group in ws_nav_groups %}
-  <div class="v2-ws-nav-group">
+  <div class="v2-ws-nav-group" role="group" aria-label="{{ group.label }}">
     <div class="v2-ws-nav-group-label">{{ group.label }}</div>
     {% for item in group.items %}
       {% if item.available %}
       <button type="button" class="v2-ws-nav-item" data-nav-tab="{{ item.tab_id }}"
+              {% if item.anchor %}data-nav-anchor="{{ item.anchor }}"{% endif %}
               data-testid="nav-{{ item.label | lower | replace(' ', '-') }}"
-              title="{{ item.label }}">{{ item.label }}</button>
+              title="{{ item.label }}{% if item.sheet_label %} — {{ item.sheet_label }} sheet{% endif %}">{{ item.label }}</button>
       {% else %}
       <button type="button" class="v2-ws-nav-item v2-ws-nav-item--future" disabled
               data-testid="nav-future-{{ item.label | lower | replace(' ', '-') }}"
@@ -30,25 +34,110 @@
 <script>
 (function () {
   var nav = document.getElementById('model-workspace-nav');
-  if (!nav) return;
-  function activate(tabId, setHash) {
+  if (!nav || nav.__v2NavBound) return;
+  nav.__v2NavBound = true;
+  // The sheet tab bar is rendered AFTER this partial: resolve it lazily.
+  function tabBar() { return document.getElementById('v2-sheet-tabs'); }
+
+  function selectedTabId() {
+    var bar = tabBar();
+    var t = bar && bar.querySelector('[role="tab"][aria-selected="true"]');
+    return t ? t.id : null;
+  }
+  function hashFor(tabId) { return '#' + tabId.replace(/^tab-/, ''); }
+  function tabIdFromHash() {
+    var h = (location.hash || '').replace(/^#/, '');
+    return h && document.getElementById('tab-' + h) ? 'tab-' + h : null;
+  }
+  function markActive() {
+    var id = selectedTabId(), seen = false;
+    Array.prototype.forEach.call(nav.querySelectorAll('[data-nav-tab]'), function (b) {
+      var on = !seen && !b.disabled && b.getAttribute('data-nav-tab') === id;
+      if (on) { seen = true; b.setAttribute('aria-current', 'page'); b.classList.add('v2-ws-nav-item--active'); }
+      else { b.removeAttribute('aria-current'); b.classList.remove('v2-ws-nav-item--active'); }
+    });
+  }
+  // mode: 'push' (user chose a section), 'replace' (state follows the sheet), 'none' (history moved us)
+  function activate(tabId, mode, anchor) {
     var tab = document.getElementById(tabId);
     if (!tab) return;
-    tab.click();
-    if (setHash && history.replaceState) {
-      history.replaceState(null, '', '#' + tabId.replace(/^tab-/, ''));
+    if (selectedTabId() !== tabId) tab.click();
+    var h = hashFor(tabId);
+    if (mode !== 'none' && location.hash !== h && history.pushState) {
+      (mode === 'push' ? history.pushState : history.replaceState).call(history, null, '', h);
+    }
+    markActive();
+    if (anchor) {
+      var target = document.querySelector(anchor);
+      if (target) { target.scrollIntoView({ block: 'start' }); }
     }
   }
+
   nav.addEventListener('click', function (evt) {
     var btn = evt.target.closest('[data-nav-tab]');
     if (!btn || btn.disabled) return;
-    activate(btn.getAttribute('data-nav-tab'), true);
+    activate(btn.getAttribute('data-nav-tab'), 'push', btn.getAttribute('data-nav-anchor'));
   });
-  // Deep link: /v2/workbook?project=...#revenue activates Revenue on load.
-  var hash = (location.hash || '').replace(/^#/, '');
-  if (hash) {
-    var target = document.getElementById('tab-' + hash);
-    if (target) { activate('tab-' + hash, false); }
+  // Smart Panel / Key-metrics strip navigation.  Delegated from the document because the panel
+  // is replaced out-of-band after every Save and Run.
+  document.addEventListener('click', function (evt) {
+    var btn = evt.target.closest && evt.target.closest('#model-smart-panel [data-nav-tab]');
+    if (!btn || btn.disabled) return;
+    activate(btn.getAttribute('data-nav-tab'), 'push', btn.getAttribute('data-nav-anchor'));
+    var anchor = btn.getAttribute('data-nav-anchor');
+    var target = anchor && document.querySelector(anchor);
+    if (target) {
+      target.classList.remove('v2-anchor-highlight');
+      void target.offsetWidth;
+      target.classList.add('v2-anchor-highlight');
+    }
+  });
+  // Overview metric tiles: open the sheet with the authoritative detail.
+  function drillFrom(evt) {
+    var tile = evt.target.closest && evt.target.closest('[data-kpi-drill]');
+    if (!tile) return;
+    if (evt.type === 'keydown' && evt.key !== 'Enter' && evt.key !== ' ') return;
+    evt.preventDefault();
+    activate(tile.getAttribute('data-kpi-drill'), 'push');
   }
+  document.addEventListener('click', drillFrom);
+  document.addEventListener('keydown', drillFrom);
+  nav.addEventListener('keydown', function (evt) {
+    if (evt.key !== 'ArrowDown' && evt.key !== 'ArrowUp') return;
+    var items = Array.prototype.filter.call(nav.querySelectorAll('.v2-ws-nav-item'), function (b) { return !b.disabled; });
+    var i = items.indexOf(document.activeElement);
+    if (i < 0) return;
+    evt.preventDefault();
+    var next = items[(i + (evt.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length];
+    if (next) next.focus();
+  });
+
+  // The sheet changed by any control: keep the nav highlight and the hash in step.
+  function observeTabs() {
+    var bar = tabBar();
+    if (!bar || !window.MutationObserver) return;
+    new MutationObserver(function () {
+      var id = selectedTabId();
+      if (id && location.hash !== hashFor(id) && (location.hash || id !== 'tab-overview')) {
+        if (history.replaceState) history.replaceState(null, '', hashFor(id));
+      }
+      markActive();
+    }).observe(bar, { attributes: true, subtree: true, attributeFilter: ['aria-selected'] });
+  }
+
+  // Back / Forward between sheet entries.
+  window.addEventListener('popstate', function () {
+    activate(tabIdFromHash() || 'tab-overview', 'none');
+  });
+
+  // Deep link: /v2/workbook?project=...#revenue.  The tab handlers are attached by
+  // workbook_v2.js (loaded after this partial), so apply the hash once the page is ready.
+  function applyDeepLink() {
+    observeTabs();
+    var id = tabIdFromHash();
+    if (id) activate(id, 'none'); else markActive();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyDeepLink);
+  else applyDeepLink();
 })();
 </script>
