@@ -3,11 +3,12 @@
 ## Provenance and Ownership
 
 - Audited canonical main: `1977033da8967a93d581d6407337798dc0a44aad`.
+- Integration main: `ba96bb8229692f8efed7f1f6222a9eea01d8ccb9`, normally merged after F3 #229 landed; no rebase or conflict.
 - Feature branch: `feat/model-v2-financing-f2-bankability`.
 - Delivery: one consolidated Draft PR; exact feature HEAD, PR URL and exact-head CI run links are recorded in its delivery body. No merge or deployment.
 - PRs #224-#228 were independently confirmed merged before work began.
 - Parallel F1: Draft #230, `feat/model-v2-financing-f1-sources-uses`; its eight changed files do not overlap F2.
-- Parallel F3: Draft #229, `feat/model-v2-financing-f3-foundation`; contract work is not modified here.
+- Parallel F3: #229 merged during F2 CI; its contract work is inherited unchanged from main and has zero F2 diff.
 - No edits to F1-owned Sources & Uses projections/router, investor template or `main_web.py`.
 - ZERO DIFF required and checked for `financial_engine/`, `finco_core/`, `domain/`, Radar, Yield, Crypto and Protocol. No schema, migration, worker or financial-equation changes.
 
@@ -107,6 +108,7 @@ Project IRR remains 11.767978% Solar / 13.310998% Wind across these financing-on
 
 - Existing focused regression ring: 299 passed, 10 existing governance-marker skips; normal process exit. No tests added to skip or removed to obtain green.
 - Final F2 focused acceptance: 33 passed, zero skipped, normal process exit (284.77 seconds).
+- Post-main-integration ring: F2 focused + productivity macro contracts + inherited F3 candidate/compatibility: 224 passed, zero skipped, normal exit (204.53 seconds).
 - Supplemental Goal Seek/scenario/registry/context/previous-financing ring: 172 passed, zero skipped, normal process exit (252.98 seconds). Final shared fee guard + Solar/Wind lifecycle/export recheck: 3 passed.
 - Ring: prior financing bankability, H1 construction/reserve/SHL/Sources & Uses, released engine authorities, V2 persistence/governance/Run binding, F07-B export, U2.1 export and decision workspace.
 - F2 focused suite covers invalid/duplicate JSON, exact typed mapping, no-config neutrality, real save/reload/Run, period targets, rates, reserves, fees, Last Run/export immutability, owner isolation, protected Save, CAS, tenor alignment, first Save after scenario selection and no GET-time solver execution.
@@ -134,3 +136,5 @@ Local full public safety scan found only the pre-existing Swagger vendor SHA exe
 ## Review Gate
 
 Required exact-head workflows: Governance Full History, Dependency Security Audit, Protocol UI Browser Acceptance, PR Compile and Safety Gate, Public Safety and Model Smoke. Full-suite interpreter exit and evidence upload must succeed; a `100%` pytest progress line alone is not acceptance. Live exact-head conclusions and focused final count are recorded in the Draft PR delivery body. Independent review, not deployment or merge, is the next action.
+
+Initial full CI on `ee272375d8aee7b592effe01c1f638a924103284` exited normally with 8,631 passed, 52 skipped and one failure: the productivity macro golden corpus rejected the two new registered F2 field rows. The narrow test correction permits exactly those editable/protected keys while retaining every original field key and original DOM hash. No fixture, hash or macro output is refreshed. The other four required workflows passed; fresh exact-head CI is required after this test-only correction and main integration.
