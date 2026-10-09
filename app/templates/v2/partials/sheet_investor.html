@@ -13,6 +13,7 @@
   {% endif %}
   <section class="v2-sponsor-funding-panel" aria-labelledby="investor-title" data-testid="investor-funding-panel">
     <h3 id="investor-title">Investor / Sponsor Capital</h3>
+    <p><a class="v2-copy-link" href="/v2/financing/sources-uses?project={{ project_code | urlencode }}">Open Sources &amp; Uses reconciliation and bankability evidence →</a></p>
     <p class="v2-sponsor-funding-freshness v2-sponsor-funding-freshness--{{ sponsor_funding_freshness.state | lower }}"
        data-testid="investor-freshness">{{ sponsor_funding_freshness.label }}</p>
     <section class="v2-sponsor-funding-section" aria-labelledby="investor-working-title">
