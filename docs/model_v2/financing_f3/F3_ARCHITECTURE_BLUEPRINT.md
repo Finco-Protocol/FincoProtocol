@@ -76,7 +76,7 @@ See `F3_ENGINE_INTEGRATION_MAP.md` for exact seams. Summary:
 ## 5. Candidate prototype (non-authoritative)
 
 `app/model_v2/financing_f3_candidate/` — pure dataclasses + validation + deterministic serialization + a read-only
-legacy mapping. Not imported by any production module (test-enforced), not persisted, no routes, no financial
+legacy mapping (fails closed on anything it cannot prove: unset funding mode, unproven SHL repayment modes, unset Senior sizing mode; invents no dates). Not imported by any production module (test-enforced), not persisted, no routes, no financial
 result, no Run-fingerprint participation. It exists to make the specification executable and to prove the legacy
 Senior can be represented without changing economics. **It is not multi-tranche financing.**
 

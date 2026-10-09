@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
@@ -13,6 +14,26 @@ from . import SCHEMA_VERSION
 
 CANDIDATE_CURRENCY = "EUR"          # single model currency today; FX is out of scope for F3
 _TOL = 1e-9
+_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_FEE_BASES = frozenset({"COMMITMENT", "UNDRAWN", "DRAWN"})
+_MAX_MARGIN_BPS = 10_000
+
+
+def _check_id(kind: str, value: object) -> str:
+    if not isinstance(value, str) or not _ID_RE.match(value):
+        raise FinancingError("F3_INVALID_ID", f"{kind} id {value!r} must match [a-z0-9][a-z0-9-]{{0,63}}")
+    return value
+
+
+def _check_enum(name: str, value: object, kind: type) -> None:
+    if not isinstance(value, kind):
+        raise FinancingError("F3_INVALID_ENUM", f"{name}={value!r} is not a {kind.__name__}")
+
+
+def _check_text(name: str, value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise FinancingError("F3_MISSING_TERM", f"{name} must be non-empty text")
+    return value
 
 
 class FinancingError(ValueError):
@@ -88,6 +109,11 @@ class RateMode(str, Enum):
     FLOATING_BASE_PLUS_MARGIN = "FLOATING_BASE_PLUS_MARGIN"
 
 
+class MaturityAuthority(str, Enum):
+    EXPLICIT_DATE = "EXPLICIT_DATE"              # a calendar date supplied as an input
+    PERIOD_AXIS_DERIVED = "PERIOD_AXIS_DERIVED"  # an OUTPUT of the canonical operating period axis (never FC + n years)
+
+
 class Provenance(str, Enum):
     USER_INPUT = "USER_INPUT"
     LEGACY_FINANCING_PARAMS = "LEGACY_FINANCING_PARAMS"
@@ -121,14 +147,28 @@ class InterestTerms:
     pik: bool = False
 
     def __post_init__(self) -> None:
+        _check_enum("interest.mode", self.mode, RateMode)
+        if not isinstance(self.pik, bool):
+            raise FinancingError("F3_INVALID_BOOL", f"pik={self.pik!r}")
         if self.mode is RateMode.FIXED:
             if self.fixed_rate is None:
                 raise FinancingError("F3_MISSING_TERM", "FIXED interest needs fixed_rate")
+            if self.margin_bps is not None:
+                raise FinancingError("F3_INVALID_TYPE_COMBINATION", "FIXED interest cannot carry margin_bps")
             object.__setattr__(self, "fixed_rate", _finite("fixed_rate", self.fixed_rate))
             if self.fixed_rate > 1.0:
                 raise FinancingError("F3_RATE_NOT_A_FRACTION", f"fixed_rate={self.fixed_rate!r}")
-        if self.mode is RateMode.FLOATING_BASE_PLUS_MARGIN and self.margin_bps is None:
-            raise FinancingError("F3_MISSING_TERM", "FLOATING needs margin_bps")
+        elif self.fixed_rate is not None:
+            raise FinancingError("F3_INVALID_TYPE_COMBINATION", f"{self.mode.value} cannot carry fixed_rate")
+        if self.mode is RateMode.FLOATING_BASE_PLUS_MARGIN:
+            if self.margin_bps is None:
+                raise FinancingError("F3_MISSING_TERM", "FLOATING needs margin_bps")
+            if isinstance(self.margin_bps, bool) or not isinstance(self.margin_bps, int):
+                raise FinancingError("F3_INVALID_MARGIN", f"margin_bps={self.margin_bps!r} must be an int")
+            if not 0 <= self.margin_bps <= _MAX_MARGIN_BPS:
+                raise FinancingError("F3_INVALID_MARGIN", f"margin_bps={self.margin_bps!r} outside 0..{_MAX_MARGIN_BPS}")
+        elif self.margin_bps is not None:
+            raise FinancingError("F3_INVALID_TYPE_COMBINATION", f"{self.mode.value} cannot carry margin_bps")
 
 
 @dataclass(frozen=True)
@@ -136,12 +176,34 @@ class RepaymentTerms:
     mode: RepaymentMode
     grace_months: int = 0
     maturity_date: Optional[date] = None
+    maturity_authority: MaturityAuthority = MaturityAuthority.EXPLICIT_DATE
+    tenor_years: Optional[int] = None             # informational for PERIOD_AXIS_DERIVED
+    maturity_period_index: Optional[int] = None   # informational canonical period index, if one is configured
 
     def __post_init__(self) -> None:
+        _check_enum("repayment.mode", self.mode, RepaymentMode)
+        _check_enum("maturity_authority", self.maturity_authority, MaturityAuthority)
         if isinstance(self.grace_months, bool) or not isinstance(self.grace_months, int) or self.grace_months < 0:
             raise FinancingError("F3_INVALID_GRACE", f"grace_months={self.grace_months!r}")
-        if self.mode is not RepaymentMode.NONE and self.maturity_date is None:
-            raise FinancingError("F3_MISSING_TERM", f"{self.mode.value} repayment needs maturity_date")
+        for name in ("tenor_years", "maturity_period_index"):
+            v = getattr(self, name)
+            if v is not None and (isinstance(v, bool) or not isinstance(v, int) or v < 0):
+                raise FinancingError("F3_INVALID_TERM", f"{name}={v!r}")
+        if self.maturity_date is not None and (
+                not isinstance(self.maturity_date, date) or hasattr(self.maturity_date, "hour")):
+            raise FinancingError("F3_INVALID_DATE", f"maturity_date={self.maturity_date!r}")
+        if self.maturity_authority is MaturityAuthority.EXPLICIT_DATE:
+            if self.mode is not RepaymentMode.NONE and self.maturity_date is None:
+                raise FinancingError("F3_MISSING_TERM", f"{self.mode.value} repayment needs maturity_date")
+            if self.tenor_years is not None or self.maturity_period_index is not None:
+                raise FinancingError("F3_INVALID_TYPE_COMBINATION",
+                                     "tenor/period-index belong to PERIOD_AXIS_DERIVED maturity")
+        else:
+            if self.maturity_date is not None:
+                raise FinancingError("F3_INVALID_TYPE_COMBINATION",
+                                     "a period-axis-derived maturity is an output and must not carry a date")
+            if self.mode is RepaymentMode.NONE:
+                raise FinancingError("F3_INVALID_TYPE_COMBINATION", "NONE repayment has no maturity authority")
 
 
 class FeeKind(str, Enum):
@@ -157,6 +219,9 @@ class FeeTerm:
     basis: str = "COMMITMENT"        # COMMITMENT | UNDRAWN | DRAWN — documentary until an authority consumes it
 
     def __post_init__(self) -> None:
+        _check_enum("fee.kind", self.kind, FeeKind)
+        if self.basis not in _FEE_BASES:
+            raise FinancingError("F3_INVALID_FEE_BASIS", f"basis={self.basis!r}; allowed {sorted(_FEE_BASES)}")
         object.__setattr__(self, "rate", _finite("fee.rate", self.rate))
         if self.rate > 1.0:
             raise FinancingError("F3_RATE_NOT_A_FRACTION", f"fee.rate={self.rate!r}")
@@ -169,8 +234,8 @@ class CapitalProvider:
     ownership_share: float           # fraction of legal equity; 0 for pure lenders
 
     def __post_init__(self) -> None:
-        if not self.provider_id or not self.name:
-            raise FinancingError("F3_MISSING_TERM", "capital provider needs id and name")
+        _check_id("provider", self.provider_id)
+        _check_text("provider.name", self.name)
         object.__setattr__(self, "ownership_share", _finite("ownership_share", self.ownership_share))
         if self.ownership_share > 1.0 + _TOL:
             raise FinancingError("F3_OWNERSHIP_ABOVE_100", f"{self.provider_id}={self.ownership_share!r}")
@@ -201,8 +266,24 @@ class FinancingInstrument:
     def __post_init__(self) -> None:
         if not isinstance(self.instrument_type, InstrumentType):
             raise FinancingError("F3_INVALID_TYPE", f"{self.instrument_type!r}")
-        if not self.instrument_id or not self.name:
-            raise FinancingError("F3_MISSING_TERM", "instrument needs id and name")
+        _check_id("instrument", self.instrument_id)
+        _check_text("instrument.name", self.name)
+        _check_enum("commitment_authority", self.commitment_authority, CommitmentAuthority)
+        _check_enum("provenance", self.provenance, Provenance)
+        if not isinstance(self.enabled, bool):
+            raise FinancingError("F3_INVALID_BOOL", f"enabled={self.enabled!r} must be a strict bool")
+        if not isinstance(self.classification_label, str):
+            raise FinancingError("F3_INVALID_TERM", "classification_label must be text")
+        if self.funding_source_ref is not None:
+            _check_id("funding_source_ref", self.funding_source_ref)
+        for name, kind in (("drawdowns", DrawdownEntry), ("fees", FeeTerm)):
+            seq = getattr(self, name)
+            if not isinstance(seq, tuple) or not all(isinstance(x, kind) for x in seq):
+                raise FinancingError("F3_INVALID_TERM", f"{name} must be a tuple of {kind.__name__}")
+        if self.interest is not None and not isinstance(self.interest, InterestTerms):
+            raise FinancingError("F3_INVALID_TERM", "interest must be InterestTerms")
+        if self.repayment is not None and not isinstance(self.repayment, RepaymentTerms):
+            raise FinancingError("F3_INVALID_TERM", "repayment must be RepaymentTerms")
         if self.currency != CANDIDATE_CURRENCY:
             raise FinancingError("F3_CURRENCY_MISMATCH", f"{self.instrument_id}: {self.currency!r}")
         if isinstance(self.seniority_rank, bool) or not isinstance(self.seniority_rank, int) or self.seniority_rank < 1:
@@ -242,6 +323,12 @@ class FinancingCollection:
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
+        if not isinstance(self.instruments, tuple) or not all(isinstance(i, FinancingInstrument) for i in self.instruments):
+            raise FinancingError("F3_INVALID_TERM", "instruments must be a tuple of FinancingInstrument")
+        if not isinstance(self.providers, tuple) or not all(isinstance(p, CapitalProvider) for p in self.providers):
+            raise FinancingError("F3_INVALID_TERM", "providers must be a tuple of CapitalProvider")
+        if self.schema_version != SCHEMA_VERSION:
+            raise FinancingError("F3_UNSUPPORTED_SCHEMA_VERSION", repr(self.schema_version))
         ids = [i.instrument_id for i in self.instruments]
         if len(set(ids)) != len(ids):
             raise FinancingError("F3_DUPLICATE_INSTRUMENT_ID", ",".join(sorted(x for x in ids if ids.count(x) > 1)))
@@ -254,6 +341,11 @@ class FinancingCollection:
                 raise FinancingError("F3_UNKNOWN_FUNDING_SOURCE", f"{inst.instrument_id} -> {inst.funding_source_ref}")
         if sum(p.ownership_share for p in self.providers) > 1.0 + _TOL:
             raise FinancingError("F3_OWNERSHIP_ABOVE_100", "sum of provider shares")
+
+    def active(self) -> tuple[FinancingInstrument, ...]:
+        """Enabled instruments in canonical order.  A disabled instrument is retained (and still
+        validated and identity-bearing) for audit but has zero economic effect."""
+        return tuple(i for i in self.ordered() if i.enabled)
 
     def ordered(self) -> tuple[FinancingInstrument, ...]:
         """Deterministic order: seniority rank, then instrument_id (never insertion order)."""
