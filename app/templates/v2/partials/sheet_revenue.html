@@ -42,7 +42,8 @@
 </summary>
 {% endmacro %}
 
-<div id="v2-sheet-revenue" data-sheet="revenue"
+<link rel="stylesheet" href="/static/css/model_decision_workspace.css">
+<div id="v2-sheet-revenue" class="v2-d-workspace" data-sheet="revenue"
      data-fc-grid="revenue" data-fc-scroll-container>
 
   {% if not project_editable %}
@@ -52,6 +53,8 @@
     </div>
   {% endif %}
 
+  <p class="d-context"><strong>Working commercial assumptions</strong> are saved inputs.
+    Revenue evidence below belongs to Last Run; editing a price does not recalculate those outputs.</p>
   {% if field_error %}
     <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
   {% endif %}
@@ -62,7 +65,7 @@
       <span id="revenue-pricing-basis-title">Revenue Pricing Basis</span>
       <small>Canonical working-copy inputs used by the model</small>
     </div>
-    {% if not is_data_center %}
+    {% if not is_data_center and not is_ev_charging %}
     <div class="v2-revenue-pricing-grid">
       {% for label, value, unit in revenue_pricing_basis %}
       <div class="v2-revenue-pricing-item">
@@ -73,12 +76,12 @@
     </div>
     {% endif %}
     <div class="v2-revenue-output-context" data-testid="revenue-output-context">
-      <span>{% if is_data_center %}Equivalent IT Load Energy used in current output{% else %}Generation used in current output{% endif %}</span>
-      <strong>{% if revenue_output_context.generation is not none %}{{ revenue_output_context.generation }} MWh{% if revenue_output_context.period %} · {{ revenue_output_context.period }}{% endif %}{% else %}—{% endif %}</strong>
+      <span>{% if is_data_center %}Equivalent IT Load Energy used in current output{% elif is_ev_charging %}Charging energy used in current output{% else %}Generation used in current output{% endif %}</span>
+      <strong>{% if revenue_output_context.generation is not none and revenue_output_context.generation != 'NOT_AVAILABLE' %}{{ revenue_output_context.generation }}{% if revenue_output_context.period %} · {{ revenue_output_context.period }}{% endif %}{% else %}—{% endif %}</strong>
       <span>Revenue persisted summary</span>
-      <strong>{% if revenue_output_context.persisted_revenue is not none %}{{ revenue_output_context.persisted_revenue }} kEUR{% else %}—{% endif %}</strong>
+      <strong>{% if revenue_output_context.persisted_revenue is not none and revenue_output_context.persisted_revenue != 'NOT_AVAILABLE' %}{{ revenue_output_context.persisted_revenue }}{% else %}—{% endif %}</strong>
     </div>
-    {% if not is_data_center and merchant_curve_rows %}
+    {% if not is_data_center and not is_ev_charging and merchant_curve_rows %}
     <div class="v2-revenue-curve-preview" data-testid="merchant-curve-preview">
       <span>Merchant curve</span>
       {% for row in merchant_curve_rows %}
@@ -156,7 +159,8 @@
   {% endif %}
 
   {# ── 1-3. Renewable-only sections: hidden for Data Center and EV ────── #}
-  {% if not is_data_center and not is_ev_charging %}
+  {% if not is_data_center %}
+  {% if not is_ev_charging %}
 
   {# ── 1. Commercial Structure ──────────────────────────────────────── #}
   {# Revenue Model V1: single PPA plus residual merchant.               #}
@@ -164,7 +168,7 @@
   {# keys win over legacy tariff_eur_mwh / ppa_term_years in the        #}
   {# snapshot adapter (C2B2).                                            #}
   <details class="v2-inputs-section" open>
-    {{ section_anchor("commercial", "1. Commercial Structure") }}
+    {{ section_anchor("commercial", "1. Contracted Revenue") }}
     <div class="v2-section-fields">
 
       {% for f in revenue_fields %}
@@ -183,7 +187,7 @@
   {# • Balancing EUR/MWh: flat per-MWh cost (wind projects)              #}
   {# CO2 price is EUR/MWh applied to total generation (not EUR/tCO2).    #}
   <details class="v2-inputs-section" open>
-    {{ section_anchor("balancing", "2. Balancing &amp; CO2") }}
+    {{ section_anchor("balancing", "2. Merchant Adjustments & Other Revenue") }}
     <div class="v2-section-fields">
 
       {% for f in revenue_fields %}
@@ -216,8 +220,10 @@
       {% if mcf.field is not none %}
         {% if mcf.field.binding_label == "bound" and project_editable %}
           {# spreadsheet-style Year | Merchant Price grid #}
-          <div class="v2-merchant-grid-wrapper" data-field-id="{{ mcf.field.field_id }}">
-            <form id="v2-merchant-curve-form"
+          <div class="d-merchant" data-field-id="{{ mcf.field.field_id }}">
+            <form id="d-merchant-curve-form" data-decision-merchant
+                  data-curve="{{ mcf.field.value | e if mcf.field.value else '[]' }}"
+                  data-start-year="{{ merchant_start_year }}"
                   method="post" action="/v2/workbook/update"
                   autocomplete="off"
                   hx-post="/v2/workbook/update"
@@ -229,13 +235,11 @@
               <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
               <input type="hidden" name="content_hash"     value="{{ content_hash }}">
               {# Hidden textarea that holds the serialised JSON submitted with the form #}
-              <textarea id="v2-merchant-json-value" name="value"
+              <textarea id="d-merchant-json-value" name="value"
                         style="display:none" aria-hidden="true"></textarea>
 
               {# Store raw JSON in a data attribute; JS populates rows on load #}
-              <table class="v2-merchant-grid" aria-label="Merchant Price Curve"
-                     id="v2-merchant-grid-table"
-                     data-curve-json="{{ mcf.field.value | e if mcf.field.value else '[]' }}">
+              <table class="d-table" aria-label="Merchant Price Curve" id="d-merchant-grid-table">
                 <thead>
                   <tr>
                     <th class="v2-mg-col-year">Year</th>
@@ -243,30 +247,23 @@
                     <th class="v2-mg-col-action" aria-label="Actions"></th>
                   </tr>
                 </thead>
-                <tbody id="v2-merchant-grid-body">
-                  {# Rows injected by v2MerchantGridInit() on DOMContentLoaded #}
-                </tbody>
+                <tbody></tbody>
               </table>
 
               <div class="v2-merchant-grid-controls">
-                <button type="button" class="v2-mg-add-row">
+                <button type="button" data-add-year>
                   + Add Year
                 </button>
-                <button type="submit" class="v2-field-save v2-mg-save"
+                <button type="submit" class="v2-field-save" disabled
                         aria-label="Save merchant price curve">
                   Save Curve &#10003;
                 </button>
               </div>
+              <div class="d-merchant-status" role="status" aria-live="polite">Saved Working Copy curve. Prices in EUR/MWh.</div>
             </form>
           </div>
 
-          <script>
-          // Merchant grid initialized by static/js/workbook_v2.js merchantGridInit().
-          // After HTMX swap, workbook_v2.js re-initializes via htmx:afterSwap.
-          if (typeof window.v2MerchantGridInit === 'function') {
-            window.v2MerchantGridInit();
-          }
-          </script>
+          <script src="/static/js/model_merchant_curve.js"></script>
 
         {% else %}
           {# Read-only: show compact summary #}
@@ -293,7 +290,14 @@
     </div>
   </details>
 
+  {% endif %}{# /not is_ev_charging #}
   {% endif %}{# /not is_data_center — end of renewable-only sections 1-3 #}
+
+  {% if not is_data_center and not is_ev_charging %}
+  <p class="d-context">Contracted pricing uses the saved base tariff and selected indexation policy.
+    After contract expiry, merchant assumptions apply through the existing revenue authority.
+    Distinct editable PPA price steps are not available in this workspace.</p>
+  {% endif %}
 
   {# ── 4. Revenue Outputs ────────────────────────────────────────────── #}
   {#
@@ -337,7 +341,7 @@
           <dl class="v2-revenue-derivation" data-testid="revenue-derivation">
 
             {# Generation evidence — labelled with the persisted sample period #}
-            <dt>{% if is_data_center %}Equivalent IT Load Energy{% else %}Generation{% endif %}</dt>
+            <dt>{% if is_data_center %}Equivalent IT Load Energy{% elif is_ev_charging %}Charging energy{% else %}Generation{% endif %}</dt>
             <dd data-testid="revenue-derivation-generation">
               {% set gen = rd.get("sample_generation_mwh") %}
               {% set period_lbl = rd.get("sample_period_label", "") %}
@@ -407,7 +411,7 @@
                 <thead>
                   <tr>
                     <th style="text-align:left;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Period</th>
-                    <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">{% if is_data_center %}Equivalent IT Load Energy (MWh){% else %}Generation (MWh){% endif %}</th>
+                    <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">{% if is_data_center %}Equivalent IT Load Energy (MWh){% elif is_ev_charging %}Charging energy (MWh){% else %}Generation (MWh){% endif %}</th>
                     <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Revenue (kEUR)</th>
                   </tr>
                 </thead>

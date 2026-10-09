@@ -65,6 +65,7 @@ class ScenarioPresentation:
 
     # Current financial overrides (non-base-case only; {} for base case)
     overrides: dict = field(default_factory=dict)
+    metrics: dict = field(default_factory=dict)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -161,6 +162,7 @@ def build_scenario_presentation(
 
     run_at_raw = rs.get("ran_at") if rs else None
     updated_at_raw = getattr(sc, "updated_at", None)
+    from app.v2.scenario_kpi_projection import build_scenario_projection
 
     return ScenarioPresentation(
         scenario_id=sc.scenario_id,
@@ -173,6 +175,8 @@ def build_scenario_presentation(
         is_stale=stale,
         has_run=has_run,
         overrides=dict(getattr(sc, "overrides", None) or {}),
+        metrics=build_scenario_projection(sc.scenario_name, rs.get("kpis") if has_run else None,
+                                          run_at_raw, stale).kpis,
     )
 
 

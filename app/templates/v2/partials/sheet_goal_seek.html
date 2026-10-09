@@ -1,4 +1,7 @@
-<div id="v2-sheet-goal-seek" class="v2-gs" data-sheet="goal-seek" data-testid="goal-seek-panel">
+<link rel="stylesheet" href="/static/css/model_decision_workspace.css">
+<div id="v2-sheet-goal-seek" class="v2-gs v2-d-workspace" data-sheet="goal-seek" data-testid="goal-seek-panel"
+     hx-get="/v2/workbook/decision/goal-seek?project={{ project_code | urlencode }}"
+     hx-trigger="click from:#tab-goal-seek" hx-target="this" hx-swap="outerHTML">
   <section class="v2-gs-section" aria-labelledby="gs-title">
     <div class="v2-gs-section-title" id="gs-title">Goal Seek — target-return pricing (Tender)</div>
     <p class="v2-gs-note">
@@ -6,6 +9,16 @@
       Decision support only: candidate solves never write Run History, Last Run or your
       Working Copy — only an explicit Apply does, and the model stays STALE until you Run.
     </p>
+    {% if is_data_center or is_ev_charging %}
+    <p class="d-context" data-testid="goal-seek-unsupported">Tariff Goal Seek is supported for Solar and Wind only. A typed service-price solve is not available for this project.</p>
+    {% elif project_editable is defined and not project_editable %}
+    <p class="d-context">Reference model — create a working copy to solve and apply a tariff.</p>
+    {% else %}
+    <div class="d-context"><strong>Required PPA tariff for a target return</strong>
+      <span class="d-muted">Solar / Wind · Working Copy analysis · Solve variable: PPA tariff (EUR/MWh)</span>
+      {% if revenue_fields is defined %}{% for f in revenue_fields %}{% if f.field_id == 'revenue.ppa.base_tariff' %}<span class="d-muted">Starting Working tariff: {{ f.value if f.value is not none else 'Not available' }} EUR/MWh</span>{% endif %}{% endfor %}{% endif %}
+    </div>
+    <p class="d-context" data-testid="goal-seek-scenario-boundary">Tariff solving uses Working Copy scalar inputs, not scenario scalar overrides. Apply updates the Working Copy tariff, not a scenario tariff override. Select Base Case to evaluate the applied tariff without an overriding scenario price.</p>
     <form class="v2-gs-form"
           hx-post="/v2/workbook/goal-seek/run"
           hx-target="#v2-goal-seek-results"
@@ -38,6 +51,8 @@
         Running bounded deterministic solve on the canonical model…
       </div>
     </form>
+    {% endif %}
     <div id="v2-goal-seek-results" class="v2-gs-results" data-testid="gs-results"></div>
   </section>
+  <div class="d-actions"><button type="button" onclick="document.getElementById('tab-revenue').click()">Revenue assumptions</button><button type="button" onclick="document.getElementById('tab-compare').click()">Compare</button></div>
 </div>

@@ -384,8 +384,19 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
 
     from app.workbook.service import WorkbookService
 
-    pis = WorkbookService.build_input_set(ws.last_runtime_snapshot)
+    export_snapshot = ws.last_runtime_snapshot
+    revenue_evidence = (getattr(ws, "last_runtime_summary", None) or {}).get("scenario_revenue_input")
+    if isinstance(revenue_evidence, dict) and revenue_evidence.get("authority") == "materialized_project_inputs":
+        from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+        run_identity = getattr(ws, "last_runtime_identity", None)
+        if not isinstance(run_identity, dict) or revenue_evidence.get("scenario_id") != ws.last_runtime_scenario_id:
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: tariff Run binding is inconsistent.")
+        export_snapshot = bind_scenario_tariff(export_snapshot, run_identity.get("scenario_overrides") or {})
+    pis = WorkbookService.build_input_set(export_snapshot)
     project_inputs = pis.to_projectinputs()
+    if isinstance(revenue_evidence, dict) and revenue_evidence.get("authority") == "materialized_project_inputs":
+        if project_inputs.revenue.ppa_base_tariff != revenue_evidence.get("effective_tariff_eur_mwh"):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: effective tariff does not match Run evidence.")
     current_snapshot: dict[str, Any] = dict(ws.last_runtime_snapshot)
 
     _ri = getattr(ws, "last_runtime_identity", None)
