@@ -1,0 +1,30 @@
+/* FINCO Model Q2 — scoped presentation only, no workbook grid geometry changes. */
+#model-smart-panel .v2-sp-modes { display:flex; gap:4px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--border,#d7dee8); }
+#model-smart-panel .v2-sp-mode { border:1px solid var(--border,#cbd5e1); border-radius:6px; padding:7px 9px; background:transparent; color:inherit; font:inherit; font-size:12px; cursor:pointer; flex:1 1 auto; }
+#model-smart-panel .v2-sp-mode[aria-selected="true"] { border-color:var(--accent,#47739f); font-weight:700; background:rgba(93,137,179,.10); }
+#model-smart-panel .v2-sp-mode:focus-visible, #model-smart-panel [data-sp-return]:focus-visible, #model-smart-panel [data-sp-select]:focus-visible { outline:2px solid #367bc5; outline-offset:2px; }
+#model-smart-panel [data-sp-view][hidden] { display:none !important; }
+#model-smart-panel .v2-sp-intro { font-size:12px; opacity:.8; line-height:1.5; margin:10px 0; }
+#model-smart-panel .v2-sp-issue { margin:8px 0; padding:9px 10px; border:1px solid var(--border,#dce3eb); border-radius:6px; overflow-wrap:anywhere; }
+#model-smart-panel .v2-sp-issue--fail { border-left:3px solid #ba3c3c; }
+#model-smart-panel .v2-sp-issue--warn { border-left:3px solid #c78323; }
+#model-smart-panel .v2-sp-issue--info { border-left:3px solid #6b8aa7; }
+#model-smart-panel .v2-sp-issue-title { font-size:12px; font-weight:700; }
+#model-smart-panel .v2-sp-issue small, #model-smart-panel .v2-sp-issue p { display:block; margin:4px 0; font-size:11px; line-height:1.5; }
+#model-smart-panel .v2-sp-issue-action { display:block; font-size:11px; margin-top:6px; font-weight:600; }
+#model-smart-panel .v2-sp-issue button, #model-smart-panel .v2-sp-action { color:inherit; font:inherit; font-size:12px; border:1px solid var(--border,#cbd5e1); background:transparent; border-radius:5px; padding:5px 8px; cursor:pointer; margin:7px 0; max-width:100%; }
+#model-smart-panel .v2-sp-group { border-bottom:1px solid var(--border,#e3e7ed); }
+#model-smart-panel .v2-sp-group > summary { cursor:pointer; font-size:12px; font-weight:700; padding:8px 0; }
+#model-smart-panel .v2-sp-picker { display:block; box-sizing:border-box; width:100%; max-width:100%; margin:8px 0; padding:8px; border:1px solid var(--border,#cbd5e1); border-radius:5px; color:inherit; background:var(--bg,#fff); font:inherit; font-size:12px; }
+#model-smart-panel .v2-sp-facts { margin:8px 0; min-width:0; }
+#model-smart-panel .v2-sp-facts dt { font-size:11px; opacity:.72; margin-top:9px; }
+#model-smart-panel .v2-sp-facts dd { margin:2px 0 0; font-size:12px; font-weight:600; overflow-wrap:anywhere; white-space:normal; }
+#model-smart-panel .v2-sp-context { font-size:11px; line-height:1.5; opacity:.85; padding:6px 0; }
+#model-smart-panel .v2-sp-pending-list { padding-left:18px; font-size:12px; overflow-wrap:anywhere; }
+#model-smart-panel .v2-sp-pending-list button { max-width:100%; overflow-wrap:anywhere; text-align:left; }
+#model-smart-panel .v2-sp-group > summary::marker { font-size:11px; }
+@media (max-width: 600px) {
+ #model-smart-panel .v2-sp-modes { gap:3px; }
+ #model-smart-panel .v2-sp-mode { min-width:0; padding:9px 5px; font-size:11px; }
+ #model-smart-panel .v2-sp-issue { padding:8px; }
+}
