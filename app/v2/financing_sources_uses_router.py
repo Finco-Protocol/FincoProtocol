@@ -36,6 +36,7 @@ async def financing_sources_uses_page(
     )
     from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
     from app.workbook.service import WorkbookService
+    from app.workbook.workbook_identity import WorkbookIdentityError
 
     user = _get_current_user(request)
     if user is None:
@@ -113,6 +114,6 @@ async def financing_sources_uses_page(
         response.headers["Cache-Control"] = "private, no-store"
         return response
     except (FinancingEvidenceInvalid, RunHistoryError, PostRunContextChanged,
-            ValueError, TypeError, PermissionError) as exc:
+            WorkbookIdentityError, ValueError, TypeError, PermissionError) as exc:
         _log.warning("F1 financing snapshot rejected: %s", type(exc).__name__)
         return _unavailable(409, "Financing evidence is unavailable or changed. Reload the project.")
