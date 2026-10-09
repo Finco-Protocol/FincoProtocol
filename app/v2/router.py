@@ -2548,6 +2548,18 @@ async def v2_workbook_run(
     # ── Step 12: atomic commit (final CAS + promote + dirty=False) ────────── #
     runtime_snapshot_id = _utc_compact()
     ran_at = datetime.now(timezone.utc)
+    # F1 Correction A: bind engine-produced finance evidence to the exact
+    # successful V2 commit. This same runtime_summary is atomically captured
+    # in Last Run and the append-only Run History entry by existing CAS.
+    if "financing_evidence" in result:
+        _kpis_enriched["financing_evidence"] = {
+            **result["financing_evidence"],
+            "run_binding": {
+                "snapshot_id": runtime_snapshot_id,
+                "composite_hash": content_hash,
+                "scenario_id": active_scenario_id,
+            },
+        }
     try:
         ws_committed = v2_atomic_run_commit(
             user_id=workspace_owner,
