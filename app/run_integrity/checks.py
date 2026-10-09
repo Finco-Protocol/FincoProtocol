@@ -7,6 +7,7 @@ Missing or malformed evidence is UNAVAILABLE (never PASS); a broken identity is 
 from __future__ import annotations
 
 from datetime import date
+import math
 from typing import Any, Callable, Mapping
 
 from app.run_integrity.contracts import (
@@ -65,7 +66,8 @@ def check_evidence_digest(evidence: Mapping[str, Any]) -> IntegrityCheck:
 
 _USE_KEYS = ("base_project_capex_keur", "capitalized_idc_keur", "commitment_fee_keur",
              "structuring_fee_keur", "other_financing_costs_keur", "initial_dsra_funding_keur",
-             "other_uses_keur")
+             "other_uses_keur", "development_cost_reimbursement_keur", "developer_fee_keur")
+_DEVELOPER_USE_KEYS = ("development_cost_reimbursement_keur", "developer_fee_keur")
 _SOURCE_KEYS = ("senior_debt_keur", "junior_or_other_keur", "share_capital_and_other_equity_keur",
                 "shareholder_loan_cash_keur")
 
@@ -73,8 +75,24 @@ _SOURCE_KEYS = ("senior_debt_keur", "junior_or_other_keur", "share_capital_and_o
 def check_sources_equal_uses(evidence: Mapping[str, Any]) -> IntegrityCheck:
     cid, title = "SOURCES_EQUAL_USES", "Sources equal Uses (no plug)"
     su = _section(evidence, "sources_uses", "summary")
-    if not isinstance(su, Mapping) or not _complete(su, "total_uses_keur", "total_sources_keur",
-                                                     *_USE_KEYS, *_SOURCE_KEYS):
+    if not isinstance(su, Mapping):
+        return _unavailable(cid, title, "SOURCES_USES_EVIDENCE_MISSING")
+    # RUN_INTEGRITY_EVIDENCE_V1 may be missing separately itemised developer
+    # uses in old persisted runs.  Neither a matching digest nor missing values
+    # prove that Developer Economics was inactive.  Never default them to zero
+    # or modify the historical evidence; report the unverifiable check.
+    if any(key not in su for key in _DEVELOPER_USE_KEYS):
+        return _unavailable(cid, title, "DEVELOPER_USES_EVIDENCE_MISSING")
+    if any(
+        not isinstance(su[key], (int, float))
+        or isinstance(su[key], bool)
+        or not math.isfinite(su[key])
+        or su[key] < 0.0
+        for key in _DEVELOPER_USE_KEYS
+    ):
+        return _unavailable(cid, title, "DEVELOPER_USES_EVIDENCE_INVALID")
+    if not _complete(su, "total_uses_keur", "total_sources_keur",
+                     *_USE_KEYS, *_SOURCE_KEYS):
         return _unavailable(cid, title, "SOURCES_USES_EVIDENCE_MISSING")
     uses = sum(su[k] for k in _USE_KEYS)
     sources = sum(su[k] for k in _SOURCE_KEYS)
