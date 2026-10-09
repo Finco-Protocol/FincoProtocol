@@ -87,6 +87,8 @@ def _raw_attr(obj: Any, name: str):
 
 
 
+_UNSET_SCENARIO = object()  # Distinguish unrequested check from explicit Base (None).
+
 FINANCE_SCHEMA = "FINANCING_F1_V1"
 FINANCE_AUTHORITY = "CANONICAL_PROJECT_FINANCING_RESULT"
 SU_USES = (
@@ -124,7 +126,7 @@ def _close(a: float, b: float) -> bool:
 
 
 def _read_finance_evidence(runtime: Mapping, *, snapshot_id: str | None,
-                           composite_hash: str | None, scenario_id: str | None):
+                           composite_hash: str | None, scenario_id: Any = _UNSET_SCENARIO):
     if "financing_evidence" not in runtime:
         return None
     evidence = _mapping(runtime["financing_evidence"], "runtime_summary.financing_evidence", optional=False)
@@ -140,7 +142,7 @@ def _read_finance_evidence(runtime: Mapping, *, snapshot_id: str | None,
         raise FinancingEvidenceInvalid("FINANCING_EVIDENCE_RUN_BINDING_INVALID")
     if (snapshot_id is not None and binding["snapshot_id"] != snapshot_id
             or composite_hash is not None and binding["composite_hash"] != composite_hash
-            or binding["scenario_id"] != scenario_id):
+            or (scenario_id is not _UNSET_SCENARIO and binding["scenario_id"] != scenario_id)):
         raise FinancingEvidenceInvalid("FINANCING_EVIDENCE_RUN_BINDING_MISMATCH")
 
     su = _mapping(evidence.get("sources_uses"), "financing_evidence.sources_uses", optional=False)
@@ -224,7 +226,7 @@ def build_sources_uses_projection(
     freshness: str = "NOT_RUN", run_kind: str = "LAST_RUN",
     expected_snapshot_id: str | None = None,
     expected_composite_hash: str | None = None,
-    expected_scenario_id: str | None = None,
+    expected_scenario_id: Any = _UNSET_SCENARIO,
 ) -> dict:
     """Present only the SAME canonical Run; validation never creates financing values."""
     if freshness not in {"CURRENT", "STALE", "NOT_RUN"}:
