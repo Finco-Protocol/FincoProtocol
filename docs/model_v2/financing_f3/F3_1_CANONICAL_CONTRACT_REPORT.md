@@ -9,7 +9,9 @@ with no competing F3.1 PR at entry. Work uses an isolated
 Exact feature HEAD, Draft PR URL and exact-head CI conclusions are recorded
 in the PR delivery body; no self-referential commit SHA is embedded here.
 
-Only two new canonical modules, two new test files and this report are added.
+Two new canonical modules, three new test files and this report are added.
+The user's follow-up authorization permits one existing governance helper
+change, limited to exact paths and exact Git blobs for the two new modules.
 There is no production import, ProjectInputs field, persistence, UI, worker,
 Run hash integration, engine change, golden refresh or financial calculation.
 The existing Senior maturity fail-closed authority from #233 is untouched.
@@ -126,8 +128,34 @@ authorization needs separate approval before this gate can be green.
 The standalone new F3.1 contract/legacy suite passed all 184 tests in
 27.70 seconds and returned process exit code zero.
 
+### Explicitly authorized governance correction
+
+The user subsequently approved the narrow correction in the same branch/PR.
+Only `tests/model_v2_governance.py` changes existing governance behavior:
+its existing exact-blob predicate recognizes the following additional pins.
+The Finance Integrity helper already consumes that predicate, so it needs
+no functional edit. No global freeze, existing assertion, workflow, baseline
+or financial authority is weakened.
+
+| Approved path | Reviewed Git blob SHA |
+| --- | --- |
+| finco_core/inputs/financing_instruments.py | e1d06441763d2316af45d14ddab1716abbe4f3ca |
+| finco_core/inputs/financing_instruments_legacy.py | f963272fb3342976a33483ffea8aaad0a6f81f2b |
+
+`tests/test_financing_f3_governance.py` pins exactly this two-entry catalogue,
+checks current approved blobs, rejects unrelated core/Radar and lookalike
+paths, and commits altered blobs in synthetic repositories to prove both
+shared predicates reject them. Missing objects and refs fail closed;
+historical refs only approve the original reviewed blob. No branch-name
+dispatch, wildcard or runtime exception is introduced.
+The corrected F3.1 plus shared governance ring passed 202 tests with 10
+existing inactive-epic scope tests skipped in 30.40 seconds, process rc=0.
+All new F3.1 tests ran; no skip or assertion change was added. The previous
+693 successful financial/reference tests are unchanged; full exact-head CI
+is still required before a merge recommendation.
+
 Existing tracked financial/app/domain/static/workflow files remain identical
-to baseline. No golden, hash lock or fixture expectation is weakened. No
+to baseline. No golden, financial hash lock or fixture expectation is weakened. No
 public-safety scanner or CI exception is introduced. Full-suite execution
 and normal supervisor exit are required from exact-head GitHub CI.
 
