@@ -281,6 +281,13 @@ class WorkbookUpdateService:
                     error_class=FieldErrorClass.INVALID,
                 )
 
+        if field_id == "debt.bankability.configuration":
+            from app.workbook.bankability_config import parse_config
+            try:
+                parse_config(typed)
+            except ValueError as exc:
+                return FieldValidationResult(field_id=field_id, raw_value=raw_value,
+                    typed_value=None, spec=spec, error=str(exc), error_class=FieldErrorClass.INVALID)
         return FieldValidationResult(
             field_id=field_id, raw_value=raw_value, typed_value=typed, spec=spec
         )
@@ -387,6 +394,16 @@ class WorkbookUpdateService:
         if not validation.is_valid:
             raise FieldValidationError(validation.error, validation.error_class)
 
+        if field_id == "debt.bankability.configuration":
+            from app.workbook.bankability_config import parse_config, workspace_fees_editable
+            if parse_config(validation.typed_value).get("fees") is not None:
+                current_pis = ProjectInputSet.from_snapshot(dict(ws.draft_snapshot or {}))
+                try:
+                    if not workspace_fees_editable(current_pis.to_projectinputs(), ws):
+                        raise ValueError("Materialized CAPEX or explicit construction pricing owns fees; no competing fee override is permitted.")
+                except ValueError as exc:
+                    raise FieldValidationError(str(exc)) from exc
+
         # --- R8/N02: Senior scalar authority gate (before ANY persistence) --
         # A source-calibrated non-uniform period schedule cannot honour a
         # scalar edit; reject the Save before the CAS so no decorative value
@@ -414,13 +431,18 @@ class WorkbookUpdateService:
         # 4. Persists resulting snapshot and canonical new content_hash
         # Returns None when the canonical hash of the persisted draft no longer
         # matches expected_content_hash (concurrent or legacy write detected).
-        result = v2_atomic_draft_update(
-            user_id=ws.user_id,
-            project_id=ws.project_id,
-            expected_content_hash=content_hash,
-            field_id=field_id,
-            typed_value=validation.typed_value,
-        )
+        try:
+            result = v2_atomic_draft_update(
+                user_id=ws.user_id,
+                project_id=ws.project_id,
+                expected_content_hash=content_hash,
+                field_id=field_id,
+                typed_value=validation.typed_value,
+            )
+        except ValueError as exc:
+            if field_id == "debt.bankability.configuration" or (ws.draft_snapshot or {}).get("bankability_config_json"):
+                raise FieldValidationError(str(exc)) from exc
+            raise
         if result is None:
             raise StaleContentError(
                 f"Draft has changed since the page loaded (expected {content_hash[:8]}…). "

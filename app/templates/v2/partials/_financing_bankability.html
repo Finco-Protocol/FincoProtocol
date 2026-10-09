@@ -1,0 +1,112 @@
+{% if bankability is defined %}
+<section data-testid="bankability-workspace">
+{% if not bankability.available %}
+  <p class="v2-protected-notice">{{ bankability.reason }}</p>
+{% elif not project_editable %}
+  <p class="v2-protected-notice">Bankability inputs are read-only for this reference project.</p>
+{% else %}
+{% set cfg = bankability.config %}
+<link rel="stylesheet" href="/static/css/model_bankability.css">
+<form data-f2-form hx-post="/v2/workbook/update" hx-target="#v2-sheet-senior-debt" hx-swap="outerHTML">
+  <input type="hidden" name="project" value="{{ project_code }}">
+  <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+  <input type="hidden" name="content_hash" value="{{ content_hash }}">
+  <input type="hidden" name="sheet_id" value="debt">
+  <input type="hidden" name="field_id" value="debt.bankability.configuration">
+  <input type="hidden" name="value" value="">
+  <p class="v2-section-label">WORKING INPUTS · Project-owned across scenarios · Last Run evidence remains unchanged until Run</p>
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary">B. Lender Base Case &amp; Debt Sizing</summary>
+    <div class="f2-fields">
+      <label>Debt sizing method<select data-f2="sizing_mode">
+        <option value="">Existing project method (no F2 override)</option>
+        <option value="flat_dscr_sculpted" {{ 'selected' if cfg.get('sizing_mode') == 'flat_dscr_sculpted' }}>DSCR sculpting with gearing cap</option>
+        <option value="gearing_cap" {{ 'selected' if cfg.get('sizing_mode') == 'gearing_cap' }}>Gearing cap / level principal</option>
+      </select></label>
+      {% if bankability.renewable %}
+      <label>Lender production case<select data-f2="lender_case">
+        <option value="">Existing lender case (no F2 override)</option>
+        <option value="P_50" {{ 'selected' if cfg.get('lender_case') == 'P_50' }}>P50</option>
+        <option value="P90-10y" {{ 'selected' if cfg.get('lender_case') == 'P90-10y' }}>P90-10Y</option>
+      </select></label>
+      {% else %}<p>Renewable production-yield cases do not apply to this project.</p>{% endif %}
+    </div>
+    <p>Lender sizing does not replace the operating production case. Requested gearing is a cap, not funded debt. Frozen Excel schedules and minimum-DSCR mode are not executable choices in the clean adapter.</p>
+  </details>
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary">C. Interest Rate</summary>
+    <div class="f2-fields">
+      <label>Rate authority<select data-f2="rates_mode">
+        <option value="inherit">Existing rate authority (reset F2 override)</option>
+        <option value="periods" {{ 'selected' if cfg.get('rates_pct') is not none }}>Explicit all-in rates by operating period</option>
+      </select></label>
+      <label>Day-count convention<select data-f2="day_count">
+        <option value="">Existing day count (no F2 override)</option>
+        <option value="act_360" {{ 'selected' if cfg.get('day_count') == 'act_360' }}>ACT/360</option>
+        <option value="act_365" {{ 'selected' if cfg.get('day_count') == 'act_365' }}>ACT/365</option>
+      </select></label>
+    </div>
+    <p>Annual all-in percentages. Fixed/floating/hedge operating pricing modes are not supported by the clean adapter. Explicit construction pricing is separate and is not overwritten.</p>
+  </details>
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary">D. Repayment &amp; Sculpting</summary>
+    <div class="f2-fields">
+      <label>Target authority<select data-f2="targets_mode">
+        <option value="inherit">Existing target authority (reset F2 override)</option>
+        <option value="scalar" {{ 'selected' if cfg.get('targets') == [] }}>Scalar target</option>
+        <option value="periods" {{ 'selected' if cfg.get('targets') }}>Period-specific targets</option>
+      </select></label>
+      <label>Scalar target (x)<input data-f2="target_scalar" type="number" min="1" max="3" step="0.01" value="{{ bankability.scalar_target }}"></label>
+    </div>
+    <p>Actual SEMESTRIAL debt periods, including partial periods; not calendar-year rows. Period targets require DSCR sculpting. Gearing-cap level-principal repayment does not follow a DSCR target vector.</p>
+    <div class="f2-scroll"><table class="f2-table"><thead><tr><th>Period</th><th>Start</th><th>End</th><th>Target DSCR (x)</th><th>Annual all-in (%)</th></tr></thead><tbody>
+    {% for p in bankability.periods %}
+      <tr><th>{{ p.number }} <small>[{{ p.index }}]</small></th><td>{{ p.start }}</td><td>{{ p.end }}</td>
+        <td><input aria-label="Target DSCR period {{ p.number }}" data-f2-target type="number" min="1" max="3" step="0.01" value="{{ p.target }}"></td>
+        <td><input aria-label="All-in rate period {{ p.number }}" data-f2-rate type="number" min="0" max="20" step="0.01" value="{{ p.rate_pct if p.rate_pct is not none else '' }}"></td></tr>
+    {% endfor %}
+    </tbody></table></div>
+  </details>
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary">E. Financing Fees</summary>
+    {% if bankability.fees_editable %}
+    <label><input data-f2="fees_enabled" type="checkbox" {{ 'checked' if cfg.get('fees') is not none }}> Set construction financing fees</label>
+    <div class="f2-fields">
+    {% for key, title in [('commitment_pct', 'Commitment (% p.a.)'), ('structuring_pct', 'Structuring (%)'), ('arrangement_pct', 'Arrangement (%)')] %}
+      <label>{{ title }}<input data-f2-fee="{{ key }}" type="number" min="0" max="10" step="0.01" value="{{ bankability.fees[key] }}"></label>
+    {% endfor %}
+    </div>
+    <p>Canonical generic construction policy: commitment fee on undrawn Senior; structuring plus arrangement once on Senior + VAT commitments at financial close. Capitalized financing costs enter Project Uses and sizing through the existing fixed point.</p>
+    {% else %}<p>Explicit construction pricing or materialized financing CAPEX owns fees. No competing manual fee input is permitted.</p>
+      {% if cfg.get('fees') %}
+      <label><input data-f2="fees_enabled" type="checkbox" checked> Existing conflicting fee override; uncheck to remove before Save/Run</label>
+      {% for key, val in cfg.fees.items() %}<input type="hidden" data-f2-fee="{{ key }}" value="{{ val }}">{% endfor %}
+      {% endif %}
+    {% endif %}
+  </details>
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary">F. Reserve Facilities</summary>
+    {% if bankability.reserve_editable %}
+    {% set r = cfg.get('reserve') or {} %}
+    <div class="f2-fields">
+      <label>Reserve policy<select data-f2="reserve_mode">
+        <option value="inherit">Existing reserve policy (reset F2 override)</option>
+        <option value="none" {{ 'selected' if r.get('mode') == 'none' }}>NONE</option>
+        {% if bankability.automatic_reserve %}<option value="automatic_peak" {{ 'selected' if r.get('mode') == 'automatic_peak' }}>Automatic peak forward debt service</option>{% endif %}
+        <option value="cash_fixed" {{ 'selected' if r.get('mode') == 'cash_fixed' }}>CASH_DSRA / fixed amount</option>
+        <option value="dsrf" {{ 'selected' if r.get('mode') == 'dsrf' }}>DSRF / standby support</option>
+      </select></label>
+      <label>Coverage (months)<input data-f2="months" type="number" min="1" max="12" step="1" value="{{ r.get('months') or 6 }}"></label>
+      <label>Required reserve (kEUR)<input data-f2="requirement_keur" type="number" min="0" max="1000000" step="0.01" value="{{ r.get('requirement_keur', 0) }}"></label>
+      <label>DSRF commitment (kEUR)<input data-f2="commitment_keur" type="number" min="0" max="1000000" step="0.01" value="{{ r.get('commitment_keur', 0) }}"></label>
+      <label>DSRF commitment fee (% p.a.)<input data-f2="fee_pct" type="number" min="0" max="10" step="0.01" value="{{ r.get('fee_pct', 0) }}"></label>
+    </div>
+    <p>CASH_DSRA funds a cash reserve in Uses. DSRF supplies standby support, not cash funding; its fee is post-Senior cash and expires at Senior maturity. No DSRF draw/replenishment engine is provided.</p>
+    {% else %}<p>Legacy CAPEX reserve authority remains locked; no duplicate reserve funding input is permitted.</p>{% endif %}
+  </details>
+  <div class="f2-actions"><button type="submit" data-f2-save disabled>Save bankability</button><button type="submit" data-f2-reset disabled>Reset configuration</button></div>
+</form>
+<script src="/static/js/model_bankability.js"></script>
+{% endif %}
+</section>
+{% endif %}

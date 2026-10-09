@@ -123,6 +123,11 @@ def assert_debt_scalar_edit_allowed(pis, field_id: str) -> None:
     if field_id not in ("debt.senior.interest_rate_pct",
                         "debt.senior.target_dscr"):
         return
+    from app.workbook.bankability_config import SNAPSHOT_KEY, parse_config
+    bankability = parse_config(pis.snapshot_origin.get(SNAPSHOT_KEY))
+    authority_key = "rates_pct" if field_id.endswith("interest_rate_pct") else "targets"
+    if bankability.get(authority_key) is not None:
+        raise ValueError("The bankability configuration owns this input. Edit or reset that configuration first.")
     from app.workbook.service import WorkbookService
 
     try:
@@ -1413,6 +1418,7 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
         )
         result = apply_ev_charging_runtime_adapter(result, drivers_from_snapshot(snapshot))
 
-    return result
+    from app.workbook.bankability_config import SNAPSHOT_KEY, apply_config
+    return apply_config(result, snapshot.get(SNAPSHOT_KEY), project_type=project_type)
 
 
