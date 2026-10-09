@@ -124,19 +124,22 @@
     }
   }
   function changes(p) {
+    if (!p) return;
     var state = p.getAttribute('data-run-state') || 'NOT_RUN';
     var project = document.querySelector('.v2-toolbar-name');
     var scenario = document.querySelector('#v2-toolbar-scenario-label strong');
     put(p, 'working-project', project ? project.textContent.trim() : 'UNAVAILABLE');
     put(p, 'working-scenario', scenario ? scenario.textContent.trim() : 'UNAVAILABLE');
     put(p, 'change-state', state);
-    put(p, 'change-run-required', state === 'STALE' ? 'YES — saved Working Copy differs from Last Run' :
-      state === 'NOT_RUN' ? 'YES — no Last Run exists' : 'NO — Working Copy matches Last Run');
+    var pending = document.querySelectorAll('.v2-field-input[data-pending="true"]');
+    put(p, 'change-run-required', pending.length ?
+      'PENDING — save local edits first, then reassess the Run requirement' :
+      state === 'STALE' ? 'YES — saved Working Copy differs from Last Run' :
+      state === 'NOT_RUN' ? 'YES — no Last Run exists' : 'NO — saved Working Copy matches Last Run');
     put(p, 'change-summary', state === 'STALE' ?
       'Aggregate saved-input change is proven by freshness. Individual saved field history is not available.' :
       state === 'NOT_RUN' ? 'No committed Last Run exists for comparison.' :
       'No aggregate difference to Last Run is reported by the canonical freshness authority.');
-    var pending = document.querySelectorAll('.v2-field-input[data-pending="true"]');
     put(p, 'unsaved-count', pending.length ? pending.length + ' local pending input(s)' : 'No local pending editor values detected');
     var list = p.querySelector('[data-sp-pending-list]');
     if (list) {
