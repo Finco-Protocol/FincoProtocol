@@ -77,12 +77,7 @@ async def financing_sources_uses_page(
             run_at = (rr.ran_at if rr is not None else "")
             run_id = (rr.snapshot_id if rr is not None else "")
             prior_scenario = snapshot.workspace.last_runtime_identity or {}
-            run_scenario = (
-                prior_scenario.get("scenario_name") or
-                snapshot.workspace.active_scenario_name
-                if state == "CURRENT" else
-                prior_scenario.get("scenario_name") or "Not persisted"
-            )
+            run_scenario = prior_scenario.get("scenario_name") or "Not persisted"
 
         fin, capex = None, None
         if selected is None:
