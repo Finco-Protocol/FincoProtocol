@@ -261,8 +261,13 @@ class TestDenseLayoutPreservesContract:
                     key = f"{sheet}|{'editable' if editable else 'protected'}|{field_id}"
                     actual[key] = hashlib.sha256(
                         _normalise(html, strip_added=True).encode()).hexdigest()
-        assert set(actual) == set(golden["hashes"])
-        drifted = sorted(k for k, v in actual.items() if golden["hashes"][k] != v)
+        # F2 adds one registered grouped editor; every original DOM hash stays locked.
+        f2_additions = {
+            "debt|editable|debt.bankability.configuration",
+            "debt|protected|debt.bankability.configuration",
+        }
+        assert set(actual) == set(golden["hashes"]) | f2_additions
+        drifted = sorted(k for k, v in golden["hashes"].items() if actual[k] != v)
         assert not drifted, f"macro DOM identity drifted for: {drifted}"
 
     @pytest.mark.parametrize("sheet_id", SHEETS_UNDER_TEST)

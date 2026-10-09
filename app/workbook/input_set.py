@@ -504,7 +504,7 @@ class ProjectInputSet:
             self.template_source, self.project_origin,
         )
 
-        return ProjectInputSet(
+        updated = ProjectInputSet(
             workbook_version=self.workbook_version,
             values=MappingProxyType(new_values),
             snapshot_origin=new_origin_proxy,
@@ -515,6 +515,14 @@ class ProjectInputSet:
             content_hash=new_hash,
             created_from=self.created_from,
         )
+        from app.workbook.bankability_config import FIELD_ID, SNAPSHOT_KEY
+        if field_id == FIELD_ID or (new_origin.get(SNAPSHOT_KEY) and field_id.startswith("debt.senior.")):
+            # The CAS calls this on its freshly read snapshot, inside the transaction.
+            if field_id != FIELD_ID:
+                from app.input_adapter import assert_debt_scalar_edit_allowed
+                assert_debt_scalar_edit_allowed(self, field_id)
+            updated.to_projectinputs()
+        return updated
 
     def with_composite_hash(self, composite_hash: str) -> "ProjectInputSet":
         """Return a new ProjectInputSet whose content_hash is the composite hash.

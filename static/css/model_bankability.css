@@ -1,0 +1,13 @@
+.f2-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px;padding:12px 0}
+.f2-fields label{display:flex;flex-direction:column;gap:5px;font-size:13px}
+[data-f2-form]{min-width:0;max-width:100%}
+[data-f2-form] input,[data-f2-form] select{color:var(--fb-text);background:var(--fb-field);border:1px solid var(--fb-border);border-radius:4px;padding:7px;min-width:0;max-width:100%;font:inherit}
+[data-f2-form] input:disabled{opacity:.55}
+[data-f2-form] p{font-size:13px;line-height:1.5}
+.f2-scroll{overflow:auto;max-height:460px;overscroll-behavior:contain}
+.f2-table{border-collapse:collapse;width:100%;font-size:13px;min-width:650px}
+.f2-table td,.f2-table th{border-bottom:1px solid var(--fb-border);padding:8px;text-align:right;white-space:nowrap}
+.f2-table thead{position:sticky;top:0;background:var(--fb-field);z-index:1}
+.f2-table input{width:110px;text-align:right}
+.f2-actions{display:flex;flex-wrap:wrap;gap:12px;padding:12px 0}
+.f2-actions button{padding:8px 12px;border-radius:4px;cursor:pointer;font:inherit;color:var(--fb-text);background:var(--fb-field);border:1px solid var(--fb-border)}

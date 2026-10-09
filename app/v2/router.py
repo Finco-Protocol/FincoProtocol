@@ -1156,12 +1156,33 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
     debt_fields = _lock_senior_fields_if_calibrated(
         senior_editor_fields(_build_sheet_fields("debt", pis), finance_pi),
         senior_pricing_mode, senior_dscr_mode)
+    from app.workbook.bankability_config import FIELD_ID, SNAPSHOT_KEY, build_view
+    bankability = build_view(finance_pi, pis.snapshot_origin.get(SNAPSHOT_KEY),
+        project_type=pis.snapshot_origin.get("project_type"))
+    if bankability.get("available"):
+        from app.workbook.bankability_config import workspace_fees_editable
+        try:
+            bankability["fees_editable"] = workspace_fees_editable(finance_pi, ws)
+        except (ValueError, AttributeError):
+            bankability["fees_editable"] = False
+    debt_fields = [f for f in debt_fields if f["field_id"] != FIELD_ID]
+    for field in debt_fields:
+        key = {"debt.senior.interest_rate_pct": "rates_pct", "debt.senior.target_dscr": "targets"}.get(field["field_id"])
+        if key and bankability.get("config", {}).get(key) is not None:
+            field["editable"] = False
+            field["binding_label"] = "template-locked"
+            field["help_text"] = "Bankability configuration owns this input; edit or reset the configuration below."
+    if bankability.get("config", {}).get("rates_pct") is not None:
+        senior_pricing_mode = "WORKING_CONFIG"
+    if bankability.get("config", {}).get("targets") is not None:
+        senior_dscr_mode = "WORKING_CONFIG"
     financing_evidence = build_financing_evidence(rr_for_sponsor)
     _actual_senior, _actual_gearing = financing_evidence["metrics"][:2]
     from app.input_adapter import senior_rate_authority
     _flat_senior_rate = senior_rate_authority(finance_pi)[1] if finance_pi else None
     return {
         "debt_fields": debt_fields,
+        "bankability": bankability,
         "debt_state": d.state.value,
         "debt_schedule": d.schedule,
         "debt_operational_periods": d.operational_periods,
@@ -2486,6 +2507,13 @@ async def v2_workbook_run(
     )
     if folded_opex is not override.opex:
         override = _dc_replace(override, opex=folded_opex)
+
+    from app.workbook.bankability_config import SNAPSHOT_KEY, assert_materialized_fee_authority
+    try:
+        assert_materialized_fee_authority(override, pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
+    except ValueError as exc:
+        msg = str(exc)
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
     # ── Step 11: run the engine ────────────────────────────────────────────── #
     # P0-A: the calculation runs in the bounded model executor (worker process), never on the
@@ -4491,6 +4519,9 @@ async def v2_scenario_sensitivity_run(
             if folded_opex is not pi_override.opex:
                 pi_override = _dc_replace(pi_override, opex=folded_opex)
 
+            from app.workbook.bankability_config import SNAPSHOT_KEY, assert_materialized_fee_authority
+            assert_materialized_fee_authority(pi_override, pis_sens.snapshot_origin.get(SNAPSHOT_KEY))
+
             # P0-A: do not run the engine inline. Queue the point; the whole grid executes as ONE
             # admitted, ordered task in the model executor (see below).
             results.append({"label": step_label, "status": "PENDING", "_pi": pi_override,
@@ -4800,6 +4831,13 @@ async def v2_workbook_goal_seek_run(
     )
     if folded_opex is not override.opex:
         override = dc_replace(override, opex=folded_opex)
+
+    from app.workbook.bankability_config import SNAPSHOT_KEY, assert_materialized_fee_authority
+    try:
+        assert_materialized_fee_authority(override, pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
+    except ValueError as exc:
+        return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
+            "target_metric_label": metric.label, "message": str(exc)}, "apply": None, "request": request})
 
     # ── Current canonical tariff (draft state the user sees) ──────────────── #
     apply_field_id, raw_current = _goal_seek_resolve_tariff_field(variable, pis_draft)

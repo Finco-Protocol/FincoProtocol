@@ -67,6 +67,8 @@
           data-testid="authority-badge-unresolved-{{ label | lower | replace(' ', '-') }}">
       &#9888; Authority unavailable
     </span>
+  {% elif mode == "WORKING_CONFIG" %}
+    <span class="v2-authority-badge v2-authority-flat">Working bankability configuration</span>
   {% elif mode == "FLAT" or mode == "FLAT_SCALAR" %}
     <span class="v2-authority-badge v2-authority-flat"
           title="Flat scalar — a single value applies for all periods."
@@ -96,6 +98,8 @@
           data-testid="editability-badge-reference">
       Reference project — create a working copy to edit
     </span>
+  {% elif authority_mode == "WORKING_CONFIG" %}
+    <span class="v2-editability-badge v2-editability-editable">Editable in bankability configuration below</span>
   {% elif authority_mode == "CALIBRATED" %}
     <span class="v2-editability-badge v2-editability-locked"
           data-testid="editability-badge-locked-calibrated">
@@ -192,6 +196,8 @@
     </div>
   </details>
 
+  {% include "partials/_financing_bankability.html" %}
+
   <details class="v2-inputs-section">
     <summary class="v2-inputs-section-summary" id="nav-debt-additional">
       Reserve policy &amp; assumptions
@@ -207,7 +213,7 @@
           <div><dt>Configured requirement</dt><dd>{{ reserve_view.requirement.display }}</dd></div>
           <div><dt>Reserve facility commitment</dt><dd>{{ reserve_view.facility.display }}</dd></div>
         </dl>
-        <p>Read-only typed policy. Coverage is not writable through the current workbook registry.
+        <p>Effective Working policy; supported edits are in Reserve Facilities above.
           The configured requirement is not the dynamic Last Run target.
           Actual balances are in the debt schedule; funding and release cash are shown below.</p>
         <p>Reserve interest and the calculated target series are not exposed in this persisted runtime view.</p>

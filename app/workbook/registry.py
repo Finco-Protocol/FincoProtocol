@@ -937,6 +937,11 @@ def is_data_center_project_type(project_type: str | None) -> bool:
 _DT = "debt"
 
 _dt_senior = _section("senior", "Senior Debt Inputs", _DT, order=0, fields=[
+    _f("debt.bankability.configuration", "Bankability configuration", "bankability_config_json",
+       FieldType.TEXT, _DT, "senior", kind=FieldKind.INPUT, persisted=True,
+       source_of_truth=SourceOfTruth.INPUT_SET, engine_path="financing",
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True, description="Atomic project-owned typed financing configuration; canonical adapter and Run consume it.", order=4),
     _f(f"{_DT}.senior.gearing_pct", "Gearing", "gearing_pct", FieldType.PCT, _DT, "senior",
        kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
        engine_path="financing.gearing_ratio",
