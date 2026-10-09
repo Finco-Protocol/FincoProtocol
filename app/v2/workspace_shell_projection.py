@@ -42,6 +42,11 @@ class WorkspaceNavItem:
     # Existing workbook tab id this item activates; None = future capability.
     tab_id: Optional[str]
     available: bool
+    # Name of the sheet tab this item opens when it differs from the item label
+    # (terminology bridge between the navigation tree and the sheet tab bar).
+    sheet_label: str = ""
+    # In-sheet anchor scrolled to after activation (only where that section exists).
+    anchor: str = ""
 
 
 def workspace_nav_groups() -> tuple[WorkspaceNavGroup, ...]:
@@ -58,12 +63,12 @@ def workspace_nav_groups() -> tuple[WorkspaceNavGroup, ...]:
             WorkspaceNavItem("Overview", "tab-overview", True),
         )),
         WorkspaceNavGroup("Model", (
-            WorkspaceNavItem("Project", "tab-project-setup", True),
+            WorkspaceNavItem("Project", "tab-project-setup", True, "Project Setup"),
             WorkspaceNavItem("Timeline & Discounting", None, False),
             WorkspaceNavItem("Escalation", None, False),
             WorkspaceNavItem("Revenue", "tab-revenue", True),
-            WorkspaceNavItem("Development", "tab-capex", True),
-            WorkspaceNavItem("Operations", "tab-opex", True),
+            WorkspaceNavItem("Development", "tab-capex", True, "CAPEX"),
+            WorkspaceNavItem("Operations", "tab-opex", True, "OPEX"),
         )),
         WorkspaceNavGroup("Financing", (
             WorkspaceNavItem("Senior Debt", "tab-debt", True),
@@ -71,7 +76,7 @@ def workspace_nav_groups() -> tuple[WorkspaceNavGroup, ...]:
             WorkspaceNavItem("Tax", "tab-tax", True),
         )),
         WorkspaceNavGroup("Outputs", (
-            WorkspaceNavItem("Statements", "tab-fs", True),
+            WorkspaceNavItem("Statements", "tab-fs", True, "Financial Statements"),
             WorkspaceNavItem("Returns", "tab-returns", True),
             WorkspaceNavItem("Analytics", None, False),
         )),
@@ -81,8 +86,8 @@ def workspace_nav_groups() -> tuple[WorkspaceNavGroup, ...]:
             WorkspaceNavItem("Compare", "tab-compare", True),
         )),
         WorkspaceNavGroup("Trust", (
-            WorkspaceNavItem("Assumptions", "tab-trust", True),
-            WorkspaceNavItem("Calculation Trace", "tab-trust", True),
+            WorkspaceNavItem("Assumptions", "tab-trust", True, "Trust Pack", "#assumption-register"),
+            WorkspaceNavItem("Calculation Trace", "tab-trust", True, "Trust Pack"),
         )),
         WorkspaceNavGroup("Delivery", (
             WorkspaceNavItem("Exports", None, False),

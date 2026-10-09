@@ -20,3 +20,16 @@
     —
   {%- endif -%}
 {%- endmacro %}
+
+
+{# Statement presentation formatter (Workflow C): whole kEUR, negatives in parentheses (finance
+   convention), unavailable (None / non-numeric) as an em dash.  A value that rounds to zero is
+   shown as 0, never "(0)".  Presentation only: the persisted value is never altered. #}
+{% macro statement_keur(value) -%}
+  {%- if value is number and value is not sameas true and value is not sameas false -%}
+    {%- set r = value | round(0, 'common') -%}
+    {%- if r < 0 -%}({{ "{:,.0f}".format(r | abs) }}){%- else -%}{{ "{:,.0f}".format(r | abs) }}{%- endif -%}
+  {%- else -%}
+    —
+  {%- endif -%}
+{%- endmacro %}
