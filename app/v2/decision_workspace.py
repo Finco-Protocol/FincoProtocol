@@ -71,6 +71,8 @@ def scenario_assumptions(scenarios) -> tuple[dict, ...]:
         rs = sc.last_run_summary or {}
         bound = rs.get("scenario_overrides_at_run")
         bound_values = bound if isinstance(bound, Mapping) else {}
+        evidence = rs.get("scenario_revenue_input") or {}
+        tariff = numeric(evidence.get("effective_tariff_eur_mwh")) if isinstance(evidence, Mapping) and evidence.get("authority") == "materialized_project_inputs" else None
         working = sc.overrides or {}
         rows.append({
             "name": sc.scenario_name,
@@ -79,5 +81,6 @@ def scenario_assumptions(scenarios) -> tuple[dict, ...]:
             "bound": tuple((labels.get(k, (k, ""))[0], str(v), labels.get(k, (k, ""))[1])
                            for k, v in sorted(bound_values.items()) if not k.startswith("_")),
             "bound_available": isinstance(bound, Mapping),
+            "effective_tariff": f"{tariff:.2f} EUR/MWh" if tariff is not None else None,
         })
     return tuple(rows)

@@ -2458,6 +2458,17 @@ async def v2_workbook_run(
         # so the legacy ScenarioManager is never activated by a user-created name.
         scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
 
+        if not sc_rec.is_base_case and "tariff_eur_mwh" in (sc_rec.overrides or {}):
+            from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+            try:
+                effective_snapshot = bind_scenario_tariff(
+                    dict(pis_draft.snapshot_origin), sc_rec.overrides)
+                override = WorkbookService.to_projectinputs(
+                    WorkbookService.build_input_set(effective_snapshot))
+            except ValueError as exc:
+                msg = str(exc)
+                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
     # ── Steps 9–10: CAPEX and OPEX fold ───────────────────────────────────── #
     from dataclasses import replace as _dc_replace
     folded_capex = apply_user_sub_lines_replacing_base(
@@ -2525,6 +2536,14 @@ async def v2_workbook_run(
     _revenue_derivation_raw = _derivation_evidence.get("revenue", {})
     _kpis_enriched = dict(result["kpis"])
     _kpis_enriched["revenue_derivation"] = _fmt_rev_deriv(_revenue_derivation_raw)
+    _scenario_revenue_input = None
+    if runtime_project_key in ("Solar", "Wind"):
+        _scenario_revenue_input = {
+            "effective_tariff_eur_mwh": override.revenue.ppa_base_tariff,
+            "scenario_id": active_scenario_id,
+            "authority": "materialized_project_inputs",
+        }
+        _kpis_enriched["scenario_revenue_input"] = _scenario_revenue_input
 
     # ── Step 12: atomic commit (final CAS + promote + dirty=False) ────────── #
     runtime_snapshot_id = _utc_compact()
@@ -2621,6 +2640,7 @@ async def v2_workbook_run(
                 "scenario_name": active_scenario_name or "",
                 "scenario_snapshot_hash": _sc_snap_hash,
                 "scenario_overrides_at_run": _sc_overrides_at_run,
+                "scenario_revenue_input": _scenario_revenue_input,
             }
             update_scenario_last_run_summary(
                 user_id=workspace_owner,
@@ -2650,6 +2670,7 @@ async def v2_workbook_run(
                     "ran_at": ran_at.isoformat(),
                     "scenario_id": _base_sc.scenario_id,
                     "scenario_name": _base_sc.scenario_name or "Base Case",
+                    "scenario_revenue_input": _scenario_revenue_input,
                     "scenario_snapshot_hash": None,
                     "scenario_overrides_at_run": {},
                 }
@@ -3340,6 +3361,12 @@ async def v2_scenario_update_overrides(
             status_code=409,
         )
 
+    if "tariff_eur_mwh" in overrides:
+        from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+        try:
+            bind_scenario_tariff({"project_type": project_record.project_type}, overrides)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
     updated = update_scenario_overrides(workspace_owner, scenario_id, overrides)
     if updated is None:
         return JSONResponse({"error": "Failed to update overrides."}, status_code=500)
@@ -4326,9 +4353,13 @@ async def v2_scenario_sensitivity_run(
     _scenario_rec = None
     _scenario_overrides_for_fold = None
     if scenario_id:
-        _scenario_rec, _resolved_snap, _warn = _resolve_snap(
-            workspace_owner, project_record.project_id, scenario_id
-        )
+        try:
+            _scenario_rec, _resolved_snap, _warn = _resolve_snap(
+                workspace_owner, project_record.project_id, scenario_id
+            )
+        except ValueError as exc:
+            from html import escape
+            return HTMLResponse(f"<p>Scenario input unavailable: {escape(str(exc))}</p>", status_code=422)
         if _scenario_rec is None:
             return HTMLResponse(
                 content="<p>Scenario not found, archived, or inaccessible.</p>",

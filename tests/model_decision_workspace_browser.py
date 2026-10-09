@@ -23,6 +23,8 @@ def main():
     from app.persistence import db
     from app.persistence.workspace_repository import get_workspace_state
     from app.persistence.run_history_repository import get_run_history
+    from app.persistence.scenarios_repository import get_scenario
+    from app.services.export_service import resolve_canonical_last_run_from_workspace
     from app.services.reference_seed_service import create_reference_seeded_project
     from app.runtime.model_execution import reset_model_executor_for_tests
     from main_web import app
@@ -117,6 +119,27 @@ def main():
                             page.locator('[data-testid=header-run-btn]').click()
                         page.reload()
                         expect(page.locator('[data-testid=revenue-state-clean]')).to_be_visible(timeout=120000)
+                        base_run = get_workspace_state('decision-browser', record.project_id)
+                        economics = [{'case': 'Base', 'working_override': None, 'run_bound_override': None,
+                            'effective_tariff': base_run.last_runtime_summary['scenario_revenue_input']['effective_tariff_eur_mwh'],
+                            'revenue_keur': base_run.last_runtime_summary['total_revenue_keur'],
+                            'project_irr': base_run.last_runtime_summary['project_irr']}]
+                        working_snapshot = dict(base_run.draft_snapshot)
+                        def capture_case(name, scenario_id, tariff):
+                            ws = get_workspace_state('decision-browser', record.project_id)
+                            sc = get_scenario(scenario_id, 'decision-browser')
+                            summary = sc.last_run_summary
+                            assert sc.overrides['tariff_eur_mwh'] == tariff
+                            assert summary['scenario_overrides_at_run']['tariff_eur_mwh'] == tariff
+                            assert summary['scenario_revenue_input']['effective_tariff_eur_mwh'] == tariff
+                            assert dict(ws.draft_snapshot) == working_snapshot
+                            assert ws.last_runtime_scenario_id == scenario_id
+                            assert ws.last_runtime_summary['total_revenue_keur'] == summary['kpis']['total_revenue_keur']
+                            authority = resolve_canonical_last_run_from_workspace(record, 'decision-browser', ws)
+                            assert authority.project_inputs.revenue.ppa_base_tariff == tariff
+                            economics.append({'case':name, 'working_override':tariff, 'run_bound_override':tariff,
+                                'effective_tariff':summary['scenario_revenue_input']['effective_tariff_eur_mwh'],
+                                'revenue_keur':summary['kpis']['total_revenue_keur'], 'project_irr':summary['kpis']['project_irr']})
                         page.locator('#tab-scenarios').click()
                         page.locator('.v2-scenario-create-form input[name=scenario_name]').fill('Pricing Upside')
                         with page.expect_response(lambda r:'/scenarios/create' in r.url):
@@ -139,6 +162,7 @@ def main():
                         run_html = run_response.value.text()
                         assert 'id="v2-sheet-returns"' in run_html, run_html[:2000]
                         expect(page.locator('.v2-scenario-row[data-scenario-id="' + sid + '"] .v2-scenario-state')).to_have_text('Current',timeout=120000)
+                        capture_case('Upside', sid, 85)
                         page.locator('.v2-scenario-create-form input[name=scenario_name]').fill('Pricing Downside')
                         with page.expect_response(lambda r:'/scenarios/create' in r.url):
                             page.locator('.v2-scenario-create-form button').click()
@@ -153,6 +177,9 @@ def main():
                         with page.expect_response(lambda r:'/v2/workbook/run' in r.url and r.request.method=='POST', timeout=120000):
                             page.locator('[data-testid=header-run-btn]').click()
                         expect(page.locator('.v2-scenario-row[data-scenario-id="' + downside_id + '"] .v2-scenario-state')).to_have_text('Current', timeout=120000)
+                        capture_case('Downside', downside_id, 45)
+                        assert economics[1]['revenue_keur'] > economics[0]['revenue_keur'] > economics[2]['revenue_keur']
+                        assert economics[1]['project_irr'] > economics[0]['project_irr'] > economics[2]['project_irr']
                         page.locator('#tab-compare').click()
                         expect(page.locator('.v2-compare-chip')).to_have_count(3,timeout=30000)
                         for chip in page.locator('.v2-compare-chip').all(): chip.click()
@@ -166,6 +193,7 @@ def main():
                         history = get_run_history('decision-browser',record.project_id)
                         page.locator('[data-testid=sensitivity-run-btn]').click()
                         expect(page.locator('[data-testid=sensitivity-range]')).to_be_visible(timeout=120000)
+                        expect(page.locator('#v2-sensitivity-results')).to_contain_text('revenue.ppa.base_tariff = 85.0')
                         assert get_workspace_state('decision-browser',record.project_id)==before
                         assert get_run_history('decision-browser',record.project_id)==history
                         page.screenshot(path=str(out/f'{kind}-sensitivity.png'),full_page=True)
@@ -200,7 +228,7 @@ def main():
                         assert abs(achieved - target) < .01, (achieved, target)
                         page.reload()
                         evidence.append({'kind':kind,'workflow':'Curve Save/reload -> Run -> Scenario override/select/Run -> Compare -> Sensitivity -> Goal Seek -> Apply STALE -> Run CURRENT',
-                                         'target_percent':target, 'achieved_percent':achieved,
+                                         'target_percent':target, 'achieved_percent':achieved, 'scenario_economics':economics,
                                          'applied_tariff':get_workspace_state('decision-browser',record.project_id).draft_snapshot['rev_ppa_base_tariff']})
                         ctx.close()
                 finally:

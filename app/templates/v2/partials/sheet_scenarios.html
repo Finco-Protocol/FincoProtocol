@@ -125,6 +125,9 @@
         {% endif %}
       </div>
     </div>
+    {% if sc.overrides.get('tariff_eur_mwh') is not none %}
+    <p class="d-context" data-testid="scenario-tariff-binding">The tariff override binds canonical pricing on the next Run. Historical Runs without effective tariff evidence require a rerun; a stored override alone does not prove the price used.</p>
+    {% endif %}
     {% if sc.has_run %}
     <div class="d-table-wrap" data-testid="scenario-summary-{{ sc.scenario_id }}">
       <table class="d-table" aria-label="{{ sc.scenario_name }} persisted results">
@@ -216,7 +219,8 @@
         {# Revenue — tariff/P50-hour overrides are renewable-only controls and
            are hidden for Data Center projects (occupancy/service-price
            scenario overrides are not exposed in V1). #}
-        {% if not is_data_center and not is_ev_charging %}
+        {% if not is_data_center %}
+        {% if not is_ev_charging %}
         <div class="v2-override-section-label">Revenue</div>
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-tariff_eur_mwh">Tariff</label>
@@ -232,6 +236,7 @@
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">h/yr</span>
         </div>
+        {% endif %}
         {% endif %}
 
         {# Costs #}

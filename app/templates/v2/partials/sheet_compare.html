@@ -192,6 +192,7 @@
           <span class="d-muted">Overrides bound to Last Run</span><dl>
           {% if item.bound_available %}{% for label,value,unit in item.bound %}<dt>{{ label }}</dt><dd>{{ value }} {{ unit }}</dd>{% else %}<dt>No financial overrides</dt>{% endfor %}
           {% else %}<dt>Run-bound override evidence unavailable</dt>{% endif %}</dl>
+          <dl><dt>Effective PPA tariff in Last Run</dt><dd>{% if item.effective_tariff %}{{ item.effective_tariff }}{% else %}Not exposed by this Run. Stored tariff overrides alone do not prove effective pricing; rerun to establish input evidence.{% endif %}</dd></dl>
         </section>
       {% endfor %}
       </div>

@@ -134,6 +134,11 @@ def test_vertical_capability_and_route_render_context(env, kind):
     if kind in ("data_center", "ev_charging"):
         assert 'data-testid="goal-seek-unsupported"' in html
         assert 'data-testid="gs-run-btn"' not in html
+        assert 'id="ov-tariff_eur_mwh"' not in html
+        assert 'id="ov-p50_hours"' not in html
+        assert 'data-testid="merchant-curve-preview"' not in html
+        assert 'id="ov-gearing_pct"' in html
+        assert 'id="ov-interest_rate_pct"' in html
     if kind == "ev_charging":
         assert 'data-testid="sensitivity-unsupported"' in html
         assert 'id="ov-tariff_eur_mwh"' not in html
@@ -141,6 +146,8 @@ def test_vertical_capability_and_route_render_context(env, kind):
     else:
         assert 'data-testid="sensitivity-run-btn"' in html
     if kind in ("solar", "wind"):
+        assert 'id="ov-tariff_eur_mwh"' in html
+        assert 'id="ov-p50_hours"' in html
         assert 'data-testid="goal-seek-scenario-boundary"' in html
         assert "not scenario scalar overrides" in html
 

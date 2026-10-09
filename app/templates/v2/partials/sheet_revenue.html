@@ -159,7 +159,8 @@
   {% endif %}
 
   {# ── 1-3. Renewable-only sections: hidden for Data Center and EV ────── #}
-  {% if not is_data_center and not is_ev_charging %}
+  {% if not is_data_center %}
+  {% if not is_ev_charging %}
 
   {# ── 1. Commercial Structure ──────────────────────────────────────── #}
   {# Revenue Model V1: single PPA plus residual merchant.               #}
@@ -289,6 +290,7 @@
     </div>
   </details>
 
+  {% endif %}{# /not is_ev_charging #}
   {% endif %}{# /not is_data_center — end of renewable-only sections 1-3 #}
 
   {% if not is_data_center and not is_ev_charging %}

@@ -7,8 +7,10 @@
 - Branch: `feat/model-v2-revenue-scenario-decision-ux`.
 - Integration uses a normal merge, not rebase, squash or cherry-pick.
 - One consolidated Draft PR. No merge or deployment authorized.
-- No financial-kernel, financial-service, executor, persistence, schema,
-  Run/CAS, history, certificate or export authority changes.
+- No financial-kernel, solver, executor, schema, atomic Run/CAS, history or
+  certificate authority changes. Correction A extends the pure scenario
+  snapshot resolver and the canonical export input adapter narrowly for tariff
+  binding; export authority selection and serialization remain unchanged.
 - No changes to the shared workbook shell, field editor, post-run OOB builder,
   global workbook assets or any of PR #225's 16 files.
 
@@ -123,7 +125,7 @@ tariff override. This is now visible guidance, not an invented scenario-aware
 solver. Browser Apply acceptance therefore explicitly selects Base Case.
 Scenario-aware tariff solving needs a separate reviewed authority extension.
 
-### Independently observed pre-existing scalar-override gap
+### Independently observed pre-existing scalar-override gap, closed by Correction A
 
 Real Solar Base/Upside/Downside runs expose another upstream boundary:
 the scenario editor stores the legacy `tariff_eur_mwh` key, while snapshots can
@@ -134,11 +136,40 @@ The authenticated comparison consequently shows unchanged canonical metrics,
 not a fabricated scenario effect. Working/run-bound overrides remain visible
 as submitted evidence; they do not prove the effective tariff changed.
 
-This adapter/persistence authority is not changed or bypassed here. Complete
-price-override economic acceptance for such snapshots requires a separately
-reviewed canonical scenario-field binding correction. The controlled projection
-tests prove correct nonzero deltas where the run evidence actually differs;
-they do not substitute for that missing real economic bridge.
+Correction A explicitly authorizes the narrow application-layer binding fix.
+`bind_scenario_tariff` copies the input snapshot and maps only an explicitly
+admitted `tariff_eur_mwh` scenario override onto `rev_ppa_base_tariff` when that
+canonical key exists. Legacy-only snapshots retain their existing shape.
+The global adapter precedence is unchanged; no override still means canonical
+Working Copy authority. Finite non-negative values, including genuine zero,
+are required. DC/EV tariff injection is rejected before persistence.
+
+The existing pure `resolve_scenario_snapshot` delegates this one alias binding,
+so scenario snapshots and selected-scenario sensitivity use the same policy.
+V2 Run applies it explicitly to its Working Copy scalar input before the
+existing CAPEX/OPEX folds and engine call. It does not write the Working Copy,
+change other scenarios, activate the legacy ScenarioManager or change CAS.
+No other scalar-override semantics are redesigned in this correction.
+
+Each new Solar/Wind Run records `scenario_revenue_input` from the actual
+materialized `ProjectInputs.revenue.ppa_base_tariff`, with the scenario ID.
+It is persisted in the canonical runtime summary/history and scenario summary.
+Compare separately displays this effective Run tariff; older Runs without
+the evidence explicitly say that stored overrides alone do not prove pricing.
+
+Canonical export reconstructs the tariff from the immutable Run identity's
+override, only for Runs carrying this new materialized-input evidence.
+It verifies both scenario binding and actual reconstructed tariff, and fails
+closed on inconsistency. It never reads the live scenario tariff, reruns the
+engine, or retroactively reinterprets older Runs. Freshness still compares the
+unmodified Working snapshot and composite identity, not the effective overlay.
+
+Real Solar/Wind acceptance covers Base, Upside 85 and Downside 45 EUR/MWh:
+persisted revenues and IRRs move in the same economic order; actual effective
+tariffs, submitted and run-bound overrides agree; Working Copy is unchanged.
+After editing Downside to 46, Last Run export remains 45 and is correctly stale.
+Scenario restore, reset/inheritance and immutable existing history are verified.
+Exact economics and corrected browser evidence are recorded in the PR report.
 
 Solve alone does not write workspace, Last Run or Run History. Apply remains one
 explicit guarded canonical write; it marks the workspace stale until a normal
@@ -146,7 +177,8 @@ Run, and reload retains the exact input. No automatic Apply was introduced.
 Browser acceptance found that the existing Apply response omitted post-save
 Run-token refresh: the input persisted but the next click submitted an old CAS
 hash. The scoped correction reuses `build_post_save_ui_state` with its existing
-banner/controls refresh. No shared helper, CAS/write or Run code is changed.
+banner/controls refresh. No shared helper, CAS/write protocol or engine execution
+mechanism is changed.
 The focused regression proves Last Run/history remain unchanged by Apply and
 the first normal Run accepts the refreshed canonical tokens.
 
@@ -203,7 +235,29 @@ Scoped assets: `static/css/model_decision_workspace.css`,
 `static/js/model_merchant_curve.js`.
 
 Tests: `tests/test_model_decision_workspace_v2.py`,
-`tests/model_decision_workspace_browser.py`. This report is the only new document.
+`tests/model_decision_workspace_browser.py`, and Correction A's
+`tests/test_scenario_tariff_authority_v2.py`. This report is the only new document.
+
+Correction A also changes only the pure resolver in
+`app/persistence/scenarios_repository.py`, canonical input reconstruction in
+`app/services/export_service.py`, and adds
+`app/workbook/scenario_revenue_authority.py`. These are the minimum required
+application-boundary additions for effective tariff and Run/Export parity.
+No SQL/write protocol, export lineage, financial equation or engine changed.
+
+## Correction A: CI root causes and guard compatibility
+
+The original exact-head Public Safety run `37856359890` ended normally with
+`8519 passed, 50 skipped, 2 failed`, exit code 1 and uploaded JUnit evidence.
+The only failures required the literal `{% if not is_data_center %}` guard;
+the combined DC/EV expression was behaviorally restrictive but broke that
+established source contract. Genuine nested DC then EV guards now wrap the
+entire renewable Revenue sections and scenario tariff/P50 controls.
+No inert comment, skipped test or weakened assertion is used. Four-vertical
+render tests prove both exclusions and preserve generic financing controls.
+
+PR #227's integration is a normal main merge after its independent merge;
+all Workflow C-owned files remain untouched by Workflow D.
 
 ## Remaining upstream work
 

@@ -83,7 +83,9 @@ def resolve_scenario_snapshot(
     for key, value in overrides.items():
         if key in SCENARIO_INPUT_FIELDS:
             base[key] = value
-    return base
+    # Scenario-only alias binding; global adapter precedence is unchanged.
+    from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+    return bind_scenario_tariff(base, overrides)
 
 
 def get_scenario(scenario_id: str, user_id: str) -> "Optional[ScenarioRecord]":
