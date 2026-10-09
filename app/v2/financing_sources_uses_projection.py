@@ -57,6 +57,15 @@ def amount(label: str, raw: Any, authority: str, reason: str = "") -> Amount:
     return Amount(label, value, f"{value:,.2f}", authority)
 
 
+def ratio(label: str, raw: Any, authority: str, *, percent: bool = False) -> Amount:
+    """Format an authoritative fraction or coverage multiple; no economic arithmetic."""
+    item = amount(label, raw, authority)
+    if item.value is None:
+        return item
+    display = f"{item.value * 100:.2f}%" if percent else f"{item.value:.2f}x"
+    return Amount(label, item.value, display, authority)
+
+
 def missing(label: str, path: str, *, reason: str = FULL_SU_AUTHORITY) -> Amount:
     return amount(label, None, path, reason)
 
@@ -133,15 +142,15 @@ def build_sources_uses_projection(
         ("Other project uses", "ProjectUses.other_explicit_project_uses_keur"),
     ))
     bankability = (
-        amount("Actual gearing (Last Run)", rs.get("actual_gearing_pct"),
-               "RuntimeResult.runtime_summary.actual_gearing_pct"),
-        amount("Gearing cap (Last Run)", rs.get("gearing_cap_pct"),
-               "RuntimeResult.runtime_summary.gearing_cap_pct"),
-        amount("DSCR target (Last Run)", debt.get("target_dscr"),
+        ratio("Actual gearing (Last Run)", rs.get("actual_gearing_pct"),
+               "RuntimeResult.runtime_summary.actual_gearing_pct", percent=True),
+        ratio("Gearing cap (Last Run)", rs.get("gearing_cap_pct"),
+               "RuntimeResult.runtime_summary.gearing_cap_pct", percent=True),
+        ratio("DSCR target (Last Run)", debt.get("target_dscr"),
                "RuntimeResult.debt_schedule.summary.target_dscr"),
-        amount("Minimum DSCR", debt.get("actual_min_dscr"),
+        ratio("Minimum DSCR", debt.get("actual_min_dscr"),
                "RuntimeResult.debt_schedule.summary.actual_min_dscr"),
-        amount("Minimum LLCR", debt.get("min_llcr"),
+        ratio("Minimum LLCR", debt.get("min_llcr"),
                "RuntimeResult.debt_schedule.summary.min_llcr",
                str(debt.get("llcr_unavailable_reason") or "Minimum LLCR is not persisted.")),
         missing("DSCR debt capacity", "ProjectFinancingResult.dscr_debt_capacity_keur",
@@ -158,8 +167,8 @@ def build_sources_uses_projection(
         working = (
             amount("Hard CAPEX input (not Total Project Uses)", _raw_attr(working_capex, "hard_capex_keur"),
                    "Current typed ProjectInputs.capex.hard_capex_keur"),
-            amount("Requested gearing ratio", _raw_attr(working_financing, "gearing_ratio"),
-                   "Current typed ProjectInputs.financing.gearing_ratio"),
+            ratio("Requested gearing ratio", _raw_attr(working_financing, "gearing_ratio"),
+                   "Current typed ProjectInputs.financing.gearing_ratio", percent=True),
             amount("Configured senior amount (not sized debt)",
                    _raw_attr(working_financing, "senior_debt_amount_keur"),
                    "Current typed ProjectInputs.financing.senior_debt_amount_keur"),
