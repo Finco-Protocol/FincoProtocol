@@ -68,9 +68,9 @@ class AuthorityDecision:
 class CleanProductionRunUnavailable(Exception):
     """Fail-closed error: the clean production route refused/could not run.
 
-    Raised only when a CLEAN_PRODUCTION_READY-classified input fails inside
-    the clean engine. NEVER caught to fall back to legacy — the caller must
-    surface the typed reason.
+    Raised when the clean authority cannot execute or safely publish an input,
+    including unsupported terminal liabilities. NEVER caught to fall back to
+    legacy -- the caller must surface the typed reason.
     """
 
     def __init__(self, reason_code: str, detail: str):
@@ -278,6 +278,127 @@ def _memoised_policy_run(effective_inputs, policy, compute):
     return value
 
 
+def _require_settled_senior_maturity(g2c, project_inputs) -> None:
+    """Reject unsupported maturity liabilities before publishing any new result.
+
+    Solver permission to retain a balloon is not settlement authority. Reuse
+    its existing absolute precision contract, without changing any balance,
+    terminal classification or downstream (stricter) Integrity verdict.
+    """
+    from math import isfinite
+
+    from app.run_integrity.contracts import TOL_KEUR
+    from financial_engine.project_returns.contracts import DebtTerminalStatus
+    from financial_engine.project_returns.model import _TOL as terminal_precision_keur
+    from financial_engine.senior_debt.project_adapter import (
+        build_senior_debt_contract_from_project_inputs,
+    )
+
+    def invalid(detail):
+        raise CleanProductionRunUnavailable("SENIOR_MATURITY_EVIDENCE_INVALID", detail)
+
+    def balance(value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            invalid("Senior maturity balances must be numeric, not missing or coerced.")
+        if not isfinite(value) or value < 0:
+            invalid("Senior maturity balances must be finite and nonnegative.")
+        return value
+
+    try:
+        model = g2c.financing_result.project_model_result
+        senior = model.senior_debt
+        terminal = g2c.return_summary.terminal.senior
+        policy, _ = build_senior_debt_contract_from_project_inputs(
+            project_inputs, model.periods,
+        )
+        expected = tuple(
+            p.period_index for p in model.periods
+            if p.is_operation and policy.repayment_start_period_index
+            <= p.period_index <= policy.maturity_period_index
+        )
+        indices = tuple(senior.period_indices)
+        if (
+            not expected or indices != expected
+            or any(type(i) is not int for i in indices)
+            or tuple(model.axis_contract.senior_axis) != expected
+            or len(set(indices)) != len(indices)
+            or indices[-1] != policy.maturity_period_index
+        ):
+            invalid("Senior schedule, contractual maturity and canonical axis do not align.")
+        for name in (
+            "senior_debt_opening_keur", "senior_principal_keur",
+            "senior_debt_closing_keur", "senior_interest_keur", "senior_debt_service_keur",
+        ):
+            vector = getattr(senior, name)
+            if len(vector) != len(indices):
+                invalid(f"Senior {name} is incomplete for the contractual axis.")
+            for value in vector:
+                balance(value)
+        outstanding = balance(senior.senior_debt_closing_keur[-1])
+        debt_size = balance(senior.debt_size_keur)
+        prior = debt_size
+        for opening, principal, closing, interest, service in zip(
+            senior.senior_debt_opening_keur, senior.senior_principal_keur,
+            senior.senior_debt_closing_keur, senior.senior_interest_keur,
+            senior.senior_debt_service_keur, strict=True,
+        ):
+            # Audit existing amounts, never repair them or calculate a new schedule.
+            if (
+                abs(opening - prior) > TOL_KEUR
+                or principal > opening + TOL_KEUR
+                or abs(opening - principal - closing) > TOL_KEUR
+                or abs(service - interest - principal) > TOL_KEUR
+            ):
+                invalid("Senior canonical repayment/debt-service roll-forward is inconsistent.")
+            prior = closing
+        commitment = balance(g2c.financing_result.final_senior_commitment_keur)
+        if abs(debt_size - commitment) > TOL_KEUR:
+            invalid("Senior opening debt differs from the canonical funded commitment.")
+        terminal_balance = balance(terminal.balance_at_contractual_maturity_keur)
+        horizon_balance = balance(terminal.terminal_model_horizon_balance_keur)
+        if terminal.status == DebtTerminalStatus.NOT_APPLICABLE:
+            # The canonical terminal authority treats microscopic funding under
+            # its own precision as inapplicable, not only literal zero funding.
+            if debt_size > terminal_precision_keur or max(
+                senior.senior_debt_opening_keur + senior.senior_principal_keur
+                + senior.senior_debt_closing_keur + (terminal_balance, horizon_balance),
+            ) > terminal_precision_keur:
+                invalid("Senior NOT_APPLICABLE cannot conceal a funded liability.")
+            if terminal.contractual_maturity_period_index is not None or terminal.contractual_maturity_date is not None:
+                invalid("Senior NOT_APPLICABLE has inconsistent contractual maturity evidence.")
+        else:
+            # Applicable terminal values are exact copies of the canonical closing
+            # value. NOT_APPLICABLE above legitimately reports numerical zeros.
+            if outstanding != terminal_balance or outstanding != horizon_balance:
+                invalid("Senior terminal evidence differs from the actual maturity closing balance.")
+            maturity = terminal.contractual_maturity_period_index
+            period = next(p for p in model.periods if p.period_index == indices[-1])
+            if (
+                type(maturity) is not int or maturity != indices[-1]
+                or terminal.contractual_maturity_date != period.period_end
+                or terminal.status not in (
+                    DebtTerminalStatus.REPAID, DebtTerminalStatus.OUTSTANDING_AT_MATURITY,
+                )
+            ):
+                invalid("Senior terminal maturity/date/status authority is missing or inconsistent.")
+        tolerance = policy.convergence_tolerance_keur
+        if not isfinite(tolerance) or tolerance < 0:
+            invalid("Canonical Senior absolute precision authority is invalid.")
+    except CleanProductionRunUnavailable:
+        raise
+    except (AttributeError, TypeError, ValueError, StopIteration) as exc:
+        invalid(f"Senior maturity evidence is incomplete or invalid: {type(exc).__name__}: {exc}")
+
+    if outstanding > tolerance:
+        raise CleanProductionRunUnavailable(
+            "SENIOR_MATURITY_UNSETTLED_LIABILITY",
+            f"contractual_maturity_period={indices[-1]}; "
+            f"outstanding_principal_keur={outstanding!r}; "
+            "unsupported terminal balloon treatment: no complete canonical "
+            "settlement/refinancing/accounting authority exists.",
+        )
+
+
 def run_clean_production(
     project_inputs,
     scenario: str = "Base",
@@ -347,6 +468,8 @@ def run_clean_production(
             reason_code="PR8_CLEAN_ENGINE_FAIL_CLOSED",
             detail=f"{type(exc).__name__}: {exc}",
         ) from exc
+
+    _require_settled_senior_maturity(g2c, effective_inputs)
 
     metadata = decision.to_metadata() | {
         "clean_entry_point": (
