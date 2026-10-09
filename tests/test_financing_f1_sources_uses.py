@@ -131,7 +131,10 @@ def _run(client, record):
 
 
 def test_no_auth_no_cross_owner_no_unscoped_historical(client, seeded):
-    from app.auth import COOKIE_NAME, create_session_token
+    from app.auth import (
+        COOKIE_NAME, DEMO_COOKIE_NAME, create_session_token,
+        decode_demo_session_token,
+    )
     record = seeded["solar"]
     good = client.get("/v2/financing/sources-uses", params={"project": record.project_code})
     assert good.status_code == 200
@@ -147,13 +150,61 @@ def test_no_auth_no_cross_owner_no_unscoped_historical(client, seeded):
     client.cookies.clear()
     response = client.get("/v2/financing/sources-uses",
                           params={"project": record.project_code}, follow_redirects=False)
-    assert response.status_code == 302
+    # No cookies does not imply unauthenticated on a demo-eligible route:
+    # main_web middleware provisions a fresh signed demo identity before the
+    # F1 handler resolves the request. That distinct owner must see only 404.
+    assert response.status_code == 404
+    demo_token = response.cookies.get(DEMO_COOKIE_NAME)
+    assert demo_token is not None, "missing middleware-provisioned demo session"
+    demo_identity = decode_demo_session_token(demo_token)
+    assert demo_identity is not None and demo_identity.is_demo
+    assert demo_identity.user_id != "f1-owner"
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert response.text.strip() == "<p>Project not found.</p>"
+    assert record.project_name not in response.text
+    assert 'data-testid="su-page"' not in response.text
+    assert 'data-testid="su-sources"' not in response.text
+
+    # A newly provisioned demo identity also cannot select an owner's
+    # immutable financial Run History. No history identifiers or figures leak.
+    demo_history_denial = client.get(
+        "/v2/financing/sources-uses",
+        params={"project": record.project_code, "history_id": "foreign"},
+        follow_redirects=False,
+    )
+    assert demo_history_denial.status_code == 404
+    assert demo_history_denial.headers["Cache-Control"] == "private, no-store"
+    assert demo_history_denial.text.strip() == "<p>Project not found.</p>"
+
+    # An explicitly signed, different admin identity remains isolated too.
+    client.cookies.clear()
     client.cookies.set(COOKIE_NAME, create_session_token(
         user_id="f1-intruder", username="admin"))
     cross_owner_denial = client.get(
         "/v2/financing/sources-uses", params={"project": record.project_code})
     assert cross_owner_denial.status_code == 404
     assert cross_owner_denial.headers["Cache-Control"] == "private, no-store"
+
+
+def test_without_middleware_or_any_session_f1_preserves_login_redirect():
+    """Canonical resolver still returns unauthenticated when demo provisioning
+    has not run. Test the route directly to avoid global demo middleware."""
+    import asyncio
+    from starlette.requests import Request
+    from app.auth import resolve_request_session
+    from app.v2.financing_sources_uses_router import financing_sources_uses_page
+
+    raw_request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/v2/financing/sources-uses",
+        "headers": [],
+    })
+    assert resolve_request_session(raw_request) is None
+    response = asyncio.run(financing_sources_uses_page(
+        raw_request, project="any-project", history_id=None))
+    assert response.status_code == 302
+    assert response.headers["location"] == "/login"
 
 
 def test_f1_get_is_read_only_and_no_engine_execution(client, seeded):
