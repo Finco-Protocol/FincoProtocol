@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Developer Economics — FINCO Model{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="/static/css/model_developer_decision.css?v={{ asset_version }}" />
+{% set ws = workspace %}
+<div class="dd-page" data-testid="dd-page">
+  <div class="dd-head">
+    <div>
+      <p class="dd-eyebrow">DEVELOPER ECONOMICS &amp; INVESTMENT DECISION</p>
+      <h1 class="dd-title" data-testid="dd-title">{{ project_name }}</h1>
+      <p class="dd-note">Read-only evidence over the canonical Developer Economics V1 authority. No recalculation outside the calculator; no Run is triggered by this page.</p>
+    </div>
+    <a href="/v2/workbook?project={{ project_code }}" data-testid="dd-open-workbook" class="fo-library-open">← Open Workbook</a>
+  </div>
+
+  <div class="dd-badges" data-testid="dd-badges">
+    <span class="dd-badge{% if not meta.stage_set %} dd-badge--unset{% endif %}" data-testid="dd-stage">Stage: {{ meta.stage }}</span>
+    <span class="dd-badge{% if not meta.perspective_set %} dd-badge--unset{% endif %}" data-testid="dd-perspective">Perspective: {{ meta.perspective }}</span>
+    <span class="dd-badge{% if run_state == 'STALE' %} dd-badge--stale{% endif %}" data-testid="dd-run-state">Last Run: {{ run_state | replace('_',' ') }}</span>
+    <span class="dd-badge" data-testid="dd-dev-state">Developer Economics: {{ ws.state }}</span>
+  </div>
+  <p class="dd-note" data-testid="dd-meta-note">Stage and Perspective are non-economic labels. They do not change inputs, formulas, the fingerprint or freshness.{% if meta.developer_emphasis %} Developer perspective changes presentation emphasis only and never enables Developer Economics.{% endif %}</p>
+
+  <section class="dd-section" data-testid="dd-state-section">
+    <h2>Status</h2>
+    <p data-testid="dd-state-note">{{ ws.state_note }}</p>
+    {% if ws.state == 'INVALID' %}
+    <p class="dd-callout" role="alert" data-testid="dd-error"><b>{{ ws.error_code }}</b> {{ ws.error_detail }}</p>
+    {% endif %}
+    {% if ws.state == 'DISABLED' %}
+    <div class="dd-callout" data-testid="dd-bridge-gap">
+      <b>Editing is not available.</b> No Workbook V2 snapshot field, persistence path or Run bridge carries
+      <code>development_economics</code> into <code>ProjectInputs</code> (PERSISTENCE BRIDGE MISSING). Nothing is entered
+      or estimated in the browser. See the capability inventory below.
+    </div>
+    {% endif %}
+  </section>
+
+  {% if ws.state == 'ACTIVE' %}
+  <section class="dd-section" data-testid="dd-a-spend">
+    <h2>A · Development expenditure</h2>
+    <div class="dd-table-wrap"><table class="dd-table"><thead><tr><th>Spend date</th><th class="dd-num">Amount (kEUR)</th></tr></thead>
+    <tbody>{% for r in ws.spend_rows %}<tr><td>{{ r.spend_date }}</td><td class="dd-num">{{ r.amount }}</td></tr>{% else %}<tr><td colspan="2">No dated spend.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><th>Total</th><th class="dd-num" data-testid="dd-total-spend">{{ ws.total_spend }}</th></tr></tfoot></table></div>
+    <p class="dd-note">Outcome: <b data-testid="dd-outcome">{{ ws.outcome }}</b>. Spend dates must be on or before Financial Close.</p>
+  </section>
+  <section class="dd-section" data-testid="dd-b-reimbursement">
+    <h2>B · Reimbursement</h2>
+    <p><b data-testid="dd-reimbursement">{{ ws.reimbursement }}</b> kEUR · settles {{ ws.settlement_date }} (Financial Close)</p>
+    <p class="dd-note">{{ ws.reimbursement_note }}</p>
+  </section>
+  <section class="dd-section" data-testid="dd-c-fee">
+    <h2>C · Developer fee</h2>
+    <p>Input: <b data-testid="dd-fee-input">{{ ws.fee_input_display }}</b> → fee <b data-testid="dd-fee-amount">{{ ws.fee_amount }}</b> kEUR</p>
+    <p class="dd-note">Basis: {{ ws.fee_basis }} — {{ ws.fee_basis_authority }}</p>
+  </section>
+  <section class="dd-section" data-testid="dd-d-returns">
+    <h2>D · Developer returns</h2>
+    <div class="dd-grid">
+      <div class="dd-tile"><span>Development spend</span><b>{{ ws.total_spend }}</b></div>
+      <div class="dd-tile"><span>Reimbursement</span><b>{{ ws.reimbursement }}</b></div>
+      <div class="dd-tile"><span>Developer fee</span><b>{{ ws.fee_amount }}</b></div>
+      <div class="dd-tile"><span>Total receipts</span><b data-testid="dd-receipts">{{ ws.total_receipts }}</b></div>
+      {% for m in ws.metrics %}
+      <div class="dd-tile{% if not m.available %} dd-unavailable{% endif %}" data-testid="dd-metric-{{ m.key }}" data-available="{{ 'true' if m.available else 'false' }}"><span>{{ m.label }}</span><b>{{ m.display }}</b>{% if m.reason %}<span>{{ m.reason }}</span>{% endif %}</div>
+      {% endfor %}
+    </div>
+    <div class="dd-table-wrap"><table class="dd-table" data-testid="dd-vector"><thead><tr><th>Date</th><th class="dd-num">Spend</th><th class="dd-num">Reimbursement</th><th class="dd-num">Fee</th><th class="dd-num">Net (kEUR)</th></tr></thead>
+    <tbody>{% for r in ws.vector %}<tr><td>{{ r.cashflow_date }}</td><td class="dd-num">{{ r.spend }}</td><td class="dd-num">{{ r.reimbursement }}</td><td class="dd-num">{{ r.fee }}</td><td class="dd-num">{{ r.net }}</td></tr>{% endfor %}</tbody></table></div>
+    <p class="dd-note">Developer returns are a separate ledger; they are not Pure Equity or Total Sponsor returns.</p>
+  </section>
+  <section class="dd-section" data-testid="dd-e-uses">
+    <h2>E · Impact on Sources &amp; Uses</h2>
+    <table class="dd-table"><tbody>{% for label, val in ws.uses_lines %}<tr><td>{{ label }}</td><td class="dd-num">{{ val }}</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><th>Developer project uses</th><th class="dd-num" data-testid="dd-uses-total">{{ ws.project_uses_total }}</th></tr></tfoot></table>
+    <p class="dd-note">These are added to project uses and funded by the canonical financing policy. Full Sources &amp; Uses totals are read from a Run, not recomputed here.</p>
+  </section>
+  {% endif %}
+
+  <section class="dd-section" data-testid="dd-decision">
+    <h2>Investment decision evidence</h2>
+    <div class="dd-grid">
+      {% for m in (decision.project_npv, decision.expected_npv, decision.development_margin) %}
+      <div class="dd-tile dd-unavailable" data-testid="dd-{{ m.key }}" data-available="{{ 'true' if m.available else 'false' }}"
+           {% if m.available %}style="opacity:1"{% endif %}>
+        <span>{{ m.label }}</span><b>{{ m.display }}</b>{% if m.reason %}<span>{{ m.reason }}</span>{% endif %}</div>
+      {% endfor %}
+    </div>
+    <p class="dd-note">Project NPV and Expected NPV are different quantities with different authorities and are never interchanged. No buy/sell recommendation is produced.</p>
+    <details data-testid="dd-expected-npv-conditions"><summary>Why Expected NPV is unavailable (8 required conditions)</summary>
+      <table class="dd-table"><tbody>{% for c in decision.conditions %}<tr><td>{{ '✔' if c.satisfied else '✘' }}</td><td>{{ c.requirement }}</td><td>{{ c.evidence }}</td></tr>{% endfor %}</tbody></table>
+      <p class="dd-note">{{ decision.proposal }}</p></details>
+  </section>
+
+  <section class="dd-section" data-testid="dd-f-evidence">
+    <h2>F · Assumptions &amp; evidence</h2>
+    <ul class="dd-note">
+      <li>Authority: <code>ProjectInputs.development_economics</code> (typed, fail-closed); calculator <code>financial_engine/developer_economics</code>.</li>
+      <li>Settlement: reimbursement and fee settle at the canonical Financial Close; no invented timing.</li>
+      <li>Fee basis: FIXED_KEUR, or PCT_OF_HARD_CAPEX as a 0..1 fraction of pre-financing hard CAPEX (0.05 = 5.00%).</li>
+      <li>Last Run lineage: {% if lineage %}{{ lineage }}{% else %}none{% endif %}. Developer metrics are not persisted with the Last Run, so none are shown from it.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

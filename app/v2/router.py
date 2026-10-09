@@ -3915,6 +3915,26 @@ def _ds_picker_projects(user_id: str) -> list[dict]:
              "technology": r.project_type or ""} for r in records[:100]]
 
 
+def _ds_meta_label(project_record, attr: str, normalizer) -> str:
+    """Stage / perspective as stored (normalised); unset is shown as unset, never inferred."""
+    try:
+        return normalizer(getattr(project_record, attr, None)) or ""
+    except ValueError:
+        return ""
+
+
+def _ds_run_state(ws, project_record, workspace_owner: str) -> str:
+    """CURRENT / STALE / NOT_RUN from the canonical freshness authority; UNKNOWN when it
+    cannot be determined reliably (never asserted).  Read-only; no engine."""
+    if ws is None:
+        return "UNKNOWN"
+    try:
+        pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+        return _runtime_freshness(ws, pis).state.value
+    except Exception:
+        return "UNKNOWN"
+
+
 @router.get("/compare-projects", response_class=HTMLResponse)
 async def compare_projects_page(
     request: Request,
@@ -3936,6 +3956,7 @@ async def compare_projects_page(
 
     from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
+    from app.model_v2.project_metadata import perspective_value, stage_value
     from app.v2.decision_support_projection import (
         CROSS_PROJECT_MAX,
         build_cross_project_rows,
@@ -3986,6 +4007,10 @@ async def compare_projects_page(
             "country": _ds_country(project_record),
             "capacity_display": _ds_capacity(project_record),
             "capacity_mw": _cap_num,
+            "stage": _ds_meta_label(project_record, "project_stage", stage_value),
+            "perspective": _ds_meta_label(project_record, "model_perspective", perspective_value),
+            "run_state": _ds_run_state(ws, project_record, workspace_owner),
+            "run_identity": str(getattr(ws, "last_runtime_composite_hash", "") or "")[:8] if ws else "",
             "runnable": bool(ran_at is not None),
             "ran_at_display": (str(ran_at)[:16].replace("T", " ")
                                if ran_at else ""),
@@ -3998,8 +4023,9 @@ async def compare_projects_page(
 
     rows = build_cross_project_rows(payloads)
     if sort:
-        rows = sorted(rows, key=lambda r: _ds_sort_num(r.metrics.get(sort)),
-                      reverse=(sort not in ("total_capex_keur", "total_tax_keur")))
+        from app.v2.decision_support_projection import sort_cross_project_rows
+        rows = sort_cross_project_rows(
+            rows, sort, descending=(sort not in ("total_capex_keur", "total_tax_keur")))
     techs = sorted({r.technology for r in rows if r.technology != "—"})
     if technology:
         rows = [r for r in rows if r.technology == technology]

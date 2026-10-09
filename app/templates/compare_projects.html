@@ -86,6 +86,10 @@
           {% for r in rows %}<td>{{ r.country }}</td>{% endfor %}</tr>
         <tr><td class="fo-library-row-name">Capacity</td>
           {% for r in rows %}<td>{{ r.capacity_display }}</td>{% endfor %}</tr>
+        <tr data-ds-metric="project_stage"><td class="fo-library-row-name">Stage</td>
+          {% for r in rows %}<td data-testid="ds-stage-{{ r.project_code }}">{{ r.stage | replace('_', ' ') | capitalize if r.stage != '—' else '—' }}</td>{% endfor %}</tr>
+        <tr data-ds-metric="model_perspective"><td class="fo-library-row-name">Perspective</td>
+          {% for r in rows %}<td data-testid="ds-perspective-{{ r.project_code }}">{{ r.perspective | upper if r.perspective != '—' else '—' }}</td>{% endfor %}</tr>
         <tr data-ds-metric="total_capex_keur"><td>Total CAPEX (kEUR)</td>
           {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('total_capex_keur', '—') }}</td>{% endfor %}</tr>
         <tr><td>CAPEX / MW</td>
@@ -116,8 +120,16 @@
           {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('min_llcr', '—') }}</td>{% endfor %}</tr>
         <tr><td>Total Cash Tax (kEUR)</td>
           {% for r in rows %}<td class="v2-rh-mono">{{ r.metrics.get('total_tax_keur', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Project NPV (kEUR)</td>
+          {% for r in rows %}<td class="v2-rh-mono" data-ds-metric="project_npv_keur" title="Shown only when the Last Run persists it">{{ r.metrics.get('project_npv_keur', '—') }}</td>{% endfor %}</tr>
+        <tr><td>Developer MOIC / XIRR</td>
+          {% for r in rows %}<td class="v2-rh-mono" data-ds-metric="developer_returns" title="Developer returns are not persisted with the Last Run">—</td>{% endfor %}</tr>
         <tr><td>Last Run</td>
           {% for r in rows %}<td class="v2-rh-mono">{{ r.ran_at_display }}</td>{% endfor %}</tr>
+        <tr><td>Last Run identity</td>
+          {% for r in rows %}<td class="v2-rh-mono" data-testid="ds-identity-{{ r.project_code }}">{{ r.run_identity }}</td>{% endfor %}</tr>
+        <tr><td>Freshness</td>
+          {% for r in rows %}<td data-testid="ds-freshness-{{ r.project_code }}">{{ r.run_state | replace('_', ' ') }}</td>{% endfor %}</tr>
         <tr><td>Status</td>
           {% for r in rows %}
           <td>{% if r.runnable %}<span class="v2-rh-chip v2-rh-chip--lastrun">CANONICAL LAST RUN</span>

@@ -1,0 +1,23 @@
+/* Developer Economics & Investment Decision workspace (presentation only). */
+.dd-page{max-width:1100px;margin:0 auto;padding:16px;color:var(--fo-text,#111827)}
+.dd-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:flex-end}
+.dd-eyebrow{font-size:.75rem;letter-spacing:.08em;opacity:.7;margin:0}
+.dd-title{margin:2px 0;font-size:1.5rem}
+.dd-badges{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 16px}
+.dd-badge{border:1px solid var(--fo-line,#d1d5db);border-radius:999px;padding:2px 10px;font-size:.8rem;background:var(--fo-surface,#fff)}
+.dd-badge--unset{opacity:.7;font-style:italic}
+.dd-badge--stale{border-color:#b45309}
+.dd-section{border:1px solid var(--fo-line,#d1d5db);border-radius:6px;padding:12px 14px;margin:0 0 14px;background:var(--fo-surface,#fff)}
+.dd-section h2{margin:0 0 6px;font-size:1.05rem}
+.dd-note{font-size:.85rem;opacity:.8;margin:4px 0}
+.dd-table{width:100%;border-collapse:collapse;font-size:.875rem}
+.dd-table th,.dd-table td{padding:4px 8px;border-bottom:1px solid var(--fo-line,#e5e7eb);text-align:left}
+.dd-num{text-align:right!important;font-variant-numeric:tabular-nums}
+.dd-unavailable{opacity:.75}
+.dd-callout{border-left:4px solid #b45309;padding:6px 10px;margin:8px 0;background:rgba(180,83,9,.08);font-size:.85rem}
+.dd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.dd-tile{border:1px solid var(--fo-line,#e5e7eb);border-radius:6px;padding:8px 10px}
+.dd-tile b{display:block;font-size:1.1rem;font-variant-numeric:tabular-nums}
+.dd-tile span{font-size:.78rem;opacity:.75}
+.dd-table-wrap{overflow-x:auto}
+@media (max-width:600px){.dd-page{padding:12px 16px}}

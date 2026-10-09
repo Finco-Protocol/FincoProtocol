@@ -298,6 +298,8 @@ _CROSS_METRICS: tuple[tuple[str, str, str], ...] = (
     ("min_dscr", "Minimum DSCR", "x"),
     ("min_llcr", "Min LLCR", "x"),
     ("total_tax_keur", "Total Cash Tax (kEUR)", "keur"),
+    # Persisted by the run only when an approved authority exists; today absent -> "—".
+    ("project_npv_keur", "Project NPV (kEUR)", "keur"),
 )
 
 CROSS_PROJECT_MAX = 5
@@ -316,6 +318,11 @@ class CrossProjectRow:
     ran_at_display: str
     metrics: dict[str, str]          # key → display (AVAILABLE only)
     ebitda_margin: str               # derived ratio label (presentation only)
+    # Workflow E — display-only additions (all default to explicit "unknown").
+    stage: str = "—"                 # non-economic metadata, never inferred
+    perspective: str = "—"           # non-economic metadata, never inferred
+    run_state: str = "UNKNOWN"       # CURRENT | STALE | NOT_RUN | UNKNOWN (not asserted)
+    run_identity: str = "—"          # short persisted composite hash of the Last Run
 
 
 def build_cross_project_rows(
@@ -339,7 +346,9 @@ def build_cross_project_rows(
                                    p.get("sponsor_summary") or {},
                                    p.get("debt_summary") or {})
             for key, _label, kind in _CROSS_METRICS:
-                metrics[key] = _fmt(kind, view.get(key))
+                raw = (_fetch(p.get("runtime_summary") or {}, key)
+                       if key == "project_npv_keur" else view.get(key))
+                metrics[key] = _fmt(kind, raw)
             capex, ebitda, revenue = (view.get("total_capex_keur"),
                                       view.get("total_ebitda_keur"),
                                       view.get("total_revenue_keur"))
@@ -362,8 +371,36 @@ def build_cross_project_rows(
             ran_at_display=p.get("ran_at_display", "") or _NA,
             metrics=metrics,
             ebitda_margin=margin,
+            stage=p.get("stage") or _NA,
+            perspective=p.get("perspective") or _NA,
+            run_state=(p.get("run_state") or "UNKNOWN") if p.get("runnable") else "NOT_RUN",
+            run_identity=p.get("run_identity") or _NA,
         ))
     return rows
+
+
+def _display_number(display: object) -> Optional[float]:
+    """Numeric value of a formatted display string; None when unavailable."""
+    try:
+        text = str(display).replace(",", "").strip().rstrip("%x").strip()
+        if not text or text == _NA:
+            return None
+        value = float(text)
+    except (TypeError, ValueError):
+        return None
+    return value if value == value and abs(value) != float("inf") else None
+
+
+def sort_cross_project_rows(rows: list[CrossProjectRow], key: str,
+                            *, descending: bool) -> list[CrossProjectRow]:
+    """Stable sort by one metric.  Negative and zero values sort by value; an unavailable
+    metric is ALWAYS last (never ranked as zero or as the best/worst value); ties keep the
+    selection order."""
+    present = [(r, _display_number(r.metrics.get(key))) for r in rows]
+    have = [(r, v) for r, v in present if v is not None]
+    missing = [r for r, v in present if v is None]
+    have.sort(key=lambda rv: rv[1], reverse=descending)   # sort() is stable, also with reverse
+    return [r for r, _ in have] + missing
 
 
 __all__ = [
@@ -377,4 +414,5 @@ __all__ = [
     "build_drivers_of_change",
     "build_run_variance",
     "run_metric_view",
+    "sort_cross_project_rows",
 ]
