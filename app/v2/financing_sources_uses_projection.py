@@ -57,9 +57,9 @@ def amount(label: str, raw: Any, authority: str, reason: str = "") -> Amount:
     return Amount(label, value, f"{value:,.2f}", authority)
 
 
-def ratio(label: str, raw: Any, authority: str, *, percent: bool = False) -> Amount:
+def ratio(label: str, raw: Any, authority: str, *, percent: bool = False, reason: str = "") -> Amount:
     """Format an authoritative fraction or coverage multiple; no economic arithmetic."""
-    item = amount(label, raw, authority)
+    item = amount(label, raw, authority, reason)
     if item.value is None:
         return item
     display = f"{item.value * 100:.2f}%" if percent else f"{item.value:.2f}x"
@@ -152,7 +152,7 @@ def build_sources_uses_projection(
                "RuntimeResult.debt_schedule.summary.actual_min_dscr"),
         ratio("Minimum LLCR", debt.get("min_llcr"),
                "RuntimeResult.debt_schedule.summary.min_llcr",
-               str(debt.get("llcr_unavailable_reason") or "Minimum LLCR is not persisted.")),
+               reason=str(debt.get("llcr_unavailable_reason") or "Minimum LLCR is not persisted.")),
         missing("DSCR debt capacity", "ProjectFinancingResult.dscr_debt_capacity_keur",
                 reason="Debt capacity engine output is not persisted."),
         missing("Gearing debt capacity", "ProjectFinancingResult.gearing_debt_capacity_keur",
