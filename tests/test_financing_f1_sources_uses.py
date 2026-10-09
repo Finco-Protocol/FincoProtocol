@@ -178,7 +178,23 @@ def test_real_solar_wind_last_run_and_immutable_history(client, seeded, kind):
         runtime_result=rr, integrity_evidence=before.last_integrity_evidence)
     assert proj["sources"][0].value == rr.runtime_summary.get("senior_debt_keur")
     assert proj["bankability"][0].value == rr.runtime_summary.get("actual_gearing_pct")
-    assert proj["total_uses"].value is None
+    canonical = rr.runtime_summary["financing_evidence"]
+    su = canonical["sources_uses"]
+    assert canonical["schema_version"] == "FINANCING_F1_V1"
+    assert proj["total_uses"].value == su["total_uses_keur"]
+    assert proj["total_sources"].value == su["total_sources_keur"]
+    assert proj["residual"].value == su["difference_keur"]
+    assert proj["sources"][2].value == su["share_capital_and_other_equity_keur"]
+    assert proj["sources"][3].value == su["shareholder_loan_cash_keur"]
+    assert proj["uses"][1].value == su["capitalized_idc_keur"]
+    assert proj["uses"][2].value == su["commitment_fee_keur"]
+    assert proj["uses"][5].value == su["initial_dsra_funding_keur"]
+    assert proj["bankability"][5].value == canonical["bankability"]["dscr_debt_capacity_keur"]
+    assert proj["bankability"][6].value == canonical["bankability"]["gearing_debt_capacity_keur"]
+    assert proj["bankability"][8].value == canonical["bankability"]["binding_senior_constraint"]
+    assert len(proj["construction_rows"]) == len(canonical["construction_funding"]["periods"])
+    assert canonical["run_binding"]["snapshot_id"] == rr.snapshot_id
+    assert canonical["run_binding"]["composite_hash"] == before.last_runtime_composite_hash
     page = client.get("/v2/financing/sources-uses", params={"project": record.project_code})
     assert page.status_code == 200
     assert 'data-testid="su-sources"' in page.text
@@ -191,6 +207,9 @@ def test_real_solar_wind_last_run_and_immutable_history(client, seeded, kind):
     assert historical.status_code == 200
     assert 'data-run-kind="HISTORICAL_RUN"' in historical.text
     assert 'data-testid="su-working"' not in historical.text
+    assert 'data-testid="su-construction-table"' in historical.text
+    assert entries[0].runtime_summary["financing_evidence"]["sources_uses"] == dict(su)
+    assert entries[0].runtime_summary["financing_evidence"]["run_binding"]["snapshot_id"] == rr.snapshot_id
     assert get_workspace_state("f1-owner", record.project_id) == before
 
 
@@ -210,3 +229,102 @@ def test_no_frozen_imports_in_projection_or_write_controls():
     for forbidden in ("run_project_financing_model(", "compute_project_uses(",
                       "WorkbookUpdateService.apply_draft_update(", "get_connection("):
         assert forbidden not in src
+
+
+def test_legacy_run_never_backfills_sources_uses():
+    r = _rr(runtime_summary={"senior_debt_keur": 1.0})
+    v = build_sources_uses_projection(runtime_result=r, freshness="STALE",
+                                     run_kind="HISTORICAL_RUN")
+    assert v["legacy_financing"]
+    assert v["total_uses"].value is None
+    assert v["residual"].value is None
+    assert v["working"] == ()
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("schema_version", "FINANCING_F0"),
+    ("units", "USD"),
+    ("authority", "user_input"),
+])
+def test_unknown_financing_schema_fails_closed(field, bad):
+    base = {"schema_version": "FINANCING_F1_V1",
+            "authority": "CANONICAL_PROJECT_FINANCING_RESULT",
+            "units": "kEUR"}
+    base[field] = bad
+    with pytest.raises(FinancingEvidenceInvalid):
+        build_sources_uses_projection(runtime_result=_rr(
+            runtime_summary={"financing_evidence": base}))
+
+
+@pytest.mark.parametrize("kind", ["missing", "stale", "scenario"])
+def test_financing_evidence_binding_is_not_current_working_fallback(client, seeded, kind):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.service import WorkbookService
+    from app.workbook.runtime_projection import thaw_runtime_payload
+    rec = seeded["solar"]
+    assert client.get("/v2/workbook", params={"project": rec.project_code}).status_code == 200
+    _run(client, rec)
+    ws = get_workspace_state("f1-owner", rec.project_id)
+    rr = WorkbookService.get_runtime_result(ws)
+    raw = thaw_runtime_payload(rr.runtime_summary)
+    bind = raw["financing_evidence"]["run_binding"]
+    if kind == "missing":
+        del bind["snapshot_id"]
+    elif kind == "stale":
+        bind["composite_hash"] = "other-workspace-hash"
+    else:
+        bind["scenario_id"] = "other-scenario"
+    with pytest.raises(FinancingEvidenceInvalid):
+        build_sources_uses_projection(
+            runtime_result=_rr(runtime_summary=raw), freshness="CURRENT",
+            expected_snapshot_id=rr.snapshot_id,
+            expected_composite_hash=ws.last_runtime_composite_hash,
+            expected_scenario_id=ws.last_runtime_scenario_id)
+
+
+def test_corrupted_run_bound_finance_numbers_fail_closed(client, seeded):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.service import WorkbookService
+    from app.workbook.runtime_projection import thaw_runtime_payload
+    rec = seeded["wind"]
+    assert client.get("/v2/workbook", params={"project": rec.project_code}).status_code == 200
+    _run(client, rec)
+    rr = WorkbookService.get_runtime_result(get_workspace_state("f1-owner", rec.project_id))
+    for mutation in ("missing", "non_finite", "wrong_residual", "bad_date", "bad_period"):
+        raw = thaw_runtime_payload(rr.runtime_summary)
+        e = raw["financing_evidence"]
+        if mutation == "missing":
+            del e["sources_uses"]["total_uses_keur"]
+        elif mutation == "non_finite":
+            e["sources_uses"]["total_uses_keur"] = float("nan")
+        elif mutation == "wrong_residual":
+            e["sources_uses"]["difference_keur"] += 123.0
+        elif mutation == "bad_date":
+            if not e["construction_funding"]["periods"]:
+                continue
+            e["construction_funding"]["periods"][0]["cashflow_date"] = 777
+        else:
+            if not e["construction_funding"]["periods"]:
+                continue
+            e["construction_funding"]["periods"][0]["total_sources_keur"] = float("inf")
+        with pytest.raises(FinancingEvidenceInvalid):
+            build_sources_uses_projection(runtime_result=_rr(runtime_summary=raw))
+
+
+def test_engine_produces_same_sources_uses_without_secondary_finance_calculation():
+    """Real synthetic Solar engine Run: this is serialization, not a second model."""
+    from app.api.project_runner import run_project
+    from app.project_factories import create_generic_solar_reference
+    result = run_project("Generic Solar Reference", "Base",
+                         project_inputs_override=create_generic_solar_reference())
+    assert "sources_uses" in result and "financing_evidence" in result
+    e = result["financing_evidence"]
+    su = e["sources_uses"]
+    assert e["schema_version"] == "FINANCING_F1_V1"
+    assert su["total_uses_keur"] == result["kpis"]["total_project_uses_keur"] or abs(
+        su["total_uses_keur"] - result["kpis"]["total_project_uses_keur"]) < 1e-6
+    assert abs(su["total_sources_keur"] - su["total_uses_keur"]
+               - su["difference_keur"]) <= 1e-6
+    assert e["bankability"]["final_senior_commitment_keur"] == su["senior_debt_keur"]
+    assert e["construction_funding"]["total_audit_uses_keur"] == su["total_uses_keur"]
+    assert isinstance(e["construction_funding"]["periods"], list)

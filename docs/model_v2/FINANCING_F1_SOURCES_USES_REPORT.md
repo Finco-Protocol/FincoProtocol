@@ -1,3 +1,36 @@
+# FINCO MODEL V2 — F1 Correction A, canonical Run-bound Sources & Uses
+
+Correction A extends PR #230 in place. The first F1 implementation left Source & Uses amounts unavailable because `app/v2/router.py` did not persist `result["sources_uses"]` from the existing engine output. The previous report remains below as the baseline analysis.
+
+## Correction A implementation
+
+- `app/api/project_runner.py` produces `financing_evidence` from the same `clean_run.g2c_result.financing_result`, with the existing `build_sources_and_uses` result and **unrounded numeric** values. The older rounded top-level `sources_uses` remains unchanged for backward compatibility.
+- Schema `FINANCING_F1_V1` includes `sources_uses`, original debt capacity and binding-constraint fields, and `construction_funding` with period dates, original funding allocations, SHL allocation-vs-cash-timing fields, non-construction FC uses and original audit totals.
+- `app/v2/router.py` binds evidence to `snapshot_id`, `composite_hash`, `scenario_id` and adds it to the **same** `runtime_summary` as the existing `v2_atomic_run_commit`. This is already stored atomically in Last Run and Run History; no migration or additional table is needed.
+- F1 reads the exact persisted values, verifies authority/schema/units/binding, finite required values, sources/uses decomposition, original residual, construction audit and period values. Fail closed on malformed evidence; never substitute Working inputs.
+- New Runs show total sources, uses, residual, funding classification, finance cost uses, sizing diagnostics, binding constraint and expandable construction waterfall. Legacy Runs remain unchanged and explicitly unavailable.
+- Interactive Balance S&U **DEFERRED**: existing CAS authority does not provide a complete approved, typed, mode-aware, owner-authorized financing rebalance proposal/write contract. It must not be faked.
+
+## Financial invariants and limitations
+
+- All financial calculations remain in the canonical engine. Presentation arithmetic is only validation of the persisted original values and residual-sign classification, using `1e-6 kEUR` as the existing construction audit threshold.
+- The four original funding-source categories preserve the engine aggregate equity class, not invented share-capital/premium components.
+- IDC/commitment values include the VAT financing elements already included in the canonical `build_sources_and_uses` implementation; they are not added again.
+- SHL allocation to construction Uses is **not** the same as Sponsor SHL cash contribution timing; displayed separately.
+- Bankability and funding reconciliation are independent from Run Integrity; CURRENT is only freshness.
+- Historical Run evidence is loaded from owner/project-scoped Run History. Missing historical `financing_evidence` stays unavailable.
+
+## Test and acceptance record
+
+- Updated focused Solar/Wind tests assert the real persisted `RuntimeResult` against Source & Uses, capacity, construction periods, and immutable Run History.
+- Additional tests cover legacy records, version/authority/unit rejection, Run snapshot/hash/scenario binding, missing/non-finite/residual/period corruption, and direct synthetic Solar canonical runner output.
+- **Execution not claimed**: this environment cannot access the repository for local pytest or authenticated Playwright. All five exact-head workflow results and full local regression suites must be confirmed on the final branch head before approval.
+- Authenticated browser screenshots and Edit→STALE→Run→CURRENT→History acceptance are outstanding.
+- No new financial engine calculations, other engines, migrations or F3 modules are modified.
+- **DRAFT PR ONLY. DO NOT MERGE OR DEPLOY.**
+
+---
+
 # FINCO MODEL V2 — F1 Sources & Uses acceptance / authority report
 
 Status: **Draft implementation for review; not merged, not deployed**.
