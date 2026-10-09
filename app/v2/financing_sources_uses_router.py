@@ -88,10 +88,21 @@ async def financing_sources_uses_page(
                 fin, capex = pi.financing, pi.capex
             except (ValueError, TypeError, AttributeError):
                 _log.warning("F1 Working Copy financing bridge unavailable for project")
+        # Validate that persisted finance evidence belongs to the exact selected
+        # Run and scenario. History never falls back to mutable Working inputs.
         view = build_sources_uses_projection(
             runtime_result=rr, integrity_evidence=integrity,
             working_financing=fin, working_capex=capex,
             freshness=state, run_kind=kind,
+            expected_snapshot_id=run_id or None,
+            expected_composite_hash=(
+                selected.composite_hash if selected is not None
+                else snapshot.workspace.last_runtime_composite_hash
+            ),
+            expected_scenario_id=(
+                selected.last_runtime_scenario_id if selected is not None
+                else snapshot.workspace.last_runtime_scenario_id
+            ),
         )
         from main_web import templates
         response = templates.TemplateResponse(

@@ -35,6 +35,9 @@
     </div>
   </section>
 
+  {% if view.legacy_financing %}
+  <p class="su-warning" data-testid="su-legacy-gap">LEGACY RUN — FINANCING EVIDENCE UNAVAILABLE. Historical Runs are not reconstructed from current assumptions.</p>
+  {% endif %}
   <section class="su-summary" aria-label="Reconciliation totals" data-testid="su-totals">
     {% for item in (view.total_sources, view.total_uses, view.residual) %}
     <div class="su-total" data-testid="su-total-{{ loop.index }}">
@@ -45,10 +48,12 @@
     {% endfor %}
   </section>
 
+  <p data-testid="su-balance-status" class="su-help">Canonical funding reconciliation: <strong>{{ view.balance_status }}</strong>.
+     Funding balance is separate from financial integrity and input freshness.</p>
   <section class="su-grid" aria-label="Sources and uses">
     <div class="su-panel" data-testid="su-sources">
       <h2>Financing sources</h2>
-      <p class="su-help">Persisted Last Run evidence only. Rows must not be summed: the complete audited allocation is not persisted.</p>
+      <p class="su-help">Canonical source totals and classifications from this exact persisted Run, where available. Aggregate equity is not subdivided into unsupported categories.</p>
       <div class="su-table-scroll">
         <table><thead><tr><th scope="col">Source</th><th scope="col" class="su-num">kEUR</th></tr></thead>
           <tbody>{% for item in view.sources %}
@@ -59,7 +64,7 @@
     </div>
     <div class="su-panel" data-testid="su-uses">
       <h2>Project uses</h2>
-      <p class="su-help">Not inferred from current CAPEX or Financial Statements: full canonical uses require a Run-bound bridge.</p>
+      <p class="su-help">Canonical project uses from this exact Run, with IDC, financing fees, DSRA and developer costs included under the engine’s existing categories.</p>
       <div class="su-table-scroll">
         <table><thead><tr><th scope="col">Use</th><th scope="col" class="su-num">kEUR</th></tr></thead>
           <tbody>{% for item in view.uses %}
@@ -72,7 +77,7 @@
 
   <section class="su-panel" data-testid="su-bankability">
     <h2>Debt capacity and bankability</h2>
-    <p class="su-help">Last Run coverage ratios are displayed where persisted. Debt capacity, solver state and binding constraint remain unavailable without their own persisted engine authority.</p>
+    <p class="su-help">Same Run: DSCR/gearing capacities, senior sizing, binding constraint and solver diagnostics where produced. Independent of the financial integrity verdict.</p>
     <div class="su-table-scroll"><table><thead><tr><th scope="col">Indicator</th><th scope="col" class="su-num">Value</th><th scope="col">Evidence</th></tr></thead>
       <tbody>{% for item in view.bankability %}
       <tr><th scope="row">{{ item.label }}</th><td class="su-num" data-available="{{ 'true' if item.available else 'false' }}">{{ item.display }}</td>
@@ -84,6 +89,37 @@
     {% endif %}
     <p class="su-help">{{ view.integrity_note }}</p>
   </section>
+
+  <details class="su-panel" data-testid="su-construction">
+    <summary>Construction funding schedule {% if view.has_financing_evidence %}· {{ view.construction_rows | length }} periods{% else %}· unavailable{% endif %}</summary>
+    <p class="su-help">{{ view.funding_waterfall_reason }}</p>
+    {% if view.has_financing_evidence %}
+    <p class="su-help">Allocation policy: {{ view.construction_policy }}. All amounts kEUR. Senior, legal equity and SHL entries are recorded engine allocations; sponsor SHL cash timing is shown separately.</p>
+    <div class="su-table-scroll">
+      <table data-testid="su-construction-table">
+        <thead><tr><th>Period</th><th>Cashflow date</th>
+        {% for title in view.construction_fields %}<th class="su-num">{{ title }}</th>{% endfor %}
+        </tr></thead>
+        <tbody>
+        {% for period in view.construction_rows %}
+        <tr><th>{{ period.period }}</th><td>{{ period.date }}</td>
+          {% for metric in period.fields %}<td class="su-num" title="{{ metric.authority }}">{{ metric.display }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if view.non_construction %}
+    <h3>Additional Financial Close / COD funding</h3>
+    <p class="su-help">Separate from the construction period schedule: {{ view.non_construction.policy }}</p>
+    <div class="su-summary" data-testid="su-non-construction">
+      {% for metric in (view.non_construction.uses, view.non_construction.sources, view.non_construction.residual) %}
+      <div class="su-total"><span>{{ metric.label }}</span><b>{{ metric.display }}</b><small>kEUR</small></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endif %}
+  </details>
 
   {% if not is_historical %}
   <section class="su-panel" data-testid="su-working">
