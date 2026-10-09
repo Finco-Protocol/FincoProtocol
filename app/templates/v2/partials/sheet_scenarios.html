@@ -11,7 +11,8 @@
     project_code       str
     ws                 WorkspaceStateRecord | None
 #}
-<div id="v2-sheet-scenarios" class="v2-scenarios" data-sheet="scenarios">
+<link rel="stylesheet" href="/static/css/model_decision_workspace.css">
+<div id="v2-sheet-scenarios" class="v2-scenarios v2-d-workspace" data-sheet="scenarios">
 
   {# ── Header + create form ──────────────────────────────────────────── #}
   <div class="v2-scenarios-header">
@@ -124,12 +125,24 @@
         {% endif %}
       </div>
     </div>
+    {% if sc.overrides.get('tariff_eur_mwh') is not none %}
+    <p class="d-context" data-testid="scenario-tariff-binding">The tariff override binds canonical pricing on the next Run. Historical Runs without effective tariff evidence require a rerun; a stored override alone does not prove the price used.</p>
+    {% endif %}
+    {% if sc.has_run %}
+    <div class="d-table-wrap" data-testid="scenario-summary-{{ sc.scenario_id }}">
+      <table class="d-table" aria-label="{{ sc.scenario_name }} persisted results">
+        <thead><tr><th>Last successful Run</th><th>Project IRR</th><th>Pure Equity IRR</th><th>Total Sponsor IRR</th><th>Project NPV</th><th>Minimum DSCR</th><th>Senior Debt</th><th>Total CAPEX</th><th>Total Revenue</th><th>Sponsor MOIC</th></tr></thead>
+        <tbody><tr><td>{{ sc.run_at_display }}</td><td>{{ sc.metrics.get('project_irr', '—') }}</td><td>{{ sc.metrics.get('equity_irr', '—') }}</td><td>{{ sc.metrics.get('sponsor_irr', '—') }}</td><td>{{ sc.metrics.get('project_npv_keur', '—') }}</td><td>{{ sc.metrics.get('min_dscr', '—') }}</td><td>{{ sc.metrics.get('senior_debt_keur', '—') }}</td><td>{{ sc.metrics.get('total_capex_keur', '—') }}</td><td>{{ sc.metrics.get('total_revenue_keur', '—') }}</td><td>{{ sc.metrics.get('sponsor_moic', '—') }}</td></tr></tbody>
+      </table>
+    </div>
+    {% endif %}
     {% endfor %}
 
   </div>{# .v2-scenario-list #}
 
   {# ── Compare & Sensitivity links ───────────────────────────────────── #}
   <div class="v2-scenarios-nav">
+    <button class="v2-tab-link-btn" onclick="document.getElementById('tab-goal-seek').click()">Tender Pricing →</button>
     <button class="v2-tab-link-btn" onclick="document.getElementById('tab-compare').click()">
       Compare Scenarios →
     </button>
@@ -207,6 +220,7 @@
            are hidden for Data Center projects (occupancy/service-price
            scenario overrides are not exposed in V1). #}
         {% if not is_data_center %}
+        {% if not is_ev_charging %}
         <div class="v2-override-section-label">Revenue</div>
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-tariff_eur_mwh">Tariff</label>
@@ -222,6 +236,7 @@
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">h/yr</span>
         </div>
+        {% endif %}
         {% endif %}
 
         {# Costs #}

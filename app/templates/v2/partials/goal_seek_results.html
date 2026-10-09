@@ -1,4 +1,4 @@
-<div id="v2-goal-seek-result" class="v2-gs-result" data-testid="gs-result"
+<div id="v2-goal-seek-result" class="v2-gs-result v2-d-workspace" data-testid="gs-result"
      data-status="{{ result.status }}">
   {% set s = result.status %}
   {% if s == 'SOLVED' or s == 'TARGET_ALREADY_MET' or s == 'APPLIED' %}
@@ -14,8 +14,14 @@
   {% endif %}
 
   <p class="v2-gs-message" data-testid="gs-message">{{ result.message }}</p>
+  {% if s not in ('SOLVED', 'TARGET_ALREADY_MET', 'APPLIED') and result.lower_bound is defined %}
+  <p class="d-context">Explored bounds: {{ '%.2f'|format(result.lower_bound) }} – {{ '%.2f'|format(result.upper_bound) }} EUR/MWh.
+    Iterations: {{ result.iterations }} · Model evaluations: {{ result.model_evaluations }}.
+    No accepted tariff; Apply is unavailable.</p>
+  {% endif %}
 
-  {% if result.solved_input_value is defined and result.solved_input_value is not none %}
+  {% if s in ('SOLVED', 'TARGET_ALREADY_MET') and result.solved_input_value is defined and result.solved_input_value is not none %}
+    <h3>Required PPA tariff for {{ '%.2f'|format(result.target_value * 100) }}% {{ result.target_metric_label }}</h3>
     <div class="v2-gs-facts">
       <div class="v2-gs-fact">
         <span class="v2-gs-fact-label">Required tariff</span>
@@ -50,9 +56,11 @@
         <span class="v2-gs-fact-value v2-gs-mono" data-testid="gs-started-from">{{ '%.2f'|format(result.started_from_value) }} EUR/MWh</span>
       </div>
     </div>
+    {% if tender is defined %}<p class="d-context" data-testid="tender-price-delta">Price movement from starting tariff: {{ tender.delta }} · {{ tender.variance }}.
+      Presentation difference only; the exact evaluated price is retained for Apply.</p>{% endif %}
   {% endif %}
 
-  {% if apply %}
+  {% if apply and s in ('SOLVED', 'TARGET_ALREADY_MET') %}
     <form class="v2-gs-apply-form"
           hx-post="/v2/workbook/goal-seek/apply"
           hx-target="#v2-goal-seek-results"
