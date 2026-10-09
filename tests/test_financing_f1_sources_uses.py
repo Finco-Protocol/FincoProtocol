@@ -137,16 +137,23 @@ def test_no_auth_no_cross_owner_no_unscoped_historical(client, seeded):
     assert good.status_code == 200
     assert 'data-testid="su-page"' in good.text
     assert good.headers["Cache-Control"] == "private, no-store"
-    assert client.get("/v2/financing/sources-uses",
-                      params={"project": record.project_code, "history_id": "foreign"}).status_code == 404
+    historical_denial = client.get(
+        "/v2/financing/sources-uses",
+        params={"project": record.project_code, "history_id": "foreign"})
+    assert historical_denial.status_code == 404
+    # Effective HTML response includes route privacy and the single global
+    # no-store directive; denied Run History must never be cacheable either.
+    assert historical_denial.headers["Cache-Control"] == "private, no-store"
     client.cookies.clear()
     response = client.get("/v2/financing/sources-uses",
                           params={"project": record.project_code}, follow_redirects=False)
     assert response.status_code == 302
     client.cookies.set(COOKIE_NAME, create_session_token(
         user_id="f1-intruder", username="admin"))
-    assert client.get("/v2/financing/sources-uses",
-                      params={"project": record.project_code}).status_code == 404
+    cross_owner_denial = client.get(
+        "/v2/financing/sources-uses", params={"project": record.project_code})
+    assert cross_owner_denial.status_code == 404
+    assert cross_owner_denial.headers["Cache-Control"] == "private, no-store"
 
 
 def test_f1_get_is_read_only_and_no_engine_execution(client, seeded):
