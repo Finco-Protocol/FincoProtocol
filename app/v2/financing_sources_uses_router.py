@@ -22,7 +22,9 @@ _log = logging.getLogger(__name__)
 
 def _unavailable(status: int, message: str) -> HTMLResponse:
     return HTMLResponse(content=f"<p>{message}</p>", status_code=status,
-                        headers={"Cache-Control": "no-store"})
+                        # The global SecurityHeadersMiddleware appends no-store to HTML.
+                        # Keep route-specific privacy without duplicating no-store.
+                        headers={"Cache-Control": "private"})
 
 
 @router.get("/financing/sources-uses", response_class=HTMLResponse)
@@ -122,7 +124,9 @@ async def financing_sources_uses_page(
             },
         )
         snapshot.validate_current()
-        response.headers["Cache-Control"] = "private, no-store"
+        # SecurityHeadersMiddleware adds the single HTML no-store directive.
+        # Here only mark authenticated financial evidence as private.
+        response.headers["Cache-Control"] = "private"
         return response
     except (FinancingEvidenceInvalid, RunHistoryError, PostRunContextChanged,
             WorkbookIdentityError, ValueError, TypeError, PermissionError) as exc:
