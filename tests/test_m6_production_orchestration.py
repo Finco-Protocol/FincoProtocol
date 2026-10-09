@@ -14,6 +14,7 @@ Economic contract:
 from __future__ import annotations
 
 from dataclasses import replace
+import re
 
 import pytest
 
@@ -186,6 +187,16 @@ def test_m6_is_production_ready_and_completes_clean_run(repayment):
     project = _project(DebtSizingMode.GEARING_CAP, repayment)
     decision = classify_production_authority(project)
     assert decision.classification is ProductionAuthorityClassification.CLEAN_PRODUCTION_READY
+    if repayment is Repayment.DSCR_SCULPTED:
+        # This existing high-gearing fixture has a real unpaid balloon. Typed
+        # readiness permits calculation, not publication without settlement.
+        with pytest.raises(CleanProductionRunUnavailable) as exc:
+            run_clean_production(project, "Base", project_type="Solar")
+        assert exc.value.reason_code == "SENIOR_MATURITY_UNSETTLED_LIABILITY"
+        assert "contractual_maturity_period=32" in exc.value.detail
+        reported = float(re.search(r"outstanding_principal_keur=([^;]+)", exc.value.detail).group(1))
+        assert reported == pytest.approx(17545.520955323154, abs=TOL)
+        return
     run = run_clean_production(project, "Base", project_type="Solar")
     financing = run.g2c_result.financing_result
     # The production policy adds construction IDC / fees / DSRA to the uses, so the
