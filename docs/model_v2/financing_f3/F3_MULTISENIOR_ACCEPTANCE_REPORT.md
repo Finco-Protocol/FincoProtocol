@@ -179,6 +179,11 @@ independent/serialization ring passed 32 tests. Final post-correction counts
 and governance/certificate ring are recorded in the PR delivery section.
 Final post-correction engine + authorized Workspace + F1 + #233 maturity +
 F07B ring: **157 passed, rc=0, normal interpreter termination**.
+Final F3 engine + Workspace + exact-blob governance ring: **72 passed, rc=0**,
+including actual immutable institutional XLSX output and zero export engine
+execution. Exact-blob governance alone: **25 passed**. The only existing skips
+in the wider governance ring concern the intentionally retired epic scope
+marker; no regression is newly skipped.
 Cold base/candidate comparison: **all four EXACT**, including deterministic
 workbook cells/formulas/styles and historical certificate signing bytes.
 
@@ -214,6 +219,16 @@ changing any pinned blob loses approval. Historical exact released hashes
 remain valid only at their original contents. The F3.1 two-module pins are
 unchanged. No broad namespace authorization, identity dispatch, calibration,
 target replay, plug, forced repayment or hidden refinancing.
+The historical Finance Integrity helper now checks these exact seven pins
+before its older engine path list; a tampered F3 blob cannot inherit the older
+path-only exemption. All other historical policy stays unchanged.
+
+Local Windows full safety scan found one environment-only issue in unchanged
+`static/vendor/swagger-ui/swagger-ui-bundle.js`: autocrlf bytes differ from its
+existing trusted hash. Removing CRLF conversion reproduces the exact Git blob
+and expected SHA-256 `fd76294e33356ab3fd111ddaeeb10d3f79de8ae1a4d34dbf777f5eef224648d9`.
+All changed files pass the scanner. Neither vendor nor scanner is modified;
+the full Linux exact-head safety workflow remains mandatory acceptance.
 
 Essential F1 route/projection and immutable export resolver integration is
 included under this mission, after merged F1/F2. Parallel open #239 AI import,

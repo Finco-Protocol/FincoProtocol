@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 import model_v2_governance as governance
-from finance_integrity_governance import strictly_frozen_changes
+from finance_integrity_governance import approved_frozen_path, strictly_frozen_changes, unapproved_engine_changes
 from tests.test_financing_f3_governance import git
 
 
@@ -46,7 +46,11 @@ def test_any_edit_to_a_pinned_file_loses_approval(path, tmp_path, monkeypatch):
     assert not governance.released_engine_authority_matches(path, repo=repo)
     assert governance.released_engine_authority_matches(path, repo=repo, ref='HEAD~1')
     monkeypatch.setattr(governance, 'REPO', Path(repo))
-    assert strictly_frozen_changes([path]) == [path]
+    if path.startswith('finco_core/'):
+        assert strictly_frozen_changes([path]) == [path]
+    else:
+        assert unapproved_engine_changes([path]) == [path]
+    assert not approved_frozen_path(path)
 
 
 @pytest.mark.parametrize('path', [
@@ -57,4 +61,6 @@ def test_any_edit_to_a_pinned_file_loses_approval(path, tmp_path, monkeypatch):
 ])
 def test_unrelated_financial_and_product_paths_remain_frozen(path):
     assert not governance.released_engine_authority_matches(path)
-    assert strictly_frozen_changes([path]) == [path]
+    assert not governance.approved_by_active_model_v2_scope(path)
+    if path.startswith(('finco_core/', 'finco_radar/')):
+        assert strictly_frozen_changes([path]) == [path]

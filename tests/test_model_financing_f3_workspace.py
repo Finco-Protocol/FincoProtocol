@@ -134,6 +134,23 @@ def test_real_active_save_run_export_and_stale_last_run_binding(env, monkeypatch
     assert isinstance(export.project_inputs, MultiSeniorProjectInputs)
     digest = export.project_inputs.financing_collection.content_digest()
     original_snapshot_id = committed.last_runtime_snapshot_id
+    from app.services.v2_export_service import build_canonical_last_run_institutional_workbook_export
+    from io import BytesIO
+    from openpyxl import load_workbook
+    from app.export.institutional_workbook import _read_labeled_cell
+    def exported_senior():
+        result = build_canonical_last_run_institutional_workbook_export(
+            'generic_' + kind + '_reference', project_record=record, user_id='decision-user')
+        assert result.status_code == 200, result.error_content
+        workbook = load_workbook(BytesIO(result.bytes_data))
+        return _read_labeled_cell(workbook, 'Senior Debt', 'Senior debt amount')
+    # Export serializes immutable canonical schedules, never re-executes them.
+    from app.services import production_financial_authority
+    with monkeypatch.context() as guard:
+        guard.setattr(production_financial_authority, 'run_clean_production',
+            lambda *a, **kw: pytest.fail('Export executed a financial model'))
+        exported_before = exported_senior()
+    assert exported_before == pytest.approx(evidence['bankability']['final_senior_commitment_keur'], abs=1e-6)
     newer = json.loads(raw)
     newer['scopes']['base']['proposal']['instruments'][0]['interest']['fixed_rate'] = .05
     newer['scopes']['base']['activation']['proposal_digest'] = 'BIND_ON_SAVE'
@@ -146,6 +163,7 @@ def test_real_active_save_run_export_and_stale_last_run_binding(env, monkeypatch
     assert preview.project_inputs.financing_collection.content_digest() != digest
     assert preview.run_id is None
     assert resolve_canonical_last_run_from_workspace(record, 'decision-user', latest).project_inputs.financing_collection.content_digest() == digest
+    assert exported_senior() == exported_before
     page = env.client.get('/v2/workbook', params={'project': record.project_code, 'sheet': 'debt'})
     assert 'Last Run facility schedules' in page.text
     after, rr2 = run(env, record)
