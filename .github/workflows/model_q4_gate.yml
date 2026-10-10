@@ -31,7 +31,7 @@ jobs:
       - name: Run genuine Q4 scenarios and financial regressions
         run: |
           mkdir -p artifacts/q4
-          python -m pytest -v tests/test_model_q4_whatif.py tests/test_model_insight_q3.py tests/test_model_financing_f3_workspace.py --junitxml=artifacts/q4/focused.xml
+          python -m pytest -v tests/test_model_q4_whatif.py tests/test_model_insight_q3.py tests/test_model_insight_q3_scenario_identity.py tests/test_model_financing_f3_workspace.py tests/test_model_decision_workspace_v2.py --junitxml=artifacts/q4/focused.xml
           echo "PYTEST_MAIN_RETURNED rc=0"
           echo "PYTHON_PROCESS_EXITED child exit code 0"
       - name: Upload scoped test evidence
