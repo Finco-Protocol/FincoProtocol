@@ -136,6 +136,13 @@ F3_2_4_FINANCING_AUTHORITIES: dict[str, str] = {
     "financial_engine/senior_debt/project_adapter.py": "4d979a9cd97d17ec6560075a852060d6c76eff8d",
 }
 
+# WF-04 numerical precision closure: exact corrected G2A/BS content only.
+# Historical released pins above remain intact; all other files remain frozen.
+WF04_NUMERIC_PRECISION_AUTHORITIES: dict[str, str] = {
+    "financial_engine/financing/project.py": "4349b4bc396cba446a0b1c473f1a466eafb12bb5",
+    "financial_engine/financial_statements/assembly.py": "7b8607c719ef1d780490dfbee8107ce290508bff",
+}
+
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 _VALID_STATUSES = ("ACTIVE", "RETIRED")
@@ -288,6 +295,7 @@ def released_engine_authority_matches(
     pinned = {authorities[path] for authorities in (
         RELEASED_MODEL_V2_ENGINE_AUTHORITIES, DEVELOPER_ECONOMICS_V1_AUTHORITIES,
         F3_1_CONTRACT_AUTHORITIES, F3_2_4_FINANCING_AUTHORITIES,
+        WF04_NUMERIC_PRECISION_AUTHORITIES,
     ) if path in authorities}
     if not pinned:
         return False

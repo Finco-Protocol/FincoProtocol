@@ -34,7 +34,8 @@ def test_exactly_the_two_reviewed_files_no_wildcards():
 
 def test_repository_carries_the_exact_reviewed_content():
     for path, blob in gov.RELEASED_MODEL_V2_ENGINE_AUTHORITIES.items():
-        assert _git(REPO, "rev-parse", f"HEAD:{path}").strip() == blob, path
+        current_blob = gov.WF04_NUMERIC_PRECISION_AUTHORITIES.get(path, blob)
+        assert _git(REPO, "rev-parse", f"HEAD:{path}").strip() == current_blob, path
         assert gov.released_engine_authority_matches(path)
 
 

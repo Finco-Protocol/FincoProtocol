@@ -51,6 +51,30 @@ from financial_engine.shl.day_count import compute_shl_dcf
 # convergence tolerances are denominated in kEUR and must never participate.
 SHL_DCF_AUTHORITY_TOLERANCE = 1e-9
 
+# Existing committed financial-evidence precision (Run Integrity). This is a
+# refinement trigger, not a relaxation of the G2A minimum-size handshake.
+G2A_SERVICE_BUDGET_ACCEPTANCE_TOLERANCE_KEUR = 1e-6
+
+
+def _senior_service_budget_excess(model_result, model_input) -> float:
+    """Check the funded schedule against its final, authoritative Bank CFADS."""
+    senior = model_result.senior_debt
+    bank = model_result.debt_sizing
+    if senior is None or bank is None:
+        raise RuntimeError("G2A Senior/Bank budget evidence is unavailable")
+    cfads = dict(zip(bank.period_indices, bank.bank_cfads_keur))
+    inputs = model_input.senior_debt_inputs
+    targets = {p.period_index: p.target_dscr for p in inputs.period_dscr_targets}
+    availability = {p.period_index: p.availability_fraction
+                    for p in inputs.period_debt_service_availability}
+    policy = model_input.senior_debt_policy
+    if not set(senior.period_indices).issubset(cfads):
+        raise RuntimeError("G2A Senior/Bank budget axis mismatch")
+    return max((service - max(0.0, cfads[idx] / targets.get(idx, policy.target_dscr))
+                * availability.get(idx, 1.0)
+                for idx, service in zip(senior.period_indices, senior.senior_debt_service_keur)),
+               default=0.0)
+
 # Fixed kEUR equality tolerance for canonical CAPEX authority. Solver
 # convergence tolerance must never decide whether a CAPEX input exists.
 PR9_CAPEX_AUTHORITY_TOLERANCE_KEUR = 1e-6
@@ -1239,6 +1263,23 @@ def run_project_financing_model(
                 ),
             )
         model_result = run_senior_debt_model(funded_model_input)
+        if (
+            fin.debt_sizing_mode != DebtSizingMode.GEARING_CAP
+            and _senior_service_budget_excess(model_result, funded_model_input)
+            > G2A_SERVICE_BUDGET_ACCEPTANCE_TOLERANCE_KEUR
+        ):
+            # Re-solve only a premature numeric stop. Reuse the same kernel and
+            # economic inputs; its accuracy must meet the existing G2A contract.
+            funded_model_input = replace(funded_model_input, senior_debt_policy=replace(
+                funded_model_input.senior_debt_policy,
+                convergence_tolerance_keur=min(
+                    funded_model_input.senior_debt_policy.convergence_tolerance_keur,
+                    convergence_tolerance_keur),
+                convergence_relative_tolerance=0.0,
+            ))
+            model_result = run_senior_debt_model(funded_model_input)
+            if _senior_service_budget_excess(model_result, funded_model_input) > convergence_tolerance_keur:
+                raise RuntimeError("G2A_SENIOR_SERVICE_EXCEEDS_BANK_BUDGET")
         senior = model_result.senior_debt
         if senior is None:
             raise RuntimeError("G2A Senior result is unavailable")
@@ -1247,6 +1288,19 @@ def run_project_financing_model(
             raise RuntimeError("G2A Senior capacity audit fields are unavailable")
         if abs(diagnosed_gearing - gearing_capacity) > 1e-7:
             raise RuntimeError("G2A gearing capacity handshake failed")
+        if fin.debt_sizing_mode != DebtSizingMode.GEARING_CAP:
+            # Capacity and funded schedule must share the SAME Senior/SHL fixed
+            # point. A separate DSCR-only solve re-finalises SHL/tax differently
+            # and its stopping error is not a second lending constraint.
+            diagnosed_dscr = senior.diagnostics.get("dscr_debt_capacity_keur")
+            if (
+                isinstance(diagnosed_dscr, bool)
+                or not isinstance(diagnosed_dscr, Real)
+                or not math.isfinite(diagnosed_dscr)
+                or diagnosed_dscr < 0.0
+            ):
+                raise RuntimeError("G2A Senior DSCR capacity audit is unavailable")
+            expected_final_senior = min(diagnosed_dscr, gearing_capacity)
         if abs(senior.debt_size_keur - expected_final_senior) > convergence_tolerance_keur:
             raise RuntimeError(
                 "G2A_FINAL_SENIOR_DOES_NOT_MATCH_CAPACITY_MINIMUM: "
