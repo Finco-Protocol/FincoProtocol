@@ -603,6 +603,62 @@ def discard_workspace_draft(user_id: str, project_id: str) -> "Optional[Workspac
     )
 
 
+def _assert_f3_editor_authority(
+    *,
+    cursor,
+    persisted_workspace,
+    persisted_snapshot: dict,
+    user_id: str,
+    project_id: str,
+    field_ids,
+    transition_value=None,
+) -> str:
+    """Canonical F3 scope/competing-editor gate shared by scalar and C0 batch CAS.
+
+    The only authority is the row and selected scenario read under the caller's
+    BEGIN EXCLUSIVE lock. A browser-provided scope cannot alter this decision.
+    This guard does not change instrument transition or activation semantics.
+    """
+    from app.workbook.multisenior_config import (
+        FIELD_ID, SNAPSHOT_KEY, parse_state, validate_transition,
+    )
+    from finco_core.inputs.financing_instruments import FinancingError
+
+    ids = tuple(field_ids)
+    if FIELD_ID not in ids and not persisted_snapshot.get(SNAPSHOT_KEY):
+        return "base"
+
+    scope = "base"
+    scenario_id = persisted_workspace["active_scenario_id"]
+    if scenario_id:
+        scenario = cursor.execute(
+            "SELECT * FROM scenarios WHERE scenario_id=? AND user_id=? AND project_id=?",
+            (scenario_id, user_id, project_id),
+        ).fetchone()
+        if scenario is None or scenario["archived"]:
+            raise FinancingError("F3_SELECTED_SCENARIO_UNAVAILABLE")
+        scope = "base" if scenario["is_base_case"] else scenario_id
+
+    if FIELD_ID in ids:
+        # The single-field F3 editor alone may invoke this transition, and
+        # must still pass the legacy validate_transition()/apply_state() gates.
+        if len(ids) != 1 or transition_value is None:
+            raise FinancingError("F3_COLLECTION_EDITOR_ONLY")
+        validate_transition(persisted_snapshot.get(SNAPSHOT_KEY), transition_value, scope)
+
+    entry = parse_state(persisted_snapshot.get(SNAPSHOT_KEY))["scopes"].get(scope)
+    if entry and entry["activation"] is not None:
+        constraints = {
+            "debt.senior.gearing_pct",
+            "debt.senior.lockup_dscr",
+            "debt.senior.min_llcr",
+        }
+        for field_id in ids:
+            if field_id != FIELD_ID and field_id.startswith("debt.") and field_id not in constraints:
+                raise FinancingError("F3_COMPETING_FINANCING_EDITOR_REJECTED")
+    return scope
+
+
 # -----------------------------------------------------------------
 # v2_atomic_draft_update
 # -----------------------------------------------------------------
@@ -692,33 +748,18 @@ def v2_atomic_draft_update(
         row_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
         current_pis = ProjectInputSet.from_snapshot(row_snapshot, workbook=WORKBOOK)
         from app.workbook.multisenior_config import (
-            FIELD_ID as f3_field, SNAPSHOT_KEY as f3_key, validate_transition,
-            parse_state, apply_state,
+            FIELD_ID as f3_field, apply_state,
         )
-        if field_id == f3_field or row_snapshot.get(f3_key):
-            scope = "base"
-            if row["active_scenario_id"]:
-                cur.execute("SELECT * FROM scenarios WHERE scenario_id=? AND user_id=? AND project_id=?",
-                    (row["active_scenario_id"], user_id, project_id))
-                scenario = cur.fetchone()
-                if scenario is None or scenario["archived"]:
-                    from finco_core.inputs.financing_instruments import FinancingError
-                    raise FinancingError("F3_SELECTED_SCENARIO_UNAVAILABLE")
-                scope = "base" if scenario["is_base_case"] else row["active_scenario_id"]
-            if field_id == f3_field:
-                validate_transition(row_snapshot.get(f3_key), typed_value, scope)
-            else:
-                entry = parse_state(row_snapshot.get(f3_key))["scopes"].get(scope)
-                # Gearing and covenant thresholds remain project constraints;
-                # competing single-Senior/SHL/reserve editors do not own terms.
-                if entry and entry["activation"] and field_id.startswith("debt.") and field_id not in {
-                    "debt.senior.gearing_pct", "debt.senior.lockup_dscr", "debt.senior.min_llcr"}:
-                    from finco_core.inputs.financing_instruments import FinancingError
-                    raise FinancingError("F3_COMPETING_FINANCING_EDITOR_REJECTED")
+        scope = _assert_f3_editor_authority(
+            cursor=cur, persisted_workspace=row, persisted_snapshot=row_snapshot,
+            user_id=user_id, project_id=project_id,
+            field_ids=(field_id,),
+            transition_value=typed_value if field_id == f3_field else None,
+        )
         updated_pis = current_pis.with_value(field_id, typed_value)
         if field_id == f3_field:
-            # Validate the effective project boundary inside the same CAS. A
-            # proposal remains inert; activation requires the release gate.
+            # Scalar-only transition: effective project F3 activation remains
+            # governed by the existing release, reserve and proposal authority.
             apply_state(updated_pis.to_projectinputs(), typed_value, scope,
                 bankability_raw=row_snapshot.get("bankability_config_json"))
         new_snapshot = updated_pis.to_snapshot()
@@ -1293,6 +1334,10 @@ def v2_atomic_batch_draft_update(
             if field_id in seen_ids:
                 raise BatchApplyError("BATCH_DUPLICATE_FIELD", field_id)
             seen_ids.add(field_id)
+            # Structured F3 collections are authorized ONLY by the F3 editor,
+            # even when the proposed JSON would otherwise validate as a field.
+            if field_id == "debt.financing.instruments":
+                raise BatchApplyError("BATCH_F3_COLLECTION_EDITOR_ONLY")
             validation = WorkbookUpdateService.validate_field_update(field_id, raw_value)
             if not validation.is_valid:
                 raise FieldValidationError(validation.error, validation.error_class)
@@ -1308,6 +1353,14 @@ def v2_atomic_batch_draft_update(
             if field_id in ("debt.senior.interest_rate_pct", "debt.senior.target_dscr"):
                 senior_fields.append(field_id)
             candidate = WorkbookUpdateService.apply_field_to_pis(candidate, validation)
+
+        # F3 scope and competing-editor authority on the exact transactional
+        # current snapshot, shared with the scalar Save CAS. Run only after all
+        # registry and duplicate-field validation; before ANY financial write.
+        _assert_f3_editor_authority(
+            cursor=cur, persisted_workspace=row, persisted_snapshot=snapshot,
+            user_id=user_id, project_id=project_id, field_ids=seen_ids,
+        )
 
         # R8/N02 senior authority: enforce on both the transactional current
         # state and the final candidate, independent of import row order.
