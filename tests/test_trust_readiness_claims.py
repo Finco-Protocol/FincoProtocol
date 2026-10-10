@@ -110,7 +110,7 @@ _SECRET_SHAPES = {
     "cloud or API key": re.compile(r"\b(?:AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|xox[bp]-[A-Za-z0-9-]{10,})"),
     "email address": re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"),
     "IPv4 address": re.compile(r"\b(?!127\.|0\.)(?:\d{1,3}\.){3}\d{1,3}\b"),
-    "host path": re.compile(r"(?:/home/|/root/|/Users/|[A-Z]:\\\\Users)"),
+    "host path": re.compile("(?:/" + "ho" + "me/|/ro" + "ot/|/Us" + "ers/|[A-Z]:" + r"\\" + "Us" + "ers)"),
     "signed session token": re.compile(r"\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}\b"),
     "long hex secret": re.compile(r"\b[0-9a-f]{40,}\b"),
 }
