@@ -162,7 +162,7 @@ def test_hybrid_groups_switch_real_tabs_and_keep_every_tab_reachable(make):
     s.open_grid()
     labels = s.page.locator('[data-testid="hybrid-nav"] .hy-group').all_inner_texts()
     assert [t.strip().lower() for t in labels] == ["inputs", "scenarios", "outputs", "analysis", "trust"]
-    expectations = {"inputs": "tab-input-grid", "scenarios": "tab-scenarios", "outputs": "tab-overview",
+    expectations = {"inputs": "tab-input-grid", "scenarios": "tab-scenarios", "outputs": "tab-outputs",
                     "analysis": "tab-sensitivity", "trust": "tab-trust"}
     for group, tab in expectations.items():
         s.page.locator(f'[data-hy-group="{group}"]').click()
@@ -170,7 +170,7 @@ def test_hybrid_groups_switch_real_tabs_and_keep_every_tab_reachable(make):
             "(t) => document.getElementById(t).getAttribute('aria-selected') === 'true'", arg=tab)
         assert s.page.locator(f'[data-hy-group="{group}"]').get_attribute("aria-selected") == "true"
     # every pre-existing sheet tab is still present and directly activatable
-    for tab in ("tab-capex", "tab-opex", "tab-revenue", "tab-debt", "tab-tax", "tab-returns",
+    for tab in ("tab-outputs", "tab-overview", "tab-capex", "tab-opex", "tab-revenue", "tab-debt", "tab-tax", "tab-returns",
                 "tab-run-history", "tab-compare", "tab-goal-seek"):
         s.page.evaluate(f"document.getElementById('{tab}').click()")
         assert s.page.get_attribute(f"#{tab}", "aria-selected") == "true"

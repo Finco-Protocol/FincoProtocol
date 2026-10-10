@@ -24,12 +24,12 @@
     inputs:    ['tab-project-setup', 'tab-inputs', 'tab-input-grid', 'tab-revenue', 'tab-capex', 'tab-opex',
                 'tab-investor', 'tab-debt', 'tab-tax'],
     scenarios: ['tab-scenarios'],
-    outputs:   ['tab-overview', 'tab-fs', 'tab-returns'],
+    outputs:   ['tab-outputs', 'tab-overview', 'tab-fs', 'tab-returns'],
     analysis:  ['tab-compare', 'tab-sensitivity', 'tab-goal-seek', 'tab-run-history'],
     trust:     ['tab-trust']
   };
   var GROUP_DEFAULT = {
-    inputs: 'tab-input-grid', scenarios: 'tab-scenarios', outputs: 'tab-overview',
+    inputs: 'tab-input-grid', scenarios: 'tab-scenarios', outputs: 'tab-outputs',
     analysis: 'tab-sensitivity', trust: 'tab-trust'
   };
   var lastTabOfGroup = {};
