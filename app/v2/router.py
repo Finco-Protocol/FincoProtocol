@@ -568,6 +568,24 @@ def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, ru
         ws, run_state=runtime_state, project_inputs=effective_inputs, active_scenario_id=active_id,
         scenario_name=last_run_scenario_name,
         register_paths=register_paths, kpi_keys=kpi_keys)
+    # Q4 conditional action availability is presentation-only; no writes, no engine Run.
+    # Q1 statuses and Q3 Last Run identities remain unmodified.
+    from app.v2.whatif import CANDIDATES as _Q4_CANDIDATES, display_eligibility as _q4_eligible
+    for _group in (quality.get("groups") or {}).values():
+        for _finding in _group:
+            if _finding["check_id"] not in _Q4_CANDIDATES:
+                continue
+            q4_snapshot = getattr(ws, "draft_snapshot", None) if ws is not None else None
+            if (ws is None or not isinstance(q4_snapshot, dict)
+                    or is_protected_reference(project_record)):
+                _allowed, _reason = False, "Q4_PROTECTED_OR_UNAVAILABLE"
+            else:
+                _allowed, _reason = _q4_eligible(
+                    check_id=_finding["check_id"], check_status=_finding["status"],
+                    project_type=project_record.project_type or "",
+                    snapshot=q4_snapshot)
+            _finding["q4_eligible"] = _allowed
+            _finding["q4_unavailable_reason"] = _reason
     scenario_view: dict = {}
     try:
         from app.persistence.scenario_insight_reads import list_insight_scenarios, newest_committed_runs
@@ -2558,6 +2576,7 @@ async def v2_workbook_run(
     active_scenario_name = ws.active_scenario_name
     scenario_name = active_scenario_name or "Base"
     _scenario_overrides_for_fold = None
+    _q4_effective_binding = None
 
     if active_scenario_id:
         import logging as _log
@@ -2581,6 +2600,55 @@ async def v2_workbook_run(
         # Keep display name for provenance only; engine always receives "Base"
         # so the legacy ScenarioManager is never activated by a user-created name.
         scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
+
+        # WF-08 Q4: only explicit, auditable Finding-to-Scenario scalar
+        # overrides may reach the engine. The canonical scenario resolver
+        # expects legacy snapshot keys, not Workbook semantic field IDs.
+        # This is the existing Run materialization path, not a second writer.
+        if (not sc_rec.is_base_case and
+                (sc_rec.replay_metadata or {}).get("action") == "q4_finding_whatif_v1"):
+            from app.persistence.scenarios_repository import resolve_scenario_snapshot
+            from app.v2.whatif import CANDIDATES
+            from app.workbook.input_set import ProjectInputSet
+            from app.workbook.update_service import WorkbookUpdateService
+            from app.workbook.registry import WORKBOOK
+            try:
+                q4_meta = sc_rec.replay_metadata
+                q4_mapping = CANDIDATES.get(q4_meta.get("finding_id"))
+                if (not q4_mapping or q4_mapping[1] != q4_meta.get("field_id")
+                        or set(sc_rec.overrides or {}) != {q4_mapping[2]}):
+                    raise ValueError("Q4_SCENARIO_OVERRIDE_AUTHORITY_INVALID")
+                q4_spec = WORKBOOK.field(q4_mapping[1])
+                if q4_spec.snapshot_key != q4_mapping[2]:
+                    raise ValueError("Q4_WORKBOOK_MAPPING_CHANGED")
+                raw_scenario_value = sc_rec.overrides[q4_spec.snapshot_key]
+                validation = WorkbookUpdateService.validate_field_update(
+                    q4_spec.field_id, str(raw_scenario_value))
+                if not validation.is_valid:
+                    raise ValueError("Q4_SCENARIO_OVERRIDE_VALUE_INVALID")
+                # Q4 child must be bound to exactly the reviewed complete
+                # source snapshot. An unrelated later scalar edit cannot
+                # silently change the What-if's inherited economics.
+                source_pis = ProjectInputSet.from_snapshot(
+                    dict(sc_rec.base_input_set or {}))
+                if dict(source_pis.snapshot_origin) != dict(pis_draft.snapshot_origin):
+                    raise ValueError("Q4_SCENARIO_SOURCE_CHANGED_REPREVIEW_REQUIRED")
+                effective_snapshot = resolve_scenario_snapshot(
+                    dict(source_pis.snapshot_origin), dict(sc_rec.overrides))
+                resolved_pis = ProjectInputSet.from_snapshot(effective_snapshot)
+                if resolved_pis.get(q4_spec.field_id) != validation.typed_value:
+                    raise ValueError("Q4_SCENARIO_ENGINE_INPUT_MISMATCH")
+                override = WorkbookService.to_projectinputs(resolved_pis)
+                _q4_effective_binding = {
+                    "authority": "q4_canonical_reviewed_scenario_v1",
+                    "scenario_id": sc_rec.scenario_id,
+                    "field_id": q4_spec.field_id,
+                    "snapshot_key": q4_spec.snapshot_key,
+                    "value": validation.typed_value,
+                }
+            except (ValueError, KeyError) as exc:
+                msg = str(exc)
+                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
         if not sc_rec.is_base_case and "tariff_eur_mwh" in (sc_rec.overrides or {}):
             from app.workbook.scenario_revenue_authority import bind_scenario_tariff
@@ -2671,6 +2739,10 @@ async def v2_workbook_run(
     _revenue_derivation_raw = _derivation_evidence.get("revenue", {})
     _kpis_enriched = dict(result["kpis"])
     _kpis_enriched["revenue_derivation"] = _fmt_rev_deriv(_revenue_derivation_raw)
+    if _q4_effective_binding is not None:
+        # Immutable Run-bound replay evidence for the scalar Q4 override;
+        # canonical Last Run export must reconstruct the same engine inputs.
+        _kpis_enriched["q4_effective_input"] = dict(_q4_effective_binding)
     _scenario_revenue_input = None
     if runtime_project_key in ("Solar", "Wind"):
         _scenario_revenue_input = {
@@ -5237,3 +5309,8 @@ async def v2_workbook_goal_seek_apply(
         "now STALE — press Run to make it canonical. (Goal Seek candidate "
         "runs never wrote Run History or Last Run.)",
         applied=True)
+
+
+# Q4 route registration: isolated implementation, no changes to canonical Run paths.
+from app.v2.whatif_router import router as q4_router
+router.include_router(q4_router)

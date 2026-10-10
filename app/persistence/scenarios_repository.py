@@ -157,7 +157,15 @@ def resolve_active_scenario_runtime_snapshot(
         base_case = get_base_case_scenario(user_id, project_id)
 
     base_input_set = {}
-    if base_case is not None:
+    # Q4 forks a CAS-reviewed complete Working Copy. Its immutable child
+    # source snapshot must remain authoritative when an older Base scenario
+    # has fewer populated values. Reuse this one canonical scenario resolver;
+    # do not overwrite the Base or silently replace the child's source.
+    if (scenario_record.replay_metadata or {}).get("action") == "q4_finding_whatif_v1":
+        if not scenario_record.base_input_set:
+            return scenario_record, None, "Q4 source snapshot unavailable."
+        base_input_set = dict(scenario_record.base_input_set)
+    elif base_case is not None:
         base_input_set = dict(base_case.base_input_set or base_case.snapshot or {})
     elif scenario_record.base_input_set:
         base_input_set = dict(scenario_record.base_input_set)
