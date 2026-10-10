@@ -117,6 +117,13 @@ DEVELOPER_ECONOMICS_V1_AUTHORITIES: dict[str, str] = {
     "finco_core/inputs/serialization.py": "78e02f685ade80efe01d7b86fcaa8f5243c0773f",
 }
 
+# F3.1 contract-only promotion: explicitly authorized exact proposal modules.
+# No runtime activation or namespace exemption. Any changed blob loses approval.
+F3_1_CONTRACT_AUTHORITIES: dict[str, str] = {
+    "finco_core/inputs/financing_instruments.py": "e1d06441763d2316af45d14ddab1716abbe4f3ca",
+    "finco_core/inputs/financing_instruments_legacy.py": "f963272fb3342976a33483ffea8aaad0a6f81f2b",
+}
+
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 _VALID_STATUSES = ("ACTIVE", "RETIRED")
@@ -267,7 +274,7 @@ def released_engine_authority_matches(
     is the exact reviewed git blob. Fails closed (False) when git or the blob is
     unavailable. Independent of any epic scope marker."""
     pinned = RELEASED_MODEL_V2_ENGINE_AUTHORITIES.get(
-        path, DEVELOPER_ECONOMICS_V1_AUTHORITIES.get(path))
+        path, DEVELOPER_ECONOMICS_V1_AUTHORITIES.get(path, F3_1_CONTRACT_AUTHORITIES.get(path)))
     if pinned is None:
         return False
     cwd = str(repo) if repo else str(REPO)
