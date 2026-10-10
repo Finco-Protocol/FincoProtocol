@@ -1174,3 +1174,201 @@ def mark_workspace_dirty_cursor(cur: Any, *, user_id: str, project_id: str) -> b
         (now, user_id, project_id),
     )
     return cur.rowcount > 0
+
+
+# -----------------------------------------------------------------
+# Canonical C0 batch transaction: NOT a loop around scalar saves.
+# -----------------------------------------------------------------
+def v2_atomic_batch_draft_update(
+    *,
+    user_id: str,
+    project_id: str,
+    expected_workspace_id: str,
+    expected_scenario_id: Optional[str],
+    expected_content_hash: str,
+    expected_workbook_version: str,
+    updates: list[tuple[str, str]],
+) -> "WorkspaceStateRecord":
+    """Exclusive all-or-nothing Workbook V2 batch; no alternative writer.
+
+    Uses the canonical single-field validator, immutable ProjectInputSet and
+    composite Workbook identity. No engine execution. No historical run or
+    certificate row is touched. Capacity post-CAS rescaling is excluded.
+    """
+    import json as _json
+
+    from app.persistence.db import get_connection
+    from app.persistence.records import ProjectRecord, WorkspaceStateRecord
+    from app.services.project_library_service import is_protected_reference
+    from app.workbook.input_set import ProjectInputSet
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.update_service import (
+        BatchApplyError, FieldValidationError, StaleContentError,
+        VersionMismatchError, WorkbookUpdateService, _assert_batch_field_applicable,
+    )
+    from app.workbook.workbook_identity import assemble_transactional
+
+    if not isinstance(updates, list) or not 1 <= len(updates) <= 50:
+        raise BatchApplyError("BATCH_UPDATES_INVALID")
+    conn = get_connection()
+    cur = None
+    try:
+        conn.execute("BEGIN EXCLUSIVE")
+        cur = conn.cursor()
+        project_row = cur.execute(
+            "SELECT * FROM projects WHERE project_id=? AND user_id=? AND archived=0",
+            (project_id, user_id),
+        ).fetchone()
+        if project_row is None:
+            raise BatchApplyError("BATCH_OWNER_MISMATCH")
+        project_record = ProjectRecord.from_row(project_row)
+        if is_protected_reference(project_record) or project_record.is_readonly:
+            raise BatchApplyError("BATCH_PROTECTED_REFERENCE")
+        if project_record.project_role not in ("working_copy", "user_project"):
+            raise BatchApplyError("BATCH_NOT_EDITABLE_PROJECT")
+
+        row = cur.execute(
+            "SELECT * FROM workspace_states WHERE user_id=? AND project_id=?",
+            (user_id, project_id),
+        ).fetchone()
+        if row is None or row["workspace_id"] != expected_workspace_id:
+            raise StaleContentError("BATCH_WORKSPACE_MISMATCH")
+        if row["active_scenario_id"] != expected_scenario_id:
+            raise StaleContentError("BATCH_SCENARIO_MISMATCH")
+        if expected_workbook_version != WORKBOOK.version:
+            raise VersionMismatchError("BATCH_WORKBOOK_VERSION_MISMATCH")
+
+        identity = assemble_transactional(
+            draft_snapshot_json=row["draft_snapshot_json"] or "{}",
+            project_id=project_id,
+            user_id=user_id,
+            active_scenario_id=row["active_scenario_id"],
+            active_scenario_name=row["active_scenario_name"],
+            cursor=cur,
+            workbook_version=WORKBOOK.version,
+        )
+        if identity.composite_hash != expected_content_hash:
+            raise StaleContentError("BATCH_STALE_CONTENT")
+
+        snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
+        if not isinstance(snapshot, dict):
+            raise BatchApplyError("BATCH_MALFORMED_SNAPSHOT")
+        initial = ProjectInputSet.from_snapshot(snapshot, workbook=WORKBOOK)
+        candidate = initial
+        seen_ids: set[str] = set()
+        seen_paths: set[str] = set()
+        senior_fields: list[str] = []
+        for item in updates:
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                raise BatchApplyError("BATCH_UPDATE_SHAPE_INVALID")
+            field_id, raw_value = item
+            if not isinstance(field_id, str) or not isinstance(raw_value, str):
+                raise BatchApplyError("BATCH_UPDATE_TYPE_INVALID")
+            if field_id in seen_ids:
+                raise BatchApplyError("BATCH_DUPLICATE_FIELD", field_id)
+            seen_ids.add(field_id)
+            validation = WorkbookUpdateService.validate_field_update(field_id, raw_value)
+            if not validation.is_valid:
+                raise FieldValidationError(validation.error, validation.error_class)
+            _assert_batch_field_applicable(
+                field_id, project_type=project_record.project_type or "",
+                template_source=project_record.template_source or "",
+            )
+            canonical_path = validation.spec.engine_path
+            if canonical_path:
+                if canonical_path in seen_paths:
+                    raise BatchApplyError("BATCH_CONFLICTING_CANONICAL_AUTHORITY", canonical_path)
+                seen_paths.add(canonical_path)
+            if field_id in ("debt.senior.interest_rate_pct", "debt.senior.target_dscr"):
+                senior_fields.append(field_id)
+            candidate = WorkbookUpdateService.apply_field_to_pis(candidate, validation)
+
+        # R8/N02 senior authority: enforce on both the transactional current
+        # state and the final candidate, independent of import row order.
+        if senior_fields:
+            from app.input_adapter import assert_debt_scalar_edit_allowed
+            for fid in senior_fields:
+                try:
+                    assert_debt_scalar_edit_allowed(initial, fid)
+                    assert_debt_scalar_edit_allowed(candidate, fid)
+                except ValueError as exc:
+                    raise FieldValidationError(str(exc)) from exc
+
+        if "debt.bankability.configuration" in seen_ids:
+            from app.workbook.bankability_config import parse_config, workspace_fees_editable
+            cfg = parse_config(candidate.get("debt.bankability.configuration"))
+            if cfg.get("fees") is not None:
+                ws = WorkspaceStateRecord.from_row(row)
+                try:
+                    if not workspace_fees_editable(candidate.to_projectinputs(), ws):
+                        raise ValueError("Materialized CAPEX or explicit construction pricing owns fees.")
+                except ValueError as exc:
+                    raise FieldValidationError(str(exc)) from exc
+
+        # Incomplete models may accept a reviewed subset. If the initial
+        # snapshot is adapter-valid, the final candidate MUST remain valid.
+        try:
+            initial.to_projectinputs()
+        except ValueError:
+            pass
+        else:
+            try:
+                candidate.to_projectinputs()
+            except ValueError as exc:
+                raise FieldValidationError(str(exc)) from exc
+
+        new_snapshot = candidate.to_snapshot()
+        changed_keys = {
+            k for k in set(snapshot) | set(new_snapshot)
+            if snapshot.get(k) != new_snapshot.get(k)
+        }
+        approved_keys = {WORKBOOK.field(fid).snapshot_key for fid in seen_ids}
+        if not changed_keys.issubset(approved_keys):
+            raise BatchApplyError("BATCH_UNAPPROVED_SIDE_EFFECT")
+
+        if changed_keys:
+            new_identity = assemble_transactional(
+                draft_snapshot_json=_to_json(new_snapshot),
+                project_id=project_id,
+                user_id=user_id,
+                active_scenario_id=row["active_scenario_id"],
+                active_scenario_name=row["active_scenario_name"],
+                cursor=cur,
+                workbook_version=WORKBOOK.version,
+            )
+            cur.execute(
+                """
+                UPDATE workspace_states
+                SET draft_snapshot_json=?, draft_content_hash=?, dirty=1, updated_at=?
+                WHERE workspace_id=? AND project_id=? AND user_id=?
+                """,
+                (
+                    _to_json(new_snapshot), new_identity.composite_hash,
+                    _now_utc().isoformat(), expected_workspace_id, project_id, user_id,
+                ),
+            )
+            if cur.rowcount != 1:
+                raise StaleContentError("BATCH_WRITE_CONFLICT")
+        else:
+            # Re-import without economic changes must preserve Last Run CURRENT.
+            pass
+
+        fresh = cur.execute(
+            "SELECT * FROM workspace_states WHERE user_id=? AND project_id=? AND workspace_id=?",
+            (user_id, project_id, expected_workspace_id),
+        ).fetchone()
+        if fresh is None:
+            raise BatchApplyError("BATCH_RESULT_NOT_READABLE")
+        result = WorkspaceStateRecord.from_row(fresh)
+        conn.execute("COMMIT")
+        return result
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    finally:
+        if cur is not None:
+            cur.close()
+        conn.close()
