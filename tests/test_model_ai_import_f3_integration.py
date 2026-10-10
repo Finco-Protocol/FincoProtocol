@@ -257,6 +257,10 @@ def test_four_vertical_real_baseline_import_stale_rerun_current_history_export(
     assert len(get_run_history(OWNER, project.project_id)) == len(initial_history) + 1
     assert tuple(get_run_history(OWNER, project.project_id))[-1].runtime_snapshot_id is not None
     assert current.draft_snapshot.get(F3_KEY) == old_f3
+    if old_facilities is not None:
+        # Changing approved non-financing assumptions cannot silently amend
+        # contractual commitment, scheduled principal, interest or F3 fees.
+        assert newer.runtime_summary["financing_evidence"]["facility_schedules"] == old_facilities
     # Reapplying an unchanged value cannot create synthetic STALE.
     _batch(project, [(field_id, ProjectInputSet.from_snapshot(
         current.draft_snapshot).get(field_id).__str__())])
