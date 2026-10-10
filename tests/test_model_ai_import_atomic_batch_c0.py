@@ -189,3 +189,47 @@ def test_25_approved_fields_and_25th_invalid_rolls_back(working_copy):
     result = _apply(p, updates)
     assert all(result.get(s.field_id) == 1 for s in specs)
     assert get_workspace_state(USER, p.project_id).last_runtime_snapshot_id == "synthetic-last-run"
+
+
+
+@pytest.mark.parametrize("technology,template,input_type,field_id,raw", [
+    ("Solar", "generic_solar_reference", "solar_pv",
+     "project_setup.technical.p50_hours", "1900"),
+    ("Wind", "generic_wind_reference", "wind_onshore",
+     "project_setup.technical.p50_hours", "2850"),
+    ("Data Center", "generic_data_center_reference", "data_center",
+     "revenue.data_center.occupancy_y1", "62"),
+    ("EV Charging", "generic_ev_charging_reference", "ev_charging",
+     "revenue.ev_charging.charging_price", "0.38"),
+])
+def test_four_vertical_atomic_scalar_gates(
+        working_copy, technology, template, input_type, field_id, raw):
+    """Every supported vertical shares the one owner-scoped C0 writer."""
+    from app.persistence.projects_repository import save_project
+    from app.persistence.workspace_repository import save_workspace_state
+    code = technology.lower().replace(" ", "-") + "-synthetic-c0"
+    project = save_project(
+        user_id=USER, project_code=code, project_name=code,
+        source_project_template=template, template_source=template,
+        project_type=technology, project_origin="working_copy",
+        project_role="working_copy",
+    )
+    initial = {
+        "active_project": code, "template_source": template,
+        "project_origin": "working_copy", "project_type": input_type,
+    }
+    save_workspace_state(
+        user_id=USER, project_id=project.project_id,
+        project_code=code, draft_snapshot=initial, saved_snapshot=initial,
+    )
+    initial_hash = _hash(project)
+    WorkbookUpdateService.apply_batch_draft_update(
+        ws=get_workspace_state(USER, project.project_id),
+        updates=[(field_id, raw)], content_hash=initial_hash,
+        workbook_version=WORKBOOK.version, expected_scenario_id=None,
+        project_record=project, actor_user_id=USER,
+    )
+    current = get_workspace_state(USER, project.project_id)
+    assert WORKBOOK.field(field_id).snapshot_key in current.draft_snapshot
+    assert current.saved_snapshot == initial
+    assert _hash(project) != initial_hash
