@@ -144,6 +144,47 @@ _NON_EDITABLE_BINDINGS: frozenset[BindingStatus] = frozenset({
 _WRITABLE_KINDS: frozenset[FieldKind] = frozenset({FieldKind.INPUT})
 
 
+
+class BatchApplyError(WorkbookUpdateError):
+    """Typed, fail-closed batch rejection."""
+
+    def __init__(self, code: str, message: str = "") -> None:
+        self.code = code
+        super().__init__(message or code)
+
+
+# Capacity save calls post-CAS reference seeded rescaling: it is NOT atomic.
+_BATCH_CASCADE_FIELDS = frozenset({
+    "project_setup.technical.capacity_mw",
+    # Project name also lives on the projects row, outside the scalar draft.
+    "project_setup.identity.project_name",
+})
+
+
+def _assert_batch_field_applicable(field_id: str, *, project_type: str, template_source: str) -> None:
+    """Shared V2 registry + technology boundaries; no guesswork on applicability."""
+    from app.workbook.registry import (
+        DATA_CENTER_FIELD_IDS, DC_RENEWABLE_EXCLUDED_FIELD_IDS,
+        DC_DERIVED_OPEX_FIELD_ID, EV_CHARGING_FIELD_IDS,
+        EV_RENEWABLE_EXCLUDED_FIELD_IDS, is_data_center_project_type,
+    )
+
+    if field_id in _BATCH_CASCADE_FIELDS:
+        raise BatchApplyError("BATCH_FIELD_REQUIRES_ATOMIC_CASCADE_SUPPORT", field_id)
+
+    template = (template_source or "").strip().lower()
+    dc = is_data_center_project_type(project_type) or template == "generic_data_center_reference"
+    ev = (project_type or "").strip().lower() in ("ev charging", "ev_charging") or template == "generic_ev_charging_reference"
+    if dc and (field_id in DC_RENEWABLE_EXCLUDED_FIELD_IDS or field_id == DC_DERIVED_OPEX_FIELD_ID):
+        raise BatchApplyError("BATCH_FIELD_NOT_APPLICABLE", field_id)
+    if not dc and field_id in DATA_CENTER_FIELD_IDS:
+        raise BatchApplyError("BATCH_FIELD_NOT_APPLICABLE", field_id)
+    if ev and field_id in EV_RENEWABLE_EXCLUDED_FIELD_IDS:
+        raise BatchApplyError("BATCH_FIELD_NOT_APPLICABLE", field_id)
+    if not ev and field_id in EV_CHARGING_FIELD_IDS:
+        raise BatchApplyError("BATCH_FIELD_NOT_APPLICABLE", field_id)
+
+
 class WorkbookUpdateService:
     """Pure static service for the V2 field edit pipeline.
 
@@ -462,4 +503,75 @@ class WorkbookUpdateService:
             if refreshed is not None:
                 return ProjectInputSet.from_snapshot(refreshed.draft_snapshot, workbook=WORKBOOK)
 
+        return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)
+
+
+    @staticmethod
+    def apply_batch_draft_update(
+        *,
+        ws,
+        updates: list[tuple[str, str]],
+        content_hash: str,
+        workbook_version: str,
+        expected_scenario_id: Optional[str],
+        project_record,
+        actor_user_id: str,
+    ) -> ProjectInputSet:
+        """Atomic canonical update of a bounded *approved* set of fields.
+
+        Uses the existing Workspace V2 persistence authority exactly once;
+        each validation and ownership invariant is rechecked under BEGIN
+        EXCLUSIVE before any financial state is persisted.  No auto-run.
+        """
+        from app.persistence.workspace_repository import v2_atomic_batch_draft_update
+        from app.services.project_library_service import is_protected_reference
+
+        if workbook_version != WORKBOOK.version:
+            raise VersionMismatchError("BATCH_WORKBOOK_VERSION_MISMATCH")
+        if is_protected_reference(project_record):
+            raise ProtectedReferenceError("BATCH_PROTECTED_REFERENCE")
+        if actor_user_id != ws.user_id or actor_user_id != project_record.user_id:
+            raise BatchApplyError("BATCH_OWNER_MISMATCH")
+        if project_record.project_id != ws.project_id:
+            raise BatchApplyError("BATCH_OWNER_MISMATCH")
+        if ws.active_scenario_id != expected_scenario_id:
+            raise StaleContentError("BATCH_SCENARIO_MISMATCH")
+        if not isinstance(updates, list) or not 1 <= len(updates) <= 50:
+            raise BatchApplyError("BATCH_UPDATES_INVALID", "Expected 1-50 approved updates.")
+        if not isinstance(content_hash, str) or len(content_hash) != 64:
+            raise BatchApplyError("BATCH_HASH_INVALID")
+
+        seen_ids: set[str] = set()
+        seen_paths: set[str] = set()
+        for item in updates:
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                raise BatchApplyError("BATCH_UPDATE_SHAPE_INVALID")
+            field_id, raw_value = item
+            if not isinstance(field_id, str) or not isinstance(raw_value, str):
+                raise BatchApplyError("BATCH_UPDATE_TYPE_INVALID")
+            if field_id in seen_ids:
+                raise BatchApplyError("BATCH_DUPLICATE_FIELD", field_id)
+            seen_ids.add(field_id)
+            validation = WorkbookUpdateService.validate_field_update(field_id, raw_value)
+            if not validation.is_valid:
+                raise FieldValidationError(validation.error, validation.error_class)
+            _assert_batch_field_applicable(
+                field_id, project_type=project_record.project_type or "",
+                template_source=project_record.template_source or "",
+            )
+            path = validation.spec.engine_path
+            if path is not None:
+                if path in seen_paths:
+                    raise BatchApplyError("BATCH_CONFLICTING_CANONICAL_AUTHORITY", path)
+                seen_paths.add(path)
+
+        result = v2_atomic_batch_draft_update(
+            user_id=actor_user_id,
+            project_id=ws.project_id,
+            expected_workspace_id=ws.workspace_id,
+            expected_scenario_id=expected_scenario_id,
+            expected_content_hash=content_hash,
+            expected_workbook_version=workbook_version,
+            updates=updates,
+        )
         return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)
