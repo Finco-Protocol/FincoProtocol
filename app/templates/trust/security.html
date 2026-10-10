@@ -1,0 +1,9 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<p>The controls the product has today, each with the code and the test that prove it. Open items are listed on <a href="/trust/known-gaps">Known gaps</a>.</p>
+{% for area, items in groups.items() %}
+<h2>{{ area_labels[area] }}</h2>
+{% for i in items %}{{ m.item(i, labels) }}{% endfor %}
+{% endfor %}
+{% endblock %}

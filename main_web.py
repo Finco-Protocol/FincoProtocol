@@ -396,7 +396,9 @@ app.include_router(_radar_router)
 
 # -- FINCO Protocol Shell (Unified home + Verify surface) ----------------------
 from app.protocol_ui.router import router as _protocol_router
+from app.trust_readiness.router import router as _trust_readiness_router
 app.include_router(_protocol_router)
+app.include_router(_trust_readiness_router)
 
 # -- P4: FINCO Token Utility (wallet challenge/verify + access surface) ---------
 from app.protocol.router import router as _finco_utility_router
@@ -562,6 +564,7 @@ _DEMO_PROVISION_SKIP_PREFIXES = (
     "/api",  # public developer API — no demo session created on stateless API calls
     "/protocol/finco",  # P4 token utility — requires real auth, not auto-provisioned demo
     "/verify/run",  # certificate routes require explicit authentication
+    "/trust",  # public read-only Trust & Readiness pages — set no cookie
 )
 
 

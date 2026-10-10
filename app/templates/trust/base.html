@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page_title }} - FINCO Trust</title>
+  <meta name="description" content="{{ page_lede }}" />
+  <link rel="stylesheet" href="/static/trust_readiness.css" />
+</head>
+<body class="tr-body">
+  <header class="tr-top">
+    <a class="tr-brand" href="/trust">FINCO Trust &amp; Readiness</a>
+    <nav class="tr-nav" aria-label="Trust sections">
+      {% for p in pages %}<a href="{{ p.path }}"{% if p.slug == active %} aria-current="page"{% endif %}>{{ p.nav }}</a>{% endfor %}
+    </nav>
+  </header>
+  <main class="tr-main" id="main">
+    <h1>{{ page_title }}</h1>
+    <p class="tr-lede">{{ page_lede }}</p>
+    {% block body %}{% endblock %}
+  </main>
+  <footer class="tr-foot">
+    <p>Reviewed {{ reviewed_on }}. {{ scope }}</p>
+    <p>This page describes the product. It is not a legal document, an audit opinion or a certification. <a href="/trust/legal">Legal documents</a> &middot; <a href="/trust/registry.json">Machine-readable registry</a></p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<p>How a visitor becomes a user, and how one user's data is kept apart from another's.</p>
+<section class="tr-facts">
+<h2>Current sign-in model</h2>
+<ul class="tr-plain">
+<li>One operator account is configured through the environment. Its password is stored only as a bcrypt hash.</li>
+<li>Everyone else works in an anonymous demo session. A demo session is a separate, signed identity with its own data and operation limits.</li>
+<li>There are no customer accounts, no single sign-on and no multi-factor sign-in today.</li>
+</ul>
+</section>
+{% for area, items in groups.items() %}
+<h2>{{ area_labels[area] }}</h2>
+{% for i in items %}{{ m.item(i, labels) }}{% endfor %}
+{% endfor %}
+<h2>Open items in this area</h2>
+{% for g in gaps %}{{ m.gap(g) }}{% endfor %}
+{% endblock %}

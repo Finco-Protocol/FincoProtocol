@@ -1,0 +1,8 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<p>Verified deviations from what a reader would reasonably expect. Each is pinned by a test, so fixing one forces this page to change.</p>
+{% for g in gaps %}{{ m.gap(g) }}{% endfor %}
+<h2>What is not claimed</h2>
+<ul class="tr-plain">{% for n in not_claimed %}<li><strong>{{ n.label }}:</strong> {{ n.statement }}</li>{% endfor %}</ul>
+{% endblock %}

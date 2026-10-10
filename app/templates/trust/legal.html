@@ -1,0 +1,7 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<p>None of the documents below is published. They need counsel's approval and the owner's explicit authorisation first. The Data handling and Retention pages record the facts counsel will need.</p>
+<div class="tr-scroll"><table class="tr-table"><thead><tr><th>Document</th><th>State</th><th>Needed before publishing</th><th>Note</th></tr></thead>
+<tbody>{% for d in docs %}<tr id="{{ d.key }}"><th scope="row">{{ d.title }}</th><td>Not published</td><td>{{ d.approval_required }}</td><td>{{ d.note }}</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}
