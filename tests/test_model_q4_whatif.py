@@ -34,10 +34,29 @@ def test_q4_does_not_guess_unknown_findings_or_verticals():
         whatif._mapping("QM-COV-001", object(), "solar", "1.3")
 
 
-@pytest.mark.parametrize("name", ["", " ", "X" * 81, "ABC\\nDEF"])
+@pytest.mark.parametrize("name", ["", " ", "X" * 81, "ABC" + chr(10) + "DEF", "ABC" + chr(13) + "DEF", "ABC" + chr(0) + "DEF"])
 def test_q4_scenario_name_bound(name):
     with pytest.raises(whatif.Q4Rejected):
         whatif._assert_name(name)
+
+
+def test_q4_unicode_name_and_semantic_field_resolution():
+    assert whatif._assert_name("Šibenik — scenarij") == "Šibenik — scenarij"
+    from app.workbook.input_set import ProjectInputSet
+    from app.workbook.registry import WORKBOOK
+    snapshot = {
+        "active_project": "synthetic",
+        "template_source": "generic_solar_reference",
+        "project_origin": "working_copy",
+        "project_type": "solar_pv",
+        "gearing_pct": "72.0",
+        "target_dscr": "1.2",
+    }
+    pis = ProjectInputSet.from_snapshot(snapshot)
+    assert pis.get("debt.senior.gearing_pct") == 72.0
+    assert pis.get("debt.senior.target_dscr") == 1.2
+    assert pis.values.get("gearing_pct") is None
+    assert WORKBOOK.field("debt.senior.gearing_pct").snapshot_key == "gearing_pct"
 
 
 def test_unsigned_confirmation_rejected_before_database_connection():
@@ -153,6 +172,8 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
               "proposed_value": str(candidate)}, cookies=cookie(user))
     assert preview_response.status_code == 200, preview_response.text
     assert "NOT A RUN" in preview_response.text
+    assert "Original input</dt><dd>" + str(original_gear) in preview_response.text
+    assert "Proposed input</dt><dd>" + str(float(candidate)) in preview_response.text
     token = re.search(r'name="token" value="([^"]+)"', preview_response.text).group(1)
     assert len(get_run_history(user, record.project_id)) == len(history0)
     assert len(list_scenarios(user, record.project_id)) == initial_count
@@ -213,6 +234,15 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     assert created.status_code == 200, created.text
     assert "NOT_RUN" in created.text
     sid = re.search(r"ID ([0-9a-f]{16})", created.text).group(1)
+    scenarios = list_scenarios(user, record.project_id)
+    assert len(scenarios) == initial_count + (2 if initial_count == 0 else 1)
+    child = next(sc for sc in scenarios if sc.scenario_id == sid)
+    assert child.overrides == {"gearing_pct": candidate}
+    from app.persistence.scenarios_repository import resolve_scenario_snapshot
+    from app.workbook.input_set import ProjectInputSet
+    effective = resolve_scenario_snapshot(child.base_input_set, child.overrides)
+    assert ProjectInputSet.from_snapshot(effective).get("debt.senior.gearing_pct") == candidate
+    assert float(child.base_input_set["gearing_pct"]) == original_gear
     ws_before_select = get_workspace_state(user, record.project_id)
     assert ws_before_select.active_scenario_id == ws0.active_scenario_id
     assert ws_before_select.last_runtime_snapshot_id == ws0.last_runtime_snapshot_id
@@ -233,7 +263,17 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     assert chosen.status_code == 200
     assert get_workspace_state(user, record.project_id).active_scenario_id == sid
 
-    run_explicitly()
+    # Inspect the actual ProjectInputs forwarded to the real engine process.
+    from app.runtime import model_execution
+    actual_engine = model_execution.run_model_process
+    observed = []
+    async def capture_engine(func, *args, **kwargs):
+        pi = kwargs["project_inputs_override"]
+        observed.append((pi.financing.gearing_ratio, pi.financing.target_dscr))
+        return await actual_engine(func, *args, **kwargs)
+    with patch.object(model_execution, "run_model_process", capture_engine):
+        run_explicitly()
+    assert observed and observed[-1][0] == pytest.approx(candidate / 100)
     result = c.get("/v2/workbook/whatif/compare",
         params={"project": record.project_code, "scenario_id": sid}, cookies=cookie(user))
     assert result.status_code == 200, result.text
