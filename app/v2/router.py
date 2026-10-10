@@ -979,6 +979,7 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
     the runtime_summary is read from projection.fs.runtime_summary — it is the
     same thawed dict as rr.runtime_summary and avoids a second get_runtime_result call.
     """
+    from app.auth import generate_csrf_token
     from app.workbook.runtime_projection import (
         build_runtime_projection_bundle,
         classify_runtime_state,
@@ -1034,6 +1035,8 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
 
     return {
         "revenue_fields": fields,
+        "revenue_multistream": _build_revenue_contract_editor(pis, ws),
+        "revenue_contracts_csrf_token": generate_csrf_token(),
         "revenue_state": revenue_state.value,
         "revenue_runtime_summary": rs,
         "revenue_pricing_basis": (
@@ -1101,6 +1104,57 @@ def _build_dc_revenue_reconciliation(pis) -> list[tuple[str, object, str]]:
         ("Revenue Escalation", f"{(escalation / 100.0 if escalation > 1.0 else escalation) * 100:.12g}", "%/yr"),
         ("Total Revenue", "Runtime-derived (occupancy ramp + indexation)", ""),
     ]
+
+
+def _build_revenue_contract_editor(pis, ws):
+    import json
+    from app.workbook.revenue_multistream import FIELD_ID, SNAPSHOT_KEY
+    from domain.revenue.multistream_runtime import parse_config
+    from app.persistence.scenarios_repository import get_scenario
+    raw = pis.get(FIELD_ID) or ""
+    scenario = get_scenario(ws.active_scenario_id, ws.user_id) if ws.active_scenario_id else None
+    scope = "Working Copy / Base"
+    overridden = False
+    if scenario is not None and scenario.project_id == ws.project_id and not scenario.archived and not scenario.is_base_case:
+        scope = scenario.scenario_name
+        overridden = SNAPSHOT_KEY in scenario.overrides
+        raw = scenario.overrides.get(SNAPSHOT_KEY, raw)
+    config = parse_config(raw)
+    return {"active": config is not None, "raw": raw, "scope": scope,
+            "overridden": overridden, "rows": json.loads(config.canonical_json)["streams"] if config else []}
+
+
+@router.post("/workbook/revenue/contracts")
+async def v2_revenue_contracts(request: Request, _: None = Depends(require_v2_active)):
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+    form = await request.form()
+    from app.auth import validate_csrf_token
+    if not validate_csrf_token(form.get("csrf_token")):
+        return JSONResponse({"error": "REVENUE_CONTRACTS_CSRF_INVALID"}, status_code=403)
+    project = str(form.get("project") or "").strip()
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.revenue_contracts_service import save_contracts, RevenueContractConflict
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return JSONResponse({"error": "Project not found"}, status_code=404)
+    if is_protected_reference(record):
+        return JSONResponse({"error": "Protected reference; create a working copy"}, status_code=409)
+    try:
+        save_contracts(owner=owner, project_id=record.project_id,
+                       expected_hash=str(form.get("content_hash") or ""), raw=form.get("contracts", ""),
+                       inherit=form.get("action") == "inherit")
+    except (ValueError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409 if isinstance(exc, RevenueContractConflict) else 422)
+    ws = get_workspace_state(owner, record.project_id)
+    pis = _build_pis_with_composite_identity(ws, record, owner)
+    if request.headers.get("HX-Request") == "true":
+        response = _render_revenue_htmx_sheet(request, pis, ws, record, project)
+        html = response.body.decode("utf-8") + "\n" + _scenario_authority_oob(request, ws, record, project, owner, include_revenue=False)
+        return HTMLResponse(html)
+    return RedirectResponse(f"/v2/workbook?project={project}", status_code=303)
 
 
 def _render_revenue_htmx_sheet(
@@ -2582,7 +2636,7 @@ async def v2_workbook_run(
         # so the legacy ScenarioManager is never activated by a user-created name.
         scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
 
-        if not sc_rec.is_base_case and "tariff_eur_mwh" in (sc_rec.overrides or {}):
+        if not sc_rec.is_base_case and any(key in (sc_rec.overrides or {}) for key in ("tariff_eur_mwh", "rev_multistream_config_json")):
             from app.workbook.scenario_revenue_authority import bind_scenario_tariff
             try:
                 effective_snapshot = bind_scenario_tariff(
@@ -2678,6 +2732,11 @@ async def v2_workbook_run(
             "scenario_id": active_scenario_id,
             "authority": "materialized_project_inputs",
         }
+        _contracts = getattr(override.revenue, "multistream_config_json", "")
+        if _contracts:
+            _scenario_revenue_input.pop("effective_tariff_eur_mwh")
+            _scenario_revenue_input["multistream_config_json"] = _contracts
+            _kpis_enriched["revenue_multistream_audit"] = result["revenue_multistream_audit"]
         _kpis_enriched["scenario_revenue_input"] = _scenario_revenue_input
 
     # ── Step 12: atomic commit (final CAS + promote + dirty=False) ────────── #
@@ -3217,12 +3276,12 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws, *,
 
 
 def _scenario_authority_oob(
-    request, ws, project_record, project: str, workspace_owner: str
+    request, ws, project_record, project: str, workspace_owner: str, *, include_revenue=True
 ) -> str:
     """Refresh every runtime-backed surface after a scenario mutation."""
     from app.v2.post_run_ui import build_post_save_ui_state
 
-    return build_post_save_ui_state(
+    html = build_post_save_ui_state(
         ws_fresh=ws,
         project_record=project_record,
         project=project,
@@ -3231,6 +3290,13 @@ def _scenario_authority_oob(
         include_banner_and_controls=True,
         include_scenario_list=False,
     )
+    if include_revenue and str(project_record.project_type).lower() in ("solar", "wind"):
+        from app.v2.post_run_ui import _as_oob
+        pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+        ctx = _base_sheet_ctx(request, pis, ws, project_record, project)
+        ctx.update(_build_revenue_ctx(pis, ws))
+        html += "\n" + _as_oob(_templates.get_template("partials/sheet_revenue.html").render(ctx), "v2-sheet-revenue")
+    return html
 
 
 @router.post("/workbook/scenarios/create")
@@ -3521,6 +3587,8 @@ async def v2_scenario_update_overrides(
     overrides: dict = {}
     items = form.multi_items() if hasattr(form, "multi_items") else form.items()
     for key, val in items:
+        if key == "rev_multistream_config_json":
+            return JSONResponse({"error": "Use the CAS-protected Revenue contract editor"}, status_code=422)
         if key in _SKIP_KEYS or not key or not val:
             continue
         try:
@@ -4999,6 +5067,13 @@ async def v2_workbook_goal_seek_run(
         return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
             "target_metric_label": metric.label, "message": str(exc)}, "apply": None, "request": request})
 
+    if getattr(override.revenue, "multistream_config_json", "") or (
+        (_scenario_overrides_for_fold or {}).get("rev_multistream_config_json")
+    ):
+        return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
+            "target_metric_label": metric.label,
+            "message": "Explicit revenue contracts have no scalar Goal Seek tariff authority. Use scenario contracts."},
+            "apply": None, "request": request})
     # ── Current canonical tariff (draft state the user sees) ──────────────── #
     apply_field_id, raw_current = _goal_seek_resolve_tariff_field(variable, pis_draft)
     try:

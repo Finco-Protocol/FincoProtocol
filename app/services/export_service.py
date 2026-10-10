@@ -395,7 +395,10 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
     pis = WorkbookService.build_input_set(export_snapshot)
     project_inputs = pis.to_projectinputs()
     if isinstance(revenue_evidence, dict) and revenue_evidence.get("authority") == "materialized_project_inputs":
-        if project_inputs.revenue.ppa_base_tariff != revenue_evidence.get("effective_tariff_eur_mwh"):
+        if "multistream_config_json" in revenue_evidence:
+            if getattr(project_inputs.revenue, "multistream_config_json", "") != revenue_evidence["multistream_config_json"]:
+                raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: revenue contracts do not match Run evidence.")
+        elif project_inputs.revenue.ppa_base_tariff != revenue_evidence.get("effective_tariff_eur_mwh"):
             raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: effective tariff does not match Run evidence.")
     current_snapshot: dict[str, Any] = dict(ws.last_runtime_snapshot)
 

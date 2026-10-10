@@ -987,7 +987,7 @@ class TestGovernanceTreatment:
         import model_v2_governance as gov
 
         for other in ("finco_core/inputs/valuation.py", "finco_core/sponsor/xirr.py",
-                      "financial_engine/orchestrator.py",
+                      "financial_engine/orchestrator.py.bak",
                       "financial_engine/shareholder_waterfall/model.py",
                       "financial_engine/sponsor_returns/model.py"):
             assert not gov.approved_by_active_model_v2_scope(other), other

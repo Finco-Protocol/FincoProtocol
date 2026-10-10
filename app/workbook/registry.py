@@ -886,7 +886,14 @@ _rv_ev_charging = _section("ev_charging", "EV Charging Drivers", _RV, order=4, f
                            "this value does not enter the EV economics in V1."),
 ])
 
-_SHEET_REVENUE = _sheet(_RV, "Revenue", [_rv_ppa, _rv_balancing, _rv_merchant, _rv_data_center, _rv_ev_charging], icon="💰", order=3)
+_rv_multistream = _section("multistream", "Dated Revenue Contracts", _RV, order=5, fields=[
+    _f("revenue.multistream.contracts", "Revenue contracts", "rev_multistream_config_json",
+       FieldType.TEXT, _RV, "multistream", kind=FieldKind.INPUT, persisted=True,
+       source_of_truth=SourceOfTruth.INPUT_SET, engine_path="revenue.multistream_config_json",
+       scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+       editable=True, description="Explicit Solar/Wind PPA, Merchant and two-way CfD contracts; same-period settlement only.")
+])
+_SHEET_REVENUE = _sheet(_RV, "Revenue", [_rv_ppa, _rv_balancing, _rv_merchant, _rv_data_center, _rv_ev_charging, _rv_multistream], icon="💰", order=3)
 
 # ── Technology-conditional field visibility (V2 Workbook) ────────────────────
 # Data Center shows the Data Center section and hides renewable-only controls;
@@ -900,7 +907,7 @@ EV_CHARGING_FIELD_IDS: frozenset[str] = frozenset(f.field_id for f in _rv_ev_cha
 # Renewable-only controls that must never render as primary Data Center inputs.
 DC_RENEWABLE_EXCLUDED_FIELD_IDS: frozenset[str] = frozenset(
     f.field_id
-    for section in (_rv_ppa, _rv_balancing, _rv_merchant)
+    for section in (_rv_ppa, _rv_balancing, _rv_merchant, _rv_multistream)
     for f in section.fields
 ) | {
     f"{_PS}.technical.p50_hours",
@@ -910,7 +917,7 @@ DC_RENEWABLE_EXCLUDED_FIELD_IDS: frozenset[str] = frozenset(
 # Renewable/PPA controls that must never render as primary EV Charging inputs.
 EV_RENEWABLE_EXCLUDED_FIELD_IDS: frozenset[str] = frozenset(
     f.field_id
-    for section in (_rv_ppa, _rv_balancing, _rv_merchant)
+    for section in (_rv_ppa, _rv_balancing, _rv_merchant, _rv_multistream)
     for f in section.fields
 ) | {
     f"{_PS}.technical.p50_hours",

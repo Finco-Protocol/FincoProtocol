@@ -30,8 +30,8 @@ Surfaces refreshed (all runtime-dependent):
     #model-workspace-header     compact header state (UX Foundation)
     #v2-sheet-run-history       run history listing (Run Intelligence V1)
 
-Inputs-only sheets (project_setup, inputs, revenue, CAPEX, OPEX) are NOT
-refreshed by a Run — they hold no runtime-derived values.
+Inputs-only sheets are not refreshed by a Run. Revenue V2 additionally
+refreshes its persisted contract audit when that opt-in authority is active.
 """
 from __future__ import annotations
 
@@ -91,6 +91,7 @@ def build_post_run_ui_state(
         _build_tax_ctx,
         _build_financial_statements_ctx,
         _build_returns_ctx,
+        _build_revenue_ctx,
     )
 
     if context is not None:
@@ -171,6 +172,11 @@ def build_post_run_ui_state(
         ws_fresh, rr=rr, runtime_is_stale=freshness.is_stale))
     returns_html = _templates.get_template("partials/sheet_returns.html").render(ctx)
     fragments.append(_as_oob(returns_html, "v2-sheet-returns"))
+
+    if (ws_fresh.last_runtime_summary or {}).get("revenue_multistream_audit"):
+        revenue_ctx = {**ctx, **_build_revenue_ctx(pis_fresh, ws_fresh, projection=projection)}
+        revenue_html = _templates.get_template("partials/sheet_revenue.html").render(revenue_ctx)
+        fragments.append(_as_oob(revenue_html, "v2-sheet-revenue"))
 
     # I. Scenario last-run statuses (persisted during run step 12b).
     scenarios_html = _scenario_list_html(

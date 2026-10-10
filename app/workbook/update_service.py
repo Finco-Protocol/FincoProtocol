@@ -322,6 +322,13 @@ class WorkbookUpdateService:
                     error_class=FieldErrorClass.INVALID,
                 )
 
+        if field_id == "revenue.multistream.contracts":
+            from app.workbook.revenue_multistream import canonical_json
+            try:
+                typed = canonical_json(typed)
+            except ValueError as exc:
+                return FieldValidationResult(field_id=field_id, raw_value=raw_value,
+                    typed_value=None, spec=spec, error=str(exc), error_class=FieldErrorClass.INVALID)
         if field_id == "debt.financing.instruments":
             from app.workbook.multisenior_config import canonical_json
             try:
@@ -492,6 +499,10 @@ class WorkbookUpdateService:
             if isinstance(exc, FinancingError):
                 raise FieldValidationError(str(exc)) from exc
             if field_id == "debt.bankability.configuration" or (ws.draft_snapshot or {}).get("bankability_config_json"):
+                raise FieldValidationError(str(exc)) from exc
+            if (field_id == "revenue.multistream.contracts"
+                    or (ws.draft_snapshot or {}).get("rev_multistream_config_json")
+                    or str(exc).startswith("REVENUE_V2")):
                 raise FieldValidationError(str(exc)) from exc
             raise
         if result is None:

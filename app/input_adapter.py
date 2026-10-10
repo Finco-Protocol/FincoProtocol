@@ -1419,6 +1419,8 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
         result = apply_ev_charging_runtime_adapter(result, drivers_from_snapshot(snapshot))
 
     from app.workbook.bankability_config import SNAPSHOT_KEY, apply_config
+    result = apply_config(result, snapshot.get(SNAPSHOT_KEY), project_type=project_type)
+    from app.workbook.revenue_multistream import SNAPSHOT_KEY, apply_config
     return apply_config(result, snapshot.get(SNAPSHOT_KEY), project_type=project_type)
 
 
