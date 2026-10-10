@@ -24,7 +24,10 @@ def _scope(request, project: str):
     if not record:
         raise Q4Rejected("Q4_PROJECT_NOT_FOUND", 404)
     # This first version never writes through a shared project.
-    if owner != user.user_id or is_protected_reference(record):
+    if (owner != user.user_id or is_protected_reference(record)
+            or getattr(record, "archived", False)
+            or getattr(record, "is_readonly", False)
+            or record.project_role not in ("working_copy", "user_project")):
         raise Q4Rejected("Q4_PROJECT_READ_ONLY", 403)
     return record, owner
 
