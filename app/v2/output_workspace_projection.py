@@ -27,8 +27,8 @@ from app.workbook.runtime_projection import (
 # and for the cross-check of persisted facility service against the persisted PF waterfall.
 BALANCE_TOLERANCE_KEUR = 1.0
 FACILITY_SERVICE_TOLERANCE_KEUR = 0.01
-# A closing balance below the persisted statement precision (0.005 kEUR) is "fully repaid" for display.
-UNPAID_DISPLAY_FLOOR_KEUR = 0.005
+# A non-zero closing balance below the 2-decimal display grain is labelled as such, never reported as repaid.
+UNPAID_DISPLAY_FLOOR_KEUR = 0.005   # the 2-decimal display grain; used only to LABEL a residual, never to alter it
 
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -188,8 +188,50 @@ def _last_value(values: Sequence[Any]) -> Optional[float]:
     return None
 
 
+REPAYMENT_LABELS = {
+    "REPAID": "FULLY REPAID — the persisted closing balance is exactly zero",
+    "OUTSTANDING": "UNPAID OBLIGATION — the persisted closing balance is outstanding",
+    "OUTSTANDING_BELOW_DISPLAY": "OUTSTANDING BELOW DISPLAY PRECISION — the persisted closing balance is not zero",
+    "NEGATIVE_BALANCE": "NEGATIVE PERSISTED BALANCE — not a liability; verify the Run evidence",
+    "UNAVAILABLE": "REPAYMENT STATUS UNAVAILABLE — the Run did not persist the closing balance",
+}
+
+
+def _repayment(closing: Optional[float], basis: str) -> dict[str, Any]:
+    """Repayment status of the PERSISTED closing balance.  Display rounding never decides it: the balance is shown
+    as persisted and a non-zero balance is never reported as repaid because it rounds to 0.00."""
+    if closing is None:
+        status = "UNAVAILABLE"
+    elif closing == 0.0:
+        status = "REPAID"
+    elif closing < 0.0:
+        status = "NEGATIVE_BALANCE"
+    elif closing >= UNPAID_DISPLAY_FLOOR_KEUR:
+        status = "OUTSTANDING"
+    else:
+        status = "OUTSTANDING_BELOW_DISPLAY"
+    return {"status": status, "label": REPAYMENT_LABELS[status], "balance": _cell(closing), "basis": basis,
+            "exact_text": None if closing is None else f"{closing:.6g}",
+            "problem": status in ("OUTSTANDING", "OUTSTANDING_BELOW_DISPLAY", "NEGATIVE_BALANCE", "UNAVAILABLE")}
+
+
+def _canonical_senior_terminal(sponsor_schedule: Any) -> Optional[dict[str, Any]]:
+    """The Run's own typed Senior terminal state (``terminal_financial_state.senior``), when persisted."""
+    summary = sponsor_schedule.get("summary") if isinstance(sponsor_schedule, Mapping) else None
+    tfs = summary.get("terminal_financial_state") if isinstance(summary, Mapping) else None
+    senior = tfs.get("senior") if isinstance(tfs, Mapping) else None
+    if not isinstance(senior, Mapping) or not senior.get("status"):
+        return None
+    index = senior.get("contractual_maturity_period_index")
+    return {"status": str(senior["status"]), "maturity_index": int(index) if isinstance(index, (int, float)) and not isinstance(index, bool) else None,
+            "maturity_date": senior.get("contractual_maturity_date"),
+            "balance": _cell(senior.get("balance_at_contractual_maturity_keur"))}
+
+
 def _debt_section(summary: Mapping[str, Any], debt_schedule: Optional[Mapping[str, Any]],
-                  pf_periods: Optional[Sequence[Any]], pnl_periods: Optional[Sequence[Any]]) -> dict[str, Any]:
+                  pf_periods: Optional[Sequence[Any]], pnl_periods: Optional[Sequence[Any]],
+                  sponsor_schedule: Any = None) -> dict[str, Any]:
+    canonical = _canonical_senior_terminal(sponsor_schedule)
     evidence = summary.get("financing_evidence") if isinstance(summary, Mapping) else None
     evidence = evidence if isinstance(evidence, Mapping) else {}
     debt_periods = (debt_schedule or {}).get("periods") if isinstance(debt_schedule, Mapping) else None
@@ -202,22 +244,26 @@ def _debt_section(summary: Mapping[str, Any], debt_schedule: Optional[Mapping[st
             maturity_index = f.get("maturity_period_index")
             maturity_index = int(maturity_index) if isinstance(maturity_index, (int, float)) else None
             operating = _facility_operating_table(f, dates)
-            closing = _last_value(f.get("closing_keur"))
-            unpaid = None if closing is None else (closing if abs(closing) > UNPAID_DISPLAY_FLOOR_KEUR else 0.0)
+            indices = [int(i) for i in f.get("period_indices") or ()]
+            closings = list(f.get("closing_keur") or ())
+            at_maturity = (_num(closings[indices.index(maturity_index)])
+                           if maturity_index in indices and indices.index(maturity_index) < len(closings) else None)
+            repayment = _repayment(at_maturity, f"closing balance at this facility's maturity period {maturity_index}"
+                                   if maturity_index is not None else "maturity period not persisted")
             facilities.append({
                 "id": str(f.get("instrument_id") or ""), "label": _facility_label(position, str(f.get("instrument_id") or "")),
                 "commitment": _cell(f.get("commitment_keur")),
                 "maturity_index": maturity_index, "maturity_date": dates.get(maturity_index) if maturity_index is not None else None,
-                "unpaid": _cell(unpaid), "fully_repaid": unpaid is not None and unpaid == 0.0,
+                "repayment": repayment,
                 "construction": _construction_table(f, construction), "operating": operating, "fees_supported": True,
             })
         check = _facility_service_check(schedules, pf_periods)
         return {"mode": "F3_TWO_SENIOR", "authority": str(evidence.get("facility_authority") or ""), "facilities": facilities,
-                "service_check": check,
+                "service_check": check, "canonical_terminal": canonical,
                 "note": "Facility schedules are the Run's own F3 evidence; the aggregate Senior lines are the PF waterfall's."}
     periods = [p for p in (debt_periods or ()) if isinstance(p, Mapping)]
     if not periods:
-        return {"mode": "UNAVAILABLE", "facilities": [], "service_check": {"state": "UNAVAILABLE"},
+        return {"mode": "UNAVAILABLE", "facilities": [], "service_check": {"state": "UNAVAILABLE"}, "canonical_terminal": canonical,
                 "note": "This Run persisted no debt schedule."}
     cols = _columns(periods, "period")
     spec = (("opening", "Opening balance", None, False), ("interest", "Interest", "senior_interest_keur", False),
@@ -228,14 +274,21 @@ def _debt_section(summary: Mapping[str, Any], debt_schedule: Optional[Mapping[st
         unit = "x" if key == "dscr" else "keur"
         rows.append({"key": key, "label": label, "unit": unit, "total": total, "not_exposed": source is None,
                      "cells": [_cell(p.get(source) if source else None, unit) for p in periods]})
-    closing_last = _last_value([p.get("senior_balance_keur") for p in periods])
-    unpaid = None if closing_last is None else (closing_last if abs(closing_last) > UNPAID_DISPLAY_FLOOR_KEUR else 0.0)
+    at_maturity = None
+    basis = "closing balance in the last persisted period"
+    if canonical and canonical["maturity_index"] is not None:
+        row = next((p for p in periods if p.get("period") == canonical["maturity_index"]), None)
+        if row is not None and _num(row.get("senior_balance_keur")) is not None:
+            at_maturity, basis = _num(row["senior_balance_keur"]), f"closing balance at the canonical maturity period {canonical['maturity_index']}"
+    if at_maturity is None:
+        at_maturity = _last_value([p.get("senior_balance_keur") for p in periods])
+    repayment = _repayment(at_maturity, basis)
     return {"mode": "AGGREGATE_SENIOR", "facilities": [{
-        "id": "senior", "label": "Senior debt (aggregate)", "commitment": _cell(None), "maturity_index": None,
-        "maturity_date": None, "unpaid": _cell(unpaid), "fully_repaid": unpaid == 0.0 if unpaid is not None else False,
+        "id": "senior", "label": "Senior debt (aggregate)", "commitment": _cell(None), "maturity_index": canonical["maturity_index"] if canonical else None,
+        "maturity_date": canonical["maturity_date"] if canonical else None, "repayment": repayment,
         "construction": {"available": False, "columns": [], "rows": []}, "fees_supported": False,
         "operating": {"columns": cols, "rows": rows, "available": True}}],
-        "service_check": {"state": "NOT_APPLICABLE"},
+        "service_check": {"state": "NOT_APPLICABLE"}, "canonical_terminal": canonical,
         "note": ("This Run carries a single aggregate Senior schedule; per-facility interest, principal, balances, fees "
                  "and maturities are not persisted for it and are shown as not available.")}
 
@@ -306,18 +359,25 @@ def _integrity(report: Optional[Mapping[str, Any]]) -> dict[str, Any]:
             "failures": failures}
 
 
-def _identity(rr: Any, ws: Any) -> dict[str, Any]:
+UNAVAILABLE_LABEL = "UNAVAILABLE"
+
+
+def _identity(rr: Any, ws: Any, scenario_label: Optional[str]) -> dict[str, Any]:
+    """Committed Run identity.  The scenario label is proven by the authorized request layer
+    (``resolve_last_run_scenario``); a label that could not be proven is UNAVAILABLE — never Base Case, never the
+    active Working Copy scenario, never a name read from the Run's own identity blob."""
     identity = getattr(ws, "last_runtime_identity", None)
     identity = identity if isinstance(identity, Mapping) else {}
-    scenario = identity.get("scenario_name")
+    label = scenario_label.strip() if isinstance(scenario_label, str) and scenario_label.strip() else None
     ran_at = (getattr(rr, "ran_at", "") or "")
     return {"snapshot_id": getattr(rr, "snapshot_id", "") or "", "ran_at": ran_at[:19].replace("T", " "),
             "composite_hash": getattr(ws, "last_runtime_composite_hash", "") or "",
-            "scenario": scenario.strip() if isinstance(scenario, str) and scenario.strip() else "Base Case",
+            "scenario": label or UNAVAILABLE_LABEL, "scenario_proven": label is not None,
             "engine_version": str(identity.get("engine_version") or "")}
 
 
 def build_output_workspace(*, runtime_result: Any, workspace: Any, freshness: Any,
+                           last_run_scenario: Optional[str],
                            integrity_report: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
     """Compact, template-ready projection of the Statements & Debt workspace."""
     state = getattr(getattr(freshness, "state", None), "value", None)
@@ -340,7 +400,8 @@ def build_output_workspace(*, runtime_result: Any, workspace: Any, freshness: An
     ]
     balance = _balance_check(statements[1]) if statements[1]["available"] else {
         "state": "UNAVAILABLE", "label": "Balance sheet not persisted by this Run"}
-    debt = _debt_section(summary, debt_schedule, pf_periods, pnl_periods)
+    sponsor_schedule = thaw_runtime_payload(getattr(runtime_result, "sponsor_schedule", None) or {}) or {}
+    debt = _debt_section(summary, debt_schedule, pf_periods, pnl_periods, sponsor_schedule)
     service = debt.get("service_check", {"state": "NOT_APPLICABLE"})
     checks = [balance] + ([service] if service.get("state") != "NOT_APPLICABLE" else [])
     if any(c["state"] == "BREAK" for c in checks):
@@ -349,7 +410,7 @@ def build_output_workspace(*, runtime_result: Any, workspace: Any, freshness: An
         overall = "UNVERIFIED"
     else:
         overall = "RECONCILED"
-    identity = _identity(runtime_result, workspace)
+    identity = _identity(runtime_result, workspace, last_run_scenario)
     return {
         "state": state, "identity": identity, "integrity": _integrity(integrity_report),
         "reconciliation": {"overall": overall, "checks": [{"name": n, **c} for n, c in

@@ -93,7 +93,12 @@ def test_f3_two_senior_output_reconciles_to_run_evidence(env, monkeypatch, kind)
             assert op[label] == pytest.approx(schedule[key], abs=1e-9)
         assert schedule["instrument_id"] in page
     assert page.count('data-testid="out-maturity"') == 2
-    assert "UNPAID OBLIGATION" not in page and page.count("fully repaid") == 2
+    # Terminal status follows the PERSISTED closing balance at each facility's maturity (never its rounding).
+    expected = []
+    for sched in schedules:
+        closing = sched["closing_keur"][sched["period_indices"].index(sched["maturity_period_index"])]
+        expected.append("REPAID" if closing == 0 else "OUTSTANDING" if closing >= 0.005 else "OUTSTANDING_BELOW_DISPLAY")
+    assert re.findall(r'data-testid="out-repayment-status" data-status="(\w+)"', page) == expected
     # Σ facility service equals the PF waterfall Senior service (persisted-vs-persisted cross-check).
     assert 'data-testid="outputs-reconciliation" data-state="RECONCILED"' in page
     # CFADS section is the PF waterfall's fcf_banks_keur.
@@ -339,14 +344,14 @@ def test_f3_facility_service_equals_the_xlsx_senior_debt_service_row(env, monkey
 def test_projection_fails_closed_and_never_substitutes_zero():
     from app.v2.output_workspace_projection import build_output_workspace, build_output_workspace_safe
     freshness = SimpleNamespace(state=SimpleNamespace(value="CURRENT"))
-    assert build_output_workspace(runtime_result=None, workspace=None, freshness=freshness)["state"] == "NOT_RUN"
+    assert build_output_workspace(runtime_result=None, workspace=None, freshness=freshness, last_run_scenario=None)["state"] == "NOT_RUN"
     rr = SimpleNamespace(
         financial_statements={"pnl": {"periods": [{"period": 0, "date": "2030-01-01", "revenues_keur": None},
                                                     {"period": 1, "date": "2030-07-01", "revenues_keur": 5.0}]}},
         runtime_summary={}, debt_schedule={}, distribution_schedule={}, sponsor_schedule={},
         ran_at="2030-01-01T00:00:00", snapshot_id="S")
     ws = SimpleNamespace(last_runtime_identity={}, last_runtime_composite_hash="h", dirty=False)
-    out = build_output_workspace(runtime_result=rr, workspace=ws, freshness=freshness)
+    out = build_output_workspace(runtime_result=rr, workspace=ws, freshness=freshness, last_run_scenario="Base Case")
     pnl = out["statements"][0]
     revenue = next(r for r in pnl["rows"] if r["key"] == "revenues_keur")
     assert [c["v"] for c in revenue["cells"]] == [None, 5.0]
@@ -354,7 +359,7 @@ def test_projection_fails_closed_and_never_substitutes_zero():
     # Absent statements are "not available", not empty-zero tables.
     assert out["statements"][1]["available"] is False and out["statements"][2]["available"] is False
     assert out["reconciliation"]["overall"] == "UNVERIFIED"
-    broken = build_output_workspace_safe(runtime_result=object(), workspace=ws, freshness=freshness)
+    broken = build_output_workspace_safe(runtime_result=object(), workspace=ws, freshness=freshness, last_run_scenario=None)
     assert broken["state"] == "UNAVAILABLE" and not broken["statements"]
 
 
@@ -364,7 +369,7 @@ def test_stale_state_requires_the_prior_run_identity_in_the_banner():
     rr = SimpleNamespace(financial_statements={}, runtime_summary={}, debt_schedule={}, distribution_schedule={},
                          sponsor_schedule={}, ran_at="2031-05-06T07:08:09", snapshot_id="20310506T070809.000000+0000")
     ws = SimpleNamespace(last_runtime_identity={"scenario_name": "Upside"}, last_runtime_composite_hash="h", dirty=True)
-    out = build_output_workspace(runtime_result=rr, workspace=ws, freshness=freshness)
+    out = build_output_workspace(runtime_result=rr, workspace=ws, freshness=freshness, last_run_scenario="Upside")
     assert out["state"] == "STALE"
     assert "PRIOR Last Run" in out["banner"] and "2031-05-06 07:08:09" in out["banner"] and "Upside" in out["banner"]
     assert "20310506T070809.000000" in out["banner"]
@@ -378,3 +383,281 @@ def test_refresh_is_a_plain_listener_not_a_csp_blocked_trigger_filter():
     script = Path("static/js/model_outputs_workspace.js").read_text(encoding="utf-8")
     assert "htmx:afterRequest[" not in template and 'hx-trigger="click from:#tab-outputs"' in template
     assert "addEventListener('htmx:afterRequest'" in script and "'post'" in script
+
+
+# ───────────────────── committed Run scenario identity (P1) ─────────────────────
+
+def _q3_scenario(env, record) -> str:
+    html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
+    context = re.search(r'data-testid="q3-context">(.*?)</div>', html, re.S)
+    assert context, "Q3 Findings context missing"
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", context.group(1))).strip()
+    return re.search(r"Scenario: (.*?) · Run ", text).group(1)
+
+
+def _outputs_scenario(page: str):
+    match = re.search(r'data-out-scenario="([^"]*)"', page)
+    return htmllib.unescape(match.group(1)) if match else None
+
+
+def _create_scenario(env, record, name):
+    response = env.client.post("/v2/workbook/scenarios/create", data={"project": record.project_code, "scenario_name": name},
+                               headers={"HX-Request": "true"})
+    assert response.status_code == 200
+    from app.persistence.scenarios_repository import list_scenarios
+    return next(sc for sc in list_scenarios(user_id=OWNER, project_id=record.project_id) if sc.scenario_name == name)
+
+
+def test_base_case_identity_is_proven_and_equals_q3_findings(env):
+    record = env.create("solar")
+    assert _outputs_scenario(get_outputs(env, record)) is None            # NOT_RUN: no committed identity at all
+    run(env, record)
+    page = get_outputs(env, record)
+    assert _outputs_scenario(page) == "Base Case (Decision solar)" == _q3_scenario(env, record)
+    assert "UNAVAILABLE" not in re.search(r'data-testid="outputs-identity">(.*?)</span>', page).group(1)
+
+
+def test_named_scenario_stale_and_switch_keep_the_committed_identity(env):
+    from app.persistence.scenarios_repository import get_base_case_scenario
+    record = env.create("solar")
+    run(env, record)
+    base_snapshot = re.search(r'data-out-snapshot="([^"]+)"', get_outputs(env, record)).group(1)
+    upside = _create_scenario(env, record, "Upside")
+    not_run = get_outputs(env, record)                                      # selecting cleared the Last Run
+    assert 'data-state="NOT_RUN"' in not_run and _outputs_scenario(not_run) is None and "Upside" not in not_run
+    run(env, record)
+    current = get_outputs(env, record)
+    assert _outputs_scenario(current) == "Upside" == _q3_scenario(env, record)
+    # STALE: the PRIOR Run's identity, not the edited Working Copy.
+    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
+        project=record.project_code, field_id="debt.senior.target_dscr", value="1.33", sheet_id="debt", **tokens(page.text)))
+    stale = get_outputs(env, record)
+    assert 'data-state="STALE"' in stale and _outputs_scenario(stale) == "Upside" == _q3_scenario(env, record)
+    assert "Upside" in re.search(r'data-testid="outputs-stale-banner">(.*?)</p>', stale, re.S).group(1)
+    # Switching back restores the Base Case's OWN committed Run; the previously selected name is never substituted.
+    env.client.post("/v2/workbook/scenarios/select", headers={"HX-Request": "true"},
+                    data={"project": record.project_code, "scenario_id": get_base_case_scenario(OWNER, record.project_id).scenario_id})
+    back = get_outputs(env, record)
+    assert _outputs_scenario(back).startswith("Base Case") and "Upside" not in back
+    assert re.search(r'data-out-snapshot="([^"]+)"', back).group(1) == base_snapshot == re.search(
+        r'data-out-snapshot="([^"]+)"', get_outputs(env, record)).group(1)
+    assert _outputs_scenario(back) == _q3_scenario(env, record)
+    assert upside.scenario_id
+
+
+def test_archived_scenario_still_resolves_the_committed_name(env):
+    from app.persistence.db import get_cursor
+    record = env.create("solar")
+    upside = _create_scenario(env, record, "Archived later")
+    run(env, record)
+    from app.persistence.scenarios_repository import get_base_case_scenario
+    base_id = get_base_case_scenario(OWNER, record.project_id).scenario_id
+    with get_cursor() as cur:
+        # Plant the legacy shape: the committed Last Run belongs to the (now archived) scenario while another is selected.
+        cur.execute("UPDATE workspace_states SET active_scenario_id=? WHERE project_id=?", (base_id, record.project_id))
+        cur.execute("UPDATE scenarios SET archived=1 WHERE scenario_id=?", (upside.scenario_id,))
+    page = get_outputs(env, record)
+    assert 'data-out-state="UNAVAILABLE"' not in page, page[-600:]
+    assert _outputs_scenario(page) == "Archived later"
+
+
+def test_unresolvable_or_foreign_scenario_id_is_unavailable_never_base_case(env):
+    from app.persistence.db import get_cursor
+    from app.services.reference_seed_service import create_reference_seeded_project
+    record = env.create("solar")
+    run(env, record)
+    # (a) dangling id (foreign keys relaxed only to plant the impossible state)
+    with get_cursor() as cur:
+        cur.execute("PRAGMA foreign_keys=OFF")
+        cur.execute("UPDATE workspace_states SET last_runtime_scenario_id='0123456789abcdef' WHERE project_id=?", (record.project_id,))
+    page = get_outputs(env, record)
+    assert _outputs_scenario(page) == "UNAVAILABLE" and "Base Case" not in re.search(r'data-testid="outputs-identity">(.*?)</span>', page).group(1)
+    # (b) a scenario that belongs to ANOTHER project of the same owner is not this project's scenario
+    other = create_reference_seeded_project(user_id=OWNER, template_source="generic_solar_reference", requested_name="Other project", capacity_mw=16)
+    foreign = _create_scenario(env, other, "Other project scenario")
+    with get_cursor() as cur:
+        cur.execute("UPDATE workspace_states SET last_runtime_scenario_id=? WHERE project_id=?", (foreign.scenario_id, record.project_id))
+    page = get_outputs(env, record)
+    assert _outputs_scenario(page) == "UNAVAILABLE" and "Other project scenario" not in page
+
+
+def test_identity_label_is_not_read_from_the_run_identity_blob():
+    from app.v2.output_workspace_projection import build_output_workspace
+    freshness = SimpleNamespace(state=SimpleNamespace(value="CURRENT"))
+    rr = SimpleNamespace(financial_statements={}, runtime_summary={}, debt_schedule={}, distribution_schedule={},
+                         sponsor_schedule={}, ran_at="2031-05-06T07:08:09", snapshot_id="S")
+    ws = SimpleNamespace(last_runtime_identity={"scenario_name": "Blob name"}, last_runtime_composite_hash="h")
+    for label, expected in (("Proven name", "Proven name"), (None, "UNAVAILABLE"), ("  ", "UNAVAILABLE")):
+        out = build_output_workspace(runtime_result=rr, workspace=ws, freshness=freshness, last_run_scenario=label)
+        assert out["identity"]["scenario"] == expected and out["identity"]["scenario_proven"] is (expected != "UNAVAILABLE")
+
+
+# ───────────────────── terminal Senior debt truth (P1) ─────────────────────
+
+@pytest.mark.parametrize("closing,status", [
+    (0.0, "REPAID"), (3e-9, "OUTSTANDING_BELOW_DISPLAY"), (0.004999, "OUTSTANDING_BELOW_DISPLAY"),
+    (0.005, "OUTSTANDING"), (12.5, "OUTSTANDING"), (-1e-13, "NEGATIVE_BALANCE"), (None, "UNAVAILABLE")])
+def test_repayment_status_follows_the_persisted_balance_not_its_rounding(closing, status):
+    from app.v2.output_workspace_projection import _repayment
+    result = _repayment(closing, "test basis")
+    assert result["status"] == status
+    assert result["balance"]["v"] == closing                       # the persisted value is never altered
+    if status == "OUTSTANDING_BELOW_DISPLAY":
+        assert result["balance"]["text"] == "0.00" and result["exact_text"] == f"{closing:.6g}" and "REPAID" not in result["label"]
+    assert (status == "REPAID") == ("FULLY REPAID" in result["label"])
+
+
+def _debt(summary, debt_schedule=None, sponsor=None):
+    from app.v2.output_workspace_projection import _debt_section
+    return _debt_section(summary, debt_schedule, None, None, sponsor)
+
+
+def _facility(closing, *, maturity=5, indices=(3, 4, 5)):
+    n = len(indices)
+    return {"instrument_id": "f", "commitment_keur": 100.0, "maturity_period_index": maturity, "period_indices": list(indices),
+            "opening_keur": [0.0] * n, "interest_keur": [0.0] * n, "principal_keur": [0.0] * n, "debt_service_keur": [0.0] * n,
+            "closing_keur": closing, "construction_draws_keur": [], "construction_idc_keur": [],
+            "upfront_fees_keur": [], "construction_commitment_fees_keur": []}
+
+
+def test_f3_facilities_report_independent_terminal_status():
+    summary = {"financing_evidence": {"facility_schedules": [_facility([5.0, 2.0, 0.0]), _facility([5.0, 2.0, 4e-13]),
+                                                             _facility([5.0, 2.0, 9.75]), _facility([5.0, 2.0, None])],
+                                      "construction_funding": {"periods": []}}}
+    statuses = [f["repayment"]["status"] for f in _debt(summary)["facilities"]]
+    assert statuses == ["REPAID", "OUTSTANDING_BELOW_DISPLAY", "OUTSTANDING", "UNAVAILABLE"]
+    # A maturity period that is not in the schedule cannot establish repayment.
+    no_maturity = _debt({"financing_evidence": {"facility_schedules": [_facility([0.0, 0.0, 0.0], maturity=9)],
+                                                "construction_funding": {"periods": []}}})
+    assert no_maturity["facilities"][0]["repayment"]["status"] == "UNAVAILABLE"
+
+
+def test_legacy_aggregate_uses_canonical_maturity_and_terminal_state():
+    periods = [{"period": i, "date": f"2040-0{i}-01", "senior_balance_keur": v} for i, v in
+               ((20, 40.0), (21, 23.0), (22, 0.0), (23, None))]
+    outstanding = {"summary": {"terminal_financial_state": {"senior": {
+        "status": "OUTSTANDING_AT_MATURITY", "contractual_maturity_period_index": 21,
+        "contractual_maturity_date": "2040-02-01", "balance_at_contractual_maturity_keur": 23.0}}}}
+    result = _debt({}, {"periods": periods}, outstanding)
+    facility = result["facilities"][0]
+    # Maturity is period 21 (balance 23.0); the later zero period must not be mistaken for settlement.
+    assert facility["repayment"]["status"] == "OUTSTANDING" and facility["repayment"]["balance"]["v"] == 23.0
+    assert result["canonical_terminal"]["status"] == "OUTSTANDING_AT_MATURITY" and facility["maturity_index"] == 21
+    # Without canonical evidence the last persisted closing balance is used and labelled as such.
+    plain = _debt({}, {"periods": periods})["facilities"][0]["repayment"]
+    assert plain["status"] == "REPAID" and "last persisted period" in plain["basis"]
+    missing = _debt({}, {"periods": [{"period": 1, "date": "2040-01-01", "senior_balance_keur": None}]})["facilities"][0]
+    assert missing["repayment"]["status"] == "UNAVAILABLE"
+
+
+def test_template_never_claims_repaid_for_a_nonzero_balance(env):
+    from app.v2.output_workspace_projection import build_output_workspace
+    freshness = SimpleNamespace(state=SimpleNamespace(value="CURRENT"))
+    summary = {"financing_evidence": {"facility_schedules": [_facility([5.0, 2.0, 4e-13])], "construction_funding": {"periods": []}}}
+    rr = SimpleNamespace(financial_statements={}, runtime_summary=summary, debt_schedule={}, distribution_schedule={},
+                         sponsor_schedule={}, ran_at="2031-05-06T07:08:09", snapshot_id="S")
+    out = build_output_workspace(runtime_result=rr, workspace=SimpleNamespace(last_runtime_identity={}, last_runtime_composite_hash="h"),
+                                 freshness=freshness, last_run_scenario="Base Case")
+    from app.v2.router import _templates
+    page = _templates.get_template("partials/sheet_outputs.html").render(outputs=out, project_code="p")
+    assert "OUTSTANDING BELOW DISPLAY PRECISION" in page and "FULLY REPAID" not in page
+    assert 'data-testid="out-exact-balance"' in page and "4e-13" in page and 'data-status="OUTSTANDING_BELOW_DISPLAY"' in page
+
+
+# ───────────────────── four-vertical statement integrity ─────────────────────
+
+FOUR = [("solar", True), ("wind", True), ("data_center", False), ("ev_charging", False)]
+
+
+@pytest.mark.parametrize("kind,f3", FOUR)
+def test_four_vertical_statement_integrity_against_the_persisted_run(env, monkeypatch, kind, f3):
+    from financial_engine import orchestrator
+    from app.workbook.runtime_projection import FS_BS_ROW_DEFS, FS_PF_CF_ROW_DEFS, FS_PNL_ROW_DEFS
+    monkeypatch.setattr(config, "ACTIVATION_ENABLED", True)
+    record = env.create(kind)
+    if f3:
+        activate_f3(env, record)
+    ws, rr = run(env, record)
+
+    def forbidden(*a, **k):
+        pytest.fail("the output workspace recomputed financials")
+    monkeypatch.setattr(orchestrator, "run_operating_model", forbidden)
+    monkeypatch.setattr(orchestrator, "run_senior_debt_model", forbidden)
+    page = get_outputs(env, record)
+    parsed = tables(page)
+    # P&L, Balance Sheet and PF cash waterfall: EVERY persisted line, EVERY period; missing stays unavailable.
+    for table_id, section, defs in (("pnl", "pnl", FS_PNL_ROW_DEFS), ("balance_sheet", "balance_sheet", FS_BS_ROW_DEFS),
+                                    ("cash_flow", "pf_cash_waterfall", FS_PF_CF_ROW_DEFS)):
+        for key, label, _total, _stock in defs:
+            expected = persisted_rows(rr, section, key)
+            got = parsed[table_id][label]
+            assert [v is None for v in got] == [e is None or isinstance(e, bool) for e in expected], (table_id, label)
+            assert got == pytest.approx([e for e in expected if e is not None and not isinstance(e, bool)] and
+                                        [e if e is not None else None for e in expected], abs=1e-9) or all(
+                g is None or abs(g - e) <= 1e-9 for g, e in zip(got, expected) if e is not None)
+    # Labelling: the cash waterfall is not a CFS; BS totals / Sponsor Net Cash Flow are never synthesised.
+    assert "Cash Flow (PF waterfall)" in page and "not an indirect-method cash flow statement" in page
+    assert all(v is None for v in parsed["balance_sheet"]["Total Assets"]) == all(
+        e is None for e in persisted_rows(rr, "balance_sheet", "total_assets_keur"))
+    assert "Sponsor Net Cash Flow" in page and "NOT AVAILABLE" in page
+    # CFADS retains its definition: the PF waterfall's cash available to Senior debt service.
+    assert "fcf_banks_keur" in page and parsed["cfads"]["CFADS to Senior"] == pytest.approx(
+        persisted_rows(rr, "pf_cash_waterfall", "fcf_banks_keur"), abs=1e-9)
+    assert parsed["cfads"]["Senior debt service"] == pytest.approx(persisted_rows(rr, "pf_cash_waterfall", "senior_total_ds_keur"), abs=1e-9)
+    # Debt: F3 A/B separate and reconciling; legacy aggregate otherwise.
+    schedules = (rr.runtime_summary.get("financing_evidence") or {}).get("facility_schedules") or []
+    if f3:
+        assert page.count('data-testid="out-facility"') == 2 == len(schedules)
+        ids = re.findall(r'data-facility-id="([^"]+)"', page)
+        assert len(set(ids)) == 2 and set(ids) == {s["instrument_id"] for s in schedules}
+        assert 'data-testid="outputs-reconciliation" data-state="RECONCILED"' in page
+    else:
+        assert page.count('data-testid="out-facility"') == 1 and "Senior debt (aggregate)" in page
+    # Returns and sponsor distributions come from persisted evidence.
+    summary = rr.runtime_summary
+    assert f"{summary['project_irr'] * 100:,.2f}%" in page
+    # Freshness and Integrity are independent badges.
+    assert 'data-testid="outputs-state" data-state="CURRENT"' in page and 'data-testid="outputs-integrity"' in page
+
+
+@pytest.mark.parametrize("kind,f3", FOUR)
+def test_stale_and_integrity_fail_are_independent_in_every_vertical(env, monkeypatch, kind, f3):
+    import app.api.v1_1.institutional as institutional
+    monkeypatch.setattr(config, "ACTIVATION_ENABLED", True)
+    record = env.create(kind)
+    if f3:
+        activate_f3(env, record)
+    run(env, record)
+    real = institutional.get_run_integrity_checks
+
+    def verdict(overall, status):
+        def wrapped(*a, **k):
+            state, report = real(*a, **k)
+            report = dict(report, overall=overall)
+            report["checks"] = [dict(report["checks"][0], status=status, title="Synthetic")] + list(report["checks"][1:])
+            return state, report
+        return wrapped
+    for overall, status in (("FAIL", "FAIL"), ("PASS", "PASS")):
+        monkeypatch.setattr(institutional, "get_run_integrity_checks", verdict(overall, status))
+        page = get_outputs(env, record)
+        assert 'data-testid="outputs-state" data-state="CURRENT"' in page and f'data-testid="outputs-integrity" data-state="{overall}"' in page
+    edit = env.client.get("/v2/workbook", params={"project": record.project_code})
+    if f3:
+        from dataclasses import replace
+        from finco_core.inputs.financing_instruments import FinancingCollection
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.workbook.input_set import ProjectInputSet
+        pi = ProjectInputSet.from_snapshot(get_workspace_state(OWNER, record.project_id).draft_snapshot).to_projectinputs()
+        base = collection_for_inputs(pi)
+        first = replace(base.instruments[0], interest=replace(base.instruments[0].interest, fixed_rate=base.instruments[0].interest.fixed_rate + 0.005))
+        data = dict(field_id=config.FIELD_ID, value=state(active=True, collection=FinancingCollection((first,) + tuple(base.instruments[1:]))))
+    else:
+        data = dict(field_id="debt.senior.target_dscr", value="1.37")
+    response = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
+        project=record.project_code, sheet_id="debt", **data, **tokens(edit.text)))
+    assert response.status_code == 200 and "field-error" not in response.text
+    for overall, status in (("FAIL", "FAIL"), ("PASS", "PASS")):
+        monkeypatch.setattr(institutional, "get_run_integrity_checks", verdict(overall, status))
+        page = get_outputs(env, record)
+        assert 'data-testid="outputs-state" data-state="STALE"' in page and f'data-testid="outputs-integrity" data-state="{overall}"' in page

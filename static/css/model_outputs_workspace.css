@@ -58,3 +58,5 @@
   #v2-sheet-outputs .out-table .out-label { min-width: 7.5rem; max-width: 9rem; }
   #v2-sheet-outputs .out-toolbar { flex-direction: column; align-items: stretch; }
 }
+#v2-sheet-outputs .out-repay--problem dd { color: var(--out-fail); }
+#v2-sheet-outputs .out-repay dd small { font-weight: 400; color: var(--out-muted); }

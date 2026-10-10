@@ -3045,9 +3045,17 @@ async def v2_outputs_workspace(request: Request, project: str):
     try:
         context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
         state, report = get_run_integrity_checks(owner, record.project_id, context=context)
+        # The committed Run's scenario is proven read-only through the canonical Q3 resolver, scoped to this owner
+        # and project.  NULL is the Base Case; an unresolvable explicit id stays UNAVAILABLE (never the active
+        # Working Copy scenario, never Base Case).  NOT_RUN has no committed Run and therefore no identity.
+        from app.persistence.scenario_insight_reads import resolve_last_run_scenario
+        last_run_scenario = None
+        if context.runtime_result is not None and context.freshness.state.value != "NOT_RUN":
+            last_run_scenario = resolve_last_run_scenario(
+                owner, record.project_id, getattr(context.workspace, "last_runtime_scenario_id", None)).label
         outputs = build_output_workspace_safe(
             runtime_result=context.runtime_result, workspace=context.workspace, freshness=context.freshness,
-            integrity_report=report if state == "AVAILABLE" else None)
+            last_run_scenario=last_run_scenario, integrity_report=report if state == "AVAILABLE" else None)
         context.validate_current()
     except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
         outputs = {"state": "UNAVAILABLE", "message": "Statements unavailable: the workspace changed while the response "

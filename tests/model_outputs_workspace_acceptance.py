@@ -64,6 +64,20 @@ def main() -> int:
         print(("PASS " if ok else "FAIL ") + tag, "|", str(observed)[:160], flush=True)
         return ok
 
+    def write_summary() -> dict:
+        summary = {
+            "schema": "finco.outputs-workspace.browser-acceptance.v1", "generated_at": datetime.now(timezone.utc).isoformat(),
+            "command": "python -m tests.model_outputs_workspace_acceptance", "checks": results,
+            "network_and_console": net_errors, "known_findings_on_origin_main": known,
+            "passed": sum(1 for r in results if r["status"] == "PASS"), "total": len(results),
+            "all_pass": all(r["status"] == "PASS" for r in results),
+            "screenshots": sorted(p.name for p in out.glob("*.png")),
+            "screenshot_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.glob("*.png"))},
+        }
+        (out / "browser-results.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        print("SUMMARY", summary["passed"], "/", summary["total"], "all_pass" if summary["all_pass"] else "FAILURES")
+        return summary
+
     original_db = db.DB_PATH
     server = thread = None
     with tempfile.TemporaryDirectory() as tmp:
@@ -94,6 +108,15 @@ def main() -> int:
                     ctx = browser.new_context(viewport={"width": width, "height": 1000}, color_scheme=scheme)
                     ctx.add_cookies([{"name": COOKIE_NAME, "value": cookie, "url": url}])
                     ctx.set_default_timeout(60000)
+                    # Application-level readiness signals (no network-idle dependency): in-flight Outputs requests and
+                    # any HTMX transport/response error, recorded in the page itself.
+                    ctx.add_init_script("""
+                        window.__outInFlight = 0; window.__htmxErrors = [];
+                        document.addEventListener('htmx:beforeRequest', e => { const p = (e.detail.requestConfig||{}).path||''; if (p.indexOf('/v2/workbook/outputs') === 0) window.__outInFlight++; });
+                        document.addEventListener('htmx:afterRequest', e => { const p = (e.detail.requestConfig||{}).path||''; if (p.indexOf('/v2/workbook/outputs') === 0) window.__outInFlight = Math.max(0, window.__outInFlight-1); });
+                        for (const t of ['htmx:responseError','htmx:sendError','htmx:swapError','htmx:targetError','htmx:timeout'])
+                          document.addEventListener(t, e => window.__htmxErrors.push(t + ' ' + ((e.detail.requestConfig||{}).path||'')));
+                    """)
                     page = ctx.new_page()
                     log = net_errors.setdefault(tag, {"page_errors": [], "console_errors": [], "bad_responses": []})
                     page.on("pageerror", lambda e: log["page_errors"].append(str(e)))
@@ -112,17 +135,44 @@ def main() -> int:
                 def post(page, path, data):
                     return page.request.post(f"{url}{path}", form=data, headers={"HX-Request": "true"})
 
-                def open_outputs(page, record, theme="light", width=1440):
+                READY_JS = """([code, state, notSnapshot, snapshot]) => {
+                    const roots = document.querySelectorAll('#v2-sheet-outputs');
+                    if (roots.length !== 1) return false;                       // exactly one Outputs root attached
+                    const r = roots[0];
+                    if (r.dataset.outProject !== code || r.dataset.outState !== state || r.dataset.outReady !== '1') return false;
+                    if (snapshot && r.dataset.outSnapshot !== snapshot) return false;
+                    if (notSnapshot && r.dataset.outSnapshot === notSnapshot) return false;
+                    if (window.__outInFlight !== 0 || window.__htmxErrors.length) return false;   // no unresolved replacement / error
+                    if (r.matches('.htmx-request, .htmx-swapping, .htmx-settling') || document.querySelector('#tab-outputs.htmx-request')) return false;
+                    if (state === 'NOT_RUN') return !!r.querySelector('[data-testid=outputs-not-run]') && !r.querySelector('table');
+                    if (!r.querySelector('[data-testid=outputs-toolbar]') || r.querySelectorAll('table.out-table').length < 7) return false;
+                    const prev = window.__outRootSeen; window.__outRootSeen = r;   // the same node on two consecutive polls
+                    return prev === r;
+                }"""
+
+                def wait_outputs_ready(page, record, state, *, not_snapshot=None, snapshot=None, tag=""):
+                    """Deterministic application readiness; on timeout preserves a trace + screenshot, then fails loudly."""
+                    try:
+                        page.wait_for_function(READY_JS, arg=[record.project_code, state, not_snapshot, snapshot], timeout=30000, polling="raf")
+                    except Exception:
+                        name = f"FAILURE-{tag or record.project_code}-{state}"
+                        page.screenshot(path=str(out / f"{name}.png"), full_page=False)
+                        trace = page.evaluate("() => { const r = document.querySelectorAll('#v2-sheet-outputs'); return {roots: r.length, "
+                                              "attrs: r.length ? Object.fromEntries([...r[0].attributes].map(a => [a.name, a.value])) : null, "
+                                              "inFlight: window.__outInFlight, htmxErrors: window.__htmxErrors, "
+                                              "tables: r.length ? r[0].querySelectorAll('table').length : 0, url: location.href}; }")
+                        (out / f"{name}.json").write_text(json.dumps({"expected": {"project": record.project_code, "state": state, "not_snapshot": not_snapshot,
+                                                                                  "snapshot": snapshot}, "observed": trace,
+                                                                       "page_log": net_errors.get(tag, {})}, indent=2), encoding="utf-8")
+                        raise
+
+                def open_outputs(page, record, state, theme="light", width=1440, *, tag="", not_snapshot=None, snapshot=None):
                     page.emulate_media(color_scheme=theme)
                     page.set_viewport_size({"width": width, "height": 1000})
                     page.goto(f"{url}/v2/workbook?project={record.project_code}")
                     page.evaluate("(t) => document.documentElement.setAttribute('data-theme', t)", theme)
                     page.locator("#tab-outputs").click()
-                    page.wait_for_selector('#v2-sheet-outputs[data-out-state="CURRENT"], #v2-sheet-outputs[data-out-state="STALE"], #v2-sheet-outputs[data-out-state="NOT_RUN"]')
-                    page.wait_for_selector('[data-testid="outputs-toolbar"], [data-testid="outputs-not-run"]')
-                    page.wait_for_load_state("networkidle")   # the tab may be fetched twice (restore + click); let the DOM settle
-                    page.wait_for_selector('[data-testid="outputs-toolbar"], [data-testid="outputs-not-run"]')
-                    page.wait_for_function("() => document.getElementById('v2-sheet-outputs').getAttribute('data-out-ready') === '1'")
+                    wait_outputs_ready(page, record, state, tag=tag, not_snapshot=not_snapshot, snapshot=snapshot)
 
                 def cell_text(page, table_id, row_label, col=0):
                     return page.evaluate(
@@ -136,7 +186,7 @@ def main() -> int:
                     is_f3 = kind in F3_KINDS
                     ctx, page = new_page(kind)
                     # ── NOT_RUN ──
-                    open_outputs(page, record)
+                    open_outputs(page, record, "NOT_RUN", tag=kind)
                     f = shot(page, f"{kind}-00-not-run-light-1440.png")
                     check(f"[{kind}] NOT_RUN: status shown, no table, no fabricated zero",
                           page.get_attribute('[data-testid="outputs-state"]', "data-state") == "NOT_RUN"
@@ -154,7 +204,7 @@ def main() -> int:
                     rr = WorkbookService.get_runtime_result(ws)
                     check(f"[{kind}] canonical Run committed", ran.status == 200 and bool(ws.last_runtime_summary) and not ws.dirty)
                     # ── CURRENT desktop light ──
-                    open_outputs(page, record)
+                    open_outputs(page, record, "CURRENT", tag=kind)
                     snapshot = ws.last_runtime_snapshot_id
                     toolbar = page.inner_text('[data-testid="outputs-toolbar"]')
                     state_attr = page.get_attribute('[data-testid="outputs-state"]', "data-state")
@@ -207,11 +257,24 @@ def main() -> int:
                     # ── debt section visual ──
                     page.locator('[data-testid="out-section-debt"]').scroll_into_view_if_needed()
                     f = shot(page, f"{kind}-04-debt-workspace-light-1440.png")
-                    unpaid = page.locator('[data-testid="out-unpaid"]').first.inner_text()
-                    check(f"[{kind}] debt workspace shows maturity, unpaid obligation and committed values", "fully repaid" in unpaid or "UNPAID" in unpaid, unpaid, f)
+                    from app.workbook.runtime_projection import thaw_runtime_payload
+                    rendered_status = page.eval_on_selector_all('[data-testid="out-repayment-status"]', "els => els.map(e => [e.dataset.status, e.innerText])")
+                    evidence = rr.runtime_summary.get("financing_evidence") or {}
+                    expected = []
+                    for sched in evidence.get("facility_schedules") or []:
+                        closing = sched["closing_keur"][sched["period_indices"].index(sched["maturity_period_index"])]
+                        expected.append("REPAID" if closing == 0 else "OUTSTANDING" if closing >= 0.005 else "OUTSTANDING_BELOW_DISPLAY" if closing > 0 else "NEGATIVE_BALANCE")
+                    if not expected:
+                        terminal = (thaw_runtime_payload(rr.sponsor_schedule)["summary"].get("terminal_financial_state") or {}).get("senior") or {}
+                        periods = thaw_runtime_payload(rr.debt_schedule)["periods"]
+                        closing = next((p["senior_balance_keur"] for p in periods if p["period"] == terminal.get("contractual_maturity_period_index")), None)
+                        expected = ["UNAVAILABLE" if closing is None else "REPAID" if closing == 0 else "OUTSTANDING" if closing >= 0.005 else "OUTSTANDING_BELOW_DISPLAY"]
+                    tiny_ok = all("persisted" in text for status, text in rendered_status if status == "OUTSTANDING_BELOW_DISPLAY")
+                    check(f"[{kind}] terminal Senior status follows the persisted closing balance (never rounded to repaid)",
+                          [st for st, _ in rendered_status] == expected and tiny_ok, f"{rendered_status}", f)
                     # ── themes x viewports ──
                     for theme, width in (("light", 1440), ("dark", 1440), ("light", 390), ("dark", 390)):
-                        open_outputs(page, record, theme, width)
+                        open_outputs(page, record, "CURRENT", theme, width, tag=kind)
                         region_ok = page.evaluate(
                             "(w) => [...document.querySelectorAll('[data-out-scroll]')].every(r => r.getBoundingClientRect().right <= w + 1 && r.getBoundingClientRect().left >= -1)", width)
                         colors = page.evaluate("() => { const td = document.querySelector('[data-out-table=pnl] tbody td.out-num'); const s = getComputedStyle(td); return [s.color, s.backgroundColor]; }")
@@ -238,7 +301,7 @@ def main() -> int:
                     else:
                         edit = dict(field_id="debt.senior.target_dscr", value="1.31")
                     changed = post(page, "/v2/workbook/update", dict(project=record.project_code, sheet_id="debt", **edit, **tokens(page)))
-                    open_outputs(page, record)
+                    open_outputs(page, record, "STALE", tag=kind)
                     f = shot(page, f"{kind}-07-stale-light-1440.png")
                     check(f"[{kind}] STALE after an input edit: prior Run named, values unchanged",
                           changed.status == 200 and page.get_attribute('[data-testid="outputs-state"]', "data-state") == "STALE"
@@ -251,17 +314,61 @@ def main() -> int:
                     check(f"[{kind}] idle view issues no background /outputs requests (no refresh loop)", not seen, len(seen))
                     with page.expect_response(lambda r: r.url.endswith("/v2/workbook/run"), timeout=240000):
                         page.locator("#v2-run-controls button").first.click()
-                    page.wait_for_function("() => document.getElementById('v2-sheet-outputs').getAttribute('data-out-state') === 'CURRENT'", timeout=60000)
-                    page.wait_for_load_state("networkidle")
+                    wait_outputs_ready(page, record, "CURRENT", not_snapshot=snapshot, tag=kind)
                     new_snapshot = get_workspace_state(USER, record.project_id).last_runtime_snapshot_id
                     check(f"[{kind}] a new Run refreshes the open view to CURRENT with the new Run identity",
                           new_snapshot != snapshot and new_snapshot[:22] in page.inner_text('[data-testid="outputs-identity"]'), new_snapshot)
                     # ── history navigation keeps the view ──
+                    check(f"[{kind}] no HTMX transport/response errors on the Outputs view", page.evaluate("() => window.__htmxErrors.length") == 0)
                     page.go_back(); page.go_forward()
                     page.wait_for_selector("#v2-sheet-outputs")
                     log = drop_known_csp(net_errors[kind])
                     check(f"[{kind}] no page exceptions, console errors or failed requests (known main findings itemised separately)", not any(log.values()), json.dumps(log)[:800])
                     ctx.close()
+
+                # ── committed scenario identity: Base, named, STALE, switch; same label as Q3 Findings; owner isolation ──
+                def outputs_identity(page):
+                    return page.get_attribute("#v2-sheet-outputs", "data-out-scenario")
+
+                def q3_identity(page):
+                    page.goto(f"{url}/v2/workbook?project={scn.project_code}")
+                    text = " ".join(page.inner_text('[data-testid="q3-context"]').split())
+                    return re.search(r"Scenario: (.*?) · Run ", text).group(1)
+
+                scn = mk("solar")
+                ctx, page = new_page("scenario")
+                page.goto(f"{url}/v2/workbook?project={scn.project_code}")
+                post(page, "/v2/workbook/run", dict(project=scn.project_code, **tokens(page)))
+                open_outputs(page, scn, "CURRENT", tag="scenario")
+                base_label = outputs_identity(page)
+                check("[scenario] Base Case Run: Outputs and Q3 Findings name the same committed scenario",
+                      base_label.startswith("Base Case") and q3_identity(page) == base_label, base_label)
+                page.goto(f"{url}/v2/workbook?project={scn.project_code}")
+                created = post(page, "/v2/workbook/scenarios/create", dict(project=scn.project_code, scenario_name="Upside"))
+                page.goto(f"{url}/v2/workbook?project={scn.project_code}")
+                post(page, "/v2/workbook/run", dict(project=scn.project_code, **tokens(page)))
+                open_outputs(page, scn, "CURRENT", tag="scenario")
+                f = shot(page, "scenario-01-named-scenario-current-light-1440.png")
+                named_snapshot = get_workspace_state(USER, scn.project_id).last_runtime_snapshot_id
+                check("[scenario] named scenario Run: identity is the committed scenario name, equal to Q3 Findings",
+                      created.status == 200 and outputs_identity(page) == "Upside" and q3_identity(page) == "Upside", outputs_identity(page), f)
+                from app.persistence.scenarios_repository import get_base_case_scenario
+                base_id = get_base_case_scenario(USER, scn.project_id).scenario_id
+                switched = post(page, "/v2/workbook/scenarios/select", dict(project=scn.project_code, scenario_id=base_id))
+                open_outputs(page, scn, "CURRENT", tag="scenario", not_snapshot=named_snapshot)
+                switched_label = outputs_identity(page)
+                check("[scenario] switching scenario shows that scenario's own committed Run (not the previously selected name)",
+                      switched.status == 200 and switched_label.startswith("Base Case") and q3_identity(page) == switched_label, switched_label)
+                # owner isolation: another authenticated user cannot read this project's outputs
+                intruder = browser.new_context()
+                intruder.add_cookies([{"name": COOKIE_NAME, "value": create_session_token(user_id="outputs-intruder", username="admin"), "url": url}])
+                denied = intruder.request.get(f"{url}/v2/workbook/outputs?project={scn.project_code}")
+                anonymous = browser.new_context().request.get(f"{url}/v2/workbook/outputs?project={scn.project_code}")
+                check("[scenario] owner isolation: another user gets 404 and an anonymous request is refused, with no Run data",
+                      denied.status == 404 and anonymous.status != 200 and "out-table" not in denied.text() and "out-table" not in anonymous.text(),
+                      f"{denied.status}/{anonymous.status}")
+                intruder.close()
+                ctx.close()
 
                 # ── Protected Reference is readable ──
                 ctx, page = new_page("reference")
@@ -279,18 +386,8 @@ def main() -> int:
                 thread.join(timeout=20)
             reset_model_executor_for_tests()
             db.DB_PATH = original_db
+            summary = write_summary()   # also on failure, so traces and screenshots are never lost
 
-    summary = {
-        "schema": "finco.outputs-workspace.browser-acceptance.v1", "generated_at": datetime.now(timezone.utc).isoformat(),
-        "command": "python -m tests.model_outputs_workspace_acceptance", "checks": results,
-        "network_and_console": net_errors, "known_findings_on_origin_main": known,
-        "passed": sum(1 for r in results if r["status"] == "PASS"), "total": len(results),
-        "all_pass": all(r["status"] == "PASS" for r in results),
-        "screenshots": sorted(p.name for p in out.glob("*.png")),
-        "screenshot_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.glob("*.png"))},
-    }
-    (out / "browser-results.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    print("SUMMARY", summary["passed"], "/", summary["total"], "all_pass" if summary["all_pass"] else "FAILURES")
     return 0 if summary["all_pass"] else 1
 
 

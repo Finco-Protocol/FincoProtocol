@@ -30,7 +30,7 @@
   {% endif %}
 {% endmacro %}
 
-<div id="v2-sheet-outputs" data-sheet="outputs" data-testid="outputs-sheet" data-out-state="{{ outputs.state }}"
+<div id="v2-sheet-outputs" data-sheet="outputs" data-testid="outputs-sheet" data-out-state="{{ outputs.state }}" data-out-project="{{ project_code }}"{% if outputs.identity %} data-out-snapshot="{{ outputs.identity.snapshot_id }}" data-out-scenario="{{ outputs.identity.scenario }}"{% endif %}
      hx-get="/v2/workbook/outputs?project={{ project_code | urlencode }}"
      hx-trigger="click from:#tab-outputs"
      hx-swap="outerHTML">
@@ -86,13 +86,15 @@
 
   <section id="out-debt" class="out-section" aria-labelledby="out-h-debt" data-testid="out-section-debt">
     <h3 id="out-h-debt">Debt schedules</h3><p class="out-note">{{ outputs.debt.note }}</p>
+    {% if outputs.debt.canonical_terminal %}<p class="out-note" data-testid="out-canonical-terminal">Canonical Senior terminal state (Run evidence): <strong>{{ outputs.debt.canonical_terminal.status }}</strong>, balance at contractual maturity {{ outputs.debt.canonical_terminal.balance.text }} kEUR{% if outputs.debt.canonical_terminal.maturity_date %}, maturity {{ outputs.debt.canonical_terminal.maturity_date }}{% endif %}. Facility lines below are shown as persisted.</p>{% endif %}
     {% for f in outputs.debt.facilities %}
     <article class="out-facility" aria-labelledby="out-fh-{{ loop.index }}" data-testid="out-facility" data-facility-id="{{ f.id }}">
       <h4 id="out-fh-{{ loop.index }}">{{ f.label }}</h4>
       <dl class="out-facts">
         <div><dt>Commitment (kEUR)</dt><dd data-unit="keur" {% if f.commitment.v is not none %}data-raw="{{ f.commitment.v }}"{% endif %}>{{ f.commitment.text }}</dd></div>
         <div><dt>Maturity</dt><dd data-testid="out-maturity">{% if f.maturity_date %}{{ f.maturity_date }} (period {{ f.maturity_index }}){% elif f.maturity_index is not none %}period {{ f.maturity_index }}{% else %}Not available{% endif %}</dd></div>
-        <div><dt>Unpaid after final scheduled period (kEUR)</dt><dd data-testid="out-unpaid" data-unit="keur" {% if f.unpaid.v is not none %}data-raw="{{ f.unpaid.v }}"{% endif %}>{{ f.unpaid.text }}{% if f.fully_repaid %} <small>fully repaid</small>{% elif f.unpaid.v is not none %} <small>UNPAID OBLIGATION</small>{% endif %}</dd></div>
+        <div><dt>Closing balance at maturity (kEUR, as persisted)</dt><dd data-testid="out-unpaid" data-repayment-status="{{ f.repayment.status }}" data-unit="keur" {% if f.repayment.balance.v is not none %}data-raw="{{ f.repayment.balance.v }}"{% endif %}>{{ f.repayment.balance.text }}</dd></div>
+        <div class="out-repay{% if f.repayment.problem %} out-repay--problem{% endif %}"><dt>Repayment status</dt><dd data-testid="out-repayment-status" data-status="{{ f.repayment.status }}">{{ f.repayment.label }}{% if f.repayment.status == 'OUTSTANDING_BELOW_DISPLAY' %} <small data-testid="out-exact-balance">(persisted {{ f.repayment.exact_text }} kEUR)</small>{% endif %}<br><small>Basis: {{ f.repayment.basis }}.</small></dd></div>
       </dl>
       {% if f.fees_supported %}
       <h5>Construction: dated draws and capitalised costs (kEUR)</h5>
