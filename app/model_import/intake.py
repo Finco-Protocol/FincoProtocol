@@ -221,10 +221,19 @@ def normalize_value(field_id: str, value: object, source_unit: str | None) -> st
             return value.date().isoformat()
         if isinstance(value, date):
             return value.isoformat()
+        raw_date = str(value).strip()
         try:
-            return date.fromisoformat(str(value).strip()).isoformat()
-        except ValueError as exc:
-            raise IntakeError("IMPORT_DATE_INVALID") from exc
+            return date.fromisoformat(raw_date).isoformat()
+        except ValueError:
+            try:
+                parsed = datetime.fromisoformat(raw_date)
+                if parsed.time() != datetime.min.time():
+                    raise IntakeError("IMPORT_DATE_HAS_TIME_COMPONENT")
+                return parsed.date().isoformat()
+            except IntakeError:
+                raise
+            except ValueError as exc:
+                raise IntakeError("IMPORT_DATE_INVALID") from exc
     if spec.field_type == FieldType.BOOL:
         if isinstance(value, bool):
             return "true" if value else "false"
@@ -245,6 +254,7 @@ def normalize_value(field_id: str, value: object, source_unit: str | None) -> st
         if unit in ("fraction", "decimal", "ratio"):
             amount *= 100
         elif unit in ("%", "pct", "percent", "percentage") or has_suffix_pct:
+            pass
         else:
             raise IntakeError("IMPORT_PERCENT_SCALE_AMBIGUOUS")
     elif spec.field_type == FieldType.KEUR:
