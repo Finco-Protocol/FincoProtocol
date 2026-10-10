@@ -67,6 +67,8 @@
           data-testid="authority-badge-unresolved-{{ label | lower | replace(' ', '-') }}">
       &#9888; Authority unavailable
     </span>
+  {% elif mode == "MULTI_SENIOR" %}
+    <span class="v2-authority-badge v2-authority-flat">Two-Senior facility terms</span>
   {% elif mode == "WORKING_CONFIG" %}
     <span class="v2-authority-badge v2-authority-flat">Working bankability configuration</span>
   {% elif mode == "FLAT" or mode == "FLAT_SCALAR" %}
@@ -98,6 +100,8 @@
           data-testid="editability-badge-reference">
       Reference project — create a working copy to edit
     </span>
+  {% elif authority_mode == "MULTI_SENIOR" %}
+    <span class="v2-editability-badge v2-editability-locked">Single-Senior input inactive; facility configuration owns this term</span>
   {% elif authority_mode == "WORKING_CONFIG" %}
     <span class="v2-editability-badge v2-editability-editable">Editable in bankability configuration below</span>
   {% elif authority_mode == "CALIBRATED" %}
@@ -197,6 +201,7 @@
   </details>
 
   {% include "partials/_financing_bankability.html" %}
+  {% include "partials/_financing_multisenior.html" %}
 
   <details class="v2-inputs-section">
     <summary class="v2-inputs-section-summary" id="nav-debt-additional">

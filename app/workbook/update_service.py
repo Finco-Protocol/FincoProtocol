@@ -118,33 +118,6 @@ class FieldValidationResult:
         return self.error is None
 
 
-# ---------------------------------------------------------------------------
-# WorkbookUpdateService
-# ---------------------------------------------------------------------------
-
-# SourceOfTruth values that are never writable by users.
-_NON_EDITABLE_SOURCES: frozenset[SourceOfTruth] = frozenset({
-    SourceOfTruth.ENGINE,
-    SourceOfTruth.TEMPLATE,
-    SourceOfTruth.DERIVED_UI,
-})
-
-# BindingStatus values that are never user-editable via the V2 edit API.
-# PARTIAL is explicitly excluded: partial fields are not fully connected to the
-# engine and must not be presented as authoritative editable inputs until their
-# engine binding is resolved and promoted to BOUND.
-_NON_EDITABLE_BINDINGS: frozenset[BindingStatus] = frozenset({
-    BindingStatus.DISPLAY_ONLY,
-    BindingStatus.TEMPLATE_LOCKED,
-    BindingStatus.PARTIAL,
-    BindingStatus.UNSUPPORTED,
-})
-
-# FieldKind values that can be written.
-_WRITABLE_KINDS: frozenset[FieldKind] = frozenset({FieldKind.INPUT})
-
-
-
 class BatchApplyError(WorkbookUpdateError):
     """Typed, fail-closed batch rejection."""
 
@@ -183,6 +156,33 @@ def _assert_batch_field_applicable(field_id: str, *, project_type: str, template
         raise BatchApplyError("BATCH_FIELD_NOT_APPLICABLE", field_id)
     if not ev and field_id in EV_CHARGING_FIELD_IDS:
         raise BatchApplyError("BATCH_FIELD_NOT_APPLICABLE", field_id)
+
+
+
+# ---------------------------------------------------------------------------
+# WorkbookUpdateService
+# ---------------------------------------------------------------------------
+
+# SourceOfTruth values that are never writable by users.
+_NON_EDITABLE_SOURCES: frozenset[SourceOfTruth] = frozenset({
+    SourceOfTruth.ENGINE,
+    SourceOfTruth.TEMPLATE,
+    SourceOfTruth.DERIVED_UI,
+})
+
+# BindingStatus values that are never user-editable via the V2 edit API.
+# PARTIAL is explicitly excluded: partial fields are not fully connected to the
+# engine and must not be presented as authoritative editable inputs until their
+# engine binding is resolved and promoted to BOUND.
+_NON_EDITABLE_BINDINGS: frozenset[BindingStatus] = frozenset({
+    BindingStatus.DISPLAY_ONLY,
+    BindingStatus.TEMPLATE_LOCKED,
+    BindingStatus.PARTIAL,
+    BindingStatus.UNSUPPORTED,
+})
+
+# FieldKind values that can be written.
+_WRITABLE_KINDS: frozenset[FieldKind] = frozenset({FieldKind.INPUT})
 
 
 class WorkbookUpdateService:
@@ -322,6 +322,13 @@ class WorkbookUpdateService:
                     error_class=FieldErrorClass.INVALID,
                 )
 
+        if field_id == "debt.financing.instruments":
+            from app.workbook.multisenior_config import canonical_json
+            try:
+                typed = canonical_json(typed)
+            except ValueError as exc:
+                return FieldValidationResult(field_id=field_id, raw_value=raw_value,
+                    typed_value=None, spec=spec, error=str(exc), error_class=FieldErrorClass.INVALID)
         if field_id == "debt.bankability.configuration":
             from app.workbook.bankability_config import parse_config
             try:
@@ -481,6 +488,9 @@ class WorkbookUpdateService:
                 typed_value=validation.typed_value,
             )
         except ValueError as exc:
+            from finco_core.inputs.financing_instruments import FinancingError
+            if isinstance(exc, FinancingError):
+                raise FieldValidationError(str(exc)) from exc
             if field_id == "debt.bankability.configuration" or (ws.draft_snapshot or {}).get("bankability_config_json"):
                 raise FieldValidationError(str(exc)) from exc
             raise

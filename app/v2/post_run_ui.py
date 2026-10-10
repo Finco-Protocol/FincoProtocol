@@ -261,6 +261,7 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
         pack = None
     from app.workbook.service import WorkbookService
     register_view = None
+    pis = None
     try:
         pis = context.draft_inputs if context is not None else WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
         template_source = str(getattr(pis, "template_source", "") or "")
@@ -275,6 +276,11 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
         project_key=template_source,
         assumption_register_view=register_view,
     )
+    # Q3: the same read-only Model Quality / covenant / scenario views as the GET render.
+    from app.v2.router import _attach_insight
+    panel = _attach_insight(
+        panel, ws=ws_fresh, pis=pis, project_record=project_record, workspace_owner=workspace_owner,
+        runtime_state=freshness.state.value, register_view=register_view)
     return _templates.get_template(
         "partials/_model_smart_panel.html"
     ).render({"smart_panel": panel}).replace(

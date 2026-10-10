@@ -85,11 +85,17 @@ def _senior_debt(clean_run, model) -> dict[str, Any]:
     dates = {p.period_index: (p.period_start, p.period_end) for p in model.periods}
     bank_cfads = dict(zip(model.debt_sizing.period_indices, model.debt_sizing.bank_cfads_keur))
     base_cfads = dict(zip(model.post_senior_cash.period_indices, model.post_senior_cash.base_cfads_keur))
+    from financial_engine.financing.multisenior import MultiSeniorFinancingResult
+    financing = clean_run.g2c_result.financing_result
+    facility_rates = ({r.period_index: r.annual_rate for r in financing.aggregate_period_rates}
+                      if isinstance(financing, MultiSeniorFinancingResult) else None)
 
     periods = []
     for position, index in enumerate(senior.period_indices):
         start, end = dates[index]
-        if explicit:
+        if facility_rates is not None:
+            rate = facility_rates.get(index)
+        elif explicit:
             rate = explicit[position] if position < len(explicit) else None
         elif schedule.mode == SeniorRateMode.FLAT_ALL_IN:
             rate = schedule.flat_all_in_rate
@@ -159,6 +165,9 @@ def _balance_sheet(clean_run) -> list[dict[str, Any]]:
             "net_cit_payable": _num(p.net_cit_payable_keur),
             "reported_balance_check": _num(p.balance_check_keur),
         })
+        from financial_engine.financing.multisenior import MultiSeniorFinancingResult
+        if isinstance(clean_run.g2c_result.financing_result, MultiSeniorFinancingResult):
+            rows[-1]["additional_equity"] = _num(p.additional_equity_keur)
     return rows
 
 
@@ -208,5 +217,8 @@ def build_run_integrity_evidence(clean_run) -> dict[str, Any]:
         "balance_sheet": _balance_sheet(clean_run),
         "sponsor": _sponsor(g2c),
     }
+    from financial_engine.financing.multisenior import MultiSeniorFinancingResult
+    if isinstance(financing, MultiSeniorFinancingResult):
+        evidence["financing_authority"] = "F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1"
     evidence["digest"] = evidence_digest(evidence)
     return evidence

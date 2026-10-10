@@ -691,7 +691,36 @@ def v2_atomic_draft_update(
         # Apply the validated update to the snapshot read inside the transaction.
         row_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
         current_pis = ProjectInputSet.from_snapshot(row_snapshot, workbook=WORKBOOK)
+        from app.workbook.multisenior_config import (
+            FIELD_ID as f3_field, SNAPSHOT_KEY as f3_key, validate_transition,
+            parse_state, apply_state,
+        )
+        if field_id == f3_field or row_snapshot.get(f3_key):
+            scope = "base"
+            if row["active_scenario_id"]:
+                cur.execute("SELECT * FROM scenarios WHERE scenario_id=? AND user_id=? AND project_id=?",
+                    (row["active_scenario_id"], user_id, project_id))
+                scenario = cur.fetchone()
+                if scenario is None or scenario["archived"]:
+                    from finco_core.inputs.financing_instruments import FinancingError
+                    raise FinancingError("F3_SELECTED_SCENARIO_UNAVAILABLE")
+                scope = "base" if scenario["is_base_case"] else row["active_scenario_id"]
+            if field_id == f3_field:
+                validate_transition(row_snapshot.get(f3_key), typed_value, scope)
+            else:
+                entry = parse_state(row_snapshot.get(f3_key))["scopes"].get(scope)
+                # Gearing and covenant thresholds remain project constraints;
+                # competing single-Senior/SHL/reserve editors do not own terms.
+                if entry and entry["activation"] and field_id.startswith("debt.") and field_id not in {
+                    "debt.senior.gearing_pct", "debt.senior.lockup_dscr", "debt.senior.min_llcr"}:
+                    from finco_core.inputs.financing_instruments import FinancingError
+                    raise FinancingError("F3_COMPETING_FINANCING_EDITOR_REJECTED")
         updated_pis = current_pis.with_value(field_id, typed_value)
+        if field_id == f3_field:
+            # Validate the effective project boundary inside the same CAS. A
+            # proposal remains inert; activation requires the release gate.
+            apply_state(updated_pis.to_projectinputs(), typed_value, scope,
+                bankability_raw=row_snapshot.get("bankability_config_json"))
         new_snapshot = updated_pis.to_snapshot()
 
         # Re-assemble composite identity after scalar mutation (rows/scenario unchanged).
@@ -1176,9 +1205,6 @@ def mark_workspace_dirty_cursor(cur: Any, *, user_id: str, project_id: str) -> b
     return cur.rowcount > 0
 
 
-# -----------------------------------------------------------------
-# Canonical C0 batch transaction: NOT a loop around scalar saves.
-# -----------------------------------------------------------------
 def v2_atomic_batch_draft_update(
     *,
     user_id: str,

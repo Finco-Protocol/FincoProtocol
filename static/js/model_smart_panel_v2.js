@@ -9,6 +9,7 @@
   var selected = '';
   var previousTab = '';
   var previousFieldId = '';
+  var compareSelected = ''; // scenario id chosen in the (read-only) Scenarios comparison
   var navigating = false; // true while the panel itself moves focus; never rewrites the return origin
 
   function panel() { return document.getElementById('model-smart-panel'); }
@@ -53,7 +54,7 @@
   }
   function setMode(next, rememberTab) {
     var p = panel();
-    if (!p || ['solutions','inspector','changes'].indexOf(next) < 0) return;
+    if (!p || ['solutions','inspector','changes','scenarios'].indexOf(next) < 0) return;
     if (rememberTab && next === 'inspector' && mode !== 'inspector') previousTab = currentTab();
     mode = next;
     Array.prototype.forEach.call(p.querySelectorAll('[data-sp-mode]'), function (b) {
@@ -66,6 +67,7 @@
     });
     if (next === 'inspector') inspect(p);
     if (next === 'changes') changes(p);
+    if (next === 'scenarios') applyCompare(p);
   }
   function inspect(p) {
     var picker = p.querySelector('[data-sp-select]');
@@ -128,6 +130,7 @@
       action(target, 'Open owning sheet', metric.getAttribute('data-tab'), null);
       action(target, 'Open methodology in Trust Pack', 'tab-trust', null);
     } else { target.textContent = 'Selection unavailable.'; return; }
+    relatedChecks(p, target, value);
     if (previousTab && document.getElementById(previousTab)) {
       var back = document.createElement('button');
       back.type = 'button'; back.className = 'v2-sp-action';
@@ -135,6 +138,35 @@
       back.textContent = 'Return to previous sheet';
       target.appendChild(back);
     }
+  }
+  // Q1 checks that reference the selected assumption/KPI, as rendered by the server (exact id match only).
+  function relatedChecks(p, target, value) {
+    var links = Array.prototype.filter.call(p.querySelectorAll('[data-sp-q3-link]'), function (n) {
+      return n.getAttribute('data-link') === value;
+    });
+    if (!links.length) return;
+    var box = document.createElement('div'); box.className = 'v2-sp-context';
+    var title = document.createElement('strong'); title.textContent = 'Related Model Quality checks';
+    box.appendChild(title);
+    var list = document.createElement('ul'); list.className = 'v2-sp-pending-list';
+    links.forEach(function (n) {
+      var li = document.createElement('li');
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'v2-sp-action';
+      b.setAttribute('data-sp-focus-check', n.getAttribute('data-check-id'));
+      b.textContent = n.getAttribute('data-check-id') + ' ' + n.getAttribute('data-check-title') + ' — ' + n.getAttribute('data-check-status');
+      li.appendChild(b); list.appendChild(li);
+    });
+    box.appendChild(list); target.appendChild(box);
+  }
+  function applyCompare(p) {
+    var tables = p.querySelectorAll('[data-sp-compare-table]');
+    if (!tables.length) return;
+    var ids = Array.prototype.map.call(tables, function (t) { return t.getAttribute('data-sp-compare-table'); });
+    if (ids.indexOf(compareSelected) < 0) compareSelected = ids[0];
+    Array.prototype.forEach.call(tables, function (t) { t.hidden = t.getAttribute('data-sp-compare-table') !== compareSelected; });
+    Array.prototype.forEach.call(p.querySelectorAll('[data-sp-compare]'), function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-sp-compare') === compareSelected ? 'true' : 'false');
+    });
   }
   function changes(p) {
     if (!p) return;
@@ -182,6 +214,35 @@
     if (tab) {
       event.preventDefault();
       setMode(tab.getAttribute('data-sp-mode'), true);
+      return;
+    }
+    var explore = event.target.closest && event.target.closest('#model-smart-panel [data-sp-explore]');
+    if (explore) {
+      event.preventDefault();
+      selected = explore.getAttribute('data-sp-explore');
+      previousTab = currentTab();
+      setMode('inspector', false);
+      return;
+    }
+    var focusCheck = event.target.closest && event.target.closest('#model-smart-panel [data-sp-focus-check]');
+    if (focusCheck) {
+      event.preventDefault();
+      setMode('solutions', false);
+      var wanted = focusCheck.getAttribute('data-sp-focus-check');
+      var det = elementByAttr(p, 'details[data-q3-check]', 'data-check-id', wanted);
+      if (det) {
+        for (var n = det.parentElement; n && n !== p; n = n.parentElement) { if (n.tagName === 'DETAILS') n.open = true; }
+        det.open = true;
+        var sum = det.querySelector('summary');
+        if (sum) { sum.setAttribute('tabindex', '-1'); sum.focus(); }
+      }
+      return;
+    }
+    var cmp = event.target.closest && event.target.closest('#model-smart-panel [data-sp-compare]');
+    if (cmp) {
+      event.preventDefault();
+      compareSelected = cmp.getAttribute('data-sp-compare');
+      applyCompare(p);
       return;
     }
     var jumpMode = event.target.closest && event.target.closest('#model-smart-panel [data-sp-jump-mode]');

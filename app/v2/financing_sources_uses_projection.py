@@ -260,7 +260,8 @@ def build_sources_uses_projection(
         sources = tuple(
             amount(label, su[key], prefix + "sources_uses." + key)
             for label, key in (
-                ("Senior debt (actual sized)", "senior_debt_keur"),
+                ("Senior debt (contractual)" if rs.get("financing_evidence", {}).get("facility_authority")
+                 == "F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1" else "Senior debt (actual sized)", "senior_debt_keur"),
                 ("Junior / other project financing", "junior_or_other_keur"),
                 ("Share capital and other equity (aggregate)", "share_capital_and_other_equity_keur"),
                 ("Shareholder loan cash principal", "shareholder_loan_cash_keur"),

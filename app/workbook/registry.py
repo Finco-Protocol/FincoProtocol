@@ -937,6 +937,11 @@ def is_data_center_project_type(project_type: str | None) -> bool:
 _DT = "debt"
 
 _dt_senior = _section("senior", "Senior Debt Inputs", _DT, order=0, fields=[
+    _f("debt.financing.instruments", "Two-Senior configuration", "financing_instruments_json",
+       FieldType.TEXT, _DT, "senior", kind=FieldKind.INPUT, persisted=True,
+       source_of_truth=SourceOfTruth.INPUT_SET, engine_path="financing_collection",
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True, description="Versioned scenario-scoped proposal with explicit activation; canonical Run consumes only the selected scope.", order=5),
     _f("debt.bankability.configuration", "Bankability configuration", "bankability_config_json",
        FieldType.TEXT, _DT, "senior", kind=FieldKind.INPUT, persisted=True,
        source_of_truth=SourceOfTruth.INPUT_SET, engine_path="financing",

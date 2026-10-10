@@ -1709,7 +1709,7 @@ def _development_economics_cache_key(value) -> "tuple | None":
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
     """Build a deterministic cache key from stable input fields."""
-    return (
+    legacy_key = (
         inputs.info.financial_close,
         inputs.technical.capacity_mw,
         inputs.technical.yield_scenario,
@@ -1827,3 +1827,10 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         # Developer Economics V1: absent and disabled are the same neutral None.
         _development_economics_cache_key(inputs.development_economics),
     )
+    from finco_core.inputs.multisenior import MultiSeniorProjectInputs
+    if isinstance(inputs, MultiSeniorProjectInputs):
+        return legacy_key + ((inputs.financing_activation_authority,
+                              inputs.financing_collection.content_digest(),
+                              inputs.revenue.market_price_calendar_start_year,
+                              inputs.revenue.market_prices_by_calendar_year_eur_mwh),)
+    return legacy_key

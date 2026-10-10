@@ -212,9 +212,16 @@ def test_legacy_mapping_does_not_call_financial_engine_or_persistence(monkeypatc
     assert map_legacy_financing(project()).instruments
 
 
-def test_no_production_import_or_projectinputs_activation():
+def test_legacy_mapping_remains_nonactivating_and_f3_imports_are_narrowly_owned():
     allowed = {ROOT / "finco_core/inputs/financing_instruments.py",
-               ROOT / "finco_core/inputs/financing_instruments_legacy.py"}
+               ROOT / "finco_core/inputs/financing_instruments_legacy.py",
+               # F3.2-F3.4 explicitly activates only the new opt-in subclass.
+               ROOT / "finco_core/inputs/multisenior.py",
+               ROOT / "finco_core/inputs/serialization.py",
+               ROOT / "financial_engine/financing/multisenior.py",
+               ROOT / "app/workbook/multisenior_config.py",
+               ROOT / "app/workbook/update_service.py",
+               ROOT / "app/persistence/workspace_repository.py"}
     offenders = []
     for name in ("app", "financial_engine", "finco_core", "domain", "main_web.py", "main_api.py"):
         root = ROOT / name
@@ -230,6 +237,8 @@ def test_no_production_import_or_projectinputs_activation():
     assert offenders == []
     assert not hasattr(project(), "financing_instruments")
     assert "financing_instruments" not in project_inputs_to_dict(project())
+    assert "financing_activation" not in project_inputs_to_dict(project())
+    assert not hasattr(project(), "financing_collection")
 
 
 def test_all_documented_error_codes_have_executable_rejections():
