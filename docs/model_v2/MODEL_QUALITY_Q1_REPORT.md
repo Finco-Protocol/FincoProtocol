@@ -94,7 +94,7 @@ funding, terminal balance, identity, binding and freshness. Debt sizing, stateme
 
 ## 5. Evidence for the required cases
 
-`tests/test_model_quality_q1.py` (82 tests, incl. the 15-case SHL maturity matrix A–O): four real verticals; unbalanced S&U; wrong Senior roll-forward; DSCR covenant breach
+`tests/test_model_quality_q1.py` (108 tests, incl. the 15-case SHL maturity matrix A–O and the Correction-B matrix): four real verticals; unbalanced S&U; wrong Senior roll-forward; DSCR covenant breach
 (and pass); DSRA underfunding with a proven target; missing DSRA authority; terminal balloon (synthetic detection) plus the real
 PR #233 rejection of the original P0 configuration (no Run ⇒ nothing to score); missing identity; corrupt digest; stale Working Copy;
 legacy Run without evidence (score unavailable, no PASS from missing data); missing covenant targets; actual zero vs missing
@@ -150,6 +150,23 @@ proves nothing). No engine, rule or tolerance was changed.
 **Reference Runs (unchanged result, now earned):** QM-TERM-002 PASS with maturity period 52 (Solar), 57 (Wind), 43 (Data Center),
 41 (EV), each with an SHL balance of exactly 0.0 at maturity. Scoring is unchanged: 25 PASS, 1 NOT_APPLICABLE, 4 UNAVAILABLE,
 weighted coverage 87.6%, advisory score 100.0 over the evaluated checks only.
+
+## 6b. Correction B — final SHL evidence hardening
+
+Three further edge cases, each reproduced with a failing test before the fix (20 failing tests on the Correction-A code):
+
+| # | Defect | Before | After |
+|---|---|---|---|
+| A | Terminal-balance consistency used `TOL_KEUR` (1e-6) instead of the SHL precision (1e-7). Canonical `balance_at_contractual_maturity_keur = 5e-7` vs committed balance sheet `0.0` with status REPAID | **PASS** | **UNAVAILABLE** `SHL_EVIDENCE_INCONSISTENT`; values within 1e-7 still PASS, 1.5e-7 apart does not |
+| B | `NOT_APPLICABLE` filtered out missing / non-finite SHL rows and accepted the remaining zeros | **NOT_APPLICABLE** with a missing or `NaN` row beside a valid zero | **UNAVAILABLE** `SHL_BALANCE_EVIDENCE_INCOMPLETE`; NOT_APPLICABLE needs the authoritative terminal status AND a complete, finite, zero SHL balance in every persisted balance-sheet row |
+| C | The canonical terminal status was never validated; an unknown / missing status with a zero balance gave PASS | **PASS** | **UNAVAILABLE** `SHL_TERMINAL_STATUS_INVALID` (not one of the typed `ShlTerminalStatus` values; parity-tested). Contradictions (OUTSTANDING_WITHIN_CONTRACTUAL_TERM or a material horizon balance with a settled maturity; NOT_APPLICABLE carrying a maturity) are UNAVAILABLE `SHL_TERMINAL_STATUS_CONTRADICTORY`; an unpaid status/balance remains a FAIL. PASS now requires status REPAID |
+
+**Consequence to note (real evidence gap).** The committed balance sheet of today's Runs has one period (index 2) with no SHL
+value (the statement column is only partly populated). Under the strict B rule a real no-SHL Run (`EQUITY_ONLY`) is therefore
+**UNAVAILABLE**, not NOT_APPLICABLE; the positive NOT_APPLICABLE branch is exercised on real evidence with that single gap
+synthetically completed. This is reported, not hidden: closing it needs the evidence writer / statements to publish the period-2
+SHL balance (out of scope: frozen). Funded-SHL Runs are unaffected because that check only needs the maturity row and later rows.
+The four reference Runs are unchanged (QM-TERM-002 PASS, 25 PASS / 4 UNAVAILABLE / 1 NOT_APPLICABLE, 87.6% coverage, 100.0).
 
 ## 7. Confirmed financial findings
 

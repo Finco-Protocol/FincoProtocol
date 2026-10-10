@@ -26,6 +26,11 @@ DEFAULT_TERMINAL_TOLERANCE_KEUR = 1e-4
 # has its own, stricter precision.  A test pins this constant to the engine value (parity only).
 SHL_TERMINAL_TOLERANCE_KEUR = 1e-7
 
+# The typed canonical SHL terminal statuses (mirrors financial_engine.project_returns.contracts
+# .ShlTerminalStatus; a test pins the parity).  Any other value is not a status.
+SHL_TERMINAL_STATUSES = ("REPAID", "UNPAID_AT_CONTRACTUAL_MATURITY",
+                         "OUTSTANDING_WITHIN_CONTRACTUAL_TERM", "NOT_APPLICABLE")
+
 
 @dataclass(frozen=True)
 class ProjectTerms:

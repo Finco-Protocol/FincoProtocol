@@ -708,11 +708,17 @@ class TestShlMaturityAuthority:
         payload = run_project("Solar", "Base", project_inputs_override=pi)
         terminal = payload["sponsor_schedule"]["summary"]["terminal_financial_state"]["shareholder_loan"]
         assert terminal["status"] == "NOT_APPLICABLE"
-        ev = make_evidence(payload, pi)
+        # Correction B: NOT_APPLICABLE needs COMPLETE corroborating balances.  The real committed balance sheet has
+        # one period without an SHL value, so the real Run is UNAVAILABLE (see TestCorrectionB); the positive
+        # branch is exercised on the same real evidence with that single gap synthetically completed.
+        ev = shl_ev(payload, pi, rows=complete_shl_rows)
         r = outcome(ev)
         assert r.status is CheckStatus.NOT_APPLICABLE and r.reason == "NO_SHL_PER_CANONICAL_TERMINAL_STATE"
         # contradictory evidence (canonical says no SHL, balance sheet shows one) is never N/A
-        contradict = shl_ev(payload, pi, rows=lambda t: t[-1].update(shl=250.0))
+        def contradict_rows(t):
+            complete_shl_rows(t)
+            t[-1].update(shl=250.0)
+        contradict = shl_ev(payload, pi, rows=contradict_rows)
         assert outcome(contradict).reason == "SHL_EVIDENCE_INCONSISTENT"
         # no canonical terminal state: a visible zero balance does NOT become NOT_APPLICABLE
         no_authority = dataclasses.replace(ev, sponsor_summary=None)
@@ -818,3 +824,146 @@ def test_maturity_authority_is_bound_to_the_committed_run_and_history(seeded_db)
     c = report.check("QM-TERM-002")
     assert c.status is CheckStatus.PASS and f"maturity period {terminal['contractual_maturity_period_index']}" in c.detail
     assert report.freshness == "CURRENT"
+
+
+# ─────────────── Correction B: final SHL evidence hardening ───────────────
+import itertools
+
+NO_SHL_STATUS = "NOT_APPLICABLE"
+
+
+@pytest.fixture(scope="module")
+def no_shl_run():
+    from finco_core.inputs import SponsorFundingMode
+    base = pf.create_generic_solar_reference()
+    pi = dataclasses.replace(base, financing=dataclasses.replace(
+        base.financing, sponsor_funding_mode=SponsorFundingMode.EQUITY_ONLY, clean_shl_repayment_method=None))
+    return pi, run_project("Solar", "Base", project_inputs_override=pi)
+
+
+def complete_shl_rows(table):
+    """Synthetic completion of the one real evidence gap so the positive NOT_APPLICABLE branch can be exercised."""
+    for r in table:
+        if r.get("shl") is None:
+            r["shl"] = 0.0
+
+
+class TestCorrectionB:
+    # A. terminal-balance consistency uses the SHL precision (1e-7), not 1e-6
+    def test_A_terminal_balance_5e7_vs_balance_sheet_zero_is_inconsistent(self, solar):
+        pi, payload = solar
+        r = outcome(shl_ev(payload, pi, terminal={"balance_at_contractual_maturity_keur": 5e-7}))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_EVIDENCE_INCONSISTENT"
+
+    def test_A_matching_balances_inside_the_shl_precision_pass(self, solar, maturity):
+        pi, payload = solar
+        ev = shl_ev(payload, pi, terminal={"balance_at_contractual_maturity_keur": 5e-8},
+                    rows=lambda t: row_for(t, maturity).update(shl=0.0))
+        assert outcome(ev).status is CheckStatus.PASS
+        ev = shl_ev(payload, pi, terminal={"balance_at_contractual_maturity_keur": 6e-8},
+                    rows=lambda t: row_for(t, maturity).update(shl=1e-8))
+        assert outcome(ev).status is CheckStatus.PASS                      # |diff| 5e-8 <= 1e-7
+        ev = shl_ev(payload, pi, terminal={"balance_at_contractual_maturity_keur": 2e-7},
+                    rows=lambda t: row_for(t, maturity).update(shl=5e-8))
+        assert outcome(ev).status is CheckStatus.UNAVAILABLE               # |diff| 1.5e-7 > 1e-7
+
+    # B. NOT_APPLICABLE requires complete, finite corroborating balances across the persisted balance sheet
+    def test_B_real_no_shl_run_is_unavailable_because_the_committed_balance_sheet_has_a_real_gap(self, no_shl_run):
+        pi, payload = no_shl_run
+        rows = payload["integrity_evidence"]["balance_sheet"]
+        gaps = [r["period_index"] for r in rows if r.get("shl") is None]
+        assert gaps, "the real evidence carries a period with no SHL balance"
+        r = outcome(make_evidence(payload, pi))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_BALANCE_EVIDENCE_INCOMPLETE"
+
+    def test_B_complete_corroboration_retains_not_applicable(self, no_shl_run):
+        pi, payload = no_shl_run
+        r = outcome(shl_ev(payload, pi, rows=complete_shl_rows))
+        assert r.status is CheckStatus.NOT_APPLICABLE and r.reason == "NO_SHL_PER_CANONICAL_TERMINAL_STATE"
+
+    @pytest.mark.parametrize("bad", [None, float("nan"), float("inf"), "0", True])
+    def test_B_missing_or_non_finite_row_next_to_valid_zero_is_not_ignored(self, no_shl_run, bad):
+        pi, payload = no_shl_run
+        def mutate(table):
+            complete_shl_rows(table)
+            table[10]["shl"] = bad
+        r = outcome(shl_ev(payload, pi, rows=mutate))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_BALANCE_EVIDENCE_INCOMPLETE"
+
+    def test_B_removed_shl_key_is_not_ignored(self, no_shl_run):
+        pi, payload = no_shl_run
+        def mutate(table):
+            complete_shl_rows(table)
+            table[10].pop("shl")
+        assert outcome(shl_ev(payload, pi, rows=mutate)).reason == "SHL_BALANCE_EVIDENCE_INCOMPLETE"
+
+    def test_B_contradiction_still_not_applicable_blocking(self, no_shl_run):
+        pi, payload = no_shl_run
+        def mutate(table):
+            complete_shl_rows(table)
+            table[-1]["shl"] = 250.0
+        assert outcome(shl_ev(payload, pi, rows=mutate)).reason == "SHL_EVIDENCE_INCONSISTENT"
+
+    # C. the canonical terminal status is validated against the typed enum
+    @pytest.mark.parametrize("status", [None, "", "repaid", "SETTLED", "PAID", 7, True, ["REPAID"]])
+    def test_C_unknown_or_malformed_status_never_passes_on_a_zero_balance(self, solar, status):
+        pi, payload = solar
+        r = outcome(shl_ev(payload, pi, terminal={"status": status}))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_TERMINAL_STATUS_INVALID"
+
+    def test_C_missing_status_key_is_unavailable(self, solar):
+        pi, payload = solar
+        ev = shl_ev(payload, pi)
+        summary = copy.deepcopy(dict(ev.sponsor_summary))
+        del summary["terminal_financial_state"]["shareholder_loan"]["status"]
+        r = outcome(dataclasses.replace(ev, sponsor_summary=summary))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_TERMINAL_STATUS_INVALID"
+
+    def test_C_status_enum_mirrors_the_engine_enum(self):
+        from app.model_quality.evidence import SHL_TERMINAL_STATUSES
+        from financial_engine.project_returns.contracts import ShlTerminalStatus
+        assert set(SHL_TERMINAL_STATUSES) == {s.value for s in ShlTerminalStatus}
+
+    def test_C_contradictory_status_and_maturity_evidence(self, solar, maturity, no_shl_run):
+        pi, payload = solar
+        # outstanding-within-term cannot coexist with a reached, fully settled maturity
+        r = outcome(shl_ev(payload, pi, terminal={"status": "OUTSTANDING_WITHIN_CONTRACTUAL_TERM"}))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_TERMINAL_STATUS_CONTRADICTORY"
+        # REPAID with a non-zero canonical unpaid / horizon balance
+        for field in ("unpaid_at_maturity_keur", "terminal_model_horizon_balance_keur"):
+            r = outcome(shl_ev(payload, pi, terminal={field: 3.0}))
+            assert r.status in (CheckStatus.UNAVAILABLE, CheckStatus.FAIL)
+            assert r.status is not CheckStatus.PASS
+        # NOT_APPLICABLE while still carrying a maturity
+        npi, npayload = no_shl_run
+        r = outcome(shl_ev(npayload, npi, terminal={"contractual_maturity_period_index": 52}, rows=complete_shl_rows))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_TERMINAL_STATUS_CONTRADICTORY"
+
+    def test_C_unpaid_status_remains_a_failure(self, solar):
+        pi, payload = solar
+        r = outcome(shl_ev(payload, pi, terminal={"status": "UNPAID_AT_CONTRACTUAL_MATURITY",
+                                                   "unpaid_at_maturity_keur": 4000.0}))
+        assert r.status is CheckStatus.FAIL and r.reason == "UNPAID_SHL_AT_CONTRACTUAL_MATURITY"
+
+    # regression anchors
+    def test_correctly_repaid_and_material_unpaid_and_original_false_pass(self, solar, maturity):
+        pi, payload = solar
+        assert outcome(make_evidence(payload, pi)).status is CheckStatus.PASS
+        assert outcome(shl_ev(payload, pi, rows=lambda t: row_for(t, maturity).update(shl=500.0))).status is CheckStatus.FAIL
+        def inject(table):
+            for r in table:
+                if r["period_index"] >= maturity - 2:
+                    r["shl"] = 9000.0
+        r = outcome(shl_ev(payload, pi, rows=inject, sponsor_reported={"pure_equity_xirr_status": "NO_POSITIVE_CASHFLOW"}))
+        assert r.status is CheckStatus.FAIL and r.value == 9000.0
+
+    def test_four_real_references_unchanged(self, runs):
+        for key, (pi, payload) in runs.items():
+            c = evaluate_model_quality(make_evidence(payload, pi)).check("QM-TERM-002")
+            assert c.status is CheckStatus.PASS and c.measured_value == 0.0, key
+            s = evaluate_model_quality(make_evidence(payload, pi)).summary
+            assert (s.passed, s.unavailable, s.not_applicable, s.score) == (25, 4, 1, 100.0), key
+
+    def test_no_historical_evidence_is_unavailable(self):
+        r = shl_terminal(Context(QualityEvidence(freshness="STALE")))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_TERMINAL_AUTHORITY_NOT_PERSISTED"
