@@ -520,12 +520,18 @@ class TestIsolation:
     def test_no_production_module_imports_the_evaluator_yet_and_no_route_exists(self):
         import main_web
         assert not [r for r in main_web.app.routes if "quality" in getattr(r, "path", "").lower()]
+        # Q3 integration: exactly these two read-only presentation adapters may consume the evaluator.
+        # Every other production module (and the whole engine / core) still may not.
+        q3_adapters = {REPO / "app/v2/insight_quality_projection.py", REPO / "app/v2/insight_scenario_projection.py"}
         for root in ("app", "financial_engine", "finco_core"):
             for path in (REPO / root).rglob("*.py"):
-                if "model_quality" in path.parts:
+                if "model_quality" in path.parts or path in q3_adapters:
                     continue
                 text = path.read_text(encoding="utf-8-sig")
                 assert "app.model_quality" not in text, str(path)
+        for path in q3_adapters:
+            text = path.read_text(encoding="utf-8-sig")
+            assert "financial_engine" not in text and "run_model" not in text and "run_project" not in text, str(path)
 
     def test_evaluate_workspace_reads_a_persisted_record_without_writing(self, solar):
         pi, payload = solar

@@ -523,6 +523,73 @@ def _build_assumption_register_view(pis):
                 "fingerprint": "", "rows": []}
 
 
+def _quality_row_from_block(quality: dict) -> dict:
+    sc = quality["score"]
+    counts = sc["counts"]
+    return {"score": sc["score"], "score_display": sc["score_display"], "score_status": sc["score_status"],
+            "coverage_weighted_pct": sc["coverage_weighted_pct"], "blocked": sc["blocked"],
+            "fail": counts["fail"], "warning": counts["warning"], "unavailable": counts["unavailable"],
+            "blocking_ids": [c["check_id"] for c in quality["groups"]["blocking"]]}
+
+
+def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, runtime_state, register_view):
+    """Q3: attach the read-only Model Quality / covenant / scenario views to the Smart Panel projection.
+
+    Pure reads of persisted evidence (workspace Last Run, Run History, scenario records); never runs the
+    engine and never writes.  Any failure leaves typed UNAVAILABLE views — it can never fail the page.
+    """
+    import dataclasses
+    from app.v2.insight_quality_projection import build_quality_insight_safe
+    from app.v2.insight_scenario_projection import build_scenario_insight_safe
+
+    register_paths = [str(r.get("path")) for r in ((register_view or {}).get("rows") or []) if isinstance(r, dict)]
+    strip = smart_panel.kpi_strip
+    kpi_keys = [it.key for it in strip.items] if strip else []
+    effective_inputs = None
+    if runtime_state == "CURRENT":
+        try:
+            effective_inputs = pis.to_projectinputs()
+        except Exception:  # noqa: BLE001 - thresholds then stay unavailable
+            effective_inputs = None
+    active_id = getattr(ws, "active_scenario_id", None) if ws else None
+    # The scenario shown with the Findings belongs to the COMMITTED Last Run (ws.last_runtime_scenario_id), not
+    # to the Working Copy scenario currently selected.  NULL is the canonical Base Case; an unresolvable id stays
+    # UNAVAILABLE (never Base Case, never the active scenario's name).
+    last_run_scenario_name = ""
+    if ws is not None and runtime_state != "NOT_RUN":
+        try:
+            from app.persistence.scenario_insight_reads import resolve_last_run_scenario
+            resolved = resolve_last_run_scenario(workspace_owner, project_record.project_id,
+                                                 getattr(ws, "last_runtime_scenario_id", None))
+            last_run_scenario_name = resolved.label or ""
+        except Exception:  # noqa: BLE001 - identity then stays UNAVAILABLE
+            last_run_scenario_name = ""
+    quality = build_quality_insight_safe(
+        ws, run_state=runtime_state, project_inputs=effective_inputs, active_scenario_id=active_id,
+        scenario_name=last_run_scenario_name,
+        register_paths=register_paths, kpi_keys=kpi_keys)
+    scenario_view: dict = {}
+    try:
+        from app.persistence.scenario_insight_reads import list_insight_scenarios, newest_committed_runs
+        chosen = list_insight_scenarios(workspace_owner, project_record.project_id, active_id)
+        latest = newest_committed_runs(workspace_owner, project_record.project_id, chosen.records)
+        issue_count = None
+        if quality.get("available") and quality.get("terms_bound"):
+            issue_count = sum(1 for c in quality.get("covenants", ())
+                              if c.get("status") in ("FAIL", "WARNING"))
+        scenario_view = build_scenario_insight_safe(
+            scenarios=chosen.records, latest_runs=latest, active_scenario_id=active_id, active_run_state=runtime_state,
+            last_run_snapshot_id=getattr(ws, "last_runtime_snapshot_id", None) if ws else None,
+            active_covenant_issue_count=issue_count, candidates=chosen.candidates,
+            scenarios_complete=chosen.complete,
+            active_quality=(_quality_row_from_block(quality) if quality.get("available") else None))
+    except Exception:  # noqa: BLE001 - fail closed to a typed UNAVAILABLE view
+        scenario_view = build_scenario_insight_safe(
+            scenarios=[], latest_runs={}, active_scenario_id=None, active_run_state="NOT_RUN",
+            last_run_snapshot_id=None, scenarios_complete=False)
+    return dataclasses.replace(smart_panel, insight={"quality": quality, "scenarios": scenario_view})
+
+
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *, freshness=None):
     """Shared context dict for both sheet partials."""
     from app.workbook.registry import is_data_center_project_type as _is_dc_type_bsc
@@ -1709,6 +1776,10 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         project_key=str(getattr(pis, "template_source", "") or ""),
         assumption_register_view=context.get("assumption_register_view"),
     )
+    context["smart_panel"] = _attach_insight(
+        context["smart_panel"], ws=ws, pis=pis, project_record=project_record,
+        workspace_owner=workspace_owner, runtime_state=runtime_freshness.state.value,
+        register_view=context.get("assumption_register_view"))
 
     # UI-3B: inject scenario presentations for the Scenarios tab.
     # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
