@@ -162,7 +162,7 @@ def test_hybrid_groups_switch_real_tabs_and_keep_every_tab_reachable(make):
     s.open_grid()
     labels = s.page.locator('[data-testid="hybrid-nav"] .hy-group').all_inner_texts()
     assert [t.strip().lower() for t in labels] == ["inputs", "scenarios", "outputs", "analysis", "trust"]
-    expectations = {"inputs": "tab-input-grid", "scenarios": "tab-scenarios", "outputs": "tab-outputs",
+    expectations = {"inputs": "tab-input-grid", "scenarios": "tab-scenarios", "outputs": "tab-overview",   # the landing tab counts as visited: a group returns to its last-visited tab
                     "analysis": "tab-sensitivity", "trust": "tab-trust"}
     for group, tab in expectations.items():
         s.page.locator(f'[data-hy-group="{group}"]').click()
