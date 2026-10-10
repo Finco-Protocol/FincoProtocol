@@ -134,7 +134,10 @@ def test_q4_finding_preview_confirm_select_run_compare(browser, app_server, kind
         assert before_history and base_ws.last_runtime_snapshot_id
         original = float(base_ws.draft_snapshot["gearing_pct"])
         # A materially different user-entered assumption: no solver prediction.
-        proposed = 10 if original != 10 else 15
+        # An economically meaningful but feasible change on these canonical
+        # Solar/Wind references; a 10% gearing stress makes the SHL unpayable.
+        # Q4 must never compensate with hidden financing assumptions.
+        proposed = 50 if original != 50 else 51
 
         page.goto(f"{root}/v2/workbook?project={code}")
         finding = page.locator('details[data-check-id="QM-SD-006"]')
