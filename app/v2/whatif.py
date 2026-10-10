@@ -62,7 +62,9 @@ def _mapping(check_id: str, ws: Any, project_type: str, raw: str):
     finding = _quality_check(ws, check_id, "STALE" if ws.dirty else "CURRENT")
     if path not in finding.related_assumption_ids:
         raise Q4Rejected("Q4_FINDING_ASSUMPTION_UNPROVEN", 422)
-    if finding.status.value not in ("FAIL", "WARNING"):
+    # A proven PASS check may also seed a clearly labelled exploratory sensitivity.
+    # It is not described as remediation or a predicted improvement.
+    if finding.status.value not in ("FAIL", "WARNING", "PASS"):
         raise Q4Rejected("Q4_FINDING_NOT_ACTIONABLE", 422)
     if register_path_for_field(field_id) != path:
         raise Q4Rejected("Q4_FIELD_ID_NOT_PROVEN", 422)
