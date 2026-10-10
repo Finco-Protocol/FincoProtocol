@@ -67,21 +67,38 @@
       <button type="button" class="filter" data-filter="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ label }}</button>
       {% endfor %}
     </div>
+    <form action="/v2/workbook/import/confirm" method="post">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="preview_ticket" value="{{ preview_ticket }}">
     <div class="table-wrap" role="region" aria-label="Import proposals" tabindex="0">
       <table>
         <thead><tr><th>Approve</th><th>Source cell / label</th><th>Original value</th><th>Proposed FINCO field</th><th>Working Copy</th><th>New value / units</th><th>State &amp; provenance</th></tr></thead>
         <tbody>
         {% for p in proposals %}
         <tr class="review-row" data-status="{{ p.status }}">
-          <td><input type="checkbox" class="approve-box" aria-label="Approve proposal {{ p.id + 1 }}" {% if p.status != 'ready' %}disabled{% endif %}></td>
+          <td><input type="checkbox" class="approve-box" name="keep_{{ p.id }}" value="on"
+            aria-label="Approve proposal {{ p.id + 1 }}"
+            {% if p.reason == 'IMPORT_FORMULA_NOT_AUTHORITATIVE' %}disabled{% endif %}></td>
           <td><strong>{{ p.sheet }}!{{ p.source_cell }}</strong><div>{{ p.label }}</div><small class="muted">Label at {{ p.label_cell }}</small></td>
           <td><code>{{ p.original_value }}</code><div class="muted">{{ p.source_unit or 'Unit unspecified' }}</div></td>
-          <td><select aria-label="Map proposal {{ p.id + 1 }} to FINCO field">
+          <td><select name="field_{{ p.id }}" aria-label="Map proposal {{ p.id + 1 }} to FINCO field">
             <option value="">Unmapped — skip</option>
             {% for f in fields %}<option value="{{ f.id }}" {% if p.field_id == f.id %}selected{% endif %}>{{ f.label }} ({{ f.id }})</option>{% endfor %}
           </select><div class="muted"><code>{{ p.register_path or 'No exact register path' }}</code></div></td>
           <td><code>{{ p.current_value if p.current_value is not none else 'Not set' }}</code></td>
-          <td><input type="text" aria-label="Manual FINCO value for proposal {{ p.id + 1 }}" placeholder="{{ p.normalized_value if p.normalized_value is not none else 'Needs correction' }}"><div class="muted">Proposed: {{ p.normalized_value if p.normalized_value is not none else '—' }}</div></td>
+          <td><label class="muted" for="unit-{{ p.id }}">Source unit</label>
+            <select id="unit-{{ p.id }}" name="unit_{{ p.id }}" aria-label="Original source unit for {{ p.label }}">
+              <option value="{{ p.source_unit or '' }}" selected>{{ p.source_unit or 'Unspecified' }} (source)</option>
+              {% for u in ['%', 'fraction', 'EUR', 'kEUR', 'kEUR/yr', 'EUR/MWh', 'EUR/kWh', 'MW', 'h/yr', 'years', 'months', 'date', ''] %}
+              {% if u != (p.source_unit or '') %}<option value="{{ u }}">{{ u if u else 'Unspecified' }}</option>{% endif %}
+              {% endfor %}
+            </select>
+            <div class="muted">Proposed FINCO value: <strong>{{ p.normalized_value if p.normalized_value is not none else '—' }}</strong></div>
+            <input name="manual_{{ p.id }}" type="text"
+              aria-label="Optional corrected FINCO value for proposal {{ p.id + 1 }}"
+              placeholder="Optional override (FINCO units)">
+          </td>
           <td><span class="pill {{ p.status }}">{{ p.status|replace('_',' ') }}</span><div>{{ p.mapping_method }}</div><small class="muted">{{ p.reason or p.confidence }}</small></td>
         </tr>
         {% else %}
@@ -91,9 +108,49 @@
       </table>
     </div>
     <div class="summary panel">
-      <div><strong>3. Explicit Apply</strong>
-        <p class="muted">The C0 atomic-financial test gate has not been accepted. Import Apply is disabled; no partial or sequential save fallback exists.</p></div>
-      <button type="button" disabled>Apply approved fields — C0 gate pending</button>
+      <div><strong>3. Confirm intended changes</strong>
+        <p class="muted">Choose only supported fields, correct mappings or units, and explicitly approve each row. No financial writes occur at this step.</p></div>
+      <button type="submit">Review approved change set</button>
+    </div>
+    </form>
+  </section>
+  {% endif %}
+  {% if stage == "confirm" %}
+  <section class="panel">
+    <h2>Final confirmation · {{ approved_count }} approved fields</h2>
+    <p class="notice">Exactly {{ changed_count }} candidate changes are shown below. Submitting Apply performs one canonical CAS transaction; any conflict or validation error rejects the entire set. The model is never run automatically.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Source</th><th>Approved FINCO field</th><th>Existing</th><th>Approved value</th><th>FINCO unit</th><th>Mapping method</th></tr></thead>
+      <tbody>{% for row in approved %}<tr><td>{{ row.sheet }}!{{ row.cell }}<div class="muted">{{ row.label }}</div></td>
+        <td><code>{{ row.field_id }}</code></td><td>{{ row.current_value if row.current_value is not none else 'Not set' }}</td>
+        <td><strong>{{ row.value }}</strong></td><td>{{ row.unit }}</td><td>{{ row.method }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    <form action="/v2/workbook/import/apply" method="post">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="approved_ticket" value="{{ approved_ticket }}">
+      <div class="summary panel"><p>Confirm that these are exactly the values you want to save in this Working Copy and active scenario.</p>
+      <button type="submit">Apply {{ approved_count }} approved fields atomically</button></div>
+    </form>
+  </section>
+  {% endif %}
+  {% if stage == "result" %}
+  <section class="panel">
+    <h2>Import Apply result</h2>
+    <p>Canonical batch committed. {{ applied_count }} fields changed; {{ skipped_count }} source rows were not applied.
+       Model runtime state: <strong>{{ freshness_state }}</strong>.
+       This is not a successful financial model run.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Source cell</th><th>Canonical field</th><th>Approved value</th><th>Actually saved value</th></tr></thead>
+      <tbody>{% for row in saved %}<tr>
+       <td>{{ row.source }}</td><td><code>{{ row.field_id }}</code></td>
+       <td>{{ row.approved_value }}</td><td><strong>{{ row.actual_value }}</strong></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="summary panel">
+      <p>You can return to the canonical Inputs workspace, review changed cells, and start the existing Run manually.</p>
+      <a href="/v2/workbook?project={{ project_code|urlencode }}&sheet=inputs">Review inputs &amp; Run manually →</a>
     </div>
   </section>
   {% endif %}
