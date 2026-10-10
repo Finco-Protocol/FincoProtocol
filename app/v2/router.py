@@ -568,6 +568,22 @@ def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, ru
         ws, run_state=runtime_state, project_inputs=effective_inputs, active_scenario_id=active_id,
         scenario_name=last_run_scenario_name,
         register_paths=register_paths, kpi_keys=kpi_keys)
+    # Q4 conditional action availability is presentation-only; no writes, no engine Run.
+    # Q1 statuses and Q3 Last Run identities remain unmodified.
+    from app.v2.whatif import CANDIDATES as _Q4_CANDIDATES, display_eligibility as _q4_eligible
+    for _group in (quality.get("groups") or {}).values():
+        for _finding in _group:
+            if _finding["check_id"] not in _Q4_CANDIDATES:
+                continue
+            if ws is None or is_protected_reference(project_record):
+                _allowed, _reason = False, "Q4_PROTECTED_OR_UNAVAILABLE"
+            else:
+                _allowed, _reason = _q4_eligible(
+                    check_id=_finding["check_id"], check_status=_finding["status"],
+                    project_type=project_record.project_type or "",
+                    snapshot=ws.draft_snapshot)
+            _finding["q4_eligible"] = _allowed
+            _finding["q4_unavailable_reason"] = _reason
     scenario_view: dict = {}
     try:
         from app.persistence.scenario_insight_reads import list_insight_scenarios, newest_committed_runs
