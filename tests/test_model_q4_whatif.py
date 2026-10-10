@@ -403,3 +403,76 @@ def test_q4_token_tamper_and_scope_fail_closed():
         with pytest.raises(whatif.Q4Rejected, match="SCOPE_MISMATCH"):
             whatif.commit(owner="alice", project_id="other",
                           project_type="solar", token=token)
+
+
+
+def test_q4_atomic_rollback_after_base_insert_before_child_insert(q4_http):
+    """A failure after lazy Base bootstrap rolls BOTH inserts back."""
+    import re
+    from app.persistence import db
+    from app.services.reference_seed_service import create_reference_seeded_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import get_run_history
+    from app.persistence.scenarios_repository import list_scenarios
+
+    client, cookies = q4_http
+    user = "q4-atomic-base-owner"
+    project = create_reference_seeded_project(
+        user_id=user, requested_name="Q4 Atomic Bootstrap Solar",
+        template_source="generic_solar_reference", capacity_mw=40,
+    )
+    def page_tokens():
+        response = client.get("/v2/workbook", params={"project": project.project_code},
+                              cookies=cookies(user))
+        assert response.status_code == 200
+        return {key: re.search(r'name="' + key + r'" value="([^"]+)"', response.text).group(1)
+                for key in ("content_hash", "workbook_version")}
+    run = client.post("/v2/workbook/run", cookies=cookies(user),
+                      headers={"HX-Request": "true"},
+                      data=dict(project=project.project_code, **page_tokens()))
+    assert run.status_code == 200
+    before = get_workspace_state(user, project.project_id)
+    history_before = tuple(get_run_history(user, project.project_id))
+    bases_before = tuple(list_scenarios(user, project.project_id))
+    assert not bases_before, "Test requires lazy Base initialization"
+    candidate = 50 if float(before.draft_snapshot["gearing_pct"]) != 50 else 51
+    preview = client.post("/v2/workbook/whatif/preview",
+        cookies=cookies(user),
+        data={"project": project.project_code, "check_id": "QM-SD-006",
+              "scenario_name": "Atomic Base + What-if",
+              "proposed_value": str(candidate)})
+    assert preview.status_code == 200, preview.text
+    ticket = re.search(r'name="token" value="([^"]+)"', preview.text).group(1)
+
+    real_get_connection = db.get_connection
+    class RejectSecondInsert:
+        def __init__(self, raw):
+            self.raw = raw
+            self.inserts = 0
+        def cursor(self):
+            parent = self
+            class Cursor:
+                def __init__(self):
+                    self.inner = parent.raw.cursor()
+                def execute(self, sql, *args):
+                    if sql.lstrip().upper().startswith("INSERT INTO SCENARIOS"):
+                        parent.inserts += 1
+                        if parent.inserts == 2:
+                            raise RuntimeError("Q4_INJECTED_CHILD_INSERT_FAILURE")
+                    return self.inner.execute(sql, *args)
+                def __getattr__(self, name):
+                    return getattr(self.inner, name)
+            return Cursor()
+        def execute(self, *args):
+            return self.raw.execute(*args)
+        def close(self):
+            return self.raw.close()
+
+    with patch("app.persistence.db.get_connection",
+               side_effect=lambda: RejectSecondInsert(real_get_connection())):
+        with pytest.raises(RuntimeError, match="Q4_INJECTED_CHILD_INSERT_FAILURE"):
+            whatif.commit(owner=user, project_id=project.project_id,
+                          project_type=project.project_type, token=ticket)
+    assert tuple(list_scenarios(user, project.project_id)) == bases_before
+    assert tuple(get_run_history(user, project.project_id)) == history_before
+    assert get_workspace_state(user, project.project_id) == before
