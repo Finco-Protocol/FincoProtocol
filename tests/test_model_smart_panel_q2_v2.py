@@ -1,4 +1,4 @@
-"""Q2 Smart Panel V2 — read-only authority and presentation regression gates.
+"""Q2 FINCO Insight — read-only authority and presentation regression gates.
 
 No engine or persistence mutation is permitted.  Browser acceptance remains
 a separate runtime gate; these tests check typed projection and DOM contracts.
@@ -152,3 +152,23 @@ def test_dedicated_assets_loaded_once_after_existing_workbook_script():
     assert "data-sp-return" in js and "v2FieldValidationUx.jump" in js
     assert "fetch(" not in js and "htmx.ajax(" not in js
     assert "run_project" not in js
+
+def test_finco_insight_branded_accessibly_without_internal_renames():
+    from html.parser import HTMLParser
+
+    rendered = html(panel())
+    assert 'data-testid="finco-insight-heading"' in rendered
+    assert "<h2 class=\"v2-sp-brand-title\">FINCO Insight</h2>" in rendered
+    assert "Model findings, assumptions and run context." in rendered
+    assert 'aria-label="FINCO Insight modes"' in rendered
+    for key, visible in (("solutions", "Findings"), ("inspector", "Explore"),
+                         ("changes", "Changes")):
+        assert f'data-sp-mode="{key}">{visible}</button>' in rendered
+        assert f'data-sp-view="{key}"' in rendered
+    assert 'aria-label="Select assumption or KPI to explore"' in rendered
+    assert 'aria-label="Smart panel"' not in rendered
+    # One approved inspection-only selector, no financial input forms.
+    assert rendered.count('<select ') == 1
+    assert 'id="v2-sp-inspect-select"' in rendered
+    assert 'name="financing.' not in rendered
+    assert '<form' not in rendered and '<textarea' not in rendered
