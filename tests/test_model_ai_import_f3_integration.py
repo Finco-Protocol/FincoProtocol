@@ -88,7 +88,7 @@ def test_active_f3_atomic_rollback_revenue_capex_forbidden_debt(env):
     with pytest.raises(ValueError, match="F3_COMPETING_FINANCING_EDITOR_REJECTED"):
         _batch(project, [
             ("revenue.ppa.index", "2"),
-            ("capex.hard_capex_keur", "1"),
+            ("capex.C.grid_connection", "1"),
             (F3_FORBIDDEN, "6"),
         ])
     assert _evidence(project) == before
@@ -212,8 +212,8 @@ def _review_apply(project, field_id: str, value: str, unit: str, *, xlsx=False):
 
 
 @pytest.mark.parametrize("kind,field_id,value,unit,xlsx", [
-    ("solar", "project_setup.technical.p50_hours", "1840", "hours", False),
-    ("wind", "project_setup.technical.p50_hours", "2800", "hours", True),
+    ("solar", "project_setup.technical.p50_hours", "1840", "h", False),
+    ("wind", "project_setup.technical.p50_hours", "2800", "h", True),
     ("data_center", "revenue.data_center.occupancy_y1", "62", "%", False),
     ("ev_charging", "revenue.ev_charging.charging_price", "0.38", "EUR/kWh", True),
 ])
@@ -243,7 +243,7 @@ def test_four_vertical_real_baseline_import_stale_rerun_current_history_export(
     original_export = resolve_canonical_last_run_from_workspace(project, OWNER, stale)
     assert original_export is not None
     if old_facilities is not None:
-        assert original_export.runtime_summary["financing_evidence"]["facility_schedules"] == old_facilities
+        assert original_export.project_inputs.financing_collection.content_digest() == (\n            ProjectInputSet.from_snapshot(baseline.last_runtime_snapshot).to_projectinputs().financing_collection.content_digest()\n        )
     current, newer = run(env, project)
     assert not current.dirty
     assert current.last_runtime_snapshot_id != old_id
