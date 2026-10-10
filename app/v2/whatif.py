@@ -276,17 +276,19 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
         # Scenario resolver consumes legacy snapshot keys, NOT the semantic
         # ProjectInputSet.values field-ID mapping. Preserve entire provenance.
         from app.persistence.scenarios_repository import resolve_scenario_snapshot
+        # This What-if branches from the REVIEWED Working Copy state, not
+        # from a potentially older Base snapshot. Earlier Base scenarios may
+        # legitimately have been created before the owner later saved an
+        # explicit assumption. The Base row remains immutable and the child
+        # carries a complete independent canonical source snapshot.
         source = dict(snapshot)
         if base is not None:
-            # Base lineage is immutable. Existing Base input representation must
-            # be a genuine adapter-consumable snapshot; never silently repair it.
-            source = dict(base.base_input_set or base.snapshot or {})
+            from app.workbook.input_set import ProjectInputSetError
+            persisted_base = dict(base.base_input_set or base.snapshot or {})
             try:
-                ProjectInputSet.from_snapshot(source).to_projectinputs()
-            except ValueError as exc:
+                ProjectInputSet.from_snapshot(persisted_base).to_projectinputs()
+            except (ValueError, ProjectInputSetError) as exc:
                 raise Q4Rejected("Q4_BASE_SNAPSHOT_AUTHORITY_INVALID") from exc
-            if ProjectInputSet.from_snapshot(source).get(spec.field_id) != old:
-                raise Q4Rejected("Q4_BASE_ASSUMPTION_CONFLICT")
         overrides = {key: proposed}
         effective = resolve_scenario_snapshot(source, overrides)
         actual = ProjectInputSet.from_snapshot(effective).get(spec.field_id)
@@ -323,6 +325,7 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
                      source_run_snapshot_id=data["run_id"],
                      source_run_scenario_id=data["run_scenario_id"],
                      base_scenario_id=base_id,
+                     baseline="reviewed_working_copy",
                      created_at=now)
         cur.execute(
             """INSERT INTO scenarios (
