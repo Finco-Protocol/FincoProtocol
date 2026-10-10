@@ -23,7 +23,7 @@
       <dl class="v2-sp-facts v2-sp-q3-facts">
         {% for k in r.kpis %}<dt>{{ k.label }}</dt><dd>{{ k.value }}</dd>{% endfor %}
         <dt>Model Quality</dt>
-        <dd data-scenario-quality>{{ r.quality.score_display if r.quality.score_display else 'NOT SCORED' }} · coverage {{ r.quality.coverage_weighted_pct if r.quality.coverage_weighted_pct is not none else '—' }}% · {{ r.quality.fail }} FAIL · {{ r.quality.warning }} WARNING{% if r.quality.blocked %} · BLOCKED{% endif %}</dd>
+        <dd data-scenario-quality>{{ r.quality.score_display if r.quality.score_display else 'NOT SCORED' }} · coverage {{ r.quality.coverage_weighted_pct if r.quality.coverage_weighted_pct is not none else '—' }}% · {{ r.quality.fail }} FAIL · {{ r.quality.warning }} WARNING{% if r.quality.blocked %} · BLOCKED{% endif %}{% if not (r.is_active and r.basis == 'CURRENT') %} · freshness and project terms not bound to this Run{% endif %}</dd>
         <dt>Covenants</dt><dd>{{ r.covenant_note }}</dd>
       </dl>
       {% endif %}
