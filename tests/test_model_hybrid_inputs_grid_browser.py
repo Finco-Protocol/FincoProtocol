@@ -139,6 +139,14 @@ def make(live_server, browser):
         s.close()
 
 
+def _shot(s, name):
+    """Reviewer evidence: only when WF05_SCREENSHOT_DIR is set (CI artifact)."""
+    out = os.environ.get("WF05_SCREENSHOT_DIR")
+    if out:
+        os.makedirs(out, exist_ok=True)
+        s.page.screenshot(path=os.path.join(out, f"{name}.png"), full_page=False)
+
+
 def _edit(s, field_id, value):
     s.cell(field_id).click()
     s.page.keyboard.press("Control+A")
@@ -225,6 +233,7 @@ def test_four_consecutive_edits_save_atomically_with_stable_focus_and_scroll(mak
     for field_id, value in EDITS:
         _edit(s, field_id, value)
     assert s.staged() == len(EDITS)
+    _shot(s, "desktop-grid-four-staged-edits")
     assert "4 unsaved edits" in s.page.locator("[data-ig-count]").inner_text()
     assert s.page.locator('[data-testid="hybrid-unsaved"]').is_visible()
 
@@ -336,6 +345,7 @@ def test_mobile_390_grid_edits_and_saves_without_horizontal_page_overflow(make):
     s.page.locator("[data-ig-save]").click()
     s.page.wait_for_function("window.__igLastSaveMs !== undefined", timeout=30000)
     assert float(s.persisted("project_setup.technical.p50_hours")) == 1533.0
+    _shot(s, "mobile-390-grid-after-save")
     assert s.page.locator('[data-testid="hybrid-status"]').is_visible()
     assert not s.errors
 
@@ -435,4 +445,5 @@ def test_cost_line_saved_after_last_run_is_marked_not_run_and_strip_follows(make
     flag = s.page.locator('[data-ig-row][data-field-id="project_setup.technical.p50_hours"] [data-ig-flag-notrun]')
     flag.wait_for(state="visible", timeout=10000)
     assert "Last Run used" in flag.get_attribute("title")
+    _shot(s, "desktop-grid-saved-not-run-after-run")
     assert not s.errors

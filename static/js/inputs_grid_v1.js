@@ -558,6 +558,19 @@
     hybridGroups: HYBRID_GROUPS
   };
 
-  function boot() { initHybrid(); followToolbarState(); paintAll(); }
+  // Sticky stack: toolbar → persistent strip → sheet tabs → grid action bar.  Measured, never assumed,
+  // because the toolbar wraps on narrow screens.  On phones the strip scrolls with the page.
+  function measureStack() {
+    var toolbar = document.querySelector('.v2-toolbar'), hy = document.getElementById('v2-hybrid-bar');
+    var tabs = document.getElementById('v2-sheet-tabs'), st = document.documentElement.style;
+    if (!hy) return;
+    st.setProperty('--hy-top', (toolbar ? toolbar.offsetHeight : 0) + 'px');
+    var sticky = getComputedStyle(hy).position === 'sticky';
+    st.setProperty('--hy-h', (sticky ? hy.offsetHeight : 0) + 'px');
+    st.setProperty('--hy-tabs-h', (tabs ? tabs.offsetHeight : 0) + 'px');
+  }
+  window.addEventListener('resize', measureStack);
+
+  function boot() { measureStack(); initHybrid(); followToolbarState(); paintAll(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

@@ -26,7 +26,7 @@
 }
 
 /* ── Hybrid bar (sticky) ─────────────────────────────────────────────────────────── */
-.hy { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem;
+.hy { position: sticky; top: var(--hy-top, 42px); z-index: 95; display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem;
       padding: .3rem .75rem; background: var(--ig-bg); border-bottom: 1px solid var(--ig-border); font-size: .8rem; }
 .hy-groups { display: flex; flex-wrap: wrap; gap: .15rem; max-width: 100%; min-width: 0; }
 .hy-group { font: inherit; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: .72rem;
@@ -48,12 +48,15 @@
 .hy-chip--integrity-unavailable { color: var(--ig-muted); }
 .hy-chip--unsaved { color: var(--ig-edit); border-color: var(--ig-edit); background: var(--ig-edit-bg); }
 .hy-chip[hidden] { display: none; }
+/* The persistent strip sits directly under the sticky toolbar; the sheet tab bar sticks beneath it
+   (offsets are measured by inputs_grid_v1.js so wrapping toolbars cannot overlap the strip). */
+#v2-sheet-tabs.v2-tabs { top: calc(var(--hy-top, 42px) + var(--hy-h, 43px)); }
 /* Tabs of the active group stay visible and are emphasised; the rest remain reachable. */
 #v2-sheet-tabs .v2-tab--in-group { font-weight: 700; }
 
 /* ── Input grid ─────────────────────────────────────────────────────────────────── */
 .ig { font-size: .8rem; color: var(--ig-text); }
-.ig-bar { position: sticky; top: 44px; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .5rem;
+.ig-bar { position: sticky; top: calc(var(--hy-top, 42px) + var(--hy-h, 43px) + var(--hy-tabs-h, 27px)); z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .5rem;
           padding: .35rem 0; background: var(--ig-bg); border-bottom: 1px solid var(--ig-border); }
 .ig-count { font-weight: 600; margin-right: .4rem; color: var(--ig-muted); }
 .ig-count--dirty { color: var(--ig-edit); }
@@ -76,9 +79,9 @@
 .ig-table th { text-align: left; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ig-muted);
                padding: .25rem .5rem; border-bottom: 1px solid var(--ig-border); }
 .ig-table td { padding: 0 .5rem; height: 28px; border-bottom: 1px solid var(--ig-border); vertical-align: middle; }
-.ig-col-code { width: 4.2rem; } .ig-col-unit { width: 3.2rem; } .ig-col-value { width: 8rem; text-align: right; } .ig-col-flags { width: 11rem; }
+.ig-col-code { width: 4.2rem; } .ig-col-unit { width: 5.2rem; } .ig-col-value { width: 8rem; text-align: right; } .ig-col-flags { width: 11rem; }
 .ig-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ig-code, .ig-unit { color: var(--ig-muted); }
+.ig-code, .ig-unit { color: var(--ig-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ig-ro { text-align: right; font-variant-numeric: tabular-nums; color: var(--ig-muted); }
 .ig-cell { padding: 0 .25rem; }
 .ig-input { width: 100%; box-sizing: border-box; height: 26px; padding: 0 .4rem; text-align: right; font: inherit;
@@ -102,6 +105,7 @@
   .hy-group { padding: .35rem .5rem; font-size: .68rem; }
   .hy-status { margin-left: 0; width: 100%; }
   .hy-id { white-space: normal; }
+  .hy { position: static; }
   .ig-bar { top: 0; position: static; }
   .ig-col-code, .ig-code { display: none; }
   .ig-col-unit, .ig-unit { display: none; }

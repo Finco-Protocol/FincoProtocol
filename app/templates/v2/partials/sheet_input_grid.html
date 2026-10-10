@@ -83,7 +83,7 @@
                     title="{% if row.baseline %}Last Run used {{ row.baseline }}{% else %}Changed since the Last Run{% endif %}">Saved · not run</span>
               <span class="ig-flag ig-flag--error" data-ig-flag-error hidden></span>
             {% else %}
-              <span class="ig-flag ig-flag--ro">{{ row.reason }}</span>
+              <span class="ig-flag ig-flag--ro" title="{{ row.reason }}">{{ row.reason }}</span>
             {% endif %}
           </td>
         </tr>
