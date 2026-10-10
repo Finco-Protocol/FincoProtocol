@@ -143,6 +143,7 @@ def test_authenticated_csv_review_apply_without_automatic_run(browser, app_serve
         assert after_review.draft_snapshot == original.draft_snapshot
         page.get_by_role("button", name="Apply 2 approved fields atomically").click()
         assert page.get_by_text("Import Apply result").count() == 1
+        assert page.get_by_text("2 fields changed", exact=False).count() == 1
         saved = get_workspace_state(OWNER, p.project_id)
         assert saved.draft_snapshot["rev_ppa_index"] == "2.0"
         assert saved.draft_snapshot["horizon_years"] == "28"
@@ -517,6 +518,7 @@ def test_authenticated_four_vertical_import_run_chromium(
         )
         page.get_by_role("button", name="Apply 1 approved fields atomically").click()
         assert page.get_by_text("Import Apply result").count() == 1
+        assert page.get_by_text("1 fields changed", exact=False).count() == 1
         page.screenshot(
             path=f"artifacts/model-ai-import/f3-{kind}-applied-stale.png",
             full_page=True,
