@@ -256,6 +256,10 @@ async def model_input_import_apply(
     try:
         signed = unseal_approved(approved_ticket, owner=owner, project_id=record.project_id)
         approved = signed["approved"]
+        # Capture the exact pre-CAS values for truthful changed-field reporting.
+        # The submitted composite CAS prevents a concurrent different snapshot
+        # from being applied against this review's approved set.
+        before_pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
         # Server repeats canonical field validation inside the C0 transaction.
         changes = [(item["field_id"], item["value"]) for item in approved]
         WorkbookUpdateService.apply_batch_draft_update(
@@ -281,7 +285,10 @@ async def model_input_import_apply(
         } for item in approved]
         ctx = _context(request, user, record, fresh, stage="result")
         ctx["saved"] = saved
-        ctx["applied_count"] = sum(bool(p.get("changed")) for p in approved)
+        ctx["applied_count"] = sum(
+            before_pis.get(item["field_id"]) != pis.get(item["field_id"])
+            for item in approved
+        )
         ctx["skipped_count"] = max(0, int(signed.get("source_count", len(saved))) - len(saved))
         ctx["freshness_state"] = freshness.state.value
         return _templates.TemplateResponse(
