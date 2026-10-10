@@ -115,6 +115,20 @@ def test_q4_finding_preview_confirm_select_run_compare(browser, app_server, kind
     artifact.mkdir(parents=True, exist_ok=True)
 
     try:
+        # Wind template may not persist gearing. Set a source-proven value via
+        # canonical Save, not by relying on an engine fallback/default.
+        from app.persistence.workspace_repository import get_workspace_state
+        if not get_workspace_state(OWNER, project.project_id).draft_snapshot.get("gearing_pct"):
+            page.goto(f"{root}/v2/workbook?project={code}")
+            h = page.locator('input[name="content_hash"]').first.input_value()
+            v = page.locator('input[name="workbook_version"]').first.input_value()
+            saved = ctx.request.post(f"{root}/v2/workbook/update",
+                headers={"HX-Request": "true"},
+                form={"project": code, "field_id": "debt.senior.gearing_pct",
+                      "value": "65", "sheet_id": "debt",
+                      "content_hash": h, "workbook_version": v})
+            assert saved.status == 200
+            assert float(get_workspace_state(OWNER, project.project_id).draft_snapshot["gearing_pct"]) == 65
         base_ws = _run(ctx, page, root, code)
         before_history = tuple(get_run_history(OWNER, project.project_id))
         assert before_history and base_ws.last_runtime_snapshot_id
