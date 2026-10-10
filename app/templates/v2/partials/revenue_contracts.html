@@ -18,6 +18,7 @@
         hx-target="#v2-sheet-revenue" hx-swap="outerHTML" data-testid="revenue-contracts-form">
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
+    <input type="hidden" name="csrf_token" value="{{ revenue_contracts_csrf_token }}">
     <label for="revenue-contracts-json">Contract payload (JSON, fractional shares and rates)</label>
     <textarea id="revenue-contracts-json" name="contracts" rows="12" spellcheck="false"
               style="width:100%;box-sizing:border-box;resize:vertical" aria-describedby="revenue-contracts-boundary">{{ contracts.raw }}</textarea>

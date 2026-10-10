@@ -10,6 +10,15 @@ from tests.test_wf07_revenue_multistream import contracts
 from app.workbook.revenue_multistream import SNAPSHOT_KEY
 
 
+def contract_tokens(html):
+    from bs4 import BeautifulSoup
+    from app.auth import validate_csrf_token
+    form = BeautifulSoup(html, "html.parser").select_one('[data-testid="revenue-contracts-form"]')
+    token = form.select_one('input[name="csrf_token"]')["value"]
+    assert validate_csrf_token(token)
+    return {**tokens(html), "csrf_token": token}
+
+
 @pytest.mark.parametrize("kind", ["solar", "wind"])
 def test_contract_save_reload_scenario_run_and_immutable_export(env, monkeypatch, kind):
     from app.persistence.workspace_repository import get_workspace_state
@@ -31,7 +40,7 @@ def test_contract_save_reload_scenario_run_and_immutable_export(env, monkeypatch
     payload = contracts(pi, kind, price=95, merchant_price=90, strike=100)
     def save(raw, **extra):
         return env.client.post("/v2/workbook/revenue/contracts", headers={"HX-Request": "true"},
-                               data={**project, **tokens(page().text), "contracts": json.dumps(raw) if isinstance(raw, dict) else raw, **extra})
+                               data={**project, **contract_tokens(page().text), "contracts": json.dumps(raw) if isinstance(raw, dict) else raw, **extra})
     def run():
         response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **tokens(page().text)})
         assert 'id="v2-sheet-returns"' in response.text, response.text[:3000]
@@ -108,10 +117,11 @@ def test_route_context_and_sector_contract(env, kind):
     assert response.status_code == 200
     assert ('data-testid="revenue-contracts-form"' in response.text) == (kind in ("solar", "wind"))
     if kind in ("data_center", "ev_charging"):
+        from app.auth import generate_csrf_token
         from app.project_factories import create_generic_solar_reference
         raw = contracts(create_generic_solar_reference())
         result = env.client.post("/v2/workbook/revenue/contracts", data={"project": record.project_code,
-            **tokens(response.text), "contracts": json.dumps(raw)})
+            **tokens(response.text), "csrf_token": generate_csrf_token(), "contracts": json.dumps(raw)})
         assert result.status_code == 422
 
 
@@ -123,16 +133,16 @@ def test_cas_owner_and_invalid_write_are_atomic(env):
     html = env.client.get("/v2/workbook", params=project).text
     ws = get_workspace_state("decision-user", record.project_id)
     raw = json.dumps(contracts(WorkbookService.build_draft_input_set_from_workspace(ws).to_projectinputs()))
-    invalid = env.client.post("/v2/workbook/revenue/contracts", data={**project, **tokens(html), "contracts": "{}"})
+    invalid = env.client.post("/v2/workbook/revenue/contracts", data={**project, **contract_tokens(html), "contracts": "{}"})
     assert invalid.status_code == 422
     assert get_workspace_state("decision-user", record.project_id).draft_snapshot == ws.draft_snapshot
-    valid = env.client.post("/v2/workbook/revenue/contracts", data={**project, **tokens(html), "contracts": raw})
+    valid = env.client.post("/v2/workbook/revenue/contracts", data={**project, **contract_tokens(html), "contracts": raw})
     assert valid.status_code == 200
-    stale = env.client.post("/v2/workbook/revenue/contracts", data={**project, **tokens(html), "contracts": ""})
+    stale = env.client.post("/v2/workbook/revenue/contracts", data={**project, **contract_tokens(html), "contracts": ""})
     assert stale.status_code == 409
     from app.auth import COOKIE_NAME, create_session_token
     env.client.cookies.set(COOKIE_NAME, create_session_token(user_id="other-contract-owner", username="other"))
-    denied = env.client.post("/v2/workbook/revenue/contracts", data={**project, **tokens(html), "contracts": raw})
+    denied = env.client.post("/v2/workbook/revenue/contracts", data={**project, **contract_tokens(html), "contracts": raw})
     assert denied.status_code == 404
 
 
@@ -156,10 +166,10 @@ def test_selected_scenario_contracts_reject_legacy_price_edits_and_old_selection
     pi = WorkbookService.build_draft_input_set_from_workspace(ws).to_projectinputs()
     raw = json.dumps(contracts(pi))
     old_selection = env.client.post("/v2/workbook/revenue/contracts",
-        data={**project, **tokens(base_page), "contracts": raw})
+        data={**project, **contract_tokens(base_page), "contracts": raw})
     assert old_selection.status_code == 409
     page = env.client.get("/v2/workbook", params=project).text
-    saved = env.client.post("/v2/workbook/revenue/contracts", data={**project, **tokens(page), "contracts": raw})
+    saved = env.client.post("/v2/workbook/revenue/contracts", data={**project, **contract_tokens(page), "contracts": raw})
     assert saved.status_code == 200
     before = get_workspace_state("decision-user", record.project_id)
     assert not before.draft_snapshot.get(SNAPSHOT_KEY)

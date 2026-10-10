@@ -979,6 +979,7 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
     the runtime_summary is read from projection.fs.runtime_summary — it is the
     same thawed dict as rr.runtime_summary and avoids a second get_runtime_result call.
     """
+    from app.auth import generate_csrf_token
     from app.workbook.runtime_projection import (
         build_runtime_projection_bundle,
         classify_runtime_state,
@@ -1035,6 +1036,7 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
     return {
         "revenue_fields": fields,
         "revenue_multistream": _build_revenue_contract_editor(pis, ws),
+        "revenue_contracts_csrf_token": generate_csrf_token(),
         "revenue_state": revenue_state.value,
         "revenue_runtime_summary": rs,
         "revenue_pricing_basis": (
@@ -1128,6 +1130,9 @@ async def v2_revenue_contracts(request: Request, _: None = Depends(require_v2_ac
     if not user:
         return JSONResponse({"error": "Unauthenticated"}, status_code=401)
     form = await request.form()
+    from app.auth import validate_csrf_token
+    if not validate_csrf_token(form.get("csrf_token")):
+        return JSONResponse({"error": "REVENUE_CONTRACTS_CSRF_INVALID"}, status_code=403)
     project = str(form.get("project") or "").strip()
     from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state

@@ -25,6 +25,8 @@ def test_authenticated_contract_save_scenario_run_and_narrow_render(golden_app, 
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.goto(golden_app["url"] + "/v2/workbook?project=" + record.project_code)
     _click_tab(page, "tab-revenue", "panel-revenue")
+    from app.auth import validate_csrf_token
+    assert validate_csrf_token(page.locator('[data-testid="revenue-contracts-form"] input[name="csrf_token"]').input_value())
     page.locator("#revenue-contracts-json").fill(json.dumps(payload, indent=2))
     page.get_by_role("button", name="Save contracts", exact=True).click()
     page.locator("table[aria-label='Saved revenue contracts']").wait_for(timeout=30_000)
