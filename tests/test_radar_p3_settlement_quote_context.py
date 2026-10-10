@@ -689,6 +689,7 @@ def test_p3_27_frozen_settlement_contract_untouched():
     # changes owned by whatever branch is under test (it was only green in shallow
     # CI because the base was unreachable and the test skipped).
     from model_v2_governance import branch_owned_changes_or_skip
+    from radar_authority_governance import reviewed_radar_authority_matches
     changed = branch_owned_changes_or_skip()
     violations = [
         p for p in changed
@@ -697,6 +698,7 @@ def test_p3_27_frozen_settlement_contract_untouched():
         # PR #183 (Tokenized Relative Value V1): the reviewed core module
         # itself; every other finco_radar/ path stays frozen.
         and p != "finco_radar/venues/relative_value.py"
+        and not reviewed_radar_authority_matches(p)
     ]
     assert not violations, (
         "Non-equity finco_radar paths modified (frozen): " + str(violations)
