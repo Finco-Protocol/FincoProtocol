@@ -6,6 +6,8 @@ on:
       - "app/v2/whatif.py"
       - "app/v2/whatif_router.py"
       - "app/v2/router.py"
+      - "app/persistence/scenarios_repository.py"
+      - "app/services/export_service.py"
       - "tests/test_model_q4_whatif.py"
       - "tests/test_model_q4_browser.py"
       - ".github/workflows/model_q4_gate.yml"
