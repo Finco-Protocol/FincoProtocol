@@ -72,7 +72,7 @@
     var target = p.querySelector('[data-sp-inspector-result]');
     if (!target) return;
     target.textContent = '';
-    if (!value) { target.textContent = 'Select an assumption or an existing Last Run KPI. Field selection on the sheet also opens this inspector.'; return; }
+    if (!value) { target.textContent = 'Select an assumption or an existing Last Run KPI. Selecting a source on the sheet can also open Explore.'; return; }
     var kind = value.slice(0, 2), key = value.slice(2);
     var facts = document.createElement('dl'); facts.className = 'v2-sp-facts';
     if (kind === 'f:') {

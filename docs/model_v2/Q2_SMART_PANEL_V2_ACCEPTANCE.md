@@ -2,7 +2,9 @@
 
 ## Scope (one Draft PR; no Q1 or F3.1 dependency)
 
-FINCO Insight is the user-facing feature name. The user-facing modes are Findings / Explore / Changes. The stable internal mode keys remain solutions / inspector / changes to avoid scope expansion and regressions.\n\nThree modes within the existing right-side panel:
+FINCO Insight is the user-facing feature name. The user-facing modes are Findings / Explore / Changes. The stable internal mode keys remain solutions / inspector / changes to avoid scope expansion and regressions.
+
+Three modes within the existing right-side panel:
 
 - **Findings (internal solutions)**: issues arise only from the existing Run Integrity overall verdict,
   assumption register availability, reference regression availability, and the
