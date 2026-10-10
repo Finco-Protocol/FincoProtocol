@@ -206,3 +206,50 @@ def test_already_valid_wind_precision_case_is_not_refined(monkeypatch):
     run = authority.run_clean_production(pi)
     assert calls and all(mi.senior_debt_policy.convergence_tolerance_keur == 1e-4 for mi in calls)
     assert run.g2c_result.financing_result.final_senior_commitment_keur == 23712.497031797535
+
+
+def test_loss_carryforward_old_golden_proves_budget_defect_not_a_valid_output(monkeypatch):
+    import json
+    from pathlib import Path
+    import financial_engine.financing.project as project
+    from tools.model_runtime_parity import SCENARIOS, _fingerprint
+
+    build, mutate = SCENARIOS["loss_carryforward"]
+    pi = mutate(build())
+    fixture = Path(__file__).parent / "fixtures" / "runtime_v2_base_digests.json"
+    old = json.loads(fixture.read_text(encoding="utf-8"))["loss_carryforward"]
+
+    def excess(run):
+        model = run.g2c_result.financing_result.project_model_result
+        senior = model.senior_debt
+        cfads = dict(zip(model.debt_sizing.period_indices, model.debt_sizing.bank_cfads_keur))
+        with localcontext() as ctx:
+            ctx.prec = 50
+            return max(decimal(service) - max(Decimal(0), decimal(cfads[idx])
+                       / decimal(pi.financing.target_dscr))
+                       for idx, service in zip(senior.period_indices, senior.senior_debt_service_keur))
+
+    try:
+        # Validation-only counterfactual: the pre-WF04 code had no refinement.
+        # Its exact unchanged golden must still be reproduced, not refreshed.
+        authority._POLICY_RUN_CACHE.clear()
+        with monkeypatch.context() as patch:
+            patch.setattr(project, "G2A_SERVICE_BUDGET_ACCEPTANCE_TOLERANCE_KEUR", float("inf"))
+            legacy = authority.run_clean_production(pi, "Base", project_type="loss")
+        digest, lines = _fingerprint(legacy)
+        assert {"kind": "digest", "sha256": digest, "lines": lines} == old
+        assert excess(legacy) > Decimal("1e-6")
+        failed = run_integrity_checks(build_run_integrity_evidence(legacy)).to_dict()
+        assert failed["overall"] == "FAIL"
+        assert any(c["check_id"] == "DSCR_SCULPTING_FEASIBLE" and c["status"] == "FAIL"
+                   for c in failed["checks"])
+
+        authority._POLICY_RUN_CACHE.clear()
+        current = authority.run_clean_production(pi, "Base", project_type="loss")
+        assert _fingerprint(current) != (digest, lines)
+        assert excess(current) <= Decimal("1e-7")
+        assert current.g2c_result.financing_result.final_senior_commitment_keur == (
+            legacy.g2c_result.financing_result.final_senior_commitment_keur)
+        assert run_integrity_checks(build_run_integrity_evidence(current)).overall.value == "PASS"
+    finally:
+        authority._POLICY_RUN_CACHE.clear()

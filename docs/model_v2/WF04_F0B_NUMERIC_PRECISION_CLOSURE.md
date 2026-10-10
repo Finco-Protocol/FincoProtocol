@@ -160,3 +160,54 @@ financial tolerance are unchanged. No full local suite is substituted for
 the five mandatory exact-head GitHub CI workflows.
 
 **Draft / independent financial review required. No merge or deployment.**
+
+## Integration Correction A
+
+Normal main synchronization uses merge commit
+`78677ef36b904d3952b8b86c33a05ee8b32d0ee8`, with parents
+`dffa81c2b3d96d6dd4e512a835322fa937934628` and current main
+`c1531711fed736fdc83cb45a6fffacffd6536890`. The merge had no conflicts.
+All Q3/F3/C0 changes are inherited unchanged; there is no WF-04 diff in their
+application, persistence or workflow authorities against the integrated main.
+Both financial-engine blobs above remain exactly unchanged.
+
+The old exact-head Public Safety run `38064227281` returned normally with
+9358 passed, 54 skipped and one failed historical performance assertion.
+That assertion froze all 17 post-#212 result-tree digests, including a proved
+financial precision defect in `loss_carryforward`. An isolated exact-base
+execution reproduces the old committed digest, not just a guessed baseline.
+Its final Bank service-budget excess is `2.7684582164511085e-6` kEUR, and its
+unchanged Integrity check reports `DSCR_SCULPTING_FEASIBLE` FAIL.
+Conditional refinement reduces the excess to `2.2737367544323206e-13` kEUR
+and Integrity PASS. Debt quantum remains `26810.99980604639` kEUR.
+Interest/service timing changes propagate through the existing tax, cash flow,
+statements and returns equations; the 343 changed leaves are not falsely
+described as a BS-only change or an unaffected calculation.
+
+No digest or financial fixture is refreshed. The historical performance
+contract now retains all 16 unaffected digests and fail-closed reasons, while
+an additional full-tree differential compares BOTH retained kernels for ALL
+17 scenarios under the SAME current financial authority. It selects the
+existing authoritative roll via a test-scoped delegating wrapper, asserts
+that it is actually exercised and forbids the numeric kernel in that path.
+All outputs/failure reasons must be bit-identical, with zero numeric tolerance.
+There is no new solver and no production monkeypatch.
+
+A dedicated independent Decimal precision test reproduces the exact unchanged
+old loss-case golden using a validation-only no-refinement counterfactual.
+It requires the old Integrity failure, proves the service-budget violation,
+then requires the corrected same-input Run to pass `1e-7` kEUR budget precision,
+retain the exact debt quantum and pass unchanged Integrity. This is a causal
+financial contract, not a replacement target digest or an allowed-drift list.
+
+Integrated focused counts, the fresh 51-case comparison and new exact-head CI
+run IDs are recorded in the PR delivery. The original 51-case corpus and the
+additional 17-scenario performance matrix are separate acceptance evidence.
+
+The integrated focused financial, governance, maturity, runtime equivalence,
+F3 and C0 ring completed with **350 passed** in 608.39 seconds, normal process
+exit 0. The separate Correction A checkpoint completed with **3 passed** in
+199.67 seconds, exit 0. All nine changed Python files compile, diff hygiene and
+changed-file safety checks pass. The re-executed 51-case corpus retains exactly
+38 identical, 12 BS/audit-only and one newly completed output; all 51 integrated
+financial outputs equal the prior WF-04 candidate. No unexplained changes.
