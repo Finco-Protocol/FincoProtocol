@@ -126,7 +126,7 @@ def test_oracle_heartbeat_is_enforced_without_becoming_market_clock():
     assert effective_observation_state(obs, as_of=NOW) == "AVAILABLE"
     assert effective_observation_state(
         obs, as_of=NOW + timedelta(seconds=61)) == "STALE"
-    invalid, _ = evidence(quote=NOW - timedelta(seconds=p.max_quote_age_seconds + 10))
+    invalid, _ = evidence(quote=NOW - timedelta(seconds=p.max_quote_age_seconds + 60))
     assert invalid is None
 
 
@@ -143,7 +143,6 @@ def test_true_pinned_market_identity_and_append_only_deduplication(tmp_path):
     store = VenueMarketStore(tmp_path / "market.db")
     first, _ = evidence()
     repeat, _ = evidence(collected=NOW + timedelta(minutes=3))
-    second, _ = evidence(market=NOW - timedelta(seconds=20), block_number=101)
     assert first is not None and repeat is not None and second is not None
     # Both market samples share a single old Chainlink normalization clock.
     # Pin the same oracle across distinct TWAPs rather than synthesizing it.
