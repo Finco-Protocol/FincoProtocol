@@ -1180,12 +1180,30 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
     if bankability.get("config", {}).get("targets") is not None:
         senior_dscr_mode = "WORKING_CONFIG"
     financing_evidence = build_financing_evidence(rr_for_sponsor)
+    from app.workbook.multisenior_config import (
+        FIELD_ID as f3_field, SNAPSHOT_KEY as f3_key, build_view as build_f3_view, scope_for_workspace,
+    )
+    f3 = build_f3_view(finance_pi, pis.snapshot_origin.get(f3_key), scope_for_workspace(ws),
+        rr_for_sponsor.runtime_summary if rr_for_sponsor else None)
+    debt_fields = [f for f in debt_fields if f["field_id"] != f3_field]
+    if f3["active"]:
+        from app.workbook.multisenior_config import activation_financing_params
+        fin = activation_financing_params(fin)
+        sponsor_funding = _build_sponsor_funding_presentation(
+            fin, rr_for_sponsor, context.freshness if context is not None else _runtime_freshness(ws, pis))
+        senior_pricing_mode = senior_dscr_mode = "MULTI_SENIOR"
+        bankability = {"available": False, "reason": "Two-Senior terms own rates, fees, repayment and maturity. Single-Senior bankability controls are inactive."}
+        for field in debt_fields:
+            if field["field_id"] not in {"debt.senior.gearing_pct", "debt.senior.lockup_dscr", "debt.senior.min_llcr"}:
+                field["editable"] = False
+                field["help_text"] = "Owned by the active two-Senior configuration."
     _actual_senior, _actual_gearing = financing_evidence["metrics"][:2]
     from app.input_adapter import senior_rate_authority
     _flat_senior_rate = senior_rate_authority(finance_pi)[1] if finance_pi else None
     return {
         "debt_fields": debt_fields,
         "bankability": bankability,
+        "multisenior": f3,
         "debt_state": d.state.value,
         "debt_schedule": d.schedule,
         "debt_operational_periods": d.operational_periods,
@@ -1198,6 +1216,10 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
         "reserve_view": build_reserve_view(fin),
         "sponsor_view": build_sponsor_view(fin, rr_for_sponsor),
         "senior_detail_rows": (
+            ("Max. gearing cap", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
+            ("Lock-up DSCR", f"{getattr(fin, 'lockup_dscr', 0.0):.2f}x" if fin else None),
+            ("Minimum LLCR", f"{getattr(fin, 'min_llcr', 0.0):.2f}x" if fin else None),
+        ) if f3["active"] else (
             ("Max. gearing cap", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
             ("All-in interest rate", _pct(_flat_senior_rate)),
             ("Base rate", f"{getattr(fin, 'base_rate', 0.0) * 100:.2f}%" if fin else None),
@@ -2192,6 +2214,12 @@ async def v2_workbook_update(
 # The engine's decision (and its typed reason) is unchanged; nothing is saved
 # on a failed run and the previous Last Run stays exactly as it was.
 _ENGINE_FAIL_CLOSED_MESSAGES = (
+    ("F3_PERIOD_OVERFUNDING", "F3_PERIOD_OVERFUNDING: A dated facility draw exceeds construction Uses in that period. Adjust the draw dates or amounts. No Run was saved."),
+    ("F3_AGGREGATE_GEARING_CAP_EXCEEDED", "F3_AGGREGATE_GEARING_CAP_EXCEEDED: The explicit facility commitments exceed the project gearing cap. No automatic resizing is applied; no Run was saved."),
+    ("F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL", "F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL: Base cash cannot pay the contractual Senior service, including maturity principal. No repayment or refinancing was manufactured; no Run was saved."),
+    ("F3_MATURITY_NOT_ON_OPERATING_BOUNDARY", "F3_MATURITY_NOT_ON_OPERATING_BOUNDARY: Facility maturity must match a canonical operating period end. No Run was saved."),
+    ("F3_DRAW_OUTSIDE_CONSTRUCTION", "F3_DRAW_OUTSIDE_CONSTRUCTION: Facility draws must fall within construction. No Run was saved."),
+    ("F3_GRACE_EXCEEDS_MATURITY", "F3_GRACE_EXCEEDS_MATURITY: No principal-eligible period remains before maturity. No Run was saved."),
     ("SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
      "These inputs leave part of the shareholder loan unpaid at its maturity, so "
      "the model did not produce a result. Review OPEX, CAPEX, revenue or "
@@ -2514,6 +2542,10 @@ async def v2_workbook_run(
     from app.workbook.bankability_config import SNAPSHOT_KEY, assert_materialized_fee_authority
     try:
         assert_materialized_fee_authority(override, pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
+        from app.workbook.multisenior_config import SNAPSHOT_KEY as f3_key, apply_state
+        f3_scope = "base" if not active_scenario_id or sc_rec.is_base_case else active_scenario_id
+        override = apply_state(override, pis_draft.snapshot_origin.get(f3_key), f3_scope,
+            bankability_raw=pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
     except ValueError as exc:
         msg = str(exc)
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
@@ -2589,6 +2621,7 @@ async def v2_workbook_run(
                 "snapshot_id": runtime_snapshot_id,
                 "composite_hash": content_hash,
                 "scenario_id": active_scenario_id,
+                **({"financing_scope": f3_scope} if result["financing_evidence"].get("facility_authority") else {}),
             },
         }
     try:
@@ -4524,6 +4557,10 @@ async def v2_scenario_sensitivity_run(
 
             from app.workbook.bankability_config import SNAPSHOT_KEY, assert_materialized_fee_authority
             assert_materialized_fee_authority(pi_override, pis_sens.snapshot_origin.get(SNAPSHOT_KEY))
+            from app.workbook.multisenior_config import SNAPSHOT_KEY as f3_key, apply_state
+            f3_scope = "base" if not scenario_id or _scenario_rec.is_base_case else scenario_id
+            pi_override = apply_state(pi_override, pis_sens.snapshot_origin.get(f3_key), f3_scope,
+                bankability_raw=pis_sens.snapshot_origin.get(SNAPSHOT_KEY))
 
             # P0-A: do not run the engine inline. Queue the point; the whole grid executes as ONE
             # admitted, ordered task in the model executor (see below).
@@ -4838,6 +4875,13 @@ async def v2_workbook_goal_seek_run(
     from app.workbook.bankability_config import SNAPSHOT_KEY, assert_materialized_fee_authority
     try:
         assert_materialized_fee_authority(override, pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
+    except ValueError as exc:
+        return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
+            "target_metric_label": metric.label, "message": str(exc)}, "apply": None, "request": request})
+    from app.workbook.multisenior_config import SNAPSHOT_KEY as f3_key, apply_state, scope_for_workspace
+    try:
+        override = apply_state(override, pis_draft.snapshot_origin.get(f3_key), scope_for_workspace(ws),
+            bankability_raw=pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
     except ValueError as exc:
         return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
             "target_metric_label": metric.label, "message": str(exc)}, "apply": None, "request": request})

@@ -427,6 +427,25 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
         )
         _cont_auth = _live_contingency_authority(project_record.project_id, _sc_overrides)
 
+    # Opt-in F3 exports materialize ONLY the scope and collection bound to this
+    # immutable Run. No live scenario lookup and no current draft activation.
+    finance_evidence = (getattr(ws, "last_runtime_summary", None) or {}).get("financing_evidence") or {}
+    if finance_evidence.get("facility_authority"):
+        from app.workbook.multisenior_config import SNAPSHOT_KEY, apply_state
+        from finco_core.inputs.multisenior import AUTHORITY, MultiSeniorProjectInputs
+        binding = finance_evidence.get("run_binding") or {}
+        if (finance_evidence["facility_authority"] != AUTHORITY
+                or binding.get("snapshot_id") != ws.last_runtime_snapshot_id
+                or binding.get("scenario_id") != ws.last_runtime_scenario_id
+                or binding.get("composite_hash") != (_ri or {}).get("composite_hash")
+                or not binding.get("financing_scope")):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: F3 Run binding is inconsistent.")
+        project_inputs = apply_state(project_inputs, export_snapshot.get(SNAPSHOT_KEY), binding["financing_scope"],
+            enforce_release=False, bankability_raw=export_snapshot.get("bankability_config_json"))
+        if (not isinstance(project_inputs, MultiSeniorProjectInputs)
+                or project_inputs.financing_collection.content_digest() != finance_evidence.get("collection_digest")):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: F3 collection does not match Run evidence.")
+
     # UI and export share one composite runtime-freshness authority.
     from app.workbook.runtime_authority import resolve_runtime_freshness
     from app.workbook.workbook_identity import assemble_for_workspace
@@ -490,6 +509,13 @@ def _resolve_preview_working_path(project_record, user_id, ws) -> "ResolvedExpor
     project_inputs = _apply_capex_opex_folds(
         project_inputs, project_record.project_id, _sc_overrides
     )
+
+    from app.workbook.multisenior_config import SNAPSHOT_KEY, apply_state, scope_for_workspace
+    if current_snapshot.get(SNAPSHOT_KEY):
+        project_inputs = apply_state(
+            project_inputs, current_snapshot[SNAPSHOT_KEY], scope_for_workspace(ws),
+            bankability_raw=current_snapshot.get("bankability_config_json"),
+        )
 
     return ResolvedExportAuthority(
         project_inputs=project_inputs,

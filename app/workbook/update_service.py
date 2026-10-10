@@ -281,6 +281,13 @@ class WorkbookUpdateService:
                     error_class=FieldErrorClass.INVALID,
                 )
 
+        if field_id == "debt.financing.instruments":
+            from app.workbook.multisenior_config import canonical_json
+            try:
+                typed = canonical_json(typed)
+            except ValueError as exc:
+                return FieldValidationResult(field_id=field_id, raw_value=raw_value,
+                    typed_value=None, spec=spec, error=str(exc), error_class=FieldErrorClass.INVALID)
         if field_id == "debt.bankability.configuration":
             from app.workbook.bankability_config import parse_config
             try:
@@ -440,6 +447,9 @@ class WorkbookUpdateService:
                 typed_value=validation.typed_value,
             )
         except ValueError as exc:
+            from finco_core.inputs.financing_instruments import FinancingError
+            if isinstance(exc, FinancingError):
+                raise FieldValidationError(str(exc)) from exc
             if field_id == "debt.bankability.configuration" or (ws.draft_snapshot or {}).get("bankability_config_json"):
                 raise FieldValidationError(str(exc)) from exc
             raise

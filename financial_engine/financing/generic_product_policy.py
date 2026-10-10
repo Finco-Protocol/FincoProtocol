@@ -198,6 +198,11 @@ def apply_generic_financing_policy(
     pi: ProjectInputs, policy: GenericFinancingPolicy, *, initial_dsra_keur: float = 0.0,
 ) -> tuple[ProjectInputs, bool, bool]:
     """Return inputs with the policy applied, plus (construction applied, dsra applied)."""
+    from finco_core.inputs.multisenior import MultiSeniorProjectInputs
+    if isinstance(pi, MultiSeniorProjectInputs):
+        from financial_engine.financing.multisenior import validate_project_boundary
+        validate_project_boundary(pi)
+        return pi, False, False
     construction_free, dsra_free = _is_untouched(pi)
     fin = pi.financing
     construction_on = policy.apply_construction_financing and construction_free

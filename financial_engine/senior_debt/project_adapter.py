@@ -61,6 +61,11 @@ def build_senior_debt_contract_from_project_inputs(
     )
     from finco_core.inputs.senior_rate_schedule import SeniorRateMode
 
+    from finco_core.inputs.multisenior import MultiSeniorProjectInputs
+    if isinstance(project_inputs, MultiSeniorProjectInputs):
+        from financial_engine.financing.multisenior import build_aggregate_contract
+        return build_aggregate_contract(project_inputs, operating_periods)
+
     fin = project_inputs.financing
     sculpting = fin.senior_sculpting_config
     rate_cfg = fin.senior_debt_interest_config

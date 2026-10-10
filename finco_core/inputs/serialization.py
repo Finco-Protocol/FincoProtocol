@@ -933,10 +933,22 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             {"development_economics": _ser_development_economics(inputs.development_economics)}
             if inputs.development_economics is not None else {}
         ),
+        **_ser_multisenior(inputs),
     }
 
 
 # ── Deserialization helpers ────────────────────────────────────────────────────
+
+def _ser_multisenior(inputs):
+    from finco_core.inputs.multisenior import MultiSeniorProjectInputs
+    if not isinstance(inputs, MultiSeniorProjectInputs):
+        return {}
+    return {"financing_activation": {
+        "authority": inputs.financing_activation_authority,
+        "collection": inputs.financing_collection.to_dict(),
+        "revenue_calendar_start_year": inputs.revenue.market_price_calendar_start_year,
+        "revenue_calendar_prices": list(inputs.revenue.market_prices_by_calendar_year_eur_mwh),
+    }}
 
 def _deser_date(s: str | None) -> date | None:
     return date.fromisoformat(s) if s is not None else None
@@ -1351,7 +1363,7 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         # If legacy data has those keys, they are silently ignored here.
     )
 
-    return ProjectInputs(
+    result = ProjectInputs(
         info=info,
         technical=technical,
         capex=capex,
@@ -1363,3 +1375,20 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         accounting_policy_config=_deser_accounting_policy_config(d.get("accounting_policy_config")),
         development_economics=_deser_development_economics(d.get("development_economics")),
     )
+    if "financing_activation" not in d:
+        return result
+    from finco_core.inputs.financing_instruments import FinancingCollection, FinancingError
+    from finco_core.inputs.multisenior import AUTHORITY, activate_collection
+    activation = d["financing_activation"]
+    if not isinstance(activation, dict) or set(activation) != {"authority", "collection", "revenue_calendar_start_year", "revenue_calendar_prices"} or activation["authority"] != AUTHORITY:
+        raise FinancingError("F3_ACTIVATION_AUTHORITY_UNSUPPORTED")
+    from dataclasses import replace
+    from finco_core._numeric import require_finite_real
+    year, prices = activation["revenue_calendar_start_year"], activation["revenue_calendar_prices"]
+    if not isinstance(prices, list) or (year is not None and (type(year) is not int or not 1900 <= year <= 9999)) or bool(prices) != (year is not None):
+        raise FinancingError("F3_REVENUE_CALENDAR_AUTHORITY_INVALID")
+    for price in prices:
+        require_finite_real("F3 revenue calendar price", price, minimum=0., error_code="F3_REVENUE_CALENDAR_AUTHORITY_INVALID")
+    result = replace(result, revenue=replace(result.revenue, market_price_calendar_start_year=year,
+        market_prices_by_calendar_year_eur_mwh=tuple(prices)))
+    return activate_collection(result, FinancingCollection.from_dict(activation["collection"]))

@@ -124,6 +124,18 @@ F3_1_CONTRACT_AUTHORITIES: dict[str, str] = {
     "finco_core/inputs/financing_instruments_legacy.py": "f963272fb3342976a33483ffea8aaad0a6f81f2b",
 }
 
+# F3.2-F3.4 effective two-Senior slice. Exact content only, never a namespace
+# exemption. Historical released blobs remain valid at their original refs.
+F3_2_4_FINANCING_AUTHORITIES: dict[str, str] = {
+    "finco_core/inputs/multisenior.py": "605e17d743c5999fc4ac1b0a8ce1957a1980511d",
+    "finco_core/inputs/_models.py": "4d3e07613a69405b443b50d351b828aead825137",
+    "finco_core/inputs/serialization.py": "3bd2ee7ce58e1404724bf60487d200059be2d417",
+    "financial_engine/financing/multisenior.py": "7fbe0a7b6d0bcd351f019c6a1e85988238a28d3c",
+    "financial_engine/financing/project.py": "4f8bb815bedef04fd6719cd6f48aea03b2f6e2dc",
+    "financial_engine/financing/generic_product_policy.py": "9442d55d1579fd050587b4a2692313e4006ec1b2",
+    "financial_engine/senior_debt/project_adapter.py": "4d979a9cd97d17ec6560075a852060d6c76eff8d",
+}
+
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 _VALID_STATUSES = ("ACTIVE", "RETIRED")
@@ -273,9 +285,11 @@ def released_engine_authority_matches(
     """True only for an exact released engine authority whose content at ``ref``
     is the exact reviewed git blob. Fails closed (False) when git or the blob is
     unavailable. Independent of any epic scope marker."""
-    pinned = RELEASED_MODEL_V2_ENGINE_AUTHORITIES.get(
-        path, DEVELOPER_ECONOMICS_V1_AUTHORITIES.get(path, F3_1_CONTRACT_AUTHORITIES.get(path)))
-    if pinned is None:
+    pinned = {authorities[path] for authorities in (
+        RELEASED_MODEL_V2_ENGINE_AUTHORITIES, DEVELOPER_ECONOMICS_V1_AUTHORITIES,
+        F3_1_CONTRACT_AUTHORITIES, F3_2_4_FINANCING_AUTHORITIES,
+    ) if path in authorities}
+    if not pinned:
         return False
     cwd = str(repo) if repo else str(REPO)
     try:
@@ -285,7 +299,7 @@ def released_engine_authority_matches(
         )
     except OSError:
         return False
-    return result.returncode == 0 and result.stdout.strip() == pinned
+    return result.returncode == 0 and result.stdout.strip() in pinned
 
 
 def approved_by_active_model_v2_scope(

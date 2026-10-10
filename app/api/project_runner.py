@@ -516,6 +516,14 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         },
         "construction_funding": _fin_json(_asdict(_fund)),
     }
+    from financial_engine.financing.multisenior import MultiSeniorFinancingResult
+    if isinstance(_fin, MultiSeniorFinancingResult):
+        payload["financing_evidence"].update({
+            "facility_authority": "F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1",
+            "collection_digest": _fin.financing_collection_digest,
+            "facility_schedules": _fin_json([_asdict(f) for f in _fin.facility_schedules]),
+            "aggregate_period_rates": _fin_json([_asdict(r) for r in _fin.aggregate_period_rates]),
+        })
 
     # H-4b: full-precision evidence recorded with the committed Last Run so integrity can
     # be checked later without re-running the model.
