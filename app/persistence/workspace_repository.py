@@ -659,6 +659,27 @@ def _assert_f3_editor_authority(
     return scope
 
 
+def _assert_f3_effective_candidate(persisted_snapshot: dict, scope: str, candidate) -> None:
+    """Recheck existing F3 effective financial boundaries on each candidate.
+
+    In particular, manual CAPEX financing fees/reserves and SHL authority are
+    NOT necessarily named debt.* fields. Reuse the canonical F3 activation
+    validator, never an import-specific hardcoded approximation.
+    """
+    from app.workbook.multisenior_config import SNAPSHOT_KEY, parse_state, apply_state
+
+    raw = persisted_snapshot.get(SNAPSHOT_KEY)
+    if not raw:
+        return
+    entry = parse_state(raw)["scopes"].get(scope)
+    if entry is None or entry["activation"] is None:
+        return
+    apply_state(
+        candidate.to_projectinputs(), raw, scope,
+        bankability_raw=persisted_snapshot.get("bankability_config_json"),
+    )
+
+
 # -----------------------------------------------------------------
 # v2_atomic_draft_update
 # -----------------------------------------------------------------
@@ -762,6 +783,8 @@ def v2_atomic_draft_update(
             # governed by the existing release, reserve and proposal authority.
             apply_state(updated_pis.to_projectinputs(), typed_value, scope,
                 bankability_raw=row_snapshot.get("bankability_config_json"))
+        else:
+            _assert_f3_effective_candidate(row_snapshot, scope, updated_pis)
         new_snapshot = updated_pis.to_snapshot()
 
         # Re-assemble composite identity after scalar mutation (rows/scenario unchanged).
@@ -1357,10 +1380,11 @@ def v2_atomic_batch_draft_update(
         # F3 scope and competing-editor authority on the exact transactional
         # current snapshot, shared with the scalar Save CAS. Run only after all
         # registry and duplicate-field validation; before ANY financial write.
-        _assert_f3_editor_authority(
+        selected_f3_scope = _assert_f3_editor_authority(
             cursor=cur, persisted_workspace=row, persisted_snapshot=snapshot,
             user_id=user_id, project_id=project_id, field_ids=seen_ids,
         )
+        _assert_f3_effective_candidate(snapshot, selected_f3_scope, candidate)
 
         # R8/N02 senior authority: enforce on both the transactional current
         # state and the final candidate, independent of import row order.
