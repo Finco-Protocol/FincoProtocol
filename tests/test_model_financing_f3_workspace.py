@@ -1,0 +1,409 @@
+"""Versioned proposals, explicit activation, scope-bound CAS and real Last Run."""
+import json
+from dataclasses import replace
+
+import pytest
+
+from app.workbook import multisenior_config as config
+from finco_core.inputs.multisenior import AUTHORITY, MultiSeniorProjectInputs
+from finco_core.inputs.financing_instruments import FinancingError
+from tests.test_financing_f3_multisenior import case
+from tests.test_model_decision_workspace_v2 import env, tokens
+from tests.test_model_financing_f2 import save, run
+
+
+def state(*, active=False, scope="base", collection=None):
+    collection = collection or case()[0].financing_collection
+    activation = None if not active else dict(authority=AUTHORITY,
+        proposal_digest=collection.content_digest(), sponsor_funding_mode="EQUITY_ONLY", reserve_support_mode="NONE")
+    return json.dumps(dict(schema_version=config.SCHEMA, scopes={scope: dict(proposal=collection.to_dict(), activation=activation)}))
+
+
+def collection_for_inputs(pi):
+    """Small independently specified commitments on this actual Working Copy axis."""
+    from datetime import timedelta
+    from financial_engine.adapters.project_inputs import from_project_inputs
+    from financial_engine.orchestrator import _build_period_engine
+    from finco_core.inputs.financing_instruments import FinancingCollection, DrawdownEntry
+    periods = _build_period_engine(from_project_inputs(pi)).periods()
+    construction = [p for p in periods if p.is_construction]
+    op = [p for p in periods if p.is_operation]
+    template = case()[0].financing_collection
+    instruments = tuple(replace(i, commitment_keur=pi.capex.hard_capex_keur * fraction,
+        drawdowns=(DrawdownEntry(construction[0].start_date + timedelta(days=index), pi.capex.hard_capex_keur * fraction),),
+        repayment=replace(i.repayment, maturity_date=op[maturity - 1].end_date))
+        for index, (i, fraction, maturity) in enumerate(zip(template.instruments, (.06, .04), (16, 20))))
+    return FinancingCollection(instruments)
+
+
+@pytest.mark.parametrize("bad", ['[]', '{"schema_version":"future","scopes":{}}',
+    '{"schema_version":"f3-workspace-1.0","scopes":{},"x":1}',
+    '{"schema_version":"f3-workspace-1.0","schema_version":"f3-workspace-1.0","scopes":{}}'])
+def test_bad_version_and_shape_rejected(bad):
+    with pytest.raises(FinancingError):
+        config.parse_state(bad)
+
+
+def test_proposal_inert_activation_gated_and_digest_bound_only_on_write(monkeypatch):
+    monkeypatch.setattr(config, "ACTIVATION_ENABLED", False)
+    pi, _ = case()
+    from finco_core.inputs.multisenior import deactivate_collection
+    legacy = deactivate_collection(pi)
+    assert config.apply_state(legacy, state(), "base") is legacy
+    with pytest.raises(FinancingError, match="ACCEPTANCE_BLOCKED"):
+        config.apply_state(legacy, state(active=True), "base")
+    active = config.apply_state(legacy, state(active=True), "base", enforce_release=False)
+    assert isinstance(active, MultiSeniorProjectInputs)
+    request = json.loads(state(active=True))
+    request["scopes"]["base"]["activation"]["proposal_digest"] = "BIND_ON_SAVE"
+    with pytest.raises(FinancingError):
+        config.parse_state(json.dumps(request))
+    assert config.parse_state(config.canonical_json(json.dumps(request))) == config.parse_state(state(active=True))
+    assert config.canonical_json(config.canonical_json(state())) == config.canonical_json(state())
+
+
+def test_instrument_ids_and_foreign_scenario_changes_rejected():
+    old = state()
+    request = json.loads(old)
+    request["scopes"]["base"]["proposal"]["instruments"][0]["instrument_id"] = "different-id"
+    with pytest.raises(FinancingError, match="ID_MUTATION"):
+        config.validate_transition(old, json.dumps(request), "base")
+    request = json.loads(old)
+    request["scopes"]["base"]["proposal"]["instruments"][0]["name"] = "Other"
+    with pytest.raises(FinancingError, match="CROSS_SCENARIO"):
+        config.validate_transition(old, json.dumps(request), "0123456789abcdef0123456789abcdef")
+
+
+def test_no_sheet_open_financial_execution(monkeypatch):
+    from financial_engine import orchestrator
+    pi, _ = case()
+    def forbidden(*args, **kwargs):
+        pytest.fail("Opening the sheet executed a model")
+    monkeypatch.setattr(orchestrator, "run_operating_model", forbidden)
+    monkeypatch.setattr(orchestrator, "run_senior_debt_model", forbidden)
+    assert len(config.build_view(pi, None, "base", None,
+        owner_id="synthetic-owner", project_id="synthetic-project")["entry"]["proposal"]["instruments"]) == 2
+
+
+def test_unsaved_editor_is_deterministic_and_owner_project_scenario_scoped():
+    pi, _ = case()
+    def view(owner="synthetic-owner", project="synthetic-project", scope="base", raw=None):
+        return config.build_view(pi, raw, scope, None, owner_id=owner, project_id=project)
+    original = view()
+    assert original == view()
+    ids = lambda value: {i["instrument_id"] for i in value["entry"]["proposal"]["instruments"]}
+    for other in (view(owner="other-owner"), view(project="other-project"),
+                  view(scope="0123456789abcdef")):
+        assert ids(original).isdisjoint(ids(other))
+    assert original["state"]["scopes"] == {}  # Rendering never persists a proposal.
+    stored = view(raw=state())
+    assert ids(stored) == {i.instrument_id for i in case()[0].financing_collection.instruments}
+
+
+def test_unsaved_editor_rejects_missing_scope_binding():
+    pi, _ = case()
+    with pytest.raises(FinancingError, match="PROPOSAL_SCOPE_REQUIRED"):
+        config.build_view(pi, None, "base", None, owner_id="", project_id="synthetic-project")
+
+
+def test_proposal_save_reload_cas_and_blocked_activation_are_real(env, monkeypatch):
+    monkeypatch.setattr(config, "ACTIVATION_ENABLED", False)
+    from app.persistence.workspace_repository import get_workspace_state
+    record = env.create()
+    page = env.client.get('/v2/workbook', params={'project': record.project_code})
+    assert 'f3-activation-blocked' in page.text
+    old_tokens = tokens(page.text)
+    response = save(env, record, state(), field=config.FIELD_ID)
+    assert response.status_code == 200 and 'field-error-banner' not in response.text
+    ws = get_workspace_state('decision-user', record.project_id)
+    assert config.parse_state(ws.draft_snapshot[config.SNAPSHOT_KEY]) == config.parse_state(state())
+    assert ws.dirty and not ws.last_runtime_summary
+    stored = ws
+    save(env, record, state(active=True), field=config.FIELD_ID)
+    assert get_workspace_state('decision-user', record.project_id) == stored
+    save(env, record, state(), field=config.FIELD_ID, stale_tokens=old_tokens)
+    assert get_workspace_state('decision-user', record.project_id) == stored
+    page = env.client.get('/v2/workbook', params={'project': record.project_code, 'sheet': 'debt'})
+    assert 'senior-a' in page.text and 'senior-b' in page.text
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+def test_real_active_save_run_export_and_stale_last_run_binding(env, monkeypatch, kind):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.input_set import ProjectInputSet
+    from app.services.export_service import resolve_canonical_last_run_from_workspace
+    monkeypatch.setattr(config, "ACTIVATION_ENABLED", True)
+    record = env.create(kind)
+    # The amounts must belong to this actual scaled Working Copy, not a fixture's factory.
+    ws = get_workspace_state('decision-user', record.project_id)
+    pi = ProjectInputSet.from_snapshot(ws.draft_snapshot).to_projectinputs()
+    raw = state(active=True, collection=collection_for_inputs(pi))
+    response = save(env, record, raw, field=config.FIELD_ID)
+    assert 'field-error-banner' not in response.text, response.text[:2000]
+    committed, rr = run(env, record)
+    evidence = rr.runtime_summary['financing_evidence']
+    assert len(evidence['facility_schedules']) == 2
+    assert evidence['facility_authority'] == AUTHORITY
+    from app.v2.financing_sources_uses_router import router as sources_uses_router
+    if not any(getattr(route, 'path', '') == '/v2/financing/sources-uses' for route in env.client.app.routes):
+        env.client.app.include_router(sources_uses_router, prefix='/v2')
+    su_page = env.client.get('/v2/financing/sources-uses', params={'project': record.project_code})
+    assert su_page.status_code == 200, su_page.text
+    assert 'Senior debt (contractual)' in su_page.text
+    from finco_core.inputs import SponsorFundingMode
+    assert SponsorFundingMode.EQUITY_ONLY.value in su_page.text
+    export = resolve_canonical_last_run_from_workspace(record, 'decision-user', committed)
+    assert isinstance(export.project_inputs, MultiSeniorProjectInputs)
+    digest = export.project_inputs.financing_collection.content_digest()
+    original_snapshot_id = committed.last_runtime_snapshot_id
+    from app.services.v2_export_service import build_canonical_last_run_institutional_workbook_export
+    from io import BytesIO
+    from openpyxl import load_workbook
+    from app.export.institutional_workbook import _read_labeled_cell
+    def exported_senior():
+        result = build_canonical_last_run_institutional_workbook_export(
+            'generic_' + kind + '_reference', project_record=record, user_id='decision-user')
+        assert result.status_code == 200, result.error_content
+        workbook = load_workbook(BytesIO(result.bytes_data))
+        return _read_labeled_cell(workbook, 'Senior Debt', 'Senior debt amount')
+    # Export serializes immutable canonical schedules, never re-executes them.
+    from app.services import production_financial_authority
+    with monkeypatch.context() as guard:
+        guard.setattr(production_financial_authority, 'run_clean_production',
+            lambda *a, **kw: pytest.fail('Export executed a financial model'))
+        exported_before = exported_senior()
+    assert exported_before == pytest.approx(evidence['bankability']['final_senior_commitment_keur'], abs=1e-6)
+    newer = json.loads(raw)
+    newer['scopes']['base']['proposal']['instruments'][0]['interest']['fixed_rate'] = .05
+    newer['scopes']['base']['activation']['proposal_digest'] = 'BIND_ON_SAVE'
+    save(env, record, json.dumps(newer), field=config.FIELD_ID)
+    latest = get_workspace_state('decision-user', record.project_id)
+    assert latest.dirty and latest.last_runtime_snapshot_id == original_snapshot_id
+    from app.services.export_service import _resolve_preview_working_path
+    preview = _resolve_preview_working_path(record, 'decision-user', latest)
+    assert isinstance(preview.project_inputs, MultiSeniorProjectInputs)
+    assert preview.project_inputs.financing_collection.content_digest() != digest
+    assert preview.run_id is None
+    assert resolve_canonical_last_run_from_workspace(record, 'decision-user', latest).project_inputs.financing_collection.content_digest() == digest
+    assert exported_senior() == exported_before
+    page = env.client.get('/v2/workbook', params={'project': record.project_code, 'sheet': 'debt'})
+    assert 'Last Run facility schedules' in page.text
+    after, rr2 = run(env, record)
+    assert not after.dirty and rr2.snapshot_id != rr.snapshot_id
+    assert rr2.runtime_summary['financing_evidence']['collection_digest'] != digest
+
+
+def test_scopes_do_not_inherit_or_accept_foreign_writes_after_scenario_selection(env):
+    from app.persistence.scenarios_repository import list_scenarios
+    from app.persistence.workspace_repository import get_workspace_state
+    record = env.create()
+    assert save(env, record, state(), field=config.FIELD_ID).status_code == 200
+    env.client.post('/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
+        data={'project': record.project_code, 'scenario_name': 'Independent financing'})
+    scenario = next(s for s in list_scenarios('decision-user', record.project_id) if not s.is_base_case)
+    env.client.post('/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
+        data={'project': record.project_code, 'scenario_id': scenario.scenario_id})
+    ws = get_workspace_state('decision-user', record.project_id)
+    selected_scope = config.scope_for_workspace(ws)
+    assert selected_scope == scenario.scenario_id
+    from app.workbook.input_set import ProjectInputSet
+    pi = ProjectInputSet.from_snapshot(ws.draft_snapshot).to_projectinputs()
+    assert config.apply_state(pi, state(active=True), selected_scope) is pi
+    previous = ws
+    bad = json.loads(state())
+    bad['scopes']['base']['proposal']['instruments'][0]['name'] = 'Foreign Base edit'
+    response = save(env, record, json.dumps(bad), field=config.FIELD_ID)
+    assert 'CROSS_SCENARIO' in response.text
+    assert get_workspace_state('decision-user', record.project_id) == previous
+    request = json.loads(state())
+    request['scopes'][selected_scope] = json.loads(state(scope=selected_scope))['scopes'][selected_scope]
+    save(env, record, json.dumps(request), field=config.FIELD_ID)
+    current = get_workspace_state('decision-user', record.project_id)
+    assert set(config.parse_state(current.draft_snapshot[config.SNAPSHOT_KEY])['scopes']) == {'base', selected_scope}
+    assert config.parse_state(current.draft_snapshot[config.SNAPSHOT_KEY])['scopes']['base'] == json.loads(state())['scopes']['base']
+
+
+def test_cross_owner_protected_reference_and_unrelated_project_are_isolated(env):
+    from app.auth import COOKIE_NAME, create_session_token
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.update_service import WorkbookUpdateService, ProtectedReferenceError
+    from app.workbook.registry import WORKBOOK
+    record, other = env.create(), env.create('wind')
+    page = env.client.get('/v2/workbook', params={'project': record.project_code})
+    original = get_workspace_state('decision-user', record.project_id)
+    with pytest.raises(ProtectedReferenceError):
+        WorkbookUpdateService.apply_draft_update(ws=original,
+            project_record=replace(record, project_origin='factory_template'), field_id=config.FIELD_ID,
+            raw_value=state(), workbook_version=WORKBOOK.version, content_hash='before-cas')
+    assert get_workspace_state('decision-user', record.project_id) == original
+    save(env, record, state(), field=config.FIELD_ID)
+    assert config.SNAPSHOT_KEY not in get_workspace_state('decision-user', other.project_id).draft_snapshot
+    env.client.cookies.set(COOKIE_NAME, create_session_token(user_id='f3-other-owner', username='admin'))
+    response = env.client.post('/v2/workbook/update', data=dict(project=record.project_code,
+        field_id=config.FIELD_ID, value=state(), sheet_id='debt', **tokens(page.text)))
+    assert response.status_code == 404
+
+
+def test_selected_scope_changes_invalidate_pre_selection_cas_token(env):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import list_scenarios
+    record = env.create()
+    page = env.client.get('/v2/workbook', params={'project': record.project_code})
+    env.client.post('/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
+        data={'project': record.project_code, 'scenario_name': 'Concurrent selection'})
+    scenario = next(s for s in list_scenarios('decision-user', record.project_id) if not s.is_base_case)
+    env.client.post('/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
+        data={'project': record.project_code, 'scenario_id': scenario.scenario_id})
+    before = get_workspace_state('decision-user', record.project_id)
+    save(env, record, state(), field=config.FIELD_ID, stale_tokens=tokens(page.text))
+    assert get_workspace_state('decision-user', record.project_id) == before
+
+
+def test_active_configuration_locks_competing_editor_and_export_corruption_fails_closed(env, monkeypatch):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.input_set import ProjectInputSet
+    from app.services.export_service import resolve_canonical_last_run_from_workspace
+    monkeypatch.setattr(config, 'ACTIVATION_ENABLED', True)
+    record = env.create()
+    pi = ProjectInputSet.from_snapshot(get_workspace_state('decision-user', record.project_id).draft_snapshot).to_projectinputs()
+    raw = state(active=True, collection=collection_for_inputs(pi))
+    save(env, record, raw, field=config.FIELD_ID)
+    before = get_workspace_state('decision-user', record.project_id)
+    assert 'COMPETING_FINANCING_EDITOR' in save(env, record, '12', field='debt.senior.tenor_years').text
+    assert get_workspace_state('decision-user', record.project_id) == before
+    committed, _ = run(env, record)
+    summary = dict(committed.last_runtime_summary)
+    summary['financing_evidence'] = dict(summary['financing_evidence'], collection_digest='corrupt')
+    with pytest.raises(ValueError, match='collection does not match'):
+        resolve_canonical_last_run_from_workspace(record, 'decision-user', replace(committed, last_runtime_summary=summary))
+
+
+def test_f3_template_protected_and_no_context_safe():
+    from app.v2.router import _templates
+    pi, _ = case()
+    view = config.build_view(pi, state(), 'base', None,
+        owner_id="synthetic-owner", project_id="synthetic-project")
+    template = _templates.get_template('partials/_financing_multisenior.html')
+    assert 'read-only' in template.render(multisenior=view, project_editable=False)
+    assert 'data-f3-form' not in template.render(multisenior=view, project_editable=False)
+    assert template.render() == ''
+
+
+@pytest.mark.parametrize("terms", [
+    {"dsra_support_mode": "CASH_DSRA", "debt_service_reserve_requirement_keur": 100., "dsra_target_policy": "fixed_amount"},
+    {"dsra_support_mode": "CASH_DSRA", "dsra_target_policy": "forward_debt_service_months"},
+    {"dsra_support_mode": "DSRF", "dsrf_commitment_keur": 100., "dsrf_commitment_fee_rate_pa": .01},
+    {"dsra_support_mode": "DSRF"},
+    {"debt_service_reserve_requirement_keur": 100.},
+    {"dsrf_commitment_keur": 100.},
+    {"dsrf_commitment_fee_rate_pa": .01},
+    {"dsra_target_policy": "forward_debt_service_months"},
+    {"dsra_target_policy": "peak_forward_debt_service_months"},
+    {"dsra_target_policy": "invalid-policy"},
+    {"debt_service_reserve_requirement_keur": float("nan")},
+    {"dsrf_commitment_keur": -1.},
+])
+def test_existing_reserve_authority_rejected_before_normalization_and_run(terms, monkeypatch):
+    from finco_core.inputs import DebtServiceReserveSupportMode
+    from finco_core.inputs.multisenior import deactivate_collection
+    from app.services import production_financial_authority
+    terms = dict(terms)
+    if "dsra_support_mode" in terms:
+        terms["dsra_support_mode"] = DebtServiceReserveSupportMode[terms["dsra_support_mode"]]
+    pi, _ = case()
+    original = deactivate_collection(replace(pi, financing=replace(pi.financing, **terms)))
+    original_financing = original.financing
+    monkeypatch.setattr(production_financial_authority, "run_clean_production",
+        lambda *a, **kw: pytest.fail("Rejected reserve activation reached the engine"))
+    for enforce_release in (True, False):
+        with pytest.raises(FinancingError, match="F3_EXISTING_RESERVE_AUTHORITY_CONFLICT"):
+            production_financial_authority.run_clean_production(config.apply_state(
+                original, state(active=True), "base", enforce_release=enforce_release))
+    with pytest.raises(FinancingError, match="F3_EXISTING_RESERVE_AUTHORITY_CONFLICT"):
+        config.activation_financing_params(original_financing)
+    assert original.financing is original_financing
+    assert config.apply_state(original, state(), "base") is original
+    assert config.apply_state(original, state(active=True), "0123456789abcdef") is original
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+@pytest.mark.parametrize("target", [None, "fixed_amount"])
+def test_neutral_legacy_months_preserve_positive_activation_financial_output(kind, target):
+    from finco_core.inputs.multisenior import deactivate_collection
+    from app.services.production_financial_authority import run_clean_production
+    from app.run_integrity import build_run_integrity_evidence, run_integrity_checks
+    pi, _ = case(kind)
+    legacy = deactivate_collection(replace(pi, financing=replace(
+        pi.financing, dsra_months=6, dsra_target_policy=target)))
+    activated = config.apply_state(legacy, state(active=True, collection=pi.financing_collection), "base")
+    assert activated == pi
+    assert legacy.financing.dsra_months == 6 and legacy.financing.dsra_target_policy == target
+    result, expected = run_clean_production(activated), run_clean_production(pi)
+    assert result == expected
+    assert run_integrity_checks(build_run_integrity_evidence(result)).to_dict()["overall"] == "PASS"
+
+
+@pytest.mark.parametrize("reserve", [
+    dict(mode="cash_fixed", months=0, requirement_keur=100., commitment_keur=0., fee_pct=0.),
+    dict(mode="dsrf", months=0, requirement_keur=100., commitment_keur=120., fee_pct=1.),
+    dict(mode="automatic_peak", months=6, requirement_keur=0., commitment_keur=0., fee_pct=0.),
+])
+def test_existing_f2_reserve_rejects_f3_save_atomically_and_preserves_last_run_export(env, reserve):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.input_set import ProjectInputSet
+    from app.services.export_service import resolve_canonical_last_run_from_workspace
+    from app.workbook.bankability_config import FIELD_ID as f2_field
+    record = env.create()
+    committed, _ = run(env, record)
+    exported_before = resolve_canonical_last_run_from_workspace(record, "decision-user", committed)
+    response = save(env, record, json.dumps(dict(version=1, reserve=reserve)), field=f2_field)
+    assert "workbook-field-error" not in response.headers.get("HX-Trigger", "")
+    before = get_workspace_state("decision-user", record.project_id)
+    pi = ProjectInputSet.from_snapshot(before.draft_snapshot).to_projectinputs()
+    response = save(env, record, state(active=True, collection=collection_for_inputs(pi)), field=config.FIELD_ID)
+    assert "F3_BANKABILITY_AUTHORITY_CONFLICT" in response.text
+    assert "workbook-field-error" in response.headers.get("HX-Trigger", "")
+    after = get_workspace_state("decision-user", record.project_id)
+    assert after == before
+    assert config.SNAPSHOT_KEY not in after.draft_snapshot
+    assert after.last_runtime_summary == committed.last_runtime_summary
+    assert after.last_runtime_snapshot_id == committed.last_runtime_snapshot_id
+    exported_after = resolve_canonical_last_run_from_workspace(record, "decision-user", after)
+    assert exported_after.project_inputs == exported_before.project_inputs
+    assert exported_after.run_id == exported_before.run_id
+
+
+@pytest.mark.parametrize("mode", ["CASH_DSRA", "DSRF"])
+def test_typed_working_reserve_conflict_rolls_back_canonical_cas(env, monkeypatch, mode):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.input_set import ProjectInputSet
+    from finco_core.inputs import DebtServiceReserveSupportMode
+    record = env.create()
+    committed, _ = run(env, record)
+    original_projection = ProjectInputSet.to_projectinputs
+    # Supply existing typed project authority at its real adapter seam; no F2
+    # JSON is present, so this exercises the new guard inside the canonical CAS.
+    def with_existing_reserve(pis):
+        pi = original_projection(pis)
+        return replace(pi, financing=replace(pi.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode[mode],
+            debt_service_reserve_requirement_keur=100., dsra_target_policy="fixed_amount",
+            dsrf_commitment_keur=120. if mode == "DSRF" else 0.,
+            dsrf_commitment_fee_rate_pa=.01 if mode == "DSRF" else 0.))
+    monkeypatch.setattr(ProjectInputSet, "to_projectinputs", with_existing_reserve)
+    pi = ProjectInputSet.from_snapshot(committed.draft_snapshot).to_projectinputs()
+    response = save(env, record, state(active=True, collection=collection_for_inputs(pi)), field=config.FIELD_ID)
+    assert "F3_EXISTING_RESERVE_AUTHORITY_CONFLICT" in response.text
+    assert "workbook-field-error" in response.headers.get("HX-Trigger", "")
+    assert get_workspace_state("decision-user", record.project_id) == committed
+    assert pi.financing.dsra_support_mode.name == mode
+    assert pi.financing.debt_service_reserve_requirement_keur == 100.
+
+
+def test_existing_capex_reserve_conflict_remains_a_separate_authority():
+    from finco_core.inputs.multisenior import deactivate_collection
+    pi, _ = case()
+    original = deactivate_collection(replace(pi, capex=replace(pi.capex, reserve_accounts_keur=100.)))
+    with pytest.raises(FinancingError, match="F3_EXISTING_CONSTRUCTION_OR_RESERVE_AUTHORITY_CONFLICT"):
+        config.apply_state(original, state(active=True), "base")
+    assert original.capex.reserve_accounts_keur == 100.

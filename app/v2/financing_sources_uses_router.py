@@ -88,6 +88,14 @@ async def financing_sources_uses_page(
             try:
                 pi = WorkbookService.to_projectinputs(snapshot.inputs)
                 fin, capex = pi.financing, pi.capex
+                from app.workbook.multisenior_config import (
+                    SNAPSHOT_KEY, activation_financing_params, parse_state, scope_for_workspace,
+                )
+                raw = snapshot.inputs.snapshot_origin.get(SNAPSHOT_KEY)
+                entry = (parse_state(raw)["scopes"].get(scope_for_workspace(snapshot.workspace))
+                         if raw else None)
+                if entry is not None and entry["activation"] is not None:
+                    fin = activation_financing_params(fin)
             except (ValueError, TypeError, AttributeError):
                 _log.warning("F1 Working Copy financing bridge unavailable for project")
         # Validate that persisted finance evidence belongs to the exact selected

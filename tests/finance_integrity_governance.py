@@ -80,14 +80,20 @@ def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
     scope itself never approves finco_core/** or finco_radar/**, so
     strictly_frozen_changes() is unaffected.
     """
-    from model_v2_governance import approved_by_active_model_v2_scope
+    from model_v2_governance import (
+        F3_2_4_FINANCING_AUTHORITIES, approved_by_active_model_v2_scope,
+        released_engine_authority_matches,
+    )
 
     changed = changed_paths_vs_main() if changed is None else changed
     return sorted(
         f for f in changed
         if f.startswith("financial_engine/")
-        and f not in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
-        and not approved_by_active_model_v2_scope(f)
+        and (
+            not released_engine_authority_matches(f) if f in F3_2_4_FINANCING_AUTHORITIES
+            else f not in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
+            and not approved_by_active_model_v2_scope(f)
+        )
     )
 
 
@@ -114,6 +120,12 @@ def approved_frozen_path(path: str) -> bool:
     module on the shared approved allow-list above. Nothing else is exempt: ``finco_core/``,
     ``finco_radar/`` and every other engine module stay frozen for those guards.
     """
-    from model_v2_governance import approved_by_active_model_v2_scope
+    from model_v2_governance import (
+        F3_2_4_FINANCING_AUTHORITIES, approved_by_active_model_v2_scope,
+        released_engine_authority_matches,
+    )
+
+    if path in F3_2_4_FINANCING_AUTHORITIES:
+        return released_engine_authority_matches(path)
 
     return path in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS or approved_by_active_model_v2_scope(path)

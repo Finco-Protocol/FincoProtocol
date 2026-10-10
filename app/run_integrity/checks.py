@@ -122,6 +122,7 @@ def check_balance_sheet(evidence: Mapping[str, Any]) -> IntegrityCheck:
     if not isinstance(rows, list) or not rows:
         return _unavailable(cid, title, "BALANCE_SHEET_EVIDENCE_MISSING")
     deviations, evaluated, evaluated_indices = [], 0, set()
+    f3 = evidence.get("financing_authority") == "F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1"
     for row in rows:
         if not _complete(row, *_BS_KEYS):
             continue  # construction / incomplete columns carry no balance identity
@@ -130,6 +131,10 @@ def check_balance_sheet(evidence: Mapping[str, Any]) -> IntegrityCheck:
         liabilities_equity = (row["senior_debt"] + row["shl"] + row["share_capital"]
                               + row["share_premium"] + row["legal_reserve"]
                               + row["retained_earnings"] + row["net_cit_payable"])
+        if f3:
+            if not _complete(row, "additional_equity"):
+                return _unavailable(cid, title, "F3_EQUITY_COMPONENTS_MISSING")
+            liabilities_equity += row["additional_equity"]
         deviations.append(abs(assets - liabilities_equity))
         evaluated += 1
         evaluated_indices.add(row["period_index"])

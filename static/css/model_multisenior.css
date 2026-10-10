@@ -1,0 +1,8 @@
+[data-f3-form]{min-width:0;max-width:100%}
+[data-f3-form] input,[data-f3-form] select,[data-f3-form] textarea{color:var(--fb-text);background:var(--fb-field);border:1px solid var(--fb-border);border-radius:4px;padding:7px;min-width:0;max-width:100%;font:inherit;box-sizing:border-box}
+[data-f3-form] textarea{display:block;width:100%;resize:vertical}
+[data-f3-form] p{font-size:13px;line-height:1.5}
+[data-f3-form] summary{overflow-wrap:anywhere}
+[data-f3-form] label{font-size:13px}
+[data-f3-form] button{padding:8px 12px;border-radius:4px;cursor:pointer;font:inherit;color:var(--fb-text);background:var(--fb-field);border:1px solid var(--fb-border)}
+[data-f3-error]{color:var(--fb-danger,#c43e3e)}

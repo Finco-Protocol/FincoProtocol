@@ -1,0 +1,63 @@
+{% if multisenior is defined %}
+<section data-testid="multisenior-workspace">
+  <h3>Two-Senior financing</h3>
+  {% if not multisenior.available %}
+    <p>{{ multisenior.reason }}</p>
+  {% elif not project_editable %}
+    <p class="v2-protected-notice">Instrument configuration is read-only for this reference project.</p>
+  {% else %}
+  <link rel="stylesheet" href="/static/css/model_bankability.css">
+  <link rel="stylesheet" href="/static/css/model_multisenior.css">
+  <form data-f3-form hx-post="/v2/workbook/update" hx-target="#v2-sheet-senior-debt" hx-swap="outerHTML">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+    <input type="hidden" name="content_hash" value="{{ content_hash }}">
+    <input type="hidden" name="sheet_id" value="debt">
+    <input type="hidden" name="field_id" value="debt.financing.instruments">
+    <input type="hidden" name="value" value="">
+    <script type="application/json" data-f3-state>{{ multisenior.state | tojson }}</script>
+    <script type="application/json" data-f3-entry>{{ multisenior.entry | tojson }}</script>
+    <input type="hidden" data-f3-scope value="{{ multisenior.scope }}">
+    <input type="hidden" data-f3-authority value="{{ multisenior.authority }}">
+    <p class="v2-section-label">WORKING PROPOSAL · Selected scenario only · Last Run remains immutable</p>
+    {% for i in multisenior.entry.proposal.instruments %}
+    <details class="v2-inputs-section" data-f3-instrument="{{ i.instrument_id }}" open>
+      <summary class="v2-inputs-section-summary">{{ i.name }} <small>{{ i.instrument_id }}</small></summary>
+      <div class="f2-fields">
+        <label>Facility name<input data-f3="name" value="{{ i.name }}" maxlength="120" required></label>
+        <label>Commitment (kEUR)<input data-f3="commitment_keur" type="number" min="0" step="any" value="{{ i.commitment_keur }}" required></label>
+        <label>Fixed cash interest (% p.a.)<input data-f3="rate_pct" type="number" min="0" max="100" step="any" value="{{ '%.12g' | format(i.interest.fixed_rate * 100) }}" required></label>
+        <label>Repayment<select data-f3="repayment_mode"><option value="LEVEL_PRINCIPAL" {{ 'selected' if i.repayment.mode == 'LEVEL_PRINCIPAL' }}>Level principal</option><option value="BULLET" {{ 'selected' if i.repayment.mode == 'BULLET' }}>Bullet at maturity</option></select></label>
+        <label>Principal grace (months)<input data-f3="grace_months" type="number" min="0" step="1" value="{{ i.repayment.grace_months }}" required></label>
+        <label>Maturity (operating period end)<input data-f3="maturity_date" type="date" value="{{ i.repayment.maturity_date }}" required></label>
+        <label>Upfront fee (% commitment)<input data-f3="upfront_pct" type="number" min="0" max="100" step="any" value="{{ (i.fees | selectattr('kind', 'equalto', 'UPFRONT') | map(attribute='rate') | first | default(0)) * 100 }}" required></label>
+        <label>Commitment fee (% p.a. undrawn)<input data-f3="commitment_pct" type="number" min="0" max="100" step="any" value="{{ (i.fees | selectattr('kind', 'equalto', 'COMMITMENT') | map(attribute='rate') | first | default(0)) * 100 }}" required></label>
+      </div>
+      <label>Dated draws (date, kEUR)<textarea data-f3="draws" rows="3" required>{% for d in i.drawdowns %}{{ d.draw_date }}, {{ d.amount_keur }}{{ '\n' if not loop.last }}{% endfor %}</textarea></label>
+    </details>
+    {% endfor %}
+    <p>Explicit pari-passu commitments; fixed cash interest; construction-only draws; semiannual operating periods. Fees and IDC are capitalized once. No prefunding, active SHL, DSRA/DSRF, floating rates, DSCR sizing or agency fee in this mode.</p>
+    <label><input data-f3-activate type="checkbox" {{ 'checked' if multisenior.active }} {{ 'disabled' if not multisenior.release_enabled }}> Activate these terms; fund residual Uses with equity only and use reserve NONE</label>
+    {% if not multisenior.release_enabled %}<p data-testid="f3-activation-blocked">Activation is disabled pending complete financial and workflow acceptance. Saved proposals do not affect Run.</p>{% endif %}
+    <p data-f3-error role="alert"></p>
+    <button type="submit" data-f3-save disabled>Save financing proposal</button>
+  </form>
+  <script src="/static/js/model_multisenior.js"></script>
+  {% endif %}
+  {% if multisenior.available and multisenior.last_run %}
+  <h4>Last Run facility schedules (kEUR)</h4>
+  {% for f in multisenior.last_run %}
+  <details class="v2-inputs-section"><summary class="v2-inputs-section-summary">{{ f.instrument_id }} · Commitment {{ '%.2f' | format(f.commitment_keur) }}</summary>
+    <h5>Construction: actual dated draws, capitalized costs (kEUR)</h5>
+    <div class="f2-scroll"><table class="f2-table"><thead><tr><th>Period</th><th>Draw</th><th>IDC</th><th>Upfront fee</th><th>Commitment fee</th></tr></thead><tbody>
+    {% for row in multisenior.last_construction %}{% set n = loop.index0 %}<tr><th>{{ row.period_start }} – {{ row.period_end }}</th>{% for key in ['construction_draws_keur', 'construction_idc_keur', 'upfront_fees_keur', 'construction_commitment_fees_keur'] %}<td>{{ '%.2f' | format(f[key][n]) }}</td>{% endfor %}</tr>{% endfor %}
+    </tbody></table></div>
+    <h5>Operating debt service (kEUR)</h5>
+    <div class="f2-scroll"><table class="f2-table"><thead><tr><th>Period index</th><th>Opening</th><th>Interest</th><th>Principal</th><th>Service</th><th>Closing</th></tr></thead><tbody>
+    {% for index in f.period_indices %}{% set n = loop.index0 %}<tr><th>{{ index }}</th>{% for key in ['opening_keur', 'interest_keur', 'principal_keur', 'debt_service_keur', 'closing_keur'] %}<td>{{ '%.2f' | format(f[key][n]) }}</td>{% endfor %}</tr>{% endfor %}
+    </tbody></table></div>
+  </details>
+  {% endfor %}
+  {% endif %}
+</section>
+{% endif %}

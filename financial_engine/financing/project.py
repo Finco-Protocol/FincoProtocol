@@ -920,6 +920,11 @@ def run_project_financing_model(
     _u2_period_financing_income: "tuple | None" = None,
 ) -> ProjectFinancingResult:
     """Run the derived-SHL/Senior fixed point for an explicitly enabled project."""
+    from finco_core.inputs.multisenior import MultiSeniorProjectInputs
+    if isinstance(project_inputs, MultiSeniorProjectInputs):
+        from financial_engine.financing.multisenior import run_multisenior_financing
+        return run_multisenior_financing(project_inputs, source_id=source_id,
+            baseline_commit_sha=baseline_commit_sha, period_financing_income=_u2_period_financing_income)
     fin = project_inputs.financing
     if fin.sponsor_funding_mode is None:
         raise ValueError("G2A_SPONSOR_FUNDING_MODE_EXPLICIT_INPUT_REQUIRED")
