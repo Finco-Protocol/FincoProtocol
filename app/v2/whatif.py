@@ -44,14 +44,27 @@ def _token_serializer() -> URLSafeTimedSerializer:
 
 
 def _quality_check(ws: Any, check_id: str, state: str):
+    """Use the exact Q3 committed-Run evaluation/terms-binding policy."""
+    from app.model_quality.evidence import ProjectTerms, terms_from_project_inputs
+    terms = ProjectTerms()
+    if state == "CURRENT":
+        try:
+            terms = terms_from_project_inputs(
+                ProjectInputSet.from_snapshot(ws.draft_snapshot).to_projectinputs()
+            )
+        except ValueError:
+            # Q3 itself uses unavailable terms if the current adapter is invalid.
+            pass
     evidence = evidence_from_workspace(
-        ws, freshness=state, active_scenario_id=ws.active_scenario_id,
+        ws, freshness=state, terms=terms,
+        active_scenario_id=ws.active_scenario_id,
         scenario_known=True,
     )
     return evaluate_model_quality(evidence).check(check_id)
 
 
-def _mapping(check_id: str, ws: Any, project_type: str, raw: str):
+def _mapping(check_id: str, ws: Any, project_type: str, raw: str,
+             *, run_state: str):
     from app.workbook.specs import ScenarioPolicy
     if project_type.strip().lower() not in SUPPORTED_VERTICALS:
         raise Q4Rejected("Q4_VERTICAL_NOT_ENABLED", 422)
@@ -59,7 +72,7 @@ def _mapping(check_id: str, ws: Any, project_type: str, raw: str):
     if mapping is None:
         raise Q4Rejected("Q4_FINDING_MAPPING_UNAVAILABLE", 422)
     path, field_id, override_key = mapping
-    finding = _quality_check(ws, check_id, "STALE" if ws.dirty else "CURRENT")
+    finding = _quality_check(ws, check_id, run_state)
     if path not in finding.related_assumption_ids:
         raise Q4Rejected("Q4_FINDING_ASSUMPTION_UNPROVEN", 422)
     # A proven PASS check may also seed a clearly labelled exploratory sensitivity.
@@ -179,7 +192,7 @@ def preview(*, owner: str, project_id: str, project_type: str, check_id: str,
     state = resolve_runtime_freshness(ws, current_composite_hash=identity.composite_hash).state.value
     if state == "NOT_RUN":
         raise Q4Rejected("Q4_REQUIRES_Q1_COMMITTED_FINDING")
-    finding, spec, key, typed = _mapping(check_id, ws, project_type, proposed_raw)
+    finding, spec, key, typed = _mapping(check_id, ws, project_type, proposed_raw, run_state=state)
     original = pis.get(spec.field_id)
     if original is None or isinstance(original, bool) or not isinstance(original, (int, float)):
         raise Q4Rejected("Q4_ORIGINAL_VALUE_UNAVAILABLE")
@@ -244,7 +257,8 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
             raise Q4Rejected("Q4_FINDING_RUN_ID_CHANGED")
         snapshot = json.loads(row["draft_snapshot_json"] or "{}")
         _, spec, key, proposed = _mapping(
-            data["check_id"], ws, project_type, str(data["proposed"]))
+            data["check_id"], ws, project_type, str(data["proposed"]),
+            run_state=resolve_runtime_freshness(ws, current_composite_hash=identity.composite_hash).state.value)
         if spec.field_id != data["field_id"] or key != data["key"]:
             raise Q4Rejected("Q4_MAPPING_CHANGED")
         old = ProjectInputSet.from_snapshot(snapshot).get(spec.field_id)
