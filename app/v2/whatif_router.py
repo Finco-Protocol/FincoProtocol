@@ -193,7 +193,7 @@ async def q4_compare(request: Request, project: str, scenario_id: str,
                 + "".join("<li>" + e(cid) + ": " + e(prior) + " → " + e(after) + "</li>"
                           for cid, prior, after in quality_rows)
                 + '</ul><h3>Canonical Run Integrity</h3>'
-                '<p>Base ' + e(old_integrity.status.value) + ' · What-if ' + e(new_integrity.status.value) + '</p>'
+                '<p>Base ' + e(old_integrity.overall.value) + ' · What-if ' + e(new_integrity.overall.value) + '</p>'
                 '<ul>' + "".join("<li>" + e(cid) + ": " + e(prior) + " → " + e(after) + "</li>"
                                   for cid, prior, after in integrity_rows)
                 + '</ul><p>Q1 advisory does not certify lender compliance. '
