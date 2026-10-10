@@ -292,3 +292,100 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     assert 'data-testid="q4-committed-compare"' in result.text
     assert "Canonical Run Integrity" in result.text
     assert len(get_run_history(user, record.project_id)) == len(history0) + 1
+
+
+
+def test_q4_solar_target_dscr_real_engine_effective_change(q4_http):
+    """Q4 uses the existing flat-DSCR authority; engine input is observed."""
+    import re
+    from app.services.reference_seed_service import create_reference_seeded_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import list_scenarios
+    from app.persistence.run_history_repository import get_run_history
+    from app.runtime import model_execution
+    from app.workbook.registry import WORKBOOK
+
+    client, cookies = q4_http
+    owner = "q4-dscr-solar-owner"
+    project = create_reference_seeded_project(
+        user_id=owner, template_source="generic_solar_reference",
+        requested_name="DSCR Scenario Q4", capacity_mw=30,
+    )
+    url = "/v2/workbook"
+    def auth_get():
+        return client.get(url, params={"project": project.project_code}, cookies=cookies(owner))
+    def _fields():
+        html = auth_get().text
+        return {k: re.search(r'name="' + k + r'" value="([^"]+)"', html).group(1)
+                for k in ("content_hash", "workbook_version")}
+    def _run():
+        response = client.post("/v2/workbook/run", cookies=cookies(owner),
+            headers={"HX-Request": "true"},
+            data=dict(project=project.project_code, **_fields()))
+        assert response.status_code == 200, response.text[:900]
+        ws = get_workspace_state(owner, project.project_id)
+        assert ws.last_runtime_summary and not ws.dirty, response.text[:900]
+
+    # Source-proven explicit scalar; no model default or inferred value.
+    ws = get_workspace_state(owner, project.project_id)
+    if not ws.draft_snapshot.get("target_dscr"):
+        response = client.post("/v2/workbook/update", cookies=cookies(owner),
+            headers={"HX-Request": "true"}, data=dict(
+                project=project.project_code, field_id="debt.senior.target_dscr",
+                value="1.20", sheet_id="debt", **_fields()))
+        assert response.status_code == 200
+        assert float(get_workspace_state(owner, project.project_id).draft_snapshot["target_dscr"]) == 1.20
+    _run()
+    old = get_workspace_state(owner, project.project_id)
+    original = float(old.draft_snapshot["target_dscr"])
+    candidate = 1.35 if original != 1.35 else 1.3
+
+    preview = client.post("/v2/workbook/whatif/preview", cookies=cookies(owner),
+        data={"project": project.project_code, "check_id": "QM-SD-007",
+              "proposed_value": str(candidate), "scenario_name": "DSCR-adjusted Q4"})
+    assert preview.status_code == 200, preview.text
+    assert f"Original input</dt><dd>{original}" in preview.text
+    assert f"Proposed input</dt><dd>{candidate}" in preview.text
+    token = re.search(r'name="token" value="([^"]+)"', preview.text).group(1)
+    confirmed = client.post("/v2/workbook/whatif/commit", cookies=cookies(owner),
+        data={"project": project.project_code, "token": token, "confirmed": "yes"})
+    assert confirmed.status_code == 200, confirmed.text
+    child = next(x for x in list_scenarios(owner, project.project_id)
+                 if x.scenario_name == "DSCR-adjusted Q4")
+    assert child.overrides == {"target_dscr": candidate}
+    previous_history = tuple(get_run_history(owner, project.project_id))
+    selected = client.post("/v2/workbook/scenarios/select", cookies=cookies(owner),
+        headers={"HX-Request": "true"},
+        data={"project": project.project_code, "scenario_id": child.scenario_id})
+    assert selected.status_code == 200
+
+    true_process = model_execution.run_model_process
+    consumed = []
+    async def verified_real_engine(func, *args, **kwargs):
+        consumed.append(kwargs["project_inputs_override"].financing.target_dscr)
+        return await true_process(func, *args, **kwargs)
+    with patch.object(model_execution, "run_model_process", verified_real_engine):
+        _run()
+    assert consumed == pytest.approx([candidate])
+    history = get_run_history(owner, project.project_id)
+    assert len(history) == len(previous_history) + 1
+    assert history[-1].last_runtime_scenario_id == child.scenario_id
+    assert all(any(e.history_id == initial.history_id for e in history)
+               for initial in previous_history)
+    assert float(old.draft_snapshot["target_dscr"]) == original
+
+
+def test_q4_token_tamper_and_scope_fail_closed():
+    token = whatif._token_serializer().dumps({
+        "owner": "alice", "project_id": "first", "project_type": "solar",
+        "version": "1.0", "name": "Q4", "nonce": "unique",
+    })
+    with patch("app.persistence.db.get_connection",
+               side_effect=AssertionError("invalid ticket must not touch DB")):
+        for changed in (token[:-2] + "xY", "wrong-ticket"):
+            with pytest.raises(whatif.Q4Rejected):
+                whatif.commit(owner="alice", project_id="first",
+                              project_type="solar", token=changed)
+        with pytest.raises(whatif.Q4Rejected, match="SCOPE_MISMATCH"):
+            whatif.commit(owner="alice", project_id="other",
+                          project_type="solar", token=token)
