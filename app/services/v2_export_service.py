@@ -302,7 +302,8 @@ def _build_persisted_bundle(
         runtime_result=result_adapter,
         runtime_rows=runtime_rows,
         statements=statements_adapter,
-        authority_metadata={},
+        authority_metadata=({"revenue_multistream_audit": ws.last_runtime_summary["revenue_multistream_audit"]}
+                            if ws and ws.last_runtime_summary.get("revenue_multistream_audit") else {}),
         contingency_authority=dict(contingency_authority) if contingency_authority else None,
         export_authority=export_authority,
         working_changed_since_run=runtime_rows[0]["working_changed_since_run"],

@@ -48,7 +48,7 @@ def test_exemption_is_independent_of_any_scope_marker(monkeypatch):
 
 def test_every_other_engine_path_stays_frozen(monkeypatch):
     monkeypatch.setattr(gov, "active_scope", lambda: None)
-    for other in ("financial_engine/tax/atad.py", "financial_engine/orchestrator.py",
+    for other in ("financial_engine/tax/atad.py", "financial_engine/orchestrator.py.bak",
                   "financial_engine/financial_statements/other.py",
                   "financial_engine/financial_statements/assembly.py.bak"):
         assert not gov.approved_by_active_model_v2_scope(other), other

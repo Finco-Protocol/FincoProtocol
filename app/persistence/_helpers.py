@@ -82,6 +82,7 @@ SCENARIO_INPUT_FIELDS: set[str] = {
     "operating_hours_p50",
     "opex_y1_total_keur",
     "senior_tenor_years",
+    "rev_multistream_config_json",
 }
 
 

@@ -1,0 +1,44 @@
+<details class="v2-inputs-section" open data-testid="revenue-contracts">
+  <summary class="v2-inputs-section-summary">Revenue contracts</summary>
+  <p class="d-context">{{ contracts.scope }} · {% if contracts.active %}Explicit PPA / Merchant / CfD authority{% else %}Legacy revenue authority{% endif %}</p>
+  {% if contracts.rows %}
+  <div style="overflow-x:auto">
+    <table class="d-table" aria-label="Saved revenue contracts">
+      <thead><tr><th>Contract</th><th>Stream</th><th>Start</th><th>End (exclusive)</th><th>Volume share</th><th>EUR/MWh</th><th>Index / operating year</th><th>Source</th></tr></thead>
+      <tbody>{% for row in contracts.rows %}<tr>
+        <td>{{ row.id }}</td><td>{{ row.type }}</td><td>{{ row.start_date }}</td><td>{{ row.end_date }}</td>
+        <td>{% if row.volume_share is none %}Residual generation{% else %}{{ "%.2f"|format(row.volume_share * 100) }}%{% endif %}</td>
+        <td>{{ "%.2f"|format(row.price_eur_mwh) }}</td><td>{{ "%.2f"|format(row.indexation_rate * 100) }}%</td><td>{{ row.source_ref }}</td>
+      </tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% if project_editable %}
+  <form method="post" action="/v2/workbook/revenue/contracts" hx-post="/v2/workbook/revenue/contracts"
+        hx-target="#v2-sheet-revenue" hx-swap="outerHTML" data-testid="revenue-contracts-form">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" name="content_hash" value="{{ content_hash }}">
+    <label for="revenue-contracts-json">Contract payload (JSON, fractional shares and rates)</label>
+    <textarea id="revenue-contracts-json" name="contracts" rows="12" spellcheck="false"
+              style="width:100%;box-sizing:border-box;resize:vertical" aria-describedby="revenue-contracts-boundary">{{ contracts.raw }}</textarea>
+    <p id="revenue-contracts-boundary" class="d-context">Same-period settlement only. Contract dates must align with operating periods. Indexation uses the canonical operating year. An empty payload restores legacy pricing. Legacy balancing and certificate adjustments remain separate.</p>
+    <button type="submit" name="action" value="save">Save contracts</button>
+    {% if contracts.overridden %}<button type="submit" name="action" value="inherit">Restore Base contracts</button>{% endif %}
+  </form>
+  {% endif %}
+  <p class="d-context">Capacity availability, ancillary services and REC contracts are unsupported. No quantities or settlement authority are inferred.</p>
+  {% set audit = (revenue_runtime_summary or {}).get("revenue_multistream_audit") %}
+  {% if audit %}
+  <details><summary>Last Run contract evidence (kEUR)</summary>
+    <p class="d-context">Net period revenue repeats for each contract; it is not a row subtotal. CfD MWh are settlement coverage, not additional production.</p>
+    <div style="overflow-x:auto"><table class="d-table" data-testid="revenue-contracts-audit">
+      <thead><tr><th>Period</th><th>Contract</th><th>Status</th><th>MWh</th><th>Sale</th><th>CfD settlement</th><th>Net period revenue</th></tr></thead>
+      <tbody>{% for period in audit %}{% for stream in period.streams %}
+      <tr><td>{{ period.period_index }}</td><td>{{ stream.id }}</td><td>{{ stream.status }}</td>
+        <td>{{ "%.4f"|format(stream.quantity_mwh) }}</td><td>{{ "%.4f"|format(stream.revenue_keur if stream.type != 'cfd' else 0) }}</td>
+        <td>{{ "%.4f"|format(stream.settlement_keur or 0) }}</td><td>{{ "%.4f"|format(period.net_revenue_keur) }}</td></tr>
+      {% endfor %}{% endfor %}</tbody>
+    </table></div>
+  </details>
+  {% endif %}
+</details>

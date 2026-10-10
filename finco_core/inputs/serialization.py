@@ -758,6 +758,8 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             for item in inputs.opex
         ],
         "revenue": {
+            **({"multistream_config_json": rev.multistream_config_json}
+               if getattr(rev, "multistream_config_json", "") else {}),
             "ppa_base_tariff": rev.ppa_base_tariff,
             "ppa_term_years": rev.ppa_term_years,
             "ppa_index": rev.ppa_index,
@@ -1138,7 +1140,14 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         for item in d["opex"]
     )
 
-    revenue = RevenueParams(
+    revenue_class = RevenueParams
+    revenue_extra = {}
+    if "multistream_config_json" in rev_d:
+        from finco_core.inputs.revenue_multistream import MultiStreamRevenueParams
+        revenue_class = MultiStreamRevenueParams
+        revenue_extra = {"multistream_config_json": rev_d["multistream_config_json"]}
+    revenue = revenue_class(
+        **revenue_extra,
         ppa_base_tariff=rev_d["ppa_base_tariff"],
         ppa_term_years=rev_d["ppa_term_years"],
         ppa_index=rev_d.get("ppa_index", 0.02),

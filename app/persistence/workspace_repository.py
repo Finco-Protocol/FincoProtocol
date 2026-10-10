@@ -767,6 +767,22 @@ def v2_atomic_draft_update(
 
         # Apply the validated update to the snapshot read inside the transaction.
         row_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
+        from app.workbook.revenue_multistream import assert_legacy_pricing_edit
+        effective_revenue_snapshot = row_snapshot
+        if row["active_scenario_id"] and field_id.startswith(("revenue.ppa.", "revenue.merchant.")):
+            cur.execute("SELECT overrides_json FROM scenarios WHERE scenario_id=? AND user_id=? AND project_id=? AND archived=0",
+                        (row["active_scenario_id"], user_id, project_id))
+            revenue_scenario = cur.fetchone()
+            if revenue_scenario is not None:
+                from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+                effective_revenue_snapshot = bind_scenario_tariff(row_snapshot, _json.loads(revenue_scenario["overrides_json"] or "{}"))
+        assert_legacy_pricing_edit(effective_revenue_snapshot, field_id)
+        if field_id == "revenue.multistream.contracts" and row["active_scenario_id"]:
+            cur.execute("SELECT is_base_case FROM scenarios WHERE scenario_id=? AND user_id=? AND project_id=? AND archived=0",
+                        (row["active_scenario_id"], user_id, project_id))
+            selected = cur.fetchone()
+            if selected is None or not selected["is_base_case"]:
+                raise ValueError("REVENUE_V2_SCENARIO: use the scenario contract editor")
         current_pis = ProjectInputSet.from_snapshot(row_snapshot, workbook=WORKBOOK)
         from app.workbook.multisenior_config import (
             FIELD_ID as f3_field, apply_state,

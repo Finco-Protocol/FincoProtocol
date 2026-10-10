@@ -144,7 +144,14 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
             constant_value=rev.balancing_cost_eur_per_mwh,
         )
 
-    revenue = RevenueParams(
+    revenue_class = RevenueParams
+    revenue_extra = {}
+    if getattr(rev, "multistream_config_json", ""):
+        from finco_core.inputs.revenue_multistream import MultiStreamRevenueParams
+        revenue_class = MultiStreamRevenueParams
+        revenue_extra = {"multistream_config_json": rev.multistream_config_json}
+    revenue = revenue_class(
+        **revenue_extra,
         ppa_base_tariff=rev.ppa_base_tariff_eur_mwh,
         ppa_term_years=rev.ppa_term_years,
         ppa_index=rev.ppa_index,
@@ -407,6 +414,13 @@ def derive_debt_sizing_operating_input(
     """
     from dataclasses import replace as _replace
 
+    if getattr(base_op.revenue, "multistream_config_json", "") and (
+        debt_sizing_case.merchant_price_calendar_start_year is not None
+        or debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh
+        or debt_sizing_case.market_prices_curve_eur_mwh
+    ):
+        raise ValueError("REVENUE_V2_BANK_PRICE_OVERRIDE_UNSUPPORTED: explicit stream prices cannot be silently replaced")
+
     new_technical = _replace(
         base_op.technical,
         yield_scenario=debt_sizing_case.production_yield_scenario,
@@ -472,7 +486,20 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     tariff_schedule = _build_ppa_tariff_schedule(inputs, periods_meta)
     proxy = _build_project_inputs_proxy(inputs, tariff_schedule)
     production_by_idx = full_generation_schedule(proxy, engine)
-    revenue_by_idx = full_revenue_schedule(proxy, engine)
+    revenue_notes = ()
+    if getattr(proxy.revenue, "multistream_config_json", ""):
+        import json
+        from finco_core.revenue.generation import revenue_decomposition_schedule
+        decompositions = revenue_decomposition_schedule(proxy, engine)
+        revenue_by_idx = {idx: row["revenue_keur"] for idx, row in decompositions.items()}
+        revenue_notes = tuple(json.dumps({"period_index": idx, **row["multistream_evidence"],
+                                         "net_revenue_keur": row["revenue_keur"],
+                                         "balancing_cost_keur": row["balancing_cost_keur"],
+                                         "legacy_certificate_revenue_keur": row["co2_certificate_revenue_keur"]},
+                                        sort_keys=True, allow_nan=False)
+                              for idx, row in decompositions.items() if "multistream_evidence" in row)
+    else:
+        revenue_by_idx = full_revenue_schedule(proxy, engine)
 
     # Step 5: OPEX via finco_core leaf.
     from finco_core.opex.projections import opex_schedule_period
@@ -511,7 +538,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
             period_in_year=float(p.period_in_year),
             is_construction=p.is_construction,
             is_operation=p.is_operation,
-            is_ppa_active=p.is_ppa_active,
+            is_ppa_active=decompositions[idx]["is_ppa_active"] if revenue_notes else p.is_ppa_active,
             days_in_period=p.days_in_period,
             day_fraction=p.day_fraction,
             production_mwh=production_by_idx.get(idx, 0.0),
@@ -551,7 +578,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
             source_module="finco_core.revenue.generation",
             source_function="full_revenue_schedule",
             input_paths=("revenue", "calendar", "technical"),
-            notes=(),
+            notes=revenue_notes,
         ),
         DerivationEvidence(
             output_path="operating_schedules.opex_keur",

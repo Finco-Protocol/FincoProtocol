@@ -12,6 +12,13 @@ def bind_scenario_tariff(snapshot: dict, overrides: dict) -> dict:
     Legacy-only snapshots retain their shape and use the existing adapter.
     """
     effective = dict(snapshot)
+    from app.workbook.revenue_multistream import SNAPSHOT_KEY, canonical_json
+    if SNAPSHOT_KEY in overrides:
+        effective[SNAPSHOT_KEY] = canonical_json(overrides[SNAPSHOT_KEY])
+    if effective.get(SNAPSHOT_KEY) and any(
+        key in overrides for key in ("tariff_eur_mwh", "ppa_tariff_eur_mwh", "ppa_term_years")
+    ):
+        raise ValueError("REVENUE_V2_SCENARIO: replace the explicit contracts, not legacy PPA aliases")
     if "tariff_eur_mwh" not in overrides:
         return effective
     project_type = str(snapshot.get("project_type") or "").strip().lower()

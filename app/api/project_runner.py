@@ -454,6 +454,11 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             "returns": returns.to_dict(orient="records"),
         }
     }
+    if getattr(demo.project_inputs.revenue, "multistream_config_json", ""):
+        import json
+        provenance = clean_run.g2c_result.financing_result.project_model_result.provenance
+        revenue_evidence = next(e for e in provenance.derivation_evidence if e.output_path == "operating_schedules.revenue_keur")
+        payload["revenue_multistream_audit"] = [json.loads(note) for note in revenue_evidence.notes]
     # Gearing fields from the same clean_run — no second engine calculation.
     try:
         _fr = clean_run.g2c_result.financing_result
