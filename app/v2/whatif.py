@@ -102,8 +102,11 @@ def _validate_financing(snapshot: dict, field_id: str, proposed: float,
     from app.input_adapter import assert_debt_scalar_edit_allowed
     state = parse_state(snapshot.get(SNAPSHOT_KEY))
     entry = state["scopes"].get(scope)
-    if (field_id == "debt.senior.target_dscr" and entry
-            and entry["activation"] is not None):
+    if (field_id in ("debt.senior.target_dscr", "debt.senior.gearing_pct")
+            and entry and entry["activation"] is not None):
+        # The Q4 V1 child does not itself carry an authorized F3 instrument
+        # activation transition. Never silently downgrade an effective
+        # two-Senior configuration to legacy scalar debt.
         raise Q4Rejected("Q4_F3_COMPETING_SENIOR_EDITOR")
     base = ProjectInputSet.from_snapshot(snapshot)
     if field_id in ("debt.senior.target_dscr", "debt.senior.interest_rate_pct"):
