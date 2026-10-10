@@ -178,7 +178,7 @@ def test_25_approved_fields_and_25th_invalid_rolls_back(working_copy):
         and field.source_of_truth == SourceOfTruth.INPUT_SET
         and field.editable
         and field.persisted
-        and field.unit == "kEUR"
+        and (field.unit or "").startswith("kEUR")
     ][:25]
     assert len(specs) == 25
     updates = [(s.field_id, "1") for s in specs]
