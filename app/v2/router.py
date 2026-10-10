@@ -5196,3 +5196,8 @@ async def v2_workbook_goal_seek_apply(
         "now STALE — press Run to make it canonical. (Goal Seek candidate "
         "runs never wrote Run History or Last Run.)",
         applied=True)
+
+
+# Q4 route registration: isolated implementation, no changes to canonical Run paths.
+from app.v2.whatif_router import router as q4_router
+router.include_router(q4_router)
