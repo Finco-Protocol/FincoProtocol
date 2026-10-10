@@ -47,12 +47,9 @@ from app.workbook.workbook_identity import assemble_consistent_for_get
 
 router = APIRouter()
 
-# The C0 transaction raises the finco_core FinancingError; the candidate contract defines a sibling
-# class of the same shape.  Catch both precisely (never a bare Exception).
-from app.model_v2.financing_f3_candidate.contracts import FinancingError as _CandidateFinancingError  # noqa: E402
-from finco_core.inputs.financing_instruments import FinancingError as _CoreFinancingError  # noqa: E402
-
-_FINANCING_ERRORS = (_CoreFinancingError, _CandidateFinancingError)
+# Canonical F3 rejections raised inside the C0 transaction are ValueError subclasses carrying a stable
+# ``.code``.  They are handled through the ValueError boundary below: this router must NOT import the
+# financing engine or the F3 candidate package (governance-owned boundaries).
 _F3_CONFLICT_CODES = frozenset({
     "F3_COMPETING_FINANCING_EDITOR_REJECTED", "F3_COLLECTION_EDITOR_ONLY", "F3_SELECTED_SCENARIO_UNAVAILABLE",
 })
@@ -181,18 +178,17 @@ async def grid_save(body: GridSaveRequest, request: Request,
     except (BatchApplyError, UnknownFieldError, NonEditableFieldError) as exc:
         return _json({"ok": False, "code": getattr(exc, "code", type(exc).__name__),
                       "message": str(exc)}, 422)
-    except _FINANCING_ERRORS as exc:
-        # Canonical F3 gates raised inside the C0 transaction (competing financing editor, collection
-        # editor only, selected scenario unavailable, effective-financing boundary).  The transaction
-        # already rolled back: nothing persisted, CAS hash and Last Run unchanged.  Never a 500.
-        code = getattr(exc, "code", "F3_REJECTED")
-        status = 409 if code in _F3_CONFLICT_CODES else 422
-        return _json({"ok": False, "code": code,
-                      "message": "Financing authority rejected the batch; nothing was saved. "
-                                 "Edit financing fields in the Senior Debt financing editor.",
-                      "detail": str(exc)}, status)
     except ValueError as exc:
-        # Any other canonical fail-closed rejection (e.g. senior authority gate): controlled, no write.
+        # ValueError is the canonical fail-closed boundary of the C0 transaction (it rolled back: nothing
+        # persisted, CAS hash and Last Run unchanged).  A recognised F3_* code keeps its meaning:
+        # authority/scope conflicts are 409, other F3 validation failures 422.  Anything else is the
+        # generic BATCH_REJECTED 422.  Never an unhandled 500.
+        code = str(getattr(exc, "code", "") or "")
+        if code.startswith("F3_"):
+            return _json({"ok": False, "code": code,
+                          "message": "Financing authority rejected the batch; nothing was saved. "
+                                     "Edit financing fields in the Senior Debt financing editor.",
+                          "detail": str(exc)}, 409 if code in _F3_CONFLICT_CODES else 422)
         return _json({"ok": False, "code": "BATCH_REJECTED", "message": str(exc)}, 422)
 
     fresh = get_workspace_state(owner, record.project_id) or ws
