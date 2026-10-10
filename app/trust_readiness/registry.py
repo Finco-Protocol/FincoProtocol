@@ -708,7 +708,7 @@ KNOWN_GAPS: tuple[KnownGap, ...] = (
     KnownGap(
         "gap.csrf_login_only", "Most state-changing requests have no CSRF token",
         GapSeverity.MEDIUM,
-        "CSRF tokens protect the login form, the model-import steps and one crypto action. Other "
+        "CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes and one crypto action. Other "
         "state-changing requests rely on the session cookie being SameSite=Lax, and the SameSite "
         "value can be changed by an environment variable without validation.",
         "Add an Origin or token check to state-changing endpoints and validate the SameSite "
