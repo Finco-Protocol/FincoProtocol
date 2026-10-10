@@ -71,7 +71,7 @@ def _context(request, user, project, ws, *, stage, proposals=None, error=None,
         "workbook_version": WORKBOOK.version,
         "active_scenario_id": ws.active_scenario_id,
         "fields": _field_options(project),
-        "apply_available": False,  # C0 gate is not accepted yet.
+        "apply_available": True,
     }
 
 
@@ -134,6 +134,13 @@ async def model_input_import_preview(
             proposals=result["proposals"], detected=result["detected"],
             totals=result["totals"], digest=hashlib.sha256(data).hexdigest(),
         )
+        from app.model_import.review import seal_preview
+        ctx["preview_ticket"] = seal_preview(
+            owner=owner, project_id=record.project_id,
+            scenario_id=ws.active_scenario_id,
+            content_hash=ctx["content_hash"], workbook_version=WORKBOOK.version,
+            digest=ctx["digest"], proposals=result["proposals"],
+        )
         return _templates.TemplateResponse(
             request=request, name="import_review.html", context=ctx)
     except (IntakeError, ValueError) as exc:
@@ -144,3 +151,135 @@ async def model_input_import_preview(
             status_code=422)
     finally:
         await upload.close()
+
+
+@router.post("/workbook/import/confirm", response_class=HTMLResponse)
+async def model_input_import_confirm(
+    request: Request,
+    project: str = Form(...),
+    csrf_token: str = Form(...),
+    preview_ticket: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Second explicit review boundary: approve, validate, then seal a final set.
+
+    This route never writes financial inputs or runs a model.
+    """
+    from app.model_import.review import (
+        ImportReviewError, resolve_review, seal_approved,
+    )
+    user = resolve_request_session(request)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=302)
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None or owner != user.user_id or is_protected_reference(record):
+        return RedirectResponse(url="/library", status_code=302)
+    ws = get_workspace_state(owner, record.project_id)
+    if ws is None:
+        return RedirectResponse(url="/library", status_code=302)
+    if not validate_csrf_token(csrf_token):
+        return _templates.TemplateResponse(
+            request=request, name="import_review.html",
+            context=_context(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"),
+            status_code=403)
+    try:
+        form = await request.form()
+        preview, approved = resolve_review(
+            ticket=preview_ticket, owner=owner, project_id=record.project_id,
+            selections=form, project_type=record.project_type or "",
+            template_source=record.template_source or "",
+        )
+        current = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
+        if (preview["scenario_id"] != ws.active_scenario_id
+                or preview["content_hash"] != current.composite_hash
+                or preview["workbook_version"] != WORKBOOK.version):
+            raise ImportReviewError("IMPORT_PREVIEW_STALE")
+        pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
+        for row in approved:
+            row["current_value"] = pis.get(row["field_id"])
+            row["changed"] = str(row["current_value"]) != str(row["value"])
+        ctx = _context(request, user, record, ws, stage="confirm")
+        ctx["approved"] = approved
+        ctx["approved_ticket"] = seal_approved(preview, approved)
+        ctx["approved_count"] = len(approved)
+        ctx["changed_count"] = sum(bool(r["changed"]) for r in approved)
+        return _templates.TemplateResponse(
+            request=request, name="import_review.html", context=ctx)
+    except (ImportReviewError, IntakeError, ValueError) as exc:
+        code = getattr(exc, "code", "IMPORT_REVIEW_INVALID")
+        return _templates.TemplateResponse(
+            request=request, name="import_review.html",
+            context=_context(request, user, record, ws, stage="upload", error=code),
+            status_code=409 if code == "IMPORT_PREVIEW_STALE" else 422)
+
+
+@router.post("/workbook/import/apply", response_class=HTMLResponse)
+async def model_input_import_apply(
+    request: Request,
+    project: str = Form(...),
+    csrf_token: str = Form(...),
+    approved_ticket: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Explicit authenticated Apply: ONLY the C0 canonical batch writer."""
+    from app.model_import.review import ImportReviewError, unseal_approved
+    from app.workbook.update_service import (
+        WorkbookUpdateService, BatchApplyError, FieldValidationError,
+        StaleContentError, VersionMismatchError, ProtectedReferenceError,
+        NonEditableFieldError, UnknownFieldError,
+    )
+    user = resolve_request_session(request)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=302)
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None or owner != user.user_id or is_protected_reference(record):
+        return RedirectResponse(url="/library", status_code=302)
+    ws = get_workspace_state(owner, record.project_id)
+    if ws is None:
+        return RedirectResponse(url="/library", status_code=302)
+    if not validate_csrf_token(csrf_token):
+        return _templates.TemplateResponse(
+            request=request, name="import_review.html",
+            context=_context(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"),
+            status_code=403)
+    try:
+        signed = unseal_approved(approved_ticket, owner=owner, project_id=record.project_id)
+        approved = signed["approved"]
+        # Server repeats canonical field validation inside the C0 transaction.
+        changes = [(item["field_id"], item["value"]) for item in approved]
+        WorkbookUpdateService.apply_batch_draft_update(
+            ws=ws, updates=changes,
+            content_hash=signed["content_hash"],
+            workbook_version=signed["workbook_version"],
+            expected_scenario_id=signed["scenario_id"],
+            project_record=record, actor_user_id=user.user_id,
+        )
+        fresh = get_workspace_state(owner, record.project_id)
+        if fresh is None:
+            raise ImportReviewError("IMPORT_POST_APPLY_READ_UNAVAILABLE")
+        pis = ProjectInputSet.from_snapshot(fresh.draft_snapshot, workbook=WORKBOOK)
+        from app.workbook.runtime_authority import resolve_runtime_freshness
+        identity = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
+        freshness = resolve_runtime_freshness(
+            fresh, current_composite_hash=identity.composite_hash)
+        saved = [{
+            "field_id": item["field_id"],
+            "source": f'{item["sheet"]}!{item["cell"]}',
+            "actual_value": pis.get(item["field_id"]),
+            "approved_value": item["value"],
+        } for item in approved]
+        ctx = _context(request, user, record, fresh, stage="result")
+        ctx["saved"] = saved
+        ctx["applied_count"] = len(saved)
+        ctx["skipped_count"] = 0
+        ctx["freshness_state"] = freshness.state.value
+        return _templates.TemplateResponse(
+            request=request, name="import_review.html", context=ctx)
+    except (ImportReviewError, BatchApplyError, FieldValidationError,
+            StaleContentError, VersionMismatchError, ProtectedReferenceError,
+            NonEditableFieldError, UnknownFieldError, ValueError) as exc:
+        code = getattr(exc, "code", type(exc).__name__)
+        return _templates.TemplateResponse(
+            request=request, name="import_review.html",
+            context=_context(request, user, record, ws, stage="upload", error=code),
+            status_code=409 if isinstance(exc, (StaleContentError, VersionMismatchError)) else 422)
