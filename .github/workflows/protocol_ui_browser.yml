@@ -23,6 +23,8 @@ on:
       - "constraints.txt"
       - "pyproject.toml"
       - "pytest.ini"
+      - "tools/model_financing_f3_*.py"
+      - "tests/model_financing_f3_*.py"
       - ".github/workflows/protocol_ui_browser.yml"
   workflow_dispatch:
 
@@ -92,3 +94,29 @@ jobs:
           name: reference-driven-correction-a-23-captures
           path: artifacts/reference-driven-correction-a/*.png
           if-no-files-found: error
+
+      # F3 two-Senior acceptance evidence.  Non-gating (continue-on-error): it publishes a reviewer-accessible
+      # bundle bound to the exact HEAD; the gating suites above and the pytest gate remain unchanged.
+      - name: Check out F3 legacy-equivalence base commit
+        if: always()
+        continue-on-error: true
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: 2e199bc3fb8e7a5971e26d1a1a48e9875a63045d
+          path: f3-base
+          persist-credentials: false
+
+      - name: Build F3 acceptance evidence bundle (parity, financial reconciliation, Chromium)
+        if: always()
+        continue-on-error: true
+        env:
+          FINCO_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -m tools.model_financing_f3_evidence_bundle --out artifacts/f3-evidence --base-checkout "$GITHUB_WORKSPACE/f3-base"
+
+      - name: Upload F3 acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: f3-acceptance-evidence
+          path: artifacts/f3-evidence
+          if-no-files-found: warn

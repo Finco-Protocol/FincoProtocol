@@ -6,9 +6,11 @@ Invoke with --base-checkout pointing at a detached authorized base worktree.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import platform
 import subprocess
 import sys
 
@@ -93,6 +95,10 @@ def capture(checkout, kind):
     return json.loads(line.split("=", 1)[1])
 
 
+def _digest_of(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
 def differences(before, after, path=""):
     if type(before) is not type(after):
         return [path]
@@ -106,6 +112,27 @@ def differences(before, after, path=""):
     return [] if before == after else [path]
 
 
+# Documented, deliberately narrow normalizations applied identically to BASE and CANDIDATE inside CODE above.
+NORMALIZATIONS = [
+    "Historical certificate identity (stamp, git sha/branch, workbook/engine versions) is a fixed fixture for both sides",
+    "Institutional export: only the wall-clock timestamps/branch/commit labels written by the exporter are pinned to the fixture stamp",
+    "ZIP/container creation times are not compared; every worksheet cell value, number format and style id IS compared",
+    "No financial value, schedule, hash or tolerance is normalised, excluded or widened",
+]
+COMPARED_SECTIONS = ["inputs (project_inputs_to_dict)", "input_hash", "run (asdict of the canonical clean run: all period schedules, "
+    "financing, cash-flow and statement outputs)", "integrity_evidence", "integrity (Run Integrity report)",
+    "runtime_export_payload (run_project API payload incl. KPIs)", "historical_certificate_bytes_sha256",
+    "institutional_export_cells (all sheets: value, number format, style)"]
+
+
+def leaf_count(value):
+    if isinstance(value, dict):
+        return sum(leaf_count(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return sum(leaf_count(v) for v in value)
+    return 1
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-checkout", type=Path, required=True)
@@ -115,15 +142,31 @@ def main():
         check=True, capture_output=True, text=True).stdout.strip()
     if actual != BASE_SHA:
         raise RuntimeError("The baseline checkout is not the approved immutable base.")
-    report = {"base_sha": BASE_SHA, "cold_process": True, "cases": []}
+    candidate_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
+    dirty = bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT, check=True,
+                                capture_output=True, text=True).stdout.strip())
+    report = {"schema": "finco.f3.legacy-equivalence.v1", "base_sha": BASE_SHA, "candidate_sha": candidate_sha,
+              "candidate_tracked_tree_dirty": dirty, "cold_process": True,
+              "command": "python tools/model_financing_f3_legacy_equivalence.py --base-checkout <detached BASE_SHA worktree>",
+              "python": platform.python_version(), "platform": platform.platform(),
+              "generated_at": datetime.now(timezone.utc).isoformat(),
+              "base_process": "separate cold python process running the BASE checkout",
+              "candidate_process": "separate cold python process running the CANDIDATE checkout",
+              "f3_state": "absent/inactive: no financing_instruments_json is supplied; the factory reference inputs are used",
+              "compared_sections": COMPARED_SECTIONS, "normalizations": NORMALIZATIONS, "cases": []}
     for kind in ("solar", "wind", "data_center", "ev_charging"):
         before, after = capture(args.base_checkout, kind), capture(ROOT, kind)
         delta = differences(before, after)
         digest = lambda value: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
-        report["cases"].append(dict(project=kind, differences=delta, base_digest=digest(before), candidate_digest=digest(after)))
+        report["cases"].append(dict(project=kind, status="PASS" if not delta else "FAIL", differences=delta,
+            base_digest=digest(before), candidate_digest=digest(after), compared_leaf_values=leaf_count(before),
+            candidate_leaf_values=leaf_count(after), sections={k: _digest_of(before.get(k)) == _digest_of(after.get(k)) for k in before}))
         print(kind, "EXACT" if not delta else delta)
+    report["all_cases_pass"] = all(case["status"] == "PASS" for case in report["cases"])
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    text = json.dumps(report, indent=2)
+    args.output.write_text(text, encoding="utf-8")
+    print("legacy-equivalence.json sha256", hashlib.sha256(text.encode()).hexdigest())
     if any(case["differences"] for case in report["cases"]):
         raise SystemExit(1)
 

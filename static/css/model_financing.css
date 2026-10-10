@@ -78,3 +78,7 @@
   --fb-border: #697580; --fb-field: #252c33; --fb-link: #8ccee9;
   --fb-fail: #ff9fa9; --fb-pass: #8ad6b0;
 }
+
+/* F3 facility summary: the facility name never breaks mid-word; the long instrument ID wraps on its own line. */
+[data-f3-instrument] > summary { position: static; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+[data-f3-instrument] > summary small { flex: 1 1 100%; overflow-wrap: anywhere; font-weight: 400; font-size: 0.75rem; }
