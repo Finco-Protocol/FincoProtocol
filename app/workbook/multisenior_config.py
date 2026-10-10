@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import re
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from finco_core.inputs.financing_instruments import (
     FinancingCollection, FinancingError, FinancingInstrument, InstrumentType,
@@ -135,12 +135,14 @@ def apply_state(pi, raw, scope, *, enforce_release=True, bankability_raw=None):
     return active
 
 
-def build_view(pi, raw, scope, runtime_summary):
+def build_view(pi, raw, scope, runtime_summary, *, owner_id, project_id):
     if pi is None:
         return {"available": False, "active": False, "reason": "Project inputs are unavailable."}
     state = parse_state(raw)
     entry = state["scopes"].get(scope)
     if entry is None:
+        if not isinstance(owner_id, str) or not owner_id or not isinstance(project_id, str) or not project_id:
+            raise FinancingError("F3_PROPOSAL_SCOPE_REQUIRED")
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.orchestrator import _build_period_engine
         # Calendar metadata only: opening this sheet never runs a model.
@@ -149,8 +151,12 @@ def build_view(pi, raw, scope, runtime_summary):
         construction = [p for p in periods if p.is_construction]
         if not op or not construction:
             return {"available": False, "active": False, "reason": "Construction and operating calendars are required."}
+        # An unsaved editor is repeatable presentation, not a database write.
+        # Once saved, the persisted IDs above remain authoritative unchanged.
         collection = FinancingCollection(tuple(FinancingInstrument(
-            instrument_id="senior-" + uuid4().hex, instrument_type=InstrumentType.SENIOR_TERM_LOAN,
+            instrument_id="senior-" + uuid5(NAMESPACE_URL, json.dumps(
+                ["finco-f3-proposal-v1", owner_id, project_id, scope, label],
+                separators=(",", ":"))).hex, instrument_type=InstrumentType.SENIOR_TERM_LOAN,
             name=f"Senior {label}", commitment_keur=0.,
             drawdowns=(DrawdownEntry(construction[min(i, len(construction) - 1)].start_date, 0.),),
             interest=InterestTerms(RateMode.FIXED, fixed_rate=0.),

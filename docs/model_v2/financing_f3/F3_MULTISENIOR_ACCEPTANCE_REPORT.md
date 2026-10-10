@@ -201,6 +201,23 @@ screenshots in the same folder, and `artifacts/f3/legacy-equivalence.json`.
 
 ## Governance, integration and review
 
+The first full Linux CI run exited normally with 12 assertion failures:
+11 V6 exact-HTML comparisons exposed random unsaved-editor UUID generation,
+and the older productivity DOM guard did not recognize the new F3 registry
+field. The same-PR correction makes unsaved proposal IDs deterministic for
+the authorized owner/project/scenario/slot, without persisting anything on
+GET or replacing saved IDs. Regression tests prove repeatability, isolation
+and missing-scope rejection. The DOM guard admits only the exact editable and
+protected F3 field keys; every historical golden DOM hash remains unchanged.
+No financial, solver, core, workflow or golden file changes in this correction.
+Correction ring: **188 passed, rc=0, normal interpreter termination**, covering
+all 12 previously failing cases, V6 coherence/isolation/restoration, productivity
+DOM, and F3 financial/Workspace/governance tests. Authenticated Chromium's eight
+Solar/Wind theme/viewport cases pass again with normal server/executor shutdown.
+The earlier certificate + Model V2 governance + F2 ring completed with **99
+passed, 10 existing retired-marker skips, rc=0**. The corrected exact-head full
+suite remains the final acceptance authority.
+
 No workflow modification or blanket freeze exemption. Exact Git blob pins in
 `tests/model_v2_governance.py` recognize only these necessary F3 authorities:
 

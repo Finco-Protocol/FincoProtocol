@@ -1184,7 +1184,8 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
         FIELD_ID as f3_field, SNAPSHOT_KEY as f3_key, build_view as build_f3_view, scope_for_workspace,
     )
     f3 = build_f3_view(finance_pi, pis.snapshot_origin.get(f3_key), scope_for_workspace(ws),
-        rr_for_sponsor.runtime_summary if rr_for_sponsor else None)
+        rr_for_sponsor.runtime_summary if rr_for_sponsor else None,
+        owner_id=ws.user_id, project_id=ws.project_id)
     debt_fields = [f for f in debt_fields if f["field_id"] != f3_field]
     if f3["active"]:
         from app.workbook.multisenior_config import activation_financing_params

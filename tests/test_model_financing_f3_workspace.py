@@ -81,7 +81,29 @@ def test_no_sheet_open_financial_execution(monkeypatch):
         pytest.fail("Opening the sheet executed a model")
     monkeypatch.setattr(orchestrator, "run_operating_model", forbidden)
     monkeypatch.setattr(orchestrator, "run_senior_debt_model", forbidden)
-    assert len(config.build_view(pi, None, "base", None)["entry"]["proposal"]["instruments"]) == 2
+    assert len(config.build_view(pi, None, "base", None,
+        owner_id="synthetic-owner", project_id="synthetic-project")["entry"]["proposal"]["instruments"]) == 2
+
+
+def test_unsaved_editor_is_deterministic_and_owner_project_scenario_scoped():
+    pi, _ = case()
+    def view(owner="synthetic-owner", project="synthetic-project", scope="base", raw=None):
+        return config.build_view(pi, raw, scope, None, owner_id=owner, project_id=project)
+    original = view()
+    assert original == view()
+    ids = lambda value: {i["instrument_id"] for i in value["entry"]["proposal"]["instruments"]}
+    for other in (view(owner="other-owner"), view(project="other-project"),
+                  view(scope="0123456789abcdef")):
+        assert ids(original).isdisjoint(ids(other))
+    assert original["state"]["scopes"] == {}  # Rendering never persists a proposal.
+    stored = view(raw=state())
+    assert ids(stored) == {i.instrument_id for i in case()[0].financing_collection.instruments}
+
+
+def test_unsaved_editor_rejects_missing_scope_binding():
+    pi, _ = case()
+    with pytest.raises(FinancingError, match="PROPOSAL_SCOPE_REQUIRED"):
+        config.build_view(pi, None, "base", None, owner_id="", project_id="synthetic-project")
 
 
 def test_proposal_save_reload_cas_and_blocked_activation_are_real(env, monkeypatch):
@@ -259,7 +281,8 @@ def test_active_configuration_locks_competing_editor_and_export_corruption_fails
 def test_f3_template_protected_and_no_context_safe():
     from app.v2.router import _templates
     pi, _ = case()
-    view = config.build_view(pi, state(), 'base', None)
+    view = config.build_view(pi, state(), 'base', None,
+        owner_id="synthetic-owner", project_id="synthetic-project")
     template = _templates.get_template('partials/_financing_multisenior.html')
     assert 'read-only' in template.render(multisenior=view, project_editable=False)
     assert 'data-f3-form' not in template.render(multisenior=view, project_editable=False)
