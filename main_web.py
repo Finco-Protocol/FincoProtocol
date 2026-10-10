@@ -364,6 +364,9 @@ app.include_router(_v2_developer_decision_router, prefix="/v2")
 # Financing F1 is an independent read-only router (no F2/F3 ownership overlap).
 from app.v2.financing_sources_uses_router import router as _v2_financing_sources_uses_router
 app.include_router(_v2_financing_sources_uses_router, prefix="/v2")
+# Workflow C read-only import gate; no financial writes before C0 acceptance.
+from app.v2.import_router import router as _v2_import_router
+app.include_router(_v2_import_router, prefix="/v2")
 
 # -- FINCO Radar v1 (Post-R12 P2) — narrow read-only Radar surface ------------
 # Read-only product UI over the frozen R0-R12 authority and the canonical
