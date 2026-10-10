@@ -1,0 +1,38 @@
+{#
+  WF-05 hybrid navigation + persistent status strip.
+
+  Top-level groups INPUTS | SCENARIOS | OUTPUTS | ANALYSIS | TRUST are a presentation layer over
+  the EXISTING workbook tabs (same tab buttons, same panels, same deep links) — every tab and the
+  left tree stay directly reachable; nothing is hidden or removed.  Group → tab mapping lives in
+  static/js/inputs_grid_v1.js (HYBRID_GROUPS) and is asserted by tests.
+
+  The strip states the identity (project · scenario), the Working Copy / Last Run state from the
+  canonical freshness authority (CURRENT / STALE / NOT RUN) and — separately — the Last Run
+  integrity verdict (PASS / FAIL / UNAVAILABLE).  The two are independent: freshness is never an
+  integrity verdict and vice versa.
+#}
+{%- set _integ = (trust_pack or {}).get('integrity') or {} -%}
+{%- set _integ_overall = (_integ.get('overall') or '')|string|upper if (_integ.get('state')|string|upper == 'AVAILABLE') else 'UNAVAILABLE' -%}
+<div id="v2-hybrid-bar" class="hy" data-testid="hybrid-bar">
+  <nav class="hy-groups" role="tablist" aria-label="Workbook areas" data-testid="hybrid-nav">
+    <button type="button" class="hy-group" role="tab" data-hy-group="inputs"    data-testid="hybrid-inputs">Inputs</button>
+    <button type="button" class="hy-group" role="tab" data-hy-group="scenarios" data-testid="hybrid-scenarios">Scenarios</button>
+    <button type="button" class="hy-group" role="tab" data-hy-group="outputs"   data-testid="hybrid-outputs">Outputs</button>
+    <button type="button" class="hy-group" role="tab" data-hy-group="analysis"  data-testid="hybrid-analysis">Analysis</button>
+    <button type="button" class="hy-group" role="tab" data-hy-group="trust"     data-testid="hybrid-trust">Trust</button>
+  </nav>
+  <div class="hy-status" role="status" aria-label="Project, scenario and run status" data-testid="hybrid-status">
+    <span class="hy-id" data-testid="hybrid-identity">
+      <strong>{{ project_name }}</strong>
+      {% if project_type %}<span class="hy-dim">· {{ project_type }}</span>{% endif %}
+      <span class="hy-dim">· {{ 'Working Copy' if project_editable else 'Reference' }}</span>
+      <span class="hy-dim" data-testid="hybrid-scenario">· Scenario: {{ active_scenario_name or 'Base' }}</span>
+    </span>
+    <span class="hy-chip hy-chip--{{ runtime_state|lower }}" data-hy-run-state data-testid="hybrid-run-state">
+      {{ {'CURRENT': 'CURRENT', 'STALE': 'STALE', 'NOT_RUN': 'NOT RUN'}.get(runtime_state, 'NOT RUN') }}</span>
+    <span class="hy-dim" data-testid="hybrid-last-run">Last Run: {{ last_runtime_at if has_runtime and last_runtime_at else '—' }}</span>
+    <span class="hy-chip hy-chip--integrity-{{ _integ_overall|lower }}" data-testid="hybrid-integrity"
+          title="Run integrity checks of the Last Run — independent of CURRENT / STALE">Integrity: {{ _integ_overall }}</span>
+    <span class="hy-chip hy-chip--unsaved" data-hy-unsaved hidden data-testid="hybrid-unsaved">0 unsaved</span>
+  </div>
+</div>

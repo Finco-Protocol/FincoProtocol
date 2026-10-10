@@ -148,7 +148,7 @@
            data-cost-cell="amount" data-step="1" data-original="{{ plain_num(line.amount_keur) }}" data-exact="{{ line.amount_keur }}"
            aria-label="Amount kEUR {{ shown_code }}">
   </span>
-  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span>{% if last_run_iso and line.row_version and line.row_version > last_run_iso %}<span class="v2-notrun-mark" data-testid="edited-not-run" title="Edited since the Last Run — not yet in the Last Run results" aria-label="Edited since Last Run">●</span>{% endif %}</span>
   <span class="v2-cost-cell v2-cost-state" data-cost-state role="status" aria-live="polite"></span>
   <span class="v2-cost-cell v2-cost-actions">
     <button type="button" class="v2-cost-action v2-capex-duplicate-btn"
@@ -172,7 +172,7 @@
   <span class="v2-cost-cell v2-cost-desc v2-capex-custom-label-ro">{{ line.name }}</span>
   <span class="v2-cost-cell v2-cost-driver v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }} <small>kEUR/MW</small></span>
   <span class="v2-cost-cell v2-cost-amount v2-capex-custom-amount-ro v2-capex-amount-cell">{{ grouped_keur(line.amount_keur) }}</span>
-  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span>{% if last_run_iso and line.row_version and line.row_version > last_run_iso %}<span class="v2-notrun-mark" data-testid="edited-not-run" title="Edited since the Last Run — not yet in the Last Run results" aria-label="Edited since Last Run">●</span>{% endif %}</span>
 </div>
 {% endif %}
 {% endmacro %}

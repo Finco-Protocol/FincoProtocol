@@ -1,0 +1,95 @@
+{#
+  Hybrid Inputs grid (WF-05).  Dense, keyboard-first editing of the registry-bound CAPEX and
+  OPEX category inputs.  Presentation only — values and editability come from
+  `input_grid` (app/v2/input_grid_projection.py), which reuses the CAPEX / OPEX sheet rules.
+
+  Edits are STAGED in the browser (Enter commits a cell, Esc cancels it) and persisted by ONE
+  atomic batch Save through the C0 canonical writer (POST /v2/workbook/grid/save).  The model
+  is never run by editing or saving; a persisted change classifies the Last Run as STALE.
+#}
+<div id="v2-input-grid" class="ig" data-input-grid
+     data-project="{{ project_code }}"
+     data-csrf="{{ grid_csrf_token }}"
+     data-content-hash="{{ input_grid.content_hash }}"
+     data-workbook-version="{{ input_grid.workbook_version }}"
+     data-scenario-id="{{ input_grid.scenario_id }}"
+     data-editable="{{ 'true' if project_editable else 'false' }}">
+
+  {% if not project_editable %}
+  <div class="v2-protected-notice" role="status">
+    Reference project — read-only. <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a> to edit.
+  </div>
+  {% endif %}
+
+  <div class="ig-bar" role="toolbar" aria-label="Input grid actions">
+    <span class="ig-count" data-ig-count role="status" aria-live="polite">No unsaved edits</span>
+    <button type="button" class="ig-btn ig-btn--primary" data-ig-save disabled
+            title="Save all staged edits atomically (Ctrl+S). The model is not run.">Save changes</button>
+    <button type="button" class="ig-btn" data-ig-discard disabled>Discard</button>
+    <span class="ig-bar-sep" aria-hidden="true"></span>
+    <button type="button" class="ig-btn ig-btn--ghost" data-ig-expand>Expand all</button>
+    <button type="button" class="ig-btn ig-btn--ghost" data-ig-collapse>Collapse all</button>
+    <span class="ig-msg" data-ig-msg role="status" aria-live="polite"></span>
+  </div>
+  <p class="ig-hint" data-testid="input-grid-hint">
+    <kbd>Enter</kbd> commits and moves down · <kbd>Esc</kbd> cancels the cell · <kbd>Tab</kbd>/<kbd>↑</kbd>/<kbd>↓</kbd> move ·
+    paste a column (or <em>label&nbsp;⇥&nbsp;value</em> rows) to fill several cells · <kbd>Ctrl</kbd>+<kbd>S</kbd> saves the batch.
+    Saving never runs the model.
+  </p>
+  {% if input_grid.baseline_note %}
+  <p class="ig-note" data-testid="input-grid-baseline-note">{{ input_grid.baseline_note }}</p>
+  {% endif %}
+
+  {% for section in input_grid.sections %}
+  <details class="ig-section" open data-ig-section="{{ section.section_id }}">
+    <summary class="ig-section-head">
+      <span class="ig-section-title">{{ section.title }}</span>
+      <span class="ig-section-meta">{{ section.categories|length }} categories ·
+        {{ section.categories|sum(attribute='editable_count') }} editable</span>
+      {% if section.sheet_tab_id %}
+      <button type="button" class="ig-link" data-nav-tab="{{ section.sheet_tab_id }}"
+              title="Open the detailed {{ section.title }} sheet (line items)">Detail sheet →</button>
+      {% endif %}
+    </summary>
+    <table class="ig-table" role="grid" aria-label="{{ section.title }} inputs">
+      <thead>
+        <tr><th class="ig-col-code" scope="col">Code</th><th class="ig-col-label" scope="col">Category</th>
+            <th class="ig-col-value" scope="col">Value</th><th class="ig-col-unit" scope="col">Unit</th>
+            <th class="ig-col-flags" scope="col">State</th></tr>
+      </thead>
+      <tbody>
+      {% for cat in section.categories %}{% for row in cat.rows %}
+        <tr class="ig-row{% if row.editable %} ig-row--editable{% endif %}{% if row.modified_since_run %} ig-row--notrun{% endif %}"
+            data-ig-row {% if row.field_id %}data-field-id="{{ row.field_id }}"{% endif %}>
+          <td class="ig-code">{{ row.code }}</td>
+          <td class="ig-label" title="{{ row.label }}">{{ row.label }}</td>
+          {% if row.editable %}
+          <td class="ig-cell">
+            <input class="ig-input" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+                   value="{{ row.value }}" data-original="{{ row.value }}" data-field-id="{{ row.field_id }}"
+                   data-label="{{ row.label }}"
+                   {% if row.min_value is not none %}data-min="{{ row.min_value }}"{% endif %}
+                   {% if row.max_value is not none %}data-max="{{ row.max_value }}"{% endif %}
+                   aria-label="{{ row.label }} ({{ row.unit }})">
+          </td>
+          {% else %}
+          <td class="ig-ro" data-testid="ig-ro-{{ row.code }}">{{ row.value }}</td>
+          {% endif %}
+          <td class="ig-unit">{{ row.unit }}</td>
+          <td class="ig-flags">
+            {% if row.editable %}
+              <span class="ig-flag ig-flag--edited" data-ig-flag-edited hidden>Edited · unsaved</span>
+              <span class="ig-flag ig-flag--notrun" data-ig-flag-notrun {% if not row.modified_since_run %}hidden{% endif %}
+                    title="{% if row.baseline %}Last Run used {{ row.baseline }}{% else %}Changed since the Last Run{% endif %}">Saved · not run</span>
+              <span class="ig-flag ig-flag--error" data-ig-flag-error hidden></span>
+            {% else %}
+              <span class="ig-flag ig-flag--ro">{{ row.reason }}</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}{% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endfor %}
+</div>

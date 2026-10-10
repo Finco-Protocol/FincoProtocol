@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/css/model_v2_decision_support.css">
   <link rel="stylesheet" href="/static/css/model_v2_goal_seek.css">
   <link rel="stylesheet" href="/static/css/model_smart_panel_v2.css">
+  <link rel="stylesheet" href="/static/css/inputs_grid_v1.css">
 </head>
 <body>
   {# sessionStorage hydration: re-populates schedule data on load without re-run #}
@@ -69,6 +70,9 @@
     {% endif %}
   </div>
 
+  {# ── WF-05: hybrid navigation + persistent status strip ── #}
+  {% include "partials/_hybrid_nav.html" %}
+
   {# ── UX Foundation: compact workspace header (UX-2) — state from the
      canonical freshness authority; Run binds #v2-canonical-run-form. ── #}
   {% include "partials/_model_workspace_header.html" %}
@@ -111,6 +115,7 @@
     <span class="v2-tab-group-label" aria-hidden="true">Setup</span>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-project-setup"  id="tab-project-setup">Project Setup</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-inputs"          id="tab-inputs">Inputs</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-input-grid"      id="tab-input-grid">Input Grid</button>
     {# OPERATIONS group #}
     <span class="v2-tab-group-sep" aria-hidden="true"></span>
     <span class="v2-tab-group-label" aria-hidden="true">Operations</span>
@@ -195,6 +200,12 @@
       </div>
     </div>
 
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-input-grid" aria-labelledby="tab-input-grid" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_input_grid.html" %}
+      </div>
+    </div>
+
     <div class="v2-sheet-panel" role="tabpanel" id="panel-revenue" aria-labelledby="tab-revenue" hidden>
       <div class="v2-sheet-body">
         {% include "partials/sheet_revenue.html" %}
@@ -265,6 +276,7 @@
 
   <script src="/static/js/workbook_v2.js"></script>
   <script src="/static/js/model_smart_panel_v2.js"></script>
+  <script src="/static/js/inputs_grid_v1.js"></script>
 
   {# UI-2A: C1 spreadsheet interaction foundation — load order is fixed.
      swap-lifecycle loads before focus-manager so authoritative post-

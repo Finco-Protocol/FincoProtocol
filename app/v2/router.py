@@ -590,6 +590,17 @@ def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, ru
     return dataclasses.replace(smart_panel, insight={"quality": quality, "scenarios": scenario_view})
 
 
+def _last_run_iso(ws) -> str:
+    """ISO timestamp of the committed Last Run ('' when none): the baseline for 'edited since run'."""
+    ts = getattr(ws, "last_runtime_at", None)
+    if not ts or not getattr(ws, "last_runtime_snapshot_id", None):
+        return ""
+    try:
+        return ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+    except Exception:
+        return ""
+
+
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *, freshness=None):
     """Shared context dict for both sheet partials."""
     from app.workbook.registry import is_data_center_project_type as _is_dc_type_bsc
@@ -615,6 +626,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
         "runtime_state": freshness.state.value,
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        "last_run_iso": _last_run_iso(ws),
         "field_error": field_error,
         "active_scenario_name": getattr(ws, "active_scenario_name", None) or "",
     }
@@ -1561,6 +1573,34 @@ def _render_inputs_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
+def _build_input_grid_ctx(project_record, pis, ws, workspace_owner: str, *, project_editable: bool,
+                          capex_ctx: Optional[dict] = None, opex_ctx: Optional[dict] = None) -> dict:
+    """Hybrid Inputs grid projection (presentation only; reuses the CAPEX / OPEX sheet contexts)."""
+    from app.v2.input_grid_projection import baseline_pis, build_input_grid_projection
+    from app.workbook.input_set import ProjectInputSet
+    from app.workbook.registry import WORKBOOK as _WB
+    capex_ctx = capex_ctx if capex_ctx is not None else _build_capex_vm_ctx(
+        project_record, pis, ws=ws, workspace_owner=workspace_owner)
+    opex_ctx = opex_ctx if opex_ctx is not None else _build_opex_vm_ctx(
+        project_record, pis, ws=ws, workspace_owner=workspace_owner)
+    base, note = baseline_pis(ws, _WB, ProjectInputSet)
+    registry_sheets = []
+    for sheet_id, title, tab_id in (("project_setup", "Project", "tab-project-setup"),
+                                    ("revenue", "Revenue", "tab-revenue"),
+                                    ("tax", "Tax", "tab-tax")):
+        sheet = _WB.sheet(sheet_id)
+        registry_sheets.append((
+            sheet_id, title, tab_id, _build_sheet_fields(sheet_id, pis),
+            {sec.section_id: getattr(sec, "label", "") or sec.section_id.replace("_", " ").title()
+             for sec in sheet.sections},
+        ))
+    return {"input_grid": build_input_grid_projection(
+        capex_ctx=capex_ctx, opex_ctx=opex_ctx, pis=pis, base_pis=base, baseline_note=note,
+        project_editable=project_editable, content_hash=pis.content_hash,
+        workbook_version=pis.workbook_version, scenario_id=ws.active_scenario_id or "",
+        registry_sheets=tuple(registry_sheets))}
+
+
 @router.get("/workbook", response_class=HTMLResponse)
 async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Optional[str] = None):
     """Workbook V2 shell page.
@@ -1686,6 +1726,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "active_scenario_name": ws.active_scenario_name or "",
         "active_scenario_id": ws.active_scenario_id or "",
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        "last_run_iso": _last_run_iso(ws),
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
@@ -1717,6 +1758,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "flash_error": flash_error,
         "field_error": "",
         "library_url": "/library",
+        # WF-05 grid: CSRF token for the JSON validate/save routes (session-bound server check).
+        "grid_csrf_token": __import__("app.auth", fromlist=["generate_csrf_token"]).generate_csrf_token(),
     }
     # Model Trust Pack V1: read-only composition of existing canonical read
     # services (API v1.1 institutional builders).  No engine execution, no
@@ -1746,8 +1789,13 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             "export": {"state": _TUP},
             "methodology": {"state": _TUP, "rows": [], "page_url": "/model/methodology"},
         }
-    context.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
-    context.update(_build_opex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
+    _capex_ctx = _build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
+    _opex_ctx = _build_opex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
+    context.update(_capex_ctx)
+    context.update(_opex_ctx)
+    context.update(_build_input_grid_ctx(
+        project_record, pis, ws, workspace_owner, project_editable=project_editable,
+        capex_ctx=_capex_ctx, opex_ctx=_opex_ctx))
     # Build projection bundle once; pass it to all four output sheet builders.
     from app.workbook.runtime_projection import build_runtime_projection_bundle
     _rr = WorkbookService.get_runtime_result(ws)
