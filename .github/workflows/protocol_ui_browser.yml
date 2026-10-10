@@ -27,6 +27,8 @@ on:
       - "pytest.ini"
       - "tools/model_financing_f3_*.py"
       - "tests/model_financing_f3_*.py"
+      - "tests/model_outputs_workspace_acceptance.py"
+      - "tests/test_model_outputs_workspace.py"
       - ".github/workflows/protocol_ui_browser.yml"
   workflow_dispatch:
 
@@ -122,6 +124,22 @@ jobs:
           name: reference-driven-correction-a-23-captures
           path: artifacts/reference-driven-correction-a/*.png
           if-no-files-found: error
+
+      # Statements & Debt output workspace: real-server Chromium acceptance (Solar/Wind two-Senior, Data Center, EV;
+      # light/dark, 1440/390; keyboard; NOT_RUN/CURRENT/STALE).  Gating: a non-zero exit fails the job.
+      - name: Run Statements & Debt output workspace acceptance
+        env:
+          PYTHONPATH: .
+          FINCO_MODEL_EXECUTION_MODE: thread
+        run: python -m tests.model_outputs_workspace_acceptance --out artifacts/outputs-workspace
+
+      - name: Upload Statements & Debt acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: outputs-workspace-acceptance
+          path: artifacts/outputs-workspace
+          if-no-files-found: warn
 
       # F3 two-Senior acceptance evidence.  Non-gating (continue-on-error): it publishes a reviewer-accessible
       # bundle bound to the exact HEAD; the gating suites above and the pytest gate remain unchanged.
