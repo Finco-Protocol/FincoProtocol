@@ -62,7 +62,8 @@ def persisted_summary(payload, *, snap=SNAP, scenario=None, bound=True):
 def make_evidence(payload, pi=None, *, freshness="CURRENT", terms=None, **over):
     base = dict(
         freshness=freshness, runtime_summary=persisted_summary(payload),
-        integrity_evidence=copy.deepcopy(payload["integrity_evidence"]), snapshot_id=SNAP, composite_hash=HASH,
+        integrity_evidence=copy.deepcopy(payload["integrity_evidence"]),
+        sponsor_summary=copy.deepcopy(payload["sponsor_schedule"]["summary"]), snapshot_id=SNAP, composite_hash=HASH,
         run_at="2026-10-10T00:00:00+00:00", engine_version="clean_senior_debt_v0", scenario_known=True,
         terms=terms if terms is not None else (terms_from_project_inputs(pi) if pi is not None else ProjectTerms()),
     )
@@ -546,3 +547,274 @@ class TestIsolation:
         stale = evaluate_workspace(ws, current_composite_hash="f" * 64, terms=terms_from_project_inputs(pi))
         assert current.freshness == "CURRENT" and stale.freshness == "STALE"
         assert current.check("QM-PRV-002").status is CheckStatus.FAIL            # run_at missing in this fake record
+
+
+# ─────────────── Correction A: SHL maturity evidence authority (QM-TERM-002) ───────────────
+from app.model_quality.evaluators import Context, shl_terminal
+from app.model_quality.evidence import SHL_TERMINAL_TOLERANCE_KEUR
+
+
+def shl_ev(payload, pi, *, terminal=None, rows=None, sponsor_reported=None, drop_rows_key=False, **over):
+    """Real Run evidence with targeted, digest-consistent mutation of the SHL authorities."""
+    ev = make_evidence(payload, pi, **over)
+    summary = copy.deepcopy(dict(ev.sponsor_summary)) if ev.sponsor_summary is not None else None
+    if terminal is not None and summary is not None:
+        summary["terminal_financial_state"]["shareholder_loan"].update(terminal)
+    ie = copy.deepcopy(dict(ev.integrity_evidence))
+    if rows is not None:
+        rows(ie["balance_sheet"])
+    if sponsor_reported is not None:
+        ie["sponsor"]["reported"].update(sponsor_reported)
+    if drop_rows_key:
+        del ie["balance_sheet"]
+    return dataclasses.replace(ev, sponsor_summary=summary, integrity_evidence=redigest(ie))
+
+
+def outcome(ev):
+    return shl_terminal(Context(ev))     # the check itself, independent of every other check
+
+
+def row_for(table, period):
+    return next(r for r in table if r["period_index"] == period)
+
+
+@pytest.fixture(scope="module")
+def maturity(solar):
+    pi, payload = solar
+    return payload["sponsor_schedule"]["summary"]["terminal_financial_state"]["shareholder_loan"]["contractual_maturity_period_index"]
+
+
+class TestShlMaturityAuthority:
+    def test_A_original_false_pass_reproducer(self, solar, maturity):
+        pi, payload = solar
+        def inject(table):
+            for r in table:
+                if r["period_index"] >= maturity - 2:
+                    r["shl"] = 9000.0
+        ev = shl_ev(payload, pi, rows=inject, sponsor_reported={"pure_equity_xirr_status": "NO_POSITIVE_CASHFLOW"})
+        result = outcome(ev)
+        assert result.status is CheckStatus.FAIL and result.reason == "UNPAID_SHL_AT_CONTRACTUAL_MATURITY"
+        assert result.value == 9000.0 and result.threshold == SHL_TERMINAL_TOLERANCE_KEUR
+        assert f"maturity period {maturity}" in result.detail and "terminal_financial_state" in result.detail
+        # the corrupt balance sheet ALSO trips the accounting check, but TERM-002 does not depend on it
+        report = evaluate_model_quality(ev)
+        assert report.check("QM-TERM-002").status is CheckStatus.FAIL
+        assert report.check("QM-ACC-001").status is CheckStatus.FAIL
+        assert report.summary.blocked and "QM-TERM-002" in report.blocking_findings
+
+    def test_B_repaid_at_contractual_maturity_passes_on_all_four_real_runs(self, runs):
+        for key, (pi, payload) in runs.items():
+            ev = make_evidence(payload, pi)
+            shl = payload["sponsor_schedule"]["summary"]["terminal_financial_state"]["shareholder_loan"]
+            c = evaluate_model_quality(ev).check("QM-TERM-002")
+            assert c.status is CheckStatus.PASS, (key, c.reason_code, c.detail)
+            assert c.measured_value == 0.0 and c.threshold_value == SHL_TERMINAL_TOLERANCE_KEUR
+            assert f"maturity period {shl['contractual_maturity_period_index']}" in c.detail
+
+    def test_C_material_unpaid_balance_at_maturity_fails(self, solar, maturity):
+        pi, payload = solar
+        ev = shl_ev(payload, pi, rows=lambda t: row_for(t, maturity).update(shl=500.0))
+        r = outcome(ev)
+        assert r.status is CheckStatus.FAIL and r.value == 500.0
+
+    def test_D_material_liability_remaining_after_maturity_fails(self, solar, maturity):
+        pi, payload = solar
+        early = maturity - 2
+        ev = shl_ev(payload, pi, terminal={"contractual_maturity_period_index": early,
+                                             "balance_at_contractual_maturity_keur": 0.0},
+                    rows=lambda t: row_for(t, maturity).update(shl=300.0))
+        r = outcome(ev)
+        assert r.status is CheckStatus.FAIL and r.reason == "UNPAID_SHL_AT_CONTRACTUAL_MATURITY"
+        assert r.value == 300.0 and "after maturity" in r.detail and f"period {maturity}" in r.detail
+
+    @pytest.mark.parametrize("terminal,reason", [
+        ({"contractual_maturity_period_index": None}, "SHL_MATURITY_AUTHORITY_MISSING"),
+        ({"contractual_maturity_period_index": True}, "SHL_MATURITY_AUTHORITY_MISSING"),
+        ({"contractual_maturity_period_index": -1}, "SHL_MATURITY_AUTHORITY_MISSING"),
+        ({"contractual_maturity_period_index": 52.0}, "SHL_MATURITY_AUTHORITY_MISSING"),
+    ])
+    def test_E_missing_or_malformed_maturity_authority_is_unavailable(self, solar, terminal, reason):
+        pi, payload = solar
+        r = outcome(shl_ev(payload, pi, terminal=terminal))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == reason
+
+    def test_E2_no_persisted_terminal_state_is_unavailable_never_pass(self, solar):
+        pi, payload = solar
+        for sponsor_summary in (None, {}, {"terminal_financial_state": {}}):
+            ev = dataclasses.replace(make_evidence(payload, pi), sponsor_summary=sponsor_summary)
+            r = outcome(ev)
+            assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_TERMINAL_AUTHORITY_NOT_PERSISTED"
+        # the last visible balance-sheet period is never used as the maturity
+        assert evaluate_model_quality(dataclasses.replace(make_evidence(payload, pi), sponsor_summary=None)
+                                      ).check("QM-TERM-002").status is CheckStatus.UNAVAILABLE
+
+    def test_F_missing_balance_sheet_evidence(self, solar):
+        pi, payload = solar
+        assert outcome(shl_ev(payload, pi, drop_rows_key=True)).reason == "SHL_BALANCE_EVIDENCE_MISSING"
+        assert outcome(shl_ev(payload, pi, rows=lambda t: t.clear())).reason == "SHL_BALANCE_EVIDENCE_MISSING"
+        r = outcome(dataclasses.replace(make_evidence(payload, pi), integrity_evidence=None))
+        assert r.status is CheckStatus.UNAVAILABLE
+
+    def test_G_missing_maturity_period_row(self, solar, maturity):
+        pi, payload = solar
+        ev = shl_ev(payload, pi, terminal={"contractual_maturity_period_index": maturity - 1},
+                    rows=lambda t: t.remove(row_for(t, maturity - 1)))
+        r = outcome(ev)
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_MATURITY_PERIOD_NOT_EVIDENCED"
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), "9000", None, True])
+    def test_H_non_finite_or_malformed_balance_is_unavailable(self, solar, maturity, bad):
+        pi, payload = solar
+        ev = shl_ev(payload, pi, rows=lambda t: row_for(t, maturity).update(shl=bad))
+        r = outcome(ev)
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_BALANCE_EVIDENCE_INCOMPLETE"
+
+    def test_I_actual_zero_is_a_value_missing_is_not(self, solar, maturity):
+        pi, payload = solar
+        assert outcome(shl_ev(payload, pi, rows=lambda t: row_for(t, maturity).update(shl=0.0))).status is CheckStatus.PASS
+        r = outcome(shl_ev(payload, pi, rows=lambda t: row_for(t, maturity).pop("shl")))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_BALANCE_EVIDENCE_INCOMPLETE"
+
+    @pytest.mark.parametrize("index", [10_000, 999])
+    def test_J_maturity_beyond_the_evidenced_horizon(self, solar, index):
+        pi, payload = solar
+        r = outcome(shl_ev(payload, pi, terminal={"contractual_maturity_period_index": index}))
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_MATURITY_BEYOND_EVIDENCED_HORIZON"
+
+    def test_K_unrelated_return_status_is_not_evidence_either_way(self, solar):
+        pi, payload = solar
+        # repaid SHL stays PASS whatever unrelated status the sponsor returns carry
+        ev = shl_ev(payload, pi, sponsor_reported={"pure_equity_xirr_status": "NO_POSITIVE_CASHFLOW",
+                                                    "total_sponsor_xirr_status": "NON_CONVERGENT"})
+        assert outcome(ev).status is CheckStatus.PASS
+
+    def test_L_missing_statuses_are_not_required_and_unpaid_status_corroborates(self, solar, maturity):
+        pi, payload = solar
+        def strip(ie_rows): pass
+        ev = make_evidence(payload, pi)
+        ie = copy.deepcopy(dict(ev.integrity_evidence)); ie["sponsor"]["reported"] = {}
+        assert outcome(dataclasses.replace(ev, integrity_evidence=redigest(ie))).status is CheckStatus.PASS   # balance proves it
+        # the engine's own unpaid signal is sufficient to fail even if the (digest-bound) balance shows zero
+        flagged = shl_ev(payload, pi, sponsor_reported={"total_sponsor_xirr_status": "UNPAID_SHL_AT_CONTRACTUAL_MATURITY"})
+        assert outcome(flagged).status is CheckStatus.FAIL
+        terminal_unpaid = shl_ev(payload, pi, terminal={"status": "UNPAID_AT_CONTRACTUAL_MATURITY"})
+        assert outcome(terminal_unpaid).status is CheckStatus.FAIL
+
+    def test_M_proven_no_shl_is_not_applicable_but_a_zero_balance_alone_is_not_proof(self):
+        from finco_core.inputs import SponsorFundingMode
+        base = pf.create_generic_solar_reference()
+        pi = dataclasses.replace(base, financing=dataclasses.replace(
+            base.financing, sponsor_funding_mode=SponsorFundingMode.EQUITY_ONLY, clean_shl_repayment_method=None))
+        payload = run_project("Solar", "Base", project_inputs_override=pi)
+        terminal = payload["sponsor_schedule"]["summary"]["terminal_financial_state"]["shareholder_loan"]
+        assert terminal["status"] == "NOT_APPLICABLE"
+        ev = make_evidence(payload, pi)
+        r = outcome(ev)
+        assert r.status is CheckStatus.NOT_APPLICABLE and r.reason == "NO_SHL_PER_CANONICAL_TERMINAL_STATE"
+        # contradictory evidence (canonical says no SHL, balance sheet shows one) is never N/A
+        contradict = shl_ev(payload, pi, rows=lambda t: t[-1].update(shl=250.0))
+        assert outcome(contradict).reason == "SHL_EVIDENCE_INCONSISTENT"
+        # no canonical terminal state: a visible zero balance does NOT become NOT_APPLICABLE
+        no_authority = dataclasses.replace(ev, sponsor_summary=None)
+        assert outcome(no_authority).status is CheckStatus.UNAVAILABLE
+
+    def test_N_stale_working_copy_is_evaluated_against_the_committed_run_only(self, solar, maturity):
+        pi, payload = solar
+        from app.model_quality import evaluate_workspace
+
+        class Ws:
+            last_runtime_summary = persisted_summary(payload)
+            last_integrity_evidence = copy.deepcopy(payload["integrity_evidence"])
+            last_sponsor_schedule = copy.deepcopy(payload["sponsor_schedule"])
+            last_runtime_snapshot_id = SNAP
+            last_runtime_composite_hash = HASH
+            last_runtime_identity = {"engine_version": "clean_senior_debt_v0"}
+            last_runtime_at = None
+            last_runtime_scenario_id = None
+            any_run_committed = True
+            last_runtime_snapshot = {"shl_maturity_period_index": 3, "shl_amount_keur": "123456"}   # edited assumptions
+            draft_snapshot = {"shl_maturity_period_index": 3}
+            saved_snapshot = {"shl_maturity_period_index": 3}
+
+        terms = terms_from_project_inputs(pi)
+        current = evaluate_workspace(Ws(), current_composite_hash=HASH, terms=terms)
+        stale = evaluate_workspace(Ws(), current_composite_hash="f" * 64, terms=terms)
+        assert stale.freshness == "STALE" and current.freshness == "CURRENT"
+        for report in (current, stale):
+            c = report.check("QM-TERM-002")
+            assert c.status is CheckStatus.PASS and f"maturity period {maturity}" in c.detail   # not period 3
+        assert stale.score_is_current is False
+
+    def test_O_duplicate_or_inconsistent_period_evidence(self, solar, maturity):
+        pi, payload = solar
+        dup = shl_ev(payload, pi, rows=lambda t: t.append(dict(row_for(t, maturity))))
+        assert outcome(dup).reason == "SHL_BALANCE_EVIDENCE_INCONSISTENT"
+        bad_index = shl_ev(payload, pi, rows=lambda t: row_for(t, maturity).update(period_index="52"))
+        assert outcome(bad_index).status is CheckStatus.UNAVAILABLE
+        mismatch = shl_ev(payload, pi, terminal={"balance_at_contractual_maturity_keur": 5.0})
+        r = outcome(mismatch)
+        assert r.status is CheckStatus.UNAVAILABLE and r.reason == "SHL_EVIDENCE_INCONSISTENT"
+
+    def test_precision_is_the_shl_terminal_contract_not_the_senior_tolerance(self, solar, maturity):
+        from financial_engine.project_returns.model import _TOL as engine_precision
+        assert SHL_TERMINAL_TOLERANCE_KEUR == engine_precision == 1e-7
+        pi, payload = solar
+        assert outcome(shl_ev(payload, pi, rows=lambda t: row_for(t, maturity).update(shl=5e-8))
+                       ).status is CheckStatus.PASS
+        # 1e-6 kEUR passes the Senior tolerance (1e-4) but is a material SHL residual under the SHL contract
+        assert outcome(shl_ev(payload, pi, rows=lambda t: row_for(t, maturity).update(shl=1e-6))
+                       ).status is CheckStatus.FAIL
+
+    def test_check_identity_and_classification_are_preserved(self):
+        d = next(x for x in REGISTRY if x.check_id == "QM-TERM-002")
+        assert d.category is Category.TERMINAL_LIABILITY and d.check_class is CheckClass.MATHEMATICAL_INTEGRITY
+        assert d.severity is Severity.HIGH and len(REGISTRY) == 30
+
+
+def test_reference_scoring_unchanged_and_earned(runs):
+    for key, (pi, payload) in runs.items():
+        s = evaluate_model_quality(make_evidence(payload, pi)).summary
+        assert (s.registered, s.passed, s.not_applicable, s.unavailable) == (30, 25, 1, 4), key
+        assert s.score == 100.0 and s.coverage_weighted == pytest.approx(0.876106, abs=1e-6)
+
+
+@pytest.fixture
+def seeded_db(tmp_path, monkeypatch):
+    from app.persistence import db
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "q1-shl.db"))
+    db.init_db()
+    yield
+
+
+def test_maturity_authority_is_bound_to_the_committed_run_and_history(seeded_db):
+    """V2 Run commit persists the SHL terminal state atomically with the Last Run and in Run History."""
+    import re
+    from fastapi.testclient import TestClient
+    import main_web
+    from app.auth import COOKIE_NAME, create_session_token
+    from app.persistence.run_history_repository import get_run_history
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.reference_seed_service import create_reference_seeded_project
+    from app.model_quality import evaluate_workspace
+
+    user = "q1-shl-user"
+    record = create_reference_seeded_project(user_id=user, template_source="generic_solar_reference",
+                                             requested_name="Q1 SHL", capacity_mw=40.0)
+    cookies = {COOKIE_NAME: create_session_token(user_id=user, username="admin")}
+    client = TestClient(main_web.app)
+    page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+    h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
+    v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+    resp = client.post("/v2/workbook/run", data={"project": record.project_code, "content_hash": h, "workbook_version": v},
+                       cookies=cookies, headers={"HX-Request": "true"})
+    assert resp.status_code == 200
+    ws = get_workspace_state(user, record.project_id)
+    assert ws.last_runtime_snapshot_id and ws.last_runtime_composite_hash == h
+    terminal = ws.last_sponsor_schedule["summary"]["terminal_financial_state"]["shareholder_loan"]
+    assert isinstance(terminal["contractual_maturity_period_index"], int)
+    history = get_run_history(user, record.project_id, limit=5)
+    assert history and history[0].sponsor_schedule["summary"]["terminal_financial_state"]["shareholder_loan"] == terminal
+    report = evaluate_workspace(ws, current_composite_hash=h)
+    c = report.check("QM-TERM-002")
+    assert c.status is CheckStatus.PASS and f"maturity period {terminal['contractual_maturity_period_index']}" in c.detail
+    assert report.freshness == "CURRENT"

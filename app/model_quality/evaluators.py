@@ -338,14 +338,106 @@ def senior_settled_at_maturity(ctx: Context) -> Outcome:
                    closing, tol, "closing Senior principal at the final contractual period vs canonical solver precision")
 
 
+def _shl_terminal_state(ctx: Context) -> Optional[Mapping[str, Any]]:
+    summary = ctx.ev.sponsor_summary
+    tfs = summary.get("terminal_financial_state") if isinstance(summary, Mapping) else None
+    shl = tfs.get("shareholder_loan") if isinstance(tfs, Mapping) else None
+    return shl if isinstance(shl, Mapping) else None
+
+
+def _shl_balance_rows(ctx: Context) -> tuple[Optional[dict], Optional[str]]:
+    """period_index -> raw SHL balance (None when present but not a finite number); reason when unusable."""
+    rows = (ctx.ev.integrity_evidence or {}).get("balance_sheet")
+    if not isinstance(rows, list) or not rows:
+        return None, "SHL_BALANCE_EVIDENCE_MISSING"
+    by_period: dict[int, Optional[float]] = {}
+    for row in rows:
+        index = row.get("period_index") if isinstance(row, Mapping) else None
+        if isinstance(index, bool) or not isinstance(index, int):
+            return None, "SHL_BALANCE_EVIDENCE_INCONSISTENT"
+        if index in by_period:
+            return None, "SHL_BALANCE_EVIDENCE_INCONSISTENT"      # duplicate period evidence
+        by_period[index] = _num(row.get("shl")) if "shl" in row else None
+    return by_period, None
+
+
 def shl_terminal(ctx: Context) -> Outcome:
-    reported = ((ctx.ev.integrity_evidence or {}).get("sponsor") or {}).get("reported")
-    if not isinstance(reported, Mapping) or not any(k.endswith("_status") for k in reported):
-        return _unavailable("SPONSOR_RETURN_STATUS_NOT_PERSISTED")
-    unpaid = sorted(k for k, v in reported.items() if k.endswith("_status") and v == "UNPAID_SHL_AT_CONTRACTUAL_MATURITY")
-    if unpaid:
-        return Outcome(CheckStatus.FAIL, "UNPAID_SHL_AT_CONTRACTUAL_MATURITY", detail=", ".join(unpaid))
-    return Outcome(CheckStatus.PASS, None, detail="no unpaid shareholder-loan balloon at contractual maturity")
+    """Is the shareholder loan settled at its CONTRACTUAL maturity?
+
+    Authority chain (all committed with the Run, none read from the Working Copy):
+      * maturity: ``sponsor_schedule.summary.terminal_financial_state.shareholder_loan`` (canonical
+        terminal state, persisted atomically with the Last Run and appended to Run History);
+      * liability: ``integrity_evidence.balance_sheet[].shl`` (digest-bound).
+    Sponsor return statuses are corroboration only: their absence never proves repayment.
+    """
+    terminal = _shl_terminal_state(ctx)
+    if terminal is None:
+        return _unavailable("SHL_TERMINAL_AUTHORITY_NOT_PERSISTED",
+                            "the committed Run carries no canonical SHL terminal state (legacy Run)")
+    tol = ctx.ev.shl_terminal_tolerance_keur
+    balances, why = _shl_balance_rows(ctx)
+    status = terminal.get("status")
+    summary = ctx.ev.sponsor_summary or {}
+    reported = ((ctx.ev.integrity_evidence or {}).get("sponsor") or {}).get("reported") or {}
+    engine_unpaid = (
+        status == "UNPAID_AT_CONTRACTUAL_MATURITY"
+        or (_num(terminal.get("unpaid_at_maturity_keur")) or 0.0) > tol
+        or summary.get("shl_bullet_unpaid_at_maturity") is True
+        or any(k.endswith("_status") and v == "UNPAID_SHL_AT_CONTRACTUAL_MATURITY" for k, v in reported.items())
+    )
+
+    if status == "NOT_APPLICABLE":
+        # Authoritative: the canonical terminal state found no SHL contract.  Corroborate against the
+        # committed balance sheet; a zero last balance alone would never have been enough.
+        if balances is None:
+            return _unavailable(why or "SHL_BALANCE_EVIDENCE_MISSING")
+        # Corroboration is a contradiction detector, not the proof (the canonical state is the authority):
+        # rows without a finite SHL balance carry no SHL claim, but at least one finite row must exist.
+        values = [v for v in balances.values() if v is not None]
+        if not values:
+            return _unavailable("SHL_BALANCE_EVIDENCE_INCOMPLETE")
+        contributed = _num(summary.get("total_shl_cash_contributed_keur"))
+        if any(v > tol for v in values) or (contributed is not None and contributed > tol):
+            return _unavailable("SHL_EVIDENCE_INCONSISTENT",
+                                "the canonical terminal state says no SHL, but the committed evidence shows one")
+        return Outcome(CheckStatus.NOT_APPLICABLE, "NO_SHL_PER_CANONICAL_TERMINAL_STATE", 0.0, tol,
+                       "canonical terminal state: no SHL contract; every committed SHL balance is zero")
+
+    index = terminal.get("contractual_maturity_period_index")
+    if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+        return _unavailable("SHL_MATURITY_AUTHORITY_MISSING",
+                            "the contractual maturity is never derived from the last visible period")
+    if balances is None:
+        return _unavailable(why or "SHL_BALANCE_EVIDENCE_MISSING")
+    if index > max(balances):
+        return _unavailable("SHL_MATURITY_BEYOND_EVIDENCED_HORIZON", f"maturity period {index}")
+    if index not in balances:
+        return _unavailable("SHL_MATURITY_PERIOD_NOT_EVIDENCED", f"no balance-sheet row for period {index}")
+    window = {p: v for p, v in balances.items() if p >= index}
+    if any(v is None for v in window.values()):
+        return _unavailable("SHL_BALANCE_EVIDENCE_INCOMPLETE", "a balance at or after maturity is missing or non-finite")
+
+    closing = window[index]
+    after = {p: v for p, v in window.items() if p > index}
+    source = ("maturity: sponsor_schedule.summary.terminal_financial_state.shareholder_loan; "
+              "liability: integrity_evidence.balance_sheet[].shl")
+    if closing > tol:
+        return Outcome(CheckStatus.FAIL, "UNPAID_SHL_AT_CONTRACTUAL_MATURITY", closing, tol,
+                       f"maturity period {index}: SHL closing {closing!r} kEUR exceeds {tol!r}; {source}")
+    if after:
+        worst_period, worst = max(after.items(), key=lambda kv: kv[1])
+        if worst > tol:
+            return Outcome(CheckStatus.FAIL, "UNPAID_SHL_AT_CONTRACTUAL_MATURITY", worst, tol,
+                           f"maturity period {index}: SHL liability {worst!r} kEUR at period {worst_period}, after maturity; {source}")
+    if engine_unpaid:
+        return Outcome(CheckStatus.FAIL, "UNPAID_SHL_AT_CONTRACTUAL_MATURITY", closing, tol,
+                       f"maturity period {index}: the canonical terminal state reports an unpaid SHL balance; {source}")
+    stated = _num(terminal.get("balance_at_contractual_maturity_keur"))
+    if stated is None or abs(stated - closing) > TOL_KEUR:
+        return _unavailable("SHL_EVIDENCE_INCONSISTENT",
+                            "the canonical terminal balance at maturity does not match the committed balance sheet")
+    return Outcome(CheckStatus.PASS, None, closing, tol,
+                   f"maturity period {index}: SHL closing {closing!r} kEUR within {tol!r}, none after maturity; {source}")
 
 
 # ── I. Provenance and freshness ──────────────────────────────────────────────────────────────

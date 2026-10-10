@@ -155,10 +155,13 @@ REGISTRY: tuple[CheckDefinition, ...] = (
        "An unsupported balloon is a blocking finding (PR #233 protection).",
        "kEUR", "canonical Senior solver precision (1e-4 kEUR)", "run_integrity_evidence.senior_debt.periods",
        ev.senior_settled_at_maturity, outputs=("senior_debt_keur",), navigation="tab-debt"),
-    _d("QM-TERM-002", CAT.TERMINAL_LIABILITY, M, HIGH, "No unpaid shareholder loan at maturity",
-       "No sponsor return is withheld because the shareholder loan is unpaid at contractual maturity.",
-       "flag", NO_THRESHOLD, "run_integrity_evidence.sponsor.reported", ev.shl_terminal,
-       outputs=("total_sponsor_xirr",), navigation="tab-returns"),
+    _d("QM-TERM-002", CAT.TERMINAL_LIABILITY, M, HIGH, "Shareholder loan settled at contractual maturity",
+       "The committed SHL balance is within the SHL terminal precision at the contractual maturity period "
+       "proven by the Run's canonical terminal state, and no SHL liability remains after it. Sponsor return "
+       "statuses are corroboration only. NOT_APPLICABLE only when the canonical terminal state proves no SHL.",
+       "kEUR", "SHL terminal precision (1e-7 kEUR, canonical terminal-state classifier)",
+       "sponsor_schedule.summary.terminal_financial_state.shareholder_loan + integrity_evidence.balance_sheet[].shl",
+       ev.shl_terminal, outputs=("total_sponsor_xirr", "terminal_financial_state"), navigation="tab-returns"),
     # I. Provenance and freshness
     _d("QM-PRV-001", CAT.PROVENANCE_FRESHNESS, M, HIGH, "Evidence digest intact",
        "The committed integrity evidence is unaltered since commit (Run Integrity).",

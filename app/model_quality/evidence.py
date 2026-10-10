@@ -20,6 +20,12 @@ RESERVE_AUTOMATIC = "AUTOMATIC_PEAK"         # engine-derived target; not persis
 # Canonical Senior absolute precision (the solver's own convergence tolerance, kEUR).
 DEFAULT_TERMINAL_TOLERANCE_KEUR = 1e-4
 
+# SHL terminal-state precision.  This mirrors the canonical terminal-state classifier
+# (financial_engine.project_returns.model._TOL), which decides REPAID / UNPAID_AT_CONTRACTUAL_MATURITY /
+# NOT_APPLICABLE.  It is deliberately NOT the Senior solver tolerance (1e-4): the SHL terminal contract
+# has its own, stricter precision.  A test pins this constant to the engine value (parity only).
+SHL_TERMINAL_TOLERANCE_KEUR = 1e-7
+
 
 @dataclass(frozen=True)
 class ProjectTerms:
@@ -91,6 +97,10 @@ class QualityEvidence:
     freshness: Optional[str] = None                     # CURRENT | STALE | NOT_RUN | None (unknown)
     runtime_summary: Optional[Mapping[str, Any]] = None
     integrity_evidence: Optional[Mapping[str, Any]] = None
+    # ``last_sponsor_schedule["summary"]`` of the committed Run: carries the canonical terminal financial
+    # state (including the SHL contractual maturity index).  Persisted in the same atomic commit as the
+    # Last Run and appended to Run History; never read from the editable Working Copy.
+    sponsor_summary: Optional[Mapping[str, Any]] = None
     snapshot_id: Optional[str] = None
     composite_hash: Optional[str] = None
     run_at: Optional[str] = None
@@ -100,6 +110,7 @@ class QualityEvidence:
     scenario_known: bool = False                        # True when the active scenario was supplied
     terms: ProjectTerms = field(default_factory=ProjectTerms)
     terminal_tolerance_keur: float = DEFAULT_TERMINAL_TOLERANCE_KEUR
+    shl_terminal_tolerance_keur: float = SHL_TERMINAL_TOLERANCE_KEUR
 
     @property
     def has_last_run(self) -> bool:
@@ -118,11 +129,14 @@ def evidence_from_workspace(ws: Any, *, freshness: Optional[str], terms: Optiona
                             active_scenario_id: Optional[str] = None, scenario_known: bool = False) -> QualityEvidence:
     """Build evidence from a persisted workspace record (read-only attribute access)."""
     identity = getattr(ws, "last_runtime_identity", None) or {}
+    sponsor_schedule = getattr(ws, "last_sponsor_schedule", None)
+    sponsor_summary = sponsor_schedule.get("summary") if isinstance(sponsor_schedule, Mapping) else None
     ran_at = getattr(ws, "last_runtime_at", None)
     return QualityEvidence(
         freshness=freshness,
         runtime_summary=getattr(ws, "last_runtime_summary", None) or None,
         integrity_evidence=getattr(ws, "last_integrity_evidence", None) or None,
+        sponsor_summary=sponsor_summary if isinstance(sponsor_summary, Mapping) else None,
         snapshot_id=getattr(ws, "last_runtime_snapshot_id", None) or None,
         composite_hash=getattr(ws, "last_runtime_composite_hash", None) or None,
         run_at=ran_at.isoformat() if hasattr(ran_at, "isoformat") else (str(ran_at) if ran_at else None),

@@ -56,7 +56,7 @@ Class: **M** mathematical integrity · **C** contractual covenant (supplied thre
 | QM-REV-001 | Revenue | E | MED | Revenue evidence complete | none | PASS |
 | QM-REV-002 | Revenue | M | HIGH | Period revenue sums to total | 1e-6 kEUR | PASS |
 | QM-TERM-001 | Terminal | M | CRIT | Senior fully settled at maturity (PR #233 protection) | solver precision 1e-4 kEUR | PASS |
-| QM-TERM-002 | Terminal | M | HIGH | No unpaid SHL at maturity | sponsor return status | PASS |
+| QM-TERM-002 | Terminal | M | HIGH | SHL settled at contractual maturity (Correction A) | canonical terminal state + committed balance sheet; SHL precision 1e-7 kEUR | PASS (maturity 52 / 57 / 43 / 41) |
 | QM-PRV-001 | Provenance | M | HIGH | Evidence digest intact | Run Integrity | PASS |
 | QM-PRV-002 | Provenance | E | HIGH | Run identity complete | none | PASS |
 | QM-PRV-003 | Provenance | E | MED | Last Run CURRENT (STALE → WARNING) | canonical freshness | PASS |
@@ -94,7 +94,7 @@ funding, terminal balance, identity, binding and freshness. Debt sizing, stateme
 
 ## 5. Evidence for the required cases
 
-`tests/test_model_quality_q1.py` (53 tests): four real verticals; unbalanced S&U; wrong Senior roll-forward; DSCR covenant breach
+`tests/test_model_quality_q1.py` (82 tests, incl. the 15-case SHL maturity matrix A–O): four real verticals; unbalanced S&U; wrong Senior roll-forward; DSCR covenant breach
 (and pass); DSRA underfunding with a proven target; missing DSRA authority; terminal balloon (synthetic detection) plus the real
 PR #233 rejection of the original P0 configuration (no Run ⇒ nothing to score); missing identity; corrupt digest; stale Working Copy;
 legacy Run without evidence (score unavailable, no PASS from missing data); missing covenant targets; actual zero vs missing
@@ -117,6 +117,39 @@ execution, no mutation, no engine/persistence/web imports, no route.
 
 Not implemented (no canonical evidence today): tax-specific, working-capital, PLCR, equity-bridge, sensitivity-based and
 market-benchmark validators.
+
+## 6a. Correction A — SHL maturity evidence authority (QM-TERM-002)
+
+**Defect (independent review, reproduced):** the original check passed whenever no sponsor return status equalled
+`UNPAID_SHL_AT_CONTRACTUAL_MATURITY`. With 9,000 kEUR of SHL left on the balance sheet at and after maturity and an unrelated
+status (`NO_POSITIVE_CASHFLOW`) it still reported PASS ("no unpaid shareholder-loan balloon"). A return-metric status is not
+repayment evidence.
+
+**Maturity authority (traced, not assumed).** The canonical `ShlTerminalState` is serialised by the production presentation
+adapter into `sponsor_schedule.summary.terminal_financial_state.shareholder_loan`
+(`contractual_maturity_period_index`, `balance_at_contractual_maturity_keur`, `unpaid_at_maturity_keur`, `status`).
+`v2_atomic_run_commit` persists that `sponsor_schedule` in the same transaction as the runtime summary, integrity evidence,
+snapshot id and composite hash, and Run History appends the identical sponsor schedule. The check therefore reads the
+**committed** terminal state (`ws.last_sponsor_schedule["summary"]`), never the editable Working Copy or the last visible period;
+a test proves the V2 Run persists it and Run History holds the same value. The immutable `last_runtime_snapshot` is not needed
+and is not read. Limitation: the sponsor schedule is bound to the Run by the atomic commit, not by the integrity-evidence digest.
+
+**Liability evidence.** `integrity_evidence.balance_sheet[].shl` (digest-bound), looked up by `period_index` at the proven maturity.
+
+| Status | Condition (all must hold for PASS) |
+|---|---|
+| PASS | maturity is a plain non-negative int within the evidenced axis; the SHL balance at maturity and every later period is present, finite and <= 1e-7 kEUR; the canonical terminal balance at maturity equals the balance sheet; no unpaid signal |
+| FAIL `UNPAID_SHL_AT_CONTRACTUAL_MATURITY` | balance at maturity > 1e-7 kEUR, or SHL liability reappears after maturity, or the canonical terminal state / bullet flag / return status reports unpaid |
+| NOT_APPLICABLE | only when the canonical terminal state is `NOT_APPLICABLE` and the committed evidence contains no SHL; a zero last balance alone never qualifies |
+| UNAVAILABLE | terminal state absent; maturity missing/non-int/negative; balance sheet missing, malformed, duplicated or non-finite; maturity beyond the horizon or its row missing; terminal vs balance-sheet inconsistency |
+
+Precision is the SHL terminal-state classifier's own `1e-7` kEUR (`financial_engine.project_returns.model._TOL`, pinned by a
+parity test), not the Senior solver tolerance. Return statuses are corroboration only (an unpaid status can fail the check; absence
+proves nothing). No engine, rule or tolerance was changed.
+
+**Reference Runs (unchanged result, now earned):** QM-TERM-002 PASS with maturity period 52 (Solar), 57 (Wind), 43 (Data Center),
+41 (EV), each with an SHL balance of exactly 0.0 at maturity. Scoring is unchanged: 25 PASS, 1 NOT_APPLICABLE, 4 UNAVAILABLE,
+weighted coverage 87.6%, advisory score 100.0 over the evaluated checks only.
 
 ## 7. Confirmed financial findings
 
