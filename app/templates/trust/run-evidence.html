@@ -1,0 +1,19 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<p>Run evidence shows that a stored result is internally consistent and has not been altered. It does not show that the assumptions are right.</p>
+<section class="tr-facts"><h2>What it is</h2>
+<ul class="tr-plain">
+<li>Each committed Last Run is checked by deterministic recomputation. There is no model call, no market data and no fuzzy matching.</li>
+<li>A check that lacks evidence reports Unavailable, never Pass.</li>
+<li>A Last Run can be signed with an Ed25519 key. Anyone can verify the signature without signing in.</li>
+</ul>
+<h2>What it is not</h2>
+<ul class="tr-plain">
+<li>It is not an audit opinion and not a statement that the inputs are correct.</li>
+<li>It does not check a Working Copy, only a committed run.</li>
+</ul></section>
+<h2>Integrity checks, read from the implementation</h2>
+<ol class="tr-checks">{% for c in checks %}<li><code>{{ c.id }}</code> {{ c.title }}</li>{% endfor %}</ol>
+{% for i in items %}{{ m.item(i, labels) }}{% endfor %}
+{% endblock %}

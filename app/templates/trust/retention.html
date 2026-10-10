@@ -1,0 +1,13 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<p>How long each category is kept and how it is removed. This is an inventory of what the product does today, not a retention commitment.</p>
+<div class="tr-scroll"><table class="tr-table">
+<thead><tr><th>Data</th><th>Retention rule</th><th>Deletion path</th><th>Automatic</th></tr></thead>
+<tbody>{% for d in stores %}<tr>
+<th scope="row">{{ d.data_category }}</th><td>{{ d.retention_rule }}</td><td>{{ d.deletion_path }}</td><td>{{ "Yes" if d.automatic_deletion else "No" }}</td></tr>{% endfor %}</tbody>
+</table></div>
+<h2>Open items in this area</h2>
+{% for g in gaps %}{{ m.gap(g) }}{% endfor %}
+<p class="tr-note">A retention period offered to customers is a commitment and needs legal approval before it is published.</p>
+{% endblock %}
