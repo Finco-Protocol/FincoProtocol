@@ -1,0 +1,10 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<p>The release-readiness checklist, grouped by what it takes to close each item.</p>
+<section class="tr-counts">{% for s in legend %}<div class="tr-count"><strong>{{ counts[s.status] }}</strong><span class="tr-pill tr-pill--{{ s.status|lower }}">{{ s.label }}</span></div>{% endfor %}</section>
+{% for status, items in by_status.items() %}{% if items %}
+<h2>{{ labels[status.value] }}</h2>
+{% for i in items %}{{ m.item(i, labels) }}{% endfor %}
+{% endif %}{% endfor %}
+{% endblock %}

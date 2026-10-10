@@ -79,6 +79,7 @@ def workspace_nav_groups() -> tuple[WorkspaceNavGroup, ...]:
         WorkspaceNavGroup("Outputs", (
             WorkspaceNavItem("Statements", "tab-fs", True, "Financial Statements"),
             WorkspaceNavItem("Returns", "tab-returns", True),
+            WorkspaceNavItem("Statements & Debt", "tab-outputs", True),
             WorkspaceNavItem("Analytics", None, False),
         )),
         WorkspaceNavGroup("Analysis", (

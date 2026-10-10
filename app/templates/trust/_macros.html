@@ -1,0 +1,21 @@
+{% macro evidence(refs) -%}
+{% if refs %}<ul class="tr-evidence">{% for e in refs %}<li><span class="tr-kind">{{ e.kind.value }}</span> <code>{{ e.path }}</code></li>{% endfor %}</ul>{% endif %}
+{%- endmacro %}
+
+{% macro item(i, labels) -%}
+<article class="tr-item" id="{{ i.key }}">
+  <header><h3>{{ i.title }}</h3><span class="tr-pill tr-pill--{{ i.status.value|lower }}">{{ labels[i.status.value] }}</span></header>
+  <p>{{ i.statement }}</p>
+  {% if i.limitation %}<p class="tr-limit"><strong>Limit.</strong> {{ i.limitation }}</p>{% endif %}
+  {{ evidence(i.evidence) }}
+</article>
+{%- endmacro %}
+
+{% macro gap(g) -%}
+<article class="tr-item tr-gap tr-gap--{{ g.severity.value|lower }}" id="{{ g.key }}">
+  <header><h3>{{ g.title }}</h3><span class="tr-sev">{{ g.severity.value|title }}</span></header>
+  <p>{{ g.statement }}</p>
+  <p class="tr-limit"><strong>Recommended action.</strong> {{ g.recommended_action }}</p>
+  {{ evidence(g.evidence) }}
+</article>
+{%- endmacro %}
