@@ -114,6 +114,38 @@ def _base_scope(cur, owner: str, project_id: str, active_id: str | None) -> Scen
     return base
 
 
+
+def display_eligibility(*, check_id: str, check_status: str, project_type: str,
+                        snapshot: dict) -> tuple[bool, str]:
+    """Read-only conditional UI availability. Commit remains the only write authority."""
+    from app.workbook.specs import ScenarioPolicy
+    if check_id not in CANDIDATES:
+        return False, "Q4_FINDING_MAPPING_UNAVAILABLE"
+    if check_status not in ("FAIL", "WARNING", "PASS"):
+        return False, "Q4_FINDING_NOT_ACTIONABLE"
+    if (project_type or "").strip().lower() not in SUPPORTED_VERTICALS:
+        return False, "Q4_VERTICAL_NOT_ENABLED"
+    path, field_id, key = CANDIDATES[check_id]
+    if register_path_for_field(field_id) != path:
+        return False, "Q4_FIELD_ID_NOT_PROVEN"
+    spec = WORKBOOK.field(field_id)
+    if not spec.editable or spec.scenario_policy is not ScenarioPolicy.OVERRIDE:
+        return False, "Q4_FIELD_NOT_SCENARIO_EDITABLE"
+    if spec.snapshot_key != key or key not in SCENARIO_INPUT_FIELDS:
+        return False, "Q4_OVERRIDE_KEY_UNPROVEN"
+    try:
+        pis = ProjectInputSet.from_snapshot(snapshot)
+        raw = pis.values.get(key)
+        if raw is None or isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(raw):
+            raise Q4Rejected("Q4_ORIGINAL_VALUE_UNAVAILABLE")
+        _validate_financing(snapshot, field_id, raw)
+    except Q4Rejected as exc:
+        return False, exc.code
+    except Exception:
+        return False, "Q4_FINANCIAL_AUTHORITY_UNAVAILABLE"
+    return True, ""
+
+
 def _assert_name(name: str) -> str:
     name = (name or "").strip()
     if not name or len(name) > 80 or any(ord(ch) < 32 for ch in name):
