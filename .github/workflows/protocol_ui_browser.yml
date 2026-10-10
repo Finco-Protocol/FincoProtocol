@@ -19,6 +19,7 @@ on:
       - "tests/test_data_center_browser_acceptance.py"
       - "tests/test_p5_browser_acceptance.py"
       - "tests/test_model_golden_flows_browser.py"
+      - "tests/test_model_q4_browser.py"
       - "tests/test_model_ai_import_browser_c.py"
       - "requirements.txt"
       - "constraints.txt"
@@ -91,6 +92,19 @@ jobs:
         with:
           name: finco-model-ai-import-browser
           path: artifacts/model-ai-import/*
+          if-no-files-found: warn
+
+      - name: Authenticated Q4 Finding-to-Scenario browser acceptance (gating)
+        run: |
+          mkdir -p artifacts/model-q4-browser
+          python -m pytest -v tests/test_model_q4_browser.py --junitxml=artifacts/model-q4-browser/browser-junit.xml
+
+      - name: Upload Q4 real Chromium screenshots and browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: model-q4-browser
+          path: artifacts/model-q4-browser/*
           if-no-files-found: warn
 
       - name: Upload SaaS visual acceptance captures
