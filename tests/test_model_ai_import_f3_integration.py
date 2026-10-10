@@ -141,6 +141,40 @@ def test_inactive_f3_proposal_is_not_modified_by_normal_import(env):
     assert _ws(project).draft_snapshot[F3_KEY] == original
 
 
+@pytest.mark.parametrize("field,expected_error", [
+    ("capex.R.reserve_accounts", "F3_RESERVE_INTEGRATION_NOT_RELEASED"),
+    ("capex.F.bank_fees", "F3_MANUAL_FINANCING_COST_CONFLICT"),
+])
+def test_active_f3_capex_reserve_and_manual_fees_reject_entire_import(
+        env, field, expected_error):
+    project = _active(env)
+    before = _evidence(project)
+    with pytest.raises(ValueError, match=expected_error):
+        _batch(project, [
+            ("revenue.ppa.index", "2"),
+            (field, "5"),
+        ])
+    assert _evidence(project) == before
+
+
+@pytest.mark.parametrize("field,expected_error", [
+    ("capex.R.reserve_accounts", "F3_RESERVE_INTEGRATION_NOT_RELEASED"),
+    ("capex.F.bank_fees", "F3_MANUAL_FINANCING_COST_CONFLICT"),
+])
+def test_active_f3_scalar_uses_same_effective_financing_authority(
+        env, field, expected_error):
+    from app.workbook.update_service import FieldValidationError
+    project = _active(env)
+    before = _evidence(project)
+    with pytest.raises(FieldValidationError, match=expected_error):
+        WorkbookUpdateService.apply_draft_update(
+            ws=_ws(project), field_id=field, raw_value="5",
+            content_hash=_hash(project), workbook_version=WORKBOOK.version,
+            project_record=project,
+        )
+    assert _evidence(project) == before
+
+
 def test_scope_owner_stale_duplicate_guards_in_F3_transaction(env):
     project = _active(env)
     before = _evidence(project)
