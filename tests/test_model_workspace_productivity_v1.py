@@ -51,6 +51,33 @@ def _row(html: str) -> dict:
     return next(attrs for tag, attrs in _tags(html) if "v2-field-row" in attrs.get("class", ""))
 
 
+def _assert_read_only_panel_controls(html: str) -> None:
+    """Q2: exactly one inspection-only picker, never a second financial editor.
+
+    The legacy panel forbade *all* form/select controls.  FINCO Insight's
+    approved select changes navigation only; this guard remains fail-closed
+    for any other selectors, inputs, forms, writes or submit capabilities.
+    """
+    tags = _tags(html)
+    names = {tag for tag, _ in tags}
+    assert not {"form", "input", "textarea"} & names, "Panel contains a financial editing surface"
+    selectors = [attrs for tag, attrs in tags if tag == "select"]
+    assert len(selectors) == 1, "Exactly one inspection-only select is approved"
+    selector = selectors[0]
+    assert selector.get("id") == "v2-sp-inspect-select"
+    assert "data-sp-select" in selector
+    assert selector.get("aria-label") == "Select assumption or KPI to explore"
+    assert "name" not in selector and "form" not in selector
+    assert "multiple" not in selector and "contenteditable" not in selector
+    assert not {"hx-post", "hx-put", "hx-patch", "hx-delete", "hx-get",
+                "formaction", "onclick", "onchange", "oninput"} & set(selector)
+    for tag, attrs in tags:
+        assert "contenteditable" not in attrs, f"Unexpected editable {tag}"
+        assert not {"hx-post", "hx-put", "hx-patch", "hx-delete", "formaction"} & set(attrs)
+        if tag == "button":
+            assert attrs.get("type", "").lower() != "submit", "Panel may not submit"
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. Typed field-validation classification
 # ═══════════════════════════════════════════════════════════════════════════
@@ -238,7 +265,9 @@ class TestTypedFieldClassification:
 # 2. Dense layout leaves identity, wiring, values and editability untouched
 # ═══════════════════════════════════════════════════════════════════════════
 
-_ADDED_ATTRS = re.compile(r'\s+data-(?:field-label|sheet-id|required)="[^"]*"')
+# Q2 Correction B adds ``data-register-path`` (presentation-only, registry-derived) to the
+# additive set; every other byte of the original macro DOM stays hash-locked.
+_ADDED_ATTRS = re.compile(r'\s+data-(?:field-label|sheet-id|required|register-path)="[^"]*"')
 
 
 def _normalise(html: str, *, strip_added: bool) -> str:
@@ -303,6 +332,9 @@ class TestDenseLayoutPreservesContract:
             assert row["data-field-label"] == spec.label
             assert row["data-sheet-id"] == sheet_id
             assert ("data-required" in row) == bool(spec.required)
+            from app.v2.register_path_map import register_path_for_field
+            expected = register_path_for_field(field_id)
+            assert row.get("data-register-path") == expected
 
     def test_canonical_values_render_bit_identically(self):
         rows = {}
@@ -554,8 +586,7 @@ class TestAssumptionBreakdowns:
         html = render_panel(panel)
         for secret in ("SECRET-A", "SECRET-B", "SECRET-C"):
             assert secret not in html                         # values never shown
-        names = {t for t, _ in _tags(html)}
-        assert not {"form", "input", "select", "textarea"} & names   # no duplicate editable forms
+        _assert_read_only_panel_controls(html)  # single approved picker; no editor authority
         assert "6 entries" in panel.sections[1].rows[0].value        # entry_count untouched
 
     def test_cap_and_remainder_row(self):
@@ -591,8 +622,30 @@ class TestSmartPanelTemplate:
         assert not re.search(r"<details[^>]*\bopen\b", html)
 
     def test_panel_never_contains_editable_controls(self):
-        names = {t for t, _ in _tags(render_panel(default_panel(runtime_state="STALE")))}
-        assert not {"form", "input", "select", "textarea"} & names
+        _assert_read_only_panel_controls(render_panel(default_panel(runtime_state="STALE")))
+
+    @pytest.mark.parametrize("intrusion", [
+        '<input name="financing.gearing_ratio" value="0.8">',
+        '<textarea name="revenue.ppa_price"></textarea>',
+        '<form action="/v2/workbook/save"></form>',
+        '<select id="v2-second-select"></select>',
+        '<select id="v2-sp-inspect-select" name="financing.gearing_ratio"></select>',
+        '<select id="v2-sp-inspect-select" form="financial-run"></select>',
+        '<select id="v2-sp-inspect-select" hx-post="/save"></select>',
+        '<button type="submit">Save</button>',
+        '<div contenteditable="true">Edit assumption</div>',
+    ])
+    def test_panel_rejects_second_editing_authorities(self, intrusion):
+        original = render_panel(default_panel(runtime_state="STALE"))
+        with pytest.raises(AssertionError):
+            _assert_read_only_panel_controls(original + intrusion)
+
+    def test_exactly_one_navigation_selector_without_form_binding(self):
+        html = render_panel(default_panel())
+        _assert_read_only_panel_controls(html)
+        picker = [attrs for tag, attrs in _tags(html) if tag == "select"]
+        assert len(picker) == 1
+        assert picker[0]["id"] == "v2-sp-inspect-select"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

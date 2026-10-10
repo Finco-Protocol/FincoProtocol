@@ -147,12 +147,28 @@ def _grouped(items: "list[SmartPanelSummaryItem]") -> tuple["SmartPanelSummaryIt
 
 
 @dataclass(frozen=True)
+class SmartPanelIssue:
+    """One read-only action from an existing and explicit authority status."""
+
+    key: str
+    group: str
+    label: str
+    severity: str                 # fail | warn | info (never an invented verdict)
+    detail: str
+    source: str
+    action: str = ""
+    tab_id: str = ""               # only existing workbook tabs
+
+
+@dataclass(frozen=True)
 class SmartPanelProjection:
     stale_note: str                     # runtime-state note ("" when none)
     run_state: str                      # NOT_RUN | CURRENT | STALE
     sections: tuple[SmartPanelSection, ...]
     validation_summary: tuple[SmartPanelSummaryItem, ...] = ()
     kpi_strip: Optional[KpiStrip] = None   # persistent Key-metrics strip (Workflow C)
+    issues: tuple[SmartPanelIssue, ...] = ()
+    inspector_fields: tuple[dict[str, str], ...] = ()
 
     @property
     def ordered_rows(self) -> tuple[SmartPanelRow, ...]:
@@ -286,6 +302,107 @@ def _validation_summary(
                 detail=(row.detail if row is not None else "")
                 + " Independent of whether the Last Run is CURRENT or STALE."))
     return _grouped(items)
+
+
+def _q2_issues(*, trust_pack: dict[str, Any], run_state: str,
+               register_ok: bool) -> tuple[SmartPanelIssue, ...]:
+    """Q2 Solutions: status-to-action projection, not a bankability engine.
+
+    Only proven statuses become findings.  The absence of a covenant
+    threshold cannot be converted into a breach or financial recommendation.
+    """
+    issues: list[SmartPanelIssue] = []
+    integrity = trust_pack.get("integrity")
+    if isinstance(integrity, dict) and str(integrity.get("state", "")).upper() == "AVAILABLE":
+        verdict = str(integrity.get("overall") or "").upper()
+        if verdict in ("FAIL", "INCOMPLETE"):
+            row = _integrity_row(integrity)
+            issues.append(SmartPanelIssue(
+                key="last-run-integrity-" + verdict.lower(),
+                group="Financial integrity",
+                label="Committed Last Run integrity: " + verdict,
+                severity="fail" if verdict == "FAIL" else "warn",
+                detail=(row.detail if row else "Review the committed integrity evidence.")
+                       + " This verdict applies to the Last Run, not changed Working Copy inputs.",
+                source="Trust Pack / Run Integrity",
+                action="Inspect Run Integrity", tab_id=TRUST_TAB_ID,
+            ))
+    elif isinstance(integrity, dict) and integrity:
+        issues.append(SmartPanelIssue(
+            key="integrity-unavailable", group="Data availability",
+            label="Run Integrity not available", severity="info",
+            detail="No confirmed Run Integrity verdict is available on this view.",
+            source="Trust Pack / Run Integrity",
+            action="Open Trust Pack", tab_id=TRUST_TAB_ID,
+        ))
+
+    if not register_ok:
+        issues.append(SmartPanelIssue(
+            key="register-unavailable", group="Missing assumptions",
+            label="Assumption Register unavailable", severity="warn",
+            detail="Input provenance cannot be inspected until the canonical Working Copy register is available.",
+            source="Assumption Register construction",
+            action="Open Trust Pack", tab_id=TRUST_TAB_ID,
+        ))
+
+    validation = trust_pack.get("validation")
+    if isinstance(validation, dict) and validation:
+        status = str(validation.get("state") or "").upper()
+        if status not in ("AVAILABLE", "DEFERRED"):
+            issues.append(SmartPanelIssue(
+                key="reference-regression-unavailable", group="Data availability",
+                label="Reference regression unavailable", severity="info",
+                detail="Availability is not a model failure. The Trust Pack owns this check.",
+                source="Trust Pack / Reference regression",
+                action="Open Trust Pack", tab_id=TRUST_TAB_ID,
+            ))
+
+    if run_state == "STALE":
+        issues.append(SmartPanelIssue(
+            key="working-copy-stale", group="Working versus Last Run freshness",
+            label="Working Copy differs from Last Run", severity="warn",
+            detail="Saved inputs changed since the previous Run. Existing KPIs are historical and cannot validate current inputs.",
+            source="Canonical runtime freshness",
+            action="Review changes",  # mode switch stays a client interaction
+        ))
+    elif run_state == "NOT_RUN":
+        issues.append(SmartPanelIssue(
+            key="no-committed-run", group="Project economics",
+            label="No committed financial Run", severity="info",
+            detail="Financial KPIs and run-bound integrity are unavailable until a user explicitly runs the model.",
+            source="Canonical runtime freshness",
+        ))
+
+    order = {"fail": 0, "warn": 1, "info": 2}
+    return tuple(sorted(issues, key=lambda i: (order[i.severity], i.group, i.key)))
+
+
+def _q2_inspector_fields(register_view: Optional[dict[str, Any]]) -> tuple[dict[str, str], ...]:
+    """Only expose proven register *presentation* fields, never infer IDs.
+
+    The view currently omits assumption_id and full field/KPI lineage.  Q2
+    must declare those UNAVAILABLE until canonical bridge authority exists.
+    """
+    if not isinstance(register_view, dict) or not register_view.get("available"):
+        return ()
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in register_view.get("rows") or ():
+        if not isinstance(row, dict):
+            continue
+        path = str(row.get("path") or "")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        result.append({
+            "path": path,
+            "label": str(row.get("label") or path),
+            "section": str(row.get("section") or ""),
+            "value": str(row.get("value") if row.get("value") is not None else "UNAVAILABLE"),
+            "unit": str(row.get("unit") or ""),
+            "source": str(row.get("source") or "UNKNOWN"),
+        })
+    return tuple(result)
 
 
 def build_smart_panel_projection(
@@ -471,11 +588,15 @@ def build_smart_panel_projection(
         validation_summary=_validation_summary(
             run_state=run_state, trust_pack=trust_pack, register_ok=register_ok),
         kpi_strip=kpi_strip,
+        issues=_q2_issues(trust_pack=pack, run_state=run_state,
+                          register_ok=register_ok),
+        inspector_fields=_q2_inspector_fields(assumption_register_view),
     )
 
 
 __all__ = [
     "SmartPanelBreakdown",
+    "SmartPanelIssue",
     "SmartPanelLink",
     "SmartPanelProjection",
     "SmartPanelRow",
