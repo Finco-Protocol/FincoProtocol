@@ -550,3 +550,17 @@ def test_grid_cannot_silently_overwrite_a_write_made_by_the_legacy_editor(make):
         "stale" in s.page.locator("[data-ig-msg]").inner_text().lower() or \
         "nothing was saved" in s.page.locator("[data-ig-msg]").inner_text().lower()
     assert s.staged() == 1, "the user's staged edit is kept, never lost silently"
+
+
+def test_save_pressed_right_after_enter_waits_for_the_validator_instead_of_refusing(make):
+    """CI regression: Ctrl+S immediately after Enter, with a slow canonical validator."""
+    s = make("u-wf05-slow-validate", template="generic_ev_charging_reference")
+    s.open_grid()
+    s.page.route("**/grid/validate", lambda route: (time.sleep(1.2), route.continue_()))
+    s.cell(EFF).click()
+    s.page.keyboard.press("Control+A")
+    s.page.keyboard.type("90")
+    s.page.keyboard.press("Enter")
+    s.page.keyboard.press("Control+S")
+    s.page.wait_for_function("window.__igLastSaveMs !== undefined", timeout=30000)
+    assert s.persisted(EFF) == 90.0

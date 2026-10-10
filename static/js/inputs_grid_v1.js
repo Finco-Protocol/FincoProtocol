@@ -104,6 +104,7 @@
   function stagedInputs() { return allInputs().filter(isStaged); }
 
   var busy = { validating: 0, saving: false };
+  var pendingValidations = [];   // promises of in-flight canonical validations (Save waits for them)
 
   function setMsg(text, kind) {
     var g = root(); if (!g) return;
@@ -193,7 +194,7 @@
     i.setAttribute('data-committed', v); i.value = v;
     paintRow(i); refreshBar();
     busy.validating++; refreshBar();
-    return validateRemote([{ input: i, value: v }]).then(function (res) {
+    var work = validateRemote([{ input: i, value: v }]).then(function (res) {
       busy.validating--;
       var verdict = res && res.cells && res.cells[0];
       if (res && res.ok) { paintRow(i); refreshBar(); return true; }
@@ -206,6 +207,9 @@
       i.setAttribute('data-error', 'Could not validate (network). Try again.');
       paintRow(i); refreshBar(); return false;
     });
+    pendingValidations.push(work);
+    work.then(function () { pendingValidations.splice(pendingValidations.indexOf(work), 1); });
+    return work;
   }
   function cancelCell(i) {
     i.value = committedOf(i);
@@ -315,7 +319,7 @@
       return;
     }
     busy.validating++; refreshBar();
-    validateRemote(plan).then(function (res) {
+    var pasteWork = validateRemote(plan).then(function (res) {
       busy.validating--;
       if (!res || !res.ok) {
         var bads = ((res && res.cells) || []).filter(function (c) { return !c.ok; });
@@ -334,6 +338,8 @@
     }).catch(function () {
       busy.validating--; setMsg('Paste could not be validated (network). Nothing applied.', 'error'); refreshBar();
     });
+    pendingValidations.push(pasteWork);
+    pasteWork.then(function () { pendingValidations.splice(pendingValidations.indexOf(pasteWork), 1); });
   });
 
   // ── Save (atomic batch through C0) ───────────────────────────────────────────────────
@@ -450,6 +456,11 @@
   function save() {
     var g = root();
     if (!g || busy.saving || g.getAttribute('data-editable') !== 'true') return Promise.resolve(false);
+    // A commit just made (Enter then Ctrl+S) may still be awaiting the canonical validator: wait for it
+    // instead of refusing, then save exactly what was accepted.
+    if (busy.validating && pendingValidations.length) {
+      return Promise.all(pendingValidations.slice()).then(function () { return save(); });
+    }
     var staged = stagedInputs();
     if (!staged.length) return Promise.resolve(false);
     if (allInputs().some(function (i) { return i.hasAttribute('data-error'); }) || busy.validating) {
@@ -569,6 +580,7 @@
 
   window.FincoInputGrid = {
     stagedCount: function () { return stagedInputs().length; },
+    validating: function () { return busy.validating; },
     save: save,
     hybridGroups: HYBRID_GROUPS
   };
