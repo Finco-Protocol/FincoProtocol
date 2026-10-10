@@ -16,22 +16,26 @@
   ([data-jump-field]) handled by the existing workbook script — no editable
   controls are duplicated here.
 #}
-<aside id="model-smart-panel" class="v2-smart-panel" aria-label="Smart panel" data-testid="smart-panel"
+<aside id="model-smart-panel" class="v2-smart-panel" aria-label="FINCO Insight — Model findings, assumptions and run context" data-testid="smart-panel"
        data-run-state="{{ smart_panel.run_state }}"
        data-sp-run-at="{{ smart_panel.kpi_strip.run_at_display if smart_panel.kpi_strip else '' }}"
        data-sp-run-scenario="{{ smart_panel.kpi_strip.scenario_name if smart_panel.kpi_strip else '' }}">
+  <div class="v2-sp-brand" data-testid="finco-insight-heading">
+    <h2 class="v2-sp-brand-title">FINCO Insight</h2>
+    <p class="v2-sp-brand-summary">Model findings, assumptions and run context.</p>
+  </div>
   {% if smart_panel.kpi_strip %}
   {% set strip = smart_panel.kpi_strip %}
   {% include "partials/_model_kpi_strip.html" %}
   {% endif %}
 
-  <div class="v2-sp-modes" role="tablist" aria-label="Smart Panel modes" data-testid="smart-panel-modes">
+  <div class="v2-sp-modes" role="tablist" aria-label="FINCO Insight modes" data-testid="smart-panel-modes">
     <button type="button" class="v2-sp-mode" role="tab" id="v2-sp-tab-solutions"
             aria-controls="v2-sp-view-solutions" aria-selected="true" tabindex="0"
-            data-sp-mode="solutions">Solutions</button>
+            data-sp-mode="solutions">Findings</button>
     <button type="button" class="v2-sp-mode" role="tab" id="v2-sp-tab-inspector"
             aria-controls="v2-sp-view-inspector" aria-selected="false" tabindex="-1"
-            data-sp-mode="inspector">Inspector</button>
+            data-sp-mode="inspector">Explore</button>
     <button type="button" class="v2-sp-mode" role="tab" id="v2-sp-tab-changes"
             aria-controls="v2-sp-view-changes" aria-selected="false" tabindex="-1"
             data-sp-mode="changes">Changes</button>
@@ -39,7 +43,7 @@
 
   <section id="v2-sp-view-solutions" role="tabpanel" aria-labelledby="v2-sp-tab-solutions"
            data-sp-view="solutions" data-testid="smart-panel-solutions">
-    <p class="v2-sp-intro">Actions from existing model checks and committed evidence. No automated changes to financial assumptions.</p>
+    <p class="v2-sp-intro">Findings from existing model checks and committed evidence. No automated changes to financial assumptions.</p>
     {% if smart_panel.issues %}
       {% for issue in smart_panel.issues %}
       <details class="v2-sp-issue v2-sp-issue--{{ issue.severity }}"
@@ -131,10 +135,10 @@
 
   <section id="v2-sp-view-inspector" role="tabpanel" aria-labelledby="v2-sp-tab-inspector"
            data-sp-view="inspector" data-testid="smart-panel-inspector" hidden>
-    <p class="v2-sp-intro">Inspect a Working Copy assumption or a committed Last Run KPI. Trace completeness is never inferred.</p>
-    <label for="v2-sp-inspect-select" class="v2-sp-intro">Select source evidence</label>
-    <select id="v2-sp-inspect-select" class="v2-sp-picker" data-sp-select aria-label="Select assumption or KPI to inspect">
-      <option value="">Choose an existing field or KPI</option>
+    <p class="v2-sp-intro">Explore a Working Copy assumption or a committed Last Run KPI. Trace completeness is never inferred.</p>
+    <label for="v2-sp-inspect-select" class="v2-sp-intro">Select source evidence to explore</label>
+    <select id="v2-sp-inspect-select" class="v2-sp-picker" data-sp-select aria-label="Select assumption or KPI to explore">
+      <option value="">Choose an assumption or Last Run KPI</option>
       {% if smart_panel.inspector_fields %}
       <optgroup label="Working Copy assumptions">
         {% for field in smart_panel.inspector_fields %}
@@ -165,7 +169,7 @@
     {% endfor %}
     {% endif %}
     <div data-sp-inspector-result class="v2-sp-context" aria-live="polite"
-         data-testid="smart-panel-inspector-evidence">Select an item to inspect authoritative evidence.</div>
+         data-testid="smart-panel-inspector-evidence">Select an item to explore authoritative evidence.</div>
   </section>
 
   <section id="v2-sp-view-changes" role="tabpanel" aria-labelledby="v2-sp-tab-changes"
