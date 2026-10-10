@@ -29,6 +29,7 @@
 {%- endif -%}
 <div class="v2-field-row {% if f.binding_label == 'bound' and project_editable %}v2-field-editable{% else %}v2-field-readonly{% endif %}"
      data-field-id="{{ f.field_id }}"
+     {% if f.register_path %}data-register-path="{{ f.register_path }}"{% endif %}
      data-field-label="{{ f.label }}"
      data-sheet-id="{{ sheet_id }}"
      {% if f.required %}data-required="true"{% endif %}

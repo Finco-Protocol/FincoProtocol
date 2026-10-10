@@ -9,14 +9,19 @@
   var selected = '';
   var previousTab = '';
   var previousFieldId = '';
+  var navigating = false; // true while the panel itself moves focus; never rewrites the return origin
 
   function panel() { return document.getElementById('model-smart-panel'); }
-  function fieldRow(id) {
-    var rows = document.querySelectorAll('.v2-field-row[data-field-id]');
+  // Rows whose server-rendered data-register-path EXACTLY equals the canonical register path.
+  // Exactly one row is a proven mapping; zero or several fail closed (never a guess).
+  function rowsForPath(path) {
+    var found = [];
+    if (!path) return found;
+    var rows = document.querySelectorAll('.v2-field-row[data-register-path][data-field-id]');
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].getAttribute('data-field-id') === id) return rows[i];
+      if (rows[i].getAttribute('data-register-path') === path) found.push(rows[i]);
     }
-    return null;
+    return found;
   }
   function elementByAttr(p, selector, key, value) {
     var nodes = p.querySelectorAll(selector);
@@ -77,19 +82,27 @@
     var facts = document.createElement('dl'); facts.className = 'v2-sp-facts';
     if (kind === 'f:') {
       var meta = elementByAttr(p, '[data-sp-field-meta]', 'data-path', key);
-      var row = fieldRow(key);
-      definition(facts, 'Field', meta ? meta.getAttribute('data-label') : (row && row.getAttribute('data-field-label')));
+      var matches = rowsForPath(key);
+      var row = matches.length === 1 ? matches[0] : null;
+      definition(facts, 'Field', meta && meta.getAttribute('data-label'));
       definition(facts, 'Canonical path', key);
       definition(facts, 'Current effective value (Working Copy register)', meta && meta.getAttribute('data-value'));
       definition(facts, 'Unit', meta && meta.getAttribute('data-unit'));
       definition(facts, 'Source / provenance (register)', meta && meta.getAttribute('data-source'));
-      definition(facts, 'Editability authority', row ? (row.classList.contains('v2-field-editable') ? 'Editable on owning sheet' : 'Read-only on owning sheet') : 'UNAVAILABLE — no exact field mapping');
+      definition(facts, 'Editability authority', row ? (row.classList.contains('v2-field-editable') ? 'Editable on owning sheet' : 'Read-only on owning sheet') : (matches.length > 1 ? 'UNAVAILABLE — ambiguous field mapping' : 'UNAVAILABLE — no proven workbook row mapping'));
       definition(facts, 'Assumption ID', 'UNAVAILABLE — not exposed by current register view');
       definition(facts, 'Related canonical KPIs', 'UNAVAILABLE — no proven field-to-KPI map');
       definition(facts, 'Calculation Trace', 'UNAVAILABLE — not persisted as a complete formula graph');
       target.appendChild(facts);
-      if (row) action(target, 'Go to field', null, key);
-      else action(target, 'Open Assumption Register', 'tab-trust', null);
+      if (row) action(target, 'Go to field', null, row.getAttribute('data-field-id'));
+      else {
+        var off = document.createElement('button');
+        off.type = 'button'; off.className = 'v2-sp-action'; off.disabled = true;
+        off.setAttribute('aria-disabled', 'true');
+        off.textContent = 'Go to field (UNAVAILABLE)';
+        target.appendChild(off);
+        action(target, 'Open Assumption Register', 'tab-trust', null);
+      }
       if (row && row.querySelector('.v2-field-input[data-pending="true"]')) {
         var note = document.createElement('p'); note.className = 'v2-sp-context';
         note.textContent = 'An edit is pending on the sheet; the value above is the register value, not an unsaved result.';
@@ -159,6 +172,10 @@
     setMode(mode, false);
   }
   document.addEventListener('click', function (event) {
+    var go = event.target.closest && event.target.closest('#model-smart-panel [data-jump-field]');
+    if (go && !go.disabled) { navigating = true; setTimeout(function () { navigating = false; }, 0); }
+  }, true);
+  document.addEventListener('click', function (event) {
     var p = panel();
     if (!p) return;
     var tab = event.target.closest && event.target.closest('#model-smart-panel [data-sp-mode]');
@@ -175,11 +192,13 @@
     }
     var back = event.target.closest && event.target.closest('#model-smart-panel [data-sp-return]');
     if (back) {
+      navigating = true;
       var dest = document.getElementById(back.getAttribute('data-sp-return'));
       if (dest) dest.click();
       if (previousFieldId && window.v2FieldValidationUx && window.v2FieldValidationUx.jump) {
         window.v2FieldValidationUx.jump(previousFieldId);
       }
+      setTimeout(function () { navigating = false; }, 0);
       return;
     }
   });
@@ -203,13 +222,15 @@
   });
   document.addEventListener('focusin', function (event) {
     var p = panel();
-    if (!p || p.contains(event.target)) return;
+    if (navigating || !p || p.contains(event.target)) return;
     var row = event.target.closest && event.target.closest('.v2-field-row[data-field-id]');
     if (!row) return;
     var id = row.getAttribute('data-field-id');
-    var meta = elementByAttr(p, '[data-sp-field-meta]', 'data-path', id);
-    if (!meta) return; // never guess a canonical mapping
-    selected = 'f:' + id;
+    var path = row.getAttribute('data-register-path');
+    if (!path || rowsForPath(path).length !== 1) return; // absent or ambiguous: never guess
+    var meta = elementByAttr(p, '[data-sp-field-meta]', 'data-path', path);
+    if (!meta) return;
+    selected = 'f:' + path;
     previousTab = currentTab();
     previousFieldId = id;
     if (mode === 'inspector') inspect(p);

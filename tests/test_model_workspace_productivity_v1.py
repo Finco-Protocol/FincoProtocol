@@ -265,7 +265,9 @@ class TestTypedFieldClassification:
 # 2. Dense layout leaves identity, wiring, values and editability untouched
 # ═══════════════════════════════════════════════════════════════════════════
 
-_ADDED_ATTRS = re.compile(r'\s+data-(?:field-label|sheet-id|required)="[^"]*"')
+# Q2 Correction B adds ``data-register-path`` (presentation-only, registry-derived) to the
+# additive set; every other byte of the original macro DOM stays hash-locked.
+_ADDED_ATTRS = re.compile(r'\s+data-(?:field-label|sheet-id|required|register-path)="[^"]*"')
 
 
 def _normalise(html: str, *, strip_added: bool) -> str:
@@ -330,6 +332,9 @@ class TestDenseLayoutPreservesContract:
             assert row["data-field-label"] == spec.label
             assert row["data-sheet-id"] == sheet_id
             assert ("data-required" in row) == bool(spec.required)
+            from app.v2.register_path_map import register_path_for_field
+            expected = register_path_for_field(field_id)
+            assert row.get("data-register-path") == expected
 
     def test_canonical_values_render_bit_identically(self):
         rows = {}

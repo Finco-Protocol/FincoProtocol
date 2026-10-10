@@ -291,6 +291,7 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
     any field-specific knowledge.
     """
     from app.workbook.specs import BindingStatus
+    from app.v2.register_path_map import register_path_for_field
     from app.workbook.registry import (
         DATA_CENTER_FIELD_IDS,
         DC_CAPACITY_LABEL,
@@ -401,6 +402,8 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 "max_value": fspec.max_value,
                 "step": step,
                 "help_text": fspec.description or "",
+                # Proven Assumption Register path (exact engine_path claim) or None.
+                "register_path": register_path_for_field(fspec.field_id),
             })
     # EV Charging (V1): presentation-only label/visibility adapter.
     from app.v2.ev_labels import apply_ev_presentation

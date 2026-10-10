@@ -13,7 +13,7 @@ Three modes within the existing right-side panel:
   calculations are invented. Existing Checks, Assumptions and Trace are retained.
 - **Explore (internal inspector)**: working-copy fields come from the route's actual Assumption
   Register *presentation view*: canonical path, display value, unit, label and
-  source. An owning workbook field is navigable only on an exact field-id match.
+  source. An owning workbook field is navigable only on an exact canonical-path match (see Correction B).
   KPI values/identity/freshness derive from the preexisting persisted Last Run
   KPI strip; the same raw persisted values remain canonical.
 - **Changes**: uses canonical overall freshness and in-browser pending input
@@ -82,3 +82,27 @@ The feature remains advisory; no bank approval claim or financial solver in UI.
 The existing Protocol UI workflow is not evidence of the full FINCO Insight
 Solar/Wind authenticated browser matrix: Q2-specific screenshots and logs must
 be recorded independently on the final head. If absent: BROWSER_NOT_RUN.
+
+## Correction B — canonical Explore field mapping
+
+Assumption Register paths (for example `technical.operating_hours_p50`) and workbook row
+field ids (for example `project_setup.technical.p50_hours`) are different identifiers; the
+first release compared them directly, so no Explore selection could ever reach its owning
+row. The only proven bridge is the registry `FieldSpec.engine_path`, which equals the register
+`canonical_path` by exact string equality.
+
+- `app/v2/register_path_map.py` exposes `register_path_for_field(field_id)`: the registry
+  `engine_path`, only when exactly one registry field claims it; otherwise `None`.
+- `field_editor.html` renders `data-register-path="<path>"` beside the unchanged
+  `data-field-id` (escaped; absent when unmapped). Presentation only.
+- The panel script resolves a row only by exact `data-register-path` equality and only when
+  exactly one row matches. "Go to field" passes that row's existing field id to
+  `v2FieldValidationUx.jump`. Zero or several matches render a disabled, truthfully labelled
+  jump and never navigate. Focusing a mapped sheet input selects its register assumption.
+- Focus moved by the panel's own navigation never overwrites the return origin.
+- Coverage on the generic Solar and Wind references: 236 register paths, 35 rendered rows,
+  30 rows carrying a registry path claim, 21 rows whose claim is a register path (navigable),
+  0 ambiguous. 215 register paths have no workbook input row and stay UNAVAILABLE.
+- Regression: `tests/test_model_smart_panel_q2_register_mapping.py` (server contract) and
+  `tests/test_model_smart_panel_q2_navigation_browser.py` (real panel + JS in Chromium with
+  register path != field id).
