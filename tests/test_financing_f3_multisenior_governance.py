@@ -20,7 +20,8 @@ def test_only_exact_seven_paths_at_their_pinned_content_are_authorized():
     assert set(governance.F3_2_4_FINANCING_AUTHORITIES) == PATHS
     assert strictly_frozen_changes(list(PATHS)) == []
     for path, blob in governance.F3_2_4_FINANCING_AUTHORITIES.items():
-        assert git(governance.REPO, 'rev-parse', f'HEAD:{path}') == blob
+        current_blob = governance.WF04_NUMERIC_PRECISION_AUTHORITIES.get(path, blob)
+        assert git(governance.REPO, 'rev-parse', f'HEAD:{path}') == current_blob
         assert governance.released_engine_authority_matches(path)
 
 
