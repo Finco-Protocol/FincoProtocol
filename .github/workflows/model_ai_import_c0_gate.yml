@@ -1,0 +1,42 @@
+name: Model AI Import C0 Focused Gate
+
+on:
+  pull_request:
+    paths:
+      - "app/workbook/update_service.py"
+      - "app/persistence/workspace_repository.py"
+      - "tests/test_model_ai_import_atomic_batch_c0.py"
+      - "tests/test_model_ai_import_intake_c.py"
+      - "tests/test_model_ai_import_f3_integration.py"
+      - "app/model_import/**"
+      - "app/v2/import_router.py"
+      - ".github/workflows/model_ai_import_c0_gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  atomic-batch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Install pinned application dependencies
+        run: python -m pip install -r requirements.txt -c constraints.txt
+      - name: Focused canonical C0 tests (real SQLite)
+        run: |
+          mkdir -p artifacts
+          python -m pytest -q tests/test_model_ai_import_atomic_batch_c0.py tests/test_model_ai_import_intake_c.py tests/test_model_ai_import_f3_integration.py --junitxml=artifacts/c0-results.xml
+          echo "PYTEST_MAIN_RETURNED rc=0"
+          echo "PYTHON_PROCESS_EXITED child exit code 0"
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: model-ai-import-c0
+          path: artifacts/c0-results.xml

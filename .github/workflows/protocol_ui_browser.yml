@@ -19,6 +19,7 @@ on:
       - "tests/test_data_center_browser_acceptance.py"
       - "tests/test_p5_browser_acceptance.py"
       - "tests/test_model_golden_flows_browser.py"
+      - "tests/test_model_ai_import_browser_c.py"
       - "requirements.txt"
       - "constraints.txt"
       - "pyproject.toml"
@@ -78,6 +79,19 @@ jobs:
         # uses its own installed browser (playwright install chromium above).
         # The test fixture falls back to pw.chromium.launch() when the env var
         # is not set, which resolves the version installed in the previous step.
+
+      - name: Authenticated FINCO Model AI Import C browser acceptance
+        run: |
+          mkdir -p artifacts/model-ai-import
+          python -m pytest -v tests/test_model_ai_import_browser_c.py --junitxml=artifacts/model-ai-import/browser-junit.xml
+
+      - name: Upload FINCO Model AI Import screenshots and browser results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: finco-model-ai-import-browser
+          path: artifacts/model-ai-import/*
+          if-no-files-found: warn
 
       - name: Upload SaaS visual acceptance captures
         if: always()
