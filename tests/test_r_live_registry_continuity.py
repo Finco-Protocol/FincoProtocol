@@ -704,6 +704,17 @@ def test_tokenized_normal_runtime_hands_none_to_real_batch_and_bootstraps_store(
                     "source": "UNISWAP_V3_TWAP_CHAINLINK_USDG_USD",
                     "observed_at": T0.isoformat(),
                     "reason": None,
+                    "source_evidence": {
+                        "blockNumber": 100,
+                        "blockHash": "0x" + "ab" * 32,
+                        "blockTimestamp": T0.isoformat(),
+                        "dexWindowStartAt": (T0 - timedelta(seconds=300)).isoformat(),
+                        "dexWindowEndAt": T0.isoformat(),
+                        "twapWindowSeconds": 300,
+                        "lastPoolActivityAt": T0.isoformat(),
+                        "quoteUpdatedAt": T0.isoformat(),
+                        "effectiveObservedAt": T0.isoformat(),
+                    },
                 },
                 "robinhood_basis": {
                     "state": "AVAILABLE",

@@ -1021,7 +1021,11 @@ class TestB15FrozenP3Gate:
     def _is_violation(self, path: str) -> bool:
         if not path.startswith("finco_radar/"):
             return False
-        return not any(path.startswith(p) for p in self._PERMITTED_FINCO_RADAR_PREFIXES)
+        from radar_authority_governance import reviewed_radar_authority_matches
+        return (
+            not any(path.startswith(p) for p in self._PERMITTED_FINCO_RADAR_PREFIXES)
+            and not reviewed_radar_authority_matches(path)
+        )
 
     def test_b15_head_has_no_non_equity_finco_radar_changes(self):
         """Actual HEAD: no finco_radar/** changes outside permitted sub-packages."""

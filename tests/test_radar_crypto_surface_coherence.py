@@ -283,26 +283,52 @@ def _nvda_row(*, token_observed_at: datetime, collected_at: datetime):
     }
 
 
-def test_tokenized_observation_clock_is_the_token_reference_effective_time_not_pool_activity_age():
-    """Documents the semantic distinction (no authority change): R-LIVE 'Market age' is the age of the last pool swap and
-    'Oracle age' is the quote-feed age, while the Tokenized observation timestamp is the token reference's effective evidence
-    time (the OLDEST leg). A 19h-old oracle therefore makes a minutes-old pool leg read as STALE under the 900s Tokenized
-    ceiling even though R-LIVE's own per-leg policy (oracle heartbeat 24h) still reports AVAILABLE."""
+def test_tokenized_observation_clock_uses_market_window_end_and_preserves_oracle_clock():
+    """Fresh TWAP block remains current despite a valid 19h oracle heartbeat."""
     from finco_radar.authority.r_live_policy import MAX_QUOTE_AGE_SECONDS
     from finco_radar.venues.intelligence import effective_observation_state
     from finco_radar.venues.registry import VenueRegistry
     from finco_radar.venues.robinhood_live import market_observation_from_r_live
 
     now = datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc)
-    oracle_age = timedelta(hours=19)
-    cid, _policy, data = _nvda_row(token_observed_at=now - oracle_age, collected_at=now)
+    market = now - timedelta(seconds=30)
+    oracle = now - timedelta(hours=19)
+    pool_activity = now - timedelta(seconds=60)
+    cid, policy, data = _nvda_row(token_observed_at=oracle, collected_at=now)
+    data["token_reference"]["source_evidence"] = {
+        "blockNumber": 123,
+        "blockHash": "0x" + "ab" * 32,
+        "blockTimestamp": market.isoformat(),
+        "dexWindowEndAt": market.isoformat(),
+        "dexWindowStartAt": (market - timedelta(seconds=300)).isoformat(),
+        "twapWindowSeconds": 300,
+        "lastPoolActivityAt": pool_activity.isoformat(),
+        "quoteUpdatedAt": oracle.isoformat(),
+        "effectiveObservedAt": oracle.isoformat(),
+    }
     observation = market_observation_from_r_live(
-        canonical_id=cid, state="AVAILABLE", data=data, registry=VenueRegistry.load(), collected_at=now)
+        canonical_id=cid, state="AVAILABLE", data=data,
+        registry=VenueRegistry.load(), collected_at=now)
     assert observation is not None
-    assert observation.ts == (now - oracle_age).isoformat()            # token reference effective time, preserved
-    assert observation.collected_at == now.isoformat()                 # persistence clock kept separate
-    assert oracle_age.total_seconds() <= MAX_QUOTE_AGE_SECONDS         # R-LIVE per-leg policy still AVAILABLE
-    assert effective_observation_state(observation, as_of=now, max_age_seconds=900) == "STALE"
+    assert observation.ts == market.isoformat()
+    assert observation.ts != oracle.isoformat()
+    assert observation.payload["market_block_timestamp"] == observation.ts
+    assert observation.payload["normalization_oracle_observed_at"] == oracle.isoformat()
+    assert observation.payload["effective_evidence_at"] == oracle.isoformat()
+    assert observation.payload["last_pool_activity_at"] == pool_activity.isoformat()
+    assert observation.payload["reference_observed_at"] == now.isoformat()
+    assert observation.collected_at == now.isoformat()
+    assert (market - oracle).total_seconds() <= policy.max_quote_age_seconds
+    assert policy.max_quote_age_seconds == MAX_QUOTE_AGE_SECONDS
+    assert effective_observation_state(
+        observation, as_of=now, max_age_seconds=900) == "AVAILABLE"
+
+    # Independent oracle-expiry check with a deliberately generous market
+    # age ceiling; 19h oracle + 6h at read-time breaches the 24h heartbeat.
+    late = now + timedelta(hours=6)
+    assert effective_observation_state(
+        observation, as_of=late,
+        max_age_seconds=MAX_QUOTE_AGE_SECONDS + 3600) == "STALE"
 
 
 def test_non_available_rlive_rows_never_become_market_observations():
