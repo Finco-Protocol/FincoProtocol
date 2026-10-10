@@ -3023,6 +3023,39 @@ async def v2_financing_investor(request: Request, project: str):
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
+@router.get("/workbook/outputs")
+async def v2_outputs_workspace(request: Request, project: str):
+    """Statements & Debt output workspace: read-only presentation of the persisted Last Run.
+
+    One coherent authorized snapshot (``PostRunRequestContext``) supplies the Run evidence, the canonical
+    CURRENT/STALE/NOT_RUN freshness and the Run Integrity verdict.  No engine call, no write.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
+    from app.workbook.workbook_identity import WorkbookIdentityError
+    from app.api.v1_1.institutional import get_run_integrity_checks
+    from app.v2.output_workspace_projection import build_output_workspace_safe
+
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return HTMLResponse("Project not found.", status_code=404)
+    try:
+        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        state, report = get_run_integrity_checks(owner, record.project_id, context=context)
+        outputs = build_output_workspace_safe(
+            runtime_result=context.runtime_result, workspace=context.workspace, freshness=context.freshness,
+            integrity_report=report if state == "AVAILABLE" else None)
+        context.validate_current()
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        outputs = {"state": "UNAVAILABLE", "message": "Statements unavailable: the workspace changed while the response "
+                   "was assembled. Reload to refresh."}
+    html = _templates.get_template("partials/sheet_outputs.html").render(outputs=outputs, project_code=project)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
 @router.get("/workbook/financing/integrity")
 async def v2_financing_integrity(request: Request, project: str):
     """Authorized, read-only near-KPI view of the canonical integrity authority.
