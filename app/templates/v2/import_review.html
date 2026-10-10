@@ -33,7 +33,15 @@
 <main>
   <h1>CSV/XLSX Input Import</h1>
   <p class="muted">{{ project.project_name }} · {{ project.project_type }} · Working Copy · Import never runs the model automatically.</p>
-  {% if error %}<p role="alert" class="error">File or request rejected: {{ error }}</p>{% endif %}
+  {% if error %}
+    {% if error == "F3_COMPETING_FINANCING_EDITOR_REJECTED" %}
+      <p role="alert" class="error">Import rejected: an active two-Senior financing configuration owns these debt assumptions. Use the authorized Financing editor; no Import fields were saved. ({{ error }})</p>
+    {% elif error == "BATCH_F3_COLLECTION_EDITOR_ONLY" %}
+      <p role="alert" class="error">Import rejected: the two-Senior instrument collection can only be changed in the Financing editor. No fields were saved. ({{ error }})</p>
+    {% else %}
+      <p role="alert" class="error">File or request rejected: {{ error }}</p>
+    {% endif %}
+  {% endif %}
   <section class="panel">
     <h2>1. Select financial input file</h2>
     <p>CSV and XLSX only. Maximum 2 MB, 12 sheets and 12,000 cells. Formula outputs and external references are not authoritative. No data is sent to an external AI provider.</p>
@@ -141,7 +149,7 @@
   {% if stage == "result" %}
   <section class="panel">
     <h2>Import Apply result</h2>
-    <p>Canonical batch committed. {{ applied_count }} fields changed; {{ skipped_count }} source rows were not applied.
+    <p>Canonical batch committed. {{ applied_count }} field{{ 's' if applied_count != 1 else '' }} changed; {{ skipped_count }} source rows were not applied.
        Model runtime state: <strong>{{ freshness_state }}</strong>.
        This is not a successful financial model run.</p>
     <div class="table-wrap"><table>
