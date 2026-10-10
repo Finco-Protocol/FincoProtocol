@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO — Input Import Review</title>
+  <style>
+  :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172535;background:#f6f8fb}
+  body{margin:0}a{color:#165b94}button,select,input{font:inherit}main{max-width:1400px;margin:0 auto;padding:24px}
+  header{background:#112a40;color:white;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  header a{color:white}.brand{font-weight:750;letter-spacing:.07em}h1{font-size:1.65rem;margin:12px 0 4px}h2{font-size:1.1rem}p{line-height:1.5}
+  .muted{color:#687688}.panel{background:white;border:1px solid #d8e2ec;border-radius:12px;padding:19px;margin:18px 0}
+  .box{display:flex;gap:14px;flex-wrap:wrap;align-items:end}.field{display:grid;gap:6px}.field label{font-size:.9rem;font-weight:600}
+  input[type=file],select,input[type=text]{padding:9px 10px;border:1px solid #a9b9cb;border-radius:7px;max-width:100%;background:white}
+  button{padding:10px 16px;border-radius:8px;border:1px solid #104f82;background:#145b91;color:white;font-weight:650;cursor:pointer}
+  button[disabled]{cursor:not-allowed;opacity:.55}.error{color:#9d2020;font-weight:700}.notice{border-left:4px solid #a0abb6;padding-left:13px}
+  .metrics{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.metrics span{border:1px solid #d5dfe7;border-radius:8px;background:#fff;padding:8px 11px;font-size:.91rem}
+  .table-wrap{overflow-x:auto;background:white;border:1px solid #d8e2ec;border-radius:10px}
+  table{border-collapse:collapse;min-width:1130px;width:100%;font-size:.89rem}th{text-align:left;white-space:nowrap;color:#354e62;background:#edf3f8;font-weight:650}
+  th,td{border-bottom:1px solid #e3ebf2;padding:11px 9px;vertical-align:top}
+  tr[data-status=invalid]{background:#fff8f6}tr[data-status=unsupported]{background:#fafafa}
+  td code{font-size:.79rem;overflow-wrap:anywhere}td select{max-width:270px}td input[type=text]{width:110px}
+  .pill{display:inline-block;padding:4px 7px;border-radius:5px;font-size:.78rem;background:#e9edf2}
+  .pill.ready{background:#d9efdf;color:#275a37}.pill.invalid{background:#fbe0dd;color:#8b2f28}
+  .pill.needs_review{background:#fff1c5;color:#7e610f}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}.filters button{background:white;color:#1f4c6c;border:1px solid #b4c6d6;font-weight:500;padding:7px 13px}.filters button[aria-pressed=true]{background:#234a6b;color:white}
+  .summary{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  @media(max-width:640px){main{padding:12px}header{padding:13px}h1{font-size:1.32rem}.panel{padding:12px}.box>.field{min-width:0;width:100%;max-width:100%}input[type=file]{display:block;width:100%;min-width:0;box-sizing:border-box}}
+  </style>
+</head>
+<body>
+<header><div class="brand">FINCO MODEL · INPUT IMPORT</div><a href="/v2/workbook?project={{ project_code|urlencode }}">Back to Working Copy</a></header>
+<main>
+  <h1>CSV/XLSX Input Import</h1>
+  <p class="muted">{{ project.project_name }} · {{ project.project_type }} · Working Copy · Import never runs the model automatically.</p>
+  {% if error %}
+    {% if error == "F3_COMPETING_FINANCING_EDITOR_REJECTED" %}
+      <p role="alert" class="error">Import rejected: an active two-Senior financing configuration owns these debt assumptions. Use the authorized Financing editor; no Import fields were saved. ({{ error }})</p>
+    {% elif error == "BATCH_F3_COLLECTION_EDITOR_ONLY" %}
+      <p role="alert" class="error">Import rejected: the two-Senior instrument collection can only be changed in the Financing editor. No fields were saved. ({{ error }})</p>
+    {% else %}
+      <p role="alert" class="error">File or request rejected: {{ error }}</p>
+    {% endif %}
+  {% endif %}
+  <section class="panel">
+    <h2>1. Select financial input file</h2>
+    <p>CSV and XLSX only. Maximum 2 MB, 12 sheets and 12,000 cells. Formula outputs and external references are not authoritative. No data is sent to an external AI provider.</p>
+    <form action="/v2/workbook/import/preview" method="post" enctype="multipart/form-data">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="box">
+        <div class="field"><label for="upload">File</label><input type="file" id="upload" name="upload" accept=".csv,.xlsx" required></div>
+        <div class="field"><label for="encoding">CSV encoding</label><select id="encoding" name="encoding">
+          <option value="utf-8-sig">UTF-8 / UTF-8 BOM</option><option value="utf-8">UTF-8</option>
+          <option value="cp1250">Windows-1250</option><option value="cp1252">Windows-1252</option>
+        </select></div>
+        <button type="submit">Extract and review</button>
+      </div>
+    </form>
+  </section>
+  {% if stage == "review" %}
+  <section class="panel">
+    <h2>2. Review detected assumptions</h2>
+    <p class="notice">Source labels suggest mappings, but do not prove canonical identity. Every proposed field needs explicit review. Unsupported and ambiguous rows are never silently written.</p>
+    <div class="metrics" role="status">
+      <span>Detected: <strong>{{ detected }}</strong></span>
+      <span>Exact mappings: <strong>{{ exact_count }}</strong></span>
+      <span>Ambiguous: <strong>{{ ambiguous_count }}</strong></span>
+      <span>Ready: <strong>{{ totals.get('ready',0) }}</strong></span>
+      <span>Needs review: <strong>{{ totals.get('needs_review',0) }}</strong></span>
+      <span>Invalid: <strong>{{ totals.get('invalid',0) }}</strong></span>
+      <span>Unsupported: <strong>{{ totals.get('unsupported',0) }}</strong></span>
+      <span>Unchanged: <strong>{{ totals.get('unchanged',0) }}</strong></span>
+      <span>Approved: <strong id="approved-count">0</strong></span>
+    </div>
+    <div class="filters" aria-label="Filter extracted fields" role="group">
+      {% for key,label in [('all','All'),('ready','Ready'),('needs_review','Needs review'),('invalid','Invalid'),('unsupported','Unsupported'),('unchanged','Unchanged')] %}
+      <button type="button" class="filter" data-filter="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+    <form action="/v2/workbook/import/confirm" method="post">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="preview_ticket" value="{{ preview_ticket }}">
+    <div class="table-wrap" role="region" aria-label="Import proposals" tabindex="0">
+      <table>
+        <thead><tr><th>Approve</th><th>Source cell / label</th><th>Original value</th><th>Proposed FINCO field</th><th>Working Copy</th><th>New value / units</th><th>State &amp; provenance</th></tr></thead>
+        <tbody>
+        {% for p in proposals %}
+        <tr class="review-row" data-status="{{ p.status }}">
+          <td><input type="checkbox" class="approve-box" name="keep_{{ p.id }}" value="on"
+            aria-label="Approve proposal {{ p.id + 1 }}"
+            {% if p.reason == 'IMPORT_FORMULA_NOT_AUTHORITATIVE' %}disabled{% endif %}></td>
+          <td><strong>{{ p.sheet }}!{{ p.source_cell }}</strong><div>{{ p.label }}</div><small class="muted">Label at {{ p.label_cell }}</small></td>
+          <td><code>{{ p.original_value }}</code><div class="muted">{{ p.source_unit or 'Unit unspecified' }}</div></td>
+          <td><select name="field_{{ p.id }}" aria-label="Map proposal {{ p.id + 1 }} to FINCO field">
+            <option value="">Unmapped — skip</option>
+            {% for f in fields %}<option value="{{ f.id }}" {% if p.field_id == f.id %}selected{% endif %}>{{ f.label }} ({{ f.id }})</option>{% endfor %}
+          </select><div class="muted"><code>{{ p.register_path or 'No exact register path' }}</code></div></td>
+          <td><code>{{ p.current_value if p.current_value is not none else 'Not set' }}</code></td>
+          <td><label class="muted" for="unit-{{ p.id }}">Source unit</label>
+            <select id="unit-{{ p.id }}" name="unit_{{ p.id }}" aria-label="Original source unit for {{ p.label }}">
+              <option value="{{ p.source_unit or '' }}" selected>{{ p.source_unit or 'Unspecified' }} (source)</option>
+              {% for u in ['%', 'fraction', 'EUR', 'EUR/yr', 'kEUR', 'kEUR/yr', 'EUR/MWh', 'EUR/kWh', 'MW', 'h/yr', 'years', 'months', 'date', ''] %}
+              {% if u != (p.source_unit or '') %}<option value="{{ u }}">{{ u if u else 'Unspecified' }}</option>{% endif %}
+              {% endfor %}
+            </select>
+            <div class="muted">Proposed FINCO value: <strong>{{ p.normalized_value if p.normalized_value is not none else '—' }}</strong></div>
+            <input name="manual_{{ p.id }}" type="text"
+              aria-label="Optional corrected FINCO value for proposal {{ p.id + 1 }}"
+              placeholder="Optional override (FINCO units)">
+          </td>
+          <td><span class="pill {{ p.status }}">{{ p.status|replace('_',' ') }}</span><div>{{ p.mapping_method }}</div><small class="muted">{{ p.reason or p.confidence }}</small></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7">No assumption rows detected. Review the source layout or upload a different file.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="summary panel">
+      <div><strong>3. Confirm intended changes</strong>
+        <p class="muted">Choose only supported fields, correct mappings or units, and explicitly approve each row. No financial writes occur at this step.</p></div>
+      <button type="submit">Review approved change set</button>
+    </div>
+    </form>
+  </section>
+  {% endif %}
+  {% if stage == "confirm" %}
+  <section class="panel">
+    <h2>Final confirmation · {{ approved_count }} approved fields</h2>
+    <p class="notice">Exactly {{ changed_count }} candidate changes are shown below. Submitting Apply performs one canonical CAS transaction; any conflict or validation error rejects the entire set. The model is never run automatically.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Source</th><th>Approved FINCO field</th><th>Existing</th><th>Approved value</th><th>FINCO unit</th><th>Mapping method</th></tr></thead>
+      <tbody>{% for row in approved %}<tr><td>{{ row.sheet }}!{{ row.cell }}<div class="muted">{{ row.label }}</div></td>
+        <td><code>{{ row.field_id }}</code></td><td>{{ row.current_value if row.current_value is not none else 'Not set' }}</td>
+        <td><strong>{{ row.value }}</strong></td><td>{{ row.unit }}</td><td>{{ row.method }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    <form action="/v2/workbook/import/apply" method="post">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="approved_ticket" value="{{ approved_ticket }}">
+      <div class="summary panel"><p>Confirm that these are exactly the values you want to save in this Working Copy and active scenario.</p>
+      <button type="submit">Apply {{ approved_count }} approved fields atomically</button></div>
+    </form>
+  </section>
+  {% endif %}
+  {% if stage == "result" %}
+  <section class="panel">
+    <h2>Import Apply result</h2>
+    <p>Canonical batch committed. {{ applied_count }} field{{ 's' if applied_count != 1 else '' }} changed; {{ skipped_count }} source rows were not applied.
+       Model runtime state: <strong>{{ freshness_state }}</strong>.
+       This is not a successful financial model run.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Source cell</th><th>Canonical field</th><th>Approved value</th><th>Actually saved value</th></tr></thead>
+      <tbody>{% for row in saved %}<tr>
+       <td>{{ row.source }}</td><td><code>{{ row.field_id }}</code></td>
+       <td>{{ row.approved_value }}</td><td><strong>{{ row.actual_value }}</strong></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="summary panel">
+      <p>You can return to the canonical Inputs workspace, review changed cells, and start the existing Run manually.</p>
+      <a href="/v2/workbook?project={{ project_code|urlencode }}&sheet=inputs">Review inputs &amp; Run manually →</a>
+    </div>
+  </section>
+  {% endif %}
+</main>
+<script>
+(function(){
+ "use strict";
+ const buttons = document.querySelectorAll(".filter");
+ const rows = Array.from(document.querySelectorAll(".review-row"));
+ function refreshCount(){
+   document.getElementById("approved-count")?.replaceChildren(document.createTextNode(String(
+     document.querySelectorAll(".approve-box:checked").length
+   )));
+ }
+ for(const el of document.querySelectorAll(".approve-box")) el.addEventListener("change",refreshCount);
+ for(const b of buttons){
+   b.addEventListener("click",function(){
+     buttons.forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+     const val=b.dataset.filter;
+     rows.forEach(x=>x.hidden=(val!=="all" && x.dataset.status!==val));
+   });
+ }
+})();
+</script>
+</body>
+</html>

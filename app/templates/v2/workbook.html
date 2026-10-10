@@ -40,6 +40,10 @@
       <span class="v2-toolbar-sep">·</span>
       {% include "partials/_v2_toolbar_scenario.html" %}
     </div>
+    {% if project_editable %}
+    <a href="/v2/workbook/import?project={{ project_code|urlencode }}"
+       class="v2-toolbar-back" aria-label="Import CSV or XLSX assumptions for review">Import CSV/XLSX</a>
+    {% endif %}
     <nav class="v2-protocol-nav" aria-label="Protocol navigation">
       <a href="/library" aria-current="page">Model</a>
       <a href="/radar">Radar</a>
