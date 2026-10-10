@@ -178,7 +178,8 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
         cur = conn.cursor()
         cur.execute("SELECT * FROM projects WHERE project_id=? AND user_id=?", (project_id, owner))
         project = cur.fetchone()
-        if (project is None or project["archived"] or project["is_protected"]\n                or project["is_readonly"] or project["project_type"] != project_type):
+        if (project is None or project["archived"] or project["is_protected"]
+                or project["is_readonly"] or project["project_type"] != project_type):
             raise Q4Rejected("Q4_PROJECT_NOT_EDITABLE", 403)
         cur.execute("SELECT * FROM workspace_states WHERE user_id=? AND project_id=?", (owner, project_id))
         row = cur.fetchone()
