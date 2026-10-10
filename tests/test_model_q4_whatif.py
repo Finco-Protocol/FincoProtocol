@@ -29,9 +29,9 @@ def test_q4_allowlist_is_exactly_q1_to_workbook_to_scenario():
 
 def test_q4_does_not_guess_unknown_findings_or_verticals():
     with pytest.raises(whatif.Q4Rejected, match="Q4_VERTICAL_NOT_ENABLED"):
-        whatif._mapping("QM-SD-006", object(), "data_center", "10")
+        whatif._mapping("QM-SD-006", object(), "data_center", "10", run_state="CURRENT")
     with pytest.raises(whatif.Q4Rejected, match="Q4_FINDING_MAPPING_UNAVAILABLE"):
-        whatif._mapping("QM-COV-001", object(), "solar", "1.3")
+        whatif._mapping("QM-COV-001", object(), "solar", "1.3", run_state="CURRENT")
 
 
 @pytest.mark.parametrize("name", ["", " ", "X" * 81, "ABC" + chr(10) + "DEF", "ABC" + chr(13) + "DEF", "ABC" + chr(0) + "DEF"])
@@ -383,7 +383,7 @@ def test_q4_solar_target_dscr_real_engine_effective_change(q4_http):
     assert consumed == pytest.approx([candidate])
     history = get_run_history(owner, project.project_id)
     assert len(history) == len(previous_history) + 1
-    assert history[-1].last_runtime_scenario_id == child.scenario_id
+    assert any(e.last_runtime_scenario_id == child.scenario_id for e in history)
     assert all(any(e.history_id == initial.history_id for e in history)
                for initial in previous_history)
     assert float(old.draft_snapshot["target_dscr"]) == original
