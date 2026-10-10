@@ -418,17 +418,37 @@ def test_q4_atomic_rollback_after_base_insert_before_child_insert(q4_http):
     """A failure after lazy Base bootstrap rolls BOTH inserts back."""
     import re
     from app.persistence import db
-    from app.services.reference_seed_service import create_reference_seeded_project
-    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.projects_repository import save_project, _compute_baseline_snapshot
+    from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
     from app.persistence.run_history_repository import get_run_history
     from app.persistence.scenarios_repository import list_scenarios
 
     client, cookies = q4_http
     user = "q4-atomic-base-owner"
-    project = create_reference_seeded_project(
-        user_id=user, requested_name="Q4 Atomic Bootstrap Solar",
-        template_source="generic_solar_reference", capacity_mw=40,
+    # A valid PRE-SCENARIO persisted user-owned project: modern
+    # create_reference_seeded_project() eagerly creates a legitimate Base,
+    # so it cannot exercise Q4's legacy lazy-Base transaction. Build that
+    # historical persistence state through canonical project/workspace APIs;
+    # NEVER delete a legitimate Base row after a modern clone.
+    code = "q4-synthetic-legacy-base"
+    name = "Q4 Atomic Bootstrap Solar"
+    snapshot = _compute_baseline_snapshot("Solar", "generic_solar_reference")
+    snapshot.update(active_project=code, project_name=name, project_origin="user_created")
+    project = save_project(
+        user_id=user, project_code=code, project_name=name, project_type="solar",
+        project_origin="user_created", template_source="generic_solar_reference",
+        source_project_template="generic_solar_reference",
+        baseline_snapshot=snapshot, project_role="working_copy",
+        is_readonly=False, is_protected=False,
     )
+    save_workspace_state(
+        user_id=user, project_id=project.project_id, project_code=code,
+        draft_snapshot=snapshot, saved_snapshot=snapshot,
+        last_runtime_snapshot={}, last_runtime_summary={},
+        governance_state=project.governance_state,
+    )
+    assert not list_scenarios(user, project.project_id), (
+        "Legacy fixture must begin without a Base, before any real Run")
     def page_tokens():
         response = client.get("/v2/workbook", params={"project": project.project_code},
                               cookies=cookies(user))
@@ -441,8 +461,10 @@ def test_q4_atomic_rollback_after_base_insert_before_child_insert(q4_http):
     assert run.status_code == 200
     before = get_workspace_state(user, project.project_id)
     history_before = tuple(get_run_history(user, project.project_id))
+    assert before.last_runtime_snapshot_id and history_before, (
+        "Legacy fixture must still have genuine committed Run evidence")
     bases_before = tuple(list_scenarios(user, project.project_id))
-    assert not bases_before, "Test requires lazy Base initialization"
+    assert not bases_before, "Real Run must preserve historical lazy-Base state"
     candidate = 50 if float(before.draft_snapshot["gearing_pct"]) != 50 else 51
     preview = client.post("/v2/workbook/whatif/preview",
         cookies=cookies(user),
