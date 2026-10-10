@@ -1,15 +1,15 @@
-# FINCO MODEL — Q2 Smart Panel V2 authority and acceptance notes
+# FINCO MODEL — Q2 FINCO Insight (formerly Smart Panel V2): authority and acceptance notes
 
 ## Scope (one Draft PR; no Q1 or F3.1 dependency)
 
-Three modes within the existing right-side Smart Panel:
+FINCO Insight is the user-facing feature name. The user-facing modes are Findings / Explore / Changes. The stable internal mode keys remain solutions / inspector / changes to avoid scope expansion and regressions.\n\nThree modes within the existing right-side panel:
 
-- **Solutions**: issues arise only from the existing Run Integrity overall verdict,
+- **Findings (internal solutions)**: issues arise only from the existing Run Integrity overall verdict,
   assumption register availability, reference regression availability, and the
   canonical CURRENT/STALE/NOT_RUN state. Existing validation summary remains the
   owner of live field errors. No lender covenants, sensitivity, or financial
   calculations are invented. Existing Checks, Assumptions and Trace are retained.
-- **Inspector**: working-copy fields come from the route's actual Assumption
+- **Explore (internal inspector)**: working-copy fields come from the route's actual Assumption
   Register *presentation view*: canonical path, display value, unit, label and
   source. An owning workbook field is navigable only on an exact field-id match.
   KPI values/identity/freshness derive from the preexisting persisted Last Run
@@ -66,3 +66,17 @@ tab + arrow navigation, jump-to-field and return-to-field.
 **Release gate:** the 5 exact-head GitHub workflows SUCCESS, focused pytest
 process exit 0, and browser evidence on the exact PR head. Until recorded:
 NO MERGE / NO DEPLOY.
+
+## Correction A — narrowly revised legacy read-only contract
+
+The original workspace productivity tests prohibited every `<select>` because
+no financial editor could live in the panel. FINCO Insight introduces exactly
+one navigation-only `#v2-sp-inspect-select`, without form/name/binding/write
+capability. The old negative assertions remain protected for form/input/textarea,
+extra selectors, submit buttons, contenteditable attributes and HTMX writes.
+Both known original test names are retained, alongside positive/negative probes.
+The feature remains advisory; no bank approval claim or financial solver in UI.
+
+The existing Protocol UI workflow is not evidence of the full FINCO Insight
+Solar/Wind authenticated browser matrix: Q2-specific screenshots and logs must
+be recorded independently on the final head. If absent: BROWSER_NOT_RUN.
