@@ -575,13 +575,15 @@ def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, ru
         for _finding in _group:
             if _finding["check_id"] not in _Q4_CANDIDATES:
                 continue
-            if ws is None or is_protected_reference(project_record):
+            q4_snapshot = getattr(ws, "draft_snapshot", None) if ws is not None else None
+            if (ws is None or not isinstance(q4_snapshot, dict)
+                    or is_protected_reference(project_record)):
                 _allowed, _reason = False, "Q4_PROTECTED_OR_UNAVAILABLE"
             else:
                 _allowed, _reason = _q4_eligible(
                     check_id=_finding["check_id"], check_status=_finding["status"],
                     project_type=project_record.project_type or "",
-                    snapshot=ws.draft_snapshot)
+                    snapshot=q4_snapshot)
             _finding["q4_eligible"] = _allowed
             _finding["q4_unavailable_reason"] = _reason
     scenario_view: dict = {}
