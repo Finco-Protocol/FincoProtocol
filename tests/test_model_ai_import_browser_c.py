@@ -176,6 +176,9 @@ def test_wind_xlsx_readonly_multisheet_mobile(browser, app_server, tmp_path):
     ctx, page = _page(browser, app_server["url"], width=390)
     try:
         page.goto(app_server["url"] + "/v2/workbook/import?project=" + CODE)
+        assert page.evaluate(
+            "() => document.querySelector('#upload').getBoundingClientRect().right <= innerWidth + 1"
+        ), "390px Import file picker must not overflow viewport"
         page.locator("#upload").set_input_files(str(file_path))
         page.get_by_role("button", name="Extract and review").click()
         assert page.get_by_text("Review detected assumptions").count() == 1
