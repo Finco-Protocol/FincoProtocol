@@ -233,6 +233,11 @@ def test_four_vertical_real_baseline_import_stale_rerun_current_history_export(
     )
     _review_apply(project, field_id, value, unit, xlsx=xlsx)
     stale = _ws(project)
+    changed_raw_keys = {
+        key for key in set(baseline.draft_snapshot) | set(stale.draft_snapshot)
+        if baseline.draft_snapshot.get(key) != stale.draft_snapshot.get(key)
+    }
+    assert changed_raw_keys == {WORKBOOK.field(field_id).snapshot_key}, changed_raw_keys
     assert stale.dirty
     assert stale.last_runtime_snapshot_id == old_id
     assert stale.last_runtime_identity == old_identity
