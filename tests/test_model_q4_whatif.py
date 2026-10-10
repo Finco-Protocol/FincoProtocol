@@ -158,6 +158,18 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
         assert result.status_code == 200
         assert "Run failed" not in result.text
 
+    # Wind reference may intentionally leave gearing unbound. Explicitly Save
+    # an owner-controlled value before the Base Run; never infer a default.
+    if not get_workspace_state(user, record.project_id).draft_snapshot.get("gearing_pct"):
+        page = c.get(url, cookies=cookie(user))
+        h, v = identity(page.text)
+        updated = c.post("/v2/workbook/update", data={
+            "field_id": "debt.senior.gearing_pct",
+            "value": "65", "project": record.project_code,
+            "workbook_version": v, "content_hash": h, "sheet_id": "debt",
+        }, cookies=cookie(user), headers={"HX-Request": "true"})
+        assert updated.status_code == 200
+        assert float(get_workspace_state(user, record.project_id).draft_snapshot["gearing_pct"]) == 65
     run_explicitly()
     ws0 = get_workspace_state(user, record.project_id)
     history0 = get_run_history(user, record.project_id)
