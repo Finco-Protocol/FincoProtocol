@@ -12,7 +12,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from app.auth import SECRET_KEY
 from app.model_quality import evaluate_model_quality
 from app.model_quality.evidence import evidence_from_workspace
-from app.persistence._helpers import SCENARIO_INPUT_FIELDS
+from app.persistence._helpers import SCENARIO_INPUT_FIELDS, _to_json
 from app.persistence.records import WorkspaceStateRecord, ScenarioRecord
 from app.workbook.input_set import ProjectInputSet
 from app.workbook.registry import WORKBOOK
@@ -178,7 +178,7 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
         cur = conn.cursor()
         cur.execute("SELECT * FROM projects WHERE project_id=? AND user_id=?", (project_id, owner))
         project = cur.fetchone()
-        if project is None or project["archived"] or project["is_protected"] or project["is_readonly"]:
+        if (project is None or project["archived"] or project["is_protected"]\n                or project["is_readonly"] or project["project_type"] != project_type):
             raise Q4Rejected("Q4_PROJECT_NOT_EDITABLE", 403)
         cur.execute("SELECT * FROM workspace_states WHERE user_id=? AND project_id=?", (owner, project_id))
         row = cur.fetchone()
@@ -241,9 +241,9 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
                 replay_metadata_json,schema_version,full_inputs_json,created_at,updated_at
             ) VALUES (?,?,?,?,?,?,NULL,0,0,?,?,?,?,?,?,?,'1.0',NULL,?,?)""",
             (sid, project_id, owner, name, project["project_code"], "",
-             base.scenario_id, json.dumps(source, allow_nan=False),
-             json.dumps(overrides, allow_nan=False),
-             json.dumps(effective, allow_nan=False),
+             base.scenario_id, _to_json(source),
+             _to_json(overrides),
+             _to_json(effective),
              "{}", "{}", json.dumps(audit, allow_nan=False), now, now))
         conn.execute("COMMIT")
         return dict(scenario_id=sid, scenario_name=name, state="NOT_RUN",
