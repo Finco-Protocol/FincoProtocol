@@ -157,6 +157,30 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     assert len(get_run_history(user, record.project_id)) == len(history0)
     assert len(list_scenarios(user, record.project_id)) == initial_count
 
+    # Failure AFTER INSERT, immediately before COMMIT must roll back all effects.
+    from app.persistence import db
+    real_connection = db.get_connection
+
+    class FailCommit:
+        def __init__(self, conn):
+            self.conn = conn
+        def cursor(self):
+            return self.conn.cursor()
+        def execute(self, sql, *args):
+            if sql == "COMMIT":
+                raise RuntimeError("Q4_INJECTED_PRECOMMIT_FAILURE")
+            return self.conn.execute(sql, *args)
+        def close(self):
+            self.conn.close()
+
+    with patch("app.persistence.db.get_connection",
+               side_effect=lambda: FailCommit(real_connection())):
+        with pytest.raises(RuntimeError, match="Q4_INJECTED_PRECOMMIT_FAILURE"):
+            whatif.commit(owner=user, project_id=record.project_id,
+                          project_type=vertical.title(), token=token)
+    assert len(list_scenarios(user, record.project_id)) == initial_count
+    assert len(get_run_history(user, record.project_id)) == len(history0)
+
     created = c.post("/v2/workbook/whatif/commit",
         data={"project": record.project_code, "token": token, "confirmed": "yes"},
         cookies=cookie(user))
