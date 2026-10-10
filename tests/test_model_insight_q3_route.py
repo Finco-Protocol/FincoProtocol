@@ -180,3 +180,34 @@ def test_other_users_cannot_read_the_panel_of_an_owner_project(env, runs):
     r = env.client.get(f"/v2/workbook?project={rec.project_code}", cookies=env.cookie("q3-intruder"),
                        follow_redirects=False)
     assert "q3-quality" not in r.text and rec.project_code not in r.text.replace(f"project={rec.project_code}", "")
+
+
+# ───────── the OOB fragments (Run / Save / scenario actions) must carry the same Q3 views as GET ─────────
+
+def _oob_panel(text):
+    assert 'id="model-smart-panel" hx-swap-oob="true"' in text, "the action response must refresh FINCO Insight"
+    return text.split('id="model-smart-panel" hx-swap-oob="true"', 1)[1].split("</aside>", 1)[0]
+
+
+def test_post_run_post_save_and_scenario_oob_panels_carry_q3(env):
+    user = "q3-oob"
+    rec = _project(env, user, "generic_solar_reference", "Q3 oob")
+    h, v = _tokens(_get(env, user, rec).text)
+    ck = env.cookie(user)
+    run = env.client.post("/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
+                          cookies=ck, headers={"HX-Request": "true"})
+    oob = _oob_panel(run.text)
+    assert 'data-q3-state="CURRENT"' in oob and "Scenarios workspace" in oob
+    assert _checks(oob) == _checks(_get(env, user, rec).text) and len(_checks(oob)) == 30
+    h, v = _tokens(_get(env, user, rec).text)
+    save = env.client.post("/v2/workbook/update", data={
+        "field_id": "project_setup.technical.p50_hours", "value": "1301", "project": rec.project_code,
+        "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"}, cookies=ck, headers={"HX-Request": "true"})
+    oob = _oob_panel(save.text)
+    assert 'data-q3-state="STALE"' in oob and "RUN_THRESHOLD_NOT_BOUND" in oob
+    h, v = _tokens(_get(env, user, rec).text)
+    created = env.client.post("/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": "OOB"},
+                              cookies=ck, headers={"HX-Request": "true"})
+    if 'id="model-smart-panel"' in created.text:
+        oob = _oob_panel(created.text)
+        assert "data-q3-state" in oob
