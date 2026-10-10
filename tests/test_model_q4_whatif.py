@@ -157,6 +157,32 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     assert len(get_run_history(user, record.project_id)) == len(history0)
     assert len(list_scenarios(user, record.project_id)) == initial_count
 
+    # Change the Working Copy after preview: the exact composite CAS must reject it.
+    page_before_edit = c.get(url, cookies=cookie(user)).text
+    h, v = identity(page_before_edit)
+    original_hours = float(ws0.draft_snapshot["p50_hours"])
+    changed = c.post("/v2/workbook/update", data={
+        "field_id": "project_setup.technical.p50_hours",
+        "value": str(original_hours + 1), "project": record.project_code,
+        "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"},
+        cookies=cookie(user), headers={"HX-Request": "true"})
+    assert changed.status_code == 200
+    rejected_stale = c.post("/v2/workbook/whatif/commit",
+        data={"project": record.project_code, "token": token, "confirmed": "yes"},
+        cookies=cookie(user))
+    assert rejected_stale.status_code == 409
+    assert "Q4_STALE_PREVIEW_CONFLICT" in rejected_stale.text
+    assert len(list_scenarios(user, record.project_id)) == initial_count
+
+    # Fresh user-controlled preview explicitly discloses STALE Run provenance.
+    refreshed = c.post("/v2/workbook/whatif/preview",
+        data={"project": record.project_code, "check_id": "QM-SD-006",
+              "scenario_name": "Q4 " + vertical + " What-if",
+              "proposed_value": str(candidate)}, cookies=cookie(user))
+    assert refreshed.status_code == 200, refreshed.text
+    assert "STALE" in refreshed.text
+    token = re.search(r'name="token" value="([^"]+)"', refreshed.text).group(1)
+
     # Failure AFTER INSERT, immediately before COMMIT must roll back all effects.
     from app.persistence import db
     real_connection = db.get_connection
