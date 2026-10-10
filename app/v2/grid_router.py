@@ -47,11 +47,21 @@ from app.workbook.workbook_identity import assemble_consistent_for_get
 
 router = APIRouter()
 
+# The C0 transaction raises the finco_core FinancingError; the candidate contract defines a sibling
+# class of the same shape.  Catch both precisely (never a bare Exception).
+from app.model_v2.financing_f3_candidate.contracts import FinancingError as _CandidateFinancingError  # noqa: E402
+from finco_core.inputs.financing_instruments import FinancingError as _CoreFinancingError  # noqa: E402
+
+_FINANCING_ERRORS = (_CoreFinancingError, _CandidateFinancingError)
+_F3_CONFLICT_CODES = frozenset({
+    "F3_COMPETING_FINANCING_EDITOR_REJECTED", "F3_COLLECTION_EDITOR_ONLY", "F3_SELECTED_SCENARIO_UNAVAILABLE",
+})
+
 MAX_GRID_CELLS = 50          # identical to the C0 batch bound
 MAX_VALUE_CHARS = 64
 
 # Sheets whose partial can be re-rendered through the grid refresh route.
-GRID_SHEETS = ("capex", "opex")
+GRID_SHEETS = ("capex", "opex", "revenue", "project_setup", "tax")
 
 
 class GridCell(BaseModel):
@@ -171,6 +181,19 @@ async def grid_save(body: GridSaveRequest, request: Request,
     except (BatchApplyError, UnknownFieldError, NonEditableFieldError) as exc:
         return _json({"ok": False, "code": getattr(exc, "code", type(exc).__name__),
                       "message": str(exc)}, 422)
+    except _FINANCING_ERRORS as exc:
+        # Canonical F3 gates raised inside the C0 transaction (competing financing editor, collection
+        # editor only, selected scenario unavailable, effective-financing boundary).  The transaction
+        # already rolled back: nothing persisted, CAS hash and Last Run unchanged.  Never a 500.
+        code = getattr(exc, "code", "F3_REJECTED")
+        status = 409 if code in _F3_CONFLICT_CODES else 422
+        return _json({"ok": False, "code": code,
+                      "message": "Financing authority rejected the batch; nothing was saved. "
+                                 "Edit financing fields in the Senior Debt financing editor.",
+                      "detail": str(exc)}, status)
+    except ValueError as exc:
+        # Any other canonical fail-closed rejection (e.g. senior authority gate): controlled, no write.
+        return _json({"ok": False, "code": "BATCH_REJECTED", "message": str(exc)}, 422)
 
     fresh = get_workspace_state(owner, record.project_id) or ws
     identity = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
@@ -218,6 +241,12 @@ async def grid_sheet(request: Request, project: str = "", sheet: str = "",
     pis = _v2._build_pis_with_composite_identity(ws, record, owner)
     if sheet == "capex":
         return _v2._render_capex_htmx_sheet(request, pis, ws, record, project, workspace_owner=owner)
+    if sheet == "revenue":
+        return _v2._render_revenue_htmx_sheet(request, pis, ws, record, project)
+    if sheet == "tax":
+        return _v2._render_tax_htmx_sheet(request, pis, ws, record, project)
+    if sheet == "project_setup":
+        return _v2._render_htmx_sheet(request, pis, ws, record, project)
     return _v2._render_opex_htmx_sheet(request, pis, ws, record, project)
 
 

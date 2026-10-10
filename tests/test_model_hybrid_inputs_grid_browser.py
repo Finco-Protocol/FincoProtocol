@@ -105,10 +105,10 @@ class Session:
         self.page.wait_for_selector("#v2-input-grid .ig-input", state="visible")
 
     def cell(self, field_id):
-        return self.page.locator(f'#v2-input-grid .ig-input[data-field-id="{field_id}"]')
+        return self.page.locator(f'#v2-input-grid .ig-input[data-ig-field="{field_id}"]')
 
     def active_field(self):
-        return self.page.evaluate("document.activeElement && document.activeElement.dataset.fieldId || null")
+        return self.page.evaluate("document.activeElement && document.activeElement.dataset.igField || null")
 
     def staged(self):
         return self.page.evaluate("window.FincoInputGrid.stagedCount()")
@@ -208,12 +208,12 @@ def test_enter_escape_tab_arrows_then_one_atomic_save_without_running_the_model(
     s.page.keyboard.press("Enter")                            # commit + move down
     assert s.active_field() != EDITS[0][0]
     s.page.wait_for_timeout(300)
-    assert s.page.locator(f'[data-ig-row][data-field-id="{EDITS[0][0]}"]').get_attribute("class").count("ig-row--edited") == 1
+    assert s.page.locator(f'[data-ig-row][data-ig-field="{EDITS[0][0]}"]').get_attribute("class").count("ig-row--edited") == 1
 
     cur = s.active_field()
     s.page.keyboard.type("987654")                            # focus select-all replaced the value
     s.page.keyboard.press("Escape")                           # cancel: back to the committed value
-    assert s.page.locator(f'#v2-input-grid .ig-input[data-field-id="{cur}"]').input_value() != "987654"
+    assert s.page.locator(f'#v2-input-grid .ig-input[data-ig-field="{cur}"]').input_value() != "987654"
 
     s.page.keyboard.press("ArrowDown")
     down = s.active_field()
@@ -294,7 +294,7 @@ def _paste(s, field_id, text):
     s.cell(field_id).click()
     s.page.evaluate(
         """([id, text]) => {
-            const el = document.querySelector('#v2-input-grid .ig-input[data-field-id="' + id + '"]');
+            const el = document.querySelector('#v2-input-grid .ig-input[data-ig-field="' + id + '"]');
             const dt = new DataTransfer(); dt.setData('text/plain', text);
             el.dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true}));
         }""", [field_id, text])
@@ -314,7 +314,7 @@ def test_multi_cell_paste_is_validated_all_or_nothing(make):
     assert s.staged() == 0, "an invalid cell rejects the whole paste"
     assert "rejected" in s.page.locator("[data-ig-msg]").inner_text().lower()
 
-    label = s.page.locator('[data-ig-row][data-field-id="revenue.ppa.base_tariff"] .ig-label').inner_text()
+    label = s.page.locator('[data-ig-row][data-ig-field="revenue.ppa.base_tariff"] .ig-label').inner_text()
     _paste(s, start, f"{label}\t51,5\nUnknown thing\t1")
     assert s.staged() == 0 and "matches no editable" in s.page.locator("[data-ig-msg]").inner_text()
     _paste(s, start, f"{label}\t51,5")
@@ -328,7 +328,7 @@ def test_server_rejection_keeps_staged_edits_and_names_the_cell(make):
     s.open_grid()
     _edit(s, "project_setup.technical.horizon_years", "-3")
     s.page.wait_for_timeout(500)
-    row = s.page.locator('[data-ig-row][data-field-id="project_setup.technical.horizon_years"]')
+    row = s.page.locator('[data-ig-row][data-ig-field="project_setup.technical.horizon_years"]')
     assert "ig-row--error" in row.get_attribute("class")
     assert s.page.locator("[data-ig-save]").is_disabled()
     assert s.persisted("project_setup.technical.horizon_years") != -3
@@ -362,7 +362,7 @@ def test_other_verticals_render_the_same_grid_and_save_atomically(make, template
     s.open_grid()
     editable = s.page.locator("#v2-input-grid .ig-input")
     assert editable.count() >= 3
-    field_id = editable.first.get_attribute("data-field-id")
+    field_id = editable.first.get_attribute("data-ig-field")
     value = editable.first.input_value()
     new = str(float(value or "10") + 1)
     new = new[:-2] if new.endswith(".0") else new
@@ -442,8 +442,111 @@ def test_cost_line_saved_after_last_run_is_marked_not_run_and_strip_follows(make
     _edit(s, "project_setup.technical.p50_hours", "1666")
     s.page.keyboard.press("Control+S")
     s.page.wait_for_function("window.__igLastSaveMs !== undefined", timeout=30000)
-    flag = s.page.locator('[data-ig-row][data-field-id="project_setup.technical.p50_hours"] [data-ig-flag-notrun]')
+    flag = s.page.locator('[data-ig-row][data-ig-field="project_setup.technical.p50_hours"] [data-ig-flag-notrun]')
     flag.wait_for(state="visible", timeout=10000)
     assert "Last Run used" in flag.get_attribute("title")
     _shot(s, "desktop-grid-saved-not-run-after-run")
     assert not s.errors
+
+
+# ── PR #245 Correction A: EV efficiency — grid and legacy editor agree ───────────────
+
+EFF = "revenue.ev_charging.charging_efficiency"
+
+
+def _legacy_eff(s):
+    return s.page.locator(f'#v2-sheet-revenue .v2-field-row[data-field-id="{EFF}"] input[name="value"]')
+
+
+def _legacy_edit(s, value, *, expect_saved=True):
+    s.page.evaluate("document.getElementById('tab-revenue').click()")
+    box = _legacy_eff(s)
+    box.scroll_into_view_if_needed()
+    box.click()
+    s.page.keyboard.press("Control+A")
+    s.page.keyboard.type(value)
+    s.page.keyboard.press("Enter")
+    if expect_saved:
+        deadline = time.time() + 20
+        while time.time() < deadline and s.persisted(EFF) != float(value):
+            s.page.wait_for_timeout(200)
+        assert s.persisted(EFF) == float(value), "legacy editor save did not persist"
+        s.page.wait_for_timeout(800)          # let the HTMX swap settle
+    else:
+        s.page.wait_for_timeout(1200)
+
+
+def test_ev_efficiency_rendered_identity_is_unique_and_shows_94_percent(make):
+    s = make("u-wf05-ev-eff", template="generic_ev_charging_reference")
+    html = s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}").text()
+    # the legacy editor identity (data-field-id) exists exactly once; the grid uses its own attribute
+    assert html.count(f'data-field-id="{EFF}"') == 1
+    assert html.count(f'data-ig-field="{EFF}"') == 2          # grid row + grid input
+    assert float(_legacy_eff(s).input_value()) == 94.0
+    assert s.persisted(EFF) == 94.0
+
+
+def test_ev_efficiency_valid_and_invalid_edits_and_effective_model_input_agree(make):
+    s = make("u-wf05-ev-eff2", template="generic_ev_charging_reference")
+    s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
+    s.page.wait_for_selector("#tab-revenue")
+    _legacy_edit(s, "92")
+    assert s.persisted(EFF) == 92.0
+    for bad in ("120", "-5", "100.5"):
+        _legacy_edit(s, bad, expect_saved=False)
+        assert s.persisted(EFF) == 92.0, f"{bad!r} must be rejected and the snapshot preserved"
+    # the effective model input is the human percent converted to a runtime fraction (unchanged authority)
+    from app.persistence.workspace_repository import get_workspace_state
+    from app import ev_charging_economics as ev
+    ws = get_workspace_state(s.uid, s.rec.project_id)
+    assert ev.drivers_from_snapshot(dict(ws.draft_snapshot)).charging_efficiency == pytest.approx(0.92)
+    # the grid shows the persisted value after the tab is (re)activated
+    s.page.evaluate("document.getElementById('tab-input-grid').click()")
+    s.page.wait_for_function("(f) => document.querySelector('.ig-input[data-ig-field=\"' + f + '\"]').value === '92'", arg=EFF)
+
+
+def test_ev_grid_save_refreshes_the_legacy_editor_and_keeps_one_value(make):
+    s = make("u-wf05-ev-eff3", template="generic_ev_charging_reference")
+    s.open_grid()
+    _edit(s, EFF, "90")
+    s.page.keyboard.press("Control+S")
+    s.page.wait_for_function("window.__igLastSaveMs !== undefined", timeout=30000)
+    assert s.persisted(EFF) == 90.0
+    s.page.evaluate("document.getElementById('tab-revenue').click()")
+    s.page.wait_for_function(
+        "(f) => parseFloat(document.querySelector('#v2-sheet-revenue .v2-field-row[data-field-id=\"' + f + '\"] input[name=value]').value) === 90",
+        arg=EFF, timeout=20000)
+    # invalid grid values are rejected before anything is staged
+    s.page.evaluate("document.getElementById('tab-input-grid').click()")
+    _edit(s, EFF, "150")
+    s.page.wait_for_timeout(600)
+    assert s.page.locator(f'[data-ig-row][data-ig-field="{EFF}"]').get_attribute("class").count("ig-row--error") == 1
+    assert s.persisted(EFF) == 90.0
+
+
+def test_grid_cannot_silently_overwrite_a_write_made_by_the_legacy_editor(make):
+    s = make("u-wf05-ev-eff4", template="generic_ev_charging_reference")
+    s.open_grid()
+    _edit(s, EFF, "91")                                   # staged in the grid, not saved
+    assert s.staged() == 1
+    # another editor writes the same field through the legacy single-field endpoint (same CAS authority)
+    status = s.page.evaluate(
+        """async ([project, field]) => {
+            const f = document.querySelector('#v2-canonical-run-form');
+            const body = new URLSearchParams({project, field_id: field, value: '93', sheet_id: 'revenue',
+                workbook_version: f.querySelector('[name=workbook_version]').value,
+                content_hash: f.querySelector('[name=content_hash]').value});
+            const r = await fetch('/v2/workbook/update', {method: 'POST', credentials: 'same-origin',
+                headers: {'HX-Request': 'true', 'Content-Type': 'application/x-www-form-urlencoded'}, body});
+            return r.status;
+        }""", [s.rec.project_code, EFF])
+    assert status == 200
+    assert s.persisted(EFF) == 93.0
+    assert s.staged() == 1
+    s.page.keyboard.press("Control+S")
+    s.page.wait_for_timeout(1500)
+    assert s.persisted(EFF) == 93.0, "the stale staged value must NOT overwrite the newer write"
+    assert "changed since" in s.page.locator("[data-ig-msg]").inner_text().lower() or \
+        "stale" in s.page.locator("[data-ig-msg]").inner_text().lower() or \
+        "nothing was saved" in s.page.locator("[data-ig-msg]").inner_text().lower()
+    assert s.staged() == 1, "the user's staged edit is kept, never lost silently"

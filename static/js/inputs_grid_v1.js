@@ -125,6 +125,15 @@
   function refreshBar() {
     var g = root(); if (!g) return;
     var n = stagedInputs().length;
+    // Optimistic-concurrency base: the identity the user was looking at when the FIRST edit was staged.
+    // If any other editor (legacy field form, cost line, Run) writes meanwhile, Save is refused as stale
+    // instead of silently overwriting that write with an older staged value.
+    if (n > 0 && !g.hasAttribute('data-stage-hash')) {
+      var idn = liveIdentity(g);
+      g.setAttribute('data-stage-hash', idn.hash); g.setAttribute('data-stage-version', idn.version);
+    } else if (n === 0) {
+      g.removeAttribute('data-stage-hash'); g.removeAttribute('data-stage-version');
+    }
     var errs = allInputs().filter(function (i) { return i.hasAttribute('data-error'); }).length;
     var count = g.querySelector('[data-ig-count]');
     if (count) {
@@ -167,7 +176,7 @@
     var g = root();
     return postJSON('/v2/workbook/grid/validate', {
       project: g.getAttribute('data-project'), csrf_token: g.getAttribute('data-csrf'),
-      cells: items.map(function (it) { return { field_id: it.input.getAttribute('data-field-id'), value: it.value }; })
+      cells: items.map(function (it) { return { field_id: it.input.getAttribute('data-ig-field'), value: it.value }; })
     });
   }
 
@@ -295,7 +304,7 @@
     }
     var seen = {};
     plan.forEach(function (p) {
-      var id = p.input.getAttribute('data-field-id');
+      var id = p.input.getAttribute('data-ig-field');
       if (seen[id]) problems.push('“' + (p.input.getAttribute('data-label') || id) + '” appears more than once in the paste.');
       seen[id] = true;
       var bad = localCheck(p.input, p.value);
@@ -331,7 +340,7 @@
   function captureView() {
     var ae = document.activeElement, g = root();
     return {
-      field: ae && ae.classList && ae.classList.contains('ig-input') ? ae.getAttribute('data-field-id') : null,
+      field: ae && ae.classList && ae.classList.contains('ig-input') ? ae.getAttribute('data-ig-field') : null,
       caret: ae && ae.selectionStart != null ? [ae.selectionStart, ae.selectionEnd] : null,
       scrollX: window.scrollX, scrollY: window.scrollY,
       sections: g ? Array.prototype.map.call(g.querySelectorAll('[data-ig-section]'),
@@ -346,7 +355,7 @@
     });
     window.scrollTo(v.scrollX, v.scrollY);
     if (v.field) {
-      var el = g.querySelector('.ig-input[data-field-id="' + v.field.replace(/"/g, '\\"') + '"]');
+      var el = g.querySelector('.ig-input[data-ig-field="' + v.field.replace(/"/g, '\\"') + '"]');
       if (el) {
         el.focus({ preventScroll: true });
         if (v.caret) { try { el.setSelectionRange(v.caret[0], v.caret[1]); } catch (x) { /* ignore */ } }
@@ -391,11 +400,15 @@
   }
   function refreshDependentSheets(project) {
     if (!window.htmx) return;
-    ['capex', 'opex'].forEach(function (sheet) {
-      var target = document.getElementById('v2-sheet-' + sheet);
-      if (!target) return;
+    // Every legacy single-field editor of a saved field must show the new value and the new CAS hash,
+    // so the two editing surfaces can never silently write conflicting values.
+    ['capex', 'opex', 'revenue', 'project_setup', 'tax'].forEach(function (sheet) {
+      var id = 'v2-sheet-' + sheet.replace('_', '-');
+      if (!document.getElementById(id)) return;
       window.htmx.ajax('GET', '/v2/workbook/grid/sheet?project=' + encodeURIComponent(project) + '&sheet=' + sheet,
-        { target: '#v2-sheet-' + sheet, swap: 'outerHTML' });
+        // own `source` per sheet: htmx queues requests per source element, so a shared source would
+        // silently drop all but the first and last refresh
+        { source: '#' + id, target: '#' + id, swap: 'outerHTML' });
     });
   }
 
@@ -449,8 +462,10 @@
     saveStartedAt = performance.now();
     var project = g.getAttribute('data-project');
     var view = captureView();
-    var cells = staged.map(function (i) { return { field_id: i.getAttribute('data-field-id'), value: committedOf(i) }; });
-    var identity = liveIdentity(g);
+    var cells = staged.map(function (i) { return { field_id: i.getAttribute('data-ig-field'), value: committedOf(i) }; });
+    var identity = g.hasAttribute('data-stage-hash')
+      ? { hash: g.getAttribute('data-stage-hash'), version: g.getAttribute('data-stage-version') }
+      : liveIdentity(g);
     return postJSON('/v2/workbook/grid/save', {
       project: project, csrf_token: g.getAttribute('data-csrf'),
       workbook_version: identity.version,
@@ -490,7 +505,7 @@
       if (res && res.cells) {
         res.cells.forEach(function (c) {
           if (c.ok) return;
-          var el = g.querySelector('.ig-input[data-field-id="' + c.field_id.replace(/"/g, '\\"') + '"]');
+          var el = g.querySelector('.ig-input[data-ig-field="' + c.field_id.replace(/"/g, '\\"') + '"]');
           if (el) { el.setAttribute('data-error', c.message || 'Rejected.'); paintRow(el); }
         });
       }

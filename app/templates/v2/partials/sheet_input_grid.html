@@ -60,13 +60,13 @@
       <tbody>
       {% for cat in section.categories %}{% for row in cat.rows %}
         <tr class="ig-row{% if row.editable %} ig-row--editable{% endif %}{% if row.modified_since_run %} ig-row--notrun{% endif %}"
-            data-ig-row {% if row.field_id %}data-field-id="{{ row.field_id }}"{% endif %}>
+            data-ig-row {% if row.field_id %}data-ig-field="{{ row.field_id }}"{% endif %}>
           <td class="ig-code">{{ row.code }}</td>
           <td class="ig-label" title="{{ row.label }}">{{ row.label }}</td>
           {% if row.editable %}
           <td class="ig-cell">
             <input class="ig-input" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
-                   value="{{ row.value }}" data-original="{{ row.value }}" data-field-id="{{ row.field_id }}"
+                   value="{{ row.value }}" data-original="{{ row.value }}" data-ig-field="{{ row.field_id }}"
                    data-label="{{ row.label }}"
                    {% if row.min_value is not none %}data-min="{{ row.min_value }}"{% endif %}
                    {% if row.max_value is not none %}data-max="{{ row.max_value }}"{% endif %}
