@@ -90,7 +90,7 @@ jobs:
 
       - name: Upload FINCO Model AI Import screenshots and browser results
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: finco-model-ai-import-browser
           path: artifacts/model-ai-import/*
@@ -103,7 +103,7 @@ jobs:
 
       - name: Upload Q4 real Chromium screenshots and browser evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: model-q4-browser
           path: artifacts/model-q4-browser/*
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload SaaS visual acceptance captures
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: saas-visual-acceptance
           path: artifacts/saas-visual/*.png
@@ -119,7 +119,7 @@ jobs:
 
       - name: Upload Reference-Driven Correction A captures
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: reference-driven-correction-a-23-captures
           path: artifacts/reference-driven-correction-a/*.png
@@ -135,7 +135,7 @@ jobs:
 
       - name: Upload Statements & Debt acceptance evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: outputs-workspace-acceptance
           path: artifacts/outputs-workspace
@@ -161,7 +161,7 @@ jobs:
 
       - name: Upload F3 acceptance evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: f3-acceptance-evidence
           path: artifacts/f3-evidence

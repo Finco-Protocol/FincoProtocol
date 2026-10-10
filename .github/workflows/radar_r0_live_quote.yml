@@ -37,7 +37,7 @@ jobs:
           PY
       - name: Upload R0 quote evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: radar-r0-live-quote-evidence
           path: artifacts/radar_r0_live_quote_evidence.json

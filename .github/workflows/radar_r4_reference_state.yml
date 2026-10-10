@@ -207,7 +207,7 @@ jobs:
           PY
       - name: Upload R4 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: radar-r4-reference-state-evidence
           path: |
