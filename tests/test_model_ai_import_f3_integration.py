@@ -243,7 +243,9 @@ def test_four_vertical_real_baseline_import_stale_rerun_current_history_export(
     original_export = resolve_canonical_last_run_from_workspace(project, OWNER, stale)
     assert original_export is not None
     if old_facilities is not None:
-        assert original_export.project_inputs.financing_collection.content_digest() == (\n            ProjectInputSet.from_snapshot(baseline.last_runtime_snapshot).to_projectinputs().financing_collection.content_digest()\n        )
+        assert original_export.project_inputs.financing_collection.content_digest() == (
+            old.runtime_summary["financing_evidence"]["collection_digest"]
+        )
     current, newer = run(env, project)
     assert not current.dirty
     assert current.last_runtime_snapshot_id != old_id
