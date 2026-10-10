@@ -143,12 +143,14 @@ def test_true_pinned_market_identity_and_append_only_deduplication(tmp_path):
     store = VenueMarketStore(tmp_path / "market.db")
     first, _ = evidence()
     repeat, _ = evidence(collected=NOW + timedelta(minutes=3))
-    assert first is not None and repeat is not None and second is not None
+    assert first is not None
+    assert repeat is not None
     # Both market samples share a single old Chainlink normalization clock.
     # Pin the same oracle across distinct TWAPs rather than synthesizing it.
     original_oracle = datetime.fromisoformat(first.payload["normalization_oracle_observed_at"])
     second, _ = evidence(market=NOW - timedelta(seconds=20), block_number=101,
                          quote=original_oracle, price="103")
+    assert second is not None
     assert second.ts != first.ts
     assert second.payload["normalization_oracle_observed_at"] == first.payload["normalization_oracle_observed_at"]
     assert store.append_observation(first)[1] is True
