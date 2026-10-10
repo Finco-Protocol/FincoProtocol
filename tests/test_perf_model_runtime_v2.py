@@ -521,8 +521,16 @@ class TestExecutorPrewarm:
 
         config = ModelExecutionConfig(mode="process", concurrency=2, timeout_seconds=60)
         exe = ModelExecutor(config)
-        yield exe
-        reset_model_executor_for_tests(None)
+        try:
+            yield exe
+        finally:
+            # This executor is LOCAL to the fixture, not the module's global
+            # _EXECUTOR. Resetting the global alone leaked its two prewarmed
+            # SpawnProcess workers at full-suite shutdown. Join exactly the
+            # workers this fixture owns; fail if forced termination was needed.
+            forced = exe.shutdown_and_join()
+            reset_model_executor_for_tests(None)
+            assert forced == [], f"Prewarm fixture leaked model workers: {forced}"
 
     def test_warm_up_spawns_workers_and_reports_state(self, executor):
         assert executor.is_warm is False

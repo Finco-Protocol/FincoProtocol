@@ -29,6 +29,32 @@
     {% if c.nav %}<button type="button" class="v2-sp-action" data-nav-tab="{{ c.nav.tab_id }}">Open {{ c.nav.label }}</button>{% endif %}
     {% for e in c.explore %}<button type="button" class="v2-sp-action" data-sp-explore="{{ e.value }}">Explore {{ e.label }}</button>{% endfor %}
   </div>
+  {% if c.check_id in ('QM-SD-004', 'QM-SD-006', 'QM-SD-007') %}
+  {% if c.q4_eligible %}
+  <form class="v2-sp-q4-form" data-testid="q4-create-form"
+        hx-post="/v2/workbook/whatif/preview" hx-target="#q4-action-result"
+        hx-swap="innerHTML" method="post">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" name="check_id" value="{{ c.check_id }}">
+    <label>New What-if scenario name
+      <input name="scenario_name" type="text" maxlength="80" required
+             value="What-if — {{ c.check_id }}" aria-label="New What-if scenario name">
+    </label>
+    <label>Proposed assumption value (user-entered, not calculated)
+      <input name="proposed_value" type="number" step="any" required
+             aria-label="Proposed assumption value">
+    </label>
+    <button type="submit" class="v2-sp-action">Preview What-if</button>
+    <p class="v2-sp-q3-note">A PASS finding permits exploratory What-if only, not remediation. Eligibility and financing restrictions are verified server-side.
+      Unsupported requests are rejected without changes. No auto-run.</p>
+  </form>
+  {% else %}
+  <p class="v2-sp-q3-note" data-testid="q4-disabled">
+    What-if unavailable for this finding: {{ c.q4_unavailable_reason or 'MAPPING_UNAVAILABLE' }}.
+    No adjustment can be applied.
+  </p>
+  {% endif %}
+  {% endif %}
 </details>
 {% endmacro %}
 
@@ -105,4 +131,5 @@
   </ul>
   <button type="button" class="v2-sp-action" data-nav-tab="tab-debt">Open Debt sheet</button>
   {% endif %}
+  <div id="q4-action-result" data-testid="q4-action-result" role="region" aria-live="polite"></div>
 </div>

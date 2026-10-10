@@ -392,6 +392,35 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
         if not isinstance(run_identity, dict) or revenue_evidence.get("scenario_id") != ws.last_runtime_scenario_id:
             raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: tariff Run binding is inconsistent.")
         export_snapshot = bind_scenario_tariff(export_snapshot, run_identity.get("scenario_overrides") or {})
+
+    # Q4 canonical Last Run export must rebind the same reviewed scalar value
+    # the engine actually consumed. The audit comes ONLY from the immutable
+    # committed Run summary and run-bound scenario overrides, never from a
+    # mutable current scenario or current Working Copy.
+    q4_run = (getattr(ws, "last_runtime_summary", None) or {}).get("q4_effective_input")
+    if q4_run is not None:
+        from app.v2.whatif import CANDIDATES
+        from app.persistence.scenarios_repository import resolve_scenario_snapshot
+        from app.workbook.registry import WORKBOOK
+        from app.workbook.input_set import ProjectInputSet
+        run_identity = getattr(ws, "last_runtime_identity", None)
+        if (not isinstance(q4_run, dict) or
+                q4_run.get("authority") != "q4_canonical_reviewed_scenario_v1" or
+                q4_run.get("scenario_id") != ws.last_runtime_scenario_id or
+                not isinstance(run_identity, dict)):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: Q4 Run binding missing or inconsistent.")
+        field_id = q4_run.get("field_id")
+        key = q4_run.get("snapshot_key")
+        verified = any(fid == field_id and scenario_key == key
+                       for _, fid, scenario_key in CANDIDATES.values())
+        if not verified or WORKBOOK.field(field_id).snapshot_key != key:
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: Q4 mapping changed.")
+        signed_overrides = run_identity.get("scenario_overrides") or {}
+        if set(signed_overrides) != {key} or signed_overrides[key] != q4_run.get("value"):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: Q4 override drift.")
+        export_snapshot = resolve_scenario_snapshot(dict(export_snapshot), {key: signed_overrides[key]})
+        if ProjectInputSet.from_snapshot(export_snapshot).get(field_id) != q4_run["value"]:
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: Q4 effective input mismatch.")
     pis = WorkbookService.build_input_set(export_snapshot)
     project_inputs = pis.to_projectinputs()
     if isinstance(revenue_evidence, dict) and revenue_evidence.get("authority") == "materialized_project_inputs":
