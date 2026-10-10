@@ -1,0 +1,23 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<p>What the product stores, where, what it can contain and who can reach it. Entries marked as needing operational controls depend on how the product is hosted.</p>
+<div class="tr-scroll"><table class="tr-table">
+<thead><tr><th>Data</th><th>Stored in</th><th>Keyed by</th><th>May contain user text</th><th>Contents</th><th>Status</th></tr></thead>
+<tbody>{% for d in stores %}<tr id="{{ d.key }}">
+<th scope="row">{{ d.data_category }}</th><td>{{ d.store }}</td><td>{{ d.tenant_key }}</td><td>{{ "Yes" if d.may_contain_user_text else "No" }}</td><td>{{ d.contents }}{% if d.limitation %} <em>{{ d.limitation }}</em>{% endif %}</td>
+<td><span class="tr-pill tr-pill--{{ d.status.value|lower }}">{{ labels[d.status.value] }}</span></td></tr>{% endfor %}</tbody>
+</table></div>
+<h2>Cookies the product sets</h2>
+<ul class="tr-plain">
+<li><code>finco_session</code> signs in the operator. HttpOnly, SameSite=Lax, 24 hours.</li>
+<li><code>finco_demo</code> identifies an anonymous demo session. HttpOnly, SameSite=Lax, 24 hours.</li>
+<li>No advertising or analytics cookies are set by the product. Trust pages set no cookie at all.</li>
+</ul>
+<h2>Data the product does not hold</h2>
+<ul class="tr-plain">
+<li>Uploaded model files are processed in memory and not written to disk.</li>
+<li>Request logs carry method, path, status and request id. They carry no cookies, bodies or client addresses.</li>
+</ul>
+<p class="tr-note">Reference models are synthetic. Do not enter confidential project data into a demo session.</p>
+{% endblock %}
