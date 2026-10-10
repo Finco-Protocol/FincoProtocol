@@ -191,13 +191,218 @@ def test_wind_xlsx_readonly_multisheet_mobile(browser, app_server, tmp_path):
         ctx.close()
 
 
-def test_invalid_session_redirects_and_no_writes(browser, app_server):
+def _owner_financial_evidence(project_id: str):
+    """Persisted owner-only financial and historical state, before/after denial."""
     from app.persistence.workspace_repository import get_workspace_state
-    before = get_workspace_state(OWNER, app_server["project"].project_id)
+    from app.persistence.run_history_repository import get_run_history
+    from app.persistence.db import get_connection
+
+    ws = get_workspace_state(OWNER, project_id)
+    assert ws is not None
+    conn = get_connection()
+    try:
+        run_count = conn.execute(
+            "SELECT COUNT(*) FROM runs WHERE user_id=?", (OWNER,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    return {
+        "draft": ws.draft_snapshot,
+        "saved": ws.saved_snapshot,
+        "dirty": ws.dirty,
+        "runtime_id": ws.last_runtime_snapshot_id,
+        "runtime_snapshot": ws.last_runtime_snapshot,
+        "runtime_summary": ws.last_runtime_summary,
+        "runtime_identity": ws.last_runtime_identity,
+        "run_committed": ws.any_run_committed,
+        "runs": run_count,
+        "history": tuple(e.history_id for e in get_run_history(OWNER, project_id)),
+    }
+
+
+def _foreign_apply_ticket(project_id: str):
+    """Real signed owner-bound ticket, never exposed to the foreign browser."""
+    from app.model_import.review import seal_approved
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.workbook.registry import WORKBOOK
+    from app.persistence.workspace_repository import get_workspace_state
+
+    ws = get_workspace_state(OWNER, project_id)
+    identity = assemble_consistent_for_get(OWNER, project_id, WORKBOOK.version)
+    approved = [{
+        "source_id": 0, "sheet": "CSV", "cell": "B2",
+        "label": "PPA Index", "field_id": "revenue.ppa.index",
+        "value": "2", "unit": "%", "original_value": "2", "method": "exact_field_id",
+    }]
+    return seal_approved(
+        {
+            "owner": OWNER, "project_id": project_id,
+            "scenario_id": ws.active_scenario_id,
+            "content_hash": identity.composite_hash,
+            "workbook_version": WORKBOOK.version,
+            "digest": "f" * 64, "rows": [approved[0]],
+        }, approved,
+    )
+
+
+def _assert_foreign_import_denied(*, ctx, page, app_server, expected_destination: str):
+    """GET and all three POST boundaries reject a non-owner before ticket issuance."""
+    from app.auth import generate_csrf_token
+    from app.model_import.review import seal_preview
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    url = app_server["url"]
+    project = app_server["project"]
+    evidence_before = _owner_financial_evidence(project.project_id)
+
+    # Browser follows the 302: the user sees only their own Library/login.
+    page.goto(url + "/v2/workbook/import?project=" + CODE)
+    assert page.url == url + expected_destination
+    assert CODE not in page.locator("body").inner_text()
+    assert page.locator("#upload").count() == 0
+    assert page.locator("input[name='preview_ticket']").count() == 0
+    assert page.locator("input[name='approved_ticket']").count() == 0
+
+    csrf = generate_csrf_token()
+    signed_preview = seal_preview(
+        owner=OWNER, project_id=project.project_id,
+        scenario_id=None,
+        content_hash=assemble_consistent_for_get(
+            OWNER, project.project_id, WORKBOOK.version
+        ).composite_hash,
+        workbook_version=WORKBOOK.version, digest="c" * 64,
+        proposals=[{
+            "id": 0, "source_cell": "B2", "sheet": "CSV",
+            "original_value": "2", "label": "revenue.ppa.index",
+            "source_unit": "%", "field_id": "revenue.ppa.index",
+            "status": "ready", "reason": None,
+            "mapping_method": "exact_field_id",
+        }],
+    )
+
+    # Don't rely on missing CSRF to prove isolation: each request supplies
+    # a VALID CSRF, and the signed review/apply tickets are genuine.
+    attempts = [
+        ("preview", {
+            "multipart": {
+                "project": CODE,
+                "csrf_token": csrf,
+                "encoding": "utf-8",
+                "upload": {
+                    "name": "synthetic.csv",
+                    "mimeType": "text/csv",
+                    "buffer": b"Assumption,Value,Unit\nrevenue.ppa.index,2,%\n",
+                },
+            },
+        }),
+        ("confirm", {
+            "form": {
+                "project": CODE, "csrf_token": csrf,
+                "preview_ticket": signed_preview,
+                "keep_0": "on", "field_0": "revenue.ppa.index",
+                "unit_0": "%",
+            },
+        }),
+        ("apply", {
+            "form": {
+                "project": CODE, "csrf_token": csrf,
+                "approved_ticket": _foreign_apply_ticket(project.project_id),
+            },
+        }),
+    ]
+    for route, payload in attempts:
+        response = ctx.request.post(
+            url + "/v2/workbook/import/" + route,
+            max_redirects=0, **payload,
+        )
+        assert response.status == 302, (route, response.status, response.text()[:200])
+        assert response.headers.get("location") == expected_destination, route
+        assert "preview_ticket" not in response.text(), route
+        assert "approved_ticket" not in response.text(), route
+        assert _owner_financial_evidence(project.project_id) == evidence_before, route
+
+    assert not page.browser_errors
+    assert _owner_financial_evidence(project.project_id) == evidence_before
+
+
+def test_invalid_session_redirects_and_no_writes(browser, app_server):
+    """No-cookie visitor is a new anonymous DEMO, not necessarily /login."""
+    from app.auth import DEMO_COOKIE_NAME, decode_demo_session_token
+
     ctx, page = _page(browser, app_server["url"], authenticated=False)
     try:
-        page.goto(app_server["url"] + "/v2/workbook/import?project=" + CODE)
-        assert "/login" in page.url
-        assert get_workspace_state(OWNER, app_server["project"].project_id).draft_snapshot == before.draft_snapshot
+        _assert_foreign_import_denied(
+            ctx=ctx, page=page, app_server=app_server,
+            expected_destination="/library",
+        )
+        demo_cookie = next(
+            (c for c in ctx.cookies() if c["name"] == DEMO_COOKIE_NAME), None
+        )
+        assert demo_cookie is not None, "Missing canonical demo-session provisioning"
+        session = decode_demo_session_token(demo_cookie["value"])
+        assert session is not None and session.is_demo
+        assert session.user_id != OWNER
+        Path("artifacts/model-ai-import").mkdir(parents=True, exist_ok=True)
+        page.screenshot(
+            path="artifacts/model-ai-import/import-c-nonowner-denied.png",
+            full_page=True,
+        )
+    finally:
+        ctx.close()
+
+
+def test_authenticated_nonowner_cannot_preview_confirm_or_apply(browser, app_server):
+    """Valid signed account token is not sufficient for access to another owner."""
+    from app.auth import COOKIE_NAME, create_session_token
+
+    ctx, page = _page(browser, app_server["url"], authenticated=False)
+    ctx.add_cookies([{
+        "name": COOKIE_NAME,
+        "value": create_session_token(
+            user_id="synthetic-import-foreign-account",
+            username="synthetic-import-foreign-account",
+        ),
+        "domain": "127.0.0.1", "path": "/",
+    }])
+    try:
+        _assert_foreign_import_denied(
+            ctx=ctx, page=page, app_server=app_server,
+            expected_destination="/library",
+        )
+    finally:
+        ctx.close()
+
+
+@pytest.mark.parametrize("session_kind", ["invalid", "expired"])
+def test_invalid_or_expired_cookie_denies_import(browser, app_server, session_kind):
+    """Invalid/expired admin cookies cannot bypass the canonical resolver."""
+    from datetime import datetime, timedelta, timezone
+    from app.auth import (
+        COOKIE_NAME, SESSION_MAX_AGE_HOURS, SessionData, _get_serializer,
+    )
+
+    if session_kind == "invalid":
+        token = "not-a-valid-signed-admin-session"
+    else:
+        expired = SessionData(
+            user_id=OWNER, username=OWNER,
+            login_at=datetime.now(timezone.utc) - timedelta(
+                hours=SESSION_MAX_AGE_HOURS + 2
+            ),
+            session_type="admin",
+        )
+        token = _get_serializer().dumps(expired.to_dict())
+
+    ctx, page = _page(browser, app_server["url"], authenticated=False)
+    ctx.add_cookies([{
+        "name": COOKIE_NAME, "value": token,
+        "domain": "127.0.0.1", "path": "/",
+    }])
+    try:
+        _assert_foreign_import_denied(
+            ctx=ctx, page=page, app_server=app_server,
+            expected_destination="/login",
+        )
     finally:
         ctx.close()
