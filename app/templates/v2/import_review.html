@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO — Input Import Review</title>
+  <style>
+  :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172535;background:#f6f8fb}
+  body{margin:0}a{color:#165b94}button,select,input{font:inherit}main{max-width:1400px;margin:0 auto;padding:24px}
+  header{background:#112a40;color:white;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  header a{color:white}.brand{font-weight:750;letter-spacing:.07em}h1{font-size:1.65rem;margin:12px 0 4px}h2{font-size:1.1rem}p{line-height:1.5}
+  .muted{color:#687688}.panel{background:white;border:1px solid #d8e2ec;border-radius:12px;padding:19px;margin:18px 0}
+  .box{display:flex;gap:14px;flex-wrap:wrap;align-items:end}.field{display:grid;gap:6px}.field label{font-size:.9rem;font-weight:600}
+  input[type=file],select,input[type=text]{padding:9px 10px;border:1px solid #a9b9cb;border-radius:7px;max-width:100%;background:white}
+  button{padding:10px 16px;border-radius:8px;border:1px solid #104f82;background:#145b91;color:white;font-weight:650;cursor:pointer}
+  button[disabled]{cursor:not-allowed;opacity:.55}.error{color:#9d2020;font-weight:700}.notice{border-left:4px solid #a0abb6;padding-left:13px}
+  .metrics{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.metrics span{border:1px solid #d5dfe7;border-radius:8px;background:#fff;padding:8px 11px;font-size:.91rem}
+  .table-wrap{overflow-x:auto;background:white;border:1px solid #d8e2ec;border-radius:10px}
+  table{border-collapse:collapse;min-width:1130px;width:100%;font-size:.89rem}th{text-align:left;white-space:nowrap;color:#354e62;background:#edf3f8;font-weight:650}
+  th,td{border-bottom:1px solid #e3ebf2;padding:11px 9px;vertical-align:top}
+  tr[data-status=invalid]{background:#fff8f6}tr[data-status=unsupported]{background:#fafafa}
+  td code{font-size:.79rem;overflow-wrap:anywhere}td select{max-width:270px}td input[type=text]{width:110px}
+  .pill{display:inline-block;padding:4px 7px;border-radius:5px;font-size:.78rem;background:#e9edf2}
+  .pill.ready{background:#d9efdf;color:#275a37}.pill.invalid{background:#fbe0dd;color:#8b2f28}
+  .pill.needs_review{background:#fff1c5;color:#7e610f}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}.filters button{background:white;color:#1f4c6c;border:1px solid #b4c6d6;font-weight:500;padding:7px 13px}.filters button[aria-pressed=true]{background:#234a6b;color:white}
+  .summary{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  @media(max-width:640px){main{padding:12px}header{padding:13px}h1{font-size:1.32rem}.panel{padding:12px}}
+  </style>
+</head>
+<body>
+<header><div class="brand">FINCO MODEL · INPUT IMPORT</div><a href="/v2/workbook?project={{ project_code|urlencode }}">Back to Working Copy</a></header>
+<main>
+  <h1>CSV/XLSX Input Import</h1>
+  <p class="muted">{{ project.project_name }} · {{ project.project_type }} · Working Copy · Import never runs the model automatically.</p>
+  {% if error %}<p role="alert" class="error">File or request rejected: {{ error }}</p>{% endif %}
+  <section class="panel">
+    <h2>1. Select financial input file</h2>
+    <p>CSV and XLSX only. Maximum 2 MB, 12 sheets and 12,000 cells. Formula outputs and external references are not authoritative. No data is sent to an external AI provider.</p>
+    <form action="/v2/workbook/import/preview" method="post" enctype="multipart/form-data">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="box">
+        <div class="field"><label for="upload">File</label><input type="file" id="upload" name="upload" accept=".csv,.xlsx" required></div>
+        <div class="field"><label for="encoding">CSV encoding</label><select id="encoding" name="encoding">
+          <option value="utf-8-sig">UTF-8 / UTF-8 BOM</option><option value="utf-8">UTF-8</option>
+          <option value="cp1250">Windows-1250</option><option value="cp1252">Windows-1252</option>
+        </select></div>
+        <button type="submit">Extract and review</button>
+      </div>
+    </form>
+  </section>
+  {% if stage == "review" %}
+  <section class="panel">
+    <h2>2. Review detected assumptions</h2>
+    <p class="notice">Source labels suggest mappings, but do not prove canonical identity. Every proposed field needs explicit review. Unsupported and ambiguous rows are never silently written.</p>
+    <div class="metrics" role="status">
+      <span>Detected: <strong>{{ detected }}</strong></span>
+      <span>Ready: <strong>{{ totals.get('ready',0) }}</strong></span>
+      <span>Needs review: <strong>{{ totals.get('needs_review',0) }}</strong></span>
+      <span>Invalid: <strong>{{ totals.get('invalid',0) }}</strong></span>
+      <span>Unsupported: <strong>{{ totals.get('unsupported',0) }}</strong></span>
+      <span>Approved: <strong id="approved-count">0</strong></span>
+    </div>
+    <div class="filters" aria-label="Filter extracted fields" role="group">
+      {% for key,label in [('all','All'),('ready','Ready'),('needs_review','Needs review'),('invalid','Invalid'),('unsupported','Unsupported')] %}
+      <button type="button" class="filter" data-filter="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+    <div class="table-wrap" role="region" aria-label="Import proposals" tabindex="0">
+      <table>
+        <thead><tr><th>Approve</th><th>Source cell / label</th><th>Original value</th><th>Proposed FINCO field</th><th>Working Copy</th><th>New value / units</th><th>State &amp; provenance</th></tr></thead>
+        <tbody>
+        {% for p in proposals %}
+        <tr class="review-row" data-status="{{ p.status }}">
+          <td><input type="checkbox" class="approve-box" aria-label="Approve proposal {{ p.id + 1 }}" {% if p.status != 'ready' %}disabled{% endif %}></td>
+          <td><strong>{{ p.sheet }}!{{ p.source_cell }}</strong><div>{{ p.label }}</div><small class="muted">Label at {{ p.label_cell }}</small></td>
+          <td><code>{{ p.original_value }}</code><div class="muted">{{ p.source_unit or 'Unit unspecified' }}</div></td>
+          <td><select aria-label="Map proposal {{ p.id + 1 }} to FINCO field">
+            <option value="">Unmapped — skip</option>
+            {% for f in fields %}<option value="{{ f.id }}" {% if p.field_id == f.id %}selected{% endif %}>{{ f.label }} ({{ f.id }})</option>{% endfor %}
+          </select><div class="muted"><code>{{ p.register_path or 'No exact register path' }}</code></div></td>
+          <td><code>{{ p.current_value if p.current_value is not none else 'Not set' }}</code></td>
+          <td><input type="text" aria-label="Manual FINCO value for proposal {{ p.id + 1 }}" placeholder="{{ p.normalized_value if p.normalized_value is not none else 'Needs correction' }}"><div class="muted">Proposed: {{ p.normalized_value if p.normalized_value is not none else '—' }}</div></td>
+          <td><span class="pill {{ p.status }}">{{ p.status|replace('_',' ') }}</span><div>{{ p.mapping_method }}</div><small class="muted">{{ p.reason or p.confidence }}</small></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7">No assumption rows detected. Review the source layout or upload a different file.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="summary panel">
+      <div><strong>3. Explicit Apply</strong>
+        <p class="muted">The C0 atomic-financial test gate has not been accepted. Import Apply is disabled; no partial or sequential save fallback exists.</p></div>
+      <button type="button" disabled>Apply approved fields — C0 gate pending</button>
+    </div>
+  </section>
+  {% endif %}
+</main>
+<script>
+(function(){
+ "use strict";
+ const buttons = document.querySelectorAll(".filter");
+ const rows = Array.from(document.querySelectorAll(".review-row"));
+ function refreshCount(){
+   document.getElementById("approved-count")?.replaceChildren(document.createTextNode(String(
+     document.querySelectorAll(".approve-box:checked").length
+   )));
+ }
+ for(const el of document.querySelectorAll(".approve-box")) el.addEventListener("change",refreshCount);
+ for(const b of buttons){
+   b.addEventListener("click",function(){
+     buttons.forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+     const val=b.dataset.filter;
+     rows.forEach(x=>x.hidden=(val!=="all" && x.dataset.status!==val));
+   });
+ }
+})();
+</script>
+</body>
+</html>
