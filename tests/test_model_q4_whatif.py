@@ -40,6 +40,20 @@ def test_q4_scenario_name_bound(name):
         whatif._assert_name(name)
 
 
+@pytest.mark.parametrize("fid", [
+    "debt.senior.gearing_pct", "debt.senior.target_dscr",
+])
+def test_q4_selected_active_f3_never_downgrades_to_legacy_scalar(fid):
+    from tests.test_model_financing_f3_workspace import state
+    from app.workbook.multisenior_config import SNAPSHOT_KEY
+    with pytest.raises(whatif.Q4Rejected, match="Q4_F3_COMPETING_SENIOR_EDITOR"):
+        whatif._validate_financing(
+            {SNAPSHOT_KEY: state(active=True, scope="base")},
+            fid, 50.0 if fid.endswith("gearing_pct") else 1.4,
+            scope="base",
+        )
+
+
 def test_q4_unicode_name_and_semantic_field_resolution():
     assert whatif._assert_name("Šibenik — scenarij") == "Šibenik — scenarij"
     from app.workbook.input_set import ProjectInputSet
