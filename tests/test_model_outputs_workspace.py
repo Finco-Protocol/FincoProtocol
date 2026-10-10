@@ -368,3 +368,13 @@ def test_stale_state_requires_the_prior_run_identity_in_the_banner():
     assert out["state"] == "STALE"
     assert "PRIOR Last Run" in out["banner"] and "2031-05-06 07:08:09" in out["banner"] and "Upside" in out["banner"]
     assert "20310506T070809.000000" in out["banner"]
+
+
+def test_refresh_is_a_plain_listener_not_a_csp_blocked_trigger_filter():
+    """An hx-trigger filter expression is evaluated with eval, which the page CSP forbids; a failed filter fires on
+    every request and ping-pongs with other sheets. The output workspace must not use one."""
+    from pathlib import Path
+    template = Path("app/templates/v2/partials/sheet_outputs.html").read_text(encoding="utf-8")
+    script = Path("static/js/model_outputs_workspace.js").read_text(encoding="utf-8")
+    assert "htmx:afterRequest[" not in template and 'hx-trigger="click from:#tab-outputs"' in template
+    assert "addEventListener('htmx:afterRequest'" in script and "'post'" in script

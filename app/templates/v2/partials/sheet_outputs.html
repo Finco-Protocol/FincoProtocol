@@ -32,7 +32,7 @@
 
 <div id="v2-sheet-outputs" data-sheet="outputs" data-testid="outputs-sheet" data-out-state="{{ outputs.state }}"
      hx-get="/v2/workbook/outputs?project={{ project_code | urlencode }}"
-     hx-trigger="click from:#tab-outputs, htmx:afterRequest[detail.successful &amp;&amp; detail.requestConfig &amp;&amp; detail.requestConfig.verb === 'post'] from:body"
+     hx-trigger="click from:#tab-outputs"
      hx-swap="outerHTML">
   <link rel="stylesheet" href="/static/css/model_outputs_workspace.css">
 

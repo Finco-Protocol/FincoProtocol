@@ -244,6 +244,18 @@ def main() -> int:
                           changed.status == 200 and page.get_attribute('[data-testid="outputs-state"]', "data-state") == "STALE"
                           and snapshot[:22] in page.inner_text('[data-testid="outputs-stale-banner"]')
                           and cell_text(page, "pnl", "Revenues", 5) == raw_before, "", f)
+                    # ── no request storm; Run refreshes the open view without clicking the tab ──
+                    seen: list[str] = []
+                    page.on("request", lambda r: seen.append(r.url) if "/v2/workbook/outputs" in r.url else None)
+                    page.wait_for_timeout(2000)
+                    check(f"[{kind}] idle view issues no background /outputs requests (no refresh loop)", not seen, len(seen))
+                    with page.expect_response(lambda r: r.url.endswith("/v2/workbook/run"), timeout=240000):
+                        page.locator("#v2-run-controls button").first.click()
+                    page.wait_for_function("() => document.getElementById('v2-sheet-outputs').getAttribute('data-out-state') === 'CURRENT'", timeout=60000)
+                    page.wait_for_load_state("networkidle")
+                    new_snapshot = get_workspace_state(USER, record.project_id).last_runtime_snapshot_id
+                    check(f"[{kind}] a new Run refreshes the open view to CURRENT with the new Run identity",
+                          new_snapshot != snapshot and new_snapshot[:22] in page.inner_text('[data-testid="outputs-identity"]'), new_snapshot)
                     # ── history navigation keeps the view ──
                     page.go_back(); page.go_forward()
                     page.wait_for_selector("#v2-sheet-outputs")

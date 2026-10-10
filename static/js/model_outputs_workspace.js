@@ -56,6 +56,21 @@
     });
     apply(root, prefs);
   }
+  // Refresh after a successful workbook POST (Save / Run) so the view never shows a superseded Run as current.
+  // Deliberately a plain listener, not an hx-trigger filter expression: the page CSP forbids htmx's eval and a
+  // failed filter would fire on every request (including this sheet's own GET) and loop.
+  if (!window.__fincoOutputsRefresh) {
+    window.__fincoOutputsRefresh = true;
+    document.addEventListener('htmx:afterRequest', function (e) {
+      var d = e.detail || {};
+      var cfg = d.requestConfig || {};
+      var root = document.getElementById('v2-sheet-outputs');
+      if (!root || !d.successful || String(cfg.verb).toLowerCase() !== 'post') { return; }
+      if (String(cfg.path || '').indexOf('/v2/workbook/') !== 0) { return; }
+      var url = root.getAttribute('hx-get');
+      if (url && window.htmx) { window.htmx.ajax('GET', url, { target: '#v2-sheet-outputs', swap: 'outerHTML' }); }
+    });
+  }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
   document.addEventListener('htmx:afterSwap', init);
 })();
