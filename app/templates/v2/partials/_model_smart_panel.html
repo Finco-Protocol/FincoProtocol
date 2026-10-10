@@ -16,11 +16,53 @@
   ([data-jump-field]) handled by the existing workbook script — no editable
   controls are duplicated here.
 #}
-<aside id="model-smart-panel" class="v2-smart-panel" aria-label="Smart panel" data-testid="smart-panel">
+<aside id="model-smart-panel" class="v2-smart-panel" aria-label="FINCO Insight — Model findings, assumptions and run context" data-testid="smart-panel"
+       data-run-state="{{ smart_panel.run_state }}"
+       data-sp-run-at="{{ smart_panel.kpi_strip.run_at_display if smart_panel.kpi_strip else '' }}"
+       data-sp-run-scenario="{{ smart_panel.kpi_strip.scenario_name if smart_panel.kpi_strip else '' }}">
+  <div class="v2-sp-brand" data-testid="finco-insight-heading">
+    <h2 class="v2-sp-brand-title">FINCO Insight</h2>
+    <p class="v2-sp-brand-summary">Model findings, assumptions and run context.</p>
+  </div>
   {% if smart_panel.kpi_strip %}
   {% set strip = smart_panel.kpi_strip %}
   {% include "partials/_model_kpi_strip.html" %}
   {% endif %}
+
+  <div class="v2-sp-modes" role="tablist" aria-label="FINCO Insight modes" data-testid="smart-panel-modes">
+    <button type="button" class="v2-sp-mode" role="tab" id="v2-sp-tab-solutions"
+            aria-controls="v2-sp-view-solutions" aria-selected="true" tabindex="0"
+            data-sp-mode="solutions">Findings</button>
+    <button type="button" class="v2-sp-mode" role="tab" id="v2-sp-tab-inspector"
+            aria-controls="v2-sp-view-inspector" aria-selected="false" tabindex="-1"
+            data-sp-mode="inspector">Explore</button>
+    <button type="button" class="v2-sp-mode" role="tab" id="v2-sp-tab-changes"
+            aria-controls="v2-sp-view-changes" aria-selected="false" tabindex="-1"
+            data-sp-mode="changes">Changes</button>
+  </div>
+
+  <section id="v2-sp-view-solutions" role="tabpanel" aria-labelledby="v2-sp-tab-solutions"
+           data-sp-view="solutions" data-testid="smart-panel-solutions">
+    <p class="v2-sp-intro">Findings from existing model checks and committed evidence. No automated changes to financial assumptions.</p>
+    {% if smart_panel.issues %}
+      {% for issue in smart_panel.issues %}
+      <details class="v2-sp-issue v2-sp-issue--{{ issue.severity }}"
+               data-issue-id="{{ issue.key }}" data-issue-severity="{{ issue.severity }}"
+               {% if loop.first %}open{% endif %}>
+        <summary class="v2-sp-issue-title">{{ issue.label }}</summary>
+        <small>{{ issue.group }} · {{ issue.source }}</small>
+        <p>{{ issue.detail }}</p>
+        {% if issue.tab_id %}
+        <button type="button" data-nav-tab="{{ issue.tab_id }}">{{ issue.action }}</button>
+        {% elif issue.action == 'Review changes' %}
+        <button type="button" data-sp-jump-mode="changes">Review changes</button>
+        {% endif %}
+      </details>
+      {% endfor %}
+    {% else %}
+      <p class="v2-sp-intro" data-testid="smart-panel-solutions-clear">No additional confirmed issues in the available server-side checks. This is not a bankability certification.</p>
+    {% endif %}
+    <p class="v2-sp-intro">Field-level save errors are listed below from the existing validation authority. Financing covenant findings appear only when authoritative evidence exists.</p>
 
   {% if smart_panel.stale_note %}
   <div class="v2-smart-panel-note v2-smart-panel-note--{{ smart_panel.run_state | lower }}"
@@ -89,6 +131,66 @@
     {% endif %}
   </div>
   {% endfor %}
+  </section>{# solutions: legacy evidence and validation remain intact #}
+
+  <section id="v2-sp-view-inspector" role="tabpanel" aria-labelledby="v2-sp-tab-inspector"
+           data-sp-view="inspector" data-testid="smart-panel-inspector" hidden>
+    <p class="v2-sp-intro">Explore a Working Copy assumption or a committed Last Run KPI. Trace completeness is never inferred.</p>
+    <label for="v2-sp-inspect-select" class="v2-sp-intro">Select source evidence to explore</label>
+    <select id="v2-sp-inspect-select" class="v2-sp-picker" data-sp-select aria-label="Select assumption or KPI to explore">
+      <option value="">Choose an assumption or Last Run KPI</option>
+      {% if smart_panel.inspector_fields %}
+      <optgroup label="Working Copy assumptions">
+        {% for field in smart_panel.inspector_fields %}
+        <option value="f:{{ field.path }}">{{ field.section }} — {{ field.label }}</option>
+        {% endfor %}
+      </optgroup>
+      {% endif %}
+      {% if smart_panel.kpi_strip %}
+      <optgroup label="Last Run KPIs">
+        {% for it in smart_panel.kpi_strip.items %}
+        <option value="k:{{ it.key }}">{{ it.label }}</option>
+        {% endfor %}
+      </optgroup>
+      {% endif %}
+    </select>
+    {% for field in smart_panel.inspector_fields %}
+    <span hidden data-sp-field-meta data-path="{{ field.path }}" data-label="{{ field.label }}"
+          data-value="{{ field.value }}" data-unit="{{ field.unit }}"
+          data-source="{{ field.source }}"></span>
+    {% endfor %}
+    {% if smart_panel.kpi_strip %}
+    {% for it in smart_panel.kpi_strip.items %}
+    <span hidden data-sp-kpi-meta data-key="{{ it.key }}" data-label="{{ it.label }}"
+          data-value="{{ it.display if it.available else '' }}"
+          data-unit="{{ it.unit }}" data-source="{{ it.source }}"
+          data-available="{{ 'true' if it.available else 'false' }}"
+          data-note="{{ it.note }}" data-tab="{{ it.drill_tab }}"></span>
+    {% endfor %}
+    {% endif %}
+    <div data-sp-inspector-result class="v2-sp-context" aria-live="polite"
+         data-testid="smart-panel-inspector-evidence">Select an item to explore authoritative evidence.</div>
+  </section>
+
+  <section id="v2-sp-view-changes" role="tabpanel" aria-labelledby="v2-sp-tab-changes"
+           data-sp-view="changes" data-testid="smart-panel-changes" hidden>
+    <p class="v2-sp-intro">Current Working Copy versus committed Last Run. Only aggregate saved-change status is proven; this is not an individual-field audit ledger.</p>
+    <dl class="v2-sp-facts">
+      <dt>Working project</dt><dd data-sp-working-project>UNAVAILABLE</dd>
+      <dt>Working scenario</dt><dd data-sp-working-scenario>UNAVAILABLE</dd>
+      <dt>Freshness</dt><dd data-sp-change-state>{{ smart_panel.run_state }}</dd>
+      <dt>Last Run timestamp</dt><dd>{{ smart_panel.kpi_strip.run_at_display if smart_panel.kpi_strip and smart_panel.run_state != 'NOT_RUN' and smart_panel.kpi_strip.run_at_display else 'UNAVAILABLE' }}</dd>
+      <dt>Last Run scenario</dt><dd>{{ smart_panel.kpi_strip.scenario_name if smart_panel.kpi_strip and smart_panel.run_state != 'NOT_RUN' and smart_panel.kpi_strip.scenario_name else 'UNAVAILABLE' }}</dd>
+      <dt>Run required</dt><dd data-sp-change-run-required>UNAVAILABLE</dd>
+      <dt>Unsaved editor values</dt><dd data-sp-unsaved-count>UNAVAILABLE</dd>
+    </dl>
+    <div class="v2-sp-context" data-sp-change-summary></div>
+    <details class="v2-sp-group">
+      <summary>Navigate to unsaved local inputs (if present)</summary>
+      <ul class="v2-sp-pending-list" data-sp-pending-list></ul>
+    </details>
+    <button type="button" class="v2-sp-action" data-nav-tab="tab-run-history">Open immutable Run History</button>
+  </section>
 </aside>
 {# Navigation from the panel ([data-nav-tab] / data-nav-anchor) is handled by ONE delegated
    listener in _model_workspace_nav.html: this fragment is replaced out-of-band after every Save
