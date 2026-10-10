@@ -150,7 +150,7 @@ class BatchApplyError(WorkbookUpdateError):
 
     def __init__(self, code: str, message: str = "") -> None:
         self.code = code
-        super().__init__(message or code)
+        super().__init__(f"{code}: {message}" if message else code)
 
 
 # Capacity save calls post-CAS reference seeded rescaling: it is NOT atomic.
