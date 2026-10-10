@@ -1,0 +1,58 @@
+{#
+  FINCO Insight — Q3 scenario intelligence (Scenarios mode).  Read-only: every value is a pass-through of a
+  scenario's own committed Run (see app.v2.insight_scenario_projection).  No selection, creation or Run is
+  triggered from here; navigation goes to the existing Scenarios workspace.
+#}
+{% set sv = smart_panel.insight.scenarios if smart_panel.insight else none %}
+<div class="v2-sp-q3" data-testid="q3-scenarios">
+  {% if not sv or not sv.available %}
+  <p class="v2-sp-intro" data-testid="q3-scenarios-unavailable">{{ sv.message if sv and sv.message else 'Scenario comparison is not available.' }}</p>
+  {% else %}
+  {% if sv.banner %}<div class="v2-smart-panel-note v2-smart-panel-note--stale" data-testid="q3-scenario-banner">{{ sv.banner }}</div>{% endif %}
+  <ul class="v2-sp-q3-scn" data-testid="q3-scenario-list">
+    {% for r in sv.rows %}
+    <li class="v2-sp-q3-scnrow{% if r.is_active %} is-active{% endif %}" data-scenario-id="{{ r.scenario_id }}" data-scenario-basis="{{ r.basis }}">
+      <div class="v2-sp-q3-covhead">
+        <strong>{{ r.name }}</strong>
+        {% if r.is_active %}<span class="v2-sp-chip v2-sp-chip--active">ACTIVE</span>{% endif %}
+        <span class="v2-sp-chip v2-sp-chip--{{ r.basis | lower | replace('_', '-') }}">{{ r.basis | replace('_', ' ') }}</span>
+      </div>
+      <small>{{ r.basis_note }}</small>
+      {% if r.has_run %}
+      <small data-testid="q3-scenario-run">Run {{ r.run.ran_at }} · snapshot {{ (r.run.snapshot_id or 'UNAVAILABLE')[:12] }} · engine {{ r.run.engine_version or 'UNAVAILABLE' }}</small>
+      <dl class="v2-sp-facts v2-sp-q3-facts">
+        {% for k in r.kpis %}<dt>{{ k.label }}</dt><dd>{{ k.value }}</dd>{% endfor %}
+        <dt>Model Quality</dt>
+        <dd data-scenario-quality>{{ r.quality.score_display if r.quality.score_display else 'NOT SCORED' }} · coverage {{ r.quality.coverage_weighted_pct if r.quality.coverage_weighted_pct is not none else '—' }}% · {{ r.quality.fail }} FAIL · {{ r.quality.warning }} WARNING{% if r.quality.blocked %} · BLOCKED{% endif %}</dd>
+        <dt>Covenants</dt><dd>{{ r.covenant_note }}</dd>
+      </dl>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+
+  <h3 class="v2-sp-q3-heading">Compare with the active scenario</h3>
+  {% if sv.comparisons %}
+  <div class="v2-sp-q3-picker" role="group" aria-label="Scenario to compare with the active scenario">
+    {% for cmp in sv.comparisons %}
+    <button type="button" class="v2-sp-action" data-sp-compare="{{ cmp.scenario_id }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ cmp.name }}</button>
+    {% endfor %}
+  </div>
+  {% for cmp in sv.comparisons %}
+  <table class="v2-sp-q3-cmp" data-sp-compare-table="{{ cmp.scenario_id }}"{% if not loop.first %} hidden{% endif %} data-testid="q3-compare">
+    <caption>Active scenario vs {{ cmp.name }} — {{ cmp.other_basis | replace('_', ' ') }}</caption>
+    <thead><tr><th scope="col">Metric</th><th scope="col">Active</th><th scope="col">{{ cmp.name }}</th><th scope="col">Δ</th></tr></thead>
+    <tbody>
+      {% for row in cmp.rows %}
+      <tr data-metric="{{ row.key }}"><th scope="row">{{ row.label }}</th><td>{{ row.active }}</td><td>{{ row.other }}</td><td>{{ row.delta }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+  <p class="v2-sp-q3-note">{{ sv.unavailable_note }}</p>
+  {% else %}
+  <p class="v2-sp-q3-none" data-testid="q3-compare-unavailable">No second scenario has a committed Run, or the active scenario has none. Comparison is unavailable; nothing is estimated.</p>
+  {% endif %}
+  {% endif %}
+  <button type="button" class="v2-sp-action" data-nav-tab="tab-scenarios">Open Scenarios workspace</button>
+</div>
