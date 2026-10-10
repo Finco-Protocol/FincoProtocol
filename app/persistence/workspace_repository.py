@@ -1396,12 +1396,31 @@ def v2_atomic_batch_draft_update(
             except ValueError as exc:
                 raise FieldValidationError(str(exc)) from exc
 
-        new_snapshot = candidate.to_snapshot()
+        # Some factory snapshots intentionally omit values that ProjectInputSet
+        # resolves to canonical defaults on deserialization (notably DC/EV).
+        # Re-serializing the entire candidate is NOT approval to backfill those
+        # missing keys. Compare canonical BEFORE/AFTER to detect real cascades,
+        # and persist ONLY the explicitly approved snapshot keys.
+        baseline_canonical = initial.to_snapshot()
+        candidate_canonical = candidate.to_snapshot()
+        approved_keys = {WORKBOOK.field(fid).snapshot_key for fid in seen_ids}
+        economic_effects = {
+            k for k in set(baseline_canonical) | set(candidate_canonical)
+            if baseline_canonical.get(k) != candidate_canonical.get(k)
+        }
+        if not economic_effects.issubset(approved_keys):
+            raise BatchApplyError("BATCH_UNAPPROVED_SIDE_EFFECT")
+
+        new_snapshot = dict(snapshot)
+        for key in approved_keys:
+            if key in candidate_canonical:
+                new_snapshot[key] = candidate_canonical[key]
+            else:
+                new_snapshot.pop(key, None)
         changed_keys = {
             k for k in set(snapshot) | set(new_snapshot)
             if snapshot.get(k) != new_snapshot.get(k)
         }
-        approved_keys = {WORKBOOK.field(fid).snapshot_key for fid in seen_ids}
         if not changed_keys.issubset(approved_keys):
             raise BatchApplyError("BATCH_UNAPPROVED_SIDE_EFFECT")
 
