@@ -56,14 +56,17 @@
     <p class="notice">Source labels suggest mappings, but do not prove canonical identity. Every proposed field needs explicit review. Unsupported and ambiguous rows are never silently written.</p>
     <div class="metrics" role="status">
       <span>Detected: <strong>{{ detected }}</strong></span>
+      <span>Exact mappings: <strong>{{ exact_count }}</strong></span>
+      <span>Ambiguous: <strong>{{ ambiguous_count }}</strong></span>
       <span>Ready: <strong>{{ totals.get('ready',0) }}</strong></span>
       <span>Needs review: <strong>{{ totals.get('needs_review',0) }}</strong></span>
       <span>Invalid: <strong>{{ totals.get('invalid',0) }}</strong></span>
       <span>Unsupported: <strong>{{ totals.get('unsupported',0) }}</strong></span>
+      <span>Unchanged: <strong>{{ totals.get('unchanged',0) }}</strong></span>
       <span>Approved: <strong id="approved-count">0</strong></span>
     </div>
     <div class="filters" aria-label="Filter extracted fields" role="group">
-      {% for key,label in [('all','All'),('ready','Ready'),('needs_review','Needs review'),('invalid','Invalid'),('unsupported','Unsupported')] %}
+      {% for key,label in [('all','All'),('ready','Ready'),('needs_review','Needs review'),('invalid','Invalid'),('unsupported','Unsupported'),('unchanged','Unchanged')] %}
       <button type="button" class="filter" data-filter="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ label }}</button>
       {% endfor %}
     </div>
@@ -90,7 +93,7 @@
           <td><label class="muted" for="unit-{{ p.id }}">Source unit</label>
             <select id="unit-{{ p.id }}" name="unit_{{ p.id }}" aria-label="Original source unit for {{ p.label }}">
               <option value="{{ p.source_unit or '' }}" selected>{{ p.source_unit or 'Unspecified' }} (source)</option>
-              {% for u in ['%', 'fraction', 'EUR', 'kEUR', 'kEUR/yr', 'EUR/MWh', 'EUR/kWh', 'MW', 'h/yr', 'years', 'months', 'date', ''] %}
+              {% for u in ['%', 'fraction', 'EUR', 'EUR/yr', 'kEUR', 'kEUR/yr', 'EUR/MWh', 'EUR/kWh', 'MW', 'h/yr', 'years', 'months', 'date', ''] %}
               {% if u != (p.source_unit or '') %}<option value="{{ u }}">{{ u if u else 'Unspecified' }}</option>{% endif %}
               {% endfor %}
             </select>

@@ -64,10 +64,12 @@ def _csv_rows(data: bytes, *, encoding: str, start: float):
     except csv.Error:
         delimiter = ","
     rows = []
+    total_cells = 0
     try:
         for i, row in enumerate(csv.reader(io.StringIO(text), delimiter=delimiter), start=1):
             _check_time(start)
-            if i > MAX_ROWS_PER_SHEET or len(row) > MAX_COLS or len(rows) * MAX_COLS > MAX_CELLS:
+            total_cells += len(row)
+            if i > MAX_ROWS_PER_SHEET or len(row) > MAX_COLS or total_cells > MAX_CELLS:
                 raise IntakeError("IMPORT_TABLE_LIMIT_EXCEEDED")
             rows.append([(item, None, f"{_col(j + 1)}{i}") for j, item in enumerate(row)])
     except csv.Error as exc:
@@ -238,17 +240,17 @@ def normalize_value(field_id: str, value: object, source_unit: str | None) -> st
     amount = _numeric(value)
     has_suffix_pct = isinstance(value, str) and value.strip().endswith("%")
     if spec.field_type == FieldType.PCT:
+        if has_suffix_pct and unit in ("fraction", "decimal", "ratio"):
+            raise IntakeError("IMPORT_PERCENT_SCALE_CONFLICT")
         if unit in ("fraction", "decimal", "ratio"):
             amount *= 100
         elif unit in ("%", "pct", "percent", "percentage") or has_suffix_pct:
-            if unit in ("fraction", "decimal", "ratio") and has_suffix_pct:
-                raise IntakeError("IMPORT_PERCENT_SCALE_CONFLICT")
         else:
             raise IntakeError("IMPORT_PERCENT_SCALE_AMBIGUOUS")
     elif spec.field_type == FieldType.KEUR:
-        if unit in ("eur", "euro", "euros"):
+        if unit in ("eur", "euro", "euros", "eur/yr"):
             amount /= 1000
-        elif unit not in ("keur", "k eur", "thousand eur", ""):
+        elif unit not in ("keur", "k eur", "keur/yr", "thousand eur", ""):
             raise IntakeError("IMPORT_UNIT_INCOMPATIBLE")
     elif unit not in ("", target, "year", "years", "month", "months", "mw",
                       "mwh", "h", "h/yr", "eur/mwh", "eur/kw/month",

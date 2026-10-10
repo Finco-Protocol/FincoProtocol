@@ -57,16 +57,25 @@ def _context(request, user, project, ws, *, stage, proposals=None, error=None,
     pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
     identity = assemble_consistent_for_get(ws.user_id, project.project_id, WORKBOOK.version)
     rows = []
+    from collections import Counter
+    from app.workbook.update_service import WorkbookUpdateService
     for p in proposals or []:
         q = dict(p)
         q["current_value"] = pis.get(p["field_id"]) if p["field_id"] else None
+        if q["status"] == "ready" and q["normalized_value"] is not None:
+            check = WorkbookUpdateService.validate_field_update(q["field_id"], q["normalized_value"])
+            if check.is_valid and check.typed_value == q["current_value"]:
+                q["status"] = "unchanged"
         rows.append(q)
     return {
         "request": request, "user": user,
         "project": project, "project_code": project.project_code,
         "stage": stage, "csrf_token": generate_csrf_token(),
         "error": error, "proposals": rows, "detected": detected,
-        "totals": totals or {}, "digest": digest or "",
+        "totals": dict(Counter(r["status"] for r in rows)) if rows else (totals or {}),
+        "exact_count": sum(p["mapping_method"] == "exact_field_id" for p in proposals or []),
+        "ambiguous_count": sum("ambiguous" in p["mapping_method"] or p["reason"] == "IMPORT_DUPLICATE_TARGET_REQUIRES_REVIEW" for p in proposals or []),
+        "digest": digest or "",
         "content_hash": identity.composite_hash,
         "workbook_version": WORKBOOK.version,
         "active_scenario_id": ws.active_scenario_id,
@@ -196,8 +205,10 @@ async def model_input_import_confirm(
             raise ImportReviewError("IMPORT_PREVIEW_STALE")
         pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
         for row in approved:
-            row["current_value"] = pis.get(row["field_id"])
-            row["changed"] = str(row["current_value"]) != str(row["value"])
+            old = pis.get(row["field_id"])
+            row["current_value"] = None if old is None else str(old)
+            check = __import__("app.workbook.update_service", fromlist=["WorkbookUpdateService"]).WorkbookUpdateService.validate_field_update(row["field_id"], row["value"])
+            row["changed"] = check.typed_value != old
         ctx = _context(request, user, record, ws, stage="confirm")
         ctx["approved"] = approved
         ctx["approved_ticket"] = seal_approved(preview, approved)
@@ -270,8 +281,8 @@ async def model_input_import_apply(
         } for item in approved]
         ctx = _context(request, user, record, fresh, stage="result")
         ctx["saved"] = saved
-        ctx["applied_count"] = len(saved)
-        ctx["skipped_count"] = 0
+        ctx["applied_count"] = sum(bool(p.get("changed")) for p in approved)
+        ctx["skipped_count"] = max(0, int(signed.get("source_count", len(saved))) - len(saved))
         ctx["freshness_state"] = freshness.state.value
         return _templates.TemplateResponse(
             request=request, name="import_review.html", context=ctx)

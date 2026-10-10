@@ -6,6 +6,9 @@ on:
       - "app/workbook/update_service.py"
       - "app/persistence/workspace_repository.py"
       - "tests/test_model_ai_import_atomic_batch_c0.py"
+      - "tests/test_model_ai_import_intake_c.py"
+      - "app/model_import/**"
+      - "app/v2/import_router.py"
       - ".github/workflows/model_ai_import_c0_gate.yml"
 
 permissions:
@@ -27,7 +30,7 @@ jobs:
       - name: Focused canonical C0 tests (real SQLite)
         run: |
           mkdir -p artifacts
-          python -m pytest -q tests/test_model_ai_import_atomic_batch_c0.py --junitxml=artifacts/c0-results.xml
+          python -m pytest -q tests/test_model_ai_import_atomic_batch_c0.py tests/test_model_ai_import_intake_c.py --junitxml=artifacts/c0-results.xml
           echo "PYTEST_MAIN_RETURNED rc=0"
           echo "PYTHON_PROCESS_EXITED child exit code 0"
       - name: Preserve test evidence

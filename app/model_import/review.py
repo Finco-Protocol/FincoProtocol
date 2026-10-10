@@ -147,7 +147,7 @@ def seal_approved(preview: dict, approved: list[dict]) -> str:
         "scenario_id": preview["scenario_id"],
         "content_hash": preview["content_hash"],
         "workbook_version": preview["workbook_version"],
-        "digest": preview["digest"], "approved": approved,
+        "digest": preview["digest"], "source_count": len(preview["rows"]), "approved": approved,
     }
     token = _serializer("approved").dumps(body)
     if len(token) > _MAX_TICKET_CHARS:
