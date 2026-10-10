@@ -300,6 +300,10 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     with patch.object(model_execution, "run_model_process", capture_engine):
         run_explicitly()
     assert observed and observed[-1][0] == pytest.approx(candidate / 100)
+    from app.services.export_service import resolve_canonical_last_run_from_workspace
+    latest_ws = get_workspace_state(user, record.project_id)
+    replay = resolve_canonical_last_run_from_workspace(record, user, latest_ws)
+    assert replay.project_inputs.financing.gearing_ratio == pytest.approx(candidate / 100)
     result = c.get("/v2/workbook/whatif/compare",
         params={"project": record.project_code, "scenario_id": sid}, cookies=cookie(user))
     assert result.status_code == 200, result.text
@@ -381,6 +385,10 @@ def test_q4_solar_target_dscr_real_engine_effective_change(q4_http):
     with patch.object(model_execution, "run_model_process", verified_real_engine):
         _run()
     assert consumed == pytest.approx([candidate])
+    from app.services.export_service import resolve_canonical_last_run_from_workspace
+    replay = resolve_canonical_last_run_from_workspace(
+        project, owner, get_workspace_state(owner, project.project_id))
+    assert replay.project_inputs.financing.target_dscr == pytest.approx(candidate)
     history = get_run_history(owner, project.project_id)
     assert len(history) == len(previous_history) + 1
     assert any(e.last_runtime_scenario_id == child.scenario_id for e in history)
