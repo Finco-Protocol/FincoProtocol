@@ -132,7 +132,13 @@ def test_q4_finding_preview_confirm_select_run_compare(browser, app_server, kind
         base_ws = _run(ctx, page, root, code)
         before_history = tuple(get_run_history(OWNER, project.project_id))
         assert before_history and base_ws.last_runtime_snapshot_id
-        original = float(base_ws.draft_snapshot["gearing_pct"])
+        # Compare the engine-effective assumption materialized from immutable
+        # Base Run evidence. Empty legacy Base snapshot fields are NOT zero.
+        from app.services.export_service import resolve_canonical_last_run_from_workspace
+        base_run_inputs = resolve_canonical_last_run_from_workspace(
+            project, OWNER, base_ws).project_inputs
+        assert base_run_inputs is not None
+        original = base_run_inputs.financing.gearing_ratio * 100.0
         # A materially different user-entered assumption: no solver prediction.
         # An economically meaningful but feasible change on these canonical
         # Solar/Wind references; a 10% gearing stress makes the SHL unpayable.
@@ -169,6 +175,7 @@ def test_q4_finding_preview_confirm_select_run_compare(browser, app_server, kind
         scenarios = list_scenarios(OWNER, project.project_id)
         child = next(x for x in scenarios if x.scenario_name == "Q4 Browser " + kind)
         base = next(x for x in scenarios if x.is_base_case)
+        base_snapshot_before = dict(base.base_input_set or {})
         assert child.overrides == {"gearing_pct": proposed}
         assert len(get_run_history(OWNER, project.project_id)) == len(before_history)
 
@@ -205,10 +212,22 @@ def test_q4_finding_preview_confirm_select_run_compare(browser, app_server, kind
         assert return_base.status == 200
         returned = get_workspace_state(OWNER, project.project_id)
         assert returned.active_scenario_id == base.scenario_id
-        assert float(base.base_input_set["gearing_pct"]) == original
-        assert before_history[0].history_id in {
-            e.history_id for e in get_run_history(OWNER, project.project_id)
-        }
+        # Preserve the Base definition even if it holds a pre-Save empty scalar.
+        returned_base = get_scenario(base.scenario_id, OWNER)
+        assert returned_base is not None
+        assert dict(returned_base.base_input_set or {}) == base_snapshot_before
+        # Only canonical Run-bound effective inputs authorize numeric comparison.
+        restored = resolve_canonical_last_run_from_workspace(project, OWNER, returned)
+        assert restored.project_inputs is not None
+        assert restored.project_inputs.financing.gearing_ratio == pytest.approx(
+            base_run_inputs.financing.gearing_ratio)
+        historical = get_run_history(OWNER, project.project_id)
+        assert len(historical) == len(before_history) + 1
+        assert all(any(h.history_id == earlier.history_id
+                       and h.runtime_snapshot_id == earlier.runtime_snapshot_id
+                       and h.composite_hash == earlier.composite_hash
+                       for h in historical)
+                   for earlier in before_history)
         assert not page.browser_errors
     finally:
         ctx.close()
