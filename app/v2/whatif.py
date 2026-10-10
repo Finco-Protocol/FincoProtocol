@@ -82,22 +82,29 @@ def _mapping(check_id: str, ws: Any, project_type: str, raw: str):
     return finding, spec, override_key, proposed
 
 
-def _validate_financing(snapshot: dict, field_id: str, proposed: float) -> None:
-    """An explicit *narrower* fence than the general editor; no F3 collection edits."""
-    from app.workbook.multisenior_config import parse_state, SNAPSHOT_KEY
-    from app.input_adapter import senior_dscr_authority
-    if field_id == "debt.senior.target_dscr":
-        state = parse_state(snapshot.get(SNAPSHOT_KEY))
-        if any(isinstance(item, dict) and item.get("activation")
-               for item in state.get("scopes", {}).values()):
-            raise Q4Rejected("Q4_F3_COMPETING_SENIOR_EDITOR", 409)
-        typed = ProjectInputSet.from_snapshot(snapshot).to_projectinputs()
-        if senior_dscr_authority(typed)[0] != "FLAT":
-            raise Q4Rejected("Q4_DSCR_SCHEDULE_LOCKED", 409)
-    # Always pass through the existing typed ProjectInputs boundary.
+def _validate_financing(snapshot: dict, field_id: str, proposed: float,
+                        *, scope: str = "base") -> None:
+    """Validate real scalar economic authority, including selected F3 scope."""
+    from app.workbook.multisenior_config import parse_state, SNAPSHOT_KEY, apply_state
+    from app.input_adapter import assert_debt_scalar_edit_allowed
+    state = parse_state(snapshot.get(SNAPSHOT_KEY))
+    entry = state["scopes"].get(scope)
+    if (field_id == "debt.senior.target_dscr" and entry
+            and entry["activation"] is not None):
+        raise Q4Rejected("Q4_F3_COMPETING_SENIOR_EDITOR")
     base = ProjectInputSet.from_snapshot(snapshot)
-    field_id = str(field_id)
-    base.with_value(field_id, proposed).to_projectinputs()
+    if field_id in ("debt.senior.target_dscr", "debt.senior.interest_rate_pct"):
+        try:
+            assert_debt_scalar_edit_allowed(base, field_id)
+        except ValueError as exc:
+            raise Q4Rejected("Q4_DSCR_SCHEDULE_LOCKED") from exc
+    try:
+        candidate = base.with_value(field_id, proposed).to_projectinputs()
+        # The existing F3 effective validator owns reserves and commitments.
+        apply_state(candidate, snapshot.get(SNAPSHOT_KEY), scope,
+                    bankability_raw=snapshot.get("bankability_config_json"))
+    except ValueError as exc:
+        raise Q4Rejected("Q4_FINANCIAL_INPUT_REJECTED") from exc
 
 
 def _base_scope(cur, owner: str, project_id: str, active_id: str | None) -> ScenarioRecord:
@@ -106,10 +113,10 @@ def _base_scope(cur, owner: str, project_id: str, active_id: str | None) -> Scen
         (owner, project_id),
     )
     bases = cur.fetchall()
-    if len(bases) != 1:
+    if len(bases) > 1:
         raise Q4Rejected("Q4_BASE_SCENARIO_UNPROVEN")
-    base = ScenarioRecord.from_row(bases[0])
-    if active_id not in (None, "", base.scenario_id):
+    base = ScenarioRecord.from_row(bases[0]) if bases else None
+    if active_id not in (None, "", base.scenario_id if base else None):
         raise Q4Rejected("Q4_SELECT_BASE_FIRST")
     return base
 
@@ -135,7 +142,7 @@ def display_eligibility(*, check_id: str, check_status: str, project_type: str,
         return False, "Q4_OVERRIDE_KEY_UNPROVEN"
     try:
         pis = ProjectInputSet.from_snapshot(snapshot)
-        raw = pis.values.get(key)
+        raw = pis.get(field_id)
         if raw is None or isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(raw):
             raise Q4Rejected("Q4_ORIGINAL_VALUE_UNAVAILABLE")
         _validate_financing(snapshot, field_id, raw)
@@ -163,7 +170,8 @@ def preview(*, owner: str, project_id: str, project_type: str, check_id: str,
     if ws is None:
         raise Q4Rejected("Q4_WORKSPACE_NOT_FOUND", 404)
     base = get_base_case_scenario(user_id=owner, project_id=project_id)
-    if not base or base.archived or ws.active_scenario_id not in (None, "", base.scenario_id):
+    if (base and base.archived) or ws.active_scenario_id not in (
+            None, "", base.scenario_id if base else None):
         raise Q4Rejected("Q4_SELECT_BASE_FIRST")
     pis = ProjectInputSet.from_snapshot(ws.draft_snapshot)
     identity = assemble_consistent_for_get(
@@ -172,7 +180,7 @@ def preview(*, owner: str, project_id: str, project_type: str, check_id: str,
     if state == "NOT_RUN":
         raise Q4Rejected("Q4_REQUIRES_Q1_COMMITTED_FINDING")
     finding, spec, key, typed = _mapping(check_id, ws, project_type, proposed_raw)
-    original = pis.values.get(key)
+    original = pis.get(spec.field_id)
     if original is None or isinstance(original, bool) or not isinstance(original, (int, float)):
         raise Q4Rejected("Q4_ORIGINAL_VALUE_UNAVAILABLE")
     _validate_financing(ws.draft_snapshot, spec.field_id, typed)
@@ -180,7 +188,7 @@ def preview(*, owner: str, project_id: str, project_type: str, check_id: str,
                       check_id=check_id, field_id=spec.field_id, key=key,
                       proposed=typed, original=original, name=name,
                       hash=identity.composite_hash, active=ws.active_scenario_id,
-                      base_id=base.scenario_id,
+                      base_id=base.scenario_id if base else None,
                       run_id=ws.last_runtime_snapshot_id,
                       run_scenario_id=ws.last_runtime_scenario_id,
                       version=WORKBOOK.version, nonce=uuid.uuid4().hex)
@@ -220,7 +228,7 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
         if row is None:
             raise Q4Rejected("Q4_WORKSPACE_NOT_FOUND", 404)
         base = _base_scope(cur, owner, project_id, row["active_scenario_id"])
-        if base.scenario_id != data.get("base_id") or row["active_scenario_id"] != data.get("active"):
+        if (base.scenario_id if base else None) != data.get("base_id") or row["active_scenario_id"] != data.get("active"):
             raise Q4Rejected("Q4_SCENARIO_SWITCH_CONFLICT")
         identity = assemble_transactional(
             draft_snapshot_json=row["draft_snapshot_json"] or "{}",
@@ -239,7 +247,7 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
             data["check_id"], ws, project_type, str(data["proposed"]))
         if spec.field_id != data["field_id"] or key != data["key"]:
             raise Q4Rejected("Q4_MAPPING_CHANGED")
-        old = ProjectInputSet.from_snapshot(snapshot).values.get(key)
+        old = ProjectInputSet.from_snapshot(snapshot).get(spec.field_id)
         if old != data.get("original"):
             raise Q4Rejected("Q4_ORIGINAL_CHANGED")
         _validate_financing(snapshot, spec.field_id, proposed)
@@ -251,21 +259,56 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
             metadata = json.loads(sc["replay_metadata_json"] or "{}")
             if metadata.get("q4_nonce") == data["nonce"]:
                 raise Q4Rejected("Q4_CONFIRMATION_REPLAYED")
-        # Scenario persistence's canonical flat-key resolver, no second storage scheme.
+        # Scenario resolver consumes legacy snapshot keys, NOT the semantic
+        # ProjectInputSet.values field-ID mapping. Preserve entire provenance.
         from app.persistence.scenarios_repository import resolve_scenario_snapshot
-        source = dict(ProjectInputSet.from_snapshot(snapshot).values)
+        source = dict(snapshot)
+        if base is not None:
+            # Base lineage is immutable. Existing Base input representation must
+            # be a genuine adapter-consumable snapshot; never silently repair it.
+            source = dict(base.base_input_set or base.snapshot or {})
+            try:
+                ProjectInputSet.from_snapshot(source).to_projectinputs()
+            except ValueError as exc:
+                raise Q4Rejected("Q4_BASE_SNAPSHOT_AUTHORITY_INVALID") from exc
+            if ProjectInputSet.from_snapshot(source).get(spec.field_id) != old:
+                raise Q4Rejected("Q4_BASE_ASSUMPTION_CONFLICT")
         overrides = {key: proposed}
         effective = resolve_scenario_snapshot(source, overrides)
+        actual = ProjectInputSet.from_snapshot(effective).get(spec.field_id)
+        if actual != proposed:
+            raise Q4Rejected("Q4_EFFECTIVE_OVERRIDE_MISMATCH")
         ProjectInputSet.from_snapshot(effective).to_projectinputs()
         sid = uuid.uuid4().hex[:16]
         now = datetime.now(timezone.utc).isoformat()
+        if base is None:
+            # Canonical Base bootstrap equivalent to get_or_create_base_case,
+            # but under this SAME exclusive CAS; preview never writes.
+            base_id = uuid.uuid4().hex[:16]
+            base_name = project["project_name"] or "Base Case"
+            provenance = project["template_source"] or source.get("template_source") or ""
+            base_audit = {"project_id": project_id, "scenario_id": base_id,
+                          "is_base_case": True, "action": "q4_atomic_base_bootstrap"}
+            cur.execute(
+                """INSERT INTO scenarios (
+                    scenario_id, project_id, user_id, scenario_name, project_code,
+                    source_project_template, copied_from_scenario_id, archived,
+                    is_base_case, parent_scenario_id, base_input_set_json, overrides_json,
+                    schema_version, snapshot_json, governance_state_json, last_run_summary_json,
+                    replay_metadata_json, full_inputs_json, created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,NULL,0,1,NULL,?,?,'1.0',?,?,?,?,NULL,?,?)""",
+                (base_id, project_id, owner, base_name, project["project_code"],
+                 provenance, _to_json(source), _to_json({}), _to_json(source),
+                 _to_json({}), _to_json({}), _to_json(base_audit), now, now))
+        else:
+            base_id = base.scenario_id
         audit = dict(action="q4_finding_whatif_v1", q4_nonce=data["nonce"],
                      finding_id=data["check_id"], field_id=spec.field_id,
                      override_key=key, original=old, proposed=proposed,
                      preview_content_hash=data["hash"],
                      source_run_snapshot_id=data["run_id"],
                      source_run_scenario_id=data["run_scenario_id"],
-                     base_scenario_id=base.scenario_id,
+                     base_scenario_id=base_id,
                      created_at=now)
         cur.execute(
             """INSERT INTO scenarios (
@@ -276,7 +319,7 @@ def commit(*, owner: str, project_id: str, project_type: str, token: str) -> dic
                 replay_metadata_json,schema_version,full_inputs_json,created_at,updated_at
             ) VALUES (?,?,?,?,?,?,NULL,0,0,?,?,?,?,?,?,?,'1.0',NULL,?,?)""",
             (sid, project_id, owner, name, project["project_code"], "",
-             base.scenario_id, _to_json(source),
+             base_id, _to_json(source),
              _to_json(overrides),
              _to_json(effective),
              "{}", "{}", json.dumps(audit, allow_nan=False), now, now))
