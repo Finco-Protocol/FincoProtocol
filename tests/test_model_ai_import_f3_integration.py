@@ -20,8 +20,9 @@ from app.persistence.workspace_repository import get_workspace_state
 from app.services.export_service import resolve_canonical_last_run_from_workspace
 from app.workbook.input_set import ProjectInputSet
 from app.workbook.registry import WORKBOOK
+from app.workbook.specs import BindingStatus
 from app.workbook.update_service import (
-    BatchApplyError, StaleContentError, WorkbookUpdateService,
+    BatchApplyError, NonEditableFieldError, StaleContentError, WorkbookUpdateService,
 )
 from app.workbook.workbook_identity import assemble_consistent_for_get
 from tests.test_model_decision_workspace_v2 import env
@@ -141,32 +142,43 @@ def test_inactive_f3_proposal_is_not_modified_by_normal_import(env):
     assert _ws(project).draft_snapshot[F3_KEY] == original
 
 
-@pytest.mark.parametrize("field,expected_error", [
-    ("capex.R.reserve_accounts", "F3_RESERVE_INTEGRATION_NOT_RELEASED"),
-    ("capex.F.bank_fees", "F3_MANUAL_FINANCING_COST_CONFLICT"),
+def _assert_canonical_noneditable_field(field, binding):
+    # These fields are locked by the shared Workbook registry BEFORE any F3
+    # candidate/effective-financing validation, for both scalar and batch Save.
+    spec = WORKBOOK.field(field)
+    assert spec.binding_status is binding
+    with pytest.raises(NonEditableFieldError, match=binding.value):
+        WorkbookUpdateService.validate_field_update(field, "5")
+
+
+@pytest.mark.parametrize("field,binding", [
+    ("capex.R.reserve_accounts", BindingStatus.DISPLAY_ONLY),
+    ("capex.F.bank_fees", BindingStatus.TEMPLATE_LOCKED),
 ])
 def test_active_f3_capex_reserve_and_manual_fees_reject_entire_import(
-        env, field, expected_error):
+        env, field, binding):
+    _assert_canonical_noneditable_field(field, binding)
     project = _active(env)
     before = _evidence(project)
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(NonEditableFieldError, match=binding.value):
         _batch(project, [
             ("revenue.ppa.index", "2"),
             (field, "5"),
         ])
+    # Includes snapshots, dirty, hash, F3 state, Last Run and Run History.
     assert _evidence(project) == before
 
 
-@pytest.mark.parametrize("field,expected_error", [
-    ("capex.R.reserve_accounts", "F3_RESERVE_INTEGRATION_NOT_RELEASED"),
-    ("capex.F.bank_fees", "F3_MANUAL_FINANCING_COST_CONFLICT"),
+@pytest.mark.parametrize("field,binding", [
+    ("capex.R.reserve_accounts", BindingStatus.DISPLAY_ONLY),
+    ("capex.F.bank_fees", BindingStatus.TEMPLATE_LOCKED),
 ])
 def test_active_f3_scalar_uses_same_effective_financing_authority(
-        env, field, expected_error):
-    from app.workbook.update_service import FieldValidationError
+        env, field, binding):
+    _assert_canonical_noneditable_field(field, binding)
     project = _active(env)
     before = _evidence(project)
-    with pytest.raises(FieldValidationError, match=expected_error):
+    with pytest.raises(NonEditableFieldError, match=binding.value):
         WorkbookUpdateService.apply_draft_update(
             ws=_ws(project), field_id=field, raw_value="5",
             content_hash=_hash(project), workbook_version=WORKBOOK.version,
