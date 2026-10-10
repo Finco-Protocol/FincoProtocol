@@ -102,3 +102,91 @@ def test_q4_rejects_cross_owner_project(q4_http):
         cookies=cookie("owner-b"))
     assert attempt.status_code in (403, 404)
     assert "q4-rejected" in attempt.text
+
+
+@pytest.mark.parametrize("vertical,template", [
+    ("solar", "generic_solar_reference"),
+    ("wind", "generic_wind_reference"),
+])
+def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
+    """Run real financial engine twice; never infer KPI from the preview."""
+    import re
+
+    from app.services.reference_seed_service import create_reference_seeded_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import list_scenarios
+    from app.persistence.run_history_repository import get_run_history
+
+    c, cookie = q4_http
+    user = "q4-real-" + vertical
+    record = create_reference_seeded_project(
+        user_id=user, template_source=template,
+        requested_name="Q4 Real " + vertical, capacity_mw=40)
+    url = "/v2/workbook?project=" + record.project_code
+
+    def identity(html):
+        return (re.search(r'name="content_hash" value="([^"]+)"', html).group(1),
+                re.search(r'name="workbook_version" value="([^"]+)"', html).group(1))
+
+    def run_explicitly():
+        page = c.get(url, cookies=cookie(user))
+        assert page.status_code == 200
+        h, v = identity(page.text)
+        result = c.post("/v2/workbook/run",
+                        data={"project": record.project_code, "content_hash": h,
+                              "workbook_version": v},
+                        cookies=cookie(user), headers={"HX-Request": "true"})
+        assert result.status_code == 200
+        assert "Run failed" not in result.text
+
+    run_explicitly()
+    ws0 = get_workspace_state(user, record.project_id)
+    history0 = get_run_history(user, record.project_id)
+    assert history0 and ws0.last_runtime_snapshot_id
+    initial_count = len(list_scenarios(user, record.project_id))
+    original_gear = float(ws0.draft_snapshot["gearing_pct"])
+    candidate = 50 if original_gear != 50 else 51
+
+    preview_response = c.post("/v2/workbook/whatif/preview",
+        data={"project": record.project_code, "check_id": "QM-SD-006",
+              "scenario_name": "Q4 " + vertical + " What-if",
+              "proposed_value": str(candidate)}, cookies=cookie(user))
+    assert preview_response.status_code == 200, preview_response.text
+    assert "NOT A RUN" in preview_response.text
+    token = re.search(r'name="token" value="([^"]+)"', preview_response.text).group(1)
+    assert len(get_run_history(user, record.project_id)) == len(history0)
+    assert len(list_scenarios(user, record.project_id)) == initial_count
+
+    created = c.post("/v2/workbook/whatif/commit",
+        data={"project": record.project_code, "token": token, "confirmed": "yes"},
+        cookies=cookie(user))
+    assert created.status_code == 200, created.text
+    assert "NOT_RUN" in created.text
+    sid = re.search(r"ID ([0-9a-f]{16})", created.text).group(1)
+    ws_before_select = get_workspace_state(user, record.project_id)
+    assert ws_before_select.active_scenario_id == ws0.active_scenario_id
+    assert ws_before_select.last_runtime_snapshot_id == ws0.last_runtime_snapshot_id
+    assert len(get_run_history(user, record.project_id)) == len(history0)
+
+    replay = c.post("/v2/workbook/whatif/commit",
+        data={"project": record.project_code, "token": token, "confirmed": "yes"},
+        cookies=cookie(user))
+    assert replay.status_code == 409
+
+    no_run = c.get("/v2/workbook/whatif/compare",
+        params={"project": record.project_code, "scenario_id": sid}, cookies=cookie(user))
+    assert "NOT_RUN" in no_run.text
+
+    chosen = c.post("/v2/workbook/scenarios/select",
+        data={"project": record.project_code, "scenario_id": sid},
+        cookies=cookie(user), headers={"HX-Request": "true"})
+    assert chosen.status_code == 200
+    assert get_workspace_state(user, record.project_id).active_scenario_id == sid
+
+    run_explicitly()
+    result = c.get("/v2/workbook/whatif/compare",
+        params={"project": record.project_code, "scenario_id": sid}, cookies=cookie(user))
+    assert result.status_code == 200, result.text
+    assert 'data-testid="q4-committed-compare"' in result.text
+    assert "Canonical Run Integrity" in result.text
+    assert len(get_run_history(user, record.project_id)) == len(history0) + 1
