@@ -691,7 +691,7 @@ jobs:
         run: python tools/public_safety_scan.py
       - name: Upload R10 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: radar-r10-model-radar-evidence
           path: |
