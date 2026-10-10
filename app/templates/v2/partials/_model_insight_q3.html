@@ -1,0 +1,108 @@
+{#
+  FINCO Insight — Q3 Model Quality + covenant block (Findings mode).
+  Presentation only over `smart_panel.insight.quality` (see app.v2.insight_quality_projection):
+  every status, threshold and value was produced by the Q1 registry over the committed Last Run.
+  No score arithmetic, no thresholds and no navigation guesses live in this template or in JS.
+#}
+{% macro q3_check(c, is_open=false) %}
+<details class="v2-sp-q3-check v2-sp-q3-check--{{ c.status | lower }}" data-q3-check data-check-id="{{ c.check_id }}"
+         data-check-status="{{ c.status }}" data-check-severity="{{ c.severity }}"{% if is_open %} open{% endif %}>
+  <summary>
+    <span class="v2-sp-q3-id">{{ c.check_id }}</span>
+    <span class="v2-sp-q3-title">{{ c.title }}</span>
+    <span class="v2-sp-chip v2-sp-chip--{{ c.status | lower }}">{{ c.status }}</span>
+    <span class="v2-sp-chip v2-sp-chip--sev">{{ c.severity }}</span>
+  </summary>
+  <p class="v2-sp-q3-desc">{{ c.description }}</p>
+  <dl class="v2-sp-facts v2-sp-q3-facts">
+    <dt>Category · class</dt><dd>{{ c.category }} · {{ c.check_class }}</dd>
+    {% if c.status in ('PASS', 'WARNING', 'FAIL') %}
+    <dt>Measured</dt><dd>{{ c.measured }}</dd>
+    <dt>Threshold</dt><dd>{{ c.threshold }}</dd>
+    {% endif %}
+    <dt>Threshold authority</dt><dd>{{ c.threshold_authority }}</dd>
+    <dt>Evidence source</dt><dd>{{ c.evidence_source }}</dd>
+    {% if c.reason_code %}<dt>Reason</dt><dd>{{ c.reason_code }}</dd>{% endif %}
+    {% if c.detail %}<dt>Detail</dt><dd>{{ c.detail }}</dd>{% endif %}
+  </dl>
+  <div class="v2-sp-q3-links">
+    {% if c.nav %}<button type="button" class="v2-sp-action" data-nav-tab="{{ c.nav.tab_id }}">Open {{ c.nav.label }}</button>{% endif %}
+    {% for e in c.explore %}<button type="button" class="v2-sp-action" data-sp-explore="{{ e.value }}">Explore {{ e.label }}</button>{% endfor %}
+  </div>
+</details>
+{% endmacro %}
+
+{% set q = smart_panel.insight.quality if smart_panel.insight else none %}
+<div class="v2-sp-q3" data-testid="q3-quality" data-q3-state="{{ q.state if q else 'UNAVAILABLE' }}">
+  <h3 class="v2-sp-q3-heading">Model quality</h3>
+  <p class="v2-sp-q3-label" data-testid="q3-advisory-label">{{ q.label if q else 'MODEL QUALITY / LENDER READINESS ADVISORY' }}</p>
+  {% if not q %}
+  <p class="v2-sp-intro" data-testid="q3-unavailable">Model Quality is not available for this view.</p>
+  {% elif not q.available %}
+  <p class="v2-sp-intro" data-testid="q3-unavailable">{{ q.message }}</p>
+  {% else %}
+  <p class="v2-sp-intro">{{ q.not_claims }}</p>
+  <div class="v2-sp-q3-context" data-testid="q3-context">
+    <span class="v2-sp-chip v2-sp-chip--{{ q.state | lower }}" data-testid="q3-freshness">{{ q.state }}</span>
+    <span>{{ q.context_note }}</span>
+    <small>Scenario: {{ q.identity.scenario_name or 'UNAVAILABLE' }} · Run {{ (q.identity.run_at or 'UNAVAILABLE')[:16] | replace('T', ' ') }}
+      · snapshot {{ (q.identity.snapshot_id or 'UNAVAILABLE')[:22] }} · engine {{ q.identity.engine_version or 'UNAVAILABLE' }}</small>
+  </div>
+  {% set sc = q.score %}
+  <dl class="v2-sp-facts v2-sp-q3-score" data-testid="q3-score">
+    <dt>Advisory score</dt>
+    <dd data-testid="q3-score-value">{{ sc.score_display if sc.score_display else 'NOT SCORED' }}</dd>
+    <dt>Evidence coverage (separate from findings)</dt>
+    <dd data-testid="q3-coverage">{{ sc.coverage_weighted_pct if sc.coverage_weighted_pct is not none else '—' }}% weighted · {{ sc.counts.evaluated }} of {{ sc.counts.applicable }} applicable checks evaluated · minimum {{ sc.min_coverage_pct }}%</dd>
+    <dt>Findings</dt>
+    <dd data-testid="q3-counts">{{ sc.counts.fail }} FAIL · {{ sc.counts.warning }} WARNING · {{ sc.counts.pass }} PASS · {{ sc.counts.unavailable }} UNAVAILABLE · {{ sc.counts.not_applicable }} NOT_APPLICABLE</dd>
+  </dl>
+  <p class="v2-sp-q3-note" data-testid="q3-score-note">{{ sc.score_note }}. {{ sc.readiness_label }}.</p>
+
+  {% set g = q.groups %}
+  <section class="v2-sp-q3-group" data-q3-group="blocking" data-testid="q3-group-blocking">
+    <h4>Blocking failures ({{ g.blocking | length }})</h4>
+    {% for c in g.blocking %}{{ q3_check(c, true) }}{% else %}<p class="v2-sp-q3-none">No blocking failure in the evaluated checks.</p>{% endfor %}
+  </section>
+  <section class="v2-sp-q3-group" data-q3-group="issues" data-testid="q3-group-issues">
+    <h4>Lender-readiness findings ({{ g.issues | length }})</h4>
+    {% for c in g.issues %}{{ q3_check(c) }}{% else %}<p class="v2-sp-q3-none">No other failing or warning check.</p>{% endfor %}
+  </section>
+  <section class="v2-sp-q3-group" data-q3-group="gaps" data-testid="q3-group-gaps">
+    <h4>Missing authority or evidence ({{ g.gaps | length }})</h4>
+    <p class="v2-sp-q3-none">UNAVAILABLE is not PASS: these checks could not be evaluated.</p>
+    {% for c in g.gaps %}{{ q3_check(c) }}{% endfor %}
+  </section>
+  <details class="v2-sp-group" data-q3-group="passed" data-testid="q3-group-passed">
+    <summary>Passed checks ({{ g.passed | length }})</summary>
+    {% for c in g.passed %}{{ q3_check(c) }}{% endfor %}
+  </details>
+  {% if g.not_applicable %}
+  <details class="v2-sp-group" data-q3-group="not_applicable" data-testid="q3-group-na">
+    <summary>Not applicable ({{ g.not_applicable | length }})</summary>
+    {% for c in g.not_applicable %}{{ q3_check(c) }}{% endfor %}
+  </details>
+  {% endif %}
+
+  <h3 class="v2-sp-q3-heading">Covenants and thresholds</h3>
+  <p class="v2-sp-intro" data-testid="q3-covenant-intro">Only thresholds the model actually holds are compared. A lock-up or LLCR level read from a project input is not a verified lender covenant{% if not q.terms_bound %}; for this Run no threshold is bound{% endif %}.</p>
+  <ul class="v2-sp-q3-cov" data-testid="q3-covenants">
+    {% for cv in q.covenants %}
+    <li class="v2-sp-q3-covrow v2-sp-q3-covrow--{{ cv.status | lower }}" data-covenant-type="{{ cv.type }}" data-covenant-status="{{ cv.status }}">
+      <div class="v2-sp-q3-covhead"><strong>{{ cv.type }}</strong><span class="v2-sp-chip v2-sp-chip--{{ cv.status | lower }}">{{ cv.status }}</span></div>
+      <dl class="v2-sp-facts v2-sp-q3-facts">
+        <dt>Threshold</dt><dd data-cov-threshold>{{ cv.threshold }}</dd>
+        <dt>Threshold authority</dt><dd>{{ cv.threshold_authority }}</dd>
+        <dt>{{ cv.observed_label }}</dt><dd data-cov-observed>{{ cv.observed }}</dd>
+        <dt>Testing period</dt><dd>{{ cv.testing_period }}</dd>
+        <dt>Headroom</dt><dd data-cov-headroom>{{ cv.headroom if cv.headroom else 'UNAVAILABLE' }}</dd>
+        <dt>Evidence freshness</dt><dd>{{ cv.freshness }}</dd>
+        {% if cv.engine_observation %}<dt>Run observation</dt><dd>{{ cv.engine_observation }}</dd>{% endif %}
+        {% if cv.reason %}<dt>Missing-data reason</dt><dd>{{ cv.reason }}</dd>{% endif %}
+      </dl>
+    </li>
+    {% endfor %}
+  </ul>
+  <button type="button" class="v2-sp-action" data-nav-tab="tab-debt">Open Debt sheet</button>
+  {% endif %}
+</div>
