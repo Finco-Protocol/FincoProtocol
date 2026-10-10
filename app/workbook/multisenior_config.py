@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import math
 import re
 from uuid import NAMESPACE_URL, uuid5
 
@@ -108,6 +109,20 @@ def scope_for_workspace(ws):
 def activation_financing_params(fin):
     """Two explicit activation policies; shared by Run and Working presentation."""
     from finco_core.inputs import SponsorFundingMode, DebtServiceReserveSupportMode
+    from financial_engine.dsra.target import DsraTargetPolicy
+    # NONE plus legacy months alone is inert. Explicit support, amounts or a
+    # dynamic target are independent authority, not consent to erase reserves.
+    neutral_amounts = all(
+        not isinstance(value, bool) and isinstance(value, (int, float))
+        and math.isfinite(value) and value == 0.
+        for value in (fin.debt_service_reserve_requirement_keur,
+                      fin.dsrf_commitment_keur, fin.dsrf_commitment_fee_rate_pa)
+    )
+    if (fin.dsra_support_mode is not DebtServiceReserveSupportMode.NONE
+        or not neutral_amounts
+        or fin.dsra_target_policy not in (None, DsraTargetPolicy.FIXED_AMOUNT.value)):
+        raise FinancingError("F3_EXISTING_RESERVE_AUTHORITY_CONFLICT",
+            "Existing reserve support, amounts or targets cannot be discarded by two-Senior activation.")
     return replace(fin, sponsor_funding_mode=SponsorFundingMode.EQUITY_ONLY,
         dsra_support_mode=DebtServiceReserveSupportMode.NONE, dsra_months=0,
         debt_service_reserve_requirement_keur=0., dsra_target_policy=None,

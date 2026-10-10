@@ -201,6 +201,53 @@ screenshots in the same folder, and `artifacts/f3/legacy-equivalence.json`.
 
 ## Governance, integration and review
 
+### Correction D: existing reserve authority before activation
+
+Previously, the app activation helper normalized all reserve terms to NONE
+before the engine boundary inspected them. Explicit F3 intent could therefore
+discard an independent typed CASH_DSRA/DSRF obligation. The app helper now
+raises typed `FinancingError` with stable code
+`F3_EXISTING_RESERVE_AUTHORITY_CONFLICT` BEFORE normalization for:
+
+- Any support mode other than typed NONE, including CASH_DSRA and DSRF.
+- Any nonzero reserve requirement, DSRF commitment or commitment-fee rate;
+  non-finite, negative and nonnumeric amounts also fail closed.
+- Explicit forward/peak debt-service targets or unknown target policies.
+
+NONE with zero amounts and absent/fixed-zero target remains neutral, including
+the historical `dsra_months=6` alone. No reserve calculation is duplicated:
+the existing shared cash-reserve resolver remains the amount authority; the
+canonical adapter still owns dynamic targets. Generic automatic derivation
+from untouched legacy months is not an existing explicit obligation. F3's
+explicit reserve-NONE activation continues to opt out of that derivation.
+
+The helper is shared by Working presentation and `apply_state()`, so Run,
+preview and historical binding cannot bypass the guard. Existing F2 config
+rejection and separate construction/CAPEX-reserve conflict are unchanged.
+The existing CAS invokes `apply_state()` inside its transaction, before the
+workspace UPDATE. Rejection therefore preserves settings, identity and
+immutable Last Run evidence; activation does not clear persisted settings.
+
+Targeted tests cover the new typed guard, canonical CAS rollback using typed
+adapter-seam fixtures without F2 JSON, real persisted F2 cash/standby/automatic
+reserve conflicts, immutable Last Run/export, and neutral Solar/Wind full
+production-result equality and integrity PASS. Existing owner/scenario/CAS,
+deterministic-ID, V6 exact-HTML and productivity DOM tests remain mandatory.
+Four-vertical cold-process legacy comparison and fresh exact-head CI results
+are recorded in the PR delivery section after publication. No engine/core,
+governance, workflow, golden, tolerance, schema or deployment change in D.
+
+Correction D local acceptance: **296 passed, 0 failed, rc=0** in the focused
+Workspace/F3/F2/legacy/V6/DOM ring; **76 passed, 10 existing retired-marker
+skips, rc=0** in the F1/F07-B/Model V2/Finance Integrity governance ring.
+Cold base-vs-candidate Solar/Wind/Data Center/EV comparison is EXACT in all
+four cases, including canonical financial output and institutional workbook
+cell/style evidence. The eight authenticated Chromium Solar/Wind theme and
+viewport cases pass again; server/executor cleanup returns rc=0. Changed-file
+safety, Python compilation and diff hygiene pass. Initial new-fixture failures
+(enum member-name conversion and fixed-reserve editor months) were corrected
+in tests only, without weakening assertions or changing financial authority.
+
 The first full Linux CI run exited normally with 12 assertion failures:
 11 V6 exact-HTML comparisons exposed random unsaved-editor UUID generation,
 and the older productivity DOM guard did not recognize the new F3 registry

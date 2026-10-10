@@ -287,3 +287,123 @@ def test_f3_template_protected_and_no_context_safe():
     assert 'read-only' in template.render(multisenior=view, project_editable=False)
     assert 'data-f3-form' not in template.render(multisenior=view, project_editable=False)
     assert template.render() == ''
+
+
+@pytest.mark.parametrize("terms", [
+    {"dsra_support_mode": "CASH_DSRA", "debt_service_reserve_requirement_keur": 100., "dsra_target_policy": "fixed_amount"},
+    {"dsra_support_mode": "CASH_DSRA", "dsra_target_policy": "forward_debt_service_months"},
+    {"dsra_support_mode": "DSRF", "dsrf_commitment_keur": 100., "dsrf_commitment_fee_rate_pa": .01},
+    {"dsra_support_mode": "DSRF"},
+    {"debt_service_reserve_requirement_keur": 100.},
+    {"dsrf_commitment_keur": 100.},
+    {"dsrf_commitment_fee_rate_pa": .01},
+    {"dsra_target_policy": "forward_debt_service_months"},
+    {"dsra_target_policy": "peak_forward_debt_service_months"},
+    {"dsra_target_policy": "invalid-policy"},
+    {"debt_service_reserve_requirement_keur": float("nan")},
+    {"dsrf_commitment_keur": -1.},
+])
+def test_existing_reserve_authority_rejected_before_normalization_and_run(terms, monkeypatch):
+    from finco_core.inputs import DebtServiceReserveSupportMode
+    from finco_core.inputs.multisenior import deactivate_collection
+    from app.services import production_financial_authority
+    terms = dict(terms)
+    if "dsra_support_mode" in terms:
+        terms["dsra_support_mode"] = DebtServiceReserveSupportMode[terms["dsra_support_mode"]]
+    pi, _ = case()
+    original = deactivate_collection(replace(pi, financing=replace(pi.financing, **terms)))
+    original_financing = original.financing
+    monkeypatch.setattr(production_financial_authority, "run_clean_production",
+        lambda *a, **kw: pytest.fail("Rejected reserve activation reached the engine"))
+    for enforce_release in (True, False):
+        with pytest.raises(FinancingError, match="F3_EXISTING_RESERVE_AUTHORITY_CONFLICT"):
+            production_financial_authority.run_clean_production(config.apply_state(
+                original, state(active=True), "base", enforce_release=enforce_release))
+    with pytest.raises(FinancingError, match="F3_EXISTING_RESERVE_AUTHORITY_CONFLICT"):
+        config.activation_financing_params(original_financing)
+    assert original.financing is original_financing
+    assert config.apply_state(original, state(), "base") is original
+    assert config.apply_state(original, state(active=True), "0123456789abcdef") is original
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+@pytest.mark.parametrize("target", [None, "fixed_amount"])
+def test_neutral_legacy_months_preserve_positive_activation_financial_output(kind, target):
+    from finco_core.inputs.multisenior import deactivate_collection
+    from app.services.production_financial_authority import run_clean_production
+    from app.run_integrity import build_run_integrity_evidence, run_integrity_checks
+    pi, _ = case(kind)
+    legacy = deactivate_collection(replace(pi, financing=replace(
+        pi.financing, dsra_months=6, dsra_target_policy=target)))
+    activated = config.apply_state(legacy, state(active=True, collection=pi.financing_collection), "base")
+    assert activated == pi
+    assert legacy.financing.dsra_months == 6 and legacy.financing.dsra_target_policy == target
+    result, expected = run_clean_production(activated), run_clean_production(pi)
+    assert result == expected
+    assert run_integrity_checks(build_run_integrity_evidence(result)).to_dict()["overall"] == "PASS"
+
+
+@pytest.mark.parametrize("reserve", [
+    dict(mode="cash_fixed", months=0, requirement_keur=100., commitment_keur=0., fee_pct=0.),
+    dict(mode="dsrf", months=0, requirement_keur=100., commitment_keur=120., fee_pct=1.),
+    dict(mode="automatic_peak", months=6, requirement_keur=0., commitment_keur=0., fee_pct=0.),
+])
+def test_existing_f2_reserve_rejects_f3_save_atomically_and_preserves_last_run_export(env, reserve):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.input_set import ProjectInputSet
+    from app.services.export_service import resolve_canonical_last_run_from_workspace
+    from app.workbook.bankability_config import FIELD_ID as f2_field
+    record = env.create()
+    committed, _ = run(env, record)
+    exported_before = resolve_canonical_last_run_from_workspace(record, "decision-user", committed)
+    response = save(env, record, json.dumps(dict(version=1, reserve=reserve)), field=f2_field)
+    assert "workbook-field-error" not in response.headers.get("HX-Trigger", "")
+    before = get_workspace_state("decision-user", record.project_id)
+    pi = ProjectInputSet.from_snapshot(before.draft_snapshot).to_projectinputs()
+    response = save(env, record, state(active=True, collection=collection_for_inputs(pi)), field=config.FIELD_ID)
+    assert "F3_BANKABILITY_AUTHORITY_CONFLICT" in response.text
+    assert "workbook-field-error" in response.headers.get("HX-Trigger", "")
+    after = get_workspace_state("decision-user", record.project_id)
+    assert after == before
+    assert config.SNAPSHOT_KEY not in after.draft_snapshot
+    assert after.last_runtime_summary == committed.last_runtime_summary
+    assert after.last_runtime_snapshot_id == committed.last_runtime_snapshot_id
+    exported_after = resolve_canonical_last_run_from_workspace(record, "decision-user", after)
+    assert exported_after.project_inputs == exported_before.project_inputs
+    assert exported_after.run_id == exported_before.run_id
+
+
+@pytest.mark.parametrize("mode", ["CASH_DSRA", "DSRF"])
+def test_typed_working_reserve_conflict_rolls_back_canonical_cas(env, monkeypatch, mode):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.input_set import ProjectInputSet
+    from finco_core.inputs import DebtServiceReserveSupportMode
+    record = env.create()
+    committed, _ = run(env, record)
+    original_projection = ProjectInputSet.to_projectinputs
+    # Supply existing typed project authority at its real adapter seam; no F2
+    # JSON is present, so this exercises the new guard inside the canonical CAS.
+    def with_existing_reserve(pis):
+        pi = original_projection(pis)
+        return replace(pi, financing=replace(pi.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode[mode],
+            debt_service_reserve_requirement_keur=100., dsra_target_policy="fixed_amount",
+            dsrf_commitment_keur=120. if mode == "DSRF" else 0.,
+            dsrf_commitment_fee_rate_pa=.01 if mode == "DSRF" else 0.))
+    monkeypatch.setattr(ProjectInputSet, "to_projectinputs", with_existing_reserve)
+    pi = ProjectInputSet.from_snapshot(committed.draft_snapshot).to_projectinputs()
+    response = save(env, record, state(active=True, collection=collection_for_inputs(pi)), field=config.FIELD_ID)
+    assert "F3_EXISTING_RESERVE_AUTHORITY_CONFLICT" in response.text
+    assert "workbook-field-error" in response.headers.get("HX-Trigger", "")
+    assert get_workspace_state("decision-user", record.project_id) == committed
+    assert pi.financing.dsra_support_mode.name == mode
+    assert pi.financing.debt_service_reserve_requirement_keur == 100.
+
+
+def test_existing_capex_reserve_conflict_remains_a_separate_authority():
+    from finco_core.inputs.multisenior import deactivate_collection
+    pi, _ = case()
+    original = deactivate_collection(replace(pi, capex=replace(pi.capex, reserve_accounts_keur=100.)))
+    with pytest.raises(FinancingError, match="F3_EXISTING_CONSTRUCTION_OR_RESERVE_AUTHORITY_CONFLICT"):
+        config.apply_state(original, state(active=True), "base")
+    assert original.capex.reserve_accounts_keur == 100.
