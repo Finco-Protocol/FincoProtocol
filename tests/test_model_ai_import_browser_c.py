@@ -406,3 +406,187 @@ def test_invalid_or_expired_cookie_denies_import(browser, app_server, session_ki
         )
     finally:
         ctx.close()
+
+
+def _new_seeded_browser_project(kind: str, *, f3_active: bool):
+    """Actual canonical Working Copy and (optionally) activated F3 authority."""
+    from app.services.reference_seed_service import create_reference_seeded_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.workbook.input_set import ProjectInputSet
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.update_service import WorkbookUpdateService
+    from tests.test_model_financing_f3_workspace import state, collection_for_inputs
+    from app.workbook.multisenior_config import FIELD_ID
+
+    project = create_reference_seeded_project(
+        user_id=OWNER, requested_name="Synthetic Browser " + kind,
+        template_source="generic_" + kind + "_reference", capacity_mw=16,
+    )
+    if f3_active:
+        ws = get_workspace_state(OWNER, project.project_id)
+        pi = ProjectInputSet.from_snapshot(ws.draft_snapshot).to_projectinputs()
+        raw = state(active=True, collection=collection_for_inputs(pi))
+        WorkbookUpdateService.apply_draft_update(
+            ws=ws, field_id=FIELD_ID, raw_value=raw,
+            content_hash=assemble_consistent_for_get(
+                OWNER, project.project_id, WORKBOOK.version
+            ).composite_hash,
+            workbook_version=WORKBOOK.version, project_record=project,
+        )
+    return project
+
+
+def _run_in_real_browser_context(ctx, page, root: str, project):
+    """Normal authorized HTTP Run, through Chromium's authenticated context."""
+    from app.persistence.workspace_repository import get_workspace_state
+
+    response = page.goto(root + "/v2/workbook?project=" + project.project_code)
+    assert response and response.status == 200
+    hash_token = page.locator('input[name="content_hash"]').first.input_value()
+    version = page.locator('input[name="workbook_version"]').first.input_value()
+    run_response = ctx.request.post(
+        root + "/v2/workbook/run",
+        headers={"HX-Request": "true"},
+        form={
+            "project": project.project_code,
+            "content_hash": hash_token,
+            "workbook_version": version,
+        },
+    )
+    assert run_response.status == 200, run_response.text()[:1000]
+    ws = get_workspace_state(OWNER, project.project_id)
+    assert ws and ws.last_runtime_summary and not ws.dirty, run_response.text()[:1200]
+    return ws
+
+
+@pytest.mark.parametrize("kind,field,value,unit,xlsx", [
+    ("solar", "project_setup.technical.p50_hours", "1840", "h", False),
+    ("wind", "project_setup.technical.p50_hours", "2800", "h", True),
+    ("data_center", "revenue.data_center.occupancy_y1", "62", "%", False),
+    ("ev_charging", "revenue.ev_charging.charging_price", "0.38", "EUR/kWh", True),
+])
+def test_authenticated_four_vertical_import_run_chromium(
+        browser, app_server, tmp_path, kind, field, value, unit, xlsx):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import get_run_history
+    from app.workbook.multisenior_config import SNAPSHOT_KEY
+
+    project = _new_seeded_browser_project(
+        kind, f3_active=kind in ("solar", "wind")
+    )
+    ctx, page = _page(
+        browser, app_server["url"], width=390 if kind == "ev_charging" else 1440
+    )
+    try:
+        initial = _run_in_real_browser_context(
+            ctx, page, app_server["url"], project
+        )
+        initial_history = tuple(get_run_history(OWNER, project.project_id))
+        previous_snapshot_id = initial.last_runtime_snapshot_id
+        previous_f3 = initial.draft_snapshot.get(SNAPSHOT_KEY)
+
+        csv_path = tmp_path / ("synthetic-" + kind + (".xlsx" if xlsx else ".csv"))
+        if xlsx:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Assumptions"
+            ws.append(["Assumption", "Value", "Unit"])
+            ws.append([field, float(value), unit])
+            wb.save(str(csv_path))
+        else:
+            csv_path.write_text(
+                f"Assumption,Value,Unit\n{field},{value},{unit}\n",
+                encoding="utf-8",
+            )
+        page.goto(app_server["url"] + "/v2/workbook/import?project=" + project.project_code)
+        page.locator("#upload").set_input_files(str(csv_path))
+        page.get_by_role("button", name="Extract and review").click()
+        assert page.get_by_text("Review detected assumptions").count() == 1
+        page.locator('input[name="keep_0"]').check()
+        Path("artifacts/model-ai-import").mkdir(parents=True, exist_ok=True)
+        page.screenshot(
+            path=f"artifacts/model-ai-import/f3-{kind}-review.png",
+            full_page=True,
+        )
+        page.get_by_role("button", name="Review approved change set").click()
+        assert page.get_by_text("Final confirmation", exact=False).count() == 1
+        page.screenshot(
+            path=f"artifacts/model-ai-import/f3-{kind}-confirmation.png",
+            full_page=True,
+        )
+        page.get_by_role("button", name="Apply 1 approved fields atomically").click()
+        assert page.get_by_text("Import Apply result").count() == 1
+        page.screenshot(
+            path=f"artifacts/model-ai-import/f3-{kind}-applied-stale.png",
+            full_page=True,
+        )
+        stale = get_workspace_state(OWNER, project.project_id)
+        assert stale.dirty
+        assert stale.last_runtime_snapshot_id == previous_snapshot_id
+        assert stale.draft_snapshot.get(SNAPSHOT_KEY) == previous_f3
+        assert len(get_run_history(OWNER, project.project_id)) == len(initial_history)
+        current = _run_in_real_browser_context(
+            ctx, page, app_server["url"], project
+        )
+        assert current.last_runtime_snapshot_id != previous_snapshot_id
+        assert current.draft_snapshot.get(SNAPSHOT_KEY) == previous_f3
+        assert len(get_run_history(OWNER, project.project_id)) == len(initial_history) + 1
+        page.goto(app_server["url"] + "/v2/workbook?project=" + project.project_code)
+        page.screenshot(
+            path=f"artifacts/model-ai-import/f3-{kind}-post-run-current.png",
+            full_page=True,
+        )
+        assert not page.browser_errors
+    finally:
+        ctx.close()
+
+
+def test_active_f3_forbidden_financing_import_browser_rolls_back(
+        browser, app_server, tmp_path):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import get_run_history
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.workbook.registry import WORKBOOK
+
+    project = _new_seeded_browser_project("solar", f3_active=True)
+    ctx, page = _page(browser, app_server["url"])
+    try:
+        previous = _run_in_real_browser_context(
+            ctx, page, app_server["url"], project
+        )
+        before_hash = assemble_consistent_for_get(
+            OWNER, project.project_id, WORKBOOK.version
+        ).composite_hash
+        history_before = tuple(get_run_history(OWNER, project.project_id))
+        csv_path = tmp_path / "synthetic-forbidden-f3.csv"
+        csv_path.write_text(
+            "Assumption,Value,Unit\n"
+            "revenue.ppa.index,2,%\n"
+            "debt.senior.interest_rate_pct,6,%\n",
+            encoding="utf-8",
+        )
+        page.goto(app_server["url"] + "/v2/workbook/import?project=" + project.project_code)
+        page.locator("#upload").set_input_files(str(csv_path))
+        page.get_by_role("button", name="Extract and review").click()
+        page.locator('input[name="keep_0"]').check()
+        page.locator('input[name="keep_1"]').check()
+        page.get_by_role("button", name="Review approved change set").click()
+        assert page.get_by_text("Final confirmation", exact=False).count() == 1
+        page.get_by_role("button", name="Apply 2 approved fields atomically").click()
+        assert page.get_by_role("alert").get_by_text(
+            "F3_COMPETING_FINANCING_EDITOR_REJECTED", exact=False
+        ).count() == 1
+        Path("artifacts/model-ai-import").mkdir(parents=True, exist_ok=True)
+        page.screenshot(
+            path="artifacts/model-ai-import/f3-rejected-financing-atomic.png",
+            full_page=True,
+        )
+        assert get_workspace_state(OWNER, project.project_id) == previous
+        assert assemble_consistent_for_get(
+            OWNER, project.project_id, WORKBOOK.version
+        ).composite_hash == before_hash
+        assert tuple(get_run_history(OWNER, project.project_id)) == history_before
+        assert not page.browser_errors
+    finally:
+        ctx.close()
