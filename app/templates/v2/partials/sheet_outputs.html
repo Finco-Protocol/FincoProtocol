@@ -1,0 +1,126 @@
+{#
+  Statements & Debt output workspace — read-only presentation of the persisted Last Run.
+  No arithmetic, aggregation or accounting formulas in this template: every cell is a projected value from
+  app.v2.output_workspace_projection (None renders as "not available", never as zero).
+#}
+{% macro out_table(table, caption_id) %}
+  {% if table and table.available %}
+  <div class="out-scroll" tabindex="0" role="region" aria-labelledby="{{ caption_id }}" data-out-scroll>
+    <table class="out-table" data-out-table="{{ table.id or '' }}">
+      <caption id="{{ caption_id }}" class="out-sr">{{ table.title }} — per model period, kEUR unless a row says otherwise. Use the arrow keys inside this region to scroll.</caption>
+      <thead><tr>
+        <th scope="col" class="out-label">Line item</th>
+        {% for c in table.columns %}<th scope="col" class="out-num" data-col="{{ c.index }}"{% if c.year0 %} data-year0="1"{% endif %} title="{{ c.date }}">{{ c.label }}{% if c.year0 %}<span class="out-sr"> (Year 0 / opening)</span>{% endif %}</th>{% endfor %}
+      </tr></thead>
+      <tbody>
+      {% for r in table.rows %}
+        <tr{% if r.total %} class="out-total"{% endif %}{% if r.key == 'balance_check_keur' %} data-testid="out-balance-check"{% endif %}>
+          <th scope="row" class="out-label">{{ r.label }}{% if r.not_exposed %} <small>(not exposed)</small>{% endif %}</th>
+          {% for cell in r.cells %}
+            {% if cell.v is none %}<td class="out-num out-na" data-col="{{ table.columns[loop.index0].index }}"{% if table.columns[loop.index0].year0 %} data-year0="1"{% endif %} data-unit="{{ cell.unit }}" data-raw="" title="Not available in the persisted Run">—<span class="out-sr">not available</span></td>
+            {% else %}<td class="out-num{% if cell.neg %} out-neg{% endif %}" data-col="{{ table.columns[loop.index0].index }}"{% if table.columns[loop.index0].year0 %} data-year0="1"{% endif %} data-unit="{{ cell.unit }}" data-raw="{{ cell.v }}">{{ cell.text }}</td>{% endif %}
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="out-empty" role="status">Not available — this Run did not persist {{ table.title if table else 'this schedule' }}. Nothing is estimated.</p>
+  {% endif %}
+{% endmacro %}
+
+<div id="v2-sheet-outputs" data-sheet="outputs" data-testid="outputs-sheet" data-out-state="{{ outputs.state }}" data-out-project="{{ project_code }}"{% if outputs.identity %} data-out-snapshot="{{ outputs.identity.snapshot_id }}" data-out-scenario="{{ outputs.identity.scenario }}"{% endif %}
+     hx-get="/v2/workbook/outputs?project={{ project_code | urlencode }}"
+     hx-trigger="click from:#tab-outputs"
+     hx-swap="outerHTML">
+  <link rel="stylesheet" href="/static/css/model_outputs_workspace.css">
+
+  {% if outputs.state in ('CURRENT', 'STALE') and outputs.identity %}
+  <section class="out-toolbar" aria-label="Output toolbar" data-testid="outputs-toolbar">
+    <div class="out-status">
+      <span class="out-badge out-badge--{{ outputs.state | lower }}" data-testid="outputs-state" data-state="{{ outputs.state }}">{{ outputs.state }}{% if outputs.state == 'STALE' %} · prior Last Run{% endif %}</span>
+      <span class="out-badge out-badge--recon-{{ outputs.reconciliation.overall | lower }}" data-testid="outputs-reconciliation" data-state="{{ outputs.reconciliation.overall }}"
+            title="{% for i in outputs.reconciliation.checks %}{{ i.name }}: {{ i.label }}{% if not loop.last %} | {% endif %}{% endfor %}">{{ outputs.reconciliation.overall }}</span>
+      <span class="out-badge out-badge--integrity-{{ outputs.integrity.status | lower }}" data-testid="outputs-integrity" data-state="{{ outputs.integrity.status }}">{{ outputs.integrity.label }}</span>
+      <span class="out-identity" data-testid="outputs-identity">Run {{ outputs.identity.ran_at }} · snapshot {{ outputs.identity.snapshot_id[:22] }} · {{ outputs.identity.scenario }}</span>
+    </div>
+    <div class="out-controls" role="group" aria-label="Display options (formatting only; never recalculates)">
+      <fieldset class="out-unit"><legend class="out-sr">Unit</legend>
+        <label><input type="radio" name="out-unit" value="keur" checked data-out-unit> kEUR</label>
+        <label><input type="radio" name="out-unit" value="eur" data-out-unit> EUR</label>
+      </fieldset>
+      <label class="out-prec">Decimals
+        <select data-out-precision aria-label="Decimal precision">
+          <option value="0">0</option><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option>
+        </select>
+      </label>
+      <label class="out-year0"><input type="checkbox" data-out-year0 checked> Show Year 0</label>
+    </div>
+  </section>
+  {% if outputs.banner %}<p class="out-banner out-banner--stale" role="status" data-testid="outputs-stale-banner">{{ outputs.banner }}</p>{% endif %}
+  {% if outputs.integrity.status == 'FAIL' %}
+  <p class="out-banner out-banner--fail" role="alert" data-testid="outputs-integrity-fail">Run Integrity FAIL on this Run:
+    {% for f in outputs.integrity.failures %}{{ f.title }}{% if not loop.last %}; {% endif %}{% endfor %}. The values below are the Run's evidence and are shown unchanged.</p>
+  {% endif %}
+  <ul class="out-recon" data-testid="outputs-reconciliation-detail">
+    {% for i in outputs.reconciliation.checks %}<li class="out-recon-{{ i.state | lower }}"><strong>{{ i.name }}:</strong> {{ i.label }}</li>{% endfor %}
+  </ul>
+  <nav class="out-jump" aria-label="Output sections">
+    <a href="#out-pnl">P&amp;L</a><a href="#out-balance_sheet">Balance Sheet</a><a href="#out-cash_flow">Cash Flow</a>
+    <a href="#out-cfads">CFADS</a><a href="#out-debt">Debt</a><a href="#out-returns">Distributions &amp; Returns</a>
+  </nav>
+
+  {% for t in outputs.statements %}
+  <section id="out-{{ t.id }}" class="out-section" aria-labelledby="out-h-{{ t.id }}" data-testid="out-section-{{ t.id }}">
+    <h3 id="out-h-{{ t.id }}">{{ t.title }}</h3><p class="out-note">{{ t.note }}</p>
+    {% if t.unavailable %}<p class="out-note out-unavailable" data-testid="out-unavailable-{{ t.id }}">Not persisted by this Run in any period (shown as not available, never as zero): {{ t.unavailable | join(', ') }}.</p>{% endif %}
+    {{ out_table(t, 'out-cap-' ~ t.id) }}
+  </section>
+  {% endfor %}
+
+  <section id="out-cfads" class="out-section" aria-labelledby="out-h-cfads" data-testid="out-section-cfads">
+    <h3 id="out-h-cfads">CFADS</h3><p class="out-note">{{ outputs.cfads.note }}</p>
+    {{ out_table(outputs.cfads, 'out-cap-cfads') }}
+  </section>
+
+  <section id="out-debt" class="out-section" aria-labelledby="out-h-debt" data-testid="out-section-debt">
+    <h3 id="out-h-debt">Debt schedules</h3><p class="out-note">{{ outputs.debt.note }}</p>
+    {% if outputs.debt.canonical_terminal %}<p class="out-note" data-testid="out-canonical-terminal">Canonical Senior terminal state (Run evidence): <strong>{{ outputs.debt.canonical_terminal.status }}</strong>, balance at contractual maturity {{ outputs.debt.canonical_terminal.balance.text }} kEUR{% if outputs.debt.canonical_terminal.maturity_date %}, maturity {{ outputs.debt.canonical_terminal.maturity_date }}{% endif %}. Facility lines below are shown as persisted.</p>{% endif %}
+    {% for f in outputs.debt.facilities %}
+    <article class="out-facility" aria-labelledby="out-fh-{{ loop.index }}" data-testid="out-facility" data-facility-id="{{ f.id }}">
+      <h4 id="out-fh-{{ loop.index }}">{{ f.label }}</h4>
+      <dl class="out-facts">
+        <div><dt>Commitment (kEUR)</dt><dd data-unit="keur" {% if f.commitment.v is not none %}data-raw="{{ f.commitment.v }}"{% endif %}>{{ f.commitment.text }}</dd></div>
+        <div><dt>Maturity</dt><dd data-testid="out-maturity">{% if f.maturity_date %}{{ f.maturity_date }} (period {{ f.maturity_index }}){% elif f.maturity_index is not none %}period {{ f.maturity_index }}{% else %}Not available{% endif %}</dd></div>
+        <div><dt>Closing balance at maturity (kEUR, as persisted)</dt><dd data-testid="out-unpaid" data-repayment-status="{{ f.repayment.status }}" data-unit="keur" {% if f.repayment.balance.v is not none %}data-raw="{{ f.repayment.balance.v }}"{% endif %}>{{ f.repayment.balance.text }}</dd></div>
+        <div class="out-repay{% if f.repayment.problem %} out-repay--problem{% endif %}"><dt>Repayment status</dt><dd data-testid="out-repayment-status" data-status="{{ f.repayment.status }}">{{ f.repayment.label }}{% if f.repayment.status == 'OUTSTANDING_BELOW_DISPLAY' %} <small data-testid="out-exact-balance">(persisted {{ f.repayment.exact_text }} kEUR)</small>{% endif %}<br><small>Basis: {{ f.repayment.basis }}.</small></dd></div>
+      </dl>
+      {% if f.fees_supported %}
+      <h5>Construction: dated draws and capitalised costs (kEUR)</h5>
+      {{ out_table({'id': 'construction', 'title': f.label ~ ' construction', 'available': f.construction.available, 'columns': f.construction.columns, 'rows': f.construction.rows}, 'out-cap-c-' ~ loop.index) }}
+      {% else %}<p class="out-note">Fees and construction draws are not persisted for the aggregate Senior schedule.</p>{% endif %}
+      <h5>Operating debt service (kEUR)</h5>
+      {{ out_table({'id': 'debt-' ~ loop.index, 'title': f.label ~ ' operating schedule', 'available': f.operating.available, 'columns': f.operating.columns, 'rows': f.operating.rows}, 'out-cap-o-' ~ loop.index) }}
+    </article>
+    {% endfor %}
+  </section>
+
+  <section id="out-returns" class="out-section" aria-labelledby="out-h-returns" data-testid="out-section-returns">
+    <h3 id="out-h-returns">Sponsor distributions &amp; Returns</h3>
+    <dl class="out-facts" data-testid="out-returns-metrics">
+      {% for m in outputs.returns.metrics %}<div><dt>{{ m.label }}</dt><dd{% if not m.available %} class="out-na" title="Not persisted by this Run"{% endif %}>{{ m.display }}</dd></div>{% endfor %}
+    </dl>
+    <h4>Distribution waterfall (kEUR)</h4>
+    {{ out_table(outputs.returns.distributions, 'out-cap-dist') }}
+    <h4>Sponsor cash flows (kEUR)</h4>
+    {{ out_table(outputs.returns.sponsor, 'out-cap-sponsor') }}
+  </section>
+  {% elif outputs.state == 'NOT_RUN' %}
+  <section class="out-section" data-testid="outputs-not-run"><span class="out-badge out-badge--not_run" data-testid="outputs-state" data-state="NOT_RUN">NOT RUN</span>
+    <p class="out-empty" role="status">No Run has been committed. Run the model to populate the statements and debt schedules; nothing is estimated before then.</p></section>
+  {% else %}
+  <section class="out-section" data-testid="outputs-unavailable"><p class="out-empty" role="status">{{ outputs.message or 'Statements are unavailable for this view.' }}</p></section>
+  {% endif %}
+  <script src="/static/js/model_outputs_workspace.js"></script>
+</div>
