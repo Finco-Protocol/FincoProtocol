@@ -211,6 +211,17 @@ def _entry(payload, sid, snap, when, scale=1.0):
         integrity_evidence=copy.deepcopy(payload["integrity_evidence"]))
 
 
+def _latest(history, scenarios):
+    """Reference rule for unit tests: newest entry per scenario (None => proven never run)."""
+    out = {sc.scenario_id: None for sc in scenarios}
+    base = {sc.scenario_id for sc in scenarios if sc.is_base_case}
+    for e in history:                                   # newest first
+        targets = base if e.last_runtime_scenario_id is None else {e.last_runtime_scenario_id}
+        for t in targets & set(out):
+            out[t] = out[t] or e
+    return out
+
+
 def _sc(sid, name, base=False):
     return SimpleNamespace(scenario_id=sid, scenario_name=name, is_base_case=base)
 
@@ -221,7 +232,7 @@ def test_scenarios_use_each_scenarios_own_committed_run_and_label_freshness(runs
     history = [_entry(payload, "sc-up", "20261010T120000", "2026-10-10T12:00:00", 1.1),
                _entry(payload, "sc-up", "20261009T120000", "2026-10-09T12:00:00", 0.5),     # older: ignored
                _entry(payload, None, "20261008T120000", "2026-10-08T12:00:00")]            # pre-scenario Base Run
-    v = build_scenario_insight(scenarios=scenarios, run_history=history, active_scenario_id="sc-base",
+    v = build_scenario_insight(scenarios=scenarios, latest_runs=_latest(history, scenarios), active_scenario_id="sc-base",
                                active_run_state="CURRENT", last_run_snapshot_id="20261008T120000")
     rows = {r["scenario_id"]: r for r in v["rows"]}
     assert rows["sc-base"]["basis"] == "CURRENT" and rows["sc-base"]["is_active"]
@@ -239,7 +250,7 @@ def test_active_stale_scenario_is_labelled_prior_run_and_banner_shown(runs):
     pi, payload = runs["solar"]
     scenarios = [_sc("sc-base", "Base Case", True), _sc("sc-up", "Upside")]
     history = [_entry(payload, "sc-up", "S2", "2026-10-10T12:00:00"), _entry(payload, None, "S1", "2026-10-08T12:00:00")]
-    v = build_scenario_insight(scenarios=scenarios, run_history=history, active_scenario_id=None,
+    v = build_scenario_insight(scenarios=scenarios, latest_runs=_latest(history, scenarios), active_scenario_id=None,
                                active_run_state="STALE", last_run_snapshot_id="S1")
     base = next(r for r in v["rows"] if r["is_base"])
     assert base["is_active"] and base["basis"] == "STALE" and "PRIOR Run" in base["basis_note"]
@@ -248,8 +259,9 @@ def test_active_stale_scenario_is_labelled_prior_run_and_banner_shown(runs):
 
 def test_missing_comparative_evidence_is_explicit(runs):
     pi, payload = runs["solar"]
-    v = build_scenario_insight(scenarios=[_sc("sc-base", "Base Case", True), _sc("sc-x", "Other")],
-                               run_history=[_entry(payload, None, "S1", "2026-10-08T12:00:00")],
+    scs = [_sc("sc-base", "Base Case", True), _sc("sc-x", "Other")]
+    v = build_scenario_insight(scenarios=scs,
+                               latest_runs=_latest([_entry(payload, None, "S1", "2026-10-08T12:00:00")], scs),
                                active_scenario_id="sc-base", active_run_state="CURRENT", last_run_snapshot_id="S1")
     assert v["comparisons"] == []
     html = _render_scn(v)
@@ -260,8 +272,9 @@ def test_missing_metric_in_a_run_stays_a_dash_not_zero(runs):
     pi, payload = runs["solar"]
     other = _entry(payload, "sc-up", "S2", "2026-10-10T12:00:00")
     other.runtime_summary = {k: v for k, v in other.runtime_summary.items() if k != "avg_dscr"}
-    v = build_scenario_insight(scenarios=[_sc("sc-base", "Base Case", True), _sc("sc-up", "Upside")],
-                               run_history=[other, _entry(payload, None, "S1", "2026-10-08T12:00:00")],
+    scs = [_sc("sc-base", "Base Case", True), _sc("sc-up", "Upside")]
+    v = build_scenario_insight(scenarios=scs,
+                               latest_runs=_latest([other, _entry(payload, None, "S1", "2026-10-08T12:00:00")], scs),
                                active_scenario_id="sc-base", active_run_state="CURRENT", last_run_snapshot_id="S1")
     row = next(r for r in v["comparisons"][0]["rows"] if r["key"] == "avg_dscr")
     assert row["other"] == "—" and row["delta"] == "—"
@@ -273,7 +286,7 @@ def test_active_quality_row_is_the_findings_report_not_a_second_score(runs):
     q = view(ws, pi)
     from app.v2.router import _quality_row_from_block
     scenarios = [_sc("sc-base", "Base Case", True)]
-    v = build_scenario_insight(scenarios=scenarios, run_history=[_entry(payload, None, q1.SNAP, "2026-10-08T12:00:00")],
+    v = build_scenario_insight(scenarios=scenarios, latest_runs=_latest([_entry(payload, None, q1.SNAP, "2026-10-08T12:00:00")], scenarios),
                                active_scenario_id=None, active_run_state="CURRENT", last_run_snapshot_id=q1.SNAP,
                                active_quality=_quality_row_from_block(q))
     assert v["rows"][0]["quality"]["score"] == q["score"]["score"]
@@ -281,7 +294,7 @@ def test_active_quality_row_is_the_findings_report_not_a_second_score(runs):
 
 
 def test_scenario_adapter_fails_closed():
-    v = build_scenario_insight_safe(scenarios=[object()], run_history=[], active_scenario_id=None,
+    v = build_scenario_insight_safe(scenarios=[object()], latest_runs={}, active_scenario_id=None,
                                     active_run_state="CURRENT", last_run_snapshot_id=None)
     assert v["available"] is False and v["rows"] == []
 
@@ -295,7 +308,7 @@ def test_adapters_never_import_or_call_the_engine_or_write(runs, monkeypatch):
     ws = fake_ws(payload)
     before = copy.deepcopy(ws.__dict__)
     view(ws, pi)
-    build_scenario_insight(scenarios=[_sc("a", "A", True)], run_history=[], active_scenario_id="a",
+    build_scenario_insight(scenarios=[_sc("a", "A", True)], latest_runs={}, active_scenario_id="a",
                            active_run_state="NOT_RUN", last_run_snapshot_id=None)
     assert ws.__dict__ == before, "the adapter must not mutate the persisted record"
     for module in (iq, __import__("app.v2.insight_scenario_projection", fromlist=["x"])):

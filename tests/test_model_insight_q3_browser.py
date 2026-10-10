@@ -60,7 +60,9 @@ def _panel_html(payload, pi, *, corrupt=False):
                  SimpleNamespace(scenario_id="d", scenario_name="Downside", is_base_case=False)]
     history = [_entry(payload, None, q1.SNAP, "2026-10-08T12:00:00"), _entry(payload, "u", "S-U", "2026-10-10T12:00:00"),
                _entry(payload, "d", "S-D", "2026-10-09T12:00:00")]
-    scn = build_scenario_insight(scenarios=scenarios, run_history=history, active_scenario_id="b", active_run_state="CURRENT",
+    latest = {sc.scenario_id: next((e for e in history if (e.last_runtime_scenario_id or "b") == sc.scenario_id), None)
+              for sc in scenarios}
+    scn = build_scenario_insight(scenarios=scenarios, latest_runs=latest, active_scenario_id="b", active_run_state="CURRENT",
                                  last_run_snapshot_id=q1.SNAP)
     proj = dataclasses.replace(proj, insight={"quality": quality, "scenarios": scn})
     env = Environment(loader=FileSystemLoader(str(REPO / "app/templates/v2")), autoescape=select_autoescape(["html"]))

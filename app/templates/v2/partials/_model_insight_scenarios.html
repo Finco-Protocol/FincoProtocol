@@ -9,6 +9,7 @@
   <p class="v2-sp-intro" data-testid="q3-scenarios-unavailable">{{ sv.message if sv and sv.message else 'Scenario comparison is not available.' }}</p>
   {% else %}
   {% if sv.banner %}<div class="v2-smart-panel-note v2-smart-panel-note--stale" data-testid="q3-scenario-banner">{{ sv.banner }}</div>{% endif %}
+  {% if sv.omitted_note %}<p class="v2-sp-q3-note" data-testid="q3-scenario-omitted">{{ sv.omitted_note }}</p>{% endif %}
   <ul class="v2-sp-q3-scn" data-testid="q3-scenario-list">
     {% for r in sv.rows %}
     <li class="v2-sp-q3-scnrow{% if r.is_active %} is-active{% endif %}" data-scenario-id="{{ r.scenario_id }}" data-scenario-basis="{{ r.basis }}">

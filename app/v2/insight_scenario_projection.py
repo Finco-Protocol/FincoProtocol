@@ -10,11 +10,14 @@ Every value originates from a scenario's own committed Run in the immutable Run 
 * Freshness against the Working Copy is only known for the ACTIVE scenario (canonical runtime freshness).
   Every other scenario is shown as its last committed Run ("HISTORICAL RUN"), never as CURRENT, and its
   thresholds are not bound (the Run does not persist them), so no covenant verdict is produced for it.
+* Which scenarios are displayed, and each scenario's newest Run, are decided by the bounded read-only queries in
+  ``app.persistence.scenario_insight_reads`` (active scenario and Base Case always included; omitted scenarios are
+  disclosed; a failed retrieval is ``HISTORY_UNAVAILABLE``, never ``NO_RUN``).
 * Nothing here runs the engine, selects or creates a scenario, or writes.
 """
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 from app.model_quality import evaluate_model_quality
 from app.model_quality.contracts import CheckStatus
@@ -25,24 +28,8 @@ from app.v2.scenario_kpi_projection import build_compare_rows, build_scenario_pr
 
 COMPARE_KEYS = ("project_irr", "equity_irr", "sponsor_irr", "senior_debt_keur", "min_dscr", "avg_dscr",
                 "min_llcr", "target_dscr")
-MAX_SCENARIOS = 8
-HISTORY_SCAN_LIMIT = 200
-
-
-def _newest_per_scenario(entries: Sequence[Any], scenarios: Sequence[Any]) -> dict[str, Any]:
-    """Newest committed Run per scenario id (``entries`` are newest-first, the canonical ordering)."""
-    base_ids = {s.scenario_id for s in scenarios if getattr(s, "is_base_case", False)}
-    wanted = {s.scenario_id for s in scenarios}
-    found: dict[str, Any] = {}
-    for entry in entries:
-        sid = getattr(entry, "last_runtime_scenario_id", None)
-        if sid is None:
-            targets = base_ids                      # pre-scenario Base Case Run (None == Base Case)
-        else:
-            targets = {sid} & wanted
-        for target in targets:
-            found.setdefault(target, entry)
-    return found
+# Marker for "the retrieval of this scenario's committed Run failed": absence of a Run is NOT established.
+HISTORY_UNAVAILABLE = "HISTORY_UNAVAILABLE"
 
 
 def _quality_summary(entry: Any, *, freshness: Optional[str], scenario_id: str) -> dict[str, Any]:
@@ -59,17 +46,24 @@ def _quality_summary(entry: Any, *, freshness: Optional[str], scenario_id: str) 
 
 
 def build_scenario_insight(
-    *, scenarios: Sequence[Any], run_history: Sequence[Any], active_scenario_id: Optional[str],
+    *, scenarios: Sequence[Any], latest_runs: Mapping[str, Any], active_scenario_id: Optional[str],
     active_run_state: str, last_run_snapshot_id: Optional[str],
     active_covenant_issue_count: Optional[int] = None, active_quality: Optional[dict] = None,
+    candidates: Optional[int] = None, scenarios_complete: bool = True,
 ) -> dict[str, Any]:
-    """Compact scenario comparison dict.  ``scenarios`` are non-archived scenario records."""
-    scenarios = list(scenarios)[:MAX_SCENARIOS]
+    """Compact scenario comparison dict.
+
+    ``scenarios`` are the records chosen for DISPLAY (active first, Base Case second — see
+    ``app.persistence.scenario_insight_reads``).  ``latest_runs`` maps scenario id to the newest committed
+    Run entry, ``None`` (proven never run) or ``HISTORY_UNAVAILABLE`` (retrieval failed).  ``candidates`` is
+    the number of eligible scenarios, so omitted ones are disclosed.
+    """
+    scenarios = list(scenarios)
     if active_scenario_id is None:
         # The workspace records no scenario id for the Base Case (None == Base Case).
         active_scenario_id = next((s.scenario_id for s in scenarios if getattr(s, "is_base_case", False)), None)
     state = active_run_state if active_run_state in ("CURRENT", "STALE") else "NOT_RUN"
-    newest = _newest_per_scenario(run_history, scenarios)
+    newest = {sc.scenario_id: latest_runs.get(sc.scenario_id, HISTORY_UNAVAILABLE) for sc in scenarios}
     rows: list[dict[str, Any]] = []
     projections: dict[str, Any] = {}
     for sc in scenarios:
@@ -79,8 +73,15 @@ def build_scenario_insight(
             "scenario_id": sc.scenario_id, "name": sc.scenario_name, "is_base": bool(sc.is_base_case),
             "is_active": is_active, "has_run": entry is not None,
         }
+        if entry is HISTORY_UNAVAILABLE or (isinstance(entry, str) and entry == HISTORY_UNAVAILABLE):
+            row.update({"has_run": False, "basis": "HISTORY_UNAVAILABLE", "quality": None,
+                        "basis_note": "This scenario's committed Run could not be retrieved, so the absence of a "
+                                      "Run is NOT established. Nothing is estimated."})
+            rows.append(row)
+            continue
         if entry is None:
-            row.update({"basis": "NO_RUN", "basis_note": "No committed Run for this scenario.", "quality": None})
+            row.update({"has_run": False, "basis": "NO_RUN", "quality": None,
+                        "basis_note": "No committed Run exists for this scenario (the lookup succeeded and found none)."})
             rows.append(row)
             continue
         matches_last = bool(last_run_snapshot_id) and entry.runtime_snapshot_id == last_run_snapshot_id
@@ -131,10 +132,19 @@ def build_scenario_insight(
     if active and active["basis"] == "STALE":
         banner = ("The active scenario's Working Copy has changed since its Run: its column is the PRIOR Run, "
                   "not the modified Working Copy.")
+    shown = len(rows)
+    total = shown if candidates is None else max(candidates, shown)
+    omitted = total - shown
     return {
-        "available": bool(rows), "state": state, "rows": rows, "comparisons": comparisons, "banner": banner,
-        "active_scenario_id": active_scenario_id,
-        "message": "" if rows else "No scenarios are available for this project.",
+        "available": bool(rows), "state": state, "rows": rows, "comparisons": comparisons,
+        "banner": banner, "active_scenario_id": active_scenario_id,
+        "shown": shown, "total": total, "omitted": omitted,
+        "omitted_note": (f"Showing {shown} of {total} scenarios (active scenario and Base Case first, then most "
+                         f"recently updated). {omitted} more are available in the Scenarios workspace."
+                         if omitted else ""),
+        "retrieval_complete": bool(scenarios_complete),
+        "message": ("" if rows else ("The project's scenarios could not be retrieved; nothing is shown."
+                                     if not scenarios_complete else "No scenarios are available for this project.")),
         "unavailable_note": "A metric shown as — is not persisted by that scenario's Run; nothing is estimated.",
     }
 
@@ -144,6 +154,7 @@ def build_scenario_insight_safe(**kwargs: Any) -> dict[str, Any]:
         return build_scenario_insight(**kwargs)
     except Exception:  # noqa: BLE001 - presentation adapter must fail closed
         return {"available": False, "state": "UNAVAILABLE", "rows": [], "comparisons": [], "banner": "",
+                "shown": 0, "total": 0, "omitted": 0, "omitted_note": "", "retrieval_complete": False,
                 "message": "Scenario comparison could not be built from the persisted Runs.",
                 "unavailable_note": ""}
 

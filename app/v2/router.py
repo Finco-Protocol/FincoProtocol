@@ -540,7 +540,7 @@ def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, ru
     """
     import dataclasses
     from app.v2.insight_quality_projection import build_quality_insight_safe
-    from app.v2.insight_scenario_projection import HISTORY_SCAN_LIMIT, build_scenario_insight_safe
+    from app.v2.insight_scenario_projection import build_scenario_insight_safe
 
     register_paths = [str(r.get("path")) for r in ((register_view or {}).get("rows") or []) if isinstance(r, dict)]
     strip = smart_panel.kpi_strip
@@ -558,25 +558,23 @@ def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, ru
         register_paths=register_paths, kpi_keys=kpi_keys)
     scenario_view: dict = {}
     try:
-        from app.persistence.run_history_repository import get_run_history
-        from app.persistence.scenarios_repository import list_scenarios
-        records = list_scenarios(user_id=workspace_owner, project_id=project_record.project_id, include_archived=False)
-        history = get_run_history(workspace_owner, project_record.project_id, limit=HISTORY_SCAN_LIMIT)
+        from app.persistence.scenario_insight_reads import list_insight_scenarios, newest_committed_runs
+        chosen = list_insight_scenarios(workspace_owner, project_record.project_id, active_id)
+        latest = newest_committed_runs(workspace_owner, project_record.project_id, chosen.records)
         issue_count = None
         if quality.get("available") and quality.get("terms_bound"):
             issue_count = sum(1 for c in quality.get("covenants", ())
                               if c.get("status") in ("FAIL", "WARNING"))
         scenario_view = build_scenario_insight_safe(
-            scenarios=records, run_history=history, active_scenario_id=active_id, active_run_state=runtime_state,
+            scenarios=chosen.records, latest_runs=latest, active_scenario_id=active_id, active_run_state=runtime_state,
             last_run_snapshot_id=getattr(ws, "last_runtime_snapshot_id", None) if ws else None,
-            active_covenant_issue_count=issue_count,
+            active_covenant_issue_count=issue_count, candidates=chosen.candidates,
+            scenarios_complete=chosen.complete,
             active_quality=(_quality_row_from_block(quality) if quality.get("available") else None))
     except Exception:  # noqa: BLE001 - fail closed to a typed UNAVAILABLE view
         scenario_view = build_scenario_insight_safe(
-            scenarios=[], run_history=[], active_scenario_id=None, active_run_state="NOT_RUN",
-            last_run_snapshot_id=None)
-        scenario_view.update({"available": False, "state": "UNAVAILABLE",
-                              "message": "Scenario comparison could not be built from the persisted Runs."})
+            scenarios=[], latest_runs={}, active_scenario_id=None, active_run_state="NOT_RUN",
+            last_run_snapshot_id=None, scenarios_complete=False)
     return dataclasses.replace(smart_panel, insight={"quality": quality, "scenarios": scenario_view})
 
 
