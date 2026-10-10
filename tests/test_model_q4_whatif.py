@@ -177,7 +177,7 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
                side_effect=lambda: FailCommit(real_connection())):
         with pytest.raises(RuntimeError, match="Q4_INJECTED_PRECOMMIT_FAILURE"):
             whatif.commit(owner=user, project_id=record.project_id,
-                          project_type=vertical.title(), token=token)
+                          project_type=record.project_type or '', token=token)
     assert len(list_scenarios(user, record.project_id)) == initial_count
     assert len(get_run_history(user, record.project_id)) == len(history0)
 
