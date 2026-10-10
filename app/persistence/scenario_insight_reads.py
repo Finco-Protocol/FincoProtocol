@@ -23,6 +23,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 HISTORY_UNAVAILABLE = "HISTORY_UNAVAILABLE"
 INSIGHT_SCENARIO_LIMIT = 8
+BASE_CASE_LABEL = "Base Case"
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,53 @@ def list_insight_scenarios(user_id: str, project_id: str, active_scenario_id: Op
     return InsightScenarioSet(records=records, candidates=candidates, complete=True)
 
 
+@dataclass(frozen=True)
+class LastRunScenario:
+    """The scenario a COMMITTED Last Run belongs to (never the currently selected Working Copy scenario)."""
+
+    scenario_id: Optional[str]
+    label: Optional[str]        # display label; None = the scenario could not be proven
+    is_base_case: bool
+    proven: bool
+
+
+def resolve_last_run_scenario(user_id: str, project_id: str,
+                              last_runtime_scenario_id: Optional[str]) -> LastRunScenario:
+    """Resolve the scenario identity of the committed Last Run from ``last_runtime_scenario_id``.
+
+    * ``None`` is the canonical Base Case relationship (a Run committed before any scenario row existed records
+      no scenario id).  The label is ``Base Case`` and, when the project's Base Case record is readable, its name
+      is appended so the two identities stay visible (``Base Case (<record name>)``).
+    * An explicit id is resolved ONLY through this owner's and project's own scenario records (an archived
+      scenario is still the scenario that produced the Run).  A Base Case record keeps the ``Base Case`` label.
+    * An id that cannot be resolved is NOT proven: ``label`` is ``None`` (shown as UNAVAILABLE).  It is never
+      replaced by the Base Case, by the active Working Copy scenario, or by an invented name.
+    """
+    from app.persistence.db import get_cursor
+
+    try:
+        with get_cursor() as cur:
+            if last_runtime_scenario_id is None:
+                cur.execute("SELECT scenario_name FROM scenarios WHERE user_id=? AND project_id=? AND is_base_case=1 "
+                            "ORDER BY archived ASC, updated_at DESC LIMIT 1", (user_id, project_id))
+                row = cur.fetchone()
+                record_name = str(row[0]).strip() if row and row[0] else ""
+                label = f"{BASE_CASE_LABEL} ({record_name})" if record_name and record_name != BASE_CASE_LABEL \
+                    else BASE_CASE_LABEL
+                return LastRunScenario(None, label, True, True)
+            cur.execute("SELECT scenario_name, is_base_case FROM scenarios WHERE user_id=? AND project_id=? "
+                        "AND scenario_id=? LIMIT 1", (user_id, project_id, last_runtime_scenario_id))
+            row = cur.fetchone()
+    except Exception:  # noqa: BLE001 - an unreadable record is not a proof
+        return LastRunScenario(last_runtime_scenario_id, None, False, False)
+    if row is None or not str(row[0] or "").strip():
+        return LastRunScenario(last_runtime_scenario_id, None, False, False)
+    is_base = bool(row[1])
+    name = str(row[0]).strip()
+    label = (f"{BASE_CASE_LABEL} ({name})" if name != BASE_CASE_LABEL else BASE_CASE_LABEL) if is_base else name
+    return LastRunScenario(last_runtime_scenario_id, label, is_base, True)
+
+
 def newest_committed_runs(user_id: str, project_id: str, scenarios: Sequence[Any]) -> dict[str, Any]:
     from app.persistence.db import get_cursor
     from app.persistence.run_history_repository import get_run_history_entry
@@ -85,5 +133,5 @@ def newest_committed_runs(user_id: str, project_id: str, scenarios: Sequence[Any
     return out
 
 
-__all__ = ["HISTORY_UNAVAILABLE", "INSIGHT_SCENARIO_LIMIT", "InsightScenarioSet", "list_insight_scenarios",
-           "newest_committed_runs"]
+__all__ = ["BASE_CASE_LABEL", "HISTORY_UNAVAILABLE", "INSIGHT_SCENARIO_LIMIT", "InsightScenarioSet",
+           "LastRunScenario", "list_insight_scenarios", "newest_committed_runs", "resolve_last_run_scenario"]

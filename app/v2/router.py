@@ -552,9 +552,21 @@ def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, ru
         except Exception:  # noqa: BLE001 - thresholds then stay unavailable
             effective_inputs = None
     active_id = getattr(ws, "active_scenario_id", None) if ws else None
+    # The scenario shown with the Findings belongs to the COMMITTED Last Run (ws.last_runtime_scenario_id), not
+    # to the Working Copy scenario currently selected.  NULL is the canonical Base Case; an unresolvable id stays
+    # UNAVAILABLE (never Base Case, never the active scenario's name).
+    last_run_scenario_name = ""
+    if ws is not None and runtime_state != "NOT_RUN":
+        try:
+            from app.persistence.scenario_insight_reads import resolve_last_run_scenario
+            resolved = resolve_last_run_scenario(workspace_owner, project_record.project_id,
+                                                 getattr(ws, "last_runtime_scenario_id", None))
+            last_run_scenario_name = resolved.label or ""
+        except Exception:  # noqa: BLE001 - identity then stays UNAVAILABLE
+            last_run_scenario_name = ""
     quality = build_quality_insight_safe(
         ws, run_state=runtime_state, project_inputs=effective_inputs, active_scenario_id=active_id,
-        scenario_name=(getattr(ws, "active_scenario_name", "") or "") if ws else "",
+        scenario_name=last_run_scenario_name,
         register_paths=register_paths, kpi_keys=kpi_keys)
     scenario_view: dict = {}
     try:
