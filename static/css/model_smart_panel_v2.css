@@ -28,3 +28,7 @@
  #model-smart-panel .v2-sp-mode { min-width:0; padding:9px 5px; font-size:11px; }
  #model-smart-panel .v2-sp-issue { padding:8px; }
 }
+
+#model-smart-panel .v2-sp-brand { padding: 4px 0 9px; }
+#model-smart-panel .v2-sp-brand-title { margin: 0; font-size: 15px; line-height: 1.3; font-weight: 700; }
+#model-smart-panel .v2-sp-brand-summary { margin: 4px 0 0; font-size: 11px; line-height: 1.5; opacity: .8; }
