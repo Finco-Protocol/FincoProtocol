@@ -20,6 +20,8 @@ from finco_radar.venues.basis import (
     BASIS_MAX_CLOCK_SKEW_SECONDS,
     basis_for_evidence,
 )
+from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
+from finco_radar.venues.robinhood_live import EVIDENCE_CLOCK_CONTRACT
 from finco_radar.venues.models import RegistryStatus
 from finco_radar.venues.observations import MarketObservation, ObservationStatus
 from finco_radar.venues.registry import VenueRegistry
@@ -143,7 +145,25 @@ def effective_observation_state(
     if age < -60:
         return "UNAVAILABLE"
     ceiling = max_age_seconds if max_age_seconds is not None else market_max_age_seconds()
-    return "AVAILABLE" if age <= ceiling else "STALE"
+    if age > ceiling:
+        return "STALE"
+
+    # The read-time MARKET clock must not mask a normalization quote that
+    # aged past its independently reviewed R-LIVE oracle policy. This is
+    # only for the explicit forward-only V2 contract: old stored rows keep
+    # their original timestamp semantics and are never reinterpreted.
+    payload = observation.payload if isinstance(observation.payload, dict) else {}
+    if payload.get("evidence_clock_contract") == EVIDENCE_CLOCK_CONTRACT:
+        policy = APPROVED_BY_CANONICAL_ID.get(payload.get("asset_key"))
+        oracle_time = _parse_aware(payload.get("normalization_oracle_observed_at"))
+        if policy is None or oracle_time is None:
+            return "UNAVAILABLE"
+        oracle_age = (as_of.astimezone(timezone.utc) - oracle_time).total_seconds()
+        if oracle_age < -60:
+            return "UNAVAILABLE"
+        if oracle_age > policy.max_quote_age_seconds:
+            return "STALE"
+    return "AVAILABLE"
 
 
 def _entry_identity(entry) -> tuple[str, str]:

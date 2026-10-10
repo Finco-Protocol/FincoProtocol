@@ -115,6 +115,17 @@ def _live_data(
             "source": "UNISWAP_V3_TWAP_CHAINLINK_USDG_USD",
             "observed_at": stamp.isoformat(),
             "reason": None,
+            "source_evidence": {
+                "blockNumber": 100,
+                "blockHash": "0x" + "ab" * 32,
+                "blockTimestamp": stamp.isoformat(),
+                "dexWindowStartAt": (stamp - timedelta(seconds=300)).isoformat(),
+                "dexWindowEndAt": stamp.isoformat(),
+                "twapWindowSeconds": 300,
+                "lastPoolActivityAt": stamp.isoformat(),
+                "quoteUpdatedAt": stamp.isoformat(),
+                "effectiveObservedAt": stamp.isoformat(),
+            },
         },
         "robinhood_basis": {
             "state": "AVAILABLE",
