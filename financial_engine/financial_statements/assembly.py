@@ -824,9 +824,13 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         bs_periods.append(BalanceSheetPeriod(
             period_index=int(idx),
             period_end=getattr(mp, "period_end", None),
-            # Carry 0.0 post-repayment (si is None after senior axis ends) so BS check
-            # runs for all operating periods, not just the senior-active window.
-            senior_debt_balance_keur=_at(senior.senior_debt_closing_keur, si) if si is not None else 0.0,
+            # Ending the contractual schedule does not extinguish a liability.
+            # Carry its actual closing balance, without inventing service/interest.
+            senior_debt_balance_keur=(
+                _at(senior.senior_debt_closing_keur, si) if si is not None else
+                senior.senior_debt_closing_keur[-1]
+                if senior.period_indices and idx > senior.period_indices[-1] else 0.0
+            ),
             shl_balance_keur=(
                 float(getattr(wp, "actual_shl_closing_balance_keur", 0.0) or 0.0)
                 if _wp_is_real else None
