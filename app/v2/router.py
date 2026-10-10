@@ -2574,6 +2574,7 @@ async def v2_workbook_run(
     active_scenario_name = ws.active_scenario_name
     scenario_name = active_scenario_name or "Base"
     _scenario_overrides_for_fold = None
+    _q4_effective_binding = None
 
     if active_scenario_id:
         import logging as _log
@@ -2623,12 +2624,26 @@ async def v2_workbook_run(
                     q4_spec.field_id, str(raw_scenario_value))
                 if not validation.is_valid:
                     raise ValueError("Q4_SCENARIO_OVERRIDE_VALUE_INVALID")
+                # Q4 child must be bound to exactly the reviewed complete
+                # source snapshot. An unrelated later scalar edit cannot
+                # silently change the What-if's inherited economics.
+                source_pis = ProjectInputSet.from_snapshot(
+                    dict(sc_rec.base_input_set or {}))
+                if dict(source_pis.snapshot_origin) != dict(pis_draft.snapshot_origin):
+                    raise ValueError("Q4_SCENARIO_SOURCE_CHANGED_REPREVIEW_REQUIRED")
                 effective_snapshot = resolve_scenario_snapshot(
-                    dict(pis_draft.snapshot_origin), dict(sc_rec.overrides))
+                    dict(source_pis.snapshot_origin), dict(sc_rec.overrides))
                 resolved_pis = ProjectInputSet.from_snapshot(effective_snapshot)
                 if resolved_pis.get(q4_spec.field_id) != validation.typed_value:
                     raise ValueError("Q4_SCENARIO_ENGINE_INPUT_MISMATCH")
                 override = WorkbookService.to_projectinputs(resolved_pis)
+                _q4_effective_binding = {
+                    "authority": "q4_canonical_reviewed_scenario_v1",
+                    "scenario_id": sc_rec.scenario_id,
+                    "field_id": q4_spec.field_id,
+                    "snapshot_key": q4_spec.snapshot_key,
+                    "value": validation.typed_value,
+                }
             except (ValueError, KeyError) as exc:
                 msg = str(exc)
                 return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
@@ -2722,6 +2737,10 @@ async def v2_workbook_run(
     _revenue_derivation_raw = _derivation_evidence.get("revenue", {})
     _kpis_enriched = dict(result["kpis"])
     _kpis_enriched["revenue_derivation"] = _fmt_rev_deriv(_revenue_derivation_raw)
+    if _q4_effective_binding is not None:
+        # Immutable Run-bound replay evidence for the scalar Q4 override;
+        # canonical Last Run export must reconstruct the same engine inputs.
+        _kpis_enriched["q4_effective_input"] = dict(_q4_effective_binding)
     _scenario_revenue_input = None
     if runtime_project_key in ("Solar", "Wind"):
         _scenario_revenue_input = {
