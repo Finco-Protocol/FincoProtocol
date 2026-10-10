@@ -2598,6 +2598,41 @@ async def v2_workbook_run(
         # so the legacy ScenarioManager is never activated by a user-created name.
         scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
 
+        # WF-08 Q4: only explicit, auditable Finding-to-Scenario scalar
+        # overrides may reach the engine. The canonical scenario resolver
+        # expects legacy snapshot keys, not Workbook semantic field IDs.
+        # This is the existing Run materialization path, not a second writer.
+        if (not sc_rec.is_base_case and
+                (sc_rec.replay_metadata or {}).get("action") == "q4_finding_whatif_v1"):
+            from app.persistence.scenarios_repository import resolve_scenario_snapshot
+            from app.v2.whatif import CANDIDATES
+            from app.workbook.input_set import ProjectInputSet
+            from app.workbook.update_service import WorkbookUpdateService
+            from app.workbook.registry import WORKBOOK
+            try:
+                q4_meta = sc_rec.replay_metadata
+                q4_mapping = CANDIDATES.get(q4_meta.get("finding_id"))
+                if (not q4_mapping or q4_mapping[1] != q4_meta.get("field_id")
+                        or set(sc_rec.overrides or {}) != {q4_mapping[2]}):
+                    raise ValueError("Q4_SCENARIO_OVERRIDE_AUTHORITY_INVALID")
+                q4_spec = WORKBOOK.field(q4_mapping[1])
+                if q4_spec.snapshot_key != q4_mapping[2]:
+                    raise ValueError("Q4_WORKBOOK_MAPPING_CHANGED")
+                raw_scenario_value = sc_rec.overrides[q4_spec.snapshot_key]
+                validation = WorkbookUpdateService.validate_field_update(
+                    q4_spec.field_id, str(raw_scenario_value))
+                if not validation.is_valid:
+                    raise ValueError("Q4_SCENARIO_OVERRIDE_VALUE_INVALID")
+                effective_snapshot = resolve_scenario_snapshot(
+                    dict(pis_draft.snapshot_origin), dict(sc_rec.overrides))
+                resolved_pis = ProjectInputSet.from_snapshot(effective_snapshot)
+                if resolved_pis.get(q4_spec.field_id) != validation.typed_value:
+                    raise ValueError("Q4_SCENARIO_ENGINE_INPUT_MISMATCH")
+                override = WorkbookService.to_projectinputs(resolved_pis)
+            except (ValueError, KeyError) as exc:
+                msg = str(exc)
+                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
         if not sc_rec.is_base_case and "tariff_eur_mwh" in (sc_rec.overrides or {}):
             from app.workbook.scenario_revenue_authority import bind_scenario_tariff
             try:
