@@ -124,6 +124,7 @@ async def q4_compare(request: Request, project: str, scenario_id: str,
         from app.persistence.scenario_insight_reads import newest_committed_runs, HISTORY_UNAVAILABLE
         from app.model_quality import evaluate_model_quality
         from app.model_quality.evidence import evidence_from_history_entry
+        from app.run_integrity import run_integrity_checks
         from app.v2.insight_scenario_projection import COMPARE_KEYS
         from app.v2.run_history_projection import _enriched_kpis
         from app.v2.scenario_kpi_projection import build_compare_rows, build_scenario_projection
@@ -157,9 +158,14 @@ async def q4_compare(request: Request, project: str, scenario_id: str,
                                                                     scenario_known=True))
         new_q = evaluate_model_quality(evidence_from_history_entry(new, active_scenario_id=child.scenario_id,
                                                                     scenario_known=True))
+        old_integrity = run_integrity_checks(old.integrity_evidence)
+        new_integrity = run_integrity_checks(new.integrity_evidence)
         checks_old = {c.check_id: c.status.value for c in old_q.checks}
         quality_rows = [(c.check_id, checks_old.get(c.check_id, "UNAVAILABLE"), c.status.value)
                         for c in new_q.checks if checks_old.get(c.check_id) != c.status.value]
+        old_i = {c.check_id: c.status.value for c in old_integrity.checks}
+        integrity_rows = [(c.check_id, old_i.get(c.check_id, "UNAVAILABLE"), c.status.value)
+                          for c in new_integrity.checks if old_i.get(c.check_id) != c.status.value]
         def identity(entry, label):
             return ("<li><b>" + e(label) + "</b> · history " + e(str(entry.history_id))
                     + " · snapshot " + e(str(entry.runtime_snapshot_id))
@@ -177,11 +183,19 @@ async def q4_compare(request: Request, project: str, scenario_id: str,
                 '<h3>Model Quality advisory</h3>'
                 '<p>Base score: ' + e(str(old_q.summary.score) if old_q.summary.score is not None else "NOT SCORED")
                 + ' · What-if score: ' + e(str(new_q.summary.score) if new_q.summary.score is not None else "NOT SCORED") + '</p>'
-                '<p>Evidence coverage: Base ' + e(str(old_q.summary.coverage_weighted))
-                + ' · What-if ' + e(str(new_q.summary.coverage_weighted)) + '</p>'
+                '<p>Evidence coverage: Base ' + e(
+                    f"{old_q.summary.coverage_weighted * 100:.1f}%"
+                    if old_q.summary.coverage_weighted is not None else "UNAVAILABLE")
+                + ' · What-if ' + e(
+                    f"{new_q.summary.coverage_weighted * 100:.1f}%"
+                    if new_q.summary.coverage_weighted is not None else "UNAVAILABLE") + '</p>'
                 '<h3>Changed check statuses</h3><ul>'
                 + "".join("<li>" + e(cid) + ": " + e(prior) + " → " + e(after) + "</li>"
                           for cid, prior, after in quality_rows)
+                + '</ul><h3>Canonical Run Integrity</h3>'
+                '<p>Base ' + e(old_integrity.status.value) + ' · What-if ' + e(new_integrity.status.value) + '</p>'
+                '<ul>' + "".join("<li>" + e(cid) + ": " + e(prior) + " → " + e(after) + "</li>"
+                                  for cid, prior, after in integrity_rows)
                 + '</ul><p>Q1 advisory does not certify lender compliance. '
                   'Check Run History for underlying canonical Integrity evidence.</p></section>')
         return HTMLResponse(html)
