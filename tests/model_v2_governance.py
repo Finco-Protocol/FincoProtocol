@@ -412,6 +412,8 @@ def model_v2_unapproved_engine_changes(changed: list[str] | None = None) -> list
 def model_v2_frozen_violations(changed: list[str] | None = None) -> list[str]:
     """Changed paths under frozen namespaces: the code-level permanent hard
     deny PLUS the scope's current epic-phase frozen prefixes."""
+    from radar_authority_governance import reviewed_radar_authority_matches
+
     changed = changed_paths_vs_main() if changed is None else changed
     scope = active_scope()
     declared = list(scope.get("current_frozen_prefixes", [])) if scope else []
@@ -423,6 +425,7 @@ def model_v2_frozen_violations(changed: list[str] | None = None) -> list[str]:
         # module is authorized; the permanent hard deny otherwise stands and
         # can never be widened through the scope file.
         and f != "finco_radar/venues/relative_value.py"
+        and not reviewed_radar_authority_matches(f)
     )
 
 
@@ -477,6 +480,8 @@ def parallel_stream_frozen_changes(
     and the ACTIVE Model V2 scope exemptions still filter the result. Fails
     closed (RuntimeError) when the merge-base cannot be resolved.
     """
+    from radar_authority_governance import reviewed_radar_authority_matches
+
     cwd = str(repo) if repo else str(REPO)
     base = subprocess.run(
         ["git", "merge-base", main_ref, head_ref],
@@ -496,4 +501,5 @@ def parallel_stream_frozen_changes(
         p for p in diff.stdout.split()
         if p and p not in allowed
         and not approved_by_active_model_v2_scope(p, repo=cwd, ref=head_ref)
+        and not reviewed_radar_authority_matches(p, repo=cwd, ref=head_ref)
     ]
