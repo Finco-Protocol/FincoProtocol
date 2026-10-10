@@ -94,7 +94,7 @@ def _page(browser, url, *, authenticated=True, width=1440):
         ctx.add_cookies([{
             "name": COOKIE_NAME,
             "value": create_session_token(user_id=OWNER, username=OWNER),
-            "url": url,
+            "domain": "127.0.0.1",
             "path": "/",
         }])
     page = ctx.new_page()
@@ -148,9 +148,10 @@ def test_authenticated_csv_review_apply_without_automatic_run(browser, app_serve
         assert saved.draft_snapshot["horizon_years"] == "28"
         assert saved.saved_snapshot == original.saved_snapshot
         assert not saved.last_runtime_snapshot_id
-        assert page.get_by_text("This is not a successful financial model run.").count() >= 0
+        assert page.get_by_text("This is not a successful financial model run.").count() == 1
         assert not page.browser_errors
-        page.screenshot(path=str(tmp_path / "import-c-solar-applied.png"), full_page=True)
+        Path("artifacts/model-ai-import").mkdir(parents=True, exist_ok=True)
+        page.screenshot(path="artifacts/model-ai-import/import-c-solar-applied.png", full_page=True)
     finally:
         ctx.close()
 
@@ -180,11 +181,12 @@ def test_wind_xlsx_readonly_multisheet_mobile(browser, app_server, tmp_path):
         assert page.locator("tr.review-row").count() == 2
         page.get_by_role("button", name="Needs review").click()
         page.get_by_role("button", name="All", exact=True).click()
-        page.reload()
+        page.goto(app_server["url"] + "/v2/workbook/import?project=" + CODE)
         assert page.locator("#upload").count() == 1
         assert get_workspace_state(OWNER, app_server["project"].project_id).draft_snapshot == original.draft_snapshot
         assert not page.browser_errors
-        page.screenshot(path=str(tmp_path / "import-c-mobile.png"), full_page=True)
+        Path("artifacts/model-ai-import").mkdir(parents=True, exist_ok=True)
+        page.screenshot(path="artifacts/model-ai-import/import-c-mobile.png", full_page=True)
     finally:
         ctx.close()
 
