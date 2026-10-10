@@ -46,7 +46,7 @@
     <span class="v2-sp-chip v2-sp-chip--{{ q.state | lower }}" data-testid="q3-freshness">{{ q.state }}</span>
     <span>{{ q.context_note }}</span>
     <small>Scenario: {{ q.identity.scenario_name or 'UNAVAILABLE' }} · Run {{ (q.identity.run_at or 'UNAVAILABLE')[:16] | replace('T', ' ') }}
-      · snapshot {{ (q.identity.snapshot_id or 'UNAVAILABLE')[:12] }} · engine {{ q.identity.engine_version or 'UNAVAILABLE' }}</small>
+      · snapshot {{ (q.identity.snapshot_id or 'UNAVAILABLE')[:22] }} · engine {{ q.identity.engine_version or 'UNAVAILABLE' }}</small>
   </div>
   {% set sc = q.score %}
   <dl class="v2-sp-facts v2-sp-q3-score" data-testid="q3-score">

@@ -19,7 +19,7 @@
       </div>
       <small>{{ r.basis_note }}</small>
       {% if r.has_run %}
-      <small data-testid="q3-scenario-run">Run {{ r.run.ran_at }} · snapshot {{ (r.run.snapshot_id or 'UNAVAILABLE')[:12] }} · engine {{ r.run.engine_version or 'UNAVAILABLE' }}</small>
+      <small data-testid="q3-scenario-run" data-snapshot-id="{{ r.run.snapshot_id or '' }}" data-history-id="{{ r.run.history_id }}">Run {{ r.run.ran_at }} · snapshot {{ (r.run.snapshot_id or 'UNAVAILABLE')[:22] }} · engine {{ r.run.engine_version or 'UNAVAILABLE' }}</small>
       <dl class="v2-sp-facts v2-sp-q3-facts">
         {% for k in r.kpis %}<dt>{{ k.label }}</dt><dd>{{ k.value }}</dd>{% endfor %}
         <dt>Model Quality</dt>
