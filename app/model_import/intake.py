@@ -250,12 +250,26 @@ def normalize_value(field_id: str, value: object, source_unit: str | None) -> st
     elif spec.field_type == FieldType.KEUR:
         if unit in ("eur", "euro", "euros", "eur/yr"):
             amount /= 1000
-        elif unit not in ("keur", "k eur", "keur/yr", "thousand eur", ""):
+        elif unit in ("keur", "k eur", "keur/yr", "thousand eur"):
+            pass
+        elif not unit:
+            raise IntakeError("IMPORT_CURRENCY_UNIT_REQUIRED")
+        else:
             raise IntakeError("IMPORT_UNIT_INCOMPATIBLE")
-    elif unit not in ("", target, "year", "years", "month", "months", "mw",
-                      "mwh", "h", "h/yr", "eur/mwh", "eur/kw/month",
-                      "eur/kwh", "ratio"):
-        raise IntakeError("IMPORT_UNIT_INCOMPATIBLE")
+    else:
+        # Numeric units MUST match the registry field's economic quantity;
+        # the old permissive union accepted e.g. 'years' for a rate.
+        numeric_aliases = {
+            FieldType.MW: {"mw"},
+            FieldType.MWH: {"h", "h/yr", "mwh"},
+            FieldType.YEARS: {"year", "years"},
+            FieldType.MONTHS: {"month", "months"},
+            FieldType.INT: {""},
+            FieldType.FLOAT: {target} if target else {"", "ratio"},
+        }
+        accepted = numeric_aliases.get(spec.field_type, {target} if target else {""})
+        if unit and unit not in accepted:
+            raise IntakeError("IMPORT_UNIT_INCOMPATIBLE")
     # Strict integer enforcement is delegated to canonical Workbook validator.
     return format(amount, "f")
 

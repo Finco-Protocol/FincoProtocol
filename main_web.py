@@ -368,6 +368,25 @@ app.include_router(_v2_financing_sources_uses_router, prefix="/v2")
 from app.v2.import_router import router as _v2_import_router
 app.include_router(_v2_import_router, prefix="/v2")
 
+# Workflow C: reject over-size or unbounded uploads BEFORE multipart parsing.
+# UploadFile may spool the incoming body before the route executes, so an
+# endpoint-only read limit would not provide an actual request-body bound.
+@app.middleware("http")
+async def _model_import_content_length_gate(request: Request, call_next):
+    if request.url.path == "/v2/workbook/import/preview":
+        raw = request.headers.get("content-length")
+        try:
+            size = int(raw) if raw is not None else 0
+        except (TypeError, ValueError):
+            size = 0
+        from app.model_import.intake import MAX_UPLOAD_BYTES
+        if size <= 0:
+            return JSONResponse({"error": "IMPORT_CONTENT_LENGTH_REQUIRED"}, status_code=411)
+        if size > MAX_UPLOAD_BYTES + 16 * 1024:
+            return JSONResponse({"error": "IMPORT_BODY_SIZE_INVALID"}, status_code=413)
+    return await call_next(request)
+
+
 # -- FINCO Radar v1 (Post-R12 P2) — narrow read-only Radar surface ------------
 # Read-only product UI over the frozen R0-R12 authority and the canonical
 # P1 acquisition runtime. One refresh -> one immutable snapshot_id; all

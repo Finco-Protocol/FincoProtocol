@@ -161,3 +161,19 @@ def test_signed_review_disallows_duplicate_approved_targets():
                 "keep_1": "on", "field_1": "revenue.ppa.index", "unit_1": "fraction",
             }, **SOLAR,
         )
+
+
+
+def test_currency_missing_unit_remains_unresolved():
+    with pytest.raises(IntakeError, match="IMPORT_CURRENCY_UNIT_REQUIRED"):
+        normalize_value("capex.C.epc_contract", "120000", "")
+    rows = _csv("Assumption,Value,Unit\ncapex.C.epc_contract,120000,\n")["proposals"]
+    assert rows[0]["status"] == "invalid"
+    assert rows[0]["reason"] == "IMPORT_CURRENCY_UNIT_REQUIRED"
+
+
+def test_incompatible_numeric_units_fail_closed():
+    with pytest.raises(IntakeError, match="IMPORT_UNIT_INCOMPATIBLE"):
+        normalize_value("project_setup.technical.horizon_years", "25", "MW")
+    with pytest.raises(IntakeError, match="IMPORT_UNIT_INCOMPATIBLE"):
+        normalize_value("revenue.ppa.base_tariff", "60", "years")
