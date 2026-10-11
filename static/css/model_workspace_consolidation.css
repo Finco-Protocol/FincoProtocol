@@ -1,0 +1,36 @@
+/* Option C: one area hierarchy, contextual section tree and preserved activation IDs. */
+[hidden] { display: none !important; }
+#v2-sheet-tabs { display: none; }
+#v2-hybrid-bar .hy-id { color: #111827; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) #v2-hybrid-bar .hy-id { color: #f9fafb; }
+}
+:root[data-theme="dark"] #v2-hybrid-bar .hy-id { color: #f9fafb; }
+.workspace-drawer-toggle { display: none; }
+.workspace-drawer-toggle, .workspace-insight-toggle { border: 1px solid #cbd5e1; border-radius: 6px;
+  background: #f8fafc; color: #1e293b; font: inherit; font-size: .8125rem; cursor: pointer; }
+.workspace-drawer-toggle:focus-visible, .workspace-insight-toggle:focus-visible { outline: 2px solid #2563eb; }
+.v2-workspace-main, .v2-sheet-panel, .v2-sheet-body { min-width: 0; max-width: 100%; }
+/* Keep absolute assistive captions inside their own horizontal scroll region. */
+#v2-sheet-outputs .out-scroll { position: relative; }
+.workspace-insight-toggle { margin: .5rem; padding: .5rem .75rem; scroll-margin-top: 220px; }
+.v2-workspace-main > .workspace-insight-toggle { grid-column: 2; }
+@media (min-width: 901px) {
+  .v2-workspace-main > #model-smart-panel { grid-row: 2 / span 12; position: static; }
+  .v2-workspace-main > .workspace-insight-toggle { grid-row: 1; }
+  .v2-workspace-main:has(> #model-smart-panel[hidden]) { grid-template-columns: minmax(0, 1fr); }
+  .v2-workspace-main:has(> #model-smart-panel[hidden]) > .workspace-insight-toggle { grid-column: 1; }
+}
+@media (max-width: 900px) {
+  .v2-workspace-main > #model-smart-panel { display: block; order: 10; }
+  #model-smart-panel[hidden] { display: none !important; }
+  .workspace-insight-toggle { order: -1; align-self: flex-start; }
+}
+@media (max-width: 720px) {
+  .v2-sheet-body { overflow-x: auto; }
+  .workspace-drawer-toggle { display: block; margin: .5rem; padding: .5rem; }
+  #model-workspace-nav { display: block; max-height: 50vh; overflow: auto; }
+  #model-workspace-nav .v2-ws-nav-group { display: block; }
+  #model-workspace-nav .v2-ws-nav-item { width: 100%; text-align: left; }
+  #model-workspace-nav .v2-ws-nav-group-label { display: block; }
+}

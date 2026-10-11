@@ -14,7 +14,7 @@
 #}
 <nav id="model-workspace-nav" class="v2-ws-nav" aria-label="Workspace sections" data-testid="workspace-nav">
   {% for group in ws_nav_groups %}
-  <div class="v2-ws-nav-group" role="group" aria-label="{{ group.label }}">
+  <div class="v2-ws-nav-group" role="group" aria-label="{{ group.label }}" data-workspace-area="{{ group.area }}">
     <div class="v2-ws-nav-group-label">{{ group.label }}</div>
     {% for item in group.items %}
       {% if item.available %}
@@ -56,13 +56,18 @@
       if (on) { seen = true; b.setAttribute('aria-current', 'page'); b.classList.add('v2-ws-nav-item--active'); }
       else { b.removeAttribute('aria-current'); b.classList.remove('v2-ws-nav-item--active'); }
     });
+    var active = nav.querySelector('[aria-current="page"]');
+    Array.prototype.forEach.call(nav.querySelectorAll('[data-workspace-area]'), function (group) {
+      group.hidden = group.getAttribute('data-workspace-area') !== 'overview' &&
+        !(active && group.contains(active));
+    });
   }
   // mode: 'push' (user chose a section), 'replace' (state follows the sheet), 'none' (history moved us)
   function activate(tabId, mode, anchor) {
     var tab = document.getElementById(tabId);
     if (!tab) return;
     if (selectedTabId() !== tabId) tab.click();
-    var h = hashFor(tabId);
+    var h = hashFor(selectedTabId() || tabId);
     if (mode !== 'none' && location.hash !== h && history.pushState) {
       (mode === 'push' ? history.pushState : history.replaceState).call(history, null, '', h);
     }
@@ -77,6 +82,11 @@
     var btn = evt.target.closest('[data-nav-tab]');
     if (!btn || btn.disabled) return;
     activate(btn.getAttribute('data-nav-tab'), 'push', btn.getAttribute('data-nav-anchor'));
+    var drawer = document.querySelector('[data-workspace-drawer][aria-controls="model-workspace-nav"]');
+    if (drawer && window.matchMedia('(max-width: 720px)').matches) {
+      drawer.setAttribute('aria-expanded', 'false'); nav.hidden = true;
+      drawer.focus({ preventScroll: true });
+    }
   });
   // Smart Panel / Key-metrics strip navigation.  Delegated from the document because the panel
   // is replaced out-of-band after every Save and Run.
@@ -104,7 +114,7 @@
   document.addEventListener('keydown', drillFrom);
   nav.addEventListener('keydown', function (evt) {
     if (evt.key !== 'ArrowDown' && evt.key !== 'ArrowUp') return;
-    var items = Array.prototype.filter.call(nav.querySelectorAll('.v2-ws-nav-item'), function (b) { return !b.disabled; });
+    var items = Array.prototype.filter.call(nav.querySelectorAll('.v2-ws-nav-item'), function (b) { return !b.disabled && b.offsetParent !== null; });
     var i = items.indexOf(document.activeElement);
     if (i < 0) return;
     evt.preventDefault();
@@ -126,6 +136,10 @@
   }
 
   // Back / Forward between sheet entries.
+  window.addEventListener('hashchange', function () {
+    var id = tabIdFromHash();
+    if (id) activate(id, 'none');
+  });
   window.addEventListener('popstate', function () {
     activate(tabIdFromHash() || 'tab-overview', 'none');
   });

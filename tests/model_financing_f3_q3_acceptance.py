@@ -7,6 +7,7 @@ Real application server, real Save/Run/CAS routes, synthetic reference projects 
 written next to it (they are CI artifacts and are never committed).  Exit code is non-zero if any check fails.
 """
 from __future__ import annotations
+from tests.model_workspace_navigation import activate_destination
 
 import argparse
 import hashlib
@@ -286,7 +287,7 @@ def main() -> int:
                 run_model(page)
                 base_snap = get_workspace_state(USER, record.project_id).last_runtime_snapshot_id
                 base_fe_digest = get_workspace_state(USER, record.project_id).last_runtime_summary["financing_evidence"]["collection_digest"]
-                page.click("#tab-scenarios"); page.wait_for_selector("#v2-sheet-scenarios")
+                activate_destination(page, 'tab-scenarios'); page.wait_for_selector("#v2-sheet-scenarios")
                 page.fill(".v2-scenario-name-input", "F3 Upside"); page.click(".v2-scenario-create-btn")
                 page.wait_for_selector("text=F3 Upside"); page.wait_for_timeout(1500)
                 page.goto(f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
@@ -310,7 +311,7 @@ def main() -> int:
                       sorted(r[1] for r in rows) == ["CURRENT", "HISTORICAL_RUN"], rows)
                 f = shot(page, "solar-10-scenarios-comparison-light-1440.png")
                 # switch back to Base Case via the existing workspace control
-                page.click("#tab-scenarios"); page.wait_for_selector("#v2-sheet-scenarios")
+                activate_destination(page, 'tab-scenarios'); page.wait_for_selector("#v2-sheet-scenarios")
                 page.locator("#v2-sheet-scenarios form[hx-post$='scenarios/select'] button").first.click()
                 page.wait_for_timeout(2500)
                 page.goto(f"{url}/v2/workbook?project={record.project_code}&sheet=debt")

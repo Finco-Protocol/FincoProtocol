@@ -146,6 +146,8 @@ def test_q4_finding_preview_confirm_select_run_compare(browser, app_server, kind
         proposed = 50 if original != 50 else 51
 
         page.goto(f"{root}/v2/workbook?project={code}")
+        from tests.model_workspace_navigation import open_insight
+        open_insight(page)
         finding = page.locator('details[data-check-id="QM-SD-006"]')
         assert finding.count() == 1, "Q1/Q3 finding must be visible on real Workbook"
         finding.evaluate(

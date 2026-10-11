@@ -20,6 +20,8 @@
     </span>
   </div>
 
+  <p class="v2-rh-sub">Last Run freshness and immutable Run History coverage are separate. A legacy reference Last Run can exist without a recorded history entry; missing ledger evidence is never reconstructed here.</p>
+
   {% if not available %}
   <div class="v2-rh-error" role="alert" data-testid="run-history-error">
     RUN_HISTORY_PAYLOAD_MALFORMED — history entry could not be decoded; fail-closed (no fabricated rows).

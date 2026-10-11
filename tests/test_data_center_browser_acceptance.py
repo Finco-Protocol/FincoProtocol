@@ -23,6 +23,8 @@ Section 9 markers:
 """
 from __future__ import annotations
 
+from tests.model_workspace_navigation import activate_destination
+
 import socket
 import threading
 import time
@@ -133,7 +135,7 @@ def test_data_center_reference_browser_acceptance(dc_app, browser):
 
         # Renewable-only controls must not appear as primary inputs, and the
         # capacity control carries the Data Center IT-load label.
-        page.locator("#tab-inputs").click()
+        activate_destination(page, "tab-inputs")
         page.locator("#panel-inputs").wait_for(state="visible")
         inputs_panel = page.locator("#panel-inputs")
         assert inputs_panel.locator(
@@ -146,7 +148,7 @@ def test_data_center_reference_browser_acceptance(dc_app, browser):
         assert "IT Capacity" in capacity_row.inner_text()
 
         # ── Revenue sheet: DC drivers visible, PPA/merchant hidden ─────
-        page.locator("#tab-revenue").click()
+        activate_destination(page, "tab-revenue")
         revenue_panel = page.locator("#panel-revenue")
         revenue_panel.locator('[data-field-id="revenue.data_center.service_price"]').wait_for(
             state="visible", timeout=30_000
@@ -160,7 +162,7 @@ def test_data_center_reference_browser_acceptance(dc_app, browser):
         )
 
         # ── CAPEX / OPEX sheets visible with editable working-copy rows ─
-        page.locator("#tab-capex").click()
+        activate_destination(page, "tab-capex")
         page.locator("#panel-capex").wait_for(state="visible")
         page.locator('#panel-capex [data-testid="capex-summary"], #panel-capex').first.wait_for(
             state="attached", timeout=30_000
@@ -171,7 +173,7 @@ def test_data_center_reference_browser_acceptance(dc_app, browser):
         # Persisted lines are directly editable grid rows: the description is an input value.
         assert capex_panel.locator('input[name="label"][value="UPS and Electrical Distribution"]').count() >= 1
 
-        page.locator("#tab-opex").click()
+        activate_destination(page, "tab-opex")
         page.locator("#panel-opex").wait_for(state="visible")
         opex_panel = page.locator("#panel-opex")
         opex_panel.locator('text=Power Expenses').first.wait_for(
@@ -185,13 +187,13 @@ def test_data_center_reference_browser_acceptance(dc_app, browser):
         ).count() == 0
 
         # ── Run works and returns are visible ───────────────────────────
-        page.locator("#tab-overview").click()
+        activate_destination(page, "tab-overview")
         page.locator("#panel-overview").wait_for(state="visible")
         page.locator('[data-testid="v2-run-btn"]').click()
         page.locator('[data-testid="overview-status-current"]').wait_for(
             state="attached", timeout=180_000
         )
-        page.locator("#tab-returns").click()
+        activate_destination(page, "tab-returns")
         page.locator("#panel-returns").wait_for(state="visible")
         assert page.locator("#panel-returns").inner_text() != ""
 
@@ -200,7 +202,7 @@ def test_data_center_reference_browser_acceptance(dc_app, browser):
 
         # ── No horizontal overflow at 390 px ────────────────────────────
         page.set_viewport_size({"width": 390, "height": 844})
-        page.locator("#tab-overview").click()
+        activate_destination(page, "tab-overview")
         page.locator("#panel-overview").wait_for(state="visible")
         _assert_no_horizontal_overflow(page)
     finally:
@@ -243,7 +245,7 @@ def test_DC_BROWSER_VERTICAL_INTEGRITY_1280(dc_app, browser):
         _create_dc_working_copy(page, dc_app, "DC VI 1280")
 
         # Run the engine (needed so debt derivation evidence is available)
-        page.locator("#tab-overview").click()
+        activate_destination(page, "tab-overview")
         page.locator("#panel-overview").wait_for(state="visible")
         page.locator('[data-testid="v2-run-btn"]').click()
         page.locator('[data-testid="overview-status-current"]').wait_for(
@@ -251,7 +253,7 @@ def test_DC_BROWSER_VERTICAL_INTEGRITY_1280(dc_app, browser):
         )
 
         # Sensitivity tab: DC drivers present, renewable drivers absent
-        page.locator("#tab-sensitivity").click()
+        activate_destination(page, "tab-sensitivity")
         sensitivity_panel = page.locator("#panel-sensitivity")
         sensitivity_panel.wait_for(state="visible")
         assert sensitivity_panel.locator('option[value="service_price"]').count() >= 1, (
@@ -268,7 +270,7 @@ def test_DC_BROWSER_VERTICAL_INTEGRITY_1280(dc_app, browser):
         )
 
         # Scenario tab: no PPA/merchant fields
-        page.locator("#tab-scenarios").click()
+        activate_destination(page, "tab-scenarios")
         scenario_panel = page.locator("#panel-scenarios")
         scenario_panel.wait_for(state="visible")
         assert scenario_panel.locator(
@@ -276,7 +278,7 @@ def test_DC_BROWSER_VERTICAL_INTEGRITY_1280(dc_app, browser):
         ).count() == 0, "PPA tariff field must not render in DC scenario tab"
 
         # Debt tab: actual gearing + actual senior tiles after run
-        page.locator("#tab-debt").click()
+        activate_destination(page, "tab-debt")
         debt_panel = page.locator("#panel-debt")
         debt_panel.wait_for(state="visible")
         actual_senior = debt_panel.locator('[data-testid="debt-kpi-actual-senior"]')
@@ -312,7 +314,7 @@ def test_DC_MOBILE_390_NO_OVERFLOW(dc_app, browser):
         _create_dc_working_copy(page, dc_app, "DC VI 390")
 
         # Inputs: IT Capacity label present at 390px
-        page.locator("#tab-inputs").click()
+        activate_destination(page, "tab-inputs")
         page.locator("#panel-inputs").wait_for(state="visible")
         inputs_text = page.locator("#panel-inputs").inner_text()
         assert "IT Capacity" in inputs_text or "MW IT" in inputs_text, (
@@ -321,7 +323,7 @@ def test_DC_MOBILE_390_NO_OVERFLOW(dc_app, browser):
         _assert_no_horizontal_overflow(page)
 
         # Revenue: service_price field accessible at 390px
-        page.locator("#tab-revenue").click()
+        activate_destination(page, "tab-revenue")
         revenue_panel = page.locator("#panel-revenue")
         revenue_panel.locator(
             '[data-field-id="revenue.data_center.service_price"]'
@@ -329,7 +331,7 @@ def test_DC_MOBILE_390_NO_OVERFLOW(dc_app, browser):
         _assert_no_horizontal_overflow(page)
 
         # Overview: run button accessible at 390px
-        page.locator("#tab-overview").click()
+        activate_destination(page, "tab-overview")
         page.locator("#panel-overview").wait_for(state="visible")
         assert page.locator('[data-testid="v2-run-btn"]').count() >= 1, (
             "Run button must be accessible at 390px"
@@ -369,7 +371,7 @@ def test_DC_HTMX_WORKING_COPY_WORKFLOW(dc_app, browser):
         _create_dc_working_copy(page, dc_app, "DC HTMX Workflow")
 
         # Initial run at default service_price=175 EUR/kW/month
-        page.locator("#tab-overview").click()
+        activate_destination(page, "tab-overview")
         page.locator("#panel-overview").wait_for(state="visible")
         page.locator('[data-testid="v2-run-btn"]').click()
         page.locator('[data-testid="overview-status-current"]').wait_for(
@@ -380,7 +382,7 @@ def test_DC_HTMX_WORKING_COPY_WORKFLOW(dc_app, browser):
         # Navigate to revenue tab.  Each sheet panel is an iframe that
         # navigates to ?sheet=<id> asynchronously when its tab is first
         # activated — wait for the revenue frame before probing it.
-        page.locator("#tab-revenue").click()
+        activate_destination(page, "tab-revenue")
         page.wait_for_url("**/v2/workbook?project=**&sheet=revenue**", timeout=30_000)
         revenue_frame = next(
             f for f in page.frames if "sheet=revenue" in (f.url or "")
@@ -435,7 +437,7 @@ def test_DC_HTMX_WORKING_COPY_WORKFLOW(dc_app, browser):
         current_url = page.url
         page.reload()
         page.wait_for_url(current_url)
-        page.locator("#tab-revenue").click()
+        activate_destination(page, "tab-revenue")
         sp_after_reload = page.locator(
             '[data-field-id="revenue.data_center.service_price"] input.v2-field-input'
         )
@@ -462,7 +464,7 @@ def test_DC_HTMX_WORKING_COPY_WORKFLOW(dc_app, browser):
 
         # DC_DRIVER_EDIT_CHANGES_RUNTIME
         # Run again with service_price=195 (vs base 175) -- KPIs must differ
-        page.locator("#tab-overview").click()
+        activate_destination(page, "tab-overview")
         page.locator("#panel-overview").wait_for(state="visible")
         page.locator('[data-testid="v2-run-btn"]').click()
         page.locator('[data-testid="overview-status-current"]').wait_for(

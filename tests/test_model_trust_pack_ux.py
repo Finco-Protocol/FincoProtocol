@@ -699,7 +699,8 @@ class TestTrustPackBrowserAcceptance:
                 )
                 page.wait_for_load_state("domcontentloaded")
 
-                page.locator("#tab-trust").click()
+                from tests.model_workspace_navigation import activate_destination
+                activate_destination(page, 'tab-trust')
                 panel = page.locator("#panel-trust")
                 panel.locator('[data-testid="trust-pack"]').wait_for(state="visible")
 

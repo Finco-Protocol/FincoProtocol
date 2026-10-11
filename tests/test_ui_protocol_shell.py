@@ -22,6 +22,7 @@ Coverage:
   9. Logout reachability: Sign out visible on Home, Verify, authenticated Radar.
 """
 from __future__ import annotations
+from tests.model_workspace_navigation import activate_destination
 
 import os
 import socket
@@ -2309,13 +2310,13 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
     shot("04-overview-last-run")
     for tab, name in (("inputs", "05-inputs"), ("revenue", "06-revenue"),
                       ("debt", "07-debt"), ("fs", "08-financials")):
-        page.locator(f"#tab-{tab}").click()
+        activate_destination(page, f"tab-{tab}")
         shot(name)
     page.set_viewport_size({"width": 390, "height": 844})
-    page.locator("#tab-overview").click()
+    activate_destination(page, 'tab-overview')
     _assert_no_overflow(page, "/v2/workbook overview", 390)
     shot("08a-overview-390")
-    page.locator("#tab-inputs").click()
+    activate_destination(page, 'tab-inputs')
     _assert_no_overflow(page, "/v2/workbook inputs", 390)
     shot("08b-inputs-390")
     page.close()
@@ -2463,13 +2464,13 @@ def test_reference_driven_correction_a_23_capture_journey(
     page.locator("#v2-workbook-shell").wait_for()
     shot("02-solar-project")
 
-    page.locator("#tab-capex").click()
+    activate_destination(page, 'tab-capex')
     page.locator('[data-testid="capex-totals-bar"]').wait_for()
     shot("03-solar-capex-summary", page.locator('[data-testid="capex-totals-bar"]'))
     assert page.locator('[data-testid="total-capex-keur"]').inner_text().strip() not in {"", "0"}
     shot("04-solar-detailed-capex", page.locator("#v2-sheet-capex"))
 
-    page.locator("#tab-opex").click()
+    activate_destination(page, 'tab-opex')
     page.locator('[data-testid="opex-kpi-bar"]').wait_for()
     shot("05-solar-opex-summary", page.locator('[data-testid="opex-kpi-bar"]'))
     shot("06-solar-detailed-opex", page.locator("#v2-sheet-opex"))
@@ -2514,7 +2515,7 @@ def test_reference_driven_correction_a_23_capture_journey(
     assert seed_after.replay_metadata == seed_before.replay_metadata   # immutable seed identity
 
     # Change MW through the actual bound Project Setup control.
-    page.locator("#tab-project-setup").click()
+    activate_destination(page, 'tab-project-setup')
     capacity_row = page.locator(
         '#panel-project-setup [data-field-id="project_setup.technical.capacity_mw"]'
     )
@@ -2529,7 +2530,7 @@ def test_reference_driven_correction_a_23_capture_journey(
     expect(page.locator(capacity_selector)).to_have_value("150.0", timeout=10000)
     shot("08-capacity-change")
 
-    page.locator("#tab-opex").click()
+    activate_destination(page, 'tab-opex')
     survivor_row = page.locator(f"#opex-row-{seed_id}")
     survivor_row.wait_for()
     expect(survivor_row.locator('input[name="label"]')).to_have_value(overridden_label)
@@ -2543,10 +2544,10 @@ def test_reference_driven_correction_a_23_capture_journey(
 
     page.goto(f"{live_url}/v2/workbook?project={wind.project_code}")
     page.wait_for_load_state("domcontentloaded")
-    page.locator("#tab-capex").click()
+    activate_destination(page, 'tab-capex')
     shot("10-wind-capex-summary", page.locator('[data-testid="capex-totals-bar"]'))
     shot("11-wind-detailed-capex", page.locator("#v2-sheet-capex"))
-    page.locator("#tab-opex").click()
+    activate_destination(page, 'tab-opex')
     shot("12-wind-opex", page.locator("#v2-sheet-opex"))
     page.set_viewport_size({"width": 390, "height": 844})
     _assert_no_overflow(page, "/v2/workbook wind", 390)

@@ -31,11 +31,11 @@
     <button type="button" class="ig-btn ig-btn--ghost" data-ig-collapse>Collapse all</button>
     <span class="ig-msg" data-ig-msg role="status" aria-live="polite"></span>
   </div>
-  <p class="ig-hint" data-testid="input-grid-hint">
+  {% if project_editable %}<p class="ig-hint" data-testid="input-grid-hint">
     <kbd>Enter</kbd> commits and moves down · <kbd>Esc</kbd> cancels the cell · <kbd>Tab</kbd>/<kbd>↑</kbd>/<kbd>↓</kbd> move ·
     paste a column (or <em>label&nbsp;⇥&nbsp;value</em> rows) to fill several cells · <kbd>Ctrl</kbd>+<kbd>S</kbd> saves the batch.
     Saving never runs the model.
-  </p>
+  </p>{% else %}<p class="ig-hint" data-testid="input-grid-hint">Reference inputs are read-only. Category subtotals are not scalar overrides. Open the detail sheet for cost-line provenance.</p>{% endif %}
   {% if input_grid.baseline_note %}
   <p class="ig-note" data-testid="input-grid-baseline-note">{{ input_grid.baseline_note }}</p>
   {% endif %}
@@ -71,6 +71,7 @@
                    {% if row.min_value is not none %}data-min="{{ row.min_value }}"{% endif %}
                    {% if row.max_value is not none %}data-max="{{ row.max_value }}"{% endif %}
                    aria-label="{{ row.label }} ({{ row.unit }})">
+            {% if row.category_value %}<small data-testid="ig-category-{{ row.code }}">Scalar override absent · canonical category subtotal: {{ row.category_value }} {{ row.unit }}. Edit cost lines on the detail sheet; this is not an input value.</small>{% endif %}
           </td>
           {% else %}
           <td class="ig-ro" data-testid="ig-ro-{{ row.code }}">{{ row.value }}</td>

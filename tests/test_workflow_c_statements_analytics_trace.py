@@ -165,10 +165,10 @@ def test_trace_evidence_reports_missing_last_run_as_unavailable_never_available(
 def test_navigation_bridges_terminology_and_anchors_only_existing_targets():
     from app.v2.workspace_shell_projection import workspace_nav_groups
     items = {i.label: i for g in workspace_nav_groups() for i in g.items}
-    assert items["Development"].sheet_label == "CAPEX" and items["Operations"].sheet_label == "OPEX"
-    assert items["Statements"].sheet_label == "Financial Statements"
-    assert items["Assumptions"].anchor == "#assumption-register"
-    assert items["Calculation Trace"].anchor == ""
+    assert items["CAPEX"].tab_id == "tab-capex" and items["OPEX"].tab_id == "tab-opex"
+    assert items["Financial Outputs"].tab_id == "tab-outputs"
+    assert items["Trust · identity, assumptions & available lineage"].tab_id == "tab-trust"
+    assert "Calculation Trace" not in items and "Statements" not in items
     for it in items.values():
         if it.available:
             assert it.tab_id and it.tab_id.startswith("tab-")

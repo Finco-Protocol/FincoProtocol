@@ -1523,10 +1523,12 @@ def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
         projection = build_runtime_projection_bundle(
             rr, _runtime_freshness(ws, pis).is_stale)
     f = projection.fs
+    from app.v2.statement_presentation import financial_statement_tables
     # Map the FS UNAVAILABLE state to the legacy template key for backward compat
     fs_state = f.state.value if f.state.value != "UNAVAILABLE" else "FS_UNAVAILABLE"
     return {
         "fs_state": fs_state,
+        "fs_tables": financial_statement_tables(f),
         "fs_available": f.fs_available,
         "fs_pnl_rows": f.pnl_rows,
         "fs_bs_rows": f.bs_rows,
@@ -1905,6 +1907,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         active_scenario_name=context.get("active_scenario_name", "") or "",
     )
     context["ws_nav_groups"] = workspace_nav_groups()
+    from app.v2.workspace_destinations import navigation_manifest
+    context["workspace_destinations"] = navigation_manifest()
 
     # UX Foundation Phase C: contextual Smart Panel (availability +
     # navigation over existing authorities; never an engine call).
@@ -3234,7 +3238,9 @@ async def v2_outputs_workspace(request: Request, project: str):
                 owner, record.project_id, getattr(context.workspace, "last_runtime_scenario_id", None)).label
         outputs = build_output_workspace_safe(
             runtime_result=context.runtime_result, workspace=context.workspace, freshness=context.freshness,
-            last_run_scenario=last_run_scenario, integrity_report=report if state == "AVAILABLE" else None)
+            last_run_scenario=last_run_scenario, integrity_report=report if state == "AVAILABLE" else None,
+            statement_projection=context.projection.fs)
+        outputs["working_cit_rate"] = _cit_rate_display(context.inputs)
         context.validate_current()
     except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
         outputs = {"state": "UNAVAILABLE", "message": "Statements unavailable: the workspace changed while the response "
