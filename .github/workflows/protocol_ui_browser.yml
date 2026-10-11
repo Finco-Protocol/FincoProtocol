@@ -21,6 +21,8 @@ on:
       - "tests/test_model_golden_flows_browser.py"
       - "tests/test_model_q4_browser.py"
       - "tests/test_model_ai_import_browser_c.py"
+      - "tests/test_model_hybrid_inputs_grid_browser.py"
+      - "tests/test_model_hybrid_inputs_grid_routes.py"
       - "requirements.txt"
       - "constraints.txt"
       - "pyproject.toml"
@@ -87,6 +89,22 @@ jobs:
         run: |
           mkdir -p artifacts/model-ai-import
           python -m pytest -v tests/test_model_ai_import_browser_c.py --junitxml=artifacts/model-ai-import/browser-junit.xml
+
+      - name: WF-05 hybrid Inputs grid browser acceptance (desktop, mobile, keyboard)
+        run: |
+          mkdir -p artifacts/wf05
+          python -m pytest -v tests/test_model_hybrid_inputs_grid_routes.py tests/test_model_hybrid_inputs_grid_browser.py --junitxml=artifacts/wf05/browser-junit.xml
+        env:
+          WF05_SCREENSHOT_DIR: artifacts/wf05
+          WF05_TIMINGS_JSON: artifacts/wf05/timings.json
+
+      - name: Upload WF-05 screenshots, timings and results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: finco-wf05-hybrid-inputs-grid
+          path: artifacts/wf05/*
+          if-no-files-found: warn
 
       - name: Upload FINCO Model AI Import screenshots and browser results
         if: always()

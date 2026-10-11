@@ -255,8 +255,10 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
             continue
         if re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
             users.add(rel)
-    # Revenue V2 contracts are protected; the broader POST coverage gap remains.
-    assert users == {"main_web.py", "app/v2/import_router.py", "app/crypto_ui.py", "app/v2/router.py"}
+    # Login, the model-import steps, the Inputs grid validate/save routes, Revenue V2 contract writes
+    # and one crypto action. The broader POST coverage gap remains.
+    assert users == {"main_web.py", "app/v2/import_router.py", "app/v2/grid_router.py",
+                     "app/crypto_ui.py", "app/v2/router.py"}
     import ast
     tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))
     protected = {

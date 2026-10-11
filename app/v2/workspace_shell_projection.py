@@ -64,6 +64,7 @@ def workspace_nav_groups() -> tuple[WorkspaceNavGroup, ...]:
         )),
         WorkspaceNavGroup("Model", (
             WorkspaceNavItem("Project", "tab-project-setup", True, "Project Setup"),
+            WorkspaceNavItem("Input Grid", "tab-input-grid", True),
             WorkspaceNavItem("Timeline & Discounting", None, False),
             WorkspaceNavItem("Escalation", None, False),
             WorkspaceNavItem("Revenue", "tab-revenue", True),
