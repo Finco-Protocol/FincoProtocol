@@ -23,6 +23,7 @@ on:
       - "tests/test_model_ai_import_browser_c.py"
       - "tests/test_model_hybrid_inputs_grid_browser.py"
       - "tests/test_model_hybrid_inputs_grid_routes.py"
+      - "tests/test_model_workspace_consolidation_browser.py"
       - "requirements.txt"
       - "constraints.txt"
       - "pyproject.toml"
@@ -113,6 +114,43 @@ jobs:
           name: finco-model-ai-import-browser
           path: artifacts/model-ai-import/*
           if-no-files-found: warn
+
+      # PR #248 Correction A: additive coverage only. PR #247 must preserve these
+      # collected/executed nodes and fail-closed evidence in its parallel aggregate.
+      - name: Workspace consolidation real Chromium acceptance (gating)
+        env:
+          FINCO_MODEL_EXECUTION_MODE: thread
+          WF05_SCREENSHOT_DIR: artifacts/workspace-consolidation
+        run: |
+          mkdir -p artifacts/workspace-consolidation
+          git rev-parse HEAD > artifacts/workspace-consolidation/tested-sha.txt
+          git rev-parse HEAD^{tree} > artifacts/workspace-consolidation/tested-tree.txt
+          python -m pytest --collect-only -q tests/test_model_workspace_consolidation_browser.py > artifacts/workspace-consolidation/collected-nodes.txt
+          python -m pytest -v tests/test_model_workspace_consolidation_browser.py --junitxml=artifacts/workspace-consolidation/browser-junit.xml
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          root = Path('artifacts/workspace-consolidation')
+          collected = {line for line in (root / 'collected-nodes.txt').read_text().splitlines()
+                       if line.startswith('tests/test_model_workspace_consolidation_browser.py::')}
+          cases = ET.parse(root / 'browser-junit.xml').findall('.//testcase')
+          executed = {case.attrib['classname'].replace('.', '/') + '.py::' + case.attrib['name'] for case in cases}
+          assert len(collected) >= 17 and executed == collected, 'Missing collected/executed browser node evidence'
+          assert len(cases) == len(executed), 'Duplicate browser node evidence'
+          assert all(not list(case) for case in cases), 'Skipped/xfail/failed/error browser test is not acceptance'
+          screenshots = list(root.glob('prb-*.png'))
+          assert len(screenshots) >= 8, 'Missing four-sector desktop/mobile screenshots'
+          assert all(path.read_bytes().startswith(b'\x89PNG\r\n\x1a\n') for path in screenshots), 'Invalid screenshot evidence'
+          print(f'WORKSPACE_BROWSER_EVIDENCE: {len(executed)} executed/passed nodes; {len(screenshots)} screenshots')
+          PY
+
+      - name: Upload mandatory workspace consolidation browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: model-workspace-consolidation-browser
+          path: artifacts/workspace-consolidation/
+          if-no-files-found: error
 
       - name: Authenticated Q4 Finding-to-Scenario browser acceptance (gating)
         run: |

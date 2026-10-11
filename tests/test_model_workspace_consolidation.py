@@ -76,7 +76,9 @@ def test_csp_filter_removed_without_security_policy_change():
     investor = (ROOT / 'app/templates/v2/partials/sheet_investor.html').read_text(encoding='utf-8')
     assert 'htmx:afterRequest[' not in investor
     script = (ROOT / 'static/js/workbook_v2.js').read_text(encoding='utf-8')
-    assert "String(config.verb).toLowerCase() !== 'post'" in script
+    assert "String(config.verb).toLowerCase() === 'post'" in script
+    assert 'presentationGeneration' in script
+    assert "source.addEventListener('htmx:beforeOnLoad', beforeLoad)" in script
 
 
 @pytest.mark.parametrize('template,total', [('generic_solar_reference', 3000), ('generic_wind_reference', 30000)])
@@ -99,3 +101,41 @@ def test_real_protected_reference_category_value_and_permission(tmp_path, monkey
     assert float(row.value.replace(',', '')) == total
     assert 'scalar override absent' in row.reason or 'Sum of line items' in row.reason
     assert all(not row.editable for section in grid.sections for category in section.categories for row in category.rows)
+
+
+@pytest.mark.parametrize('case', ['pass', 'collection-missing', 'execution-missing', 'skip',
+                                'failure', 'error', 'artifact-missing', 'artifact-corrupt'])
+def test_workspace_browser_ci_evidence_is_fail_closed(tmp_path, case):
+    """Exercise the exact additive workflow evidence check, including negative controls."""
+    import subprocess
+    import sys
+    import textwrap
+    import xml.etree.ElementTree as ET
+    workflow = (ROOT / '.github/workflows/protocol_ui_browser.yml').read_text(encoding='utf-8')
+    step = workflow.split('- name: Workspace consolidation real Chromium acceptance (gating)', 1)[1]
+    step = step.split('- name: Upload mandatory workspace consolidation browser evidence', 1)[0]
+    assert 'continue-on-error' not in step
+    assert 'python -m pytest --collect-only -q tests/test_model_workspace_consolidation_browser.py' in step
+    assert 'python -m pytest -v tests/test_model_workspace_consolidation_browser.py --junitxml=' in step
+    assert 'name: model-workspace-consolidation-browser' in workflow
+    artifact_step = workflow.split('- name: Upload mandatory workspace consolidation browser evidence', 1)[1].split('- name:', 1)[0]
+    assert 'if-no-files-found: error' in artifact_step
+    check = textwrap.dedent(step.split("python - <<'PY'\n", 1)[1].split('\n          PY', 1)[0])
+    evidence = tmp_path / 'artifacts/workspace-consolidation'
+    evidence.mkdir(parents=True)
+    names = [f'test_acceptance_{index}' for index in range(17)]
+    collected = names[:-1] if case == 'collection-missing' else names
+    (evidence / 'collected-nodes.txt').write_text('\n'.join(
+        f'tests/test_model_workspace_consolidation_browser.py::{name}' for name in collected), encoding='utf-8')
+    suite = ET.Element('testsuite')
+    for name in (names[:-1] if case == 'execution-missing' else names):
+        node = ET.SubElement(suite, 'testcase', classname='tests.test_model_workspace_consolidation_browser', name=name)
+        if name == names[0] and case in ('skip', 'failure', 'error'):
+            ET.SubElement(node, 'skipped' if case == 'skip' else case)
+    ET.ElementTree(suite).write(evidence / 'browser-junit.xml')
+    if case != 'artifact-missing':
+        for index in range(8):
+            (evidence / f'prb-fixture-{index}.png').write_bytes(
+                b'bad' if case == 'artifact-corrupt' else b'\x89PNG\r\n\x1a\n')
+    result = subprocess.run([sys.executable, '-c', check], cwd=tmp_path, capture_output=True, text=True)
+    assert (result.returncode == 0) == (case == 'pass'), result.stderr

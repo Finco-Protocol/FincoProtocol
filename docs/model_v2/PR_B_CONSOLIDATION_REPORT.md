@@ -166,7 +166,8 @@ Until all mandatory exact-head gates and full Linux supervisor/evidence upload f
 
 Zero diff required: `financial_engine/`, `finco_core/`, `domain/`, canonical `app/workbook/` writers and contracts,
 `app/persistence/`, financial export authorities, accepted goldens/tolerances/pins, security/auth/CSRF/CAS,
-and `.github/workflows/`. PR A infrastructure remains untouched.
+and all workflow infrastructure except the explicitly authorized additive Correction A browser step
+in `.github/workflows/protocol_ui_browser.yml`. PR #247's branch/infrastructure remains untouched.
 If main advances, integrate it with a normal merge and rerun relevant exact-head gates. No rebase/force push.
 Any protected-authority or reviewed-scope guard failure requires an explicit reviewed exception, not a weakened guard.
 The local changed-file public-safety scan passes. The complete Windows checkout scan rejects the unchanged
@@ -181,3 +182,82 @@ Run identity rewrite or export change is necessary. Legacy IDs and canonical wri
 in place. Existing committed Last Runs are unchanged; reopening a page never runs the engine.
 
 No self-approval. No merge. No deployment.
+
+## Correction A — exact-head browser acceptance and refresh race
+
+The 2026-10-11 live refresh confirmed main `5dbfd2a2fb1c6c777b7eb26d93a7090820acce23`,
+PR HEAD `7bdee280219f93227c2f1fd3696b41b6e4eea74c`, merge-base equal to main, 2 ahead / 0 behind,
+OPEN/DRAFT/MERGEABLE and no comments, submitted reviews or review threads.
+These are checkpoint observations, not final acceptance of a later commit.
+
+### Coverage ownership and fail-closed integration
+
+Browser run `38137255958` did **not** execute the new consolidation module. Its original mandatory
+pytest selections executed 101 Protocol/Yield nodes (one pre-existing API-B04 deselection),
+11 AI Import nodes, 34 WF-05 nodes and 2 Q4 nodes. The Outputs CLI passed 79 checks.
+PR #247 HEAD `2b71e29262040c5eea33810cfa40bbc8f2b025b8` also omitted the new module from
+`tools/ci_browser_job.py` selections. The full-suite workflow installs neither Playwright nor
+Chromium; an import-time browser skip cannot substitute for this missing mandatory execution.
+
+The user explicitly authorized a narrow additive change in #248: a separate **gating** step in
+the existing Protocol UI Browser Acceptance workflow, plus a mandatory artifact upload.
+All existing selections and controls are retained. Collection failure, test failure, incomplete
+node execution, skips/xfails/errors, missing screenshot evidence or missing upload files fail closed.
+The evidence includes collected node IDs, executed JUnit cases, synthetic screenshots and actual
+tested SHA/tree. Eight deterministic negative/positive controls exercise the exact workflow validator.
+
+**PR #247 integration requirement:** after #248 is independently reviewed and merged, #247 must
+normally sync new main and preserve every consolidation node, JUnit/screenshot evidence and its
+fail-closed validation in the parallel browser architecture **and mandatory aggregate gate**.
+It must freshly prove complete browser coverage; replacing this step with the old selections is
+not acceptable. #247's branch was not modified or force-pushed by this task.
+
+### Browser node inventory (17; no added skips, xfails or deselections)
+
+All nodes are under `tests/test_model_workspace_consolidation_browser.py::`:
+
+- `test_four_sector_navigation_mobile_insight_and_csp`: eight exact parametrizations, four
+  canonical templates × `[1440-light]` / `[390-dark]`; all five areas, Sections, Insight and unique IDs.
+- `test_four_sector_statements_match_persisted_projection_with_csp`: four canonical templates;
+  real Run, exact full Annual/Model vectors, missing versus zero, signed values, existing Balance Check
+  CSS/title classification, Year 0, full column axis and immutable Last Run across read/format controls.
+- `test_legacy_links_context_navigation_history_and_keyboard`: all 19 hash routes, Back/Forward and focus.
+- `test_query_aliases_use_canonical_outputs_without_duplicate_table_ids`: all 19 query routes, including fs.
+- `test_consecutive_atomic_save_run_stale_current_with_csp_enabled`: real atomic saves/runs and persisted identity.
+- `test_consecutive_htmx_workbook_saves_refresh_investor_once_each`: two real Slice 1 saves, exactly one Investor
+  GET per successful workbook POST; engine entrypoint forbidden during reads; no Last Run synthesized.
+- `test_investor_delayed_response_cannot_restore_pre_scenario_evidence`: a real pre-switch CURRENT GET delayed
+  across a real scenario create/select and newer NOT RUN response; old response must not swap or emit errors.
+
+Every browser context in this module keeps CSP enabled. Existing protected-reference/Working Copy and
+cost-grid suites retain their financial assertions; the scalar-input/category-subtotal characterization
+uses real canonical Solar/Wind reference values and read-only permissions.
+
+### Source-proven Investor race correction
+
+Before correction, the delayed real GET caused an HTMX `swapError` / detached-target TypeError after
+scenario replacement (an earlier schedule also left the newer state unresolved). The test is retained;
+the failure is not accepted as a harmless transport issue. Normal sequential workbook saves already
+produced exactly one refresh each, so no debounce, cache, scheduler or new authority was introduced.
+
+The narrow plain-JavaScript correction invalidates only superseded **presentation responses** when
+a workbook POST starts. A listener on the original request source prevents `beforeOnLoad` even when
+that source was detached by OOB replacement; a document-only listener would miss that event.
+Completed writes temporarily withhold old Investor evidence behind a neutral refresh message until
+the existing read-only GET renders it. Listeners are removed on request completion. No GET runs the
+engine, no writer/CAS/scenario persistence contract changes, and no `unsafe-eval` relaxation is added.
+
+### Evidence attribution and frozen scope
+
+At checkpoint `7bdee28…`, optional F3 evidence run `38137255958` was independently inspected:
+legacy equivalence, financial reconciliation and Chromium all exited 0; all 32 manifest file hashes
+match. Artifact `11701501478` records tested merge-ref `7b14a06f769b5c8c80b62412c4c39b90ab825642`,
+whose tree `d0ae0674b113e96dd5f406b9fddd869ba653fb79` equals the PR HEAD tree. The pre-existing tool's
+textual `pull_request: 240` label is stale; it is not used as current PR attribution. Fresh final-head
+F3 evidence, full pytest/supervisor exit and every mandatory workflow remain required after this commit.
+
+Correction A changes only the authorized workflow, Investor presentation JavaScript, the two
+consolidation test modules and this report. Financial engine/core/domain/workbook/persistence,
+financial goldens/tolerances, Revenue V2/F3 contracts, canonical writers, Run History, governance pins
+and authentication/security policy remain zero diff. Final run IDs/results/artifacts belong in PR
+metadata after exact-head CI completes. Keep PR OPEN/DRAFT; no self-approval, merge or deployment.

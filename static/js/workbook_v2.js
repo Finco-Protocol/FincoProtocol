@@ -83,16 +83,46 @@
   sync();
 })();
 
-// Same read-only Investor refresh, without an HTMX eval filter (CSP remains unchanged).
-document.addEventListener('htmx:afterRequest', function (event) {
-  var detail = event.detail || {}, config = detail.requestConfig || {};
-  if (!detail.successful || String(config.verb).toLowerCase() !== 'post' ||
-      String(config.path || '').indexOf('/v2/workbook/') !== 0) return;
-  var root = document.getElementById('v2-sheet-investor');
-  if (root && window.htmx) {
-    window.htmx.ajax('GET', root.getAttribute('hx-get'), { target: '#v2-sheet-investor', swap: 'outerHTML' });
+// Read-only Investor refresh, without an HTMX eval filter (CSP remains unchanged).
+// A response captured before a workbook mutation must not replace newer/OOB evidence.
+(function () {
+  var presentationGeneration = 0;
+  function workbookPost(config) {
+    return String(config.verb).toLowerCase() === 'post' &&
+      String(config.path || '').indexOf('/v2/workbook/') === 0;
   }
-});
+  document.addEventListener('htmx:beforeRequest', function (event) {
+    var detail = event.detail || {}, config = detail.requestConfig || {};
+    if (workbookPost(config)) { presentationGeneration += 1; return; }
+    if (String(config.verb).toLowerCase() !== 'get' ||
+        String(config.path || '').indexOf('/v2/workbook/financing/investor?') !== 0) return;
+    var generation = presentationGeneration, xhr = detail.xhr;
+    var source = detail.elt || event.target;
+    // Bind to the request source itself: a replaced root no longer bubbles to document.
+    function beforeLoad(responseEvent) {
+      var response = responseEvent.detail || {};
+      if (response.xhr !== xhr) return;
+      if (generation !== presentationGeneration ||
+          response.target !== document.getElementById('v2-sheet-investor')) {
+        responseEvent.preventDefault();
+      }
+    }
+    source.addEventListener('htmx:beforeOnLoad', beforeLoad);
+    xhr.addEventListener('loadend', function () {
+      source.removeEventListener('htmx:beforeOnLoad', beforeLoad);
+    }, { once: true });
+  });
+  document.addEventListener('htmx:afterRequest', function (event) {
+    var detail = event.detail || {}, config = detail.requestConfig || {};
+    if (!detail.successful || !workbookPost(config)) return;
+    var root = document.getElementById('v2-sheet-investor');
+    if (root && window.htmx) {
+      root.textContent = 'Refreshing Investor evidence…';
+      root.setAttribute('aria-busy', 'true');
+      window.htmx.ajax('GET', root.getAttribute('hx-get'), { target: '#v2-sheet-investor', swap: 'outerHTML' });
+    }
+  });
+})();
 
 // Scenario-switch coherence: read the server-issued composite identity only
 // AFTER the primary scenario sheet and all HTMX OOB fragments have settled.
