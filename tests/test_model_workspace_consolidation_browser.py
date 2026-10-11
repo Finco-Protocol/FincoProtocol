@@ -33,7 +33,9 @@ def workspace(live_server, browser):
         page = context.new_page()
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
-        page.on('console', lambda message: errors.append(message.text) if message.type == 'error' else None)
+        # Chromium's implicit /favicon.ico probe (no <link rel=icon>) is browser chrome, not an app request.
+        page.on('console', lambda message: errors.append(message.text) if message.type == 'error'
+                and not str((message.location or {}).get('url', '')).endswith('/favicon.ico') else None)
         page.goto(f'{live_server}/v2/workbook?project={record.project_code}')
         page.wait_for_selector('#model-workspace-main')
         return page, record, errors

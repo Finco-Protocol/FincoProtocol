@@ -84,8 +84,12 @@ def test_financial_statements_and_returns_share_grouped_keur_formatter():
     # finance convention for negatives (parentheses) as a sibling macro, not a second formatter.
     assert 'macro statement_keur' in formatter
     assert '"{:,.0f}".format(r | abs)' in formatter
-    assert 'import grouped_keur, statement_keur' in statements
-    assert 'statement_keur(v)' in statements
+    # Legacy Statements now delegate row rendering to the shared canonical table renderer, which
+    # applies the SAME statement_keur formatter (whole kEUR, parentheses for negatives).
+    table = (root / "app/templates/v2/partials/_statement_table.html").read_text()
+    assert 'import out_table' in statements and 'out_table(' in statements
+    assert 'import statement_keur' in table
+    assert 'statement_keur(cell.v)' in table
 
 
 def test_tax_uses_shared_grouped_formatter_and_preserves_non_integer_precision():
