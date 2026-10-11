@@ -71,4 +71,64 @@ Ruleset endpoint reverified: empty list (0 rulesets). No enforcement settings we
 
 Rollback: restore these CI workflows/helpers through a reviewed normal follow-up commit; retain original full Public supervisor invocation and all mandatory browser selections/artifacts. No production financial rollback or data migration is involved. No merge/deploy/self-approval authorized.
 
-Current disposition: `CI_OPTIMIZATION_V1_PARTIAL_OR_BLOCKED` until measured equivalence and exact-head checks complete; even successful shadow proof alone is not active 30% Public optimization.
+## Completed same-head trial: blocked equivalence
+
+Draft PR: https://github.com/Finco-Protocol/FincoProtocol/pull/247. Measured implementation head: `a4b18934417d17a8aded7b9cebf29a3dcf067d79`; tree `8badd1b32129336a5239cce730031cd1de865120`. Main remains entry base. The subsequent evidence-only commit does not alter the measured CI implementation; final-head acceptance must still be separately checked, not inferred from this trial.
+
+All five workflows completed on that exact head:
+
+| Workflow | Run | Conclusion |
+| --- | --- | --- |
+| Governance Full History | 38129187407 | SUCCESS |
+| Dependency Security Audit | 38129187448 | SUCCESS |
+| PR Compile and Safety Gate | 38129187391 | SUCCESS |
+| Protocol UI Browser Acceptance | 38129187652 | SUCCESS |
+| Public Safety and Model Smoke | 38129187614 | FAILURE: shadow shard 0, then mandatory aggregate |
+
+The full control and synthetic-merge full suite BOTH passed: **9729 passed / 59 skipped**, zero failures, pytest rc=0 and supervisor child exit=0, with JUnit and evidence uploaded. Inventory separates 34 per-node skips from 25 collection skips. The increase over entry-main's 9677 passes is exactly the 52 new CI helper tests, not changed existing financial outcomes. Both full suites selected all 9763 collected node IDs, with no deselections. The synthetic merge SHA was `823c00245cd2fffb1f439b9eb39cb8bee31d2813`, separately labelled and attested, with the same tested tree.
+
+| Same-head execution | Selected | Passed | Node skips | Failed | Collection skips | Process seconds | Pytest / child rc |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Unsharded control | 9763 | 9729 | 34 | 0 | 25 | 2214.181 | 0 / 0 |
+| Shadow shard 0 | 4514 | 4495 | 18 | 1 | 25 | 1078.093 | 1 / 1 |
+| Shadow shard 1 | 5249 | 5233 | 16 | 0 | 25 | 1284.120 | 0 / 0 |
+| Synthetic-merge control | 9763 | 9729 | 34 | 0 | 25 | 2136.158 | 0 / 0 |
+
+All three exact-head inventories have identical full collections and collection-skip reasons. The shard union is exactly 9763 unique IDs: zero omissions or duplicates, whole modules preserved. All four Public process records have identical dependency/Python/OS digest `3faadce9c0661ac947e36b075d377212e3f3fbddab19ab5cc3f573a122310256`. There is exactly ONE outcome mismatch: `tests/test_p6_demo_isolation.py::test_demo_cleanup_removes_demo_data_only` passes in both controls but fails in shard 0. Thus node coverage is proven; outcome equivalence is NOT proven. The failing child returned rc=1 and terminated normally; it was not a supervisor timeout. `normal_exit=false` records unsuccessful acceptance, not an interpreter hang.
+
+### Actual blocker and independent reproduction
+
+Shard 0 JUnit/log: `tests/test_p6_demo_isolation.py:187`, `assert not _any_project_exists(uid_demo)`, with `app.demo_cleanup:177` warning `FOREIGN KEY constraint failed`. `cleanup_all_demo_data()` deletes all demo-owned parent projects in one statement. `_TABLES_WITH_USER_ID` omits `model_run_history`, although `app/persistence/db.py` declares its project foreign key. The test uses the shared persistence DB and wipes ALL demo users, not only its newly created user. Another demo user's retained history can therefore prevent deletion of the newly created project. The full-suite pass cannot prove independent-module isolation; the exact earlier module/data-state dependency is not claimed fully traced.
+
+Reproduced locally in a disposable, schema-initialized SQLite DB: create one synthetic demo project and a valid owned `model_run_history` row, call unchanged `cleanup_all_demo_data()`. Result: summary `{}`, FK warning, project remains TRUE, history remains TRUE. Application and persistence sources are identical to entry-main. This independently proves the cleanup/history boundary defect; it does not authorize changing immutable historical evidence or deleting history as a CI workaround.
+
+No production fix, FK disable, fixture rewrite, test skip, repartition exception or retry was introduced. The smallest upstream requirement is an independently approved demo lifecycle/history-retention policy plus isolated test fixtures; then rerun the SAME full control/shadow comparison. Merely moving modules until the test passes would hide the dependency. Shards must NOT be promoted now. Additional paired trials were not dispatched after known equivalence failure: they would not establish valid performance acceptance and would consume runner time without fixing the confirmed boundary defect.
+
+### Measurements and costs
+
+Raw completed GitHub job/step timestamps are committed in `evidence/public_trial_a4b1893.json` and `evidence/browser_trial_a4b1893.json`. They include queue, setup, cache/dependency, test, upload, conclusion and runner duration. Per-process logs/records contain monotonic test/exit timing. No worker/engine timing is relabelled as CI savings.
+
+| Measure | Historical successful cohort | Candidate same-head trial | Interpretation |
+| --- | --- | --- | --- |
+| Public workflow wall | median 2587.5s / p90 2686s | 2336s (FAILED aggregate) | NOT accepted optimization; different historical heads |
+| Public initial queue | recorded per historical run | 30s | Included in wall, excluded from runner cost |
+| Full exact-head control job | historical single full job | 2244s runner / 2274s from event | Control retained |
+| Both shadow jobs finish | no shadows | 1350s from event, one FAILED | NOT successful 30% acceptance |
+| Public total runner cost | historical single-run cohort | 118.633 runner-minutes | Control + merge control + shadow proof cost |
+| Browser wall | median 376s | 353s SUCCESS | 6.1% below historical median, not paired causal proof |
+| Browser initial queue | recorded per historical run | 3s | Matrix waiting captured separately in job timestamps |
+| Browser total runner cost | historical serial workflow | 20.117 runner-minutes | Includes both source axes, repeated setup, F3 and aggregate |
+
+Only ONE paired Public trial completed. Candidate median/p90/max are all the single sample (2336s); these are not reliable distribution estimates. Browser candidate median/p90/max are likewise 353s from one sample. No reliability/flakiness improvement or active 30% Public critical-path reduction is established. Hypothetical process-speed savings from the shorter shards are invalid as acceptance because one outcome differs. All browser head/merge roles, optional F3 and mandatory screenshot/manifests passed; this is a concrete isolation/evidence result, not full CI performance success.
+
+### Required artifacts and evidence provenance
+
+Public run 38129187614: source safety `11698076747`; full control `11698099352`; shard 0 `11698518945`; shard 1 `11699123201`; merge integration `11699286176`. **No `public-shadow-proof` artifact was produced**, correctly, because the failed matrix rejected equivalence. Logs and failed-test JUnit were preserved, not discarded.
+
+Browser run 38129187652: head protocol `11698711934`, import `11698711899`, grid `11699145749`, Q4 `11698821909`, Outputs `11698697264`; merge protocol `11698072774`, import `11698751788`, grid `11698841910`, Q4 `11698836904`, Outputs `11698742241`; optional F3 `11698936622`; mandatory proof `11698426537`. The aggregate verified required capture paths/hashes, source SHA/tree, successful process results and pytest inventories/JUnit. Optional F3 itself was SUCCESS, not assumed from the aggregate.
+
+Local collection-only attempt returned rc=2 because existing Linux-only modules use `os.getuid()` and `fcntl` on Windows (`test_staging_preflight.py`, `test_yield_live_v1.py`, `test_yield_monitoring_automation_v1.py`). It is NOT counted as coverage proof or repaired in this PR. The completed Ubuntu control/shard inventories above are the acceptance evidence.
+
+Evidence-only follow-up local validation: **149 passed / 1 existing skip**, zero failures, normal pytest termination, across `test_ci_acceptance.py`, `test_opus_m9_governance_history.py`, `test_trust_readiness_registry.py`, `test_trust_readiness_controls.py`, `test_trust_readiness_claims.py`; 44.01s. Diff check passes. This does not replace final-head GitHub acceptance.
+
+Current disposition: **`CI_OPTIMIZATION_V1_PARTIAL_OR_BLOCKED`**. Four workflows pass; full controls pass; shadow equivalence fails; the required aggregate correctly fails. This Draft is a reviewable CI evidence/guardrail checkpoint, **not merge-ready**. Monolithic financial/security/governance gates remain intact. Frozen namespaces and all existing assertions remain unchanged. No self-approval, merge or deployment.
