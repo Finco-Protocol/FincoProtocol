@@ -58,6 +58,10 @@
   {% if field_error %}
     <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
   {% endif %}
+  {% set contracts = revenue_multistream | default({"active": false}) %}
+  {% if not is_data_center and not is_ev_charging and revenue_multistream is defined %}
+    {% include "partials/revenue_contracts.html" %}
+  {% endif %}
 
   <section class="v2-revenue-pricing-basis" aria-labelledby="revenue-pricing-basis-title"
            data-testid="revenue-pricing-basis">
@@ -65,7 +69,7 @@
       <span id="revenue-pricing-basis-title">Revenue Pricing Basis</span>
       <small>Canonical working-copy inputs used by the model</small>
     </div>
-    {% if not is_data_center and not is_ev_charging %}
+    {% if not is_data_center and not is_ev_charging and not contracts.active %}
     <div class="v2-revenue-pricing-grid">
       {% for label, value, unit in revenue_pricing_basis %}
       <div class="v2-revenue-pricing-item">
@@ -81,7 +85,7 @@
       <span>Revenue persisted summary</span>
       <strong>{% if revenue_output_context.persisted_revenue is not none and revenue_output_context.persisted_revenue != 'NOT_AVAILABLE' %}{{ revenue_output_context.persisted_revenue }}{% else %}—{% endif %}</strong>
     </div>
-    {% if not is_data_center and not is_ev_charging and merchant_curve_rows %}
+    {% if not is_data_center and not is_ev_charging and not contracts.active and merchant_curve_rows %}
     <div class="v2-revenue-curve-preview" data-testid="merchant-curve-preview">
       <span>Merchant curve</span>
       {% for row in merchant_curve_rows %}
@@ -114,9 +118,9 @@
     {% elif is_ev_charging %}
     <a href="#nav-rev-ev_charging">EV Charging Drivers</a>
     {% else %}
-    <a href="#nav-rev-commercial">Commercial</a>
+    {% if not contracts.active %}<a href="#nav-rev-commercial">Commercial</a>{% endif %}
     <a href="#nav-rev-balancing">Balancing &amp; CO2</a>
-    <a href="#nav-rev-merchant">Merchant Curve</a>
+    {% if not contracts.active %}<a href="#nav-rev-merchant">Merchant Curve</a>{% endif %}
     {% endif %}
     <a href="#nav-rev-outputs">Outputs</a>
     <a href="#nav-rev-future">Future</a>
@@ -167,13 +171,14 @@
   {# All ppa section BOUND fields are live — canonical rev_ppa_*        #}
   {# keys win over legacy tariff_eur_mwh / ppa_term_years in the        #}
   {# snapshot adapter (C2B2).                                            #}
+  {% if not contracts.active %}
   <details class="v2-inputs-section" open>
     {{ section_anchor("commercial", "1. Contracted Revenue") }}
     <div class="v2-section-fields">
 
       {% for f in revenue_fields %}
         {% if f.section_id == "ppa" and f.binding_label != "partial" %}
-          {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+          {{ render_field(f, project_code, workbook_version, content_hash, project_editable and not contracts.active,
                           hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
         {% endif %}
       {% endfor %}
@@ -181,6 +186,7 @@
     </div>
   </details>
 
+  {% endif %}
   {# ── 2. Balancing & CO2 ────────────────────────────────────────────── #}
   {# Two separate balancing concepts:                                     #}
   {# • Merchant Balancing %: fraction of spot sales (synthetic reference assumption)  #}
@@ -205,6 +211,7 @@
   {# Format: [{"year": 2042, "price_eur_mwh": 75.12}, ...]               #}
   {# Matches Excel Inputs row 106 / CF row 30. When present wins over     #}
   {# the legacy market_prices_curve (operating-year indexed).             #}
+  {% if not contracts.active %}
   <details class="v2-inputs-section">
     {{ section_anchor("merchant", "3. Merchant Price Curve") }}
     <div class="v2-section-fields">
@@ -218,7 +225,7 @@
       {% endfor %}
 
       {% if mcf.field is not none %}
-        {% if mcf.field.binding_label == "bound" and project_editable %}
+        {% if mcf.field.binding_label == "bound" and project_editable and not contracts.active %}
           {# spreadsheet-style Year | Merchant Price grid #}
           <div class="d-merchant" data-field-id="{{ mcf.field.field_id }}">
             <form id="d-merchant-curve-form" data-decision-merchant
@@ -290,10 +297,11 @@
     </div>
   </details>
 
+  {% endif %}{# /legacy merchant #}
   {% endif %}{# /not is_ev_charging #}
   {% endif %}{# /not is_data_center — end of renewable-only sections 1-3 #}
 
-  {% if not is_data_center and not is_ev_charging %}
+  {% if not is_data_center and not is_ev_charging and not contracts.active %}
   <p class="d-context">Contracted pricing uses the saved base tariff and selected indexation policy.
     After contract expiry, merchant assumptions apply through the existing revenue authority.
     Distinct editable PPA price steps are not available in this workspace.</p>

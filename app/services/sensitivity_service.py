@@ -253,12 +253,16 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float,
         return replace(proj, opex=new_opex)
 
     elif shock_type == "ppa_price":
+        if getattr(proj.revenue, "multistream_config_json", ""):
+            raise ValueError("REVENUE_V2_SENSITIVITY_UNSUPPORTED: select explicit scenario contracts instead")
         return replace(
             proj,
             revenue=replace(proj.revenue, ppa_base_tariff=proj.revenue.ppa_base_tariff * factor),
         )
 
     elif shock_type == "merchant_price":
+        if getattr(proj.revenue, "multistream_config_json", ""):
+            raise ValueError("REVENUE_V2_SENSITIVITY_UNSUPPORTED: select explicit scenario contracts instead")
         orig = proj.revenue.market_prices_curve
         if orig:
             new_curve = tuple(v * factor for v in orig)

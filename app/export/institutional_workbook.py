@@ -255,6 +255,22 @@ def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle) -> b
     _write_opex_sheet(workbook.create_sheet("OPEX"), bundle)
     _write_capex_sheet(workbook.create_sheet("CAPEX"), bundle)
     _write_revenue_sheet(workbook.create_sheet("Revenue"), bundle)
+    stream_audit = (bundle.authority_metadata or {}).get("revenue_multistream_audit")
+    if stream_audit:
+        stream_sheet = workbook.create_sheet("Revenue_Streams")
+        _write_metadata_block(stream_sheet, bundle, "persisted runtime")
+        rows = []
+        for period in stream_audit:
+            for stream in period["streams"]:
+                rows.append((period["period_index"], stream["id"], stream["type"], stream["status"],
+                    stream["quantity_mwh"], stream["price_eur_mwh"], stream["revenue_keur"] if stream["type"] != "cfd" else 0.0,
+                    stream["settlement_keur"], period["net_revenue_keur"], period["unallocated_generation_mwh"],
+                    period["balancing_cost_keur"], period["legacy_certificate_revenue_keur"], stream["source_ref"],
+                    stream["start_date"], stream["end_date"], stream["settlement"], stream["capture_rate"]))
+        _write_simple_table(stream_sheet, 6, "Last Run contracts: signed settlement is separate; period totals repeat, do not sum rows",
+            ("Period", "Contract", "Type", "Status", "MWh", "EUR/MWh", "Sale kEUR", "CfD settlement kEUR",
+             "Net period revenue kEUR", "Unallocated MWh", "Balancing kEUR", "Legacy certificates kEUR", "Source",
+             "Start", "End (exclusive)", "Settlement", "Merchant capture fraction"), rows, format_columns={5: "0.0000", 6: "0.0000", 7: "0.0000", 8: "0.0000", 9: "0.0000", 17: "0.00%"})
     _write_senior_debt_sheet(workbook.create_sheet("Senior Debt"), bundle)
     _write_shl_sheet(workbook.create_sheet("SHL"), bundle)
     _write_tax_sheet(workbook.create_sheet("Tax"), bundle)
@@ -1185,7 +1201,7 @@ def _write_run_identity_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     auth = bundle.authority_metadata or {}
     auth_rows = [
         (k, str(v), "runtime", "Runtime authority metadata field.")
-        for k, v in sorted(auth.items())
+        for k, v in sorted(auth.items()) if k != "revenue_multistream_audit"
     ] or [("authority_metadata", "not_available", "review", "No authority metadata in this export path.")]
     _write_key_value_section(sheet, next_row, "Engine authority metadata", auth_rows)
 

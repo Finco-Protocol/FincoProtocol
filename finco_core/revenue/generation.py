@@ -198,6 +198,11 @@ def revenue_decomposition_schedule(
     """Generate period-level revenue decomposition for calibration diagnostics."""
     decompositions: dict[int, dict[str, float | bool]] = {}
     generation_schedule = full_generation_schedule(inputs, engine)
+    multistream = None
+    if getattr(inputs.revenue, "multistream_config_json", ""):
+        from domain.revenue.multistream_runtime import parse_config
+        multistream = parse_config(inputs.revenue.multistream_config_json)
+        multistream.validate_axis(engine.periods())
 
     for period in engine.periods():
         generation_mwh = generation_schedule[period.index]
@@ -251,6 +256,42 @@ def revenue_decomposition_schedule(
             )
         )
         energy_revenue_keur = ppa_revenue_keur + gross_merchant_revenue_keur
+        stream_evidence = None
+        settlement_keur = 0.0
+        if multistream is not None:
+            from domain.revenue.plan import RevenueStreamType
+            result = multistream.evaluate(period, generation_mwh)
+            ppa_rows = [r for r in result.stream_results if r.stream_type is RevenueStreamType.PPA]
+            merchant_rows = [r for r in result.stream_results if r.stream_type is RevenueStreamType.MERCHANT]
+            ppa_revenue_keur = sum(r.stream_revenue_keur for r in ppa_rows)
+            gross_merchant_revenue_keur = sum(r.stream_revenue_keur for r in merchant_rows)
+            ppa_generation_mwh = sum(r.allocated_generation_mwh for r in ppa_rows)
+            merchant_generation_mwh = sum(r.allocated_generation_mwh for r in merchant_rows)
+            settlement_keur = sum(r.support_or_settlement_keur for r in result.stream_results)
+            energy_revenue_keur = ppa_revenue_keur + gross_merchant_revenue_keur
+            ppa_active = bool(ppa_generation_mwh)
+            # A composed contract book has no invented blended tariff.
+            prices = {r.price_eur_mwh for r in ppa_rows if r.status.value == "active"}
+            tariff = next(iter(prices)) if len(prices) == 1 else None
+            prices = {r.price_eur_mwh for r in merchant_rows if r.status.value == "active"}
+            market_price = next(iter(prices)) if len(prices) == 1 else None
+            sources = {s.stream.stream_id: s for s in multistream.streams}
+            stream_evidence = {
+                "unallocated_generation_mwh": result.unallocated_generation_mwh,
+                "settlement_keur": settlement_keur,
+                "streams": [{
+                    "id": r.stream_id, "type": r.stream_type.value, "status": r.status.value,
+                    "quantity_mwh": r.allocated_generation_mwh, "price_eur_mwh": r.price_eur_mwh,
+                    "capture_rate": sources[r.stream_id].stream.merchant.capture_rate_for_tech(multistream.technology)
+                                    if r.stream_type is RevenueStreamType.MERCHANT else 1.0,
+                    "revenue_keur": r.stream_revenue_keur,
+                    "settlement_keur": r.support_or_settlement_keur,
+                    "source_ref": sources[r.stream_id].source_ref,
+                    "start_date": sources[r.stream_id].start_date.isoformat(),
+                    "end_date": sources[r.stream_id].end_date.isoformat(),
+                    "settlement": "SAME_PERIOD",
+                } for r in result.stream_results],
+            }
         gross_electricity_revenue_keur = energy_revenue_keur
         # Phase 7: explicit certificate and balancing cost inputs (EUR/MWh)
         # Fallback priority (per PR #90 backward-compat requirement):
@@ -298,8 +339,12 @@ def revenue_decomposition_schedule(
         )
         # Legacy total for backward compatibility
         revenue_keur = net_revenue_after_balancing_keur
+        if multistream is not None:
+            net_revenue_after_balancing_keur += settlement_keur
+            revenue_keur = net_revenue_after_balancing_keur
 
         decompositions[period.index] = {
+            **({"multistream_evidence": stream_evidence} if stream_evidence is not None else {}),
             "is_operation": True,
             "is_ppa_active": ppa_active,
             "generation_mwh": generation_mwh,

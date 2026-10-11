@@ -603,6 +603,29 @@ def discard_workspace_draft(user_id: str, project_id: str) -> "Optional[Workspac
     )
 
 
+def _assert_revenue_v2_pricing_authority(*, cursor, persisted_workspace, persisted_snapshot: dict,
+                                         user_id: str, project_id: str, field_id: str) -> None:
+    """Revenue V2 legacy-pricing authority gate shared by scalar Save and the C0 batch.
+
+    While explicit revenue contracts own pricing (base snapshot, or the selected scenario's effective
+    contracts) a legacy PPA / merchant price field must not be written. Evaluated on the exact
+    transactional row and scenario read under the caller's BEGIN EXCLUSIVE lock.
+    """
+    import json as _json
+    from app.workbook.revenue_multistream import assert_legacy_pricing_edit
+
+    effective = persisted_snapshot
+    if persisted_workspace["active_scenario_id"] and field_id.startswith(("revenue.ppa.", "revenue.merchant.")):
+        cursor.execute(
+            "SELECT overrides_json FROM scenarios WHERE scenario_id=? AND user_id=? AND project_id=? AND archived=0",
+            (persisted_workspace["active_scenario_id"], user_id, project_id))
+        scenario = cursor.fetchone()
+        if scenario is not None:
+            from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+            effective = bind_scenario_tariff(persisted_snapshot, _json.loads(scenario["overrides_json"] or "{}"))
+    assert_legacy_pricing_edit(effective, field_id)
+
+
 def _assert_f3_editor_authority(
     *,
     cursor,
@@ -767,6 +790,15 @@ def v2_atomic_draft_update(
 
         # Apply the validated update to the snapshot read inside the transaction.
         row_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
+        _assert_revenue_v2_pricing_authority(
+            cursor=cur, persisted_workspace=row, persisted_snapshot=row_snapshot,
+            user_id=user_id, project_id=project_id, field_id=field_id)
+        if field_id == "revenue.multistream.contracts" and row["active_scenario_id"]:
+            cur.execute("SELECT is_base_case FROM scenarios WHERE scenario_id=? AND user_id=? AND project_id=? AND archived=0",
+                        (row["active_scenario_id"], user_id, project_id))
+            selected = cur.fetchone()
+            if selected is None or not selected["is_base_case"]:
+                raise ValueError("REVENUE_V2_SCENARIO: use the scenario contract editor")
         current_pis = ProjectInputSet.from_snapshot(row_snapshot, workbook=WORKBOOK)
         from app.workbook.multisenior_config import (
             FIELD_ID as f3_field, apply_state,
@@ -1361,6 +1393,13 @@ def v2_atomic_batch_draft_update(
             # even when the proposed JSON would otherwise validate as a field.
             if field_id == "debt.financing.instruments":
                 raise BatchApplyError("BATCH_F3_COLLECTION_EDITOR_ONLY")
+            # Revenue V2: contracts are written ONLY by the contract editor, and a legacy price is
+            # rejected while explicit contracts own pricing (same gate as the scalar Save).
+            if field_id == "revenue.multistream.contracts":
+                raise BatchApplyError("BATCH_REVENUE_CONTRACT_EDITOR_ONLY")
+            _assert_revenue_v2_pricing_authority(
+                cursor=cur, persisted_workspace=row, persisted_snapshot=snapshot,
+                user_id=user_id, project_id=project_id, field_id=field_id)
             validation = WorkbookUpdateService.validate_field_update(field_id, raw_value)
             if not validation.is_valid:
                 raise FieldValidationError(validation.error, validation.error_class)

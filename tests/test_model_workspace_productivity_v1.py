@@ -290,12 +290,14 @@ class TestDenseLayoutPreservesContract:
                     key = f"{sheet}|{'editable' if editable else 'protected'}|{field_id}"
                     actual[key] = hashlib.sha256(
                         _normalise(html, strip_added=True).encode()).hexdigest()
-        # F2/F3 each add one exact grouped editor; original DOM hashes stay locked.
+        # F2/F3/WF07 add exact grouped editors; original DOM hashes stay locked.
         financing_additions = {
             "debt|editable|debt.bankability.configuration",
             "debt|protected|debt.bankability.configuration",
             "debt|editable|debt.financing.instruments",
             "debt|protected|debt.financing.instruments",
+            "revenue|editable|revenue.multistream.contracts",
+            "revenue|protected|revenue.multistream.contracts",
         }
         assert set(actual) == set(golden["hashes"]) | financing_additions
         drifted = sorted(k for k, v in golden["hashes"].items() if actual[k] != v)

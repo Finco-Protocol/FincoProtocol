@@ -39,7 +39,7 @@ Evidence: CODE `app/auth.py`; TEST `tests/test_trust_readiness_controls.py`
 
 **Implemented and verified.** The login form carries a signed, time-limited token that is validated on submission.
 
-Limit: Tokens also protect the model-import steps and one crypto action. Other state-changing requests rely on the SameSite cookie attribute (see known gap).
+Limit: Tokens also protect the model-import steps, the Inputs grid validate and save routes, Revenue V2 contract writes and one crypto action. Other state-changing requests rely on the SameSite cookie attribute (see known gap).
 
 Evidence: CODE `app/auth.py`; TEST `tests/test_trust_readiness_controls.py`
 

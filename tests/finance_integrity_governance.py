@@ -81,7 +81,7 @@ def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
     strictly_frozen_changes() is unaffected.
     """
     from model_v2_governance import (
-        F3_2_4_FINANCING_AUTHORITIES, approved_by_active_model_v2_scope,
+        F3_2_4_FINANCING_AUTHORITIES, WF07_REVENUE_AUTHORITIES, approved_by_active_model_v2_scope,
         released_engine_authority_matches,
     )
 
@@ -90,7 +90,7 @@ def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
         f for f in changed
         if f.startswith("financial_engine/")
         and (
-            not released_engine_authority_matches(f) if f in F3_2_4_FINANCING_AUTHORITIES
+            not released_engine_authority_matches(f) if f in F3_2_4_FINANCING_AUTHORITIES or f in WF07_REVENUE_AUTHORITIES
             else f not in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
             and not approved_by_active_model_v2_scope(f)
         )
@@ -121,11 +121,11 @@ def approved_frozen_path(path: str) -> bool:
     ``finco_radar/`` and every other engine module stay frozen for those guards.
     """
     from model_v2_governance import (
-        F3_2_4_FINANCING_AUTHORITIES, approved_by_active_model_v2_scope,
+        F3_2_4_FINANCING_AUTHORITIES, WF07_REVENUE_AUTHORITIES, approved_by_active_model_v2_scope,
         released_engine_authority_matches,
     )
 
-    if path in F3_2_4_FINANCING_AUTHORITIES:
+    if path in F3_2_4_FINANCING_AUTHORITIES or path in WF07_REVENUE_AUTHORITIES:
         return released_engine_authority_matches(path)
 
     return path in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS or approved_by_active_model_v2_scope(path)

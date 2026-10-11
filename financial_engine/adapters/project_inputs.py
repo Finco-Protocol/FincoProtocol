@@ -143,7 +143,14 @@ def from_project_inputs(
             )
     _ppa_index_start_date = getattr(rev, "ppa_indexation_start_date", None)
 
-    revenue = RevenueInput(
+    revenue_class = RevenueInput
+    revenue_extra = {}
+    if getattr(rev, "multistream_config_json", ""):
+        from financial_engine.revenue_multistream import MultiStreamRevenueInput
+        revenue_class = MultiStreamRevenueInput
+        revenue_extra = {"multistream_config_json": rev.multistream_config_json}
+    revenue = revenue_class(
+        **revenue_extra,
         ppa_base_tariff_eur_mwh=rev.ppa_base_tariff,
         ppa_term_years=float(rev.ppa_term_years),
         ppa_index=rev.ppa_index,

@@ -145,6 +145,18 @@ WF04_NUMERIC_PRECISION_AUTHORITIES: dict[str, str] = {
 
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
+# WF-07 explicit contract-book authority: exact paths and exact content only.
+# Legacy pins above remain intact. No sector, engine or core namespace waiver.
+WF07_REVENUE_AUTHORITIES = {
+    "financial_engine/adapters/project_inputs.py": "fe09548f59497884af492a0ea8139bbbfffbeb05",
+    "financial_engine/orchestrator.py": "67f9ec6aa3fcb6a8d8acf59cf4c75bcac58b3301",
+    "financial_engine/revenue_multistream.py": "3788be8b6628f555124d8ce15f998b6771fc1a88",
+    "finco_core/inputs/revenue_multistream.py": "09e223529d6c4c63fc2b23950b2d337263c06ff2",
+    "finco_core/inputs/serialization.py": "d3d728dd46892e1ed405b7c645c22f52ca7e0545",
+    "finco_core/revenue/generation.py": "e2502c6ba8557dd68d6bbcd44c1b55208f1942ed",
+    "domain/revenue/multistream_runtime.py": "94e1559472d0f3051fb7faccf3b67ce44337188f",
+}
+
 _VALID_STATUSES = ("ACTIVE", "RETIRED")
 
 
@@ -296,6 +308,7 @@ def released_engine_authority_matches(
         RELEASED_MODEL_V2_ENGINE_AUTHORITIES, DEVELOPER_ECONOMICS_V1_AUTHORITIES,
         F3_1_CONTRACT_AUTHORITIES, F3_2_4_FINANCING_AUTHORITIES,
         WF04_NUMERIC_PRECISION_AUTHORITIES,
+        WF07_REVENUE_AUTHORITIES,
     ) if path in authorities}
     if not pinned:
         return False
