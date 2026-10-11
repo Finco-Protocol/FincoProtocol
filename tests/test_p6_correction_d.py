@@ -241,16 +241,16 @@ def _make_async_raise(exc: Exception):
 # ---------------------------------------------------------------------------
 
 def _build_test_db(db_path: str) -> None:
-    """Initialise schema and insert a full set of non-reference rows."""
+    """Initialise references and disposable demo rows under the approved policy."""
     with patch("app.persistence.db.DB_PATH", db_path):
+        from app.services.project_library_service import ensure_reference_models
+        ensure_reference_models()
         from app.persistence.db import get_connection
         conn = get_connection()
 
-        # Insert non-reference projects for demo, admin, and ordinary user
+        # Permanent/admin refusal is tested in Correction C and retention tests.
         for uid, code in [
             ("demo_bootstrap_d_test", "demo_proj_d"),
-            ("1", "admin_proj_d"),
-            ("user_regular_d", "user_proj_d"),
         ]:
             pid = str(uuid.uuid4())
             conn.execute(
@@ -269,7 +269,6 @@ def _build_test_db(db_path: str) -> None:
                 ),
             )
             # Associated scenario
-            conn.execute("PRAGMA foreign_keys=OFF")
             sc_id = str(uuid.uuid4())
             conn.execute(
                 """
@@ -459,7 +458,6 @@ class TestStrictBootstrap:
                     def execute(self, sql, *args, **kwargs):
                         if (
                             sql.strip().upper().startswith("DELETE FROM PROJECTS")
-                            and "__reference__" in sql
                         ):
                             raise sqlite3.OperationalError("simulated_delete_failure")
                         return self._conn.execute(sql, *args, **kwargs)
@@ -514,7 +512,6 @@ class TestStrictBootstrap:
                     def execute(self, sql, *args, **kwargs):
                         if (
                             sql.strip().upper().startswith("DELETE FROM SCENARIOS")
-                            and "__reference__" in sql
                         ):
                             fake = MagicMock()
                             fake.rowcount = 0

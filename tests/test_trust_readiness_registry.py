@@ -315,7 +315,10 @@ def test_csrf_registry_correction_is_only_the_two_approved_sentences():
     for old, new in replacements:
         assert original.count(old) == 1
         original = original.replace(old, new, 1)
-    assert (ROOT / "app/trust_readiness/registry.py").read_text(encoding="utf-8").strip() == original
+    # Preserve the historical CSRF proof; the only subsequent registry change
+    # authorized here is the separately reviewed terminal-demo retention policy.
+    assert _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py") == original
+    assert _read_current("app/trust_readiness/registry.py").strip() == _demo_retention_registry(original)
 
 
 def test_csrf_exact_content_accepts_only_the_reviewed_snapshot():
@@ -372,6 +375,133 @@ def test_csrf_exact_content_git_failure_is_not_an_authorization(monkeypatch):
     assert not _current_csrf_correction_authorized(list(CSRF_EXACT_BLOBS))
 
 
+# Terminal demo disposal is a separate upstream correction, never a CI-only
+# exception. Historical CSRF/WF-05 pins and the global forbidden list stay intact.
+DEMO_RETENTION_BASE = "5dbfd2a2fb1c6c777b7eb26d93a7090820acce23"
+DEMO_RETENTION_BLOBS = {
+    "app/demo_cleanup.py": "a6a33fe83c6814e167a7cf90cb8f757c5e17741e",
+    "tools/demo_reset.py": "e9f6427ed62007ce17232f530118961e730c395e",
+    "docs/model_v2/RUN_HISTORY_V1_CONTRACT.md": "0f5aaccbd5629f013ad61118ad17afe13086430f",
+    "tests/test_p6_correction_c.py": "9a0942517885794c93fd246097b26f388c17ef8e",
+    "tests/test_p6_correction_d.py": "268ac1945e3f14d2f9c582a440d3f426ce283106",
+    "tests/test_demo_history_retention.py": "c56232944fb1c06cf037252be570413c15b92e29",
+    "app/trust_readiness/registry.py": "4a53ea61846feaa52fad3e3f19acad0a00d78753",
+    "tests/test_trust_readiness_controls.py": "df8e246e454c04a212154d56dac5682bc3e23c68",
+    "docs/readiness/03_known_limitations_and_support_matrix.md": "8aa7bfa170bff658d1bae30fd4365578be699990",
+    "docs/readiness/06_retention_and_deletion.md": "d99982ed61a9b43310dcd5d7492e789464a1f28f",
+}
+DEMO_RETENTION_PATHS = frozenset(DEMO_RETENTION_BLOBS) | {
+    CSRF_GUARD_PATH, "docs/model_v2/DEMO_HISTORY_RETENTION_CORRECTION_REPORT.md",
+}
+
+
+def _demo_retention_registry(original):
+    replacements = (
+        (
+            '"Demo data: removed after the demo TTL when inactive, with one exception (known gap). "',
+            '"Disposable demo sessions: removed atomically after the demo TTL when inactive, "\n'
+            '        "including run-history activity, or by an explicitly authorized operator reset. "',
+        ),
+        (
+            '"Append-only by design. NOT covered by the demo clean-up (known gap).",\n'
+            '        "None in the product. A database foreign key to the project blocks project deletion while "\n'
+            '        "history rows exist.", False,',
+            '"Append-only while a session exists. Permanent, admin, reference and protected history "\n'
+            '        "is never deleted by demo clean-up. Only complete terminal disposal of an inactive "\n'
+            '        "expired demo session or an explicitly authorized operator demo reset removes its history.",\n'
+            '        "No individual history deletion in the product. Verified demo-owned history and its "\n'
+            '        "projects are removed in one transaction with foreign keys enabled and full rollback "\n'
+            '        "on failure. Fresh history prevents TTL expiry.", False,',
+        ),
+        (
+            '''    KnownGap(
+        "gap.demo_cleanup_skips_run_history", "Expired demo data with run history is not deleted",
+        GapSeverity.MEDIUM,
+        "The demo clean-up deletes expired demo sessions after the TTL, but it does not delete "
+        "run-history rows. Those rows reference the project through a foreign key, so deleting the "
+        "project fails, the failure is only logged, and the whole demo session is kept. Demo "
+        "projects that have been run therefore outlive the documented 24 hour demo TTL.",
+        "Delete the user's run-history rows before their projects in the clean-up, with a "
+        "regression test. This needs its own change because it alters retention behaviour.",
+        (
+            _code("app/demo_cleanup.py", "_TABLES_WITH_USER_ID"),
+            _test(_CTRL, "test_known_gap_run_history_survives_demo_ttl_cleanup"),
+        ),
+    ),
+''',
+            "",
+        ),
+    )
+    for old, new in replacements:
+        assert original.count(old) == 1
+        original = original.replace(old, new, 1)
+    return original
+
+
+def _demo_retention_exact_content_authorized(changed, blobs, checkpoint_valid):
+    return (
+        checkpoint_valid
+        and set(changed) == DEMO_RETENTION_PATHS
+        and blobs == DEMO_RETENTION_BLOBS
+    )
+
+
+def _current_demo_retention_authorized(changed):
+    try:
+        base = _git("merge-base", "origin/main", "HEAD")
+        blobs = {
+            path: _git("hash-object", f"--path={path}", path)
+            for path in DEMO_RETENTION_BLOBS
+        }
+        return _demo_retention_exact_content_authorized(changed, blobs, base == DEMO_RETENTION_BASE)
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+def test_demo_retention_exception_accepts_only_exact_approved_content():
+    assert _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, dict(DEMO_RETENTION_BLOBS), True)
+    base = _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py")
+    assert _read_current("app/trust_readiness/registry.py").strip() == _demo_retention_registry(base)
+
+
+@pytest.mark.parametrize("path", DEMO_RETENTION_BLOBS)
+def test_demo_retention_exception_rejects_modified_content(path):
+    blobs = dict(DEMO_RETENTION_BLOBS)
+    blobs[path] = "0" * 40
+    assert not _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, blobs, True)
+
+
+@pytest.mark.parametrize("path", (
+    "financial_engine/orchestrator.py", "finco_core/inputs/_models.py", "domain/tax.py",
+    "app/persistence/run_history_repository.py", "app/auth.py", "app/workbook/update_service.py",
+    "app/v2/router.py", ".github/workflows/public_safety.yml", "tests/model_v2_governance.py",
+    "app/trust_readiness/projection.py", "app/templates/trust/retention.html",
+    "docs/readiness/07_authentication_and_tenant_audit.md", "tools/render_readiness_docs.py",
+))
+def test_demo_retention_exception_rejects_any_broader_change(path):
+    assert not _demo_retention_exact_content_authorized(
+        DEMO_RETENTION_PATHS | {path}, dict(DEMO_RETENTION_BLOBS), True,
+    )
+
+
+@pytest.mark.parametrize("path", sorted(DEMO_RETENTION_PATHS))
+def test_demo_retention_exception_rejects_incomplete_scope(path):
+    assert not _demo_retention_exact_content_authorized(
+        DEMO_RETENTION_PATHS - {path}, dict(DEMO_RETENTION_BLOBS), True,
+    )
+
+
+def test_demo_retention_exception_rejects_invalid_base_missing_pin_and_git_failure(monkeypatch):
+    assert not _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, dict(DEMO_RETENTION_BLOBS), False)
+    assert not _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, {}, True)
+
+    def unavailable(*args):
+        raise subprocess.CalledProcessError(1, ["git", *args])
+
+    monkeypatch.setattr(__import__(__name__, fromlist=["_git"]), "_git", unavailable)
+    assert not _current_demo_retention_authorized(DEMO_RETENTION_PATHS)
+
+
 def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
     try:
         from finance_integrity_governance import changed_paths_vs_main
@@ -384,6 +514,8 @@ def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
         pytest.skip("trust pack not part of this diff")
     if _current_csrf_correction_authorized(changed):
         return          # PR #246 exact-blob CSRF correction (see CSRF_EXACT_BLOBS)
+    if _current_demo_retention_authorized(changed):
+        return          # Separate bounded demo-retention correction, exact content only.
     if not wf05_exception_violations(changed, read_base, _read_current, _csrf_call_sites()):
         return          # the exact, evidence-backed WF-05 integration (see WF05_REPLACEMENTS)
     bad = [p for p in changed if p.startswith(FORBIDDEN_PREFIXES)]

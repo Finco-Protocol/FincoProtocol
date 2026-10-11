@@ -8,10 +8,10 @@ Usage:
 
 Options:
     --cleanup-only     Delete expired demo data only (TTL-scoped, demo rows only)
-    --full-bootstrap   Full disposable-staging reset: wipe ALL non-reference
-                       project/user state (including admin-owned), then seed
-                       the three canonical references.  Post-condition:
-                       exactly 3 reference rows, zero non-reference project rows.
+    --full-bootstrap   Bounded disposable-demo reset: refuses permanent/admin
+                       state before mutation. Existing demo databases require
+                       initialized references; only demo state is disposed.
+                       Post-condition: 5 references, zero disposable demo rows.
     (default)          Delete ALL demo data and re-seed reference models
                        (demo rows only, same as Correction B behaviour)
 
@@ -30,9 +30,9 @@ Safety gates (fail-closed — all modes):
     Never touches admin (user_id='1') or reference (user_id='__reference__') rows.
 
 --full-bootstrap:
-    Wipes ALL non-reference state, including admin rows.
+    Refuses permanent/admin/protected state before any mutation.
     Only use on a disposable staging database.
-    Seeds Solar XA / Wind XB / Storage XC and verifies post-condition.
+    Preserves existing reference evidence; initializes references on empty DBs.
 """
 
 import os
@@ -96,9 +96,10 @@ if not _yes:
         msg = "This will DELETE all expired demo session data. Continue? [y/N] "
     elif _full_bootstrap:
         msg = (
-            "WARNING: --full-bootstrap will DELETE ALL non-reference project/user state\n"
-            f"  including admin rows, from FINCO_DB_PATH={_DB_PATH!r}.\n"
-            "  Post-condition: exactly 3 canonical reference rows remain.\n"
+            "WARNING: --full-bootstrap terminally removes complete demo sessions\n"
+            f"  including their temporary Run History, from FINCO_DB_PATH={_DB_PATH!r}.\n"
+            "  Permanent/admin/protected data refuses reset before mutation.\n"
+            "  Post-condition: exactly 5 canonical references remain unchanged.\n"
             "  Only use on a disposable staging database. Continue? [y/N] "
         )
     else:
