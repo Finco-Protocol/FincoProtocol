@@ -255,8 +255,9 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
             continue
         if re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
             users.add(rel)
-    # Login, the model-import steps and one crypto action. Nothing else validates a token.
-    assert users == {"main_web.py", "app/v2/import_router.py", "app/crypto_ui.py"}
+    # Login, the model-import steps, the Inputs grid validate/save routes and one crypto action.
+    # Nothing else validates a token.
+    assert users == {"main_web.py", "app/v2/import_router.py", "app/v2/grid_router.py", "app/crypto_ui.py"}
 
 
 def test_other_public_pages_still_provision_demo_session(client):

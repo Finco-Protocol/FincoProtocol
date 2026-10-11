@@ -23,7 +23,7 @@ Evidence: CODE `app/persistence/runs_repository.py`; TEST `tests/test_trust_read
 
 ### Most state-changing requests have no CSRF token
 
-**Medium severity.** CSRF tokens protect the login form, the model-import steps and one crypto action. Other state-changing requests rely on the session cookie being SameSite=Lax, and the SameSite value can be changed by an environment variable without validation.
+**Medium severity.** CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes and one crypto action. Other state-changing requests rely on the session cookie being SameSite=Lax, and the SameSite value can be changed by an environment variable without validation.
 
 Recommended action: Add an Origin or token check to state-changing endpoints and validate the SameSite setting at startup.
 

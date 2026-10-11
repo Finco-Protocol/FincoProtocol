@@ -368,6 +368,9 @@ app.include_router(_v2_financing_sources_uses_router, prefix="/v2")
 from app.v2.import_router import router as _v2_import_router
 app.include_router(_v2_import_router, prefix="/v2")
 
+from app.v2.grid_router import router as _v2_grid_router
+app.include_router(_v2_grid_router, prefix="/v2")
+
 # Workflow C: reject over-size or unbounded uploads BEFORE multipart parsing.
 # UploadFile may spool the incoming body before the route executes, so an
 # endpoint-only read limit would not provide an actual request-body bound.
