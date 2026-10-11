@@ -252,7 +252,7 @@ def _read_current(path):
 # Approved PR #246 copy correction, after authorized normal main synchronization.
 # This is an exact snapshot check, not permission to edit the protected namespaces.
 CSRF_REVIEWED_HEAD = "f187c1785366d6d40d2e60c141b22ff113878d06"
-CSRF_SYNC_HEAD = "1630890e09a7e2f77c5e67021183b9d5e3383e0c"
+CSRF_SYNC_HEAD = "2999dbccebcc00b38d98ce1e269459d5d63239bc"
 CSRF_TRUST_BASE = "8af800a516d5298dc90ce0f9cd60dc9e3b198ca6"
 CSRF_EXACT_BLOBS = {
     "app/trust_readiness/registry.py": "a246863f7c8b206828da06a0a9003dd96acc69c9",
