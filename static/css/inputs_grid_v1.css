@@ -82,7 +82,7 @@
 .ig-col-code { width: 4.2rem; } .ig-col-unit { width: 5.2rem; } .ig-col-value { width: 8rem; text-align: right; } .ig-col-flags { width: 11rem; }
 .ig-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ig-code, .ig-unit { color: var(--ig-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ig-ro { text-align: right; font-variant-numeric: tabular-nums; color: var(--ig-muted); }
+.ig-ro { text-align: right; font-variant-numeric: tabular-nums; color: var(--ig-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ig-cell { padding: 0 .25rem; }
 .ig-input { width: 100%; box-sizing: border-box; height: 26px; padding: 0 .4rem; text-align: right; font: inherit;
             font-variant-numeric: tabular-nums; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--ig-text); }

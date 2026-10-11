@@ -86,6 +86,20 @@ def _plain(value: Any) -> str:
     return str(value)
 
 
+_MAX_READONLY_CHARS = 40
+_CONTRACT_FIELD = "revenue.multistream.contracts"
+
+
+def _readonly_text(field_id: str, value: Any) -> str:
+    """Short, layout-safe display of a read-only value (never a raw JSON book or a long string)."""
+    if field_id == _CONTRACT_FIELD:
+        return "Explicit contracts active" if value not in (None, "", "None") else "—"
+    text = _plain(value)
+    if len(text) > _MAX_READONLY_CHARS:
+        return text[: _MAX_READONLY_CHARS - 1] + "…"
+    return text or "—"
+
+
 def _thousands(value: Any) -> str:
     try:
         return f"{float(value):,.1f}"
@@ -219,15 +233,15 @@ def build_input_grid_projection(
                 numeric = f.get("field_type") in _NUMERIC_TYPES
                 if f.get("binding_label") != "bound":
                     row = GridRow(code="", label=f["label"], unit=f.get("unit") or "",
-                                  value=_plain(f.get("display_value", f.get("value"))) or "—",
+                                  value=_readonly_text(fid, f.get("display_value", f.get("value"))),
                                   reason="Calculated / locked by the model")
                 elif fid in _CASCADE_BLOCKED or fid in _COLLECTION_FIELDS:
                     row = GridRow(code="", label=f["label"], unit=f.get("unit") or "",
-                                  value=_plain(f.get("value")) or "—",
+                                  value=_readonly_text(fid, f.get("value")),
                                   reason=f"Edit on the {sheet_title} sheet (dependent values update together)")
                 elif not numeric:
                     row = GridRow(code="", label=f["label"], unit=f.get("unit") or "",
-                                  value=_plain(f.get("value")) or "—",
+                                  value=_readonly_text(fid, f.get("value")),
                                   reason=f"Choice / text field — edit on the {sheet_title} sheet")
                 else:
                     row = _row_from_field("", f["label"], f, pis, base_pis,

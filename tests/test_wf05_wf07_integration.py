@@ -193,3 +193,5 @@ def test_grid_projection_never_offers_contract_or_stream_fields_as_cells(env):
     editable = [r.field_id for s in grid.sections for c in s.categories for r in c.rows if r.editable]
     assert "revenue.multistream.contracts" not in editable
     assert not any("multistream" in f for f in editable)
+    # a read-only value is never a raw JSON book or an unbounded string (it widened the grid on phones)
+    assert all(len(r.value) <= 40 and "{" not in r.value for sec in grid.sections for c in sec.categories for r in c.rows)

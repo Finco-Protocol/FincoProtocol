@@ -564,3 +564,39 @@ def test_save_pressed_right_after_enter_waits_for_the_validator_instead_of_refus
     s.page.keyboard.press("Control+S")
     s.page.wait_for_function("window.__igLastSaveMs !== undefined", timeout=30000)
     assert s.persisted(EFF) == 90.0
+
+
+# ── WF-05 x WF-07: Revenue V2 contracts and the Inputs grid in one real browser ───────────
+
+@pytest.mark.parametrize("viewport", [{"width": 1440, "height": 900}, {"width": 390, "height": 844}])
+def test_revenue_contracts_and_inputs_grid_coexist_desktop_and_mobile(make, viewport):
+    import json as _json
+    from app.workbook.revenue_contracts_service import save_contracts
+    from app.workbook.service import WorkbookService
+    from tests.test_wf07_revenue_multistream import contracts
+    from app.persistence.workspace_repository import get_workspace_state
+
+    s = make(f"u-wf05-wf07-{viewport['width']}", viewport=viewport)
+    ws = get_workspace_state(s.uid, s.rec.project_id)
+    pi = WorkbookService.build_draft_input_set_from_workspace(ws).to_projectinputs()
+    from tests.test_model_decision_workspace_v2 import tokens  # noqa: F401
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.workbook.registry import WORKBOOK
+    save_contracts(owner=s.uid, project_id=s.rec.project_id,
+                   expected_hash=assemble_consistent_for_get(s.uid, s.rec.project_id, WORKBOOK.version).composite_hash,
+                   raw=_json.dumps(contracts(pi, "solar", price=95, merchant_price=90, strike=100)))
+    s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
+    s.page.wait_for_selector("#tab-revenue")
+    s.page.locator('[data-hy-group="inputs"]').click()
+    s.page.evaluate("document.getElementById('tab-revenue').click()")
+    s.page.wait_for_selector('[data-testid="revenue-contracts-form"]', state="attached")
+    assert s.page.locator('[data-hy-group="inputs"]').get_attribute("aria-selected") == "true"
+    overflow = s.page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
+    assert overflow <= 2, f"revenue tab overflows by {overflow}px"
+    s.page.evaluate("document.getElementById('tab-input-grid').click()")
+    s.page.wait_for_selector("#v2-input-grid .ig-input", state="visible")
+    assert s.page.locator('#v2-input-grid [data-ig-field*="multistream"]').count() == 0
+    overflow = s.page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
+    assert overflow <= 2, f"grid tab overflows by {overflow}px"
+    assert s.page.locator('[data-testid="hybrid-status"]').is_visible()
+    assert not s.errors
