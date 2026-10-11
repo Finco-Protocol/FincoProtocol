@@ -16,6 +16,7 @@ Acceptance markers (all must PASS):
   EV_CHARGING_REFERENCE_MOBILE_390_NO_OVERFLOW
 """
 from __future__ import annotations
+from tests.model_workspace_navigation import activate_destination
 
 import socket
 import threading
@@ -132,7 +133,7 @@ def test_solar_reference_prerun_browser(ref_app, browser):
     try:
         pc = _find_reference_project_code(ref_app, "generic_solar_reference")
         page.goto(ref_app["url"] + f"/v2/workbook?project={pc}")
-        page.locator("#tab-overview").click()
+        activate_destination(page, 'tab-overview')
         page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
 
         # Must show CURRENT, not NOT RUN
@@ -167,7 +168,7 @@ def test_wind_reference_prerun_browser(ref_app, browser):
     try:
         pc = _find_reference_project_code(ref_app, "generic_wind_reference")
         page.goto(ref_app["url"] + f"/v2/workbook?project={pc}")
-        page.locator("#tab-overview").click()
+        activate_destination(page, 'tab-overview')
         page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
 
         assert page.locator('[data-testid="overview-status-current"]').count() >= 1, \
@@ -200,7 +201,7 @@ def test_data_center_reference_prerun_browser(ref_app, browser):
     try:
         pc = _find_reference_project_code(ref_app, "generic_data_center_reference")
         page.goto(ref_app["url"] + f"/v2/workbook?project={pc}")
-        page.locator("#tab-overview").click()
+        activate_destination(page, 'tab-overview')
         page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
 
         assert page.locator('[data-testid="overview-status-current"]').count() >= 1, \
@@ -233,7 +234,7 @@ def test_ev_charging_reference_prerun_browser(ref_app, browser):
     try:
         pc = _find_reference_project_code(ref_app, "generic_ev_charging_reference")
         page.goto(ref_app["url"] + f"/v2/workbook?project={pc}")
-        page.locator("#tab-overview").click()
+        activate_destination(page, 'tab-overview')
         page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
 
         assert page.locator('[data-testid="overview-status-current"]').count() >= 1, \
@@ -275,7 +276,7 @@ def test_reference_working_copy_browser_separation(ref_app, browser):
         page.get_by_role("button", name="Create project").click()
         page.wait_for_url("**/v2/workbook?project=**", timeout=30_000)
 
-        page.locator("#tab-overview").click()
+        activate_destination(page, 'tab-overview')
         page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
 
         # Working copy must show the "no run" empty state — it must not
@@ -310,7 +311,7 @@ def test_reference_mobile_390_no_overflow(ref_app, browser, template_source, lab
     try:
         pc = _find_reference_project_code(ref_app, template_source)
         page.goto(ref_app["url"] + f"/v2/workbook?project={pc}")
-        page.locator("#tab-overview").click()
+        activate_destination(page, 'tab-overview')
         page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
         # Confirm CURRENT at desktop before resizing
         page.locator('[data-testid="overview-status-current"]').wait_for(
@@ -320,7 +321,7 @@ def test_reference_mobile_390_no_overflow(ref_app, browser, template_source, lab
             f"{template_source}: must not show NOT RUN at desktop"
         # Resize to 390px and check CURRENT + no overflow
         page.set_viewport_size({"width": 390, "height": 844})
-        page.locator("#tab-overview").click()
+        activate_destination(page, 'tab-overview')
         page.locator("#panel-overview").wait_for(state="visible", timeout=10_000)
         assert page.locator('[data-testid="overview-status-current"]').count() >= 1, \
             f"{template_source}: must show CURRENT at 390px"

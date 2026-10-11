@@ -100,7 +100,7 @@ class Session:
 
     def open_grid(self):
         self.page.goto(f"{self.base}/v2/workbook?project={self.rec.project_code}")
-        self.page.wait_for_selector("#tab-input-grid")
+        self.page.wait_for_selector("#tab-input-grid", state="attached")
         self.page.evaluate("document.getElementById('tab-input-grid').click()")
         self.page.wait_for_selector("#v2-input-grid .ig-input", state="visible")
 
@@ -162,13 +162,14 @@ def test_hybrid_groups_switch_real_tabs_and_keep_every_tab_reachable(make):
     s.open_grid()
     labels = s.page.locator('[data-testid="hybrid-nav"] .hy-group').all_inner_texts()
     assert [t.strip().lower() for t in labels] == ["inputs", "scenarios", "outputs", "analysis", "trust"]
-    expectations = {"inputs": "tab-input-grid", "scenarios": "tab-scenarios", "outputs": "tab-overview",   # the landing tab counts as visited: a group returns to its last-visited tab
+    expectations = {"inputs": "tab-input-grid", "scenarios": "tab-scenarios", "outputs": "tab-outputs",
                     "analysis": "tab-sensitivity", "trust": "tab-trust"}
     for group, tab in expectations.items():
         s.page.locator(f'[data-hy-group="{group}"]').click()
         s.page.wait_for_function(
             "(t) => document.getElementById(t).getAttribute('aria-selected') === 'true'", arg=tab)
-        assert s.page.locator(f'[data-hy-group="{group}"]').get_attribute("aria-selected") == "true"
+        if group != 'overview':
+            assert s.page.locator(f'[data-hy-group="{group}"]').get_attribute("aria-selected") == "true"
     # every pre-existing sheet tab is still present and directly activatable
     for tab in ("tab-outputs", "tab-overview", "tab-capex", "tab-opex", "tab-revenue", "tab-debt", "tab-tax", "tab-returns",
                 "tab-run-history", "tab-compare", "tab-goal-seek"):
@@ -178,7 +179,8 @@ def test_hybrid_groups_switch_real_tabs_and_keep_every_tab_reachable(make):
             "(t) => Object.keys(window.FincoInputGrid.hybridGroups).find(g => window.FincoInputGrid.hybridGroups[g].includes(t))",
             tab)
         assert group, f"{tab} belongs to no hybrid group"
-        assert s.page.locator(f'[data-hy-group="{group}"]').get_attribute("aria-selected") == "true"
+        if group != 'overview':
+            assert s.page.locator(f'[data-hy-group="{group}"]').get_attribute("aria-selected") == "true"
     assert s.page.locator('[data-testid="workspace-nav"] [data-nav-tab="tab-capex"]').count() == 1
     assert not s.errors
 
@@ -381,7 +383,7 @@ def test_four_consecutive_cost_line_edits_keep_focus_and_scroll(make, kind):
     s = make(f"u-wf05-cost-{kind}")
     s.page_kind = kind
     s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
-    s.page.wait_for_selector(f"#tab-{kind}")
+    s.page.wait_for_selector(f"#tab-{kind}", state="attached")
     s.page.evaluate(f"document.getElementById('tab-{kind}').click()")
     s.page.wait_for_selector(f"#v2-sheet-{kind} form[data-cost-row]", state="attached")
     s.page.evaluate(f"document.querySelectorAll('#v2-sheet-{kind} details[data-group-code]').forEach(d => d.open = true)")
@@ -416,7 +418,7 @@ def test_four_consecutive_cost_line_edits_keep_focus_and_scroll(make, kind):
 def test_cost_line_saved_after_last_run_is_marked_not_run_and_strip_follows(make):
     s = make("u-wf05-notrun")
     s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
-    s.page.wait_for_selector("#tab-opex")
+    s.page.wait_for_selector("#tab-opex", state="attached")
     s.page.locator('[data-testid="header-run-btn"]').click()
     s.page.wait_for_function(
         "document.querySelector('[data-testid=hybrid-run-state]').textContent.trim() === 'CURRENT'", timeout=240000)
@@ -459,7 +461,8 @@ def _legacy_eff(s):
 
 
 def _legacy_edit(s, value, *, expect_saved=True):
-    s.page.evaluate("document.getElementById('tab-revenue').click()")
+    from tests.model_workspace_navigation import activate_destination
+    activate_destination(s.page, 'tab-revenue')
     box = _legacy_eff(s)
     box.scroll_into_view_if_needed()
     box.click()
@@ -489,7 +492,7 @@ def test_ev_efficiency_rendered_identity_is_unique_and_shows_94_percent(make):
 def test_ev_efficiency_valid_and_invalid_edits_and_effective_model_input_agree(make):
     s = make("u-wf05-ev-eff2", template="generic_ev_charging_reference")
     s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
-    s.page.wait_for_selector("#tab-revenue")
+    s.page.wait_for_selector("#tab-revenue", state="attached")
     _legacy_edit(s, "92")
     assert s.persisted(EFF) == 92.0
     for bad in ("120", "-5", "100.5"):
@@ -586,7 +589,7 @@ def test_revenue_contracts_and_inputs_grid_coexist_desktop_and_mobile(make, view
                    expected_hash=assemble_consistent_for_get(s.uid, s.rec.project_id, WORKBOOK.version).composite_hash,
                    raw=_json.dumps(contracts(pi, "solar", price=95, merchant_price=90, strike=100)))
     s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
-    s.page.wait_for_selector("#tab-revenue")
+    s.page.wait_for_selector("#tab-revenue", state="attached")
     s.page.locator('[data-hy-group="inputs"]').click()
     s.page.evaluate("document.getElementById('tab-revenue').click()")
     s.page.wait_for_selector('[data-testid="revenue-contracts-form"]', state="attached")

@@ -5,6 +5,8 @@ Screenshots and machine-readable evidence remain ignored in artifacts/.
 """
 from __future__ import annotations
 
+from tests.model_workspace_navigation import activate_destination
+
 import json
 import os
 from pathlib import Path
@@ -141,7 +143,7 @@ def main():
                             economics.append({'case':name, 'working_override':tariff, 'run_bound_override':tariff,
                                 'effective_tariff':summary['scenario_revenue_input']['effective_tariff_eur_mwh'],
                                 'revenue_keur':summary['kpis']['total_revenue_keur'], 'project_irr':summary['kpis']['project_irr']})
-                        page.locator('#tab-scenarios').click()
+                        activate_destination(page, "tab-scenarios")
                         page.locator('.v2-scenario-create-form input[name=scenario_name]').fill('Pricing Upside')
                         with page.expect_response(lambda r:'/scenarios/create' in r.url):
                             page.locator('.v2-scenario-create-form button').click()
@@ -181,13 +183,13 @@ def main():
                         capture_case('Downside', downside_id, 45)
                         assert economics[1]['revenue_keur'] > economics[0]['revenue_keur'] > economics[2]['revenue_keur']
                         assert economics[1]['project_irr'] > economics[0]['project_irr'] > economics[2]['project_irr']
-                        page.locator('#tab-compare').click()
+                        activate_destination(page, "tab-compare")
                         expect(page.locator('.v2-compare-chip')).to_have_count(3,timeout=30000)
                         for chip in page.locator('.v2-compare-chip').all(): chip.click()
                         with page.expect_response(lambda r:'/scenarios/compare' in r.url): page.locator('#v2-compare-submit-btn').click()
                         expect(page.locator('[data-testid=cmp-project_irr-delta-s2]')).to_contain_text('pp')
                         page.screenshot(path=str(out/f'{kind}-compare.png'),full_page=True)
-                        with page.expect_response(lambda r:'/decision/sensitivity' in r.url): page.locator('#tab-sensitivity').click()
+                        with page.expect_response(lambda r:'/decision/sensitivity' in r.url): activate_destination(page, "tab-sensitivity")
                         page.locator('#v2-sens-driver').select_option('tariff')
                         page.locator('#v2-sens-scenario').select_option(sid)
                         before = get_workspace_state('decision-browser',record.project_id)
@@ -201,7 +203,7 @@ def main():
                         assert get_workspace_state('decision-browser',record.project_id)==before
                         assert get_run_history('decision-browser',record.project_id)==history
                         page.screenshot(path=str(out/f'{kind}-sensitivity.png'),full_page=True)
-                        page.locator('#tab-scenarios').click()
+                        activate_destination(page, "tab-scenarios")
                         base = page.locator('.v2-scenario-row[data-is-base-case="true"]')
                         if not base.count():
                             base = page.locator('.v2-scenario-row').filter(has=page.locator('.v2-scenario-base-badge'))
@@ -210,7 +212,7 @@ def main():
                         settled(page)
                         before = get_workspace_state('decision-browser',record.project_id)
                         history = get_run_history('decision-browser',record.project_id)
-                        with page.expect_response(lambda r:'/decision/goal-seek' in r.url): page.locator('#tab-goal-seek').click()
+                        with page.expect_response(lambda r:'/decision/goal-seek' in r.url): activate_destination(page, "tab-goal-seek")
                         target = round(float(before.last_runtime_summary['project_irr']) * 100 + .25, 2)
                         page.locator('#gs-target-value').fill(str(target))
                         page.locator('[data-testid=gs-run-btn]').click()

@@ -1,6 +1,5 @@
 {#
   Workbook V2 — Financial Statements worksheet partial.
-
   Read-only.  Three PARTIAL statements from persisted RuntimeResult payload.
   No arithmetic, no aggregation, no accounting formulas in this template.
   All row definitions and period labels are projected server-side in router.py.
@@ -47,6 +46,7 @@
 #}
 
 {% from "partials/_money_format.html" import grouped_keur, statement_keur %}
+<link rel="stylesheet" href="/static/css/model_outputs_workspace.css">
 
 {# fmt_period: convert YYYY-MM → "Jan 2028" style labels #}
 {% macro fmt_period(lbl) %}
@@ -78,7 +78,7 @@
   {# ── CIT rate assumption display ─────────────────────────────────────── #}
   {% if fs_cit_rate_display is defined and fs_cit_rate_display %}
   <div class="v2-field-row v2-field-readonly" style="padding:.25rem .5rem;font-size:.82rem;">
-    <span class="v2-field-label">Corporate Income Tax (CIT) rate</span>
+    <span class="v2-field-label">Working Copy CIT assumption (not historical rate evidence)</span>
     <span class="v2-field-value" data-testid="fs-cit-rate">{{ fs_cit_rate_display }}</span>
   </div>
   {% endif %}
@@ -159,68 +159,16 @@
   </div>
 
   {# ── Helper macro: statement table (model or annual) ─────────────────── #}
-  {%- macro statement_table(rows, period_labels, testid_prefix, basis='') -%}
-  {%- if rows is not none and period_labels -%}
-    <div class="v2-statement-meta" data-testid="{{ testid_prefix }}-meta">
-      <span class="v2-statement-unit">kEUR</span>
+{% from "partials/_statement_table.html" import out_table %}
+  {% macro statement_table(rows, period_labels, testid_prefix, basis='') %}
+    {% set table_id = 'pnl' if testid_prefix.startswith('fs-pnl') else 'balance_sheet' if testid_prefix.startswith('fs-bs') else 'cash_flow' %}
+    {% set table = (fs_tables | selectattr('id', 'equalto', table_id) | list | first) %}
+    {% if testid_prefix.endswith('-annual') %}{% set table = table.annual %}{% endif %}
+    <div class="v2-statement-meta" data-testid="{{ testid_prefix }}-meta"><span class="v2-statement-unit">kEUR</span>
       <span class="v2-statement-basis">{{ basis }}</span>
-      <span class="v2-statement-periods">{{ period_labels | length }} period{{ '' if period_labels | length == 1 else 's' }}</span>
-    </div>
-    <div class="v2-statement-scroll" data-testid="{{ testid_prefix }}-table-wrapper" tabindex="0"
-         role="region" aria-label="Statement table, scrollable">
-      <table class="v2-statement-table" data-testid="{{ testid_prefix }}-table">
-        <thead>
-          <tr>
-            <th class="v2-statement-corner v2-fs-sticky-header">
-              Line item (kEUR)
-            </th>
-            {% for lbl in period_labels %}
-            <th class="v2-statement-period-header">{{ fmt_period(lbl) }}</th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in rows %}
-          {% if row.key != "balance_check_keur" %}
-          <tr class="v2-statement-row{% if row.is_total %} v2-statement-row--total{% endif %}{% if row.key == 'share_capital_keur' %} v2-statement-row--placeholder{% endif %}"
-              data-testid="{{ testid_prefix }}-row-{{ row.key }}"
-              {% if row.key == 'share_capital_keur' %}title="Placeholder — share capital is not modelled in this version"{% endif %}>
-            <td class="v2-statement-row-label v2-fs-sticky-cell{% if row.is_total %} v2-statement-total{% endif %}">
-              {{ row.label }}
-            </td>
-            {% for v in row['values'] %}
-            <td class="v2-statement-num{% if v is number and v is not sameas true and v is not sameas false and v < 0 %} v2-statement-neg{% elif not (v is number and v is not sameas true and v is not sameas false) %} v2-statement-na{% endif %}">{{ statement_keur(v) }}</td>
-            {% endfor %}
-          </tr>
-          {% endif %}
-          {% endfor %}
-          {# Balance check row: server-projected css_class and status_title — no Jinja threshold calculation #}
-          {% set bc_row = namespace(found=none) %}
-          {% for row in rows %}{% if row.key == "balance_check_keur" %}{% set bc_row.found = row %}{% endif %}{% endfor %}
-          {% if bc_row.found is not none %}
-          {% set bc = bc_row.found %}
-          <tr class="{{ bc.css_class }}"
-              data-testid="{{ testid_prefix }}-row-balance_check_keur"
-              title="{{ bc.status_title }}">
-            <td class="v2-statement-row-label v2-statement-total v2-fs-sticky-cell">
-              {{ bc.label }}
-              {% if bc.balance_check_ok %}<span style="margin-left:.35rem;">&#10003;</span>
-              {% else %}<span style="margin-left:.35rem;">&#9888;</span>{% endif %}
-            </td>
-            {% for v in bc['values'] %}
-            <td class="v2-statement-num">{{ statement_keur(v) }}</td>
-            {% endfor %}
-          </tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
-  {%- elif rows is not none -%}
-    <div class="v2-field-row v2-field-readonly" data-testid="{{ testid_prefix }}-empty">
-      <span class="v2-field-value"><span class="v2-field-empty">No periods produced in this run.</span></span>
-    </div>
-  {%- endif -%}
-  {%- endmacro -%}
+      <span>{{ period_labels | length }} periods</span></div>
+    {{ out_table(table, testid_prefix ~ '-caption', testid_prefix) }}
+  {% endmacro %}
 
   {# ── B. Income Statement panel ───────────────────────────────────────── #}
   <div id="fs-inner-panel-pnl" class="v2-fs-inner-panel v2-fs-inner-panel-active" role="tabpanel">

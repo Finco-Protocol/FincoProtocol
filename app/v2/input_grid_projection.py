@@ -36,6 +36,7 @@ class GridRow:
     step: str = "any"
     modified_since_run: bool = False
     baseline: str = ""            # Last Run value (display) when modified_since_run
+    category_value: str = ""      # known cost-view subtotal, NOT a scalar override
 
 
 @dataclass(frozen=True)
@@ -134,7 +135,7 @@ def baseline_pis(ws: Any, workbook: Any, input_set_cls: Any) -> tuple[Any, str]:
 
 
 def _row_from_field(code: str, label: str, f: dict, pis: Any, base: Any, *,
-                    editable: bool, reason: str) -> GridRow:
+                    editable: bool, reason: str, category_total: Any = None) -> GridRow:
     fid = f["field_id"]
     cur = pis.get(fid)
     modified = False
@@ -143,9 +144,15 @@ def _row_from_field(code: str, label: str, f: dict, pis: Any, base: Any, *,
         b = base.get(fid)
         modified = not _same(cur, b)
         baseline = _plain(b) if modified else ""
+    absent = cur is None or cur == ""
+    known_category = _thousands(category_total) if absent and category_total is not None else ""
     return GridRow(
         code=code, label=label, unit=f.get("unit") or "kEUR", field_id=fid,
-        value=_plain(cur), editable=editable, reason="" if editable else reason,
+        value=_plain(cur) if editable or not known_category else known_category,
+        editable=editable,
+        reason=("Canonical category subtotal · scalar override absent; reference is read-only"
+                if known_category and not editable else "" if editable else reason),
+        category_value=known_category if editable else "",
         min_value=f.get("min_value"), max_value=f.get("max_value"),
         step=str(f.get("step") or "any"),
         modified_since_run=modified and editable, baseline=baseline if editable else "",
@@ -189,7 +196,8 @@ def build_input_grid_projection(
             row = _readonly(group.code, group.name, group.subtotal_keur, "Sum of line items — edit on the CAPEX sheet")
         elif gf and gf.get("binding_label") == "bound":
             row = _row_from_field(group.code, group.name, gf, pis, base_pis,
-                                  editable=project_editable, reason="Reference project is read-only")
+                                  editable=project_editable, reason="Reference project is read-only",
+                                  category_total=group.subtotal_keur)
         else:
             row = _readonly(group.code, group.name, group.subtotal_keur, "Calculated")
         cx_cats.append(GridCategory(
@@ -210,7 +218,8 @@ def build_input_grid_projection(
             row = _readonly(sg.code, name, total, "Sum of line items — edit on the OPEX sheet")
         elif sg.is_bound:
             row = _row_from_field(sg.code, name, sg.field, pis, base_pis,
-                                  editable=project_editable, reason="Reference project is read-only")
+                                  editable=project_editable, reason="Reference project is read-only",
+                                  category_total=total)
         else:
             row = _readonly(sg.code, name, total, "Calculated")
         ox_cats.append(GridCategory(

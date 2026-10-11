@@ -9,7 +9,7 @@ import sys
 import pytest
 
 from tools.ci_acceptance import EvidenceError, attest, compare_records, partition_modules, weights_from_junit
-from tools.ci_browser_job import REQUIRED, SELECTIONS, manifest, validate_browser_records
+from tools.ci_browser_job import REQUIRED, SELECTIONS, manifest, validate_browser_records, validate_consolidation
 from tools.ci_acceptance import run_command
 from tools.ci_measurement import distribution
 
@@ -213,6 +213,8 @@ def test_existing_browser_selection_is_not_weakened():
     assert SELECTIONS["import"] == ["tests/test_model_ai_import_browser_c.py"]
     assert SELECTIONS["grid"] == ["tests/test_model_hybrid_inputs_grid_routes.py", "tests/test_model_hybrid_inputs_grid_browser.py"]
     assert SELECTIONS["q4"] == ["tests/test_model_q4_browser.py"]
+    assert SELECTIONS["consolidation"] == ["tests/test_model_workspace_consolidation_browser.py"]
+    assert REQUIRED["consolidation"] == ["artifacts/workspace-consolidation/prb-*.png"]
 
 
 def test_required_gate_triggers_do_not_depend_on_changed_paths():
@@ -252,3 +254,34 @@ def test_full_progress_is_not_normal_process_exit_proof(markers, expected, tmp_p
 def test_measurement_nearest_rank_p90_does_not_invent_samples():
     assert distribution([]) is None
     assert distribution([1, 2, 3]) == {"samples": 3, "median": 2, "p90_nearest_rank": 3, "maximum": 3}
+
+
+def test_accepted_consolidation_gates_both_browser_matrices():
+    text = (Path(__file__).resolve().parents[1] / ".github/workflows/protocol_ui_browser.yml").read_text()
+    assert text.count("role: [protocol, import, grid, q4, outputs, consolidation]") == 2
+    assert "merge-result-browser:" in text and "mandatory-browser-evidence:" in text
+
+
+def test_consolidation_missing_collection_rejected(tmp_path):
+    with pytest.raises(EvidenceError, match="collection"):
+        validate_consolidation(tmp_path, {"selected": [], "collected": [], "outcomes": {}},
+                               {"normal_exit": True, "exit_code": 0})
+
+
+@pytest.mark.parametrize("status", ["skipped", "xfail", "failed", "error", "xpass"])
+def test_consolidation_non_pass_result_rejected(tmp_path, status):
+    nodes = [f"tests/test_model_workspace_consolidation_browser.py::test_{i}" for i in range(17)]
+    outcomes = {node: {"status": "passed"} for node in nodes}
+    outcomes[nodes[-1]] = {"status": status}
+    with pytest.raises(EvidenceError, match="failed/skipped"):
+        validate_consolidation(tmp_path, {"selected": nodes, "collected": nodes,
+                                         "deselected": [], "outcomes": outcomes},
+                               {"normal_exit": True, "exit_code": 0})
+
+
+def test_consolidation_missing_junit_fails_closed(tmp_path):
+    nodes = [f"tests/test_model_workspace_consolidation_browser.py::test_{i}" for i in range(17)]
+    with pytest.raises(EvidenceError, match="JUnit"):
+        validate_consolidation(tmp_path, {"selected": nodes, "collected": nodes,
+                                         "deselected": [], "outcomes": {n: {"status": "passed"} for n in nodes}},
+                               {"normal_exit": True, "exit_code": 0})

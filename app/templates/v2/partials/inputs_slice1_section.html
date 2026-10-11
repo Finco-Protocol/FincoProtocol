@@ -72,7 +72,7 @@
         </span>
         <span class="v2-inputs-slice1-unit" role="cell">{{ row.unit }}</span>
         <span class="v2-inputs-slice1-state" role="cell">
-          <span class="v2-inputs-slice1-badge">{{ row.status_label }}</span>
+          <span class="v2-inputs-slice1-badge">{{ 'Read-only · bound' if not row.editable and row.status_label|lower == 'editable' else row.status_label }}</span>
         </span>
       </div>
     {% endfor %}

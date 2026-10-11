@@ -4,6 +4,7 @@ python -m tests.model_financing_browser_acceptance
 Evidence remains untracked under artifacts/model-financing-bankability/.
 """
 from __future__ import annotations
+from tests.model_workspace_navigation import activate_destination
 
 import json
 import os
@@ -121,7 +122,7 @@ def main():
                         field.fill("5.50")
                         with page.expect_response(lambda r: "/v2/workbook/update" in r.url and r.request.method == "POST"):
                             field.press("Enter")
-                        page.locator("#tab-investor").click()
+                        activate_destination(page, 'tab-investor')
                         expect(page.locator('[data-testid="investor-freshness"]')).to_contain_text("STALE", timeout=30000)
                         page.screenshot(path=str(out / f"{kind}-investor-after-save.png"), full_page=True)
                         page.locator('[data-testid="header-run-btn"]').click()

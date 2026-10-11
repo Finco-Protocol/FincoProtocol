@@ -6,6 +6,8 @@ viewport, and a regression check of the merged Excel-like cost grid.
 """
 from __future__ import annotations
 
+from tests.model_workspace_navigation import activate_destination, open_insight
+
 import os
 import socket
 import threading
@@ -82,7 +84,7 @@ class Sess:
 
     def open(self, frag=""):
         self.page.goto(self.url(frag))
-        self.page.wait_for_selector("#model-workspace-nav")
+        self.page.wait_for_selector("#model-workspace-nav", state="attached")
 
     def selected_tab(self):
         return self.page.evaluate("document.querySelector('#v2-sheet-tabs [aria-selected=\"true\"]').id")
@@ -134,11 +136,11 @@ def test_integrated_statements_kpis_trace_navigation_and_freshness(make):
     # NOT RUN: the strip shows no values; statements show no fabricated figures
     assert p.locator('[data-testid="kpi-strip"]').get_attribute("data-run-state") == "NOT_RUN"
     assert s.strip("project_irr") == ("false", None, "—")
-    p.click('[data-testid="nav-statements"]')
-    assert s.selected_tab() == "tab-fs" and s.nav_current() == "tab-fs"
-    assert p.evaluate("location.hash") == "#fs"
-    assert p.locator('[data-testid="fs-state-badge"]').inner_text().strip() == "NOT RUN"
-    assert p.locator('[data-testid="fs-pnl-table"]').count() == 0
+    activate_destination(p, 'tab-outputs')
+    assert s.selected_tab() == "tab-outputs" and s.nav_current() == "tab-outputs"
+    assert p.evaluate("location.hash") == "#outputs"
+    assert p.locator('[data-testid="outputs-state"]').inner_text().strip() == "NOT RUN"
+    assert p.locator('[data-out-table="pnl"]').count() == 0
 
     # Run -> CURRENT; strip equals the persisted Last Run
     s.run()
@@ -151,19 +153,20 @@ def test_integrated_statements_kpis_trace_navigation_and_freshness(make):
     assert p.locator('[data-testid="kpi-strip-state"]').inner_text().strip() == "CURRENT"
     assert p.locator('[data-testid="fs-state-badge"]').inner_text().strip() == "CURRENT"
 
+    p.wait_for_selector('[data-out-table="pnl-annual"]', state='visible')
     # Statements: full axis, parentheses for negatives, sticky header and first column
-    wrapper = p.locator('[data-testid="fs-pnl-annual-table-wrapper"]')
+    wrapper = p.locator('[data-out-table="pnl-annual"] >> xpath=ancestor::div[@data-out-scroll]')
     wrapper.scroll_into_view_if_needed()
     assert wrapper.get_attribute("role") == "region"
-    n_years = p.locator('[data-testid="fs-pnl-annual-table"] th.v2-statement-period-header').count()
+    n_years = p.locator('[data-out-table="pnl-annual"] thead th.out-num').count()
     assert n_years >= 10
-    p.click('[data-period-view="model"]')
-    n_model = p.locator('[data-testid="fs-pnl-table"] th.v2-statement-period-header').count()
+    p.locator('[data-out-basis]').select_option('model')
+    n_model = p.locator('[data-out-table="pnl"] thead th.out-num').count()
     assert n_model > n_years
     sticky = p.evaluate("""() => {
-        const w = document.querySelector('[data-testid="fs-pnl-table-wrapper"]');
-        const th = w.querySelector('th.v2-statement-period-header');
-        const lab = w.querySelector('td.v2-statement-row-label');
+        const w = document.querySelector('[data-out-table="pnl"]').closest('[data-out-scroll]');
+        const th = w.querySelector('thead th.out-num');
+        const lab = w.querySelector('tbody th.out-label');
         w.scrollLeft = 400; w.scrollTop = 40;
         const wr = w.getBoundingClientRect();
         return {headTop: th.getBoundingClientRect().top - wr.top, labLeft: lab.getBoundingClientRect().left - wr.left,
@@ -172,17 +175,18 @@ def test_integrated_statements_kpis_trace_navigation_and_freshness(make):
     assert sticky["canScrollX"] and abs(sticky["headTop"]) <= 2 and abs(sticky["labLeft"]) <= 2
 
     # drill-down: a metric opens its authoritative sheet; the nav follows
+    open_insight(p)
     p.click('[data-testid="kpi-strip-project_irr"] button')
     assert s.selected_tab() == "tab-returns" and s.nav_current() == "tab-returns"
     p.click('[data-testid="kpi-strip-min_dscr"] button')
     assert s.selected_tab() == "tab-debt" and s.nav_current() == "tab-debt"
 
     # Back / Forward between nav-chosen sheets
-    p.click('[data-testid="nav-statements"]')
+    activate_destination(p, 'tab-outputs')
     p.click('[data-testid="nav-returns"]')
     p.go_back()
-    p.wait_for_function("document.getElementById('tab-fs').getAttribute('aria-selected') === 'true'")
-    assert s.selected_tab() == "tab-fs" and s.nav_current() == "tab-fs"
+    p.wait_for_function("document.getElementById('tab-outputs').getAttribute('aria-selected') === 'true'")
+    assert s.selected_tab() == "tab-outputs" and s.nav_current() == "tab-outputs"
     p.go_forward()
     p.wait_for_function("document.getElementById('tab-returns').getAttribute('aria-selected') === 'true'")
     assert s.selected_tab() == "tab-returns" and s.nav_current() == "tab-returns"
@@ -194,7 +198,7 @@ def test_integrated_statements_kpis_trace_navigation_and_freshness(make):
     assert p.locator('[data-testid="smart-panel-group-input"]').count() == 1
 
     # Economic edit through the merged Excel-like grid -> STALE everywhere, values kept as prior run
-    p.click('[data-testid="nav-development"]')
+    activate_destination(p, 'tab-capex')
     rows = p.locator('#v2-sheet-capex form[data-cost-row]')
     p.evaluate("document.querySelectorAll('#v2-sheet-capex details[data-group-code]').forEach(d => d.open = true)")
     cell = rows.nth(0).locator('input[name="amount_keur"]')
@@ -207,7 +211,7 @@ def test_integrated_statements_kpis_trace_navigation_and_freshness(make):
         "document.querySelector('[data-testid=\"toolbar-runtime-state\"]').innerText.trim() === 'Stale'")
     assert p.locator('[data-testid="kpi-strip-state"]').inner_text().strip() == "PRIOR RUN"
     assert s.strip("project_irr")[1] == raw                                  # same persisted value, now labelled prior
-    p.click('[data-testid="nav-statements"]')
+    activate_destination(p, 'tab-outputs')
     assert p.locator('[data-testid="fs-state-badge"]').inner_text().strip().startswith("STALE")
     # no hidden execution: Last Run identity untouched
     ws2 = get_workspace_state(s.uid, s.rec.project_id)
@@ -223,17 +227,18 @@ def test_deep_link_activates_the_section_and_highlights_the_nav(make):
     s.open("#revenue")
     s.page.wait_for_function("document.getElementById('tab-revenue').getAttribute('aria-selected') === 'true'")
     assert s.nav_current() == "tab-revenue"
-    s.open("#fs")
-    s.page.wait_for_function("document.getElementById('tab-fs').getAttribute('aria-selected') === 'true'")
-    assert s.nav_current() == "tab-fs"
+    s.open("#outputs")
+    s.page.wait_for_function("document.getElementById('tab-outputs').getAttribute('aria-selected') === 'true'")
+    assert s.nav_current() == "tab-outputs"
 
 
 def test_keyboard_navigation_in_the_nav(make):
     s = make("u-wcb-kbd")
     s.open()
-    s.page.focus('[data-testid="nav-overview"]')
+    activate_destination(s.page, 'tab-input-grid')
+    s.page.focus('[data-nav-tab="tab-input-grid"]')
     s.page.keyboard.press("ArrowDown")
-    assert s.page.evaluate("document.activeElement.getAttribute('data-testid')") == "nav-project"
+    assert s.page.evaluate("document.activeElement.getAttribute('data-nav-tab')") == "tab-project-setup"
     s.page.keyboard.press("Enter")
     assert s.selected_tab() == "tab-project-setup"
 
@@ -253,9 +258,10 @@ def test_strip_and_statements_are_readable_in_light_and_dark(make, scheme):
     }""")
     for q, r in contrast:
         assert r >= 4.5, (scheme, q, r)
-    s.page.click('[data-testid="nav-statements"]')
+    activate_destination(s.page, 'tab-outputs')
+    s.page.wait_for_selector('[data-out-table="pnl-annual"] td.out-num')
     ratios = s.page.evaluate("""() => {
-      const q = document.querySelector('[data-testid="fs-pnl-annual-table"] td.v2-statement-num');
+      const q = document.querySelector('[data-out-table="pnl-annual"] td.out-num');
       return getComputedStyle(q).color; }""")
     assert ratios
 
@@ -264,14 +270,17 @@ def test_narrow_viewport_keeps_nav_statements_and_strip_usable(make):
     s = make("u-wcb-narrow", viewport={"width": 390, "height": 844})
     s.open()
     s.run()
+    assert s.page.locator("#model-workspace-nav").is_hidden()
+    s.page.locator('[data-workspace-drawer][aria-controls="model-workspace-nav"]').click()
     nav_box = s.page.locator("#model-workspace-nav").bounding_box()
-    assert nav_box["width"] <= 392 and nav_box["height"] < 120                  # one horizontal strip
+    assert nav_box["width"] <= 392 and nav_box["height"] <= 422              # bounded contextual drawer
     assert s.page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
-    s.page.locator('[data-testid="nav-statements"]').scroll_into_view_if_needed()
-    s.page.click('[data-testid="nav-statements"]')
-    assert s.selected_tab() == "tab-fs"
-    assert s.page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
-    wrapper = s.page.locator('[data-testid="fs-pnl-annual-table-wrapper"]')
+    activate_destination(s.page, 'tab-outputs')
+    s.page.wait_for_selector('[data-out-table="pnl-annual"]')
+    assert s.selected_tab() == "tab-outputs"
+    overflow = s.page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
+    assert overflow <= 1
+    wrapper = s.page.locator('[data-out-table="pnl-annual"] >> xpath=ancestor::div[@data-out-scroll]')
     assert wrapper.evaluate("w => w.scrollWidth > w.clientWidth")                # scrolls, labels stay readable
     assert s.page.locator('[data-testid="kpi-strip"]').count() == 1
 

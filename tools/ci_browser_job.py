@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 import sys
+import xml.etree.ElementTree as ET
+import zlib
 
 from tools.ci_acceptance import EvidenceError, attest, check_record, run_command, write_json
 
@@ -18,12 +20,14 @@ SELECTIONS = {
     "import": ["tests/test_model_ai_import_browser_c.py"],
     "grid": ["tests/test_model_hybrid_inputs_grid_routes.py", "tests/test_model_hybrid_inputs_grid_browser.py"],
     "q4": ["tests/test_model_q4_browser.py"],
+    "consolidation": ["tests/test_model_workspace_consolidation_browser.py"],
 }
 REQUIRED = {
     "protocol": ["artifacts/reference-driven-correction-a/*.png"],
     "import": ["artifacts/model-ai-import/*.png"],
     "grid": ["artifacts/wf05/*.png", "artifacts/wf05/timings.json"],
     "q4": ["artifacts/model-q4-browser/*.png"],
+    "consolidation": ["artifacts/workspace-consolidation/prb-*.png"],
     "outputs": ["artifacts/outputs-workspace/browser-results.json", "artifacts/outputs-workspace/*.png"],
 }
 
@@ -35,6 +39,82 @@ def manifest(role, root=Path(".")):
     return {path.relative_to(root / "artifacts").as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted((root / "artifacts").rglob("*")) if path.is_file()}
 
+
+
+# Accepted PR #248: four sectors x desktop/mobile, plus nine functional nodes.
+CONSOLIDATION_TEMPLATES = (
+    "generic_solar_reference", "generic_wind_reference",
+    "generic_data_center_reference", "generic_ev_charging_reference",
+)
+
+
+def _check_png(path: Path, width: int) -> None:
+    """Verify the PNG structure, CRC, image data and source viewport width."""
+    raw = path.read_bytes()
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise EvidenceError(f"Invalid consolidation PNG signature: {path.name}")
+    offset, first, found_image_data = 8, True, False
+    while offset + 12 <= len(raw):
+        size = int.from_bytes(raw[offset:offset + 4], "big")
+        end = offset + size + 12
+        if end > len(raw):
+            raise EvidenceError(f"Truncated consolidation screenshot: {path.name}")
+        tag = raw[offset + 4:offset + 8]
+        data = raw[offset + 8:offset + 8 + size]
+        expected_crc = int.from_bytes(raw[offset + 8 + size:end], "big")
+        if (zlib.crc32(raw[offset + 4:offset + 8 + size]) & 0xffffffff) != expected_crc:
+            raise EvidenceError(f"Invalid consolidation screenshot CRC: {path.name}")
+        if first and (tag != b"IHDR" or size != 13
+                      or int.from_bytes(data[:4], "big") != width
+                      or int.from_bytes(data[4:8], "big") < 100):
+            raise EvidenceError(f"Wrong consolidation screenshot size: {path.name}")
+        if tag == b"IDAT":
+            found_image_data = True
+        offset, first = end, False
+        if tag == b"IEND":
+            if not found_image_data or offset != len(raw):
+                raise EvidenceError(f"Incomplete consolidation screenshot: {path.name}")
+            return
+    raise EvidenceError(f"Missing consolidation screenshot end: {path.name}")
+
+
+def validate_consolidation(folder: Path, inventory: dict, process: dict) -> None:
+    """Fail closed on any missing/duplicate/unexecuted #248 node or capture."""
+    selected = inventory.get("selected", [])
+    if (len(selected) < 17 or selected != inventory.get("collected")
+            or inventory.get("deselected")
+            or len(set(selected)) != len(selected)
+            or any(not node.startswith("tests/test_model_workspace_consolidation_browser.py::")
+                   for node in selected)):
+        raise EvidenceError("Incomplete/duplicate consolidation collection")
+    outcomes = inventory.get("outcomes", {})
+    if set(outcomes) != set(selected) or any(outcomes[node].get("status") != "passed" for node in selected):
+        raise EvidenceError("Consolidation node failed/skipped/xfail/not executed")
+    junit = folder / "results.xml"
+    if (not junit.is_file() or hashlib.sha256(junit.read_bytes()).hexdigest()
+            != process.get("junit_sha256") or process.get("junit_failures") != 0):
+        raise EvidenceError("Missing/failing/source-mismatched consolidation JUnit")
+    cases = list(ET.parse(junit).getroot().iter("testcase"))
+    executed = [
+        case.get("classname", "").replace(".", "/") + ".py::" + case.get("name", "")
+        for case in cases
+    ]
+    if (len(cases) != len(selected) or set(executed) != set(selected)
+            or len(set(executed)) != len(executed)):
+        raise EvidenceError("Consolidation JUnit nodes differ from collection")
+    if any(list(case) for case in cases):
+        raise EvidenceError("Consolidation JUnit contains failure/error/skip/xfail")
+    evidence = folder / "workspace-consolidation"
+    if len(list(evidence.glob("prb-*.png"))) < 8:
+        raise EvidenceError("Fewer than eight consolidation screenshots")
+    for template in CONSOLIDATION_TEMPLATES:
+        for width, scheme in ((1440, "light"), (390, "dark")):
+            screenshot = evidence / f"prb-{template}-{width}-{scheme}.png"
+            if not screenshot.is_file():
+                raise EvidenceError(f"Missing consolidation viewport: {screenshot.name}")
+            _check_png(screenshot, width)
+    if process.get("exit_code") != 0 or process.get("normal_exit") is not True:
+        raise EvidenceError("Consolidation browser process exit not normal")
 
 def validate_browser_records(root, expected, tree, job_result, prefix="browser"):
     if job_result != "success":
@@ -69,6 +149,8 @@ def validate_browser_records(root, expected, tree, job_result, prefix="browser")
                 raise EvidenceError("Browser suite executed no passing tests")
             if hashlib.sha256((folder / "results.xml").read_bytes()).hexdigest() != process.get("junit_sha256"):
                 raise EvidenceError("Missing/changed browser JUnit")
+            if role == "consolidation":
+                validate_consolidation(folder, inventory, process)
         proof[role] = process
     return {"head": expected, "tree": tree, "mandatory_roles": proof,
             "optional_f3": "Separately reported; not counted as mandatory success"}
@@ -98,6 +180,8 @@ def main():
         os.environ["FINCO_VISUAL_CAPTURE"] = "1"
     if args.role == "grid":
         os.environ.update(WF05_SCREENSHOT_DIR="artifacts/wf05", WF05_TIMINGS_JSON="artifacts/wf05/timings.json")
+    if args.role == "consolidation":
+        os.environ.update(WF05_SCREENSHOT_DIR="artifacts/workspace-consolidation", FINCO_MODEL_EXECUTION_MODE="thread")
     if args.role == "outputs":
         os.environ["FINCO_MODEL_EXECUTION_MODE"] = "thread"
         command = [sys.executable, "-m", "tests.model_outputs_workspace_acceptance", "--out", "artifacts/outputs-workspace"]
@@ -109,6 +193,9 @@ def main():
     code = run_command(argparse.Namespace(expected=args.expected, label=args.role, output="artifacts/process.json",
                                          junit=junit, command=command))
     if code == 0:
+        if args.role == "consolidation":
+            validate_consolidation(Path("artifacts"), json.loads(Path("artifacts/inventory.json").read_text()),
+                                   json.loads(Path("artifacts/process.json").read_text()))
         write_json("artifacts/manifest.json", manifest(args.role))
     return code
 

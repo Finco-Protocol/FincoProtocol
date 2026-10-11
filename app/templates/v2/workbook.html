@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/static/css/model_v2_goal_seek.css">
   <link rel="stylesheet" href="/static/css/model_smart_panel_v2.css">
   <link rel="stylesheet" href="/static/css/inputs_grid_v1.css">
+  <link rel="stylesheet" href="/static/css/model_workspace_consolidation.css">
 </head>
 <body>
   {# sessionStorage hydration: re-populates schedule data on load without re-run #}
@@ -88,8 +89,10 @@
      beside the existing sheet surface (#model-workspace-main). The nav
      owns no economics; every available item activates an existing tab. ── #}
   <div class="v2-workspace-body">
+  <button type="button" class="workspace-drawer-toggle" aria-controls="model-workspace-nav" aria-expanded="false" data-workspace-drawer>Sections</button>
   {% include "partials/_model_workspace_nav.html" %}
   <div id="model-workspace-main" class="v2-workspace-main">
+  <button type="button" class="workspace-insight-toggle" aria-controls="model-smart-panel" aria-expanded="false" data-workspace-drawer>FINCO Insight</button>
 
   {# ── Sheet tab navigation ──────────────────────────────────────────── #}
   {# UX Correction A9: the persistent left navigation (#model-workspace-nav)

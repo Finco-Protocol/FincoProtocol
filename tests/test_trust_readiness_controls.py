@@ -201,11 +201,13 @@ def test_sqlite_backup_roundtrip_and_prune(temp_db, tmp_path):
 
 # ── Known gaps (pinned) ─────────────────────────────────────────────────────
 
-def test_known_gap_run_history_survives_demo_ttl_cleanup(temp_db):
+def test_demo_history_is_removed_only_with_expired_owned_session(temp_db):
     from app.demo_cleanup import _TABLES_WITH_USER_ID, cleanup_expired_demo_data
 
     old = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
     pid = _insert_project(temp_db, "demo_expired", "old_project", old)
+    permanent_pid = _insert_project(temp_db, "user_permanent", "permanent_project", old)
+    fresh_pid = _insert_project(temp_db, "demo_fresh_history", "fresh_project", old)
     conn = sqlite3.connect(temp_db)
     conn.execute(
         "INSERT INTO model_run_history (history_id, user_id, project_id, project_code, "
@@ -214,15 +216,30 @@ def test_known_gap_run_history_survives_demo_ttl_cleanup(temp_db):
         "created_at) VALUES ('h1','demo_expired',?,?,?,?,'{}','{}','{}','{}','{}','{}',?)",
         (pid, "old_project", "s1", old, old),
     )
+    for history_id, owner, project_id, code, timestamp in (
+        ("h2", "user_permanent", permanent_pid, "permanent_project", old),
+        ("h3", "demo_fresh_history", fresh_pid, "fresh_project", datetime.now(timezone.utc).isoformat()),
+    ):
+        conn.execute(
+            "INSERT INTO model_run_history (history_id, user_id, project_id, project_code, "
+            "runtime_snapshot_id, ran_at, runtime_summary_json, financial_statements_json, "
+            "debt_schedule_json, tax_schedule_json, distribution_schedule_json, sponsor_schedule_json, "
+            "created_at) VALUES (?,?,?,?,?,?,'{}','{}','{}','{}','{}','{}',?)",
+            (history_id, owner, project_id, code, history_id, timestamp, timestamp),
+        )
+    preserved = conn.execute("SELECT * FROM model_run_history WHERE history_id IN ('h2','h3') ORDER BY history_id").fetchall()
     conn.commit()
     conn.close()
 
-    assert "model_run_history" not in _TABLES_WITH_USER_ID
+    assert "model_run_history" in _TABLES_WITH_USER_ID
     cleanup_expired_demo_data(ttl_hours=24)
 
     conn = sqlite3.connect(temp_db)
-    assert conn.execute("SELECT COUNT(*) FROM projects WHERE project_id=?", (pid,)).fetchone()[0] == 1
-    assert conn.execute("SELECT COUNT(*) FROM model_run_history").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM projects WHERE project_id=?", (pid,)).fetchone()[0] == 0
+    assert conn.execute("SELECT * FROM model_run_history ORDER BY history_id").fetchall() == preserved
+    assert conn.execute("SELECT COUNT(*) FROM projects WHERE project_id IN (?,?)", (permanent_pid, fresh_pid)).fetchone()[0] == 2
+    conn.execute("PRAGMA foreign_keys=ON")
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     conn.close()
 
 

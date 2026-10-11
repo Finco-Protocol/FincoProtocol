@@ -1,5 +1,38 @@
 # CI Optimization V1: measured acceptance checkpoint
 
+## Correction B: 11 October 2026 — current-main integration candidate
+
+Preflight main: `7293d40b0bce279f7fbad3577d0a419ff359bd1a`; last PR HEAD: `2b71e29262040c5eea33810cfa40bbc8f2b025b8`.
+Original merge-base: `5dbfd2a2fb1c6c777b7eb26d93a7090820acce23`; divergence: 3 ahead / 8 behind.
+PR #249 (atomic demo/owned Run History cleanup) and PR #248
+(model workspace consolidation) are MERGED.
+The sole overlapping Git path was `.github/workflows/protocol_ui_browser.yml`.
+This normal two-parent branch merge retains all accepted main application
+sources and CI-only PR changes. No production application/finance changes.
+
+Both mandatory exact-head and synthetic-merge browser matrices now include a
+distinct `consolidation` role, selecting the complete #248
+Chromium test module (at least 17 collected nodes). Required proofs include
+exact SHA/tree, full inventory = JUnit execution, all outcomes PASS, source-bound
+JUnit digest, normal exit and eight CRC-checked screenshots covering
+Solar/Wind/Data Center/EV at 1440px desktop and 390px mobile. The role evidence
+is found under `browser-consolidation` and
+`merge-browser-consolidation`. Exact-head screenshots
+also retain the accepted `model-workspace-consolidation-browser`
+artifact name. Existing other roles and optional F3 remain unchanged.
+
+The #249 demo FK fix is inherited from main. Reproduction of the original
+shadow shard 0 test after integration, full-control/shard equivalence, process
+exits, complete artifacts, and real speedup MUST be checked on the new head.
+No green conclusion or cost saving is inferred from the historical runs.
+Full Public Safety remains the active gating critical path.
+Historical baseline: Public median 2587.5s; browser median 376s.
+Status: **NO MERGE pending fresh exact-head CI and independent review**.
+
+---
+
+
+
 Repository: Finco-Protocol/FincoProtocol. Branch: `perf/model-ci-optimization-v1`.
 Entry main/base: `5dbfd2a2fb1c6c777b7eb26d93a7090820acce23`.
 Implementation scope: CI workflows, evidence/partition helpers, new helper tests and this report. No application, financial engine, core, domain, persistence, schema, golden, tolerance or reviewed financial blob changes.

@@ -574,7 +574,8 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
         "user_id (sub-lines through project_id)",
         "Project code and name, inputs and assumptions, governance state and the last run summary.",
         True,
-        "Demo data: removed after the demo TTL when inactive, with one exception (known gap). "
+        "Disposable demo sessions: removed atomically after the demo TTL when inactive, "
+        "including run-history activity, or by an explicitly authorized operator reset. "
         "Other data: kept until an operator removes it.",
         "No product route deletes a project. Archiving is a soft flag. Deletion is an operator "
         "database procedure.", False,
@@ -606,9 +607,12 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
         "data.run_history", "Run history (immutable)", "SQLite database",
         "user_id", "One immutable row per successful run: full financial statements, debt, tax, "
         "distribution and sponsor schedules, integrity evidence.", True,
-        "Append-only by design. NOT covered by the demo clean-up (known gap).",
-        "None in the product. A database foreign key to the project blocks project deletion while "
-        "history rows exist.", False,
+        "Append-only while a session exists. Permanent, admin, reference and protected history "
+        "is never deleted by demo clean-up. Only complete terminal disposal of an inactive "
+        "expired demo session or an explicitly authorized operator demo reset removes its history.",
+        "No individual history deletion in the product. Verified demo-owned history and its "
+        "projects are removed in one transaction with foreign keys enabled and full rollback "
+        "on failure. Fresh history prevents TTL expiry.", False,
         S.REQUIRES_OPERATIONAL_CONTROLS,
         (_code("app/persistence/db.py", "CREATE TABLE IF NOT EXISTS model_run_history"),),
         "This is the most complete copy of a customer's modelled results.",
@@ -665,20 +669,6 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
 # ---------------------------------------------------------------------------
 
 KNOWN_GAPS: tuple[KnownGap, ...] = (
-    KnownGap(
-        "gap.demo_cleanup_skips_run_history", "Expired demo data with run history is not deleted",
-        GapSeverity.MEDIUM,
-        "The demo clean-up deletes expired demo sessions after the TTL, but it does not delete "
-        "run-history rows. Those rows reference the project through a foreign key, so deleting the "
-        "project fails, the failure is only logged, and the whole demo session is kept. Demo "
-        "projects that have been run therefore outlive the documented 24 hour demo TTL.",
-        "Delete the user's run-history rows before their projects in the clean-up, with a "
-        "regression test. This needs its own change because it alters retention behaviour.",
-        (
-            _code("app/demo_cleanup.py", "_TABLES_WITH_USER_ID"),
-            _test(_CTRL, "test_known_gap_run_history_survives_demo_ttl_cleanup"),
-        ),
-    ),
     KnownGap(
         "gap.no_user_erasure_path", "No way to delete project data from the product",
         GapSeverity.HIGH,

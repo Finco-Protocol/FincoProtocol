@@ -2,8 +2,16 @@
 (function () {
   var tabs = Array.prototype.slice.call(document.querySelectorAll('#v2-sheet-tabs .v2-tab'));
   var panels = Array.prototype.slice.call(document.querySelectorAll('.v2-sheet-panel'));
+  var manifestNode = document.getElementById('workspace-destinations');
+  var manifest = manifestNode ? JSON.parse(manifestNode.textContent) : { destinations: [] };
+  function canonicalTab(btn) {
+    var destination = manifest.destinations.find(function (d) { return d.tab_id === btn.id; });
+    return destination && destination.alias_of ? document.getElementById(destination.alias_of) || btn : btn;
+  }
 
   function activateTab(btn) {
+    var target = canonicalTab(btn);
+    if (target !== btn) { target.click(); return; }
     tabs.forEach(function(t) {
       t.setAttribute('aria-selected', 'false');
       t.setAttribute('tabindex', '-1');
@@ -16,7 +24,7 @@
   }
 
   tabs.forEach(function(btn, idx) {
-    btn.addEventListener('click', function() { activateTab(btn); btn.focus(); });
+    btn.addEventListener('click', function() { activateTab(btn); });
     btn.addEventListener('keydown', function(e) {
       var newIdx;
       if (e.key === 'ArrowRight') { newIdx = (idx + 1) % tabs.length; }
@@ -36,6 +44,9 @@
       ? tabs.find(function(t) { return t.id === 'tab-' + sheetParam; }) || tabs[0]
       : tabs[0];
     activateTab(initialTab);
+    if (canonicalTab(initialTab).id === 'tab-outputs') {
+      document.addEventListener('DOMContentLoaded', function () { canonicalTab(initialTab).click(); });
+    }
   }
 
   document.addEventListener('htmx:afterSwap', function() {
@@ -46,6 +57,69 @@
       var panelId = selectedTab.getAttribute('aria-controls');
       var panel = document.getElementById(panelId);
       if (panel) panel.hidden = false;
+    }
+  });
+})();
+
+// Presentation drawers only; OOB replacement keeps the canonical panel and its evidence intact.
+(function () {
+  function sync() {
+    document.querySelectorAll('[data-workspace-drawer]').forEach(function (button) {
+      var target = document.getElementById(button.getAttribute('aria-controls'));
+      if (!target) return;
+      var mobile = window.matchMedia('(max-width: 720px)').matches;
+      target.hidden = button.getAttribute('aria-expanded') !== 'true' &&
+        (mobile || target.id === 'model-smart-panel');
+    });
+  }
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest('[data-workspace-drawer]');
+    if (!button) return;
+    button.setAttribute('aria-expanded', button.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
+    sync();
+  });
+  document.addEventListener('htmx:afterSwap', sync);
+  window.addEventListener('resize', sync);
+  sync();
+})();
+
+// Read-only Investor refresh, without an HTMX eval filter (CSP remains unchanged).
+// A response captured before a workbook mutation must not replace newer/OOB evidence.
+(function () {
+  var presentationGeneration = 0;
+  function workbookPost(config) {
+    return String(config.verb).toLowerCase() === 'post' &&
+      String(config.path || '').indexOf('/v2/workbook/') === 0;
+  }
+  document.addEventListener('htmx:beforeRequest', function (event) {
+    var detail = event.detail || {}, config = detail.requestConfig || {};
+    if (workbookPost(config)) { presentationGeneration += 1; return; }
+    if (String(config.verb).toLowerCase() !== 'get' ||
+        String(config.path || '').indexOf('/v2/workbook/financing/investor?') !== 0) return;
+    var generation = presentationGeneration, xhr = detail.xhr;
+    var source = detail.elt || event.target;
+    // Bind to the request source itself: a replaced root no longer bubbles to document.
+    function beforeLoad(responseEvent) {
+      var response = responseEvent.detail || {};
+      if (response.xhr !== xhr) return;
+      if (generation !== presentationGeneration ||
+          response.target !== document.getElementById('v2-sheet-investor')) {
+        responseEvent.preventDefault();
+      }
+    }
+    source.addEventListener('htmx:beforeOnLoad', beforeLoad);
+    xhr.addEventListener('loadend', function () {
+      source.removeEventListener('htmx:beforeOnLoad', beforeLoad);
+    }, { once: true });
+  });
+  document.addEventListener('htmx:afterRequest', function (event) {
+    var detail = event.detail || {}, config = detail.requestConfig || {};
+    if (!detail.successful || !workbookPost(config)) return;
+    var root = document.getElementById('v2-sheet-investor');
+    if (root && window.htmx) {
+      root.textContent = 'Refreshing Investor evidence…';
+      root.setAttribute('aria-busy', 'true');
+      window.htmx.ajax('GET', root.getAttribute('hx-get'), { target: '#v2-sheet-investor', swap: 'outerHTML' });
     }
   });
 })();

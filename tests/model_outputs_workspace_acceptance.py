@@ -9,6 +9,8 @@ Exit code is non-zero if any check fails.
 """
 from __future__ import annotations
 
+from tests.model_workspace_navigation import activate_destination
+
 import argparse
 import hashlib
 import json
@@ -154,6 +156,8 @@ def main() -> int:
                     """Deterministic application readiness; on timeout preserves a trace + screenshot, then fails loudly."""
                     try:
                         page.wait_for_function(READY_JS, arg=[record.project_code, state, not_snapshot, snapshot], timeout=30000, polling="raf")
+                        if state != 'NOT_RUN':
+                            page.locator('[data-out-basis]').select_option('model')
                     except Exception:
                         name = f"FAILURE-{tag or record.project_code}-{state}"
                         page.screenshot(path=str(out / f"{name}.png"), full_page=False)
@@ -171,7 +175,7 @@ def main() -> int:
                     page.set_viewport_size({"width": width, "height": 1000})
                     page.goto(f"{url}/v2/workbook?project={record.project_code}")
                     page.evaluate("(t) => document.documentElement.setAttribute('data-theme', t)", theme)
-                    page.locator("#tab-outputs").click()
+                    activate_destination(page, "tab-outputs")
                     wait_outputs_ready(page, record, state, tag=tag, not_snapshot=not_snapshot, snapshot=snapshot)
 
                 def cell_text(page, table_id, row_label, col=0):
@@ -373,7 +377,7 @@ def main() -> int:
                 # ── Protected Reference is readable ──
                 ctx, page = new_page("reference")
                 page.goto(f"{url}/v2/workbook?project=generic_solar_reference-reference")
-                page.locator("#tab-outputs").click()
+                activate_destination(page, "tab-outputs")
                 page.wait_for_selector("#v2-sheet-outputs[data-out-state]")
                 check("[reference] Protected Reference: output workspace renders without any editable input",
                       page.locator("#v2-sheet-outputs input[type=text], #v2-sheet-outputs textarea").count() == 0)

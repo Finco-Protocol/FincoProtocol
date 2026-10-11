@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        role: [protocol, import, grid, q4, outputs]
+        role: [protocol, import, grid, q4, outputs, consolidation]
     uses: ./.github/workflows/ci_browser_job.yml
     with:
       role: ${{ matrix.role }}
@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        role: [protocol, import, grid, q4, outputs]
+        role: [protocol, import, grid, q4, outputs, consolidation]
     uses: ./.github/workflows/ci_browser_job.yml
     with:
       role: ${{ matrix.role }}

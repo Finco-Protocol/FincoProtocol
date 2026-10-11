@@ -22,16 +22,21 @@
     });
     root.querySelectorAll('[data-year0]').forEach(function (cell) { cell.hidden = !prefs.year0; });
     root.setAttribute('data-out-unit-active', unit);
+    root.querySelectorAll('[data-out-view]').forEach(function (view) {
+      view.hidden = view.getAttribute('data-out-view') !== (prefs.basis === 'model' ? 'model' : 'annual');
+    });
     root.querySelectorAll('.out-caption-unit').forEach(function (e) { e.textContent = unit === 'eur' ? 'EUR' : 'kEUR'; });
   }
   function init() {
     var root = document.getElementById('v2-sheet-outputs');
     if (!root || root.getAttribute('data-out-ready') === '1') { return; }
     root.setAttribute('data-out-ready', '1');
-    var prefs = Object.assign({ unit: 'keur', decimals: 2, year0: true }, load());
+    var prefs = Object.assign({ unit: 'keur', decimals: 2, year0: true, basis: 'annual' }, load());
     var unitInputs = root.querySelectorAll('[data-out-unit]');
     var prec = root.querySelector('[data-out-precision]');
     var y0 = root.querySelector('[data-out-year0]');
+    var basis = root.querySelector('[data-out-basis]');
+    if (basis) basis.value = prefs.basis === 'model' ? 'model' : 'annual';
     unitInputs.forEach(function (i) { i.checked = i.value === prefs.unit; });
     if (prec) { prec.value = String(prefs.decimals); }
     if (y0) { y0.checked = !!prefs.year0; }
@@ -40,11 +45,13 @@
       prefs.unit = checked ? checked.value : 'keur';
       prefs.decimals = prec ? Number(prec.value) : 2;
       prefs.year0 = y0 ? y0.checked : true;
+      prefs.basis = basis ? basis.value : 'annual';
       save(prefs); apply(root, prefs);
     }
     unitInputs.forEach(function (i) { i.addEventListener('change', update); });
     if (prec) { prec.addEventListener('change', update); }
     if (y0) { y0.addEventListener('change', update); }
+    if (basis) { basis.addEventListener('change', update); }
     root.addEventListener('keydown', function (e) {
       var region = e.target.closest && e.target.closest('[data-out-scroll]');
       if (!region || e.target !== region) { return; }
