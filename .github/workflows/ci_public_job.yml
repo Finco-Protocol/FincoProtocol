@@ -16,7 +16,7 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 65
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -44,9 +44,11 @@ jobs:
         run: python -m tools.ci_acceptance run --expected '${{ inputs.tested-sha }}' --label compile --output artifacts/compile.json -- python -m compileall -q .
       - name: Synthetic reference and regression tests
         env:
-          FINCO_CI_PYTEST_BUDGET_S: '2700'
+          FINCO_CI_PYTEST_BUDGET_S: '3300'
           FINCO_CI_EXIT_GRACE_S: '180'
           FINCO_CI_DIAG_PATH: artifacts/ci-hang-diagnostics.txt
+          FINCO_CI_PROGRESS_DIR: artifacts/progress
+          FINCO_CI_STALL_S: '300'
           MODE: ${{ inputs.mode }}
         run: |
           shard=()
@@ -58,8 +60,12 @@ jobs:
           esac
           python -m tools.ci_acceptance run --expected '${{ inputs.tested-sha }}' --label "$MODE" \
             --output artifacts/process.json --junit artifacts/results.xml -- \
-            python tools/ci_pytest_runner.py -q -p tools.ci_pytest_inventory \
-            --ci-inventory=artifacts/inventory.json --junitxml=artifacts/results.xml "${shard[@]}"
+            python tools/ci_pytest_runner.py -q -p tools.ci_pytest_inventory -p tools.ci_pytest_progress \
+            --ci-inventory=artifacts/inventory.json --ci-progress=artifacts/progress \
+            --junitxml=artifacts/results.xml "${shard[@]}"
+      - name: Print slowest-test and active-test evidence
+        if: always()
+        run: python -m tools.ci_pytest_progress artifacts/progress || true
       - name: Retain historical public JUnit filename
         if: always() && inputs.mode == 'control'
         run: cp artifacts/results.xml artifacts/public-test-results.xml

@@ -1,5 +1,35 @@
 # CI Optimization V1: measured acceptance checkpoint
 
+## Correction D: 11 October 2026 — synthetic-merge Public timeout
+
+Preflight: main `7293d40b0bce279f7fbad3577d0a419ff359bd1a` (PRs #248/#249 merged), PR HEAD `fa4eea6da0e7a03b51f5bb430452b2af0f06bd7a`, 5 ahead / 0 behind. `refs/pull/247/merge` (`a172f01…`) and the PR HEAD have the SAME tree `f29776fe…` (main is an ancestor of HEAD), so the synthetic merge executes byte-identical sources. No merge-specific production regression exists.
+
+Failed job: run `38153690601`, `merge-result-integration / tests` (job `114512253853`), exit 124 at the supervisor's 2700 s budget; pytest was at 93% (row 126 of 138 progress rows), no assertion failed, no interpreter-shutdown hang. Same run, same tree: exact-head control 9859 passed / 60 skipped in 1719.95 s (rc 0, child exit 0) and both shadow shards rc 0.
+
+### What the existing logs prove (job-log progress timestamps, same collection order, row-by-row)
+
+| Measure | Exact-head control | Synthetic merge |
+| --- | ---: | ---: |
+| Elapsed to row 126 (93%) | 1478 s | 2594 s (x1.76) |
+| 13 "heavy" rows (>20 s each) | 1219 s (82%) | 2225 s (86%) |
+| Remaining ~113 light rows | 259 s | 369 s (x1.42) |
+| Projected total (control tail x1.76) | 1720 s | ~3020 s |
+
+Heavy rows slow by x1.2 to x2.6 and light rows by x1.4; one row is x7.5 slower while another is x0.33 (faster) in the integration job. The slowdown is therefore NOT a single lifecycle defect that hits every run; it is concentrated in the same ~13 model-run segments in both jobs and amplified on that runner. The runners were different machines started at the same minute. Historical Public success walls (evidence/historical_baseline.json) were already median 2587 s / p90 2686 s / max 2767 s against a 2700 s budget, and earlier same-tree trials took 2214 s (control), 2136 s (merge), 2442 s (entry main): the previous 2700 s budget had essentially no margin and the 1720 s control was the fast outlier.
+
+What is NOT proven: the identity of the slow tests, any resource leak, or a runner-hardware cause. The 100+ `demo-cleanup` daemon threads and the resource-tracker child are present in the healthy control as well (identical thread listing, rc 0), so they are not a differentiator and are not claimed as the cause. Classification before the corrected run: **C (same-tree execution variance), provisional** — to be confirmed or rejected by the per-test timings recorded below. If per-test data shows a specific node or fixture, classification becomes A/B and the NO MERGE rule applies until that is fixed.
+
+### Correction (CI-only; no application, financial, persistence, security or governance change)
+
+- `tools/ci_pytest_progress.py` (new, opt-in): flush-safe `active.json` (active node, phase, phase start, last completed, counters; atomically replaced at each setup/call/teardown), `tests.jsonl` (one flushed line per test: setup/call/teardown seconds, outcome, finish time) and `summary.json`. Inert without `--ci-progress`; observes hooks only (no selection, reordering, skip, xfail, report change). `python -m tools.ci_pytest_progress DIR` prints the active node, slowest modules and slowest tests into the job log (also for a partial, killed run; torn last line ignored) so the evidence is readable without downloading artifacts.
+- `tools/ci_pytest_runner.py`: reports the ACTIVE NODE/PHASE at timeout (stdout and diagnostics file), takes at most 6 bounded snapshots when one phase lasts over 300 s (aggregated native-thread summary instead of a 100-line listing), and still exits 124 on timeout and propagates pytest's exit code otherwise. The budget stays finite and fail-closed.
+- `.github/workflows/ci_public_job.yml`: plugin wired into every Public mode; `if: always()` evidence-print step; budget 2700 s -> **3300 s** and job `timeout-minutes` 65 -> **75**. Rationale: projected worst measured run ~3020 s (+9%), historical max ~2600 s process time; 3300 + 180 s exit grace + 15 min for setup/install/scan/compile, diagnosis and upload = 4380 s <= 4500 s job limit (enforced by a test). This is a measured, bounded margin, NOT an acceptance claim; it does not hide a stuck test because the 300 s stall detector, the active-node record and the hard deadline remain.
+- Tests: `tests/test_ci_pytest_progress.py` (collection/selection/outcome identity with and without the plugin, inertness, per-test records, torn/missing/garbage evidence, supervisor timeout 124 with active-node evidence, one bounded stall snapshot per phase, normal exit propagation, workflow budget/timeout contract). No existing assertion, skip, xfail or deselection changed.
+
+Status: instrumentation and bounded budget are pushed for exact-head validation; the table of corrected controls, shards and critical path is recorded after that run.
+
+---
+
 ## Correction B: 11 October 2026 — current-main integration candidate
 
 Preflight main: `7293d40b0bce279f7fbad3577d0a419ff359bd1a`; last PR HEAD: `2b71e29262040c5eea33810cfa40bbc8f2b025b8`.
