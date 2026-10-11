@@ -251,14 +251,14 @@ def _read_current(path):
 
 # Approved PR #246 copy correction, after authorized normal main synchronization.
 # This is an exact snapshot check, not permission to edit the protected namespaces.
-CSRF_REVIEWED_HEAD = "38443039e969ee0f9df581a07f3ef7163dadd28c"
-CSRF_SYNC_HEAD = "07dfbab3f16c789b26db4543888d26a12acaefdf"
-CSRF_TRUST_BASE = "a15442eff696a389ad8d24b5575c7e593162bf40"
+CSRF_REVIEWED_HEAD = "f187c1785366d6d40d2e60c141b22ff113878d06"
+CSRF_SYNC_HEAD = "60d6ffc3edba6c35d5e1dba34afe602a7acc8228"
+CSRF_TRUST_BASE = "8af800a516d5298dc90ce0f9cd60dc9e3b198ca6"
 CSRF_EXACT_BLOBS = {
-    "app/trust_readiness/registry.py": "1c1bbadef886c5250e38f48e0dcb866b245743e0",
-    "tests/test_trust_readiness_controls.py": "3688d3fdb24f6e16c29436bb32222f8ed01598d1",
-    "docs/readiness/03_known_limitations_and_support_matrix.md": "5dff04fd9bb25f4c470b933b7816720d88495b76",
-    "docs/readiness/07_authentication_and_tenant_audit.md": "988c27f7c1979935f2fadee8445915b53ac2b96e",
+    "app/trust_readiness/registry.py": "a246863f7c8b206828da06a0a9003dd96acc69c9",
+    "tests/test_trust_readiness_controls.py": "37c4d84822d7743080547f1c1714c0dac4892ae5",
+    "docs/readiness/03_known_limitations_and_support_matrix.md": "aed5313cc1b6cf2f9b0ba0a4ca2f57e8597d08e8",
+    "docs/readiness/07_authentication_and_tenant_audit.md": "bceff61869a03e799652b576c281e0670bee1848",
     "docs/model_v2/REVENUE_V2_MULTISTREAM_AUTHORITY_REPORT.md": "0d2b33b789fbb780274d23c12885cbb9dc4850e1",
 }
 CSRF_GUARD_PATH = "tests/test_trust_readiness_registry.py"
@@ -305,11 +305,11 @@ def test_csrf_registry_correction_is_only_the_two_approved_sentences():
     replacements = (
         (
             "Tokens also protect the model-import steps and one crypto action.",
-            "Tokens also protect the model-import steps, Revenue V2 contract writes and one crypto action.",
+            "Tokens also protect the model-import steps, the Inputs grid validate and save routes, Revenue V2 contract writes and one crypto action.",
         ),
         (
-            "CSRF tokens protect the login form, the model-import steps and one crypto action.",
-            "CSRF tokens protect the login form, the model-import steps, Revenue V2 contract writes and one crypto action.",
+            "CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes and one crypto action.",
+            "CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes, Revenue V2 contract writes and one crypto action.",
         ),
     )
     for old, new in replacements:
