@@ -133,6 +133,13 @@ Observed during implementation:
   atomic Saves, explicit Runs and CURRENT → STALE → CURRENT, with persisted Run identity assertions.
 - Existing mobile financial, Trust, Hybrid grid, AI Import and Q4 browser contracts are migrated to visible controls,
   not forced clicks on hidden compatibility buttons. Their economic assertions are retained.
+- Fresh focused/governance set: **177 passed, 1 existing retired-scope skip**. Exact application-commit browser set:
+  **20 passed** (new strict-CSP matrix and canonical protected-reference/Working Copy journeys), plus **8 passed**
+  Protocol/Workflow C journeys. Specialist cost-line suites: **38 passed**; a combined local run also hit a shared
+  fixed-port collision, so Workflow C was rerun independently rather than treating network failures as passes.
+- F3/Q3 expanded evidence: **45/45 PASS**, normal exit 0, after explicitly opening the new Insight control.
+  The first GitHub browser workflow was green overall but its pre-existing non-gating F3 evidence step had exit 1;
+  this is not accepted as clean evidence. The test-navigation correction requires fresh exact-head CI.
 
 Representative commands:
 

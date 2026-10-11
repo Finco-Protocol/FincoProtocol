@@ -7,7 +7,7 @@ Real application server, real Save/Run/CAS routes, synthetic reference projects 
 written next to it (they are CI artifacts and are never committed).  Exit code is non-zero if any check fails.
 """
 from __future__ import annotations
-from tests.model_workspace_navigation import activate_destination
+from tests.model_workspace_navigation import activate_destination, open_insight
 
 import argparse
 import hashlib
@@ -117,6 +117,11 @@ def main() -> int:
                 def q3_state(page):
                     return page.get_attribute('[data-testid="q3-quality"]', "data-q3-state")
 
+                def goto_workspace(page, target):
+                    response = page.goto(target)
+                    open_insight(page)
+                    return response
+
                 def identity(page):
                     text = " ".join(page.inner_text('[data-testid="q3-context"]').split())
                     m = re.search(r"Scenario: (.*?) · Run ", text)
@@ -158,7 +163,7 @@ def main() -> int:
                 records = {k: mk(k, f"F3 {k.title()}") for k in ("solar", "wind")}
                 for kind, record in records.items():
                     ctx, page = new_page(kind)
-                    check(f"[{kind}] debt sheet loads (200)", page.goto(f"{url}/v2/workbook?project={record.project_code}&sheet=debt").status == 200)
+                    check(f"[{kind}] debt sheet loads (200)", goto_workspace(page, f"{url}/v2/workbook?project={record.project_code}&sheet=debt").status == 200)
                     # ── editor before activation (every input visible, none clipped) ──
                     form = page.locator("[data-f3-form]")
                     expect(form).to_be_visible()
@@ -179,6 +184,7 @@ def main() -> int:
                           resp.status == 200 and bool(entry["activation"]) and ws.dirty and not ws.last_runtime_summary,
                           entry["activation"]["proposal_digest"][:16] if entry["activation"] else None)
                     page.reload()
+                    open_insight(page)
                     expect(page.locator("[data-f3-activate]")).to_be_checked()
                     f = shot(page, f"{kind}-02-two-senior-active-saved-light-1440.png")
                     names = [page.locator('[data-f3-instrument]').nth(i).locator('[data-f3="name"]').input_value() for i in range(2)]
@@ -192,7 +198,7 @@ def main() -> int:
                     fe = ws.last_runtime_summary["financing_evidence"]
                     check(f"[{kind}] canonical Run committed (200) with two facility schedules and the F3 authority",
                           r.status == 200 and not ws.dirty and len(fe["facility_schedules"]) == 2 and fe["facility_authority"].startswith("F3_TWO_SENIOR"))
-                    page.goto(f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
+                    goto_workspace(page, f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
                     body = page.content()
                     check(f"[{kind}] committed A/B facility detail rendered (construction draws/IDC/fees and operating service)",
                           "Last Run facility schedules" in body and "Construction: actual dated draws" in body and "Operating debt service" in body
@@ -215,9 +221,10 @@ def main() -> int:
                     check(f"[{kind}] Sources & Uses page shows contractual Senior debt for the committed Run",
                           su.status == 200 and "Senior debt (contractual)" in su.text())
                     # ── history: back / forward / HTMX refresh ──
-                    page.goto(f"{url}/v2/workbook?project={record.project_code}")
-                    page.goto(f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
+                    goto_workspace(page, f"{url}/v2/workbook?project={record.project_code}")
+                    goto_workspace(page, f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
                     page.go_back(); page.go_forward()
+                    open_insight(page)
                     page.wait_for_selector("#model-smart-panel")
                     check(f"[{kind}] back/forward keeps one Insight panel, the F3 editor and the committed identity",
                           page.locator("#model-smart-panel").count() == 1 and page.locator("[data-f3-form]").count() == 1
@@ -278,7 +285,7 @@ def main() -> int:
                 # ── named scenario + scenario switching (Solar) ──
                 record = records["solar"]
                 ctx, page = new_page("scenario")
-                page.goto(f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
+                goto_workspace(page, f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
                 # bring the Base Case back to CURRENT with its own committed Run first (the edit above made it STALE)
                 form = page.locator("[data-f3-form]")
                 form.locator('[data-f3="rate_pct"]').first.fill("4")
@@ -290,7 +297,7 @@ def main() -> int:
                 activate_destination(page, 'tab-scenarios'); page.wait_for_selector("#v2-sheet-scenarios")
                 page.fill(".v2-scenario-name-input", "F3 Upside"); page.click(".v2-scenario-create-btn")
                 page.wait_for_selector("text=F3 Upside"); page.wait_for_timeout(1500)
-                page.goto(f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
+                goto_workspace(page, f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
                 f = shot(page, "solar-08-named-scenario-selected-no-run-light-1440.png")
                 check("[scenario] switching to a new scenario without a Run: Findings NOT_RUN with no committed identity (not the selected name)",
                       q3_state(page) == "NOT_RUN" and page.locator('[data-testid="q3-context"]').count() == 0
@@ -300,7 +307,7 @@ def main() -> int:
                 resp = fill_and_save(page, record)
                 run_model(page)
                 ws = get_workspace_state(USER, record.project_id)
-                page.goto(f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
+                goto_workspace(page, f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
                 name, snap, text = identity(page)
                 f = shot(page, "solar-09-named-scenario-f3-run-light-1440.png")
                 check("[scenario] named scenario F3 Run: Findings identity is exactly 'F3 Upside' with its own snapshot",
@@ -314,7 +321,7 @@ def main() -> int:
                 activate_destination(page, 'tab-scenarios'); page.wait_for_selector("#v2-sheet-scenarios")
                 page.locator("#v2-sheet-scenarios form[hx-post$='scenarios/select'] button").first.click()
                 page.wait_for_timeout(2500)
-                page.goto(f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
+                goto_workspace(page, f"{url}/v2/workbook?project={record.project_code}&sheet=debt")
                 name, snap, text = identity(page)
                 ws = get_workspace_state(USER, record.project_id)
                 check("[scenario] switching back restores the Base Case's own committed Run and identity (never the other scenario's)",
@@ -339,7 +346,7 @@ def main() -> int:
                                                          debt_service_reserve_requirement_keur=100.0, dsra_target_policy="fixed_amount"))
                 PIS.to_projectinputs = with_existing_reserve   # real adapter seam: no UI input exists for these typed terms
                 try:
-                    page.goto(f"{url}/v2/workbook?project={conflict.project_code}&sheet=debt")
+                    goto_workspace(page, f"{url}/v2/workbook?project={conflict.project_code}&sheet=debt")
                     ws_before = get_workspace_state(USER, conflict.project_id)
                     fill_and_save(page, conflict)
                     page.wait_for_timeout(1500)
@@ -356,7 +363,7 @@ def main() -> int:
 
                 # ── Protected Reference ──
                 ctx, page = new_page("reference")
-                page.goto(f"{url}/v2/workbook?project=generic_solar_reference-reference&sheet=debt")
+                goto_workspace(page, f"{url}/v2/workbook?project=generic_solar_reference-reference&sheet=debt")
                 editable = page.eval_on_selector_all(".v2-field-row .v2-field-input", "els=>els.filter(e=>!(e.disabled||e.readOnly)).length")
                 f = shot(page, "solar-13-protected-reference-light-1440.png")
                 check("[reference] Protected Reference: F3 instrument configuration read-only, no editable inputs, Insight panel present",
