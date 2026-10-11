@@ -103,39 +103,172 @@ def test_real_protected_reference_category_value_and_permission(tmp_path, monkey
     assert all(not row.editable for section in grid.sections for category in section.categories for row in category.rows)
 
 
-@pytest.mark.parametrize('case', ['pass', 'collection-missing', 'execution-missing', 'skip',
-                                'failure', 'error', 'artifact-missing', 'artifact-corrupt'])
-def test_workspace_browser_ci_evidence_is_fail_closed(tmp_path, case):
-    """Exercise the exact additive workflow evidence check, including negative controls."""
-    import subprocess
-    import sys
-    import textwrap
+
+# PR #247 Correction C: test the executable accepted browser evidence authority.
+# Real checks live in tools.ci_browser_job, no copied YAML inline script.
+def _workspace_ci_png(width):
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        crc = zlib.crc32(kind + data) & 0xffffffff
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", crc)
+
+    height = 100
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    row = b"\x00" + b"\x20" * (width * 3)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+            + chunk(b"IDAT", zlib.compress(row * height)) + chunk(b"IEND", b""))
+
+
+def _workspace_ci_role_evidence(root, prefix, role, head, tree, case="pass"):
+    import hashlib
+    import json
     import xml.etree.ElementTree as ET
-    workflow = (ROOT / '.github/workflows/protocol_ui_browser.yml').read_text(encoding='utf-8')
-    step = workflow.split('- name: Workspace consolidation real Chromium acceptance (gating)', 1)[1]
-    step = step.split('- name: Upload mandatory workspace consolidation browser evidence', 1)[0]
-    assert 'continue-on-error' not in step
-    assert 'python -m pytest --collect-only -q tests/test_model_workspace_consolidation_browser.py' in step
-    assert 'python -m pytest -v tests/test_model_workspace_consolidation_browser.py --junitxml=' in step
-    assert 'name: model-workspace-consolidation-browser' in workflow
-    artifact_step = workflow.split('- name: Upload mandatory workspace consolidation browser evidence', 1)[1].split('- name:', 1)[0]
-    assert 'if-no-files-found: error' in artifact_step
-    check = textwrap.dedent(step.split("python - <<'PY'\n", 1)[1].split('\n          PY', 1)[0])
-    evidence = tmp_path / 'artifacts/workspace-consolidation'
-    evidence.mkdir(parents=True)
-    names = [f'test_acceptance_{index}' for index in range(17)]
-    collected = names[:-1] if case == 'collection-missing' else names
-    (evidence / 'collected-nodes.txt').write_text('\n'.join(
-        f'tests/test_model_workspace_consolidation_browser.py::{name}' for name in collected), encoding='utf-8')
-    suite = ET.Element('testsuite')
-    for name in (names[:-1] if case == 'execution-missing' else names):
-        node = ET.SubElement(suite, 'testcase', classname='tests.test_model_workspace_consolidation_browser', name=name)
-        if name == names[0] and case in ('skip', 'failure', 'error'):
-            ET.SubElement(node, 'skipped' if case == 'skip' else case)
-    ET.ElementTree(suite).write(evidence / 'browser-junit.xml')
-    if case != 'artifact-missing':
-        for index in range(8):
-            (evidence / f'prb-fixture-{index}.png').write_bytes(
-                b'bad' if case == 'artifact-corrupt' else b'\x89PNG\r\n\x1a\n')
-    result = subprocess.run([sys.executable, '-c', check], cwd=tmp_path, capture_output=True, text=True)
-    assert (result.returncode == 0) == (case == 'pass'), result.stderr
+    from tools.ci_browser_job import REQUIRED, SELECTIONS, CONSOLIDATION_TEMPLATES
+
+    folder = root / f"{prefix}-{role}"
+    folder.mkdir(parents=True)
+    if role == "consolidation":
+        shots = folder / "workspace-consolidation"
+        shots.mkdir()
+        for template in CONSOLIDATION_TEMPLATES:
+            for width, scheme in ((1440, "light"), (390, "dark")):
+                (shots / f"prb-{template}-{width}-{scheme}.png").write_bytes(_workspace_ci_png(width))
+        if case == "artifact-missing":
+            (shots / f"prb-{CONSOLIDATION_TEMPLATES[0]}-1440-light.png").unlink()
+        if case == "artifact-corrupt":
+            target = shots / f"prb-{CONSOLIDATION_TEMPLATES[0]}-1440-light.png"
+            image = bytearray(target.read_bytes())
+            image[40] ^= 0x01  # Invalid IDAT CRC, while artifact manifest is regenerated correctly.
+            target.write_bytes(image)
+    else:
+        for pattern in REQUIRED[role]:
+            target = folder / pattern.removeprefix("artifacts/").replace("*", "synthetic")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.suffix == ".png":
+                target.write_bytes(_workspace_ci_png(1440))
+            else:
+                target.write_text("{}", encoding="utf-8")
+
+    process = {"head": head, "tree": tree, "label": role, "exit_code": 0,
+               "normal_exit": True, "junit_failures": 0}
+    if role in SELECTIONS:
+        module = ("test_model_workspace_consolidation_browser"
+                  if role == "consolidation" else "test_ci_synthetic")
+        names = ([f"test_synthetic_{index}" for index in range(17)]
+                 if role == "consolidation" else ["test_synthetic"])
+        nodes = [f"tests/{module}.py::{name}" for name in names]
+        inventory = {"head": head, "tree": tree, "pytest_exit": 0,
+                     "collected": nodes[:-1] if role == "consolidation" and case == "collection-missing" else nodes,
+                     "selected": nodes, "deselected": [], "collection_skips": [],
+                     "collection_errors": [],
+                     "outcomes": {node: {"status": "passed", "reason": ""} for node in nodes}}
+        (folder / "inventory.json").write_text(json.dumps(inventory), encoding="utf-8")
+        executed = (names[:-1] if role == "consolidation" and case == "execution-missing" else names)
+        suite = ET.Element("testsuite", tests=str(len(executed)), failures="0", errors="0", skipped="0")
+        for index, name in enumerate(executed):
+            element = ET.SubElement(suite, "testcase", classname=f"tests.{module}", name=name)
+            if role == "consolidation" and index == 0 and case in ("skip", "failure", "error"):
+                ET.SubElement(element, "skipped" if case == "skip" else case)
+        ET.ElementTree(suite).write(folder / "results.xml", encoding="utf-8")
+        process["junit_sha256"] = hashlib.sha256((folder / "results.xml").read_bytes()).hexdigest()
+    (folder / "process.json").write_text(json.dumps(process), encoding="utf-8")
+    manifest = {p.relative_to(folder).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in folder.rglob("*") if p.is_file()}
+    (folder / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return folder
+
+
+def _workspace_ci_matrix(tmp_path, prefix, head, tree, case="pass"):
+    from tools.ci_browser_job import REQUIRED
+    for role in REQUIRED:
+        _workspace_ci_role_evidence(tmp_path, prefix, role, head, tree,
+                                    case=case if role == "consolidation" else "pass")
+    return tmp_path / f"{prefix}-consolidation"
+
+
+@pytest.mark.parametrize('case', ['pass', 'collection-missing', 'execution-missing', 'skip',
+                                  'failure', 'error', 'artifact-missing', 'artifact-corrupt'])
+def test_workspace_browser_ci_evidence_is_fail_closed(tmp_path, case):
+    """The eight accepted scenarios execute the real validator and mandatory aggregate."""
+    import json
+    from tools.ci_acceptance import EvidenceError
+    from tools.ci_browser_job import validate_consolidation, validate_browser_records, REQUIRED
+
+    head, tree = "a" * 40, "b" * 40
+    merge_head, merge_tree = "c" * 40, "d" * 40
+    exact = _workspace_ci_matrix(tmp_path, "browser", head, tree, case)
+    _workspace_ci_matrix(tmp_path, "merge-browser", merge_head, merge_tree)
+    inventory = json.loads((exact / "inventory.json").read_text(encoding="utf-8"))
+    process = json.loads((exact / "process.json").read_text(encoding="utf-8"))
+
+    # Independent accepted synthetic-merge evidence remains valid for every case.
+    merge_proof = validate_browser_records(tmp_path, merge_head, merge_tree, "success", "merge-browser")
+    assert set(merge_proof["mandatory_roles"]) == set(REQUIRED)
+    if case == "pass":
+        validate_consolidation(exact, inventory, process)
+        proof = validate_browser_records(tmp_path, head, tree, "success")
+        assert set(proof["mandatory_roles"]) == set(REQUIRED)
+        assert len(inventory["collected"]) == len(inventory["selected"]) == 17
+        assert len(inventory["outcomes"]) == 17
+    else:
+        with pytest.raises(EvidenceError):
+            validate_consolidation(exact, inventory, process)
+        with pytest.raises(EvidenceError):
+            validate_browser_records(tmp_path, head, tree, "success")
+
+
+def test_workspace_browser_ci_parallel_source_and_validator_are_required():
+    import inspect
+    from tools.ci_browser_job import SELECTIONS, REQUIRED, validate_browser_records
+
+    workflow = (ROOT / ".github/workflows/protocol_ui_browser.yml").read_text(encoding="utf-8")
+    reusable = (ROOT / ".github/workflows/ci_browser_job.yml").read_text(encoding="utf-8")
+    assert workflow.count("role: [protocol, import, grid, q4, outputs, consolidation]") == 2
+    assert "browser-suites:" in workflow and "merge-result-browser:" in workflow
+    assert "mandatory-browser-evidence:" in workflow
+    assert "python -m tools.ci_browser_job aggregate" in workflow
+    assert "if-no-files-found: error" in reusable
+    assert "name: model-workspace-consolidation-browser" in reusable
+    assert SELECTIONS["consolidation"] == ["tests/test_model_workspace_consolidation_browser.py"]
+    assert REQUIRED["consolidation"] == ["artifacts/workspace-consolidation/prb-*.png"]
+    assert "validate_consolidation(folder, inventory, process)" in inspect.getsource(validate_browser_records)
+
+
+@pytest.mark.parametrize("job_result", ["failure", "cancelled", "skipped", "", None])
+def test_workspace_browser_ci_aggregate_rejects_absent_or_failed_jobs(tmp_path, job_result):
+    from tools.ci_acceptance import EvidenceError
+    from tools.ci_browser_job import validate_browser_records
+    with pytest.raises(EvidenceError, match="matrix"):
+        validate_browser_records(tmp_path, "a" * 40, "b" * 40, job_result)
+
+
+@pytest.mark.parametrize("source", ["head", "tree"])
+def test_workspace_browser_ci_aggregate_rejects_wrong_source(tmp_path, source):
+    from tools.ci_acceptance import EvidenceError
+    from tools.ci_browser_job import validate_browser_records
+    head, tree = "a" * 40, "b" * 40
+    _workspace_ci_matrix(tmp_path, "browser", head, tree)
+    with pytest.raises(EvidenceError, match="source"):
+        validate_browser_records(tmp_path, "x" * 40 if source == "head" else head,
+                                 "y" * 40 if source == "tree" else tree, "success")
+
+
+@pytest.mark.parametrize("field,value", [("exit_code", 1), ("normal_exit", False),
+                                        ("junit_sha256", "0" * 64)])
+def test_workspace_browser_ci_process_and_junit_proof_required(tmp_path, field, value):
+    import hashlib
+    import json
+    from tools.ci_acceptance import EvidenceError
+    from tools.ci_browser_job import validate_browser_records
+    head, tree = "a" * 40, "b" * 40
+    folder = _workspace_ci_matrix(tmp_path, "browser", head, tree)
+    process = json.loads((folder / "process.json").read_text())
+    process[field] = value
+    (folder / "process.json").write_text(json.dumps(process))
+    manifest = json.loads((folder / "manifest.json").read_text())
+    manifest["process.json"] = hashlib.sha256((folder / "process.json").read_bytes()).hexdigest()
+    (folder / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(EvidenceError):
+        validate_browser_records(tmp_path, head, tree, "success")
