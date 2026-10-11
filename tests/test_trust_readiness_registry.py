@@ -135,17 +135,203 @@ FORBIDDEN_PREFIXES = (
     "app/workbook/", "app/demo_cleanup.py", "app/radar", "app/v2/",
 )
 
+# ── WF-05 (PR #245) exact-content integration exception ─────────────────────────────────────
+# The Inputs grid added real CSRF validation to its validate/save routes, so the Trust CSRF
+# statement had to change in the same PR. This is NOT a general mixed-scope allowance: it holds
+# only while (1) the Trust-side change is EXACTLY the three approved text replacements below (and
+# nothing else under the Trust scope except this guard file itself), (2) the actual token-validation
+# call sites match the approved set including the grid router, and (3) every other changed path is
+# one of the enumerated WF-05 files. Anything else falls back to the strict Trust-only policy.
+WF05_REPLACEMENTS = {
+    "app/trust_readiness/registry.py": (
+        '"CSRF tokens protect the login form, the model-import steps and one crypto action. Other "',
+        '"CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes and one crypto action. Other "',
+    ),
+    "docs/readiness/03_known_limitations_and_support_matrix.md": (
+        "CSRF tokens protect the login form, the model-import steps and one crypto action. Other",
+        "CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes and one crypto action. Other",
+    ),
+    "tests/test_trust_readiness_controls.py": (
+        '''    # Login, the model-import steps and one crypto action. Nothing else validates a token.
+    assert users == {"main_web.py", "app/v2/import_router.py", "app/crypto_ui.py"}''',
+        '''    # Login, the model-import steps, the Inputs grid validate/save routes and one crypto action.
+    # Nothing else validates a token.
+    assert users == {"main_web.py", "app/v2/import_router.py", "app/v2/grid_router.py", "app/crypto_ui.py"}''',
+    ),
+}
+WF05_GUARD_FILE = "tests/test_trust_readiness_registry.py"      # this guard (reviewed, not content-pinned)
+WF05_CSRF_CALL_SITES = frozenset({
+    "main_web.py", "app/v2/import_router.py", "app/v2/grid_router.py", "app/crypto_ui.py",
+})
+# Enumerated reviewed scope (exact files, no namespace). The four app/v2 files are the only
+# entries that match FORBIDDEN_PREFIXES; engine, core, workbook, persistence and auth are never listed.
+WF05_APPLICATION_PATHS = frozenset({
+    ".github/workflows/protocol_ui_browser.yml",
+    "app/templates/v2/partials/_hybrid_nav.html",
+    "app/templates/v2/partials/sheet_capex.html",
+    "app/templates/v2/partials/sheet_input_grid.html",
+    "app/templates/v2/partials/sheet_opex.html",
+    "app/templates/v2/workbook.html",
+    "app/v2/grid_router.py",
+    "app/v2/input_grid_projection.py",
+    "app/v2/router.py",
+    "app/v2/workspace_shell_projection.py",
+    "docs/model_v2/WF05_HYBRID_INPUTS_GRID.md",
+    "main_web.py",
+    "static/css/inputs_grid_v1.css",
+    "static/js/inputs_grid_v1.js",
+    "tests/test_model_hybrid_inputs_grid_browser.py",
+    "tests/test_model_hybrid_inputs_grid_f3_negative.py",
+    "tests/test_model_hybrid_inputs_grid_routes.py",
+})
+_NEVER_EXCEPTED = ("financial_engine/", "finco_core/", "finco_radar/", "app/auth.py", "app/persistence/",
+                   "app/workbook/", "app/demo_cleanup.py", "app/radar")
+
+
+def _in_trust_scope(path: str) -> bool:
+    return path.startswith(("app/trust_readiness/", "app/templates/trust/", "docs/readiness/",
+                            "tests/test_trust_readiness_", "tools/render_readiness_docs.py")) \
+        or path == "static/trust_readiness.css"
+
+
+def wf05_exception_violations(changed, read_base, read_current, csrf_call_sites) -> list[str]:
+    """Reasons the WF-05 exception does NOT hold ([] ⇒ it holds). Pure: callers inject the content."""
+    problems: list[str] = []
+    trust = {p for p in changed if _in_trust_scope(p)}
+    expected_trust = set(WF05_REPLACEMENTS) | {WF05_GUARD_FILE}
+    if trust != expected_trust:
+        problems.append(f"Trust-side change is not exactly the approved set: extra={sorted(trust - expected_trust)} "
+                        f"missing={sorted(expected_trust - trust)}")
+    for path, (old, new) in WF05_REPLACEMENTS.items():
+        base = read_base(path)
+        if base is None or base.count(old) != 1:
+            problems.append(f"{path}: approved original text not found exactly once in the base")
+            continue
+        if read_current(path) != base.replace(old, new, 1):
+            problems.append(f"{path}: content is not exactly the base plus the approved CSRF replacement")
+    if frozenset(csrf_call_sites) != WF05_CSRF_CALL_SITES:
+        problems.append(f"token-validation call sites differ from the approved set: {sorted(csrf_call_sites)}")
+    other = [p for p in changed if not _in_trust_scope(p)]
+    stray = [p for p in other if p not in WF05_APPLICATION_PATHS]
+    if stray:
+        problems.append(f"changed files outside the enumerated WF-05 scope: {stray}")
+    never = [p for p in changed if p.startswith(_NEVER_EXCEPTED)]
+    if never:
+        problems.append(f"engine / core / workbook / persistence / auth files changed: {never}")
+    return problems
+
+
+def _csrf_call_sites() -> set[str]:
+    import re
+    sites = set()
+    for path in list(ROOT.joinpath("app").rglob("*.py")) + [ROOT / "main_web.py"]:
+        rel = path.relative_to(ROOT).as_posix()
+        if rel.startswith("app/trust_readiness/"):
+            continue
+        if re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
+            sites.add(rel)
+    return sites
+
+
+def _git_base_reader():
+    import subprocess
+    base = subprocess.run(["git", "merge-base", "origin/main", "HEAD"], capture_output=True, text=True,
+                          cwd=str(ROOT), check=True).stdout.strip()
+
+    def read_base(path):
+        r = subprocess.run(["git", "show", f"{base}:{path}"], capture_output=True, text=True, cwd=str(ROOT))
+        return r.stdout if r.returncode == 0 else None
+    return read_base
+
+
+def _read_current(path):
+    return (ROOT / path).read_text(encoding="utf-8")
+
 
 def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
     try:
         from finance_integrity_governance import changed_paths_vs_main
 
         changed = changed_paths_vs_main()
+        read_base = _git_base_reader()
     except Exception as exc:  # no git history or no origin/main in this checkout
         pytest.skip(f"cannot compute the diff against main: {exc}")
     if not any(p.startswith("app/trust_readiness/") for p in changed):
         pytest.skip("trust pack not part of this diff")
+    if not wf05_exception_violations(changed, read_base, _read_current, _csrf_call_sites()):
+        return          # the exact, evidence-backed WF-05 integration (see WF05_REPLACEMENTS)
     bad = [p for p in changed if p.startswith(FORBIDDEN_PREFIXES)]
     assert not bad, f"out-of-scope files changed: {bad}"
     stray = [p for p in changed if p != "main_web.py" and not p.startswith(ALLOWED_PREFIXES)]
     assert not stray, f"files outside the trust pack changed: {stray}"
+
+
+# ── fail-closed proofs of the exception (pure; no git) ──────────────────────────────────────
+
+def _scenario(**override):
+    changed = sorted(set(WF05_REPLACEMENTS) | {WF05_GUARD_FILE} | WF05_APPLICATION_PATHS)
+    base = {p: f"before {old} after" for p, (old, _new) in WF05_REPLACEMENTS.items()}
+    cur = {p: f"before {new} after" for p, (_old, new) in WF05_REPLACEMENTS.items()}
+    args = {"changed": changed, "base": base, "cur": cur, "sites": set(WF05_CSRF_CALL_SITES)}
+    args.update(override)
+    return args
+
+
+def _violations(a):
+    return wf05_exception_violations(a["changed"], a["base"].get, a["cur"].get, a["sites"])
+
+
+def test_wf05_exception_holds_for_the_exact_approved_integration():
+    assert _violations(_scenario()) == []
+
+
+def test_wf05_exception_fails_when_trust_text_is_altered_or_extended():
+    a = _scenario()
+    path = "app/trust_readiness/registry.py"
+    a["cur"][path] = a["cur"][path] + " plus an extra unapproved claim"
+    assert any("not exactly the base plus the approved" in p for p in _violations(a))
+    a = _scenario()
+    a["cur"]["docs/readiness/03_known_limitations_and_support_matrix.md"] = "unrelated rewrite"
+    assert _violations(a)
+
+
+def test_wf05_exception_fails_on_any_additional_trust_file_or_unrelated_code():
+    a = _scenario()
+    a["changed"] = a["changed"] + ["app/trust_readiness/projection.py"]
+    assert any("not exactly the approved set" in p for p in _violations(a))
+    a = _scenario()
+    a["changed"] = a["changed"] + ["app/v2/some_other_router.py"]
+    assert any("outside the enumerated WF-05 scope" in p for p in _violations(a))
+    for forbidden in ("financial_engine/orchestrator.py", "finco_core/inputs/_models.py",
+                      "app/workbook/update_service.py", "app/persistence/workspace_repository.py"):
+        a = _scenario()
+        a["changed"] = a["changed"] + [forbidden]
+        assert _violations(a), forbidden
+
+
+def test_wf05_exception_fails_when_csrf_protection_is_removed_or_text_replacement_missing():
+    a = _scenario()
+    a["sites"] = set(WF05_CSRF_CALL_SITES) - {"app/v2/grid_router.py"}
+    assert any("call sites differ" in p for p in _violations(a))
+    a = _scenario()
+    a["sites"] = set(WF05_CSRF_CALL_SITES) | {"app/v2/another.py"}
+    assert _violations(a)
+    a = _scenario()
+    a["base"]["app/trust_readiness/registry.py"] = "base without the approved original text"
+    assert any("not found exactly once" in p for p in _violations(a))
+
+
+def test_wf05_exception_is_not_a_blanket_allowance_for_other_mixed_scope_changes():
+    a = _scenario()
+    a["changed"] = [p for p in a["changed"] if p != "docs/readiness/03_known_limitations_and_support_matrix.md"]
+    assert any("missing" in p for p in _violations(a))
+    # a Trust-only change with a different registry edit and no WF-05 files is not covered either
+    a = _scenario(changed=["app/trust_readiness/registry.py", "docs/readiness/03_known_limitations_and_support_matrix.md"])
+    assert _violations(a)
+
+
+def test_wf05_allow_list_contains_no_engine_core_workbook_persistence_or_auth_paths():
+    assert not [p for p in WF05_APPLICATION_PATHS if p.startswith(_NEVER_EXCEPTED)]
+    app_v2 = {p for p in WF05_APPLICATION_PATHS if p.startswith("app/v2/")}
+    assert app_v2 == {"app/v2/grid_router.py", "app/v2/input_grid_projection.py", "app/v2/router.py",
+                      "app/v2/workspace_shell_projection.py"}
