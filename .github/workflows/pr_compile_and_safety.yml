@@ -47,9 +47,18 @@ jobs:
       - name: Public repository safety scan
         run: python tools/public_safety_scan.py
 
+      # Focused self-tests inside the already-required fast gate; no additional runner/job.
+      - name: CI V2 architecture and evidence contracts (when present)
+        run: |
+          if [ -f tests/test_ci_optimization_v2.py ]; then
+            python -m pytest -q tests/test_ci_optimization_v2.py --junitxml=artifacts/ci-v2-contract-results.xml
+          fi
+
       - name: Upload exact-head provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: compile-source-provenance
-          path: artifacts/source.json
+          path: |
+            artifacts/source.json
+            artifacts/ci-v2-contract-results.xml
           if-no-files-found: error

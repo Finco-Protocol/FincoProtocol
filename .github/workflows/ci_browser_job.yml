@@ -19,7 +19,7 @@ permissions:
 jobs:
   browser:
     runs-on: ubuntu-24.04
-    continue-on-error: ${{ inputs.role == 'f3' }}
+    continue-on-error: false # targeted F3 must report its own failure, never an apparent pass
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
