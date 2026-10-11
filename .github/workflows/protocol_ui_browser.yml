@@ -2,185 +2,82 @@ name: Protocol UI Browser Acceptance
 
 on:
   push:
-    branches:
-      - ui/protocol-unified-application-shell
+    branches: [ui/protocol-unified-application-shell]
   pull_request:
-    paths:
-      - "app/**"
-      - "finco_yield/**"
-      - "static/**"
-      - "templates/**"
-      - "main_web.py"
-      - "tests/test_ui_protocol_shell.py"
-      - "tests/test_protocol_roadmap_browser.py"
-      - "tests/test_crypto_navigation_browser.py"
-      - "tests/test_ev_charging_browser.py"
-      - "tests/test_yield_browser.py"
-      - "tests/test_data_center_browser_acceptance.py"
-      - "tests/test_p5_browser_acceptance.py"
-      - "tests/test_model_golden_flows_browser.py"
-      - "tests/test_model_q4_browser.py"
-      - "tests/test_model_ai_import_browser_c.py"
-      - "tests/test_model_hybrid_inputs_grid_browser.py"
-      - "tests/test_model_hybrid_inputs_grid_routes.py"
-      - "requirements.txt"
-      - "constraints.txt"
-      - "pyproject.toml"
-      - "pytest.ini"
-      - "tools/model_financing_f3_*.py"
-      - "tests/model_financing_f3_*.py"
-      - "tests/model_outputs_workspace_acceptance.py"
-      - "tests/test_model_outputs_workspace.py"
-      - ".github/workflows/protocol_ui_browser.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: browser-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  protocol-ui-browser:
+  browser-suites:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        role: [protocol, import, grid, q4, outputs]
+    uses: ./.github/workflows/ci_browser_job.yml
+    with:
+      role: ${{ matrix.role }}
+      tested-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  merge-result-browser:
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        role: [protocol, import, grid, q4, outputs]
+    uses: ./.github/workflows/ci_browser_job.yml
+    with:
+      role: ${{ matrix.role }}
+      tested-sha: ${{ github.sha }}
+      artifact-prefix: merge-browser
+
+  # Preserve optional F3 evidence as optional; never count absence as a pass.
+  f3-evidence:
+    uses: ./.github/workflows/ci_browser_job.yml
+    with:
+      role: f3
+      tested-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  mandatory-browser-evidence:
+    if: always()
+    needs: [browser-suites, merge-result-browser]
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: "3.12"
-          cache: "pip"
-          cache-dependency-path: |
-            requirements.txt
-            constraints.txt
-
-      - name: Install project and test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -c constraints.txt
-          python -m pip check
-
-      - name: Install Playwright Python package
-        run: pip install playwright
-
-      - name: Install Playwright Chromium browser
-        run: playwright install chromium --with-deps
-
-      - name: Run Protocol UI and Yield browser acceptance suite
-        run: |
-          # API-B04 encoded the previous contract where Roadmap was a placeholder.
-          # Roadmap is now intentionally live; the focused roadmap browser suite
-          # below owns the replacement navigation + responsive acceptance.
-          # test_data_center_browser_acceptance.py excluded: it was never in a
-          # CI selection before and its HTMX workflow test fails on pristine
-          # main too (lazy-tab race in the test itself). The DC workstream owns
-          # its repair. The EV browser journey below is the Correction B
-          # section-14 acceptance and passes on CI.
-          pytest -v tests/test_ui_protocol_shell.py tests/test_protocol_roadmap_browser.py tests/test_crypto_navigation_browser.py tests/test_ev_charging_browser.py tests/test_yield_browser.py -k "not test_api_b04_placeholders_not_links"
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: '*browser*'
+          path: evidence
+      - name: Validate mandatory browser artifacts and normal exits
         env:
-          FINCO_VISUAL_CAPTURE: "1"
-        # FINCO_TEST_CHROMIUM_PATH is intentionally unset here so Playwright
-        # uses its own installed browser (playwright install chromium above).
-        # The test fixture falls back to pw.chromium.launch() when the env var
-        # is not set, which resolves the version installed in the previous step.
-
-      - name: Authenticated FINCO Model AI Import C browser acceptance
+          EXPECTED: ${{ github.event.pull_request.head.sha || github.sha }}
+          RESULT: ${{ needs.browser-suites.result }}
+          MERGE_SHA: ${{ github.sha }}
+          MERGE_RESULT: ${{ needs.merge-result-browser.result }}
+          EVENT: ${{ github.event_name }}
         run: |
-          mkdir -p artifacts/model-ai-import
-          python -m pytest -v tests/test_model_ai_import_browser_c.py --junitxml=artifacts/model-ai-import/browser-junit.xml
-
-      - name: WF-05 hybrid Inputs grid browser acceptance (desktop, mobile, keyboard)
-        run: |
-          mkdir -p artifacts/wf05
-          python -m pytest -v tests/test_model_hybrid_inputs_grid_routes.py tests/test_model_hybrid_inputs_grid_browser.py --junitxml=artifacts/wf05/browser-junit.xml
-        env:
-          WF05_SCREENSHOT_DIR: artifacts/wf05
-          WF05_TIMINGS_JSON: artifacts/wf05/timings.json
-
-      - name: Upload WF-05 screenshots, timings and results
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          merge=()
+          if [ "$EVENT" = pull_request ]; then merge=(--merge-sha "$MERGE_SHA" --merge-result "$MERGE_RESULT"); fi
+          python -m tools.ci_browser_job aggregate --expected "$EXPECTED" --artifacts evidence --job-result "$RESULT" "${merge[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: finco-wf05-hybrid-inputs-grid
-          path: artifacts/wf05/*
-          if-no-files-found: warn
-
-      - name: Upload FINCO Model AI Import screenshots and browser results
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: finco-model-ai-import-browser
-          path: artifacts/model-ai-import/*
-          if-no-files-found: warn
-
-      - name: Authenticated Q4 Finding-to-Scenario browser acceptance (gating)
-        run: |
-          mkdir -p artifacts/model-q4-browser
-          python -m pytest -v tests/test_model_q4_browser.py --junitxml=artifacts/model-q4-browser/browser-junit.xml
-
-      - name: Upload Q4 real Chromium screenshots and browser evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: model-q4-browser
-          path: artifacts/model-q4-browser/*
-          if-no-files-found: warn
-
-      - name: Upload SaaS visual acceptance captures
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: saas-visual-acceptance
-          path: artifacts/saas-visual/*.png
-          if-no-files-found: warn
-
-      - name: Upload Reference-Driven Correction A captures
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: reference-driven-correction-a-23-captures
-          path: artifacts/reference-driven-correction-a/*.png
+          name: browser-mandatory-proof
+          path: artifacts/browser-proof.json
           if-no-files-found: error
-
-      # Statements & Debt output workspace: real-server Chromium acceptance (Solar/Wind two-Senior, Data Center, EV;
-      # light/dark, 1440/390; keyboard; NOT_RUN/CURRENT/STALE).  Gating: a non-zero exit fails the job.
-      - name: Run Statements & Debt output workspace acceptance
-        env:
-          PYTHONPATH: .
-          FINCO_MODEL_EXECUTION_MODE: thread
-        run: python -m tests.model_outputs_workspace_acceptance --out artifacts/outputs-workspace
-
-      - name: Upload Statements & Debt acceptance evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: outputs-workspace-acceptance
-          path: artifacts/outputs-workspace
-          if-no-files-found: warn
-
-      # F3 two-Senior acceptance evidence.  Non-gating (continue-on-error): it publishes a reviewer-accessible
-      # bundle bound to the exact HEAD; the gating suites above and the pytest gate remain unchanged.
-      - name: Check out F3 legacy-equivalence base commit
-        if: always()
-        continue-on-error: true
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: 2e199bc3fb8e7a5971e26d1a1a48e9875a63045d
-          path: f3-base
-          persist-credentials: false
-
-      - name: Build F3 acceptance evidence bundle (parity, financial reconciliation, Chromium)
-        if: always()
-        continue-on-error: true
-        env:
-          FINCO_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python -m tools.model_financing_f3_evidence_bundle --out artifacts/f3-evidence --base-checkout "$GITHUB_WORKSPACE/f3-base"
-
-      - name: Upload F3 acceptance evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: f3-acceptance-evidence
-          path: artifacts/f3-evidence
-          if-no-files-found: warn

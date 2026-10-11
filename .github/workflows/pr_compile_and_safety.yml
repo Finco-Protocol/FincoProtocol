@@ -10,12 +10,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: compile-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   compile-and-safety:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -25,6 +31,9 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             constraints.txt
+
+      - name: Attest exact tested head and tree
+        run: python -m tools.ci_acceptance attest --expected '${{ github.event.pull_request.head.sha || github.sha }}' --output artifacts/source.json
 
       - name: Install dependencies
         run: |
@@ -37,3 +46,10 @@ jobs:
 
       - name: Public repository safety scan
         run: python tools/public_safety_scan.py
+
+      - name: Upload exact-head provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: compile-source-provenance
+          path: artifacts/source.json
+          if-no-files-found: error

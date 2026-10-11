@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: governance-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   authoritative-history:
     runs-on: ubuntu-24.04
@@ -24,6 +28,8 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             constraints.txt
+      - name: Attest exact tested head and tree
+        run: python -m tools.ci_acceptance attest --expected '${{ github.event.pull_request.head.sha }}' --output artifacts/source.json
       - name: Install declared dependencies
         run: |
           python -m pip install --upgrade pip
@@ -55,3 +61,9 @@ jobs:
             tests/test_r_live_landing_batch.py \
             tests/test_radar_r14_rlive_history_contract.py
           echo "OPUS_H7_M7_RLIVE_FOCUSED_ACCEPTANCE=PASS"
+      - name: Upload governance source provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: governance-source-provenance
+          path: artifacts/source.json
+          if-no-files-found: error
