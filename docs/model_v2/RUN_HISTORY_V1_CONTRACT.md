@@ -140,14 +140,31 @@ deterministic tie-breaker; incidental SQLite ordering is never relied on.
 Read surface: `get_run_history`, `get_run_history_entry`,
 `get_latest_history_entry` (fail-closed decode — malformed stored rows
 raise `RUN_HISTORY_PAYLOAD_MALFORMED` rather than half-decoding). V1 does
-not prune, expire or auto-delete anything; storage policy is a future
+not prune, expire or auto-delete individual runs; permanent storage policy is a future
 reviewed feature.
+
+### Authorized terminal disposable-demo retention exception
+
+History stays append-only and immutable while its session exists. Only complete
+disposal of a literal, case-sensitive `demo_` owner may remove its history,
+together with all its unprotected projects, in one explicit FK-enabled transaction.
+Automatic disposal uses the existing TTL and latest activity across all owned
+state, including history `ran_at` and `created_at`. A safety-gated operator demo
+reset may include fresh sessions. Ownership mismatches, protected/reference state
+or any required deletion failure abort and roll back the whole disposal.
+Permanent/admin/reference/protected history is never deleted, rewritten or detached.
+This bounded exception lives only in `app/demo_cleanup.py`; it creates no public
+ledger mutation API and does not change canonical Run append/commit semantics.
+Full bootstrap refuses permanent/admin/protected state before modification and
+preserves existing references. Existing demo state requires initialized references;
+empty database initialization still uses the existing non-destructive seeder.
 
 ## Explicit no-restore scope
 
 Run History V1 is READ-ONLY historical evidence. Restore Working Copy,
 Revert Project, Clone from Run and Promote-old-run-to-Last-Run are later
-workflows. No UI, no public API endpoints, no raw SQL outside the
-persistence layer in V1. Existing workspaces open unchanged; history
+workflows. No UI or public ledger mutation API exists. Outside persistence,
+only the authorized terminal demo disposal above may delete history.
+Existing workspaces open unchanged; history
 starts prospectively — nothing is back-filled or synthesized from the
 current Last Run.
