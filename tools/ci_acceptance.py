@@ -226,6 +226,12 @@ def main():
     else:
         proof = attest(args.expected)
         root = Path(args.artifacts)
+        for stage in ("scan", "compile"):
+            stage_record = json.loads((root / "public-source-safety" / f"{stage}.json").read_text(encoding="utf-8"))
+            if (stage_record.get("head"), stage_record.get("tree")) != (proof["head"], proof["tree"]):
+                raise EvidenceError("Wrong safety/compile source")
+            if stage_record.get("exit_code") != 0 or stage_record.get("normal_exit") is not True:
+                raise EvidenceError("Missing/failed mandatory safety or compile")
         records, processes = [], []
         for label in ("public-verification-results", "public-shard-0", "public-shard-1"):
             folder = root / label

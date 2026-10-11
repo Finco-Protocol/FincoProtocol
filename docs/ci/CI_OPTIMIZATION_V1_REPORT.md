@@ -43,6 +43,10 @@ Grouped implementation with actual inventory plugin: 98 passed, 10 existing reti
 
 Final helper/process/timing ring: 52 passed, zero failures. Grouped governance evidence above remains unchanged; interpreter returned normally in both runs.
 
+Initial CI `38128759000` exposed a workflow source-contract regression: existing M9 asserts full history in the parent Public YAML; Trust registry citations require the actual scanner invocation there. The scan had moved into a reusable job. Correction retains a real mandatory exact-head full-history source-safety/compile job in the parent workflow, without changing the tests or Trust content. Its scan is not redundantly executed in the exact-head test job; synthetic-merge scan remains separately enforced. This is a confirmed CI wiring correction, not a financial/governance exemption.
+
+Correction validation: 109 passed, 1 pre-existing skip across helper, unchanged M9 and unchanged Trust registry suites; normal process exit. Initial Linux compile/safety run `38128759049` is SUCCESS, confirming the local CRLF vendor finding is not a canonical-content defect.
+
 Windows system Python autoloads an unrelated Web3 plugin that fails import before collection. Local tests explicitly load pytest-asyncio with plugin autoload disabled and use a separate writable workspace temp root. This is a local environment accommodation, not a workflow/test-selection change. GitHub retains normal plugin loading and unchanged dependencies. No financial test was skipped to address it.
 
 Local scanner reports the unchanged Swagger vendor bundle because the Windows checkout has CRLF bytes. Working SHA256 `94d5341abf945c05b5dc2a4ee599be6adee30503790b998540795e766d8aea02`; canonical Git-blob SHA256 `fd76294e33356ab3fd111ddaeeb10d3f79de8ae1a4d34dbf777f5eef224648d9`. Normalizing CRLF to LF makes the bytes exactly equal. No vendor/scanner edit or exemption was introduced. Exact-head Ubuntu scanner must pass on canonical Git content; this local result is not labelled PASS.

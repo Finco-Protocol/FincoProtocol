@@ -37,10 +37,10 @@ jobs:
           python -m tools.ci_acceptance run --expected '${{ inputs.tested-sha }}' --label install --output artifacts/install.json -- \
             bash -e -c 'python -m pip install --upgrade pip; pip install -r requirements.txt -c constraints.txt; python -m pip check'
       - name: Public repository safety scan
-        if: inputs.mode == 'control' || inputs.mode == 'integration'
+        if: inputs.mode == 'integration'
         run: python -m tools.ci_acceptance run --expected '${{ inputs.tested-sha }}' --label scan --output artifacts/scan.json -- python tools/public_safety_scan.py
       - name: Compile
-        if: inputs.mode == 'control' || inputs.mode == 'integration'
+        if: inputs.mode == 'integration'
         run: python -m tools.ci_acceptance run --expected '${{ inputs.tested-sha }}' --label compile --output artifacts/compile.json -- python -m compileall -q .
       - name: Synthetic reference and regression tests
         env:
