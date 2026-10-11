@@ -29,14 +29,6 @@ Recommended action: Add an Origin or token check to state-changing endpoints and
 
 Evidence: CODE `main_web.py`; TEST `tests/test_trust_readiness_controls.py`
 
-### Expired demo data with run history is not deleted
-
-**Medium severity.** The demo clean-up deletes expired demo sessions after the TTL, but it does not delete run-history rows. Those rows reference the project through a foreign key, so deleting the project fails, the failure is only logged, and the whole demo session is kept. Demo projects that have been run therefore outlive the documented 24 hour demo TTL.
-
-Recommended action: Delete the user's run-history rows before their projects in the clean-up, with a regression test. This needs its own change because it alters retention behaviour.
-
-Evidence: CODE `app/demo_cleanup.py`; TEST `tests/test_trust_readiness_controls.py`
-
 ### Content-Security-Policy allows inline scripts and styles
 
 **Low severity.** The policy includes 'unsafe-inline' for scripts and styles because some pages still use inline initialisation scripts.
