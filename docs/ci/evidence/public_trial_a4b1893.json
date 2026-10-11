@@ -1,0 +1,676 @@
+{
+  "head": "a4b18934417d17a8aded7b9cebf29a3dcf067d79",
+  "note": "Do not combine unlike workflows as a performance cohort. Shadow gate waits for unchanged control; no active Public reduction is implied.",
+  "runner_minutes": {
+    "maximum": 118.63333333333334,
+    "median": 118.63333333333334,
+    "p90_nearest_rank": 118.63333333333334,
+    "samples": 1
+  },
+  "runs": [
+    {
+      "attempt": 1,
+      "conclusion": "failure",
+      "created_at": "2026-10-11T09:40:08Z",
+      "event": "pull_request",
+      "head": "a4b18934417d17a8aded7b9cebf29a3dcf067d79",
+      "jobs": [
+        {
+          "conclusion": "success",
+          "finish_from_run_seconds": 170.0,
+          "id": 114439862880,
+          "name": "source-safety",
+          "queue_from_run_seconds": 30.0,
+          "runner_seconds": 140.0,
+          "steps": [
+            {
+              "completed_at": "2026-10-11T09:40:39Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "started_at": "2026-10-11T09:40:38Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:41Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 2,
+              "started_at": "2026-10-11T09:40:39Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:41Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 3,
+              "started_at": "2026-10-11T09:40:41Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:41Z",
+              "conclusion": "success",
+              "name": "Attest exact source",
+              "number": 4,
+              "started_at": "2026-10-11T09:40:41Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:42:52Z",
+              "conclusion": "success",
+              "name": "Public repository safety scan",
+              "number": 5,
+              "started_at": "2026-10-11T09:40:41Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:42:56Z",
+              "conclusion": "success",
+              "name": "Compile tested source",
+              "number": 6,
+              "started_at": "2026-10-11T09:42:52Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:42:56Z",
+              "conclusion": "success",
+              "name": "Upload mandatory safety evidence",
+              "number": 7,
+              "started_at": "2026-10-11T09:42:56Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:42:56Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 13,
+              "started_at": "2026-10-11T09:42:56Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:42:57Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 14,
+              "started_at": "2026-10-11T09:42:56Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:42:57Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "started_at": "2026-10-11T09:42:57Z",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "finish_from_run_seconds": 2274.0,
+          "id": 114439863084,
+          "name": "safety-and-smoke / tests",
+          "queue_from_run_seconds": 30.0,
+          "runner_seconds": 2244.0,
+          "steps": [
+            {
+              "completed_at": "2026-10-11T09:40:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "started_at": "2026-10-11T09:40:39Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:42Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 2,
+              "started_at": "2026-10-11T09:40:40Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:44Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 3,
+              "started_at": "2026-10-11T09:40:42Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:44Z",
+              "conclusion": "success",
+              "name": "Attest tested source",
+              "number": 4,
+              "started_at": "2026-10-11T09:40:44Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:05Z",
+              "conclusion": "success",
+              "name": "Install and record dependency preparation",
+              "number": 5,
+              "started_at": "2026-10-11T09:40:44Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:05Z",
+              "conclusion": "skipped",
+              "name": "Public repository safety scan",
+              "number": 6,
+              "started_at": "2026-10-11T09:41:05Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:05Z",
+              "conclusion": "skipped",
+              "name": "Compile",
+              "number": 7,
+              "started_at": "2026-10-11T09:41:05Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:17:59Z",
+              "conclusion": "success",
+              "name": "Synthetic reference and regression tests",
+              "number": 8,
+              "started_at": "2026-10-11T09:41:05Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:17:59Z",
+              "conclusion": "success",
+              "name": "Retain historical public JUnit filename",
+              "number": 9,
+              "started_at": "2026-10-11T10:17:59Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:00Z",
+              "conclusion": "success",
+              "name": "Upload complete public evidence",
+              "number": 10,
+              "started_at": "2026-10-11T10:17:59Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:01Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 19,
+              "started_at": "2026-10-11T10:18:00Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:01Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 20,
+              "started_at": "2026-10-11T10:18:01Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:01Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 21,
+              "started_at": "2026-10-11T10:18:01Z",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "failure",
+          "finish_from_run_seconds": 1141.0,
+          "id": 114439863103,
+          "name": "shadow-shards (0) / tests",
+          "queue_from_run_seconds": 30.0,
+          "runner_seconds": 1111.0,
+          "steps": [
+            {
+              "completed_at": "2026-10-11T09:40:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "started_at": "2026-10-11T09:40:39Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:42Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 2,
+              "started_at": "2026-10-11T09:40:40Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:45Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 3,
+              "started_at": "2026-10-11T09:40:42Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:45Z",
+              "conclusion": "success",
+              "name": "Attest tested source",
+              "number": 4,
+              "started_at": "2026-10-11T09:40:45Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:07Z",
+              "conclusion": "success",
+              "name": "Install and record dependency preparation",
+              "number": 5,
+              "started_at": "2026-10-11T09:40:45Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:07Z",
+              "conclusion": "skipped",
+              "name": "Public repository safety scan",
+              "number": 6,
+              "started_at": "2026-10-11T09:41:07Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:07Z",
+              "conclusion": "skipped",
+              "name": "Compile",
+              "number": 7,
+              "started_at": "2026-10-11T09:41:07Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:59:05Z",
+              "conclusion": "failure",
+              "name": "Synthetic reference and regression tests",
+              "number": 8,
+              "started_at": "2026-10-11T09:41:07Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:59:05Z",
+              "conclusion": "skipped",
+              "name": "Retain historical public JUnit filename",
+              "number": 9,
+              "started_at": "2026-10-11T09:59:05Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:59:07Z",
+              "conclusion": "success",
+              "name": "Upload complete public evidence",
+              "number": 10,
+              "started_at": "2026-10-11T09:59:05Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:59:07Z",
+              "conclusion": "skipped",
+              "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 19,
+              "started_at": "2026-10-11T09:59:07Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:59:07Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 20,
+              "started_at": "2026-10-11T09:59:07Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:59:07Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 21,
+              "started_at": "2026-10-11T09:59:07Z",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "finish_from_run_seconds": 1350.0,
+          "id": 114439863174,
+          "name": "shadow-shards (1) / tests",
+          "queue_from_run_seconds": 30.0,
+          "runner_seconds": 1320.0,
+          "steps": [
+            {
+              "completed_at": "2026-10-11T09:40:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "started_at": "2026-10-11T09:40:39Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:42Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 2,
+              "started_at": "2026-10-11T09:40:40Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:45Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 3,
+              "started_at": "2026-10-11T09:40:42Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:45Z",
+              "conclusion": "success",
+              "name": "Attest tested source",
+              "number": 4,
+              "started_at": "2026-10-11T09:40:45Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:09Z",
+              "conclusion": "success",
+              "name": "Install and record dependency preparation",
+              "number": 5,
+              "started_at": "2026-10-11T09:40:45Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:09Z",
+              "conclusion": "skipped",
+              "name": "Public repository safety scan",
+              "number": 6,
+              "started_at": "2026-10-11T09:41:09Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:09Z",
+              "conclusion": "skipped",
+              "name": "Compile",
+              "number": 7,
+              "started_at": "2026-10-11T09:41:09Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:02:34Z",
+              "conclusion": "success",
+              "name": "Synthetic reference and regression tests",
+              "number": 8,
+              "started_at": "2026-10-11T09:41:09Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:02:34Z",
+              "conclusion": "skipped",
+              "name": "Retain historical public JUnit filename",
+              "number": 9,
+              "started_at": "2026-10-11T10:02:34Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:02:35Z",
+              "conclusion": "success",
+              "name": "Upload complete public evidence",
+              "number": 10,
+              "started_at": "2026-10-11T10:02:34Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:02:35Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 19,
+              "started_at": "2026-10-11T10:02:35Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:02:36Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 20,
+              "started_at": "2026-10-11T10:02:35Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:02:36Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 21,
+              "started_at": "2026-10-11T10:02:36Z",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "finish_from_run_seconds": 2325.0,
+          "id": 114439863202,
+          "name": "merge-result-integration / tests",
+          "queue_from_run_seconds": 30.0,
+          "runner_seconds": 2295.0,
+          "steps": [
+            {
+              "completed_at": "2026-10-11T09:40:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "started_at": "2026-10-11T09:40:39Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:42Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 2,
+              "started_at": "2026-10-11T09:40:40Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:45Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 3,
+              "started_at": "2026-10-11T09:40:42Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:40:45Z",
+              "conclusion": "success",
+              "name": "Attest tested source",
+              "number": 4,
+              "started_at": "2026-10-11T09:40:45Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:41:04Z",
+              "conclusion": "success",
+              "name": "Install and record dependency preparation",
+              "number": 5,
+              "started_at": "2026-10-11T09:40:45Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:43:10Z",
+              "conclusion": "success",
+              "name": "Public repository safety scan",
+              "number": 6,
+              "started_at": "2026-10-11T09:41:04Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T09:43:12Z",
+              "conclusion": "success",
+              "name": "Compile",
+              "number": 7,
+              "started_at": "2026-10-11T09:43:10Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:49Z",
+              "conclusion": "success",
+              "name": "Synthetic reference and regression tests",
+              "number": 8,
+              "started_at": "2026-10-11T09:43:12Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:49Z",
+              "conclusion": "skipped",
+              "name": "Retain historical public JUnit filename",
+              "number": 9,
+              "started_at": "2026-10-11T10:18:49Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:50Z",
+              "conclusion": "success",
+              "name": "Upload complete public evidence",
+              "number": 10,
+              "started_at": "2026-10-11T10:18:49Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:51Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 19,
+              "started_at": "2026-10-11T10:18:50Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:51Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 20,
+              "started_at": "2026-10-11T10:18:51Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:18:51Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 21,
+              "started_at": "2026-10-11T10:18:51Z",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "failure",
+          "finish_from_run_seconds": 2336.0,
+          "id": 114446606335,
+          "name": "mandatory-evidence",
+          "queue_from_run_seconds": 2328.0,
+          "runner_seconds": 8.0,
+          "steps": [
+            {
+              "completed_at": "2026-10-11T10:18:58Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "started_at": "2026-10-11T10:18:57Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:00Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 2,
+              "started_at": "2026-10-11T10:18:58Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:00Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 3,
+              "started_at": "2026-10-11T10:19:00Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:00Z",
+              "conclusion": "success",
+              "name": "Require complete control and integration outcomes",
+              "number": 4,
+              "started_at": "2026-10-11T10:19:00Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:02Z",
+              "conclusion": "success",
+              "name": "Run actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+              "number": 5,
+              "started_at": "2026-10-11T10:19:00Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:02Z",
+              "conclusion": "failure",
+              "name": "Prove exact-head shadow equivalence",
+              "number": 6,
+              "started_at": "2026-10-11T10:19:02Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:02Z",
+              "conclusion": "skipped",
+              "name": "Attest main control provenance",
+              "number": 7,
+              "started_at": "2026-10-11T10:19:02Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:02Z",
+              "conclusion": "skipped",
+              "name": "Upload mandatory aggregate proof",
+              "number": 8,
+              "started_at": "2026-10-11T10:19:02Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:02Z",
+              "conclusion": "skipped",
+              "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+              "number": 15,
+              "started_at": "2026-10-11T10:19:02Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:02Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "number": 16,
+              "started_at": "2026-10-11T10:19:02Z",
+              "status": "completed"
+            },
+            {
+              "completed_at": "2026-10-11T10:19:02Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 17,
+              "started_at": "2026-10-11T10:19:02Z",
+              "status": "completed"
+            }
+          ]
+        }
+      ],
+      "queue_seconds": 30.0,
+      "run_id": 38129187614,
+      "runner_minutes": 118.63333333333334,
+      "wall_seconds": 2336.0,
+      "workflow": "Public Safety and Model Smoke"
+    }
+  ],
+  "wall_seconds": {
+    "maximum": 2336.0,
+    "median": 2336.0,
+    "p90_nearest_rank": 2336.0,
+    "samples": 1
+  }
+}
