@@ -20,18 +20,13 @@
   window.__igV1Init = true;
 
   // ── Hybrid navigation ────────────────────────────────────────────────────────────────
-  var HYBRID_GROUPS = {
-    inputs:    ['tab-project-setup', 'tab-inputs', 'tab-input-grid', 'tab-revenue', 'tab-capex', 'tab-opex',
-                'tab-investor', 'tab-debt', 'tab-tax'],
-    scenarios: ['tab-scenarios'],
-    outputs:   ['tab-outputs', 'tab-overview', 'tab-fs', 'tab-returns'],
-    analysis:  ['tab-compare', 'tab-sensitivity', 'tab-goal-seek', 'tab-run-history'],
-    trust:     ['tab-trust']
-  };
-  var GROUP_DEFAULT = {
-    inputs: 'tab-input-grid', scenarios: 'tab-scenarios', outputs: 'tab-outputs',
-    analysis: 'tab-sensitivity', trust: 'tab-trust'
-  };
+  var manifestNode = document.getElementById('workspace-destinations');
+  var manifest = manifestNode ? JSON.parse(manifestNode.textContent) : { destinations: [] };
+  var HYBRID_GROUPS = {}, GROUP_DEFAULT = {};
+  manifest.destinations.forEach(function (d) {
+    (HYBRID_GROUPS[d.area] || (HYBRID_GROUPS[d.area] = [])).push(d.tab_id);
+    if (d.default) GROUP_DEFAULT[d.area] = d.tab_id;
+  });
   var lastTabOfGroup = {};
 
   function groupOfTab(tabId) {
@@ -49,8 +44,13 @@
     Array.prototype.forEach.call(document.querySelectorAll('[data-hy-group]'), function (b) {
       var on = b.getAttribute('data-hy-group') === group;
       b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.setAttribute('tabindex', on ? '0' : '-1');
       b.classList.toggle('hy-group--active', on);
     });
+    if (!document.querySelector('[data-hy-group][tabindex="0"]')) {
+      var first = document.querySelector('[data-hy-group]');
+      if (first) first.setAttribute('tabindex', '0');
+    }
     Array.prototype.forEach.call(document.querySelectorAll('#v2-sheet-tabs .v2-tab'), function (t) {
       var inGroup = group && HYBRID_GROUPS[group].indexOf(t.id) >= 0;
       t.classList.toggle('v2-tab--in-group', !!inGroup);
@@ -64,7 +64,19 @@
       if (!btn) return;
       var g = btn.getAttribute('data-hy-group');
       var target = document.getElementById(lastTabOfGroup[g] || GROUP_DEFAULT[g]);
-      if (target) target.click();
+      if (target) { target.click(); btn.focus(); }
+    });
+    bar.addEventListener('keydown', function (evt) {
+      var btn = evt.target.closest('[data-hy-group]');
+      if (!btn) return;
+      var items = Array.prototype.slice.call(bar.querySelectorAll('[data-hy-group]'));
+      var index = items.indexOf(btn), next;
+      if (evt.key === 'ArrowRight') next = (index + 1) % items.length;
+      else if (evt.key === 'ArrowLeft') next = (index + items.length - 1) % items.length;
+      else if (evt.key === 'Home') next = 0;
+      else if (evt.key === 'End') next = items.length - 1;
+      else return;
+      evt.preventDefault(); items[next].click(); items[next].focus();
     });
     var tabs = document.getElementById('v2-sheet-tabs');
     if (tabs && window.MutationObserver) {

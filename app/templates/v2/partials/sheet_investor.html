@@ -3,7 +3,7 @@
 
 <div id="v2-sheet-investor" data-sheet="investor" data-testid="investor-sheet"
      hx-get="/v2/workbook/financing/investor?project={{ project_code | urlencode }}"
-     hx-trigger="click from:#tab-investor, htmx:afterRequest[detail.successful &amp;&amp; detail.requestConfig &amp;&amp; detail.requestConfig.verb === 'post'] from:body"
+     hx-trigger="click from:#tab-investor"
      hx-swap="outerHTML">
   <link rel="stylesheet" href="/static/css/model_financing.css">
   {% if not project_editable %}

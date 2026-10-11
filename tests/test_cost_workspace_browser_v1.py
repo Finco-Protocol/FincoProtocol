@@ -91,7 +91,7 @@ def test_deactivate_then_reactivate_in_a_real_browser(live_server, browser, temp
 
     def open_sheet():
         page.goto(f"{live_server}/v2/workbook?project={rec.project_code}")
-        page.wait_for_selector(f"#tab-{tab}")
+        page.wait_for_selector(f"#tab-{tab}", state="attached")
         page.evaluate(f"document.getElementById('tab-{tab}').click()")
         page.wait_for_timeout(400)
 

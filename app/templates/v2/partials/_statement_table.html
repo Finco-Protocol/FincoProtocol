@@ -1,0 +1,29 @@
+{% from "partials/_money_format.html" import statement_keur %}
+{% macro out_table(table, caption_id, testprefix="") %}
+  {% if table and table.available %}
+  <div class="{{ 'v2-statement-scroll' if testprefix else 'out-scroll' }}" tabindex="0" role="region" aria-labelledby="{{ caption_id }}"{% if testprefix %} data-testid="{{ testprefix }}-table-wrapper"{% else %} data-out-scroll{% endif %}>
+    <table class="{{ 'v2-statement-table' if testprefix else 'out-table' }}"{% if testprefix %} data-testid="{{ testprefix }}-table"{% else %} data-out-table="{{ table.id or '' }}"{% endif %}>
+      <caption id="{{ caption_id }}" class="out-sr">{{ table.title }} — {{ 'annual' if (table.id or '').endswith('-annual') else 'per model period' }}, kEUR unless a row says otherwise. Use the arrow keys inside this region to scroll.</caption>
+      <thead><tr>
+        <th scope="col" class="{{ 'v2-statement-corner' if testprefix else 'out-label' }}">Line item</th>
+        {% for c in table.columns %}{% if testprefix %}<th class="v2-statement-period-header">{{ c.label }}</th>
+        {% else %}<th scope="col" class="out-num" data-col="{{ c.index }}"{% if c.year0 %} data-year0="1"{% endif %} title="{{ c.date }}">{{ c.label }}{% if c.year0 %}<span class="out-sr"> (Year 0 / opening)</span>{% endif %}</th>{% endif %}{% endfor %}
+      </tr></thead>
+      <tbody>
+      {% for r in table.rows %}
+        <tr class="{{ 'out-total' if r.total else '' }} {{ r.css_class or '' }}"{% if testprefix %} data-testid="{{ testprefix }}-row-{{ r.key }}"{% elif r.key == 'balance_check_keur' %} data-testid="out-balance-check"{% endif %}{% if r.status_title %} title="{{ r.status_title }}"{% endif %}>
+          <th scope="row" class="{{ 'v2-statement-row-label' if testprefix else 'out-label' }}">{{ r.label }}{% if r.not_exposed %} <small>(not exposed)</small>{% endif %}</th>
+          {% for cell in r.cells %}
+            {% if testprefix %}<td class="v2-statement-num{% if cell.neg %} v2-statement-neg{% endif %}">{{ statement_keur(cell.v) }}</td>
+            {% elif cell.v is none %}<td class="out-num out-na" data-col="{{ table.columns[loop.index0].index }}"{% if table.columns[loop.index0].year0 %} data-year0="1"{% endif %} data-unit="{{ cell.unit }}" data-raw="" title="Not available in the persisted Run">—<span class="out-sr">not available</span></td>
+            {% else %}<td class="out-num{% if cell.neg %} out-neg{% endif %}" data-col="{{ table.columns[loop.index0].index }}"{% if table.columns[loop.index0].year0 %} data-year0="1"{% endif %} data-unit="{{ cell.unit }}" data-raw="{{ cell.v }}">{{ cell.text }}</td>{% endif %}
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="out-empty" role="status">Not available — this Run did not persist {{ table.title if table else 'this schedule' }}. Nothing is estimated.</p>
+  {% endif %}
+{% endmacro %}

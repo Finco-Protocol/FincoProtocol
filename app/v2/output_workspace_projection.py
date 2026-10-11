@@ -17,9 +17,6 @@ from typing import Any, Mapping, Optional, Sequence
 
 from app.v2.returns_projection import build_returns_projection
 from app.workbook.runtime_projection import (
-    FS_BS_ROW_DEFS,
-    FS_PF_CF_ROW_DEFS,
-    FS_PNL_ROW_DEFS,
     thaw_runtime_payload,
 )
 
@@ -71,19 +68,6 @@ def _columns(periods: Sequence[Mapping[str, Any]], index_key: str) -> list[dict[
         columns.append({"index": index, "date": str(period.get("date") or ""),
                         "label": period_label(period.get("date")), "year0": index == 0})
     return columns
-
-
-def _statement_table(table_id: str, title: str, note: str, row_defs: Sequence[tuple], periods: Optional[Sequence[Any]],
-                     index_key: str, *, classification: str = "") -> dict[str, Any]:
-    if not periods:
-        return {"id": table_id, "title": title, "note": note, "available": False, "columns": [], "rows": [],
-                "classification": classification}
-    periods = [p for p in periods if isinstance(p, Mapping)]
-    rows = [{"key": key, "label": label, "total": bool(total), "unit": "keur",
-             "cells": [_cell(p.get(key)) for p in periods]} for key, label, total, _stock in row_defs]
-    unavailable = [r["label"] for r in rows if all(c["v"] is None for c in r["cells"])]
-    return {"id": table_id, "title": title, "note": note, "available": True, "columns": _columns(periods, index_key),
-            "rows": rows, "classification": classification, "unavailable": unavailable}
 
 
 def _balance_check(table: Mapping[str, Any]) -> dict[str, Any]:
@@ -378,7 +362,8 @@ def _identity(rr: Any, ws: Any, scenario_label: Optional[str]) -> dict[str, Any]
 
 def build_output_workspace(*, runtime_result: Any, workspace: Any, freshness: Any,
                            last_run_scenario: Optional[str],
-                           integrity_report: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+                           integrity_report: Optional[Mapping[str, Any]] = None,
+                           statement_projection: Any = None) -> dict[str, Any]:
     """Compact, template-ready projection of the Statements & Debt workspace."""
     state = getattr(getattr(freshness, "state", None), "value", None)
     state = state if state in ("CURRENT", "STALE") else "NOT_RUN"
@@ -391,13 +376,9 @@ def build_output_workspace(*, runtime_result: Any, workspace: Any, freshness: An
     pnl_periods = (fs.get("pnl") or {}).get("periods")
     bs_periods = (fs.get("balance_sheet") or {}).get("periods")
     pf_periods = (fs.get("pf_cash_waterfall") or {}).get("periods")
-    statements = [
-        _statement_table("pnl", "Profit & Loss", STATEMENT_NOTES["pnl"], FS_PNL_ROW_DEFS, pnl_periods, "period"),
-        _statement_table("balance_sheet", "Balance Sheet", STATEMENT_NOTES["balance_sheet"], FS_BS_ROW_DEFS,
-                         bs_periods, "period_index"),
-        _statement_table("cash_flow", "Cash Flow (PF waterfall)", STATEMENT_NOTES["cash_flow"], FS_PF_CF_ROW_DEFS,
-                         pf_periods, "period_index"),
-    ]
+    from app.v2.statement_presentation import financial_statement_tables, statements_from_run
+    statements = (financial_statement_tables(statement_projection, payload=fs) if statement_projection is not None
+                  else statements_from_run(runtime_result, state == "STALE"))
     balance = _balance_check(statements[1]) if statements[1]["available"] else {
         "state": "UNAVAILABLE", "label": "Balance sheet not persisted by this Run"}
     sponsor_schedule = thaw_runtime_payload(getattr(runtime_result, "sponsor_schedule", None) or {}) or {}

@@ -249,7 +249,7 @@
   <div class="v2-sheet-section-heading"><span>OPEX Summary</span><small>Year 1 cost, unit metrics and contingency</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
   <div id="opex-kpi-region" class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
     <div class="v2-opex-kpi-item">
-      <span class="v2-opex-kpi-label">OPEX Y1</span>
+      <span class="v2-opex-kpi-label">OPEX Y1 · including applied contingency</span>
       <span class="v2-opex-kpi-value" data-testid="opex-y1-total">
         {{ "%.0f"|format(opex_vm.y1_total_opex) }}
       </span>
@@ -395,7 +395,7 @@
           {%- elif not sg.has_vm_data -%}
             <span class="v2-binding-badge v2-opex-badge-engine" data-testid="badge-engine-{{ sg.code }}">Calculated</span>
           {%- elif sg.is_bound -%}
-            <span class="v2-binding-badge v2-opex-badge-bound">Editable</span>
+            <span class="v2-binding-badge v2-opex-badge-bound">{{ 'Editable' if project_editable else 'Read-only · bound' }}</span>
           {%- elif sg.field and sg.field.binding_label == "partial" -%}
             <span class="v2-binding-badge v2-opex-badge-partial">Calculated</span>
           {%- elif sg.field -%}

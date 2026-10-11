@@ -3,33 +3,7 @@
   No arithmetic, aggregation or accounting formulas in this template: every cell is a projected value from
   app.v2.output_workspace_projection (None renders as "not available", never as zero).
 #}
-{% macro out_table(table, caption_id) %}
-  {% if table and table.available %}
-  <div class="out-scroll" tabindex="0" role="region" aria-labelledby="{{ caption_id }}" data-out-scroll>
-    <table class="out-table" data-out-table="{{ table.id or '' }}">
-      <caption id="{{ caption_id }}" class="out-sr">{{ table.title }} — per model period, kEUR unless a row says otherwise. Use the arrow keys inside this region to scroll.</caption>
-      <thead><tr>
-        <th scope="col" class="out-label">Line item</th>
-        {% for c in table.columns %}<th scope="col" class="out-num" data-col="{{ c.index }}"{% if c.year0 %} data-year0="1"{% endif %} title="{{ c.date }}">{{ c.label }}{% if c.year0 %}<span class="out-sr"> (Year 0 / opening)</span>{% endif %}</th>{% endfor %}
-      </tr></thead>
-      <tbody>
-      {% for r in table.rows %}
-        <tr{% if r.total %} class="out-total"{% endif %}{% if r.key == 'balance_check_keur' %} data-testid="out-balance-check"{% endif %}>
-          <th scope="row" class="out-label">{{ r.label }}{% if r.not_exposed %} <small>(not exposed)</small>{% endif %}</th>
-          {% for cell in r.cells %}
-            {% if cell.v is none %}<td class="out-num out-na" data-col="{{ table.columns[loop.index0].index }}"{% if table.columns[loop.index0].year0 %} data-year0="1"{% endif %} data-unit="{{ cell.unit }}" data-raw="" title="Not available in the persisted Run">—<span class="out-sr">not available</span></td>
-            {% else %}<td class="out-num{% if cell.neg %} out-neg{% endif %}" data-col="{{ table.columns[loop.index0].index }}"{% if table.columns[loop.index0].year0 %} data-year0="1"{% endif %} data-unit="{{ cell.unit }}" data-raw="{{ cell.v }}">{{ cell.text }}</td>{% endif %}
-          {% endfor %}
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p class="out-empty" role="status">Not available — this Run did not persist {{ table.title if table else 'this schedule' }}. Nothing is estimated.</p>
-  {% endif %}
-{% endmacro %}
-
+{% from "partials/_statement_table.html" import out_table %}
 <div id="v2-sheet-outputs" data-sheet="outputs" data-testid="outputs-sheet" data-out-state="{{ outputs.state }}" data-out-project="{{ project_code }}"{% if outputs.identity %} data-out-snapshot="{{ outputs.identity.snapshot_id }}" data-out-scenario="{{ outputs.identity.scenario }}"{% endif %}
      hx-get="/v2/workbook/outputs?project={{ project_code | urlencode }}"
      hx-trigger="click from:#tab-outputs"
@@ -46,6 +20,9 @@
       <span class="out-identity" data-testid="outputs-identity">Run {{ outputs.identity.ran_at }} · snapshot {{ outputs.identity.snapshot_id[:22] }} · {{ outputs.identity.scenario }}</span>
     </div>
     <div class="out-controls" role="group" aria-label="Display options (formatting only; never recalculates)">
+      <label>Statement basis <select data-out-basis aria-label="Statement period basis">
+        <option value="annual">Annual</option><option value="model">Model periods · full tenor</option>
+      </select></label>
       <fieldset class="out-unit"><legend class="out-sr">Unit</legend>
         <label><input type="radio" name="out-unit" value="keur" checked data-out-unit> kEUR</label>
         <label><input type="radio" name="out-unit" value="eur" data-out-unit> EUR</label>
@@ -70,12 +47,15 @@
     <a href="#out-pnl">P&amp;L</a><a href="#out-balance_sheet">Balance Sheet</a><a href="#out-cash_flow">Cash Flow</a>
     <a href="#out-cfads">CFADS</a><a href="#out-debt">Debt</a><a href="#out-returns">Distributions &amp; Returns</a>
   </nav>
+  <p class="out-note" data-testid="outputs-cit-context">Working Copy CIT assumption: {{ outputs.working_cit_rate or '—' }} (not historical rate evidence).
+    Last Run CIT accrual is shown unchanged in P&amp;L; an unavailable historical rate is not inferred from results.</p>
 
   {% for t in outputs.statements %}
   <section id="out-{{ t.id }}" class="out-section" aria-labelledby="out-h-{{ t.id }}" data-testid="out-section-{{ t.id }}">
     <h3 id="out-h-{{ t.id }}">{{ t.title }}</h3><p class="out-note">{{ t.note }}</p>
     {% if t.unavailable %}<p class="out-note out-unavailable" data-testid="out-unavailable-{{ t.id }}">Not persisted by this Run in any period (shown as not available, never as zero): {{ t.unavailable | join(', ') }}.</p>{% endif %}
-    {{ out_table(t, 'out-cap-' ~ t.id) }}
+    <div data-out-view="model" hidden>{{ out_table(t, 'out-cap-' ~ t.id) }}</div>
+    <div data-out-view="annual">{{ out_table(t.annual, 'out-cap-' ~ t.id ~ '-annual') }}</div>
   </section>
   {% endfor %}
 

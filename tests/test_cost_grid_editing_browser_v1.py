@@ -87,7 +87,7 @@ class Session:
     def open(self, kind):
         self.kind = kind
         self.page.goto(f"{self.base}/v2/workbook?project={self.rec.project_code}")
-        self.page.wait_for_selector(f"#tab-{kind}")
+        self.page.wait_for_selector(f"#tab-{kind}", state="attached")
         self.page.evaluate(f"document.getElementById('tab-{kind}').click()")
         self.page.wait_for_selector(f"#v2-sheet-{kind} form[data-cost-row]", state="attached")
         self.open_groups()
@@ -420,7 +420,7 @@ def test_run_with_an_uncommitted_edit_saves_first_then_runs(make):
 def test_first_save_after_a_scenario_switch_has_no_false_409(make):
     s = make("u-grid-scen")
     s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
-    s.page.wait_for_selector("#tab-scenarios")
+    s.page.wait_for_selector("#tab-scenarios", state="attached")
     r = s.page.request.post(f"{s.base}/v2/workbook/scenarios/create",
                             form={"project": s.rec.project_code, "scenario_name": "Grid Case"},
                             headers={"HX-Request": "true"})
@@ -474,7 +474,7 @@ def test_reference_project_is_read_only_no_inputs(make, live_server, browser):
     s = make("u-grid-ref")
     page = s.page
     page.goto(f"{s.base}/v2/workbook?project={ref.project_code}")
-    page.wait_for_selector("#tab-capex")
+    page.wait_for_selector("#tab-capex", state="attached")
     assert page.locator("input[data-cost-cell]").count() == 0
 
 

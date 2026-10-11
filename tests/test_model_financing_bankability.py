@@ -333,7 +333,15 @@ def test_investor_fragment_preserves_prior_run_and_has_no_writes(client, project
     assert response.status_code == 200
     assert "prior" in response.text.lower() or "stale" in response.text.lower()
     assert 'data-testid="investor-return-evidence"' in response.text
-    assert "htmx:afterRequest" in response.text
+    # The refresh listener is CSP-safe static JS (no inline script / hx-on / eval filter in the fragment).
+    assert "<script" not in response.text and "hx-on" not in response.text
+    from pathlib import Path
+    js = (Path(__file__).resolve().parents[1] / "static/js/workbook_v2.js").read_text()
+    assert "htmx:afterRequest" in js and "#v2-sheet-investor" in js
+    # Refresh is a read-only GET of the fragment, triggered only by a SUCCESSFUL workbook POST.
+    assert "detail.successful || !workbookPost(config)" in js
+    assert "window.htmx.ajax('GET', root.getAttribute('hx-get')" in js
+    assert 'hx-get="/v2/workbook/financing/investor?project=' in response.text
     assert set(v.strip() for v in response.headers["Cache-Control"].split(",")) == {"no-store"}
     assert get_workspace_state("finance-owner", record.project_id) == before
 

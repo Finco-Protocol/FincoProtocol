@@ -55,6 +55,7 @@
 
   <p class="d-context"><strong>Working commercial assumptions</strong> are saved inputs.
     Revenue evidence below belongs to Last Run; editing a price does not recalculate those outputs.</p>
+  <p class="d-context">A missing assumption is unavailable, not zero. Valid historical revenue does not populate missing Working Copy inputs.</p>
   {% if field_error %}
     <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
   {% endif %}
@@ -284,10 +285,10 @@
               {% endif %}
             </span>
             <span class="v2-binding-badge v2-binding-{{ mcf.field.binding_label }}"
-                  title="{% if mcf.field.binding_label == 'bound' %}This field can be edited{% elif mcf.field.binding_label == 'template_locked' %}This field is locked by the template{% else %}This field is calculated automatically{% endif %}">
+                  title="{% if mcf.field.binding_label == 'bound' %}Registry-bound field; reference projects remain read-only{% elif mcf.field.binding_label == 'template_locked' %}This field is locked by the template{% else %}This field is calculated automatically{% endif %}">
               {%- if mcf.field.binding_label in ('display_only', 'computed', 'partial') -%}Calculated
               {%- elif mcf.field.binding_label == 'template_locked' -%}Locked
-              {%- elif mcf.field.binding_label == 'bound' -%}Editable
+              {%- elif mcf.field.binding_label == 'bound' -%}{{ 'Editable' if project_editable and not contracts.active else 'Read-only · bound' }}
               {%- else -%}Calculated{%- endif -%}
             </span>
           </div>
