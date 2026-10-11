@@ -130,7 +130,7 @@ CONTROLS: tuple[ReadinessItem, ...] = (
             _code("app/auth.py", "def validate_csrf_token"),
             _test(_CTRL, "test_login_requires_valid_csrf_token"),
         ),
-        "Tokens also protect the model-import steps and one crypto action. Other state-changing "
+        "Tokens also protect the model-import steps, Revenue V2 contract writes and one crypto action. Other state-changing "
         "requests rely on the SameSite cookie attribute (see known gap).",
     ),
     ReadinessItem(
@@ -708,7 +708,7 @@ KNOWN_GAPS: tuple[KnownGap, ...] = (
     KnownGap(
         "gap.csrf_login_only", "Most state-changing requests have no CSRF token",
         GapSeverity.MEDIUM,
-        "CSRF tokens protect the login form, the model-import steps and one crypto action. Other "
+        "CSRF tokens protect the login form, the model-import steps, Revenue V2 contract writes and one crypto action. Other "
         "state-changing requests rely on the session cookie being SameSite=Lax, and the SameSite "
         "value can be changed by an environment variable without validation.",
         "Add an Origin or token check to state-changing endpoints and validate the SameSite "

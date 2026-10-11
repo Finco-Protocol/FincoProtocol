@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,129 @@ FORBIDDEN_PREFIXES = (
 )
 
 
+# Approved PR #246 copy correction, after authorized normal main synchronization.
+# This is an exact snapshot check, not permission to edit the protected namespaces.
+CSRF_REVIEWED_HEAD = "38443039e969ee0f9df581a07f3ef7163dadd28c"
+CSRF_SYNC_HEAD = "07dfbab3f16c789b26db4543888d26a12acaefdf"
+CSRF_TRUST_BASE = "a15442eff696a389ad8d24b5575c7e593162bf40"
+CSRF_EXACT_BLOBS = {
+    "app/trust_readiness/registry.py": "1c1bbadef886c5250e38f48e0dcb866b245743e0",
+    "tests/test_trust_readiness_controls.py": "3688d3fdb24f6e16c29436bb32222f8ed01598d1",
+    "docs/readiness/03_known_limitations_and_support_matrix.md": "5dff04fd9bb25f4c470b933b7816720d88495b76",
+    "docs/readiness/07_authentication_and_tenant_audit.md": "988c27f7c1979935f2fadee8445915b53ac2b96e",
+    "docs/model_v2/REVENUE_V2_MULTISTREAM_AUTHORITY_REPORT.md": "0d2b33b789fbb780274d23c12885cbb9dc4850e1",
+}
+CSRF_GUARD_PATH = "tests/test_trust_readiness_registry.py"
+
+
+def _csrf_exact_content_authorized(changed, blobs, since_sync, checkpoint_valid):
+    if not checkpoint_valid or blobs != CSRF_EXACT_BLOBS:
+        return False
+    permitted = set(CSRF_EXACT_BLOBS) | {CSRF_GUARD_PATH}
+    trust_changed = {p for p in changed if p.startswith(ALLOWED_PREFIXES)}
+    expected_trust = {p for p in permitted if p.startswith(ALLOWED_PREFIXES)}
+    return trust_changed == expected_trust and set(since_sync) <= permitted
+
+
+def _git(*args):
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, capture_output=True, text=True,
+        encoding="utf-8", check=True,
+    ).stdout.strip()
+
+
+def _current_csrf_correction_authorized(changed):
+    try:
+        _git("merge-base", "--is-ancestor", CSRF_SYNC_HEAD, "HEAD")
+        unchanged_financial_authority = not _git(
+            "diff", "--name-only", CSRF_REVIEWED_HEAD, CSRF_SYNC_HEAD, "--",
+            "financial_engine", "finco_core", "domain",
+            "tests/model_v2_governance.py", "tests/test_wf07_revenue_governance.py",
+        )
+        blobs = {
+            path: _git("hash-object", f"--path={path}", path)
+            for path in CSRF_EXACT_BLOBS
+        }
+        since_sync = _git("diff", "--name-only", CSRF_SYNC_HEAD).splitlines()
+        return _csrf_exact_content_authorized(
+            changed, blobs, since_sync, unchanged_financial_authority,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+def test_csrf_registry_correction_is_only_the_two_approved_sentences():
+    original = _git("show", f"{CSRF_TRUST_BASE}:app/trust_readiness/registry.py")
+    replacements = (
+        (
+            "Tokens also protect the model-import steps and one crypto action.",
+            "Tokens also protect the model-import steps, Revenue V2 contract writes and one crypto action.",
+        ),
+        (
+            "CSRF tokens protect the login form, the model-import steps and one crypto action.",
+            "CSRF tokens protect the login form, the model-import steps, Revenue V2 contract writes and one crypto action.",
+        ),
+    )
+    for old, new in replacements:
+        assert original.count(old) == 1
+        original = original.replace(old, new, 1)
+    assert (ROOT / "app/trust_readiness/registry.py").read_text(encoding="utf-8").strip() == original
+
+
+def test_csrf_exact_content_accepts_only_the_reviewed_snapshot():
+    changed = list(CSRF_EXACT_BLOBS) + [CSRF_GUARD_PATH]
+    assert _csrf_exact_content_authorized(changed, dict(CSRF_EXACT_BLOBS), changed, True)
+
+
+@pytest.mark.parametrize("path", CSRF_EXACT_BLOBS)
+def test_csrf_exact_content_rejects_any_pinned_file_modification(path):
+    blobs = dict(CSRF_EXACT_BLOBS)
+    blobs[path] = "0" * 40
+    changed = list(CSRF_EXACT_BLOBS) + [CSRF_GUARD_PATH]
+    assert not _csrf_exact_content_authorized(changed, blobs, changed, True)
+
+
+@pytest.mark.parametrize("path", (
+    "app/trust_readiness/projection.py", "app/trust_readiness/new_policy.py",
+    "app/templates/trust/readiness.html", "static/trust_readiness.css",
+    "docs/readiness/01_security_and_data_handling.md", "tools/render_readiness_docs.py",
+    "tests/test_trust_readiness_claims.py", "tests/test_trust_readiness_new.py",
+))
+def test_csrf_exact_content_rejects_broader_trust_changes(path):
+    changed = list(CSRF_EXACT_BLOBS) + [CSRF_GUARD_PATH, path]
+    assert not _csrf_exact_content_authorized(changed, dict(CSRF_EXACT_BLOBS), changed, True)
+
+
+@pytest.mark.parametrize("path", (
+    "financial_engine/revenue_multistream.py", "financial_engine/new_solver.py",
+    "finco_core/inputs/revenue_multistream.py", "domain/revenue/multistream_runtime.py",
+    "app/workbook/update_service.py", "app/persistence/scenarios_repository.py",
+    "app/v2/router.py", "app/auth.py", "app/services/export_service.py",
+    "tests/model_v2_governance.py", "tests/test_wf07_revenue_governance.py",
+))
+def test_csrf_exact_content_rejects_any_new_engine_writer_or_pin_change(path):
+    changed = list(CSRF_EXACT_BLOBS) + [CSRF_GUARD_PATH]
+    assert not _csrf_exact_content_authorized(
+        changed + [path], dict(CSRF_EXACT_BLOBS), changed + [path], True,
+    )
+
+
+def test_csrf_exact_content_rejects_missing_pin_or_invalid_checkpoint():
+    changed = list(CSRF_EXACT_BLOBS) + [CSRF_GUARD_PATH]
+    blobs = dict(CSRF_EXACT_BLOBS)
+    blobs.pop("app/trust_readiness/registry.py")
+    assert not _csrf_exact_content_authorized(changed, blobs, changed, True)
+    assert not _csrf_exact_content_authorized(changed, dict(CSRF_EXACT_BLOBS), changed, False)
+
+
+def test_csrf_exact_content_git_failure_is_not_an_authorization(monkeypatch):
+    def unavailable(*args):
+        raise subprocess.CalledProcessError(1, ["git", *args])
+
+    monkeypatch.setattr(__import__(__name__, fromlist=["_git"]), "_git", unavailable)
+    assert not _current_csrf_correction_authorized(list(CSRF_EXACT_BLOBS))
+
+
 def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
     try:
         from finance_integrity_governance import changed_paths_vs_main
@@ -145,6 +269,8 @@ def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
         pytest.skip(f"cannot compute the diff against main: {exc}")
     if not any(p.startswith("app/trust_readiness/") for p in changed):
         pytest.skip("trust pack not part of this diff")
+    if _current_csrf_correction_authorized(changed):
+        return
     bad = [p for p in changed if p.startswith(FORBIDDEN_PREFIXES)]
     assert not bad, f"out-of-scope files changed: {bad}"
     stray = [p for p in changed if p != "main_web.py" and not p.startswith(ALLOWED_PREFIXES)]

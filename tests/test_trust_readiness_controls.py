@@ -255,8 +255,16 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
             continue
         if re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
             users.add(rel)
-    # Login, the model-import steps and one crypto action. Nothing else validates a token.
-    assert users == {"main_web.py", "app/v2/import_router.py", "app/crypto_ui.py"}
+    # Revenue V2 contracts are protected; the broader POST coverage gap remains.
+    assert users == {"main_web.py", "app/v2/import_router.py", "app/crypto_ui.py", "app/v2/router.py"}
+    import ast
+    tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))
+    protected = {
+        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                and call.func.id == "validate_csrf_token" for call in ast.walk(node))
+    }
+    assert protected == {"v2_revenue_contracts"}
 
 
 def test_other_public_pages_still_provision_demo_session(client):
