@@ -5,9 +5,16 @@ import uuid
 
 import pytest
 
-from tests.test_model_golden_flows_browser import golden_app, browser, _page, _click_tab
+from tests.model_workspace_navigation import activate_destination
+from tests.test_model_golden_flows_browser import golden_app, browser, _page
 from tests.test_wf07_revenue_multistream import contracts
 
+
+
+def _click_tab(page, tab_id: str, panel_id: str) -> None:
+    """Open a destination through the consolidated workspace navigation (the legacy flat tab strip is hidden)."""
+    activate_destination(page, tab_id)
+    page.locator(f"#{panel_id}").wait_for(state="visible")
 
 
 def _populate_structured_editor(page, payload):
@@ -62,7 +69,8 @@ def test_authenticated_contract_save_scenario_run_and_narrow_render(golden_app, 
     assert validate_csrf_token(page.locator('[data-testid="revenue-contracts-form"] input[name="csrf_token"]').input_value())
     _populate_structured_editor(page, payload)
     page.get_by_role("button", name="Save contracts", exact=True).click()
-    page.locator('[data-testid="revenue-contracts-form"] [data-revenue-row]').first.wait_for(timeout=30_000)
+    # The editor already holds its rows before Save; wait for the SERVER-rendered canonical payload instead.
+    page.wait_for_function("() => document.getElementById('revenue-contracts-json')?.value.trim().startsWith('{')", timeout=30_000)
     assert json.loads(page.locator("#revenue-contracts-json").input_value()) == payload
     page.locator('[data-testid="v2-run-btn"]').click()
     page.locator('[data-testid="overview-status-current"]').wait_for(state="attached", timeout=180_000)
