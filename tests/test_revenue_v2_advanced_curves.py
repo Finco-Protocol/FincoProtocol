@@ -22,8 +22,9 @@ from finco_core.revenue.generation import revenue_decomposition_schedule
 from tests.test_wf07_revenue_multistream import contracts
 
 
-def book(kind="solar", *, with_cfd=True):
-    pi = getattr(factories, "create_generic_" + kind + "_reference")()
+def book(kind="solar", *, with_cfd=True, pi=None):
+    if pi is None:
+        pi = getattr(factories, "create_generic_" + kind + "_reference")()
     axis = _build_period_engine(from_project_inputs(pi))
     operating = tuple(p for p in axis.periods() if p.is_operation)
     assert len(operating) > 2
@@ -210,3 +211,71 @@ def test_canonical_financing_read_only_stress_and_persisted_input_unchanged(kind
     assert data["total_ebitda_keur"]["stress"] < data["total_ebitda_keur"]["base"]
     assert data["total_senior_ds_keur"]["base"] is not None
     assert data["project_irr"]["base"] is not None
+
+
+def test_v2_curve_last_run_and_export_are_immutable_after_unsaved_change(env, monkeypatch):
+    """A new curve Save makes CURRENT stale but cannot rewrite Last Run/export."""
+    import copy
+    from io import BytesIO
+    from openpyxl import load_workbook
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import get_run_history
+    from app.workbook.service import WorkbookService
+    from app.workbook.revenue_multistream import SNAPSHOT_KEY
+    from app.services.export_service import resolve_canonical_last_run_from_workspace
+    from app.services.v2_export_service import build_canonical_last_run_institutional_workbook_export
+    from tests.test_model_decision_workspace_v2 import tokens
+    from tests.test_wf07_revenue_workspace import contract_tokens
+
+    record = env.create("solar")
+    owner = "decision-user"
+    project = {"project": record.project_code}
+    def ws():
+        return get_workspace_state(owner, record.project_id)
+    def page():
+        r = env.client.get("/v2/workbook", params=project)
+        assert r.status_code == 200
+        return r.text
+    def save(payload):
+        return env.client.post("/v2/workbook/revenue/contracts",
+            headers={"HX-Request": "true"}, data={
+                **project, **contract_tokens(page()), "contracts": json.dumps(payload)})
+    pi = WorkbookService.build_draft_input_set_from_workspace(ws()).to_projectinputs()
+    _, _, _, payload = book("solar", pi=pi)
+    assert save(payload).status_code == 200
+    raw_original = ws().draft_snapshot[SNAPSHOT_KEY]
+    assert json.loads(raw_original) == payload
+    run = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+                          data={**project, **tokens(page())})
+    assert 'id="v2-sheet-returns"' in run.text, run.text[:2000]
+    assert not ws().dirty
+    previous_run = copy.deepcopy(ws().last_runtime_summary)
+    previous_history = get_run_history(owner, record.project_id)
+    assert previous_run["revenue_multistream_audit"]
+    edited = copy.deepcopy(payload)
+    edited["streams"][0]["price_curve"][0]["price_eur_mwh"] = 100
+    assert save(edited).status_code == 200
+    assert ws().dirty
+    assert get_run_history(owner, record.project_id) == previous_history
+    assert ws().last_runtime_summary == previous_run
+    authority = resolve_canonical_last_run_from_workspace(record, owner, ws())
+    assert authority.working_changed_since_run
+    assert json.loads(authority.project_inputs.revenue.multistream_config_json) == payload
+    def no_engine(*args, **kwargs):
+        pytest.fail("Export must never execute financial model")
+    with monkeypatch.context() as patch:
+        patch.setattr("app.runtime.model_execution.run_model_process", no_engine)
+        patch.setattr("app.services.production_financial_authority.run_clean_production", no_engine)
+        exported = build_canonical_last_run_institutional_workbook_export(
+            "generic_solar_reference", safe_project=record.project_code,
+            project_record=record, user_id=owner)
+        assert exported.status_code == 200, exported.error_content
+        workbook = load_workbook(BytesIO(exported.bytes_data), read_only=True, data_only=True)
+        try:
+            assert "Revenue_Streams" in workbook.sheetnames
+            rows = list(workbook["Revenue_Streams"].iter_rows(min_row=8, values_only=True))
+            assert any(r[1] == "alpha" and r[5] == 55 for r in rows)
+            assert any(r[1] == "alpha" and r[5] == 47 for r in rows)
+            assert not any(r[1] == "alpha" and r[5] == 100 for r in rows)
+        finally:
+            workbook.close()
