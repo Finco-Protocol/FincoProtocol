@@ -1,33 +1,75 @@
-<details class="v2-inputs-section" open data-testid="revenue-contracts">
+<link rel="stylesheet" href="/static/css/model_revenue_contract_editor.css">
+<details class="v2-inputs-section rc-section" open data-testid="revenue-contracts">
   <summary class="v2-inputs-section-summary">Revenue contracts</summary>
-  <p class="d-context">{{ contracts.scope }} · {% if contracts.active %}Explicit PPA / Merchant / CfD authority{% else %}Legacy revenue authority{% endif %}</p>
-  {% if contracts.rows %}
-  <div style="overflow-x:auto">
-    <table class="d-table" aria-label="Saved revenue contracts">
-      <thead><tr><th>Contract</th><th>Stream</th><th>Start</th><th>End (exclusive)</th><th>Volume share</th><th>EUR/MWh</th><th>Index / operating year</th><th>Source</th></tr></thead>
-      <tbody>{% for row in contracts.rows %}<tr>
-        <td>{{ row.id }}</td><td>{{ row.type }}</td><td>{{ row.start_date }}</td><td>{{ row.end_date }}</td>
-        <td>{% if row.volume_share is none %}Residual generation{% else %}{{ "%.2f"|format(row.volume_share * 100) }}%{% endif %}</td>
-        <td>{{ "%.2f"|format(row.price_eur_mwh) }}</td><td>{{ "%.2f"|format(row.indexation_rate * 100) }}%</td><td>{{ row.source_ref }}</td>
-      </tr>{% endfor %}</tbody>
-    </table>
-  </div>
-  {% endif %}
+  <p class="d-context">{{ contracts.scope }} · {% if contracts.active %}Explicit PPA / Merchant / CfD authority{% else %}Legacy revenue authority{% endif %}. Saving assumptions never runs the financial model.</p>
   {% if project_editable %}
-  <form method="post" action="/v2/workbook/revenue/contracts" hx-post="/v2/workbook/revenue/contracts"
-        hx-target="#v2-sheet-revenue" hx-swap="outerHTML" data-testid="revenue-contracts-form">
+  <form method="post" action="/v2/workbook/revenue/contracts"
+        hx-post="/v2/workbook/revenue/contracts" hx-target="#v2-sheet-revenue" hx-swap="outerHTML"
+        data-testid="revenue-contracts-form" data-revenue-editor data-technology="{{ project_type|lower|e }}"
+        autocomplete="off">
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
     <input type="hidden" name="csrf_token" value="{{ revenue_contracts_csrf_token }}">
-    <label for="revenue-contracts-json">Contract payload (JSON, fractional shares and rates)</label>
-    <textarea id="revenue-contracts-json" name="contracts" rows="12" spellcheck="false"
-              style="width:100%;box-sizing:border-box;resize:vertical" aria-describedby="revenue-contracts-boundary">{{ contracts.raw }}</textarea>
-    <p id="revenue-contracts-boundary" class="d-context">Same-period settlement only. Contract dates must align with operating periods. Indexation uses the canonical operating year. An empty payload restores legacy pricing. Legacy balancing and certificate adjustments remain separate.</p>
-    <button type="submit" name="action" value="save">Save contracts</button>
-    {% if contracts.overridden %}<button type="submit" name="action" value="inherit">Restore Base contracts</button>{% endif %}
+    <input type="hidden" name="contracts" data-revenue-payload value="">
+    <div class="rc-toolbar">
+      <div class="rc-add-controls">
+        <label for="rc-add-type">New contract</label>
+        <select id="rc-add-type" data-revenue-add-type aria-label="Revenue stream type">
+          <option value="fixed_ppa">Fixed PPA</option>
+          <option value="indexed_ppa">Indexed PPA</option>
+          <option value="merchant">Merchant</option>
+          <option value="residual_merchant">Residual Merchant</option>
+          <option value="cfd">Two-way CfD</option>
+        </select>
+        <button type="button" data-revenue-add>+ Add contract</button>
+      </div>
+      <button type="button" class="rc-advanced-toggle" data-revenue-advanced aria-expanded="false">Show advanced terms</button>
+    </div>
+    <div class="rc-scroll" role="region" aria-label="Revenue contract editor" tabindex="0">
+      <table class="d-table rc-table" aria-label="Revenue contract editor" data-revenue-table>
+        <thead><tr>
+          <th scope="col">Contract ID</th><th scope="col">Revenue stream</th>
+          <th scope="col">Start date</th><th scope="col">End date (exclusive)</th>
+          <th scope="col">Allocation %</th><th scope="col">Price EUR/MWh</th>
+          <th scope="col">Index %/yr</th><th scope="col">CfD strike EUR/MWh</th>
+          <th scope="col" data-revenue-advanced-cell hidden>Capture %</th>
+          <th scope="col" data-revenue-advanced-cell hidden>CfD reference</th>
+          <th scope="col" data-revenue-advanced-cell hidden>Source reference</th>
+          <th scope="col">Validation</th><th scope="col"><span class="rc-sr-only">Remove</span></th>
+        </tr></thead>
+        <tbody data-revenue-rows></tbody>
+      </table>
+    </div>
+    <div class="rc-empty" data-revenue-empty hidden>No contracts configured. Add a contract or continue with legacy revenue pricing.</div>
+    <div class="rc-feedback" role="status" aria-live="polite" data-revenue-feedback>Saved Working Copy · No changes</div>
+    <div class="rc-error" role="alert" data-revenue-error hidden></div>
+    <div class="rc-actions">
+      <button type="submit" name="action" value="save" data-revenue-save disabled>Save contracts</button>
+      {% if contracts.overridden %}<button type="submit" name="action" value="inherit" data-revenue-inherit>Restore Base contracts</button>{% endif %}
+      <span class="d-context">End date exclusive · Same-period settlement · Operating-year indexation</span>
+    </div>
+    <details class="rc-diagnostic">
+      <summary>Advanced JSON · read-only diagnostic</summary>
+      <label for="revenue-contracts-json">Canonical contract payload (read-only)</label>
+      <textarea id="revenue-contracts-json" data-revenue-source rows="5" spellcheck="false" readonly>{{ contracts.raw }}</textarea>
+    </details>
   </form>
+  {% else %}
+  <div class="rc-readonly" data-revenue-editor data-readonly="true" data-technology="{{ project_type|lower|e }}">
+    <div class="rc-scroll" role="region" aria-label="Saved revenue contracts" tabindex="0">
+      <table class="d-table rc-table" aria-label="Saved revenue contracts" data-revenue-table>
+        <thead><tr><th>Contract</th><th>Stream</th><th>Start</th><th>End (exclusive)</th><th>Share</th><th>Price / strike</th><th>Index</th><th>Source</th></tr></thead>
+        <tbody>{% for row in contracts.rows %}<tr><td>{{ row.id }}</td><td>{{ row.type }}</td>
+          <td>{{ row.start_date }}</td><td>{{ row.end_date }}</td>
+          <td>{% if row.volume_share is none %}Residual{% else %}{{ "%.2f"|format(row.volume_share * 100) }}%{% endif %}</td>
+          <td>{{ row.price_eur_mwh }}</td><td>{{ "%.2f"|format(row.indexation_rate * 100) }}%</td>
+          <td>{{ row.source_ref }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% if not contracts.rows %}<p class="d-context">Legacy revenue pricing. Create a working copy to configure contracts.</p>{% endif %}
+  </div>
   {% endif %}
-  <p class="d-context">Capacity availability, ancillary services and REC contracts are unsupported. No quantities or settlement authority are inferred.</p>
+  <p class="d-context">Unsupported: capacity availability, ancillary services, REC certificates, lagged settlements and contract price curves. These are not calculated or inferred.</p>
   {% set audit = (revenue_runtime_summary or {}).get("revenue_multistream_audit") %}
   {% if audit %}
   <details><summary>Last Run contract evidence (kEUR)</summary>
@@ -43,3 +85,4 @@
   </details>
   {% endif %}
 </details>
+<script src="/static/js/model_revenue_contract_editor.js"></script>
