@@ -79,3 +79,25 @@ def test_existing_contract_raw_is_preserved_in_readonly_diagnostic():
     assert page.select_one("#revenue-contracts-json").text == original
     assert page.select_one('[data-revenue-payload]')["value"] == ""
     assert "Revenue contracts" in page.text
+
+
+def test_editor_technology_does_not_depend_on_the_page_level_project_type():
+    """htmx re-renders (Save, scenario switch) have no ``project_type``; the editor must still accept the payload."""
+    env = Environment(loader=FileSystemLoader(str(PARTIAL.parents[1])), autoescape=True)
+    html = env.get_template("partials/revenue_contracts.html").render(
+        contracts={"raw": "", "rows": [], "scope": "Working Copy", "active": False, "overridden": False, "technology": "wind"},
+        project_editable=True, project_code="w", content_hash="h", revenue_contracts_csrf_token="t", revenue_runtime_summary={})
+    form = BeautifulSoup(html, "html.parser").select_one("[data-revenue-editor]")
+    assert form["data-technology"] == "wind"
+    legacy = env.get_template("partials/revenue_contracts.html").render(       # page-level fallback is preserved
+        contracts={"raw": "", "rows": [], "scope": "x", "active": False, "overridden": False},
+        project_editable=True, project_type="Solar", project_code="w", content_hash="h",
+        revenue_contracts_csrf_token="t", revenue_runtime_summary={})
+    assert BeautifulSoup(legacy, "html.parser").select_one("[data-revenue-editor]")["data-technology"] == "solar"
+
+
+def test_contract_builder_returns_the_technology_with_the_contracts():
+    import inspect
+    from app.v2 import router
+    source = inspect.getsource(router._build_revenue_contract_editor)
+    assert '"technology": technology' in source and "project_setup.identity.project_type" in source

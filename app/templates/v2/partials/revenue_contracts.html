@@ -5,7 +5,7 @@
   {% if project_editable %}
   <form method="post" action="/v2/workbook/revenue/contracts"
         hx-post="/v2/workbook/revenue/contracts" hx-target="#v2-sheet-revenue" hx-swap="outerHTML"
-        data-testid="revenue-contracts-form" data-revenue-editor data-technology="{{ project_type|lower|e }}"
+        data-testid="revenue-contracts-form" data-revenue-editor data-technology="{{ (contracts.technology or project_type | default('')) | lower | e }}"
         autocomplete="off">
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
@@ -55,7 +55,7 @@
     </details>
   </form>
   {% else %}
-  <div class="rc-readonly" data-revenue-editor data-readonly="true" data-technology="{{ project_type|lower|e }}">
+  <div class="rc-readonly" data-revenue-editor data-readonly="true" data-technology="{{ (contracts.technology or project_type | default('')) | lower | e }}">
     <div class="rc-scroll" role="region" aria-label="Saved revenue contracts" tabindex="0">
       <table class="d-table rc-table" aria-label="Saved revenue contracts" data-revenue-table>
         <thead><tr><th>Contract</th><th>Stream</th><th>Start</th><th>End (exclusive)</th><th>Share</th><th>Price / strike</th><th>Index</th><th>Source</th></tr></thead>
