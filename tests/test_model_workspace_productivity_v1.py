@@ -437,13 +437,56 @@ class TestStaticAssetContracts:
         assert "error_class" in handler and "hasServerClass" in handler
         assert "untyped: true" in JS                                  # transport failure
 
-    def test_new_module_reuses_existing_transport_and_adds_none(self):
-        module = JS.split("Workspace productivity v1: field validation UX", 1)[1]
+    V1_START = "Workspace productivity v1: field validation UX"
+    V1_END = "Cost grid (CAPEX / OPEX): direct-cell editing"
+    FORBIDDEN_TRANSPORTS = ("fetch(", "XMLHttpRequest", "htmx.ajax(", "sendBeacon", "WebSocket",
+                            "HX-Trigger", "setRequestHeader")
+
+    @classmethod
+    def _v1_module(cls, source: str) -> str:
+        """The V1 module ONLY: strictly between its own marker and the separate Cost grid module's marker.
+
+        Both markers must exist and be in this order, so the boundary can never silently widen to the end of the
+        file (the Cost grid module has its own, separately tested, guarded transport)."""
+        start, end = source.find(cls.V1_START), source.find(cls.V1_END)
+        assert start >= 0, "V1 module marker missing"
+        assert end >= 0, "Cost grid module marker missing"
+        assert start < end, "V1 module must precede the Cost grid module"
+        return source[start:end]
+
+    @classmethod
+    def _transports_in(cls, module: str) -> list:
         code = re.sub(r"//[^\n]*", "", module)          # comments may name the transport
-        for forbidden in ("fetch(", "XMLHttpRequest", "htmx.ajax(", "sendBeacon", "WebSocket",
-                          "HX-Trigger", "setRequestHeader"):
-            assert forbidden not in code
+        return [needle for needle in cls.FORBIDDEN_TRANSPORTS if needle in code]
+
+    def test_new_module_reuses_existing_transport_and_adds_none(self):
+        module = self._v1_module(JS)
+        assert self._transports_in(module) == []
         assert "workbook-field-error" in JS and "workbook-field-saved" in JS
+
+    def test_v1_transport_prohibition_still_fails_for_an_unauthorized_transport_inside_the_module(self):
+        line_start = JS.rfind("\n", 0, JS.index(self.V1_END)) + 1       # last line BEFORE the Cost grid module
+        for transport in self.FORBIDDEN_TRANSPORTS:
+            tampered = JS[:line_start] + f"window.leaked = {transport}'/unauthorized');\n" + JS[line_start:]
+            assert transport in self._transports_in(self._v1_module(tampered)), transport
+        # a transport named only in a comment stays allowed (comments may name it)
+        commented = JS[:line_start] + "// fetch( is not used here\n" + JS[line_start:]
+        assert self._transports_in(self._v1_module(commented)) == []
+
+    def test_v1_boundary_requires_both_markers_in_order(self):
+        for broken in (JS.replace(self.V1_START, "removed", 1), JS.replace(self.V1_END, "removed", 1)):
+            with pytest.raises(AssertionError):
+                self._v1_module(broken)
+        swapped = self.V1_END + "\n" + self.V1_START
+        with pytest.raises(AssertionError):
+            self._v1_module(swapped)
+
+    def test_the_cost_grid_transport_is_outside_the_v1_boundary_and_is_the_guarded_one(self):
+        module = self._v1_module(JS)
+        assert "cost-lines/save" not in module
+        cost = JS[JS.index(self.V1_END):]
+        assert "/v2/workbook/grid/cost-lines/save" in cost and "window.htmx.ajax('POST'" in cost
+        assert "csrf" in cost.lower() and "v2-workbook-shell" in cost      # CSRF token read + persistent source element
 
     def test_jump_uses_the_existing_c1_modules_and_opens_details(self):
         module = JS.split("Workspace productivity v1: field validation UX", 1)[1]

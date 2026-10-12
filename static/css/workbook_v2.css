@@ -3258,6 +3258,14 @@ form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #
 .v2-cost-row[data-save-state="dirty"] .v2-cost-input,
 .v2-cost-row[data-save-state="queued"] .v2-cost-input { background: #fffbeb; border-color: #f59e0b; }
 .v2-cost-row[data-save-state="saving"] .v2-cost-input { background: #eff6ff; border-color: #60a5fa; }
+.v2-cost-row[data-save-state="staged"] .v2-cost-input { background: #ecfeff; border-color: #06b6d4; color: #0f172a; }
+.v2-cost-row[data-save-state="staged"] .v2-cost-state { color: #0e7490; font-weight: 600; }
+.v2-cost-stagebar { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .75rem; margin: .25rem 0 .4rem;
+  padding: .3rem .5rem; font-size: .8rem; border: 1px solid rgba(127, 127, 127, .35); border-radius: 4px; }
+.v2-cost-stage-toggle { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; }
+.v2-cost-stage-count { font-weight: 600; min-width: 4.5rem; }
+.v2-cost-stage-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.v2-cost-stage-msg { flex: 1 1 14rem; min-width: 0; }
 .v2-cost-row[data-save-state="failed"] .v2-cost-input,
 .v2-cost-row[data-save-state="invalid"] .v2-cost-input { background: #fef2f2; border-color: #dc2626; }
 .v2-cost-state { font-size: .68rem; color: #4b5563; }
@@ -3443,3 +3451,4 @@ form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #
 .v2-kpi-tile[data-kpi-drill] { cursor: pointer; }
 .v2-kpi-tile[data-kpi-drill]:hover { box-shadow: 0 0 0 1px #93c5fd; }
 .v2-kpi-tile[data-kpi-drill]:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.v2-cost-action.v2-cost-stage-btn { width: auto; height: auto; padding: .2rem .65rem; line-height: 1.3; }
