@@ -37,9 +37,9 @@ jobs:
             requirements.txt
             requirements-ci-tests.txt
             constraints.txt
-      - name: Attest exact tested HEAD
+      - name: Verify exact HEAD
         run: python -m tools.ci_acceptance attest --expected '${{ inputs.tested-sha }}' --output artifacts/source.json
-      - name: Prove identical synthetic merge tree before full regression
+      - name: Verify exact HEAD / merge tree
         run: |
           test '${{ inputs.mode }}' = control
           python -m tools.ci_merge_tree_guard \
@@ -47,11 +47,11 @@ jobs:
             --merge-sha '${{ inputs.merge-sha }}' \
             --pr-number '${{ inputs.pr-number }}' \
             --output artifacts/merge-tree.json
-      - name: Install and record dependency preparation
+      - name: Install dependencies
         run: |
           python -m tools.ci_acceptance run --expected '${{ inputs.tested-sha }}' --label install --output artifacts/install.json -- \
             bash -e -c 'python -m pip install --upgrade pip; pip install -r requirements.txt -c constraints.txt; pip install -r requirements-ci-tests.txt -c constraints.txt; python -m pip check'
-      - name: Synthetic reference and regression tests (FULL, UNSHARDED, EXACT HEAD)
+      - name: Run full pytest (FULL, UNSHARDED, EXACT HEAD)
         env:
           FINCO_CI_PYTEST_BUDGET_S: '3300'
           FINCO_CI_EXIT_GRACE_S: '180'
@@ -64,14 +64,14 @@ jobs:
             python tools/ci_pytest_runner.py -q -p tools.ci_pytest_inventory -p tools.ci_pytest_progress \
             --ci-inventory=artifacts/inventory.json --ci-progress=artifacts/progress \
             --junitxml=artifacts/results.xml
-      - name: Print slowest-test and active-test evidence
+      - name: Print final test diagnostics
         if: always()
         run: python -m tools.ci_pytest_progress artifacts/progress || true
       - name: Retain historical public JUnit filename
         if: always()
         run: |
           if [ -f artifacts/results.xml ]; then cp artifacts/results.xml artifacts/public-test-results.xml; fi
-      - name: Upload complete public evidence
+      - name: Upload public evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
