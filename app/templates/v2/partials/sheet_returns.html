@@ -6,6 +6,7 @@
 {%- endmacro %}
 
 <div id="v2-sheet-returns" class="v2-returns" data-sheet="returns">
+  {% include 'partials/_financing_trace_loader.html' %}
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status" data-testid="returns-reference-notice">
       Reference project — Returns are read-only. Create a working copy to edit inputs.

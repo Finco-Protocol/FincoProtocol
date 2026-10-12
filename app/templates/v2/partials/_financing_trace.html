@@ -1,0 +1,43 @@
+{% macro value(a) %}<td class="f38-number" data-raw="{{ a.value if a.value is not none else '' }}" title="{{ a.authority }}">{{ a.display if a.available else 'UNAVAILABLE' }}</td>{% endmacro %}
+{% macro periods(title, headers, rows, key) %}
+{% if rows %}
+<div class="f38-scroll" role="region" tabindex="0" aria-label="{{ title }}">
+<table data-testid="f38-{{ key }}"><caption>{{ title }} (kEUR)</caption>
+<thead><tr><th scope="col">Period / date</th>{% for h in headers %}<th scope="col">{{ h }}</th>{% endfor %}</tr></thead>
+<tbody>{% for row in rows %}<tr><th scope="row">P{{ row.index }} / {{ row.date }}</th>{% for a in row['values'] %}{{ value(a) }}{% endfor %}</tr>{% endfor %}</tbody></table></div>
+{% else %}<p role="status">{{ title }}: UNAVAILABLE in this Run.</p>{% endif %}
+{% endmacro %}
+<section class="f38-trace" data-testid="financing-trace" data-state="{{ trace.state }}" data-snapshot="{{ trace.snapshot_id }}">
+<link rel="stylesheet" href="/static/css/model_financing_trace.css">
+<h3>Financing reconciliation <span data-testid="f38-status" data-status="{{ trace.status }}">{{ trace.status }}</span></h3>
+<p>{{ trace.state }} · Run {{ trace.snapshot_id or 'UNAVAILABLE' }} · {{ run_at }} · {{ run_scenario }}</p>
+<p class="f38-source">Composite identity: {{ trace.composite_hash or 'UNAVAILABLE' }}</p>
+<nav aria-label="Financing Run evidence"><a hx-get="/v2/workbook/financing/trace?project={{ project_code | urlencode }}" hx-target="closest .f38-trace" hx-swap="outerHTML" href="/v2/workbook/financing/trace?project={{ project_code | urlencode }}">Last Run</a>
+{% for h in history %}<a hx-get="/v2/workbook/financing/trace?project={{ project_code | urlencode }}&amp;history_id={{ h.history_id | urlencode }}" hx-target="closest .f38-trace" hx-swap="outerHTML" href="/v2/workbook/financing/trace?project={{ project_code | urlencode }}&amp;history_id={{ h.history_id | urlencode }}">Historical {{ h.ran_at }}{% if h.history_id == history_id %} (selected){% endif %}</a>{% endfor %}</nav>
+{% if trace.reason %}<p role="status">{{ trace.reason }}</p>{% endif %}
+{% for f in trace.facilities %}
+<details data-testid="f38-facility" data-instrument="{{ f.id }}">
+<summary>{{ f.role }} · {{ f.id }} · {{ f.status }}</summary>
+<dl><dt>Contractual commitment</dt><dd>{{ f.commitment.display }} kEUR</dd><dt>Actual construction draws</dt><dd>{{ f.drawn.display }} kEUR</dd><dt>Capitalized IDC</dt><dd>{{ f.idc.display }} kEUR</dd><dt>Maturity</dt><dd>P{{ f.maturity }} / {{ f.maturity_date }}</dd><dt>Closing liability at maturity</dt><dd>{{ f.unpaid.value }} kEUR · {{ f.repayment }}</dd></dl>
+<div class="f38-scroll" role="region" tabindex="0" aria-label="{{ f.id }} construction evidence"><table><caption>{{ f.id }} construction evidence (kEUR)</caption><thead><tr><th scope="col">Period / date</th><th scope="col">Draw</th><th scope="col">IDC</th><th scope="col">Fees</th></tr></thead><tbody>{% for r in f.periods %}<tr><th scope="row">P{{ r.period }} / {{ r.date }}</th>{{ value(r.draw) }}{{ value(r.idc) }}{{ value(r.fees) }}</tr>{% endfor %}</tbody></table></div>
+{{ periods(f.id ~ ' operating evidence', ['Opening', 'Interest', 'Principal', 'Debt service', 'Closing'], f.rows, 'facility-periods') }}
+</details>
+{% endfor %}
+<details data-testid="f38-checks"><summary>Aggregate statements and full-precision audit comparisons</summary>
+{% if trace.funding and trace.funding.available %}<p>Construction period reconciliation: {{ trace.funding.status }}</p><ul>{% for c in trace.funding.period_checks %}<li>P{{ c.period }} {{ c.label }}: ledger {{ c.ledger }} / aggregate {{ c.aggregate }} kEUR · {{ 'RECONCILED' if c.ok else 'DIFFERS' }}</li>{% endfor %}</ul>{% endif %}
+{% if trace.balance_audit %}<p data-testid="f38-balance-audit">{{ trace.balance_audit.title }}: {{ trace.balance_audit.status }} · {{ trace.balance_audit.evaluated }} periods · residual {{ trace.balance_audit.max_abs_deviation }} kEUR{% if trace.balance_audit.reason_code %} · {{ trace.balance_audit.reason_code }}{% endif %}</p>{% endif %}
+<p>Statement comparisons use the existing persisted two-decimal serialization. Audit comparisons retain full precision. These checks do not replace Run Integrity or prove unavailable tax attribution.</p>
+<div class="f38-scroll" role="region" tabindex="0" aria-label="Financial comparisons"><table><caption>Evidence comparisons (kEUR)</caption><thead><tr><th scope="col">Check / authority</th><th scope="col">Evidence</th><th scope="col">Canonical</th><th scope="col">Difference</th><th scope="col">Basis / status</th></tr></thead><tbody>
+{% for c in trace.checks %}<tr data-status="{{ c.status }}"><th scope="row">{{ c.label }}<small class="f38-source">{{ c.source }}</small></th>{{ value(c.observed) }}{{ value(c.canonical) }}{{ value(c.difference) }}<td>{{ c.basis }} / {{ c.status }}</td></tr>{% endfor %}
+</tbody></table></div></details>
+<details><summary>Cash flow and sponsor evidence</summary>
+{{ periods('Canonical PF cash waterfall', trace.cash_headers or [], trace.cash, 'cash') }}
+{{ periods('Canonical sponsor cash flows', trace.sponsor_headers or [], trace.sponsor, 'sponsor') }}
+<dl>{% for m in trace.returns %}<dt title="{{ m.source }}">{{ m.label }}</dt><dd>{{ m.display }}</dd>{% endfor %}</dl>
+<p>Project IRR excludes financing. Pure Equity IRR excludes SHL; Total Sponsor IRR includes actual SHL flows. Distribution-account inflow is not legal equity distribution.</p>
+</details>
+<details><summary>Tax evidence and attribution limits</summary>
+{{ periods('Canonical tax schedule', trace.tax_headers or [], trace.tax, 'tax') }}
+<ul>{% for reason in trace.limitations %}<li>{{ reason }}</li>{% endfor %}</ul>
+</details>
+</section>
