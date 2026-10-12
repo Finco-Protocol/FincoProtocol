@@ -37,6 +37,8 @@ class GridRow:
     modified_since_run: bool = False
     baseline: str = ""            # Last Run value (display) when modified_since_run
     category_value: str = ""      # known cost-view subtotal, NOT a scalar override
+    nav_tab: str = ""             # contextual link to the sheet that owns this value (never an edit path here)
+    nav_group: str = ""           # category to open and focus on that sheet ("" ⇒ just open the sheet)
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,13 @@ def _row_from_field(code: str, label: str, f: dict, pis: Any, base: Any, *,
     )
 
 
+def _with_nav(row: GridRow, tab_id: str, group: str = "") -> GridRow:
+    """Add a contextual link to the owning sheet.  Navigation only: it never makes the value editable here."""
+    from dataclasses import replace
+
+    return replace(row, nav_tab=tab_id, nav_group=group)
+
+
 def _readonly(code: str, label: str, total: Any, reason: str, unit: str = "kEUR") -> GridRow:
     return GridRow(code=code, label=label, unit=unit, value=_thousands(total) if total is not None else "—",
                    editable=False, reason=reason)
@@ -200,6 +209,8 @@ def build_input_grid_projection(
                                   category_total=group.subtotal_keur)
         else:
             row = _readonly(group.code, group.name, group.subtotal_keur, "Calculated")
+        if row.reason.startswith("Sum of line items") or row.category_value:
+            row = _with_nav(row, "tab-capex", group.code)
         cx_cats.append(GridCategory(
             code=group.code, label=group.name, total_display=_thousands(group.subtotal_keur),
             rows=(row,), editable_count=int(row.editable), modified_count=int(row.modified_since_run)))
@@ -222,6 +233,8 @@ def build_input_grid_projection(
                                   category_total=total)
         else:
             row = _readonly(sg.code, name, total, "Calculated")
+        if row.reason.startswith("Sum of line items") or row.category_value:
+            row = _with_nav(row, "tab-opex", sg.code)
         ox_cats.append(GridCategory(
             code=sg.code, label=name, total_display=_thousands(total) if total is not None else "—",
             rows=(row,), editable_count=int(row.editable), modified_count=int(row.modified_since_run)))
@@ -247,11 +260,13 @@ def build_input_grid_projection(
                 elif fid in _CASCADE_BLOCKED or fid in _COLLECTION_FIELDS:
                     row = GridRow(code="", label=f["label"], unit=f.get("unit") or "",
                                   value=_readonly_text(fid, f.get("value")),
-                                  reason=f"Edit on the {sheet_title} sheet (dependent values update together)")
+                                  reason=f"Edit on the {sheet_title} sheet (dependent values update together)",
+                                  nav_tab=tab_id)
                 elif not numeric:
                     row = GridRow(code="", label=f["label"], unit=f.get("unit") or "",
                                   value=_readonly_text(fid, f.get("value")),
-                                  reason=f"Choice / text field — edit on the {sheet_title} sheet")
+                                  reason=f"Choice / text field — edit on the {sheet_title} sheet",
+                                  nav_tab=tab_id)
                 else:
                     row = _row_from_field("", f["label"], f, pis, base_pis,
                                           editable=project_editable, reason="Reference project is read-only")
