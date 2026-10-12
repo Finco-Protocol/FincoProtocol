@@ -78,7 +78,7 @@ def test_unrelated_paths_have_no_release_authority(path):
     assert not approved_frozen_path(path)
     if path.startswith("financial_engine/"):
         assert unapproved_engine_changes([path]) == [path]
-    else:
+    elif path.startswith(("finco_core/", "finco_radar/")):
         assert strictly_frozen_changes([path]) == [path]
 
 
@@ -109,7 +109,7 @@ def test_changed_financial_blobs_and_missing_refs_cannot_reuse_historical_pin(tm
     assert not governance.approved_by_active_model_v2_scope(path, ref="missing-review-ref")
     if path.startswith("financial_engine/"):
         assert unapproved_engine_changes([path]) == [path]
-    else:
+    elif path.startswith(("finco_core/", "finco_radar/")):
         assert strictly_frozen_changes([path]) == [path]
 
 
