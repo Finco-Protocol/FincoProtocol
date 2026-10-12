@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 import sys
 
-from .reconcile import ReconciliationInputError, compare, reports
+from .reconcile import ReconciliationInputError, _unique_json_object, compare, reports
 
 
 def _private_output(path: Path) -> Path:
@@ -46,7 +46,9 @@ def run_cli(argv=None) -> int:
         return 3
     try:
         output = _private_output(args.output)
-        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        # Same recursive duplicate-key rejection as the output evidence parser.
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"),
+                              object_pairs_hook=_unique_json_object)
         result = compare(manifest, args.reference.read_bytes(), args.finco.read_bytes())
         generated = reports(result)
         output.mkdir(parents=True, exist_ok=True)
