@@ -6,11 +6,13 @@ canonical WorkbookUpdateService C0 path by the authenticated Apply route.
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime, timezone
 from typing import Any, Mapping
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from app.auth import SECRET_KEY
 from app.model_import.intake import IntakeError, normalize_value
+from app.model_import.mapping import STRUCTURED_FIELD_OWNERS, UNSUPPORTED_FOR_APPLY, validate_candidate
 from app.workbook.registry import WORKBOOK
 from app.workbook.update_service import (
     BatchApplyError, FieldValidationError, WorkbookUpdateService,
@@ -48,6 +50,10 @@ def seal_preview(
         "label": p["label"], "source_unit": p["source_unit"],
         "field_id": p["field_id"], "status": p["status"],
         "reason": p["reason"], "method": p["mapping_method"],
+        # Audit-only provenance; the server re-derives every authoritative value at confirmation.
+        "category": p.get("category"), "confidence_class": p.get("confidence_class"),
+        "explanation": list(p.get("explanation") or ())[:4], "unit_origin": p.get("unit_origin"),
+        "section": p.get("section", ""),
     } for p in proposals]
     body = {
         "kind": "preview", "owner": owner, "project_id": project_id,
@@ -104,6 +110,10 @@ def resolve_review(
         if field_id in seen_fields:
             raise ImportReviewError("IMPORT_DUPLICATE_TARGET", field_id)
         seen_fields.add(field_id)
+        allowed, why = validate_candidate(field_id=field_id, project_type=project_type, template_source=template_source)
+        if not allowed:
+            # Forged, structured (own writer) or inapplicable targets never reach the canonical batch writer.
+            raise ImportReviewError(why if why != "OK" else "IMPORT_FIELD_INVALID", field_id)
         try:
             spec = WORKBOOK.field(field_id)
             _assert_batch_field_applicable(
@@ -129,6 +139,12 @@ def resolve_review(
             "label": row["label"], "field_id": field_id,
             "value": normalized, "unit": spec.unit or "",
             "original_value": row["original_value"],
+            "source_unit": str(selections.get(f"unit_{idx}", "") or row.get("source_unit") or ""),
+            "normalization": ("manual FINCO value entered by the user" if str(selections.get(f"manual_{idx}", "")).strip()
+                              else f'{row["original_value"]} {str(selections.get(f"unit_{idx}", "") or row.get("source_unit") or "").strip() or "(no unit)"}'
+                                   f' -> {normalized} {spec.unit or ""}'.strip()),
+            "category": row.get("category"), "confidence_class": row.get("confidence_class"),
+            "explanation": list(row.get("explanation") or ())[:4],
             "method": "manual_reviewed" if (
                 field_id != row.get("field_id") or str(selections.get(f"manual_{idx}", "")).strip()
             ) else row.get("method"),
@@ -148,6 +164,8 @@ def seal_approved(preview: dict, approved: list[dict]) -> str:
         "content_hash": preview["content_hash"],
         "workbook_version": preview["workbook_version"],
         "digest": preview["digest"], "source_count": len(preview["rows"]), "approved": approved,
+        "approval_event": "USER_CONFIRMED_REVIEW",
+        "approved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     token = _serializer("approved").dumps(body)
     if len(token) > _MAX_TICKET_CHARS:

@@ -25,6 +25,13 @@
   .pill.needs_review{background:#fff1c5;color:#7e610f}
   .filters{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}.filters button{background:white;color:#1f4c6c;border:1px solid #b4c6d6;font-weight:500;padding:7px 13px}.filters button[aria-pressed=true]{background:#234a6b;color:white}
   .summary{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .pill.unsupported_for_apply{background:#e7e3f7;color:#43307a}.pill.unsupported{background:#eceff3;color:#4b5663}
+  .pill.cat{background:#e3eef8;color:#1d4a70}.pill.conf-exact,.pill.conf-exact_label,.pill.conf-high{background:#d9efdf;color:#275a37}
+  .pill.conf-medium{background:#fff1c5;color:#7e610f}.pill.conf-low,.pill.conf-none{background:#eceff3;color:#4b5663}
+  .why{margin:5px 0 0;padding-left:16px;font-size:.8rem;color:#52667a}.why li{margin:1px 0}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0}.toolbar .secondary{background:white;color:#1f4c6c;border:1px solid #b4c6d6;font-weight:500;padding:7px 13px}
+  .toolbar label{font-size:.85rem;color:#354e62}.dup{color:#8b2f28;font-weight:650}
+  .owner{font-size:.8rem;color:#43307a}.prov td{font-size:.84rem}
   @media(max-width:640px){main{padding:12px}header{padding:13px}h1{font-size:1.32rem}.panel{padding:12px}.box>.field{min-width:0;width:100%;max-width:100%}input[type=file]{display:block;width:100%;min-width:0;box-sizing:border-box}}
   </style>
 </head>
@@ -73,10 +80,21 @@
       <span>Unchanged: <strong>{{ totals.get('unchanged',0) }}</strong></span>
       <span>Approved: <strong id="approved-count">0</strong></span>
     </div>
-    <div class="filters" aria-label="Filter extracted fields" role="group">
-      {% for key,label in [('all','All'),('ready','Ready'),('needs_review','Needs review'),('invalid','Invalid'),('unsupported','Unsupported'),('unchanged','Unchanged')] %}
-      <button type="button" class="filter" data-filter="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ label }}</button>
+    <div class="filters" aria-label="Filter extracted fields by status" role="group">
+      {% for key,label in [('all','All'),('ready','Ready'),('needs_review','Needs review'),('invalid','Invalid'),('unsupported','Unsupported'),('unsupported_for_apply','Read-only (own editor)'),('unchanged','Unchanged'),('attention','Unmapped / ambiguous queue')] %}
+      <button type="button" class="filter" data-filter="{{ key }}" aria-pressed="{{ 'true' if key == 'all' else 'false' }}">{{ label }}{% if key == 'attention' %} ({{ attention_count }}){% endif %}</button>
       {% endfor %}
+    </div>
+    <div class="filters" aria-label="Filter extracted fields by financial category" role="group" data-testid="category-filters">
+      <button type="button" class="cat-filter" data-category="all" aria-pressed="true">All categories</button>
+      {% for c in categories %}<button type="button" class="cat-filter" data-category="{{ c }}" aria-pressed="false">{{ c|title }} ({{ category_counts.get(c, 0) }})</button>{% endfor %}
+    </div>
+    <div class="toolbar">
+      <label for="sort-rows">Sort</label>
+      <select id="sort-rows" aria-label="Sort proposals"><option value="source">Source order</option><option value="confidence">Confidence</option><option value="status">Status</option><option value="category">Category</option></select>
+      <button type="button" class="secondary" id="select-validated" data-testid="select-validated">Select validated ({{ bulk_selectable_count }})</button>
+      <button type="button" class="secondary" id="clear-selection">Clear selection</button>
+      <span class="muted">Bulk selection only includes independently validated, non-duplicate, non-ambiguous proposals. Nothing is saved until you confirm and Apply.</span>
     </div>
     <form action="/v2/workbook/import/confirm" method="post">
       <input type="hidden" name="project" value="{{ project_code }}">
@@ -84,19 +102,23 @@
       <input type="hidden" name="preview_ticket" value="{{ preview_ticket }}">
     <div class="table-wrap" role="region" aria-label="Import proposals" tabindex="0">
       <table>
-        <thead><tr><th>Approve</th><th>Source cell / label</th><th>Original value</th><th>Proposed FINCO field</th><th>Working Copy</th><th>New value / units</th><th>State &amp; provenance</th></tr></thead>
+        <thead><tr><th>Approve</th><th>Source cell / label</th><th>Original value</th><th>Suggested FINCO field</th><th>Working Copy</th><th>Proposed value / units</th><th>Confidence, validation &amp; explanation</th></tr></thead>
         <tbody>
         {% for p in proposals %}
-        <tr class="review-row" data-status="{{ p.status }}">
+        <tr class="review-row" data-status="{{ p.status }}" data-category="{{ p.category }}" data-confidence="{{ p.confidence_class }}" data-bulk="{{ 'true' if p.bulk_selectable else 'false' }}" data-index="{{ p.id }}"
+            data-attention="{{ 'true' if (p.status in ['unsupported','unsupported_for_apply','invalid'] or p.duplicate_target or 'ambiguous' in p.mapping_method) else 'false' }}">
           <td><input type="checkbox" class="approve-box" name="keep_{{ p.id }}" value="on"
             aria-label="Approve proposal {{ p.id + 1 }}"
-            {% if p.reason == 'IMPORT_FORMULA_NOT_AUTHORITATIVE' %}disabled{% endif %}></td>
-          <td><strong>{{ p.sheet }}!{{ p.source_cell }}</strong><div>{{ p.label }}</div><small class="muted">Label at {{ p.label_cell }}</small></td>
+            {% if p.reason == 'IMPORT_FORMULA_NOT_AUTHORITATIVE' or p.status == 'unsupported_for_apply' and not p.field_id %}disabled{% endif %}></td>
+          <td><strong>{{ p.sheet }}!{{ p.source_cell }}</strong><div>{{ p.label }}</div><small class="muted">Label at {{ p.label_cell }}{% if p.section %} · block “{{ p.section }}”{% endif %}</small></td>
           <td><code>{{ p.original_value }}</code><div class="muted">{{ p.source_unit or 'Unit unspecified' }}</div></td>
           <td><select name="field_{{ p.id }}" aria-label="Map proposal {{ p.id + 1 }} to FINCO field">
             <option value="">Unmapped — skip</option>
+            {% if p.alternatives %}<optgroup label="Suggested alternatives">{% for a in p.alternatives if a.field_id %}<option value="{{ a.field_id }}">{{ a.label }} ({{ a.field_id }}) · {{ a.confidence }}</option>{% endfor %}</optgroup>{% endif %}
             {% for f in fields %}<option value="{{ f.id }}" {% if p.field_id == f.id %}selected{% endif %}>{{ f.label }} ({{ f.id }})</option>{% endfor %}
-          </select><div class="muted"><code>{{ p.register_path or 'No exact register path' }}</code></div></td>
+          </select><div class="muted"><code>{{ p.register_path or 'No exact register path' }}</code></div>
+            {% if p.recognized_target %}<div class="owner">Recognised: {{ p.recognized_target.label }} — not applyable by the batch writer</div>{% endif %}
+            {% if p.apply_support == 'UNSUPPORTED_FOR_APPLY' and p.owner_editor %}<div class="owner" data-testid="owner-editor">UNSUPPORTED_FOR_APPLY · edit in: {{ p.owner_editor }}</div>{% endif %}</td>
           <td><code>{{ p.current_value if p.current_value is not none else 'Not set' }}</code></td>
           <td><label class="muted" for="unit-{{ p.id }}">Source unit</label>
             <select id="unit-{{ p.id }}" name="unit_{{ p.id }}" aria-label="Original source unit for {{ p.label }}">
@@ -110,7 +132,11 @@
               aria-label="Optional corrected FINCO value for proposal {{ p.id + 1 }}"
               placeholder="Optional override (FINCO units)">
           </td>
-          <td><span class="pill {{ p.status }}">{{ p.status|replace('_',' ') }}</span><div>{{ p.mapping_method }}</div><small class="muted">{{ p.reason or p.confidence }}</small></td>
+          <td><span class="pill {{ p.status }}">{{ p.status|replace('_',' ') }}</span>
+            <span class="pill cat">{{ p.category|title }}</span><span class="pill conf-{{ p.confidence_class }}" data-testid="confidence">{{ p.confidence_class|replace('_',' ') }}</span>
+            <div>{{ p.mapping_method }}</div><small class="muted">{{ p.reason or p.confidence }}</small>
+            {% if p.duplicate_target %}<div class="dup">Duplicate target — only one source may be applied</div>{% endif %}
+            {% if p.explanation %}<ul class="why">{% for e in p.explanation %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}</td>
         </tr>
         {% else %}
         <tr><td colspan="7">No assumption rows detected. Review the source layout or upload a different file.</td></tr>
@@ -129,12 +155,12 @@
   {% if stage == "confirm" %}
   <section class="panel">
     <h2>Final confirmation · {{ approved_count }} approved fields</h2>
-    <p class="notice">Exactly {{ changed_count }} candidate changes are shown below. Submitting Apply performs one canonical CAS transaction; any conflict or validation error rejects the entire set. The model is never run automatically.</p>
+    <p class="notice">Exactly {{ changed_count }} candidate changes are shown below ({{ unchecked_count }} source rows are not approved and will not be saved). Submitting Apply performs one canonical CAS transaction; any conflict or validation error rejects the entire set. The model is never run automatically.</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Source</th><th>Approved FINCO field</th><th>Existing</th><th>Approved value</th><th>FINCO unit</th><th>Mapping method</th></tr></thead>
+      <thead><tr><th>Source</th><th>Approved FINCO field</th><th>Previous Working Copy</th><th>Approved value</th><th>FINCO unit</th><th>Normalisation</th><th>Mapping method &amp; confidence</th></tr></thead>
       <tbody>{% for row in approved %}<tr><td>{{ row.sheet }}!{{ row.cell }}<div class="muted">{{ row.label }}</div></td>
         <td><code>{{ row.field_id }}</code></td><td>{{ row.current_value if row.current_value is not none else 'Not set' }}</td>
-        <td><strong>{{ row.value }}</strong></td><td>{{ row.unit }}</td><td>{{ row.method }}</td>
+        <td><strong>{{ row.value }}</strong></td><td>{{ row.unit }}</td><td><small>{{ row.normalization }}</small></td><td>{{ row.method }}{% if row.confidence_class %} · {{ row.confidence_class|replace('_',' ') }}{% endif %}{% if row.explanation %}<ul class="why">{% for e in row.explanation %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
     <form action="/v2/workbook/import/apply" method="post">
@@ -152,11 +178,13 @@
     <p>Canonical batch committed. {{ applied_count }} field{{ 's' if applied_count != 1 else '' }} changed; {{ skipped_count }} source rows were not applied.
        Model runtime state: <strong>{{ freshness_state }}</strong>.
        This is not a successful financial model run.</p>
+    <p class="muted" data-testid="provenance">Approval: {{ approval_event }} at {{ approved_at }} · Transaction identity (new composite hash): <code>{{ transaction_identity }}</code>. Nothing from the uploaded workbook is stored by this step.</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Source cell</th><th>Canonical field</th><th>Approved value</th><th>Actually saved value</th></tr></thead>
+      <thead><tr><th>Source cell &amp; label</th><th>Canonical field</th><th>Original → normalisation</th><th>Previous</th><th>Approved value</th><th>Actually saved value</th><th>Method</th></tr></thead>
       <tbody>{% for row in saved %}<tr>
-       <td>{{ row.source }}</td><td><code>{{ row.field_id }}</code></td>
-       <td>{{ row.approved_value }}</td><td><strong>{{ row.actual_value }}</strong></td>
+       <td>{{ row.source }}<div class="muted">{{ row.label }}</div></td><td><code>{{ row.field_id }}</code></td>
+       <td><small>{{ row.normalization }}</small></td><td>{{ row.previous_value if row.previous_value is not none else 'Not set' }}</td>
+       <td>{{ row.approved_value }}</td><td><strong>{{ row.actual_value }}</strong></td><td>{{ row.method }}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
     <div class="summary panel">
@@ -169,21 +197,49 @@
 <script>
 (function(){
  "use strict";
- const buttons = document.querySelectorAll(".filter");
+ const statusBtns = document.querySelectorAll(".filter");
+ const catBtns = document.querySelectorAll(".cat-filter");
+ const tbody = document.querySelector(".review-row")?.parentElement;
  const rows = Array.from(document.querySelectorAll(".review-row"));
+ const order = {exact:0, exact_label:1, high:2, medium:3, low:4, none:5};
+ const statusOrder = {ready:0, needs_review:1, unchanged:2, invalid:3, unsupported_for_apply:4, unsupported:5};
+ let status = "all", category = "all";
  function refreshCount(){
    document.getElementById("approved-count")?.replaceChildren(document.createTextNode(String(
-     document.querySelectorAll(".approve-box:checked").length
-   )));
+     document.querySelectorAll(".approve-box:checked").length)));
  }
- for(const el of document.querySelectorAll(".approve-box")) el.addEventListener("change",refreshCount);
- for(const b of buttons){
-   b.addEventListener("click",function(){
-     buttons.forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
-     const val=b.dataset.filter;
-     rows.forEach(x=>x.hidden=(val!=="all" && x.dataset.status!==val));
+ function applyFilters(){
+   rows.forEach(r => {
+     const okStatus = status === "all" || (status === "attention" ? r.dataset.attention === "true" : r.dataset.status === status);
+     const okCat = category === "all" || r.dataset.category === category;
+     r.hidden = !(okStatus && okCat);
    });
  }
+ for(const el of document.querySelectorAll(".approve-box")) el.addEventListener("change",refreshCount);
+ statusBtns.forEach(b => b.addEventListener("click", () => {
+   statusBtns.forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+   status = b.dataset.filter; applyFilters();
+ }));
+ catBtns.forEach(b => b.addEventListener("click", () => {
+   catBtns.forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+   category = b.dataset.category; applyFilters();
+ }));
+ document.getElementById("sort-rows")?.addEventListener("change", e => {
+   const key = e.target.value;
+   const rank = r => key === "confidence" ? (order[r.dataset.confidence] ?? 9)
+     : key === "status" ? (statusOrder[r.dataset.status] ?? 9)
+     : key === "category" ? r.dataset.category : Number(r.dataset.index);
+   rows.slice().sort((a, b) => (rank(a) > rank(b)) - (rank(a) < rank(b)) || Number(a.dataset.index) - Number(b.dataset.index))
+       .forEach(r => tbody.appendChild(r));
+ });
+ document.getElementById("select-validated")?.addEventListener("click", () => {
+   rows.forEach(r => { const box = r.querySelector(".approve-box");
+     if (!r.hidden && r.dataset.bulk === "true" && box && !box.disabled) box.checked = true; });
+   refreshCount();
+ });
+ document.getElementById("clear-selection")?.addEventListener("click", () => {
+   document.querySelectorAll(".approve-box").forEach(b => { b.checked = false; }); refreshCount();
+ });
 })();
 </script>
 </body>
