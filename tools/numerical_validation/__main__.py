@@ -42,7 +42,8 @@ def run_cli(argv=None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     if not args.authorized_source:
-        parser.error("--authorized-source is required before reading private reference evidence")
+        print("RECONCILIATION_BLOCKED: --authorized-source acknowledgement required", file=sys.stderr)
+        return 3
     try:
         output = _private_output(args.output)
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
