@@ -59,7 +59,7 @@ def test_five_editor_variants_and_disabled_unsupported_features():
     assert variants == ["fixed_ppa", "indexed_ppa", "merchant", "residual_merchant", "cfd"]
     assert not any(x in variants for x in ("capacity_market", "ancillary", "rec"))
     text = SCRIPT.read_text(encoding="utf-8")
-    assert "FINCO" not in text.upper() or "financial" not in text.lower()  # no economics owned here
+    assert "financial_engine" not in text and "run_clean_production" not in text
     for essential in ("JSON.stringify(book)", "htmx:configRequest",
                       "fromPct", "kindOverrides", "data-revenue-row", "data-revenue-source"):
         assert essential in text
