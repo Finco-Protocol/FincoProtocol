@@ -335,6 +335,10 @@ def build_sources_uses_projection(
             "sources": amount("FC/COD Sources", nc["total_sources_keur"], prefix+"construction_funding.non_construction_fc_use.total_sources_keur"),
             "residual": amount("FC/COD Residual", nc["residual_keur"], prefix+"construction_funding.non_construction_fc_use.residual_keur"),
         } if nc is not None else None)
+        from app.v2.financing_instrument_reconciliation import build_instrument_reconciliation
+        instrument_view = build_instrument_reconciliation(
+            _mapping(rs["financing_evidence"], "runtime_summary.financing_evidence", optional=False),
+            su, list(construction["periods"]))
         waterfall_note = (
             "Canonical construction allocations from the exact Run. SHL allocated to "
             "project Uses and sponsor SHL cash contribution are distinct timing concepts."
@@ -379,6 +383,7 @@ def build_sources_uses_projection(
         )
         construction_rows, non_construction = (), None
         construction_fields = ()
+        instrument_view = None
         waterfall_note = "LEGACY RUN — FINANCING EVIDENCE UNAVAILABLE. No historical backfill."
 
     bankability = (
@@ -427,6 +432,7 @@ def build_sources_uses_projection(
         "sources": sources, "uses": uses, "working": working, "bankability": bankability,
         "total_sources": total_sources, "total_uses": total_uses, "residual": residual,
         "balance_status": balance_status,
+        "instrument_view": instrument_view,
         "construction_rows": construction_rows,
         "construction_fields": tuple(label for label, key in construction_fields),
         "non_construction": non_construction,
