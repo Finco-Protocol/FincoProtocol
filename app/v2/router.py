@@ -1150,7 +1150,10 @@ def _build_revenue_contract_editor(pis, ws):
         overridden = SNAPSHOT_KEY in scenario.overrides
         raw = scenario.overrides.get(SNAPSHOT_KEY, raw)
     config = parse_config(raw)
-    return {"active": config is not None, "raw": raw, "scope": scope,
+    # htmx re-renders (Save, scenario switch) do not carry the page-level ``project_type``; the editor needs the
+    # technology to accept the canonical payload, so it travels with the contracts it validates.
+    technology = str(pis.get("project_setup.identity.project_type") or "").strip().lower()
+    return {"active": config is not None, "raw": raw, "scope": scope, "technology": technology,
             "overridden": overridden, "rows": json.loads(config.canonical_json)["streams"] if config else []}
 
 
