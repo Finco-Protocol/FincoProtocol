@@ -1190,6 +1190,68 @@ async def v2_revenue_contracts(request: Request, _: None = Depends(require_v2_ac
     return RedirectResponse(f"/v2/workbook?project={project}", status_code=303)
 
 
+
+@router.post("/workbook/revenue/stress")
+async def v2_revenue_commercial_stress(request: Request, _: None = Depends(require_v2_active)):
+    """Read-only commercial scenario comparison, never a Save/Run/Last Run writer."""
+    from app.auth import validate_csrf_token
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.revenue_commercial_stress import (
+        CommercialStressUnavailable, compare_commercial_cases,
+    )
+    from starlette.concurrency import run_in_threadpool
+
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+    form = await request.form()
+    if not validate_csrf_token(form.get("csrf_token")):
+        return JSONResponse({"error": "REVENUE_STRESS_CSRF_INVALID"}, status_code=403)
+    project = str(form.get("project") or "").strip()
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return JSONResponse({"error": "Project not found"}, status_code=404)
+    if is_protected_reference(record):
+        return JSONResponse({"error": "Protected Reference; use a Working Copy"}, status_code=409)
+    if str(record.project_type).strip().lower() not in ("solar", "wind"):
+        return JSONResponse({"error": "REVENUE_STRESS_UNSUPPORTED_VERTICAL"}, status_code=422)
+    ws = get_workspace_state(owner, record.project_id)
+    if ws is None:
+        return JSONResponse({"error": "Workspace not found"}, status_code=404)
+    pis = _build_pis_with_composite_identity(ws, record, owner)
+    expected = str(form.get("content_hash") or "")
+    if not expected or expected != pis.content_hash:
+        return JSONResponse({"error": "REVENUE_STRESS_STALE_CAS: reload"}, status_code=409)
+    try:
+        amount_pct = float(form.get("amount_pct") or 0)
+        # This call uses the existing clean sensitivity/financial execution seam.
+        # Run in an executor to avoid blocking the FastAPI event loop.
+        from functools import partial
+        result = await run_in_threadpool(partial(
+            compare_commercial_cases, pis.to_projectinputs(),
+            shock=str(form.get("shock") or ""), amount_pct=amount_pct,
+            expiry_date=str(form.get("expiry_date") or ""),
+        ))
+        # Reject a result calculated against a workbook/scenario changed mid-flight.
+        ws_latest = get_workspace_state(owner, record.project_id)
+        latest = _build_pis_with_composite_identity(ws_latest, record, owner)
+        if latest.content_hash != expected:
+            return JSONResponse({"error": "REVENUE_STRESS_STALE_CAS: inputs changed during comparison"}, status_code=409)
+        return HTMLResponse(_templates.get_template("partials/revenue_stress_results.html").render(
+            {"stress": result, "error": ""}))
+    except (CommercialStressUnavailable, ValueError, TypeError) as exc:
+        # No financial engine fallback, no invented result or implicit Last Run.
+        return HTMLResponse(_templates.get_template("partials/revenue_stress_results.html").render(
+            {"stress": None, "error": str(exc)}), status_code=422)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Read-only contract stress unavailable")
+        return HTMLResponse(_templates.get_template("partials/revenue_stress_results.html").render(
+            {"stress": None, "error": "UNAVAILABLE: canonical financial comparison failed; no saved state changed."}),
+            status_code=422)
+
+
 def _render_revenue_htmx_sheet(
     request: Request,
     pis,
