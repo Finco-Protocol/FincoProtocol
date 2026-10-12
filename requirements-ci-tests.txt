@@ -1,0 +1,3 @@
+# CI-only test-helper dependencies (NOT production requirements; never installed by deploy scripts).
+# Used by the structured workflow-contract tests (tests/test_ci_acceptance.py) that parse .github/workflows/*.yml.
+PyYAML==6.0.2

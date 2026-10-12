@@ -226,13 +226,51 @@ def test_required_gate_triggers_do_not_depend_on_changed_paths():
         assert "head.sha" in text
 
 
+def _workflow(name):
+    import yaml
+    path = Path(__file__).resolve().parents[1] / ".github/workflows" / name
+    return yaml.safe_load(path.read_text(encoding="utf-8")), path.read_text(encoding="utf-8")
+
+
 def test_shadow_does_not_replace_unsharded_gate_or_merge_coverage():
-    root = Path(__file__).resolve().parents[1]
-    text = (root / ".github/workflows/public_safety_and_smoke.yml").read_text(encoding="utf-8")
-    assert "mode: control" in text and "mode: integration" in text
-    assert "max-parallel: 2" in text and "fail-fast: false" in text
-    assert "if: always()" in text
-    assert "continue-on-error" not in text
+    """CI V2 contract (supersedes the #247 shard/duplicate-merge-run structure).
+
+    The behavioural requirements are unchanged and are asserted directly: the Public Safety suite is ONE
+    complete, unsharded, undeselected pytest on the exact HEAD; the synthetic merge is proven to have an
+    identical Git tree BEFORE any dependency installation (a mismatch fails closed instead of silently
+    testing different code); the mandatory aggregate verifies the artifacts independently of job badges.
+    """
+    public, public_text = _workflow("public_safety_and_smoke.yml")
+    reusable, reusable_text = _workflow("ci_public_job.yml")
+    jobs = public["jobs"]
+    assert set(jobs) == {"source-safety", "safety-and-smoke", "mandatory-evidence"}      # seven-job budget, no shards
+    control = jobs["safety-and-smoke"]
+    assert control["uses"].endswith("ci_public_job.yml") and control["with"]["mode"] == "control"
+    assert {"merge-sha", "pr-number", "tested-sha"} <= set(control["with"])
+    gate = jobs["mandatory-evidence"]
+    assert gate["if"] == "always()" and set(gate["needs"]) == {"source-safety", "safety-and-smoke"}
+    gate_runs = "\n".join(step.get("run", "") for step in gate["steps"])
+    assert "tools.ci_single_gate" in gate_runs and "--source-result" in gate_runs and "--control-result" in gate_runs
+    assert "continue-on-error" not in public_text and "continue-on-error" not in reusable_text
+
+    steps = reusable["jobs"]["tests"]["steps"]
+    runs = [step.get("run", "") for step in steps]
+    index = lambda needle: next(i for i, r in enumerate(runs) if needle in r)   # noqa: E731
+    guard, install, pytest_step = index("ci_merge_tree_guard"), index("pip install"), index("ci_pytest_runner.py")
+    assert guard < install < pytest_step, "tree equality must be proven before dependencies and before pytest"
+    invocation = runs[pytest_step].split("ci_pytest_runner.py", 1)[1]      # pytest's own arguments only
+    import re
+    assert not re.search(r"(?<!\S)(-k|-m|-x|--lf|--deselect|--ignore|--maxfail|--ci-shard)\b", invocation), invocation
+    assert "--ci-inventory=artifacts/inventory.json" in invocation and "--junitxml=artifacts/results.xml" in invocation
+    assert "$MODE" not in runs[pytest_step] and "shard" not in invocation, "no per-mode selection branches"
+    assert "ci_pytest_runner.py" in runs[pytest_step]                           # the supervisor stays authoritative
+
+
+def test_ci_workflows_do_not_reintroduce_shadow_or_duplicate_execution_paths():
+    public, _ = _workflow("public_safety_and_smoke.yml")
+    reusable, reusable_text = _workflow("ci_public_job.yml")
+    assert "--ci-shard" not in reusable_text and "shadow" not in "".join(public["jobs"])
+    assert not any(name in public["jobs"] for name in ("merge-result-integration", "shadow-shards"))
 
 
 @pytest.mark.parametrize("markers,expected", [(True, 0), (False, 1)])
@@ -257,9 +295,31 @@ def test_measurement_nearest_rank_p90_does_not_invent_samples():
 
 
 def test_accepted_consolidation_gates_both_browser_matrices():
-    text = (Path(__file__).resolve().parents[1] / ".github/workflows/protocol_ui_browser.yml").read_text()
-    assert text.count("role: [protocol, import, grid, q4, outputs, consolidation]") == 2
-    assert "merge-result-browser:" in text and "mandatory-browser-evidence:" in text
+    """CI V2 contract: ONE runner, SIX isolated supervised role processes, tree-equality instead of a second matrix.
+
+    The #247 structure (two six-role matrices) is replaced; what it protected is asserted directly: every
+    mandatory role (including the 17-node consolidation module) runs in its own fresh Python/pytest process
+    with its own temp dir, a role failure fails the job, and the fail-closed aggregate runs after all roles.
+    """
+    browser, text = _workflow("protocol_ui_browser.yml")
+    assert list(browser["jobs"]) == ["mandatory-browser-evidence"]                      # stable required context
+    steps = {step.get("name", ""): step for step in browser["jobs"]["mandatory-browser-evidence"]["steps"]}
+    roles = next(step for name, step in steps.items() if name.startswith("All SIX mandatory browser roles"))
+    script = roles["run"]
+    assert "for role in protocol import grid q4 outputs consolidation; do" in script
+    assert set("protocol import grid q4 outputs consolidation".split()) == set(REQUIRED) == {
+        *REQUIRED} and "consolidation" in SELECTIONS
+    assert 'python -m tools.ci_browser_job "$role" --expected "$HEAD_SHA"' in script      # fresh process per role
+    assert 'TMPDIR="$RUNNER_TEMP/finco-browser-$role"' in script                          # isolated temp per role
+    assert 'mv artifacts "evidence/browser-$role"' in script                              # per-role evidence bundle
+    assert script.index("done") < script.index("ci_browser_job aggregate")                 # aggregate after every role
+    assert "set -euo pipefail" in script and "--job-result success" in script
+    assert "continue-on-error" not in text and "merge-result-browser" not in browser["jobs"]
+    names = list(steps)
+    guard, install = (next(i for i, n in enumerate(names) if k in n) for k in ("synthetic merge tree", "Install and attest"))
+    assert guard < install, "tree equality is proven before any dependency or Chromium installation"
+    assert any(step.get("with", {}).get("name") == "model-workspace-consolidation-browser" for step in steps.values())
+    assert any(step.get("with", {}).get("if-no-files-found") == "error" for step in steps.values())
 
 
 def test_consolidation_missing_collection_rejected(tmp_path):

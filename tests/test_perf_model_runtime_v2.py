@@ -513,6 +513,18 @@ def _probe_add(a: int, b: int) -> int:
     return a + b
 
 
+def _exploding_probe() -> dict:
+    """A prewarm probe that FAILS INSIDE the worker.
+
+    It must be a module-level (picklable) function.  A local closure cannot be pickled for a spawned
+    worker: the submit then fails in the pool's queue-feeder thread BEFORE any worker runs it, and the
+    executor's discarded pool intermittently keeps its two spawned workers and its non-daemon manager
+    thread alive until interpreter exit (reproduced: ~25% of isolated runs under CPU load), which
+    trips the suite lifecycle guard (pytest rc=1) and then blocks interpreter shutdown.
+    """
+    raise RuntimeError("prewarm probe exploded")
+
+
 class TestExecutorPrewarm:
     @pytest.fixture
     def executor(self):
@@ -571,10 +583,7 @@ class TestExecutorPrewarm:
         lazy first-Run path fully available."""
         import app.runtime.model_execution as me
 
-        def broken_probe():
-            raise RuntimeError("prewarm probe exploded")
-
-        monkeypatch.setattr(me, "_worker_warmup_probe", broken_probe)
+        monkeypatch.setattr(me, "_worker_warmup_probe", _exploding_probe)
         state = executor.warm_up()
         assert state["warm"] is False
         # lazy fallback: the calculation still executes after failed prewarm
