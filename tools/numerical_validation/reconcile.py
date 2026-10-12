@@ -322,6 +322,8 @@ def compare(manifest_data: dict, reference_bytes: bytes, finco_bytes: bytes) -> 
                 "reference_metric": metric.reference_metric, "finco_metric": metric.finco_metric,
                 "reference_period": period.reference.key, "finco_period": period.finco.key,
                 "unit": metric.unit, "status": status, "reason": reason,
+                "absolute_tolerance": _str(metric.abs_tolerance),
+                "relative_tolerance": _str(metric.rel_tolerance),
                 "reference_value": _str(a.value) if a else None,
                 "finco_value": _str(b.value) if b else None,
                 "delta_finco_minus_reference": _str(delta),
@@ -329,6 +331,10 @@ def compare(manifest_data: dict, reference_bytes: bytes, finco_bytes: bytes) -> 
                 "tolerance_allowance": _str(allowance),
             })
     results.sort(key=lambda x: (CATEGORIES.index(x["stage"]), x["key"], x["reference_period"], x["finco_period"]))
+    mapped_ref = {(m.reference_metric, p.reference.key) for m in manifest.metrics for p in manifest.periods}
+    mapped_finco = {(m.finco_metric, p.finco.key) for m in manifest.metrics for p in manifest.periods}
+    unmapped_ref = [{"metric": m, "period": p} for m, p in sorted(set(left) - mapped_ref)]
+    unmapped_finco = [{"metric": m, "period": p} for m, p in sorted(set(right) - mapped_finco)]
     first = next((r for r in results if r["status"] == "FAIL"), None)
     counts = {state: sum(r["status"] == state for r in results) for state in STATES}
     return {
@@ -346,6 +352,8 @@ def compare(manifest_data: dict, reference_bytes: bytes, finco_bytes: bytes) -> 
             "finco_sha256": manifest.finco.output_sha256,
         },
         "provenance_blockers": blockers,
+        "unmapped_reference_outputs": unmapped_ref,
+        "unmapped_finco_outputs": unmapped_finco,
         "counts": counts,
         "first_material_divergence": None if first is None else {
             "stage": first["stage"], "metric": first["key"], "period": first["reference_period"],
@@ -360,7 +368,8 @@ def reports(result: dict) -> dict[str, bytes]:
     encoded = canonical_bytes(result)
     output = io.StringIO(newline="")
     fields = ["key", "stage", "reference_metric", "finco_metric", "reference_period",
-              "finco_period", "unit", "status", "reason", "reference_value", "finco_value",
+              "finco_period", "unit", "status", "reason", "absolute_tolerance",
+              "relative_tolerance", "reference_value", "finco_value",
               "delta_finco_minus_reference", "absolute_difference", "relative_difference",
               "tolerance_allowance"]
     csv_writer = csv.DictWriter(output, fieldnames=fields, lineterminator="\n")
@@ -379,7 +388,10 @@ def reports(result: dict) -> dict[str, bytes]:
     markdown.extend("- " + item for item in result["provenance_blockers"])
     if not result["provenance_blockers"]:
         markdown.append("- None detected by the typed manifest; independent authority still required.")
-    markdown += ["", "## Metric-level reconciliation", "",
+    markdown += ["", "## Unmapped evidence identities", "",
+                 f"- Reference identities without explicit metric mapping: {len(result['unmapped_reference_outputs'])}",
+                 f"- FINCO identities without explicit metric mapping: {len(result['unmapped_finco_outputs'])}",
+                 "", "## Metric-level reconciliation", "",
                  "| Stage | Metric | Period | Status | FINCO - reference | Reason |",
                  "| --- | --- | --- | --- | ---: | --- |"]
     for row in result["results"]:
