@@ -47,6 +47,7 @@
     <a href="#out-pnl">P&amp;L</a><a href="#out-balance_sheet">Balance Sheet</a><a href="#out-cash_flow">Cash Flow</a>
     <a href="#out-cfads">CFADS</a><a href="#out-debt">Debt</a><a href="#out-returns">Distributions &amp; Returns</a>
   </nav>
+  {% include 'partials/_financing_trace_loader.html' %}
   <p class="out-note" data-testid="outputs-cit-context">Working Copy CIT assumption: {{ outputs.working_cit_rate or '—' }} (not historical rate evidence).
     Last Run CIT accrual is shown unchanged in P&amp;L; an unavailable historical rate is not inferred from results.</p>
 
