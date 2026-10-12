@@ -260,18 +260,27 @@ The initial reviewed checkpoint had 72 focused PASS and 442 broader PASS plus
 one import-ownership failure. The follow-up owner amendment authorizes that
 test path only; no financial content changed to resolve the failure.
 
-Follow-up combined acceptance: **562 passed, 0 failed, 0 skipped**, pytest rc=0,
+Pre-release-map combined acceptance: **562 passed, 0 failed, 0 skipped**, pytest rc=0,
 normal process return, 526.07 seconds. Of these, 92 are F3.5 candidate tests and
 470 are existing targeted regressions, including five added import negatives.
 The separate first governance/import check passed 88 tests; it overlaps the
 combined ring and is not added again to the total.
+
+Final release-governance acceptance on commit
+`8a1cf33ae6cdaa24537ebd235b361164ea6aa655`: **683 passed, 0 failed, 10 existing
+retired-marker skips**, pytest rc=0 and normal process return, 720.13 seconds.
+F3.5 focused: **108 passed, zero skips**. Existing targeted regressions: 575
+passed, with the ten unchanged conditional Model V2 scope tests skipped because
+the epic marker is absent. Nine report "Model V2 epic scope marker absent
+(retired or not started)"; the branch-scope test reports "scope marker absent".
+No skips, xfails, tolerances or golden changes were introduced.
 
 | Suite | Passed |
 | --- | ---: |
 | F3.5 Junior contracts | 17 |
 | F3.5 Junior runtime / Decimal | 38 |
 | F3.5 Junior workspace / CAS / immutable export | 7 |
-| F3.5 Junior historical governance | 30 |
+| F3.5 Junior historical/release governance | 46 |
 | F3.1 canonical contracts | 131 |
 | F3 canonical legacy / import ownership | 58 |
 | F3 historical governance | 10 |
@@ -286,6 +295,9 @@ combined ring and is not added again to the total.
 | Sponsor return semantics | 12 |
 | Statements / debt trace | 36 |
 | Revenue numerical validation | 5 |
+| Full Developer Economics module | 95 |
+| Model V2 governance | 2 (10 existing retired-marker skips) |
+| Released Model V2 engine authorities | 8 |
 
 The independent 16-case evidence was regenerated without changing its oracle;
 all numerical values remain identical to the reviewed JSON. Inactive four-vertical
@@ -299,9 +311,10 @@ follow-up artifacts use distinct filenames and record the three test/report-only
 changes. Governance release changes are separately listed above; all six
 historical authority maps retain their original values.
 
-The 562-pass result above precedes the release-map changes. Final acceptance must
-rerun the complete Developer Economics module, Model V2/F3/WF-04/WF-07 governance
-and financial regressions against the actual candidate HEAD. The Draft PR must
+The 683-pass result includes the complete Developer Economics module,
+Model V2/F3/WF-04/WF-07 governance and financial regressions against actual
+candidate HEAD. The final reporting commit changes this document only, not
+tested Python content or accepted financial/application blobs. The Draft PR must
 also obtain the five mandatory exact-head workflow results, full Public pytest
 rc=0, normal supervisor exit and uploaded evidence. Pending or partial output
 must never be reported as GitHub CI acceptance.
