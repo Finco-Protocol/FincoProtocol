@@ -11,6 +11,9 @@ authority:
   a single ``BEGIN EXCLUSIVE`` transaction with composite CAS).  All cells persist or none.
   The model is never executed; a persisted economic change classifies the existing Last Run
   as STALE through the canonical freshness authority.
+* ``POST /workbook/grid/cost-lines/save`` — ONE atomic Save of several EXISTING CAPEX/OPEX line items
+  (``app.v2.cost_batch_commands``: one ``BEGIN EXCLUSIVE`` transaction around the existing row-versioned
+  repositories, composite CAS, rollback of every row on any failure).  Never the scalar C0 writer.
 * ``GET  /workbook/grid/sheet``     — re-render of one sheet partial (same renderer the
   per-field editor uses) so totals refresh without a full page load.
 
@@ -19,11 +22,11 @@ mutable here.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from app.auth import resolve_request_session, validate_csrf_token
 from app.persistence.projects_repository import resolve_accessible_project
@@ -205,6 +208,93 @@ async def grid_save(body: GridSaveRequest, request: Request,
         "run_state": freshness.state.value,
         "model_executed": False,
     })
+
+
+# ── CAPEX / OPEX line items: staged multi-row atomic Save ────────────────────────────────────────
+
+class CostLinePayload(BaseModel):
+    kind: Literal["capex", "opex"]
+    sub_line_id: str = Field(..., min_length=1, max_length=64)
+    label: str = Field(..., max_length=200)
+    amount_keur: str = Field(..., max_length=MAX_VALUE_CHARS)
+    row_version: str = Field(..., min_length=1, max_length=64)
+    inflation_pct: Optional[str] = Field(None, max_length=MAX_VALUE_CHARS)
+    notes: Optional[str] = Field(None, max_length=2000)
+
+
+_COST_LINES = TypeAdapter(list[CostLinePayload])
+
+
+@router.post("/workbook/grid/cost-lines/save")
+async def grid_cost_lines_save(
+    request: Request,
+    project: str = Form(...),
+    csrf_token: str = Form(""),
+    workbook_version: str = Form(...),
+    content_hash: str = Form(...),
+    sheet: str = Form("capex"),
+    payload: str = Form(..., max_length=200_000),
+    _: None = Depends(require_v2_active),
+):
+    """Atomic Save of staged CAPEX/OPEX line edits.  All lines persist or none; the model is never run.
+
+    Success returns the re-rendered ``sheet`` partial plus the same post-Save out-of-band refresh as a
+    single-row save (toolbar/strip STALE state, run controls with the new CAS token).  Failure is a
+    JSON 4xx that the htmx client does not swap, so every typed value stays on screen.
+    """
+    from app.v2.capex_commands import (
+        CapexCommandError, CapexProtectedReferenceError, CapexStaleIdentityError, CapexVersionMismatchError)
+    from app.v2.cost_batch_commands import (
+        MAX_BATCH_LINES, CostBatchConflictError, CostBatchInvalidError, CostLineEdit, update_cost_lines_batch)
+    from app.v2.opex_commands import OpexProtectedReferenceError, OpexStaleIdentityError, OpexVersionMismatchError
+
+    if not validate_csrf_token(csrf_token):
+        return _json({"ok": False, "code": "CSRF_INVALID"}, 403)
+    if sheet not in ("capex", "opex"):
+        return _json({"ok": False, "code": "SHEET_UNKNOWN"}, 404)
+    resolved = _resolve(request, project)
+    if isinstance(resolved, JSONResponse):
+        return resolved
+    user, record, owner, ws = resolved
+
+    try:
+        lines = _COST_LINES.validate_json(payload)
+    except ValidationError:
+        return _json({"ok": False, "code": "COST_BATCH_INVALID", "message": "Malformed edited lines; nothing was saved."}, 422)
+    if not 1 <= len(lines) <= MAX_BATCH_LINES:
+        return _json({"ok": False, "code": "COST_BATCH_INVALID",
+                      "message": f"Between 1 and {MAX_BATCH_LINES} lines can be saved together."}, 422)
+
+    edits = [CostLineEdit(kind=l.kind, sub_line_id=l.sub_line_id, label=l.label, amount_keur=l.amount_keur,
+                          row_version=l.row_version, inflation_pct=l.inflation_pct, notes=l.notes) for l in lines]
+    try:
+        _saved, new_hash = update_cost_lines_batch(
+            project_record=record, user_id=user.user_id, edits=edits,
+            workbook_version=workbook_version, expected_content_hash=content_hash)
+    except (CapexProtectedReferenceError, OpexProtectedReferenceError):
+        return _json({"ok": False, "code": "PROTECTED_REFERENCE"}, 403)
+    except (CapexStaleIdentityError, OpexStaleIdentityError, CapexVersionMismatchError, OpexVersionMismatchError):
+        return _json({"ok": False, "code": "STALE_CONTENT", "reload": True,
+                      "message": "The model changed since this page loaded. Reload to continue; "
+                                 "your staged edits were not saved."}, 409)
+    except CostBatchConflictError as exc:
+        return _json({"ok": False, "code": exc.code, "reload": True, "message": str(exc), "lines": exc.verdicts}, 409)
+    except CostBatchInvalidError as exc:
+        return _json({"ok": False, "code": exc.code, "message": str(exc), "lines": exc.verdicts}, 422)
+    except (CapexCommandError, ValueError) as exc:
+        return _json({"ok": False, "code": "BATCH_REJECTED", "message": str(exc)}, 422)
+
+    from app.workbook.service import WorkbookService
+    fresh = get_workspace_state(owner, record.project_id) or ws
+    pis = WorkbookService.build_draft_input_set_from_workspace(fresh).with_composite_hash(new_hash)
+    if sheet == "opex":
+        from app.v2.opex_router import _render_opex_sheet_with_oob as _render
+    else:
+        from app.v2.capex_router import _render_capex_sheet_with_oob as _render
+    response = _render(request, record, pis, fresh, project, workspace_owner=owner)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Cost-Batch-Saved"] = str(len(lines))
+    return response
 
 
 def _display(value: Any) -> str:

@@ -1041,6 +1041,9 @@ document.addEventListener('htmx:afterSettle', function (e) {
   var snapshots = {};      // row id -> {vals, failed, message}
   var idleCallbacks = [];  // actions waiting for the grid to become idle
   var hadFailure = false;
+  var stageMode = false;       // optional: collect edits and save them together (one atomic request)
+  var batchInFlight = false;
+  var pendingStageMsg = '';
 
   function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   function rowOf(el) { return el && el.closest ? el.closest(ROW) : null; }
@@ -1106,7 +1109,7 @@ document.addEventListener('htmx:afterSettle', function (e) {
     var st = row.getAttribute('data-save-state');
     if (st === 'queued' || st === 'saving') return;          // Enter + blur never double-submit
     if (st === 'failed' && !row.__explicit) return;          // failed values are never auto-resubmitted
-    if (!isDirty(row)) { if (st === 'dirty') setState(row, '', ''); return; }
+    if (!isDirty(row)) { if (st === 'dirty' || st === 'staged') { setState(row, '', ''); updateStagebars(); } return; }
     var bad = null;
     cellsOf(row).forEach(function (i) {
       if (isNumeric(i) && !/^[-+]?(\d+\.?\d*|\.\d+)$/.test(normNumber(i.value))) bad = i;
@@ -1126,6 +1129,11 @@ document.addEventListener('htmx:afterSettle', function (e) {
       else i.value = normNumber(i.value);
     });
     row.__explicit = false;
+    if (stageMode) {                       // staged: nothing is sent until "Save staged"
+      setState(row, 'staged', 'Staged');
+      updateStagebars();
+      return;
+    }
     setState(row, 'queued', 'Waiting…');
     queue.push(row.id);
     pump();
@@ -1164,6 +1172,7 @@ document.addEventListener('htmx:afterSettle', function (e) {
   // Run an action once all edits are saved (saves them first). Returns false if it must wait.
   window.v2CostGridWhenIdle = function (fn) {
     if (!gridBusy()) { fn(); return true; }
+    if (stageMode && stageHasEdits()) { stageMessage('Save or discard the staged edits first.'); return false; }
     idleCallbacks.push(fn);
     flushDirty();
     idleCheck();
@@ -1239,6 +1248,7 @@ document.addEventListener('htmx:afterSettle', function (e) {
     var st = row.getAttribute('data-save-state');
     if (st === 'saving' || st === 'queued') return;
     if (isDirty(row)) setState(row, 'dirty', 'Unsaved'); else setState(row, '', '');
+    if (stageMode) updateStagebars();
   });
 
   document.addEventListener('keydown', function (e) {
@@ -1258,6 +1268,7 @@ document.addEventListener('htmx:afterSettle', function (e) {
       row.removeAttribute('data-failed'); row.removeAttribute('data-invalid');
       var st = row.getAttribute('data-save-state');
       if (st !== 'saving' && st !== 'queued') setState(row, '', '');
+      if (stageMode) updateStagebars();
       t.select();
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       var dir = e.key === 'ArrowUp' ? 1 : -1;
@@ -1383,6 +1394,11 @@ document.addEventListener('htmx:afterSettle', function (e) {
     var isRun = elt.classList && elt.classList.contains('v2-run-form');
     if (!structural && !isRun) return;
     if (!gridBusy()) return;
+    if (stageMode && stageHasEdits()) {        // never silently save, never silently drop staged edits
+      e.preventDefault();
+      stageMessage('Save or discard the staged edits first.');
+      return;
+    }
     e.preventDefault();
     // Saving swaps rows / run controls, so re-locate the control when the grid is idle.
     var rowId = elt.closest && elt.closest(ROW) ? elt.closest(ROW).id : null;
@@ -1410,5 +1426,169 @@ document.addEventListener('htmx:afterSettle', function (e) {
     if (gridBusy()) { e.preventDefault(); e.returnValue = ''; }
   });
 
-  window.v2CostGrid = { busy: gridBusy, state: function () { return { active: activeId, queued: queue.slice() }; } };
+  // ── Staged mode: ONE atomic Save for several edited cost lines ────────────────────────
+  // Nothing is calculated here.  Rows are collected exactly as typed (untouched numbers keep
+  // their stored exact value) and posted once to the server transaction, which verifies every
+  // row_version + the composite hash and persists all rows or none.  A failure keeps every typed
+  // value on screen; there is no automatic retry of an economic write.
+  function stagedRows() { return qsa(ROW).filter(function (r) { return r.getAttribute('data-save-state') === 'staged'; }); }
+  function stageHasEdits() { return qsa(ROW).some(function (r) { return isDirty(r); }); }
+  function stageMessage(text) { qsa('[data-cost-stage-msg]').forEach(function (el) { el.textContent = text || ''; }); }
+
+  function updateStagebars() {
+    var n = stagedRows().length;
+    var failed = qsa(ROW).some(function (r) { return r.getAttribute('data-save-state') === 'failed' && isDirty(r); });
+    qsa('[data-cost-grid]').forEach(function (g) { if (stageMode) g.setAttribute('data-stage-mode', 'true'); else g.removeAttribute('data-stage-mode'); });
+    qsa('[data-cost-stage-toggle]').forEach(function (c) { c.checked = stageMode; });
+    qsa('[data-cost-stage-count]').forEach(function (el) { el.textContent = n ? n + ' staged' : ''; });
+    qsa('[data-cost-stage-save]').forEach(function (b) { b.disabled = batchInFlight || !(n || failed); });
+    qsa('[data-cost-stage-discard]').forEach(function (b) { b.disabled = batchInFlight || !(n || failed || stageHasEdits()); });
+  }
+
+  function csrfToken() {
+    var el = document.querySelector('[data-csrf]');
+    return el ? el.getAttribute('data-csrf') : '';
+  }
+  function liveTokens() {
+    var a = document.querySelector('[id^="v2-cost-authority-"]');
+    return a ? { hash: a.getAttribute('data-content-hash'), version: a.getAttribute('data-workbook-version') } : null;
+  }
+  function lineOf(row) {
+    var f = function (name) { var i = row.querySelector('[name="' + name + '"]'); return i ? i.value : null; };
+    var line = {
+      kind: row.getAttribute('data-cost-row'), sub_line_id: row.getAttribute('data-sub-line-id'),
+      row_version: f('row_version'), label: String(f('label') || '').trim(), amount_keur: normNumber(f('amount_keur'))
+    };
+    var infl = row.querySelector('input[name="inflation_pct"]');
+    if (infl) line.inflation_pct = normNumber(infl.value);
+    return line;
+  }
+  function setReadonly(on) {
+    qsa(ROW + ' input[data-cost-cell]').forEach(function (i) {
+      if (on) { i.setAttribute('data-stage-ro', i.readOnly ? '0' : '1'); i.readOnly = true; }
+      else if (i.getAttribute('data-stage-ro') === '1') { i.readOnly = false; i.removeAttribute('data-stage-ro'); }
+    });
+  }
+
+  function saveStaged() {
+    if (batchInFlight || !window.htmx) return;
+    qsa(ROW).forEach(function (r) {         // an explicit click re-stages typed and previously failed rows
+      var st = r.getAttribute('data-save-state');
+      if (isDirty(r) && st !== 'staged') { r.__explicit = true; commitRow(r); }
+    });
+    if (qsa(ROW).some(function (r) { return r.getAttribute('data-save-state') === 'invalid'; })) {
+      stageMessage('Fix the highlighted values first — nothing was saved.');
+      return;
+    }
+    var rows = stagedRows();
+    var tokens = liveTokens(), csrf = csrfToken();
+    if (!rows.length) return;
+    if (!tokens || !tokens.hash || !tokens.version || !csrf) {
+      stageMessage('Cannot save: page tokens are missing. Reload the page.');
+      return;
+    }
+    var project = (rows[0].querySelector('input[name="project"]') || {}).value;
+    var sheet = rows[0].getAttribute('data-cost-row');
+    var others = rows.some(function (r) { return r.getAttribute('data-cost-row') !== sheet; });
+    batchInFlight = true;
+    stageMessage('Saving ' + rows.length + ' lines…');
+    rows.forEach(function (r) { setState(r, 'saving', 'Saving…'); });
+    setReadonly(true);          // no keystroke can be lost to the swap that follows
+    updateStagebars();
+    // The request source must survive the swap (events from a detached element never reach document).
+    var source = document.getElementById('v2-workbook-shell') || document.body;
+    var payload = JSON.stringify(rows.map(lineOf));
+    window.__v2CostBatch = { rows: rows.map(function (r) { return r.id; }), sheet: sheet, others: others, project: project, source: source };
+    window.htmx.ajax('POST', '/v2/workbook/grid/cost-lines/save', {
+      source: source, target: '#v2-sheet-' + sheet, swap: 'outerHTML',
+      values: { project: project, csrf_token: csrf, workbook_version: tokens.version, content_hash: tokens.hash,
+                sheet: sheet, payload: payload }
+    });
+  }
+
+  function finishBatch(ok, detail) {
+    var ctx = window.__v2CostBatch;
+    if (!ctx) return;
+    window.__v2CostBatch = null;
+    batchInFlight = false;
+    setReadonly(false);
+    if (ok) {
+      stageMessage('');
+      pendingStageMsg = 'Saved ' + ctx.rows.length + ' lines together · Last Run is now STALE — run the model to refresh results.';
+      if (ctx.others) {         // the sheet that was NOT swapped carries stale row versions: refresh it too
+        var other = ctx.sheet === 'capex' ? 'opex' : 'capex';
+        var root = document.getElementById('v2-sheet-' + other);
+        if (root) window.htmx.ajax('GET', '/v2/workbook/grid/sheet?project=' + encodeURIComponent(ctx.project) + '&sheet=' + other,
+          { source: '#v2-sheet-' + other, target: '#v2-sheet-' + other, swap: 'outerHTML' });
+      }
+      return;
+    }
+    var body = {};
+    try { body = JSON.parse((detail && detail.xhr && detail.xhr.responseText) || '{}'); } catch (_) { body = {}; }
+    var byKey = {};
+    (body.lines || []).forEach(function (v) { if (!v.ok) byKey[v.kind + ':' + v.sub_line_id] = v.message || v.code; });
+    ctx.rows.forEach(function (id) {
+      var r = document.getElementById(id);
+      if (!r) return;
+      var msg = byKey[r.getAttribute('data-cost-row') + ':' + r.getAttribute('data-sub-line-id')];
+      r.setAttribute('data-failed', 'true');
+      setState(r, 'failed', msg ? 'Failed: ' + msg : 'Not saved');
+    });
+    hadFailure = true;
+    var status = detail && detail.xhr ? detail.xhr.status : 0;
+    stageMessage((body.message || (status ? 'The server rejected the batch.' : 'Connection problem.')) +
+      ' Nothing was saved — your typed values are kept.' + (body.reload ? ' Reload the page to continue.' : ''));
+    updateStagebars();
+  }
+
+  document.addEventListener('htmx:afterRequest', function (e) {
+    var d = e.detail || {};
+    var ctx = window.__v2CostBatch;
+    if (!ctx || d.elt !== ctx.source) return;
+    finishBatch(!!d.successful, d);
+  });
+  ['htmx:sendError', 'htmx:timeout'].forEach(function (name) {
+    document.addEventListener(name, function (e) {
+      var ctx = window.__v2CostBatch;
+      if (ctx && e.detail && e.detail.elt === ctx.source) finishBatch(false, e.detail);
+    });
+  });
+
+  document.addEventListener('htmx:afterSettle', function (e) {
+    var t = e.target;
+    if (!t || !t.matches || !t.matches('[data-cost-grid]')) return;
+    updateStagebars();
+    if (pendingStageMsg) { stageMessage(pendingStageMsg); pendingStageMsg = ''; }
+  });
+
+  document.addEventListener('click', function (e) {
+    var t = e.target && e.target.closest ? e.target.closest('[data-cost-stage-save],[data-cost-stage-discard]') : null;
+    if (!t) return;
+    e.preventDefault();
+    if (t.hasAttribute('data-cost-stage-save')) { saveStaged(); return; }
+    if (batchInFlight) return;
+    qsa(ROW).forEach(function (r) {
+      if (!isDirty(r) && r.getAttribute('data-save-state') !== 'staged') return;
+      cellsOf(r).forEach(function (i) { i.value = i.getAttribute('data-original') || ''; });
+      r.removeAttribute('data-failed'); r.removeAttribute('data-invalid');
+      setState(r, '', '');
+    });
+    stageMessage('Staged edits discarded.');
+    updateStagebars();
+  });
+
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (!t || !t.matches || !t.matches('[data-cost-stage-toggle]')) return;
+    if (!t.checked && stageMode && (stagedRows().length || stageHasEdits())) {
+      t.checked = true;                       // never silently drop or auto-save staged edits
+      stageMessage('Save or discard the staged edits before leaving staged mode.');
+      return;
+    }
+    stageMode = t.checked;
+    stageMessage(stageMode ? 'Staged mode: edits are saved together with “Save staged”.' : '');
+    updateStagebars();
+  });
+
+  window.v2CostGrid = { busy: gridBusy, state: function () { return { active: activeId, queued: queue.slice(), staged: stagedRows().map(function (r) { return r.id; }), stageMode: stageMode, batch: batchInFlight }; } };
 }());
