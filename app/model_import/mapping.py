@@ -348,9 +348,8 @@ def validate_candidate(*, field_id: str, project_type: str, template_source: str
         return False, "IMPORT_UNKNOWN_FIELD"
     if not _eligible(spec):
         return False, "IMPORT_FIELD_NOT_EDITABLE_INPUT"
-    if not _applicable(field_id, project_type, template_source):
-        return False, "BATCH_FIELD_NOT_APPLICABLE"
-    return True, "OK"
+    verdict = _applicability(field_id, project_type, template_source)
+    return (verdict == "OK"), verdict
 
 
 # ── localized numbers (deterministic; ambiguity is rejected, never guessed) ─────────────────

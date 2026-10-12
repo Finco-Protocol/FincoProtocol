@@ -62,10 +62,20 @@ def _csv_rows(data: bytes, *, encoding: str, start: float):
         text = data.decode(encoding, errors="strict")
     except UnicodeDecodeError as exc:
         raise IntakeError("IMPORT_CSV_DECODING_FAILED") from exc
-    try:
-        delimiter = csv.Sniffer().sniff(text[:3072], delimiters=",;\t").delimiter
-    except csv.Error:
-        delimiter = ","
+    delimiter = None
+    lines = [ln for ln in text.splitlines()[:60] if ln.strip()]
+    # The structural delimiter is the one present on most lines.  ';' and TAB are tried before ',' because
+    # ',' is also the European decimal mark inside values (single-cell block headers are ignored).
+    for candidate in (";", "\t", ","):
+        with_delimiter = sum(candidate in ln for ln in lines)
+        if lines and with_delimiter * 2 >= len(lines):
+            delimiter = candidate
+            break
+    if delimiter is None:
+        try:
+            delimiter = csv.Sniffer().sniff(text[:3072], delimiters=",;\t").delimiter
+        except csv.Error:
+            delimiter = ","
     rows = []
     total_cells = 0
     try:
@@ -316,6 +326,9 @@ def _tabular_candidates(tables: list[tuple[str, list]], *, start: float):
                           vals.index("unit") if "unit" in vals else None)
                 continue
             li, vi, ui = header if header is not None else (0, 1, 2 if len(cells) > 2 else None)
+            if len(cells) == 1 and cells[0][0] is not None and str(cells[0][0]).strip():
+                section = str(cells[0][0]).strip()[:120]    # a one-cell row names the block that follows
+                continue
             if max(li, vi) >= len(cells):
                 continue
             label, _, label_cell = cells[li]
