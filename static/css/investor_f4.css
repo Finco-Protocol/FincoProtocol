@@ -1,0 +1,14 @@
+.f4-investor { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border, #aaa); min-width: 0; }
+.f4-investor header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.f4-investor h3 { font-size: 18px; }
+.f4-investor h4 { font-size: 15px; margin: 20px 0 10px; }
+.f4-scroll { width: 100%; overflow-x: auto; margin: 12px 0; }
+.f4-table { border-collapse: collapse; min-width: 600px; width: 100%; font-variant-numeric: tabular-nums; }
+.f4-table th, .f4-table td { padding: 8px; border-bottom: 1px solid var(--border, #aaa); text-align: right; white-space: nowrap; }
+.f4-table th:first-child, .f4-table td:first-child { text-align: left; }
+.f4-table input { box-sizing: border-box; width: 100%; min-width: 115px; color: inherit; background: var(--surface, transparent); border: 1px solid var(--border, #aaa); padding: 6px; border-radius: 4px; }
+.f4-investor label input { max-width: 100%; }
+.f4-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+.f4-investor button { min-height: 32px; cursor: pointer; }
+.f4-investor [data-f4-error] { color: var(--danger, #bd3535); overflow-wrap: anywhere; }
+.f4-investor p, .f4-investor a, .f4-investor summary { overflow-wrap: anywhere; }

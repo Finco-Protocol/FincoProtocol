@@ -329,6 +329,10 @@ class WorkbookUpdateService:
             except ValueError as exc:
                 return FieldValidationResult(field_id=field_id, raw_value=raw_value,
                     typed_value=None, spec=spec, error=str(exc), error_class=FieldErrorClass.INVALID)
+        if field_id == "investor.agreement.common_equity":
+            return FieldValidationResult(field_id=field_id, raw_value=raw_value,
+                typed_value=None, spec=spec, error="Use Investor agreement Save for scenario/version CAS",
+                error_class=FieldErrorClass.INVALID)
         if field_id == "debt.financing.instruments":
             from app.workbook.multisenior_config import canonical_json
             try:
