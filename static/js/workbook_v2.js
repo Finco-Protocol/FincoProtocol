@@ -1041,9 +1041,15 @@ document.addEventListener('htmx:afterSettle', function (e) {
   var snapshots = {};      // row id -> {vals, failed, message}
   var idleCallbacks = [];  // actions waiting for the grid to become idle
   var hadFailure = false;
-  var stageMode = false;       // optional: collect edits and save them together (one atomic request)
+  // Batch editing is the default: edits are staged and saved together in ONE atomic request.  The
+  // per-row immediate mode stays available as an explicit choice that is remembered for this tab only.
+  var MODE_KEY = 'finco.cost.editMode';
+  function storedMode() { try { return window.sessionStorage.getItem(MODE_KEY); } catch (_) { return null; } }
+  function storeMode(v) { try { window.sessionStorage.setItem(MODE_KEY, v); } catch (_) { /* private mode */ } }
+  var stageMode = storedMode() !== 'immediate';
   var batchInFlight = false;
   var pendingStageMsg = '';
+  var lastCell = null;         // {rowId, name} of the cell the user last edited (focus is restored there after a Save)
 
   function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   function rowOf(el) { return el && el.closest ? el.closest(ROW) : null; }
@@ -1099,6 +1105,12 @@ document.addEventListener('htmx:afterSettle', function (e) {
     if (!hash || !version) return;   // never guess a token
     qsa('input[name="content_hash"]').forEach(function (i) { i.value = hash; });
     qsa('input[name="workbook_version"]').forEach(function (i) { i.value = version; });
+    // The CAPEX and OPEX sheets each carry an authority element; only the swapped sheet receives new
+    // attributes from the server, so the other one must be brought forward here, or the next batch
+    // Save from that sheet would present a stale composite hash (a false 409).
+    qsa('[id^="v2-cost-authority-"]').forEach(function (a) {
+      a.setAttribute('data-content-hash', hash); a.setAttribute('data-workbook-version', version);
+    });
     var shell = document.getElementById('v2-workbook-shell');
     if (shell) { shell.setAttribute('data-content-hash', hash); shell.setAttribute('data-workbook-version', version); }
   }
@@ -1235,7 +1247,12 @@ document.addEventListener('htmx:afterSettle', function (e) {
   });
   document.addEventListener('focusin', function (e) {
     var t = e.target;
-    if (t.matches && t.matches('input[data-cost-cell]')) t.select();
+    if (t.matches && t.matches('input[data-cost-cell]')) {
+      t.select();
+      t.__entryValue = t.value;            // Esc returns THIS cell to what it held when it was entered
+      var r = rowOf(t);
+      if (r) lastCell = { rowId: r.id, name: t.name };
+    }
   });
 
   document.addEventListener('input', function (e) {
@@ -1264,10 +1281,15 @@ document.addEventListener('htmx:afterSettle', function (e) {
       moveFocus(t, e.shiftKey ? -1 : 1);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      cellsOf(row).forEach(function (i) { i.value = i.getAttribute('data-original') || ''; });
+      var stNow = row.getAttribute('data-save-state');
+      if (stNow === 'saving' || stNow === 'queued') return;
+      // Discard the CURRENT cell edit only: the cell returns to the value it held when it was
+      // entered (its stored value, or the staged value it already carried).  "Discard" in the
+      // stage bar drops every staged edit.
+      t.value = t.__entryValue !== undefined ? t.__entryValue : (t.getAttribute('data-original') || '');
       row.removeAttribute('data-failed'); row.removeAttribute('data-invalid');
-      var st = row.getAttribute('data-save-state');
-      if (st !== 'saving' && st !== 'queued') setState(row, '', '');
+      if (!isDirty(row)) setState(row, '', '');
+      else if (stNow !== 'staged') setState(row, 'dirty', 'Unsaved');
       if (stageMode) updateStagebars();
       t.select();
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -1392,11 +1414,14 @@ document.addEventListener('htmx:afterSettle', function (e) {
     if (!elt || !elt.matches) return;
     var structural = elt.closest && elt.closest('[data-cost-grid]') && !elt.matches(ROW) && elt.getAttribute('hx-post');
     var isRun = elt.classList && elt.classList.contains('v2-run-form');
-    if (!structural && !isRun) return;
+    var isScenario = String(elt.getAttribute('hx-post') || '').indexOf('/v2/workbook/scenarios/') === 0;
+    if (!structural && !isRun && !isScenario) return;
     if (!gridBusy()) return;
-    if (stageMode && stageHasEdits()) {        // never silently save, never silently drop staged edits
+    if (isScenario || (stageMode && stageHasEdits())) {   // never silently save, never silently drop staged edits
       e.preventDefault();
       stageMessage('Save or discard the staged edits first.');
+      showGuard(isRun ? 'Run needs your cost edits saved first.' :
+        'You have unsaved cost edits. Save or discard them before ' + (isScenario ? 'changing the scenario.' : 'continuing.'));
       return;
     }
     e.preventDefault();
@@ -1437,19 +1462,86 @@ document.addEventListener('htmx:afterSettle', function (e) {
 
   function updateStagebars() {
     var n = stagedRows().length;
+    var typing = qsa(ROW).filter(function (r) { return r.getAttribute('data-save-state') === 'dirty'; }).length;
     var failed = qsa(ROW).some(function (r) { return r.getAttribute('data-save-state') === 'failed' && isDirty(r); });
     qsa('[data-cost-grid]').forEach(function (g) { if (stageMode) g.setAttribute('data-stage-mode', 'true'); else g.removeAttribute('data-stage-mode'); });
     qsa('[data-cost-stage-toggle]').forEach(function (c) { c.checked = stageMode; });
-    qsa('[data-cost-stage-count]').forEach(function (el) { el.textContent = n ? n + ' staged' : ''; });
-    qsa('[data-cost-stage-save]').forEach(function (b) { b.disabled = batchInFlight || !(n || failed); });
+    qsa('[data-cost-stage-count]').forEach(function (el) {
+      el.textContent = (n || typing) ? (n + ' staged') + (typing ? ' · ' + typing + ' editing' : '') : '';
+    });
+    // While the request is in flight the Save control stays focusable (marked busy, clicks ignored by the
+    // in-flight guard): disabling a focused button would drop focus to <body> until the swap restores it.
+    qsa('[data-cost-stage-save]').forEach(function (b) {
+      b.disabled = !batchInFlight && !(n || typing || failed);
+      if (batchInFlight) b.setAttribute('aria-busy', 'true'); else b.removeAttribute('aria-busy');
+    });
     qsa('[data-cost-stage-discard]').forEach(function (b) { b.disabled = batchInFlight || !(n || failed || stageHasEdits()); });
+    qsa('[data-cost-stagebar]').forEach(function (bar) {
+      if (stageMode && (n || typing || failed)) bar.setAttribute('data-has-edits', 'true'); else bar.removeAttribute('data-has-edits');
+    });
+    qsa('[data-cost-mode-hint]').forEach(function (el) {
+      el.textContent = stageMode
+        ? 'Enter commits a cell. Nothing is saved until Save (Ctrl+S) — all staged edits go in one request.'
+        : 'Immediate mode: each row saves as you leave it.';
+    });
+    // Tell the user which sheet holds unsaved edits when they are on the other one.
+    ['capex', 'opex'].forEach(function (kind) {
+      var count = qsa('#v2-sheet-' + kind + ' ' + ROW).filter(function (r) {
+        var st = r.getAttribute('data-save-state'); return st === 'staged' || st === 'dirty' || (st === 'failed' && isDirty(r));
+      }).length;
+      var tab = document.getElementById('tab-' + kind);
+      if (tab) { if (count && stageMode) { tab.setAttribute('data-unsaved', String(count)); tab.setAttribute('title', count + ' unsaved cost edit' + (count === 1 ? '' : 's')); }
+                 else { tab.removeAttribute('data-unsaved'); tab.removeAttribute('title'); } }
+    });
   }
+
+  // A visible, non-modal choice (shown in the panel the user is looking at, which is often NOT the
+  // cost sheet when Run or a scenario switch is pressed): Save, Discard or Stay.
+  function showGuard(text) {
+    var host = document.querySelector('.v2-sheet-panel:not([hidden])') || document.body;
+    var box = document.querySelector('[data-cost-guard]');
+    if (box) box.remove();
+    box = document.createElement('div');
+    box.className = 'v2-cost-guard'; box.setAttribute('data-cost-guard', ''); box.setAttribute('role', 'alert');
+    box.setAttribute('data-testid', 'cost-guard');
+    var msg = document.createElement('span'); msg.textContent = text; box.appendChild(msg);
+    [['Save edits', 'save', 'cost-guard-save'], ['Discard edits', 'discard', 'cost-guard-discard'], ['Stay', 'stay', 'cost-guard-stay']]
+      .forEach(function (b) {
+        var btn = document.createElement('button'); btn.type = 'button'; btn.textContent = b[0];
+        btn.setAttribute('data-guard-action', b[1]); btn.setAttribute('data-testid', b[2]); box.appendChild(btn);
+      });
+    host.insertBefore(box, host.firstChild);
+    var first = box.querySelector('button'); if (first) first.focus({ preventScroll: false });
+  }
+  function discardAll() {
+    if (batchInFlight) return;
+    qsa(ROW).forEach(function (r) {
+      if (!isDirty(r) && r.getAttribute('data-save-state') !== 'staged') return;
+      cellsOf(r).forEach(function (i) { i.value = i.getAttribute('data-original') || ''; });
+      r.removeAttribute('data-failed'); r.removeAttribute('data-invalid');
+      setState(r, '', '');
+    });
+    stageMessage('Staged edits discarded.');
+    updateStagebars();
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest ? e.target.closest('[data-guard-action]') : null;
+    if (!b) return;
+    var box = b.closest('[data-cost-guard]'), act = b.getAttribute('data-guard-action');
+    if (box) box.remove();
+    if (act === 'save') saveStaged(); else if (act === 'discard') discardAll();
+  });
 
   function csrfToken() {
     var el = document.querySelector('[data-csrf]');
     return el ? el.getAttribute('data-csrf') : '';
   }
   function liveTokens() {
+    // The workbook shell is maintained by syncTokens after every successful cost, scenario or batch
+    // write; the per-sheet authority element is only a fallback.  Never guess a token.
+    var shell = document.getElementById('v2-workbook-shell');
+    var hash = shell && shell.getAttribute('data-content-hash'), version = shell && shell.getAttribute('data-workbook-version');
+    if (hash && version) return { hash: hash, version: version };
     var a = document.querySelector('[id^="v2-cost-authority-"]');
     return a ? { hash: a.getAttribute('data-content-hash'), version: a.getAttribute('data-workbook-version') } : null;
   }
@@ -1487,8 +1579,15 @@ document.addEventListener('htmx:afterSettle', function (e) {
       stageMessage('Cannot save: page tokens are missing. Reload the page.');
       return;
     }
+    restoreFocusAfterSave = true;
     var project = (rows[0].querySelector('input[name="project"]') || {}).value;
-    var sheet = rows[0].getAttribute('data-cost-row');
+    // The response replaces ONE sheet and the other is refreshed afterwards.  Replace the sheet the user is
+    // working in with the response itself, so the follow-up refresh only touches the sheet they are NOT in
+    // (a swap detaches the focused cell; it is restored, but never needlessly dropped).
+    var here = lastCell && document.getElementById(lastCell.rowId);
+    var hereKind = here ? here.getAttribute('data-cost-row') : null;
+    var sheet = hereKind && rows.some(function (r) { return r.getAttribute('data-cost-row') === hereKind; })
+      ? hereKind : rows[0].getAttribute('data-cost-row');
     var others = rows.some(function (r) { return r.getAttribute('data-cost-row') !== sheet; });
     batchInFlight = true;
     stageMessage('Saving ' + rows.length + ' lines…');
@@ -1559,6 +1658,34 @@ document.addEventListener('htmx:afterSettle', function (e) {
     if (!t || !t.matches || !t.matches('[data-cost-grid]')) return;
     updateStagebars();
     if (pendingStageMsg) { stageMessage(pendingStageMsg); pendingStageMsg = ''; }
+    restoreCellFocus();
+    restoreFocusAfterSave = false;
+  });
+
+  // Mouse "Save" leaves focus on a button that the swap replaces: put it back on the cell the user was
+  // editing so keyboard work continues where it stopped (no scroll jump).  Done as soon as the swapped
+  // DOM exists (afterSwap) and again after settle, so focus is not left on <body> while htmx settles.
+  function restoreCellFocus() {
+    var ae = document.activeElement;
+    if (!restoreFocusAfterSave || !lastCell || (ae && ae !== document.body && document.body.contains(ae))) return;
+    var r = document.getElementById(lastCell.rowId);
+    var inp = r && r.querySelector('input[name="' + lastCell.name + '"]');
+    if (inp) inp.focus({ preventScroll: true });
+  }
+  document.addEventListener('htmx:afterSwap', function (e) {
+    var t = e.target;
+    if (t && t.matches && t.matches('[data-cost-grid]')) restoreCellFocus();
+  });
+
+  var restoreFocusAfterSave = false;
+  document.addEventListener('keydown', function (e) {
+    if (!(e.ctrlKey || e.metaKey) || String(e.key).toLowerCase() !== 's') return;
+    var t = e.target;
+    if (!t || !t.closest || !t.closest('[data-cost-grid]')) return;
+    e.preventDefault();                 // never the browser's "Save page"
+    if (!stageMode) { stageMessage('Immediate mode saves each row when you leave it.'); return; }
+    if (!stagedRows().length && !stageHasEdits()) { stageMessage('Nothing to save.'); return; }
+    saveStaged();
   });
 
   document.addEventListener('click', function (e) {
@@ -1566,15 +1693,7 @@ document.addEventListener('htmx:afterSettle', function (e) {
     if (!t) return;
     e.preventDefault();
     if (t.hasAttribute('data-cost-stage-save')) { saveStaged(); return; }
-    if (batchInFlight) return;
-    qsa(ROW).forEach(function (r) {
-      if (!isDirty(r) && r.getAttribute('data-save-state') !== 'staged') return;
-      cellsOf(r).forEach(function (i) { i.value = i.getAttribute('data-original') || ''; });
-      r.removeAttribute('data-failed'); r.removeAttribute('data-invalid');
-      setState(r, '', '');
-    });
-    stageMessage('Staged edits discarded.');
-    updateStagebars();
+    discardAll();
   });
 
   document.addEventListener('change', function (e) {
@@ -1586,9 +1705,26 @@ document.addEventListener('htmx:afterSettle', function (e) {
       return;
     }
     stageMode = t.checked;
-    stageMessage(stageMode ? 'Staged mode: edits are saved together with “Save staged”.' : '');
+    storeMode(stageMode ? 'staged' : 'immediate');
+    stageMessage(stageMode ? 'Edits are saved together with “Save staged”.' : 'Immediate mode: each row saves as you leave it.');
     updateStagebars();
   });
 
-  window.v2CostGrid = { busy: gridBusy, state: function () { return { active: activeId, queued: queue.slice(), staged: stagedRows().map(function (r) { return r.id; }), stageMode: stageMode, batch: batchInFlight }; } };
+  // Contextual entry from the Inputs Grid: open the sheet's category and focus its first amount cell.
+  function focusGroup(kind, code) {
+    var panel = document.getElementById('v2-sheet-' + kind);
+    if (!panel || !code) return false;
+    var group = null;
+    qsa('details[data-group-code]', panel).forEach(function (d) { if (d.getAttribute('data-group-code') === code) group = d; });
+    if (!group) return false;
+    group.open = true;
+    var cell = group.querySelector('input[data-cost-cell="amount"], input[name="amount_keur"]') ||
+      group.querySelector('input[data-cost-cell]');
+    group.scrollIntoView({ block: 'start' });
+    if (cell) cell.focus({ preventScroll: true });
+    return !!cell;
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', updateStagebars); else updateStagebars();
+
+  window.v2CostGrid = { focusGroup: focusGroup, busy: gridBusy, state: function () { return { active: activeId, queued: queue.slice(), staged: stagedRows().map(function (r) { return r.id; }), stageMode: stageMode, batch: batchInFlight }; } };
 }());

@@ -561,8 +561,14 @@
     var nav = e.target.closest('#v2-input-grid [data-nav-tab]');
     if (nav) {
       e.preventDefault();
-      var tab = document.getElementById(nav.getAttribute('data-nav-tab'));
+      var tabId = nav.getAttribute('data-nav-tab'), group = nav.getAttribute('data-nav-group');
+      var tab = document.getElementById(tabId);
       if (tab) tab.click();
+      // Contextual entry: open the cost sheet at the category this value belongs to.
+      var kind = tabId === 'tab-capex' ? 'capex' : (tabId === 'tab-opex' ? 'opex' : '');
+      if (kind && group && window.v2CostGrid && window.v2CostGrid.focusGroup) {
+        setTimeout(function () { window.v2CostGrid.focusGroup(kind, group); }, 0);
+      }
     }
   });
 

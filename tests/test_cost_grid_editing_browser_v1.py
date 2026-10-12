@@ -90,7 +90,14 @@ class Session:
         self.page.wait_for_selector(f"#tab-{kind}", state="attached")
         self.page.evaluate(f"document.getElementById('tab-{kind}').click()")
         self.page.wait_for_selector(f"#v2-sheet-{kind} form[data-cost-row]", state="attached")
+        self.select_immediate_mode()
         self.open_groups()
+
+    def select_immediate_mode(self):
+        """Batch editing is the default; this suite validates the explicit per-row immediate mode, so it
+        selects it through the real control exactly as a user would (a no-op when already selected)."""
+        self.page.locator(f"#v2-sheet-{self.kind} [data-cost-stage-toggle]").uncheck()
+        self.page.wait_for_function("window.v2CostGrid.state().stageMode === false")
 
     def open_groups(self):
         self.page.evaluate(
