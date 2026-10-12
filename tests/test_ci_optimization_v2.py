@@ -168,8 +168,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _git(cwd, *args):
-    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid",
-               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid", GIT_CONFIG_GLOBAL="/dev/null")
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="ci-test.invalid",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="ci-test.invalid", GIT_CONFIG_GLOBAL="/dev/null")
     return subprocess.check_output(["git", *args], cwd=cwd, env=env, text=True).strip()
 
 
