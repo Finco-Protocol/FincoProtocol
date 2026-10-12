@@ -1338,6 +1338,13 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
         rr_for_sponsor.runtime_summary if rr_for_sponsor else None,
         owner_id=ws.user_id, project_id=ws.project_id)
     debt_fields = [f for f in debt_fields if f["field_id"] != f3_field]
+    from app.v2.capital_stack_projection import build_capital_stack
+    try:
+        _cs_day_count = finance_pi.financing.senior_debt_interest_config.day_count if finance_pi else None
+    except AttributeError:
+        _cs_day_count = None
+    capital_stack = build_capital_stack(
+        f3, context.freshness if context is not None else _runtime_freshness(ws, pis), day_count=_cs_day_count)
     if f3["active"]:
         from app.workbook.multisenior_config import activation_financing_params
         fin = activation_financing_params(fin)
@@ -1356,6 +1363,7 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
         "debt_fields": debt_fields,
         "bankability": bankability,
         "multisenior": f3,
+        "capital_stack": capital_stack,
         "debt_state": d.state.value,
         "debt_schedule": d.schedule,
         "debt_operational_periods": d.operational_periods,

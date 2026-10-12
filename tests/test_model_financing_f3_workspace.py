@@ -284,8 +284,10 @@ def test_f3_template_protected_and_no_context_safe():
     view = config.build_view(pi, state(), 'base', None,
         owner_id="synthetic-owner", project_id="synthetic-project")
     template = _templates.get_template('partials/_financing_multisenior.html')
-    assert 'read-only' in template.render(multisenior=view, project_editable=False)
-    assert 'data-f3-form' not in template.render(multisenior=view, project_editable=False)
+    from app.v2.capital_stack_projection import build_capital_stack
+    stack = build_capital_stack(view, None)
+    assert 'read-only' in template.render(multisenior=view, capital_stack=stack, project_editable=False)
+    assert 'data-f3-form' not in template.render(multisenior=view, capital_stack=stack, project_editable=False)
     assert template.render() == ''
 
 

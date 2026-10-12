@@ -47,7 +47,52 @@
   document.addEventListener('htmx:configRequest', e => {
     if (e.detail.elt.matches('[data-f3-form]')) e.detail.parameters.value = e.detail.elt.querySelector('[name="value"]').value;
   });
-  const init = () => document.querySelectorAll('[data-f3-save]').forEach(button => { button.disabled = false; });
+  /* Capital Stack cell-first editing: presentation only (dirty markers, keyboard, expand). */
+  const cells = form => Array.from(form.querySelectorAll('[data-cs-cell]'));
+  const mark = form => {
+    let count = 0;
+    for (const body of form.querySelectorAll('[data-f3-instrument]')) {
+      const dirty = Array.from(body.querySelectorAll('[data-cs-cell]')).some(c => c.value !== c.dataset.initial);
+      const flag = body.querySelector('[data-cs-mod]');
+      if (flag) flag.hidden = !dirty;
+      body.classList.toggle('cs-modified', dirty);
+      if (dirty) count += 1;
+    }
+    const badge = form.querySelector('[data-cs-dirty]');
+    if (badge) { badge.hidden = count === 0; badge.querySelector('[data-cs-dirty-count]').textContent = String(count); }
+  };
+  const setup = root => root.querySelectorAll('[data-f3-form]').forEach(form => {
+    if (form.dataset.csReady) return;
+    form.dataset.csReady = '1';
+    cells(form).forEach(c => { c.dataset.initial = c.value; });
+    mark(form);
+  });
+  document.addEventListener('input', e => { const f = e.target.closest && e.target.closest('[data-f3-form]'); if (f) mark(f); });
+  document.addEventListener('change', e => { const f = e.target.closest && e.target.closest('[data-f3-form]'); if (f) mark(f); });
+  document.addEventListener('click', e => {
+    const button = e.target.closest && e.target.closest('[data-cs-expand]');
+    if (!button) return;
+    const detail = button.closest('tbody').querySelector('[data-cs-detail]');
+    const open = detail.hidden;
+    detail.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    button.textContent = open ? '▾' : '▸';
+  });
+  document.addEventListener('keydown', e => {
+    const cell = e.target.closest && e.target.closest('[data-cs-cell]');
+    const form = cell && cell.closest('[data-f3-form]');
+    if (!form) return;
+    if (e.key === 'Escape') { cell.value = cell.dataset.initial; mark(form); return; }
+    const vertical = e.key === 'Enter' || ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && cell.tagName !== 'SELECT' && cell.tagName !== 'TEXTAREA');
+    if (!vertical || (e.key === 'Enter' && cell.tagName === 'TEXTAREA' && !e.ctrlKey)) return;
+    e.preventDefault();
+    const name = cell.dataset.f3;
+    const same = cells(form).filter(c => c.dataset.f3 === name && c.offsetParent !== null);
+    const next = same[same.indexOf(cell) + (e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey) ? -1 : 1)];
+    mark(form);
+    if (next) { next.focus(); if (next.select) next.select(); }
+  });
+  const init = () => { document.querySelectorAll('[data-f3-save]').forEach(button => { button.disabled = false; }); setup(document); };
   document.addEventListener('htmx:afterSwap', init);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

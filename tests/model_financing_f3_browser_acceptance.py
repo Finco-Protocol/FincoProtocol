@@ -69,6 +69,7 @@ def main():
                         form = page.locator('[data-f3-form]')
                         expect(form.locator('[data-f3-save]')).to_be_enabled()
                         for row, instrument in zip(form.locator('[data-f3-instrument]').all(), terms.instruments):
+                            row.locator('[data-cs-expand]').click()
                             row.locator('[data-f3="commitment_keur"]').fill(str(instrument.commitment_keur))
                             row.locator('[data-f3="rate_pct"]').fill(str(instrument.interest.fixed_rate * 100))
                             row.locator('[data-f3="grace_months"]').fill(str(instrument.repayment.grace_months))
