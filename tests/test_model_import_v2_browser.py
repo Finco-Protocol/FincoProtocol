@@ -112,7 +112,8 @@ def test_intelligent_import_end_to_end(browser, app_server, tmp_path, kind):
         # Category filter, attention queue, sort.
         page.locator('.cat-filter[data-category="OPEX"]').click()
         visible = page.locator("tr.review-row:visible")
-        assert visible.count() >= 2 and all(c == "OPEX" for c in visible.evaluate_all("r => r.map(x => x.dataset.category)"))
+        assert visible.count() >= 1 and all(c == "OPEX" for c in visible.evaluate_all("r => r.map(x => x.dataset.category)"))
+        assert page.locator("tr.review-row", has_text="Guard services").get_attribute("data-category") == "UNMAPPED"
         page.locator('.cat-filter[data-category="all"]').click()
         page.locator('.filter[data-filter="attention"]').click()
         queued = page.locator("tr.review-row:visible").evaluate_all("r => r.map(x => x.dataset.attention)")
