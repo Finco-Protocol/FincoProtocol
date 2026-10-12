@@ -208,8 +208,23 @@
           document.createTextNode('Residual') :
           entry(tr,index,'volume_share',toPct(row.volume_share),
             {type:'number',number:true,percent:true,min:0,max:100,step:'any',label:'Generation allocation percent'}));
-        setCell(tr, 'Price EUR/MWh', entry(tr,index,'price_eur_mwh',row.price_eur_mwh,
-          {type:'number',number:true,min:0,step:'any',label:'Contract price EUR per MWh'}),kind !== 'cfd');
+        // An explicit price_curve is the SOLE economic price authority for
+        // scheduled PPA/Merchant. Keep the legacy scalar in canonical JSON for
+        // backward-compatible validation/serialization, but NEVER expose it
+        // as an editable or apparently effective scheduled contract price.
+        if (isScheduled(kind)) {
+          const indicator = document.createElement('span');
+          indicator.textContent = 'Curve prices only';
+          indicator.dataset.revenueCurveAuthority = 'true';
+          indicator.title = 'Effective EUR/MWh comes exclusively from dated price points below. ' +
+            'The legacy flat-price field is retained in serialized JSON for compatibility, ' +
+            'but is ignored while a price curve is active.';
+          setCell(tr, 'Price EUR/MWh · curve only', indicator);
+        } else {
+          setCell(tr, 'Price EUR/MWh', entry(tr,index,'price_eur_mwh',row.price_eur_mwh,
+            {type:'number',number:true,min:0,step:'any',label:'Contract price EUR per MWh'}),
+            kind !== 'cfd');
+        }
         setCell(tr, 'Index %', entry(tr,index,'indexation_rate',toPct(row.indexation_rate),
           {type:'number',number:true,percent:true,min:0,max:100,step:'any',label:'Annual indexation percent'}),
           kind === 'indexed_ppa' || (isMerchant(kind) && !isScheduled(kind)));
