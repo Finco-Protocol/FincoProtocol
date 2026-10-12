@@ -5454,3 +5454,7 @@ async def v2_workbook_goal_seek_apply(
 # Q4 route registration: isolated implementation, no changes to canonical Run paths.
 from app.v2.whatif_router import router as q4_router
 router.include_router(q4_router)
+
+# F3.8 is a read-only owned Run fragment, separate from every Save/Run path.
+from app.v2.financing_trace_router import router as f38_router
+router.include_router(f38_router)

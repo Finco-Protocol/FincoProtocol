@@ -1,0 +1,14 @@
+.f38-trace { max-width:100%; min-width:0; color:inherit; }
+.f38-trace details,.v2-financing-trace-loader { margin:12px 0; border-top:1px solid var(--v2-border,#a1a1aa); padding:12px 0; }
+.f38-trace summary,.v2-financing-trace-loader summary { cursor:pointer; font-weight:600; }
+.f38-trace nav { display:flex; flex-wrap:wrap; gap:12px; }
+.f38-scroll { overflow:auto; max-width:100%; margin:12px 0; }
+.f38-scroll table { border-collapse:collapse; width:100%; font-size:12px; }
+.f38-scroll caption { text-align:left; padding:8px 0; font-weight:600; }
+.f38-scroll th,.f38-scroll td { padding:8px; border-bottom:1px solid var(--v2-border,#a1a1aa); text-align:left; vertical-align:top; }
+.f38-scroll th[scope=row] { min-width:160px; }
+.f38-scroll .f38-number { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.f38-source { display:block; overflow-wrap:anywhere; font-size:11px; }
+.f38-trace dl { display:grid; grid-template-columns:minmax(140px,1fr) minmax(0,1fr); gap:6px 12px; }
+.f38-trace dd { margin:0; overflow-wrap:anywhere; }
+.f38-trace h3 { font-size:16px; }

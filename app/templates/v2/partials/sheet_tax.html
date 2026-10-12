@@ -29,6 +29,7 @@
 
 <div id="v2-sheet-tax" data-sheet="tax"
      data-fc-grid="tax" data-fc-scroll-container>
+  {% include 'partials/_financing_trace_loader.html' %}
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
