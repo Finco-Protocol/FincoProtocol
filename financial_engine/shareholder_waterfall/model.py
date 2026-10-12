@@ -306,6 +306,7 @@ def run_project_shareholder_waterfall_model(
                 + _fi_for_ni.get(_idx, 0.0)
                 - _sint_by_idx.get(_idx, 0.0)
                 - _wp.shl_gross_interest_keur
+                - getattr(_wp, "junior_interest_keur", 0.0)
                 - _cit_by_idx_inner.get(_idx, 0.0)
             )
             _fcf_div = _wp.legal_equity_distribution_keur
@@ -437,6 +438,17 @@ def run_project_shareholder_waterfall_model(
             if val != 0.0
         )
         financing = _financing_for(_fi_inputs)
+        from financial_engine.financing.junior_debt import JuniorFinancingResult
+        from financial_engine.shareholder_waterfall.contracts import JuniorWaterfallPeriod
+        junior_active = isinstance(financing, JuniorFinancingResult)
+        waterfall_period_type = JuniorWaterfallPeriod if junior_active else CovenantGatedWaterfallPeriod
+
+        def junior_row_fields(index, post_senior, *, is_construction=False):
+            if not junior_active:
+                return {}
+            values = ({key: 0.0 for key in financing.junior_values(index)} if is_construction
+                      else financing.junior_values(index))
+            return dict(values, signed_post_junior_keur=post_senior - values["junior_debt_service_keur"])
 
         model_result: ProjectModelResult = financing.project_model_result  # type: ignore[assignment]
 
@@ -642,6 +654,8 @@ def run_project_shareholder_waterfall_model(
             else:
                 reserve_adjusted_cash = signed_post_senior
                 cash_after_dsra_by_idx[idx] = reserve_adjusted_cash
+            if junior_active:
+                reserve_adjusted_cash -= financing.junior_values(idx)["junior_debt_service_keur"]
             da_inflow = reserve_adjusted_cash - dsrf_fee
 
             # CF108: DA available = inflow + prior closing
@@ -812,7 +826,8 @@ def run_project_shareholder_waterfall_model(
             pure_equity_net = -(share_cap + share_prem + other_committed + add_eq)
             total_sponsor_net = pure_equity_net - shl_draw
 
-            waterfall_periods.append(CovenantGatedWaterfallPeriod(
+            waterfall_periods.append(waterfall_period_type(
+                **junior_row_fields(k, 0.0, is_construction=True),
                 period_index=k,
                 cashflow_date=cf_date,
                 is_construction=True,
@@ -988,7 +1003,8 @@ def run_project_shareholder_waterfall_model(
                 dsra_rel = dsra_release_by_idx.get(idx, 0.0)
                 target_met = dsra_target_met_by_idx.get(idx, True)
 
-            waterfall_periods.append(CovenantGatedWaterfallPeriod(
+            waterfall_periods.append(waterfall_period_type(
+                **junior_row_fields(idx, signed_post_senior),
                 period_index=idx,
                 cashflow_date=cf_date,
                 is_construction=False,

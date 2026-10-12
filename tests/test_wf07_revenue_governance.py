@@ -18,7 +18,8 @@ def test_exact_seven_content_pins_only():
     assert set(governance.WF07_REVENUE_AUTHORITIES) == PATHS
     for path, blob in governance.WF07_REVENUE_AUTHORITIES.items():
         assert "*" not in path
-        assert git(governance.REPO, "rev-parse", "HEAD:" + path) == blob
+        current_blob = governance.F3_5_A_JUNIOR_AUTHORITIES.get(path, blob)
+        assert git(governance.REPO, "rev-parse", "HEAD:" + path) == current_blob
         assert governance.released_engine_authority_matches(path)
         assert approved_frozen_path(path)
     assert unapproved_engine_changes(list(PATHS)) == []

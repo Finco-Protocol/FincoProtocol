@@ -139,6 +139,9 @@ def _with_developer_uses(
 
 
 def _build_generic_basis(capex_structure: "CapexStructure") -> BookDepreciableAssetBasis:
+    from finco_core.inputs.junior_debt import JuniorFundedCapex
+    if isinstance(capex_structure, JuniorFundedCapex):
+        capex_structure.junior_cash_idc.validate()
     components = tuple(
         BookDepreciableAssetComponent(
             code=item.name,
@@ -146,7 +149,8 @@ def _build_generic_basis(capex_structure: "CapexStructure") -> BookDepreciableAs
             amount_keur=item.amount_keur,
             asset_class_code=item.asset_class.value,
             useful_life_override=item.useful_life_override,
-            provenance=_PROV_GENERIC,
+            provenance=("F35_FUNDED_JUNIOR_CASH_IDC" if isinstance(capex_structure, JuniorFundedCapex)
+                        and item.name == "Junior Cash IDC" else _PROV_GENERIC),
         )
         for item in capex_structure.book_depreciable_capex_items()
         if item.amount_keur != 0.0
@@ -227,7 +231,24 @@ def _build_typed_construction_basis(
             provenance=_PROV_VAT,
         ))
 
-    return BookDepreciableAssetBasis(
-        components=tuple(components),
-        authority=_TYPED_AUTHORITY,
-    )
+    from financial_engine.financing.junior_debt import JuniorConstructionFinancingResult
+    from finco_core.inputs.junior_debt import AUTHORITY as JUNIOR_AUTHORITY
+    if cfr.authority == JUNIOR_AUTHORITY and not isinstance(cfr, JuniorConstructionFinancingResult):
+        raise ValueError("F35_JUNIOR_IDC_TYPED_EVIDENCE_REQUIRED")
+    if isinstance(cfr, JuniorConstructionFinancingResult):
+        cost = cfr.junior_cash_idc
+        cost.validate()
+        if len(cost.capitalized_cash_by_period_keur) != len(cfr.period_start_dates):
+            raise ValueError("F35_JUNIOR_IDC_PERIOD_AXIS_MISMATCH")
+        from math import fsum, isfinite
+        for i, cash in enumerate(cost.capitalized_cash_by_period_keur):
+            expected_uses = (cfr.hard_capex_uses_keur[i] + cfr.senior_idc_capitalized_uses_keur[i]
+                + cfr.senior_commitment_fee_accrual_keur[i] + cfr.structuring_fee_keur[i] + cash)
+            if not isfinite(cfr.total_period_uses_keur[i]) or abs(expected_uses - cfr.total_period_uses_keur[i]) > 1e-7:
+                raise ValueError("F35_JUNIOR_IDC_FUNDING_EVIDENCE_MISMATCH")
+        if abs(fsum(cfr.total_period_uses_keur) - cfr.final_total_project_uses_keur) > 1e-7:
+            raise ValueError("F35_JUNIOR_TOTAL_USES_MISMATCH")
+        components.append(BookDepreciableAssetComponent(code="junior_cash_idc", name="Junior Cash IDC",
+            amount_keur=cost.amount_keur, asset_class_code="financial_costs",
+            useful_life_override=cost.book_life_years, provenance="F35_FUNDED_JUNIOR_CASH_IDC"))
+    return BookDepreciableAssetBasis(components=tuple(components), authority=_TYPED_AUTHORITY)

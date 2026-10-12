@@ -497,7 +497,23 @@ def _terminal_state(
         else CashAccountTerminalStatus.REMAINING_BALANCE
     )
 
-    return TerminalFinancialState(
+    from financial_engine.financing.junior_debt import JuniorFinancingResult
+    from financial_engine.project_returns.contracts import JuniorTerminalFinancialState, DebtTerminalState, DebtTerminalStatus
+    junior_fields = {}
+    terminal_type = TerminalFinancialState
+    if isinstance(financing, JuniorFinancingResult):
+        facility = financing.junior_facility
+        if abs(facility.closing_keur[-1]) > _TOL:
+            raise ValueError("F35_JUNIOR_TERMINAL_LIABILITY_UNSETTLED")
+        maturity = next(p for p in model.periods if p.period_index == facility.maturity_period_index)
+        junior_fields = {"junior": DebtTerminalState(
+            contractual_maturity_period_index=facility.maturity_period_index,
+            contractual_maturity_date=maturity.period_end,
+            balance_at_contractual_maturity_keur=facility.closing_keur[-1],
+            terminal_model_horizon_balance_keur=facility.closing_keur[-1], status=DebtTerminalStatus.REPAID)}
+        terminal_type = JuniorTerminalFinancialState
+    return terminal_type(
+        **junior_fields,
         senior=_senior_terminal_state(model, periods),
         shareholder_loan=_shl_terminal_state(
             shl_contract,
