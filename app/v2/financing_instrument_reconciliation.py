@@ -10,7 +10,10 @@ and a disagreement is reported as DIFFERS with its difference, never repaired.
 from __future__ import annotations
 
 from collections.abc import Mapping
+import hashlib
+import json
 import math
+import re
 from typing import Any
 
 from app.v2.financing_sources_uses_projection import (
@@ -30,6 +33,12 @@ UNAVAILABLE_AGGREGATE = (
     "Run). A commitment is not proof of funding drawn, so no instrument split is derived."
 )
 PREFIX = "RuntimeResult.runtime_summary.financing_evidence."
+# Facility authorities are the exact strings written by the canonical serializer (app/api/project_runner.py).
+TWO_SENIOR_AUTHORITY = "F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1"
+JUNIOR_AUTHORITY = "F3_SINGLE_SENIOR_JUNIOR_EXPLICIT_V1"
+_TWO_SENIOR_KEYS = ("facility_schedules", "aggregate_period_rates")
+_JUNIOR_KEYS = ("senior_facility", "junior_facility", "junior_cash_idc", "junior_policy_digest")
+_DIGEST = re.compile(r"[0-9a-f]{64}")
 
 
 def _finite(value: Any) -> bool:
@@ -92,10 +101,73 @@ def _check(label: str, expected_label: str, expected: float, parts: list[tuple[s
     }
 
 
+def _digest(value: Any, what: str) -> str:
+    if not isinstance(value, str) or not _DIGEST.fullmatch(value):
+        raise FinancingEvidenceInvalid(f"FINANCING_EVIDENCE_DIGEST_INVALID: {what}")
+    return value
+
+
+def _authority_mode(evidence: Mapping) -> str:
+    """Strict facility-authority dispatch; ambiguity is rejected, aggregate-only stays UNAVAILABLE."""
+    authority = evidence.get("facility_authority")
+    two = [k for k in _TWO_SENIOR_KEYS if k in evidence]
+    junior = [k for k in _JUNIOR_KEYS if k in evidence]
+    if authority is None:
+        if two or junior or "collection_digest" in evidence:
+            raise FinancingEvidenceInvalid("FINANCING_FACILITY_AUTHORITY_MISSING")
+        return "AGGREGATE"
+    if authority == TWO_SENIOR_AUTHORITY:
+        if junior:
+            raise FinancingEvidenceInvalid("FINANCING_MIXED_FACILITY_SERIALIZER")
+        schedules = evidence.get("facility_schedules")
+        if not isinstance(schedules, (list, tuple)) or len(schedules) != 2:
+            raise FinancingEvidenceInvalid("FINANCING_TWO_SENIOR_REQUIRES_EXACTLY_TWO_SCHEDULES")
+        _digest(evidence.get("collection_digest"), "collection_digest")
+        if not isinstance(evidence.get("aggregate_period_rates"), (list, tuple)):
+            raise FinancingEvidenceInvalid("FINANCING_TWO_SENIOR_RATES_MISSING")
+        return "TWO_SENIOR"
+    if authority == JUNIOR_AUTHORITY:
+        if two:
+            raise FinancingEvidenceInvalid("FINANCING_MIXED_FACILITY_SERIALIZER")
+        if len(junior) != len(_JUNIOR_KEYS) or "facility_schedules" in evidence:
+            raise FinancingEvidenceInvalid("FINANCING_JUNIOR_EVIDENCE_INCOMPLETE")
+        _digest(evidence.get("collection_digest"), "collection_digest")
+        _digest(evidence.get("junior_policy_digest"), "junior_policy_digest")
+        return "JUNIOR"
+    raise FinancingEvidenceInvalid("FINANCING_FACILITY_AUTHORITY_UNKNOWN")
+
+
+def _validate_junior_cash_idc(evidence: Mapping, junior: dict, periods: list) -> float:
+    """Bind the canonical Junior cash-IDC ledger to this Run's collection, instrument and facility."""
+    cash = evidence.get("junior_cash_idc")
+    if not isinstance(cash, Mapping):
+        raise FinancingEvidenceInvalid("FINANCING_JUNIOR_CASH_IDC_MISSING")
+    values = cash.get("capitalized_cash_by_period_keur")
+    if (not isinstance(values, (list, tuple)) or len(values) != len(periods)
+            or any(not _finite(v) or v < 0 for v in values)):
+        raise FinancingEvidenceInvalid("FINANCING_JUNIOR_CASH_IDC_LEDGER_INVALID")
+    if cash.get("instrument_id") != junior["instrument_id"]:
+        raise FinancingEvidenceInvalid("FINANCING_JUNIOR_CASH_IDC_INSTRUMENT_MISMATCH")
+    if _digest(cash.get("collection_digest"), "junior_cash_idc.collection_digest") != evidence["collection_digest"]:
+        raise FinancingEvidenceInvalid("FINANCING_JUNIOR_CASH_IDC_COLLECTION_MISMATCH")
+    book_life = cash.get("book_life_years")
+    if type(book_life) is not int or not 1 <= book_life <= 100:
+        raise FinancingEvidenceInvalid("FINANCING_JUNIOR_CASH_IDC_BOOK_LIFE_INVALID")
+    payload = (cash["instrument_id"], cash["collection_digest"], tuple(float(v) for v in values), book_life)
+    # Same self-binding digest the canonical contract records; recomputed here, never trusted.
+    if _digest(cash.get("evidence_digest"), "junior_cash_idc.evidence_digest") != hashlib.sha256(
+            json.dumps(payload, separators=(",", ":")).encode()).hexdigest():
+        raise FinancingEvidenceInvalid("FINANCING_JUNIOR_CASH_IDC_EVIDENCE_TAMPERED")
+    for index, (ledger, facility) in enumerate(zip(values, junior["ledgers"]["construction_idc_keur"])):
+        if abs(ledger - facility) > FINANCE_TOLERANCE_KEUR:
+            raise FinancingEvidenceInvalid(f"FINANCING_JUNIOR_CASH_IDC_PERIOD_MISMATCH: period {index + 1}")
+    return math.fsum(values)
+
+
 def build_instrument_reconciliation(evidence: Mapping, su: Mapping, periods: list) -> dict:
     """Return the instrument funding view; ``available`` is False when only aggregate evidence exists."""
-    junior_mode = "junior_facility" in evidence or "senior_facility" in evidence
-    schedules = evidence.get("facility_schedules")
+    mode = _authority_mode(evidence)
+    junior_mode = mode == "JUNIOR"
     equity = tuple(
         amount(label, math.fsum(p[key] for p in periods), PREFIX + "construction_funding.periods." + key)
         for label, key in EQUITY_FIELDS)
@@ -111,16 +183,15 @@ def build_instrument_reconciliation(evidence: Mapping, su: Mapping, periods: lis
     ]
     base = {"equity": equity, "shl": shl, "equity_checks": equity_checks, "capital_stack_link": True}
 
-    if junior_mode:
-        if not isinstance(evidence.get("senior_facility"), Mapping) or not isinstance(evidence.get("junior_facility"), Mapping):
-            raise FinancingEvidenceInvalid("FINANCING_JUNIOR_EVIDENCE_INCOMPLETE")
-        facilities = [_facility(evidence["senior_facility"], periods, "Senior", "senior_facility"),
-                      _facility(evidence["junior_facility"], periods, "Junior", "junior_facility")]
-    elif isinstance(schedules, (list, tuple)) and schedules:
-        facilities = [_facility(f, periods, "Senior", f"facility_schedules[{n}]") for n, f in enumerate(schedules)]
-    else:
+    if mode == "AGGREGATE":
         return {**base, "available": False, "mode": "AGGREGATE", "instruments": (), "checks": equity_checks,
                 "status": "UNAVAILABLE", "unavailable_reason": UNAVAILABLE_AGGREGATE}
+    if junior_mode:
+        facilities = [_facility(evidence["senior_facility"], periods, "Senior", "senior_facility"),
+                      _facility(evidence["junior_facility"], periods, "Junior", "junior_facility")]
+    else:
+        facilities = [_facility(f, periods, "Senior", f"facility_schedules[{n}]")
+                      for n, f in enumerate(evidence["facility_schedules"])]
     if len({f["instrument_id"] for f in facilities}) != len(facilities):
         raise FinancingEvidenceInvalid("FINANCING_INSTRUMENT_DUPLICATE_ID")
 
@@ -144,13 +215,10 @@ def build_instrument_reconciliation(evidence: Mapping, su: Mapping, periods: lis
                              pick(juniors, "construction_idc_keur") + pick(juniors, "upfront_fees_keur")
                              + pick(juniors, "construction_commitment_fees_keur"),
                              PREFIX + "sources_uses.other_financing_costs_keur"))
-        cash = evidence.get("junior_cash_idc")
-        if isinstance(cash, Mapping):
-            values = cash.get("capitalized_cash_by_period_keur")
-            if not isinstance(values, (list, tuple)) or any(not _finite(v) for v in values):
-                raise FinancingEvidenceInvalid("FINANCING_JUNIOR_CASH_IDC_INVALID")
-            checks.append(_check("Junior cash IDC ledger", "Junior facility IDC", juniors[0]["totals"]["construction_idc_keur"],
-                                 [("junior_cash_idc", math.fsum(values))], PREFIX + "junior_facility.construction_idc_keur"))
+        junior = juniors[0]
+        cash_total = _validate_junior_cash_idc(evidence, junior, periods)
+        checks.append(_check("Junior cash IDC ledger", "Junior facility IDC", junior["totals"]["construction_idc_keur"],
+                             [("junior_cash_idc", cash_total)], PREFIX + "junior_facility.construction_idc_keur"))
     period_rows = []
     for i, p in enumerate(periods):
         for group, key, label in ((seniors, "senior_draw_keur", "Senior draws"),
