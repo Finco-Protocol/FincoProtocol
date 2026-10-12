@@ -54,6 +54,8 @@ def seal_preview(
         "category": p.get("category"), "confidence_class": p.get("confidence_class"),
         "explanation": list(p.get("explanation") or ())[:4], "unit_origin": p.get("unit_origin"),
         "section": p.get("section", ""),
+        # The ORIGINAL automatic outcome, so a later user correction can be shown against it.
+        "suggested_normalized": p.get("normalized_value"),
     } for p in proposals]
     body = {
         "kind": "preview", "owner": owner, "project_id": project_id,
@@ -120,9 +122,14 @@ def resolve_review(
                 field_id, project_type=project_type,
                 template_source=template_source,
             )
-            normalized = str(selections.get(f"manual_{idx}", "") or "").strip()
+            manual_value = str(selections.get(f"manual_{idx}", "") or "").strip()
+            extracted_unit = str(row.get("source_unit") or "").strip()
+            unit_key = f"unit_{idx}"
+            # A submitted unit is the user's explicit choice; a missing key is NOT a correction, so the unit
+            # extracted from the file stays in force (never silently replaced by "unspecified").
+            chosen_unit = str(selections.get(unit_key) or "").strip() if unit_key in selections else extracted_unit
+            normalized = manual_value
             if not normalized:
-                chosen_unit = str(selections.get(f"unit_{idx}", "") or "")
                 # The source value is always from the signed original evidence.
                 normalized = normalize_value(field_id, row["original_value"], chosen_unit)
             validation = WorkbookUpdateService.validate_field_update(field_id, normalized)
@@ -134,20 +141,41 @@ def resolve_review(
                 seen_paths.add(spec.engine_path)
         except (KeyError, BatchApplyError, IntakeError, FieldValidationError) as exc:
             raise ImportReviewError(getattr(exc, "code", "IMPORT_FIELD_INVALID"), str(exc)) from exc
+        suggested_field = str(row.get("field_id") or "")
+        unit_corrected = (not manual_value) and chosen_unit.casefold() != extracted_unit.casefold()
+        field_remapped = field_id != suggested_field
+        corrections, notes = [], []
+        if field_remapped:
+            corrections.append("FIELD_REMAPPED")
+            notes.append(f"field changed from {suggested_field or 'no suggestion'} to {field_id}")
+        if unit_corrected:
+            corrections.append("SOURCE_UNIT_CORRECTED")
+            notes.append(f"source unit changed from {extracted_unit or 'unspecified'} to {chosen_unit or 'unspecified'}")
+        if manual_value:
+            corrections.append("VALUE_OVERRIDDEN")
+            notes.append("FINCO value entered manually; the source unit selection was not used")
+        canonical_unit = spec.unit or ""
         approved.append({
             "source_id": idx, "sheet": row["sheet"], "cell": row["source_cell"],
             "label": row["label"], "field_id": field_id,
-            "value": normalized, "unit": spec.unit or "",
+            "value": normalized, "unit": canonical_unit,
             "original_value": row["original_value"],
-            "source_unit": str(selections.get(f"unit_{idx}", "") or row.get("source_unit") or ""),
-            "normalization": ("manual FINCO value entered by the user" if str(selections.get(f"manual_{idx}", "")).strip()
-                              else f'{row["original_value"]} {str(selections.get(f"unit_{idx}", "") or row.get("source_unit") or "").strip() or "(no unit)"}'
-                                   f' -> {normalized} {spec.unit or ""}'.strip()),
+            # ── lossless provenance: original extraction vs what the user approved ───────────────
+            "extracted_unit": extracted_unit, "chosen_unit": chosen_unit, "canonical_unit": canonical_unit,
+            "source_unit": chosen_unit,                                  # legacy key: the unit actually used
+            "normalized_value": normalized,
+            "suggested_field_id": suggested_field, "suggested_method": row.get("method"),
+            "suggested_normalized": row.get("suggested_normalized"),
+            "unit_corrected": unit_corrected, "field_remapped": field_remapped, "value_overridden": bool(manual_value),
+            "corrections": corrections, "correction_note": "; ".join(notes),
+            "mapping_origin": "user_reviewed" if corrections else "automatic",
+            "normalization": ("manual FINCO value entered by the user" if manual_value else
+                              f'{row["original_value"]} {chosen_unit or "(no unit)"} -> {normalized} {canonical_unit}'.strip()
+                              + (f' (source unit corrected by the user from {extracted_unit or "unspecified"})' if unit_corrected else "")),
             "category": row.get("category"), "confidence_class": row.get("confidence_class"),
             "explanation": list(row.get("explanation") or ())[:4],
-            "method": "manual_reviewed" if (
-                field_id != row.get("field_id") or str(selections.get(f"manual_{idx}", "")).strip()
-            ) else row.get("method"),
+            # An untouched row keeps its original automatic method; any user correction is user-reviewed.
+            "method": "manual_reviewed" if corrections else row.get("method"),
         })
     if not approved or len(approved) > 50:
         raise ImportReviewError("IMPORT_APPROVED_FIELD_COUNT_INVALID", str(len(approved)))

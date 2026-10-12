@@ -192,3 +192,55 @@ def test_mobile_layout_has_no_page_overflow_and_keeps_bulk_controls(browser, app
         assert not page.browser_errors
     finally:
         ctx.close()
+
+
+def test_user_unit_correction_is_shown_as_user_reviewed_from_review_to_result(browser, app_server, tmp_path):
+    from app.persistence.run_history_repository import get_run_history
+    from app.persistence.workspace_repository import get_workspace_state
+
+    project = _new_seeded_browser_project("solar", f3_active=False)
+    ctx, page = _page(browser, app_server["url"], width=1440)
+    try:
+        initial = _run_in_real_browser_context(ctx, page, app_server["url"], project)
+        history = tuple(h.history_id for h in get_run_history(OWNER, project.project_id))
+        path = tmp_path / "synthetic-unit-correction.xlsx"
+        _workbook("solar", path)
+        page.goto(app_server["url"] + "/v2/workbook/import?project=" + project.project_code)
+        page.locator("#upload").set_input_files(str(path))
+        page.get_by_role("button", name="Extract and review").click()
+
+        grid = _row(page, "Grid interconnection cost")                    # extracted unit: EUR (value 1.200.000,50)
+        audit = _row(page, "Audit and legal")                             # extracted unit: kEUR, left untouched
+        grid.locator(".approve-box").check()
+        audit.locator(".approve-box").check()
+        grid.locator('select[name^="unit_"]').select_option("kEUR")        # the user overrides the extracted unit
+        page.get_by_role("button", name="Review approved change set").click()
+        assert page.get_by_text("Final confirmation", exact=False).count() == 1
+
+        rows = page.locator("table").first.locator("tbody tr")
+        corrected = rows.filter(has_text="Grid interconnection cost")
+        untouched = rows.filter(has_text="Audit and legal")
+        assert corrected.get_by_test_id("unit-corrected").count() == 1
+        assert "extracted unit EUR" in corrected.inner_text() and "Unit used: kEUR" in corrected.inner_text()
+        assert corrected.get_by_test_id("mapping-origin").inner_text().strip() == "user reviewed"
+        assert "from EUR to kEUR" in corrected.get_by_test_id("correction-note").inner_text()
+        assert untouched.get_by_test_id("unit-corrected").count() == 0
+        assert untouched.get_by_test_id("mapping-origin").inner_text().strip() == "automatic"
+        # Review is not a write.
+        assert get_workspace_state(OWNER, project.project_id).draft_snapshot == initial.draft_snapshot
+        page.screenshot(path=str(SHOTS / "solar-05-unit-correction-confirm.png"), full_page=True)
+
+        page.get_by_role("button", name="Apply 2 approved fields atomically").click()
+        assert page.get_by_text("Import Apply result").count() == 1
+        result = page.locator("table").first.locator("tbody tr").filter(has_text="Grid interconnection cost")
+        assert result.get_by_test_id("unit-corrected").count() == 1
+        assert result.get_by_test_id("mapping-origin").inner_text().strip() == "user reviewed"
+        page.screenshot(path=str(SHOTS / "solar-06-unit-correction-result.png"), full_page=True)
+
+        # The canonical value is exactly what the user approved (kEUR), not the automatic EUR conversion.
+        assert float(_snapshot_value(project, "capex.C.grid_connection")) == pytest.approx(1200000.50)
+        stale = get_workspace_state(OWNER, project.project_id)
+        assert stale.dirty and stale.last_runtime_snapshot_id == initial.last_runtime_snapshot_id
+        assert tuple(h.history_id for h in get_run_history(OWNER, project.project_id)) == history
+    finally:
+        ctx.close()

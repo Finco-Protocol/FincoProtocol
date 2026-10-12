@@ -1,3 +1,14 @@
+{% macro prov(r) %}
+  <div data-testid="prov-original">Original: <code>{{ r.original_value }}</code> · extracted unit <strong>{{ r.extracted_unit or 'unspecified' }}</strong></div>
+  <div data-testid="prov-unit">Unit used: <strong>{{ r.chosen_unit or 'unspecified' }}</strong>{% if r.unit_corrected %} <span class="pill needs_review" data-testid="unit-corrected">corrected by you</span>{% endif %} → FINCO <strong>{{ r.canonical_unit or r.unit or '—' }}</strong></div>
+  <div class="muted" data-testid="prov-normalization">{{ r.normalization }}</div>
+{% endmacro %}
+{% macro origin(r) %}
+  <span class="pill {{ 'needs_review' if r.mapping_origin == 'user_reviewed' else 'ready' }}" data-testid="mapping-origin">{{ 'user reviewed' if r.mapping_origin == 'user_reviewed' else 'automatic' }}</span>
+  <div>{{ r.method }}{% if r.suggested_method and r.method != r.suggested_method %} <small class="muted">(suggested: {{ r.suggested_method }})</small>{% endif %}</div>
+  {% if r.field_remapped %}<div class="muted" data-testid="remapped">Suggested field: <code>{{ r.suggested_field_id or 'none' }}</code></div>{% endif %}
+  {% if r.correction_note %}<div class="muted" data-testid="correction-note">{{ r.correction_note }}</div>{% endif %}
+{% endmacro %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -157,10 +168,10 @@
     <h2>Final confirmation · {{ approved_count }} approved fields</h2>
     <p class="notice">Exactly {{ changed_count }} candidate changes are shown below ({{ unchecked_count }} source rows are not approved and will not be saved). Submitting Apply performs one canonical CAS transaction; any conflict or validation error rejects the entire set. The model is never run automatically.</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Source</th><th>Approved FINCO field</th><th>Previous Working Copy</th><th>Approved value</th><th>FINCO unit</th><th>Normalisation</th><th>Mapping method &amp; confidence</th></tr></thead>
+      <thead><tr><th>Source</th><th>Approved FINCO field</th><th>Previous Working Copy</th><th>Approved value</th><th>FINCO unit</th><th>Original → approved provenance</th><th>Mapping origin &amp; confidence</th></tr></thead>
       <tbody>{% for row in approved %}<tr><td>{{ row.sheet }}!{{ row.cell }}<div class="muted">{{ row.label }}</div></td>
         <td><code>{{ row.field_id }}</code></td><td>{{ row.current_value if row.current_value is not none else 'Not set' }}</td>
-        <td><strong>{{ row.value }}</strong></td><td>{{ row.unit }}</td><td><small>{{ row.normalization }}</small></td><td>{{ row.method }}{% if row.confidence_class %} · {{ row.confidence_class|replace('_',' ') }}{% endif %}{% if row.explanation %}<ul class="why">{% for e in row.explanation %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}</td>
+        <td><strong>{{ row.value }}</strong></td><td>{{ row.unit }}</td><td>{{ prov(row) }}</td><td>{{ origin(row) }}{% if row.confidence_class %}<div class="muted">{{ row.confidence_class|replace('_',' ') }}</div>{% endif %}{% if row.explanation %}<ul class="why">{% for e in row.explanation %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
     <form action="/v2/workbook/import/apply" method="post">
@@ -180,11 +191,11 @@
        This is not a successful financial model run.</p>
     <p class="muted" data-testid="provenance">Approval: {{ approval_event }} at {{ approved_at }} · Transaction identity (new composite hash): <code>{{ transaction_identity }}</code>. Nothing from the uploaded workbook is stored by this step.</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Source cell &amp; label</th><th>Canonical field</th><th>Original → normalisation</th><th>Previous</th><th>Approved value</th><th>Actually saved value</th><th>Method</th></tr></thead>
+      <thead><tr><th>Source cell &amp; label</th><th>Canonical field</th><th>Original → approved provenance</th><th>Previous</th><th>Approved value</th><th>Actually saved value</th><th>Mapping origin</th></tr></thead>
       <tbody>{% for row in saved %}<tr>
        <td>{{ row.source }}<div class="muted">{{ row.label }}</div></td><td><code>{{ row.field_id }}</code></td>
-       <td><small>{{ row.normalization }}</small></td><td>{{ row.previous_value if row.previous_value is not none else 'Not set' }}</td>
-       <td>{{ row.approved_value }}</td><td><strong>{{ row.actual_value }}</strong></td><td>{{ row.method }}</td>
+       <td>{{ prov(row) }}</td><td>{{ row.previous_value if row.previous_value is not none else 'Not set' }}</td>
+       <td>{{ row.approved_value }}</td><td><strong>{{ row.actual_value }}</strong></td><td>{{ origin(row) }}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
     <div class="summary panel">
