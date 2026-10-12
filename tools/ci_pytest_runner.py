@@ -12,6 +12,7 @@ Env:   FINCO_CI_PYTEST_BUDGET_S (default 3000)   total wall-clock budget
        FINCO_CI_EXIT_GRACE_S    (default 180)    max time to exit after pytest.main returns
        FINCO_CI_DIAG_PATH       (default artifacts/ci-hang-diagnostics.txt)
        FINCO_CI_PROGRESS_DIR    (default artifacts/progress)  written by tools.ci_pytest_progress
+       FINCO_CI_HEARTBEAT_S     (default 60)   live progress interval (diagnostic only)
        FINCO_CI_STALL_S         (default 300)    one bounded stall snapshot per phase lasting longer
        FINCO_CI_MAX_STALL_SNAPSHOTS (default 6)  hard cap on stall snapshots per run
 """
@@ -59,6 +60,38 @@ def _progress_line(progress_dir: Path | None, now: float | None = None) -> str:
             f"completed={record.get('completed')}/{record.get('selected')} last_completed={record.get('last_completed')!r}")
 
 
+
+def _heartbeat_line(progress_dir: Path | None, elapsed_s: float, stage: str = "RUNNING", *, final: bool = False) -> str:
+    """Human-readable, observational progress. Never a pass/fail authority."""
+    elapsed = max(0, int(elapsed_s))
+    elapsed_str = f"{elapsed // 60}m {elapsed % 60:02d}s"
+    record = read_progress(progress_dir)
+    if record is None:
+        return f"FINCO CI | {stage} | progress evidence pending | elapsed {elapsed_str} | active: unavailable"
+
+    selected, completed = record.get("selected"), record.get("completed")
+    valid = (type(selected) is int and type(completed) is int and
+             selected > 0 and 0 <= completed <= selected)
+    if valid:
+        tenths = (completed * 2000 + selected) // (2 * selected)
+        if not final:
+            tenths = min(tenths, 999)  # 100% is reserved for verified normal exit.
+        summary = f"{tenths / 10:.1f}% | {completed:,} / {selected:,} tests"
+    elif type(selected) is int and selected == 0 and completed == 0:
+        summary = "collection pending"
+    else:
+        summary = "progress unavailable"
+
+    node = record.get("node")
+    node = node if isinstance(node, str) and node else "—"
+    node = node.replace("\n", " ").replace("\r", " ")
+    if len(node) > 120:
+        node = "..." + node[-117:]
+    phase = record.get("phase")
+    phase = phase if isinstance(phase, str) and phase else "unknown"
+    phase = phase.replace("\n", " ").replace("\r", " ")[:40]
+    return f"FINCO CI | {stage} | {summary} | elapsed {elapsed_str} | active: {node} [{phase}]"
+
 def _snapshot(pid: int, diag: Path, reason: str, progress_dir: Path | None = None) -> None:
     diag.parent.mkdir(parents=True, exist_ok=True)
     with diag.open("a", encoding="utf-8") as fh:
@@ -99,19 +132,26 @@ def main(argv: list[str]) -> int:
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
         start_new_session=True, env=env,
     )
-    state = {"main_returned_at": None}
+    state = {"main_returned_at": None, "pytest_rc": None}
 
     def pump() -> None:
         assert child.stdout is not None
         for line in child.stdout:
             sys.stdout.write(line)
             sys.stdout.flush()
-            if "FINCO_CI_MARKER after pytest.main" in line:
+            if "PYTEST_MAIN_RETURNED FINCO_CI_MARKER after pytest.main rc=" in line:
                 state["main_returned_at"] = time.monotonic()
+                try:
+                    state["pytest_rc"] = int(line.split("after pytest.main rc=", 1)[1].strip())
+                except ValueError:
+                    state["pytest_rc"] = None
 
     reader = threading.Thread(target=pump, daemon=True)
     reader.start()
     started = time.monotonic()
+    heartbeat_s = max(1, _env_int("FINCO_CI_HEARTBEAT_S", 60))
+    next_heartbeat = started + heartbeat_s
+    announced = False
     reason = None
     while child.poll() is None:
         now = time.monotonic()
@@ -121,6 +161,19 @@ def main(argv: list[str]) -> int:
             reason = f"pytest.main returned but interpreter did not exit within {grace}s (shutdown hang)"
         if reason:
             break
+
+        # Observe existing atomic active.json from the supervisor loop. No new worker.
+        record = read_progress(progress_dir)
+        stage = ("TESTS COMPLETED — PYTHON SHUTDOWN PENDING"
+                 if state["main_returned_at"] is not None else "RUNNING")
+        if record is not None and not announced:
+            print(_heartbeat_line(progress_dir, now - started, stage), flush=True)
+            announced = True
+            next_heartbeat = now + heartbeat_s
+        elif now >= next_heartbeat:
+            print(_heartbeat_line(progress_dir, now - started, stage), flush=True)
+            next_heartbeat = now + heartbeat_s
+
         if stall_snapshots < max_stall_snapshots:
             record = read_progress(progress_dir)
             started_at = record.get("phase_started_epoch") if record else None
@@ -137,6 +190,13 @@ def main(argv: list[str]) -> int:
     if reason is None:
         reader.join(timeout=10)
         print(f"PYTHON_PROCESS_EXITED FINCO_CI_SUPERVISOR child exit code {child.returncode}", flush=True)
+        if child.returncode == 0 and state["pytest_rc"] == 0:
+            print(_heartbeat_line(progress_dir, time.monotonic() - started, "COMPLETE", final=True), flush=True)
+        else:
+            # Failed/missing evidence is NEVER transformed into a successful result.
+            print(_heartbeat_line(progress_dir, time.monotonic() - started,
+                                  f"EXIT (pytest rc={state['pytest_rc']}, child rc={child.returncode})"),
+                  flush=True)
         return int(child.returncode)
 
     print(f"FINCO_CI_SUPERVISOR TIMEOUT: {reason}", flush=True)
