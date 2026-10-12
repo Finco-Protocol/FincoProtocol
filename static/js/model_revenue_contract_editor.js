@@ -69,7 +69,8 @@
     const empty = form.querySelector('[data-revenue-empty]');
     const advancedBtn = form.querySelector('[data-revenue-advanced]');
     const raw = source.value.trim();
-    let book, blocked = false, dirty = false, advanced = false;
+    let book, blocked = false, dirty = false, advanced = false, baseline = '';
+    const kindOverrides = new WeakMap();
 
     function showError(message) {
       error.textContent = message;
@@ -77,7 +78,7 @@
       if (message) feedback.textContent = 'Not saved · Review the contract details';
     }
     function status() {
-      dirty = raw !== (book.streams.length ? JSON.stringify(book) : '');
+      dirty = JSON.stringify(book) !== baseline;
       form.dataset.dirty = String(dirty);
       feedback.dataset.dirty = String(dirty);
       feedback.textContent = dirty ? 'Unsaved changes · Save contracts to update Working Copy (Run separately)' :
@@ -133,7 +134,7 @@
       tbody.replaceChildren();
       empty.hidden = book.streams.length > 0;
       book.streams.forEach((row, index) => {
-        const kind = displayKind(row);
+        const kind = kindOverrides.get(row) || displayKind(row);
         const tr = document.createElement('tr');
         tr.dataset.revenueRow = String(index);
         const id = entry(tr, index, 'id', row.id, {required:true, maxLength:200, label:'Contract ID'});
@@ -174,6 +175,7 @@
             delete changed.reference_stream_id;
           }
           book.streams[index] = changed;
+          kindOverrides.set(changed, next);
           showError('');
           if (next === 'cfd' || isMerchant(next)) advancedMode(true);
           render(); status();
@@ -250,8 +252,8 @@
           advancedMode(true);
           return 'Row ' + n + ': CfD requires a valid Merchant reference and a non-indexed strike.';
         }
-        if (displayKind(row) === 'fixed_ppa' && row.indexation_rate !== 0)
-          return 'Row ' + n + ': fixed PPA may not have indexation.';
+        if (kindOverrides.get(row) === 'indexed_ppa' && !(row.indexation_rate > 0))
+          return 'Row ' + n + ': indexed PPA requires a positive annual indexation rate.';
       }
       return '';
     }
@@ -266,10 +268,13 @@
       save.disabled = true;
       return;
     }
+    baseline = JSON.stringify(book);
     form.querySelector('[data-revenue-add]').addEventListener('click', () => {
       if (book.streams.length >= 24) { showError('At most 24 contracts are supported.'); return; }
       const kind = form.querySelector('[data-revenue-add-type]').value;
-      book.streams.push(newRow(kind));
+      const added = newRow(kind);
+      book.streams.push(added);
+      kindOverrides.set(added, kind);
       advancedMode(true); showError(''); render(); status();
       const last = tbody.lastElementChild;
       last?.querySelector('[data-field=id]')?.focus();
