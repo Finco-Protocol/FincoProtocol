@@ -282,3 +282,31 @@ def test_single_gate_rejects_a_sharded_or_partially_selected_public_run(tmp_path
     _write(path, {**inv, "selected": inv["selected"][:1], "outcomes": {inv["selected"][0]: {"status": "passed"}}})
     with pytest.raises(EvidenceError):
         ci_single_gate.verify_control(root, HEAD, "success", "success", MERGE)
+
+
+# ── CI-only test dependency (PyYAML) ────────────────────────────────────────────────────────────────
+
+def _install_lines(workflow: str):
+    text = (ROOT / ".github/workflows" / workflow).read_text(encoding="utf-8")
+    return text, [line for line in text.splitlines() if "pip install" in line]
+
+
+def test_pyyaml_is_a_pinned_ci_only_requirement_installed_by_both_gates():
+    ci = (ROOT / "requirements-ci-tests.txt").read_text(encoding="utf-8")
+    pins = [line.strip() for line in ci.splitlines() if line.strip() and not line.startswith("#")]
+    assert pins and all("==" in pin for pin in pins), "CI-only requirements must be exact pins"
+    assert any(pin.lower().startswith("pyyaml==") for pin in pins)
+    production = (ROOT / "requirements.txt").read_text(encoding="utf-8").lower()
+    assert "pyyaml" not in production, "a test-only package must not become a production requirement"
+    for workflow in ("pr_compile_and_safety.yml", "ci_public_job.yml"):
+        text, installs = _install_lines(workflow)
+        assert any("requirements-ci-tests.txt" in line and "-c constraints.txt" in line for line in installs), workflow
+        # installed in the SAME preparation step, before the dependency consistency check and before any test runs
+        assert text.index("requirements-ci-tests.txt") < text.index("pip check")
+        cache = text.split("cache-dependency-path:", 1)[1].split("- ", 1)[0]
+        assert "requirements-ci-tests.txt" in cache, "the pip cache key must change with the CI-only requirements"
+
+
+def test_the_structured_workflow_contract_tests_have_their_parser_available():
+    import yaml  # the dependency those tests rely on must be importable wherever the Public suite runs
+    assert yaml.safe_load("jobs: {a: {}}") == {"jobs": {"a": {}}}

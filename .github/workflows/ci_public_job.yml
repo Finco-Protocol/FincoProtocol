@@ -35,6 +35,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             requirements.txt
+            requirements-ci-tests.txt
             constraints.txt
       - name: Attest exact tested HEAD
         run: python -m tools.ci_acceptance attest --expected '${{ inputs.tested-sha }}' --output artifacts/source.json
@@ -49,7 +50,7 @@ jobs:
       - name: Install and record dependency preparation
         run: |
           python -m tools.ci_acceptance run --expected '${{ inputs.tested-sha }}' --label install --output artifacts/install.json -- \
-            bash -e -c 'python -m pip install --upgrade pip; pip install -r requirements.txt -c constraints.txt; python -m pip check'
+            bash -e -c 'python -m pip install --upgrade pip; pip install -r requirements.txt -c constraints.txt; pip install -r requirements-ci-tests.txt -c constraints.txt; python -m pip check'
       - name: Synthetic reference and regression tests (FULL, UNSHARDED, EXACT HEAD)
         env:
           FINCO_CI_PYTEST_BUDGET_S: '3300'
