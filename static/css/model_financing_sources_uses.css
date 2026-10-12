@@ -36,3 +36,9 @@
 .su-evidence summary{cursor:pointer;font-size:.84rem;font-weight:650}
 .su-evidence p{font-size:.78rem;color:var(--su-muted);line-height:1.5}
 @media(max-width:810px){.su-page{padding:18px 12px 42px}.su-header,.su-banner{flex-direction:column}.su-status{border-left:0;border-top:1px solid #c7d8e7;padding:12px 0 0;min-width:0}.su-grid,.su-summary{grid-template-columns:1fr}.su-header h1{font-size:1.5rem}}
+[data-testid="su-instruments"] h3{font-size:.9rem;margin:14px 0 6px}
+[data-testid="su-instruments"] details summary{cursor:pointer;font-size:.78rem}
+[data-testid="su-instruments"] tr[data-status="DIFFERS"]{background:#fdf0e3;font-weight:600}
+[data-testid="su-instruments"] h2 small{font-weight:400}
+.su-total,.su-total *{min-width:0;overflow-wrap:anywhere}
+.su-summary{min-width:0}
