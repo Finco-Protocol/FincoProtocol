@@ -74,6 +74,7 @@ class Sess:
                                                    requested_name="WC", capacity_mw=40.0)
         self.ctx = browser.new_context(viewport=viewport or {"width": 1440, "height": 1000},
                                        color_scheme=scheme, bypass_csp=True)
+        self.ctx.add_init_script("sessionStorage.setItem('finco.cost.editMode', 'immediate')")  # these tests exercise the explicit immediate mode
         self.ctx.add_cookies([{"name": COOKIE_NAME, "value": create_session_token(user_id=uid, username="admin"),
                                "url": live_server}])
         self.page = self.ctx.new_page()

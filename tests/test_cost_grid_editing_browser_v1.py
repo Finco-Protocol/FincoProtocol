@@ -75,6 +75,7 @@ class Session:
             user_id=uid, template_source=template, requested_name="Grid", capacity_mw=40.0)
         # bypass_csp: only so the AUTOMATION may evaluate wait predicates; the app CSP is untouched
         self.ctx = browser.new_context(viewport=viewport or {"width": 1440, "height": 1000}, bypass_csp=True)
+        self.ctx.add_init_script("sessionStorage.setItem('finco.cost.editMode', 'immediate')")  # these tests exercise the explicit immediate mode
         self.ctx.add_cookies([{"name": COOKIE_NAME,
                                "value": create_session_token(user_id=uid, username="admin"),
                                "url": live_server}])

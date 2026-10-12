@@ -275,6 +275,8 @@ def test_cross_sheet_batch_then_single_row_edit_has_no_false_409(make):
 def test_stage_mode_off_keeps_the_existing_per_row_autosave(make):
     s = make("u-off")
     s.open("capex")
+    s.page.locator("[data-cost-stage-toggle]").first.uncheck()      # batch editing is the default; immediate is explicit
+    s.page.wait_for_function("window.v2CostGrid.state().stageMode === false")
     ids = s.row_ids("capex", 2)
     s.rows("capex").nth(0).locator('input[name="amount_keur"]').click()
     s.page.keyboard.press("Control+A")
@@ -315,6 +317,8 @@ def test_measure_ten_sequential_row_autosaves_for_comparison(make):
     """Measurement only (no speed assertion): the existing per-row path, same ten edits, event-driven wait."""
     s = make("u-seq")
     s.open("capex")
+    s.page.locator("[data-cost-stage-toggle]").first.uncheck()      # batch editing is the default; immediate is explicit
+    s.page.wait_for_function("window.v2CostGrid.state().stageMode === false")
     n = min(10, s.rows("capex").count())
     ids = s.row_ids("capex", n)
     t0 = time.perf_counter()
