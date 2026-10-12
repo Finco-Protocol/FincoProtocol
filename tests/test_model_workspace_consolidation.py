@@ -220,20 +220,60 @@ def test_workspace_browser_ci_evidence_is_fail_closed(tmp_path, case):
 
 
 def test_workspace_browser_ci_parallel_source_and_validator_are_required():
+    """CI V2: the consolidation role stays mandatory, isolated and validator-gated.
+
+    (The #247 form asserted two six-role matrices; V2 runs the same six roles as isolated supervised
+    processes on one runner and proves exact HEAD / synthetic-merge tree equality instead.)
+    """
     import inspect
     from tools.ci_browser_job import SELECTIONS, REQUIRED, validate_browser_records
 
     workflow = (ROOT / ".github/workflows/protocol_ui_browser.yml").read_text(encoding="utf-8")
-    reusable = (ROOT / ".github/workflows/ci_browser_job.yml").read_text(encoding="utf-8")
-    assert workflow.count("role: [protocol, import, grid, q4, outputs, consolidation]") == 2
-    assert "browser-suites:" in workflow and "merge-result-browser:" in workflow
-    assert "mandatory-browser-evidence:" in workflow
-    assert "python -m tools.ci_browser_job aggregate" in workflow
-    assert "if-no-files-found: error" in reusable
-    assert "name: model-workspace-consolidation-browser" in reusable
+    assert "for role in protocol import grid q4 outputs consolidation; do" in workflow
+    assert workflow.count("mandatory-browser-evidence:") == 1
+    assert 'python -m tools.ci_browser_job "$role" --expected "$HEAD_SHA"' in workflow
+    assert "python -m tools.ci_browser_job aggregate" in workflow and "--job-result success" in workflow
+    assert "tools.ci_merge_tree_guard" in workflow
+    assert "if-no-files-found: error" in workflow                           # mandatory evidence upload
+    assert "name: model-workspace-consolidation-browser" in workflow         # screenshot alias preserved
+    assert set(REQUIRED) == {"protocol", "import", "grid", "q4", "outputs", "consolidation"}
     assert SELECTIONS["consolidation"] == ["tests/test_model_workspace_consolidation_browser.py"]
     assert REQUIRED["consolidation"] == ["artifacts/workspace-consolidation/prb-*.png"]
     assert "validate_consolidation(folder, inventory, process)" in inspect.getsource(validate_browser_records)
+
+
+@pytest.mark.parametrize("missing_role", ["protocol", "import", "grid", "q4", "outputs", "consolidation"])
+def test_workspace_browser_ci_aggregate_rejects_any_omitted_mandatory_role(tmp_path, missing_role):
+    """A successful job badge cannot hide an omitted role: the evidence directory of each role is required."""
+    import shutil
+    from tools.ci_acceptance import EvidenceError
+    from tools.ci_browser_job import validate_browser_records, REQUIRED
+
+    head, tree = "a" * 40, "b" * 40
+    _workspace_ci_matrix(tmp_path, "browser", head, tree)
+    assert set(validate_browser_records(tmp_path, head, tree, "success")["mandatory_roles"]) == set(REQUIRED)
+    shutil.rmtree(tmp_path / f"browser-{missing_role}")
+    with pytest.raises((EvidenceError, OSError)):
+        validate_browser_records(tmp_path, head, tree, "success")
+
+
+def test_workspace_browser_ci_aggregate_rejects_a_missing_screenshot_and_a_missing_junit(tmp_path):
+    from tools.ci_acceptance import EvidenceError
+    from tools.ci_browser_job import validate_browser_records
+
+    head, tree = "a" * 40, "b" * 40
+    folder = _workspace_ci_matrix(tmp_path, "browser", head, tree)
+    junit = folder / "results.xml"
+    saved = junit.read_bytes()
+    junit.unlink()
+    with pytest.raises((EvidenceError, OSError)):
+        validate_browser_records(tmp_path, head, tree, "success")
+    junit.write_bytes(saved)
+    validate_browser_records(tmp_path, head, tree, "success")
+    for png in folder.glob("**/prb-*.png"):
+        png.unlink()
+    with pytest.raises(EvidenceError):
+        validate_browser_records(tmp_path, head, tree, "success")
 
 
 @pytest.mark.parametrize("job_result", ["failure", "cancelled", "skipped", "", None])
