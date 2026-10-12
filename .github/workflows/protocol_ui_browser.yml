@@ -77,7 +77,7 @@ jobs:
             --artifacts evidence --job-result success
       - name: Upload role evidence, manifests and original process provenance
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: browser-mandatory-suite-evidence
           path: |
@@ -86,14 +86,14 @@ jobs:
           if-no-files-found: error
       - name: Preserve consolidation screenshot artifact alias
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: model-workspace-consolidation-browser
           path: evidence/browser-consolidation/workspace-consolidation/
           if-no-files-found: warn
       - name: Preserve mandatory browser proof artifact
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: browser-mandatory-proof
           path: artifacts/browser-proof.json
