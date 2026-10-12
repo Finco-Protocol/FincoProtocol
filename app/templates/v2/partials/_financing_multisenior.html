@@ -30,31 +30,32 @@
       <thead><tr><th scope="col"></th><th scope="col">Instrument</th><th scope="col">Type / rank</th><th scope="col">Commitment (kEUR)</th><th scope="col">Ccy</th><th scope="col">Rate (% p.a.)</th><th scope="col">Day-count</th><th scope="col">Repayment</th><th scope="col">Grace (m)</th><th scope="col">Maturity</th><th scope="col">Status</th></tr></thead>
       {% for r in cs.rows %}
       {% set i = multisenior.entry.proposal.instruments[loop.index0] %}
-      <tbody data-f3-instrument="{{ r.instrument_id }}" data-testid="cs-row">
+      {% set row_editable = project_editable and r.editable %}
+      <tbody {% if r.editable %}data-f3-instrument="{{ r.instrument_id }}"{% else %}data-cs-readonly-instrument="{{ r.instrument_id }}"{% endif %} data-testid="cs-row">
         <tr class="cs-row">
           <td><button type="button" class="cs-expand" data-cs-expand aria-expanded="false" aria-label="Show terms for {{ r.name }}">▸</button></td>
-          <th scope="row">{% if editable %}<input data-f3="name" data-cs-cell value="{{ r.name }}" maxlength="120" required aria-label="Facility name">{% else %}{{ r.name }}{% endif %}<span class="cs-mod" data-cs-mod hidden title="Modified, not saved">●</span></th>
+          <th scope="row">{% if row_editable %}<input data-f3="name" data-cs-cell value="{{ r.name }}" maxlength="120" required aria-label="Facility name">{% else %}{{ r.name }}{% endif %}<span class="cs-mod" data-cs-mod hidden title="Modified, not saved">●</span></th>
           <td class="cs-type">{{ r.type }}<small>{{ r.rank }}</small></td>
-          <td class="cs-num">{% if editable %}<input data-f3="commitment_keur" data-cs-cell type="number" min="0" step="any" value="{{ '%.12g' | format(r.commitment_keur) }}" required aria-label="Commitment kEUR">{% else %}{{ '{:,.2f}'.format(r.commitment_keur) }}{% endif %}</td>
+          <td class="cs-num">{% if row_editable %}<input data-f3="commitment_keur" data-cs-cell type="number" min="0" step="any" value="{{ '%.12g' | format(r.commitment_keur) }}" required aria-label="Commitment kEUR">{% else %}{{ '{:,.2f}'.format(r.commitment_keur) }}{% endif %}</td>
           <td>{{ r.currency }}</td>
-          <td class="cs-num">{% if editable %}<input data-f3="rate_pct" data-cs-cell type="number" min="0" max="100" step="any" value="{{ '%.12g' | format(r.rate_pct) }}" required aria-label="Fixed cash interest percent per annum">{% else %}{{ '%.4g' | format(r.rate_pct) }}{% endif %}</td>
+          <td class="cs-num">{% if row_editable %}<input data-f3="rate_pct" data-cs-cell type="number" min="0" max="100" step="any" value="{{ '%.12g' | format(r.rate_pct) }}" required aria-label="Fixed cash interest percent per annum">{% else %}{{ '%.4g' | format(r.rate_pct) }}{% endif %}</td>
           <td>{{ r.day_count }}</td>
-          <td>{% if editable %}<select data-f3="repayment_mode" data-cs-cell aria-label="Repayment method"><option value="LEVEL_PRINCIPAL" {{ 'selected' if r.repayment_mode == 'LEVEL_PRINCIPAL' }}>Level principal</option><option value="BULLET" {{ 'selected' if r.repayment_mode == 'BULLET' }}>Bullet at maturity</option></select>{% else %}{{ r.repayment }}{% endif %}</td>
-          <td class="cs-num">{% if editable %}<input data-f3="grace_months" data-cs-cell type="number" min="0" step="1" value="{{ r.grace_months }}" required aria-label="Principal grace months">{% else %}{{ r.grace_months }}{% endif %}</td>
-          <td>{% if editable %}<input data-f3="maturity_date" data-cs-cell type="date" value="{{ r.maturity_date }}" required aria-label="Maturity, operating period end">{% else %}{{ r.maturity_date }}{% endif %}</td>
-          <td><span class="cs-badge cs-{{ r.status | lower | replace(' ', '-') }}" data-testid="cs-row-status">{{ r.status }}</span></td>
+          <td>{% if row_editable %}<select data-f3="repayment_mode" data-cs-cell aria-label="Repayment method"><option value="LEVEL_PRINCIPAL" {{ 'selected' if r.repayment_mode == 'LEVEL_PRINCIPAL' }}>Level principal</option><option value="BULLET" {{ 'selected' if r.repayment_mode == 'BULLET' }}>Bullet at maturity</option></select>{% else %}{{ r.repayment }}{% endif %}</td>
+          <td class="cs-num">{% if row_editable %}<input data-f3="grace_months" data-cs-cell type="number" min="0" step="1" value="{{ r.grace_months }}" required aria-label="Principal grace months">{% else %}{{ r.grace_months }}{% endif %}</td>
+          <td>{% if row_editable %}<input data-f3="maturity_date" data-cs-cell type="date" value="{{ r.maturity_date }}" required aria-label="Maturity, operating period end">{% else %}{{ r.maturity_date }}{% endif %}</td>
+          <td><span class="cs-badge cs-{{ r.status | lower | replace(' ', '-') }}" data-testid="cs-row-status">{{ r.status }}</span>{% if r.readiness %}<small class="cs-note" data-testid="cs-junior-readiness">{{ r.readiness }}</small>{% endif %}</td>
         </tr>
         <tr class="cs-detail" data-cs-detail hidden>
           <td></td>
           <td colspan="10">
             <div class="cs-terms">
               <section><h5>Drawdowns</h5>
-                {% if editable %}<label>Dated draws (date, kEUR)<textarea data-f3="draws" data-cs-cell rows="3" required>{% for d in i.drawdowns %}{{ d.draw_date }}, {{ d.amount_keur }}{{ '\n' if not loop.last }}{% endfor %}</textarea></label>
+                {% if row_editable %}<label>Dated draws (date, kEUR)<textarea data-f3="draws" data-cs-cell rows="3" required>{% for d in i.drawdowns %}{{ d.draw_date }}, {{ d.amount_keur }}{{ '\n' if not loop.last }}{% endfor %}</textarea></label>
                 {% else %}{% for d in r.draws %}<div>{{ d.date }} · {{ '{:,.2f}'.format(d.amount_keur) }}</div>{% endfor %}{% endif %}
                 <p class="cs-note">Scheduled {{ '{:,.2f}'.format(r.draws_total_keur) }} of {{ '{:,.2f}'.format(r.commitment_keur) }} committed (kEUR){% if r.draws_total_keur|round(6) != r.commitment_keur|round(6) %} · <strong>does not reconcile</strong>{% endif %}</p></section>
               <section><h5>Interest &amp; fees</h5>
                 <p class="cs-note">Fixed cash interest; capitalized IDC and fees during construction.</p>
-                {% if editable %}<label>Upfront fee (% commitment)<input data-f3="upfront_pct" data-cs-cell type="number" min="0" max="100" step="any" value="{{ '%.12g' | format(r.upfront_pct) }}" required></label>
+                {% if row_editable %}<label>Upfront fee (% commitment)<input data-f3="upfront_pct" data-cs-cell type="number" min="0" max="100" step="any" value="{{ '%.12g' | format(r.upfront_pct) }}" required></label>
                 <label>Commitment fee (% p.a. undrawn)<input data-f3="commitment_pct" data-cs-cell type="number" min="0" max="100" step="any" value="{{ '%.12g' | format(r.commitment_fee_pct) }}" required></label>
                 {% else %}<div>Upfront {{ '%.4g' | format(r.upfront_pct) }}% · Commitment {{ '%.4g' | format(r.commitment_fee_pct) }}%</div>{% endif %}</section>
               <section><h5>Repayment</h5><p class="cs-note">{{ r.repayment }}; grace {{ r.grace_months }} months; maturity {{ r.maturity_date }} (operating period end). Debt service is pari passu.</p></section>

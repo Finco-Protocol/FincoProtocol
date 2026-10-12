@@ -74,3 +74,37 @@ def test_junior_activation_stays_closed_when_the_f35_contracts_exist():
         pytest.skip("F3.5-A is not on this branch")
     from app.workbook import junior_debt_config
     assert junior_debt_config.ACTIVATION_ENABLED is False
+
+
+def _junior_view():
+    import json
+    from dataclasses import replace
+    from finco_core.inputs.financing_instruments import FinancingCollection, InstrumentType
+    pi, _ = case()
+    senior, junior = pi.financing_collection.instruments
+    junior = replace(junior, instrument_type=InstrumentType.JUNIOR_DEBT, seniority_rank=2, fees=(), name="Junior Debt",
+                     commitment_keur=500.0,
+                     drawdowns=(replace(junior.drawdowns[0], amount_keur=500.0),))
+    raw = state(collection=FinancingCollection((senior, junior)))
+    return config.build_view(pi, raw, "base", None, owner_id="o", project_id="p"), junior
+
+
+def test_junior_proposal_row_is_read_only_non_executable_with_closed_activation():
+    view, junior = _junior_view()
+    stack = cs.build_capital_stack(view, _Fresh("NOT_RUN"))
+    row = next(r for r in stack["rows"] if r["junior"])
+    assert row["type"] == "Junior term loan" and not row["editable"] and not row["executable"]
+    assert row["status"] == cs.SAVED and "Activation closed" in (row["readiness"] or "")
+    assert stack["working"]["junior_commitments_keur"] == 500.0 and stack["working"]["junior_present"]
+    assert stack["junior_activation_closed"] is True and stack["last_run"] is None
+
+
+def test_junior_row_is_never_a_posted_instrument_in_the_template():
+    from app.v2.router import _templates
+    view, junior = _junior_view()
+    html = _templates.get_template("partials/_financing_multisenior.html").render(
+        multisenior=view, capital_stack=cs.build_capital_stack(view, None), project_editable=True,
+        project_code="x", workbook_version="v", content_hash="h")
+    assert f'data-cs-readonly-instrument="{junior.instrument_id}"' in html
+    assert f'data-f3-instrument="{junior.instrument_id}"' not in html      # the serializer cannot touch it
+    assert "cs-junior-readiness" in html

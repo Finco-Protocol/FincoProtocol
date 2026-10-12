@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.v2.financing_projection import UNAVAILABLE, label, number
+from app.workbook.junior_debt_config import ACTIVATION_ENABLED as JUNIOR_ACTIVATION_ENABLED
 
 DRAFT, SAVED, ACTIVE, UNSUPPORTED = "DRAFT", "SAVED PROPOSAL", "ACTIVE", "UNSUPPORTED"
 
@@ -43,10 +44,13 @@ def build_capital_stack(f3: dict, freshness: Any, *, day_count: Any = None) -> d
     run_state = getattr(getattr(freshness, "state", None), "value", None) or "NOT_RUN"
     rows = []
     for i in entry["proposal"]["instruments"]:
+        junior = i.get("instrument_type") == "JUNIOR_DEBT"
         fees = {f.get("kind"): number(f.get("rate")) or 0.0 for f in i.get("fees") or ()}
         rows.append({
-            "instrument_id": i["instrument_id"], "name": i["name"], "type": "Senior term loan",
-            "rank": "Senior · pari passu", "commitment_keur": number(i["commitment_keur"]) or 0.0,
+            "instrument_id": i["instrument_id"], "name": i["name"],
+            "type": "Junior term loan" if junior else "Senior term loan",
+            "rank": f"Junior · rank {i.get('seniority_rank', 2)}" if junior else "Senior · pari passu",
+            "junior": junior, "editable": not junior, "commitment_keur": number(i["commitment_keur"]) or 0.0,
             "currency": "EUR", "rate_type": "Fixed", "rate_pct": (number(i["interest"].get("fixed_rate")) or 0.0) * 100,
             "day_count": label(day_count) if day_count is not None else UNAVAILABLE,
             "repayment_mode": i["repayment"]["mode"], "repayment": _REPAYMENT.get(i["repayment"]["mode"], i["repayment"]["mode"]),
@@ -54,14 +58,17 @@ def build_capital_stack(f3: dict, freshness: Any, *, day_count: Any = None) -> d
             "draws": [{"date": d["draw_date"], "amount_keur": number(d["amount_keur"]) or 0.0} for d in i.get("drawdowns") or ()],
             "draws_total_keur": _draws_total(i),
             "upfront_pct": fees.get("UPFRONT", 0.0) * 100, "commitment_fee_pct": fees.get("COMMITMENT", 0.0) * 100,
-            "status": status, "executable": active,
+            # A Junior row is a typed proposal only: Junior activation is closed, so it is never ACTIVE/executable.
+            "status": SAVED if junior and saved else DRAFT if junior else status, "executable": active and not junior,
+            "readiness": ("Activation closed: candidate content review required; not executed."
+                          if junior and not JUNIOR_ACTIVATION_ENABLED else None) if junior else None,
         })
     working = {
-        "senior_commitments_keur": sum(r["commitment_keur"] for r in rows),
-        "junior_commitments_keur": 0.0,
+        "senior_commitments_keur": sum(r["commitment_keur"] for r in rows if not r["junior"]),
+        "junior_commitments_keur": sum(r["commitment_keur"] for r in rows if r["junior"]),
         "scheduled_draws_keur": sum(r["draws_total_keur"] for r in rows),
         "reconciled": all(abs(r["draws_total_keur"] - r["commitment_keur"]) <= 1e-6 for r in rows),
-        "facility_count": len(rows),
+        "facility_count": len(rows), "junior_present": any(r["junior"] for r in rows),
     }
     last = None
     schedules = f3.get("last_run")
@@ -86,4 +93,5 @@ def build_capital_stack(f3: dict, freshness: Any, *, day_count: Any = None) -> d
         "unsupported": [{"name": n, "reason": r, "status": UNSUPPORTED} for n, r in UNSUPPORTED_STRUCTURES],
         "debt_service_priority": "Pari passu between Senior facilities; no subordination configured.",
         "release_enabled": bool(f3.get("release_enabled")),
+        "junior_activation_closed": not JUNIOR_ACTIVATION_ENABLED,
     }

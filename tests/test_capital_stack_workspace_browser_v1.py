@@ -185,3 +185,40 @@ def test_theme_and_narrow_layout_without_page_overflow(live_server, browser, sch
     _shot(page, f"wind-04-{scheme}-{width}.png")
     assert not errors
     ctx.close()
+
+
+def test_editing_senior_cells_preserves_a_saved_junior_proposal(live_server, browser):
+    import json
+    from dataclasses import replace
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook import multisenior_config as config
+    from app.workbook.input_set import ProjectInputSet
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.update_service import WorkbookUpdateService
+    from finco_core.inputs.financing_instruments import FinancingCollection, InstrumentType
+    from tests.test_model_financing_f3_workspace import collection_for_inputs
+    uid = "cs-junior"
+    rec, ctx, page, errors = _session(live_server, browser, uid, VERTICALS[0])
+    ws = get_workspace_state(uid, rec.project_id)
+    pi = ProjectInputSet.from_snapshot(ws.draft_snapshot).to_projectinputs()
+    s, j = collection_for_inputs(pi).instruments
+    j = replace(j, instrument_type=InstrumentType.JUNIOR_DEBT, seniority_rank=2, fees=(), name="Junior Debt")
+    raw = json.dumps({"schema_version": config.SCHEMA, "scopes": {"base": {
+        "proposal": FinancingCollection((s, j)).to_dict(), "activation": None}}})
+    WorkbookUpdateService.apply_draft_update(ws=ws, project_record=rec, field_id=config.FIELD_ID, raw_value=raw,
+        workbook_version=WORKBOOK.version, content_hash=page.locator("[name=content_hash]").first.input_value())
+    page.reload()
+    page.wait_for_selector("[data-testid=capital-stack-table]")
+    assert page.locator("[data-f3-instrument]").count() == 1 and page.locator("[data-cs-readonly-instrument]").count() == 1
+    expect(page.locator("[data-testid=cs-junior-readiness]")).to_contain_text("Activation closed")
+    page.locator('[data-f3="rate_pct"]').first.fill("6.5")
+    with page.expect_response(lambda r: r.url.endswith("/v2/workbook/update")) as resp:
+        page.locator("[data-f3-save]").click()
+    assert resp.value.status == 200
+    entry = json.loads(_ws(uid, rec).draft_snapshot[config.SNAPSHOT_KEY])["scopes"]["base"]
+    kinds = {i["instrument_type"]: i for i in entry["proposal"]["instruments"]}
+    assert kinds["JUNIOR_DEBT"] == FinancingCollection((s, j)).to_dict()["instruments"][1]     # untouched
+    assert abs(kinds["SENIOR_TERM_LOAN"]["interest"]["fixed_rate"] - 0.065) < 1e-12 and entry["activation"] is None
+    _shot(page, "solar-05-junior-proposal.png")
+    assert not errors
+    ctx.close()
