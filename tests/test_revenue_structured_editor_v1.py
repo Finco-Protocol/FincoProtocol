@@ -61,7 +61,7 @@ def test_five_editor_variants_and_disabled_unsupported_features():
     text = SCRIPT.read_text(encoding="utf-8")
     assert "financial_engine" not in text and "run_clean_production" not in text
     for essential in ("JSON.stringify(book)", "htmx:configRequest",
-                      "fromPct", "kindOverrides", "data-revenue-row", "data-revenue-source"):
+                      "fromPct", "kindOverrides", "dataset.revenueRow", "data-revenue-source"):
         assert essential in text
     assert "fetch(" not in text
     assert "window.confirm" in text
