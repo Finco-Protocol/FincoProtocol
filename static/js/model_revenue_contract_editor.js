@@ -450,5 +450,17 @@
   document.addEventListener('DOMContentLoaded', scan);
   document.addEventListener('htmx:afterSwap', scan);
   document.addEventListener('htmx:afterSettle', scan);
+  // Stress has a separate read-only endpoint. Show typed 4xx errors rather than
+  // letting HTMX leave the previous, now misleading comparison on screen.
+  document.addEventListener('htmx:responseError', event => {
+    if (!event.detail.elt?.matches?.('[data-testid="revenue-stress-form"]')) return;
+    const result = document.getElementById('revenue-stress-results');
+    if (!result) return;
+    const parsed = new DOMParser().parseFromString(event.detail.xhr.responseText, 'text/html');
+    const message = parsed.querySelector('[role="alert"]')?.textContent?.trim() ||
+      'UNAVAILABLE: request rejected; no comparison was saved.';
+    result.replaceChildren(document.createTextNode(message));
+    result.setAttribute('role', 'alert');
+  });
   scan();
 })();
