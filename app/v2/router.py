@@ -1225,11 +1225,57 @@ async def v2_revenue_commercial_stress(request: Request, _: None = Depends(requi
         return JSONResponse({"error": "REVENUE_STRESS_STALE_CAS: reload"}, status_code=409)
     try:
         amount_pct = float(form.get("amount_pct") or 0)
+        # Mirror canonical V2 Run input materialization; a stress must never
+        # silently ignore selected scenario, CAPEX/OPEX sub-lines or financing.
+        from app.workbook.service import WorkbookService
+        from app.persistence.scenarios_repository import get_scenario
+        from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+        from app.workbook.bankability_config import (
+            SNAPSHOT_KEY as bank_key, assert_materialized_fee_authority,
+        )
+        from app.workbook.multisenior_config import SNAPSHOT_KEY as f3_key, apply_state
+        from dataclasses import replace as dataclass_replace
+        scenario = None
+        scenario_overrides = None
+        model_inputs = pis.to_projectinputs()
+        if ws.active_scenario_id:
+            scenario = get_scenario(scenario_id=ws.active_scenario_id, user_id=owner)
+            if (scenario is None or scenario.archived or
+                    scenario.project_id != record.project_id):
+                raise CommercialStressUnavailable("STRESS_SCENARIO_CHANGED: reselect a valid project scenario")
+            scenario_overrides = dict(scenario.overrides or {})
+            if not scenario.is_base_case:
+                if set(scenario_overrides) - {"tariff_eur_mwh", "rev_multistream_config_json"}:
+                    raise CommercialStressUnavailable(
+                        "STRESS_SCENARIO_UNAVAILABLE: unsupported additional overrides; "
+                        "only canonical Run can materialize this scenario safely")
+                materialized = bind_scenario_tariff(dict(pis.snapshot_origin), scenario_overrides)
+                model_inputs = WorkbookService.to_projectinputs(
+                    WorkbookService.build_input_set(materialized))
+        folded_capex = apply_user_sub_lines_replacing_base(
+            model_inputs.capex, project_id=record.project_id,
+            scenario_overrides=scenario_overrides,
+        )
+        if folded_capex is not model_inputs.capex:
+            model_inputs = dataclass_replace(model_inputs, capex=folded_capex)
+        folded_opex = apply_user_sub_lines_to_opex(
+            model_inputs.opex, project_id=record.project_id,
+            scenario_overrides=scenario_overrides,
+        )
+        if folded_opex is not model_inputs.opex:
+            model_inputs = dataclass_replace(model_inputs, opex=folded_opex)
+        assert_materialized_fee_authority(model_inputs, pis.snapshot_origin.get(bank_key))
+        f3_scope = ("base" if scenario is None or scenario.is_base_case
+                    else scenario.scenario_id)
+        model_inputs = apply_state(
+            model_inputs, pis.snapshot_origin.get(f3_key), f3_scope,
+            bankability_raw=pis.snapshot_origin.get(bank_key),
+        )
         # This call uses the existing clean sensitivity/financial execution seam.
         # Run in an executor to avoid blocking the FastAPI event loop.
         from functools import partial
         result = await run_in_threadpool(partial(
-            compare_commercial_cases, pis.to_projectinputs(),
+            compare_commercial_cases, model_inputs,
             shock=str(form.get("shock") or ""), amount_pct=amount_pct,
             expiry_date=str(form.get("expiry_date") or ""),
         ))
