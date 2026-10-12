@@ -298,6 +298,50 @@ def test_cli_writes_private_reports_and_uses_nonzero_for_failed_comparison(tmp_p
     assert run_cli(argv[1:]) != 0  # missing signed-off authorised-source acknowledgement
 
 
+
+@pytest.mark.parametrize("anchor,duplicate,source_identity", [
+    ('"abs_tolerance":"0.01"', '"abs_tolerance":"999"', False),
+    ('"rel_tolerance":"0.0001"', '"rel_tolerance":"999"', False),
+    ('"engine_version":"synthetic-v1"', '"engine_version":"spoofed-v2"', False),
+    ('"configuration_sha256":"' + CONFIG + '"',
+     '"configuration_sha256":"' + HASH + '"', True),
+    ('"version":1', '"version":2', False),
+])
+def test_cli_rejects_duplicate_manifest_json_keys_at_all_levels(
+        tmp_path, capsys, anchor, duplicate, source_identity):
+    """Fail before comparison/report creation, even when the first value is valid.
+
+    Tolerance, source engine provenance, normalized configuration identity, and
+    root manifest version keys are tested through the real CLI entry point.
+    """
+    manifest, source_data, finco_data = make_fixture()
+    raw = canonical_bytes(manifest).decode("utf-8")
+    assert anchor in raw
+    if source_identity:
+        # Reference is the final occurrence after FINCO in sorted JSON.
+        before, sep, after = raw.rpartition(anchor)
+        assert sep
+        raw = before + sep + "," + duplicate + after
+    else:
+        raw = raw.replace(anchor, anchor + "," + duplicate, 1)
+    (tmp_path / "manifest.json").write_text(raw, encoding="utf-8")
+    (tmp_path / "source.json").write_bytes(source_data)
+    (tmp_path / "finco.json").write_bytes(finco_data)
+    outdir = tmp_path / "private-reports"
+    rc = run_cli([
+        "--authorized-source",
+        "--manifest", str(tmp_path / "manifest.json"),
+        "--reference", str(tmp_path / "source.json"),
+        "--finco", str(tmp_path / "finco.json"),
+        "--output", str(outdir),
+    ])
+    captured = capsys.readouterr()
+    assert rc == 3
+    assert "RECONCILIATION_BLOCKED" in captured.err
+    assert "duplicate JSON object key" in captured.err
+    assert "NUMERICAL_COMPARISON_PRODUCED" not in captured.out
+    assert not outdir.exists()
+
 def test_cli_rejects_unignored_repo_path():
     with pytest.raises(ReconciliationInputError, match="PRIVATE_OUTPUT_ONLY"):
         _private_output(Path(__file__).resolve().parents[1] / "docs" / "accidentally-public")
