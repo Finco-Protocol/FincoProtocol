@@ -303,6 +303,15 @@ def _write_financial_statements_sheets(writer, result) -> None:
     calculations; reads already-computed WaterfallResult fields only.
     Silently skips if assembly fails so the export never breaks.
     """
+    from financial_engine.financial_statements.contracts import JuniorIncomeStatementPeriod
+    canonical = getattr(result, "financial_statements_result", None)
+    if canonical is not None and canonical.income_statement_periods and isinstance(canonical.income_statement_periods[0], JuniorIncomeStatementPeriod):
+        from app.api.project_runner import _serialize_financial_statements
+        payload = _serialize_financial_statements(canonical)
+        for section, title in (("pnl", "PnL"), ("balance_sheet", "Balance Sheet"),
+                               ("pf_cash_waterfall", "PF Cash Waterfall")):
+            _write_sheet(writer, title, pd.DataFrame(payload[section]["periods"]), number_format={"keur": "#,##0.00"})
+        return
     try:
         from domain.financial_statements import assemble_financial_statements
         fs = assemble_financial_statements(result)

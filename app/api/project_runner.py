@@ -522,6 +522,16 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         "construction_funding": _fin_json(_asdict(_fund)),
     }
     from financial_engine.financing.multisenior import MultiSeniorFinancingResult
+    from financial_engine.financing.junior_debt import JuniorFinancingResult
+    if isinstance(_fin, JuniorFinancingResult):
+        payload["financing_evidence"].update({
+            "facility_authority": _fin.financing_authority,
+            "collection_digest": _fin.financing_collection_digest,
+            "junior_policy_digest": clean_run.project_inputs.junior_debt_policy.content_digest(),
+            "senior_facility": _fin_json(_asdict(_fin.senior_facility)),
+            "junior_facility": _fin_json(_asdict(_fin.junior_facility)),
+            "junior_cash_idc": _fin_json(_asdict(_fin.construction_financing.junior_cash_idc)),
+        })
     if isinstance(_fin, MultiSeniorFinancingResult):
         payload["financing_evidence"].update({
             "facility_authority": "F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1",
@@ -600,6 +610,8 @@ def _serialize_financial_statements(fs) -> dict:
             "retained_earnings_keur": _f(rp.closing_retained_earnings_keur if rp else None),
             "net_dividends_keur": _f(rp.legal_equity_distribution_keur if rp else None),
         })
+        if hasattr(p, "junior_interest_expense_keur"):
+            pnl_periods[-1]["junior_interest_expense_keur"] = _f(p.junior_interest_expense_keur)
 
     # Balance sheet periods — FinancialStatementsResult.balance_sheet_periods
     # BS fields: unrestricted_cash_keur (cash), senior_debt_balance_keur (senior),
@@ -627,6 +639,8 @@ def _serialize_financial_statements(fs) -> dict:
             "total_liabilities_equity_keur": None,
             "balance_check_keur": _f(p.balance_check_keur),
         })
+        if hasattr(p, "junior_debt_balance_keur"):
+            bs_periods[-1]["junior_balance_keur"] = _f(p.junior_debt_balance_keur)
 
     # PF Cash Waterfall periods — FinancialStatementsResult.pf_cash_waterfall_periods
     pf_periods = []
@@ -665,6 +679,11 @@ def _serialize_financial_statements(fs) -> dict:
             "fcf_for_distribution_keur": fcf_dist,
             "net_dividends_keur": net_div,
         })
+        if hasattr(p, "junior_debt_service_keur"):
+            pf_periods[-1].update({"junior_cash_interest_keur": _f(p.junior_cash_interest_keur),
+                "junior_principal_keur": _f(p.junior_principal_keur),
+                "junior_debt_service_keur": _f(p.junior_debt_service_keur),
+                "post_junior_cash_keur": _f(p.post_junior_cash_keur)})
 
     return {
         "pnl": {"periods": pnl_periods},

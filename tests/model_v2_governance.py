@@ -157,6 +157,26 @@ WF07_REVENUE_AUTHORITIES = {
     "domain/revenue/multistream_runtime.py": "94e1559472d0f3051fb7faccf3b67ce44337188f",
 }
 
+# F3.5-A independently accepted candidate content. This release map is not
+# production activation; Junior's application gate remains explicitly closed.
+F3_5_A_JUNIOR_AUTHORITIES: dict[str, str] = {
+    "financial_engine/book_basis.py": "1281cc05a5638714e78279968ee739d9af2cfc02",
+    "financial_engine/financial_statements/assembly.py": "778610e8bb5c2a61b022f147a601cc0f02d66982",
+    "financial_engine/financial_statements/contracts.py": "f5a15655d58b1d4a5ac7c02f0cdde5bc2a069358",
+    "financial_engine/financing/generic_product_policy.py": "2894334e7241c4ac9f8967d4ce4ca6ce77a32fa0",
+    "financial_engine/financing/junior_debt.py": "2205cfbcca33889975c964a5748797c82af5792f",
+    "financial_engine/financing/project.py": "30536cec8779fdb6a490d82fd80bfce2c09e16fe",
+    "financial_engine/financing/project_uses.py": "489cbcc800158326a5b3764aef25514b6ad6ab48",
+    "financial_engine/project_returns/contracts.py": "2a43b4e82db2fa6eee956970c5a5c6087245b36f",
+    "financial_engine/project_returns/model.py": "711bf15d954c5e20cce13fd6df1067e5d00182e2",
+    "financial_engine/senior_debt/project_adapter.py": "a73611a117f0c04ecc7bd7350eac64456520f265",
+    "financial_engine/shareholder_waterfall/contracts.py": "19cff0f003a9fdf8921cae8e5c18e703d93e2408",
+    "financial_engine/shareholder_waterfall/model.py": "e3473e1a2064c8310e41b434da2b0aff9d5753b8",
+    "finco_core/inputs/_models.py": "b896d3c071ee22c1c82c48f23d4c169e058c7a7b",
+    "finco_core/inputs/junior_debt.py": "ef63e3355f30541a69b503a3a2e2c02feaf1803f",
+    "finco_core/inputs/serialization.py": "31f70570376b2f5b50ece583c54c1d9811e90a3c",
+}
+
 _VALID_STATUSES = ("ACTIVE", "RETIRED")
 
 
@@ -309,6 +329,7 @@ def released_engine_authority_matches(
         F3_1_CONTRACT_AUTHORITIES, F3_2_4_FINANCING_AUTHORITIES,
         WF04_NUMERIC_PRECISION_AUTHORITIES,
         WF07_REVENUE_AUTHORITIES,
+        F3_5_A_JUNIOR_AUTHORITIES,
     ) if path in authorities}
     if not pinned:
         return False

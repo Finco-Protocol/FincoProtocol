@@ -89,6 +89,10 @@ def _senior_debt(clean_run, model) -> dict[str, Any]:
     financing = clean_run.g2c_result.financing_result
     facility_rates = ({r.period_index: r.annual_rate for r in financing.aggregate_period_rates}
                       if isinstance(financing, MultiSeniorFinancingResult) else None)
+    from financial_engine.financing.junior_debt import JuniorFinancingResult
+    if isinstance(financing, JuniorFinancingResult):
+        instrument = next(i for i in clean_run.project_inputs.financing_collection.instruments if i.seniority_rank == 1)
+        facility_rates = {i: instrument.interest.fixed_rate for i in financing.senior_facility.period_indices}
 
     periods = []
     for position, index in enumerate(senior.period_indices):
@@ -168,6 +172,10 @@ def _balance_sheet(clean_run) -> list[dict[str, Any]]:
         from financial_engine.financing.multisenior import MultiSeniorFinancingResult
         if isinstance(clean_run.g2c_result.financing_result, MultiSeniorFinancingResult):
             rows[-1]["additional_equity"] = _num(p.additional_equity_keur)
+        from financial_engine.financing.junior_debt import JuniorFinancingResult
+        if isinstance(clean_run.g2c_result.financing_result, JuniorFinancingResult):
+            rows[-1]["additional_equity"] = _num(p.additional_equity_keur)
+            rows[-1]["junior_debt"] = _num(p.junior_debt_balance_keur)
     return rows
 
 
@@ -220,5 +228,27 @@ def build_run_integrity_evidence(clean_run) -> dict[str, Any]:
     from financial_engine.financing.multisenior import MultiSeniorFinancingResult
     if isinstance(financing, MultiSeniorFinancingResult):
         evidence["financing_authority"] = "F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1"
+    from financial_engine.financing.junior_debt import JuniorFinancingResult
+    if isinstance(financing, JuniorFinancingResult):
+        from dataclasses import asdict
+        f = financing.junior_facility
+        instrument = next(i for i in clean_run.project_inputs.financing_collection.instruments if i.seniority_rank == 2)
+        model_periods = {p.period_index: p for p in model.periods}
+        cash = dict(zip(model.post_senior_cash.period_indices, model.post_senior_cash.cash_after_senior_before_reserves_keur))
+        operating_cash = {p.period_index: p.signed_post_junior_keur for p in g2c.waterfall_periods if not p.is_construction}
+        evidence["financing_authority"] = financing.financing_authority
+        evidence["junior_debt"] = {
+            "commitment": f.commitment_keur,
+            "maturity_period_index": f.maturity_period_index,
+            "collection_digest": financing.financing_collection_digest,
+            "capitalized_cash_idc": asdict(financing.construction_financing.junior_cash_idc),
+            "periods": [{"period_index": i, "opening": _num(o), "interest": _num(it), "principal": _num(pr),
+                "debt_service": _num(ds), "closing": _num(cl), "annual_rate": instrument.interest.fixed_rate,
+                "day_fraction": _day_fraction(model_periods[i].period_start, model_periods[i].period_end,
+                    clean_run.project_inputs.junior_debt_policy.day_count.upper()),
+                "post_senior_cash": _num(cash[i]), "post_junior_cash": _num(operating_cash.get(i))}
+                for i, o, it, pr, ds, cl in zip(f.period_indices, f.opening_keur, f.interest_keur,
+                    f.principal_keur, f.debt_service_keur, f.closing_keur)],
+        }
     evidence["digest"] = evidence_digest(evidence)
     return evidence

@@ -221,7 +221,11 @@ def test_legacy_mapping_remains_nonactivating_and_f3_imports_are_narrowly_owned(
                ROOT / "financial_engine/financing/multisenior.py",
                ROOT / "app/workbook/multisenior_config.py",
                ROOT / "app/workbook/update_service.py",
-               ROOT / "app/persistence/workspace_repository.py"}
+               ROOT / "app/persistence/workspace_repository.py",
+               # F3.5-A candidate ownership only; this does not release financial blobs.
+               ROOT / "app/workbook/junior_debt_config.py",
+               ROOT / "financial_engine/financing/junior_debt.py",
+               ROOT / "finco_core/inputs/junior_debt.py"}
     offenders = []
     for name in ("app", "financial_engine", "finco_core", "domain", "main_web.py", "main_api.py"):
         root = ROOT / name
@@ -239,6 +243,18 @@ def test_legacy_mapping_remains_nonactivating_and_f3_imports_are_narrowly_owned(
     assert "financing_instruments" not in project_inputs_to_dict(project())
     assert "financing_activation" not in project_inputs_to_dict(project())
     assert not hasattr(project(), "financing_collection")
+
+
+@pytest.mark.parametrize("path", ["app/workbook/unapproved_junior.py",
+    "financial_engine/financing/unapproved_junior.py", "finco_core/inputs/unapproved_junior.py",
+    "app/workbook/junior_debt_config.py.extra.py", "domain/unapproved_junior.py"])
+def test_import_ownership_rejects_unrelated_consumers(path, tmp_path, monkeypatch):
+    target = tmp_path / path
+    target.parent.mkdir(parents=True)
+    target.write_text("from finco_core.inputs.financing_instruments import FinancingCollection\n", encoding="utf-8")
+    monkeypatch.setattr(__import__(__name__, fromlist=["ROOT"]), "ROOT", tmp_path)
+    with pytest.raises(AssertionError):
+        test_legacy_mapping_remains_nonactivating_and_f3_imports_are_narrowly_owned()
 
 
 def test_all_documented_error_codes_have_executable_rejections():
