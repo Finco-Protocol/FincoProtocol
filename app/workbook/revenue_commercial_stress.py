@@ -64,6 +64,14 @@ def changed_book(raw: str, shock: str, amount_pct: float, *, expiry_date: str = 
         if len(affected) != 1:
             raise CommercialStressUnavailable("STRESS_EXPIRY_AMBIGUOUS: expiry must identify exactly one active PPA")
         row = affected[0]
+        # "Increased Merchant exposure" is real only if a residual Merchant
+        # can take the freed volume throughout the previously contracted tail.
+        residuals = [r for r in book["streams"]
+                     if r["type"] == "merchant" and r["volume_share"] is None
+                     and r["start_date"] <= expiry_date and r["end_date"] >= row["end_date"]]
+        if len(residuals) != 1:
+            raise CommercialStressUnavailable(
+                "STRESS_EXPIRY_COVERAGE: residual Merchant must cover the complete exposed tail")
         row["end_date"] = expiry_date
         if "price_curve" in row:
             row["price_curve"] = [p for p in row["price_curve"] if p["period_start"] < expiry_date]
