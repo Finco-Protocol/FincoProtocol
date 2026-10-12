@@ -63,9 +63,6 @@ def _auth_cookie(base_url: str, page) -> None:
         "domain": "127.0.0.1",
         "path": "/",
     }])
-    # Cost editing defaults to batch ("Save edits together"); the journeys below exercise the explicit
-    # per-row immediate mode (Enter commits and saves the row), so they select it the way a user would.
-    page.context.add_init_script("sessionStorage.setItem('finco.cost.editMode', 'immediate')")
 
 
 @pytest.fixture(scope="module")
@@ -2478,6 +2475,11 @@ def test_reference_driven_correction_a_23_capture_journey(
     shot("05-solar-opex-summary", page.locator('[data-testid="opex-kpi-bar"]'))
     shot("06-solar-detailed-opex", page.locator("#v2-sheet-opex"))
     shot("07-opex-year-projection", page.locator('[data-testid="opex-projection-panel"]'))
+
+    # Cost editing defaults to batch ("Save edits together"). This journey validates the supported per-row
+    # immediate mode, so it selects that mode through the real control, exactly as a user would.
+    page.locator('#v2-sheet-opex [data-cost-stage-toggle]').uncheck()
+    page.wait_for_function("window.v2CostGrid.state().stageMode === false")
 
     # Rename and override one immutable-provenance OPEX seed through the direct-cell grid.
     from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as _active_opex

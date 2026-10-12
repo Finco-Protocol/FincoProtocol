@@ -75,7 +75,6 @@ class Session:
             user_id=uid, template_source=template, requested_name="Grid", capacity_mw=40.0)
         # bypass_csp: only so the AUTOMATION may evaluate wait predicates; the app CSP is untouched
         self.ctx = browser.new_context(viewport=viewport or {"width": 1440, "height": 1000}, bypass_csp=True)
-        self.ctx.add_init_script("sessionStorage.setItem('finco.cost.editMode', 'immediate')")  # these tests exercise the explicit immediate mode
         self.ctx.add_cookies([{"name": COOKIE_NAME,
                                "value": create_session_token(user_id=uid, username="admin"),
                                "url": live_server}])
@@ -91,7 +90,14 @@ class Session:
         self.page.wait_for_selector(f"#tab-{kind}", state="attached")
         self.page.evaluate(f"document.getElementById('tab-{kind}').click()")
         self.page.wait_for_selector(f"#v2-sheet-{kind} form[data-cost-row]", state="attached")
+        self.select_immediate_mode()
         self.open_groups()
+
+    def select_immediate_mode(self):
+        """Batch editing is the default; this suite validates the explicit per-row immediate mode, so it
+        selects it through the real control exactly as a user would (a no-op when already selected)."""
+        self.page.locator(f"#v2-sheet-{self.kind} [data-cost-stage-toggle]").uncheck()
+        self.page.wait_for_function("window.v2CostGrid.state().stageMode === false")
 
     def open_groups(self):
         self.page.evaluate(

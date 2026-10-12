@@ -25,43 +25,49 @@ or the CI workflows. No new persistence writer, no change to CSRF, `row_version`
 | Inputs Grid editing of line-item values | read-only by design | DONE | unchanged; the link is navigation only |
 | Auto-compute option | none | MISSING by design | **not implemented**, requirements in §6 |
 
-## 2. Measurement
+## 2. Measurement and evidence status
 
-`tools/bench_cost_editing_ux.py` drives real Chromium against a live uvicorn server on a disposable database, with
-synthetic working copies of Solar, Wind, Data Center and EV Charging. Per scenario it reports interaction latency,
-request count, per-request server time (time to first byte), response bytes, DOM swap/settle time (htmx
-`afterRequest` → `afterSettle`) and focus retention. Each scenario is repeated 7 times after a discarded warm-up, each
-repetition from a freshly loaded page, and reported as median with range. "Before" runs the same harness against
-pristine `main` in a separate worktree. All numbers are local and synthetic — not staging or CI figures.
+**No before/after benchmark results are published in this change.** What is and is not in the repository:
 
-Confirmation time stops at the actual confirmation (all rows saved and swapped in; or the "Saved N lines" message);
-Playwright's 500 ms network-idle detection is excluded for both modes, and request counts are taken after idle.
+| Item | Status |
+| --- | --- |
+| `tools/bench_cost_editing_ux.py` — real-Chromium harness (live uvicorn server, disposable database, synthetic Solar / Wind / Data Center / EV Charging working copies). Per scenario it records interaction latency, request count, per-request server time (time to first byte), response bytes, DOM swap/settle time and focus retention, over repeated runs reported as median and range | committed |
+| `tools/summarize_cost_ux_bench.py` — renders two harness result files as before/after tables | committed |
+| `tools/shoot_cost_editing_ux.py` and `evidence/cost_ux_v2/before/*.png`, `after/*.png` — screenshots, desktop light and dark and 390 px | committed (screenshots only) |
+| Benchmark result files (`before.json`, `after.json`) and the generated metrics tables | **not published — pending** |
 
-Raw results: `docs/model_v2/evidence/cost_ux_v2/before.json`, `after.json`. Tables: `COST_EDITING_UX_V2_METRICS.md`.
+Why they are pending: the first harness version counted Playwright's 500 ms network-idle wait as part of the
+confirmation time for the immediate mode and sometimes returned before trailing requests had started, so its
+latencies and request counts were not comparable between modes. The harness was corrected (an explicit in-flight
+counter plus a quiet period); the corrected before/after runs were started and then interrupted before completion.
+Numbers from the uncorrected harness or from an interrupted run are not quoted anywhere in this repository.
+Any future figures will be local and synthetic — they describe request counts and relative latency on one machine,
+not staging or production performance — and will be published together with the raw result files that produced them.
 
-What the data says:
+What is established from the repository itself (code and committed tests, no benchmark needed):
 
-* The dominant cost of editing several cells was the per-row path: N edits → N serial POSTs, each returning the whole
-  re-rendered sheet (~300 KB) plus a follow-up integrity refresh. Ten mixed edits took ~7 s and 20 requests.
-* Batch Save turns that into one POST. It is already measured as the fastest path, so the change is to make it the
-  default, not to build another one.
-* Per-save server time (~160–280 ms) and swap time (~50–150 ms) are unchanged: nothing about a single save got
-  slower or faster, and no engine work happens on Save.
-* The two extra GETs after a Save (`financing/integrity`, and `financing/investor` after a batch) are **kept**. They
-  render the verdict *paired with the current CURRENT / STALE freshness*, which a Save changes; removing or caching
-  them would present a stale value as fresh. Not an optimisation target.
+* The per-row path sends one `POST /v2/{capex,opex}/line/update` per edited row, serially, each re-rendering the sheet.
+  `test_measure_ten_sequential_row_autosaves_for_comparison` asserts one request per row for ten edits.
+* The batch path sends one `POST /v2/workbook/grid/cost-lines/save` for any number of staged rows across both sheets
+  (`test_ten_mixed_capex_opex_edits_are_one_request_with_exact_values`, and the existing batch suite).
+* Nothing about a single save changed on the server: this change adds no server code and no engine work happens on Save.
+* The follow-up GETs after a Save (`financing/integrity`, and `financing/investor` after a batch) are **kept**. They
+  render the verdict *paired with the current CURRENT / STALE freshness*, which a Save changes; removing or caching them
+  would present a stale value as fresh. They are not an optimisation target.
 * The extra `grid/sheet` GET for a cross-sheet batch is kept: it brings the other sheet's row versions forward. Folding
   it into the batch response was considered and rejected — it would duplicate the out-of-band run-controls fragment in
   one response.
 
-## 3. A defect found by the baseline
+## 3. A defect found while measuring
 
-The probe "immediate OPEX save, then a staged CAPEX Save on the same page" failed in all four verticals before this
-change (`409 The model changed since this page loaded`). `syncTokens` brought the hidden inputs and the workbook
+A probe in the benchmark harness — "immediate OPEX save, then a staged CAPEX Save on the same page" — received
+`409 The model changed since this page loaded` in local runs. `syncTokens` brought the hidden inputs and the workbook
 shell forward but only the swapped sheet's `v2-cost-authority-*` element received new attributes, and `liveTokens`
 read the first authority element. The same stale read made "staged OPEX Save, then staged CAPEX Save" fail. That would
 have made staged-by-default unsafe. Fixed in two places: `syncTokens` updates every authority element, and
-`liveTokens` reads the workbook shell first. No token is ever guessed or reused after a failure.
+`liveTokens` reads the workbook shell first. No token is ever guessed or reused after a failure. Both directions are
+pinned by `test_immediate_opex_save_then_staged_capex_save_is_not_a_false_409` and
+`test_staged_opex_save_then_staged_capex_save_is_not_a_false_409`.
 
 ## 4. UX changes
 
@@ -117,7 +123,7 @@ explicitly. Server-side atomicity, CAS, ownership and parity stay covered by `te
 
 ## 8. Limitations
 
-* Figures are local and synthetic. They show request counts and relative latency, not staging performance.
+* No benchmark figures are published yet (see §2). Any future figures will be local and synthetic, not staging performance.
 * A single edited cell now needs one explicit Save (Ctrl+S) where it used to save on leaving the row. Immediate mode
   remains one click away and is remembered for the tab.
 * A genuine 409 still keeps the typed values but needs a reload to obtain fresh tokens (no silent retry).

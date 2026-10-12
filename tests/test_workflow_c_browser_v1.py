@@ -74,7 +74,6 @@ class Sess:
                                                    requested_name="WC", capacity_mw=40.0)
         self.ctx = browser.new_context(viewport=viewport or {"width": 1440, "height": 1000},
                                        color_scheme=scheme, bypass_csp=True)
-        self.ctx.add_init_script("sessionStorage.setItem('finco.cost.editMode', 'immediate')")  # these tests exercise the explicit immediate mode
         self.ctx.add_cookies([{"name": COOKIE_NAME, "value": create_session_token(user_id=uid, username="admin"),
                                "url": live_server}])
         self.page = self.ctx.new_page()
@@ -202,6 +201,10 @@ def test_integrated_statements_kpis_trace_navigation_and_freshness(make):
     activate_destination(p, 'tab-capex')
     rows = p.locator('#v2-sheet-capex form[data-cost-row]')
     p.evaluate("document.querySelectorAll('#v2-sheet-capex details[data-group-code]').forEach(d => d.open = true)")
+    # Batch editing is the default; this step validates the explicit per-row immediate mode (Enter saves the
+    # row), so it selects that mode through the real control, exactly as a user would.
+    p.locator('#v2-sheet-capex [data-cost-stage-toggle]').uncheck()
+    p.wait_for_function("window.v2CostGrid.state().stageMode === false")
     cell = rows.nth(0).locator('input[name="amount_keur"]')
     cell.click()
     p.keyboard.press("Control+A")

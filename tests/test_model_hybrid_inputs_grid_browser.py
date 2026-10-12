@@ -87,7 +87,6 @@ class Session:
         self.rec = create_reference_seeded_project(
             user_id=uid, template_source=template, requested_name="Grid", capacity_mw=40.0)
         self.ctx = browser.new_context(viewport=viewport or {"width": 1440, "height": 900}, bypass_csp=True)
-        self.ctx.add_init_script("sessionStorage.setItem('finco.cost.editMode', 'immediate')")  # these tests exercise the explicit immediate mode
         self.ctx.add_cookies([{"name": COOKIE_NAME,
                                "value": create_session_token(user_id=uid, username="admin"),
                                "url": live_server}])
@@ -379,6 +378,14 @@ def test_other_verticals_render_the_same_grid_and_save_atomically(make, template
 
 # ── existing cost-line grid: 4 consecutive OPEX/CAPEX edits, measured ────────────────
 
+
+def _select_immediate_cost_mode(s, kind):
+    """Batch editing is the default; these tests validate the explicit per-row immediate mode (Enter commits and
+    saves the row), so they select it through the real control, exactly as a user would."""
+    s.page.locator(f"#v2-sheet-{kind} [data-cost-stage-toggle]").uncheck()
+    s.page.wait_for_function("window.v2CostGrid.state().stageMode === false")
+
+
 @pytest.mark.parametrize("kind", ["capex", "opex"])
 def test_four_consecutive_cost_line_edits_keep_focus_and_scroll(make, kind):
     s = make(f"u-wf05-cost-{kind}")
@@ -387,6 +394,7 @@ def test_four_consecutive_cost_line_edits_keep_focus_and_scroll(make, kind):
     s.page.wait_for_selector(f"#tab-{kind}", state="attached")
     s.page.evaluate(f"document.getElementById('tab-{kind}').click()")
     s.page.wait_for_selector(f"#v2-sheet-{kind} form[data-cost-row]", state="attached")
+    _select_immediate_cost_mode(s, kind)
     s.page.evaluate(f"document.querySelectorAll('#v2-sheet-{kind} details[data-group-code]').forEach(d => d.open = true)")
     rows = s.page.locator(f"#v2-sheet-{kind} form[data-cost-row]")
     amounts = [rows.nth(i).locator('input[name="amount_keur"]') for i in range(4)]
@@ -425,6 +433,7 @@ def test_cost_line_saved_after_last_run_is_marked_not_run_and_strip_follows(make
         "document.querySelector('[data-testid=hybrid-run-state]').textContent.trim() === 'CURRENT'", timeout=240000)
     s.page.evaluate("document.getElementById('tab-opex').click()")
     s.page.wait_for_selector("#v2-sheet-opex form[data-cost-row]", state="attached")
+    _select_immediate_cost_mode(s, "opex")
     s.page.evaluate("document.querySelectorAll('#v2-sheet-opex details[data-group-code]').forEach(d => d.open = true)")
     assert s.page.locator('#v2-sheet-opex [data-testid="edited-not-run"]').count() == 0
     row = s.page.locator("#v2-sheet-opex form[data-cost-row]").first
@@ -461,23 +470,70 @@ def _legacy_eff(s):
     return s.page.locator(f'#v2-sheet-revenue .v2-field-row[data-field-id="{EFF}"] input[name="value"]')
 
 
+def _legacy_updates(s):
+    """Every request the legacy single-field editor has sent so far (path only)."""
+    return [p for p in s.posts if p.startswith("/v2/workbook/update")]
+
+
+def _workbook_ready(s):
+    """The final workbook document is loaded and its navigation controls and revenue editor are present."""
+    s.page.wait_for_load_state("load")
+    s.page.wait_for_function(
+        "document.readyState === 'complete' && !!document.getElementById('workspace-destinations')"
+        " && !!document.getElementById('tab-revenue')", timeout=30000)
+
+
 def _legacy_edit(s, value, *, expect_saved=True):
+    """Type ``value`` into the legacy EV efficiency editor and press Enter, synchronising on real events.
+
+    A saved edit waits for the htmx update response, the persisted value and the end of the swap.  The legacy
+    editor's ``onblur`` handler can issue a second, native submit while htmx swaps the sheet (the server answers a
+    non-htmx update with 303 and the browser reloads the workbook).  Whether that navigation was started is read from
+    the page itself (``beforeunload``), and if it was, the test waits for the NEW document before acting again,
+    instead of sleeping and hoping the redirect has finished.  A rejected edit waits for the browser's
+    constraint-validation event and proves that no request was sent.
+    """
     from tests.model_workspace_navigation import activate_destination
+    _workbook_ready(s)
     activate_destination(s.page, 'tab-revenue')
     box = _legacy_eff(s)
     box.scroll_into_view_if_needed()
     box.click()
     s.page.keyboard.press("Control+A")
     s.page.keyboard.type(value)
-    s.page.keyboard.press("Enter")
+    sent_before = len(_legacy_updates(s))
     if expect_saved:
+        s.page.evaluate("""() => {
+            window.__docStamp = true; window.__settled = false; window.__unloading = false;
+            document.addEventListener('htmx:afterSettle', e => {
+                if (e.target && String(e.target.id).startsWith('v2-sheet-')) window.__settled = true;
+            }, true);
+            window.addEventListener('beforeunload', () => { window.__unloading = true; });
+        }""")
+        with s.page.expect_response(
+                lambda r: r.url.split("?")[0].endswith("/v2/workbook/update")
+                and r.request.headers.get("hx-request") == "true", timeout=30000) as saved:
+            s.page.keyboard.press("Enter")
+        assert saved.value.status == 200
         deadline = time.time() + 20
         while time.time() < deadline and s.persisted(EFF) != float(value):
             s.page.wait_for_timeout(200)
         assert s.persisted(EFF) == float(value), "legacy editor save did not persist"
-        s.page.wait_for_timeout(800)          # let the HTMX swap settle
+        # Either the swap finished in this document and no navigation was started, or a navigation was started and
+        # the NEW document (no stamp) has fully loaded.
+        s.page.wait_for_function(
+            "(window.__docStamp && window.__settled && !window.__unloading)"
+            " || (!window.__docStamp && document.readyState === 'complete')", timeout=30000)
+        _workbook_ready(s)
     else:
-        s.page.wait_for_timeout(1200)
+        s.page.evaluate("window.__invalidSeen = false;"
+                        " document.addEventListener('invalid', () => { window.__invalidSeen = true; }, true)")
+        assert box.evaluate("el => el.matches(':invalid')"), f"{value!r} must violate the field's constraints"
+        s.page.keyboard.press("Enter")
+        s.page.wait_for_function("window.__invalidSeen === true", timeout=10000)
+        s.page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+        assert box.evaluate("el => el.validationMessage"), "the browser must explain the rejection"
+        assert len(_legacy_updates(s)) == sent_before, f"rejected value {value!r} must not be submitted"
 
 
 def test_ev_efficiency_rendered_identity_is_unique_and_shows_94_percent(make):
@@ -499,6 +555,7 @@ def test_ev_efficiency_valid_and_invalid_edits_and_effective_model_input_agree(m
     for bad in ("120", "-5", "100.5"):
         _legacy_edit(s, bad, expect_saved=False)
         assert s.persisted(EFF) == 92.0, f"{bad!r} must be rejected and the snapshot preserved"
+    assert s.persisted(EFF) == 92.0, "the last accepted efficiency stays exactly 92%"
     # the effective model input is the human percent converted to a runtime fraction (unchanged authority)
     from app.persistence.workspace_repository import get_workspace_state
     from app import ev_charging_economics as ev

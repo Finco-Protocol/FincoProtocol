@@ -81,7 +81,6 @@ def test_deactivate_then_reactivate_in_a_real_browser(live_server, browser, temp
     rec = create_reference_seeded_project(user_id=uid, template_source=template,
                                           requested_name="Browser CW", capacity_mw=40.0)
     ctx = browser.new_context(viewport={"width": 1440, "height": 900})
-    ctx.add_init_script("sessionStorage.setItem('finco.cost.editMode', 'immediate')")  # these tests exercise the explicit immediate mode
     ctx.add_cookies([{"name": COOKIE_NAME, "value": create_session_token(user_id=uid, username="admin"),
                       "url": live_server}])
     page = ctx.new_page()
