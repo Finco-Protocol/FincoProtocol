@@ -180,11 +180,186 @@ def test_plugin_real_collection_outcomes_and_module_partition(tmp_path):
     assert set(records[1]["selected"] + records[2]["selected"]) == set(records[0]["selected"])
 
 
+_F3_5_REVIEWED_PROTECTED_PATHS = frozenset({
+    "financial_engine/book_basis.py",
+    "financial_engine/financial_statements/assembly.py",
+    "financial_engine/financial_statements/contracts.py",
+    "financial_engine/financing/generic_product_policy.py",
+    "financial_engine/financing/junior_debt.py",
+    "financial_engine/financing/project.py",
+    "financial_engine/financing/project_uses.py",
+    "financial_engine/project_returns/contracts.py",
+    "financial_engine/project_returns/model.py",
+    "financial_engine/senior_debt/project_adapter.py",
+    "financial_engine/shareholder_waterfall/contracts.py",
+    "financial_engine/shareholder_waterfall/model.py",
+    "finco_core/inputs/_models.py",
+    "finco_core/inputs/junior_debt.py",
+    "finco_core/inputs/serialization.py",
+})
+
+
+def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main", ref="HEAD", authorities=None):
+    from model_v2_governance import F3_5_A_JUNIOR_AUTHORITIES, PERMANENT_HARD_DENY_PREFIXES
+
+    reviewed = F3_5_A_JUNIOR_AUTHORITIES
+    assert set(reviewed) == _F3_5_REVIEWED_PROTECTED_PATHS, "Incomplete or extra F3.5 release authority"
+    pins = reviewed if authorities is None else authorities
+    assert pins == reviewed, "Release authority differs from independently reviewed pins"
+
+    def git(*args):
+        result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+        assert result.returncode == 0, f"Git authority unavailable: {args}: {result.stderr}"
+        return result.stdout.strip()
+
+    base = git("rev-parse", "--verify", f"{baseline}^{{commit}}")
+    head = git("rev-parse", "--verify", f"{ref}^{{commit}}")
+    git("merge-base", "--is-ancestor", base, head)
+    changed = set(filter(None, git("diff", "--name-only", "-z", "--no-renames", base, head).split("\0")))
+    denied = {path for path in changed if path.startswith(PERMANENT_HARD_DENY_PREFIXES)}
+    assert not denied, f"Permanent hard-deny changes: {sorted(denied)}"
+    protected = {path for path in changed if path.startswith(("financial_engine/", "finco_core/", "domain/"))}
+    # An unchanged baseline remains valid; any release diff must be the complete reviewed slice.
+    if not protected:
+        return
+    assert protected == _F3_5_REVIEWED_PROTECTED_PATHS, f"Unapproved or incomplete protected diff: {sorted(protected)}"
+    for path in sorted(protected):
+        actual = git("rev-parse", "--verify", f"{head}:{path}")
+        assert git("cat-file", "-t", actual) == "blob", f"Missing approved blob: {path}"
+        assert actual == pins[path], f"Unreviewed financial blob: {path}"
+
+
 def test_frozen_financial_namespaces_unmodified():
+    _assert_frozen_financial_namespace_authority(Path(__file__).resolve().parents[1])
+
+
+@pytest.fixture
+def reviewed_financial_git_repo(tmp_path):
+    from model_v2_governance import F3_5_A_JUNIOR_AUTHORITIES
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=tmp_path, capture_output=True, check=True).stdout
+
+    git("init")
+    git("config", "core.autocrlf", "false")
+    git("config", "user.name", "Synthetic Governance")
+    git("config", "user.email", "synthetic.invalid")
+    for path in F3_5_A_JUNIOR_AUTHORITIES:
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"Synthetic historical baseline\n")
+    git("add", ".")
+    git("commit", "-m", "Synthetic baseline")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
     root = Path(__file__).resolve().parents[1]
-    result = subprocess.run(["git", "diff", "--name-only", "origin/main", "--", "financial_engine", "finco_core", "domain"],
-                            cwd=root, text=True, capture_output=True, check=True)
-    assert result.stdout.strip() == ""
+    for path, blob in F3_5_A_JUNIOR_AUTHORITIES.items():
+        source = subprocess.run(["git", "cat-file", "blob", blob], cwd=root, capture_output=True, check=True).stdout
+        (tmp_path / path).write_bytes(source)
+    git("add", ".")
+    git("commit", "-m", "Exact reviewed release")
+    return tmp_path, git
+
+
+def test_financial_namespace_guard_accepts_exact_reviewed_content(reviewed_financial_git_repo):
+    root, _ = reviewed_financial_git_repo
+    _assert_frozen_financial_namespace_authority(root)
+
+
+def test_financial_namespace_guard_accepts_unchanged_baseline(reviewed_financial_git_repo):
+    root, _ = reviewed_financial_git_repo
+    _assert_frozen_financial_namespace_authority(root, ref="origin/main")
+
+
+@pytest.mark.parametrize("path", [
+    "financial_engine/financing/unapproved.py", "finco_core/inputs/unapproved.py",
+    "financial_engine/financing/junior_debt.py.extra", "domain/unapproved.py",
+    "finco_radar/unapproved.py", "finco_yield/unapproved.py", "app/radar_rwa/unapproved.py",
+    "app/crypto_access.py", "app/crypto_resource_access.py",
+])
+def test_financial_namespace_guard_rejects_unrelated_or_hard_denied_path(reviewed_financial_git_repo, path):
+    root, git = reviewed_financial_git_repo
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"Synthetic unauthorized content\n")
+    git("add", path)
+    git("commit", "-m", "Unreviewed path")
+    with pytest.raises(AssertionError, match="hard-deny|protected diff"):
+        _assert_frozen_financial_namespace_authority(root)
+
+
+@pytest.mark.parametrize("content", ["altered", "historical"])
+def test_financial_namespace_guard_rejects_altered_approved_blob(reviewed_financial_git_repo, content):
+    root, git = reviewed_financial_git_repo
+    path = "financial_engine/book_basis.py"
+    target = root / path
+    if content == "historical":
+        from model_v2_governance import DEVELOPER_ECONOMICS_V1_AUTHORITIES
+
+        original = Path(__file__).resolve().parents[1]
+        source = subprocess.run(["git", "cat-file", "blob", DEVELOPER_ECONOMICS_V1_AUTHORITIES[path]],
+                                cwd=original, capture_output=True, check=True).stdout
+        target.write_bytes(source)
+    else:
+        target.write_bytes(target.read_bytes() + b"\n# Synthetic unreviewed alteration.\n")
+    git("add", path)
+    git("commit", "-m", "Unreviewed blob")
+    with pytest.raises(AssertionError, match="Unreviewed financial blob"):
+        _assert_frozen_financial_namespace_authority(root)
+
+
+def test_financial_namespace_guard_rejects_missing_approved_blob(reviewed_financial_git_repo):
+    root, git = reviewed_financial_git_repo
+    git("rm", "financial_engine/book_basis.py")
+    git("commit", "-m", "Missing reviewed blob")
+    with pytest.raises(AssertionError, match="Git authority unavailable"):
+        _assert_frozen_financial_namespace_authority(root)
+
+
+@pytest.mark.parametrize("change", ["partial", "extra", "altered-pin"])
+def test_financial_namespace_guard_rejects_incomplete_or_changed_pin_map(reviewed_financial_git_repo, change):
+    from model_v2_governance import F3_5_A_JUNIOR_AUTHORITIES
+
+    root, _ = reviewed_financial_git_repo
+    pins = dict(F3_5_A_JUNIOR_AUTHORITIES)
+    if change == "partial":
+        pins.pop("financial_engine/book_basis.py")
+    elif change == "extra":
+        pins["domain/unapproved.py"] = "a" * 40
+    else:
+        pins["financial_engine/book_basis.py"] = "a" * 40
+    with pytest.raises(AssertionError, match="reviewed pins"):
+        _assert_frozen_financial_namespace_authority(root, authorities=pins)
+
+
+def test_financial_namespace_guard_rejects_incomplete_actual_release(reviewed_financial_git_repo):
+    root, git = reviewed_financial_git_repo
+    path = "financial_engine/book_basis.py"
+    (root / path).write_bytes(git("show", f"origin/main:{path}"))
+    git("add", path)
+    git("commit", "-m", "Partial release")
+    with pytest.raises(AssertionError, match="incomplete protected diff"):
+        _assert_frozen_financial_namespace_authority(root)
+
+
+@pytest.mark.parametrize("change", ["partial", "extra"])
+def test_financial_namespace_guard_rejects_tampered_release_map(reviewed_financial_git_repo, monkeypatch, change):
+    import model_v2_governance as governance
+
+    root, _ = reviewed_financial_git_repo
+    pins = dict(governance.F3_5_A_JUNIOR_AUTHORITIES)
+    if change == "partial":
+        pins.pop("financial_engine/book_basis.py")
+    else:
+        pins["domain/unapproved.py"] = "a" * 40
+    monkeypatch.setattr(governance, "F3_5_A_JUNIOR_AUTHORITIES", pins)
+    with pytest.raises(AssertionError, match="Incomplete or extra F3.5 release authority"):
+        _assert_frozen_financial_namespace_authority(root)
+
+
+def test_financial_namespace_guard_rejects_missing_review_ref(reviewed_financial_git_repo):
+    root, _ = reviewed_financial_git_repo
+    with pytest.raises(AssertionError, match="Git authority unavailable"):
+        _assert_frozen_financial_namespace_authority(root, ref="missing-reviewed-ref")
 
 
 @pytest.mark.parametrize("role", list(REQUIRED))
