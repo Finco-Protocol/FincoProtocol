@@ -408,9 +408,9 @@ def parse_localized_number(text: str) -> Decimal:
             return Decimal(sign + raw.replace(mark, ""))
         if not whole.isdigit() or not frac.isdigit():
             raise NumberFormatError("IMPORT_VALUE_INVALID")
-        if len(frac) == 3 and not spaced and (mark == "," or re.fullmatch(r"[1-9]\d{0,2}", whole)):
+        if len(frac) == 3 and not spaced and re.fullmatch(r"[1-9]\d{0,2}", whole):
             # "1,234" / "18.000" read as thousands in one convention and as a decimal in the other: a 1000x
-            # error either way, so it is never guessed.  ("0.125" is unambiguous: a group cannot start with 0.)
+            # error either way, so it is never guessed.  ("0.125" / "0,062" are unambiguous: a thousands group cannot start with 0.)
             raise NumberFormatError("IMPORT_NUMBER_FORMAT_AMBIGUOUS")
         return Decimal(sign + whole + "." + frac)
     except InvalidOperation as exc:
