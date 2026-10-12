@@ -17,7 +17,8 @@ APPROVED = {
 def test_exact_wf04_paths_and_content_only():
     assert governance.WF04_NUMERIC_PRECISION_AUTHORITIES == APPROVED
     for path, blob in APPROVED.items():
-        assert git(governance.REPO, "rev-parse", "HEAD:" + path) == blob
+        current_blob = governance.F3_5_A_JUNIOR_AUTHORITIES.get(path, blob)
+        assert git(governance.REPO, "rev-parse", "HEAD:" + path) == current_blob
         assert governance.released_engine_authority_matches(path)
     assert unapproved_engine_changes(list(APPROVED)) == []
 

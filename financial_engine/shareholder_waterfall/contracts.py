@@ -205,6 +205,16 @@ class CovenantGatedWaterfallPeriod:
     closing_legal_reserve_keur: float = 0.0   # legal reserve at end of period
 
 
+@dataclass(frozen=True, kw_only=True)
+class JuniorWaterfallPeriod(CovenantGatedWaterfallPeriod):
+    junior_opening_keur: float
+    junior_interest_keur: float
+    junior_principal_keur: float
+    junior_debt_service_keur: float
+    junior_closing_keur: float
+    signed_post_junior_keur: float
+
+
 @dataclass(frozen=True)
 class CovenantGatedWaterfallResult:
     """Top-level G2C result — covenant-gated shareholder waterfall."""

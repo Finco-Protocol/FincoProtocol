@@ -465,8 +465,9 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
     if finance_evidence.get("facility_authority"):
         from app.workbook.multisenior_config import SNAPSHOT_KEY, apply_state
         from finco_core.inputs.multisenior import AUTHORITY, MultiSeniorProjectInputs
+        from finco_core.inputs.junior_debt import AUTHORITY as JUNIOR_AUTHORITY, JuniorProjectInputs
         binding = finance_evidence.get("run_binding") or {}
-        if (finance_evidence["facility_authority"] != AUTHORITY
+        if (finance_evidence["facility_authority"] not in (AUTHORITY, JUNIOR_AUTHORITY)
                 or binding.get("snapshot_id") != ws.last_runtime_snapshot_id
                 or binding.get("scenario_id") != ws.last_runtime_scenario_id
                 or binding.get("composite_hash") != (_ri or {}).get("composite_hash")
@@ -474,9 +475,12 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
             raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: F3 Run binding is inconsistent.")
         project_inputs = apply_state(project_inputs, export_snapshot.get(SNAPSHOT_KEY), binding["financing_scope"],
             enforce_release=False, bankability_raw=export_snapshot.get("bankability_config_json"))
-        if (not isinstance(project_inputs, MultiSeniorProjectInputs)
+        expected_type = JuniorProjectInputs if finance_evidence["facility_authority"] == JUNIOR_AUTHORITY else MultiSeniorProjectInputs
+        if (not isinstance(project_inputs, expected_type)
                 or project_inputs.financing_collection.content_digest() != finance_evidence.get("collection_digest")):
             raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: F3 collection does not match Run evidence.")
+        if isinstance(project_inputs, JuniorProjectInputs) and project_inputs.junior_debt_policy.content_digest() != finance_evidence.get("junior_policy_digest"):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: F3.5 policy does not match Run evidence.")
 
     # UI and export share one composite runtime-freshness authority.
     from app.workbook.runtime_authority import resolve_runtime_freshness

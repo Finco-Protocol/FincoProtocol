@@ -142,6 +142,11 @@ class TerminalFinancialState:
     senior_dsra: CashAccountTerminalState
 
 
+@dataclass(frozen=True, kw_only=True)
+class JuniorTerminalFinancialState(TerminalFinancialState):
+    junior: DebtTerminalState
+
+
 @dataclass(frozen=True)
 class DecisionCompleteReturnSummary:
     """Single downstream authority for project, sponsor, and terminal results."""

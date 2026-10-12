@@ -942,6 +942,15 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
 # ── Deserialization helpers ────────────────────────────────────────────────────
 
 def _ser_multisenior(inputs):
+    from finco_core.inputs.junior_debt import JuniorProjectInputs
+    if isinstance(inputs, JuniorProjectInputs):
+        return {"financing_activation": {
+            "authority": inputs.financing_activation_authority,
+            "collection": inputs.financing_collection.to_dict(),
+            "junior_policy": inputs.junior_debt_policy.to_dict(),
+            "revenue_calendar_start_year": inputs.revenue.market_price_calendar_start_year,
+            "revenue_calendar_prices": list(inputs.revenue.market_prices_by_calendar_year_eur_mwh),
+        }}
     from finco_core.inputs.multisenior import MultiSeniorProjectInputs
     if not isinstance(inputs, MultiSeniorProjectInputs):
         return {}
@@ -1389,6 +1398,25 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
     from finco_core.inputs.financing_instruments import FinancingCollection, FinancingError
     from finco_core.inputs.multisenior import AUTHORITY, activate_collection
     activation = d["financing_activation"]
+    from finco_core.inputs.junior_debt import AUTHORITY as JUNIOR_AUTHORITY, JuniorDebtPolicy, activate_collection as activate_junior
+    if isinstance(activation, dict) and activation.get("authority") == JUNIOR_AUTHORITY:
+        if set(activation) != {"authority", "collection", "junior_policy", "revenue_calendar_start_year", "revenue_calendar_prices"}:
+            raise FinancingError("F35_ACTIVATION_PAYLOAD_INVALID")
+        # Reuse the existing calendar validation, without downgrading the economic authority.
+        legacy = dict(d, financing_activation={k: v for k, v in activation.items() if k != "junior_policy"})
+        del legacy["financing_activation"]
+        result = project_inputs_from_dict(legacy)
+        from dataclasses import replace
+        from finco_core._numeric import require_finite_real
+        year, prices = activation["revenue_calendar_start_year"], activation["revenue_calendar_prices"]
+        if not isinstance(prices, list) or (year is not None and (type(year) is not int or not 1900 <= year <= 9999)) or bool(prices) != (year is not None):
+            raise FinancingError("F3_REVENUE_CALENDAR_AUTHORITY_INVALID")
+        for price in prices:
+            require_finite_real("F3 revenue calendar price", price, minimum=0., error_code="F3_REVENUE_CALENDAR_AUTHORITY_INVALID")
+        result = replace(result, revenue=replace(result.revenue, market_price_calendar_start_year=year,
+            market_prices_by_calendar_year_eur_mwh=tuple(prices)))
+        return activate_junior(result, FinancingCollection.from_dict(activation["collection"]),
+            JuniorDebtPolicy.from_dict(activation["junior_policy"]))
     if not isinstance(activation, dict) or set(activation) != {"authority", "collection", "revenue_calendar_start_year", "revenue_calendar_prices"} or activation["authority"] != AUTHORITY:
         raise FinancingError("F3_ACTIVATION_AUTHORITY_UNSUPPORTED")
     from dataclasses import replace

@@ -1827,6 +1827,10 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         # Developer Economics V1: absent and disabled are the same neutral None.
         _development_economics_cache_key(inputs.development_economics),
     )
+    from finco_core.inputs.junior_debt import JuniorProjectInputs
+    if isinstance(inputs, JuniorProjectInputs):
+        return legacy_key + ((inputs.financing_activation_authority,
+            inputs.financing_collection.content_digest(), inputs.junior_debt_policy.content_digest()),)
     from finco_core.inputs.multisenior import MultiSeniorProjectInputs
     if isinstance(inputs, MultiSeniorProjectInputs):
         return legacy_key + ((inputs.financing_activation_authority,
