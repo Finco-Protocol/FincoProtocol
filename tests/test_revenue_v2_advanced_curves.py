@@ -20,6 +20,7 @@ from financial_engine.adapters.project_inputs import from_project_inputs
 from financial_engine.orchestrator import _build_period_engine
 from finco_core.revenue.generation import revenue_decomposition_schedule
 from tests.test_wf07_revenue_multistream import contracts
+from tests.test_model_decision_workspace_v2 import env
 
 
 def book(kind="solar", *, with_cfd=True, pi=None):
