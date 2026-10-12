@@ -251,6 +251,16 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _unique_json_object(pairs):
+    """Forbid duplicate identities inside individual JSON objects before parsing."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ReconciliationInputError("OUTPUT: duplicate JSON object key")
+        result[key] = value
+    return result
+
+
 def canonical_bytes(doc: Any) -> bytes:
     return (json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
                        allow_nan=False) + "\n").encode("utf-8")
@@ -264,8 +274,8 @@ def compare(manifest_data: dict, reference_bytes: bytes, finco_bytes: bytes) -> 
     if sha256_bytes(finco_bytes) != manifest.finco.output_sha256:
         raise ReconciliationInputError("PROVENANCE: FINCO evidence SHA mismatch")
     try:
-        left = observations(json.loads(reference_bytes), "reference")
-        right = observations(json.loads(finco_bytes), "finco")
+        left = observations(json.loads(reference_bytes, object_pairs_hook=_unique_json_object), "reference")
+        right = observations(json.loads(finco_bytes, object_pairs_hook=_unique_json_object), "finco")
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ReconciliationInputError("OUTPUT: malformed evidence JSON") from exc
 
