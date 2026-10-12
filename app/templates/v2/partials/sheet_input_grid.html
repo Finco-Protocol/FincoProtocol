@@ -71,7 +71,8 @@
                    {% if row.min_value is not none %}data-min="{{ row.min_value }}"{% endif %}
                    {% if row.max_value is not none %}data-max="{{ row.max_value }}"{% endif %}
                    aria-label="{{ row.label }} ({{ row.unit }})">
-            {% if row.category_value %}<small data-testid="ig-category-{{ row.code }}">Scalar override absent · canonical category subtotal: {{ row.category_value }} {{ row.unit }}. Edit cost lines on the detail sheet; this is not an input value.</small>{% endif %}
+            {% if row.category_value %}<small data-testid="ig-category-{{ row.code }}">Scalar override absent · canonical category subtotal: {{ row.category_value }} {{ row.unit }}. Edit cost lines on the detail sheet; this is not an input value.</small>
+            {% if row.nav_tab %}<button type="button" class="ig-link ig-link--line" data-nav-tab="{{ row.nav_tab }}" {% if row.nav_group %}data-nav-group="{{ row.nav_group }}"{% endif %} data-testid="ig-open-lines-{{ row.code }}">Open lines →</button>{% endif %}{% endif %}
           </td>
           {% else %}
           <td class="ig-ro" data-testid="ig-ro-{{ row.code }}">{{ row.value }}</td>
@@ -85,6 +86,10 @@
               <span class="ig-flag ig-flag--error" data-ig-flag-error hidden></span>
             {% else %}
               <span class="ig-flag ig-flag--ro" title="{{ row.reason }}">{{ row.reason }}</span>
+              {% if row.nav_tab %}<button type="button" class="ig-link ig-link--line" data-nav-tab="{{ row.nav_tab }}"
+                      {% if row.nav_group %}data-nav-group="{{ row.nav_group }}"{% endif %}
+                      data-testid="ig-open-lines-{{ row.code or row.label|replace(' ', '-') }}"
+                      title="Open the owning sheet{% if row.nav_group %} at this category{% endif %}">Open lines →</button>{% endif %}
             {% endif %}
           </td>
         </tr>

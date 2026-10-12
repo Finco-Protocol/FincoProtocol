@@ -217,14 +217,15 @@
         data-workbook-version="{{ workbook_version }}"></span>
 
   {% if project_editable %}
-  {# Optional staged mode: edits are collected and saved TOGETHER in one atomic transaction
-     (POST /v2/workbook/grid/cost-lines/save).  Off by default: the per-row autosave above is unchanged. #}
-  <div class="v2-cost-stagebar" data-cost-stagebar role="group" aria-label="Stage cost edits and save together">
-    <label class="v2-cost-stage-toggle"><input type="checkbox" data-cost-stage-toggle data-testid="cost-stage-toggle"> Stage edits, save together</label>
+  {# Batch editing is the default: edits are staged and saved TOGETHER in one atomic transaction
+     (POST /v2/workbook/grid/cost-lines/save).  Unticking the box selects the per-row immediate mode. #}
+  <div class="v2-cost-stagebar" data-cost-stagebar role="group" aria-label="Save cost edits together">
+    <label class="v2-cost-stage-toggle"><input type="checkbox" data-cost-stage-toggle data-testid="cost-stage-toggle" checked> Save edits together</label>
     <span class="v2-cost-stage-count" data-cost-stage-count data-testid="cost-stage-count" role="status" aria-live="polite"></span>
-    <button type="button" class="v2-cost-action v2-cost-stage-btn" data-cost-stage-save data-testid="cost-stage-save" disabled>Save staged</button>
+    <button type="button" class="v2-cost-action v2-cost-stage-btn v2-cost-stage-primary" data-cost-stage-save data-testid="cost-stage-save" disabled>Save <kbd>Ctrl+S</kbd></button>
     <button type="button" class="v2-cost-action v2-cost-stage-btn" data-cost-stage-discard data-testid="cost-stage-discard" disabled>Discard</button>
     <span class="v2-cost-stage-msg" data-cost-stage-msg data-testid="cost-stage-msg" role="status" aria-live="polite"></span>
+    <span class="v2-cost-mode-hint" data-cost-mode-hint data-testid="cost-mode-hint"></span>
   </div>
   {% endif %}
 
@@ -304,7 +305,7 @@
     <span class="v2-capex-col-permw">kEUR/MW</span>
     <span class="v2-capex-col-status">Status</span>
   </div>
-  <p class="v2-cost-grid-hint" data-testid="cost-grid-hint">{% if project_editable %}Click an amount to edit. <kbd>Enter</kbd> saves and moves down, <kbd>Shift+Enter</kbd> up, <kbd>Esc</kbd> cancels, <kbd>Tab</kbd> moves across.{% else %}Read-only reference cost lines. Create a working copy to edit.{% endif %}</p>
+  <p class="v2-cost-grid-hint" data-testid="cost-grid-hint">{% if project_editable %}Click an amount to edit. <kbd>Enter</kbd> commits and moves down, <kbd>Shift+Enter</kbd> up, <kbd>Esc</kbd> cancels this cell, <kbd>Tab</kbd> moves across.{% else %}Read-only reference cost lines. Create a working copy to edit.{% endif %}</p>
 
   {# ── C.01–C.18 groups ────────────────────────────────────────────── #}
   {% for group in capex_vm.groups %}

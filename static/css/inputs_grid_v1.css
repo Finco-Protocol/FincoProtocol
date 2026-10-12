@@ -117,3 +117,4 @@
 
 /* Cost-line rows: saved after the Last Run, not yet run. */
 .v2-notrun-mark { margin-left: .3rem; color: var(--ig-accent); font-size: .7rem; line-height: 1; cursor: help; }
+.ig-link--line { margin-left: .5rem; text-decoration: underline; white-space: nowrap; }

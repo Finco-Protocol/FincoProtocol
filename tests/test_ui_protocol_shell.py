@@ -2476,6 +2476,11 @@ def test_reference_driven_correction_a_23_capture_journey(
     shot("06-solar-detailed-opex", page.locator("#v2-sheet-opex"))
     shot("07-opex-year-projection", page.locator('[data-testid="opex-projection-panel"]'))
 
+    # Cost editing defaults to batch ("Save edits together"). This journey validates the supported per-row
+    # immediate mode, so it selects that mode through the real control, exactly as a user would.
+    page.locator('#v2-sheet-opex [data-cost-stage-toggle]').uncheck()
+    page.wait_for_function("window.v2CostGrid.state().stageMode === false")
+
     # Rename and override one immutable-provenance OPEX seed through the direct-cell grid.
     from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as _active_opex
 
