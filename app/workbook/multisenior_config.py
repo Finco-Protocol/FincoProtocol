@@ -52,12 +52,16 @@ def parse_state(raw):
         collection = FinancingCollection.from_dict(entry["proposal"])
         activation = entry["activation"]
         if activation is not None:
-            if not isinstance(activation, dict) or set(activation) != ACTIVATION_KEYS or activation != {
+            from app.workbook.junior_debt_config import AUTHORITY as JUNIOR_AUTHORITY, validate_activation
+            if isinstance(activation, dict) and activation.get("authority") == JUNIOR_AUTHORITY:
+                validate_activation(collection, activation)
+            elif not isinstance(activation, dict) or set(activation) != ACTIVATION_KEYS or activation != {
                 "authority": AUTHORITY, "proposal_digest": collection.content_digest(),
                 "sponsor_funding_mode": "EQUITY_ONLY", "reserve_support_mode": "NONE",
             }:
                 raise FinancingError("F3_ACTIVATION_AUTHORITY_INVALID")
-            validate_effective_collection(collection)
+            else:
+                validate_effective_collection(collection)
         canonical[scope] = {"proposal": collection.to_dict(), "activation": activation}
     return {"schema_version": SCHEMA, "scopes": canonical}
 
@@ -141,6 +145,9 @@ def apply_state(pi, raw, scope, *, enforce_release=True, bankability_raw=None):
             raise FinancingError("F3_BANKABILITY_AUTHORITY_CONFLICT", "Reset the single-Senior configuration before activation.")
     if pi.financing.construction_financing is not None or pi.capex.reserve_accounts_keur:
         raise FinancingError("F3_EXISTING_CONSTRUCTION_OR_RESERVE_AUTHORITY_CONFLICT")
+    from app.workbook.junior_debt_config import AUTHORITY as JUNIOR_AUTHORITY, apply_entry
+    if entry["activation"]["authority"] == JUNIOR_AUTHORITY:
+        return apply_entry(pi, entry, enforce_release=enforce_release)
     # These two policies are explicit mandatory activation terms, not defaults
     # guessed from project identity, a missing SHL input or a prior Run output.
     fin = activation_financing_params(pi.financing)
@@ -155,6 +162,11 @@ def build_view(pi, raw, scope, runtime_summary, *, owner_id, project_id):
         return {"available": False, "active": False, "reason": "Project inputs are unavailable."}
     state = parse_state(raw)
     entry = state["scopes"].get(scope)
+    from app.workbook.junior_debt_config import AUTHORITY as JUNIOR_AUTHORITY
+    if entry is not None and entry["activation"] is not None and entry["activation"]["authority"] == JUNIOR_AUTHORITY:
+        return {"available": False, "active": True,
+            "reason": "Junior financing is a candidate financial contract; its editor is not released.",
+            "authority": JUNIOR_AUTHORITY}
     if entry is None:
         if not isinstance(owner_id, str) or not owner_id or not isinstance(project_id, str) or not project_id:
             raise FinancingError("F3_PROPOSAL_SCOPE_REQUIRED")

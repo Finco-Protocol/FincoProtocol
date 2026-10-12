@@ -41,12 +41,27 @@ def compute_project_uses(project_inputs: ProjectInputs) -> ProjectUses:
     """
     capex = project_inputs.capex
     fin = project_inputs.financing
+    from finco_core.inputs.junior_debt import JuniorFundedCapex, JuniorProjectInputs
+    junior_idc = 0.
+    if isinstance(capex, JuniorFundedCapex):
+        if not isinstance(project_inputs, JuniorProjectInputs):
+            raise ValueError("F35_JUNIOR_IDC_WITHOUT_ACTIVATION")
+        evidence = capex.junior_cash_idc
+        evidence.validate()
+        if (evidence.collection_digest != project_inputs.financing_collection.content_digest()
+                or evidence.instrument_id != project_inputs.junior_debt_policy.junior_instrument_id
+                or evidence.book_life_years != project_inputs.junior_debt_policy.idc_book_life_years):
+            raise ValueError("F35_JUNIOR_IDC_BINDING_MISMATCH")
+        junior_idc = evidence.amount_keur
+        from financial_engine.financing.junior_debt import validate_capitalized_cash_interest
+        validate_capitalized_cash_interest(project_inputs, evidence)
     financing_costs = (
         capex.idc_keur
         + capex.commitment_fees_keur
         + capex.bank_fees_keur
         + capex.other_financial_keur
         + capex.vat_costs_keur
+        + junior_idc
     )
 
     # Delegate all reserve resolution to the shared resolver — raises on any violation.

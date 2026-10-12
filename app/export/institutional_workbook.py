@@ -1019,6 +1019,8 @@ def _write_pnl_sheet(sheet, bundle: WorkbookExportBundle) -> None:
             ("Depreciation", [period.depreciation_keur for period in periods], "runtime", "Offline assembled P&L."),
             ("EBIT", [period.ebit_keur for period in periods], "runtime", "Offline assembled P&L."),
             ("Senior Interest", [period.senior_interest_expense_keur for period in periods], "runtime", "Offline assembled P&L."),
+            *([("Junior Interest", [p.junior_interest_expense_keur for p in periods], "runtime", "Canonical Junior cash interest.")]
+              if any(getattr(p, "junior_interest_expense_keur", None) is not None for p in periods) else []),
             ("SHL Interest", [period.shl_interest_expense_keur for period in periods], "runtime", "Offline assembled P&L."),
             ("EBT", [period.earnings_before_tax_keur for period in periods], "runtime", "Offline assembled P&L."),
             ("Fiscal Reintegration", [period.fiscal_reintegration_keur for period in periods], "runtime", "Offline assembled P&L."),
@@ -1052,6 +1054,11 @@ def _write_cash_flow_sheet(sheet, bundle: WorkbookExportBundle) -> None:
             ("Cash Tax", [period.cash_tax_keur for period in periods], "runtime", "Offline assembled PF cash waterfall."),
             ("FCF Banks", [period.fcf_banks_keur for period in periods], "runtime", "Offline assembled PF cash waterfall."),
             ("Senior Debt Service", [period.senior_total_ds_keur for period in periods], "runtime", "Offline assembled PF cash waterfall."),
+            *([("Junior Cash Interest", [p.junior_cash_interest_keur for p in periods], "runtime", "Canonical Junior cash service."),
+               ("Junior Principal", [p.junior_principal_keur for p in periods], "runtime", "Canonical Junior cash service."),
+               ("Junior Debt Service", [p.junior_debt_service_keur for p in periods], "runtime", "Senior-first contractual service."),
+               ("Post-Junior Cash", [p.post_junior_cash_keur for p in periods], "runtime", "Canonical post-Junior cash.")]
+              if any(getattr(p, "junior_debt_service_keur", None) is not None for p in periods) else []),
             ("FCF for SHL", [period.fcf_for_shl_keur for period in periods], "runtime", "Offline assembled PF cash waterfall."),
             ("SHL Cash Interest", [period.shl_cash_interest_keur for period in periods], "runtime", "Offline assembled PF cash waterfall."),
             ("SHL Principal", [period.shl_principal_keur for period in periods], "runtime", "Offline assembled PF cash waterfall."),
@@ -1082,6 +1089,8 @@ def _write_balance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
             ("Net Fixed Assets", [period.net_fixed_assets_keur for period in periods], "runtime", "Offline assembled balance sheet."),
             ("Cash", [period.cash_keur for period in periods], "runtime", "Offline assembled balance sheet."),
             ("Senior Debt Balance", [period.senior_balance_keur for period in periods], "runtime", "Offline assembled balance sheet."),
+            *([("Junior Debt Balance", [p.junior_balance_keur for p in periods], "runtime", "Actual Junior closing liability.")]
+              if any(getattr(p, "junior_balance_keur", None) is not None for p in periods) else []),
             ("SHL Balance", [period.shl_balance_keur for period in periods], "runtime", "Offline assembled balance sheet."),
             ("Retained Earnings", [period.retained_earnings_keur for period in periods], "runtime", "Offline assembled balance sheet."),
             ("Total Assets", [period.total_assets_keur for period in periods], "runtime", "Offline assembled balance sheet."),

@@ -143,6 +143,8 @@ def serialize_clean_statements(
         "share_capital_keur": "share_capital_keur",
         "net_cit_payable_keur": "net_cit_payable_keur",
         "legal_reserve_keur": "legal_reserve_keur",
+        "junior_balance_keur": ("junior_debt_balance_keur" if fs.balance_sheet_periods
+            and hasattr(fs.balance_sheet_periods[0], "junior_debt_balance_keur") else None),
     })
 
     return CleanStatementsSerializationView(

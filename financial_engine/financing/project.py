@@ -944,6 +944,11 @@ def run_project_financing_model(
     _u2_period_financing_income: "tuple | None" = None,
 ) -> ProjectFinancingResult:
     """Run the derived-SHL/Senior fixed point for an explicitly enabled project."""
+    from finco_core.inputs.junior_debt import JuniorProjectInputs
+    if isinstance(project_inputs, JuniorProjectInputs):
+        from financial_engine.financing.junior_debt import run_junior_financing
+        return run_junior_financing(project_inputs, source_id=source_id,
+            baseline_commit_sha=baseline_commit_sha, period_financing_income=_u2_period_financing_income)
     from finco_core.inputs.multisenior import MultiSeniorProjectInputs
     if isinstance(project_inputs, MultiSeniorProjectInputs):
         from financial_engine.financing.multisenior import run_multisenior_financing

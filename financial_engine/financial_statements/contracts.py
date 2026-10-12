@@ -343,6 +343,24 @@ class AccountingPolicies:
     provenance: dict = field(default_factory=dict)
 
 
+@dataclass(frozen=True, kw_only=True)
+class JuniorIncomeStatementPeriod(IncomeStatementPeriod):
+    junior_interest_expense_keur: float
+
+
+@dataclass(frozen=True, kw_only=True)
+class JuniorPFCashWaterfallPeriod(PFCashWaterfallPeriod):
+    junior_cash_interest_keur: float
+    junior_principal_keur: float
+    junior_debt_service_keur: float
+    post_junior_cash_keur: float
+
+
+@dataclass(frozen=True, kw_only=True)
+class JuniorBalanceSheetPeriod(BalanceSheetPeriod):
+    junior_debt_balance_keur: float
+
+
 @dataclass(frozen=True)
 class FinancialStatementsResult:
     """Phase C3 decision-complete output (honest partial availability)."""
