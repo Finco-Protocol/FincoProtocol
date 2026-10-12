@@ -3,9 +3,9 @@ import os
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import expect
 
 from tests.test_financing_f37_browser_v1 import live_server, browser, _project, USER  # noqa: F401
+from playwright.sync_api import expect  # noqa: E402
 from tests.model_workspace_navigation import activate_destination
 
 

@@ -133,6 +133,8 @@ Local acceptance: broader regression ring 431 passed; final F3.8 focused checkpo
 35 passed (including three Chromium cases), then both Senior/Junior XLSX cases
 passed after adding the Junior export parameter. The final F3.8 inventory is 36
 tests; these are overlapping checkpoints, not additive unique-test claims.
+Exact committed-head focused execution subsequently passed all 36 tests in
+214.64s with rc=0, including three real Chromium cases.
 Existing WF-06 standalone acceptance: 44 passed. All completed processes exited
 normally with pytest rc=0. Compilation, changed-source safety and diff hygiene
 passed. Six canonical before/after fingerprints above are identical.
@@ -143,6 +145,14 @@ mandatory uploads, tested merge-tree equality and six browser roles. No CI chang
 Local Windows full source scan may encounter the existing CRLF vendor-byte
 exception mismatch; changed-source safety and Linux exact-head CI are separate
 evidence, never a scanner exception added by this PR.
+
+Initial exact-head CI found a test collection error: Public Safety intentionally
+does not install Playwright. The new browser test imported Playwright before the
+existing F3.7 browser fixture's optional-dependency boundary. The correction only
+orders that existing fixture import first; no assertion, financial code,
+dependency or CI change. Real local Chromium acceptance remains required and
+separate from the six mandatory browser roles. Fresh exact-head CI must complete
+after this test-only correction; the initial failed run is not acceptance.
 
 Recommended disposition: independent review of supported read-only integration;
 no claim of completed facility tax allocation or released Junior activation.
