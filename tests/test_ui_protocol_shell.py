@@ -63,6 +63,9 @@ def _auth_cookie(base_url: str, page) -> None:
         "domain": "127.0.0.1",
         "path": "/",
     }])
+    # Cost editing defaults to batch ("Save edits together"); the journeys below exercise the explicit
+    # per-row immediate mode (Enter commits and saves the row), so they select it the way a user would.
+    page.context.add_init_script("sessionStorage.setItem('finco.cost.editMode', 'immediate')")
 
 
 @pytest.fixture(scope="module")
