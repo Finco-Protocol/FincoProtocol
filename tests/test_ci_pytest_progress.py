@@ -9,7 +9,7 @@ import sys
 
 import pytest
 
-from tools.ci_pytest_runner import _progress_line, read_progress
+from tools.ci_pytest_runner import _progress_line, _heartbeat_line, read_progress
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "tools" / "ci_pytest_runner.py"
@@ -182,6 +182,79 @@ def test_report_never_raises_without_any_evidence(tmp_path):
     from tools.ci_pytest_progress import report
     text = report(tmp_path / "missing")
     assert "no active.json" in text and "no tests.jsonl" in text
+
+
+
+def _write_heartbeat_record(tmp_path, **overrides):
+    record = {"selected": 10000, "completed": 2445, "node": "tests/test_financing.py::test_long",
+              "phase": "call", "phase_started_epoch": 100.0}
+    record.update(overrides)
+    (tmp_path / "active.json").write_text(json.dumps(record), encoding="utf-8")
+
+
+def test_live_heartbeat_formats_percent_counts_elapsed_and_phase(tmp_path):
+    _write_heartbeat_record(tmp_path)
+    line = _heartbeat_line(tmp_path, 755)
+    assert "FINCO CI | RUNNING | 24.5%" in line
+    assert "2,445 / 10,000 tests" in line and "elapsed 12m 35s" in line
+    assert "test_long [call]" in line
+
+
+def test_heartbeat_uses_completed_counter_and_never_claims_early_success(tmp_path):
+    _write_heartbeat_record(tmp_path, selected=4, completed=0)
+    assert "0.0% | 0 / 4 tests" in _heartbeat_line(tmp_path, 0)
+    _write_heartbeat_record(tmp_path, selected=4, completed=2)
+    assert "50.0% | 2 / 4 tests" in _heartbeat_line(tmp_path, 2)
+    _write_heartbeat_record(tmp_path, selected=4, completed=4, phase="session-finished", node=None)
+    assert "99.9%" in _heartbeat_line(tmp_path, 4)
+    assert "99.9%" in _heartbeat_line(tmp_path, 4, "TESTS COMPLETED — PYTHON SHUTDOWN PENDING")
+    assert "100.0%" in _heartbeat_line(tmp_path, 4, "COMPLETE", final=True)
+
+
+@pytest.mark.parametrize("value", [None, "", "{invalid", "[]", '"string"'])
+def test_heartbeat_handles_missing_or_partial_atomic_evidence(tmp_path, value):
+    if value is not None:
+        (tmp_path / "active.json").write_text(value, encoding="utf-8")
+    line = _heartbeat_line(tmp_path, 60)
+    assert "progress evidence pending" in line and "%" not in line
+
+
+@pytest.mark.parametrize("selected,completed", [
+    (0, 0), (0, 2), (-1, 0), (5, -1), (3, 5), (True, 1), ("5", 2),
+])
+def test_heartbeat_refuses_invalid_or_zero_denominators(tmp_path, selected, completed):
+    _write_heartbeat_record(tmp_path, selected=selected, completed=completed)
+    assert "%" not in _heartbeat_line(tmp_path, 5)
+
+
+def test_heartbeat_bounds_node_and_strips_multiline_log_injection(tmp_path):
+    _write_heartbeat_record(tmp_path, node="x" * 300 + "\n" + "test_last", phase="call\r\nanother")
+    line = _heartbeat_line(tmp_path, 80)
+    assert "test_last" in line and len(line) < 300
+    assert "\n" not in line and "\r" not in line
+
+
+def test_supervisor_emits_live_heartbeats_over_two_short_intervals(tmp_path):
+    (tmp_path / "test_heartbeat.py").write_text(
+        "import time\n"
+        "def test_first(): time.sleep(2.5)\n"
+        "def test_second(): time.sleep(2.5)\n", encoding="utf-8")
+    env = dict(os.environ, PYTHONPATH=str(ROOT), FINCO_CI_PROGRESS_DIR=str(tmp_path / "progress"),
+               FINCO_CI_HEARTBEAT_S="1", FINCO_CI_PYTEST_BUDGET_S="40",
+               FINCO_CI_DIAG_PATH=str(tmp_path / "diag.txt"))
+    result = subprocess.run([
+        sys.executable, str(RUNNER), "-q", "-p", "no:cacheprovider",
+        "--confcutdir", str(tmp_path), "-p", "tools.ci_pytest_progress",
+        f"--ci-progress={tmp_path / 'progress'}", str(tmp_path / "test_heartbeat.py"),
+    ], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
+    lines = [line for line in result.stdout.splitlines() if line.startswith("FINCO CI |")]
+    running = [line for line in lines if "| RUNNING |" in line]
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(running) >= 2, lines
+    assert any("0.0%" in line for line in running), lines
+    assert any("| COMPLETE | 100.0%" in line for line in lines), lines
+    assert "PYTEST_MAIN_RETURNED FINCO_CI_MARKER after pytest.main rc=0" in result.stdout
+    assert "PYTHON_PROCESS_EXITED FINCO_CI_SUPERVISOR child exit code 0" in result.stdout
 
 
 def test_public_job_wires_progress_evidence_and_keeps_a_finite_budget_inside_the_job_timeout():
