@@ -25,6 +25,23 @@ USER = "f3-q3-browser"
 FAVICON = "/favicon.ico"
 
 
+
+def _expand_all(page):
+    """Capital Stack: term details are collapsed by default; open every row before measuring inputs."""
+    for toggle in page.locator("[data-cs-expand]").all():
+        if toggle.get_attribute("aria-expanded") != "true":
+            toggle.click()
+
+
+def _reachable(el, width):
+    """An input is reachable when it is rendered and either inside the viewport or inside a horizontally scrollable table container."""
+    box = el.bounding_box()
+    if not box or box["width"] <= 20 or box["height"] <= 10:
+        return False
+    if box["x"] >= -1 and box["x"] + box["width"] <= width + 1:
+        return True
+    return el.evaluate("el => { const c = el.closest('.f2-scroll'); return !!c && getComputedStyle(c).overflowX !== 'visible' && c.scrollWidth > c.clientWidth; }")
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("artifacts/f3-evidence/browser"))
@@ -138,6 +155,8 @@ def main() -> int:
                     form = page.locator("[data-f3-form]")
                     expect(form.locator("[data-f3-save]")).to_be_enabled()
                     for row, instrument in zip(form.locator("[data-f3-instrument]").all(), terms.instruments):
+                        if row.locator("[data-cs-expand]").get_attribute("aria-expanded") != "true":
+                            row.locator("[data-cs-expand]").click()
                         row.locator('[data-f3="commitment_keur"]').fill(str(instrument.commitment_keur))
                         row.locator('[data-f3="rate_pct"]').fill(str(instrument.interest.fixed_rate * 100))
                         row.locator('[data-f3="grace_months"]').fill(str(instrument.repayment.grace_months))
@@ -167,10 +186,10 @@ def main() -> int:
                     # ── editor before activation (every input visible, none clipped) ──
                     form = page.locator("[data-f3-form]")
                     expect(form).to_be_visible()
-                    page.locator("[data-f3-instrument] summary").first.scroll_into_view_if_needed()
+                    page.locator("[data-f3-instrument] [data-cs-expand]").first.scroll_into_view_if_needed()
+                    _expand_all(page)
                     inputs = form.locator("[data-f3]").all()
-                    boxes = [i.bounding_box() for i in inputs]
-                    vis = all(b and b["width"] > 20 and b["height"] > 10 and b["x"] >= 0 and b["x"] + b["width"] <= 1440 for b in boxes)
+                    vis = all(_reachable(i, 1440) for i in inputs)
                     f = shot(page, f"{kind}-01-editor-before-activation-light-1440.png")
                     check(f"[{kind}] F3 editor before activation: all {len(inputs)} facility inputs visible and inside the viewport",
                           vis and not form.locator("[data-f3-activate]").is_checked() and q3_state(page) == "NOT_RUN", f"{len(inputs)} inputs", f)
@@ -262,8 +281,8 @@ def main() -> int:
                         shot(page, name)
                         from tests.model_financing_browser_acceptance import contrast
                         colors = panel.locator('[data-f3="rate_pct"]').first.evaluate("el => { const s=getComputedStyle(el); return [s.color,s.backgroundColor]; }")
-                        panel_inputs_visible = all((b := i.bounding_box()) and b["width"] > 20 and b["x"] >= -1 and b["x"] + b["width"] <= width + 1
-                                                   for i in panel.locator("[data-f3]").all())
+                        _expand_all(page)
+                        panel_inputs_visible = all(_reachable(i, width) for i in panel.locator("[data-f3]").all())
                         check(f"[{kind}] F3 editor {theme} {width}px: fits the viewport, every input visible, contrast >= 4.5",
                               fits and panel_inputs_visible and contrast(colors) >= 4.5, f"contrast={contrast(colors):.2f}", name)
                     page.set_viewport_size({"width": 1440, "height": 1000})
