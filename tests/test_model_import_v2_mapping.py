@@ -140,14 +140,14 @@ def test_validate_candidate_is_the_single_gate_for_forged_or_inapplicable_target
 
 @pytest.mark.parametrize("text,expected", [
     ("1.234,56", "1234.56"), ("1,234.56", "1234.56"), ("1 234,5", "1234.5"), ("1 234,5", "1234.5"),
-    ("12,5", "12.5"), ("1234.5", "1234.5"), ("0.125", "0.125"), ("1.234.567", "1234567"),
+    ("12,5", "12.5"), ("1234.5", "1234.5"), ("0.125", "0.125"), ("12.5", "12.5"), ("1234.567", "1234.567"), ("1.234.567", "1234567"),
     ("1,234,567", "1234567"), ("7,5", "7.5"), ("-3,25", "-3.25"), ("1 234 567,89", "1234567.89"),
 ])
 def test_unambiguous_european_and_us_number_formats_are_read(text, expected):
     assert parse_localized_number(text) == Decimal(expected)
 
 
-@pytest.mark.parametrize("text", ["1,234", "1.2.3", "1,2,3", "12 34", "1,234,56", "abc", "", "1.234,5,6", "1,,2", "--1"])
+@pytest.mark.parametrize("text", ["1,234", "18.000", "1.234", "12.500", "1.2.3", "1,2,3", "12 34", "1,234,56", "abc", "", "1.234,5,6", "1,,2", "--1"])
 def test_ambiguous_or_malformed_numbers_are_rejected_never_guessed(text):
     with pytest.raises(NumberFormatError):
         parse_localized_number(text)

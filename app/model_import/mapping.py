@@ -369,7 +369,8 @@ def parse_localized_number(text: str) -> Decimal:
     Rules (anything else is rejected, never guessed):
       * both ``.`` and ``,`` present: the LAST one is the decimal mark, the other must group the whole part in threes;
       * space (or NBSP) grouping: groups of exactly three, and the single remaining ``.``/``,`` is the decimal mark;
-      * ``.`` only: one dot is a decimal point (``0.125``), several dots must be thousands groups;
+      * ``.`` only: one dot is a decimal point (``12.5``, ``0.125``) unless exactly three digits follow a 1-3 digit
+        whole part (``18.000``: thousands or decimal?) which is AMBIGUOUS; several dots must be thousands groups;
       * ``,`` only: one comma with exactly three following digits (``1,234``) is AMBIGUOUS; otherwise a decimal
         mark; several commas must be thousands groups.
     """
@@ -407,7 +408,9 @@ def parse_localized_number(text: str) -> Decimal:
             return Decimal(sign + raw.replace(mark, ""))
         if not whole.isdigit() or not frac.isdigit():
             raise NumberFormatError("IMPORT_VALUE_INVALID")
-        if mark == "," and len(frac) == 3 and not spaced:
+        if len(frac) == 3 and not spaced and (mark == "," or re.fullmatch(r"[1-9]\d{0,2}", whole)):
+            # "1,234" / "18.000" read as thousands in one convention and as a decimal in the other: a 1000x
+            # error either way, so it is never guessed.  ("0.125" is unambiguous: a group cannot start with 0.)
             raise NumberFormatError("IMPORT_NUMBER_FORMAT_AMBIGUOUS")
         return Decimal(sign + whole + "." + frac)
     except InvalidOperation as exc:

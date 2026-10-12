@@ -41,7 +41,7 @@ def _workbook(kind, path):
     opex = book.create_sheet("OPEX")
     opex.append(["Assumption", "Value", "Unit"])
     opex.append(["Insurance (annual)", "42,5", "kEUR/yr"])                    # ranked into OPEX, not CAPEX
-    opex.append(["Guard services", "18.000", "EUR/yr"])                       # unmapped: the user maps it by hand
+    opex.append(["Guard services", "18000", "EUR/yr"])                        # unmapped: the user maps it by hand
     revenue = book.create_sheet("Revenue")
     revenue.append(["Assumption", "Value", "Unit"])
     revenue.append(list(REVENUE[kind][0]))
