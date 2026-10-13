@@ -1190,6 +1190,118 @@ async def v2_revenue_contracts(request: Request, _: None = Depends(require_v2_ac
     return RedirectResponse(f"/v2/workbook?project={project}", status_code=303)
 
 
+
+@router.post("/workbook/revenue/stress")
+async def v2_revenue_commercial_stress(request: Request, _: None = Depends(require_v2_active)):
+    """Read-only commercial scenario comparison, never a Save/Run/Last Run writer."""
+    from app.auth import validate_csrf_token
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.revenue_commercial_stress import (
+        CommercialStressUnavailable, compare_commercial_cases,
+    )
+    from starlette.concurrency import run_in_threadpool
+
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+    form = await request.form()
+    if not validate_csrf_token(form.get("csrf_token")):
+        return JSONResponse({"error": "REVENUE_STRESS_CSRF_INVALID"}, status_code=403)
+    project = str(form.get("project") or "").strip()
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return JSONResponse({"error": "Project not found"}, status_code=404)
+    if is_protected_reference(record):
+        return JSONResponse({"error": "Protected Reference; use a Working Copy"}, status_code=409)
+    if str(record.project_type).strip().lower() not in ("solar", "wind"):
+        return JSONResponse({"error": "REVENUE_STRESS_UNSUPPORTED_VERTICAL"}, status_code=422)
+    ws = get_workspace_state(owner, record.project_id)
+    if ws is None:
+        return JSONResponse({"error": "Workspace not found"}, status_code=404)
+    pis = _build_pis_with_composite_identity(ws, record, owner)
+    expected = str(form.get("content_hash") or "")
+    if not expected or expected != pis.content_hash:
+        return JSONResponse({"error": "REVENUE_STRESS_STALE_CAS: reload"}, status_code=409)
+    try:
+        amount_pct = float(form.get("amount_pct") or 0)
+        # Mirror canonical V2 Run input materialization; a stress must never
+        # silently ignore selected scenario, CAPEX/OPEX sub-lines or financing.
+        from app.workbook.service import WorkbookService
+        from app.persistence.scenarios_repository import get_scenario
+        from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+        from app.workbook.bankability_config import (
+            SNAPSHOT_KEY as bank_key, assert_materialized_fee_authority,
+        )
+        from app.workbook.multisenior_config import SNAPSHOT_KEY as f3_key, apply_state
+        # Reuse the exact CAPEX/OPEX folding dependencies of the canonical Run.
+        # These functions only materialize inputs; this endpoint never persists them.
+        from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
+        from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex
+        from dataclasses import replace as dataclass_replace
+        scenario = None
+        scenario_overrides = None
+        model_inputs = pis.to_projectinputs()
+        if ws.active_scenario_id:
+            scenario = get_scenario(scenario_id=ws.active_scenario_id, user_id=owner)
+            if (scenario is None or scenario.archived or
+                    scenario.project_id != record.project_id):
+                raise CommercialStressUnavailable("STRESS_SCENARIO_CHANGED: reselect a valid project scenario")
+            scenario_overrides = dict(scenario.overrides or {})
+            if not scenario.is_base_case:
+                if set(scenario_overrides) - {"tariff_eur_mwh", "rev_multistream_config_json"}:
+                    raise CommercialStressUnavailable(
+                        "STRESS_SCENARIO_UNAVAILABLE: unsupported additional overrides; "
+                        "only canonical Run can materialize this scenario safely")
+                materialized = bind_scenario_tariff(dict(pis.snapshot_origin), scenario_overrides)
+                model_inputs = WorkbookService.to_projectinputs(
+                    WorkbookService.build_input_set(materialized))
+        folded_capex = apply_user_sub_lines_replacing_base(
+            model_inputs.capex, project_id=record.project_id,
+            scenario_overrides=scenario_overrides,
+        )
+        if folded_capex is not model_inputs.capex:
+            model_inputs = dataclass_replace(model_inputs, capex=folded_capex)
+        folded_opex = apply_user_sub_lines_to_opex(
+            model_inputs.opex, project_id=record.project_id,
+            scenario_overrides=scenario_overrides,
+        )
+        if folded_opex is not model_inputs.opex:
+            model_inputs = dataclass_replace(model_inputs, opex=folded_opex)
+        assert_materialized_fee_authority(model_inputs, pis.snapshot_origin.get(bank_key))
+        f3_scope = ("base" if scenario is None or scenario.is_base_case
+                    else scenario.scenario_id)
+        model_inputs = apply_state(
+            model_inputs, pis.snapshot_origin.get(f3_key), f3_scope,
+            bankability_raw=pis.snapshot_origin.get(bank_key),
+        )
+        # This call uses the existing clean sensitivity/financial execution seam.
+        # Run in an executor to avoid blocking the FastAPI event loop.
+        from functools import partial
+        result = await run_in_threadpool(partial(
+            compare_commercial_cases, model_inputs,
+            shock=str(form.get("shock") or ""), amount_pct=amount_pct,
+            expiry_date=str(form.get("expiry_date") or ""),
+        ))
+        # Reject a result calculated against a workbook/scenario changed mid-flight.
+        ws_latest = get_workspace_state(owner, record.project_id)
+        latest = _build_pis_with_composite_identity(ws_latest, record, owner)
+        if latest.content_hash != expected:
+            return JSONResponse({"error": "REVENUE_STRESS_STALE_CAS: inputs changed during comparison"}, status_code=409)
+        return HTMLResponse(_templates.get_template("partials/revenue_stress_results.html").render(
+            {"stress": result, "error": ""}))
+    except (CommercialStressUnavailable, ValueError, TypeError) as exc:
+        # No financial engine fallback, no invented result or implicit Last Run.
+        return HTMLResponse(_templates.get_template("partials/revenue_stress_results.html").render(
+            {"stress": None, "error": str(exc)}), status_code=422)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Read-only contract stress unavailable")
+        return HTMLResponse(_templates.get_template("partials/revenue_stress_results.html").render(
+            {"stress": None, "error": "UNAVAILABLE: canonical financial comparison failed; no saved state changed."}),
+            status_code=422)
+
+
 def _render_revenue_htmx_sheet(
     request: Request,
     pis,

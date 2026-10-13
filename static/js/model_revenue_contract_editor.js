@@ -10,29 +10,33 @@
   const ROOT_KEYS = ['version', 'technology', 'indexation_basis', 'streams'];
   const BASE_KEYS = ['id', 'type', 'start_date', 'end_date', 'volume_share',
     'price_eur_mwh', 'indexation_rate', 'settlement', 'source_ref'];
-  const OPTIONAL_KEYS = ['capture_rate', 'reference_stream_id'];
+  const OPTIONAL_KEYS = ['capture_rate', 'reference_stream_id', 'price_curve'];
   const KINDS = [
     ['fixed_ppa', 'Fixed PPA'], ['indexed_ppa', 'Indexed PPA'],
     ['merchant', 'Merchant'], ['residual_merchant', 'Residual Merchant'],
+    ['scheduled_ppa', 'Scheduled PPA'], ['scheduled_merchant', 'Scheduled Merchant'],
     ['cfd', 'Two-way CfD']
   ];
   const labelFor = (kind) => KINDS.find(([k]) => k === kind)?.[1] || 'Unsupported';
-  const isMerchant = (kind) => kind === 'merchant' || kind === 'residual_merchant';
+  const isMerchant = (kind) => ['merchant', 'residual_merchant', 'scheduled_merchant'].includes(kind);
+  const isScheduled = kind => ['scheduled_ppa', 'scheduled_merchant'].includes(kind);
   const toPct = (n) => n === null ? '' : String(Number((n * 100).toPrecision(12)));
   const fromPct = (text) => text.trim() === '' ? '' : Number(text) / 100;
   const legalKeys = (value, keys) => value && typeof value === 'object' &&
     !Array.isArray(value) && Object.keys(value).every((k) => keys.includes(k));
-  const displayKind = (row) => row.type === 'ppa'
-    ? (row.indexation_rate > 0 ? 'indexed_ppa' : 'fixed_ppa')
-    : row.type === 'merchant'
-      ? (row.volume_share === null ? 'residual_merchant' : 'merchant') : 'cfd';
+  const displayKind = (row) => Array.isArray(row.price_curve)
+    ? (row.type === 'ppa' ? 'scheduled_ppa' : 'scheduled_merchant')
+    : row.type === 'ppa'
+      ? (row.indexation_rate > 0 ? 'indexed_ppa' : 'fixed_ppa')
+      : row.type === 'merchant'
+        ? (row.volume_share === null ? 'residual_merchant' : 'merchant') : 'cfd';
 
   function safeBook(raw, technology) {
     if (!['solar', 'wind'].includes(technology)) throw Error('Only Solar and Wind revenue contracts are supported.');
     const book = raw ? JSON.parse(raw) :
       {version: 1, technology, indexation_basis: 'OPERATING_YEAR', streams: []};
     if (!legalKeys(book, ROOT_KEYS) || ROOT_KEYS.some(k => !(k in book)) ||
-        book.version !== 1 || book.technology !== technology ||
+        ![1, 2].includes(book.version) || book.technology !== technology ||
         book.indexation_basis !== 'OPERATING_YEAR' || !Array.isArray(book.streams) ||
         book.streams.length > 24) {
       throw Error('Existing contract configuration cannot be represented safely. No changes have been made.');
@@ -42,7 +46,12 @@
           BASE_KEYS.some(k => !(k in row)) || !['ppa', 'merchant', 'cfd'].includes(row.type) ||
           row.settlement !== 'SAME_PERIOD' ||
           (row.type !== 'merchant' && 'capture_rate' in row) ||
-          (row.type !== 'cfd' && 'reference_stream_id' in row)) {
+          (row.type !== 'cfd' && 'reference_stream_id' in row) ||
+          ('price_curve' in row && (book.version !== 2 || row.type === 'cfd' ||
+            !Array.isArray(row.price_curve) || row.indexation_rate !== 0 ||
+            row.price_curve.length > 600 || row.price_curve.some(point =>
+              !legalKeys(point, ['period_start', 'price_eur_mwh']) ||
+              !('period_start' in point) || !('price_eur_mwh' in point))))) {
         throw Error('An existing stream contains unsupported terms. Editing is blocked to preserve it.');
       }
     }
@@ -54,6 +63,7 @@
       start_date: '', end_date: '', volume_share: kind === 'residual_merchant' ? null : 0,
       price_eur_mwh: 0, indexation_rate: 0, settlement: 'SAME_PERIOD', source_ref: ''};
     if (kind === 'cfd') row.reference_stream_id = '';
+    if (isScheduled(kind)) row.price_curve = [];
     return row;
   }
 
@@ -156,7 +166,15 @@
             select.value = kind; return;
           }
           const changed = {...old};
-          if (isMerchant(next)) {
+          if (isScheduled(next)) {
+            book.version = 2;
+            changed.type = next === 'scheduled_ppa' ? 'ppa' : 'merchant';
+            changed.indexation_rate = 0;
+            changed.price_curve = Array.isArray(old.price_curve) ? old.price_curve : [];
+            if (next === 'scheduled_ppa') { delete changed.capture_rate; }
+            delete changed.reference_stream_id;
+            if (changed.volume_share === null && next === 'scheduled_ppa') changed.volume_share = 0;
+          } else if (isMerchant(next)) {
             changed.type = 'merchant';
             changed.volume_share = next === 'residual_merchant' ? null :
               (typeof old.volume_share === 'number' ? old.volume_share : 0);
@@ -174,6 +192,7 @@
             delete changed.capture_rate;
             delete changed.reference_stream_id;
           }
+          if (!isScheduled(next)) delete changed.price_curve;
           book.streams[index] = changed;
           kindOverrides.set(changed, next);
           showError('');
@@ -189,11 +208,35 @@
           document.createTextNode('Residual') :
           entry(tr,index,'volume_share',toPct(row.volume_share),
             {type:'number',number:true,percent:true,min:0,max:100,step:'any',label:'Generation allocation percent'}));
-        setCell(tr, 'Price EUR/MWh', entry(tr,index,'price_eur_mwh',row.price_eur_mwh,
-          {type:'number',number:true,min:0,step:'any',label:'Contract price EUR per MWh'}),kind !== 'cfd');
+        // An explicit price_curve is the SOLE economic price authority for
+        // scheduled PPA/Merchant. Keep the legacy scalar in canonical JSON for
+        // backward-compatible validation/serialization, but NEVER expose it
+        // as an editable or apparently effective scheduled contract price.
+        if (isScheduled(kind)) {
+          const indicator = document.createElement('span');
+          indicator.textContent = 'Curve prices only';
+          indicator.dataset.revenueCurveAuthority = 'true';
+          indicator.title = 'Effective EUR/MWh comes exclusively from dated price points below. ' +
+            'The legacy flat-price field is retained in serialized JSON for compatibility, ' +
+            'but is ignored while a price curve is active.';
+          setCell(tr, 'Price EUR/MWh · curve only', indicator);
+        } else {
+          setCell(tr, 'Price EUR/MWh', entry(tr,index,'price_eur_mwh',row.price_eur_mwh,
+            {type:'number',number:true,min:0,step:'any',label:'Contract price EUR per MWh'}),
+            kind !== 'cfd');
+        }
         setCell(tr, 'Index %', entry(tr,index,'indexation_rate',toPct(row.indexation_rate),
           {type:'number',number:true,percent:true,min:0,max:100,step:'any',label:'Annual indexation percent'}),
-          kind === 'indexed_ppa' || isMerchant(kind));
+          kind === 'indexed_ppa' || (isMerchant(kind) && !isScheduled(kind)));
+        const curveCell = document.createElement('button');
+        curveCell.type = 'button';
+        curveCell.textContent = 'Edit points (' + (row.price_curve?.length || 0) + ')';
+        curveCell.setAttribute('aria-label', 'Edit price points for ' + (row.id || 'new contract'));
+        curveCell.addEventListener('click', () => {
+          const details = tr.nextElementSibling?.querySelector('.rc-curve-editor');
+          if (details) { details.open = !details.open; if (details.open) details.scrollIntoView({block:'nearest'}); }
+        });
+        setCell(tr, 'Price schedule', curveCell, isScheduled(kind));
         setCell(tr, 'CfD strike', entry(tr,index,'price_eur_mwh',row.price_eur_mwh,
           {type:'number',number:true,min:0,step:'any',label:'CfD strike EUR per MWh'}),kind === 'cfd');
         setCell(tr, 'Capture %', entry(tr,index,'capture_rate',toPct(row.capture_rate === undefined ? 1 : row.capture_rate),
@@ -217,6 +260,84 @@
         });
         setCell(tr,'Remove',remove);
         tbody.appendChild(tr);
+        if (isScheduled(kind)) {
+          const extra = document.createElement('tr');
+          extra.className = 'rc-price-curve-row';
+          const td = document.createElement('td');
+          td.colSpan = 14;
+          const details = document.createElement('details');
+          details.className = 'rc-curve-editor';
+          const summary = document.createElement('summary');
+          summary.textContent = 'Exact operating-period prices · ' + (row.id || 'new contract') +
+            ' · source: ' + (row.source_ref || 'required');
+          details.appendChild(summary);
+          const note = document.createElement('p');
+          note.className = 'd-context';
+          note.textContent = 'Explicit nominal EUR/MWh at every active operating period start. No indexation, interpolation, hold-last or extrapolation.';
+          details.appendChild(note);
+          const points = document.createElement('div');
+          points.className = 'rc-curve-points';
+          function writePoint(point, at) {
+            const line = document.createElement('div');
+            line.className = 'rc-curve-point';
+            const day = document.createElement('input'); day.type = 'date';
+            day.value = point.period_start || ''; day.setAttribute('aria-label','Operating period start');
+            const price = document.createElement('input'); price.type = 'number';
+            price.min = '0'; price.step = 'any';
+            price.value = point.price_eur_mwh ?? '';
+            price.setAttribute('aria-label','Nominal EUR/MWh');
+            const remove = document.createElement('button'); remove.type = 'button';
+            remove.textContent = 'Remove point';
+            day.addEventListener('input', () => { point.period_start = day.value; showError(''); status(); });
+            price.addEventListener('input', () => {
+              point.price_eur_mwh = price.value.trim() === '' ? '' : Number(price.value);
+              showError(''); status();
+            });
+            remove.addEventListener('click', () => {
+              row.price_curve.splice(row.price_curve.indexOf(point), 1);
+              line.remove(); showError(''); status();
+            });
+            line.append(day, price, remove);
+            points.appendChild(line);
+          }
+          row.price_curve.forEach(writePoint);
+          const add = document.createElement('button'); add.type = 'button';
+          add.textContent = '+ Price point';
+          add.addEventListener('click', () => {
+            if (row.price_curve.length >= 600) { showError('Maximum 600 price points.'); return; }
+            const point = {period_start:'', price_eur_mwh:''};
+            row.price_curve.push(point);
+            writePoint(point); status();
+          });
+          const paste = document.createElement('textarea');
+          paste.rows = 3;
+          paste.placeholder = '2031-01-01\t82.50\n2031-07-01\t79.00';
+          paste.setAttribute('aria-label','Paste dated price points (date TAB price, one per line)');
+          const importBtn = document.createElement('button'); importBtn.type = 'button';
+          importBtn.textContent = 'Replace curve with pasted points';
+          importBtn.addEventListener('click', () => {
+            try {
+              const lines = paste.value.trim().split(/\r?\n/).filter(Boolean);
+              if (!lines.length || lines.length > 600) throw Error('Supply 1–600 dated price rows.');
+              const newPoints = lines.map(line => {
+                const fields = line.split(/[\t,;]/).map(v => v.trim());
+                if (fields.length !== 2 || !/^\d{4}-\d{2}-\d{2}$/.test(fields[0]) ||
+                    !fields[1] || !Number.isFinite(Number(fields[1])) || Number(fields[1]) < 0)
+                  throw Error('Each row must contain an ISO date and a finite nonnegative EUR/MWh price.');
+                return {period_start:fields[0], price_eur_mwh:Number(fields[1])};
+              });
+              for (let j=1; j<newPoints.length; j++)
+                if (newPoints[j].period_start <= newPoints[j-1].period_start)
+                  throw Error('Curve dates must be strictly increasing and unique.');
+              row.price_curve = newPoints;
+              showError(''); render(); status();
+            } catch(err) { showError(err.message); }
+          });
+          details.append(points, add, paste, importBtn);
+          td.appendChild(details);
+          extra.appendChild(td);
+          tbody.appendChild(extra);
+        }
       });
     }
     function validate() {
@@ -252,6 +373,21 @@
           advancedMode(true);
           return 'Row ' + n + ': CfD requires a valid Merchant reference and a non-indexed strike.';
         }
+        if (Array.isArray(row.price_curve)) {
+          if (row.type === 'cfd' || book.version !== 2 || row.indexation_rate !== 0 ||
+              row.price_curve.length < 1 || row.price_curve.length > 600)
+            return 'Row ' + n + ': scheduled prices require V2 and zero indexation.';
+          let last = '';
+          for (const point of row.price_curve) {
+            if (!realDate(point.period_start) ||
+                point.period_start < row.start_date || point.period_start >= row.end_date ||
+                point.period_start <= last || typeof point.price_eur_mwh !== 'number' ||
+                !Number.isFinite(point.price_eur_mwh) || point.price_eur_mwh < 0)
+              return 'Row ' + n + ': curve points must be strictly ordered, dated inside contract tenor and nonnegative.';
+            last = point.period_start;
+          }
+          // Server validates one price per actual canonical operating period.
+        }
         if (kindOverrides.get(row) === 'indexed_ppa' && !(row.indexation_rate > 0))
           return 'Row ' + n + ': indexed PPA requires a positive annual indexation rate.';
       }
@@ -273,6 +409,7 @@
       if (book.streams.length >= 24) { showError('At most 24 contracts are supported.'); return; }
       const kind = form.querySelector('[data-revenue-add-type]').value;
       const added = newRow(kind);
+      if (isScheduled(kind)) book.version = 2;
       book.streams.push(added);
       kindOverrides.set(added, kind);
       advancedMode(true); showError(''); render(); status();
@@ -328,5 +465,17 @@
   document.addEventListener('DOMContentLoaded', scan);
   document.addEventListener('htmx:afterSwap', scan);
   document.addEventListener('htmx:afterSettle', scan);
+  // Stress has a separate read-only endpoint. Show typed 4xx errors rather than
+  // letting HTMX leave the previous, now misleading comparison on screen.
+  document.addEventListener('htmx:responseError', event => {
+    if (!event.detail.elt?.matches?.('[data-testid="revenue-stress-form"]')) return;
+    const result = document.getElementById('revenue-stress-results');
+    if (!result) return;
+    const parsed = new DOMParser().parseFromString(event.detail.xhr.responseText, 'text/html');
+    const message = parsed.querySelector('[role="alert"]')?.textContent?.trim() ||
+      'UNAVAILABLE: request rejected; no comparison was saved.';
+    result.replaceChildren(document.createTextNode(message));
+    result.setAttribute('role', 'alert');
+  });
   scan();
 })();
