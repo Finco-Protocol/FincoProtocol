@@ -8,7 +8,7 @@
     <div>
       <p class="dd-eyebrow">DEVELOPER ECONOMICS &amp; INVESTMENT DECISION</p>
       <h1 class="dd-title" data-testid="dd-title">{{ project_name }}</h1>
-      <p class="dd-note">Read-only evidence over the canonical Developer Economics V1 authority. No recalculation outside the calculator; no Run is triggered by this page.</p>
+      <p class="dd-note">Configure Developer Economics, Save (one explicit action), then run the canonical model from the Workbook. Results shown as <b>Last Run</b> are committed evidence from that Run; this page never runs the engine and never recalculates a Run.</p>
     </div>
     <a href="/v2/workbook?project={{ project_code }}" data-testid="dd-open-workbook" class="fo-library-open">← Open Workbook</a>
   </div>
@@ -27,15 +27,78 @@
     {% if ws.state == 'INVALID' %}
     <p class="dd-callout" role="alert" data-testid="dd-error"><b>{{ ws.error_code }}</b> {{ ws.error_detail }}</p>
     {% endif %}
-    {% if ws.state == 'DISABLED' %}
-    <div class="dd-callout" data-testid="dd-bridge-gap">
-      <b>Editing is not available.</b> No Workbook V2 snapshot field, persistence path or Run bridge carries
-      <code>development_economics</code> into <code>ProjectInputs</code> (PERSISTENCE BRIDGE MISSING). Nothing is entered
-      or estimated in the browser. See the capability inventory below.
-    </div>
+  </section>
+
+  <section class="dd-section" data-testid="dd-config" aria-labelledby="dd-config-h">
+    <h2 id="dd-config-h">Configuration — Working Copy</h2>
+    {% if saved %}<p class="dd-callout" role="status" data-testid="dd-saved">Saved. The previous Last Run is now STALE; run the model to commit new Developer results.</p>{% endif %}
+    {% if editor.error %}<p class="dd-callout" role="alert" data-testid="dd-form-error"><b>Not saved.</b> {{ editor.error }}</p>{% endif %}
+    <p class="dd-note" data-testid="dd-scope">Scope: <b>{{ editor.scope }}</b>{% if not editor.is_base %} — {% if editor.overridden %}scenario-specific override{% else %}inherited from the Working Copy{% endif %}{% endif %}.</p>
+    {% if read_only %}
+    <p class="dd-callout" data-testid="dd-readonly">Protected Reference: read-only. Create a Working Copy to configure Developer Economics.</p>
+    {% else %}
+    {% set sub = editor.submitted or {} %}
+    <form method="post" action="/v2/developer-decision/configuration" data-testid="dd-config-form" class="dd-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="project" value="{{ project_code }}" />
+      <input type="hidden" name="content_hash" value="{{ content_hash }}" />
+      <input type="hidden" name="scenario_id" value="{{ active_scenario_id }}" />
+      <label><input type="checkbox" name="enabled" data-testid="dd-enabled" {% if editor.enabled %}checked{% endif %} /> Enable Developer Economics</label>
+      <label>Development outcome
+        <select name="outcome" data-testid="dd-outcome-input">
+          {% for v in ('REALIZED','ABANDONED') %}<option value="{{ v }}" {% if editor.outcome == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+        </select></label>
+      <fieldset data-testid="dd-spend-editor"><legend>Dated development spend (kEUR, on or before Financial Close)</legend>
+        <table class="dd-table"><thead><tr><th>Spend date</th><th class="dd-num">Amount (kEUR)</th><th><span class="dd-sr">Remove</span></th></tr></thead>
+        <tbody id="dd-spend-rows">
+        {% for r in editor.rows %}<tr data-spend-row><td><input type="date" name="spend_date" value="{{ r.date }}" aria-label="Spend date {{ loop.index }}" /></td><td class="dd-num"><input type="text" inputmode="decimal" name="spend_amount" value="{{ r.amount }}" aria-label="Spend amount {{ loop.index }} in kEUR" /></td><td><button type="button" data-remove-row aria-label="Remove spend row {{ loop.index }}">×</button></td></tr>{% endfor %}
+        </tbody></table>
+        <button type="button" data-add-row data-testid="dd-add-row">Add row</button>
+      </fieldset>
+      <label>Reimbursed development cost (kEUR, ≤ eligible spend)
+        <input type="text" inputmode="decimal" name="reimbursed" value="{{ editor.reimbursed }}" data-testid="dd-reimbursed-input" /></label>
+      <label>Developer fee mode
+        <select name="fee_mode" data-testid="dd-fee-mode-input">
+          <option value="FIXED_KEUR" {% if editor.fee_mode == 'FIXED_KEUR' %}selected{% endif %}>Fixed amount (kEUR)</option>
+          <option value="PCT_OF_HARD_CAPEX" {% if editor.fee_mode == 'PCT_OF_HARD_CAPEX' %}selected{% endif %}>Percent of hard CAPEX (% points)</option>
+        </select></label>
+      <label>Developer fee value <span class="dd-note">(kEUR for fixed; percentage points for percent — 5 means 5.00 %)</span>
+        <input type="text" inputmode="decimal" name="fee_value" value="{{ editor.fee_value_display }}" data-testid="dd-fee-value-input" /></label>
+      <p class="dd-note">Settlement: at Financial Close. Book basis: capitalised as soft costs. Stage/Perspective never enable this capability.</p>
+      <div class="dd-actions">
+        <button type="submit" name="action" value="save" data-testid="dd-save">Save configuration</button>
+        {% if not editor.is_base %}<button type="submit" name="action" value="inherit" data-testid="dd-inherit" {% if not editor.overridden %}disabled{% endif %}>Reset to inherited</button>{% endif %}
+      </div>
+    </form>
+    <script src="/static/js/developer_decision_editor.js?v={{ asset_version }}" defer></script>
     {% endif %}
   </section>
 
+  <section class="dd-section" data-testid="dd-committed" aria-labelledby="dd-committed-h">
+    <h2 id="dd-committed-h">Last Run — committed Developer result</h2>
+    {% macro committed_block(c, tid) %}
+    <p data-testid="{{ tid }}-state"><b>{{ c.state | replace('_',' ') }}</b>{% if c.ran_at %} · {{ c.ran_at }}{% endif %} — {{ c.note }}</p>
+    {% if c.metrics %}
+    <div class="dd-grid">
+      <div class="dd-tile"><span>Development spend</span><b>{{ c.total_spend }}</b></div>
+      <div class="dd-tile"><span>Reimbursement</span><b>{{ c.reimbursement }}</b></div>
+      <div class="dd-tile"><span>Developer fee</span><b>{{ c.fee }}</b></div>
+      <div class="dd-tile"><span>Total receipts</span><b data-testid="{{ tid }}-receipts">{{ c.receipts }}</b></div>
+      {% for m in c.metrics %}<div class="dd-tile{% if not m.available %} dd-unavailable{% endif %}" data-testid="{{ tid }}-{{ m.key }}" data-available="{{ 'true' if m.available else 'false' }}"><span>{{ m.label }}</span><b>{{ m.display }}</b>{% if m.reason %}<span>{{ m.reason }}</span>{% endif %}</div>{% endfor %}
+    </div>
+    <div class="dd-table-wrap"><table class="dd-table" data-testid="{{ tid }}-vector"><thead><tr><th>Date</th><th class="dd-num">Spend</th><th class="dd-num">Reimbursement</th><th class="dd-num">Fee</th><th class="dd-num">Net (kEUR)</th></tr></thead>
+    <tbody>{% for r in c.vector %}<tr><td>{{ r.date }}</td><td class="dd-num">{{ r.spend }}</td><td class="dd-num">{{ r.reimbursement }}</td><td class="dd-num">{{ r.fee }}</td><td class="dd-num">{{ r.net }}</td></tr>{% endfor %}</tbody></table></div>
+    {% endif %}
+    {% endmacro %}
+    {{ committed_block(committed, 'dd-last') }}
+    <h3>Run history</h3>
+    {% if history_rows %}
+    <ul data-testid="dd-history">{% for h in history_rows %}<li><a href="/v2/developer-decision?project={{ project_code }}&history_id={{ h.history_id }}" data-testid="dd-history-link">{{ h.ran_at }} · {{ h.scenario }}</a> — {% if h.has_developer %}Developer evidence{% else %}Developer Economics not enabled{% endif %}</li>{% endfor %}</ul>
+    {% else %}<p class="dd-note">No committed Runs.</p>{% endif %}
+    {% if selected %}<div data-testid="dd-historical"><h3>Historical Run{% if selected.history_id %} {{ selected.history_id }}{% endif %}</h3>{{ committed_block(selected, 'dd-hist') }}</div>{% endif %}
+  </section>
+
+  <p class="dd-note" data-testid="dd-preview-label"><b>Working Copy preview</b> — canonical calculator output over the saved Working Copy configuration. It is not a Run result and is never stored as one.</p>
   {% if ws.state == 'ACTIVE' %}
   <section class="dd-section" data-testid="dd-a-spend">
     <h2>A · Development expenditure</h2>
@@ -98,7 +161,7 @@
       <li>Authority: <code>ProjectInputs.development_economics</code> (typed, fail-closed); calculator <code>financial_engine/developer_economics</code>.</li>
       <li>Settlement: reimbursement and fee settle at the canonical Financial Close; no invented timing.</li>
       <li>Fee basis: FIXED_KEUR, or PCT_OF_HARD_CAPEX as a 0..1 fraction of pre-financing hard CAPEX (0.05 = 5.00%).</li>
-      <li>Last Run lineage: {% if lineage %}{{ lineage }}{% else %}none{% endif %}. Developer metrics are not persisted with the Last Run, so none are shown from it.</li>
+      <li>Last Run lineage: {% if lineage %}{{ lineage }}{% else %}none{% endif %}. Developer results above are the evidence committed with that Run, bound to its snapshot and composite identity.</li>
     </ul>
   </section>
 </div>

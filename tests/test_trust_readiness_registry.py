@@ -1068,8 +1068,14 @@ def _f35b_csrf_registry(original):
 
 def _registry_matches_history(original):
     current = _read_current("app/trust_readiness/registry.py").strip()
-    return current == original or (current == _f35b_csrf_registry(original)
-                                   and (_current_f35b_csrf_authorized() or _current_rc1_integration_authorized()))
+    if current == original:
+        return True
+    try:
+        f35b = _f35b_csrf_registry(original)
+        accepted = (f35b.strip(), _m4_registry(f35b).strip())   # RC-1 text, then the reviewed M4 successor
+    except ValueError:
+        return False
+    return current in accepted and (_current_f35b_csrf_authorized() or _current_rc1_integration_authorized())
 
 
 def _f35b_csrf_exact(changed, blobs, provenance, call_sites, base_registry, current_registry):
@@ -1380,51 +1386,81 @@ def _rc1_integration_violations(f) -> list[str]:
         return [f"facts incomplete or malformed: {exc!r}"]
 
 
-def _rc1_collect():
-    """Gather the facts from Git and the checkout; any Git failure propagates (fail closed)."""
+def _rc1_collect(ref=None):
+    """Gather the facts from Git and the checkout (``ref=None``), or purely from Git at ``ref``
+    (used to re-prove the integration diff at the immutable merged checkpoint). Any Git failure
+    propagates (fail closed)."""
+    tip = ref or "HEAD"
     base_ok = _git("rev-parse", f"{RC1_BASE_MAIN}^{{commit}}") == RC1_BASE_MAIN
-    _git("merge-base", "--is-ancestor", RC1_BASE_MAIN, "HEAD")
-    merge_rows = [row.split() for row in _git("rev-list", "--merges", "--parents", f"{RC1_BASE_MAIN}..HEAD").splitlines()]
+    _git("merge-base", "--is-ancestor", RC1_BASE_MAIN, tip)
+    merge_rows = [row.split() for row in _git("rev-list", "--merges", "--parents", f"{RC1_BASE_MAIN}..{tip}").splitlines()]
     merges, ancestor = {}, {}
     for pr, head in RC1_SOURCE_HEADS:
         matches = [r for r in merge_rows if len(r) == 3 and r[2] == head]
         merges[pr] = tuple(matches[0]) if len(matches) == 1 else None
         try:
-            _git("merge-base", "--is-ancestor", head, "HEAD")
+            _git("merge-base", "--is-ancestor", head, tip)
             ancestor[pr] = True
         except subprocess.CalledProcessError:
             ancestor[pr] = False
-    status = [tuple(line.split("\t", 1)) for line in
-              _git("diff", "--name-status", "--no-renames", RC1_BASE_MAIN).splitlines()]
+    diff = ("diff", "--name-status", "--no-renames", RC1_BASE_MAIN) + ((ref,) if ref else ())
+    status = [tuple(line.split("\t", 1)) for line in _git(*diff).splitlines()]
     paths = {p for _, p in status}
-    blobs = {p: _git("hash-object", f"--path={p}", p) for p in RC1_EXACT_BLOBS if (ROOT / p).exists()}
+
+    def read(path):
+        return _git("show", f"{ref}:{path}") if ref else _read_current(path)
+
+    def blob(path):
+        return _git("rev-parse", f"{ref}:{path}") if ref else _git("hash-object", f"--path={path}", path)
+
+    def exists(path):
+        if ref:
+            return subprocess.run(["git", "cat-file", "-e", f"{ref}:{path}"], cwd=ROOT, capture_output=True).returncode == 0
+        return (ROOT / path).exists()
+
     def base_text(path):
         try:
             return _git("show", f"{RC1_BASE_MAIN}:{path}")
         except subprocess.CalledProcessError:
             return ""
-    scans = {p: (_read_current(p), base_text(p)) for p in RC1_SCANNED_MODULES & paths}
+
+    if ref:
+        import re as _re
+        sites = set()
+        for path in _git("ls-tree", "-r", "--name-only", ref, "app", "main_web.py").splitlines():
+            if path.endswith(".py") and not path.startswith("app/trust_readiness/") \
+                    and _re.search(r"(?<!def )validate_csrf_token\(", _git("show", f"{ref}:{path}")):
+                sites.add(path)
+    else:
+        sites = _csrf_call_sites()
     return {
         "base_ok": base_ok, "merges": merges, "source_ancestor": ancestor, "status": status,
-        "blobs": blobs, "scans": scans,
+        "blobs": {p: blob(p) for p in RC1_EXACT_BLOBS if exists(p)},
+        "scans": {p: (read(p), base_text(p)) for p in RC1_SCANNED_MODULES & paths},
         "router_base": _git("show", f"{RC1_BASE_MAIN}:app/v2/router.py"),
-        "router_head": _read_current("app/v2/router.py"),
+        "router_head": read("app/v2/router.py"),
         "registry_base": _git("show", f"{RC1_BASE_MAIN}:app/trust_readiness/registry.py"),
-        "registry_current": _read_current("app/trust_readiness/registry.py"),
-        "call_sites": _csrf_call_sites(),
+        "registry_current": read("app/trust_readiness/registry.py"),
+        "call_sites": sites,
     }
 
 
 def _current_rc1_integration_authorized() -> bool:
     try:
-        return not _rc1_integration_violations(_rc1_collect())
+        if not _rc1_integration_violations(_rc1_collect()):
+            return True
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, IndexError):
-        return False
+        pass
+    return _current_rc1_post_merge_authorized()      # defined below: descendants of the merged checkpoint
 
 
 @pytest.fixture(scope="module")
 def rc1_facts():
+    # On the integration branch the facts are the live checkout. After the merge the same proof is
+    # re-run against the immutable merged checkpoint, so the mutation tests keep their meaning.
     facts = _rc1_collect()
+    if _rc1_integration_violations(facts):
+        facts = _rc1_collect(RC1_MERGED_CHECKPOINT)
     assert _rc1_integration_violations(facts) == []
     return facts
 
@@ -1591,3 +1627,141 @@ def test_rc1_missing_git_history_or_blobs_is_not_an_authorization(monkeypatch):
     monkeypatch.setattr(sys.modules[__name__], "_git", unavailable)
     assert not _current_rc1_integration_authorized()
     assert not _current_f35b_csrf_authorized()
+
+
+# ── Post-merge RC-1 checkpoint (main already contains the integrated release) ───────────────
+# The pre-merge successor above authorizes the integration DIFF against the old main. Once the
+# release is on main, later PRs are checked against the immutable merged checkpoint instead:
+# provenance of the merge, exact reviewed blobs of every security/Radar/financial authority, the
+# protected router handlers (Revenue V2, Capital Stack CSRF gate) and the CSRF call-site inventory.
+# Each later PR that legitimately extends an exact-blob file or the CSRF inventory adds its own
+# explicit, reviewed successor entry below; there is no namespace waiver and no "descendant" rule.
+RC1_MERGED_CHECKPOINT = "5058c6b4935168241d6923676cb32955cb903185"
+RC1_MERGED_PARENTS = (RC1_BASE_MAIN, "097ca1829131ded67278917bad06696eda5b91aa")
+# RC-2 / M4: the Developer Economics configuration Save is a new, CSRF-protected command.
+M4_CSRF_NEW = ("Investor agreement Save, session-bound Capital Stack instrument Save, Developer Economics "
+               "configuration Save and one crypto action. Other ")
+M4_CALL_SITES = F4_CSRF_CALL_SITES | {"app/v2/developer_decision_router.py"}
+RC1_SUCCESSOR_BLOBS = {         # path -> additional reviewed blobs accepted after the RC-1 blob
+    "app/trust_readiness/registry.py": ("32a6bcb86516ff4d1ee8b1dc90191fdb57c5dc2d",),
+    "docs/readiness/03_known_limitations_and_support_matrix.md": ("4930d20a749706e40e234751f5a9c5226bb42e60",),
+    "tests/test_trust_readiness_controls.py": ("9bf549373574398a56e1e7cb4264ff57c580e34c",),
+}
+
+
+def _m4_registry(f35b_registry: str) -> str:
+    if f35b_registry.count(F35B_CSRF_NEW) != 1:
+        raise ValueError("missing exact Capital Stack CSRF sentence")
+    return f35b_registry.replace(F35B_CSRF_NEW, M4_CSRF_NEW, 1)
+
+
+def _rc1_post_merge_violations(f) -> list[str]:
+    """Pure fail-closed verifier for descendants of the merged RC-1 checkpoint."""
+    try:
+        problems = []
+        if tuple(f["checkpoint_parents"]) != RC1_MERGED_PARENTS:
+            problems.append("merged RC-1 checkpoint is not the reviewed normal merge")
+        if not f["checkpoint_ancestor"]:
+            problems.append("HEAD does not descend from the merged RC-1 checkpoint")
+        for pr, head in RC1_SOURCE_HEADS:
+            if not f["source_ancestor"].get(pr):
+                problems.append(f"#{pr}: reviewed head is not an ancestor")
+        for path, expected in RC1_EXACT_BLOBS.items():
+            if f["blobs"].get(path) not in (expected, *RC1_SUCCESSOR_BLOBS.get(path, ())):
+                problems.append(f"{path}: not an exact reviewed blob")
+        base_registry = _f35b_csrf_registry(f["registry_base"]).strip()
+        if f["registry_current"].strip() not in (base_registry, _m4_registry(base_registry)):
+            problems.append("Trust registry is not the reviewed text")
+        if frozenset(f["call_sites"]) not in (F4_CSRF_CALL_SITES, M4_CALL_SITES):
+            problems.append("CSRF validation call sites differ from the reviewed inventory")
+        try:
+            if _revenue_critical_functions(f["router_checkpoint"]) != _revenue_critical_functions(f["router_head"]):
+                problems.append("protected Revenue V2 / owner functions differ from the checkpoint")
+            checkpoint_fn, _ = _router_function_texts(f["router_checkpoint"])
+            head_fn, _ = _router_function_texts(f["router_head"])
+            if checkpoint_fn["v2_workbook_update"][0] != head_fn["v2_workbook_update"][0]:
+                problems.append("v2_workbook_update (Capital Stack CSRF gate) differs from the checkpoint")
+            if _csrf_call_functions(head_fn) != RC1_ROUTER_CSRF_FUNCTIONS:
+                problems.append("the set of router handlers that validate CSRF is not the approved one")
+            problems.extend(_capital_stack_gate_violations(head_fn["v2_workbook_update"][1]))
+        except (SyntaxError, ValueError, TypeError, KeyError):
+            problems.append("router is not analysable")
+        return problems
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        return [f"facts incomplete or malformed: {exc!r}"]
+
+
+def _rc1_collect_post():
+    parents = tuple(_git("rev-list", "--parents", "-n", "1", RC1_MERGED_CHECKPOINT).split()[1:])
+    _git("merge-base", "--is-ancestor", RC1_MERGED_CHECKPOINT, "HEAD")
+    ancestor = {}
+    for pr, head in RC1_SOURCE_HEADS:
+        try:
+            _git("merge-base", "--is-ancestor", head, "HEAD")
+            ancestor[pr] = True
+        except subprocess.CalledProcessError:
+            ancestor[pr] = False
+    return {
+        "checkpoint_parents": parents, "checkpoint_ancestor": True, "source_ancestor": ancestor,
+        "blobs": {p: _git("hash-object", f"--path={p}", p) for p in RC1_EXACT_BLOBS if (ROOT / p).exists()},
+        "registry_base": _git("show", f"{RC1_BASE_MAIN}:app/trust_readiness/registry.py"),
+        "registry_current": _read_current("app/trust_readiness/registry.py"),
+        "call_sites": _csrf_call_sites(),
+        "router_checkpoint": _git("show", f"{RC1_MERGED_CHECKPOINT}:app/v2/router.py"),
+        "router_head": _read_current("app/v2/router.py"),
+    }
+
+
+def _current_rc1_post_merge_authorized() -> bool:
+    try:
+        return not _rc1_post_merge_violations(_rc1_collect_post())
+    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, IndexError):
+        return False
+
+
+@pytest.fixture(scope="module")
+def rc1_post_facts():
+    try:
+        facts = _rc1_collect_post()
+    except subprocess.CalledProcessError:
+        pytest.skip("the merged RC-1 checkpoint is not an ancestor (pre-merge integration branch)")
+    assert _rc1_post_merge_violations(facts) == []
+    return facts
+
+
+def test_post_merge_successor_holds_and_rejects_every_mutation(rc1_post_facts):
+    facts = rc1_post_facts
+    mut = lambda **c: _mutated(facts, **c)       # noqa: E731
+    assert _current_rc1_post_merge_authorized()
+    assert _rc1_post_merge_violations(mut(checkpoint_parents=tuple(reversed(RC1_MERGED_PARENTS))))
+    assert _rc1_post_merge_violations(mut(checkpoint_ancestor=False))
+    for pr, _ in RC1_SOURCE_HEADS:
+        assert _rc1_post_merge_violations(mut(source_ancestor={**facts["source_ancestor"], pr: False})), pr
+    for path in RC1_EXACT_BLOBS:               # every reviewed blob, Radar and financing CSRF included
+        assert _rc1_post_merge_violations(mut(blobs={**facts["blobs"], path: "1" * 40})), path
+        assert _rc1_post_merge_violations(mut(blobs={k: v for k, v in facts["blobs"].items() if k != path})), path
+    assert _rc1_post_merge_violations(mut(registry_current=facts["registry_current"] + "\nFINCO is certified."))
+    assert _rc1_post_merge_violations(mut(call_sites=set(facts["call_sites"]) | {"app/v2/rogue.py"}))
+    assert _rc1_post_merge_violations(mut(call_sites=set(facts["call_sites"]) - {"app/v2/router.py"}))
+    assert _rc1_post_merge_violations({})
+    router = facts["router_head"]
+    update = _update_function(router)
+    for old, new in (("if not validate_csrf_token(extract_bound_token(request, project, form.get(\"csrf_token\"))):",
+                      "if False and not validate_csrf_token(extract_bound_token(request, project, form.get(\"csrf_token\"))):"),
+                     ("field_id == \"debt.financing.instruments\"", "field_id.startswith(\"debt.\")")):
+        assert _rc1_post_merge_violations(mut(router_head=router.replace(update, update.replace(old, new, 1), 1)))
+    revenue = _router_function_texts(router)[0]["v2_revenue_contracts"][0]
+    assert _rc1_post_merge_violations(mut(router_head=router.replace(
+        revenue, revenue.replace("if not validate_csrf_token(", "if validate_csrf_token(", 1), 1)))
+    assert _rc1_post_merge_violations(mut(router_head=router + "\nasync def v2_revenue_contracts():\n    pass\n"))
+    # An added, differently named Save route is outside the protected set: the reviewed CSRF handler
+    # inventory still rejects it when it validates (or silently skips) the canonical token.
+    assert _rc1_post_merge_violations(mut(router_head=router + "\n\nasync def v2_rogue_save():\n    validate_csrf_token(1)\n"))
+
+
+def test_post_merge_missing_git_history_is_not_an_authorization(monkeypatch):
+    import sys
+    def unavailable(*args):
+        raise subprocess.CalledProcessError(1, ["git", *args])
+    monkeypatch.setattr(sys.modules[__name__], "_git", unavailable)
+    assert not _current_rc1_post_merge_authorized()
