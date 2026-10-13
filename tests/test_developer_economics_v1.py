@@ -984,10 +984,19 @@ class TestGovernanceTreatment:
             "finco_core/inputs/development.py", repo=repo)
 
     def test_other_core_and_engine_paths_stay_frozen(self):
+        import subprocess
         import model_v2_governance as gov
 
         for other in ("finco_core/inputs/valuation.py", "finco_core/sponsor/xirr.py",
-                      "financial_engine/orchestrator.py",
-                      "financial_engine/shareholder_waterfall/model.py",
+                      "financial_engine/orchestrator.py.bak",
                       "financial_engine/sponsor_returns/model.py"):
             assert not gov.approved_by_active_model_v2_scope(other), other
+
+        path = "financial_engine/shareholder_waterfall/model.py"
+        assert gov.F3_5_A_JUNIOR_AUTHORITIES[path] == "e3473e1a2064c8310e41b434da2b0aff9d5753b8"
+        blob = subprocess.run(["git", "rev-parse", f"HEAD:{path}"], cwd=REPO,
+            capture_output=True, text=True, check=True).stdout.strip()
+        assert blob == gov.F3_5_A_JUNIOR_AUTHORITIES[path]
+        assert gov.released_engine_authority_matches(path)
+        assert gov.approved_by_active_model_v2_scope(path)
+        # The Junior governance ring rejects altered content at this exact path.

@@ -45,8 +45,13 @@
     {% if trust_pack.overall_state != 'AVAILABLE' %}
       <div class="v2-trust-note" data-testid="trust-pack-not-run">
         <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+        {% if has_runtime %}
+        Legacy Last Run results may be available, but the canonical identity required by this
+        Trust Pack is unavailable. Missing Trust evidence is not a verdict on those results.
+        {% else %}
         No committed Last Run for this project yet. Run the model from the
         Overview tab; the Trust Pack is populated from the canonical Last Run only.
+        {% endif %}
       </div>
     {% endif %}
     {% if trust_pack.last_run.working_copy_changed_since_run %}
@@ -251,7 +256,12 @@
     {% else %}
       <div class="v2-trust-note" data-testid="trust-pack-certificate-unavailable">
         <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+        {% if has_runtime %}
+        The Last Run lacks the persisted identity required for a certificate. Existing results
+        are not signed; a new explicit canonical Run is required for certifiable evidence.
+        {% else %}
         No committed Last Run. Run the model first to establish a certifiable Last Run.
+        {% endif %}
       </div>
     {% endif %}
     <div class="v2-trust-note" data-testid="trust-pack-certificate-not-verify">

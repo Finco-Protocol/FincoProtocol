@@ -169,6 +169,9 @@ class SmartPanelProjection:
     kpi_strip: Optional[KpiStrip] = None   # persistent Key-metrics strip (Workflow C)
     issues: tuple[SmartPanelIssue, ...] = ()
     inspector_fields: tuple[dict[str, str], ...] = ()
+    # Q3: JSON-safe Model Quality / covenant / scenario views (see app.v2.insight_*_projection).
+    # ``None`` = not built (older callers); never a substitute for "UNAVAILABLE".
+    insight: Optional[dict[str, Any]] = None
 
     @property
     def ordered_rows(self) -> tuple[SmartPanelRow, ...]:

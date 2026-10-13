@@ -12,14 +12,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: dependency-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   dependency-audit:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Python
@@ -31,6 +37,9 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             constraints.txt
+
+      - name: Attest exact tested head and tree
+        run: python -m tools.ci_acceptance attest --expected '${{ github.event.pull_request.head.sha || github.sha }}' --output artifacts/source.json
 
       - name: Install application dependencies
         run: |
@@ -64,4 +73,5 @@ jobs:
           path: |
             artifacts/resolved-requirements.txt
             artifacts/pip-audit.json
+            artifacts/source.json
           if-no-files-found: error

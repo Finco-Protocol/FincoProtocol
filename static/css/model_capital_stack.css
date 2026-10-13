@@ -1,0 +1,23 @@
+.cs-table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+.cs-table th,.cs-table td{border-bottom:1px solid var(--fb-border,#8884);padding:3px 4px;text-align:left;white-space:nowrap}
+.cs-table thead th{font-weight:600;font-size:12px}
+.cs-table input,.cs-table select{padding:3px 5px;width:7em;max-width:100%}
+.cs-table input[data-f3=name]{width:8em}.cs-table input[type=date]{width:9.5em}
+.cs-type small{display:block;font-size:11px;opacity:.7}
+.cs-table input[type=number]{text-align:right}
+.cs-table input:focus-visible,.cs-table select:focus-visible,.cs-expand:focus-visible{outline:2px solid var(--fb-accent,#3b82f6);outline-offset:1px}
+.cs-num{text-align:right}
+.cs-expand{border:0;background:none;cursor:pointer;color:inherit;padding:2px 6px}
+.cs-modified .cs-row{background:color-mix(in srgb,var(--fb-accent,#3b82f6) 10%,transparent)}
+.cs-mod{color:var(--fb-accent,#3b82f6);margin-left:4px}
+.cs-terms{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;white-space:normal}
+.cs-terms label{display:block;font-size:12px}
+.cs-note{font-size:12px;opacity:.8;margin:4px 0}
+.cs-badge{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.03em;padding:1px 6px;border-radius:3px;border:1px solid currentColor}
+.cs-draft{color:#b7791f}.cs-saved-proposal{color:#2b6cb0}.cs-active{color:#2f855a}.cs-unsupported-badge{color:#c53030}
+.cs-summary{margin:10px 0}
+.cs-summary h4{margin:0 0 4px;font-size:13px}.cs-summary small{font-weight:400;opacity:.7}
+.cs-summary dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px 16px;margin:0}
+.cs-summary dt{font-size:11px;opacity:.7}.cs-summary dd{margin:0;font-size:13px}
+.cs-stale{color:var(--fb-danger,#c43e3e);font-size:13px}
+.cs-unsupported ul{list-style:none;padding:0;font-size:13px}.cs-unsupported li{margin:4px 0}

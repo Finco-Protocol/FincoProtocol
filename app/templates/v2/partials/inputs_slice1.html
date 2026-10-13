@@ -35,7 +35,7 @@
     {% include "partials/inputs_slice1_section.html" %}
   {% endfor %}
 
-  <div class="v2-inputs-slice1-footer" role="note">
+  {% if not is_data_center and not is_ev_charging %}<div class="v2-inputs-slice1-footer" role="note">
     P50 is shown only as the current FINCO Protocol operating-hours field. Excel P50/yield semantics remain unresolved.
-  </div>
+  </div>{% endif %}
 </div>

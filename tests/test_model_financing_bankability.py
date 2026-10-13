@@ -208,7 +208,8 @@ def test_authenticated_workspaces_render_authority_safe_financing_context(client
     assert 'data-testid="financing-cfads"' in page.text
     assert "Equity-only vs sponsor-inclusive returns" in page.text
     assert "Reserve policy &amp; assumptions" in page.text
-    assert "no supported Investor write contract" in page.text
+    assert "Sponsor funding assumptions are read-only here" in page.text
+    assert 'data-testid="f4-agreement-panel"' in page.text
     assert "sheet=debt" in page.text and "overview-integrity-loader" in page.text
     # Initial workbook GET performs existing canonical draft initialization.
     # The new integrity read and repeated rendering must not mutate that state.
@@ -333,7 +334,15 @@ def test_investor_fragment_preserves_prior_run_and_has_no_writes(client, project
     assert response.status_code == 200
     assert "prior" in response.text.lower() or "stale" in response.text.lower()
     assert 'data-testid="investor-return-evidence"' in response.text
-    assert "htmx:afterRequest" in response.text
+    # The refresh listener is CSP-safe static JS (no inline script / hx-on / eval filter in the fragment).
+    assert "<script" not in response.text and "hx-on" not in response.text
+    from pathlib import Path
+    js = (Path(__file__).resolve().parents[1] / "static/js/workbook_v2.js").read_text()
+    assert "htmx:afterRequest" in js and "#v2-sheet-investor" in js
+    # Refresh is a read-only GET of the fragment, triggered only by a SUCCESSFUL workbook POST.
+    assert "detail.successful || !workbookPost(config)" in js
+    assert "window.htmx.ajax('GET', root.getAttribute('hx-get')" in js
+    assert 'hx-get="/v2/workbook/financing/investor?project=' in response.text
     assert set(v.strip() for v in response.headers["Cache-Control"].split(",")) == {"no-store"}
     assert get_workspace_state("finance-owner", record.project_id) == before
 

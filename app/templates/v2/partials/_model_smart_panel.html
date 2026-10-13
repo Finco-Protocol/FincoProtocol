@@ -39,11 +39,16 @@
     <button type="button" class="v2-sp-mode" role="tab" id="v2-sp-tab-changes"
             aria-controls="v2-sp-view-changes" aria-selected="false" tabindex="-1"
             data-sp-mode="changes">Changes</button>
+    <button type="button" class="v2-sp-mode" role="tab" id="v2-sp-tab-scenarios"
+            aria-controls="v2-sp-view-scenarios" aria-selected="false" tabindex="-1"
+            data-sp-mode="scenarios">Scenarios</button>
   </div>
 
   <section id="v2-sp-view-solutions" role="tabpanel" aria-labelledby="v2-sp-tab-solutions"
            data-sp-view="solutions" data-testid="smart-panel-solutions">
     <p class="v2-sp-intro">Findings from existing model checks and committed evidence. No automated changes to financial assumptions.</p>
+    {% include "partials/_model_insight_q3.html" %}
+    <h3 class="v2-sp-q3-heading">Workbook and Trust Pack findings</h3>
     {% if smart_panel.issues %}
       {% for issue in smart_panel.issues %}
       <details class="v2-sp-issue v2-sp-issue--{{ issue.severity }}"
@@ -168,6 +173,12 @@
           data-note="{{ it.note }}" data-tab="{{ it.drill_tab }}"></span>
     {% endfor %}
     {% endif %}
+    {% if smart_panel.insight and smart_panel.insight.quality and smart_panel.insight.quality.available %}
+    {% for grp in smart_panel.insight.quality.groups.values() %}{% for c in grp %}{% for e in c.explore %}
+    <span hidden data-sp-q3-link data-link="{{ e.value }}" data-check-id="{{ c.check_id }}" data-check-title="{{ c.title }}"
+          data-check-status="{{ c.status }}" data-check-severity="{{ c.severity }}"></span>
+    {% endfor %}{% endfor %}{% endfor %}
+    {% endif %}
     <div data-sp-inspector-result class="v2-sp-context" aria-live="polite"
          data-testid="smart-panel-inspector-evidence">Select an item to explore authoritative evidence.</div>
   </section>
@@ -190,6 +201,11 @@
       <ul class="v2-sp-pending-list" data-sp-pending-list></ul>
     </details>
     <button type="button" class="v2-sp-action" data-nav-tab="tab-run-history">Open immutable Run History</button>
+  </section>
+  <section id="v2-sp-view-scenarios" role="tabpanel" aria-labelledby="v2-sp-tab-scenarios"
+           data-sp-view="scenarios" data-testid="smart-panel-scenarios" hidden>
+    <p class="v2-sp-intro">Committed Runs per scenario, read-only. Values are never recalculated here and the engine is never run from this panel.</p>
+    {% include "partials/_model_insight_scenarios.html" %}
   </section>
 </aside>
 {# Navigation from the panel ([data-nav-tab] / data-nav-anchor) is handled by ONE delegated

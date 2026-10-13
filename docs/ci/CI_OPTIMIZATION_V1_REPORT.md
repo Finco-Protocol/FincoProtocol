@@ -1,0 +1,197 @@
+# CI Optimization V1: measured acceptance checkpoint
+
+## Correction D: 11 October 2026 — synthetic-merge Public timeout
+
+Preflight: main `7293d40b0bce279f7fbad3577d0a419ff359bd1a` (PRs #248/#249 merged), PR HEAD `fa4eea6da0e7a03b51f5bb430452b2af0f06bd7a`, 5 ahead / 0 behind. `refs/pull/247/merge` (`a172f01…`) and the PR HEAD have the SAME tree `f29776fe…` (main is an ancestor of HEAD), so the synthetic merge executes byte-identical sources. No merge-specific production regression exists.
+
+Failed job: run `38153690601`, `merge-result-integration / tests` (job `114512253853`), exit 124 at the supervisor's 2700 s budget; pytest was at 93% (row 126 of 138 progress rows), no assertion failed, no interpreter-shutdown hang. Same run, same tree: exact-head control 9859 passed / 60 skipped in 1719.95 s (rc 0, child exit 0) and both shadow shards rc 0.
+
+### What the existing logs prove (job-log progress timestamps, same collection order, row-by-row)
+
+| Measure | Exact-head control | Synthetic merge |
+| --- | ---: | ---: |
+| Elapsed to row 126 (93%) | 1478 s | 2594 s (x1.76) |
+| 13 "heavy" rows (>20 s each) | 1219 s (82%) | 2225 s (86%) |
+| Remaining ~113 light rows | 259 s | 369 s (x1.42) |
+| Projected total (control tail x1.76) | 1720 s | ~3020 s |
+
+Heavy rows slow by x1.2 to x2.6 and light rows by x1.4; one row is x7.5 slower while another is x0.33 (faster) in the integration job. The slowdown is therefore NOT a single lifecycle defect that hits every run; it is concentrated in the same ~13 model-run segments in both jobs and amplified on that runner. The runners were different machines started at the same minute. Historical Public success walls (evidence/historical_baseline.json) were already median 2587 s / p90 2686 s / max 2767 s against a 2700 s budget, and earlier same-tree trials took 2214 s (control), 2136 s (merge), 2442 s (entry main): the previous 2700 s budget had essentially no margin and the 1720 s control was the fast outlier.
+
+What is NOT proven: the identity of the slow tests, any resource leak, or a runner-hardware cause. The 100+ `demo-cleanup` daemon threads and the resource-tracker child are present in the healthy control as well (identical thread listing, rc 0), so they are not a differentiator and are not claimed as the cause. Classification before the corrected run: **C (same-tree execution variance), provisional** — to be confirmed or rejected by the per-test timings recorded below. If per-test data shows a specific node or fixture, classification becomes A/B and the NO MERGE rule applies until that is fixed.
+
+### Correction (CI-only; no application, financial, persistence, security or governance change)
+
+- `tools/ci_pytest_progress.py` (new, opt-in): flush-safe `active.json` (active node, phase, phase start, last completed, counters; atomically replaced at each setup/call/teardown), `tests.jsonl` (one flushed line per test: setup/call/teardown seconds, outcome, finish time) and `summary.json`. Inert without `--ci-progress`; observes hooks only (no selection, reordering, skip, xfail, report change). `python -m tools.ci_pytest_progress DIR` prints the active node, slowest modules and slowest tests into the job log (also for a partial, killed run; torn last line ignored) so the evidence is readable without downloading artifacts.
+- `tools/ci_pytest_runner.py`: reports the ACTIVE NODE/PHASE at timeout (stdout and diagnostics file), takes at most 6 bounded snapshots when one phase lasts over 300 s (aggregated native-thread summary instead of a 100-line listing), and still exits 124 on timeout and propagates pytest's exit code otherwise. The budget stays finite and fail-closed.
+- `.github/workflows/ci_public_job.yml`: plugin wired into every Public mode; `if: always()` evidence-print step; budget 2700 s -> **3300 s** and job `timeout-minutes` 65 -> **75**. Rationale: projected worst measured run ~3020 s (+9%), historical max ~2600 s process time; 3300 + 180 s exit grace + 15 min for setup/install/scan/compile, diagnosis and upload = 4380 s <= 4500 s job limit (enforced by a test). This is a measured, bounded margin, NOT an acceptance claim; it does not hide a stuck test because the 300 s stall detector, the active-node record and the hard deadline remain.
+- Tests: `tests/test_ci_pytest_progress.py` (collection/selection/outcome identity with and without the plugin, inertness, per-test records, torn/missing/garbage evidence, supervisor timeout 124 with active-node evidence, one bounded stall snapshot per phase, normal exit propagation, workflow budget/timeout contract). No existing assertion, skip, xfail or deselection changed.
+
+Status: instrumentation and bounded budget are pushed for exact-head validation; the table of corrected controls, shards and critical path is recorded after that run.
+
+---
+
+## Correction B: 11 October 2026 — current-main integration candidate
+
+Preflight main: `7293d40b0bce279f7fbad3577d0a419ff359bd1a`; last PR HEAD: `2b71e29262040c5eea33810cfa40bbc8f2b025b8`.
+Original merge-base: `5dbfd2a2fb1c6c777b7eb26d93a7090820acce23`; divergence: 3 ahead / 8 behind.
+PR #249 (atomic demo/owned Run History cleanup) and PR #248
+(model workspace consolidation) are MERGED.
+The sole overlapping Git path was `.github/workflows/protocol_ui_browser.yml`.
+This normal two-parent branch merge retains all accepted main application
+sources and CI-only PR changes. No production application/finance changes.
+
+Both mandatory exact-head and synthetic-merge browser matrices now include a
+distinct `consolidation` role, selecting the complete #248
+Chromium test module (at least 17 collected nodes). Required proofs include
+exact SHA/tree, full inventory = JUnit execution, all outcomes PASS, source-bound
+JUnit digest, normal exit and eight CRC-checked screenshots covering
+Solar/Wind/Data Center/EV at 1440px desktop and 390px mobile. The role evidence
+is found under `browser-consolidation` and
+`merge-browser-consolidation`. Exact-head screenshots
+also retain the accepted `model-workspace-consolidation-browser`
+artifact name. Existing other roles and optional F3 remain unchanged.
+
+The #249 demo FK fix is inherited from main. Reproduction of the original
+shadow shard 0 test after integration, full-control/shard equivalence, process
+exits, complete artifacts, and real speedup MUST be checked on the new head.
+No green conclusion or cost saving is inferred from the historical runs.
+Full Public Safety remains the active gating critical path.
+Historical baseline: Public median 2587.5s; browser median 376s.
+Status: **NO MERGE pending fresh exact-head CI and independent review**.
+
+---
+
+
+
+Repository: Finco-Protocol/FincoProtocol. Branch: `perf/model-ci-optimization-v1`.
+Entry main/base: `5dbfd2a2fb1c6c777b7eb26d93a7090820acce23`.
+Implementation scope: CI workflows, evidence/partition helpers, new helper tests and this report. No application, financial engine, core, domain, persistence, schema, golden, tolerance or reviewed financial blob changes.
+
+## Baseline provenance
+
+`evidence/historical_baseline.json`: coordinator's 240 completed GitHub runs, 20 per 12 workflows, with IDs/SHAs/job/step statistics and process-exit evidence. These are mixed historical heads, not paired candidate trials. Public success median wall 2587.5s / p90 2686s / maximum 2767s; 20/20 pip cache hits and normal process exits. Successful teardown median 2.8235s. Browser success median wall 376s / runner 354.5s. Queue outliers are not assumed solver/pytest hangs.
+
+Current entry-main Public run `38123125992`: 9677 passed / 59 skipped, 2442.89s pytest, child exit 0, artifact `11697296096`. The older #246 PR-head sample was 9678/58; environment-dependent selection is not silently normalized. Module weights in `tools/ci_module_weights.json` are measured JUnit durations from entry-main, source and XML digest recorded. They affect partition placement ONLY, never financial outputs or assertions.
+
+`evidence/workflow_contracts_base.json` records source-bound baseline workflow triggers, commands, conditions and artifact declarations. Full execution node IDs, outcomes and skip reasons are generated by the opt-in inventory plugin on every control/shard job. JUnit is not misrepresented as an exact collection inventory.
+
+## Implemented controls
+
+- All five process-required PR workflows trigger for every PR, not only matching paths. Existing focused/shared trigger contracts are unchanged.
+- Exact feature-head and source-tree attestation in the five gates; synthetic merge-result Public and browser coverage retained separately. Wrong SHA fails before execution.
+- Superseded PR runs are cancelled per workflow/PR. Main runs are keyed by individual SHA and not cancelled. Cancellation cannot satisfy aggregates.
+- Existing supervised full Public remains mandatory. Existing synthetic-merge full Public remains mandatory on PRs. No test or security scan is removed.
+- Two deterministic whole-module shadow shards, bounded parallelism=2, preserving module-scoped fixtures; normal pytest and existing supervisor lifecycle untouched.
+- Fail-closed collection/outcome/environment/JUnit/process proof. Required aggregate rejects failure, cancellation, missing/shuffled provenance, node omissions/duplicates, altered skips/xfails, missing outcomes and split module fixtures.
+- Five browser suites isolated on separate runners with bounded parallelism=2 for each exact-head/merge matrix. Existing selections and explicit Outputs script retained. F3 evidence remains optional and separately reports its real process status.
+- CI-only Playwright 1.63.0 is the version actually installed in green run `38120169524`; Chromium cache key includes OS/architecture/Ubuntu/Python/Playwright. OS browser dependencies are still installed on cache hits. No production dependency change.
+- Mandatory browser result/JUnit/capture checks and manifests fail on missing evidence. Exact screenshots remain evidence, not a replacement for test execution.
+- Reusable job helpers preserve pinned Actions. Added cache/download Actions are pinned to official immutable SHAs. Least privileges maintained; aggregates alone use actions:read.
+
+Browser artifact migration: role bundles `browser-protocol`, `browser-import`, `browser-grid`, `browser-q4`, `browser-outputs`, plus `browser-f3`; synthetic merge counterparts use `merge-browser-*`. Each bundle contains the old screenshot/report paths relative to its artifact root, plus provenance/timing/inventory. `browser-mandatory-proof` is the aggregate. Public keeps `public-verification-results` and historical `public-test-results.xml`; adds shard, integration and proof artifacts. No historical evidence files are deleted.
+
+## Coverage and isolation
+
+The original mandatory browser selection remains Protocol shell, roadmap, crypto navigation, EV, Yield, AI Import, WF05 route+browser, Q4 browser and Outputs explicit script. No new skipped test, xfail, exclusion or weaker assertion. The pre-existing DC exclusion and API-B04 deselection are recorded, not relabelled PASS. Golden Flows, Revenue/Trust/Q2/Q3/Workflow-C browser gaps are disclosed follow-ups, not counted as executed.
+
+Each runner has an independent checkout/OS process, fixed ports cannot conflict across jobs, test-owned temporary DBs/files and browser contexts cannot cross runners, artifacts are role-namespaced. Source fixtures in AI Import/Q4/WF05 use test-owned DB paths and explicit context cleanup; Outputs/F3 use temporary DB roots. Execution normal exit and exact inventories are still required to prove this works, not assumed from source alone.
+
+No blind xdist. Control and both shards collect the whole supported suite; candidate deselection is only whole-module placement. Their selected union must exactly equal control; outcomes and reason-coded skips/xfails must match. Collection errors and failed/missing artifacts fail. Dependency/Python/OS fingerprint must agree.
+
+## Local validation
+
+Initial helper ring: 34 passed. Initial helper plus unchanged financial/content-pinned governance ring: 83 passed, 10 skipped (existing retired-epic conditions). Expanded helper ring: 49 passed. Final grouped local counts and exact-head GitHub evidence will be recorded with run IDs below when available.
+
+Grouped implementation with actual inventory plugin: 98 passed, 10 existing retired-epic skips. No new test skips. Additional process-marker tests are included before the final push.
+
+Final helper/process/timing ring: 52 passed, zero failures. Grouped governance evidence above remains unchanged; interpreter returned normally in both runs.
+
+Initial CI `38128759000` exposed a workflow source-contract regression: existing M9 asserts full history in the parent Public YAML; Trust registry citations require the actual scanner invocation there. The scan had moved into a reusable job. Correction retains a real mandatory exact-head full-history source-safety/compile job in the parent workflow, without changing the tests or Trust content. Its scan is not redundantly executed in the exact-head test job; synthetic-merge scan remains separately enforced. This is a confirmed CI wiring correction, not a financial/governance exemption.
+
+Correction validation: 109 passed, 1 pre-existing skip across helper, unchanged M9 and unchanged Trust registry suites; normal process exit. Initial Linux compile/safety run `38128759049` is SUCCESS, confirming the local CRLF vendor finding is not a canonical-content defect.
+
+Windows system Python autoloads an unrelated Web3 plugin that fails import before collection. Local tests explicitly load pytest-asyncio with plugin autoload disabled and use a separate writable workspace temp root. This is a local environment accommodation, not a workflow/test-selection change. GitHub retains normal plugin loading and unchanged dependencies. No financial test was skipped to address it.
+
+Local scanner reports the unchanged Swagger vendor bundle because the Windows checkout has CRLF bytes. Working SHA256 `94d5341abf945c05b5dc2a4ee599be6adee30503790b998540795e766d8aea02`; canonical Git-blob SHA256 `fd76294e33356ab3fd111ddaeeb10d3f79de8ae1a4d34dbf777f5eef224648d9`. Normalizing CRLF to LF makes the bytes exactly equal. No vendor/scanner edit or exemption was introduced. Exact-head Ubuntu scanner must pass on canonical Git content; this local result is not labelled PASS.
+
+Official Actionlint 1.7.12 Windows binary verified against published checksum; all seven changed/new workflows passed syntax/expression validation. Py_compile passes. Frozen namespaces remain zero diff. No CI teardown fix introduced because no new lifecycle defect was reproduced.
+
+## Measured performance status and plan
+
+At this initial commit, candidate exact-head CI timings are not yet available. No 30% acceptance or full optimization SUCCESS is claimed.
+
+Run one exact-head PR trial, then two planned same-head Public workflow dispatch trials if GitHub allows pre-merge dispatch. These are paired control/shadow experiments, not retries masking failures. Obtain job timestamps, queue, install/cache/scan/compile/test/exit/upload duration, wall and runner-minutes; download all inventory/process/JUnit proof. Use `tools/ci_measurement.py` to capture raw GitHub run/job/step data.
+
+Crucial distinction: shadow-only mode keeps the unsharded control mandatory, so the ACTIVE Public workflow critical path has not been shortened. Report measured candidate shard completion separately. Full-suite replacement requires proven same-head equivalence, independent review and an explicit promotion decision. Added controls and retained merge-result checks increase runner-minutes during this acceptance phase. Do not describe browser-only gains or projected shard speed as active Public improvement.
+
+Final measured evidence must include current exact HEAD, PR link, each workflow/run/artifact ID, outcome inventory, raw samples and median/p90, financial/governance parity, normal exits, achieved gains versus this control, total cost and unresolved gaps. If three trials cannot complete or equivalence fails, retain monolithic gate and classify PARTIAL/BLOCKED.
+
+## Branch protection and rollback
+
+Read-only GitHub main protection call returned HTTP404 with explicit `Branch not protected`; ruleset status will be separately reverified. This is not a 403 inference. No repository settings changed. The required-status enforcement gap needs owner authorization; workflow changes cannot silently resolve it.
+
+Ruleset endpoint reverified: empty list (0 rulesets). No enforcement settings were changed.
+
+Rollback: restore these CI workflows/helpers through a reviewed normal follow-up commit; retain original full Public supervisor invocation and all mandatory browser selections/artifacts. No production financial rollback or data migration is involved. No merge/deploy/self-approval authorized.
+
+## Completed same-head trial: blocked equivalence
+
+Draft PR: https://github.com/Finco-Protocol/FincoProtocol/pull/247. Measured implementation head: `a4b18934417d17a8aded7b9cebf29a3dcf067d79`; tree `8badd1b32129336a5239cce730031cd1de865120`. Main remains entry base. The subsequent evidence-only commit does not alter the measured CI implementation; final-head acceptance must still be separately checked, not inferred from this trial.
+
+All five workflows completed on that exact head:
+
+| Workflow | Run | Conclusion |
+| --- | --- | --- |
+| Governance Full History | 38129187407 | SUCCESS |
+| Dependency Security Audit | 38129187448 | SUCCESS |
+| PR Compile and Safety Gate | 38129187391 | SUCCESS |
+| Protocol UI Browser Acceptance | 38129187652 | SUCCESS |
+| Public Safety and Model Smoke | 38129187614 | FAILURE: shadow shard 0, then mandatory aggregate |
+
+The full control and synthetic-merge full suite BOTH passed: **9729 passed / 59 skipped**, zero failures, pytest rc=0 and supervisor child exit=0, with JUnit and evidence uploaded. Inventory separates 34 per-node skips from 25 collection skips. The increase over entry-main's 9677 passes is exactly the 52 new CI helper tests, not changed existing financial outcomes. Both full suites selected all 9763 collected node IDs, with no deselections. The synthetic merge SHA was `823c00245cd2fffb1f439b9eb39cb8bee31d2813`, separately labelled and attested, with the same tested tree.
+
+| Same-head execution | Selected | Passed | Node skips | Failed | Collection skips | Process seconds | Pytest / child rc |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Unsharded control | 9763 | 9729 | 34 | 0 | 25 | 2214.181 | 0 / 0 |
+| Shadow shard 0 | 4514 | 4495 | 18 | 1 | 25 | 1078.093 | 1 / 1 |
+| Shadow shard 1 | 5249 | 5233 | 16 | 0 | 25 | 1284.120 | 0 / 0 |
+| Synthetic-merge control | 9763 | 9729 | 34 | 0 | 25 | 2136.158 | 0 / 0 |
+
+All three exact-head inventories have identical full collections and collection-skip reasons. The shard union is exactly 9763 unique IDs: zero omissions or duplicates, whole modules preserved. All four Public process records have identical dependency/Python/OS digest `3faadce9c0661ac947e36b075d377212e3f3fbddab19ab5cc3f573a122310256`. There is exactly ONE outcome mismatch: `tests/test_p6_demo_isolation.py::test_demo_cleanup_removes_demo_data_only` passes in both controls but fails in shard 0. Thus node coverage is proven; outcome equivalence is NOT proven. The failing child returned rc=1 and terminated normally; it was not a supervisor timeout. `normal_exit=false` records unsuccessful acceptance, not an interpreter hang.
+
+### Actual blocker and independent reproduction
+
+Shard 0 JUnit/log: `tests/test_p6_demo_isolation.py:187`, `assert not _any_project_exists(uid_demo)`, with `app.demo_cleanup:177` warning `FOREIGN KEY constraint failed`. `cleanup_all_demo_data()` deletes all demo-owned parent projects in one statement. `_TABLES_WITH_USER_ID` omits `model_run_history`, although `app/persistence/db.py` declares its project foreign key. The test uses the shared persistence DB and wipes ALL demo users, not only its newly created user. Another demo user's retained history can therefore prevent deletion of the newly created project. The full-suite pass cannot prove independent-module isolation; the exact earlier module/data-state dependency is not claimed fully traced.
+
+Reproduced locally in a disposable, schema-initialized SQLite DB: create one synthetic demo project and a valid owned `model_run_history` row, call unchanged `cleanup_all_demo_data()`. Result: summary `{}`, FK warning, project remains TRUE, history remains TRUE. Application and persistence sources are identical to entry-main. This independently proves the cleanup/history boundary defect; it does not authorize changing immutable historical evidence or deleting history as a CI workaround.
+
+No production fix, FK disable, fixture rewrite, test skip, repartition exception or retry was introduced. The smallest upstream requirement is an independently approved demo lifecycle/history-retention policy plus isolated test fixtures; then rerun the SAME full control/shadow comparison. Merely moving modules until the test passes would hide the dependency. Shards must NOT be promoted now. Additional paired trials were not dispatched after known equivalence failure: they would not establish valid performance acceptance and would consume runner time without fixing the confirmed boundary defect.
+
+### Measurements and costs
+
+Raw completed GitHub job/step timestamps are committed in `evidence/public_trial_a4b1893.json` and `evidence/browser_trial_a4b1893.json`. They include queue, setup, cache/dependency, test, upload, conclusion and runner duration. Per-process logs/records contain monotonic test/exit timing. No worker/engine timing is relabelled as CI savings.
+
+| Measure | Historical successful cohort | Candidate same-head trial | Interpretation |
+| --- | --- | --- | --- |
+| Public workflow wall | median 2587.5s / p90 2686s | 2336s (FAILED aggregate) | NOT accepted optimization; different historical heads |
+| Public initial queue | recorded per historical run | 30s | Included in wall, excluded from runner cost |
+| Full exact-head control job | historical single full job | 2244s runner / 2274s from event | Control retained |
+| Both shadow jobs finish | no shadows | 1350s from event, one FAILED | NOT successful 30% acceptance |
+| Public total runner cost | historical single-run cohort | 118.633 runner-minutes | Control + merge control + shadow proof cost |
+| Browser wall | median 376s | 353s SUCCESS | 6.1% below historical median, not paired causal proof |
+| Browser initial queue | recorded per historical run | 3s | Matrix waiting captured separately in job timestamps |
+| Browser total runner cost | historical serial workflow | 20.117 runner-minutes | Includes both source axes, repeated setup, F3 and aggregate |
+
+Only ONE paired Public trial completed. Candidate median/p90/max are all the single sample (2336s); these are not reliable distribution estimates. Browser candidate median/p90/max are likewise 353s from one sample. No reliability/flakiness improvement or active 30% Public critical-path reduction is established. Hypothetical process-speed savings from the shorter shards are invalid as acceptance because one outcome differs. All browser head/merge roles, optional F3 and mandatory screenshot/manifests passed; this is a concrete isolation/evidence result, not full CI performance success.
+
+### Required artifacts and evidence provenance
+
+Public run 38129187614: source safety `11698076747`; full control `11698099352`; shard 0 `11698518945`; shard 1 `11699123201`; merge integration `11699286176`. **No `public-shadow-proof` artifact was produced**, correctly, because the failed matrix rejected equivalence. Logs and failed-test JUnit were preserved, not discarded.
+
+Browser run 38129187652: head protocol `11698711934`, import `11698711899`, grid `11699145749`, Q4 `11698821909`, Outputs `11698697264`; merge protocol `11698072774`, import `11698751788`, grid `11698841910`, Q4 `11698836904`, Outputs `11698742241`; optional F3 `11698936622`; mandatory proof `11698426537`. The aggregate verified required capture paths/hashes, source SHA/tree, successful process results and pytest inventories/JUnit. Optional F3 itself was SUCCESS, not assumed from the aggregate.
+
+Local collection-only attempt returned rc=2 because existing Linux-only modules use `os.getuid()` and `fcntl` on Windows (`test_staging_preflight.py`, `test_yield_live_v1.py`, `test_yield_monitoring_automation_v1.py`). It is NOT counted as coverage proof or repaired in this PR. The completed Ubuntu control/shard inventories above are the acceptance evidence.
+
+Evidence-only follow-up local validation: **149 passed / 1 existing skip**, zero failures, normal pytest termination, across `test_ci_acceptance.py`, `test_opus_m9_governance_history.py`, `test_trust_readiness_registry.py`, `test_trust_readiness_controls.py`, `test_trust_readiness_claims.py`; 44.01s. Diff check passes. This does not replace final-head GitHub acceptance.
+
+Current disposition: **`CI_OPTIMIZATION_V1_PARTIAL_OR_BLOCKED`**. Four workflows pass; full controls pass; shadow equivalence fails; the required aggregate correctly fails. This Draft is a reviewable CI evidence/guardrail checkpoint, **not merge-ready**. Monolithic financial/security/governance gates remain intact. Frozen namespaces and all existing assertions remain unchanged. No self-approval, merge or deployment.

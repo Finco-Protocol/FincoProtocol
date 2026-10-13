@@ -692,6 +692,8 @@ def make_canonical_evaluator(
     from dataclasses import replace as _dc_replace
 
     def _with_tariff(pi: Any, tariff: float) -> Any:
+        if getattr(pi.revenue, "multistream_config_json", ""):
+            raise GoalSeekModelRunError("REVENUE_V2_GOAL_SEEK_UNSUPPORTED: no scalar tariff authority in an explicit contract book")
         # Pure input swap on the frozen canonical revenue authority.
         return _dc_replace(pi, revenue=_dc_replace(pi.revenue, ppa_base_tariff=tariff))
 

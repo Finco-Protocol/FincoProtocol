@@ -34,6 +34,7 @@ _VALID_STATES = frozenset({STATE_NOT_RUN, STATE_CURRENT, STATE_STALE})
 class WorkspaceNavGroup:
     label: str
     items: tuple["WorkspaceNavItem", ...]
+    area: str = ""
 
 
 @dataclass(frozen=True)
@@ -58,41 +59,11 @@ def workspace_nav_groups() -> tuple[WorkspaceNavGroup, ...]:
     ``available=False`` future capabilities, rendered disabled and truthfully
     labelled — never as shipped pages.
     """
-    return (
-        WorkspaceNavGroup("Overview", (
-            WorkspaceNavItem("Overview", "tab-overview", True),
-        )),
-        WorkspaceNavGroup("Model", (
-            WorkspaceNavItem("Project", "tab-project-setup", True, "Project Setup"),
-            WorkspaceNavItem("Timeline & Discounting", None, False),
-            WorkspaceNavItem("Escalation", None, False),
-            WorkspaceNavItem("Revenue", "tab-revenue", True),
-            WorkspaceNavItem("Development", "tab-capex", True, "CAPEX"),
-            WorkspaceNavItem("Operations", "tab-opex", True, "OPEX"),
-        )),
-        WorkspaceNavGroup("Financing", (
-            WorkspaceNavItem("Senior Debt", "tab-debt", True),
-            WorkspaceNavItem("Investor", "tab-investor", True),
-            WorkspaceNavItem("Tax", "tab-tax", True),
-        )),
-        WorkspaceNavGroup("Outputs", (
-            WorkspaceNavItem("Statements", "tab-fs", True, "Financial Statements"),
-            WorkspaceNavItem("Returns", "tab-returns", True),
-            WorkspaceNavItem("Analytics", None, False),
-        )),
-        WorkspaceNavGroup("Analysis", (
-            WorkspaceNavItem("Scenarios", "tab-scenarios", True),
-            WorkspaceNavItem("Sensitivity", "tab-sensitivity", True),
-            WorkspaceNavItem("Compare", "tab-compare", True),
-        )),
-        WorkspaceNavGroup("Trust", (
-            WorkspaceNavItem("Assumptions", "tab-trust", True, "Trust Pack", "#assumption-register"),
-            WorkspaceNavItem("Calculation Trace", "tab-trust", True, "Trust Pack"),
-        )),
-        WorkspaceNavGroup("Delivery", (
-            WorkspaceNavItem("Exports", None, False),
-            WorkspaceNavItem("Run History", "tab-run-history", True),
-        )),
+    from app.v2.workspace_destinations import AREAS, DESTINATIONS
+    return tuple(
+        WorkspaceNavGroup(label, tuple(WorkspaceNavItem(d.label, d.tab_id, True)
+                                      for d in DESTINATIONS if d.area == area and not d.alias_of), area)
+        for area, label in (("overview", "Project landing"), *AREAS)
     )
 
 

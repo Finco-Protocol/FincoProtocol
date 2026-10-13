@@ -1,0 +1,19 @@
+name: Model Financing F3 Evidence (Targeted)
+
+# F3 is not a duplicated default PR browser runner. Launch manually when F3 evidence is needed.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: f3-targeted-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  f3-evidence:
+    uses: ./.github/workflows/ci_browser_job.yml
+    with:
+      role: f3
+      tested-sha: ${{ github.sha }}

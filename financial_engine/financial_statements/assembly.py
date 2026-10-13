@@ -630,6 +630,12 @@ def _assemble_statements_checked(g2c_result, project_inputs):
 
     for mp in model_periods:
         idx = mp.period_index
+        from financial_engine.financing.junior_debt import JuniorFinancingResult
+        from financial_engine.financial_statements.contracts import (
+            JuniorIncomeStatementPeriod, JuniorPFCashWaterfallPeriod, JuniorBalanceSheetPeriod,
+        )
+        junior_active = isinstance(fin, JuniorFinancingResult)
+        j = fin.junior_values(idx) if junior_active else {}
         oi = op_pos.get(idx)
         ti = tax_pos.get(idx)
         si = senior_pos.get(idx)
@@ -663,6 +669,8 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         shl_gross = shl_gross or 0.0
         # H.2: NetFinancial = FI - SeniorInterest - SHLGrossInterest; EBT = EBIT + NetFinancial.
         net_financial = fi - senior_int - shl_gross
+        if junior_active:
+            net_financial -= j["junior_interest_keur"]
         ebt = ebit + net_financial
         cit_accrual = _at(tax.tax_keur, ti) if ti is not None else 0.0
         cit_accrual = cit_accrual or 0.0
@@ -679,7 +687,8 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             if not _is_finite(v):
                 non_finite = True
 
-        pnl_periods.append(IncomeStatementPeriod(
+        pnl_periods.append((JuniorIncomeStatementPeriod if junior_active else IncomeStatementPeriod)(
+            **({"junior_interest_expense_keur": j["junior_interest_keur"]} if junior_active else {}),
             period_index=int(idx),
             period_start=getattr(mp, "period_start", None),
             period_end=getattr(mp, "period_end", None),
@@ -733,7 +742,11 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         base_cfads = _at(tax.cfads_keur, ti) or 0.0
         post_senior = float(getattr(wp, "signed_post_senior_keur", 0.0) or 0.0)
         senior_ds = _at(senior.senior_debt_service_keur, si) or 0.0
-        pf_periods.append(PFCashWaterfallPeriod(
+        pf_periods.append((JuniorPFCashWaterfallPeriod if junior_active else PFCashWaterfallPeriod)(
+            **({"junior_cash_interest_keur": j["junior_interest_keur"],
+                "junior_principal_keur": j["junior_principal_keur"],
+                "junior_debt_service_keur": j["junior_debt_service_keur"],
+                "post_junior_cash_keur": post_senior - j["junior_debt_service_keur"]} if junior_active else {}),
             period_index=int(idx),
             cashflow_date=getattr(mp, "period_end", None),
             is_construction=bool(getattr(mp, "is_construction", False)),
@@ -821,12 +834,17 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         )
         # H.7: UC is the canonical typed field; None when wp absent (not zero).
         _uc_val = _wp_uc_close
-        bs_periods.append(BalanceSheetPeriod(
+        bs_periods.append((JuniorBalanceSheetPeriod if junior_active else BalanceSheetPeriod)(
+            **({"junior_debt_balance_keur": j["junior_closing_keur"]} if junior_active else {}),
             period_index=int(idx),
             period_end=getattr(mp, "period_end", None),
-            # Carry 0.0 post-repayment (si is None after senior axis ends) so BS check
-            # runs for all operating periods, not just the senior-active window.
-            senior_debt_balance_keur=_at(senior.senior_debt_closing_keur, si) if si is not None else 0.0,
+            # Ending the contractual schedule does not extinguish a liability.
+            # Carry its actual closing balance, without inventing service/interest.
+            senior_debt_balance_keur=(
+                _at(senior.senior_debt_closing_keur, si) if si is not None else
+                senior.senior_debt_closing_keur[-1]
+                if senior.period_indices and idx > senior.period_indices[-1] else 0.0
+            ),
             shl_balance_keur=(
                 float(getattr(wp, "actual_shl_closing_balance_keur", 0.0) or 0.0)
                 if _wp_is_real else None
@@ -976,8 +994,12 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 + _lr_close_bsp
                 + _re_close_val
             )
+            if isinstance(_bsp_orig, JuniorBalanceSheetPeriod):
+                _total_le_excl_cit += _bsp_orig.junior_debt_balance_keur
             _balance_check = _total_assets - _total_le_excl_cit - _net_cit
-        bs_periods.append(BalanceSheetPeriod(
+        bs_periods.append((JuniorBalanceSheetPeriod if isinstance(_bsp_orig, JuniorBalanceSheetPeriod) else BalanceSheetPeriod)(
+            **({"junior_debt_balance_keur": _bsp_orig.junior_debt_balance_keur}
+               if isinstance(_bsp_orig, JuniorBalanceSheetPeriod) else {}),
             period_index=_bidx,
             period_end=_bsp_orig.period_end,
             senior_debt_balance_keur=_bsp_orig.senior_debt_balance_keur,

@@ -32,3 +32,40 @@
 #model-smart-panel .v2-sp-brand { padding: 4px 0 9px; }
 #model-smart-panel .v2-sp-brand-title { margin: 0; font-size: 15px; line-height: 1.3; font-weight: 700; }
 #model-smart-panel .v2-sp-brand-summary { margin: 4px 0 0; font-size: 11px; line-height: 1.5; opacity: .8; }
+
+/* Q3 — Model Quality, covenants and scenario intelligence (scoped; no workbook grid changes). */
+#model-smart-panel .v2-sp-q3-heading { margin: 14px 0 4px; font-size: 13px; font-weight: 700; }
+#model-smart-panel .v2-sp-q3-label { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+#model-smart-panel .v2-sp-q3-context { display: grid; gap: 4px; margin: 8px 0; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+#model-smart-panel .v2-sp-q3-note, #model-smart-panel .v2-sp-q3-none { font-size: 11px; line-height: 1.5; opacity: .85; margin: 6px 0; }
+#model-smart-panel .v2-sp-q3-group h4 { margin: 12px 0 4px; font-size: 12px; font-weight: 700; }
+#model-smart-panel .v2-sp-q3-check { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--border,#dce3eb); border-left-width: 3px; border-radius: 6px; overflow-wrap: anywhere; }
+#model-smart-panel .v2-sp-q3-check > summary { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; cursor: pointer; font-size: 12px; }
+#model-smart-panel .v2-sp-q3-check--fail { border-left-color: #ba3c3c; }
+#model-smart-panel .v2-sp-q3-check--warning { border-left-color: #c78323; }
+#model-smart-panel .v2-sp-q3-check--unavailable { border-left-color: #6b8aa7; border-left-style: dashed; }
+#model-smart-panel .v2-sp-q3-check--pass { border-left-color: #3a8a5a; }
+#model-smart-panel .v2-sp-q3-check--not_applicable { border-left-color: #9aa5b1; }
+#model-smart-panel .v2-sp-q3-id { font-size: 10px; opacity: .7; font-family: ui-monospace, monospace; }
+#model-smart-panel .v2-sp-q3-title { font-weight: 600; }
+#model-smart-panel .v2-sp-q3-desc { font-size: 11px; line-height: 1.5; margin: 6px 0; }
+#model-smart-panel .v2-sp-q3-links { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+#model-smart-panel .v2-sp-chip { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--border,#cbd5e1); }
+#model-smart-panel .v2-sp-chip--fail { border-color: #ba3c3c; color: #ba3c3c; }
+#model-smart-panel .v2-sp-chip--warning, #model-smart-panel .v2-sp-chip--stale { border-color: #c78323; color: #9a6212; }
+#model-smart-panel .v2-sp-chip--pass, #model-smart-panel .v2-sp-chip--current { border-color: #3a8a5a; color: #2c6e47; }
+#model-smart-panel .v2-sp-chip--unavailable, #model-smart-panel .v2-sp-chip--not_run, #model-smart-panel .v2-sp-chip--historical-run { border-style: dashed; }
+#model-smart-panel .v2-sp-q3-cov, #model-smart-panel .v2-sp-q3-scn { list-style: none; padding: 0; margin: 6px 0; }
+#model-smart-panel .v2-sp-q3-covrow, #model-smart-panel .v2-sp-q3-scnrow { padding: 8px; margin: 6px 0; border: 1px solid var(--border,#dce3eb); border-radius: 6px; overflow-wrap: anywhere; }
+#model-smart-panel .v2-sp-q3-scnrow.is-active { border-color: var(--accent,#47739f); }
+#model-smart-panel .v2-sp-q3-covhead { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12px; }
+#model-smart-panel .v2-sp-q3-facts dt { margin-top: 5px; }
+#model-smart-panel .v2-sp-q3-picker { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+#model-smart-panel .v2-sp-q3-picker [aria-pressed="true"] { border-color: var(--accent,#47739f); font-weight: 700; background: rgba(93,137,179,.10); }
+#model-smart-panel .v2-sp-q3-cmp { width: 100%; border-collapse: collapse; font-size: 11px; margin: 6px 0; }
+#model-smart-panel .v2-sp-q3-cmp th, #model-smart-panel .v2-sp-q3-cmp td { padding: 4px; border-bottom: 1px solid var(--border,#e3e7ed); text-align: right; overflow-wrap: anywhere; }
+#model-smart-panel .v2-sp-q3-cmp th[scope="row"], #model-smart-panel .v2-sp-q3-cmp thead th:first-child { text-align: left; }
+#model-smart-panel .v2-sp-q3-cmp caption { text-align: left; font-weight: 700; padding: 4px 0; }
+#model-smart-panel [data-sp-compare-table][hidden] { display: none; }
+#model-smart-panel .v2-sp-q3-check > summary:focus-visible, #model-smart-panel [data-sp-compare]:focus-visible, #model-smart-panel [data-sp-explore]:focus-visible { outline: 2px solid #367bc5; outline-offset: 2px; }
+@media (max-width: 600px) { #model-smart-panel .v2-sp-q3-cmp { font-size: 10px; } #model-smart-panel .v2-sp-mode { flex-basis: 45%; } }

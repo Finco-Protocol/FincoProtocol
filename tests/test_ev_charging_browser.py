@@ -10,6 +10,8 @@ and 390 px.  Skipped automatically where Playwright/Chromium is unavailable
 
 from __future__ import annotations
 
+from tests.model_workspace_navigation import activate_destination
+
 import os
 import socket
 import threading
@@ -123,7 +125,7 @@ def test_ev_browser_full_journey(ev_app, browser):
         _create_ev_working_copy(page, ev_app)
 
         # ── EV driver section visible on the Revenue sheet ──────────────
-        page.locator("#tab-revenue").click()
+        activate_destination(page, "tab-revenue")
         revenue_panel = page.locator("#panel-revenue")
         revenue_panel.locator(
             '[data-field-id="revenue.ev_charging.charging_price"]'
@@ -165,7 +167,7 @@ def test_ev_browser_full_journey(ev_app, browser):
 
         # ── Reload: the persisted driver value survives ─────────────────
         page.reload()
-        page.locator("#tab-revenue").click()
+        activate_destination(page, "tab-revenue")
         revenue_panel = page.locator("#panel-revenue")
         price_input = revenue_panel.locator(
             '[data-field-id="revenue.ev_charging.charging_price"] input[name="value"]'
@@ -174,14 +176,14 @@ def test_ev_browser_full_journey(ev_app, browser):
         assert price_input.input_value() == "0.45", "driver edit must persist"
 
         # ── CAPEX and OPEX sheets open; B.08 shown as derived ───────────
-        page.locator("#tab-capex").click()
+        activate_destination(page, "tab-capex")
         page.locator("#panel-capex").wait_for(state="visible")
         assert "Total CAPEX" in page.locator("#panel-capex").inner_text()
         # Persisted lines are directly editable grid rows: the description is an input value.
         capex = page.locator("#panel-capex")
         assert capex.locator('input[name="label"][value="DC Fast Chargers"]').count() >= 1
 
-        page.locator("#tab-opex").click()
+        activate_destination(page, "tab-opex")
         opex_panel = page.locator("#panel-opex")
         opex_panel.locator('text=Power Expenses').first.wait_for(state="attached", timeout=30_000)
         opex_text = opex_panel.inner_text()
@@ -189,13 +191,13 @@ def test_ev_browser_full_journey(ev_app, browser):
         assert "Electricity Procurement" in opex_text
 
         # ── Run + Returns ───────────────────────────────────────────────
-        page.locator("#tab-overview").click()
+        activate_destination(page, "tab-overview")
         page.locator("#panel-overview").wait_for(state="visible")
         page.locator('[data-testid="v2-run-btn"]').click()
         page.locator('[data-testid="overview-status-current"]').wait_for(
             state="attached", timeout=180_000
         )
-        page.locator("#tab-returns").click()
+        activate_destination(page, "tab-returns")
         page.locator("#panel-returns").wait_for(state="visible")
         returns_text = page.locator("#panel-returns").inner_text()
         assert returns_text.strip() != ""
@@ -216,7 +218,7 @@ def test_ev_browser_efficiency_edit_94_to_92(ev_app, browser):
     try:
         _create_ev_working_copy(page, ev_app)
 
-        page.locator("#tab-revenue").click()
+        activate_destination(page, "tab-revenue")
         revenue_panel = page.locator("#panel-revenue")
         eff_row = revenue_panel.locator(
             '[data-field-id="revenue.ev_charging.charging_efficiency"]'
@@ -237,7 +239,7 @@ def test_ev_browser_efficiency_edit_94_to_92(ev_app, browser):
         page.wait_for_timeout(800)
 
         # Run from the Overview tab
-        page.locator("#tab-overview").click()
+        activate_destination(page, "tab-overview")
         page.locator("#panel-overview").wait_for(state="visible")
         page.locator('[data-testid="v2-run-btn"]').click()
         page.locator('[data-testid="overview-status-current"]').wait_for(
@@ -246,7 +248,7 @@ def test_ev_browser_efficiency_edit_94_to_92(ev_app, browser):
 
         # reload: the persisted efficiency remains bound to 92
         page.reload()
-        page.locator("#tab-revenue").click()
+        activate_destination(page, "tab-revenue")
         revenue_panel = page.locator("#panel-revenue")
         eff_input = revenue_panel.locator(
             '[data-field-id="revenue.ev_charging.charging_efficiency"] input[name="value"]'
@@ -261,7 +263,7 @@ def test_ev_browser_efficiency_edit_94_to_92(ev_app, browser):
         authority_94 = ev.electricity_expense_keur(5.0, 1)
         authority_92 = authority_94 * (0.94 / 0.92)
         # OPEX Y1 KPI = 960 fixed + electricity Y1 → must equal the 92% figure
-        page.locator("#tab-opex").click()
+        activate_destination(page, "tab-opex")
         opex_panel = page.locator("#panel-opex")
         opex_panel.locator('[data-testid="opex-y1-total"]').wait_for(
             state="visible", timeout=30_000
@@ -287,7 +289,7 @@ def test_ev_browser_mobile_390(ev_app, browser):
         page.set_viewport_size({"width": 390, "height": 844})
         _create_ev_working_copy(page, ev_app)
 
-        page.locator("#tab-revenue").click()
+        activate_destination(page, "tab-revenue")
         revenue_panel = page.locator("#panel-revenue")
         revenue_panel.locator(
             '[data-field-id="revenue.ev_charging.charging_price"]'

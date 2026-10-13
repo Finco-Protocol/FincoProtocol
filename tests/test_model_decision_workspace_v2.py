@@ -255,7 +255,7 @@ def test_revenue_context_reads_the_persisted_derivation_not_missing_raw_payload(
                   "display_value_keur": "1,234 kEUR"}
     proj = SimpleNamespace(fs=SimpleNamespace(runtime_summary={"revenue_derivation": derivation},
                            meta=SimpleNamespace(has_runtime=True, is_dirty=False)))
-    ctx = _build_revenue_ctx(pis, SimpleNamespace(), projection=proj)
+    ctx = _build_revenue_ctx(pis, ws, projection=proj)
     assert ctx["revenue_output_context"] == {"generation": "12,000 MWh", "period": "Y1-H1", "persisted_revenue": "1,234 kEUR"}
 
 

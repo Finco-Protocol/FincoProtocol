@@ -356,78 +356,41 @@ class TestStagingBootstrap:
             conn = get_connection()
         return db_path, conn
 
-    def test_bootstrap_wipes_demo_and_admin_rows_seeds_3_refs(self):
-        """After bootstrap: exactly 5 reference rows, 0 non-reference project rows."""
+    def test_bootstrap_refuses_demo_and_admin_mixed_state_before_mutation(self):
+        """Authorized retention policy: permanent/admin data must survive exactly."""
         fd, db_path = tempfile.mkstemp(suffix=".db", prefix="finco_test_bs_")
         os.close(fd)
         try:
             with patch("app.persistence.db.DB_PATH", db_path):
                 from app.persistence.db import get_connection
+                from app.demo_cleanup import bootstrap_staging_db, DemoCleanupError
                 conn = get_connection()
-
-                # Insert demo, admin, and arbitrary user rows
-                demo_uid = "demo_" + "bootstrap_test"
-                admin_uid = "1"
-                user_uid = "user_regular"
-                for uid, code in [
-                    (demo_uid, "demo_proj"),
-                    (admin_uid, "admin_proj"),
-                    (user_uid, "user_proj"),
-                ]:
+                for uid, code in [("demo_bootstrap_test", "demo_proj"),
+                                  ("1", "admin_proj"), ("user_regular", "user_proj")]:
                     conn.execute(
-                        """
-                        INSERT INTO projects
-                          (project_id, project_code, user_id, project_name,
-                           source_project_template, project_origin,
-                           governance_state_json, last_run_summary_json,
-                           created_at, updated_at)
-                        VALUES (?,?,?,?,?,?,?,?,?,?)
-                        """,
-                        (
-                            str(uuid.uuid4()), code, uid, "Test",
-                            "generic_solar", "factory_template",
-                            "{}", "{}", _ts_old(), _ts_old(),
-                        ),
+                        """INSERT INTO projects
+                           (project_id, project_code, user_id, project_name,
+                            source_project_template, project_origin,
+                            governance_state_json, last_run_summary_json,
+                            created_at, updated_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                        (str(uuid.uuid4()), code, uid, "Test", "generic_solar",
+                         "factory_template", "{}", "{}", _ts_old(), _ts_old()),
                     )
-                conn.commit()
-
-                # Confirm 3 non-reference rows exist before bootstrap
-                pre_count = conn.execute(
-                    "SELECT COUNT(*) FROM projects WHERE user_id != '__reference__'"
-                ).fetchone()[0]
-                assert pre_count == 3, f"Expected 3 non-ref rows before bootstrap, got {pre_count}"
-
-                # Run bootstrap
-                from app.demo_cleanup import bootstrap_staging_db
-                result = bootstrap_staging_db(conn)
+                before = [tuple(r) for r in conn.execute("SELECT * FROM projects ORDER BY rowid")]
+                assert len(before) == 3
+                statements = []
+                conn.set_trace_callback(statements.append)
+                with pytest.raises(DemoCleanupError, match="permanent/admin"):
+                    bootstrap_staging_db(conn)
+                conn.set_trace_callback(None)
+                assert not any(s.lstrip().upper().startswith(("DELETE", "INSERT", "UPDATE"))
+                               for s in statements)
+                assert [tuple(r) for r in conn.execute("SELECT * FROM projects ORDER BY rowid")] == before
+                assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
                 conn.close()
-
-            # Verify post-condition outside the patch context
-            with patch("app.persistence.db.DB_PATH", db_path):
-                from app.persistence.db import get_connection
-                conn = get_connection()
-                ref_count = conn.execute(
-                    "SELECT COUNT(*) FROM projects WHERE user_id='__reference__'"
-                ).fetchone()[0]
-                non_ref_count = conn.execute(
-                    "SELECT COUNT(*) FROM projects WHERE user_id != '__reference__'"
-                ).fetchone()[0]
-                conn.close()
-
-            assert result["post_condition"] == "PASS", (
-                f"bootstrap_staging_db must return post_condition=PASS, got {result['post_condition']!r}"
-            )
-            assert ref_count == 5, (
-                f"After bootstrap: expected exactly 5 reference rows, got {ref_count}"
-            )
-            assert non_ref_count == 0, (
-                f"After bootstrap: expected 0 non-reference rows, got {non_ref_count}"
-            )
         finally:
-            try:
-                os.unlink(db_path)
-            except Exception:
-                pass
+            os.unlink(db_path)
 
     def test_bootstrap_idempotent_second_run_passes(self):
         """Running bootstrap_staging_db twice must still produce 3 refs, 0 non-refs."""

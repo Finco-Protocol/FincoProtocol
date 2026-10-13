@@ -148,7 +148,7 @@
            data-cost-cell="amount" data-step="1" data-original="{{ plain_num(line.amount_keur) }}" data-exact="{{ line.amount_keur }}"
            aria-label="Amount kEUR {{ shown_code }}">
   </span>
-  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span>{% if last_run_iso and line.row_version and line.row_version > last_run_iso %}<span class="v2-notrun-mark" data-testid="edited-not-run" title="Edited since the Last Run — not yet in the Last Run results" aria-label="Edited since Last Run">●</span>{% endif %}</span>
   <span class="v2-cost-cell v2-cost-state" data-cost-state role="status" aria-live="polite"></span>
   <span class="v2-cost-cell v2-cost-actions">
     <button type="button" class="v2-cost-action v2-capex-duplicate-btn"
@@ -172,7 +172,7 @@
   <span class="v2-cost-cell v2-cost-desc v2-capex-custom-label-ro">{{ line.name }}</span>
   <span class="v2-cost-cell v2-cost-driver v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }} <small>kEUR/MW</small></span>
   <span class="v2-cost-cell v2-cost-amount v2-capex-custom-amount-ro v2-capex-amount-cell">{{ grouped_keur(line.amount_keur) }}</span>
-  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span>{% if last_run_iso and line.row_version and line.row_version > last_run_iso %}<span class="v2-notrun-mark" data-testid="edited-not-run" title="Edited since the Last Run — not yet in the Last Run results" aria-label="Edited since Last Run">●</span>{% endif %}</span>
 </div>
 {% endif %}
 {% endmacro %}
@@ -215,6 +215,19 @@
      content_hash / workbook_version input after each successful cost save. #}
   <span id="v2-cost-authority-capex" hidden data-content-hash="{{ content_hash }}"
         data-workbook-version="{{ workbook_version }}"></span>
+
+  {% if project_editable %}
+  {# Batch editing is the default: edits are staged and saved TOGETHER in one atomic transaction
+     (POST /v2/workbook/grid/cost-lines/save).  Unticking the box selects the per-row immediate mode. #}
+  <div class="v2-cost-stagebar" data-cost-stagebar role="group" aria-label="Save cost edits together">
+    <label class="v2-cost-stage-toggle"><input type="checkbox" data-cost-stage-toggle data-testid="cost-stage-toggle" checked> Save edits together</label>
+    <span class="v2-cost-stage-count" data-cost-stage-count data-testid="cost-stage-count" role="status" aria-live="polite"></span>
+    <button type="button" class="v2-cost-action v2-cost-stage-btn v2-cost-stage-primary" data-cost-stage-save data-testid="cost-stage-save" disabled>Save <kbd>Ctrl+S</kbd></button>
+    <button type="button" class="v2-cost-action v2-cost-stage-btn" data-cost-stage-discard data-testid="cost-stage-discard" disabled>Discard</button>
+    <span class="v2-cost-stage-msg" data-cost-stage-msg data-testid="cost-stage-msg" role="status" aria-live="polite"></span>
+    <span class="v2-cost-mode-hint" data-cost-mode-hint data-testid="cost-mode-hint"></span>
+  </div>
+  {% endif %}
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
@@ -292,7 +305,7 @@
     <span class="v2-capex-col-permw">kEUR/MW</span>
     <span class="v2-capex-col-status">Status</span>
   </div>
-  <p class="v2-cost-grid-hint" data-testid="cost-grid-hint">Click an amount to edit. <kbd>Enter</kbd> saves and moves down, <kbd>Shift+Enter</kbd> up, <kbd>Esc</kbd> cancels, <kbd>Tab</kbd> moves across.</p>
+  <p class="v2-cost-grid-hint" data-testid="cost-grid-hint">{% if project_editable %}Click an amount to edit. <kbd>Enter</kbd> commits and moves down, <kbd>Shift+Enter</kbd> up, <kbd>Esc</kbd> cancels this cell, <kbd>Tab</kbd> moves across.{% else %}Read-only reference cost lines. Create a working copy to edit.{% endif %}</p>
 
   {# ── C.01–C.18 groups ────────────────────────────────────────────── #}
   {% for group in capex_vm.groups %}
@@ -320,7 +333,7 @@
           {%- elif alias -%}
             <span class="v2-binding-badge v2-capex-badge-shared" data-binding="linked" data-testid="capex-linked-badge" title="Linked to Audit &amp; Legal; this reference amount is not counted twice.">Linked</span>
           {%- elif gf and gf.binding_label == "bound" -%}
-            <span class="v2-binding-badge v2-capex-badge-edit" data-binding="bound">Editable</span>
+            <span class="v2-binding-badge v2-capex-badge-edit" data-binding="bound">{{ 'Editable' if project_editable else 'Read-only · bound' }}</span>
           {%- endif -%}
         </span>
       </summary>

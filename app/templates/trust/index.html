@@ -1,0 +1,17 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<section class="tr-counts">
+{% for s in legend %}<div class="tr-count"><strong>{{ counts[s.status] }}</strong><span class="tr-pill tr-pill--{{ s.status|lower }}">{{ s.label }}</span></div>{% endfor %}
+</section>
+<p>Each statement below is held in one registry and tied to code and a test. Anything that is not built, not approved or not provable from the repository is labelled as such.</p>
+<section class="tr-cards">
+{% for p in pages if p.slug != "overview" %}<a class="tr-card" href="{{ p.path }}"><h2>{{ p.nav }}</h2><p>{{ p.lede }}</p></a>{% endfor %}
+</section>
+<h2>What is not claimed</h2>
+<ul class="tr-plain">{% for n in not_claimed %}<li><strong>{{ n.label }}:</strong> {{ n.statement }}</li>{% endfor %}</ul>
+<h2>How to read the labels</h2>
+<section class="tr-legend" aria-label="Status legend">
+{% for s in legend %}<div><span class="tr-pill tr-pill--{{ s.status|lower }}">{{ s.label }}</span><p>{{ s.meaning }}</p></div>{% endfor %}
+</section>
+{% endblock %}

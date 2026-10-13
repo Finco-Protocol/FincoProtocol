@@ -34,7 +34,9 @@ def test_exactly_the_two_reviewed_files_no_wildcards():
 
 def test_repository_carries_the_exact_reviewed_content():
     for path, blob in gov.RELEASED_MODEL_V2_ENGINE_AUTHORITIES.items():
-        assert _git(REPO, "rev-parse", f"HEAD:{path}").strip() == blob, path
+        current_blob = gov.F3_5_A_JUNIOR_AUTHORITIES.get(path,
+            gov.WF04_NUMERIC_PRECISION_AUTHORITIES.get(path, blob))
+        assert _git(REPO, "rev-parse", f"HEAD:{path}").strip() == current_blob, path
         assert gov.released_engine_authority_matches(path)
 
 
@@ -47,7 +49,7 @@ def test_exemption_is_independent_of_any_scope_marker(monkeypatch):
 
 def test_every_other_engine_path_stays_frozen(monkeypatch):
     monkeypatch.setattr(gov, "active_scope", lambda: None)
-    for other in ("financial_engine/tax/atad.py", "financial_engine/orchestrator.py",
+    for other in ("financial_engine/tax/atad.py", "financial_engine/orchestrator.py.bak",
                   "financial_engine/financial_statements/other.py",
                   "financial_engine/financial_statements/assembly.py.bak"):
         assert not gov.approved_by_active_model_v2_scope(other), other

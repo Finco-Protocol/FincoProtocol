@@ -124,7 +124,58 @@ F3_1_CONTRACT_AUTHORITIES: dict[str, str] = {
     "finco_core/inputs/financing_instruments_legacy.py": "f963272fb3342976a33483ffea8aaad0a6f81f2b",
 }
 
+# F3.2-F3.4 effective two-Senior slice. Exact content only, never a namespace
+# exemption. Historical released blobs remain valid at their original refs.
+F3_2_4_FINANCING_AUTHORITIES: dict[str, str] = {
+    "finco_core/inputs/multisenior.py": "605e17d743c5999fc4ac1b0a8ce1957a1980511d",
+    "finco_core/inputs/_models.py": "4d3e07613a69405b443b50d351b828aead825137",
+    "finco_core/inputs/serialization.py": "3bd2ee7ce58e1404724bf60487d200059be2d417",
+    "financial_engine/financing/multisenior.py": "7fbe0a7b6d0bcd351f019c6a1e85988238a28d3c",
+    "financial_engine/financing/project.py": "4f8bb815bedef04fd6719cd6f48aea03b2f6e2dc",
+    "financial_engine/financing/generic_product_policy.py": "9442d55d1579fd050587b4a2692313e4006ec1b2",
+    "financial_engine/senior_debt/project_adapter.py": "4d979a9cd97d17ec6560075a852060d6c76eff8d",
+}
+
+# WF-04 numerical precision closure: exact corrected G2A/BS content only.
+# Historical released pins above remain intact; all other files remain frozen.
+WF04_NUMERIC_PRECISION_AUTHORITIES: dict[str, str] = {
+    "financial_engine/financing/project.py": "4349b4bc396cba446a0b1c473f1a466eafb12bb5",
+    "financial_engine/financial_statements/assembly.py": "7b8607c719ef1d780490dfbee8107ce290508bff",
+}
+
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
+
+# WF-07 explicit contract-book authority: exact paths and exact content only.
+# Legacy pins above remain intact. No sector, engine or core namespace waiver.
+WF07_REVENUE_AUTHORITIES = {
+    "financial_engine/adapters/project_inputs.py": "fe09548f59497884af492a0ea8139bbbfffbeb05",
+    "financial_engine/orchestrator.py": "67f9ec6aa3fcb6a8d8acf59cf4c75bcac58b3301",
+    "financial_engine/revenue_multistream.py": "3788be8b6628f555124d8ce15f998b6771fc1a88",
+    "finco_core/inputs/revenue_multistream.py": "09e223529d6c4c63fc2b23950b2d337263c06ff2",
+    "finco_core/inputs/serialization.py": "d3d728dd46892e1ed405b7c645c22f52ca7e0545",
+    "finco_core/revenue/generation.py": "e2502c6ba8557dd68d6bbcd44c1b55208f1942ed",
+    "domain/revenue/multistream_runtime.py": "94e1559472d0f3051fb7faccf3b67ce44337188f",
+}
+
+# F3.5-A independently accepted candidate content. This release map is not
+# production activation; Junior's application gate remains explicitly closed.
+F3_5_A_JUNIOR_AUTHORITIES: dict[str, str] = {
+    "financial_engine/book_basis.py": "1281cc05a5638714e78279968ee739d9af2cfc02",
+    "financial_engine/financial_statements/assembly.py": "778610e8bb5c2a61b022f147a601cc0f02d66982",
+    "financial_engine/financial_statements/contracts.py": "f5a15655d58b1d4a5ac7c02f0cdde5bc2a069358",
+    "financial_engine/financing/generic_product_policy.py": "2894334e7241c4ac9f8967d4ce4ca6ce77a32fa0",
+    "financial_engine/financing/junior_debt.py": "2205cfbcca33889975c964a5748797c82af5792f",
+    "financial_engine/financing/project.py": "30536cec8779fdb6a490d82fd80bfce2c09e16fe",
+    "financial_engine/financing/project_uses.py": "489cbcc800158326a5b3764aef25514b6ad6ab48",
+    "financial_engine/project_returns/contracts.py": "2a43b4e82db2fa6eee956970c5a5c6087245b36f",
+    "financial_engine/project_returns/model.py": "711bf15d954c5e20cce13fd6df1067e5d00182e2",
+    "financial_engine/senior_debt/project_adapter.py": "a73611a117f0c04ecc7bd7350eac64456520f265",
+    "financial_engine/shareholder_waterfall/contracts.py": "19cff0f003a9fdf8921cae8e5c18e703d93e2408",
+    "financial_engine/shareholder_waterfall/model.py": "e3473e1a2064c8310e41b434da2b0aff9d5753b8",
+    "finco_core/inputs/_models.py": "b896d3c071ee22c1c82c48f23d4c169e058c7a7b",
+    "finco_core/inputs/junior_debt.py": "ef63e3355f30541a69b503a3a2e2c02feaf1803f",
+    "finco_core/inputs/serialization.py": "31f70570376b2f5b50ece583c54c1d9811e90a3c",
+}
 
 _VALID_STATUSES = ("ACTIVE", "RETIRED")
 
@@ -273,9 +324,14 @@ def released_engine_authority_matches(
     """True only for an exact released engine authority whose content at ``ref``
     is the exact reviewed git blob. Fails closed (False) when git or the blob is
     unavailable. Independent of any epic scope marker."""
-    pinned = RELEASED_MODEL_V2_ENGINE_AUTHORITIES.get(
-        path, DEVELOPER_ECONOMICS_V1_AUTHORITIES.get(path, F3_1_CONTRACT_AUTHORITIES.get(path)))
-    if pinned is None:
+    pinned = {authorities[path] for authorities in (
+        RELEASED_MODEL_V2_ENGINE_AUTHORITIES, DEVELOPER_ECONOMICS_V1_AUTHORITIES,
+        F3_1_CONTRACT_AUTHORITIES, F3_2_4_FINANCING_AUTHORITIES,
+        WF04_NUMERIC_PRECISION_AUTHORITIES,
+        WF07_REVENUE_AUTHORITIES,
+        F3_5_A_JUNIOR_AUTHORITIES,
+    ) if path in authorities}
+    if not pinned:
         return False
     cwd = str(repo) if repo else str(REPO)
     try:
@@ -285,7 +341,7 @@ def released_engine_authority_matches(
         )
     except OSError:
         return False
-    return result.returncode == 0 and result.stdout.strip() == pinned
+    return result.returncode == 0 and result.stdout.strip() in pinned
 
 
 def approved_by_active_model_v2_scope(

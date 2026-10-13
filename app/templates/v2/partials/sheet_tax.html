@@ -29,6 +29,7 @@
 
 <div id="v2-sheet-tax" data-sheet="tax"
      data-fc-grid="tax" data-fc-scroll-container>
+  {% include 'partials/_financing_trace_loader.html' %}
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
@@ -47,6 +48,7 @@
   </div>
 
   {# ── A. Tax Assumptions ────────────────────────────────────────────── #}
+  <p class="d-context">Tax assumptions belong to the Working Copy. Tax schedules and CIT evidence below belong to the committed Last Run; a missing input is not zero and is not filled from historical results.</p>
   <details class="v2-inputs-section" open>
     <summary class="v2-inputs-section-summary" id="nav-tax-assumptions">
       A. Tax Assumptions

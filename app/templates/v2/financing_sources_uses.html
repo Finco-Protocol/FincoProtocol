@@ -53,7 +53,7 @@
   <section class="su-grid" aria-label="Sources and uses">
     <div class="su-panel" data-testid="su-sources">
       <h2>Financing sources</h2>
-      <p class="su-help">Canonical source totals and classifications from this exact persisted Run, where available. Aggregate equity is not subdivided into unsupported categories.</p>
+      <p class="su-help">Canonical source totals and classifications from this exact persisted Run, where available. Instrument and equity splits are in “Funding by instrument” below, only where the Run persisted them.</p>
       <div class="su-table-scroll">
         <table><thead><tr><th scope="col">Source</th><th scope="col" class="su-num">kEUR</th></tr></thead>
           <tbody>{% for item in view.sources %}
@@ -73,6 +73,45 @@
         </table>
       </div>
     </div>
+  </section>
+
+  {% set iv = view.instrument_view %}
+  <section class="su-panel" data-testid="su-instruments">
+    <h2>Funding by instrument <small class="su-help">kEUR · {{ view.freshness }}{% if is_historical %} · immutable historical Run{% endif %}</small></h2>
+    {% if not iv %}
+    <p class="su-warning" data-testid="su-instruments-unavailable">UNAVAILABLE — this Run has no canonical financing evidence, so no instrument split exists. Nothing is reconstructed.</p>
+    {% else %}
+    <p class="su-help">Contractual commitment, actual construction draws and capitalised costs come from this exact Run’s instrument ledgers. A commitment is not proof of funding drawn.
+      <a href="/v2/workbook?project={{ project_code | urlencode }}&amp;sheet=debt" data-testid="su-capital-stack-link">Open Capital Stack Workspace</a>{% if is_historical %} (shows current Working inputs, not this Run){% endif %}.</p>
+    {% if not iv.available %}
+    <p class="su-warning" data-testid="su-instruments-unavailable">UNAVAILABLE — {{ iv.unavailable_reason }}</p>
+    {% else %}
+    <p data-testid="su-instrument-status" class="su-help">Instrument ledgers vs aggregate Sources &amp; Uses: <strong>{{ iv.status }}</strong>{% if iv.status == 'DIFFERS' %} — a persisted difference is shown below; it is never plugged.{% endif %}</p>
+    <div class="su-table-scroll"><table data-testid="su-instrument-table">
+      <thead><tr><th scope="col">Instrument</th><th scope="col">Role</th><th scope="col" class="su-num">Commitment</th><th scope="col" class="su-num">Drawn</th><th scope="col" class="su-num">IDC</th><th scope="col" class="su-num">Upfront fee</th><th scope="col" class="su-num">Commitment fee</th><th scope="col">Funding state</th></tr></thead>
+      {% for f in iv.instruments %}
+      <tbody data-testid="su-instrument-row" data-instrument="{{ f.instrument_id }}">
+        <tr><th scope="row">{{ f.instrument_id }}</th><td>{{ f.role }}</td>
+          <td class="su-num">{{ f.commitment.display }}</td><td class="su-num">{{ f.drawn.display }}</td><td class="su-num">{{ f.idc.display }}</td>
+          <td class="su-num">{{ f.upfront.display }}</td><td class="su-num">{{ f.commitment_fee.display }}</td><td>{{ f.draw_state }}</td></tr>
+        <tr><td colspan="8"><details><summary>Construction funding evidence · {{ f.periods | length }} periods</summary>
+          <div class="su-table-scroll"><table><thead><tr><th>Period</th><th>Date</th><th class="su-num">Draw</th><th class="su-num">IDC</th><th class="su-num">Fees</th></tr></thead><tbody>
+          {% for r in f.periods %}<tr><th>{{ r.period }}</th><td>{{ r.date }}</td><td class="su-num">{{ r.draw.display }}</td><td class="su-num">{{ r.idc.display }}</td><td class="su-num">{{ r.fees.display }}</td></tr>{% endfor %}
+          </tbody></table></div></details></td></tr>
+      </tbody>
+      {% endfor %}
+    </table></div>
+    {% endif %}
+    <h3>Equity and shareholder loan (construction ledger)</h3>
+    <div class="su-table-scroll"><table data-testid="su-equity-table"><thead><tr><th scope="col">Source</th><th scope="col" class="su-num">kEUR</th></tr></thead><tbody>
+      {% for e in iv.equity %}<tr><th scope="row">{{ e.label }}</th><td class="su-num">{{ e.display }}</td></tr>{% endfor %}
+      <tr><th scope="row">{{ iv.shl.label }}</th><td class="su-num">{{ iv.shl.display }}</td></tr></tbody></table></div>
+    <h3>Reconciliation to aggregate Sources &amp; Uses</h3>
+    <div class="su-table-scroll"><table data-testid="su-recon-table"><thead><tr><th scope="col">Check</th><th scope="col" class="su-num">Aggregate</th><th scope="col" class="su-num">Instrument ledgers</th><th scope="col" class="su-num">Difference</th><th scope="col">Status</th></tr></thead><tbody>
+      {% for c in iv.checks %}<tr data-status="{{ c.status }}"><th scope="row">{{ c.label }}</th><td class="su-num">{{ c.aggregate.display }}</td><td class="su-num">{{ c.instruments.display }}</td><td class="su-num">{{ c.difference.display }}</td><td>{{ c.status }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% if iv.available %}<p class="su-help">Per-period draw agreement with the construction schedule: <strong>{{ 'all periods agree' if iv.period_checks | selectattr('ok') | list | length == iv.period_checks | length else 'a period differs' }}</strong>.</p>{% endif %}
+    {% endif %}
   </section>
 
   <section class="su-panel" data-testid="su-bankability">

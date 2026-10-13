@@ -364,6 +364,31 @@ app.include_router(_v2_developer_decision_router, prefix="/v2")
 # Financing F1 is an independent read-only router (no F2/F3 ownership overlap).
 from app.v2.financing_sources_uses_router import router as _v2_financing_sources_uses_router
 app.include_router(_v2_financing_sources_uses_router, prefix="/v2")
+# Workflow C read-only import gate; no financial writes before C0 acceptance.
+from app.v2.import_router import router as _v2_import_router
+app.include_router(_v2_import_router, prefix="/v2")
+
+from app.v2.grid_router import router as _v2_grid_router
+app.include_router(_v2_grid_router, prefix="/v2")
+
+# Workflow C: reject over-size or unbounded uploads BEFORE multipart parsing.
+# UploadFile may spool the incoming body before the route executes, so an
+# endpoint-only read limit would not provide an actual request-body bound.
+@app.middleware("http")
+async def _model_import_content_length_gate(request: Request, call_next):
+    if request.url.path == "/v2/workbook/import/preview":
+        raw = request.headers.get("content-length")
+        try:
+            size = int(raw) if raw is not None else 0
+        except (TypeError, ValueError):
+            size = 0
+        from app.model_import.intake import MAX_UPLOAD_BYTES
+        if size <= 0:
+            return JSONResponse({"error": "IMPORT_CONTENT_LENGTH_REQUIRED"}, status_code=411)
+        if size > MAX_UPLOAD_BYTES + 16 * 1024:
+            return JSONResponse({"error": "IMPORT_BODY_SIZE_INVALID"}, status_code=413)
+    return await call_next(request)
+
 
 # -- FINCO Radar v1 (Post-R12 P2) — narrow read-only Radar surface ------------
 # Read-only product UI over the frozen R0-R12 authority and the canonical
@@ -374,7 +399,9 @@ app.include_router(_radar_router)
 
 # -- FINCO Protocol Shell (Unified home + Verify surface) ----------------------
 from app.protocol_ui.router import router as _protocol_router
+from app.trust_readiness.router import router as _trust_readiness_router
 app.include_router(_protocol_router)
+app.include_router(_trust_readiness_router)
 
 # -- P4: FINCO Token Utility (wallet challenge/verify + access surface) ---------
 from app.protocol.router import router as _finco_utility_router
@@ -540,6 +567,7 @@ _DEMO_PROVISION_SKIP_PREFIXES = (
     "/api",  # public developer API — no demo session created on stateless API calls
     "/protocol/finco",  # P4 token utility — requires real auth, not auto-provisioned demo
     "/verify/run",  # certificate routes require explicit authentication
+    "/trust",  # public read-only Trust & Readiness pages — set no cookie
 )
 
 

@@ -122,6 +122,8 @@ def check_balance_sheet(evidence: Mapping[str, Any]) -> IntegrityCheck:
     if not isinstance(rows, list) or not rows:
         return _unavailable(cid, title, "BALANCE_SHEET_EVIDENCE_MISSING")
     deviations, evaluated, evaluated_indices = [], 0, set()
+    f3 = evidence.get("financing_authority") in ("F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1", "F3_SINGLE_SENIOR_JUNIOR_EXPLICIT_V1")
+    junior = evidence.get("financing_authority") == "F3_SINGLE_SENIOR_JUNIOR_EXPLICIT_V1"
     for row in rows:
         if not _complete(row, *_BS_KEYS):
             continue  # construction / incomplete columns carry no balance identity
@@ -130,6 +132,14 @@ def check_balance_sheet(evidence: Mapping[str, Any]) -> IntegrityCheck:
         liabilities_equity = (row["senior_debt"] + row["shl"] + row["share_capital"]
                               + row["share_premium"] + row["legal_reserve"]
                               + row["retained_earnings"] + row["net_cit_payable"])
+        if f3:
+            if not _complete(row, "additional_equity"):
+                return _unavailable(cid, title, "F3_EQUITY_COMPONENTS_MISSING")
+            liabilities_equity += row["additional_equity"]
+        if junior:
+            if not _complete(row, "junior_debt"):
+                return _unavailable(cid, title, "F35_JUNIOR_LIABILITY_MISSING")
+            liabilities_equity += row["junior_debt"]
         deviations.append(abs(assets - liabilities_equity))
         evaluated += 1
         evaluated_indices.add(row["period_index"])
@@ -328,6 +338,31 @@ def check_sponsor_return_inputs(evidence: Mapping[str, Any]) -> IntegrityCheck:
                               f" (not published: {', '.join(reasons)})" if reasons else ""))
 
 
+def check_junior_debt(evidence: Mapping[str, Any]) -> IntegrityCheck:
+    cid, title = "JUNIOR_DEBT_CONSERVATION", "Junior liability and contractual cash service"
+    debt = evidence.get("junior_debt")
+    rows = debt.get("periods") if isinstance(debt, Mapping) else None
+    if not isinstance(rows, list) or not rows or not _complete(debt, "commitment"):
+        return _unavailable(cid, title, "F35_JUNIOR_EVIDENCE_MISSING")
+    keys = ("period_index", "opening", "interest", "principal", "debt_service", "closing", "annual_rate",
+            "day_fraction", "post_senior_cash", "post_junior_cash")
+    if not all(_complete(row, *keys) for row in rows):
+        return _unavailable(cid, title, "F35_JUNIOR_COMPONENTS_MISSING")
+    indices = [r["period_index"] for r in rows]
+    if indices != sorted(set(indices)) or indices[-1] != debt.get("maturity_period_index"):
+        return _unavailable(cid, title, "F35_JUNIOR_AXIS_INVALID")
+    deviations = [abs(rows[0]["opening"] - debt["commitment"]), abs(rows[-1]["closing"])]
+    for row in rows:
+        deviations.extend((abs(row["opening"] - row["principal"] - row["closing"]),
+            abs(row["interest"] - row["opening"] * row["annual_rate"] * row["day_fraction"]),
+            abs(row["debt_service"] - row["interest"] - row["principal"]),
+            abs(row["post_junior_cash"] - row["post_senior_cash"] + row["debt_service"]),
+            max(0., -row["post_junior_cash"]), max(0., -row["closing"])))
+    for previous, current in zip(rows, rows[1:]):
+        deviations.append(abs(previous["closing"] - current["opening"]))
+    return _verdict(cid, title, deviations, TOL_KEUR, "F35_JUNIOR_CONSERVATION_BREAK", evaluated=len(rows))
+
+
 CHECKS: tuple[Callable[[Mapping[str, Any]], IntegrityCheck], ...] = (
     check_evidence_digest,
     check_sources_equal_uses,
@@ -357,7 +392,8 @@ def run_integrity_checks(evidence: Mapping[str, Any] | None) -> RunIntegrityRepo
             for check in CHECKS
         ))
     results = []
-    for check in CHECKS:
+    checks = CHECKS + ((check_junior_debt,) if evidence.get("financing_authority") == "F3_SINGLE_SENIOR_JUNIOR_EXPLICIT_V1" else ())
+    for check in checks:
         try:
             results.append(check(evidence))
         except Exception:  # noqa: BLE001 - malformed evidence must not become PASS or crash the surface

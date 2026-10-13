@@ -523,6 +523,102 @@ def _build_assumption_register_view(pis):
                 "fingerprint": "", "rows": []}
 
 
+def _quality_row_from_block(quality: dict) -> dict:
+    sc = quality["score"]
+    counts = sc["counts"]
+    return {"score": sc["score"], "score_display": sc["score_display"], "score_status": sc["score_status"],
+            "coverage_weighted_pct": sc["coverage_weighted_pct"], "blocked": sc["blocked"],
+            "fail": counts["fail"], "warning": counts["warning"], "unavailable": counts["unavailable"],
+            "blocking_ids": [c["check_id"] for c in quality["groups"]["blocking"]]}
+
+
+def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, runtime_state, register_view):
+    """Q3: attach the read-only Model Quality / covenant / scenario views to the Smart Panel projection.
+
+    Pure reads of persisted evidence (workspace Last Run, Run History, scenario records); never runs the
+    engine and never writes.  Any failure leaves typed UNAVAILABLE views — it can never fail the page.
+    """
+    import dataclasses
+    from app.v2.insight_quality_projection import build_quality_insight_safe
+    from app.v2.insight_scenario_projection import build_scenario_insight_safe
+
+    register_paths = [str(r.get("path")) for r in ((register_view or {}).get("rows") or []) if isinstance(r, dict)]
+    strip = smart_panel.kpi_strip
+    kpi_keys = [it.key for it in strip.items] if strip else []
+    effective_inputs = None
+    if runtime_state == "CURRENT":
+        try:
+            effective_inputs = pis.to_projectinputs()
+        except Exception:  # noqa: BLE001 - thresholds then stay unavailable
+            effective_inputs = None
+    active_id = getattr(ws, "active_scenario_id", None) if ws else None
+    # The scenario shown with the Findings belongs to the COMMITTED Last Run (ws.last_runtime_scenario_id), not
+    # to the Working Copy scenario currently selected.  NULL is the canonical Base Case; an unresolvable id stays
+    # UNAVAILABLE (never Base Case, never the active scenario's name).
+    last_run_scenario_name = ""
+    if ws is not None and runtime_state != "NOT_RUN":
+        try:
+            from app.persistence.scenario_insight_reads import resolve_last_run_scenario
+            resolved = resolve_last_run_scenario(workspace_owner, project_record.project_id,
+                                                 getattr(ws, "last_runtime_scenario_id", None))
+            last_run_scenario_name = resolved.label or ""
+        except Exception:  # noqa: BLE001 - identity then stays UNAVAILABLE
+            last_run_scenario_name = ""
+    quality = build_quality_insight_safe(
+        ws, run_state=runtime_state, project_inputs=effective_inputs, active_scenario_id=active_id,
+        scenario_name=last_run_scenario_name,
+        register_paths=register_paths, kpi_keys=kpi_keys)
+    # Q4 conditional action availability is presentation-only; no writes, no engine Run.
+    # Q1 statuses and Q3 Last Run identities remain unmodified.
+    from app.v2.whatif import CANDIDATES as _Q4_CANDIDATES, display_eligibility as _q4_eligible
+    for _group in (quality.get("groups") or {}).values():
+        for _finding in _group:
+            if _finding["check_id"] not in _Q4_CANDIDATES:
+                continue
+            q4_snapshot = getattr(ws, "draft_snapshot", None) if ws is not None else None
+            if (ws is None or not isinstance(q4_snapshot, dict)
+                    or is_protected_reference(project_record)):
+                _allowed, _reason = False, "Q4_PROTECTED_OR_UNAVAILABLE"
+            else:
+                _allowed, _reason = _q4_eligible(
+                    check_id=_finding["check_id"], check_status=_finding["status"],
+                    project_type=project_record.project_type or "",
+                    snapshot=q4_snapshot)
+            _finding["q4_eligible"] = _allowed
+            _finding["q4_unavailable_reason"] = _reason
+    scenario_view: dict = {}
+    try:
+        from app.persistence.scenario_insight_reads import list_insight_scenarios, newest_committed_runs
+        chosen = list_insight_scenarios(workspace_owner, project_record.project_id, active_id)
+        latest = newest_committed_runs(workspace_owner, project_record.project_id, chosen.records)
+        issue_count = None
+        if quality.get("available") and quality.get("terms_bound"):
+            issue_count = sum(1 for c in quality.get("covenants", ())
+                              if c.get("status") in ("FAIL", "WARNING"))
+        scenario_view = build_scenario_insight_safe(
+            scenarios=chosen.records, latest_runs=latest, active_scenario_id=active_id, active_run_state=runtime_state,
+            last_run_snapshot_id=getattr(ws, "last_runtime_snapshot_id", None) if ws else None,
+            active_covenant_issue_count=issue_count, candidates=chosen.candidates,
+            scenarios_complete=chosen.complete,
+            active_quality=(_quality_row_from_block(quality) if quality.get("available") else None))
+    except Exception:  # noqa: BLE001 - fail closed to a typed UNAVAILABLE view
+        scenario_view = build_scenario_insight_safe(
+            scenarios=[], latest_runs={}, active_scenario_id=None, active_run_state="NOT_RUN",
+            last_run_snapshot_id=None, scenarios_complete=False)
+    return dataclasses.replace(smart_panel, insight={"quality": quality, "scenarios": scenario_view})
+
+
+def _last_run_iso(ws) -> str:
+    """ISO timestamp of the committed Last Run ('' when none): the baseline for 'edited since run'."""
+    ts = getattr(ws, "last_runtime_at", None)
+    if not ts or not getattr(ws, "last_runtime_snapshot_id", None):
+        return ""
+    try:
+        return ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+    except Exception:
+        return ""
+
+
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *, freshness=None):
     """Shared context dict for both sheet partials."""
     from app.workbook.registry import is_data_center_project_type as _is_dc_type_bsc
@@ -548,6 +644,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
         "runtime_state": freshness.state.value,
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        "last_run_iso": _last_run_iso(ws),
         "field_error": field_error,
         "active_scenario_name": getattr(ws, "active_scenario_name", None) or "",
     }
@@ -912,6 +1009,7 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
     the runtime_summary is read from projection.fs.runtime_summary — it is the
     same thawed dict as rr.runtime_summary and avoids a second get_runtime_result call.
     """
+    from app.auth import generate_csrf_token
     from app.workbook.runtime_projection import (
         build_runtime_projection_bundle,
         classify_runtime_state,
@@ -967,6 +1065,8 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
 
     return {
         "revenue_fields": fields,
+        "revenue_multistream": _build_revenue_contract_editor(pis, ws),
+        "revenue_contracts_csrf_token": generate_csrf_token(),
         "revenue_state": revenue_state.value,
         "revenue_runtime_summary": rs,
         "revenue_pricing_basis": (
@@ -1034,6 +1134,60 @@ def _build_dc_revenue_reconciliation(pis) -> list[tuple[str, object, str]]:
         ("Revenue Escalation", f"{(escalation / 100.0 if escalation > 1.0 else escalation) * 100:.12g}", "%/yr"),
         ("Total Revenue", "Runtime-derived (occupancy ramp + indexation)", ""),
     ]
+
+
+def _build_revenue_contract_editor(pis, ws):
+    import json
+    from app.workbook.revenue_multistream import FIELD_ID, SNAPSHOT_KEY
+    from domain.revenue.multistream_runtime import parse_config
+    from app.persistence.scenarios_repository import get_scenario
+    raw = pis.get(FIELD_ID) or ""
+    scenario = get_scenario(ws.active_scenario_id, ws.user_id) if ws.active_scenario_id else None
+    scope = "Working Copy / Base"
+    overridden = False
+    if scenario is not None and scenario.project_id == ws.project_id and not scenario.archived and not scenario.is_base_case:
+        scope = scenario.scenario_name
+        overridden = SNAPSHOT_KEY in scenario.overrides
+        raw = scenario.overrides.get(SNAPSHOT_KEY, raw)
+    config = parse_config(raw)
+    # htmx re-renders (Save, scenario switch) do not carry the page-level ``project_type``; the editor needs the
+    # technology to accept the canonical payload, so it travels with the contracts it validates.
+    technology = str(pis.get("project_setup.identity.project_type") or "").strip().lower()
+    return {"active": config is not None, "raw": raw, "scope": scope, "technology": technology,
+            "overridden": overridden, "rows": json.loads(config.canonical_json)["streams"] if config else []}
+
+
+@router.post("/workbook/revenue/contracts")
+async def v2_revenue_contracts(request: Request, _: None = Depends(require_v2_active)):
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+    form = await request.form()
+    from app.auth import validate_csrf_token
+    if not validate_csrf_token(form.get("csrf_token")):
+        return JSONResponse({"error": "REVENUE_CONTRACTS_CSRF_INVALID"}, status_code=403)
+    project = str(form.get("project") or "").strip()
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.revenue_contracts_service import save_contracts, RevenueContractConflict
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return JSONResponse({"error": "Project not found"}, status_code=404)
+    if is_protected_reference(record):
+        return JSONResponse({"error": "Protected reference; create a working copy"}, status_code=409)
+    try:
+        save_contracts(owner=owner, project_id=record.project_id,
+                       expected_hash=str(form.get("content_hash") or ""), raw=form.get("contracts", ""),
+                       inherit=form.get("action") == "inherit")
+    except (ValueError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409 if isinstance(exc, RevenueContractConflict) else 422)
+    ws = get_workspace_state(owner, record.project_id)
+    pis = _build_pis_with_composite_identity(ws, record, owner)
+    if request.headers.get("HX-Request") == "true":
+        response = _render_revenue_htmx_sheet(request, pis, ws, record, project)
+        html = response.body.decode("utf-8") + "\n" + _scenario_authority_oob(request, ws, record, project, owner, include_revenue=False)
+        return HTMLResponse(html)
+    return RedirectResponse(f"/v2/workbook?project={project}", status_code=303)
 
 
 def _render_revenue_htmx_sheet(
@@ -1180,12 +1334,39 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
     if bankability.get("config", {}).get("targets") is not None:
         senior_dscr_mode = "WORKING_CONFIG"
     financing_evidence = build_financing_evidence(rr_for_sponsor)
+    from app.workbook.multisenior_config import (
+        FIELD_ID as f3_field, SNAPSHOT_KEY as f3_key, build_view as build_f3_view, scope_for_workspace,
+    )
+    f3 = build_f3_view(finance_pi, pis.snapshot_origin.get(f3_key), scope_for_workspace(ws),
+        rr_for_sponsor.runtime_summary if rr_for_sponsor else None,
+        owner_id=ws.user_id, project_id=ws.project_id)
+    debt_fields = [f for f in debt_fields if f["field_id"] != f3_field]
+    from app.v2.capital_stack_projection import build_capital_stack
+    try:
+        _cs_day_count = finance_pi.financing.senior_debt_interest_config.day_count if finance_pi else None
+    except AttributeError:
+        _cs_day_count = None
+    capital_stack = build_capital_stack(
+        f3, context.freshness if context is not None else _runtime_freshness(ws, pis), day_count=_cs_day_count)
+    if f3["active"]:
+        from app.workbook.multisenior_config import activation_financing_params
+        fin = activation_financing_params(fin)
+        sponsor_funding = _build_sponsor_funding_presentation(
+            fin, rr_for_sponsor, context.freshness if context is not None else _runtime_freshness(ws, pis))
+        senior_pricing_mode = senior_dscr_mode = "MULTI_SENIOR"
+        bankability = {"available": False, "reason": "Two-Senior terms own rates, fees, repayment and maturity. Single-Senior bankability controls are inactive."}
+        for field in debt_fields:
+            if field["field_id"] not in {"debt.senior.gearing_pct", "debt.senior.lockup_dscr", "debt.senior.min_llcr"}:
+                field["editable"] = False
+                field["help_text"] = "Owned by the active two-Senior configuration."
     _actual_senior, _actual_gearing = financing_evidence["metrics"][:2]
     from app.input_adapter import senior_rate_authority
     _flat_senior_rate = senior_rate_authority(finance_pi)[1] if finance_pi else None
     return {
         "debt_fields": debt_fields,
         "bankability": bankability,
+        "multisenior": f3,
+        "capital_stack": capital_stack,
         "debt_state": d.state.value,
         "debt_schedule": d.schedule,
         "debt_operational_periods": d.operational_periods,
@@ -1198,6 +1379,10 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
         "reserve_view": build_reserve_view(fin),
         "sponsor_view": build_sponsor_view(fin, rr_for_sponsor),
         "senior_detail_rows": (
+            ("Max. gearing cap", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
+            ("Lock-up DSCR", f"{getattr(fin, 'lockup_dscr', 0.0):.2f}x" if fin else None),
+            ("Minimum LLCR", f"{getattr(fin, 'min_llcr', 0.0):.2f}x" if fin else None),
+        ) if f3["active"] else (
             ("Max. gearing cap", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
             ("All-in interest rate", _pct(_flat_senior_rate)),
             ("Base rate", f"{getattr(fin, 'base_rate', 0.0) * 100:.2f}%" if fin else None),
@@ -1349,10 +1534,12 @@ def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
         projection = build_runtime_projection_bundle(
             rr, _runtime_freshness(ws, pis).is_stale)
     f = projection.fs
+    from app.v2.statement_presentation import financial_statement_tables
     # Map the FS UNAVAILABLE state to the legacy template key for backward compat
     fs_state = f.state.value if f.state.value != "UNAVAILABLE" else "FS_UNAVAILABLE"
     return {
         "fs_state": fs_state,
+        "fs_tables": financial_statement_tables(f),
         "fs_available": f.fs_available,
         "fs_pnl_rows": f.pnl_rows,
         "fs_bs_rows": f.bs_rows,
@@ -1469,6 +1656,34 @@ def _render_inputs_htmx_sheet(
     if not field_error:
         oob += "\n" + _build_run_controls_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
+def _build_input_grid_ctx(project_record, pis, ws, workspace_owner: str, *, project_editable: bool,
+                          capex_ctx: Optional[dict] = None, opex_ctx: Optional[dict] = None) -> dict:
+    """Hybrid Inputs grid projection (presentation only; reuses the CAPEX / OPEX sheet contexts)."""
+    from app.v2.input_grid_projection import baseline_pis, build_input_grid_projection
+    from app.workbook.input_set import ProjectInputSet
+    from app.workbook.registry import WORKBOOK as _WB
+    capex_ctx = capex_ctx if capex_ctx is not None else _build_capex_vm_ctx(
+        project_record, pis, ws=ws, workspace_owner=workspace_owner)
+    opex_ctx = opex_ctx if opex_ctx is not None else _build_opex_vm_ctx(
+        project_record, pis, ws=ws, workspace_owner=workspace_owner)
+    base, note = baseline_pis(ws, _WB, ProjectInputSet)
+    registry_sheets = []
+    for sheet_id, title, tab_id in (("project_setup", "Project", "tab-project-setup"),
+                                    ("revenue", "Revenue", "tab-revenue"),
+                                    ("tax", "Tax", "tab-tax")):
+        sheet = _WB.sheet(sheet_id)
+        registry_sheets.append((
+            sheet_id, title, tab_id, _build_sheet_fields(sheet_id, pis),
+            {sec.section_id: getattr(sec, "label", "") or sec.section_id.replace("_", " ").title()
+             for sec in sheet.sections},
+        ))
+    return {"input_grid": build_input_grid_projection(
+        capex_ctx=capex_ctx, opex_ctx=opex_ctx, pis=pis, base_pis=base, baseline_note=note,
+        project_editable=project_editable, content_hash=pis.content_hash,
+        workbook_version=pis.workbook_version, scenario_id=ws.active_scenario_id or "",
+        registry_sheets=tuple(registry_sheets))}
 
 
 @router.get("/workbook", response_class=HTMLResponse)
@@ -1596,6 +1811,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "active_scenario_name": ws.active_scenario_name or "",
         "active_scenario_id": ws.active_scenario_id or "",
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        "last_run_iso": _last_run_iso(ws),
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
@@ -1627,6 +1843,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "flash_error": flash_error,
         "field_error": "",
         "library_url": "/library",
+        # WF-05 grid: CSRF token for the JSON validate/save routes (session-bound server check).
+        "grid_csrf_token": __import__("app.auth", fromlist=["generate_csrf_token"]).generate_csrf_token(),
     }
     # Model Trust Pack V1: read-only composition of existing canonical read
     # services (API v1.1 institutional builders).  No engine execution, no
@@ -1656,8 +1874,13 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             "export": {"state": _TUP},
             "methodology": {"state": _TUP, "rows": [], "page_url": "/model/methodology"},
         }
-    context.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
-    context.update(_build_opex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
+    _capex_ctx = _build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
+    _opex_ctx = _build_opex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
+    context.update(_capex_ctx)
+    context.update(_opex_ctx)
+    context.update(_build_input_grid_ctx(
+        project_record, pis, ws, workspace_owner, project_editable=project_editable,
+        capex_ctx=_capex_ctx, opex_ctx=_opex_ctx))
     # Build projection bundle once; pass it to all four output sheet builders.
     from app.workbook.runtime_projection import build_runtime_projection_bundle
     _rr = WorkbookService.get_runtime_result(ws)
@@ -1695,6 +1918,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         active_scenario_name=context.get("active_scenario_name", "") or "",
     )
     context["ws_nav_groups"] = workspace_nav_groups()
+    from app.v2.workspace_destinations import navigation_manifest
+    context["workspace_destinations"] = navigation_manifest()
 
     # UX Foundation Phase C: contextual Smart Panel (availability +
     # navigation over existing authorities; never an engine call).
@@ -1709,6 +1934,10 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         project_key=str(getattr(pis, "template_source", "") or ""),
         assumption_register_view=context.get("assumption_register_view"),
     )
+    context["smart_panel"] = _attach_insight(
+        context["smart_panel"], ws=ws, pis=pis, project_record=project_record,
+        workspace_owner=workspace_owner, runtime_state=runtime_freshness.state.value,
+        register_view=context.get("assumption_register_view"))
 
     # UI-3B: inject scenario presentations for the Scenarios tab.
     # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
@@ -2192,6 +2421,12 @@ async def v2_workbook_update(
 # The engine's decision (and its typed reason) is unchanged; nothing is saved
 # on a failed run and the previous Last Run stays exactly as it was.
 _ENGINE_FAIL_CLOSED_MESSAGES = (
+    ("F3_PERIOD_OVERFUNDING", "F3_PERIOD_OVERFUNDING: A dated facility draw exceeds construction Uses in that period. Adjust the draw dates or amounts. No Run was saved."),
+    ("F3_AGGREGATE_GEARING_CAP_EXCEEDED", "F3_AGGREGATE_GEARING_CAP_EXCEEDED: The explicit facility commitments exceed the project gearing cap. No automatic resizing is applied; no Run was saved."),
+    ("F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL", "F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL: Base cash cannot pay the contractual Senior service, including maturity principal. No repayment or refinancing was manufactured; no Run was saved."),
+    ("F3_MATURITY_NOT_ON_OPERATING_BOUNDARY", "F3_MATURITY_NOT_ON_OPERATING_BOUNDARY: Facility maturity must match a canonical operating period end. No Run was saved."),
+    ("F3_DRAW_OUTSIDE_CONSTRUCTION", "F3_DRAW_OUTSIDE_CONSTRUCTION: Facility draws must fall within construction. No Run was saved."),
+    ("F3_GRACE_EXCEEDS_MATURITY", "F3_GRACE_EXCEEDS_MATURITY: No principal-eligible period remains before maturity. No Run was saved."),
     ("SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
      "These inputs leave part of the shareholder loan unpaid at its maturity, so "
      "the model did not produce a result. Review OPEX, CAPEX, revenue or "
@@ -2458,6 +2693,7 @@ async def v2_workbook_run(
     active_scenario_name = ws.active_scenario_name
     scenario_name = active_scenario_name or "Base"
     _scenario_overrides_for_fold = None
+    _q4_effective_binding = None
 
     if active_scenario_id:
         import logging as _log
@@ -2482,7 +2718,56 @@ async def v2_workbook_run(
         # so the legacy ScenarioManager is never activated by a user-created name.
         scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
 
-        if not sc_rec.is_base_case and "tariff_eur_mwh" in (sc_rec.overrides or {}):
+        # WF-08 Q4: only explicit, auditable Finding-to-Scenario scalar
+        # overrides may reach the engine. The canonical scenario resolver
+        # expects legacy snapshot keys, not Workbook semantic field IDs.
+        # This is the existing Run materialization path, not a second writer.
+        if (not sc_rec.is_base_case and
+                (sc_rec.replay_metadata or {}).get("action") == "q4_finding_whatif_v1"):
+            from app.persistence.scenarios_repository import resolve_scenario_snapshot
+            from app.v2.whatif import CANDIDATES
+            from app.workbook.input_set import ProjectInputSet
+            from app.workbook.update_service import WorkbookUpdateService
+            from app.workbook.registry import WORKBOOK
+            try:
+                q4_meta = sc_rec.replay_metadata
+                q4_mapping = CANDIDATES.get(q4_meta.get("finding_id"))
+                if (not q4_mapping or q4_mapping[1] != q4_meta.get("field_id")
+                        or set(sc_rec.overrides or {}) != {q4_mapping[2]}):
+                    raise ValueError("Q4_SCENARIO_OVERRIDE_AUTHORITY_INVALID")
+                q4_spec = WORKBOOK.field(q4_mapping[1])
+                if q4_spec.snapshot_key != q4_mapping[2]:
+                    raise ValueError("Q4_WORKBOOK_MAPPING_CHANGED")
+                raw_scenario_value = sc_rec.overrides[q4_spec.snapshot_key]
+                validation = WorkbookUpdateService.validate_field_update(
+                    q4_spec.field_id, str(raw_scenario_value))
+                if not validation.is_valid:
+                    raise ValueError("Q4_SCENARIO_OVERRIDE_VALUE_INVALID")
+                # Q4 child must be bound to exactly the reviewed complete
+                # source snapshot. An unrelated later scalar edit cannot
+                # silently change the What-if's inherited economics.
+                source_pis = ProjectInputSet.from_snapshot(
+                    dict(sc_rec.base_input_set or {}))
+                if dict(source_pis.snapshot_origin) != dict(pis_draft.snapshot_origin):
+                    raise ValueError("Q4_SCENARIO_SOURCE_CHANGED_REPREVIEW_REQUIRED")
+                effective_snapshot = resolve_scenario_snapshot(
+                    dict(source_pis.snapshot_origin), dict(sc_rec.overrides))
+                resolved_pis = ProjectInputSet.from_snapshot(effective_snapshot)
+                if resolved_pis.get(q4_spec.field_id) != validation.typed_value:
+                    raise ValueError("Q4_SCENARIO_ENGINE_INPUT_MISMATCH")
+                override = WorkbookService.to_projectinputs(resolved_pis)
+                _q4_effective_binding = {
+                    "authority": "q4_canonical_reviewed_scenario_v1",
+                    "scenario_id": sc_rec.scenario_id,
+                    "field_id": q4_spec.field_id,
+                    "snapshot_key": q4_spec.snapshot_key,
+                    "value": validation.typed_value,
+                }
+            except (ValueError, KeyError) as exc:
+                msg = str(exc)
+                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+        if not sc_rec.is_base_case and any(key in (sc_rec.overrides or {}) for key in ("tariff_eur_mwh", "rev_multistream_config_json")):
             from app.workbook.scenario_revenue_authority import bind_scenario_tariff
             try:
                 effective_snapshot = bind_scenario_tariff(
@@ -2514,11 +2799,23 @@ async def v2_workbook_run(
     from app.workbook.bankability_config import SNAPSHOT_KEY, assert_materialized_fee_authority
     try:
         assert_materialized_fee_authority(override, pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
+        from app.workbook.multisenior_config import SNAPSHOT_KEY as f3_key, apply_state
+        f3_scope = "base" if not active_scenario_id or sc_rec.is_base_case else active_scenario_id
+        override = apply_state(override, pis_draft.snapshot_origin.get(f3_key), f3_scope,
+            bankability_raw=pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
     except ValueError as exc:
         msg = str(exc)
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
     # ── Step 11: run the engine ────────────────────────────────────────────── #
+    from app.model_v2.investor_f4 import EVIDENCE_KEY as f4_evidence_key, parse_terms as parse_f4_terms
+    from app.workbook.investor_agreement_service import effective_raw as f4_effective_raw
+    try:
+        f4_terms = parse_f4_terms(f4_effective_raw(
+            pis_draft.snapshot_origin, sc_rec if active_scenario_id else None))
+    except (ValueError, TypeError) as exc:
+        msg = str(exc)
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
     # P0-A: the calculation runs in the bounded model executor (worker process), never on the
     # event loop. The final CAS (v2_atomic_run_commit, step 12) is unchanged and runs only after
     # the calculation returns, so a stale calculation still fails closed.
@@ -2533,6 +2830,7 @@ async def v2_workbook_run(
             runtime_project_key,
             "Base",  # Contract A: always "Base"; display name must not activate legacy ScenarioManager
             project_inputs_override=override,
+            **({"investor_evidence_requested": True} if f4_terms is not None else {}),
         )
         _stage_mark("model_completed")
     except ModelExecutionBusy:
@@ -2567,6 +2865,10 @@ async def v2_workbook_run(
     _revenue_derivation_raw = _derivation_evidence.get("revenue", {})
     _kpis_enriched = dict(result["kpis"])
     _kpis_enriched["revenue_derivation"] = _fmt_rev_deriv(_revenue_derivation_raw)
+    if _q4_effective_binding is not None:
+        # Immutable Run-bound replay evidence for the scalar Q4 override;
+        # canonical Last Run export must reconstruct the same engine inputs.
+        _kpis_enriched["q4_effective_input"] = dict(_q4_effective_binding)
     _scenario_revenue_input = None
     if runtime_project_key in ("Solar", "Wind"):
         _scenario_revenue_input = {
@@ -2574,11 +2876,28 @@ async def v2_workbook_run(
             "scenario_id": active_scenario_id,
             "authority": "materialized_project_inputs",
         }
+        _contracts = getattr(override.revenue, "multistream_config_json", "")
+        if _contracts:
+            _scenario_revenue_input.pop("effective_tariff_eur_mwh")
+            _scenario_revenue_input["multistream_config_json"] = _contracts
+            _kpis_enriched["revenue_multistream_audit"] = result["revenue_multistream_audit"]
         _kpis_enriched["scenario_revenue_input"] = _scenario_revenue_input
 
     # ── Step 12: atomic commit (final CAS + promote + dirty=False) ────────── #
     runtime_snapshot_id = _utc_compact()
     ran_at = datetime.now(timezone.utc)
+    if f4_terms is not None:
+        from app.model_v2.investor_f4 import allocate_run
+        try:
+            _kpis_enriched[f4_evidence_key] = allocate_run(
+                f4_terms, result["investor_equity_receipts"], binding={
+                    "owner_id": workspace_owner, "project_id": project_record.project_id,
+                    "scenario_id": active_scenario_id, "snapshot_id": runtime_snapshot_id,
+                    "composite_hash": content_hash,
+                })
+        except (ValueError, TypeError, KeyError) as exc:
+            msg = f"Investor evidence could not be reconciled: {exc}. No Run was committed."
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
     # F1 Correction A: bind engine-produced finance evidence to the exact
     # successful V2 commit. This same runtime_summary is atomically captured
     # in Last Run and the append-only Run History entry by existing CAS.
@@ -2589,6 +2908,7 @@ async def v2_workbook_run(
                 "snapshot_id": runtime_snapshot_id,
                 "composite_hash": content_hash,
                 "scenario_id": active_scenario_id,
+                **({"financing_scope": f3_scope} if result["financing_evidence"].get("facility_authority") else {}),
             },
         }
     try:
@@ -2918,6 +3238,49 @@ async def v2_financing_investor(request: Request, project: str):
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
+@router.get("/workbook/outputs")
+async def v2_outputs_workspace(request: Request, project: str):
+    """Statements & Debt output workspace: read-only presentation of the persisted Last Run.
+
+    One coherent authorized snapshot (``PostRunRequestContext``) supplies the Run evidence, the canonical
+    CURRENT/STALE/NOT_RUN freshness and the Run Integrity verdict.  No engine call, no write.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
+    from app.workbook.workbook_identity import WorkbookIdentityError
+    from app.api.v1_1.institutional import get_run_integrity_checks
+    from app.v2.output_workspace_projection import build_output_workspace_safe
+
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return HTMLResponse("Project not found.", status_code=404)
+    try:
+        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        state, report = get_run_integrity_checks(owner, record.project_id, context=context)
+        # The committed Run's scenario is proven read-only through the canonical Q3 resolver, scoped to this owner
+        # and project.  NULL is the Base Case; an unresolvable explicit id stays UNAVAILABLE (never the active
+        # Working Copy scenario, never Base Case).  NOT_RUN has no committed Run and therefore no identity.
+        from app.persistence.scenario_insight_reads import resolve_last_run_scenario
+        last_run_scenario = None
+        if context.runtime_result is not None and context.freshness.state.value != "NOT_RUN":
+            last_run_scenario = resolve_last_run_scenario(
+                owner, record.project_id, getattr(context.workspace, "last_runtime_scenario_id", None)).label
+        outputs = build_output_workspace_safe(
+            runtime_result=context.runtime_result, workspace=context.workspace, freshness=context.freshness,
+            last_run_scenario=last_run_scenario, integrity_report=report if state == "AVAILABLE" else None,
+            statement_projection=context.projection.fs)
+        outputs["working_cit_rate"] = _cit_rate_display(context.inputs)
+        context.validate_current()
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        outputs = {"state": "UNAVAILABLE", "message": "Statements unavailable: the workspace changed while the response "
+                   "was assembled. Reload to refresh."}
+    html = _templates.get_template("partials/sheet_outputs.html").render(outputs=outputs, project_code=project)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
 @router.get("/workbook/financing/integrity")
 async def v2_financing_integrity(request: Request, project: str):
     """Authorized, read-only near-KPI view of the canonical integrity authority.
@@ -3071,12 +3434,12 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws, *,
 
 
 def _scenario_authority_oob(
-    request, ws, project_record, project: str, workspace_owner: str
+    request, ws, project_record, project: str, workspace_owner: str, *, include_revenue=True
 ) -> str:
     """Refresh every runtime-backed surface after a scenario mutation."""
     from app.v2.post_run_ui import build_post_save_ui_state
 
-    return build_post_save_ui_state(
+    html = build_post_save_ui_state(
         ws_fresh=ws,
         project_record=project_record,
         project=project,
@@ -3085,6 +3448,13 @@ def _scenario_authority_oob(
         include_banner_and_controls=True,
         include_scenario_list=False,
     )
+    if include_revenue and str(project_record.project_type).lower() in ("solar", "wind"):
+        from app.v2.post_run_ui import _as_oob
+        pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+        ctx = _base_sheet_ctx(request, pis, ws, project_record, project)
+        ctx.update(_build_revenue_ctx(pis, ws))
+        html += "\n" + _as_oob(_templates.get_template("partials/sheet_revenue.html").render(ctx), "v2-sheet-revenue")
+    return html
 
 
 @router.post("/workbook/scenarios/create")
@@ -3375,6 +3745,8 @@ async def v2_scenario_update_overrides(
     overrides: dict = {}
     items = form.multi_items() if hasattr(form, "multi_items") else form.items()
     for key, val in items:
+        if key == "rev_multistream_config_json":
+            return JSONResponse({"error": "Use the CAS-protected Revenue contract editor"}, status_code=422)
         if key in _SKIP_KEYS or not key or not val:
             continue
         try:
@@ -4524,6 +4896,10 @@ async def v2_scenario_sensitivity_run(
 
             from app.workbook.bankability_config import SNAPSHOT_KEY, assert_materialized_fee_authority
             assert_materialized_fee_authority(pi_override, pis_sens.snapshot_origin.get(SNAPSHOT_KEY))
+            from app.workbook.multisenior_config import SNAPSHOT_KEY as f3_key, apply_state
+            f3_scope = "base" if not scenario_id or _scenario_rec.is_base_case else scenario_id
+            pi_override = apply_state(pi_override, pis_sens.snapshot_origin.get(f3_key), f3_scope,
+                bankability_raw=pis_sens.snapshot_origin.get(SNAPSHOT_KEY))
 
             # P0-A: do not run the engine inline. Queue the point; the whole grid executes as ONE
             # admitted, ordered task in the model executor (see below).
@@ -4841,7 +5217,21 @@ async def v2_workbook_goal_seek_run(
     except ValueError as exc:
         return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
             "target_metric_label": metric.label, "message": str(exc)}, "apply": None, "request": request})
+    from app.workbook.multisenior_config import SNAPSHOT_KEY as f3_key, apply_state, scope_for_workspace
+    try:
+        override = apply_state(override, pis_draft.snapshot_origin.get(f3_key), scope_for_workspace(ws),
+            bankability_raw=pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
+    except ValueError as exc:
+        return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
+            "target_metric_label": metric.label, "message": str(exc)}, "apply": None, "request": request})
 
+    if getattr(override.revenue, "multistream_config_json", "") or (
+        (_scenario_overrides_for_fold or {}).get("rev_multistream_config_json")
+    ):
+        return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
+            "target_metric_label": metric.label,
+            "message": "Explicit revenue contracts have no scalar Goal Seek tariff authority. Use scenario contracts."},
+            "apply": None, "request": request})
     # ── Current canonical tariff (draft state the user sees) ──────────────── #
     apply_field_id, raw_current = _goal_seek_resolve_tariff_field(variable, pis_draft)
     try:
@@ -5080,3 +5470,15 @@ async def v2_workbook_goal_seek_apply(
         "now STALE — press Run to make it canonical. (Goal Seek candidate "
         "runs never wrote Run History or Last Run.)",
         applied=True)
+
+
+# Q4 route registration: isolated implementation, no changes to canonical Run paths.
+from app.v2.whatif_router import router as q4_router
+router.include_router(q4_router)
+
+# F3.8 is a read-only owned Run fragment, separate from every Save/Run path.
+from app.v2.financing_trace_router import router as f38_router
+router.include_router(f38_router)
+
+from app.v2.investor_f4_router import router as f4_router
+router.include_router(f4_router)

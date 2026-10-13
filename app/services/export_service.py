@@ -392,10 +392,42 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
         if not isinstance(run_identity, dict) or revenue_evidence.get("scenario_id") != ws.last_runtime_scenario_id:
             raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: tariff Run binding is inconsistent.")
         export_snapshot = bind_scenario_tariff(export_snapshot, run_identity.get("scenario_overrides") or {})
+
+    # Q4 canonical Last Run export must rebind the same reviewed scalar value
+    # the engine actually consumed. The audit comes ONLY from the immutable
+    # committed Run summary and run-bound scenario overrides, never from a
+    # mutable current scenario or current Working Copy.
+    q4_run = (getattr(ws, "last_runtime_summary", None) or {}).get("q4_effective_input")
+    if q4_run is not None:
+        from app.v2.whatif import CANDIDATES
+        from app.persistence.scenarios_repository import resolve_scenario_snapshot
+        from app.workbook.registry import WORKBOOK
+        from app.workbook.input_set import ProjectInputSet
+        run_identity = getattr(ws, "last_runtime_identity", None)
+        if (not isinstance(q4_run, dict) or
+                q4_run.get("authority") != "q4_canonical_reviewed_scenario_v1" or
+                q4_run.get("scenario_id") != ws.last_runtime_scenario_id or
+                not isinstance(run_identity, dict)):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: Q4 Run binding missing or inconsistent.")
+        field_id = q4_run.get("field_id")
+        key = q4_run.get("snapshot_key")
+        verified = any(fid == field_id and scenario_key == key
+                       for _, fid, scenario_key in CANDIDATES.values())
+        if not verified or WORKBOOK.field(field_id).snapshot_key != key:
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: Q4 mapping changed.")
+        signed_overrides = run_identity.get("scenario_overrides") or {}
+        if set(signed_overrides) != {key} or signed_overrides[key] != q4_run.get("value"):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: Q4 override drift.")
+        export_snapshot = resolve_scenario_snapshot(dict(export_snapshot), {key: signed_overrides[key]})
+        if ProjectInputSet.from_snapshot(export_snapshot).get(field_id) != q4_run["value"]:
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: Q4 effective input mismatch.")
     pis = WorkbookService.build_input_set(export_snapshot)
     project_inputs = pis.to_projectinputs()
     if isinstance(revenue_evidence, dict) and revenue_evidence.get("authority") == "materialized_project_inputs":
-        if project_inputs.revenue.ppa_base_tariff != revenue_evidence.get("effective_tariff_eur_mwh"):
+        if "multistream_config_json" in revenue_evidence:
+            if getattr(project_inputs.revenue, "multistream_config_json", "") != revenue_evidence["multistream_config_json"]:
+                raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: revenue contracts do not match Run evidence.")
+        elif project_inputs.revenue.ppa_base_tariff != revenue_evidence.get("effective_tariff_eur_mwh"):
             raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: effective tariff does not match Run evidence.")
     current_snapshot: dict[str, Any] = dict(ws.last_runtime_snapshot)
 
@@ -426,6 +458,29 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
             project_inputs, project_record.project_id, _sc_overrides
         )
         _cont_auth = _live_contingency_authority(project_record.project_id, _sc_overrides)
+
+    # Opt-in F3 exports materialize ONLY the scope and collection bound to this
+    # immutable Run. No live scenario lookup and no current draft activation.
+    finance_evidence = (getattr(ws, "last_runtime_summary", None) or {}).get("financing_evidence") or {}
+    if finance_evidence.get("facility_authority"):
+        from app.workbook.multisenior_config import SNAPSHOT_KEY, apply_state
+        from finco_core.inputs.multisenior import AUTHORITY, MultiSeniorProjectInputs
+        from finco_core.inputs.junior_debt import AUTHORITY as JUNIOR_AUTHORITY, JuniorProjectInputs
+        binding = finance_evidence.get("run_binding") or {}
+        if (finance_evidence["facility_authority"] not in (AUTHORITY, JUNIOR_AUTHORITY)
+                or binding.get("snapshot_id") != ws.last_runtime_snapshot_id
+                or binding.get("scenario_id") != ws.last_runtime_scenario_id
+                or binding.get("composite_hash") != (_ri or {}).get("composite_hash")
+                or not binding.get("financing_scope")):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: F3 Run binding is inconsistent.")
+        project_inputs = apply_state(project_inputs, export_snapshot.get(SNAPSHOT_KEY), binding["financing_scope"],
+            enforce_release=False, bankability_raw=export_snapshot.get("bankability_config_json"))
+        expected_type = JuniorProjectInputs if finance_evidence["facility_authority"] == JUNIOR_AUTHORITY else MultiSeniorProjectInputs
+        if (not isinstance(project_inputs, expected_type)
+                or project_inputs.financing_collection.content_digest() != finance_evidence.get("collection_digest")):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: F3 collection does not match Run evidence.")
+        if isinstance(project_inputs, JuniorProjectInputs) and project_inputs.junior_debt_policy.content_digest() != finance_evidence.get("junior_policy_digest"):
+            raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: F3.5 policy does not match Run evidence.")
 
     # UI and export share one composite runtime-freshness authority.
     from app.workbook.runtime_authority import resolve_runtime_freshness
@@ -490,6 +545,13 @@ def _resolve_preview_working_path(project_record, user_id, ws) -> "ResolvedExpor
     project_inputs = _apply_capex_opex_folds(
         project_inputs, project_record.project_id, _sc_overrides
     )
+
+    from app.workbook.multisenior_config import SNAPSHOT_KEY, apply_state, scope_for_workspace
+    if current_snapshot.get(SNAPSHOT_KEY):
+        project_inputs = apply_state(
+            project_inputs, current_snapshot[SNAPSHOT_KEY], scope_for_workspace(ws),
+            bankability_raw=current_snapshot.get("bankability_config_json"),
+        )
 
     return ResolvedExportAuthority(
         project_inputs=project_inputs,

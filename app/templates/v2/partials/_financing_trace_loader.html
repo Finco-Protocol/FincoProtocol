@@ -1,0 +1,7 @@
+<details class="v2-financing-trace-loader" data-testid="financing-trace-loader">
+  <summary>Financing, tax and returns reconciliation</summary>
+  <div hx-get="/v2/workbook/financing/trace?project={{ project_code | urlencode }}"
+       hx-trigger="intersect once" hx-swap="innerHTML" aria-live="polite">
+    <p role="status">Loading committed Run evidence.</p>
+  </div>
+</details>

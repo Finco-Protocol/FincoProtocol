@@ -130,6 +130,51 @@ class QualityEvidence:
         }
 
 
+def _runtime_with_debt_summary(runtime_summary: Any, debt_schedule: Any) -> Optional[Mapping[str, Any]]:
+    """The Run's persisted KPI mapping, completed with the persisted debt-schedule summary.
+
+    Mirrors ``app.v2.run_history_projection._enriched_kpis`` (identical source keys, no recomputation):
+    the minimum LLCR is published in the committed ``debt_schedule.summary`` and not always in the
+    runtime summary.  A value already present in the runtime summary always wins.
+    """
+    if not runtime_summary:
+        return None
+    merged = dict(runtime_summary)
+    summary = (debt_schedule or {}).get("summary") if isinstance(debt_schedule, Mapping) else None
+    if isinstance(summary, Mapping) and merged.get("min_llcr") is None and summary.get("min_llcr") is not None:
+        merged["min_llcr"] = summary.get("min_llcr")
+    return merged
+
+
+def evidence_from_history_entry(entry: Any, *, freshness: Optional[str] = None, terms: Optional[ProjectTerms] = None,
+                                active_scenario_id: Optional[str] = None,
+                                scenario_known: bool = False) -> QualityEvidence:
+    """Build evidence from ONE immutable Run History entry (a scenario's committed Run).
+
+    Freshness is whatever the caller can prove (``None`` for a historical Run that was not compared with the
+    Working Copy).  Thresholds are never read from the Working Copy here: callers pass ``terms`` only when
+    they can prove those terms were in force for this Run.
+    """
+    identity = getattr(entry, "last_runtime_identity", None) or {}
+    sponsor_schedule = getattr(entry, "sponsor_schedule", None)
+    sponsor_summary = sponsor_schedule.get("summary") if isinstance(sponsor_schedule, Mapping) else None
+    return QualityEvidence(
+        freshness=freshness,
+        runtime_summary=_runtime_with_debt_summary(getattr(entry, "runtime_summary", None),
+                                                   getattr(entry, "debt_schedule", None)),
+        integrity_evidence=getattr(entry, "integrity_evidence", None) or None,
+        sponsor_summary=sponsor_summary if isinstance(sponsor_summary, Mapping) else None,
+        snapshot_id=getattr(entry, "runtime_snapshot_id", None) or None,
+        composite_hash=getattr(entry, "composite_hash", None) or None,
+        run_at=getattr(entry, "ran_at", None) or None,
+        engine_version=(getattr(entry, "engine_version", None)
+                        or (identity.get("engine_version") if isinstance(identity, Mapping) else None)),
+        last_run_scenario_id=getattr(entry, "last_runtime_scenario_id", None),
+        active_scenario_id=active_scenario_id, scenario_known=scenario_known,
+        terms=terms or ProjectTerms(),
+    )
+
+
 def evidence_from_workspace(ws: Any, *, freshness: Optional[str], terms: Optional[ProjectTerms] = None,
                             active_scenario_id: Optional[str] = None, scenario_known: bool = False) -> QualityEvidence:
     """Build evidence from a persisted workspace record (read-only attribute access)."""
@@ -139,7 +184,8 @@ def evidence_from_workspace(ws: Any, *, freshness: Optional[str], terms: Optiona
     ran_at = getattr(ws, "last_runtime_at", None)
     return QualityEvidence(
         freshness=freshness,
-        runtime_summary=getattr(ws, "last_runtime_summary", None) or None,
+        runtime_summary=_runtime_with_debt_summary(getattr(ws, "last_runtime_summary", None),
+                                                   getattr(ws, "last_debt_schedule", None)),
         integrity_evidence=getattr(ws, "last_integrity_evidence", None) or None,
         sponsor_summary=sponsor_summary if isinstance(sponsor_summary, Mapping) else None,
         snapshot_id=getattr(ws, "last_runtime_snapshot_id", None) or None,

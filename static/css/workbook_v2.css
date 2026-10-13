@@ -3258,8 +3258,52 @@ form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #
 .v2-cost-row[data-save-state="dirty"] .v2-cost-input,
 .v2-cost-row[data-save-state="queued"] .v2-cost-input { background: #fffbeb; border-color: #f59e0b; }
 .v2-cost-row[data-save-state="saving"] .v2-cost-input { background: #eff6ff; border-color: #60a5fa; }
+.v2-cost-row[data-save-state="staged"] .v2-cost-input { background: #ecfeff; border-color: #06b6d4; color: #0f172a; }
+.v2-cost-row[data-save-state="staged"] .v2-cost-state { color: #0e7490; font-weight: 600; }
+.v2-cost-stagebar { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .75rem; margin: .25rem 0 .4rem;
+  padding: .3rem .5rem; font-size: .8rem; border: 1px solid rgba(127, 127, 127, .35); border-radius: 4px; }
+.v2-cost-stage-toggle { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; }
+.v2-cost-stage-count { font-weight: 600; min-width: 4.5rem; }
+.v2-cost-stage-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.v2-cost-stage-msg { flex: 1 1 14rem; min-width: 0; }
 .v2-cost-row[data-save-state="failed"] .v2-cost-input,
 .v2-cost-row[data-save-state="invalid"] .v2-cost-input { background: #fef2f2; border-color: #dc2626; }
+/* ── Cost editing UX V2: batch editing is the default ──────────────────────────────────────── */
+.v2-cost-stage-primary { font-weight: 600; }
+.v2-cost-stage-btn[aria-busy="true"] { opacity: .6; cursor: progress; }
+.v2-cost-stage-btn kbd { font: inherit; font-size: .7rem; opacity: .75; margin-left: .25rem; }
+.v2-cost-mode-hint { flex: 1 1 100%; font-size: .72rem; color: var(--v2-text-subtle, #6b7280); }
+/* Keep the Save control reachable while a long category list is scrolled. */
+.v2-cost-stagebar[data-has-edits="true"] {
+  position: sticky; top: calc(var(--hy-top, 0px) + var(--hy-h, 0px) + var(--hy-tabs-h, 0px) + 4px); z-index: 4;
+  background: #f0f9ff; border-color: #38bdf8; color: #0c4a6e; box-shadow: 0 2px 6px rgba(15, 23, 42, .12);
+}
+.v2-tab[data-unsaved]::after { content: " \25CF"; color: #0891b2; font-size: .7em; vertical-align: middle; }
+.v2-cost-guard {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .4rem 0; padding: .45rem .6rem;
+  background: #fffbeb; border: 1px solid #f59e0b; border-radius: 4px; color: #78350f; font-size: .85rem;
+}
+.v2-cost-guard span { flex: 1 1 14rem; }
+.v2-cost-guard button { cursor: pointer; padding: .2rem .65rem; border: 1px solid #d97706; border-radius: 3px; background: #fff; color: #78350f; }
+/* The category-total row in the cost sheets: one compact line, light in both colour schemes like the
+   line items around it (the generic read-only row turned into a black block in dark mode). */
+#v2-sheet-capex [id^="capex-cattotal-"], #v2-sheet-opex [id^="opex-cattotal-"] {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .1rem .75rem; padding: .25rem .5rem;
+}
+#v2-sheet-capex [id^="capex-cattotal-"] .v2-field-hint, #v2-sheet-opex [id^="opex-cattotal-"] .v2-field-hint {
+  flex: 1 1 16rem; font-size: .72rem; margin: 0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) #v2-sheet-capex .v2-field-readonly, :root:not([data-theme="light"]) #v2-sheet-opex .v2-field-readonly { background: #f3f4f6; color: #111827; }
+  :root:not([data-theme="light"]) #v2-sheet-capex .v2-field-readonly .v2-field-label, :root:not([data-theme="light"]) #v2-sheet-opex .v2-field-readonly .v2-field-label,
+  :root:not([data-theme="light"]) #v2-sheet-capex .v2-field-readonly .v2-field-value, :root:not([data-theme="light"]) #v2-sheet-opex .v2-field-readonly .v2-field-value { color: #111827; }
+  :root:not([data-theme="light"]) #v2-sheet-capex .v2-field-readonly .v2-field-hint, :root:not([data-theme="light"]) #v2-sheet-opex .v2-field-readonly .v2-field-hint { color: #4b5563; }
+}
+:root[data-theme="dark"] #v2-sheet-capex .v2-field-readonly, :root[data-theme="dark"] #v2-sheet-opex .v2-field-readonly { background: #f3f4f6; color: #111827; }
+:root[data-theme="dark"] #v2-sheet-capex .v2-field-readonly .v2-field-label, :root[data-theme="dark"] #v2-sheet-opex .v2-field-readonly .v2-field-label,
+:root[data-theme="dark"] #v2-sheet-capex .v2-field-readonly .v2-field-value, :root[data-theme="dark"] #v2-sheet-opex .v2-field-readonly .v2-field-value { color: #111827; }
+:root[data-theme="dark"] #v2-sheet-capex .v2-field-readonly .v2-field-hint, :root[data-theme="dark"] #v2-sheet-opex .v2-field-readonly .v2-field-hint { color: #4b5563; }
+
 .v2-cost-state { font-size: .68rem; color: #4b5563; }
 .v2-cost-row[data-save-state="failed"] .v2-cost-state,
 .v2-cost-row[data-save-state="invalid"] .v2-cost-state { color: #b91c1c; font-weight: 600; white-space: normal; }
@@ -3443,3 +3487,4 @@ form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #
 .v2-kpi-tile[data-kpi-drill] { cursor: pointer; }
 .v2-kpi-tile[data-kpi-drill]:hover { box-shadow: 0 0 0 1px #93c5fd; }
 .v2-kpi-tile[data-kpi-drill]:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.v2-cost-action.v2-cost-stage-btn { width: auto; height: auto; padding: .2rem .65rem; line-height: 1.3; }

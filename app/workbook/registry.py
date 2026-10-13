@@ -886,7 +886,14 @@ _rv_ev_charging = _section("ev_charging", "EV Charging Drivers", _RV, order=4, f
                            "this value does not enter the EV economics in V1."),
 ])
 
-_SHEET_REVENUE = _sheet(_RV, "Revenue", [_rv_ppa, _rv_balancing, _rv_merchant, _rv_data_center, _rv_ev_charging], icon="💰", order=3)
+_rv_multistream = _section("multistream", "Dated Revenue Contracts", _RV, order=5, fields=[
+    _f("revenue.multistream.contracts", "Revenue contracts", "rev_multistream_config_json",
+       FieldType.TEXT, _RV, "multistream", kind=FieldKind.INPUT, persisted=True,
+       source_of_truth=SourceOfTruth.INPUT_SET, engine_path="revenue.multistream_config_json",
+       scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+       editable=True, description="Explicit Solar/Wind PPA, Merchant and two-way CfD contracts; same-period settlement only.")
+])
+_SHEET_REVENUE = _sheet(_RV, "Revenue", [_rv_ppa, _rv_balancing, _rv_merchant, _rv_data_center, _rv_ev_charging, _rv_multistream], icon="💰", order=3)
 
 # ── Technology-conditional field visibility (V2 Workbook) ────────────────────
 # Data Center shows the Data Center section and hides renewable-only controls;
@@ -900,7 +907,7 @@ EV_CHARGING_FIELD_IDS: frozenset[str] = frozenset(f.field_id for f in _rv_ev_cha
 # Renewable-only controls that must never render as primary Data Center inputs.
 DC_RENEWABLE_EXCLUDED_FIELD_IDS: frozenset[str] = frozenset(
     f.field_id
-    for section in (_rv_ppa, _rv_balancing, _rv_merchant)
+    for section in (_rv_ppa, _rv_balancing, _rv_merchant, _rv_multistream)
     for f in section.fields
 ) | {
     f"{_PS}.technical.p50_hours",
@@ -910,7 +917,7 @@ DC_RENEWABLE_EXCLUDED_FIELD_IDS: frozenset[str] = frozenset(
 # Renewable/PPA controls that must never render as primary EV Charging inputs.
 EV_RENEWABLE_EXCLUDED_FIELD_IDS: frozenset[str] = frozenset(
     f.field_id
-    for section in (_rv_ppa, _rv_balancing, _rv_merchant)
+    for section in (_rv_ppa, _rv_balancing, _rv_merchant, _rv_multistream)
     for f in section.fields
 ) | {
     f"{_PS}.technical.p50_hours",
@@ -937,6 +944,11 @@ def is_data_center_project_type(project_type: str | None) -> bool:
 _DT = "debt"
 
 _dt_senior = _section("senior", "Senior Debt Inputs", _DT, order=0, fields=[
+    _f("debt.financing.instruments", "Two-Senior configuration", "financing_instruments_json",
+       FieldType.TEXT, _DT, "senior", kind=FieldKind.INPUT, persisted=True,
+       source_of_truth=SourceOfTruth.INPUT_SET, engine_path="financing_collection",
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True, description="Versioned scenario-scoped proposal with explicit activation; canonical Run consumes only the selected scope.", order=5),
     _f("debt.bankability.configuration", "Bankability configuration", "bankability_config_json",
        FieldType.TEXT, _DT, "senior", kind=FieldKind.INPUT, persisted=True,
        source_of_truth=SourceOfTruth.INPUT_SET, engine_path="financing",
@@ -1069,6 +1081,17 @@ _SHEET_TAX = _sheet(_TX, "Tax", [_tx_assumptions], icon="📋", order=5)
 # Singleton
 # ---------------------------------------------------------------------------
 
+_SHEET_INVESTOR = _sheet("investor", "Investor", [
+    _section("agreement", "Common-equity agreement", "investor", order=0, fields=[
+        _f("investor.agreement.common_equity", "Investor agreement", "investor_agreement_json",
+           FieldType.TEXT, "investor", "agreement", kind=FieldKind.INPUT, persisted=True,
+           source_of_truth=SourceOfTruth.INPUT_SET,
+           engine_path="F4/P1 downstream canonical net-equity receipt allocation",
+           scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+           editable=True, description="Explicit dated common-equity contributions and residual-only ownership; no ROC, NAV, carry or SHL allocation.")
+    ])
+], icon="", order=6)
+
 WORKBOOK = WorkbookSpec(
     version="2.3.0",
     sheets=(
@@ -1078,5 +1101,6 @@ WORKBOOK = WorkbookSpec(
         _SHEET_REVENUE,
         _SHEET_DEBT,
         _SHEET_TAX,
+        _SHEET_INVESTOR,
     ),
 )

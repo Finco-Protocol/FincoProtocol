@@ -1,0 +1,18 @@
+{% extends "trust/base.html" %}
+{% import "trust/_macros.html" as m %}
+{% block body %}
+<p>Taken live from the product capability registry, so this page cannot drift from what the product offers.</p>
+<div class="tr-scroll"><table class="tr-table">
+<thead><tr><th>Vertical</th><th>Status</th><th>Reference</th><th>Run</th><th>Clone</th><th>Edit working copy</th><th>Last Run</th><th>API</th><th>Export</th></tr></thead>
+<tbody>{% for r in matrix %}<tr>
+<th scope="row">{{ r.name }}</th><td>{{ r.status|replace("_"," ")|title }}</td>
+{% for f in (r.reference, r.runnable, r.cloneable, r.editable, r.last_run, r.api, r.export) %}<td>{{ "Yes" if f else "No" }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+</table></div>
+<h2>Known limitations by vertical</h2>
+{% for r in matrix %}{% if r.limitations or r.note %}<article class="tr-item"><header><h3>{{ r.name }}</h3></header>
+{% if r.note %}<p>{{ r.note }}</p>{% endif %}<ul class="tr-plain">{% for l in r.limitations %}<li>{{ l }}</li>{% endfor %}</ul></article>{% endif %}{% endfor %}
+<h2>Not available today</h2>
+<div class="tr-scroll"><table class="tr-table"><thead><tr><th>Feature</th><th>State</th><th>Detail</th></tr></thead>
+<tbody>{% for u in unavailable %}<tr><th scope="row">{{ u.name }}</th><td>{{ u.state }}</td><td>{{ u.detail }}</td></tr>{% endfor %}</tbody></table></div>
+<p class="tr-note">Radar, Yield and token or wallet features are outside this pack.</p>
+{% endblock %}

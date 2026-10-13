@@ -150,7 +150,7 @@ def test_above_existing_absolute_solver_precision_is_rejected(valid_run):
         authority._require_settled_senior_maturity(evidence(valid_run, residual=1.00001e-4), valid_run.project_inputs)
 
 
-def test_real_small_solver_residual_keeps_existing_integrity_failure():
+def test_real_small_solver_residual_is_preserved_in_post_maturity_balance_sheet():
     from app.run_integrity import build_run_integrity_evidence, run_integrity_checks
     pi = factories.create_generic_solar_reference()
     pi = replace(pi, financing=replace(pi.financing, gearing_ratio=.9, target_dscr=1.3))
@@ -158,8 +158,14 @@ def test_real_small_solver_residual_keeps_existing_integrity_failure():
     closing = run.g2c_result.financing_result.project_model_result.senior_debt.senior_debt_closing_keur[-1]
     assert closing == pytest.approx(2.3221237597681466e-5, abs=1e-12)
     report = run_integrity_checks(build_run_integrity_evidence(run)).to_dict()
-    assert report["overall"] == "FAIL"
-    assert any(c["reason_code"] == "BALANCE_SHEET_IMBALANCE" for c in report["checks"])
+    assert report["overall"] == "PASS"
+    assert all(c["reason_code"] != "BALANCE_SHEET_IMBALANCE" for c in report["checks"])
+    senior = run.g2c_result.financing_result.project_model_result.senior_debt
+    post_maturity = [b for b in run.financial_statements_result.balance_sheet_periods
+                     if b.period_index > senior.period_indices[-1]]
+    assert post_maturity
+    assert all(b.senior_debt_balance_keur == closing for b in post_maturity)
+    assert run.g2c_result.return_summary.terminal.senior.status.value == "OUTSTANDING_AT_MATURITY"
 
 
 def test_zero_funding_not_applicable_requires_actual_zero_schedule(valid_run):

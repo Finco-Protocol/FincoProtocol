@@ -109,7 +109,8 @@ class TestWorkspaceNavMapping:
 
         futures = [item for group in workspace_nav_groups()
                    for item in group.items if not item.available]
-        assert futures, "navigation should declare its future capabilities"
+        # Roadmap placeholders are not primary destinations in Option C.
+        assert not futures
         for item in futures:
             assert item.tab_id is None  # no fake target
 
@@ -117,9 +118,8 @@ class TestWorkspaceNavMapping:
         from app.v2.workspace_shell_projection import workspace_nav_groups
 
         labels = [g.label for g in workspace_nav_groups()]
-        assert labels[0] == "Overview"
-        for expected in ("Model", "Financing", "Outputs", "Analysis",
-                         "Trust", "Delivery"):
+        assert labels[0] == "Project landing"
+        for expected in ("Inputs", "Scenarios", "Outputs", "Analysis", "Trust"):
             assert expected in labels
 
 
@@ -193,12 +193,13 @@ class TestWorkbookShellRender:
         nav_html = page.text.split('id="model-workspace-nav"')[1]
         for tab_id in ("tab-overview", "tab-project-setup", "tab-revenue",
                        "tab-capex", "tab-opex", "tab-debt", "tab-tax",
-                       "tab-fs", "tab-returns", "tab-scenarios",
+                       "tab-outputs", "tab-returns", "tab-scenarios",
                        "tab-sensitivity", "tab-compare", "tab-trust"):
             assert f'data-nav-tab="{tab_id}"' in nav_html
-        # Future items render disabled with truthful titles.
-        assert "v2-ws-nav-item--future" in nav_html
-        assert "not yet available" in nav_html
+        # Roadmap capabilities no longer compete with shipped destinations.
+        nav_only = nav_html.split('</nav>')[0]
+        assert 'data-nav-tab="tab-fs"' not in nav_only
+        assert 'v2-ws-nav-item--future' not in nav_only
 
     def test_deep_link_hash_contract_present(self, seeded_db):
         client, cookies, record = _client_with_project(*VERTICALS[0])

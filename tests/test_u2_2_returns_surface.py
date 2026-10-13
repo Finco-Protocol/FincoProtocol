@@ -744,9 +744,28 @@ def test_f01_scenario_select_oob_replaces_returns_fragment():
             )
 
             # Must NOT contain Scenario A's unique committed equity IRR
-            assert SC_A_IRR_DISPLAY not in html, (
+            # Q3 (FINCO Insight "Scenarios" mode) deliberately lists every scenario's OWN committed Run,
+            # so Scenario A's value may appear there, labelled as Scenario A / HISTORICAL_RUN.  The
+            # invariant this test protects is that no workbook surface (Returns, Overview, ...) shows A's
+            # value for the now-active Scenario B, so the Insight panel is examined separately below.
+            import re as _re
+            panel = _re.search(r'<aside id="model-smart-panel".*?</aside>', html, _re.S)
+            outside_panel = html.replace(panel.group(0), "") if panel else html
+            assert SC_A_IRR_DISPLAY not in outside_panel, (
                 f"Scenario A equity IRR '{SC_A_IRR_DISPLAY}' must not appear after selecting Scenario B"
             )
+            if panel and SC_A_IRR_DISPLAY in panel.group(0):
+                rows = _re.findall(r'<li class="v2-sp-q3-scnrow[^"]*"[^>]*data-scenario-basis="(\w+)">(.*?)</li>',
+                                   panel.group(0), _re.S)
+                holders = [(basis, body) for basis, body in rows if SC_A_IRR_DISPLAY in body]
+                assert holders and all(basis == "HISTORICAL_RUN" for basis, _ in holders), (
+                    "Scenario A's value may only appear as Scenario A's own historical-run row")
+                assert all("Scenario B" not in body.split("</strong>")[0] for _, body in holders), (
+                    "the now-active Scenario B row must not carry Scenario A's value")
+            # the active-scenario views of the Insight panel (KPI strip) must not carry A's value either
+            strip = _re.search(r'data-testid="kpi-strip".*?</section>|class="v2-kpi-strip".*?</div>', html, _re.S)
+            if strip:
+                assert SC_A_IRR_DISPLAY not in strip.group(0)
 
             # Engine must never be called (Returns is pure presentation)
             waterfall.assert_not_called()

@@ -63,7 +63,7 @@
           {% elif sc.state == "CURRENT" %}
             <span class="v2-scenario-state v2-scenario-state--clean" title="Has authoritative run results">Current</span>
           {% else %}
-            <span class="v2-scenario-state v2-scenario-state--notrun">Not run</span>
+            <span class="v2-scenario-state v2-scenario-state--notrun" title="No separately persisted scenario Run evidence. A legacy reference Last Run may exist independently.">Not run · scenario evidence</span>
           {% endif %}
           {% if sc.run_at_display %}
             <span class="v2-scenario-ts" title="Last run">{{ sc.run_at_display }}</span>

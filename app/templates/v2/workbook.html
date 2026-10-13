@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/static/css/model_v2_decision_support.css">
   <link rel="stylesheet" href="/static/css/model_v2_goal_seek.css">
   <link rel="stylesheet" href="/static/css/model_smart_panel_v2.css">
+  <link rel="stylesheet" href="/static/css/inputs_grid_v1.css">
+  <link rel="stylesheet" href="/static/css/model_workspace_consolidation.css">
 </head>
 <body>
   {# sessionStorage hydration: re-populates schedule data on load without re-run #}
@@ -40,6 +42,10 @@
       <span class="v2-toolbar-sep">·</span>
       {% include "partials/_v2_toolbar_scenario.html" %}
     </div>
+    {% if project_editable %}
+    <a href="/v2/workbook/import?project={{ project_code|urlencode }}"
+       class="v2-toolbar-back" aria-label="Import CSV or XLSX assumptions for review">Import CSV/XLSX</a>
+    {% endif %}
     <nav class="v2-protocol-nav" aria-label="Protocol navigation">
       <a href="/library" aria-current="page">Model</a>
       <a href="/radar">Radar</a>
@@ -65,6 +71,9 @@
     {% endif %}
   </div>
 
+  {# ── WF-05: hybrid navigation + persistent status strip ── #}
+  {% include "partials/_hybrid_nav.html" %}
+
   {# ── UX Foundation: compact workspace header (UX-2) — state from the
      canonical freshness authority; Run binds #v2-canonical-run-form. ── #}
   {% include "partials/_model_workspace_header.html" %}
@@ -80,8 +89,10 @@
      beside the existing sheet surface (#model-workspace-main). The nav
      owns no economics; every available item activates an existing tab. ── #}
   <div class="v2-workspace-body">
+  <button type="button" class="workspace-drawer-toggle" aria-controls="model-workspace-nav" aria-expanded="false" data-workspace-drawer>Sections</button>
   {% include "partials/_model_workspace_nav.html" %}
   <div id="model-workspace-main" class="v2-workspace-main">
+  <button type="button" class="workspace-insight-toggle" aria-controls="model-smart-panel" aria-expanded="false" data-workspace-drawer>FINCO Insight</button>
 
   {# ── Sheet tab navigation ──────────────────────────────────────────── #}
   {# UX Correction A9: the persistent left navigation (#model-workspace-nav)
@@ -107,6 +118,7 @@
     <span class="v2-tab-group-label" aria-hidden="true">Setup</span>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-project-setup"  id="tab-project-setup">Project Setup</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-inputs"          id="tab-inputs">Inputs</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-input-grid"      id="tab-input-grid">Input Grid</button>
     {# OPERATIONS group #}
     <span class="v2-tab-group-sep" aria-hidden="true"></span>
     <span class="v2-tab-group-label" aria-hidden="true">Operations</span>
@@ -121,6 +133,7 @@
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-tax"             id="tab-tax">Tax</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-fs"              id="tab-fs">Financial Statements</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-returns"         id="tab-returns">Returns</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-outputs"         id="tab-outputs">Statements &amp; Debt</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-trust"           id="tab-trust">Trust Pack</button>
     {# Run Intelligence V1: read-only run history + historical compare #}
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-run-history"      id="tab-run-history">Run History</button>
@@ -191,6 +204,12 @@
       </div>
     </div>
 
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-input-grid" aria-labelledby="tab-input-grid" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_input_grid.html" %}
+      </div>
+    </div>
+
     <div class="v2-sheet-panel" role="tabpanel" id="panel-revenue" aria-labelledby="tab-revenue" hidden>
       <div class="v2-sheet-body">
         {% include "partials/sheet_revenue.html" %}
@@ -239,6 +258,16 @@
       </div>
     </div>
 
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-outputs" aria-labelledby="tab-outputs" hidden>
+      <div class="v2-sheet-body">
+        {# Lazy: the output workspace is fetched from /v2/workbook/outputs when this tab is opened. #}
+        <div id="v2-sheet-outputs" data-sheet="outputs" data-testid="outputs-sheet" data-out-state="PENDING"
+             hx-get="/v2/workbook/outputs?project={{ project_code | urlencode }}" hx-trigger="click from:#tab-outputs" hx-swap="outerHTML">
+          <p role="status">Open this tab to load the persisted Statements &amp; Debt output.</p>
+        </div>
+      </div>
+    </div>
+
     <div class="v2-sheet-panel" role="tabpanel" id="panel-trust" aria-labelledby="tab-trust" hidden>
       <div class="v2-sheet-body">
         {% include "partials/sheet_trust.html" %}
@@ -260,7 +289,9 @@
   </div>{# v2-workspace-body #}
 
   <script src="/static/js/workbook_v2.js"></script>
+  <script src="/static/js/investor_f4.js" defer></script>
   <script src="/static/js/model_smart_panel_v2.js"></script>
+  <script src="/static/js/inputs_grid_v1.js"></script>
 
   {# UI-2A: C1 spreadsheet interaction foundation — load order is fixed.
      swap-lifecycle loads before focus-manager so authoritative post-

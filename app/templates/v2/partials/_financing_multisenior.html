@@ -1,0 +1,115 @@
+{% if multisenior is defined %}
+<section data-testid="multisenior-workspace" class="cs-workspace">
+  <h3>Capital stack</h3>
+  {% if not multisenior.available %}
+    <p>{{ multisenior.reason }}</p>
+  {% else %}
+  {% set cs = capital_stack %}
+  <link rel="stylesheet" href="/static/css/model_bankability.css">
+  <link rel="stylesheet" href="/static/css/model_multisenior.css">
+  <link rel="stylesheet" href="/static/css/model_capital_stack.css">
+  {% set editable = project_editable %}
+  {% if not editable %}<p class="v2-protected-notice">Instrument configuration is read-only for this reference project.</p>{% endif %}
+  {% if editable %}
+  <form data-f3-form hx-post="/v2/workbook/update" hx-target="#v2-sheet-senior-debt" hx-swap="outerHTML">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+    <input type="hidden" name="content_hash" value="{{ content_hash }}">
+    <input type="hidden" name="sheet_id" value="debt">
+    <input type="hidden" name="field_id" value="debt.financing.instruments">
+    <input type="hidden" name="value" value="">
+    <script type="application/json" data-f3-state>{{ multisenior.state | tojson }}</script>
+    <script type="application/json" data-f3-entry>{{ multisenior.entry | tojson }}</script>
+    <input type="hidden" data-f3-scope value="{{ multisenior.scope }}">
+    <input type="hidden" data-f3-authority value="{{ multisenior.authority }}">
+  {% endif %}
+    <p class="v2-section-label">WORKING INPUTS · Selected scenario only · <span class="cs-badge cs-{{ cs.status | lower | replace(' ', '-') }}" data-testid="cs-stack-status">{{ cs.status }}</span>
+      · <span data-testid="cs-dirty" data-cs-dirty hidden>● <span data-cs-dirty-count>0</span> unsaved</span></p>
+    <div class="f2-scroll">
+    <table class="cs-table" data-testid="capital-stack-table">
+      <thead><tr><th scope="col"></th><th scope="col">Instrument</th><th scope="col">Type / rank</th><th scope="col">Commitment (kEUR)</th><th scope="col">Ccy</th><th scope="col">Rate (% p.a.)</th><th scope="col">Day-count</th><th scope="col">Repayment</th><th scope="col">Grace (m)</th><th scope="col">Maturity</th><th scope="col">Status</th></tr></thead>
+      {% for r in cs.rows %}
+      {% set i = multisenior.entry.proposal.instruments[loop.index0] %}
+      {% set row_editable = project_editable and r.editable %}
+      <tbody {% if r.editable %}data-f3-instrument="{{ r.instrument_id }}"{% else %}data-cs-readonly-instrument="{{ r.instrument_id }}"{% endif %} data-testid="cs-row">
+        <tr class="cs-row">
+          <td><button type="button" class="cs-expand" data-cs-expand aria-expanded="false" aria-label="Show terms for {{ r.name }}">▸</button></td>
+          <th scope="row">{% if row_editable %}<input data-f3="name" data-cs-cell value="{{ r.name }}" maxlength="120" required aria-label="Facility name">{% else %}{{ r.name }}{% endif %}<span class="cs-mod" data-cs-mod hidden title="Modified, not saved">●</span></th>
+          <td class="cs-type">{{ r.type }}<small>{{ r.rank }}</small></td>
+          <td class="cs-num">{% if row_editable %}<input data-f3="commitment_keur" data-cs-cell type="number" min="0" step="any" value="{{ '%.12g' | format(r.commitment_keur) }}" required aria-label="Commitment kEUR">{% else %}{{ '{:,.2f}'.format(r.commitment_keur) }}{% endif %}</td>
+          <td>{{ r.currency }}</td>
+          <td class="cs-num">{% if row_editable %}<input data-f3="rate_pct" data-cs-cell type="number" min="0" max="100" step="any" value="{{ '%.12g' | format(r.rate_pct) }}" required aria-label="Fixed cash interest percent per annum">{% else %}{{ '%.4g' | format(r.rate_pct) }}{% endif %}</td>
+          <td>{{ r.day_count }}</td>
+          <td>{% if row_editable %}<select data-f3="repayment_mode" data-cs-cell aria-label="Repayment method"><option value="LEVEL_PRINCIPAL" {{ 'selected' if r.repayment_mode == 'LEVEL_PRINCIPAL' }}>Level principal</option><option value="BULLET" {{ 'selected' if r.repayment_mode == 'BULLET' }}>Bullet at maturity</option></select>{% else %}{{ r.repayment }}{% endif %}</td>
+          <td class="cs-num">{% if row_editable %}<input data-f3="grace_months" data-cs-cell type="number" min="0" step="1" value="{{ r.grace_months }}" required aria-label="Principal grace months">{% else %}{{ r.grace_months }}{% endif %}</td>
+          <td>{% if row_editable %}<input data-f3="maturity_date" data-cs-cell type="date" value="{{ r.maturity_date }}" required aria-label="Maturity, operating period end">{% else %}{{ r.maturity_date }}{% endif %}</td>
+          <td><span class="cs-badge cs-{{ r.status | lower | replace(' ', '-') }}" data-testid="cs-row-status">{{ r.status }}</span>{% if r.readiness %}<small class="cs-note" data-testid="cs-junior-readiness">{{ r.readiness }}</small>{% endif %}</td>
+        </tr>
+        <tr class="cs-detail" data-cs-detail hidden>
+          <td></td>
+          <td colspan="10">
+            <div class="cs-terms">
+              <section><h5>Drawdowns</h5>
+                {% if row_editable %}<label>Dated draws (date, kEUR)<textarea data-f3="draws" data-cs-cell rows="3" required>{% for d in i.drawdowns %}{{ d.draw_date }}, {{ d.amount_keur }}{{ '\n' if not loop.last }}{% endfor %}</textarea></label>
+                {% else %}{% for d in r.draws %}<div>{{ d.date }} · {{ '{:,.2f}'.format(d.amount_keur) }}</div>{% endfor %}{% endif %}
+                <p class="cs-note">Scheduled {{ '{:,.2f}'.format(r.draws_total_keur) }} of {{ '{:,.2f}'.format(r.commitment_keur) }} committed (kEUR){% if r.draws_total_keur|round(6) != r.commitment_keur|round(6) %} · <strong>does not reconcile</strong>{% endif %}</p></section>
+              <section><h5>Interest &amp; fees</h5>
+                <p class="cs-note">Fixed cash interest; capitalized IDC and fees during construction.</p>
+                {% if row_editable %}<label>Upfront fee (% commitment)<input data-f3="upfront_pct" data-cs-cell type="number" min="0" max="100" step="any" value="{{ '%.12g' | format(r.upfront_pct) }}" required></label>
+                <label>Commitment fee (% p.a. undrawn)<input data-f3="commitment_pct" data-cs-cell type="number" min="0" max="100" step="any" value="{{ '%.12g' | format(r.commitment_fee_pct) }}" required></label>
+                {% else %}<div>Upfront {{ '%.4g' | format(r.upfront_pct) }}% · Commitment {{ '%.4g' | format(r.commitment_fee_pct) }}%</div>{% endif %}</section>
+              <section><h5>Repayment</h5><p class="cs-note">{{ r.repayment }}; grace {{ r.grace_months }} months; maturity {{ r.maturity_date }} (operating period end). Debt service is pari passu.</p></section>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      {% endfor %}
+    </table>
+    </div>
+    <div class="cs-summary" data-testid="cs-summary-working">
+      <h4>Working inputs <small>not a calculated result</small></h4>
+      <dl>
+        <div><dt>Senior commitments</dt><dd data-testid="cs-working-senior">{{ '{:,.2f}'.format(cs.working.senior_commitments_keur) }} kEUR</dd></div>
+        <div><dt>Junior commitments</dt><dd>0.00 kEUR · not supported for execution</dd></div>
+        <div><dt>Total scheduled draws</dt><dd>{{ '{:,.2f}'.format(cs.working.scheduled_draws_keur) }} kEUR{% if not cs.working.reconciled %} · does not reconcile with commitments{% endif %}</dd></div>
+        <div><dt>Debt-service priority</dt><dd>{{ cs.debt_service_priority }}</dd></div>
+      </dl>
+    </div>
+    {% if editable %}
+    <p>Explicit pari-passu commitments; fixed cash interest; construction-only draws; semiannual operating periods. Fees and IDC are capitalized once. No prefunding, active SHL, DSRA/DSRF, floating rates, DSCR sizing or agency fee in this mode.</p>
+    <label><input data-f3-activate type="checkbox" {{ 'checked' if multisenior.active }} {{ 'disabled' if not multisenior.release_enabled }}> Activate these terms; fund residual Uses with equity only and use reserve NONE</label>
+    {% if not multisenior.release_enabled %}<p data-testid="f3-activation-blocked">Activation is disabled pending complete financial and workflow acceptance. Saved proposals do not affect Run.</p>{% endif %}
+    <p data-f3-error role="alert"></p>
+    <button type="submit" data-f3-save disabled>Save financing proposal</button>
+    {% endif %}
+  {% if editable %}</form>{% endif %}
+  <details class="cs-unsupported" data-testid="cs-unsupported">
+    <summary>Not supported by the engine ({{ cs.unsupported | length }})</summary>
+    <ul>{% for u in cs.unsupported %}<li><span class="cs-badge cs-unsupported-badge">{{ u.status }}</span> <strong>{{ u.name }}</strong> — {{ u.reason }}</li>{% endfor %}</ul>
+  </details>
+  {% if editable %}<script src="/static/js/model_multisenior.js"></script>{% endif %}
+  {% endif %}
+  {% if multisenior.available and multisenior.last_run %}
+  <p class="v2-section-label" data-testid="cs-last-run-label">{{ capital_stack.last_run_label }}</p>
+  <h4>Last Run facility schedules (kEUR)</h4>
+  {% if not capital_stack.last_run_is_current %}<p class="cs-stale" data-testid="cs-last-run-stale">These schedules belong to the previous run and do not reflect the working inputs above. Run the model to refresh them.</p>{% endif %}
+  {% if capital_stack.last_run %}<div class="cs-summary" data-testid="cs-summary-last-run"><dl>
+    <div><dt>Senior commitments (run)</dt><dd>{{ '{:,.2f}'.format(capital_stack.last_run.total_commitment_keur) }} kEUR</dd></div>
+    <div><dt>Construction IDC</dt><dd>{{ '{:,.2f}'.format(capital_stack.last_run.total_idc_keur) }} kEUR</dd></div>
+    <div><dt>Operating interest</dt><dd>{{ '{:,.2f}'.format(capital_stack.last_run.total_operating_interest_keur) }} kEUR</dd></div>
+  </dl></div>{% endif %}
+  {% for f in multisenior.last_run %}
+  <details class="v2-inputs-section"><summary class="v2-inputs-section-summary">{{ f.instrument_id }} · Commitment {{ '%.2f' | format(f.commitment_keur) }}</summary>
+    <h5>Construction: actual dated draws, capitalized costs (kEUR)</h5>
+    <div class="f2-scroll"><table class="f2-table"><thead><tr><th>Period</th><th>Draw</th><th>IDC</th><th>Upfront fee</th><th>Commitment fee</th></tr></thead><tbody>
+    {% for row in multisenior.last_construction %}{% set n = loop.index0 %}<tr><th>{{ row.period_start }} – {{ row.period_end }}</th>{% for key in ['construction_draws_keur', 'construction_idc_keur', 'upfront_fees_keur', 'construction_commitment_fees_keur'] %}<td>{{ '%.2f' | format(f[key][n]) }}</td>{% endfor %}</tr>{% endfor %}
+    </tbody></table></div>
+    <h5>Operating debt service (kEUR)</h5>
+    <div class="f2-scroll"><table class="f2-table"><thead><tr><th>Period index</th><th>Opening</th><th>Interest</th><th>Principal</th><th>Service</th><th>Closing</th></tr></thead><tbody>
+    {% for index in f.period_indices %}{% set n = loop.index0 %}<tr><th>{{ index }}</th>{% for key in ['opening_keur', 'interest_keur', 'principal_keur', 'debt_service_keur', 'closing_keur'] %}<td>{{ '%.2f' | format(f[key][n]) }}</td>{% endfor %}</tr>{% endfor %}
+    </tbody></table></div>
+  </details>
+  {% endfor %}
+  {% endif %}
+</section>
+{% endif %}

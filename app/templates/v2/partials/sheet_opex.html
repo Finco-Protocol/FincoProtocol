@@ -154,7 +154,7 @@
            data-original="{{ plain_num(line.inflation_pct) }}" data-exact="{{ line.inflation_pct }}" aria-label="Escalation % {{ line.code }}"
            data-testid="opex-custom-escl-{{ line.sub_line_id }}">
   </span>
-  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span>{% if last_run_iso and line.row_version and line.row_version > last_run_iso %}<span class="v2-notrun-mark" data-testid="edited-not-run" title="Edited since the Last Run — not yet in the Last Run results" aria-label="Edited since Last Run">●</span>{% endif %}</span>
   <span class="v2-cost-cell v2-cost-state" data-cost-state role="status" aria-live="polite"></span>
   <span class="v2-cost-cell v2-cost-actions">
     <button type="button" class="v2-cost-action v2-opex-duplicate-btn"
@@ -178,7 +178,7 @@
   <span class="v2-cost-cell v2-cost-driver">Fixed <small>kEUR/yr</small></span>
   <span class="v2-cost-cell v2-cost-amount v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
   <span class="v2-cost-cell v2-cost-escl v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
-  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span></span>
+  <span class="v2-cost-cell v2-cost-source"><span class="v2-binding-badge {{ src_cls }}">{{ src }}</span>{% if last_run_iso and line.row_version and line.row_version > last_run_iso %}<span class="v2-notrun-mark" data-testid="edited-not-run" title="Edited since the Last Run — not yet in the Last Run results" aria-label="Edited since Last Run">●</span>{% endif %}</span>
 </div>
 {%- endif %}
 {% endmacro %}
@@ -232,6 +232,19 @@
   <span id="v2-cost-authority-opex" hidden data-content-hash="{{ content_hash }}"
         data-workbook-version="{{ workbook_version }}"></span>
 
+  {% if project_editable %}
+  {# Batch editing is the default: edits are staged and saved TOGETHER in one atomic transaction
+     (POST /v2/workbook/grid/cost-lines/save).  Unticking the box selects the per-row immediate mode. #}
+  <div class="v2-cost-stagebar" data-cost-stagebar role="group" aria-label="Save cost edits together">
+    <label class="v2-cost-stage-toggle"><input type="checkbox" data-cost-stage-toggle data-testid="cost-stage-toggle" checked> Save edits together</label>
+    <span class="v2-cost-stage-count" data-cost-stage-count data-testid="cost-stage-count" role="status" aria-live="polite"></span>
+    <button type="button" class="v2-cost-action v2-cost-stage-btn v2-cost-stage-primary" data-cost-stage-save data-testid="cost-stage-save" disabled>Save <kbd>Ctrl+S</kbd></button>
+    <button type="button" class="v2-cost-action v2-cost-stage-btn" data-cost-stage-discard data-testid="cost-stage-discard" disabled>Discard</button>
+    <span class="v2-cost-stage-msg" data-cost-stage-msg data-testid="cost-stage-msg" role="status" aria-live="polite"></span>
+    <span class="v2-cost-mode-hint" data-cost-mode-hint data-testid="cost-mode-hint"></span>
+  </div>
+  {% endif %}
+
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
       Reference project — create a working copy to edit.
@@ -249,7 +262,7 @@
   <div class="v2-sheet-section-heading"><span>OPEX Summary</span><small>Year 1 cost, unit metrics and contingency</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
   <div id="opex-kpi-region" class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
     <div class="v2-opex-kpi-item">
-      <span class="v2-opex-kpi-label">OPEX Y1</span>
+      <span class="v2-opex-kpi-label">OPEX Y1 · including applied contingency</span>
       <span class="v2-opex-kpi-value" data-testid="opex-y1-total">
         {{ "%.0f"|format(opex_vm.y1_total_opex) }}
       </span>
@@ -366,6 +379,7 @@
     <span class="v2-opex-col-escl">Escalation %</span>
     <span class="v2-opex-col-status">Status</span>
   </div>
+  <p class="v2-cost-grid-hint" data-testid="cost-grid-hint">{% if project_editable %}Click an amount to edit. <kbd>Enter</kbd> commits and moves down, <kbd>Shift+Enter</kbd> up, <kbd>Esc</kbd> cancels this cell, <kbd>Tab</kbd> moves across.{% else %}Read-only reference cost lines. Create a working copy to edit.{% endif %}</p>
 
   {# ── Canonical B.01–B.13 groups (always 13, fixed order) ─────── #}
   <div class="v2-sheet-section-heading"><span>Detailed OPEX</span><small>Reference-scaled operating cost lines and escalation</small></div>
@@ -395,7 +409,7 @@
           {%- elif not sg.has_vm_data -%}
             <span class="v2-binding-badge v2-opex-badge-engine" data-testid="badge-engine-{{ sg.code }}">Calculated</span>
           {%- elif sg.is_bound -%}
-            <span class="v2-binding-badge v2-opex-badge-bound">Editable</span>
+            <span class="v2-binding-badge v2-opex-badge-bound">{{ 'Editable' if project_editable else 'Read-only · bound' }}</span>
           {%- elif sg.field and sg.field.binding_label == "partial" -%}
             <span class="v2-binding-badge v2-opex-badge-partial">Calculated</span>
           {%- elif sg.field -%}
