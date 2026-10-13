@@ -220,6 +220,13 @@ def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
                              "reason": intel.cross_venue.reason}
                             if intel.cross_venue else None),
         }
+    # Existing crypto.api gate and Tokenized history/dislocation gates remain
+    # the sole access authorities; no new endpoint and no request acquisition.
+    # Additive versioned read-model field; historical, NEVER a current quote.
+    if result.get("deepstate_history") is not None and "intelligence" in data:
+        from dataclasses import asdict
+        data["intelligence"]["deepstate_historical_market"] = asdict(
+            result["deepstate_history"])
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
         "tokenized.detail", "AVAILABLE", data,
         canonical_id=canonical_asset_id, access=gates.public_view(),
