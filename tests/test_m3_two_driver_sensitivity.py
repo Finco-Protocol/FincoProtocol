@@ -165,15 +165,21 @@ def test_legitimately_unavailable_metric_is_unavailable_not_zero(env, fake):
 
 
 def test_real_run_supplies_sponsor_and_schedule_metrics_from_the_same_run(env):
-    from app.api.project_runner import run_project  # noqa: F401  (oracle uses it)
+    """One real evaluation through the worker: summary-sourced metrics equal the canonical run's own summaries."""
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services import sensitivity_matrix as svc
     record = env.create("solar")
-    sponsor = _post(env, record, driver_a="capex", driver_b="opex", metric="pure_equity_moic")
-    cells = _cells(sponsor.text)
-    assert sponsor.status_code == 200 and cells[(1, 1)][0] == "OK", sponsor.text[:300]
+    basis = svc.resolve_basis(workspace_owner=USER, project_record=record,
+                              ws=get_workspace_state(USER, record.project_id), scenario_id=None)
+    pre, pis, _info = svc.pre_financing_inputs(basis, [])
+    kpis = svc.run_matrix_points("Solar", [svc.materialise_financing(basis, pre, pis)])[0]["kpis"]
     oracle = _oracle_result(record, "Solar", [])
-    expected = oracle["sponsor_schedule"]["summary"]["pure_equity_moic"]
-    shown = float(_cell_values(sponsor.text)[(1, 1)].rstrip("x"))
-    assert shown == pytest.approx(expected, abs=0.006)
+    summary = oracle["sponsor_schedule"]["summary"]
+    assert kpis["pure_equity_moic"] == pytest.approx(summary["pure_equity_moic"], rel=1e-12)
+    assert kpis["sponsor_moic"] == pytest.approx(summary["total_sponsor_moic"], rel=1e-12)
+    assert kpis["pure_equity_moic"] != kpis["sponsor_moic"]            # distinct fields, never inferred from each other
+    assert kpis["target_dscr"] == oracle["debt_schedule"]["summary"]["target_dscr"]
+    assert kpis["equity_irr"] == pytest.approx(oracle["kpis"]["equity_irr"], rel=1e-12)
 
 
 # ── canonical-run parity (independent construction) ─────────────────────────────────────────────────────────────
@@ -255,6 +261,9 @@ def test_cells_match_independent_combined_shock_runs(env, kind, key, a, b, shock
     assert response.status_code == 200, response.text[:300]
     cells, values = _cells(response.text), _cell_values(response.text)
     assert set(cells) == {(i, j) for i in range(3) for j in range(3)} and all(s == "OK" for s, _ in cells.values())
+    # zero/zero is the unshocked base model and is reused as Base (no separate evaluation)
+    assert "Base is the Base/Base cell." in response.text
+    assert re.search(r'data-testid="matrix-base">([^<(]*)', response.text).group(1).strip() == values[(1, 1)]
     levels = (-10.0, 0.0, 10.0)
     for (i, j) in ((0, 0), (2, 2), (0, 2), (2, 0), (1, 1)):          # corners (both shocks live) + Base/Base
         shocks, fields = [], {}
@@ -271,29 +280,17 @@ def test_cells_match_independent_combined_shock_runs(env, kind, key, a, b, shock
     assert len({values[(0, 0)], values[(2, 0)], values[(0, 2)], values[(1, 1)]}) == 4
 
 
-def test_base_cell_equals_unshocked_base_and_is_reused(env):
+def test_interest_rate_and_gearing_use_canonical_field_inputs(env):
     record = env.create("solar")
-    html = _post(env, record, driver_a="capex", driver_b="opex").text
-    assert "Base is the Base/Base cell." in html
-    base = re.search(r'data-testid="matrix-base">([^<(]*)', html).group(1).strip()
-    assert _cell_values(html)[(1, 1)] == base
-    assert _pct(base) == pytest.approx(_oracle(record, "Solar", [])["equity_irr"], abs=6e-5)
-
-
-def test_interest_rate_and_gearing_use_canonical_field_inputs_and_commute(env):
-    record = env.create("solar")
-    ab = _post(env, record, driver_a="interest_rate", driver_b="gearing", levels_a="-100,0,100", levels_b="-5,0,5")
-    ba = _post(env, record, driver_a="gearing", driver_b="interest_rate", levels_a="-5,0,5", levels_b="-100,0,100")
-    assert ab.status_code == ba.status_code == 200
-    va, vb = _cell_values(ab.text), _cell_values(ba.text)
-    for (i, j), text in va.items():                 # transposed grid: identical numbers, ordering irrelevant
-        assert vb[(j, i)] == text
+    grid = _post(env, record, driver_a="interest_rate", driver_b="gearing", levels_a="-100,0,100", levels_b="-5,0,5")
+    assert grid.status_code == 200 and set(s for s, _ in _cells(grid.text).values()) == {"OK"}
+    values = _cell_values(grid.text)
     pis, _pi, _f = _canonical_pi(record)
     rate0 = float(pis.values["debt.senior.interest_rate_pct"]) * 100.0        # seeded snapshot value is a RATIO
     gear0 = float(pis.values["debt.senior.gearing_pct"])
     oracle = _oracle(record, "Solar", [], field_overrides={"debt.senior.interest_rate_pct": rate0 + 1.0,
                                                            "debt.senior.gearing_pct": gear0 - 5.0})
-    assert _pct(va[(2, 0)]) == pytest.approx(oracle["equity_irr"], abs=6e-5)   # +100 bps, -5 pp
+    assert _pct(values[(2, 0)]) == pytest.approx(oracle["equity_irr"], abs=6e-5)   # +100 bps, -5 pp
 
 
 def test_interest_rate_shock_is_in_basis_points_of_the_typed_rate(env):
@@ -335,11 +332,22 @@ def test_interest_rate_driver_refused_when_bankability_owns_the_rate(env, fake, 
     assert r.status_code == 422 and 'data-code="MATRIX_DRIVER_NOT_APPLICABLE"' in r.text and f.calls == []
 
 
-def test_capex_opex_typed_pair_is_order_independent(env):
+@pytest.mark.parametrize("a,b", [("capex", "opex"), ("capex", "tariff"), ("opex", "interest_rate"),
+                                 ("generation", "gearing"), ("tariff", "interest_rate")])
+def test_driver_order_does_not_change_the_materialised_inputs(env, a, b):
+    """The two shocks commute on the canonical inputs, so A x B and B x A feed the runner the SAME ProjectInputs."""
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services import sensitivity_matrix as svc
     record = env.create("solar")
-    ab = _cell_values(_post(env, record, driver_a="capex", driver_b="opex").text)
-    ba = _cell_values(_post(env, record, driver_a="opex", driver_b="capex").text)
-    assert all(ba[(j, i)] == v for (i, j), v in ab.items())
+    basis = svc.resolve_basis(workspace_owner=USER, project_record=record,
+                              ws=get_workspace_state(USER, record.project_id), scenario_id=None)
+    sa, sb = proj.DRIVERS[a], proj.DRIVERS[b]
+    la, lb = sa.defaults_for(3)[2], sb.defaults_for(3)[0]
+    forward, _p1, _i1 = svc.pre_financing_inputs(basis, [(sa, la), (sb, lb)])
+    reverse, _p2, _i2 = svc.pre_financing_inputs(basis, [(sb, lb), (sa, la)])
+    assert forward == reverse
+    unshocked, _p3, _i3 = svc.pre_financing_inputs(basis, [])
+    assert forward != unshocked                                               # both shocks are live
 
 
 def test_data_center_pair_runs_and_renewable_drivers_are_rejected(env):
