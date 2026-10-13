@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/static/css/model_smart_panel_v2.css">
   <link rel="stylesheet" href="/static/css/inputs_grid_v1.css">
   <link rel="stylesheet" href="/static/css/model_workspace_consolidation.css">
+  <link rel="stylesheet" href="/static/css/model_diagnostics_v1.css">
 </head>
 <body>
   {# sessionStorage hydration: re-populates schedule data on load without re-run #}
@@ -104,6 +105,7 @@
     {# ANALYSIS group #}
     <span class="v2-tab-group-label" aria-hidden="true">Analysis</span>
     <button class="v2-tab" role="tab" aria-selected="true"  tabindex="0"  aria-controls="panel-overview"       id="tab-overview">Overview</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-diagnostics" id="tab-diagnostics">Model Diagnostics</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-scenarios"      id="tab-scenarios">Scenarios</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-compare"
             id="tab-compare"
@@ -160,6 +162,10 @@
       <div class="v2-sheet-body">
         {% include "partials/sheet_overview.html" %}
       </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-diagnostics" aria-labelledby="tab-diagnostics" hidden>
+      <div class="v2-sheet-body">{% include "partials/sheet_diagnostics.html" %}</div>
     </div>
 
     <div class="v2-sheet-panel" role="tabpanel" id="panel-scenarios" aria-labelledby="tab-scenarios" hidden>
@@ -292,6 +298,7 @@
   <script src="/static/js/investor_f4.js" defer></script>
   <script src="/static/js/model_smart_panel_v2.js"></script>
   <script src="/static/js/inputs_grid_v1.js"></script>
+  <script src="/static/js/model_diagnostics_v1.js"></script>
 
   {# UI-2A: C1 spreadsheet interaction foundation — load order is fixed.
      swap-lifecycle loads before focus-manager so authoritative post-

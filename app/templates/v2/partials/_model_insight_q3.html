@@ -26,6 +26,7 @@
     {% if c.detail %}<dt>Detail</dt><dd>{{ c.detail }}</dd>{% endif %}
   </dl>
   <div class="v2-sp-q3-links">
+    <button type="button" class="v2-sp-action" data-diagnostics-check="{{ c.check_id }}" data-nav-tab="tab-diagnostics">Inspect check in Model Diagnostics</button>
     {% if c.nav %}<button type="button" class="v2-sp-action" data-nav-tab="{{ c.nav.tab_id }}">Open {{ c.nav.label }}</button>{% endif %}
     {% for e in c.explore %}<button type="button" class="v2-sp-action" data-sp-explore="{{ e.value }}">Explore {{ e.label }}</button>{% endfor %}
   </div>
@@ -61,6 +62,7 @@
 {% set q = smart_panel.insight.quality if smart_panel.insight else none %}
 <div class="v2-sp-q3" data-testid="q3-quality" data-q3-state="{{ q.state if q else 'UNAVAILABLE' }}">
   <h3 class="v2-sp-q3-heading">Model quality</h3>
+  <button type="button" class="v2-sp-action" data-nav-tab="tab-diagnostics">Open Model Diagnostics</button>
   <p class="v2-sp-q3-label" data-testid="q3-advisory-label">{{ q.label if q else 'MODEL QUALITY / LENDER READINESS ADVISORY' }}</p>
   {% if not q %}
   <p class="v2-sp-intro" data-testid="q3-unavailable">Model Quality is not available for this view.</p>

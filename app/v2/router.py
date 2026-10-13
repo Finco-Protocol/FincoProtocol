@@ -567,7 +567,7 @@ def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, ru
     quality = build_quality_insight_safe(
         ws, run_state=runtime_state, project_inputs=effective_inputs, active_scenario_id=active_id,
         scenario_name=last_run_scenario_name,
-        register_paths=register_paths, kpi_keys=kpi_keys)
+        register_paths=register_paths, kpi_keys=kpi_keys, include_diagnostics=True)
     # Q4 conditional action availability is presentation-only; no writes, no engine Run.
     # Q1 statuses and Q3 Last Run identities remain unmodified.
     from app.v2.whatif import CANDIDATES as _Q4_CANDIDATES, display_eligibility as _q4_eligible
@@ -2050,6 +2050,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         context["smart_panel"], ws=ws, pis=pis, project_record=project_record,
         workspace_owner=workspace_owner, runtime_state=runtime_freshness.state.value,
         register_view=context.get("assumption_register_view"))
+    context["diagnostics"] = context["smart_panel"].insight["quality"].get("diagnostics")
 
     # UI-3B: inject scenario presentations for the Scenarios tab.
     # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
@@ -3347,6 +3348,34 @@ async def v2_financing_investor(request: Request, project: str):
         context.validate_current()
     except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
         html = '<div id="v2-sheet-investor" role="status">Financing evidence unavailable: workspace changed during response assembly. Reload the workbook to refresh.</div>'
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/workbook/diagnostics")
+async def v2_model_diagnostics(request: Request, project: str):
+    """Coherent read-only refresh after JSON grid Save; reference reads remain permitted."""
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse("", status_code=401, headers={"Cache-Control": "no-store"})
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
+    from app.workbook.workbook_identity import WorkbookIdentityError
+    from app.v2.post_run_ui import _build_smart_panel_oob, _as_oob
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return HTMLResponse("", status_code=404, headers={"Cache-Control": "no-store"})
+    try:
+        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        html = _build_smart_panel_oob(context.workspace, workspace_owner=owner,
+            project_record=context.project_record, project=project,
+            project_editable=not is_protected_reference(context.project_record),
+            freshness=context.freshness, context=context)
+        context.validate_current()
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        unavailable = {"diagnostics": {"state": "UNAVAILABLE", "available": False}}
+        html = "\n".join(_as_oob(_templates.get_template("partials/" + template).render(unavailable), root)
+            for template, root in (("sheet_diagnostics.html", "v2-sheet-diagnostics"),
+                                   ("_model_health.html", "v2-model-health")))
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 

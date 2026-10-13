@@ -161,7 +161,13 @@ def _debt_rows(evidence):
     return rows if isinstance(rows, list) else None
 
 
-def check_senior_rollforward(evidence: Mapping[str, Any]) -> IntegrityCheck:
+def check_senior_rollforward(evidence: Mapping[str, Any], *, terminal_boundary_is_present: bool = True) -> IntegrityCheck:
+    """Canonical rule; a diagnostic prefix is not the schedule's maturity boundary.
+
+    Full-run callers retain the original default and all original inputs/rules.
+    The read-only period adapter alone may omit the final-maturity test for an
+    incomplete prefix, without fabricating a permit_terminal_balloon policy.
+    """
     cid, title = "SENIOR_DEBT_ROLLFORWARD", "Opening + draws - principal = closing"
     rows = _debt_rows(evidence)
     su = _section(evidence, "sources_uses", "summary")
@@ -184,7 +190,7 @@ def check_senior_rollforward(evidence: Mapping[str, Any]) -> IntegrityCheck:
     deviations.append(abs(rows[0]["opening"] - su["senior_debt_keur"]))  # draws sum to the commitment
     result = _verdict(cid, title, deviations, TOL_KEUR, "SENIOR_ROLLFORWARD_BREAK", evaluated=len(rows),
                       detail="period roll-forward, opening-to-closing chain, and first opening = committed senior debt")
-    if result.status is CheckStatus.PASS and not _section(evidence, "senior_debt", "permit_terminal_balloon"):
+    if terminal_boundary_is_present and result.status is CheckStatus.PASS and not _section(evidence, "senior_debt", "permit_terminal_balloon"):
         if rows[-1]["closing"] > TOL_KEUR:
             return IntegrityCheck(cid, title, CheckStatus.FAIL, "SENIOR_TERMINAL_BALANCE_UNREPAID",
                                   len(rows), rows[-1]["closing"], TOL_KEUR)

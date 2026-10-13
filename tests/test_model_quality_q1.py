@@ -524,7 +524,13 @@ class TestIsolation:
         # No broad module or package exemption: engine/core and every other module remain forbidden.
         q3_adapters = {REPO / "app/v2/insight_quality_projection.py", REPO / "app/v2/insight_scenario_projection.py"}
         q4_adapters = {REPO / "app/v2/whatif.py", REPO / "app/v2/whatif_router.py"}
-        allowed_adapters = q3_adapters | q4_adapters
+        # Diagnostics consumes the typed report only; no evaluator/scorer import.
+        # Exact file allowance, not an exemption for the v2 package or engine/core.
+        diagnostics_adapter = REPO / "app/v2/diagnostics_projection.py"
+        allowed_adapters = q3_adapters | q4_adapters | {diagnostics_adapter}
+        diagnostic_imports = [n.module for n in ast.walk(ast.parse(diagnostics_adapter.read_text()))
+                              if isinstance(n, ast.ImportFrom) and n.module and n.module.startswith("app.model_quality")]
+        assert diagnostic_imports == ["app.model_quality.contracts"]
         for root in ("app", "financial_engine", "finco_core"):
             for path in (REPO / root).rglob("*.py"):
                 if "model_quality" in path.parts or path in allowed_adapters:

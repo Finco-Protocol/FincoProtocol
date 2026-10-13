@@ -91,7 +91,7 @@
   // Smart Panel / Key-metrics strip navigation.  Delegated from the document because the panel
   // is replaced out-of-band after every Save and Run.
   document.addEventListener('click', function (evt) {
-    var btn = evt.target.closest && evt.target.closest('#model-smart-panel [data-nav-tab]');
+    var btn = evt.target.closest && evt.target.closest('#model-smart-panel [data-nav-tab], #v2-model-health [data-nav-tab], #v2-sheet-diagnostics [data-nav-tab]');
     if (!btn || btn.disabled) return;
     activate(btn.getAttribute('data-nav-tab'), 'push', btn.getAttribute('data-nav-anchor'));
     var anchor = btn.getAttribute('data-nav-anchor');
