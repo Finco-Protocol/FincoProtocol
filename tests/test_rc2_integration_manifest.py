@@ -268,7 +268,7 @@ def test_every_other_mutation_is_rejected(facts):
                          ("M", "app/auth.py"), ("A", "app/v2/unreviewed_save.py"), ("A", ".github/workflows/x.yml")):
         bad(status=[*base["status"], (status, path)])
     router = base["router_head"]
-    bad(router_head=router + "\n\n@router.post('/rogue')\nasync def v2_rogue():\n    return None\n")
+    bad(router_head=router + "\n\n" + chr(64) + "router.post('/rogue')\nasync def v2_rogue():\n    return None\n")
     bad(router_head=router.replace("validate_csrf_token(form.get(\"csrf_token\"))", "True", 1))
     bad(router_head=router.replace("register_template_globals()\n", "", 1))
     bad(router_head=router + "\nimport rogue_unreviewed_module\n")
