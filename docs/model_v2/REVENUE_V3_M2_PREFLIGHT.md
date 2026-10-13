@@ -139,7 +139,7 @@ Local Windows Python 3.12.10 evidence (normal process exit):
 
 | Acceptance | Result |
 | --- | --- |
-| M2 product/Decimal negatives, canonical single/two-Senior, workbook/scenario/export | 37 passed |
+| M2 product/Decimal negatives, canonical single/two-Senior, workbook/scenario/export | 39 passed (37 full-ring plus 2 explicit legacy CO2 preservation checks) |
 | Explicit real Chromium Solar/Wind product entry, Save/reload, scenario first Save, two Runs | 2 passed |
 | Existing unchanged Revenue runtime/workspace/CSRF/editor/curves regression | 107 passed |
 | Public repository safety scan, compilation, diff hygiene | PASS |

@@ -78,6 +78,29 @@ def test_capacity_kw_and_mw_units_are_equivalent(candidate):
     assert [r["revenue_keur"] for r in first.values()] == [r["revenue_keur"] for r in second.values()]
 
 
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+def test_capacity_and_ancillary_never_clear_legacy_certificates(candidate, kind):
+    pi = getattr(factories, "create_generic_" + kind + "_reference")()
+    pi = replace(pi, revenue=replace(pi.revenue, co2_enabled=True, co2_price_eur=5))
+    raw, _ = book(pi, kind, families=("capacity_market", "ancillary"))
+    original = copy.deepcopy(raw)
+    original["version"] = 2
+    del original["products"], original["environmental_rights"]
+    def output(payload):
+        inputs = apply_config(pi, json.dumps(payload), project_type=kind)
+        assert inputs.revenue.co2_enabled and inputs.revenue.co2_price_eur == 5
+        return revenue_decomposition_schedule(inputs, _build_period_engine(from_project_inputs(inputs)))
+    legacy, current = output(original), output(raw)
+    for index, row in current.items():
+        assert row["co2_revenue_keur"] == legacy[index]["co2_revenue_keur"]
+        if row["is_operation"]:
+            assert row["co2_revenue_keur"] > 0
+            expected = Decimal(str(row["generation_mwh"])) * 5 / 1000
+            assert abs(Decimal(str(row["co2_revenue_keur"])) - expected) < Decimal("1e-9")
+            products = row["multistream_evidence"]["product_revenue_keur"]
+            assert row["revenue_keur"] == pytest.approx(legacy[index]["revenue_keur"] + products, abs=1e-8)
+
+
 @pytest.mark.parametrize("fault", ["bundled", "sold", "missing-right", "duplicate-right", "overlay-right", "volume", "duplicate-id", "duplicate-claim",
     "negative", "nan", "bool", "missing-price", "unknown-key", "dispatch", "wrong-unit", "lag", "missing-period", "bad-date", "duplicate-period",
     "pool-overlap", "pool-overcommit", "inconsistent-pool", "wrong-technology", "legacy-certificates"])
