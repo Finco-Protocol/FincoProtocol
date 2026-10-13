@@ -310,3 +310,11 @@ def test_deepstate_bad_execution_block_timestamp_distinct_from_collection(store)
         earlier.ts, second.ts}
     assert {x.block_number for x in result.evidence} == {
         earlier.payload["block_number"], second.payload["block_number"]}
+
+
+def test_execution_price_must_reconcile_to_canonical_raw_fill(store):
+    corrupted = replace(_fill(), price="1234")
+    store.append_observation(corrupted)
+    result = _read(store)
+    assert result.evidence[0].evidence_state == "INVALID_MARKET_EVIDENCE"
+    assert result.historical_comparisons[0].divergence_bps is None
