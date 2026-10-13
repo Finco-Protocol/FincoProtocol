@@ -135,6 +135,8 @@ def main() -> int:
                     return {k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1) for k in ("content_hash", "workbook_version")}
 
                 def post(page, path, data):
+                    if path == "/v2/workbook/update" and data.get("field_id") == "debt.financing.instruments":
+                        data = dict(data, csrf_token=page.locator('[data-f3-form] [name="csrf_token"]').input_value())
                     return page.request.post(f"{url}{path}", form=data, headers={"HX-Request": "true"})
 
                 READY_JS = """([code, state, notSnapshot, snapshot]) => {

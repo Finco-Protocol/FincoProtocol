@@ -78,6 +78,10 @@ def run_case(kind: str, client, cookie_user: str) -> dict:
     def page():
         return client.get(f"/v2/workbook?project={rec.project_code}")
 
+    def bound_csrf(html):
+        """The Capital Stack form issues a session/project-bound CSRF token; read it from the DOM like a browser."""
+        return re.search(r'<form[^>]*data-f3-form.*?name="csrf_token" value="([^"]+)"', html, re.S).group(1)
+
     def tokens(html):
         return (re.search(r'name="content_hash" value="([^"]+)"', html).group(1),
                 re.search(r'name="workbook_version" value="([^"]+)"', html).group(1))
@@ -85,9 +89,11 @@ def run_case(kind: str, client, cookie_user: str) -> dict:
     ws0 = get_workspace_state(cookie_user, rec.project_id)
     pi = ProjectInputSet.from_snapshot(ws0.draft_snapshot).to_projectinputs()
     raw = state(active=True, collection=collection_for_inputs(pi))
-    h, v = tokens(page().text)
+    editor = page().text
+    h, v = tokens(editor)
     saved = client.post("/v2/workbook/update", data={"field_id": config.FIELD_ID, "value": raw, "project": rec.project_code,
-                        "workbook_version": v, "content_hash": h, "sheet_id": "debt"}, headers={"HX-Request": "true"})
+                        "workbook_version": v, "content_hash": h, "sheet_id": "debt", "csrf_token": bound_csrf(editor)},
+                        headers={"HX-Request": "true"})
     recon.add("F3 proposal + activation saved through the workspace CAS", saved.status_code == 200 and "field-error" not in saved.text)
     h, v = tokens(page().text)
     ran = client.post("/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
@@ -269,9 +275,11 @@ def run_case(kind: str, client, cookie_user: str) -> dict:
     edited = json.loads(raw)
     edited["scopes"]["base"]["proposal"]["instruments"][0]["interest"]["fixed_rate"] = 0.05
     edited["scopes"]["base"]["activation"]["proposal_digest"] = "BIND_ON_SAVE"
-    h, v = tokens(page().text)
+    editor = page().text
+    h, v = tokens(editor)
     edit_resp = client.post("/v2/workbook/update", data={"field_id": config.FIELD_ID, "value": json.dumps(edited), "project": rec.project_code,
-                            "workbook_version": v, "content_hash": h, "sheet_id": "debt"}, headers={"HX-Request": "true"})
+                            "workbook_version": v, "content_hash": h, "sheet_id": "debt", "csrf_token": bound_csrf(editor)},
+                            headers={"HX-Request": "true"})
     ws_after = get_workspace_state(cookie_user, rec.project_id)
     entry_after = get_latest_history_entry(cookie_user, rec.project_id)
     recon.add("a later draft edit marks the Run STALE and leaves the committed Run, integrity evidence and Run History untouched",

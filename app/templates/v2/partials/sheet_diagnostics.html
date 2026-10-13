@@ -1,0 +1,73 @@
+{% set d = diagnostics if diagnostics is defined else none %}
+{# Presentation-only institutional precision; JSON and canonical evidence stay raw. #}
+{% macro number(value, unit='') -%}
+{%- if value is none -%}—{%- elif value is number -%}
+{%- if value == 0 -%}0
+{%- elif value | abs < 0.005 -%}{{ '%.3e' | format(value) }}
+{%- elif unit | lower in ['ratio', 'multiple', 'x', 'times'] -%}{{ '%.3f' | format(value) }}
+{%- else -%}{{ '%.2f' | format(value) }}
+{%- endif -%}
+{%- else -%}{{ value }}
+{%- endif -%}
+{%- endmacro %}
+{# Run timestamps are server-generated runtime metadata: show whole seconds; the full-precision instant stays in datetime="" and in evidence. #}
+{% macro stamp(value) -%}
+{%- if value is none or value == '' -%}UNAVAILABLE
+{%- else -%}
+{%- set s = value | string -%}{%- set parts = s.split('.') -%}
+{%- if parts | length == 2 -%}
+{%- set ns = namespace(n=0, done=false) -%}
+{%- for ch in parts[1] -%}{%- if not ns.done and ch in '0123456789' %}{% set ns.n = ns.n + 1 %}{% else %}{% set ns.done = true %}{% endif -%}{%- endfor -%}
+<time datetime="{{ s }}">{{ parts[0] }}{{ parts[1][ns.n:] }}</time>
+{%- else -%}<time datetime="{{ s }}">{{ s }}</time>
+{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+<div id="v2-sheet-diagnostics" class="md-workspace" data-sheet="diagnostics" data-state="{{ d.state if d else 'NOT_RUN' }}">
+  <header><h1>Model Diagnostics</h1><p>{{ project_name | default('Project') }} · Committed Last Run only</p></header>
+  {% if not d or not d.available %}
+  {% if d and d.state == 'UNAVAILABLE' %}
+  <p role="status">Diagnostics UNAVAILABLE: committed evidence could not be resolved. No score or passing periods are inferred.</p>
+  {% else %}
+  <p role="status">Diagnostics unavailable: no evaluated committed Last Run. No score or passing periods are estimated.</p>
+  {% endif %}
+  {% else %}
+  <script type="application/json" data-md-payload>{{ d | tojson }}</script>
+  <p role="status">{{ d.state }}{% if d.state == 'STALE' %} — HISTORICAL evidence of the prior Run; Working Copy changes are not evaluated{% endif %} · Scenario: {{ d.scenario_name or 'UNAVAILABLE' }}</p>
+  <dl class="md-identity"><dt>Snapshot</dt><dd>{{ d.identity.snapshot_id or 'UNAVAILABLE' }}</dd><dt>Run time</dt><dd>{{ stamp(d.identity.run_at) }}</dd><dt>Composite hash</dt><dd>{{ d.identity.composite_hash or 'UNAVAILABLE' }}</dd><dt>Engine</dt><dd>{{ d.identity.engine_version or 'UNAVAILABLE' }}</dd></dl>
+  <p>Run Integrity: <strong>{{ d.integrity.overall }}</strong> · Quality advisory: <strong>{{ d.score.score_display or 'NOT SCORED' }}</strong> · Weighted coverage: {{ number(d.score.coverage_weighted_pct, '%') }}% · Blocking: {{ d.blocking_count }}</p>
+  <p data-md-counts>{{ d.score.counts.fail }} FAIL · {{ d.score.counts.warning }} WARNING · {{ d.score.counts.pass }} PASS · {{ d.score.counts.unavailable }} UNAVAILABLE · {{ d.score.counts.not_applicable }} NOT_APPLICABLE</p>
+  <p class="md-note">Project thresholds are not verified contractual covenants. Quality, Integrity and period diagnostics are separate scopes, not independent asset verification.</p>
+  <div class="md-filters">
+    <label>Status <select data-md-status><option value="">All checks</option>{% for status in ['FAIL','WARNING','PASS','UNAVAILABLE','NOT_APPLICABLE'] %}<option>{{ status }}</option>{% endfor %}</select></label>
+    <label>Category <select data-md-category><option value="">All categories</option>{% for category in d.checks | map(attribute='category') | unique %}<option>{{ category }}</option>{% endfor %}</select></label>
+    <label>Find check <input type="search" data-md-search placeholder="Check ID or name"></label>
+    <span role="status" data-md-filter-count></span>
+  </div>
+  {% if d.truncated %}<p>Showing the first {{ d.columns | length }} of {{ d.total_periods }} persisted periods. Aggregate verdict covers the entire Run; use the authoritative schedule for the remaining horizon.</p>{% endif %}
+  {% for category in d.groups %}
+  <details class="md-category" open data-md-group><summary>{{ category.category | replace('_', ' ') }}</summary>
+    <div class="md-scroll" tabindex="0" aria-label="{{ category.category }} timeline">
+    <table class="md-matrix"><thead><tr><th scope="col">Check</th><th scope="col">Overall</th><th scope="col">Measured / residual</th><th scope="col">Threshold / tolerance</th>{% for p in d.columns %}<th scope="col" title="{{ p.date or 'DATE_UNAVAILABLE' }}">{{ p.label }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for c in category.checks %}<tr data-md-row data-check-id="{{ c.check_id }}" data-status="{{ c.status }}" data-category="{{ c.category }}" data-search="{{ (c.check_id ~ ' ' ~ c.title) | lower }}">
+        <th scope="row"><button type="button" data-md-select="{{ c.check_id }}">{{ c.title }}<small>{{ c.check_id }} · {{ c.severity }}</small>{% if c.global_component and c.global_component.status == 'FAIL' %}<small>GLOBAL / BOUNDARY FAIL — inspect details</small>{% endif %}</button></th>
+        <td><span class="md-status md-{{ c.status | lower }}">{{ c.status }}</span></td><td>{{ number(c.measured_value, c.measured_unit) }} {{ c.measured_unit }}</td><td>{{ number(c.threshold_value, c.measured_unit) }}</td>
+        {% for p in c.periods %}<td><button type="button" class="md-cell md-{{ p.status | lower }}" data-md-select="{{ c.check_id }}" data-md-period="{{ p.period_index }}" aria-label="{{ c.title }} · {{ p.date or p.period_index }} · {{ p.status }} · {{ p.scope }}" title="{{ p.status }} · {{ p.scope }} · {{ p.reason or 'Evaluated by canonical validator' }}">{{ {'PASS':'✓','FAIL':'✕','NOT_APPLICABLE':'N/A','UNAVAILABLE':'?','AGGREGATE_ONLY':'Σ','NOT_PERIODIC':'—'}.get(p.status,p.status) }}</button></td>{% endfor %}
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </details>{% endfor %}
+  <p class="md-note">✓ PASS · ✕ FAIL · ? UNAVAILABLE · N/A NOT_APPLICABLE · Σ AGGREGATE_ONLY · — NOT_PERIODIC. A cumulative cell includes continuity and all earlier debt periods. Global prerequisites remain visible in details.</p>
+  <section class="md-detail" data-md-detail hidden aria-label="Selected check evidence" tabindex="-1">
+    <h2 data-md-detail-title></h2><dl data-md-detail-facts></dl>
+    <button type="button" data-md-schedule>Open authoritative schedule</button>
+    <p>Sheet navigation only: exact-period deep linking is not supported; no underlying schedule row is claimed selected.</p>
+  </section>
+  <details class="md-waterfall" data-md-waterfall><summary>Committed financial evidence / waterfall inspector (kEUR)</summary>
+    <p>Copied persisted lines, not a new cash waterfall. Missing is UNAVAILABLE, never zero.</p>
+    <div class="md-scroll" tabindex="0" aria-label="Persisted financial evidence timeline"><table class="md-matrix"><thead><tr><th>Evidence line</th>{% for p in d.columns %}<th data-md-column="{{ p.index }}">{{ p.label }}</th>{% endfor %}</tr></thead><tbody>
+    {% for line in d.waterfall %}<tr><th title="{{ line.source }}">{{ line.label }}</th>{% for v in line['values'] %}<td data-md-column="{{ d.columns[loop.index0].index }}">{{ number(v, line.unit) if v is not none else 'UNAVAILABLE' }}</td>{% endfor %}</tr>{% endfor %}
+    </tbody></table></div>
+  </details>
+  <details><summary>Run Integrity results (including applicable Junior Debt)</summary><ul>{% for c in d.integrity.checks %}<li>{{ c.title }} · {{ c.status }} · {{ c.reason_code or 'evaluated' }}</li>{% endfor %}</ul></details>
+  {% endif %}
+</div>

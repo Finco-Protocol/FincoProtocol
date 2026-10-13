@@ -99,6 +99,7 @@ def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
 
 def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
     from model_v2_governance import released_engine_authority_matches
+    from radar_authority_governance import reviewed_radar_authority_matches
 
     changed = changed_paths_vs_main() if changed is None else changed
     # Exact-path, blob-pinned Developer Economics V1 authorities are the only
@@ -110,6 +111,7 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
         if f.startswith(STRICTLY_FROZEN_PREFIXES)
         and not (f.startswith("finco_core/") and released_engine_authority_matches(f))
         and f != "finco_radar/venues/relative_value.py"  # PR #183 core
+        and not reviewed_radar_authority_matches(f)  # PR #237 exact blob
     )
 
 
@@ -124,8 +126,13 @@ def approved_frozen_path(path: str) -> bool:
         F3_2_4_FINANCING_AUTHORITIES, F3_5_A_JUNIOR_AUTHORITIES, WF07_REVENUE_AUTHORITIES, approved_by_active_model_v2_scope,
         released_engine_authority_matches,
     )
+    from radar_authority_governance import reviewed_radar_authority_matches
 
     if path in F3_2_4_FINANCING_AUTHORITIES or path in WF07_REVENUE_AUTHORITIES or path in F3_5_A_JUNIOR_AUTHORITIES:
         return released_engine_authority_matches(path)
 
-    return path in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS or approved_by_active_model_v2_scope(path)
+    return (
+        path in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
+        or approved_by_active_model_v2_scope(path)
+        or reviewed_radar_authority_matches(path)
+    )

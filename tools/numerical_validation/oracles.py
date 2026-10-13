@@ -89,3 +89,101 @@ def discounted_cashflows(cashflows, period_discount_factors, npv, *, tolerance) 
         Decimal(0),
     )
     return check("discounted_cashflows", npv, expected, tolerance=tolerance)
+
+
+# ── F3.9 additions: further bounded identities, still independent of every production module ──────────
+
+def debt_service(interest, principal, reported_debt_service, *, tolerance) -> OracleResult:
+    return check("debt_service", reported_debt_service,
+                 _decimal(interest, "interest") + _decimal(principal, "principal"), tolerance=tolerance)
+
+
+def ebitda(revenue, opex, reported_ebitda, *, tolerance) -> OracleResult:
+    return check("ebitda", reported_ebitda, _decimal(revenue, "revenue") - _decimal(opex, "opex"), tolerance=tolerance)
+
+
+def ebit(revenue, opex, depreciation, reported_ebit, *, tolerance) -> OracleResult:
+    return check("ebit", reported_ebit, _decimal(revenue, "revenue") - _decimal(opex, "opex") -
+                 _decimal(depreciation, "depreciation"), tolerance=tolerance)
+
+
+def dscr(cfads, service, reported_dscr, *, tolerance) -> OracleResult:
+    service_d = _decimal(service, "service")
+    if service_d <= 0:
+        raise ReconciliationInputError("dscr: positive debt service required")
+    return check("dscr", reported_dscr, _decimal(cfads, "cfads") / service_d, tolerance=tolerance)
+
+
+def cash_after_service(cfads, service, reported_cash, *, tolerance) -> OracleResult:
+    return check("cash_after_senior_service", reported_cash,
+                 _decimal(cfads, "cfads") - _decimal(service, "service"), tolerance=tolerance)
+
+
+def sum_of_periods(values: Sequence, reported_total, *, tolerance, name: str = "total_equals_period_sum") -> OracleResult:
+    """Independent total versus the sum of its own periods; a missing period is an input error, never zero."""
+    if not values:
+        raise ReconciliationInputError(name + ": at least one period required")
+    return check(name, reported_total, sum((_decimal(v, name + ".period") for v in values), Decimal(0)),
+                 tolerance=tolerance)
+
+
+def cfd_settlement(quantity_mwh, strike_eur_mwh, reference_eur_mwh, settlement_keur, *, tolerance) -> OracleResult:
+    """Two-way contract for difference, SIGNED: positive when the reference price is below the strike."""
+    q = _decimal(quantity_mwh, "quantity_mwh", nonnegative=True)
+    return check("cfd_settlement_keur", settlement_keur,
+                 q * (_decimal(strike_eur_mwh, "strike") - _decimal(reference_eur_mwh, "reference")) / Decimal(1000),
+                 tolerance=tolerance)
+
+
+def energy_revenue(streams: Sequence[tuple], reported_keur, *, tolerance) -> OracleResult:
+    """Sum of quantity x price / 1,000 over supplied (quantity_mwh, price_eur_mwh) pairs."""
+    total = Decimal(0)
+    for i, (quantity, price) in enumerate(streams):
+        total += _decimal(quantity, f"stream[{i}].quantity", nonnegative=True) * \
+            _decimal(price, f"stream[{i}].price", nonnegative=True) / Decimal(1000)
+    return check("energy_revenue_keur", reported_keur, total, tolerance=tolerance)
+
+
+def xirr(cashflows: Sequence, dates: Sequence, *, precision: int = 60) -> Decimal | None:
+    """Independent Decimal XIRR: ACT/365 from the first date, bisection to ~1e-30.  None when no root exists.
+
+    Deliberately NOT ``finco_core.sponsor.xirr`` (Newton in binary floating point).  The day-count basis is the
+    Excel-compatible one the product documents; it is an explicit convention, not a fitted parameter.
+    """
+    from datetime import date as _date
+    from decimal import localcontext
+
+    if len(cashflows) != len(dates) or len(cashflows) < 2:
+        return None
+    flows = [_decimal(v, "cashflow") for v in cashflows]
+    if not (any(v > 0 for v in flows) and any(v < 0 for v in flows)):
+        return None
+    parsed = [d if isinstance(d, _date) else _date.fromisoformat(str(d)) for d in dates]
+    if any(b < a for a, b in zip(parsed, parsed[1:])):
+        raise ReconciliationInputError("xirr: dates must be chronological")
+    with localcontext() as ctx:
+        ctx.prec = precision
+        years = [Decimal((d - parsed[0]).days) / Decimal(365) for d in parsed]
+
+        def npv(rate: Decimal) -> Decimal:
+            base = Decimal(1) + rate
+            return sum((f / (base ** t) for f, t in zip(flows, years)), Decimal(0))
+
+        low, high = Decimal("-0.999999"), Decimal(10)
+        f_low, f_high = npv(low), npv(high)
+        if f_low == 0:
+            return low
+        if f_high == 0:
+            return high
+        if (f_low > 0) == (f_high > 0):
+            return None
+        for _ in range(220):
+            mid = (low + high) / 2
+            f_mid = npv(mid)
+            if f_mid == 0:
+                return mid
+            if (f_mid > 0) == (f_low > 0):
+                low, f_low = mid, f_mid
+            else:
+                high = mid
+        return (low + high) / 2

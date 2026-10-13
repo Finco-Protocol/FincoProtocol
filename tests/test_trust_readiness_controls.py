@@ -283,9 +283,15 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
         and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
                 and call.func.id == "validate_csrf_token" for call in ast.walk(node))
     }
-    # Both contract Save and read-only commercial stress validate signed CSRF.
-    # Other known POST coverage gaps remain explicitly unprotected.
-    assert protected == {"v2_revenue_contracts", "v2_revenue_commercial_stress"}
+    # Capital Stack protection applies only to its exact instrument field.
+    # Other workbook fields and known POST coverage gaps remain unchanged.
+    assert protected == {"v2_revenue_contracts", "v2_revenue_commercial_stress", "v2_workbook_update"}
+    update = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
+                  and node.name == "v2_workbook_update")
+    gate = next(node for node in update.body if isinstance(node, ast.If)
+                and ast.unparse(node.test) == "field_id == 'debt.financing.instruments'")
+    assert any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+               and call.func.id == "validate_csrf_token" for call in ast.walk(gate))
 
 
 def test_other_public_pages_still_provision_demo_session(client):

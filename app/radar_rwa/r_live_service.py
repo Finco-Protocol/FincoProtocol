@@ -234,6 +234,17 @@ def format_r_live_result(canonical_id: str, result: RLiveResult) -> tuple[str, d
             "source": token.source,
             "observed_at": token.observed_at.isoformat() if token.observed_at else None,
             "reason": token.reason,
+            # Propagate reviewed on-chain source facts without substituting
+            # the conservative effective clock for the TWAP market clock.
+            # Exclude retrievedAt: transport time is not economic evidence.
+            "source_evidence": {
+                name: onchain.evidence.get(name)
+                for name in (
+                    "blockNumber", "blockHash", "blockTimestamp",
+                    "dexWindowStartAt", "dexWindowEndAt", "twapWindowSeconds",
+                    "lastPoolActivityAt", "quoteUpdatedAt", "effectiveObservedAt",
+                )
+            },
         },
         "robinhood_basis": {
             "state": underlying.state.value,
