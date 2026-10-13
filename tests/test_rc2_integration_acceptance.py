@@ -216,3 +216,83 @@ def test_deepstate_window_read_is_bounded_by_escalating_spans():
     calls.clear()
     sparse = d._recent_deepstate_rows(Store(3), now - d.HISTORY_WINDOW, now)
     assert len(sparse) == 3 and calls == [timedelta(days=1), timedelta(days=7), d.HISTORY_WINDOW]
+
+
+# ───────────── M3 read-only boundary (reviewer-confirmed: no CSRF on this authenticated analysis POST) ─────────────
+
+M3_FILES = ("app/v2/sensitivity_matrix_router.py", "app/services/sensitivity_matrix.py", "app/v2/sensitivity_matrix_projection.py")
+_FORBIDDEN_MODULES = ("app.persistence.run_history_repository", "app.workbook.update_service", "app.workbook.revenue_contracts_service",
+                      "app.workbook.investor_agreement_service", "app.workbook.developer_economics_service",
+                      "app.persistence.projects_repository_writes")
+_WRITE_CALL = re.compile(r"^(save|commit|append|update|delete|insert|create|set|write|persist|promote|duplicate|archive|restore)_|^v2_atomic_|apply_.*update")
+_ALLOWED_REPOSITORY_NAMES = {"get_workspace_state", "get_scenario", "resolve_active_scenario_runtime_snapshot", "resolve_accessible_project"}
+
+
+def _m3_ast(path):
+    import ast
+    from pathlib import Path
+    return ast.parse((Path(__file__).resolve().parent.parent / path).read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("path", M3_FILES)
+def test_m3_has_no_persistence_writer_import_or_call(path):
+    import ast
+    tree = _m3_ast(path)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            assert node.module not in _FORBIDDEN_MODULES, (path, node.module)
+            if node.module.startswith(("app.persistence", "app.workbook")) and node.module != "app.workbook.service":
+                for alias in node.names:
+                    assert alias.name in _ALLOWED_REPOSITORY_NAMES | {"SNAPSHOT_KEY", "assert_materialized_fee_authority",
+                                                                      "apply_state", "WorkbookIdentityError"} or alias.name.isupper(), (path, alias.name)
+        if isinstance(node, ast.Call):
+            name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+            assert not _WRITE_CALL.search(name) or name in {"apply_state", "apply_user_sub_lines_replacing_base", "apply_user_sub_lines_to_opex",
+                                                           "_apply_shock", "_apply_fmt"}, (path, name)
+
+
+def test_m3_exposes_exactly_one_post_route_with_bounded_admission_and_no_other_verb():
+    import ast
+    tree = _m3_ast("app/v2/sensitivity_matrix_router.py")
+    verbs = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute) and decorator.func.value.__class__ is ast.Name \
+                        and decorator.func.value.id == "router":
+                    verbs.append((decorator.func.attr, decorator.args[0].value))
+    assert sorted(verbs) == [("get", verbs[0][1]), ("post", "/workbook/sensitivity/matrix/run")] or \
+        [v for v in verbs if v[0] != "get"] == [("post", "/workbook/sensitivity/matrix/run")]
+    source = ast.unparse(tree)
+    assert source.count("run_model_process(") == 1                      # one bounded executor submission per request
+    assert "ModelExecutionBusy" in source and "429" in source and "Retry-After" in source
+    assert "sensitivity_grid_size_error" in source and "MAX_CELLS" in source
+    from app.v2 import sensitivity_matrix_projection as proj
+    assert proj.MAX_CELLS <= 26
+
+
+def test_m3_post_is_session_authenticated_owner_scoped_and_never_commits(env):
+    from app.persistence.run_history_repository import get_run_history
+    flow = Flow(env, "solar")
+    flow.run()
+    ws0, history0 = flow.ws(), [h.history_id for h in get_run_history(OWNER, flow.record.project_id)]
+    ok = env.client.post(MATRIX, data={**flow.project, "driver_a": "capex", "driver_b": "opex", "metric": "project_irr"})
+    assert ok.status_code == 200 and 'data-state="CURRENT"' not in ok.text
+    assert ok.headers.get("cache-control", "").lower().startswith("no-store")
+    ws1 = flow.ws()
+    for name in ("draft_snapshot", "last_runtime_summary", "last_runtime_snapshot_id", "last_runtime_composite_hash", "dirty"):
+        assert getattr(ws1, name, None) == getattr(ws0, name, None), name
+    assert [h.history_id for h in get_run_history(OWNER, flow.record.project_id)] == history0
+    # a CSRF token is NOT required (reviewer decision) but authentication and ownership are
+    env.client.cookies.clear()
+    assert env.client.post(MATRIX, data={**flow.project, "driver_a": "capex", "driver_b": "opex", "metric": "project_irr"}).status_code == 401
+
+
+def test_production_never_supplies_a_usdg_usd_normalization_policy():
+    import ast
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    for path in ("app/crypto_terminal/tokenized_read.py", "app/api/v1/crypto_router.py"):
+        for node in ast.walk(ast.parse((root / path).read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", "")) == "build_deepstate_historical_context":
+                assert "normalization_policy" not in {k.arg for k in node.keywords}, path

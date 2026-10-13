@@ -38,10 +38,14 @@ RC2_EXACT_BLOBS = {
     "app/workbook/developer_economics_config.py": "e9a3f1a2eff7821e54d192a4df2ee1332aa09d42",
     "app/workbook/developer_economics_service.py": "2de4d39d85e19b0ab291bb64972eb59d3079365a",
     "app/workbook/registry.py": "4f9c5192e33e4158f8b7e4d1a35115daa94df19d",
+    "tests/model_v2_governance.py": "bf197d35c79a99656821eb77c441a719415ee0a4",
     "app/workbook/revenue_multistream.py": "ec3c8c8e12acc049233a57a2b559cbb6e18acca6",
     "domain/revenue/advanced_products.py": "d4ab263422aac5571e52bee4925fe36588e853cc",
     "domain/revenue/multistream_runtime.py": "83beda4eb296b02baf2ebd6659fec243ab196206",
     "finco_core/revenue/generation.py": "35670dc7b5ab4ce01177f9df817a4776c10569ab",
+}
+RC2_PINNED_UNCHANGED = {                  # identical to main; verified by exact blob, not by diff
+    "app/workbook/junior_debt_config.py": "ab70f8373e3f683390f4aa723e5c964d417bf81c",       # Junior activation gate (stays closed)
 }
 RC2_PROTECTED_FINANCIAL_CANDIDATE = frozenset({          # Revenue V3 - release-closed candidate (M2)
     "domain/revenue/multistream_runtime.py", "domain/revenue/advanced_products.py", "finco_core/revenue/generation.py",
@@ -63,6 +67,38 @@ RC2_CSRF_CALL_SITES = frozenset({
 # Not an RC-2 free path: these are changed vs main but governed elsewhere or free by namespace.
 RC2_GOVERNED_ELSEWHERE = frozenset({"app/trust_readiness/registry.py"})
 RC2_FREE_PREFIXES = ("tests/", "docs/", "static/", "app/templates/")
+
+
+RC2_ACTIVATION_FLAG_FILES = {                 # path -> flag name; both must be a single literal ``False`` assignment
+    "domain/revenue/advanced_products.py": "ACTIVATION_ENABLED",
+    "app/workbook/junior_debt_config.py": "ACTIVATION_ENABLED",
+}
+
+
+def activation_state(source: str, name: str = "ACTIVATION_ENABLED") -> str:
+    """``"CLOSED"`` only when the module binds ``name`` exactly once, at module level, to the literal ``False``.
+
+    AST based: ``True``, any expression (``not True``, ``os.environ...``, ``a or b``), a conditional or second binding,
+    augmented/annotated/walrus/loop/with/global rebinding, deletion, and string-keyed dynamic writes
+    (``globals()["ACTIVATION_ENABLED"]``, ``setattr(module, "ACTIVATION_ENABLED", ...)``) are all NOT closed.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return "UNPARSEABLE"
+    bindings = [n for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, (ast.Store, ast.Del))]
+    bindings += [n for n in ast.walk(tree) if isinstance(n, ast.Global) and name in n.names]
+    if any(isinstance(n, ast.Constant) and n.value == name for n in ast.walk(tree)):
+        return "DYNAMIC_REFERENCE"
+    top = [n for n in tree.body if isinstance(n, (ast.Assign, ast.AnnAssign)) and (
+        (isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
+        or (isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == name))]
+    if len(top) != 1 or len(bindings) != 1:
+        return "NOT_A_SINGLE_TOP_LEVEL_BINDING"
+    value = top[0].value
+    if isinstance(value, ast.Constant) and value.value is False:
+        return "CLOSED"
+    return "NOT_LITERAL_FALSE"
 
 
 def _git(*args):
@@ -107,6 +143,9 @@ def rc2_violations(f) -> list[str]:
             elif not (path in RC2_EXACT_BLOBS or path == "app/v2/router.py" or path in RC2_GOVERNED_ELSEWHERE
                       or path.startswith(RC2_FREE_PREFIXES)):
                 problems.append(f"{path}: not part of the reviewed RC-2 content")
+        for path, expected in RC2_PINNED_UNCHANGED.items():
+            if f["blobs"].get(path) != expected:
+                problems.append(f"{path}: not the exact reviewed blob")
         for path in sorted(set(RC2_EXACT_BLOBS) - changed):
             problems.append(f"{path}: reviewed change is missing")
         base_fn, base_other = _router_parts(f["router_base"])
@@ -122,9 +161,10 @@ def rc2_violations(f) -> list[str]:
             problems.append(f"router module-level delta is not the reviewed M3 hook: {added}")
         if frozenset(f["call_sites"]) != RC2_CSRF_CALL_SITES:
             problems.append("CSRF validation call sites differ from the reviewed inventory")
-        flags = f["flags"]
-        if flags.get("revenue_v3") is not False or flags.get("junior") is not False:
-            problems.append("a release-closed activation flag is not False")
+        for path, flag in RC2_ACTIVATION_FLAG_FILES.items():
+            state = activation_state(f["flag_sources"][path], flag)
+            if state != "CLOSED":
+                problems.append(f"{path}: {flag} is not a literal release-closed False ({state})")
         return problems
     except (KeyError, TypeError, ValueError, AttributeError, SyntaxError) as exc:
         return [f"facts incomplete or malformed: {exc!r}"]
@@ -144,14 +184,13 @@ def _collect():
         rel = path.relative_to(ROOT).as_posix()
         if not rel.startswith("app/trust_readiness/") and re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
             sites.add(rel)
-    flag = lambda p, n: bool(re.search(rf"^{n}\s*=\s*True", (ROOT / p).read_text(encoding="utf-8"), re.M))  # noqa: E731
     return {
         "merges": merges, "ancestor": ancestor, "status": status, "call_sites": sites,
-        "blobs": {p: _git("hash-object", p) for p in RC2_EXACT_BLOBS if (ROOT / p).exists()},
+        "blobs": {p: _git("hash-object", p) for p in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED) if (ROOT / p).exists()},
         "router_base": _git("show", f"{RC2_BASE_MAIN}:app/v2/router.py"),
         "router_head": (ROOT / "app/v2/router.py").read_text(encoding="utf-8"),
-        "flags": {"revenue_v3": flag("domain/revenue/advanced_products.py", "ACTIVATION_ENABLED"),
-                  "junior": flag("app/workbook/junior_debt_config.py", "ACTIVATION_ENABLED")},
+        # The ACTUAL observed source; the verifier derives the state itself (no pre-computed or replaced flag).
+        "flag_sources": {p: (ROOT / p).read_text(encoding="utf-8") for p in RC2_ACTIVATION_FLAG_FILES},
     }
 
 
@@ -166,19 +205,51 @@ def facts():
     return merged
 
 
-def _flags_closed(f):
-    f = copy.deepcopy(f)
-    f["flags"] = {"revenue_v3": False, "junior": False}
-    return f
-
-
-def test_manifest_holds_for_the_integrated_candidate(facts):
-    assert rc2_violations(_flags_closed(facts)) == []
+def test_manifest_holds_for_the_integrated_candidate_on_the_actual_observed_state(facts):
+    # No replacement/normalisation of any fact: the real sources of both release-closed flags are judged.
+    assert rc2_violations(facts) == []
+    assert all(activation_state(facts["flag_sources"][p], n) == "CLOSED" for p, n in RC2_ACTIVATION_FLAG_FILES.items())
     assert RC2_PROTECTED_FINANCIAL_CANDIDATE <= set(RC2_EXACT_BLOBS)
+    assert "app/workbook/junior_debt_config.py" in RC2_PINNED_UNCHANGED and "domain/revenue/advanced_products.py" in RC2_EXACT_BLOBS
 
 
-def test_every_mutation_is_rejected(facts):
-    base = _flags_closed(facts)
+@pytest.mark.parametrize("path", sorted(RC2_ACTIVATION_FLAG_FILES))
+@pytest.mark.parametrize("mutation", [
+    ("ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED = True"),
+    ("ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED = not False"),
+    ("ACTIVATION_ENABLED = False", "import os\nACTIVATION_ENABLED = os.environ.get('X') == '1'"),
+    ("ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED = bool(0)"),
+    ("ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED = False\nACTIVATION_ENABLED = True"),
+    ("ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED = False\nACTIVATION_ENABLED |= True"),
+    ("ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED = False\nglobals()['ACTIVATION_ENABLED'] = True"),
+    ("ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED = False\nsetattr(__import__(__name__), 'ACTIVATION_ENABLED', True)"),
+    ("ACTIVATION_ENABLED = False", "if True:\n    ACTIVATION_ENABLED = True\nelse:\n    ACTIVATION_ENABLED = False"),
+    ("ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED: bool = True"),
+    ("ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED = False if False else True"),
+    ("ACTIVATION_ENABLED = False", "def _on():\n    global ACTIVATION_ENABLED\n    ACTIVATION_ENABLED = True\nACTIVATION_ENABLED = False"),
+])
+def test_real_source_mutated_to_true_or_dynamic_activation_is_rejected_by_the_same_validator(facts, path, mutation):
+    old, new = mutation
+    source = facts["flag_sources"][path]
+    assert old in source, "the observed source must contain the literal closed assignment"
+    mutated = copy.deepcopy(facts)
+    mutated["flag_sources"][path] = source.replace(old, new, 1)
+    problems = rc2_violations(mutated)
+    assert any("literal release-closed False" in p for p in problems), (new, problems)
+
+
+def test_missing_or_unparseable_flag_source_is_rejected(facts):
+    for bad in ("", "def broken(:\n", "X = 1\n"):
+        mutated = copy.deepcopy(facts)
+        mutated["flag_sources"]["domain/revenue/advanced_products.py"] = bad
+        assert rc2_violations(mutated)
+    mutated = copy.deepcopy(facts)
+    del mutated["flag_sources"]["app/workbook/junior_debt_config.py"]
+    assert rc2_violations(mutated)
+
+
+def test_every_other_mutation_is_rejected(facts):
+    base = facts
     def bad(**changes):
         f = copy.deepcopy(base)
         f.update(changes)
@@ -189,7 +260,7 @@ def test_every_mutation_is_rejected(facts):
         bad(merges={**base["merges"], pr: (sha, "3" * 40, second)})         # wrong first parent
         bad(merges={**base["merges"], pr: None})
         bad(ancestor={**base["ancestor"], pr: False})
-    for path in RC2_EXACT_BLOBS:                                              # incl. every financial-candidate blob
+    for path in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED):                    # incl. every financial-candidate blob
         bad(blobs={**base["blobs"], path: "1" * 40})
         bad(blobs={k: v for k, v in base["blobs"].items() if k != path})
     for status, path in (("A", "financial_engine/new.py"), ("M", "app/persistence/run_history_repository.py"),
@@ -203,8 +274,6 @@ def test_every_mutation_is_rejected(facts):
     bad(router_head=router + "\nimport rogue_unreviewed_module\n")
     bad(call_sites=set(base["call_sites"]) | {"app/v2/sensitivity_matrix_router.py"})   # silently adding CSRF is also a change
     bad(call_sites=set(base["call_sites"]) - {"app/v2/developer_decision_router.py"})
-    bad(flags={"revenue_v3": True, "junior": False})
-    bad(flags={"revenue_v3": False, "junior": True})
     assert rc2_violations({})                                                 # missing facts never authorise
 
 

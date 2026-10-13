@@ -538,4 +538,11 @@ def test_existing_one_driver_sensitivity_is_unchanged(env):
 def test_no_engine_or_financial_authority_files_are_touched():
     import subprocess
     out = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD"], capture_output=True, text=True).stdout
-    assert not [p for p in out.split() if p.startswith(("financial_engine/", "finco_core/", "domain/", ".github/"))]
+    # On the RC-2 integration branch the only permitted financial-path deltas are the three reviewer-conditional,
+    # release-closed Revenue V3 candidate blobs of PR #275 (exact path AND exact blob); everything else still fails.
+    from model_v2_governance import REVENUE_V3_CANDIDATE_AUTHORITIES as v3
+    def reviewed_v3(path):
+        head = subprocess.run(["git", "rev-parse", "HEAD:" + path], capture_output=True, text=True).stdout.strip()
+        return v3.get(path) == head
+    assert not [p for p in out.split() if p.startswith(("financial_engine/", "finco_core/", "domain/", ".github/"))
+                and not reviewed_v3(p)]

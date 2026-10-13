@@ -1643,6 +1643,8 @@ M4_CSRF_NEW = ("Investor agreement Save, session-bound Capital Stack instrument 
                "configuration Save and one crypto action. Other ")
 M4_CALL_SITES = F4_CSRF_CALL_SITES | {"app/v2/developer_decision_router.py"}
 RC1_SUCCESSOR_BLOBS = {         # path -> additional reviewed blobs accepted after the RC-1 blob
+    # RC-2: adds ONLY the reviewer-conditional, release-closed Revenue V3 candidate map (three exact blobs).
+    "tests/model_v2_governance.py": ("bf197d35c79a99656821eb77c441a719415ee0a4",),
     "app/trust_readiness/registry.py": ("32a6bcb86516ff4d1ee8b1dc90191fdb57c5dc2d",),
     "docs/readiness/03_known_limitations_and_support_matrix.md": ("4930d20a749706e40e234751f5a9c5226bb42e60",),
     "tests/test_trust_readiness_controls.py": ("9bf549373574398a56e1e7cb4264ff57c580e34c",),
