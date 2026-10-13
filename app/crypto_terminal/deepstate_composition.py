@@ -213,9 +213,17 @@ def _valid_execution(row: MarketObservation) -> bool:
     if not valid:
         return False
     try:
-        return (int(p["gross_base_amount_nvda"]) > 0
-                and int(p["gross_quote_amount_usdg"]) > 0)
-    except (ValueError, TypeError, KeyError):
+        base_raw = int(p["gross_base_amount_nvda"])
+        quote_raw = int(p["gross_quote_amount_usdg"])
+        if base_raw <= 0 or quote_raw <= 0:
+            return False
+        # This is validation of the collector's original execution price,
+        # NOT an independent market/pricing engine. Preserve the same
+        # integer-decimal conversion as reviewed Deepstate observation V1.
+        reconstructed = Decimal(quote_raw) * Decimal(10**12) / Decimal(base_raw)
+        return reconstructed == Decimal(row.price)
+    except (ValueError, TypeError, KeyError, InvalidOperation,
+            ZeroDivisionError):
         return False
 
 
