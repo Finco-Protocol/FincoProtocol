@@ -10,6 +10,19 @@
 {%- else -%}{{ value }}
 {%- endif -%}
 {%- endmacro %}
+{# Run timestamps are server-generated runtime metadata: show whole seconds; the full-precision instant stays in datetime="" and in evidence. #}
+{% macro stamp(value) -%}
+{%- if value is none or value == '' -%}UNAVAILABLE
+{%- else -%}
+{%- set s = value | string -%}{%- set parts = s.split('.') -%}
+{%- if parts | length == 2 -%}
+{%- set ns = namespace(n=0, done=false) -%}
+{%- for ch in parts[1] -%}{%- if not ns.done and ch in '0123456789' %}{% set ns.n = ns.n + 1 %}{% else %}{% set ns.done = true %}{% endif -%}{%- endfor -%}
+<time datetime="{{ s }}">{{ parts[0] }}{{ parts[1][ns.n:] }}</time>
+{%- else -%}<time datetime="{{ s }}">{{ s }}</time>
+{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
 <div id="v2-sheet-diagnostics" class="md-workspace" data-sheet="diagnostics" data-state="{{ d.state if d else 'NOT_RUN' }}">
   <header><h1>Model Diagnostics</h1><p>{{ project_name | default('Project') }} · Committed Last Run only</p></header>
   {% if not d or not d.available %}
@@ -21,7 +34,7 @@
   {% else %}
   <script type="application/json" data-md-payload>{{ d | tojson }}</script>
   <p role="status">{{ d.state }}{% if d.state == 'STALE' %} — HISTORICAL evidence of the prior Run; Working Copy changes are not evaluated{% endif %} · Scenario: {{ d.scenario_name or 'UNAVAILABLE' }}</p>
-  <dl class="md-identity"><dt>Snapshot</dt><dd>{{ d.identity.snapshot_id or 'UNAVAILABLE' }}</dd><dt>Run time</dt><dd>{{ d.identity.run_at or 'UNAVAILABLE' }}</dd><dt>Composite hash</dt><dd>{{ d.identity.composite_hash or 'UNAVAILABLE' }}</dd><dt>Engine</dt><dd>{{ d.identity.engine_version or 'UNAVAILABLE' }}</dd></dl>
+  <dl class="md-identity"><dt>Snapshot</dt><dd>{{ d.identity.snapshot_id or 'UNAVAILABLE' }}</dd><dt>Run time</dt><dd>{{ stamp(d.identity.run_at) }}</dd><dt>Composite hash</dt><dd>{{ d.identity.composite_hash or 'UNAVAILABLE' }}</dd><dt>Engine</dt><dd>{{ d.identity.engine_version or 'UNAVAILABLE' }}</dd></dl>
   <p>Run Integrity: <strong>{{ d.integrity.overall }}</strong> · Quality advisory: <strong>{{ d.score.score_display or 'NOT SCORED' }}</strong> · Weighted coverage: {{ number(d.score.coverage_weighted_pct, '%') }}% · Blocking: {{ d.blocking_count }}</p>
   <p data-md-counts>{{ d.score.counts.fail }} FAIL · {{ d.score.counts.warning }} WARNING · {{ d.score.counts.pass }} PASS · {{ d.score.counts.unavailable }} UNAVAILABLE · {{ d.score.counts.not_applicable }} NOT_APPLICABLE</p>
   <p class="md-note">Project thresholds are not verified contractual covenants. Quality, Integrity and period diagnostics are separate scopes, not independent asset verification.</p>

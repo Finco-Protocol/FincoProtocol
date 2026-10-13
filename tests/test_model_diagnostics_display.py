@@ -118,3 +118,25 @@ def test_ev_reference_workbook_visible_text_uses_institutional_precision(hygiene
     visible = _visible_text(html)
     assert not _long_floats(visible), _long_floats(visible)
     assert "None%" not in visible
+
+
+@pytest.mark.parametrize("template", ["partials/sheet_diagnostics.html", "partials/_model_health.html"])
+def test_run_timestamp_shows_whole_seconds_and_keeps_full_instant_in_attribute(template):
+    # Root cause of the variable six-decimal values on reference workbooks: the committed Run
+    # timestamp (runtime metadata) was rendered verbatim with microseconds. Only the displayed
+    # text changes; the instant is preserved exactly in datetime="" and in persisted evidence.
+    env = Environment(loader=FileSystemLoader(str(V2_ROOT)))
+    stamp = env.get_template(template).module.stamp
+    raw = "2026-10-13T13:48:55.276121+00:00"
+    html = str(stamp(raw))
+    assert html == f'<time datetime="{raw}">2026-10-13T13:48:55+00:00</time>'
+    assert not _long_floats(_visible_text(html))
+    assert str(stamp("2026-10-13T13:48:55.5Z")) == '<time datetime="2026-10-13T13:48:55.5Z">2026-10-13T13:48:55Z</time>'
+    assert str(stamp("2026-10-13T13:48:55+00:00")).endswith(">2026-10-13T13:48:55+00:00</time>")
+    assert str(stamp(None)) == "UNAVAILABLE" and str(stamp("")) == "UNAVAILABLE"
+
+
+def test_financial_number_precision_policy_is_unchanged_by_timestamp_formatting():
+    env = Environment(loader=FileSystemLoader(str(V2_ROOT)))
+    number = env.get_template("partials/sheet_diagnostics.html").module.number
+    assert str(number(28.76123)) == "28.76" and str(number(1.2999, "ratio")) == "1.300"

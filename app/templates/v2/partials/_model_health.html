@@ -9,6 +9,19 @@
 {%- else -%}{{ value }}
 {%- endif -%}
 {%- endmacro %}
+{# Run timestamps are server-generated runtime metadata: show whole seconds; the full-precision instant stays in datetime="" and in evidence. #}
+{% macro stamp(value) -%}
+{%- if value is none or value == '' -%}UNAVAILABLE
+{%- else -%}
+{%- set s = value | string -%}{%- set parts = s.split('.') -%}
+{%- if parts | length == 2 -%}
+{%- set ns = namespace(n=0, done=false) -%}
+{%- for ch in parts[1] -%}{%- if not ns.done and ch in '0123456789' %}{% set ns.n = ns.n + 1 %}{% else %}{% set ns.done = true %}{% endif -%}{%- endfor -%}
+<time datetime="{{ s }}">{{ parts[0] }}{{ parts[1][ns.n:] }}</time>
+{%- else -%}<time datetime="{{ s }}">{{ s }}</time>
+{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
 {% set d = diagnostics if diagnostics is defined else none %}
 <div id="v2-model-health" class="md-health" role="region" aria-label="Model Health" data-state="{{ d.state if d else 'NOT_RUN' }}">
   <header><h2>Model Health</h2><button type="button" data-nav-tab="tab-diagnostics">View Model Diagnostics →</button></header>
@@ -20,7 +33,7 @@
   {% endif %}
   {% else %}
   <p>{{ d.state }}{% if d.state == 'STALE' %} · HISTORICAL Last Run, not the edited Working Copy{% endif %}
-    · Scenario: {{ d.scenario_name or 'UNAVAILABLE' }} · Last Run: {{ d.identity.run_at or 'UNAVAILABLE' }}</p>
+    · Scenario: {{ d.scenario_name or 'UNAVAILABLE' }} · Last Run: {{ stamp(d.identity.run_at) }}</p>
   <dl class="md-health-facts">
     <div><dt>Run Integrity</dt><dd>{{ d.integrity.overall }}</dd></div>
     <div><dt>Quality advisory score</dt><dd>{{ d.score.score_display or 'NOT SCORED' }}</dd></div>
