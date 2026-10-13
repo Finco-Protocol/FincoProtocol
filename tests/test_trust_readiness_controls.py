@@ -283,7 +283,9 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
         and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
                 and call.func.id == "validate_csrf_token" for call in ast.walk(node))
     }
-    assert protected == {"v2_revenue_contracts"}
+    # Both contract Save and read-only commercial stress validate signed CSRF.
+    # Other known POST coverage gaps remain explicitly unprotected.
+    assert protected == {"v2_revenue_contracts", "v2_revenue_commercial_stress"}
 
 
 def test_other_public_pages_still_provision_demo_session(client):
