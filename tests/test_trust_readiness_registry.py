@@ -1043,7 +1043,7 @@ F35B_CSRF_NEW = "Investor agreement Save, session-bound Capital Stack instrument
 F35B_CSRF_BLOBS = {
     "tests/model_outputs_workspace_acceptance.py": "07b04003b8a35f2750b9227531c60499b2b65121",
     "app/v2/capital_stack_projection.py": "a42e0258904fd3a9c4aa2b931d63f8007581069f",
-    "app/templates/v2/partials/_financing_multisenior.html": "ef9d7cf03cc14c192b3bd8ebfa063e0336235b3c",
+    "app/templates/v2/partials/_financing_multisenior.html": "6197f19411ab9051859e334c3c681c0262f71fa2",
     "app/v2/router.py": "82f836ed397e46d8384288a0bd967381af96ea04",
     "app/workbook/financing_csrf.py": "4e30083fbd64b3157b3057d87ac73f95e039ae33",
     "app/trust_readiness/registry.py": "dfdd0f668ee78e510ed38f17f6b343be63c8a61d",
@@ -1051,7 +1051,7 @@ F35B_CSRF_BLOBS = {
     "docs/model_v2/financing_f3/F3_5_B_RELEASE_READINESS_REPORT.md": "625373ef0e93941e37492ce0b38012b02c81adaf",
     "tests/test_model_financing_f2.py": "0adc439820a36629aa3e0d9aa00c8fae0fc7a9ae",
     "tests/test_trust_readiness_controls.py": "b55f2bc00dd2cefe6a69f9ef9202b4066c0b2415",
-    "tests/test_financing_f35b_release_closed.py": "74aba5b2a97090b6ab8c1b5707f01c368078c7a2",
+    "tests/test_financing_f35b_release_closed.py": "9a4253d27f0c4ef7cbbcd075837a2a33c8da1875",
     "tests/test_financing_f35b_numerical.py": "c7b06472a94d858fc8186aece380384121e6e132",
     "tests/test_financing_f35b_browser.py": "eb8f502436879cd7caf787077462f6bc6674eb9b",
     "tests/test_financing_f35b_csrf.py": "73894bd976f973c3be2ab32ad284073c87ad5de7",

@@ -26,6 +26,8 @@ def test_saved_junior_proposal_has_real_commitment_closed_activation_and_no_poli
     expected = next(i.commitment_keur for i in candidate.financing_collection.instruments if i.seniority_rank == 2)
     assert f"{expected:,.2f}" in soup.select_one('[data-testid="cs-working-junior"]').text
     assert "Senior first" in soup.select_one('[data-testid="cs-summary-working"]').text
+    assert "pari-passu" not in soup.select_one('[data-testid="multisenior-workspace"]').text
+    assert "Senior-first, Junior-second service" in soup.select_one('[data-testid="multisenior-workspace"]').text
     checkbox = soup.select_one("[data-f3-activate]")
     assert checkbox.has_attr("disabled") and not checkbox.has_attr("checked")
     assert soup.select_one('[data-testid="cs-junior-policy"]').text.count("Not available") == 4
