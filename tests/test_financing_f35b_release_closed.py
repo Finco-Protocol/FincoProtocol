@@ -55,6 +55,9 @@ def test_customer_json_cannot_activate_candidate_or_replace_last_run(env, kind, 
 def test_extra_facility_is_not_an_implicit_financial_extension(env, extra):
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
+    # The first workbook GET performs existing seed hydration. Capture the
+    # transaction baseline after that authorized lifecycle step, before POST.
+    env.client.get("/v2/workbook", params={"project": record.project_code})
     before = get_workspace_state("decision-user", record.project_id)
     candidate = working_case(before)
     request = json.loads(state(candidate))

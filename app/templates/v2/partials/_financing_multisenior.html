@@ -12,6 +12,7 @@
   {% if not editable %}<p class="v2-protected-notice">Instrument configuration is read-only for this reference project.</p>{% endif %}
   {% if editable %}
   <form data-f3-form hx-post="/v2/workbook/update" hx-target="#v2-sheet-senior-debt" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{ financing_csrf_token | default('') }}">
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">

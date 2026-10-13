@@ -17,10 +17,14 @@ from tests.test_financing_f3_junior_contract import case
 def test_staggered_draws_both_facilities_and_fees_reconcile(kind, day_count, mode, record_property):
     pi, periods = case(kind, day_count=day_count)
     construction = [p for p in periods if p.is_construction]
-    facilities = tuple(replace(i, drawdowns=(
-        DrawdownEntry(construction[0].period_start + timedelta(days=3), i.commitment_keur * .4),
-        DrawdownEntry(construction[1].period_start + timedelta(days=5), i.commitment_keur * .6)),
-        repayment=replace(i.repayment, mode=mode, grace_months=0)) for i in pi.financing_collection.instruments)
+    # Independently specified low-gearing commitments keep the positive bullet
+    # cases cash-payable, without solving backwards from a desired output.
+    amounts = (pi.capex.hard_capex_keur * .02, pi.capex.hard_capex_keur * .01)
+    facilities = tuple(replace(i, commitment_keur=amount, drawdowns=(
+        DrawdownEntry(construction[0].period_start + timedelta(days=3), amount * .4),
+        DrawdownEntry(construction[1].period_start + timedelta(days=5), amount * .6)),
+        repayment=replace(i.repayment, mode=mode, grace_months=0))
+        for i, amount in zip(pi.financing_collection.instruments, amounts))
     pi = replace(pi, financing_collection=FinancingCollection(facilities))
     result = run_clean_production(pi)
     fin = result.g2c_result.financing_result
@@ -77,3 +81,24 @@ def test_staggered_draws_both_facilities_and_fees_reconcile(kind, day_count, mod
     from app.run_integrity import build_run_integrity_evidence, run_integrity_checks
     assert run_integrity_checks(build_run_integrity_evidence(result)).to_dict()["overall"] == "PASS"
     record_property("maximum_actual_residual_keur", max(residuals))
+
+
+def test_impossible_senior_bullet_is_not_manufactured_into_paid_cash():
+    from app.services.production_financial_authority import CleanProductionRunUnavailable
+    pi, _ = case("solar")
+    senior, junior = pi.financing_collection.instruments
+    senior = replace(senior, repayment=replace(senior.repayment, mode=RepaymentMode.BULLET))
+    with pytest.raises(CleanProductionRunUnavailable, match="F35_CONTRACTUAL_SERVICE_CASH_SHORTFALL"):
+        run_clean_production(replace(pi, financing_collection=FinancingCollection((senior, junior))))
+
+
+def test_draw_into_zero_hard_capex_period_fails_without_prefunding():
+    from app.services.production_financial_authority import CleanProductionRunUnavailable
+    from financial_engine.financing.generic_product_policy import derive_construction_financing
+    pi, _ = case("wind")
+    construction = derive_construction_financing(pi)
+    amount = pi.financing_collection.instruments[1].commitment_keur
+    senior, junior = pi.financing_collection.instruments
+    junior = replace(junior, drawdowns=(DrawdownEntry(construction.periods[-1].start_date, amount),))
+    with pytest.raises(CleanProductionRunUnavailable, match="F35_PERIOD_OVERFUNDING"):
+        run_clean_production(replace(pi, financing_collection=FinancingCollection((senior, junior))))

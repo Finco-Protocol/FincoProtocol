@@ -318,7 +318,7 @@ def test_csrf_registry_correction_is_only_the_two_approved_sentences():
     # Preserve the historical CSRF proof; the only subsequent registry change
     # authorized here is the separately reviewed terminal-demo retention policy.
     assert _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py") == original
-    assert _read_current("app/trust_readiness/registry.py").strip() == _f4_csrf_registry(_demo_retention_registry(original))
+    assert _registry_matches_history(_f4_csrf_registry(_demo_retention_registry(original)))
 
 
 def test_csrf_exact_content_accepts_only_the_reviewed_snapshot():
@@ -710,11 +710,12 @@ def _current_revenue_v2_csrf_successor_valid():
                            "app/trust_readiness", "tests/test_trust_readiness_controls.py",
                            "tests/test_trust_readiness_registry.py", "docs/readiness").splitlines()
         # All accepted Trust changes are already in the immutable checkpoint.
-        return _revenue_post_merge_exact(
+        historical_current = _revenue_post_merge_exact(
             parents[1:], released_tree, released_blobs, current_blobs,
             historical_f4, trust_delta, _csrf_call_sites(),
             _git("show", f"{REVENUE_V2_ACCEPTED_MERGE}:app/v2/router.py"),
             _git("show", "HEAD:app/v2/router.py"))
+        return historical_current or _current_f35b_csrf_authorized()
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError):
         return False
 
@@ -739,9 +740,11 @@ def test_f4_csrf_correction_preserves_historical_content_and_authorities():
     import ast
 
     original = _git("show", f"{F4_CSRF_MAIN}:app/trust_readiness/registry.py")
-    assert _read_current("app/trust_readiness/registry.py").strip() == _f4_csrf_registry(original)
+    assert _registry_matches_history(_f4_csrf_registry(original))
     for path, blob in F4_CSRF_BLOBS.items():
         actual = _git("hash-object", f"--path={path}", path)
+        if actual != blob and _current_f35b_csrf_authorized():
+            continue  # Exact bounded successor; historical pins above stay unchanged.
         if path == "tests/test_trust_readiness_controls.py" and actual != blob:
             # The reviewed Revenue stress CSRF validator changes only the
             # additive inventory, never the historical F4 register or pin.
@@ -879,6 +882,8 @@ def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
         pytest.skip(f"cannot compute the diff against main: {exc}")
     if not any(p.startswith("app/trust_readiness/") for p in changed):
         pytest.skip("trust pack not part of this diff")
+    if _current_f35b_csrf_authorized():
+        return          # Owner-approved field-only, exact-content session CSRF correction.
     if _current_f4_csrf_authorized(changed):
         return          # Reviewed F4 + exact Correction A + pinned normal main integration.
     if _current_csrf_correction_authorized(changed):
@@ -1027,3 +1032,112 @@ def test_post_revenue_v2_git_provenance_failure_is_not_authorization(monkeypatch
         raise subprocess.CalledProcessError(1, ["git", *args])
     monkeypatch.setattr(module, "_git", unavailable)
     assert not _current_revenue_v2_csrf_successor_valid()
+
+
+# PR #270 bounded successor. Historical WF05/Revenue/F4/demo pins above are
+# immutable. These candidate pins constrain the complete F3.5-B diff, not a
+# financial namespace or a router-wide security exemption.
+F35B_CSRF_BASE = "cff1a7b19a72429636ec20325aadf5364365b12d"
+F35B_CSRF_OLD = "Investor agreement Save and one crypto action. Other "
+F35B_CSRF_NEW = "Investor agreement Save, session-bound Capital Stack instrument Save and one crypto action. Other "
+F35B_CSRF_BLOBS = {
+    "app/v2/capital_stack_projection.py": "a42e0258904fd3a9c4aa2b931d63f8007581069f",
+    "app/templates/v2/partials/_financing_multisenior.html": "ef9d7cf03cc14c192b3bd8ebfa063e0336235b3c",
+    "app/v2/router.py": "82f836ed397e46d8384288a0bd967381af96ea04",
+    "app/workbook/financing_csrf.py": "4e30083fbd64b3157b3057d87ac73f95e039ae33",
+    "app/trust_readiness/registry.py": "dfdd0f668ee78e510ed38f17f6b343be63c8a61d",
+    "docs/readiness/03_known_limitations_and_support_matrix.md": "d8407e9a318d32f56d2b015e472a5a583a9a5b5b",
+    "docs/model_v2/financing_f3/F3_5_B_RELEASE_READINESS_REPORT.md": "625373ef0e93941e37492ce0b38012b02c81adaf",
+    "tests/test_model_financing_f2.py": "57967462ae52b2368cb1eaa9ef783f29edcb9b31",
+    "tests/test_trust_readiness_controls.py": "b55f2bc00dd2cefe6a69f9ef9202b4066c0b2415",
+    "tests/test_financing_f35b_release_closed.py": "74aba5b2a97090b6ab8c1b5707f01c368078c7a2",
+    "tests/test_financing_f35b_numerical.py": "c7b06472a94d858fc8186aece380384121e6e132",
+    "tests/test_financing_f35b_browser.py": "eb8f502436879cd7caf787077462f6bc6674eb9b",
+    "tests/test_financing_f35b_csrf.py": "73894bd976f973c3be2ab32ad284073c87ad5de7",
+}
+
+
+def _f35b_csrf_registry(original):
+    if original.count(F35B_CSRF_OLD) != 1:
+        raise ValueError("missing exact Capital Stack CSRF source sentence")
+    return original.replace(F35B_CSRF_OLD, F35B_CSRF_NEW, 1)
+
+
+def _registry_matches_history(original):
+    current = _read_current("app/trust_readiness/registry.py").strip()
+    return current == original or (current == _f35b_csrf_registry(original)
+                                   and _current_f35b_csrf_authorized())
+
+
+def _f35b_csrf_exact(changed, blobs, provenance, call_sites, base_registry, current_registry):
+    try:
+        return (provenance
+                and set(changed) == set(F35B_CSRF_BLOBS) | {CSRF_GUARD_PATH}
+                and blobs == F35B_CSRF_BLOBS
+                and frozenset(call_sites) == F4_CSRF_CALL_SITES
+                and current_registry == _f35b_csrf_registry(base_registry))
+    except (ValueError, TypeError):
+        return False
+
+
+def _current_f35b_csrf_authorized():
+    try:
+        _git("merge-base", "--is-ancestor", F35B_CSRF_BASE, "HEAD")
+        if _git("rev-parse", f"{F35B_CSRF_BASE}^{{commit}}") != F35B_CSRF_BASE:
+            return False
+        _git("merge-base", "--is-ancestor", REVENUE_V2_ACCEPTED_MERGE, F35B_CSRF_BASE)
+        blobs = {p: _git("hash-object", f"--path={p}", p) for p in F35B_CSRF_BLOBS}
+        changed = _git("diff", "--name-only", F35B_CSRF_BASE).splitlines()
+        # Exact paths also reject all engine/pin/writer changes. Confirm all
+        # original security-critical authorities, not just a mutable HEAD.
+        for path in REVENUE_V2_OTHER_CRITICAL_PATHS | {"tests/model_v2_governance.py", "domain/revenue/multistream_runtime.py"}:
+            if _git("hash-object", f"--path={path}", path) != _git("rev-parse", f"{F35B_CSRF_BASE}:{path}"):
+                return False
+        return _f35b_csrf_exact(changed, blobs, True, _csrf_call_sites(),
+                               _git("show", f"{F35B_CSRF_BASE}:app/trust_readiness/registry.py"),
+                               _read_current("app/trust_readiness/registry.py").strip())
+    except (OSError, subprocess.CalledProcessError, ValueError, TypeError):
+        return False
+
+
+def test_f35b_exact_security_successor_and_historical_pins():
+    import ast
+    assert _current_f35b_csrf_authorized()
+    def constants(source):
+        return {n.targets[0].id: ast.dump(n.value) for n in ast.parse(source).body
+                if isinstance(n, ast.Assign) and len(n.targets) == 1
+                and isinstance(n.targets[0], ast.Name) and n.targets[0].id.isupper()}
+    historical = constants(_git("show", f"{F35B_CSRF_BASE}:{CSRF_GUARD_PATH}"))
+    current = constants(_read_current(CSRF_GUARD_PATH))
+    assert {name: current.get(name) for name in historical} == historical
+    source = _git("show", f"{F35B_CSRF_BASE}:app/v2/router.py")
+    assert _revenue_critical_functions(source) == _revenue_critical_functions(_read_current("app/v2/router.py"))
+
+
+def test_f35b_exact_security_rejects_changed_missing_extra_files_and_provenance(monkeypatch):
+    import sys
+    changed = set(F35B_CSRF_BLOBS) | {CSRF_GUARD_PATH}
+    base = '"' + F35B_CSRF_OLD + '"'
+    current = _f35b_csrf_registry(base)
+    def valid(paths=changed, blobs=F35B_CSRF_BLOBS, provenance=True,
+              sites=F4_CSRF_CALL_SITES, registry=current):
+        return _f35b_csrf_exact(paths, blobs, provenance, sites, base, registry)
+    assert valid()
+    for path in F35B_CSRF_BLOBS:
+        assert not valid(blobs={**F35B_CSRF_BLOBS, path: "0" * 40})
+        assert not valid(blobs={k: v for k, v in F35B_CSRF_BLOBS.items() if k != path})
+    for path in changed:
+        assert not valid(paths=changed - {path})
+    for path in ("app/trust_readiness/projection.py", "docs/readiness/01_security_and_data_handling.md",
+                 "financial_engine/financing/junior_debt.py", "finco_core/inputs/junior_debt.py",
+                 "domain/new.py", "tests/model_v2_governance.py", "app/workbook/update_service.py",
+                 "app/v2/investor_f4_router.py", "app/persistence/run_history_repository.py", "app/auth.py"):
+        assert not valid(paths=changed | {path})
+    assert not valid(provenance=False)
+    assert not valid(registry=current + ' unapproved claim')
+    assert not valid(sites=F4_CSRF_CALL_SITES | {"app/v2/unapproved.py"})
+    assert not valid(sites=F4_CSRF_CALL_SITES - {"app/v2/router.py"})
+    def unavailable(*args):
+        raise subprocess.CalledProcessError(1, ["git", *args])
+    monkeypatch.setattr(sys.modules[__name__], "_git", unavailable)
+    assert not _current_f35b_csrf_authorized()

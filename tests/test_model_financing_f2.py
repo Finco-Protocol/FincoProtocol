@@ -67,8 +67,14 @@ def test_nonrenewable_lender_cases_rejected(kind):
 
 def save(env, record, raw, *, field=FIELD_ID, stale_tokens=None):
     page = env.client.get('/v2/workbook', params={'project': record.project_code})
+    csrf = {}
+    if field == 'debt.financing.instruments':
+        from bs4 import BeautifulSoup
+        form = BeautifulSoup(page.text, 'html.parser').select_one('[data-f3-form]')
+        csrf['csrf_token'] = form.select_one('[name="csrf_token"]')['value']
     return env.client.post('/v2/workbook/update', headers={'HX-Request': 'true'}, data=dict(
         project=record.project_code, field_id=field, value=raw, sheet_id='debt',
+        **csrf,
         **(stale_tokens or tokens(page.text))))
 
 

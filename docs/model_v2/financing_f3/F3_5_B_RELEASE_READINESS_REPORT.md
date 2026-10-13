@@ -21,7 +21,7 @@ Draft PR handoff; a document cannot contain its own commit SHA.
 | CAS, scenario ownership, immutable Run and export | EXISTING | F3 workspace snapshot, canonical writer, Last Run evidence and export binding |
 | Capital Stack Junior proposal display | PARTIAL | Read-only proposal exists; zero subtotal and pari-passu labels misstate it |
 | Customer Junior activation/editor | UNSUPPORTED | `app/workbook/junior_debt_config.py:ACTIVATION_ENABLED=False` |
-| F3 form CSRF | MISSING | Existing `/v2/workbook/update` field path lacks CSRF; separate bounded authorization requested |
+| F3 form CSRF | MISSING AT BASE, CORRECTED | Owner-approved session/project-bound timed token protects only `debt.financing.instruments`; canonical owner/protected/CAS checks remain |
 | Facility-level tax attribution | UNSUPPORTED | F3.8 explicitly exposes aggregate tax only |
 | SHL, reserves, VAT facility, ATAD/thin-cap, mezzanine, multiple Junior | UNSUPPORTED | Existing F3.5-A fail-closed boundary; no extension here |
 
@@ -55,5 +55,24 @@ an activation toggle for the existing one-Senior candidate.
 
 ## Acceptance evidence
 
-Pending local focused numerical/lifecycle/browser execution and exact-head CI.
-No pass or production readiness is claimed before those gates complete.
+The first checkpoint ran 31 focused tests and two explicit Chromium tests
+successfully. Eight independent Decimal cases cover Solar/Wind, ACT/360 and
+ACT/365, level principal and bullet repayment; two additional adversarial
+cases reject impossible bullet service and an unfunded construction period.
+Initial synthetic-fixture errors were corrected without engine changes:
+capture state after existing GET seed hydration; use independently declared
+low gearing for cash-payable positive bullet cases. Original cash-shortfall
+and overfunding rejection remain explicitly tested.
+
+CSRF correction is owner-authorized for this PR only. Its Trust successor
+requires exact candidate blobs, an immutable base and exact changed paths,
+with negative tests; no historical financial/security authority is rewritten.
+The token binds authenticated session, actor and project, then passes the
+existing timed validator. It is refreshed on GET and HTMX rendering, not
+stored as financial input, and does not change other workbook POST fields.
+
+Screenshots are outside Git at `../f35b-browser-evidence/`; explicit F3.5-B
+Chromium coverage is separate from the mandatory six-role browser CI.
+Final local counts, numerical residuals, six paired inactive fingerprints and
+exact-head CI evidence are recorded in the PR handoff. CI and staging are
+PENDING until independently verified; Junior activation remains OFF.
