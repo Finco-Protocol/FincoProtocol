@@ -222,6 +222,15 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
     # An unchanged baseline remains valid; any release diff must be the complete reviewed slice.
     if not protected:
         return
+    # Revenue V2 Correction C: exact one-path, one-content successor authority.
+    # Keep F3.5-A's complete historical release slice and pins untouched.
+    from model_v2_governance import REVENUE_V2_ADVANCED_AUTHORITIES
+    if protected == set(REVENUE_V2_ADVANCED_AUTHORITIES):
+        for path, pin in REVENUE_V2_ADVANCED_AUTHORITIES.items():
+            actual = git("rev-parse", "--verify", f"{head}:{path}")
+            assert git("cat-file", "-t", actual) == "blob", f"Missing Revenue V2 authority blob: {path}"
+            assert actual == pin, f"Unreviewed Revenue V2 content: {path}"
+        return
     assert protected == _F3_5_REVIEWED_PROTECTED_PATHS, f"Unapproved or incomplete protected diff: {sorted(protected)}"
     for path in sorted(protected):
         actual = git("rev-parse", "--verify", f"{head}:{path}")
@@ -520,3 +529,57 @@ def test_consolidation_missing_junit_fails_closed(tmp_path):
         validate_consolidation(tmp_path, {"selected": nodes, "collected": nodes,
                                          "deselected": [], "outcomes": {n: {"status": "passed"} for n in nodes}},
                                {"normal_exit": True, "exit_code": 0})
+
+
+@pytest.fixture
+def reviewed_revenue_v2_git_repo(tmp_path):
+    from model_v2_governance import REVENUE_V2_ADVANCED_AUTHORITIES
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=tmp_path, capture_output=True, check=True).stdout
+
+    assert set(REVENUE_V2_ADVANCED_AUTHORITIES) == {"domain/revenue/multistream_runtime.py"}
+    git("init")
+    git("config", "core.autocrlf", "false")
+    git("config", "user.name", "Synthetic Revenue Governance")
+    git("config", "user.email", "synthetic.invalid")
+    path = "domain/revenue/multistream_runtime.py"
+    target = tmp_path / path
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"Synthetic baseline Revenue runtime\\n")
+    git("add", ".")
+    git("commit", "-m", "Synthetic baseline")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    root = Path(__file__).resolve().parents[1]
+    actual = subprocess.run(["git", "cat-file", "blob", REVENUE_V2_ADVANCED_AUTHORITIES[path]],
+                            cwd=root, capture_output=True, check=True).stdout
+    target.write_bytes(actual)
+    git("add", path)
+    git("commit", "-m", "Exact Revenue V2 accepted blob")
+    return tmp_path, git
+
+
+def test_frozen_guard_accepts_only_exact_revenue_v2_successor(reviewed_revenue_v2_git_repo):
+    root, _ = reviewed_revenue_v2_git_repo
+    _assert_frozen_financial_namespace_authority(root)
+
+
+def test_frozen_guard_rejects_one_byte_changed_revenue_v2_successor(reviewed_revenue_v2_git_repo):
+    root, git = reviewed_revenue_v2_git_repo
+    path = "domain/revenue/multistream_runtime.py"
+    target = root / path
+    target.write_bytes(target.read_bytes() + b"x")
+    git("add", path)
+    git("commit", "-m", "Unapproved altered Revenue blob")
+    with pytest.raises(AssertionError, match="Unreviewed Revenue V2 content"):
+        _assert_frozen_financial_namespace_authority(root)
+
+
+def test_frozen_guard_rejects_revenue_v2_plus_unapproved_domain_path(reviewed_revenue_v2_git_repo):
+    root, git = reviewed_revenue_v2_git_repo
+    path = root / "domain/revenue/unapproved.py"
+    path.write_text("unauthorized = True\\n", encoding="utf-8")
+    git("add", "domain/revenue/unapproved.py")
+    git("commit", "-m", "Unapproved domain path")
+    with pytest.raises(AssertionError, match="Unapproved or incomplete protected diff"):
+        _assert_frozen_financial_namespace_authority(root)

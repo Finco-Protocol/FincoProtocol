@@ -288,6 +288,39 @@ def test_canonical_financing_read_only_stress_and_persisted_input_unchanged(kind
     assert data["total_senior_ds_keur"]["base"] is not None
     assert data["project_irr"]["base"] is not None
 
+    # Numerical audit of ACTUAL Solar/Wind canonical runs, not a fixture-only
+    # formula. The full Public Safety artifact upload retains these residuals.
+    from pathlib import Path
+    from decimal import localcontext
+    with localcontext() as ctx:
+        ctx.prec = 38
+        actual_revenue = Decimal(str(data["total_revenue_keur"]["stress"])) - Decimal(
+            str(data["total_revenue_keur"]["base"]))
+        actual_ebitda = Decimal(str(data["total_ebitda_keur"]["stress"])) - Decimal(
+            str(data["total_ebitda_keur"]["base"]))
+        revenue_residual = actual_revenue - total_expected
+        ebitda_residual = actual_ebitda - total_expected
+    def _metrics(key):
+        item = data.get(key)
+        return {"base": item.get("base"), "stress": item.get("stress")} if item else None
+    evidence = {
+        "source": "real canonical compare_commercial_cases + independent per-period Decimal leg reconciliation",
+        "technology": kind, "scenario": "two_way_cfd" if with_cfd else "unhedged",
+        "expected_revenue_delta_keur": str(total_expected),
+        "actual_revenue_delta_keur": str(actual_revenue),
+        "revenue_residual_keur": str(revenue_residual),
+        "actual_ebitda_delta_keur": str(actual_ebitda),
+        "ebitda_residual_keur": str(ebitda_residual),
+        "total_senior_ds_keur": _metrics("total_senior_ds_keur"),
+        "project_irr": _metrics("project_irr"),
+        "metrics": {key: _metrics(key) for key in sorted(data)
+                    if any(word in key for word in ("cfads", "tax", "debt", "dscr", "irr", "equity"))},
+    }
+    report = Path("artifacts/revenue-v2-advanced-numerical") / (
+        f"{kind}-{'two-way-cfd' if with_cfd else 'unhedged'}.json")
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps(evidence, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+
 
 def test_orphaned_cfd_reference_is_still_rejected_not_silently_ignored():
     pi, _, _, payload = book()

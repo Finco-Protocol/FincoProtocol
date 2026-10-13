@@ -116,3 +116,30 @@ pytest rc=0 and supervisor exit=0, six browser roles, Governance, Security and
 Compile. Obtain genuine Solar/Wind Run numerical reports, before/after
 desktop/mobile screenshots, scenario save/reload, and historical export checks.
 **NO SELF-APPROVAL / MERGE / DEPLOY** until reviewed.
+
+
+## Correction C — exact-content candidate and numerical acceptance evidence
+
+Scope: one runtime dependency fix in the read-only Revenue V2 stress route; no algorithm, financial formula or valuation tolerance changes. The previously reviewed Revenue V2 runtime content is kept **byte-identical**, Git blob `48465ce2a298fa1383a7eabcb921eb9fbe4610cb`. A separately named one-path / one-blob successor pin is proposed in `tests/model_v2_governance.py`. Historical `WF07_REVENUE_AUTHORITIES` and F3.5 release pins remain unchanged. The frozen namespace guard permits only this exact successor blob at this exact path (never `domain/revenue/**`), and negative tests independently change one byte or add an unlisted protected path. The implementation PR remains Draft, pending independent financial review and explicit merge approval.
+
+### Independent Decimal reference (analytical, not a measured model residual)
+
+For a **1 MWh** synthetic production unit, physical allocation PPA alpha 45%, beta 35%, merchant 20%; merchant capture 80%; signed CfD overlay 20% referencing **raw** merchant price, strike 65 EUR/MWh:
+
+| Period | PPA alpha+beta | Merchant | Two-way CfD | Baseline total EUR/MWh | Merchant -10% total EUR/MWh | Independent difference |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Early: alpha 55, raw merchant 40 | 49.25 | 6.40 | +5.00 | 60.65 | 60.81 | +0.16 |
+| Later: alpha 47, raw merchant 95 | 45.65 | 15.20 | -6.00 | 54.85 | 55.23 | +0.38 |
+
+These values are algebraically exact Decimal reference coefficients, **not** fabricated actual Solar/Wind canonical-model outcomes. Two-way CfD overlay is not double-counted as physical generation. Legacy V1 fixed/indexed parity and V2 no-curve parity are checked by the unchanged canonical regression tests.
+
+### Real canonical numerical measurements (CI evidence)
+
+`tests/test_revenue_v2_advanced_curves.py::test_canonical_financing_read_only_stress_and_persisted_input_unchanged` executes four full real Solar/Wind canonical baseline/stress pairs (hedged and unhedged). For each, it independently reconciles the physical Merchant + signed CfD legs with Decimal, asserts Revenue/EBITDA deltas, financing availability, non-persistence and no invented bank-case metrics. Correction C now writes the **actual measured** values and `actual minus Decimal expected` revenue/EBITDA residuals, together with available tax/CFADS/debt/returns metrics, to:
+`artifacts/revenue-v2-advanced-numerical/{solar,wind}-{two-way-cfd,unhedged}.json`.
+
+The existing Public Safety workflow uploads `artifacts/` as immutable exact-head evidence. A reviewer must read those files and actual residuals **after the new CI completes**. No numeric residual is claimed here before execution. Required regression tests continue to enforce their pre-existing tolerances; no golden value or tolerance change was made. This report does not claim independent downstream CFADS/tax/DSCR/IRR residuals that the current regression does not explicitly calculate. If such reconciliation is a merge requirement, stop and request its dedicated canonical acceptance rather than inferring it.
+
+### Read-only functional acceptance
+
+The stress endpoint now imports the *same canonical CAPEX/OPEX sub-line folding functions already used by Run*, inside its existing read-only materialization path. Both base and child scenarios must return HTTP 200, with unchanged Working Copy, Scenario, Run History, and Last Run. Owner/CSRF/composite-CAS/protected Reference negative tests remain enabled. New numerical output files are diagnostic test artifacts only; no client workbook or model payload is persisted by production code.

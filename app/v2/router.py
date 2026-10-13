@@ -1234,6 +1234,10 @@ async def v2_revenue_commercial_stress(request: Request, _: None = Depends(requi
             SNAPSHOT_KEY as bank_key, assert_materialized_fee_authority,
         )
         from app.workbook.multisenior_config import SNAPSHOT_KEY as f3_key, apply_state
+        # Reuse the exact CAPEX/OPEX folding dependencies of the canonical Run.
+        # These functions only materialize inputs; this endpoint never persists them.
+        from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
+        from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex
         from dataclasses import replace as dataclass_replace
         scenario = None
         scenario_overrides = None
