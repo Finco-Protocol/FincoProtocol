@@ -78,3 +78,56 @@ def test_readonly_stress_form_reuses_existing_csrf_and_composite_identity(env):
     assert editor.select_one('input[name="csrf_token"]')["value"] == stress.select_one('input[name="csrf_token"]')["value"]
     assert editor.select_one('input[name="content_hash"]')["value"] == stress.select_one('input[name="content_hash"]')["value"]
     assert not stress.select_one('input[name="contracts"]')
+
+
+@pytest.mark.parametrize("selected_scenario", ["base", "child"])
+def test_successful_readonly_stress_preserves_working_copy_history_and_scenario(
+        env, selected_scenario):
+    """Actual canonical comparison must not write even when child is selected."""
+    from copy import deepcopy
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import get_run_history
+    from app.persistence.scenarios_repository import get_scenario
+    from app.workbook.service import WorkbookService
+
+    owner = "decision-user"
+    record = env.create()
+    project = {"project": record.project_code}
+
+    def page():
+        response = env.client.get("/v2/workbook", params=project)
+        assert response.status_code == 200
+        return response.text
+
+    def state():
+        return get_workspace_state(owner, record.project_id)
+
+    payload = contracts(WorkbookService.build_draft_input_set_from_workspace(
+        state()).to_projectinputs(), price=90, merchant_price=80)
+    response = env.client.post("/v2/workbook/revenue/contracts", data={
+        **project, **contract_tokens(page()), "contracts": json.dumps(payload)})
+    assert response.status_code in (200, 303), response.text[:500]
+
+    if selected_scenario == "child":
+        created = env.client.post("/v2/workbook/scenarios/create",
+            data={**project, "scenario_name": "Synthetic Commercial Child"})
+        assert created.status_code == 200
+        active = state().active_scenario_id
+        assert active is not None
+        selection_before = deepcopy(get_scenario(scenario_id=active, user_id=owner))
+    else:
+        selection_before = None
+
+    original_ws = deepcopy(state())
+    original_history = deepcopy(get_run_history(owner, record.project_id))
+    data = {**project, **contract_tokens(page()), "shock": "merchant_down",
+            "amount_pct": "10", "expiry_date": ""}
+    result = env.client.post("/v2/workbook/revenue/stress", data=data)
+    assert result.status_code == 200, result.text[:1500]
+    assert "revenue-stress-results" in result.text
+    assert "Bank-specific case: UNAVAILABLE" in result.text
+    assert state() == original_ws
+    assert get_run_history(owner, record.project_id) == original_history
+    if selection_before is not None:
+        assert get_scenario(scenario_id=original_ws.active_scenario_id,
+                            user_id=owner) == selection_before
