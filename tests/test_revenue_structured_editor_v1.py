@@ -53,10 +53,11 @@ def test_scenario_inherit_and_protected_reference_are_unchanged():
     assert reference.select_one('table[aria-label="Saved revenue contracts"]')
 
 
-def test_five_editor_variants_and_disabled_unsupported_features():
+def test_existing_and_scheduled_editor_variants_and_disabled_unsupported_features():
     page = BeautifulSoup(render(), "html.parser")
     variants = [x["value"] for x in page.select('[data-revenue-add-type] option')]
-    assert variants == ["fixed_ppa", "indexed_ppa", "merchant", "residual_merchant", "cfd"]
+    assert variants == ["fixed_ppa", "indexed_ppa", "merchant", "residual_merchant",
+                        "scheduled_ppa", "scheduled_merchant", "cfd"]
     assert not any(x in variants for x in ("capacity_market", "ancillary", "rec"))
     text = SCRIPT.read_text(encoding="utf-8")
     assert "financial_engine" not in text and "run_clean_production" not in text

@@ -157,6 +157,14 @@ WF07_REVENUE_AUTHORITIES = {
     "domain/revenue/multistream_runtime.py": "94e1559472d0f3051fb7faccf3b67ce44337188f",
 }
 
+# Revenue V2 advanced nominal curves: ONE explicitly content-pinned successor
+# to the historically released WF07 revenue runtime. WF07 pins remain immutable
+# as release provenance, including the original runtime blob.
+# This map authorizes NO other domain/revenue path and NO subsequent edit.
+REVENUE_V2_ADVANCED_AUTHORITIES: dict[str, str] = {
+    "domain/revenue/multistream_runtime.py": "48465ce2a298fa1383a7eabcb921eb9fbe4610cb",
+}
+
 # F3.5-A independently accepted candidate content. This release map is not
 # production activation; Junior's application gate remains explicitly closed.
 F3_5_A_JUNIOR_AUTHORITIES: dict[str, str] = {
@@ -329,6 +337,7 @@ def released_engine_authority_matches(
         F3_1_CONTRACT_AUTHORITIES, F3_2_4_FINANCING_AUTHORITIES,
         WF04_NUMERIC_PRECISION_AUTHORITIES,
         WF07_REVENUE_AUTHORITIES,
+        REVENUE_V2_ADVANCED_AUTHORITIES,
         F3_5_A_JUNIOR_AUTHORITIES,
     ) if path in authorities}
     if not pinned:

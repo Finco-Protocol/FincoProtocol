@@ -1,0 +1,22 @@
+<div id="revenue-stress-results" role="status" aria-live="polite" data-testid="revenue-stress-results">
+  {% if error %}
+  <div role="alert" class="rc-error">{{ error }}</div>
+  {% elif stress %}
+  <p class="d-context"><strong>{{ stress.label }}</strong>
+  {% if stress.shock != "ppa_expiry" %}· {{ "%.2f"|format(stress.amount_pct) }}% price magnitude{% else %}
+  · expiry at {{ stress.expiry_date }}{% endif %}
+  · {{ stress.persistence }} persistence · selected Working Copy/scenario, not a new Last Run</p>
+  <div class="rc-scroll" role="region" aria-label="Read-only commercial case comparison" tabindex="0">
+  <table class="d-table rc-stress-table">
+    <thead><tr><th scope="col">Canonical metric</th><th scope="col">Base</th><th scope="col">Stress</th><th scope="col">Δ Stress − Base</th></tr></thead>
+    <tbody>{% for m in stress.metrics %}
+    <tr><td>{{ m.label }}</td>
+      <td>{% if m.base is none %}UNAVAILABLE{% else %}{{ "%.6g"|format(m.base) }}{% endif %}</td>
+      <td>{% if m.stress is none %}UNAVAILABLE{% else %}{{ "%.6g"|format(m.stress) }}{% endif %}</td>
+      <td>{% if m.delta is none %}UNAVAILABLE{% else %}{{ "%.6g"|format(m.delta) }}{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="d-context"><strong>Bank-specific case: {{ stress.bank_case_status }}</strong>.
+    {{ stress.bank_case_reason }} These are hypothetical full canonical runs, not a lender-approved pricing case.</p>
+  {% endif %}
+</div>
