@@ -116,6 +116,24 @@ def detail(canonical_asset_id: str, *, gates, now: datetime | None = None) -> di
                 canonical_asset_id, registry, venue_store,
                 include_points=gates.history.access_allowed, as_of=now),
             gates)
+    # R3 is a separate historical MARKET component, not an extra registry
+    # representation or a modification to #183 own-history statistics.
+    # Both existing premium entitlements are required for the combined
+    # history + cross-venue result; denied payload is never computed.
+    deepstate_history = None
+    if (venue_store is not None and view.canonical_asset_id == "NVDA"
+            and gates.history.access_allowed and gates.dislocation.access_allowed):
+        from app.crypto_terminal.deepstate_composition import (
+            DeepstateHistoricalMarketContext, build_deepstate_historical_context,
+        )
+        try:
+            deepstate_history = build_deepstate_historical_context(
+                view.canonical_asset_id, registry=registry, store=venue_store,
+                as_of=now)  # no approved USDG/USD policy: fail closed by default
+        except Exception:
+            deepstate_history = DeepstateHistoricalMarketContext(
+                view.canonical_asset_id, "UNAVAILABLE",
+                "HISTORICAL_COMPARISON_UNAVAILABLE", (), ())
     basis_series = []
     if intelligence is not None:
         for item in intelligence.representations:
@@ -134,4 +152,5 @@ def detail(canonical_asset_id: str, *, gates, now: datetime | None = None) -> di
         "collector_health": collector_health(),
         "reference": view.reference,
         "history_available": view.history_available,
+        "deepstate_history": deepstate_history,
     }
