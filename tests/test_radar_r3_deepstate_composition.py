@@ -246,8 +246,9 @@ def test_wrong_rlive_economic_uid_and_unit_not_comparable(store):
         "HISTORICAL_COMPARISON_UNAVAILABLE")
     good_unit_bad = replace(rlive, payload={**rlive.payload, "comparison_unit": RAW_COMPARISON_UNIT})
     store.append_observation(good_unit_bad)
-    assert all(p.divergence_bps is None
-               for p in _read(store, policy=CANDIDATE_POLICY).historical_comparisons)
+    result = _read(store, policy=CANDIDATE_POLICY)
+    assert result.historical_comparisons[0].reason == "COMPARISON_UNIT_MISMATCH"
+    assert all(p.divergence_bps is None for p in result.historical_comparisons)
 
 
 def test_no_database_writes_or_fake_registry_representation(store, monkeypatch):
@@ -269,3 +270,43 @@ def test_no_frozen_namespace_delta_on_branch():
     from model_v2_governance import model_v2_frozen_violations
     assert strictly_frozen_changes() == []
     assert model_v2_frozen_violations() == []
+
+
+def test_historical_300s_inclusive_boundary(store):
+    store.append_observation(_normalized())
+    store.append_observation(_rlive(BLOCK_TIME + timedelta(seconds=300)))
+    result = _read(store, policy=CANDIDATE_POLICY)
+    assert result.historical_comparisons[0].state == "HISTORICAL_COMPARISON_AVAILABLE"
+    assert result.historical_comparisons[0].source_skew_seconds == "300.0"
+    assert result.current_cross_venue_state == "UNAVAILABLE"
+
+
+def test_malformed_normalization_time_and_cached_inconsistency_fail_closed(store):
+    from app.crypto_terminal.deepstate_composition import _normalization
+    bad_clock = replace(_normalized(), payload={**_normalized().payload,
+                         "usdg_usd_timestamp": "not-a-clock"})
+    assert _normalization(bad_clock, CANDIDATE_POLICY,
+                          NVDA_POLICY.pool.quote_feed_address)[0] == (
+                              "MISSING_NORMALIZATION_EVIDENCE")
+    wrong_cached = replace(_normalized(), payload={**_normalized().payload,
+                           "normalized_usd_price": "1"})
+    assert _normalization(wrong_cached, CANDIDATE_POLICY,
+                          NVDA_POLICY.pool.quote_feed_address)[0] == (
+                              "INVALID_MARKET_EVIDENCE")
+
+
+def test_deepstate_bad_execution_block_timestamp_distinct_from_collection(store):
+    earlier = _fill()
+    second_ts = BLOCK_TIME + timedelta(seconds=12)
+    second = replace(earlier, ts=second_ts.isoformat(),
+                     payload={**earlier.payload,
+                              "deepstate_execution_timestamp": second_ts.isoformat(),
+                              "block_number": earlier.payload["block_number"] + 1,
+                              "block_hash": "0x" + "f0" * 32})
+    store.append_observation(earlier)
+    store.append_observation(second)
+    result = _read(store)
+    assert {x.execution_timestamp for x in result.evidence} == {
+        earlier.ts, second.ts}
+    assert {x.block_number for x in result.evidence} == {
+        earlier.payload["block_number"], second.payload["block_number"]}
