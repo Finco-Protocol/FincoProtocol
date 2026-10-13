@@ -42,6 +42,8 @@ def build_capital_stack(f3: dict, freshness: Any, *, day_count: Any = None) -> d
     active = bool(f3.get("active"))
     status = ACTIVE if active else SAVED if saved else DRAFT
     run_state = getattr(getattr(freshness, "state", None), "value", None) or "NOT_RUN"
+    junior_present = any(i.get("instrument_type") == "JUNIOR_DEBT" for i in entry["proposal"]["instruments"])
+    policy = (entry.get("activation") or {}).get("junior_policy") or {}
     rows = []
     for i in entry["proposal"]["instruments"]:
         junior = i.get("instrument_type") == "JUNIOR_DEBT"
@@ -49,17 +51,20 @@ def build_capital_stack(f3: dict, freshness: Any, *, day_count: Any = None) -> d
         rows.append({
             "instrument_id": i["instrument_id"], "name": i["name"],
             "type": "Junior term loan" if junior else "Senior term loan",
-            "rank": f"Junior · rank {i.get('seniority_rank', 2)}" if junior else "Senior · pari passu",
+            "rank": (f"Junior · rank {i.get('seniority_rank', 2)}" if junior else
+                     f"Senior · rank {i.get('seniority_rank', 1)}" if junior_present else "Senior · pari passu"),
             "junior": junior, "editable": not junior, "commitment_keur": number(i["commitment_keur"]) or 0.0,
             "currency": "EUR", "rate_type": "Fixed", "rate_pct": (number(i["interest"].get("fixed_rate")) or 0.0) * 100,
-            "day_count": label(day_count) if day_count is not None else UNAVAILABLE,
+            "day_count": (label(policy.get("day_count")) if policy.get("day_count") else UNAVAILABLE)
+                         if junior else label(day_count) if day_count is not None else UNAVAILABLE,
             "repayment_mode": i["repayment"]["mode"], "repayment": _REPAYMENT.get(i["repayment"]["mode"], i["repayment"]["mode"]),
             "grace_months": i["repayment"]["grace_months"], "maturity_date": i["repayment"]["maturity_date"],
             "draws": [{"date": d["draw_date"], "amount_keur": number(d["amount_keur"]) or 0.0} for d in i.get("drawdowns") or ()],
             "draws_total_keur": _draws_total(i),
             "upfront_pct": fees.get("UPFRONT", 0.0) * 100, "commitment_fee_pct": fees.get("COMMITMENT", 0.0) * 100,
             # A Junior row is a typed proposal only: Junior activation is closed, so it is never ACTIVE/executable.
-            "status": SAVED if junior and saved else DRAFT if junior else status, "executable": active and not junior,
+            "status": SAVED if junior and saved else DRAFT if junior else status,
+            "executable": active and not junior_present,
             "readiness": ("Activation closed: candidate content review required; not executed."
                           if junior and not JUNIOR_ACTIVATION_ENABLED else None) if junior else None,
         })
@@ -91,7 +96,14 @@ def build_capital_stack(f3: dict, freshness: Any, *, day_count: Any = None) -> d
         "last_run_is_current": run_state == "CURRENT",
         "last_run_label": {"CURRENT": "LAST RUN · CURRENT", "STALE": "LAST RUN · STALE (inputs changed since the run)"}.get(run_state, "NOT RUN"),
         "unsupported": [{"name": n, "reason": r, "status": UNSUPPORTED} for n, r in UNSUPPORTED_STRUCTURES],
-        "debt_service_priority": "Pari passu between Senior facilities; no subordination configured.",
-        "release_enabled": bool(f3.get("release_enabled")),
+        "debt_service_priority": ("Senior first, then contractual Junior service; proposal only, not executed."
+                                  if junior_present else "Pari passu between Senior facilities; no subordination configured."),
+        "release_enabled": bool(f3.get("release_enabled")) and not junior_present,
         "junior_activation_closed": not JUNIOR_ACTIVATION_ENABLED,
+        "junior_policy": {
+            "day_count": label(policy.get("day_count")) if policy.get("day_count") else UNAVAILABLE,
+            "idc_book_life_years": policy.get("idc_book_life_years", UNAVAILABLE),
+            "idc_tax_treatment": policy.get("idc_tax_treatment", UNAVAILABLE),
+            "maximum_total_debt_gearing": policy.get("maximum_total_debt_gearing", UNAVAILABLE),
+        } if junior_present else None,
     }
