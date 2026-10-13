@@ -68,6 +68,14 @@ RC2_CSRF_CALL_SITES = frozenset({
 RC2_GOVERNED_ELSEWHERE = frozenset({"app/trust_readiness/registry.py"})
 RC2_FREE_PREFIXES = ("tests/", "docs/", "static/", "app/templates/")
 
+RC2_CI_WORKFLOW = ".github/workflows/ci_public_job.yml"
+RC2_CI_WORKFLOW_BASE_BLOB = "4c6b913605120673b626b8492a8201d5164e7b0d"
+# REVIEW PROPOSAL ONLY: SHA for the unique 3300 -> 4200 pytest budget change.
+RC2_CI_WORKFLOW_CANDIDATE_BLOB = "a50980d2bcc90e233c5d290b1f1545202487882c"
+RC2_CI_PYTEST_OLD = "FINCO_CI_PYTEST_BUDGET_S: '3300'"
+RC2_CI_PYTEST_NEW = "FINCO_CI_PYTEST_BUDGET_S: '4200'"
+
+
 
 RC2_ACTIVATION_FLAG_FILES = {                 # path -> flag name; both must be a single literal ``False`` assignment
     "domain/revenue/advanced_products.py": "ACTIVATION_ENABLED",
@@ -99,6 +107,18 @@ def activation_state(source: str, name: str = "ACTIVATION_ENABLED") -> str:
     if isinstance(value, ast.Constant) and value.value is False:
         return "CLOSED"
     return "NOT_LITERAL_FALSE"
+
+
+def rc2_workflow_delta_valid(baseline: str, candidate: str) -> bool:
+    """One reviewed budget substitution, no other workflow edits or implicit authorization."""
+    return (
+        isinstance(baseline, str)
+        and isinstance(candidate, str)
+        and baseline.count(RC2_CI_PYTEST_OLD) == 1
+        and baseline.count(RC2_CI_PYTEST_NEW) == 0
+        and candidate.count(RC2_CI_PYTEST_NEW) == 1
+        and candidate == baseline.replace(RC2_CI_PYTEST_OLD, RC2_CI_PYTEST_NEW, 1)
+    )
 
 
 def _git(*args):
@@ -141,8 +161,18 @@ def rc2_violations(f) -> list[str]:
             if status not in ("A", "M"):
                 problems.append(f"{path}: {status} is not permitted")
             elif not (path in RC2_EXACT_BLOBS or path == "app/v2/router.py" or path in RC2_GOVERNED_ELSEWHERE
-                      or path.startswith(RC2_FREE_PREFIXES)):
+                      or path.startswith(RC2_FREE_PREFIXES) or path == RC2_CI_WORKFLOW):
                 problems.append(f"{path}: not part of the reviewed RC-2 content")
+        # The sole non-default workflow exception is a proposed, byte-exact 3300 -> 4200 delta.
+        # Historical workflow boundaries remain closed; this is NOT reviewer authorization.
+        if [status for status, path in f["status"] if path == RC2_CI_WORKFLOW] != ["M"]:
+            problems.append("RC-2 CI workflow must be modified exactly once")
+        if f["ci_workflow_base_blob"] != RC2_CI_WORKFLOW_BASE_BLOB:
+            problems.append("RC-2 CI workflow baseline is not the reviewed main blob")
+        if f["ci_workflow_head_blob"] != RC2_CI_WORKFLOW_CANDIDATE_BLOB:
+            problems.append("RC-2 CI workflow has an unreviewed blob")
+        if not rc2_workflow_delta_valid(f["ci_workflow_base"], f["ci_workflow_head"]):
+            problems.append("RC-2 CI workflow contains more than the one reviewed budget line change")
         for path, expected in RC2_PINNED_UNCHANGED.items():
             if f["blobs"].get(path) != expected:
                 problems.append(f"{path}: not the exact reviewed blob")
@@ -187,6 +217,11 @@ def _collect():
     return {
         "merges": merges, "ancestor": ancestor, "status": status, "call_sites": sites,
         "blobs": {p: _git("hash-object", p) for p in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED) if (ROOT / p).exists()},
+        "ci_workflow_base_blob": _git("rev-parse", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}"),
+        "ci_workflow_head_blob": _git("hash-object", RC2_CI_WORKFLOW),
+        # _git() strips one trailing newline; restore that known exact baseline ending.
+        "ci_workflow_base": _git("show", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}") + "\n",
+        "ci_workflow_head": (ROOT / RC2_CI_WORKFLOW).read_text(encoding="utf-8"),
         "router_base": _git("show", f"{RC2_BASE_MAIN}:app/v2/router.py"),
         "router_head": (ROOT / "app/v2/router.py").read_text(encoding="utf-8"),
         # The ACTUAL observed source; the verifier derives the state itself (no pre-computed or replaced flag).
@@ -275,6 +310,35 @@ def test_every_other_mutation_is_rejected(facts):
     bad(call_sites=set(base["call_sites"]) | {"app/v2/sensitivity_matrix_router.py"})   # silently adding CSRF is also a change
     bad(call_sites=set(base["call_sites"]) - {"app/v2/developer_decision_router.py"})
     assert rc2_violations({})                                                 # missing facts never authorise
+
+
+def test_ci_workflow_is_the_single_exact_timeout_delta_and_rejects_other_edits(facts):
+    assert facts["ci_workflow_base_blob"] == RC2_CI_WORKFLOW_BASE_BLOB
+    assert facts["ci_workflow_head_blob"] == RC2_CI_WORKFLOW_CANDIDATE_BLOB
+    assert rc2_workflow_delta_valid(facts["ci_workflow_base"], facts["ci_workflow_head"])
+    assert rc2_violations(facts) == []
+
+    def rejected(**changes):
+        changed = copy.deepcopy(facts)
+        changed.update(changes)
+        assert rc2_violations(changed), changes
+
+    candidate = facts["ci_workflow_head"]
+    for source in (
+        candidate.replace(RC2_CI_PYTEST_NEW, RC2_CI_PYTEST_OLD, 1),
+        candidate.replace(RC2_CI_PYTEST_NEW, "FINCO_CI_PYTEST_BUDGET_S: '4300'", 1),
+        candidate.replace("timeout-minutes: 75", "timeout-minutes: 90", 1),
+        candidate.replace("FINCO_CI_EXIT_GRACE_S: '180'", "FINCO_CI_EXIT_GRACE_S: '120'", 1),
+        candidate + "\n# unrelated workflow modification",
+    ):
+        assert source != candidate
+        rejected(ci_workflow_head=source)
+    rejected(ci_workflow_head_blob="0" * 40)
+    rejected(ci_workflow_base_blob="0" * 40)
+    rejected(status=[item for item in facts["status"] if item[1] != RC2_CI_WORKFLOW])
+    rejected(status=[*facts["status"], ("M", RC2_CI_WORKFLOW)])
+    for unrelated in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/unreviewed.yml"):
+        rejected(status=[*facts["status"], ("M", unrelated)])
 
 
 def test_missing_git_history_is_not_an_authorisation(monkeypatch):
