@@ -502,10 +502,14 @@ def test_demo_retention_exception_rejects_invalid_base_missing_pin_and_git_failu
     assert not _current_demo_retention_authorized(DEMO_RETENTION_PATHS)
 
 
-# PR #267: only the approved Trust correction may follow the reviewed F4 snapshot.
+# PR #267: keep publication, Correction A and inherited main integration distinct.
 # The guard itself is independently reviewed, as in WF-05; payloads are blob-pinned.
 F4_CSRF_MAIN = "b47aa732f567e380cbe4c8e20b6c1a7dc0db9fbf"
 F4_CSRF_REVIEWED_HEAD = "a47b89e678ec05d01edcc01b703bc9fdef9887f4"
+F4_CSRF_CORRECTION_A = "b87fe25a35da2272fea92093a474ad69bcbdc50b"
+F4_CSRF_APPROVED_MAIN = "153d7044958bb94d01ff07325c09c6b354aa32fa"
+F4_CSRF_INTEGRATION = "cc3252ae38f6e25df67f96e7d32559f9c818cfb4"
+F4_CSRF_INTEGRATION_TREE = "38f87e277e16512ff10bc00844c05e5ff842bd99"
 F4_CSRF_BLOBS = {
     "app/trust_readiness/registry.py": "ea39361e3f48ffe2588e5f451afd405e19a1651f",
     "docs/readiness/03_known_limitations_and_support_matrix.md": "94a4c85b45e2d35389ef612cfb8ec064dc1352ae",
@@ -541,19 +545,38 @@ def _f4_csrf_exact_content_authorized(changed, blobs, since_review, checkpoint_v
     )
 
 
+def _f4_integration_exact_content_authorized(parents, tree, since_integration, checkpoint_valid):
+    return (
+        checkpoint_valid
+        and tuple(parents) == (F4_CSRF_CORRECTION_A, F4_CSRF_APPROVED_MAIN)
+        and tree == F4_CSRF_INTEGRATION_TREE
+        and set(since_integration) <= {CSRF_GUARD_PATH}
+    )
+
+
 def _current_f4_csrf_authorized(changed):
     try:
-        _git("merge-base", "--is-ancestor", F4_CSRF_REVIEWED_HEAD, "HEAD")
-        base_valid = (
-            _git("merge-base", "origin/main", "HEAD") == F4_CSRF_MAIN
+        _git("merge-base", "--is-ancestor", F4_CSRF_INTEGRATION, "HEAD")
+        _git("merge-base", "--is-ancestor", F4_CSRF_MAIN, F4_CSRF_APPROVED_MAIN)
+        checkpoint_valid = (
+            _git("merge-base", "origin/main", "HEAD") == F4_CSRF_APPROVED_MAIN
             and _git("merge-base", F4_CSRF_MAIN, F4_CSRF_REVIEWED_HEAD) == F4_CSRF_MAIN
+            and _git("rev-list", "--parents", "-n", "1", F4_CSRF_CORRECTION_A).split()
+                == [F4_CSRF_CORRECTION_A, F4_CSRF_REVIEWED_HEAD]
             and all(_git("rev-parse", f"{F4_CSRF_MAIN}:{p}") == DEMO_RETENTION_BLOBS[p]
-                    for p in F4_CSRF_BLOBS)
+                    and _git("rev-parse", f"{F4_CSRF_CORRECTION_A}:{p}") == blob
+                    for p, blob in F4_CSRF_BLOBS.items())
+        )
+        parents = _git("rev-list", "--parents", "-n", "1", F4_CSRF_INTEGRATION).split()[1:]
+        tree = _git("rev-parse", f"{F4_CSRF_INTEGRATION}^{{tree}}")
+        since_integration = _git("diff", "--name-only", F4_CSRF_INTEGRATION).splitlines()
+        integration_valid = _f4_integration_exact_content_authorized(
+            parents, tree, since_integration, checkpoint_valid,
         )
         blobs = {p: _git("hash-object", f"--path={p}", p) for p in F4_CSRF_BLOBS}
-        since_review = _git("diff", "--name-only", F4_CSRF_REVIEWED_HEAD).splitlines()
+        correction_a = _git("diff", "--name-only", F4_CSRF_REVIEWED_HEAD, F4_CSRF_CORRECTION_A).splitlines()
         return _f4_csrf_exact_content_authorized(
-            changed, blobs, since_review, base_valid, _csrf_call_sites(),
+            changed, blobs, correction_a, integration_valid, _csrf_call_sites(),
         )
     except (OSError, subprocess.CalledProcessError):
         return False
@@ -576,6 +599,8 @@ def test_f4_csrf_correction_preserves_historical_content_and_authorities():
     historical = constants(_git("show", f"{F4_CSRF_MAIN}:{CSRF_GUARD_PATH}"))
     current = constants(_read_current(CSRF_GUARD_PATH))
     assert {name: current.get(name) for name in historical} == historical
+    correction_a = constants(_git("show", f"{F4_CSRF_CORRECTION_A}:{CSRF_GUARD_PATH}"))
+    assert {name: current.get(name) for name in correction_a} == correction_a
 
 
 def test_f4_csrf_exception_accepts_only_the_exact_approved_correction():
@@ -622,6 +647,10 @@ def test_f4_csrf_exception_rejects_any_additional_change(path):
     assert not _f4_csrf_exact_content_authorized(
         broader, dict(F4_CSRF_BLOBS), broader, True, F4_CSRF_CALL_SITES,
     )
+    assert not _f4_integration_exact_content_authorized(
+        (F4_CSRF_CORRECTION_A, F4_CSRF_APPROVED_MAIN), F4_CSRF_INTEGRATION_TREE,
+        {CSRF_GUARD_PATH, path}, True,
+    )
 
 
 def test_f4_csrf_exception_rejects_invalid_checkpoint_and_validator_inventory():
@@ -643,6 +672,42 @@ def test_f4_csrf_exception_git_failure_is_not_authorization(monkeypatch):
     assert not _current_f4_csrf_authorized(F4_CSRF_PATHS)
 
 
+def test_f4_integration_accepts_only_the_exact_normal_merge_and_guard_correction():
+    parents = (F4_CSRF_CORRECTION_A, F4_CSRF_APPROVED_MAIN)
+    assert _f4_integration_exact_content_authorized(parents, F4_CSRF_INTEGRATION_TREE, {CSRF_GUARD_PATH}, True)
+    for actual_parents in (parents[::-1], parents[:1], parents + (F4_CSRF_MAIN,)):
+        assert not _f4_integration_exact_content_authorized(
+            actual_parents, F4_CSRF_INTEGRATION_TREE, {CSRF_GUARD_PATH}, True,
+        )
+    assert not _f4_integration_exact_content_authorized(parents, "0" * 40, {CSRF_GUARD_PATH}, True)
+    assert not _f4_integration_exact_content_authorized(parents, F4_CSRF_INTEGRATION_TREE, {CSRF_GUARD_PATH}, False)
+
+
+@pytest.mark.parametrize("command, output", (
+    (("merge-base", "origin/main", "HEAD"), "0" * 40),
+    (("merge-base", F4_CSRF_MAIN, F4_CSRF_REVIEWED_HEAD), "0" * 40),
+    (("rev-list", "--parents", "-n", "1", F4_CSRF_CORRECTION_A),
+     f"{F4_CSRF_CORRECTION_A} {F4_CSRF_MAIN}"),
+    (("rev-list", "--parents", "-n", "1", F4_CSRF_INTEGRATION),
+     f"{F4_CSRF_INTEGRATION} {F4_CSRF_APPROVED_MAIN} {F4_CSRF_CORRECTION_A}"),
+    (("rev-parse", f"{F4_CSRF_INTEGRATION}^{{tree}}"), "0" * 40),
+    (("merge-base", "--is-ancestor", F4_CSRF_INTEGRATION, "HEAD"), None),
+    (("merge-base", "--is-ancestor", F4_CSRF_MAIN, F4_CSRF_APPROVED_MAIN), None),
+))
+def test_f4_integration_rejects_invalid_main_correction_or_checkpoint_provenance(monkeypatch, command, output):
+    original_git = _git
+
+    def invalid(*args):
+        if args == command:
+            if output is None:
+                raise subprocess.CalledProcessError(1, ["git", *args])
+            return output
+        return original_git(*args)
+
+    monkeypatch.setattr(__import__(__name__, fromlist=["_git"]), "_git", invalid)
+    assert not _current_f4_csrf_authorized(F4_CSRF_PATHS)
+
+
 def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
     try:
         from finance_integrity_governance import changed_paths_vs_main
@@ -656,7 +721,7 @@ def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
     if not any(p.startswith("app/trust_readiness/") for p in changed):
         pytest.skip("trust pack not part of this diff")
     if _current_f4_csrf_authorized(changed):
-        return          # Exact four-file correction on top of the reviewed PR #267 snapshot.
+        return          # Reviewed F4 + exact Correction A + pinned normal main integration.
     if _current_csrf_correction_authorized(changed):
         return          # PR #246 exact-blob CSRF correction (see CSRF_EXACT_BLOBS)
     if _current_demo_retention_authorized(changed):
