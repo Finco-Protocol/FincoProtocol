@@ -461,7 +461,7 @@ def _current_demo_retention_authorized(changed):
 def test_demo_retention_exception_accepts_only_exact_approved_content():
     assert _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, dict(DEMO_RETENTION_BLOBS), True)
     base = _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py")
-    assert _read_current("app/trust_readiness/registry.py").strip() == _f4_csrf_registry(_demo_retention_registry(base))
+    assert _registry_matches_history(_f4_csrf_registry(_demo_retention_registry(base)))
 
 
 @pytest.mark.parametrize("path", DEMO_RETENTION_BLOBS)
