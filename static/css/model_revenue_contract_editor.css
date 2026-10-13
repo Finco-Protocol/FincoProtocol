@@ -42,3 +42,26 @@
  .rc-table th,.rc-table td{padding:5px}
  .rc-actions{flex-direction:column;align-items:flex-start}
 }
+
+
+/* Revenue V2 Advanced: exact dated prices and read-only canonical comparisons. */
+.rc-curve-editor{border:1px solid var(--rc-line);border-radius:6px;padding:8px;margin:4px 0}
+.rc-curve-editor summary{cursor:pointer;font-weight:600}
+.rc-curve-points{display:grid;gap:6px;margin:8px 0}
+.rc-curve-point{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rc-curve-point input[type=date]{min-width:150px}
+.rc-curve-point input[type=number]{min-width:110px;width:145px}
+.rc-curve-editor textarea{display:block;width:min(100%,590px);min-height:64px;margin:10px 0;padding:8px;resize:vertical;box-sizing:border-box}
+.rc-price-curve-row>td{background:var(--surface,#f7f9fb)}
+.rc-stress-section{margin:15px 0;border-top:1px solid var(--rc-line);padding-top:12px}
+.rc-stress-section summary{cursor:pointer;font-weight:600}
+.rc-stress-section form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:9px 0}
+.rc-stress-section form label{font-size:12px}
+.rc-stress-section form select,.rc-stress-section form input{max-width:205px;min-height:30px;padding:4px}
+.rc-stress-table{min-width:540px}
+.rc-stress-table td:nth-child(n+2){text-align:right;font-variant-numeric:tabular-nums}
+@media(max-width:680px){
+ .rc-stress-section form{flex-direction:column;align-items:stretch}
+ .rc-stress-section form input,.rc-stress-section form select{max-width:100%}
+ .rc-curve-point input{flex:1}
+}

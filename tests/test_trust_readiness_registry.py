@@ -582,13 +582,81 @@ def _current_f4_csrf_authorized(changed):
         return False
 
 
+# Revenue V2 + F4 additive CSRF inventory after the exact #267 main.
+# These are supplementary, one-content-only candidate pins; the earlier
+# F4_CSRF_BLOBS and all historical CSRF constants above remain UNCHANGED.
+REVENUE_V2_CSRF_MAIN = "03320e2bad88c3e811942240064965f5726763f8"
+REVENUE_V2_CSRF_SUCCESSOR_BLOBS = {
+    "tests/test_trust_readiness_controls.py": "c96a865110c70054ff6563476c107d5539e67cdc",
+    "app/v2/router.py": "a2cd37c7df8e8dac881ba44d9f28df3bf25b913e",
+    "domain/revenue/multistream_runtime.py": "48465ce2a298fa1383a7eabcb921eb9fbe4610cb",
+    "tests/model_v2_governance.py": "929677427c346aa08578a2b0e657fe63e25b2907",
+}
+REVENUE_V2_CSRF_TRUST_DELTA = frozenset({
+    "tests/test_trust_readiness_controls.py", "tests/test_trust_readiness_registry.py",
+})
+
+
+def _revenue_v2_csrf_successor_exact(changed, blobs, main_valid, call_sites):
+    return (
+        main_valid
+        and blobs == REVENUE_V2_CSRF_SUCCESSOR_BLOBS
+        and set(changed) == REVENUE_V2_CSRF_TRUST_DELTA
+        and frozenset(call_sites) == F4_CSRF_CALL_SITES
+    )
+
+
+def _current_revenue_v2_csrf_successor_valid():
+    try:
+        if _git("merge-base", "origin/main", "HEAD") != REVENUE_V2_CSRF_MAIN:
+            return False
+        if _git("rev-parse", REVENUE_V2_CSRF_MAIN) != REVENUE_V2_CSRF_MAIN:
+            return False
+        # Main must still hold the released F4 Trust snapshot.
+        if any(_git("rev-parse", f"{REVENUE_V2_CSRF_MAIN}:{path}") != sha
+               for path, sha in F4_CSRF_BLOBS.items()):
+            return False
+        changed = _git("diff", "--name-only", REVENUE_V2_CSRF_MAIN, "HEAD").splitlines()
+        trust_changed = [p for p in changed if _in_trust_scope(p)]
+        actual = {
+            path: _git("hash-object", f"--path={path}", path)
+            for path in REVENUE_V2_CSRF_SUCCESSOR_BLOBS
+        }
+        return _revenue_v2_csrf_successor_exact(
+            trust_changed, actual, True, _csrf_call_sites())
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+def test_revenue_v2_csrf_successor_exact_content_and_negatives():
+    assert _current_revenue_v2_csrf_successor_valid()
+    exact = dict(REVENUE_V2_CSRF_SUCCESSOR_BLOBS)
+    permitted = set(REVENUE_V2_CSRF_TRUST_DELTA)
+    assert _revenue_v2_csrf_successor_exact(permitted, exact, True, F4_CSRF_CALL_SITES)
+    for path in exact:
+        forged = dict(exact)
+        forged[path] = "0" * 40
+        assert not _revenue_v2_csrf_successor_exact(permitted, forged, True, F4_CSRF_CALL_SITES)
+    assert not _revenue_v2_csrf_successor_exact(permitted, exact, False, F4_CSRF_CALL_SITES)
+    assert not _revenue_v2_csrf_successor_exact(
+        permitted | {"app/trust_readiness/registry.py"}, exact, True, F4_CSRF_CALL_SITES)
+    assert not _revenue_v2_csrf_successor_exact(
+        permitted, exact, True, F4_CSRF_CALL_SITES | {"app/v2/unknown_router.py"})
+
+
 def test_f4_csrf_correction_preserves_historical_content_and_authorities():
     import ast
 
     original = _git("show", f"{F4_CSRF_MAIN}:app/trust_readiness/registry.py")
     assert _read_current("app/trust_readiness/registry.py").strip() == _f4_csrf_registry(original)
     for path, blob in F4_CSRF_BLOBS.items():
-        assert _git("hash-object", f"--path={path}", path) == blob
+        actual = _git("hash-object", f"--path={path}", path)
+        if path == "tests/test_trust_readiness_controls.py" and actual != blob:
+            # The reviewed Revenue stress CSRF validator changes only the
+            # additive inventory, never the historical F4 register or pin.
+            assert _current_revenue_v2_csrf_successor_valid()
+        else:
+            assert actual == blob
 
     def constants(source):
         return {node.targets[0].id: ast.dump(node.value)

@@ -19,6 +19,8 @@
           <option value="indexed_ppa">Indexed PPA</option>
           <option value="merchant">Merchant</option>
           <option value="residual_merchant">Residual Merchant</option>
+          <option value="scheduled_ppa">Scheduled PPA</option>
+          <option value="scheduled_merchant">Scheduled Merchant</option>
           <option value="cfd">Two-way CfD</option>
         </select>
         <button type="button" data-revenue-add>+ Add contract</button>
@@ -31,7 +33,7 @@
           <th scope="col">Contract ID</th><th scope="col">Revenue stream</th>
           <th scope="col">Start date</th><th scope="col">End date (exclusive)</th>
           <th scope="col">Allocation %</th><th scope="col">Price EUR/MWh</th>
-          <th scope="col">Index %/yr</th><th scope="col">CfD strike EUR/MWh</th>
+          <th scope="col">Index %/yr</th><th scope="col">Price schedule</th><th scope="col">CfD strike EUR/MWh</th>
           <th scope="col" data-revenue-advanced-cell hidden>Capture %</th>
           <th scope="col" data-revenue-advanced-cell hidden>CfD reference</th>
           <th scope="col" data-revenue-advanced-cell hidden>Source reference</th>
@@ -54,6 +56,32 @@
       <textarea id="revenue-contracts-json" data-revenue-source rows="5" spellcheck="false" readonly>{{ contracts.raw }}</textarea>
     </details>
   </form>
+  <details class="rc-stress-section" data-testid="revenue-contract-stress">
+    <summary>Commercial / Bank-case comparison (read-only)</summary>
+    <p class="d-context">Uses the selected saved contract book and the existing canonical financing runner. Does not Save, Run/promote, or change Last Run. Lender-specific bank-price assumptions are not inferred.</p>
+    <form method="post" hx-post="/v2/workbook/revenue/stress"
+          hx-target="#revenue-stress-results" hx-swap="outerHTML"
+          action="/v2/workbook/revenue/stress" data-testid="revenue-stress-form">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="content_hash" value="{{ content_hash }}">
+      <input type="hidden" name="csrf_token" value="{{ revenue_contracts_csrf_token }}">
+      <label for="rc-shock-type">Commercial stress</label>
+      <select id="rc-shock-type" name="shock" required>
+        <option value="merchant_down">Merchant downside</option>
+        <option value="merchant_up">Merchant upside</option>
+        <option value="ppa_down">PPA price downside</option>
+        <option value="ppa_expiry">Earlier PPA expiry / residual Merchant</option>
+      </select>
+      <label for="rc-shock-percent">Magnitude %</label>
+      <input id="rc-shock-percent" type="number" name="amount_pct" value="10" min="0" max="100" step="any" required>
+      <label for="rc-shock-expiry">Expiry date (exclusive, for PPA expiry)</label>
+      <input id="rc-shock-expiry" type="date" name="expiry_date">
+      <button type="submit">Compare canonical cases</button>
+    </form>
+    <div id="revenue-stress-results" role="status" data-testid="revenue-stress-results">
+      No preview executed. Save contracts first, then select a stress to compare.
+    </div>
+  </details>
   {% else %}
   <div class="rc-readonly" data-revenue-editor data-readonly="true" data-technology="{{ (contracts.technology or project_type | default('')) | lower | e }}">
     <div class="rc-scroll" role="region" aria-label="Saved revenue contracts" tabindex="0">
@@ -69,7 +97,7 @@
     {% if not contracts.rows %}<p class="d-context">Legacy revenue pricing. Create a working copy to configure contracts.</p>{% endif %}
   </div>
   {% endif %}
-  <p class="d-context">Unsupported: capacity availability, ancillary services, REC certificates, lagged settlements and contract price curves. These are not calculated or inferred.</p>
+  <p class="d-context">Unsupported: capacity availability, ancillary services, REC certificates, lagged settlements, interpolated or extrapolated curve prices. CfD strikes remain fixed and settlement remains two-way.</p>
   {% set audit = (revenue_runtime_summary or {}).get("revenue_multistream_audit") %}
   {% if audit %}
   <details><summary>Last Run contract evidence (kEUR)</summary>
