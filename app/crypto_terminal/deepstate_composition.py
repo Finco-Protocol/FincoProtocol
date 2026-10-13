@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from finco_radar.venues.store import VenueMarketStore
 
 
-HISTORY_WINDOW = timedelta(days=7)
+HISTORY_WINDOW = timedelta(days=30)
 MAX_HISTORICAL_FILLS = 120
 RAW_COMPARISON_UNIT = "USDG_PER_NVDA"
 NORMALIZED_COMPARISON_UNIT = COMPARISON_UNIT
@@ -202,6 +202,7 @@ def _valid_execution(row: MarketObservation) -> bool:
         and p.get("deepstate_execution_timestamp") == row.ts
         and _timestamp(row.ts) is not None
         and _timestamp(row.collected_at) is not None
+        and _timestamp(row.collected_at) >= _timestamp(row.ts)
         and _hex(p.get("transaction_hash"), 64)
         and _hex(p.get("block_hash"), 64)
         and _nonnegative(p.get("block_number"))
@@ -228,7 +229,7 @@ def _normalization(row: MarketObservation, policy: ReviewedNormalizationPolicy |
     if rate is None or quote_at is None:
         return "MISSING_NORMALIZATION_EVIDENCE", None
     if (p.get("usdg_usd_source") != QUOTE_AUTHORITY_VERSION
-            or p.get("usdg_usd_feed_address", "").lower() != feed_address.lower()
+            or str(p.get("usdg_usd_feed_address") or "").lower() != feed_address.lower()
             or p.get("usdg_usd_chain_id") != DEEPSTATE_CHAIN_ID
             or not _hex(p.get("usdg_usd_evidence_block_hash"), 64)
             or not isinstance(p.get("usdg_usd_evidence_id"), str)
@@ -317,9 +318,13 @@ def build_deepstate_historical_context(
             canonical_asset_id, "UNAVAILABLE", "EXACT_IDENTITY_UNAVAILABLE", (), ())
     policy, venue_id, instrument_id, instrument_type = binding
     since = now - HISTORY_WINDOW
-    deepstate_rows = store.get_window_for_identity(
-        "NVDA", DEEPSTATE_VENUE, DEEPSTATE_POOL_ID, "tokenized_stock_book",
-        since=since, until=now)[-MAX_HISTORICAL_FILLS:]
+    deepstate_rows = [
+        row for row in store.get_window_for_identity(
+            "NVDA", DEEPSTATE_VENUE, DEEPSTATE_POOL_ID, "tokenized_stock_book",
+            since=since, until=now)
+        if _timestamp(row.collected_at) is not None
+        and _timestamp(row.collected_at) <= now
+    ][-MAX_HISTORICAL_FILLS:]
     if not deepstate_rows:
         return DeepstateHistoricalMarketContext(
             canonical_asset_id, "UNAVAILABLE", "HISTORICAL_COMPARISON_UNAVAILABLE",
@@ -328,7 +333,9 @@ def build_deepstate_historical_context(
         "NVDA", venue_id, instrument_id, instrument_type,
         since=since, until=now)
     rlive = [r for r in rlive_rows
-             if _valid_rlive(r, policy, venue_id, instrument_id, instrument_type)]
+             if _timestamp(r.collected_at) is not None
+             and _timestamp(r.collected_at) <= now
+             and _valid_rlive(r, policy, venue_id, instrument_id, instrument_type)]
     evidence_rows = []
     pairs = []
     for row in deepstate_rows:
