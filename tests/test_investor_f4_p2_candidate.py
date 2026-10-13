@@ -263,3 +263,45 @@ def test_real_engine_authority_paths_are_not_imported_or_activated():
     assert "v2_atomic_run_commit" not in (source+contract)
     assert "evaluate_p2_candidate" not in (ROOT/"app/model_v2/investor_f4_candidate/p2_contracts.py").read_text()
     assert '"production_export":"BLOCKED"' in source  # explicit release gate
+
+
+def test_forged_typed_contract_cannot_bypass_json_policy_authority():
+    from dataclasses import replace
+    from app.model_v2.investor_f4_candidate.p2_contracts import EquityClass
+    base=parse_contract(json.dumps(agreement()))
+    forged=replace(base,classes=(EquityClass("ORD",D("0.9")),))
+    with pytest.raises(P2ContractError,match="P2_CONTRACT_FORGED"):
+        evaluate_p2_candidate(forged,receipts(("2030-01-01","100","0"),
+                                           ("2031-01-01","0","10")),
+                              binding=BINDING,xirr_calculator=xirr_decimal)
+
+
+def test_decimal_results_are_independent_of_host_decimal_context_precision():
+    from decimal import localcontext
+    doc=agreement(classes=[{"id":"ORD","preferred_rate_pa":"0.07123"}],
+        stages=[stage("PREFERRED_RETURN","ORD"),stage("RESIDUAL")])
+    src=receipts(("2030-01-01","100","0"),("2031-04-17","0","41.37"))
+    with localcontext() as ctx:
+        ctx.prec=6
+        reduced=run(doc,src)
+    with localcontext() as ctx:
+        ctx.prec=44
+        expanded=run(doc,src)
+    assert reduced==expanded and reduced["digest"]==expanded["digest"]
+
+
+def test_recomputed_digest_cannot_hide_inconsistent_cash_or_claim_new_source():
+    from app.model_v2.investor_f4_candidate.p2_contracts import canonical
+    from hashlib import sha256
+    evidence=run(agreement(),receipts(("2030-01-01","100","0"),
+                                     ("2031-01-01","0","100")))
+    altered=copy.deepcopy(evidence)
+    altered["investors"][0]["total_distributed_keur"]="300"
+    altered["digest"]=sha256(canonical({k:v for k,v in altered.items() if k!="digest"}).encode()).hexdigest()
+    with pytest.raises(P2ContractError,match="P2_CASH_VIOLATION"):
+        validate_candidate_projection(altered)
+    altered=copy.deepcopy(evidence)
+    altered["source_attestation"]="FINCO_VERIFIED_ACTUAL_RUN"
+    altered["digest"]=sha256(canonical({k:v for k,v in altered.items() if k!="digest"}).encode()).hexdigest()
+    with pytest.raises(P2ContractError,match="P2_EXPORT_NOT_AUTHORIZED"):
+        validate_candidate_projection(altered)

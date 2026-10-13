@@ -7,7 +7,7 @@ No tax, SHL, debt, valuation, NAV, or institutional policy activation is implied
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, Context, localcontext
 from hashlib import sha256
 import json
 import math
@@ -17,6 +17,9 @@ from .p2_contracts import Contract, P2ContractError, canonical, dte, need, parse
 D = Decimal
 CANONICAL_RECEIPT_SOURCE = "CovenantGatedWaterfallResult.net_dividend_received_keur"
 P1_CASH_TOLERANCE_KEUR = D("0.000001")  # mirror P1 read-only bridge; not a changed engine tolerance
+ALLOWED_UPSTREAM_STATUSES = frozenset({"OK", "NO_NEGATIVE_CASHFLOW", "NO_POSITIVE_CASHFLOW",
+    "ZERO_CONTRIBUTION", "NON_CONVERGENT", "UNDEFINED",
+    "UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED", "UNPAID_SHL_AT_CONTRACTUAL_MATURITY"})
 
 
 def _canonical_amount(raw, label):
@@ -58,8 +61,8 @@ def _receipt_axis(receipt, contract):
         periods.append((when,paid,cash,gross,wht))
     need(set(expected_contrib) <= {p[0] for p in periods}, "P2_CONTRIBUTION_OFF_AXIS",
          "actual contribution cash date not on G2C axis")
-    need(type(receipt.get("return_status")) is str,
-         "P2_RETURN_STATUS_MISSING", "upstream dated return status must be explicit")
+    need(type(receipt.get("return_status")) is str and receipt["return_status"] in ALLOWED_UPSTREAM_STATUSES,
+         "P2_RETURN_STATUS_MISSING", "upstream dated return status must be an approved enum value")
     return tuple(periods)
 
 
@@ -97,8 +100,8 @@ def _run_xirr(flows,dates,xirr_calculator):
     return result, "OK"
 
 
-def evaluate_p2_candidate(contract: Contract | str, receipt: dict, *, binding: dict,
-                          xirr_calculator=None) -> dict:
+def _evaluate_p2_candidate(contract: Contract | str, receipt: dict, *, binding: dict,
+                           xirr_calculator=None) -> dict:
     """Pure pre-approval projection; NOT an F4/P1 replacement or Run evidence.
 
     A valid binding is checked for structure only. No attestation of upstream
@@ -107,6 +110,11 @@ def evaluate_p2_candidate(contract: Contract | str, receipt: dict, *, binding: d
     if type(contract) is str:
         contract=parse_contract(contract)
     need(isinstance(contract,Contract), "P2_CONTRACT_REQUIRED", "typed candidate agreement required")
+    # A caller can manually instantiate a frozen dataclass. A typed object is
+    # NEVER authority to bypass the canonical versioned JSON/policy validator.
+    independently_parsed = parse_contract(contract.document)
+    need(independently_parsed == contract, "P2_CONTRACT_FORGED",
+         "typed agreement differs from its independently validated content/digest")
     expected_binding={"owner_id", "project_id", "scenario_id", "snapshot_id", "composite_hash"}
     need(type(binding) is dict and set(binding)==expected_binding and
          all(type(binding[k]) is str and bool(binding[k].strip()) for k in
@@ -233,15 +241,42 @@ def evaluate_p2_candidate(contract: Contract | str, receipt: dict, *, binding: d
     return evidence
 
 
+
+def evaluate_p2_candidate(contract: Contract | str, receipt: dict, *, binding: dict,
+                          xirr_calculator=None) -> dict:
+    """Stable Decimal arithmetic independent of ambient host precision changes."""
+    with localcontext(Context(prec=50)):
+        return _evaluate_p2_candidate(contract, receipt, binding=binding,
+                                      xirr_calculator=xirr_calculator)
+
 def validate_candidate_projection(evidence: dict) -> dict:
     need(type(evidence) is dict and evidence.get("schema_version")==2 and
          evidence.get("release_status")=="CANDIDATE_NOT_AUTHORIZED" and
+         evidence.get("source_attestation")=="UNVERIFIED_OFFLINE_CALLER_INPUT" and
+         evidence.get("receipt_source")==CANONICAL_RECEIPT_SOURCE and
          evidence.get("production_export")=="BLOCKED" and
          evidence.get("run_history_binding")=="NOT_COMMITTED", "P2_EXPORT_NOT_AUTHORIZED",
          "P2 candidate cannot be presented as persisted Run/approved export")
     d={k:v for k,v in evidence.items() if k!="digest"}
     need(sha256(canonical(d).encode()).hexdigest()==evidence.get("digest"),
          "P2_EVIDENCE_TAMPERED","read-only candidate content digest mismatch")
-    need(D(evidence["total_distributed_keur"])==D(evidence["total_upstream_net_equity_keur"]),
-         "P2_CASH_VIOLATION","cash invariant")
+    need(type(evidence.get("investors")) is list and
+         type(evidence.get("period_trace")) is list, "P2_EVIDENCE_TAMPERED", "missing read-only ledgers")
+    individual_cash=sum((D(i["total_distributed_keur"]) for i in evidence["investors"]),D(0))
+    period_cash=sum((D(p["allocated_keur"]) for p in evidence["period_trace"]),D(0))
+    source_cash=sum((D(p["available_net_equity_keur"]) for p in evidence["period_trace"]),D(0))
+    need(individual_cash == period_cash == source_cash == D(evidence["total_distributed_keur"])
+         == D(evidence["total_upstream_net_equity_keur"]) and
+         all(D(p["unallocated_keur"])==0 for p in evidence["period_trace"]),
+         "P2_CASH_VIOLATION", "read-only investor/period/receipt cash invariant")
+    for investor in evidence["investors"]:
+        total=sum((D(investor[key]) for key in
+                   ("returned_capital_keur", "paid_preference_keur", "catch_up_keur", "carry_keur", "residual_keur")),D(0))
+        event_total=sum((D(e["distribution_keur"]) for e in investor["cash_events"]),D(0))
+        need(total==event_total==D(investor["total_distributed_keur"]),
+             "P2_CASH_VIOLATION", "investor subledger inconsistency")
+    for p in evidence["period_trace"]:
+        paid=sum((D(s["paid_keur"]) for s in p["stages"]),D(0))
+        need(paid==D(p["allocated_keur"]),
+             "P2_CASH_VIOLATION", "period stage trace inconsistency")
     return evidence
