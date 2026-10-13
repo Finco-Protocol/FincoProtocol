@@ -205,21 +205,87 @@ def test_stress_boundaries_fail_closed(problem):
 
 
 @pytest.mark.parametrize("kind", ["solar", "wind"])
-def test_canonical_financing_read_only_stress_and_persisted_input_unchanged(kind):
-    pi, axis, _, payload = book(kind)
+@pytest.mark.parametrize("with_cfd", [False, True], ids=["unhedged", "two_way_cfd"])
+def test_canonical_financing_read_only_stress_and_persisted_input_unchanged(kind, with_cfd):
+    """Reconcile both physical Merchant sale and separately signed CfD with Decimal.
+
+    A fully covered two-way CfD can REVERSE the direction of total Revenue
+    when the raw reference price falls and capture < 1: this is economics,
+    not a production sign defect. An unhedged sale has the opposite sign.
+    """
+    pi, axis, operating, payload = book(kind, with_cfd=with_cfd)
     before = apply_config(pi, json.dumps(payload), project_type=kind)
     original = before.revenue.multistream_config_json
+    variant_raw = changed_book(original, "merchant_down", 10)
+    variant = apply_config(pi, variant_raw, project_type=kind)
     result = compare_commercial_cases(before, shock="merchant_down", amount_pct=10)
     assert result["status"] == "COMPARISON"
     assert result["persistence"] == "NONE"
-    assert result["bank_case_status"] == "UNAVAILABLE"  # no inferred lender case
+    assert result["bank_case_status"] == "UNAVAILABLE"  # no invented lender pricing
     assert result["metrics"]
     assert before.revenue.multistream_config_json == original
+
+    baseline = revenue_decomposition_schedule(
+        before, _build_period_engine(from_project_inputs(before)))
+    stress = revenue_decomposition_schedule(
+        variant, _build_period_engine(from_project_inputs(variant)))
+    total_expected = Decimal(0)
+    for i, period in enumerate(operating):
+        old = baseline[period.index]
+        new = stress[period.index]
+        old_rows = {r["id"]: r for r in old["multistream_evidence"]["streams"]}
+        new_rows = {r["id"]: r for r in new["multistream_evidence"]["streams"]}
+        g = Decimal(str(old["generation_mwh"]))
+        assert new["generation_mwh"] == pytest.approx(float(g), abs=1e-8)
+        sold = g * Decimal(".20")
+        raw = Decimal("40") if i < 2 else Decimal("95")
+        stressed_raw = raw * Decimal(".90")
+        # Merchant physical MWh is allocated ONCE. A CfD is an overlay, not a sale.
+        for rows in (old_rows, new_rows):
+            physical_mwh = sum(r["quantity_mwh"] for r in rows.values() if r["type"] != "cfd")
+            assert physical_mwh == pytest.approx(float(g), abs=1e-8)
+            assert rows["market"]["quantity_mwh"] == pytest.approx(float(sold), abs=1e-8)
+        assert old_rows["market"]["price_eur_mwh"] == pytest.approx(float(raw), abs=1e-10)
+        assert new_rows["market"]["price_eur_mwh"] == pytest.approx(float(stressed_raw), abs=1e-10)
+        old_physical = sold * raw * Decimal(".8") / Decimal(1000)
+        new_physical = sold * stressed_raw * Decimal(".8") / Decimal(1000)
+        physical_delta = new_physical - old_physical
+        assert old_rows["market"]["revenue_keur"] == pytest.approx(float(old_physical), abs=1e-8)
+        assert new_rows["market"]["revenue_keur"] == pytest.approx(float(new_physical), abs=1e-8)
+        expected_settlement_delta = Decimal(0)
+        if with_cfd:
+            strike = Decimal("65")
+            old_settlement = sold * (strike - raw) / Decimal(1000)
+            new_settlement = sold * (strike - stressed_raw) / Decimal(1000)
+            expected_settlement_delta = new_settlement - old_settlement
+            assert old_rows["settlement"]["quantity_mwh"] == pytest.approx(float(sold), abs=1e-8)
+            assert new_rows["settlement"]["quantity_mwh"] == pytest.approx(float(sold), abs=1e-8)
+            assert old_rows["settlement"]["settlement_keur"] == pytest.approx(float(old_settlement), abs=1e-8)
+            assert new_rows["settlement"]["settlement_keur"] == pytest.approx(float(new_settlement), abs=1e-8)
+        else:
+            assert "settlement" not in old_rows and "settlement" not in new_rows
+        total_expected += physical_delta + expected_settlement_delta
+
     data = {row["key"]: row for row in result["metrics"]}
-    assert data["total_revenue_keur"]["stress"] < data["total_revenue_keur"]["base"]
-    assert data["total_ebitda_keur"]["stress"] < data["total_ebitda_keur"]["base"]
+    revenue_delta = data["total_revenue_keur"]["stress"] - data["total_revenue_keur"]["base"]
+    ebitda_delta = data["total_ebitda_keur"]["stress"] - data["total_ebitda_keur"]["base"]
+    assert revenue_delta == pytest.approx(float(total_expected), rel=1e-8, abs=1e-3)
+    assert ebitda_delta == pytest.approx(float(total_expected), rel=1e-8, abs=1e-3)
+    if with_cfd:
+        # Capture is 0.8 but CfD references raw (1.0): lower reference raises
+        # overlay receipts MORE than physical Merchant sales decline.
+        assert revenue_delta > 0 and ebitda_delta > 0
+    else:
+        assert revenue_delta < 0 and ebitda_delta < 0
     assert data["total_senior_ds_keur"]["base"] is not None
     assert data["project_irr"]["base"] is not None
+
+
+def test_orphaned_cfd_reference_is_still_rejected_not_silently_ignored():
+    pi, _, _, payload = book()
+    payload["streams"] = [s for s in payload["streams"] if s["id"] != "market"]
+    with pytest.raises(ValueError, match="REFERENCE_UNRESOLVABLE"):
+        changed_book(json.dumps(payload), "merchant_down", 10)
 
 
 def test_v2_curve_last_run_and_export_are_immutable_after_unsaved_change(env, monkeypatch):
