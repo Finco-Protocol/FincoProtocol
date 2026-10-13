@@ -18,7 +18,8 @@ BLANK_SPEND_ROWS = 3
 
 def build_committed_view(summary: Optional[dict], *, freshness: str, snapshot_id: Optional[str],
                          composite_hash: Optional[str], historical: bool = False,
-                         ran_at: str = "") -> dict:
+                         ran_at: str = "", scenario_id: Optional[str] = None,
+                         check_scenario: bool = False) -> dict:
     """``freshness`` is the canonical CURRENT/STALE/NOT_RUN of the Last Run; ignored when historical."""
     if not summary or (not historical and freshness == NOT_RUN):
         return {"state": NOT_RUN, "note": "No committed Run: Developer Economics results exist only after a canonical Run."}
@@ -26,10 +27,19 @@ def build_committed_view(summary: Optional[dict], *, freshness: str, snapshot_id
     if not has_developer_key(summary):
         return {"state": NOT_ENABLED, "freshness": label, "ran_at": ran_at,
                 "note": "Developer Economics was not enabled in this Run; the Run carries no Developer ledger."}
-    evidence = read_committed_evidence(summary, expect_snapshot_id=snapshot_id, expect_composite_hash=composite_hash)
+    evidence = read_committed_evidence(summary, expect_snapshot_id=snapshot_id, expect_composite_hash=composite_hash,
+                                       expect_scenario_id=scenario_id, check_scenario=check_scenario)
+    if evidence is not None:
+        try:
+            return _format_view(evidence, label, historical, ran_at)
+        except Exception:        # never render unsupported figures; degrade to UNAVAILABLE
+            evidence = None
     if evidence is None:
         return {"state": UNAVAILABLE, "freshness": label, "ran_at": ran_at,
                 "note": "The stored Developer evidence failed validation (shape, finite numbers or Run binding); no figure is shown."}
+
+
+def _format_view(evidence, label, historical, ran_at):
     status_note = {k: _STATUS_REASON.get(evidence[k], "") for k in ("developer_moic_status", "developer_xirr_status")}
     metrics = (
         {"key": "developer_moic", "label": "Developer MOIC", "display": _multiple(evidence["developer_moic"]),

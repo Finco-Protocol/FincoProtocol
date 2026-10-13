@@ -72,7 +72,9 @@ def _render(request, user, record, owner, ws, *, project, history_id="", form_er
     committed = build_committed_view(
         summary, freshness=run_state, ran_at=ran_at,
         snapshot_id=getattr(ws, "last_runtime_snapshot_id", None) if ws is not None else None,
-        composite_hash=getattr(ws, "last_runtime_composite_hash", None) if ws is not None else None)
+        composite_hash=getattr(ws, "last_runtime_composite_hash", None) if ws is not None else None,
+        scenario_id=getattr(ws, "last_runtime_scenario_id", None) if ws is not None else None,
+        check_scenario=ws is not None)
     history_rows, selected = [], None
     if ws is not None:
         try:
@@ -90,7 +92,8 @@ def _render(request, user, record, owner, ws, *, project, history_id="", form_er
             else:
                 selected = build_committed_view(
                     entry.runtime_summary, freshness=run_state, historical=True, ran_at=_fmt_runtime_at(entry.ran_at) or entry.ran_at,
-                    snapshot_id=entry.runtime_snapshot_id, composite_hash=entry.composite_hash)
+                    snapshot_id=entry.runtime_snapshot_id, composite_hash=entry.composite_hash,
+                    scenario_id=entry.last_runtime_scenario_id or entry.active_scenario_id, check_scenario=True)
                 selected["history_id"] = entry.history_id
     editor = build_editor_model(config, scenario_name=scenario_name, is_base=is_base,
                                 overridden=bool(scenario is not None and not is_base and

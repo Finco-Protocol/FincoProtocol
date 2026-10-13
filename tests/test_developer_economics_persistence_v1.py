@@ -481,3 +481,76 @@ def test_identity_rotates_on_save_and_stale_follows(env):
     assert flow.save(_doc(fc)).status_code == 303            # identical payload: still a valid explicit Save
     wb = env.client.get("/v2/workbook", params=flow.project).text
     assert "STALE" in flow.page()
+
+
+# ───────── RC-2: nested committed-evidence validation (never raises, never renders unsupported figures) ─────────
+
+def _committed_pair(env):
+    flow = Flow(env)
+    assert flow.save(_doc(_fc(flow.record))).status_code == 303
+    summary = flow.run()
+    ws = flow.ws()
+    return flow, summary, ws
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda e: e["fee_basis"].update(mode="OTHER"),
+    lambda e: e["fee_basis"].update(fee_keur="300"),
+    lambda e: e["fee_basis"].pop("basis_authority"),
+    lambda e: e["fee_basis"].update(basis_keur=123.0),                # FIXED fee must carry no basis
+    lambda e: e.update(fee_basis="not-a-dict"),
+    lambda e: e.update(cashflows=[]),
+    lambda e: e.pop("cashflows"),
+    lambda e: e["cashflows"][0].update(date="2027-13-45"),
+    lambda e: e["cashflows"][0].update(development_spend_keur=float("inf")),
+    lambda e: e["cashflows"][0].pop("net_developer_cashflow_keur"),
+    lambda e: e["cashflows"].reverse(),                                # dates must strictly increase
+    lambda e: e.update(developer_moic_status="MAYBE"),
+    lambda e: e.update(developer_xirr_status="NO_POSITIVE_CASHFLOW"),   # a figure with a non-OK status
+    lambda e: e.update(developer_moic=None),                            # OK status without a figure
+    lambda e: e.update(outcome="ABANDONED"),                            # contradicts the typed input
+    lambda e: e.update(total_developer_receipts_keur=-1.0),
+    lambda e: e.update(settlement_date="soon"),
+    lambda e: e.update(unexpected_key=1),
+    lambda e: e["input"].update(enabled=False) if isinstance(e["input"], dict) else None,
+    lambda e: e.update(input="{"),
+])
+def test_corrupted_nested_evidence_is_unavailable_without_raising(env, mutate):
+    from app.v2.developer_committed_projection import build_committed_view
+    flow, summary, ws = _committed_pair(env)
+    broken = copy.deepcopy(summary)
+    mutate(broken["developer_economics"])
+    view = build_committed_view(broken, freshness="CURRENT", snapshot_id=ws.last_runtime_snapshot_id,
+                                composite_hash=ws.last_runtime_composite_hash,
+                                scenario_id=ws.last_runtime_scenario_id, check_scenario=True)
+    assert view["state"] == "UNAVAILABLE" and "metrics" not in view and "vector" not in view
+
+
+def test_wrong_scenario_binding_is_unavailable_and_not_a_500(env):
+    from app.v2.developer_committed_projection import build_committed_view
+    flow, summary, ws = _committed_pair(env)
+    args = dict(freshness="CURRENT", snapshot_id=ws.last_runtime_snapshot_id, composite_hash=ws.last_runtime_composite_hash)
+    assert build_committed_view(summary, scenario_id=ws.last_runtime_scenario_id, check_scenario=True, **args)["state"] == "CURRENT"
+    assert build_committed_view(summary, scenario_id="another-scenario", check_scenario=True, **args)["state"] == "UNAVAILABLE"
+    # A stored document that cannot be rendered degrades to UNAVAILABLE even through the page.
+    from app.persistence.db import get_connection
+    broken = copy.deepcopy(ws.last_runtime_summary)
+    broken["developer_economics"]["fee_basis"] = None
+    conn = get_connection()
+    conn.execute("UPDATE workspace_states SET last_runtime_summary_json=? WHERE project_id=?",
+                 (json.dumps(broken), flow.record.project_id))
+    conn.commit(); conn.close()
+    page = flow.page()
+    assert 'data-testid="dd-last-state"' in page and "UNAVAILABLE" in page and 'data-testid="dd-last-developer_moic"' not in page
+
+
+def test_historical_entry_is_owner_and_project_scoped_and_identity_bound(env):
+    from app.persistence.run_history_repository import get_run_history, get_run_history_entry
+    flow, summary, ws = _committed_pair(env)
+    entry = get_run_history(OWNER, flow.record.project_id)[0]
+    assert get_run_history_entry("other-user", flow.record.project_id, entry.history_id) is None
+    assert get_run_history_entry(OWNER, "other-project", entry.history_id) is None
+    other = flow.page(history_id="does-not-exist")
+    assert "does not exist for this project" in other
+    ok = flow.page(history_id=entry.history_id)
+    assert 'data-testid="dd-historical"' in ok and "HISTORICAL" in ok
