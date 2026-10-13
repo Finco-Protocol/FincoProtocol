@@ -83,6 +83,7 @@ SCENARIO_INPUT_FIELDS: set[str] = {
     "opex_y1_total_keur",
     "senior_tenor_years",
     "rev_multistream_config_json",
+    "developer_economics_json",
 }
 
 

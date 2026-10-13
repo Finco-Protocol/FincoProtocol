@@ -463,6 +463,13 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
     }
     if investor_receipts is not None:
         payload["investor_equity_receipts"] = investor_receipts
+    developer_result = getattr(clean_run, "developer_economics_result", None)
+    if developer_result is not None:
+        # Run-bound Developer Economics V1 evidence: a pass-through serialisation of the canonical
+        # calculator's result and the exact typed input it was computed from. Absent when disabled.
+        from app.model_v2.developer_evidence import serialize_developer_evidence
+        payload["developer_economics"] = serialize_developer_evidence(
+            demo.project_inputs.development_economics, developer_result)
     if getattr(demo.project_inputs.revenue, "multistream_config_json", ""):
         import json
         provenance = clean_run.g2c_result.financing_result.project_model_result.provenance
