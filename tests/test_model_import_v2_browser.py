@@ -20,6 +20,7 @@ from tests.test_model_ai_import_browser_c import (  # noqa: E402,F401
 )
 
 SHOTS = Path(os.environ.get("IMPORT_V2_SCREENSHOT_DIR", "artifacts/model-import-v2"))
+SHOTS.mkdir(parents=True, exist_ok=True)          # the CI evidence contract requires these captures
 
 # per vertical: (revenue-sheet row, expected canonical field, expected stored value)
 REVENUE = {
