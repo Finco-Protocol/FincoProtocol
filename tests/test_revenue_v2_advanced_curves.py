@@ -168,12 +168,17 @@ def test_stress_changes_only_declared_price_authority_and_never_mutates_base():
 def test_stress_early_expiry_requires_residual_and_explicit_axis_boundary():
     pi, axis, operating, payload = book()
     day = operating[2].start_date.isoformat()
+    # No selected contract ID is exposed in the V1 expiry UI: this is
+    # intentionally a single-PPA fixture. Multi-PPA books MUST fail closed.
+    payload["streams"] = [row for row in payload["streams"] if row["id"] != "beta"]
     raw = json.dumps(payload)
     shocked = json.loads(changed_book(raw, "ppa_expiry", 0, expiry_date=day))
     assert shocked["streams"][0]["end_date"] == day
     assert len(shocked["streams"][0]["price_curve"]) == 2
     assert apply_config(pi, json.dumps(shocked), project_type="solar")
-    payload["streams"][2]["volume_share"] = .2
+    # The remaining explicit Merchant still conserves 100% physical MWh,
+    # but cannot serve as a residual allocation for earlier expiry.
+    next(row for row in payload["streams"] if row["id"] == "market")["volume_share"] = .55
     with pytest.raises(CommercialStressUnavailable, match="RESIDUAL_REQUIRED"):
         changed_book(json.dumps(payload), "ppa_expiry", 0, expiry_date=day)
 
@@ -185,8 +190,11 @@ def test_stress_boundaries_fail_closed(problem):
         with pytest.raises(CommercialStressUnavailable):
             changed_book(json.dumps(payload), "bank_specific_discount", 10)
     elif problem == "no_match":
-        payload["streams"] = [r for r in payload["streams"] if r["type"] != "merchant"]
-        with pytest.raises(CommercialStressUnavailable):
+        # Remove the CfD referencing this merchant too: the target here is
+        # NO eligible physical Merchant, NOT an invalid orphaned CfD.
+        payload["streams"] = [r for r in payload["streams"] if r["type"] == "ppa"]
+        next(r for r in payload["streams"] if r["id"] == "beta")["volume_share"] = .55
+        with pytest.raises(CommercialStressUnavailable, match="NO_ELIGIBLE_CONTRACT"):
             changed_book(json.dumps(payload), "merchant_down", 10)
     elif problem == "outside_limit":
         with pytest.raises(CommercialStressUnavailable):
