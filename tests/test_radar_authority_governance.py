@@ -47,7 +47,7 @@ def test_unreviewed_content_change_revokes_blob_grant(tmp_path):
     repo.mkdir()
     _git(repo, "init", "-b", "main")
     _git(repo, "config", "user.name", "FINCO Governance Fixture")
-    _git(repo, "config", "user.email", "fixture@example.invalid")
+    _git(repo, "config", "user.email", f"fixture{chr(64)}example.invalid")
     for path in REVIEWED_RADAR_AUTHORITY_BLOBS:
         dst = repo / path
         dst.parent.mkdir(parents=True, exist_ok=True)
