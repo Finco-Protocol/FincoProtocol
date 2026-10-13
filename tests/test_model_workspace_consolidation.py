@@ -153,21 +153,34 @@ def _workspace_ci_role_evidence(root, prefix, role, head, tree, case="pass"):
 
     process = {"head": head, "tree": tree, "label": role, "exit_code": 0,
                "normal_exit": True, "junit_failures": 0}
+    if role == "import":
+        # PR #266: the import role runs BOTH suites; the V2 captures carry their real viewport widths.
+        from tools.ci_browser_job import IMPORT_V2_SCREENSHOTS
+        shots = folder / "model-import-v2"
+        shots.mkdir(exist_ok=True)
+        for name, width in IMPORT_V2_SCREENSHOTS:
+            (shots / name).write_bytes(_workspace_ci_png(width))
     if role in SELECTIONS:
-        module = ("test_model_workspace_consolidation_browser"
-                  if role == "consolidation" else "test_ci_synthetic")
-        names = ([f"test_synthetic_{index}" for index in range(17)]
-                 if role == "consolidation" else ["test_synthetic"])
-        nodes = [f"tests/{module}.py::{name}" for name in names]
+        if role == "consolidation":
+            cases = [("test_model_workspace_consolidation_browser", f"test_synthetic_{index}") for index in range(17)]
+        elif role == "import":
+            from tools.ci_browser_job import IMPORT_V2_NODES
+            cases = [("test_model_ai_import_browser_c", "test_synthetic")] + [
+                (node.split("::")[0].removeprefix("tests/").removesuffix(".py"), node.split("::", 1)[1])
+                for node in IMPORT_V2_NODES]
+        else:
+            cases = [("test_ci_synthetic", "test_synthetic")]
+        nodes = [f"tests/{module}.py::{name}" for module, name in cases]
+        names = [name for _, name in cases]
         inventory = {"head": head, "tree": tree, "pytest_exit": 0,
                      "collected": nodes[:-1] if role == "consolidation" and case == "collection-missing" else nodes,
                      "selected": nodes, "deselected": [], "collection_skips": [],
                      "collection_errors": [],
                      "outcomes": {node: {"status": "passed", "reason": ""} for node in nodes}}
         (folder / "inventory.json").write_text(json.dumps(inventory), encoding="utf-8")
-        executed = (names[:-1] if role == "consolidation" and case == "execution-missing" else names)
+        executed = (cases[:-1] if role == "consolidation" and case == "execution-missing" else cases)
         suite = ET.Element("testsuite", tests=str(len(executed)), failures="0", errors="0", skipped="0")
-        for index, name in enumerate(executed):
+        for index, (module, name) in enumerate(executed):
             element = ET.SubElement(suite, "testcase", classname=f"tests.{module}", name=name)
             if role == "consolidation" and index == 0 and case in ("skip", "failure", "error"):
                 ET.SubElement(element, "skipped" if case == "skip" else case)
@@ -310,5 +323,92 @@ def test_workspace_browser_ci_process_and_junit_proof_required(tmp_path, field, 
     manifest = json.loads((folder / "manifest.json").read_text())
     manifest["process.json"] = hashlib.sha256((folder / "process.json").read_bytes()).hexdigest()
     (folder / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(EvidenceError):
+        validate_browser_records(tmp_path, head, tree, "success")
+
+
+# PR #266 Correction B: Import V2 Chromium evidence is mandatory inside the existing `import` role.
+def _rewrite_workspace_manifest(folder):
+    import hashlib
+    import json
+    manifest = {p.relative_to(folder).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in folder.rglob("*") if p.is_file() and p.name != "manifest.json"}
+    (folder / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _import_matrix(tmp_path, head="a" * 40, tree="b" * 40):
+    from tools.ci_browser_job import REQUIRED
+    for role in REQUIRED:
+        _workspace_ci_role_evidence(tmp_path, "browser", role, head, tree)
+    return tmp_path / "browser-import", head, tree
+
+
+def test_import_role_runs_both_suites_and_accepts_complete_evidence(tmp_path):
+    from tools.ci_browser_job import IMPORT_V2_NODES, validate_browser_records
+    folder, head, tree = _import_matrix(tmp_path)
+    assert len(IMPORT_V2_NODES) == 6 and "import" in validate_browser_records(tmp_path, head, tree, "success")["mandatory_roles"]
+
+
+@pytest.mark.parametrize("mutation", [
+    "v2-node-not-collected", "v2-node-skipped", "v2-node-not-in-junit", "v2-junit-failure",
+    "screenshot-missing", "screenshot-wrong-width", "screenshot-corrupt", "c-suite-absent", "c-suite-failed",
+])
+def test_import_v2_evidence_is_fail_closed(tmp_path, mutation):
+    import json
+    import xml.etree.ElementTree as ET
+    import hashlib
+    from tools.ci_acceptance import EvidenceError
+    from tools.ci_browser_job import IMPORT_V2_NODES, validate_browser_records
+    folder, head, tree = _import_matrix(tmp_path)
+    inventory = json.loads((folder / "inventory.json").read_text())
+    victim = IMPORT_V2_NODES[0]
+    if mutation == "v2-node-not-collected":
+        inventory["collected"].remove(victim)
+        inventory["selected"].remove(victim)
+        inventory["outcomes"].pop(victim)
+    elif mutation == "v2-node-skipped":
+        inventory["outcomes"][victim] = {"status": "skipped", "reason": "playwright missing"}
+    elif mutation == "c-suite-absent":
+        gone = [n for n in inventory["selected"] if n.startswith("tests/test_model_ai_import_browser_c.py::")]
+        for node in gone:
+            inventory["selected"].remove(node); inventory["collected"].remove(node); inventory["outcomes"].pop(node)
+    elif mutation == "c-suite-failed":
+        node = next(n for n in inventory["selected"] if n.startswith("tests/test_model_ai_import_browser_c.py::"))
+        inventory["outcomes"][node] = {"status": "failed", "reason": ""}
+    (folder / "inventory.json").write_text(json.dumps(inventory), encoding="utf-8")
+    process = json.loads((folder / "process.json").read_text())
+    if mutation in ("v2-node-not-in-junit", "v2-junit-failure"):
+        tree_xml = ET.parse(folder / "results.xml")
+        suite = tree_xml.getroot()
+        module = victim.split("::")[0].removesuffix(".py").replace("/", ".")
+        for case in list(suite):
+            if case.get("classname") == module and case.get("name") == victim.split("::", 1)[1]:
+                if mutation == "v2-node-not-in-junit":
+                    suite.remove(case)
+                else:
+                    ET.SubElement(case, "failure")
+        tree_xml.write(folder / "results.xml", encoding="utf-8")
+        process["junit_sha256"] = hashlib.sha256((folder / "results.xml").read_bytes()).hexdigest()
+        (folder / "process.json").write_text(json.dumps(process), encoding="utf-8")
+    shots = folder / "model-import-v2"
+    if mutation == "screenshot-missing":
+        (shots / "solar-04-review-mobile.png").unlink()
+    elif mutation == "screenshot-wrong-width":
+        (shots / "solar-04-review-mobile.png").write_bytes(_workspace_ci_png(1440))
+    elif mutation == "screenshot-corrupt":
+        target = shots / "wind-02-confirm.png"
+        raw = bytearray(target.read_bytes()); raw[40] ^= 0x01; target.write_bytes(raw)
+    _rewrite_workspace_manifest(folder)
+    with pytest.raises(EvidenceError):
+        validate_browser_records(tmp_path, head, tree, "success")
+
+
+def test_import_role_without_any_v2_screenshot_directory_cannot_pass(tmp_path):
+    import shutil
+    from tools.ci_acceptance import EvidenceError
+    from tools.ci_browser_job import validate_browser_records
+    folder, head, tree = _import_matrix(tmp_path)
+    shutil.rmtree(folder / "model-import-v2")
+    _rewrite_workspace_manifest(folder)
     with pytest.raises(EvidenceError):
         validate_browser_records(tmp_path, head, tree, "success")
