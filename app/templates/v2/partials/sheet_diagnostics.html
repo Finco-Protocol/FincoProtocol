@@ -3,7 +3,11 @@
 <div id="v2-sheet-diagnostics" class="md-workspace" data-sheet="diagnostics" data-state="{{ d.state if d else 'NOT_RUN' }}">
   <header><h1>Model Diagnostics</h1><p>{{ project_name | default('Project') }} · Committed Last Run only</p></header>
   {% if not d or not d.available %}
+  {% if d and d.state == 'UNAVAILABLE' %}
+  <p role="status">Diagnostics UNAVAILABLE: committed evidence could not be resolved. No score or passing periods are inferred.</p>
+  {% else %}
   <p role="status">Diagnostics unavailable: no evaluated committed Last Run. No score or passing periods are estimated.</p>
+  {% endif %}
   {% else %}
   <script type="application/json" data-md-payload>{{ d | tojson }}</script>
   <p role="status">{{ d.state }}{% if d.state == 'STALE' %} — HISTORICAL evidence of the prior Run; Working Copy changes are not evaluated{% endif %} · Scenario: {{ d.scenario_name or 'UNAVAILABLE' }}</p>
@@ -23,7 +27,7 @@
     <div class="md-scroll" tabindex="0" aria-label="{{ category.category }} timeline">
     <table class="md-matrix"><thead><tr><th scope="col">Check</th><th scope="col">Overall</th><th scope="col">Measured / residual</th><th scope="col">Threshold / tolerance</th>{% for p in d.columns %}<th scope="col" title="{{ p.date or 'DATE_UNAVAILABLE' }}">{{ p.label }}</th>{% endfor %}</tr></thead>
       <tbody>{% for c in category.checks %}<tr data-md-row data-check-id="{{ c.check_id }}" data-status="{{ c.status }}" data-category="{{ c.category }}" data-search="{{ (c.check_id ~ ' ' ~ c.title) | lower }}">
-        <th scope="row"><button type="button" data-md-select="{{ c.check_id }}">{{ c.title }}<small>{{ c.check_id }} · {{ c.severity }}</small></button></th>
+        <th scope="row"><button type="button" data-md-select="{{ c.check_id }}">{{ c.title }}<small>{{ c.check_id }} · {{ c.severity }}</small>{% if c.global_component and c.global_component.status == 'FAIL' %}<small>GLOBAL / BOUNDARY FAIL — inspect details</small>{% endif %}</button></th>
         <td><span class="md-status md-{{ c.status | lower }}">{{ c.status }}</span></td><td>{{ number(c.measured_value) }} {{ c.measured_unit }}</td><td>{{ number(c.threshold_value) }}</td>
         {% for p in c.periods %}<td><button type="button" class="md-cell md-{{ p.status | lower }}" data-md-select="{{ c.check_id }}" data-md-period="{{ p.period_index }}" aria-label="{{ c.title }} · {{ p.date or p.period_index }} · {{ p.status }} · {{ p.scope }}" title="{{ p.status }} · {{ p.scope }} · {{ p.reason or 'Evaluated by canonical validator' }}">{{ {'PASS':'✓','FAIL':'✕','NOT_APPLICABLE':'N/A','UNAVAILABLE':'?','AGGREGATE_ONLY':'Σ','NOT_PERIODIC':'—'}.get(p.status,p.status) }}</button></td>{% endfor %}
       </tr>{% endfor %}</tbody>

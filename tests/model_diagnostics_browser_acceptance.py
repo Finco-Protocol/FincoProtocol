@@ -16,6 +16,8 @@ def capture(page, errors, name):
     page.screenshot(path=str(folder / (name + ".png")), full_page=True)
     page.screenshot(path=str(folder / (name + "-viewport.png")))
     (folder / (name + "-console.json")).write_text(json.dumps(errors), encoding="utf-8")
+    data = json.loads(page.locator('[data-md-payload]').text_content())
+    (folder / (name + "-diagnostics.json")).write_text(json.dumps(data), encoding="utf-8")
     assert not errors, errors
     assert_unique_dom_ids(page)
 
@@ -108,3 +110,41 @@ def test_failed_check_period_residual_drilldown_and_mobile(workspace):
     assert 'QM-SD-002' in page.locator('[data-md-detail-title]').inner_text()
     page.locator('[aria-controls="model-smart-panel"][data-workspace-drawer]').click()
     capture(page, errors, 'failed-check-mobile')
+
+
+def test_delayed_diagnostics_refresh_after_new_run(workspace):
+    from tests.model_workspace_navigation import activate_destination
+    page, record, errors = workspace()
+    run(page)
+    first = json.loads(page.locator('[data-md-payload]').text_content())['identity']['snapshot_id']
+    held = []
+
+    def delay(route):
+        held.append(route)
+
+    page.route('**/v2/workbook/diagnostics?*', delay)
+    activate_destination(page, 'tab-input-grid')
+    cell = page.locator('.ig-input[data-ig-field="project_setup.technical.p50_hours"]')
+    cell.fill('1611'); cell.press('Enter')
+    page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 1')
+    with page.expect_response(lambda r: '/grid/save' in r.url and r.request.method == 'POST'):
+        page.keyboard.press('Control+S')
+    page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 0')
+    page.wait_for_timeout(100)  # dispatch the real browser request interception
+    assert len(held) == 1
+    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'UNAVAILABLE'
+    # Capture an actual authorized stale response before starting the new Run.
+    stale = page.request.get(held[0].request.url)
+    assert stale.status == 200 and 'data-state="STALE"' in stale.text()
+    page.evaluate("() => document.addEventListener('htmx:beforeOnLoad', e => { if (e.detail.xhr.responseURL.includes('/workbook/diagnostics?')) window.__mdLateReadHandled = true; })")
+    run(page)
+    current = json.loads(page.locator('[data-md-payload]').text_content())['identity']['snapshot_id']
+    assert current != first
+    held[0].fulfill(response=stale)
+    page.wait_for_function('() => window.__mdLateReadHandled === true')
+    page.wait_for_timeout(100)
+    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'CURRENT'
+    assert page.locator('#v2-model-health').get_attribute('data-state') == 'CURRENT'
+    assert json.loads(page.locator('[data-md-payload]').text_content())['identity']['snapshot_id'] == current
+    activate_destination(page, 'tab-diagnostics')
+    capture(page, errors, 'late-read-new-run')

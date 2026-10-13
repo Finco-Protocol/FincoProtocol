@@ -33,7 +33,13 @@ def test_refresh_no_engine_no_write_exact_scope(env, template):
     assert get_workspace_state(owner, rec.project_id) == before
     other = env.client.get('/v2/workbook/diagnostics', params={'project': rec.project_code}, cookies=env.cookie('intruder'))
     assert other.status_code == 404 and 'data-md-payload' not in other.text
-    unauth = env.client.get('/v2/workbook/diagnostics', params={'project': rec.project_code})
+    # Existing demo middleware provisions a signed isolated anonymous identity.
+    # That identity is NOT this project owner; retain the canonical 404 boundary.
+    env.client.cookies.clear()
+    anonymous = env.client.get('/v2/workbook/diagnostics', params={'project': rec.project_code})
+    assert anonymous.status_code == 404 and 'data-md-payload' not in anonymous.text
+    with mock.patch('app.v2.router.resolve_request_session', return_value=None):
+        unauth = env.client.get('/v2/workbook/diagnostics', params={'project': rec.project_code})
     assert unauth.status_code == 401 and 'data-md-payload' not in unauth.text
 
 

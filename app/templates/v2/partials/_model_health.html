@@ -2,7 +2,11 @@
 <div id="v2-model-health" class="md-health" role="region" aria-label="Model Health" data-state="{{ d.state if d else 'NOT_RUN' }}">
   <header><h2>Model Health</h2><button type="button" data-nav-tab="tab-diagnostics">View Model Diagnostics →</button></header>
   {% if not d or not d.available %}
+  {% if d and d.state == 'UNAVAILABLE' %}
+  <p role="status">Diagnostics UNAVAILABLE: committed evidence could not be resolved. No score or passing checks are inferred.</p>
+  {% else %}
   <p>No committed diagnostics available. Run the model to establish Last Run evidence; no score is estimated.</p>
+  {% endif %}
   {% else %}
   <p>{{ d.state }}{% if d.state == 'STALE' %} · HISTORICAL Last Run, not the edited Working Copy{% endif %}
     · Scenario: {{ d.scenario_name or 'UNAVAILABLE' }} · Last Run: {{ d.identity.run_at or 'UNAVAILABLE' }}</p>

@@ -105,9 +105,7 @@ def _restricted(check_id: str, ev: Mapping, index: int) -> tuple[dict | None, st
         if check_id == "QM-SD-001":
             position = debt_rows.index(matching[0])
             # Original order is retained: continuity is NOT lost by filtering to one row.
-            view["senior_debt"] = {**senior, "periods": debt_rows[:position + 1],
-                "permit_terminal_balloon": senior.get("permit_terminal_balloon", False)
-                if position == len(debt_rows) - 1 else True}
+            view["senior_debt"] = {**senior, "periods": debt_rows[:position + 1]}
             return view, "CUMULATIVE_THROUGH_PERIOD"
         view["senior_debt"] = {**senior, "periods": matching}
         return view, "PERIOD_AND_SOLVER_AUTHORITY" if check_id == "QM-SD-004" else "PERIOD"
@@ -151,7 +149,11 @@ def _period(check, ev: Mapping, column: dict, identity: RunIdentity, digest_ok: 
     if restricted is None:
         return PeriodEvidence(**base, status="UNAVAILABLE", scope="UNAVAILABLE", reason=scope)
     try:
-        result = PERIOD_VALIDATORS[check.check_id](restricted)
+        if check.check_id == "QM-SD-001":
+            result = integrity.check_senior_rollforward(restricted, terminal_boundary_is_present=(
+                len(_rows(restricted, "senior_debt")) == len(_rows(ev, "senior_debt"))))
+        else:
+            result = PERIOD_VALIDATORS[check.check_id](restricted)
     except Exception:
         return PeriodEvidence(**base, status="UNAVAILABLE", scope=scope, reason="PERIOD_EVIDENCE_MALFORMED")
     status = result.status.value
@@ -166,7 +168,7 @@ def _period(check, ev: Mapping, column: dict, identity: RunIdentity, digest_ok: 
                           reason=result.reason_code)
 
 
-def _waterfall(ws: Any, columns: list[dict]) -> list[dict]:
+def _waterfall(ws: Any, columns: list[dict], *, integrity_evidence: Mapping, digest_ok: bool) -> list[dict]:
     statements = getattr(ws, "last_financial_statements", None) or {}
     # Copy persisted lines; no netting, aggregation, new waterfall or output calculations.
     lines = (("Revenue", "pnl", "revenues_keur"), ("OPEX", "pnl", "operating_expenses_keur"),
@@ -177,19 +179,21 @@ def _waterfall(ws: Any, columns: list[dict]) -> list[dict]:
              ("Junior service", "pf_cash_waterfall", "junior_debt_service_keur"),
              ("DSRA funding", "pf_cash_waterfall", "dsra_funding_keur"),
              ("DSRA release", "pf_cash_waterfall", "dsra_release_keur"),
-             ("SHL interest", "pf_cash_waterfall", "shl_interest_cash_keur"),
-             ("SHL principal", "pf_cash_waterfall", "shl_principal_paid_keur"),
+             ("SHL interest", "integrity_sponsor", "shl_cash_interest"),
+             ("SHL principal", "integrity_sponsor", "shl_principal"),
              ("Equity distributions", "pf_cash_waterfall", "net_dividends_keur"),
              ("Cash balance", "balance_sheet", "cash_keur"))
     out = []
     for label, section, key in lines:
-        rows = _rows(statements, section)
+        rows = (_rows(integrity_evidence, "sponsor") if digest_ok else []) if section == "integrity_sponsor" else _rows(statements, section)
+        source = (f"Last Run.integrity_evidence.sponsor.periods.{key}" if section == "integrity_sponsor" else
+                  f"Last Run.financial_statements.{section}.{key}")
         values = []
         for column in columns:
             match = [r for r in rows if _index(r) == column["index"] and
                      str(r.get("date") or "") == str(column["date"] or "")]
             values.append(_num(match[0].get(key)) if len(match) == 1 else None)
-        out.append({"label": label, "source": f"Last Run.financial_statements.{section}.{key}",
+        out.append({"label": label, "source": source,
                     "values": values, "unit": "kEUR"})
     return out
 
@@ -237,4 +241,4 @@ def build_diagnostics(ws: Any, report: QualityReport, *, score: dict, scenario_n
             "integrity": integrity_report.to_dict(), "checks": checks, "groups": groups, "columns": columns,
             "total_periods": total_periods, "truncated": total_periods > len(columns),
             "top_issues": [next(r for r in checks if r["check_id"] == cid) for cid in report.top_issues[:5]],
-            "waterfall": _waterfall(ws, columns)}
+            "waterfall": _waterfall(ws, columns, integrity_evidence=ev, digest_ok=digest_ok)}

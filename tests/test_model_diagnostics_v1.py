@@ -173,3 +173,86 @@ def test_axis_uses_persisted_dates_not_annual_or_working_copy_assumptions(runs, 
         {"period": i, "date": date} for i, date in enumerate(dates)]}})
     columns, _ = _axis(ws, {})
     assert [c["date"] for c in columns] == dates
+
+
+# Frozen pre-extension full-run control from main 153d7044958bb94d01ff07325c09c6b354aa32fa.
+# TEST ONLY: no legacy validator or alternative authority is introduced at runtime.
+_PRE_EXTENSION_SENIOR_VALIDATOR = "def check_senior_rollforward(evidence: Mapping[str, Any]) -> IntegrityCheck:\n    cid, title = \"SENIOR_DEBT_ROLLFORWARD\", \"Opening + draws - principal = closing\"\n    rows = _debt_rows(evidence)\n    su = _section(evidence, \"sources_uses\", \"summary\")\n    if rows is None or not isinstance(su, Mapping) or not _complete(su, \"senior_debt_keur\"):\n        return _unavailable(cid, title, \"SENIOR_DEBT_EVIDENCE_MISSING\")\n    if not rows:\n        if abs(su[\"senior_debt_keur\"]) <= TOL_KEUR:\n            return IntegrityCheck(cid, title, CheckStatus.NOT_APPLICABLE, \"NO_SENIOR_DEBT\")\n        return IntegrityCheck(cid, title, CheckStatus.FAIL, \"SENIOR_DEBT_SCHEDULE_MISSING\",\n                              detail=\"senior debt is committed but the schedule is empty\")\n    if not all(_complete(r, \"opening\", \"principal\", \"closing\") for r in rows):\n        return _unavailable(cid, title, \"SENIOR_DEBT_EVIDENCE_MISSING\")\n    deviations = []\n    for row in rows:  # operating periods draw nothing: draws are committed before COD\n        deviations.append(abs(row[\"opening\"] - row[\"principal\"] - row[\"closing\"]))\n        if row[\"principal\"] < -TOL_KEUR or row[\"closing\"] < -TOL_KEUR:\n            deviations.append(abs(min(row[\"principal\"], row[\"closing\"])))\n    for previous, current in zip(rows, rows[1:]):\n        deviations.append(abs(current[\"opening\"] - previous[\"closing\"]))\n    deviations.append(abs(rows[0][\"opening\"] - su[\"senior_debt_keur\"]))  # draws sum to the commitment\n    result = _verdict(cid, title, deviations, TOL_KEUR, \"SENIOR_ROLLFORWARD_BREAK\", evaluated=len(rows),\n                      detail=\"period roll-forward, opening-to-closing chain, and first opening = committed senior debt\")\n    if result.status is CheckStatus.PASS and not _section(evidence, \"senior_debt\", \"permit_terminal_balloon\"):\n        if rows[-1][\"closing\"] > TOL_KEUR:\n            return IntegrityCheck(cid, title, CheckStatus.FAIL, \"SENIOR_TERMINAL_BALANCE_UNREPAID\",\n                                  len(rows), rows[-1][\"closing\"], TOL_KEUR)\n    return result\n"
+
+
+@pytest.mark.parametrize("vertical", list(q1.VERTICALS))
+@pytest.mark.parametrize("case", ["original", "arithmetic", "continuity", "terminal", "missing"])
+def test_full_run_validator_matches_pre_extension_exactly(runs, vertical, case):
+    from app.run_integrity import checks
+    ev = copy.deepcopy(runs[vertical][1]["integrity_evidence"])
+    debt = ev["senior_debt"]
+    if case == "arithmetic":
+        debt["periods"][2]["closing"] += 5
+    elif case == "continuity":
+        debt["periods"][2]["opening"] += 5
+        debt["periods"][2]["closing"] += 5
+    elif case == "terminal":
+        debt["permit_terminal_balloon"] = False
+        for r in debt["periods"]:
+            r.update(opening=ev["sources_uses"]["summary"]["senior_debt_keur"], principal=0,
+                     closing=ev["sources_uses"]["summary"]["senior_debt_keur"])
+    elif case == "missing":
+        debt["periods"][2].pop("opening")
+    namespace = dict(vars(checks))
+    exec(_PRE_EXTENSION_SENIOR_VALIDATOR, namespace)
+    expected = namespace["check_senior_rollforward"](ev).to_dict()
+    assert checks.check_senior_rollforward(ev).to_dict() == expected
+    assert checks.check_senior_rollforward(ev, terminal_boundary_is_present=True).to_dict() == expected
+
+
+def test_prefix_preserves_balloon_policy_and_terminal_failure_is_proven(runs):
+    from app.v2.diagnostics_projection import _restricted
+    pi, payload = runs["solar"]
+    ev = copy.deepcopy(payload["integrity_evidence"])
+    ev["senior_debt"]["permit_terminal_balloon"] = False
+    rows = ev["senior_debt"]["periods"]
+    for r in rows:
+        r.update(opening=ev["sources_uses"]["summary"]["senior_debt_keur"], principal=0,
+                 closing=ev["sources_uses"]["summary"]["senior_debt_keur"])
+    payload = copy.deepcopy(payload)
+    ev["digest"] = evidence_digest(ev)
+    payload["integrity_evidence"] = ev
+    _, _, d = diagnostics(pi, payload)
+    c = row(d, "QM-SD-001")
+    assert c["status"] == "FAIL" and c["reason_code"] == "SENIOR_TERMINAL_BALANCE_UNREPAID"
+    first = next(p for p in c["periods"] if p["period_index"] == rows[0]["period_index"])
+    final = next(p for p in c["periods"] if p["period_index"] == rows[-1]["period_index"])
+    assert first["status"] == "PASS" and final["status"] == "FAIL"
+    assert final["reason"] == "SENIOR_TERMINAL_BALANCE_UNREPAID"
+    prefix, _ = _restricted("QM-SD-001", ev, rows[0]["period_index"])
+    assert prefix["senior_debt"]["permit_terminal_balloon"] is False
+
+
+def test_shl_inspector_copies_intact_sponsor_facts_only(runs):
+    pi, payload = runs["solar"]
+    _, _, d = diagnostics(pi, payload)
+    for label, key in (("SHL interest", "shl_cash_interest"), ("SHL principal", "shl_principal")):
+        line = next(r for r in d["waterfall"] if r["label"] == label)
+        assert line["source"] == "Last Run.integrity_evidence.sponsor.periods." + key
+        for col, value in zip(d["columns"], line["values"]):
+            matching = [r for r in payload["integrity_evidence"]["sponsor"]["periods"]
+                        if r["period"] == col["index"] and r["date"] == col["date"]]
+            assert value == (matching[0].get(key) if len(matching) == 1 else None)
+    bad = corrupt(payload, lambda e: e["sponsor"]["periods"][0].update(shl_cash_interest=99999), False)
+    _, _, d = diagnostics(pi, bad)
+    assert all(v is None for line in d["waterfall"] if line["label"].startswith("SHL") for v in line["values"])
+
+
+def test_unrendered_boundary_failure_is_explicit_not_an_all_green_run(runs, monkeypatch):
+    import app.v2.diagnostics_projection as projection
+    pi, payload = runs["solar"]
+    monkeypatch.setattr(projection, "MAX_RENDERED_PERIODS", 3)
+    def failure(e):
+        e["senior_debt"]["periods"][-1]["closing"] += 5
+    _, _, d = diagnostics(pi, corrupt(payload, failure))
+    c = row(d, "QM-SD-001")
+    assert d["truncated"] and d["total_periods"] > len(d["columns"])
+    assert c["status"] == "FAIL"
+    assert not any(p["status"] == "FAIL" for p in c["periods"])
+    assert c["global_component"]["status"] == "FAIL"
+    assert c["global_component"]["scope"] == "AGGREGATE_OR_UNRENDERED_BOUNDARY"

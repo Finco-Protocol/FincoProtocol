@@ -30,6 +30,11 @@ def test_model_diagnostics_failed_check_mobile_acceptance(workspace):
     test_failed_check_period_residual_drilldown_and_mobile(workspace)
 
 
+def test_model_diagnostics_late_read_cannot_overwrite_new_run(workspace):
+    from tests.model_diagnostics_browser_acceptance import test_delayed_diagnostics_refresh_after_new_run
+    test_delayed_diagnostics_refresh_after_new_run(workspace)
+
+
 @pytest.fixture
 def workspace(live_server, browser):
     from app.auth import COOKIE_NAME, create_session_token

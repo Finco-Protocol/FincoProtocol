@@ -3,6 +3,8 @@
 Baseline: `b47aa732f567e380cbe4c8e20b6c1a7dc0db9fbf`. Branch: `feat/model-diagnostics-v1`.
 Parallel Draft PRs #265 (Revenue), #266 (AI Import), #267 (Investor Waterfall) were inspected;
 none of their financial authorities are copied or changed here.
+PR #266 subsequently merged. The branch was synced by a normal merge (no rebase/rewrite)
+onto main `153d7044958bb94d01ff07325c09c6b354aa32fa`; its Import V2 changes are untouched.
 
 ## One evidence workflow
 
@@ -55,6 +57,14 @@ Rendering is bounded to 600 periods with explicit disclosure; aggregate results 
 The inspector copies committed statement lines. It does not calculate a waterfall. Missing
 lines/periods/date joins stay UNAVAILABLE. Full precision remains in diagnostic evidence;
 existing persisted display schedules retain their own serialization precision.
+SHL interest/principal are copied from digest-intact committed sponsor evidence because
+the display statement bundle does not contain those lines; no Working Copy reconstruction.
+
+The only shared-validator extension is `check_senior_rollforward(...,
+terminal_boundary_is_present=True)`. Its default full-run behavior, math and tolerances
+are unchanged. A diagnostic prefix passes False until the actual final period; the
+original `permit_terminal_balloon` fact is never substituted. Parity tests compare the
+default validator against its pre-extension implementation and exercise maturity failure.
 
 ## Coverage gaps — not additional passed controls
 
