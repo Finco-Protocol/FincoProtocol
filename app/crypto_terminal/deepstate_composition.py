@@ -276,7 +276,9 @@ def _valid_rlive(row: MarketObservation, policy, venue_id, instrument_id,
         and p.get("twap_window_seconds") == policy.twap_window_seconds
         and _timestamp(p.get("twap_window_start_at")) is not None
         and _timestamp(p.get("normalization_oracle_observed_at")) is not None
-        and _timestamp(p.get("reference_observed_at")) is not None
+        # Official underlying reference is independent of the token MARKET clock.
+        # It may be unavailable without disqualifying a provenance-safe
+        # cross-venue MARKET-versus-execution comparison.
         and _positive(row.price) is not None
     )
 
