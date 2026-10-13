@@ -606,25 +606,116 @@ def _revenue_v2_csrf_successor_exact(changed, blobs, main_valid, call_sites):
     )
 
 
+# Immutable normal-merge release identity. Keep the original pre-merge
+# REVENUE_V2_CSRF_MAIN and all F4/WF07 release constants unchanged.
+REVENUE_V2_ACCEPTED_MERGE = "6315f1d2ed9798ba77628357090013d3ebbf59a7"
+REVENUE_V2_ACCEPTED_HEAD = "7354516cfd92c713ae452e36c2b81fed8b52e746"
+REVENUE_V2_ACCEPTED_TREE = "727ac064b146239cc1fcdbe62f78e513f9abc63c"
+# Only the two independently reviewed Revenue V2 POST handlers are compared
+# within the shared router. Everything else financial/security-sensitive below
+# is checked as exact released Git content; there is no whole-directory waiver.
+REVENUE_V2_PROTECTED_ROUTER_FUNCTIONS = frozenset({
+    "v2_revenue_contracts", "v2_revenue_commercial_stress",
+    "_get_current_user", "_build_pis_with_composite_identity",
+})
+REVENUE_V2_OTHER_CRITICAL_PATHS = frozenset({
+    "app/auth.py", "app/v2/investor_f4_router.py",
+    "app/ui/protected_reference_service.py",
+    "app/persistence/projects_repository.py",
+    "app/workbook/revenue_contracts_service.py",
+    "app/workbook/revenue_multistream.py",
+    "app/workbook/revenue_commercial_stress.py",
+})
+
+
+def _revenue_critical_functions(source: str):
+    """Return exact text including route decorators. Fail closed on duplicates.
+
+    This is intentionally *not* an AST-only normalized hash: even a one-byte
+    change inside a protected handler is unauthorized. Outside additions are
+    accepted only insofar as independent PR scope/governance also allows them.
+    """
+    import ast
+    tree = ast.parse(source)
+    lines = source.splitlines(keepends=True)
+    selected = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in REVENUE_V2_PROTECTED_ROUTER_FUNCTIONS:
+            if node.name in selected:
+                raise ValueError("duplicate protected Revenue route")
+            start = min([node.lineno] + [d.lineno for d in node.decorator_list])
+            selected[node.name] = "".join(lines[start - 1:node.end_lineno])
+    if set(selected) != REVENUE_V2_PROTECTED_ROUTER_FUNCTIONS:
+        raise ValueError("missing protected Revenue route")
+    return selected
+
+
+def _revenue_post_merge_exact(merger_parents, release_tree, historical_blobs,
+                              current_blobs, historical_f4_blobs, trust_delta,
+                              call_sites, released_router, current_router):
+    """Pure fail-closed verifier; mutation tests can exercise all controls."""
+    expected_parents = (REVENUE_V2_CSRF_MAIN, REVENUE_V2_ACCEPTED_HEAD)
+    if tuple(merger_parents) != expected_parents or release_tree != REVENUE_V2_ACCEPTED_TREE:
+        return False
+    expected_paths = set(REVENUE_V2_CSRF_SUCCESSOR_BLOBS) | set(REVENUE_V2_OTHER_CRITICAL_PATHS)
+    if set(historical_blobs) != expected_paths or any(
+            historical_blobs.get(path) != blob
+            for path, blob in REVENUE_V2_CSRF_SUCCESSOR_BLOBS.items()):
+        return False
+    if historical_f4_blobs != F4_CSRF_BLOBS:
+        return False
+    # The guard file itself is the narrowly reviewed correction; all other
+    # Trust, financial, release-pin and writer paths retain release content.
+    if set(trust_delta) - {CSRF_GUARD_PATH}:
+        return False
+    if frozenset(call_sites) != F4_CSRF_CALL_SITES:
+        return False
+    expected_current = {
+        k: v for k, v in REVENUE_V2_CSRF_SUCCESSOR_BLOBS.items()
+        if k != "app/v2/router.py"
+    }
+    if any(current_blobs.get(k) != v for k, v in expected_current.items()):
+        return False
+    if any(k not in current_blobs for k in REVENUE_V2_OTHER_CRITICAL_PATHS):
+        return False
+    if any(current_blobs[k] != historical_blobs[k]
+           for k in REVENUE_V2_OTHER_CRITICAL_PATHS):
+        return False
+    try:
+        return _revenue_critical_functions(released_router) == _revenue_critical_functions(current_router)
+    except (SyntaxError, ValueError, TypeError):
+        return False
+
+
 def _current_revenue_v2_csrf_successor_valid():
     try:
-        if _git("merge-base", "origin/main", "HEAD") != REVENUE_V2_CSRF_MAIN:
+        # Immutable #265 normal merge, not a transient merge-base equality.
+        parents = _git("rev-list", "--parents", "-n", "1", REVENUE_V2_ACCEPTED_MERGE).split()
+        if parents != [REVENUE_V2_ACCEPTED_MERGE,
+                       REVENUE_V2_CSRF_MAIN, REVENUE_V2_ACCEPTED_HEAD]:
             return False
-        if _git("rev-parse", REVENUE_V2_CSRF_MAIN) != REVENUE_V2_CSRF_MAIN:
-            return False
-        # Main must still hold the released F4 Trust snapshot.
-        if any(_git("rev-parse", f"{REVENUE_V2_CSRF_MAIN}:{path}") != sha
-               for path, sha in F4_CSRF_BLOBS.items()):
-            return False
-        changed = _git("diff", "--name-only", REVENUE_V2_CSRF_MAIN, "HEAD").splitlines()
-        trust_changed = [p for p in changed if _in_trust_scope(p)]
-        actual = {
-            path: _git("hash-object", f"--path={path}", path)
-            for path in REVENUE_V2_CSRF_SUCCESSOR_BLOBS
-        }
-        return _revenue_v2_csrf_successor_exact(
-            trust_changed, actual, True, _csrf_call_sites())
-    except (OSError, subprocess.CalledProcessError):
+        _git("merge-base", "--is-ancestor", REVENUE_V2_ACCEPTED_MERGE, "HEAD")
+        _git("merge-base", "--is-ancestor", F4_CSRF_INTEGRATION, REVENUE_V2_CSRF_MAIN)
+        released_tree = _git("rev-parse", f"{REVENUE_V2_ACCEPTED_MERGE}^{{tree}}")
+        released_blobs = {path: _git("rev-parse", f"{REVENUE_V2_ACCEPTED_MERGE}:{path}")
+                          for path in REVENUE_V2_CSRF_SUCCESSOR_BLOBS}
+        historical_f4 = {path: _git("rev-parse", f"{REVENUE_V2_CSRF_MAIN}:{path}")
+                         for path in F4_CSRF_BLOBS}
+        # Exact current financial/CSRF content, not merely descendant status.
+        guarded = set(REVENUE_V2_CSRF_SUCCESSOR_BLOBS) | set(REVENUE_V2_OTHER_CRITICAL_PATHS)
+        current_blobs = {path: _git("rev-parse", f"HEAD:{path}") for path in guarded}
+        for path in REVENUE_V2_OTHER_CRITICAL_PATHS:
+            released_blobs[path] = _git("rev-parse", f"{REVENUE_V2_ACCEPTED_MERGE}:{path}")
+        trust_delta = _git("diff", "--name-only", REVENUE_V2_ACCEPTED_MERGE, "HEAD", "--",
+                           "app/trust_readiness", "tests/test_trust_readiness_controls.py",
+                           "tests/test_trust_readiness_registry.py", "docs/readiness").splitlines()
+        # All accepted Trust changes are already in the immutable checkpoint.
+        return _revenue_post_merge_exact(
+            parents[1:], released_tree, released_blobs, current_blobs,
+            historical_f4, trust_delta, _csrf_call_sites(),
+            _git("show", f"{REVENUE_V2_ACCEPTED_MERGE}:app/v2/router.py"),
+            _git("show", "HEAD:app/v2/router.py"))
+    except (OSError, subprocess.CalledProcessError, ValueError, TypeError):
         return False
 
 
@@ -871,3 +962,68 @@ def test_wf05_allow_list_contains_no_engine_core_workbook_persistence_or_auth_pa
     app_v2 = {p for p in WF05_APPLICATION_PATHS if p.startswith("app/v2/")}
     assert app_v2 == {"app/v2/grid_router.py", "app/v2/input_grid_projection.py", "app/v2/router.py",
                       "app/v2/workspace_shell_projection.py"}
+
+
+def test_post_revenue_v2_checkpoint_exact_main_and_descendant_security():
+    """Actual accepted main passes; future route extensions cannot change CSRF."""
+    from copy import deepcopy
+    assert _current_revenue_v2_csrf_successor_valid()
+    release = REVENUE_V2_ACCEPTED_MERGE
+    parents = (REVENUE_V2_CSRF_MAIN, REVENUE_V2_ACCEPTED_HEAD)
+    rblobs = {p: _git("rev-parse", f"{release}:{p}")
+              for p in set(REVENUE_V2_CSRF_SUCCESSOR_BLOBS) | REVENUE_V2_OTHER_CRITICAL_PATHS}
+    hblobs = dict(rblobs)
+    f4 = {p: _git("rev-parse", f"{REVENUE_V2_CSRF_MAIN}:{p}") for p in F4_CSRF_BLOBS}
+    router = _git("show", f"{release}:app/v2/router.py")
+    args = (parents, REVENUE_V2_ACCEPTED_TREE, rblobs, hblobs, f4,
+            {CSRF_GUARD_PATH}, F4_CSRF_CALL_SITES, router, router)
+    assert _revenue_post_merge_exact(*args)
+    assert _revenue_post_merge_exact(*args[:-1], router + "\n" + chr(64) + "router.get('/synthetic-only')\ndef unrelated_read():\n    return None\n")
+
+    def denies(**overrides):
+        names = ("merger_parents", "release_tree", "historical_blobs", "current_blobs",
+                 "historical_f4_blobs", "trust_delta", "call_sites", "released_router", "current_router")
+        values = dict(zip(names, args))
+        values.update(overrides)
+        assert not _revenue_post_merge_exact(**values)
+
+    denies(merger_parents=parents[::-1])
+    denies(release_tree="0" * 40)
+    broken = deepcopy(rblobs)
+    broken["domain/revenue/multistream_runtime.py"] = "0" * 40
+    denies(historical_blobs=broken)
+    broken = deepcopy(hblobs)
+    broken["domain/revenue/multistream_runtime.py"] = "0" * 40
+    denies(current_blobs=broken)
+    for protected in ("tests/model_v2_governance.py", "tests/test_trust_readiness_controls.py",
+                      "app/auth.py", "app/v2/investor_f4_router.py",
+                      "app/workbook/revenue_contracts_service.py"):
+        broken = deepcopy(hblobs)
+        broken[protected] = "0" * 40
+        denies(current_blobs=broken)
+    broken = deepcopy(f4)
+    broken["app/trust_readiness/registry.py"] = "0" * 40
+    denies(historical_f4_blobs=broken)
+    denies(trust_delta={CSRF_GUARD_PATH, "app/trust_readiness/registry.py"})
+    denies(call_sites=F4_CSRF_CALL_SITES | {"app/v2/rogue_csrf.py"})
+    denies(call_sites=F4_CSRF_CALL_SITES - {"app/v2/investor_f4_router.py"})
+    # Exact protected function, including the decorators, must not change.
+    denies(current_router=router.replace(
+        'if not validate_csrf_token(', 'if validate_csrf_token(', 1))
+    denies(current_router=router.replace(
+        '@router.post("/workbook/revenue/stress")',
+        '@router.post("/workbook/revenue/stress-other")', 1))
+    denies(current_router=router.replace(
+        'async def v2_revenue_commercial_stress(',
+        'async def v2_revenue_commercial_stress_removed(', 1))
+    denies(current_router=router + "\n" + chr(64) + "router.post('/rogue')\nasync def v2_revenue_contracts():\n    pass\n")
+    denies(current_router='this is not valid Python')
+
+
+def test_post_revenue_v2_git_provenance_failure_is_not_authorization(monkeypatch):
+    import sys
+    module = sys.modules[__name__]
+    def unavailable(*args):
+        raise subprocess.CalledProcessError(1, ["git", *args])
+    monkeypatch.setattr(module, "_git", unavailable)
+    assert not _current_revenue_v2_csrf_successor_valid()
