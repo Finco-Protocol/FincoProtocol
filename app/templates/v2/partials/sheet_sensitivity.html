@@ -136,7 +136,10 @@
   </div>
 
   {% endif %}
-  <p class="d-context">Evaluation budget: five canonical points per request. Temporary analysis only; no Working Copy, Last Run, Run History or scenario writes.
-    Two-driver matrices are not available. Breakeven is established only by supported bounded Goal Seek, not interpolation.</p>
+  <div id="v2-sensitivity-matrix" class="v2-matrix" data-testid="matrix-region"
+       hx-get="/v2/workbook/sensitivity/matrix/form?project={{ project_code | urlencode }}"
+       hx-trigger="intersect once" hx-swap="innerHTML"></div>
+  <p class="d-context">Evaluation budget: five canonical points per one-driver request; at most 26 for a two-driver matrix (25 cells plus an unshocked Base when needed). Temporary analysis only; no Working Copy, Last Run, Run History or scenario writes.
+    Threshold crossings are reported as bracketing cells only, never interpolated. A precise one-dimensional tariff solve is available in Tender Pricing (Goal Seek).</p>
   <div class="d-actions"><button type="button" onclick="document.getElementById('tab-compare').click()">Compare</button><button type="button" onclick="document.getElementById('tab-goal-seek').click()">Tender Pricing</button></div>
 </div>{# v2-sheet-sensitivity #}

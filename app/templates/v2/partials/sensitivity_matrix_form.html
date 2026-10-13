@@ -1,0 +1,46 @@
+{# M3 two-driver sensitivity matrix — control form (lazy-loaded inside the existing Sensitivity tab). #}
+<link rel="stylesheet" href="/static/css/sensitivity_matrix.css">
+<section class="v2-d-workspace v2-matrix-panel" aria-labelledby="v2-matrix-title" data-testid="matrix-panel">
+  <h3 id="v2-matrix-title" class="v2-matrix-title">Two-driver matrix</h3>
+  {% if protected %}
+  <p class="d-context" data-testid="matrix-unsupported">Reference model — create a working copy to run a two-driver matrix.</p>
+  {% elif not supported %}
+  <p class="d-context" data-testid="matrix-unsupported">Two-driver sensitivity supports Solar, Wind and Data Center projects. No driver is substituted for this project type.</p>
+  {% else %}
+  <form class="v2-matrix-form" hx-post="/v2/workbook/sensitivity/matrix/run" hx-target="#v2-matrix-results"
+        hx-swap="innerHTML" hx-indicator="#v2-matrix-spinner" hx-disabled-elt="find button[type=submit]">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <div class="v2-matrix-grid">
+      <label>Driver A (columns)
+        <select name="driver_a" required data-testid="matrix-driver-a">
+          {% for d in drivers %}<option value="{{ d.key }}" {% if loop.index == 1 %}selected{% endif %}>{{ d.label }} ({{ d.unit_label }})</option>{% endfor %}
+        </select></label>
+      <label>Levels A <span class="d-muted">comma-separated, 3–5; blank = default</span>
+        <input type="text" name="levels_a" inputmode="decimal" autocomplete="off" placeholder="default" data-testid="matrix-levels-a"></label>
+      <label>Driver B (rows)
+        <select name="driver_b" required data-testid="matrix-driver-b">
+          {% for d in drivers %}<option value="{{ d.key }}" {% if loop.index == 2 %}selected{% endif %}>{{ d.label }} ({{ d.unit_label }})</option>{% endfor %}
+        </select></label>
+      <label>Levels B <span class="d-muted">comma-separated, 3–5; blank = default</span>
+        <input type="text" name="levels_b" inputmode="decimal" autocomplete="off" placeholder="default" data-testid="matrix-levels-b"></label>
+      <label>Metric
+        <select name="metric" data-testid="matrix-metric">
+          {% for m in metrics %}<option value="{{ m.key }}" {% if m.key == 'equity_irr' %}selected{% endif %}>{{ m.label }}</option>{% endfor %}
+        </select></label>
+      <label>Threshold (≥) <span class="d-muted">optional; % for rates, else the metric's unit</span>
+        <input type="text" name="threshold" inputmode="decimal" autocomplete="off" placeholder="none" data-testid="matrix-threshold"></label>
+      <label>Base scenario
+        <select name="scenario_id" data-testid="matrix-scenario">
+          <option value="">Base Case (Working Copy)</option>
+          {% for sc in scenarios %}<option value="{{ sc.scenario_id }}" {% if sc.scenario_id == active_scenario_id %}selected{% endif %}>{{ sc.scenario_name }}</option>{% endfor %}
+        </select></label>
+    </div>
+    <div class="d-actions">
+      <button type="submit" class="v2-run-btn" data-testid="matrix-run-btn">Run matrix (up to {{ max_cells }} cells)</button>
+      <span id="v2-matrix-spinner" class="htmx-indicator" role="status" aria-live="polite">Running one bounded batch…</span>
+    </div>
+    <p class="d-context">Rate drivers use bps or pp; price, yield, CAPEX and OPEX use % change. Every cell is a full canonical run with both shocks applied to the inputs. Temporary analysis only.</p>
+  </form>
+  {% endif %}
+  <div id="v2-matrix-results" class="v2-matrix-results" aria-live="polite"></div>
+</section>
