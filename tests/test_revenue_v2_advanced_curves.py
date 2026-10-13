@@ -183,6 +183,14 @@ def test_stress_early_expiry_requires_residual_and_explicit_axis_boundary():
         changed_book(json.dumps(payload), "ppa_expiry", 0, expiry_date=day)
 
 
+def test_multi_ppa_expiry_is_still_ambiguous_and_never_applies_multiple_expiries():
+    """Without an exact contract selector the real multi-PPA book fails closed."""
+    _, _, periods, payload = book()
+    with pytest.raises(CommercialStressUnavailable, match="STRESS_EXPIRY_AMBIGUOUS"):
+        changed_book(json.dumps(payload), "ppa_expiry", 0,
+                     expiry_date=periods[2].start_date.isoformat())
+
+
 @pytest.mark.parametrize("problem", ["invalid_stress", "no_match", "outside_limit", "unsupported_vertical"])
 def test_stress_boundaries_fail_closed(problem):
     pi, _, _, payload = book()
