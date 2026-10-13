@@ -136,9 +136,14 @@
   </div>
 
   {% endif %}
-  <div id="v2-sensitivity-matrix" class="v2-matrix" data-testid="matrix-region"
-       hx-get="/v2/workbook/sensitivity/matrix/form?project={{ project_code | urlencode }}"
-       hx-trigger="intersect once" hx-swap="innerHTML"></div>
+  <div id="v2-sensitivity-matrix" class="v2-matrix" data-testid="matrix-region">
+    {% with mx_protected = (project_editable is defined and not project_editable),
+            mx_supported = ((not is_ev_charging) and not (project_editable is defined and not project_editable)),
+            mx_drivers = matrix_drivers('data_center' if is_data_center else 'solar'),
+            mx_metrics = matrix_metrics() %}
+    {% include "partials/sensitivity_matrix_form.html" %}
+    {% endwith %}
+  </div>
   <p class="d-context">Evaluation budget: five canonical points per one-driver request; at most 26 for a two-driver matrix (25 cells plus an unshocked Base when needed). Temporary analysis only; no Working Copy, Last Run, Run History or scenario writes.
     Threshold crossings are reported as bracketing cells only, never interpolated. A precise one-dimensional tariff solve is available in Tender Pricing (Goal Seek).</p>
   <div class="d-actions"><button type="button" onclick="document.getElementById('tab-compare').click()">Compare</button><button type="button" onclick="document.getElementById('tab-goal-seek').click()">Tender Pricing</button></div>

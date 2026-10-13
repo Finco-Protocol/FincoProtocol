@@ -20,13 +20,20 @@ from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 
 USER = "decision-user"
 RUN = "/v2/workbook/sensitivity/matrix/run"
-FORM = "/v2/workbook/sensitivity/matrix/form"
+FORM = "/v2/workbook/decision/sensitivity"      # the Sensitivity sheet hosts the matrix form
 
 
 # ── pure projection ─────────────────────────────────────────────────────────────────────────────────────────────
 def test_levels_defaults_sorted_unique_bounded():
     spec = proj.DRIVERS["capex"]
-    assert parse_levels("", spec) == (-20, -10, 0, 10, 20)
+    assert parse_levels("", spec) == (-10, 0, 10)                       # 3 x 3 is the default
+    assert parse_levels("", spec, 5) == (-20, -10, 0, 10, 20)           # 5 x 5 only as an explicit choice
+    assert parse_levels("", proj.DRIVERS["interest_rate"]) == (-100, 0, 100)
+    assert parse_levels("", proj.DRIVERS["generation"]) == (-5, 0, 5)
+    assert proj.parse_grid_size(None) == 3 and proj.parse_grid_size("5") == 5
+    with pytest.raises(MatrixRequestError) as bad_grid:
+        proj.parse_grid_size("4")
+    assert bad_grid.value.code == "MATRIX_GRID_INVALID"
     assert parse_levels("10, -10, 0", spec) == (-10, 0, 10)             # ascending regardless of input order
     for bad, code in (("1,2", "MATRIX_LEVEL_COUNT"), ("1,2,3,4,5,6", "MATRIX_LEVEL_COUNT"),
                       ("1,1,2", "MATRIX_LEVEL_DUPLICATE"), ("a,b,c", "MATRIX_LEVEL_INVALID"),
@@ -110,6 +117,65 @@ def test_missing_base_gives_no_deltas():
     assert view["base"]["status"] == "FAILED" and all(c["delta"] is None for c in view["cells"])
 
 
+# ── metrics: supported / unsupported / legitimately unavailable ─────────────────────────────────────────────────
+def test_metric_catalog_excludes_what_the_canonical_run_cannot_supply():
+    keys = {m["key"] for m in proj.supported_metrics()}
+    assert "total_cfads_keur" not in keys and "total_cfads_keur" in proj.UNSUPPORTED_METRICS
+    assert {"project_irr", "equity_irr", "sponsor_irr", "min_dscr", "avg_dscr", "min_llcr", "senior_debt_keur",
+            "total_ebitda_keur", "sponsor_moic", "pure_equity_moic", "project_npv_keur"} <= keys
+    notes = {m["key"]: m["note"] for m in proj.supported_metrics()}
+    assert notes["project_npv_keur"] and notes["min_llcr"] and not notes["project_irr"]
+    with pytest.raises(MatrixRequestError) as exc:
+        proj.resolve_metric("total_cfads_keur")
+    assert exc.value.code == "MATRIX_METRIC_UNSUPPORTED" and "not recomputed" in exc.value.message
+
+
+def test_enrich_kpis_projects_only_existing_summary_fields_never_computes():
+    from app.services.sensitivity_matrix import enrich_kpis
+    result = {"kpis": {"project_irr": 0.1, "min_llcr": None, "sponsor_irr": 0.09},
+              "debt_schedule": {"summary": {"min_llcr": 1.8, "target_dscr": 1.2}},
+              "sponsor_schedule": {"summary": {"total_sponsor_xirr": 0.5, "total_sponsor_moic": 2.5,
+                                               "pure_equity_moic": 3.5}}}
+    kpis = enrich_kpis(result)
+    assert kpis["min_llcr"] == 1.8 and kpis["target_dscr"] == 1.2          # debt summary, source-key mapped
+    assert kpis["sponsor_moic"] == 2.5 and kpis["pure_equity_moic"] == 3.5
+    assert kpis["sponsor_irr"] == 0.09                                      # canonical kpi is never overwritten
+    bare = enrich_kpis({"kpis": {"project_irr": 0.1}})                      # absent -> None, never 0
+    assert bare.get("min_llcr") is None and bare["sponsor_moic"] is None and "total_cfads_keur" not in bare
+    assert enrich_kpis({"kpis": {"min_llcr": 2.0}, "debt_schedule": {"summary": {"min_llcr": 9.9}}})["min_llcr"] == 2.0
+
+
+def test_unsupported_metric_is_rejected_by_the_route_and_not_offered(env, fake):
+    record = env.create("solar")
+    f = fake()
+    r = _post(env, record, driver_a="capex", driver_b="opex", metric="total_cfads_keur")
+    assert r.status_code == 422 and 'data-code="MATRIX_METRIC_UNSUPPORTED"' in r.text and f.calls == []
+    form = env.client.get(FORM, params={"project": record.project_code})
+    assert 'value="total_cfads_keur"' not in form.text and 'value="sponsor_moic"' in form.text
+
+
+def test_legitimately_unavailable_metric_is_unavailable_not_zero(env, fake):
+    record = env.create("solar")
+    fake(outputs=lambda n: [{"kpis": {"project_npv_keur": None, "min_llcr": None}} for _ in range(n)])
+    for metric in ("project_npv_keur", "min_llcr"):
+        r = _post(env, record, driver_a="capex", driver_b="opex", metric=metric, threshold="1")
+        cells = _cells(r.text)
+        assert set(cells.values()) == {("UNAVAILABLE", "UNAVAILABLE")}
+        assert "0.00" not in _cell_values(r.text)[(0, 0)]
+
+
+def test_real_run_supplies_sponsor_and_schedule_metrics_from_the_same_run(env):
+    from app.api.project_runner import run_project  # noqa: F401  (oracle uses it)
+    record = env.create("solar")
+    sponsor = _post(env, record, driver_a="capex", driver_b="opex", metric="pure_equity_moic")
+    cells = _cells(sponsor.text)
+    assert sponsor.status_code == 200 and cells[(1, 1)][0] == "OK", sponsor.text[:300]
+    oracle = _oracle_result(record, "Solar", [])
+    expected = oracle["sponsor_schedule"]["summary"]["pure_equity_moic"]
+    shown = float(_cell_values(sponsor.text)[(1, 1)].rstrip("x"))
+    assert shown == pytest.approx(expected, abs=0.006)
+
+
 # ── canonical-run parity (independent construction) ─────────────────────────────────────────────────────────────
 def _canonical_pi(record):
     """Independent oracle: the canonical Run input chain, applied WITHOUT the matrix service."""
@@ -128,6 +194,10 @@ def _canonical_pi(record):
 
 
 def _oracle(record, runtime_key, shocks, *, field_overrides=None):
+    return _oracle_result(record, runtime_key, shocks, field_overrides=field_overrides)["kpis"]
+
+
+def _oracle_result(record, runtime_key, shocks, *, field_overrides=None):
     """Combined-shock canonical run through the ORIGINAL legacy typed shock service and run_project."""
     from app.api.project_runner import run_project
     from app.services.sensitivity_service import _apply_shock
@@ -145,7 +215,7 @@ def _oracle(record, runtime_key, shocks, *, field_overrides=None):
         pi = _apply_shock(pi, shock, level)
     assert_fee(pi, pis.snapshot_origin.get(bank_key))
     pi = apply_state(pi, pis.snapshot_origin.get(f3_key), "base", bankability_raw=pis.snapshot_origin.get(bank_key))
-    return run_project(runtime_key, "Base", project_inputs_override=pi)["kpis"]
+    return run_project(runtime_key, "Base", project_inputs_override=pi)
 
 
 def _cells(html):
@@ -219,11 +289,50 @@ def test_interest_rate_and_gearing_use_canonical_field_inputs_and_commute(env):
     for (i, j), text in va.items():                 # transposed grid: identical numbers, ordering irrelevant
         assert vb[(j, i)] == text
     pis, _pi, _f = _canonical_pi(record)
-    rate0 = float(pis.values["debt.senior.interest_rate_pct"])
+    rate0 = float(pis.values["debt.senior.interest_rate_pct"]) * 100.0        # seeded snapshot value is a RATIO
     gear0 = float(pis.values["debt.senior.gearing_pct"])
     oracle = _oracle(record, "Solar", [], field_overrides={"debt.senior.interest_rate_pct": rate0 + 1.0,
                                                            "debt.senior.gearing_pct": gear0 - 5.0})
     assert _pct(va[(2, 0)]) == pytest.approx(oracle["equity_irr"], abs=6e-5)   # +100 bps, -5 pp
+
+
+def test_interest_rate_shock_is_in_basis_points_of_the_typed_rate(env):
+    """Seeded snapshots store the rate as a ratio (0.055) while with_value takes percent: +100 bps must give 6.5 %."""
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services import sensitivity_matrix as svc
+    record = env.create("solar")
+    ws = get_workspace_state(USER, record.project_id)
+    basis = svc.resolve_basis(workspace_owner=USER, project_record=record, ws=ws, scenario_id=None)
+    spec = proj.DRIVERS["interest_rate"]
+    for bps, expected in ((-100, 0.045), (0, 0.055), (100, 0.065), (200, 0.075)):
+        pi, _pis, info = svc.pre_financing_inputs(basis, [(spec, float(bps))])
+        rates = list(pi.financing.senior_debt_interest_config.rate_schedule.explicit_all_in_rates)
+        assert rates and all(r == pytest.approx(expected) for r in rates), (bps, rates[:2])
+    assert info["interest_rate"]["original"] == pytest.approx(5.5) and info["interest_rate"]["shocked"] == pytest.approx(7.5)
+
+
+def test_calibrated_rate_schedule_fails_closed(env, monkeypatch):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services import sensitivity_matrix as svc
+    import app.input_adapter as adapter
+    record = env.create("solar")
+    basis = svc.resolve_basis(workspace_owner=USER, project_record=record,
+                              ws=get_workspace_state(USER, record.project_id), scenario_id=None)
+    monkeypatch.setattr(adapter, "senior_rate_authority", lambda pi: ("CALIBRATED", None, 3))
+    with pytest.raises(svc.CellBuildError) as exc:
+        svc.pre_financing_inputs(basis, [(proj.DRIVERS["interest_rate"], 100.0)])
+    assert exc.value.code == "SENIOR_RATE_SCHEDULE_CALIBRATED"
+
+
+def test_interest_rate_driver_refused_when_bankability_owns_the_rate(env, fake, monkeypatch):
+    import app.input_adapter as adapter
+    record = env.create("solar")
+    f = fake()
+    def owned(pis, field_id):
+        raise ValueError("The bankability configuration owns this input. Edit or reset that configuration first.")
+    monkeypatch.setattr(adapter, "assert_debt_scalar_edit_allowed", owned)
+    r = _post(env, record, driver_a="interest_rate", driver_b="capex")
+    assert r.status_code == 422 and 'data-code="MATRIX_DRIVER_NOT_APPLICABLE"' in r.text and f.calls == []
 
 
 def test_capex_opex_typed_pair_is_order_independent(env):
@@ -301,6 +410,7 @@ def test_invalid_requests_are_rejected_without_running(env, fake, fields, code):
     f = fake()
     r = _post(env, record, **fields)
     assert r.status_code == 422 and f'data-code="{code}"' in r.text and f.calls == []
+    assert r.headers["X-Finco-Matrix-Error"] == "1" and r.headers["Cache-Control"] == "no-store"   # HTMX swaps it
 
 
 def test_grid_size_ceiling_is_enforced_before_any_run(env, fake, monkeypatch):

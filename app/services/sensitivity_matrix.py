@@ -75,6 +75,33 @@ def _field_value(pis: Any, spec: DriverSpec) -> tuple[str, Any]:
     return field_id, value
 
 
+def _senior_rate_percent(pis: Any) -> float:
+    """Current Senior all-in rate in HUMAN PERCENT, from the typed Senior pricing authority.
+
+    The snapshot value of ``debt.senior.interest_rate_pct`` is stored as a ratio in seeded projects (0.055 = 5.5 %)
+    while ``with_value`` / the Save path take percent (9.0 == 9 %).  Adding basis points to the raw snapshot value
+    would therefore shift the rate by 100x too little (a "+100 bps" shock would give 1.055 %).  The typed authority is
+    unambiguous; a calibrated non-uniform schedule cannot be shocked by a scalar and fails closed.
+    """
+    from app.input_adapter import senior_rate_authority
+    from app.workbook.service import WorkbookService
+
+    mode, ratio, _periods = senior_rate_authority(WorkbookService.to_projectinputs(pis))
+    if mode != "FLAT" or ratio is None:
+        raise CellBuildError("SENIOR_RATE_SCHEDULE_CALIBRATED", "a calibrated rate schedule is not a single scalar")
+    return ratio * 100.0
+
+
+def assert_interest_rate_shockable(basis: Basis) -> None:
+    """Same gate as the Save path: refuse a scalar rate shock the bankability configuration or schedule owns."""
+    from app.input_adapter import assert_debt_scalar_edit_allowed
+
+    try:
+        assert_debt_scalar_edit_allowed(basis.pis_base, "debt.senior.interest_rate_pct")
+    except ValueError as exc:
+        raise MatrixRequestError("MATRIX_DRIVER_NOT_APPLICABLE", str(exc)[:160]) from exc
+
+
 def _shocked_field_value(spec: DriverSpec, original: float, level: float) -> float:
     if spec.mode == PCT:
         return original * (1.0 + level / 100.0)
@@ -94,7 +121,10 @@ def pre_financing_inputs(basis: Basis, shocks: list[tuple[DriverSpec, float]]) -
     for spec, level in active:
         if spec.apply != FIELD:
             continue
-        field_id, original = _field_value(pis, spec)
+        if spec.key == "interest_rate":
+            field_id, original = spec.field_id, _senior_rate_percent(pis)
+        else:
+            field_id, original = _field_value(pis, spec)
         if original is None:
             raise CellBuildError("BASE_VALUE_MISSING", f"{spec.key}: no base value in the resolved inputs")
         try:
@@ -172,6 +202,8 @@ def _describe(spec: DriverSpec, level: float, info: Mapping[str, Mapping[str, An
 
 def build_all(basis: Basis, spec_a: DriverSpec, levels_a, spec_b: DriverSpec, levels_b):
     """Ordered (index, ProjectInputs) work list, per-cell build failures and the base ProjectInputs (if separate)."""
+    if "interest_rate" in (spec_a.key, spec_b.key):
+        assert_interest_rate_shockable(basis)
     unshocked_pre, base_pis, _ = pre_financing_inputs(basis, [])
     guard: dict = {}
     work: list[tuple[tuple[int, int], Any]] = []
@@ -194,3 +226,37 @@ def build_all(basis: Basis, spec_a: DriverSpec, levels_a, spec_b: DriverSpec, le
     if not has_zero_cell:
         base_pi = materialise_financing(basis, unshocked_pre, base_pis)
     return work, failures, evidence, base_pi, has_zero_cell
+
+
+def run_matrix_points(project_type: str, project_inputs) -> list[dict]:
+    """Worker (module level so it can run in a spawned process): the original ``run_project`` per point, in order.
+
+    Same call as ``sensitivity_execution.run_sensitivity_points``; additionally projects the catalog metrics whose
+    authoritative source is the debt or sponsor schedule SUMMARY of the SAME run, through the existing source-key
+    mapping (identical to ``run_history_projection._enriched_kpis``).  No value is computed or inferred here.
+    """
+    from app.api.project_runner import run_project
+
+    outputs: list[dict] = []
+    for pi in project_inputs:
+        try:
+            result = run_project(project_type, "Base", project_inputs_override=pi)
+            outputs.append({"kpis": enrich_kpis(result)})
+        except Exception as exc:  # noqa: BLE001 - one failed point must not abort the grid
+            outputs.append({"error": str(exc)[:120]})
+    return outputs
+
+
+def enrich_kpis(result: Mapping[str, Any]) -> dict[str, Any]:
+    from app.v2.output_metric_projection import SPONSOR_SUMMARY_SOURCE_KEYS
+
+    kpis = dict(result.get("kpis", {}))
+    debt_summary = (result.get("debt_schedule") or {}).get("summary", {}) or {}
+    for key in ("min_llcr", "target_dscr"):
+        if kpis.get(key) is None and debt_summary.get(key) is not None:
+            kpis[key] = debt_summary.get(key)
+    sponsor_summary = (result.get("sponsor_schedule") or {}).get("summary", {}) or {}
+    for catalog_key, field in SPONSOR_SUMMARY_SOURCE_KEYS.items():
+        if kpis.get(catalog_key) is None:
+            kpis[catalog_key] = sponsor_summary.get(field)
+    return kpis

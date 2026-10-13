@@ -43,11 +43,20 @@ curve) is a typed `SHOCK_NOT_APPLIED` cell failure, never the silent unshocked r
 | EV Charging | **Rejected** (the existing sensitivity workspace does not support it; no driver is substituted) |
 
 3 to 5 distinct finite levels per axis, entered in the driver's unit, sorted ascending, each within a per-driver
-bound (50 % for prices/CAPEX/OPEX, 30 % for yield/PUE, 500 bps, 20 pp). Defaults are the existing one-driver steps.
-Maximum 25 cells; Base/Base is reused when both axes contain 0, otherwise one extra Base evaluation: at most 26
-evaluations, under the existing ceiling of 49. Larger requests fail with `SENSITIVITY_GRID_TOO_LARGE` before any run.
-Metrics: every key of the existing KPI catalog (Project / Pure Equity / Total Sponsor IRR, Min and Avg DSCR, LLCR,
-Senior Debt, CAPEX, Revenue, EBITDA, CFADS, MOIC, Equity NPV). A metric the run does not produce is `UNAVAILABLE`.
+bound (50 % for prices/CAPEX/OPEX, 30 % for yield/PUE, 500 bps, 20 pp).
+**Default grid is 3 × 3 (9 evaluations: Base and the inner steps of the existing one-driver defaults); 5 × 5 (25
+evaluations) is an explicit "Grid size" choice**, and explicit levels override either default. Maximum 25 cells;
+Base/Base is reused when both axes contain 0, otherwise one extra Base evaluation: at most 26 evaluations, under the
+existing ceiling of 49. Larger requests fail with `SENSITIVITY_GRID_TOO_LARGE` before any run. Executor timeouts are
+unchanged.
+
+**Metrics.** The worker returns the canonical `result["kpis"]`, plus the catalog metrics whose authoritative source is
+the debt or sponsor schedule SUMMARY of the SAME run, projected through the existing source-key mapping (the one
+`run_history_projection._enriched_kpis` uses): `min_llcr`, `target_dscr` from `debt_schedule.summary`;
+`sponsor_moic`, `pure_equity_moic` (and `sponsor_irr`) from `sponsor_schedule.summary` via `SPONSOR_SUMMARY_SOURCE_KEYS`.
+Nothing is computed. `total_cfads_keur` is a documented gap of the catalog itself (neither `kpis` nor the summaries of
+a canonical run carry it) and is therefore NOT offered and rejected by the route. NPV and LLCR are offered but flagged
+"only when … configured/produced": when the run yields none the cell is `UNAVAILABLE`, never zero.
 
 ## 4. Threshold and break-even semantics
 
@@ -84,9 +93,15 @@ unauthenticated callers are refused.
 | Thresholds, deltas, brackets | Pure tests: >= classification, pp / x / kEUR deltas, adjacent PASS/FAIL brackets only, unavailable cells never bracket, no threshold → no classification. |
 | Neighbours unchanged | Existing one-driver sensitivity route still renders; no engine/CI file in the diff (asserted). |
 
-Browser/visual acceptance: not run in this session (no browser acceptance harness was executed for this PR); the
-matrix markup exposes numeric values, status text and PASS/FAIL words independent of colour, and has a 600 px layout
-rule. This is stated as NOT verified in a browser.
+Browser acceptance (real authenticated Chromium, live uvicorn server, disposable synthetic Solar working copy):
+`tests/test_m3_two_driver_sensitivity_browser.py` — driver, scenario (a created scenario), grid, metric and threshold
+selection; a real 3 × 3 run through the executor; threshold classification (a median threshold splits the grid into
+PASS and FAIL, brackets listed with "no boundary value is inferred"); numeric value and status are text (readable
+without colour); error messaging (duplicate driver, level count) swapped into the results area; 390 px layout (controls
+inside the viewport, no horizontal page scroll); a run writes nothing but the analysis request. Screenshots were taken
+locally and are not committed. The browser run found and fixed two real defects that the HTTP-level tests could not:
+HTMX silently dropped 4xx error fragments (now swapped through a small marker-header handler, `static/js/sensitivity_matrix.js`),
+and the form controls overflowed at 390 px.
 
 ## 7. Capacity, performance and limitations
 
@@ -98,5 +113,16 @@ rule. This is stated as NOT verified in a browser.
 * The Revenue V2 explicit contract book has no scalar tariff authority: price drivers are rejected on those projects.
 * With F3 explicit financing commitments, CAPEX shocks fail closed at financing materialisation rather than silently
   inconsistent funding.
+* **Pre-existing defect in the one-driver sensitivity route (reported, NOT changed here).** Seeded Working Copies store
+  `debt.senior.interest_rate_pct` as a ratio (0.055 = 5.5 %) whereas `with_value` and the Save path take percent. The
+  existing one-driver route adds its ±1.0 / ±2.0 "percentage-point" steps to the raw snapshot value, so a "+100 bps"
+  point becomes a 1.055 % rate and "−100 bps" is rejected as a negative rate. The matrix does not reuse that
+  arithmetic: it reads the current rate from the typed Senior pricing authority (`senior_rate_authority`), shocks it in
+  true basis points, refuses a calibrated non-uniform schedule and a bankability-owned rate (the Save-path gate), and
+  is pinned by tests (+100 bps ⇒ typed rate 6.5 %). Fixing the one-driver route is a separate, governed change.
+* Repeat runs of identical inputs can return in a fraction of a second (the existing canonical-run result reuse), so
+  repeat timings are not representative; first-run figures above are the meaningful ones.
+* Wind reference projects carry no stored gearing value: gearing cells fail with `BASE_VALUE_MISSING` rather than
+  inventing a base.
 * Revenue V3 drivers (M2) are out of scope; they can be added as a separate integration extension.
 * Browser/visual acceptance: see section 6.

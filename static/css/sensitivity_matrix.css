@@ -1,8 +1,8 @@
 .v2-matrix-panel { margin-top: 16px; }
 .v2-matrix-title { font-size: 15px; margin: 0 0 8px; }
 .v2-matrix-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; }
-.v2-matrix-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; }
-.v2-matrix-grid select, .v2-matrix-grid input { padding: 6px; font: inherit; background: transparent; color: inherit; border: 1px solid var(--d-line, #cbd5e1); border-radius: 4px; min-width: 0; }
+.v2-matrix-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; min-width: 0; }
+.v2-matrix-grid select, .v2-matrix-grid input { padding: 6px; font: inherit; background: transparent; color: inherit; border: 1px solid var(--d-line, #cbd5e1); border-radius: 4px; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; text-overflow: ellipsis; }
 .v2-matrix-table td { text-align: right; vertical-align: top; min-width: 96px; }
 .v2-matrix-table .v2-matrix-value { display: block; font-weight: 600; }
 .v2-matrix-table .v2-matrix-flag { display: block; font-size: 11px; font-weight: 700; }

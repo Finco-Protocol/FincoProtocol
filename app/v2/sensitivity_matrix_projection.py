@@ -42,10 +42,19 @@ class DriverSpec:
     field_id: Optional[str]
     fallback_field_id: Optional[str]
     field_scale: float        # level -> field-unit factor for ABS mode (bps -> pp = 0.01)
-    default_levels: tuple[float, ...]
+    default_levels: tuple[float, ...]        # the explicit 5-level choice
     max_abs_level: float
     verticals: frozenset[str]
     typed_shock: Optional[str] = None   # key understood by app.services.sensitivity_service._apply_shock
+
+    @property
+    def default_levels_3(self) -> tuple[float, ...]:
+        """Default 3-level axis: Base and the inner (half-range) shocks of the 5-level default."""
+        inner = self.default_levels[3]
+        return (-inner, 0.0, inner)
+
+    def defaults_for(self, size: int) -> tuple[float, ...]:
+        return self.default_levels if size == 5 else self.default_levels_3
 
 
 _REN = frozenset({"solar", "wind"})
@@ -104,10 +113,27 @@ def drivers_for(vertical: str | None) -> list[DriverSpec]:
     return [d for d in DRIVERS.values() if vertical in d.verticals]
 
 
-def parse_levels(raw: str | Sequence[float] | None, spec: DriverSpec) -> tuple[float, ...]:
-    """Validated, ascending, unique, finite levels in the driver's displayed unit (default when blank)."""
+DEFAULT_GRID_SIZE = 3
+GRID_SIZES = (3, 5)
+
+
+def parse_grid_size(raw: str | int | None) -> int:
+    """3 (default, 9 evaluations) or the explicit 5 (25 evaluations)."""
+    if raw is None or str(raw).strip() == "":
+        return DEFAULT_GRID_SIZE
+    try:
+        size = int(str(raw).strip())
+    except ValueError:
+        size = -1
+    if size not in GRID_SIZES:
+        raise MatrixRequestError("MATRIX_GRID_INVALID", f"Grid size must be one of {GRID_SIZES}.")
+    return size
+
+
+def parse_levels(raw: str | Sequence[float] | None, spec: DriverSpec, size: int = DEFAULT_GRID_SIZE) -> tuple[float, ...]:
+    """Validated, ascending, unique, finite levels in the driver's displayed unit (size-dependent default when blank)."""
     if raw is None or (isinstance(raw, str) and not raw.strip()):
-        values: list[float] = [float(v) for v in spec.default_levels]
+        values: list[float] = [float(v) for v in spec.defaults_for(size)]
     else:
         items = raw.split(",") if isinstance(raw, str) else list(raw)
         values = []
@@ -151,10 +177,34 @@ def resolve_pair(driver_a: str, driver_b: str, vertical: str | None) -> tuple[Dr
     return DRIVERS[driver_a], DRIVERS[driver_b]
 
 
+#: Catalog metrics the matrix CANNOT obtain from the canonical run result, with the reason.  They are not offered.
+#: ``total_cfads_keur`` is a documented raw-authority gap of the catalog itself: neither ``result["kpis"]`` nor the
+#: debt / sponsor schedule summaries of ``run_project`` carry it, and no CFADS is recomputed here.
+UNSUPPORTED_METRICS: dict[str, str] = {
+    "total_cfads_keur": "Total CFADS is not produced by the canonical run result (documented catalog gap); "
+                        "it is not recomputed here.",
+}
+#: Offered, but legitimately UNAVAILABLE unless the project configures the basis; flagged in the selector.
+CONDITIONAL_METRICS: dict[str, str] = {
+    "project_npv_keur": "only when a valuation basis is configured",
+    "equity_npv_keur": "only when a valuation basis is configured",
+    "min_llcr": "only when the run produces an LLCR",
+}
+
+
+def supported_metrics() -> list[dict[str, str]]:
+    """Selectable metrics: the existing catalog minus entries the canonical run cannot supply."""
+    return [{"key": k, "label": lbl, "unit": unit, "fmt": fmt,
+             "note": CONDITIONAL_METRICS.get(k, "")}
+            for k, lbl, unit, fmt, _src in KPI_CATALOG if k not in UNSUPPORTED_METRICS]
+
+
 def resolve_metric(key: str) -> tuple:
     entry = next((c for c in KPI_CATALOG if c[0] == key), None)
     if entry is None:
         raise MatrixRequestError("MATRIX_METRIC_UNSUPPORTED", f"Unknown metric {key!r}.")
+    if key in UNSUPPORTED_METRICS:
+        raise MatrixRequestError("MATRIX_METRIC_UNSUPPORTED", UNSUPPORTED_METRICS[key])
     return entry
 
 

@@ -16,15 +16,16 @@ from app.auth import resolve_request_session
 from app.persistence.projects_repository import resolve_accessible_project
 from app.ui.protected_reference_service import is_protected_reference
 from app.utils.workbook_flag import require_v2_active
-from app.v2.output_metric_projection import KPI_CATALOG
 from app.v2.sensitivity_matrix_projection import (
-    MAX_CELLS, MatrixRequestError, build_matrix, drivers_for, parse_levels, parse_threshold, resolve_metric,
-    resolve_pair, vertical_key,
+    MAX_CELLS, MatrixRequestError, build_matrix, drivers_for, parse_grid_size, parse_levels, parse_threshold,
+    resolve_metric, resolve_pair, supported_metrics, vertical_key,
 )
 
 router = APIRouter()
 log = logging.getLogger(__name__)
 NO_STORE = {"Cache-Control": "no-store"}
+#: Marks a typed user-facing error fragment; static/js/sensitivity_matrix.js lets HTMX swap it (HTMX ignores 4xx).
+ERROR_HEADERS = {**NO_STORE, "X-Finco-Matrix-Error": "1"}
 
 
 def _templates():
@@ -35,7 +36,7 @@ def _templates():
 def _error(status: int, code: str, message: str) -> HTMLResponse:
     return HTMLResponse(
         f'<p class="d-context v2-matrix-error" role="alert" data-testid="matrix-error" data-code="{escape(code)}">'
-        f"{escape(code)} — {escape(message)} Nothing was changed.</p>", status_code=status, headers=NO_STORE)
+        f"{escape(code)} — {escape(message)} Nothing was changed.</p>", status_code=status, headers=ERROR_HEADERS)
 
 
 def _scope(request: Request, project: str):
@@ -48,32 +49,6 @@ def _scope(request: Request, project: str):
     return user, record, owner, None
 
 
-@router.get("/workbook/sensitivity/matrix/form", response_class=HTMLResponse)
-async def matrix_form(request: Request, project: str):
-    from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
-    from app.workbook.workbook_identity import WorkbookIdentityError
-
-    user, record, owner, failure = _scope(request, project)
-    if failure is not None:
-        return failure
-    vertical = vertical_key(record.project_type)
-    try:
-        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
-        scenarios = [s for s in context.scenarios if not s.is_base_case and not s.archived]
-        active = context.workspace.active_scenario_id
-        context.validate_current()
-    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
-        return _error(409, "MATRIX_CONTEXT_CHANGED", "The workspace changed. Reopen Sensitivity to refresh.")
-    supported = vertical is not None and not is_protected_reference(record)
-    html = _templates().get_template("partials/sensitivity_matrix_form.html").render({
-        "request": request, "project_code": project, "supported": supported,
-        "protected": is_protected_reference(record), "vertical": vertical,
-        "drivers": drivers_for(vertical) if supported else [],
-        "metrics": [{"key": k, "label": lbl, "unit": unit, "fmt": fmt} for k, lbl, unit, fmt, _s in KPI_CATALOG],
-        "scenarios": scenarios, "active_scenario_id": active, "max_cells": MAX_CELLS})
-    return HTMLResponse(html, headers=NO_STORE)
-
-
 @router.post("/workbook/sensitivity/matrix/run", response_class=HTMLResponse)
 async def matrix_run(
     request: Request,
@@ -81,6 +56,7 @@ async def matrix_run(
     driver_a: str = Form(...),
     driver_b: str = Form(...),
     metric: str = Form(...),
+    grid: str = Form(default=""),
     levels_a: str = Form(default=""),
     levels_b: str = Form(default=""),
     threshold: str = Form(default=""),
@@ -91,7 +67,7 @@ async def matrix_run(
     from app.runtime.model_execution import (
         BUSY_MESSAGE, ModelExecutionBusy, ModelExecutionTimeout, run_model_process,
     )
-    from app.services.sensitivity_execution import run_sensitivity_points, sensitivity_grid_size_error
+    from app.services.sensitivity_execution import sensitivity_grid_size_error
     from app.services import sensitivity_matrix as svc
     from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
     from app.workbook.workbook_identity import WorkbookIdentityError
@@ -104,7 +80,8 @@ async def matrix_run(
     vertical = vertical_key(record.project_type)
     try:
         spec_a, spec_b = resolve_pair(driver_a, driver_b, vertical)
-        axis_a, axis_b = parse_levels(levels_a, spec_a), parse_levels(levels_b, spec_b)
+        size = parse_grid_size(grid)
+        axis_a, axis_b = parse_levels(levels_a, spec_a, size), parse_levels(levels_b, spec_b, size)
         _k, _label, _unit, fmt, _src = resolve_metric(metric)
         limit = parse_threshold(threshold, fmt)
         cells = len(axis_a) * len(axis_b)
@@ -130,6 +107,8 @@ async def matrix_run(
 
     try:
         work, failures, evidence, base_pi, reuse_zero = svc.build_all(basis, spec_a, axis_a, spec_b, axis_b)
+    except MatrixRequestError as exc:
+        return _error(422, exc.code, exc.message)
     except Exception as exc:  # noqa: BLE001 - base construction failure fails the whole request, typed
         log.exception("sensitivity_matrix: base construction failed project=%s", project)
         return _error(422, "MATRIX_BASE_INPUTS_UNAVAILABLE", str(exc)[:120])
@@ -139,7 +118,7 @@ async def matrix_run(
     outputs: list[dict] = []
     if batch:
         try:
-            outputs = await run_model_process(run_sensitivity_points, svc.RUNTIME_KEYS[vertical], batch)
+            outputs = await run_model_process(svc.run_matrix_points, svc.RUNTIME_KEYS[vertical], batch)
         except ModelExecutionBusy:
             return HTMLResponse(f"<p>{BUSY_MESSAGE}</p>", status_code=429,
                                 headers={"Retry-After": "5", "X-Finco-Model-Busy": "1", **NO_STORE})
@@ -176,3 +155,11 @@ async def matrix_run(
     html = _templates().get_template("partials/sensitivity_matrix_results.html").render(
         {"request": request, "matrix": view, "project_code": project})
     return HTMLResponse(html, headers=NO_STORE)
+
+
+def register_template_globals() -> None:
+    """Expose the (pure) driver / metric catalogues to the Sensitivity sheet template that hosts the matrix form."""
+    from app.v2.router import _templates as templates
+
+    templates.env.globals["matrix_drivers"] = lambda vertical: drivers_for(vertical)
+    templates.env.globals["matrix_metrics"] = supported_metrics
