@@ -95,7 +95,7 @@ def test_successful_readonly_stress_preserves_working_copy_history_and_scenario(
         """Value snapshot of every persisted ScenarioRecord slot, not object identity."""
         assert isinstance(record, ScenarioRecord)
         slots = ScenarioRecord.__slots__
-        assert len(slots) == 19 and len(set(slots)) == len(slots)
+        assert len(slots) == 20 and len(set(slots)) == len(slots)
         return {name: deepcopy(getattr(record, name)) for name in slots}
 
     owner = "decision-user"
