@@ -17,6 +17,20 @@ from finco_radar.venues.observations import (
 from finco_radar.venues.registry import VenueRegistry
 
 COMPARISON_UNIT = "USD_PER_TOKENIZED_SHARE_EQUIVALENT"
+EVIDENCE_CLOCK_CONTRACT = "TOKENIZED_RLIVE_MARKET_CLOCK_V2"
+
+
+def _source_clock(fields: dict, key: str) -> datetime | None:
+    """Only a source-provided, timezone-aware clock is admissible."""
+    value = fields.get(key)
+    if not isinstance(value, str):
+        return None
+    try:
+        clock = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return clock if clock.tzinfo is not None and clock.utcoffset() is not None else None
+
 
 
 class TokenizedLiveIdentityMismatch(ValueError):
@@ -97,16 +111,55 @@ def market_observation_from_r_live(
     if not isinstance(token, dict) or not isinstance(reference, dict):
         return None
     price = token.get("price_usd_per_token")
-    source_ts = token.get("observed_at")
+    effective_ts = token.get("observed_at")
     ref_price = reference.get("price_usd_per_token")
     ref_ts = reference.get("observed_at")
-    if price is None or source_ts is None:
+    evidence = token.get("source_evidence")
+    if price is None or not isinstance(evidence, dict):
         return None
 
-    # Preserve source and reference clocks independently; collected_at is only
-    # the FINCO transport/persistence clock.
+    # The 300-second V3 TWAP ends at the pinned block. A Chainlink quote
+    # timestamp or most recent pool swap is NOT that price-observation time.
+    window_end = _source_clock(evidence, "dexWindowEndAt")
+    block_at = _source_clock(evidence, "blockTimestamp")
+    window_start = _source_clock(evidence, "dexWindowStartAt")
+    oracle_at = _source_clock(evidence, "quoteUpdatedAt")
+    activity_at = _source_clock(evidence, "lastPoolActivityAt")
+    effective_at = _source_clock({"effective": effective_ts}, "effective")
+    source_effective = _source_clock(evidence, "effectiveObservedAt")
+    if any(t is None for t in (window_end, block_at, window_start,
+                               oracle_at, activity_at, effective_at,
+                               source_effective)):
+        return None
+    if (window_end != block_at
+            or evidence.get("twapWindowSeconds") != policy.twap_window_seconds
+            or (window_end - window_start).total_seconds()
+                != policy.twap_window_seconds
+            or not (oracle_at <= window_end and activity_at <= window_end)
+            or (window_end - oracle_at).total_seconds()
+                > policy.max_quote_age_seconds
+            or (window_end - activity_at).total_seconds()
+                > policy.max_pool_activity_age_seconds
+            or effective_at != min(window_end, oracle_at, activity_at)
+            or source_effective != effective_at):
+        return None
+    block_number = evidence.get("blockNumber")
+    block_hash = evidence.get("blockHash")
+    if (not isinstance(block_number, int) or isinstance(block_number, bool)
+            or block_number < 0
+            or not isinstance(block_hash, str)
+            or len(block_hash) != 66
+            or not block_hash.startswith("0x")
+            or any(char not in "0123456789abcdefABCDEF"
+                   for char in block_hash[2:])):
+        return None
+    if ref_ts is not None and _source_clock(reference, "observed_at") is None:
+        return None
+
+    # Never substitute collection time or composite/effective time for
+    # MARKET time. Preserve original clocks and causal block identity.
     return MarketObservation(
-        ts=str(source_ts),
+        ts=evidence["dexWindowEndAt"],
         collected_at=collected_at.isoformat(),
         canonical_asset_id=entry.underlying_symbol,
         venue_id=entry.network or entry.platform,
@@ -123,7 +176,17 @@ def market_observation_from_r_live(
         ),
         payload={
             "authority": "R_LIVE",
+            "evidence_clock_contract": EVIDENCE_CLOCK_CONTRACT,
             "asset_key": canonical_id,
+            "market_observed_at": evidence["dexWindowEndAt"],
+            "market_block_timestamp": evidence["blockTimestamp"],
+            "market_block_number": block_number,
+            "market_block_hash": block_hash,
+            "twap_window_start_at": evidence["dexWindowStartAt"],
+            "twap_window_seconds": evidence["twapWindowSeconds"],
+            "last_pool_activity_at": evidence["lastPoolActivityAt"],
+            "normalization_oracle_observed_at": evidence["quoteUpdatedAt"],
+            "effective_evidence_at": evidence["effectiveObservedAt"],
             "economic_asset_uid": data.get("economic_asset_uid"),
             "reference_state": reference.get("state"),
             "reference_source": reference.get("source"),

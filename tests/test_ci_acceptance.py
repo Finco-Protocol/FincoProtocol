@@ -216,7 +216,16 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
     head = git("rev-parse", "--verify", f"{ref}^{{commit}}")
     git("merge-base", "--is-ancestor", base, head)
     changed = set(filter(None, git("diff", "--name-only", "-z", "--no-renames", base, head).split("\0")))
-    denied = {path for path in changed if path.startswith(PERMANENT_HARD_DENY_PREFIXES)}
+    from radar_authority_governance import reviewed_radar_authority_matches
+
+    # PR #237: only the three exact reviewed Radar paths at their exact reviewed
+    # blobs (proven at the tested commit) are exempt from the permanent hard deny.
+    # Every other hard-deny path, and any other content at a pinned path, is denied.
+    denied = {
+        path for path in changed
+        if path.startswith(PERMANENT_HARD_DENY_PREFIXES)
+        and not reviewed_radar_authority_matches(path, repo=root, ref=head)
+    }
     assert not denied, f"Permanent hard-deny changes: {sorted(denied)}"
     protected = {path for path in changed if path.startswith(("financial_engine/", "finco_core/", "domain/"))}
     # An unchanged baseline remains valid; any release diff must be the complete reviewed slice.
@@ -293,6 +302,61 @@ def test_financial_namespace_guard_rejects_unrelated_or_hard_denied_path(reviewe
     git("add", path)
     git("commit", "-m", "Unreviewed path")
     with pytest.raises(AssertionError, match="hard-deny|protected diff"):
+        _assert_frozen_financial_namespace_authority(root)
+
+
+def _commit_pinned_radar_blobs(root, git, *, alter=None):
+    from radar_authority_governance import REVIEWED_RADAR_AUTHORITY_BLOBS
+
+    original = Path(__file__).resolve().parents[1]
+    for path, blob in REVIEWED_RADAR_AUTHORITY_BLOBS.items():
+        source = subprocess.run(["git", "cat-file", "blob", blob], cwd=original,
+                                capture_output=True, check=True).stdout
+        if path == alter:
+            source += b"\n"
+        target = root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source)
+    git("add", ".")
+    git("commit", "-m", "Radar release")
+
+
+def test_financial_namespace_guard_accepts_exact_reviewed_radar_blobs(reviewed_financial_git_repo):
+    root, git = reviewed_financial_git_repo
+    _commit_pinned_radar_blobs(root, git)
+    _assert_frozen_financial_namespace_authority(root)
+
+
+@pytest.mark.parametrize("path", [
+    "app/radar_rwa/r_live_service.py",
+    "finco_radar/venues/intelligence.py",
+    "finco_radar/venues/robinhood_live.py",
+])
+def test_financial_namespace_guard_rejects_one_byte_change_to_reviewed_radar_blob(
+        reviewed_financial_git_repo, path):
+    root, git = reviewed_financial_git_repo
+    _commit_pinned_radar_blobs(root, git, alter=path)
+    with pytest.raises(AssertionError, match="hard-deny"):
+        _assert_frozen_financial_namespace_authority(root)
+
+
+@pytest.mark.parametrize("sibling", [
+    "finco_radar/venues/unreviewed_sibling.py",
+    "app/radar_rwa/unreviewed_sibling.py",
+    "finco_yield/unreviewed.py",
+    "app/crypto_access.py",
+    "app/crypto_resource_access.py",
+])
+def test_financial_namespace_guard_denies_unreviewed_sibling_even_with_reviewed_radar_blobs(
+        reviewed_financial_git_repo, sibling):
+    root, git = reviewed_financial_git_repo
+    _commit_pinned_radar_blobs(root, git)
+    target = root / sibling
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"Synthetic unauthorized content\n")
+    git("add", sibling)
+    git("commit", "-m", "Unreviewed sibling")
+    with pytest.raises(AssertionError, match="hard-deny"):
         _assert_frozen_financial_namespace_authority(root)
 
 
