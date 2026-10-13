@@ -5645,3 +5645,9 @@ router.include_router(f38_router)
 
 from app.v2.investor_f4_router import router as f4_router
 router.include_router(f4_router)
+
+# M3 two-driver sensitivity matrix: one isolated read-only route (integration hook only).
+from app.v2.sensitivity_matrix_router import router as sensitivity_matrix_router
+router.include_router(sensitivity_matrix_router)
+from app.v2.sensitivity_matrix_router import register_template_globals
+register_template_globals()
