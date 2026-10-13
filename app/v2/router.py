@@ -622,6 +622,7 @@ def _last_run_iso(ws) -> str:
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *, freshness=None):
     """Shared context dict for both sheet partials."""
     from app.workbook.registry import is_data_center_project_type as _is_dc_type_bsc
+    from app.workbook.financing_csrf import issue_token
     if freshness is None:
         freshness = _runtime_freshness(ws, pis)
     _dc_tmpl = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
@@ -633,6 +634,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
     return {
         "request": request,
         "project_code": project,
+        "financing_csrf_token": issue_token(request, project),
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
@@ -1914,8 +1916,10 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "ev charging", "ev_charging",
     ) if hasattr(pis, "get") else False
 
+    from app.workbook.financing_csrf import issue_token
     context = {
         "project_code": project,
+        "financing_csrf_token": issue_token(request, project),
         "project_name": project_record.project_name or project,
         "project_type": (project_record.project_type or "").capitalize(),
         "is_data_center": _is_dc,
@@ -2286,6 +2290,13 @@ async def v2_workbook_update(
             {"error": "This is a protected reference model. Create a working copy to edit it."},
             status_code=403,
         )
+
+    if field_id == "debt.financing.instruments":
+        from app.auth import validate_csrf_token
+        from app.workbook.financing_csrf import extract_bound_token
+        form = await request.form()
+        if not validate_csrf_token(extract_bound_token(request, project, form.get("csrf_token"))):
+            return JSONResponse({"error": "Invalid Capital Stack CSRF token."}, status_code=403)
 
     ws = get_workspace_state(user_id=_workspace_owner, project_id=project_record.project_id)
     if ws is None:

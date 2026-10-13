@@ -67,8 +67,23 @@ def test_nonrenewable_lender_cases_rejected(kind):
 
 def save(env, record, raw, *, field=FIELD_ID, stale_tokens=None):
     page = env.client.get('/v2/workbook', params={'project': record.project_code})
+    csrf = {}
+    if field == 'debt.financing.instruments':
+        from bs4 import BeautifulSoup
+        form = BeautifulSoup(page.text, 'html.parser').select_one('[data-f3-form]')
+        if form is not None:
+            csrf['csrf_token'] = form.select_one('[name="csrf_token"]')['value']
+        else:
+            # Isolated Junior activation tests have no customer editor. Issue
+            # the same server-bound token from their actual signed session;
+            # the route still enforces owner, CSRF, protected and CAS checks.
+            from types import SimpleNamespace
+            from app.workbook.financing_csrf import issue_token
+            csrf['csrf_token'] = issue_token(
+                SimpleNamespace(cookies=env.client.cookies, state=SimpleNamespace()), record.project_code)
     return env.client.post('/v2/workbook/update', headers={'HX-Request': 'true'}, data=dict(
         project=record.project_code, field_id=field, value=raw, sheet_id='debt',
+        **csrf,
         **(stale_tokens or tokens(page.text))))
 
 
