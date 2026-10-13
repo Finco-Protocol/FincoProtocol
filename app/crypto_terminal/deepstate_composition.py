@@ -254,7 +254,7 @@ def _normalization(row: MarketObservation, policy: ReviewedNormalizationPolicy |
 
 
 def _valid_rlive(row: MarketObservation, policy, venue_id, instrument_id,
-                 instrument_type) -> bool:
+                 instrument_type, *, require_unit: bool = True) -> bool:
     p = row.payload if isinstance(row.payload, dict) else {}
     return (
         row.canonical_asset_id == "NVDA"
@@ -267,7 +267,7 @@ def _valid_rlive(row: MarketObservation, policy, venue_id, instrument_id,
         and p.get("asset_key") == policy.asset_key.canonical_id
         and p.get("economic_asset_uid") == policy.economic_asset_uid
         and p.get("evidence_clock_contract") == EVIDENCE_CLOCK_CONTRACT
-        and p.get("comparison_unit") == NORMALIZED_COMPARISON_UNIT
+        and (not require_unit or p.get("comparison_unit") == NORMALIZED_COMPARISON_UNIT)
         and p.get("market_observed_at") == row.ts
         and p.get("market_block_timestamp") == row.ts
         and _timestamp(row.ts) is not None
@@ -336,6 +336,12 @@ def build_deepstate_historical_context(
              if _timestamp(r.collected_at) is not None
              and _timestamp(r.collected_at) <= now
              and _valid_rlive(r, policy, venue_id, instrument_id, instrument_type)]
+    mismatched_units = [
+        r for r in rlive_rows if _timestamp(r.collected_at) is not None
+        and _timestamp(r.collected_at) <= now
+        and _valid_rlive(r, policy, venue_id, instrument_id, instrument_type,
+                         require_unit=False)
+        and r.payload.get("comparison_unit") != NORMALIZED_COMPARISON_UNIT]
     evidence_rows = []
     pairs = []
     for row in deepstate_rows:
@@ -375,7 +381,9 @@ def build_deepstate_historical_context(
             pairs.append(_unavailable_pair(ev, normalization_state))
             continue
         if not rlive:
-            pairs.append(_unavailable_pair(ev, "HISTORICAL_COMPARISON_UNAVAILABLE"))
+            pairs.append(_unavailable_pair(
+                ev, "COMPARISON_UNIT_MISMATCH" if mismatched_units
+                else "HISTORICAL_COMPARISON_UNAVAILABLE"))
             continue
         dt = _timestamp(row.ts)
         nearest = min(rlive, key=lambda r: (
