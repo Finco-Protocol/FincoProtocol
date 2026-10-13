@@ -159,3 +159,325 @@ def test_save_stale_run_current_history_and_calculator_parity(env, kind):
     assert 'data-testid="dd-historical"' in hist_page and "HISTORICAL" in hist_page and "300.0" in hist_page
     old = flow.page(history_id=history[1].history_id)
     assert "not enabled in this Run" in old
+
+
+# ───────────────────────────── strict codec ─────────────────────────────
+
+def _codec_doc():
+    return _doc(date(2027, 6, 30))
+
+
+@pytest.mark.parametrize("mutate,code", [
+    (lambda d: d.pop("enabled"), "DEV_ECON_SCHEMA"),
+    (lambda d: d.update(extra=1), "DEV_ECON_SCHEMA"),
+    (lambda d: d.update(version=2), "DEV_ECON_VERSION"),
+    (lambda d: d.update(enabled="yes"), "DEV_ECON_ENABLED"),
+    (lambda d: d.update(outcome="MAYBE"), ""),
+    (lambda d: d.update(developer_fee_value=float("inf")), "DEV_ECON_NONFINITE"),
+    (lambda d: d.update(developer_fee_value=True), "DEV_ECON_NUMBER"),
+    (lambda d: d.update(developer_fee_value=-1), ""),
+    (lambda d: d.update(reimbursed_development_cost_keur=1e9), "REIMBURSEMENT_EXCEEDS"),
+    (lambda d: d.update(spend_schedule="x"), "DEV_ECON_SCHEDULE"),
+    (lambda d: d["spend_schedule"][0].update(spend_date="2027-02-30"), "DEV_ECON_SPEND_DATE"),
+    (lambda d: d["spend_schedule"][0].update(spend_date="27-01-01"), "DEV_ECON_SPEND_DATE"),
+    (lambda d: d["spend_schedule"][0].update(amount_keur="500"), "DEV_ECON_NUMBER"),
+    (lambda d: d["spend_schedule"].append(dict(d["spend_schedule"][1])), "SCHEDULE_ORDER"),      # duplicate date
+    (lambda d: d["spend_schedule"].reverse(), "SCHEDULE_ORDER"),
+    (lambda d: d.update(developer_fee_mode="PCT_OF_HARD_CAPEX", developer_fee_value=5.0), "FEE"),   # 5 would be 500 %
+    (lambda d: d.update(outcome="ABANDONED"), "ABANDONED_WITH_RECEIPTS"),
+])
+def test_codec_rejects_malformed_or_invalid_payloads(mutate, code):
+    from app.workbook.developer_economics_config import DeveloperConfigError, parse_config
+    doc = _codec_doc()
+    mutate(doc)
+    with pytest.raises(DeveloperConfigError) as exc:
+        parse_config(json.dumps(doc))
+    assert code in str(exc.value)
+
+
+@pytest.mark.parametrize("raw", ["{", "[]", "null", '{"version": NaN}', "x" * 70_000])
+def test_codec_rejects_malformed_json_and_oversize(raw):
+    from app.workbook.developer_economics_config import DeveloperConfigError, parse_config
+    with pytest.raises(DeveloperConfigError):
+        parse_config(raw)
+
+
+def test_codec_is_canonical_idempotent_and_absent_is_neutral():
+    from app.workbook.developer_economics_config import apply_config, canonical_json, parse_config
+    from app.project_factories import create_generic_solar_reference
+    doc = _codec_doc()
+    once = canonical_json(json.dumps(doc))
+    assert canonical_json(once) == once and canonical_json(doc) == once
+    assert parse_config("") is None and parse_config(None) is None and canonical_json("") == ""
+    solar = create_generic_solar_reference()
+    assert apply_config(solar, "") is solar                       # absent: the very same object
+    disabled = dict(doc, enabled=False)
+    assert apply_config(solar, json.dumps(disabled)) == solar     # disabled == absent, bit-exact
+
+
+def test_spend_after_financial_close_fails_closed_at_materialisation():
+    from app.workbook.developer_economics_config import DeveloperConfigError, apply_config
+    from app.project_factories import create_generic_solar_reference
+    solar = create_generic_solar_reference()
+    late = _doc(solar.info.financial_close)
+    late["spend_schedule"][1]["spend_date"] = (solar.info.financial_close + timedelta(days=1)).isoformat()
+    with pytest.raises(DeveloperConfigError, match="SPEND_AFTER_FINANCIAL_CLOSE"):
+        apply_config(solar, json.dumps(late))
+
+
+# ───────────────────────── Save semantics / security ─────────────────────────
+
+def test_invalid_save_is_atomic_and_reports_without_writing(env):
+    flow = Flow(env)
+    fc = _fc(flow.record)
+    before = copy.deepcopy(flow.ws().draft_snapshot)
+    late = _doc(fc)
+    late["spend_schedule"][1]["spend_date"] = (fc + timedelta(days=5)).isoformat()
+    r = flow.save(late)
+    assert r.status_code == 422 and "SPEND_AFTER_FINANCIAL_CLOSE" in r.text and 'data-testid="dd-form-error"' in r.text
+    assert flow.ws().draft_snapshot == before and not flow.ws().dirty
+    bad_amount = flow.save(_doc(fc), reimbursed="not-a-number")
+    assert bad_amount.status_code == 422 and flow.ws().draft_snapshot == before
+    over = flow.save(_doc(fc, reimbursed_development_cost_keur=5000.0))
+    assert over.status_code == 422 and "REIMBURSEMENT_EXCEEDS_ELIGIBLE" in over.text
+    assert flow.ws().draft_snapshot == before
+
+
+def test_csrf_owner_reference_unauthenticated_and_scenario_denials(env, monkeypatch):
+    from app.persistence.workspace_repository import get_workspace_state
+    flow = Flow(env)
+    fc = _fc(flow.record)
+    html = flow.page()
+    data = _form(_doc(fc), html, flow.record)
+    before = copy.deepcopy(flow.ws().draft_snapshot)
+    url = "/v2/developer-decision/configuration"
+    for bad in ("", "forged", data["csrf_token"][:-3] + "abc"):
+        assert env.client.post(url, data={**data, "csrf_token": bad}).status_code == 403
+    assert flow.ws().draft_snapshot == before
+    # foreign owner: another user's project is not found, nothing is written
+    from app.auth import COOKIE_NAME, create_session_token
+    env.client.cookies.set(COOKIE_NAME, create_session_token(user_id="other-user", username="other"))
+    assert env.client.post(url, data=data).status_code == 404
+    env.client.cookies.clear()
+    assert env.client.post(url, data=data, follow_redirects=False).status_code == 401
+    env.client.cookies.set(COOKIE_NAME, create_session_token(user_id=OWNER, username="admin"))
+    assert flow.ws().draft_snapshot == before
+    # stale composite identity / wrong scenario selection -> one rejected writer
+    assert env.client.post(url, data={**data, "content_hash": "0" * 64}, follow_redirects=False).status_code == 409
+    assert env.client.post(url, data={**data, "scenario_id": "not-the-active-scenario"}, follow_redirects=False).status_code == 409
+    assert flow.ws().draft_snapshot == before
+
+
+def test_concurrent_saves_have_exactly_one_winner(env):
+    flow = Flow(env)
+    fc = _fc(flow.record)
+    html = flow.page()
+    a = _form(_doc(fc, developer_fee_value=100.0), html, flow.record)
+    b = _form(_doc(fc, developer_fee_value=200.0), html, flow.record)       # same rendered identity
+    url = "/v2/developer-decision/configuration"
+    first = env.client.post(url, data=a, follow_redirects=False)
+    second = env.client.post(url, data=b, follow_redirects=False)
+    assert (first.status_code, second.status_code) == (303, 409)
+    assert json.loads(flow.ws().draft_snapshot["developer_economics_json"])["developer_fee_value"] == 100.0
+
+
+def test_protected_reference_is_read_only_and_rejects_writes(env):
+    from app.auth import generate_csrf_token
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.reference_seed_service import create_reference_seeded_project
+    record = create_reference_seeded_project(user_id=OWNER, requested_name="Ref", template_source="generic_solar_reference", capacity_mw=16)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("app.ui.protected_reference_service.is_protected_reference", lambda r: True)
+        page = env.client.get("/v2/developer-decision", params={"project": record.project_code}).text
+        assert 'data-testid="dd-readonly"' in page and 'data-testid="dd-config-form"' not in page
+        r = env.client.post("/v2/developer-decision/configuration", data={
+            "csrf_token": generate_csrf_token(), "project": record.project_code, "content_hash": "x", "scenario_id": ""})
+        assert r.status_code == 409
+    assert "developer_economics_json" not in (get_workspace_state(OWNER, record.project_id).draft_snapshot or {})
+
+
+def test_get_never_writes_or_runs_the_engine(env, monkeypatch):
+    flow = Flow(env)
+    before = copy.deepcopy(flow.ws().draft_snapshot), flow.ws().dirty
+    def forbidden(*a, **k):
+        raise AssertionError("GET must not run the engine")
+    monkeypatch.setattr("app.api.project_runner.run_project", forbidden)
+    assert flow.page()
+    assert (copy.deepcopy(flow.ws().draft_snapshot), flow.ws().dirty) == before
+
+
+# ───────────────────── economic cases, percent fee, abandoned ─────────────────────
+
+def test_percent_fee_is_stored_as_a_fraction_and_uses_the_hard_capex_basis(env):
+    from app.model_v2.developer_evidence import read_committed_evidence
+    flow = Flow(env)
+    fc = _fc(flow.record)
+    doc = _doc(fc, developer_fee_mode="PCT_OF_HARD_CAPEX", developer_fee_value=0.05)
+    assert flow.save(doc).status_code == 303                       # form submits "5.0" percentage points
+    stored = json.loads(flow.ws().draft_snapshot["developer_economics_json"])
+    assert stored["developer_fee_value"] == 0.05                   # never 5 and never 0.05 %
+    assert "5.0" in flow.page()                                    # displayed in percentage points
+    committed = flow.run()
+    evidence = read_committed_evidence(committed)
+    basis = evidence["fee_basis"]
+    assert basis["mode"] == "PCT_OF_HARD_CAPEX" and basis["basis_keur"] > 0
+    assert evidence["developer_fee_keur"] == pytest.approx(0.05 * basis["basis_keur"])
+    assert "hard CAPEX" in flow.page()
+
+
+def test_abandoned_outcome_has_no_receipts_and_typed_unavailable_metrics(env):
+    from app.model_v2.developer_evidence import read_committed_evidence
+    flow = Flow(env)
+    fc = _fc(flow.record)
+    doc = _doc(fc, outcome="ABANDONED", reimbursed_development_cost_keur=0.0, developer_fee_value=0.0)
+    assert flow.save(doc).status_code == 303
+    evidence = read_committed_evidence(flow.run())
+    assert evidence["outcome"] == "ABANDONED"
+    assert evidence["total_developer_receipts_keur"] == 0.0 and evidence["developer_xirr"] is None
+    assert evidence["developer_xirr_status"] == "NO_POSITIVE_CASHFLOW"
+    page = flow.page()
+    assert 'data-available="false"' in page and "no IRR exists" in page
+
+
+def test_disabled_saved_configuration_is_legacy_neutral(env):
+    flow = Flow(env)
+    baseline = flow.run()
+    fc = _fc(flow.record)
+    assert flow.save(_doc(fc, enabled=False)).status_code == 303
+    after = flow.run()
+    assert "developer_economics" not in after
+    for key in ("total_revenue_keur", "total_ebitda_keur", "project_irr", "equity_irr", "min_dscr", "total_tax_keur"):
+        assert after[key] == baseline[key], key
+
+
+def test_developer_cash_flows_do_not_enter_sponsor_ledgers(env):
+    flow = Flow(env)
+    fc = _fc(flow.record)
+    assert flow.save(_doc(fc)).status_code == 303
+    committed = flow.run()
+    spend_dates = {r["spend_date"] for r in _doc(fc)["spend_schedule"]}
+    assert not spend_dates & set(re.findall(r"\d{4}-\d{2}-\d{2}", json.dumps(flow.ws().last_sponsor_schedule or {})))
+    assert "developer" not in json.dumps(flow.ws().last_sponsor_schedule or {}).lower()
+    assert committed["developer_economics"]["run_binding"]["snapshot_id"] == flow.ws().last_runtime_snapshot_id
+
+
+# ─────────────────────────── scenarios ───────────────────────────
+
+def _child(flow):
+    from app.persistence.scenarios_repository import list_scenarios
+    env = flow.env
+    assert env.client.post("/v2/workbook/scenarios/create", data={**flow.project, "scenario_name": "Alt"}).status_code == 200
+    sc = next(s for s in list_scenarios(OWNER, flow.record.project_id) if not s.is_base_case)
+    assert env.client.post("/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": sc.scenario_id}).status_code == 200
+    return sc
+
+
+def test_child_scenario_inherits_overrides_and_resets(env):
+    from app.model_v2.developer_evidence import read_committed_evidence
+    from app.persistence.scenarios_repository import get_scenario
+    flow = Flow(env)
+    fc = _fc(flow.record)
+    base_doc = _doc(fc, developer_fee_value=100.0)
+    assert flow.save(base_doc).status_code == 303                 # Base Case selected
+    sc = _child(flow)
+    assert "developer_economics_json" not in get_scenario(sc.scenario_id, OWNER).overrides
+    inherited = read_committed_evidence(flow.run())               # child with no override uses the Working Copy
+    assert inherited["developer_fee_keur"] == 100.0
+    draft_before = copy.deepcopy(flow.ws().draft_snapshot)
+    assert flow.save(_doc(fc, developer_fee_value=250.0)).status_code == 303
+    assert flow.ws().draft_snapshot == draft_before               # the Base Working Copy is untouched
+    stored = json.loads(get_scenario(sc.scenario_id, OWNER).overrides["developer_economics_json"])
+    assert stored["developer_fee_value"] == 250.0
+    page = flow.page()
+    assert "scenario-specific override" in page
+    overridden = read_committed_evidence(flow.run())
+    assert overridden["developer_fee_keur"] == 250.0              # the SELECTED scenario, never stale Base
+    assert overridden["run_binding"]["scenario_id"] == sc.scenario_id
+    reset = env.client.post("/v2/developer-decision/configuration", data={
+        **_form(_doc(fc), flow.page(), flow.record), "action": "inherit"}, follow_redirects=False)
+    assert reset.status_code == 303
+    assert "developer_economics_json" not in get_scenario(sc.scenario_id, OWNER).overrides
+    assert read_committed_evidence(flow.run())["developer_fee_keur"] == 100.0
+    # Base cannot "inherit" from nothing
+    env.client.post("/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": ""})
+
+
+# ─────────────────────── failure, corruption, history ───────────────────────
+
+def test_failed_run_publishes_no_partial_developer_result(env, monkeypatch):
+    from app.persistence.run_history_repository import get_run_history
+    flow = Flow(env)
+    flow.run()
+    fc = _fc(flow.record)
+    assert flow.save(_doc(fc)).status_code == 303
+    summary_before, history_before = copy.deepcopy(flow.ws().last_runtime_summary), len(get_run_history(OWNER, flow.record.project_id))
+    import app.api.project_runner as runner
+    original = runner.run_project
+    def boom(*a, **k):
+        raise RuntimeError("synthetic engine failure")
+    monkeypatch.setattr(runner, "run_project", boom)
+    wb = env.client.get("/v2/workbook", params=flow.project)
+    r = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
+    assert "developer_economics" not in (flow.ws().last_runtime_summary or {})
+    assert flow.ws().last_runtime_summary == summary_before
+    assert len(get_run_history(OWNER, flow.record.project_id)) == history_before and flow.ws().dirty
+    monkeypatch.setattr(runner, "run_project", original)
+
+
+def test_corrupt_persisted_payload_fails_closed_on_run_and_page(env):
+    from app.persistence.run_history_repository import get_run_history
+    from app.persistence.db import get_connection
+    flow = Flow(env)
+    flow.run()
+    fc = _fc(flow.record)
+    assert flow.save(_doc(fc)).status_code == 303
+    wb = env.client.get("/v2/workbook", params=flow.project)          # identity tokens rendered before corruption
+    conn = get_connection()
+    draft = copy.deepcopy(flow.ws().draft_snapshot)
+    draft["developer_economics_json"] = '{"version":1,"enabled":true}'
+    conn.execute("UPDATE workspace_states SET draft_snapshot_json=? WHERE project_id=?", (json.dumps(draft), flow.record.project_id))
+    conn.commit(); conn.close()
+    history = len(get_run_history(OWNER, flow.record.project_id))
+    r = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
+    assert len(get_run_history(OWNER, flow.record.project_id)) == history       # nothing committed
+    page = flow.page()
+    assert "failed closed" in page or "DEV_ECON_SCHEMA" in page
+
+
+def test_corrupted_committed_evidence_is_unavailable_not_reconstructed(env):
+    from app.model_v2.developer_evidence import read_committed_evidence
+    from app.v2.developer_committed_projection import build_committed_view
+    flow = Flow(env)
+    fc = _fc(flow.record)
+    assert flow.save(_doc(fc)).status_code == 303
+    summary = flow.run()
+    ws = flow.ws()
+    good = build_committed_view(summary, freshness="CURRENT", snapshot_id=ws.last_runtime_snapshot_id,
+                                composite_hash=ws.last_runtime_composite_hash)
+    assert good["state"] == "CURRENT" and good["metrics"]
+    for mutate in (lambda e: e.update(developer_moic=float("nan")), lambda e: e.pop("run_binding"),
+                   lambda e: e["run_binding"].update(snapshot_id="forged"), lambda e: e.update(schema="other"),
+                   lambda e: e["cashflows"][0].update(net_developer_cashflow_keur=None)):
+        broken = copy.deepcopy(summary)
+        mutate(broken["developer_economics"])
+        view = build_committed_view(broken, freshness="CURRENT", snapshot_id=ws.last_runtime_snapshot_id,
+                                    composite_hash=ws.last_runtime_composite_hash)
+        assert view["state"] == "UNAVAILABLE" and "metrics" not in view
+    wrong = build_committed_view(summary, freshness="CURRENT", snapshot_id=ws.last_runtime_snapshot_id, composite_hash="0" * 64)
+    assert wrong["state"] == "UNAVAILABLE"                                       # foreign composite identity
+    assert build_committed_view({}, freshness="NOT_RUN", snapshot_id=None, composite_hash=None)["state"] == "NOT_RUN"
+    assert read_committed_evidence({"developer_economics": "x"}) is None
+
+
+def test_identity_rotates_on_save_and_stale_follows(env):
+    flow = Flow(env)
+    flow.run()
+    first = re.search(r'name="content_hash" value="([^"]*)"', flow.page()).group(1)
+    fc = _fc(flow.record)
+    assert flow.save(_doc(fc)).status_code == 303
+    second = re.search(r'name="content_hash" value="([^"]*)"', flow.page()).group(1)
+    assert first != second
+    assert flow.save(_doc(fc)).status_code == 303            # identical payload: still a valid explicit Save
+    wb = env.client.get("/v2/workbook", params=flow.project).text
+    assert "STALE" in flow.page()

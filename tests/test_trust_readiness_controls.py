@@ -274,8 +274,10 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
             users.add(rel)
     # Login, model import, Inputs grid, Revenue V2 and F4 agreement writes,
     # and one crypto action. The broader POST coverage gap remains.
+    # M4 adds the Developer Economics configuration Save (app/v2/developer_decision_router.py).
     assert users == {"main_web.py", "app/v2/import_router.py", "app/v2/grid_router.py",
-                     "app/crypto_ui.py", "app/v2/router.py", "app/v2/investor_f4_router.py"}
+                     "app/crypto_ui.py", "app/v2/router.py", "app/v2/investor_f4_router.py",
+                     "app/v2/developer_decision_router.py"}
     import ast
     tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))
     protected = {

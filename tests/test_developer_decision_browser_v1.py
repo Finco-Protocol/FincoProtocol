@@ -78,7 +78,7 @@ def test_developer_workspace_and_compare_acceptance(live_server, browser):
     page.goto(f"{live_server}/v2/developer-decision?project={rec.project_code}")
     page.wait_for_selector('[data-testid="dd-page"]')
     assert page.locator('[data-testid="dd-dev-state"]').inner_text().endswith("DISABLED")
-    assert page.locator('[data-testid="dd-bridge-gap"]').is_visible()
+    assert page.locator('[data-testid="dd-config-form"]').is_visible()  # M4 persistence bridge: the editor replaces the gap notice
     assert page.locator('[data-testid="dd-expected_npv"]').get_attribute("data-available") == "false"
     assert page.locator('[data-testid="dd-stage"]').inner_text() == "Stage: Not set"
     page.locator('[data-testid="dd-expected-npv-conditions"] summary').click()
