@@ -208,7 +208,8 @@ def test_authenticated_workspaces_render_authority_safe_financing_context(client
     assert 'data-testid="financing-cfads"' in page.text
     assert "Equity-only vs sponsor-inclusive returns" in page.text
     assert "Reserve policy &amp; assumptions" in page.text
-    assert "no supported Investor write contract" in page.text
+    assert "Sponsor funding assumptions are read-only here" in page.text
+    assert 'data-testid="f4-agreement-panel"' in page.text
     assert "sheet=debt" in page.text and "overview-integrity-loader" in page.text
     # Initial workbook GET performs existing canonical draft initialization.
     # The new integrity read and repeated rendering must not mutate that state.

@@ -20,7 +20,7 @@
       <h4 id="investor-working-title">Working financing inputs</h4>
       <p>Current typed ProjectInputs. These do not recalculate persisted Last Run evidence.</p>
       {% if sponsor_view is defined %}
-      <p>Funding structure: {{ sponsor_view.mode }}. Read-only assumptions; no supported Investor write contract exists yet.</p>
+      <p>Funding structure: {{ sponsor_view.mode }}. Sponsor funding assumptions are read-only here; the common-equity agreement is edited separately below.</p>
       {% for title, metrics in [('Sponsor equity', sponsor_view.equity), ('Shareholder loan', sponsor_view.shl), ('Other funding', sponsor_view.other)] %}
         <h4>{{ title }}</h4><dl class="fb-facts">
           {% for m in metrics %}<div><dt>{{ m.label }}</dt><dd title="{{ m.source }}">{{ m.display }}</dd></div>{% endfor %}
@@ -66,4 +66,8 @@
       {% endif %}
     </section>
   </section>
+  <details data-testid="f4-agreement-panel">
+    <summary>Common-equity agreement and investor returns</summary>
+    <div id="f4-investor-workspace" data-f4-load-url="/v2/workbook/investor/agreement?project={{ project_code | urlencode }}"><p>Investor agreement evidence is loading.</p></div>
+  </details>
 </div>

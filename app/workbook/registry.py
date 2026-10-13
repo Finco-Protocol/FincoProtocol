@@ -1081,6 +1081,17 @@ _SHEET_TAX = _sheet(_TX, "Tax", [_tx_assumptions], icon="📋", order=5)
 # Singleton
 # ---------------------------------------------------------------------------
 
+_SHEET_INVESTOR = _sheet("investor", "Investor", [
+    _section("agreement", "Common-equity agreement", "investor", order=0, fields=[
+        _f("investor.agreement.common_equity", "Investor agreement", "investor_agreement_json",
+           FieldType.TEXT, "investor", "agreement", kind=FieldKind.INPUT, persisted=True,
+           source_of_truth=SourceOfTruth.INPUT_SET,
+           engine_path="F4/P1 downstream canonical net-equity receipt allocation",
+           scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+           editable=True, description="Explicit dated common-equity contributions and residual-only ownership; no ROC, NAV, carry or SHL allocation.")
+    ])
+], icon="", order=6)
+
 WORKBOOK = WorkbookSpec(
     version="2.3.0",
     sheets=(
@@ -1090,5 +1101,6 @@ WORKBOOK = WorkbookSpec(
         _SHEET_REVENUE,
         _SHEET_DEBT,
         _SHEET_TAX,
+        _SHEET_INVESTOR,
     ),
 )
