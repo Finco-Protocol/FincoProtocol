@@ -3,6 +3,10 @@
 ## Provenance and disposition
 
 Implementation base: `1152dd2d98b5da8b41cea52ce9867619a3e85fba`.
+Publication base after ordinary main integration:
+`b47aa732f567e380cbe4c8e20b6c1a7dc0db9fbf` (#264 merged).
+Normal merge `6cde95755260542f98680755d95e7e0415dd1a95` was conflict-free;
+F4 implementation and frozen financial content were unchanged.
 Branch: `feat/model-f4-p1-investor-waterfall-v1`.
 PR #259 F4/P0 and #263 F3.8 are merged. The latter's reviewed feature head
 `760544c4755c018268450774d9259ab618688a0c` has the same baseline financial
@@ -166,6 +170,9 @@ the suite's bounded thread-mode executor (no mocked financial output).
 - Coherent post-run context, scenario freshness, U2.1/F07-B canonical export
   lineage: **120 passed**, rc=0, normal termination; legacy Base restoration,
   immutable Last Run and authorized read/export boundaries remain intact.
+- After integrating #264: combined F4 contract/runtime/workspace, real Chromium,
+  prior bankability, post-run context, scenario freshness and canonical export
+  regression: **257 passed**, rc=0, normal process exit (238.69 seconds).
 - F4/Returns/history/F3/WF-04/WF-07/Model V2 integrity governance ring:
   **353 passed, 10 skipped**, rc=0, normal termination. Those ten existing
   skips are retired Model V2 scope-marker tests; no new financial test is skipped.
@@ -198,7 +205,9 @@ ZERO diff in financial_engine, finco_core, domain, Radar/Yield/Protocol,
 financial governance pins, goldens/tolerances, schema, persistence repositories,
 canonical CAS/history writer, execution workers and CI workflows.
 
-Open #264 owns cost-grid/shared JS/CSS; F4 does not change those files.
+#264 merged during local acceptance and owns cost-grid/shared JS/CSS; F4 does
+not change those files relative to integrated main. The 257-case integrated ring
+includes all three F4 Chromium cases against that updated workbook behavior.
 Open #265 Revenue and #266 AI have no financial F4 implementation overlap;
 shared router/registry changes need ordinary normal-merge review when integrating.
 
