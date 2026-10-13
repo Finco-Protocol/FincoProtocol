@@ -651,7 +651,11 @@ def test_stale_and_integrity_fail_are_independent_in_every_vertical(env, monkeyp
         pi = ProjectInputSet.from_snapshot(get_workspace_state(OWNER, record.project_id).draft_snapshot).to_projectinputs()
         base = collection_for_inputs(pi)
         first = replace(base.instruments[0], interest=replace(base.instruments[0].interest, fixed_rate=base.instruments[0].interest.fixed_rate + 0.005))
-        data = dict(field_id=config.FIELD_ID, value=state(active=True, collection=FinancingCollection((first,) + tuple(base.instruments[1:]))))
+        # The Capital Stack form issues a session/project-bound CSRF token; use that DOM token like a browser does.
+        from bs4 import BeautifulSoup
+        token = BeautifulSoup(edit.text, "html.parser").select_one('[data-f3-form] [name="csrf_token"]')["value"]
+        data = dict(field_id=config.FIELD_ID, csrf_token=token,
+                    value=state(active=True, collection=FinancingCollection((first,) + tuple(base.instruments[1:]))))
     else:
         data = dict(field_id="debt.senior.target_dscr", value="1.37")
     response = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
