@@ -203,6 +203,8 @@ def revenue_decomposition_schedule(
         from domain.revenue.multistream_runtime import parse_config
         multistream = parse_config(inputs.revenue.multistream_config_json)
         multistream.validate_axis(engine.periods())
+        if getattr(multistream, "has_rec", False) and inputs.revenue.co2_enabled:
+            raise ValueError("REVENUE_V3_REC_LEGACY_CONFLICT: explicit REC cannot coexist with legacy certificate/CO2 authority")
 
     for period in engine.periods():
         generation_mwh = generation_schedule[period.index]
@@ -258,6 +260,7 @@ def revenue_decomposition_schedule(
         energy_revenue_keur = ppa_revenue_keur + gross_merchant_revenue_keur
         stream_evidence = None
         settlement_keur = 0.0
+        product_revenue_keur = 0.0
         if multistream is not None:
             from domain.revenue.plan import RevenueStreamType
             result = multistream.evaluate(period, generation_mwh)
@@ -292,6 +295,13 @@ def revenue_decomposition_schedule(
                     "settlement": "SAME_PERIOD",
                 } for r in result.stream_results],
             }
+            if hasattr(multistream, "evaluate_products"):
+                products = multistream.evaluate_products(period, generation_mwh, result)
+                product_revenue_keur = sum(p["revenue_keur"] for p in products)
+                stream_evidence["version"] = 3
+                stream_evidence["products"] = products
+                stream_evidence["product_revenue_keur"] = product_revenue_keur
+                stream_evidence["environmental_rights"] = multistream.environmental_rights
         gross_electricity_revenue_keur = energy_revenue_keur
         # Phase 7: explicit certificate and balancing cost inputs (EUR/MWh)
         # Fallback priority (per PR #90 backward-compat requirement):
@@ -341,6 +351,11 @@ def revenue_decomposition_schedule(
         revenue_keur = net_revenue_after_balancing_keur
         if multistream is not None:
             net_revenue_after_balancing_keur += settlement_keur
+            if hasattr(multistream, "evaluate_products"):
+                net_revenue_after_balancing_keur += product_revenue_keur
+                from math import isfinite
+                if not isfinite(net_revenue_after_balancing_keur):
+                    raise ValueError("REVENUE_V3_VALUE: nonfinite composed revenue")
             revenue_keur = net_revenue_after_balancing_keur
 
         decompositions[period.index] = {

@@ -31,23 +31,26 @@
       : row.type === 'merchant'
         ? (row.volume_share === null ? 'residual_merchant' : 'merchant') : 'cfd';
 
-  function safeBook(raw, technology) {
+  function safeBook(raw, technology, v3Enabled) {
     if (!['solar', 'wind'].includes(technology)) throw Error('Only Solar and Wind revenue contracts are supported.');
     const book = raw ? JSON.parse(raw) :
       {version: 1, technology, indexation_basis: 'OPERATING_YEAR', streams: []};
-    if (!legalKeys(book, ROOT_KEYS) || ROOT_KEYS.some(k => !(k in book)) ||
-        ![1, 2].includes(book.version) || book.technology !== technology ||
+    const keys = book.version === 3 ? ROOT_KEYS.concat(['products', 'environmental_rights']) : ROOT_KEYS;
+    if (!legalKeys(book, keys) || keys.some(k => !(k in book)) ||
+        ![1, 2, 3].includes(book.version) || (book.version === 3 && !v3Enabled) || book.technology !== technology ||
         book.indexation_basis !== 'OPERATING_YEAR' || !Array.isArray(book.streams) ||
         book.streams.length > 24) {
       throw Error('Existing contract configuration cannot be represented safely. No changes have been made.');
     }
+    if (book.version === 3 && (!Array.isArray(book.products) || !Array.isArray(book.environmental_rights)))
+      throw Error('Invalid non-energy contract book. Editing blocked.');
     for (const row of book.streams) {
       if (!legalKeys(row, BASE_KEYS.concat(OPTIONAL_KEYS)) ||
           BASE_KEYS.some(k => !(k in row)) || !['ppa', 'merchant', 'cfd'].includes(row.type) ||
           row.settlement !== 'SAME_PERIOD' ||
           (row.type !== 'merchant' && 'capture_rate' in row) ||
           (row.type !== 'cfd' && 'reference_stream_id' in row) ||
-          ('price_curve' in row && (book.version !== 2 || row.type === 'cfd' ||
+          ('price_curve' in row && (![2, 3].includes(book.version) || row.type === 'cfd' ||
             !Array.isArray(row.price_curve) || row.indexation_rate !== 0 ||
             row.price_curve.length > 600 || row.price_curve.some(point =>
               !legalKeys(point, ['period_start', 'price_eur_mwh']) ||
@@ -167,7 +170,7 @@
           }
           const changed = {...old};
           if (isScheduled(next)) {
-            book.version = 2;
+            if (book.version !== 3) book.version = 2;
             changed.type = next === 'scheduled_ppa' ? 'ppa' : 'merchant';
             changed.indexation_rate = 0;
             changed.price_curve = Array.isArray(old.price_curve) ? old.price_curve : [];
@@ -339,10 +342,129 @@
           tbody.appendChild(extra);
         }
       });
+      renderProducts();
+    }
+    function renderProducts() {
+      const container = form.querySelector('[data-product-rows]');
+      if (!container) return;
+      container.replaceChildren();
+      function control(parent, object, key, label, options = {}) {
+        const wrapper = document.createElement('label'); wrapper.textContent = label;
+        const input = document.createElement(options.choices ? 'select' : 'input');
+        input.dataset.productField = key; input.setAttribute('aria-label', label);
+        if (options.choices) {
+          for (const value of ['', ...options.choices]) {
+            const option = document.createElement('option'); option.value = value;
+            option.textContent = value || 'Select'; input.appendChild(option);
+          }
+        } else {
+          input.type = options.type || (options.number || options.percent ? 'number' : 'text');
+          if (input.type === 'number') { input.min = '0'; input.step = 'any'; }
+          if (options.percent) input.max = '100';
+        }
+        input.required = true;
+        input.value = options.percent ? toPct(object[key] === '' ? null : object[key]) : (object[key] ?? '');
+        input.addEventListener('input', () => {
+          object[key] = options.percent ? fromPct(input.value) : options.number
+            ? (input.value === '' ? '' : Number(input.value)) : input.value;
+          showError(''); status();
+        });
+        wrapper.appendChild(input); parent.appendChild(wrapper);
+      }
+      (book.products || []).forEach((row, index) => {
+        const section = document.createElement('details'); section.open = true;
+        section.dataset.productRow = String(index);
+        const title = document.createElement('summary'); title.textContent = row.type + ' / ' + (row.id || 'New contract');
+        section.appendChild(title);
+        const grid = document.createElement('div'); grid.className = 'rc-product-fields';
+        for (const [key, label] of [['id', 'Contract ID'], ['entitlement_id', 'Entitlement'],
+          ['source_ref', 'Contract source'], ['eligibility_ref', 'Eligibility evidence']]) control(grid, row, key, label);
+        control(grid, row, 'start_date', 'Product start', {type:'date'});
+        control(grid, row, 'end_date', 'Product end (exclusive)', {type:'date'});
+        control(grid, row, 'price_eur', 'Contract price EUR', {number:true});
+        const units = row.type === 'capacity_market' ? ['EUR_KW_YEAR', 'EUR_MW_YEAR'] :
+          row.type === 'ancillary' ? ['EUR_MW_PERIOD'] : ['EUR_CERTIFICATE'];
+        control(grid, row, 'price_unit', 'Price unit', {choices:units});
+        control(grid, row, 'indexation_rate', 'Product index %/yr', {percent:true});
+        if (row.type === 'rec') {
+          control(grid, row, 'energy_stream_id', 'Backing energy contract');
+          control(grid, row, 'certification_ref', 'Certification source');
+        } else {
+          for (const [key, label] of [['pool_id', 'Entitlement pool'], ['pool_source_ref', 'Pool evidence']]) control(grid, row, key, label);
+          for (const [key, label] of [['pool_capacity_mw', 'Pool MW'], ['eligible_mw', 'Committed MW']]) control(grid, row, key, label, {number:true});
+          for (const [key, label] of [['derating_factor', 'Derating %'], ['availability_factor', 'Availability %'], ['performance_factor', 'Performance %']])
+            control(grid, row, key, label, {percent:true});
+          if (row.type === 'ancillary') control(grid, row, 'service', 'Availability service');
+        }
+        section.appendChild(grid);
+        const policy = document.createElement('p'); policy.className = 'd-context';
+        policy.textContent = 'CONTRACTED / SAME_PERIOD / ' + (row.type === 'rec' ? 'ONE_PER_MWH / PROJECT_RETAINED_UNBUNDLED' :
+          row.type === 'capacity_market' ? 'CONTRACTED_ELIGIBLE_MW / ACT_365_FIXED' : 'CONTRACTED_ELIGIBLE_MW / AVAILABILITY_ONLY');
+        section.appendChild(policy);
+        const applyAxis = document.createElement('button'); applyAxis.type = 'button';
+        applyAxis.textContent = 'Use canonical periods';
+        applyAxis.addEventListener('click', () => {
+          if (!row.start_date || !row.end_date) { showError('Supply product tenor first.'); return; }
+          const axis = JSON.parse(form.querySelector('[data-product-axis]').value);
+          const previous = new Map(row.periods.map(point => [point.period_start, point]));
+          row.periods = axis.filter(point => point.period_start >= row.start_date && point.period_end <= row.end_date)
+            .map(point => row.type === 'rec' ? {...point, certified_mwh:previous.get(point.period_start)?.certified_mwh ?? ''} : {...point});
+          showError(''); renderProducts(); status();
+        });
+        section.appendChild(applyAxis);
+        const table = document.createElement('table'); table.className = 'd-table';
+        const head = document.createElement('thead');
+        const headers = document.createElement('tr');
+        for (const label of ['Start', 'End (exclusive)', 'Settlement', ...(row.type === 'rec' ? ['Certified MWh'] : [])]) {
+          const th = document.createElement('th'); th.textContent = label; headers.appendChild(th);
+        }
+        head.appendChild(headers); table.appendChild(head);
+        const body = document.createElement('tbody');
+        for (const point of row.periods) {
+          const tr = document.createElement('tr');
+          for (const key of ['period_start', 'period_end', 'settlement_date']) {
+            const td = document.createElement('td'); td.textContent = point[key]; tr.appendChild(td);
+          }
+          if (row.type === 'rec') {
+            const td = document.createElement('td'); control(td, point, 'certified_mwh', 'Certified MWh ' + point.period_start, {number:true});
+            tr.appendChild(td);
+          }
+          body.appendChild(tr);
+        }
+        table.appendChild(body);
+        const periods = document.createElement('details'); periods.dataset.productPeriods = '';
+        const periodTitle = document.createElement('summary'); periodTitle.textContent = 'Settlement periods / ' + row.periods.length;
+        periods.appendChild(periodTitle);
+        const scroll = document.createElement('div'); scroll.className = 'rc-scroll'; scroll.appendChild(table);
+        periods.appendChild(scroll); section.appendChild(periods);
+        const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove product';
+        remove.addEventListener('click', () => {
+          if (!window.confirm('Remove product from draft? Save remains manual.')) return;
+          book.products.splice(index, 1);
+          if (!book.products.length) { book.version = 2; delete book.products; delete book.environmental_rights; }
+          renderProducts(); status();
+        });
+        section.appendChild(remove); container.appendChild(section);
+      });
+      const rights = form.querySelector('[data-product-rights]'); rights.replaceChildren();
+      if (book.version !== 3) return;
+      for (const row of book.environmental_rights) {
+        const grid = document.createElement('div'); grid.className = 'rc-product-fields';
+        control(grid, row, 'energy_stream_id', 'Energy contract ID');
+        control(grid, row, 'status', 'Attribute ownership', {choices:['RETAINED_UNBUNDLED', 'TRANSFERRED_BUNDLED', 'TRANSFERRED_OTHER']});
+        control(grid, row, 'source_ref', 'Ownership evidence');
+        const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove right';
+        remove.addEventListener('click', () => { book.environmental_rights.splice(book.environmental_rights.indexOf(row), 1); renderProducts(); status(); });
+        grid.appendChild(remove); rights.appendChild(grid);
+      }
+      const add = document.createElement('button'); add.type = 'button'; add.textContent = '+ Attribute right';
+      add.addEventListener('click', () => { book.environmental_rights.push({energy_stream_id:'', status:'', source_ref:''}); renderProducts(); status(); });
+      rights.appendChild(add);
     }
     function validate() {
       if (book.streams.length > 24) return 'At most 24 contracts are supported.';
-      if (!book.streams.length) return '';  // Empty payload explicitly restores legacy pricing.
+      if (!book.streams.length) return book.version === 3 ? 'V3 requires an explicit energy book.' : '';
+      if (book.version === 3 && (!book.products.length || book.products.length > 24)) return 'V3 requires 1-24 products.';
       const seen = new Set();
       for (const [index,row] of book.streams.entries()) {
         const n = index + 1;
@@ -374,7 +496,7 @@
           return 'Row ' + n + ': CfD requires a valid Merchant reference and a non-indexed strike.';
         }
         if (Array.isArray(row.price_curve)) {
-          if (row.type === 'cfd' || book.version !== 2 || row.indexation_rate !== 0 ||
+          if (row.type === 'cfd' || ![2, 3].includes(book.version) || row.indexation_rate !== 0 ||
               row.price_curve.length < 1 || row.price_curve.length > 600)
             return 'Row ' + n + ': scheduled prices require V2 and zero indexation.';
           let last = '';
@@ -394,7 +516,7 @@
       return '';
     }
     try {
-      book = safeBook(raw, form.dataset.technology);
+      book = safeBook(raw, form.dataset.technology, form.dataset.v3Enabled === 'true');
     } catch (exc) {
       blocked = true;
       book = {streams:[]};
@@ -409,12 +531,27 @@
       if (book.streams.length >= 24) { showError('At most 24 contracts are supported.'); return; }
       const kind = form.querySelector('[data-revenue-add-type]').value;
       const added = newRow(kind);
-      if (isScheduled(kind)) book.version = 2;
+      if (isScheduled(kind) && book.version !== 3) book.version = 2;
       book.streams.push(added);
       kindOverrides.set(added, kind);
       advancedMode(true); showError(''); render(); status();
       const last = tbody.lastElementChild;
       last?.querySelector('[data-field=id]')?.focus();
+    });
+    form.querySelector('[data-product-add]')?.addEventListener('click', () => {
+      if ((book.products || []).length >= 24) { showError('At most 24 products.'); return; }
+      if (book.version !== 3) { book.version = 3; book.products = []; book.environmental_rights = []; }
+      const type = form.querySelector('[data-product-type]').value;
+      const row = {id:'', type, entitlement_id:'', source_ref:'', eligibility_ref:'', start_date:'', end_date:'',
+        classification:'CONTRACTED', price_eur:'', price_unit:'', indexation_rate:'', settlement:'SAME_PERIOD', periods:[]};
+      if (type === 'rec') Object.assign(row, {energy_stream_id:'', certification_ref:'', certificate_basis:'ONE_PER_MWH', ownership:'PROJECT_RETAINED_UNBUNDLED'});
+      else {
+        Object.assign(row, {pool_id:'', pool_source_ref:'', pool_capacity_mw:'', eligible_mw:'', capacity_basis:'CONTRACTED_ELIGIBLE_MW',
+          derating_factor:'', availability_factor:'', performance_factor:''});
+        if (type === 'capacity_market') row.day_count = 'ACT_365_FIXED';
+        else Object.assign(row, {service:'', obligation:'AVAILABILITY_ONLY'});
+      }
+      book.products.push(row); renderProducts(); showError(''); status();
     });
     advancedBtn.addEventListener('click', () => advancedMode(!advanced));
     tbody.addEventListener('keydown', (event) => {

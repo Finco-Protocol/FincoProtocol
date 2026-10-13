@@ -1155,8 +1155,19 @@ def _build_revenue_contract_editor(pis, ws):
     # htmx re-renders (Save, scenario switch) do not carry the page-level ``project_type``; the editor needs the
     # technology to accept the canonical payload, so it travels with the contracts it validates.
     technology = str(pis.get("project_setup.identity.project_type") or "").strip().lower()
+    from domain.revenue.advanced_products import ACTIVATION_ENABLED
+    payload = json.loads(config.canonical_json) if config else {}
+    axis = []
+    if ACTIVATION_ENABLED and technology in ("solar", "wind"):
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import _build_period_engine
+        axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
+                 "settlement_date": p.end_date.isoformat()}
+                for p in _build_period_engine(from_project_inputs(pis.to_projectinputs())).periods() if p.is_operation]
     return {"active": config is not None, "raw": raw, "scope": scope, "technology": technology,
-            "overridden": overridden, "rows": json.loads(config.canonical_json)["streams"] if config else []}
+            "overridden": overridden, "rows": payload.get("streams", []),
+            "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
+            "period_axis": axis}
 
 
 @router.post("/workbook/revenue/contracts")

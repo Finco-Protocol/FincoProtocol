@@ -23,6 +23,8 @@ def apply_config(inputs, raw, *, project_type):
         return inputs
     if str(project_type).strip().lower() != config.technology:
         raise ValueError("REVENUE_V2_TECHNOLOGY: contract technology must match the project")
+    if getattr(config, "has_rec", False) and inputs.revenue.co2_enabled:
+        raise ValueError("REVENUE_V3_REC_LEGACY_CONFLICT: explicit REC cannot coexist with legacy certificate revenue")
     from finco_core.inputs._models import RevenueParams
     from finco_core.inputs.revenue_multistream import MultiStreamRevenueParams
     revenue = MultiStreamRevenueParams(**{f.name: getattr(inputs.revenue, f.name) for f in fields(RevenueParams)},

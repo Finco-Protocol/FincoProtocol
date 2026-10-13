@@ -6,7 +6,7 @@
   <form method="post" action="/v2/workbook/revenue/contracts"
         hx-post="/v2/workbook/revenue/contracts" hx-target="#v2-sheet-revenue" hx-swap="outerHTML"
         data-testid="revenue-contracts-form" data-revenue-editor data-technology="{{ (contracts.technology or project_type | default('')) | lower | e }}"
-        autocomplete="off">
+        data-v3-enabled="{{ 'true' if contracts.v3_enabled else 'false' }}" autocomplete="off">
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
     <input type="hidden" name="csrf_token" value="{{ revenue_contracts_csrf_token }}">
@@ -43,6 +43,22 @@
       </table>
     </div>
     <div class="rc-empty" data-revenue-empty hidden>No contracts configured. Add a contract or continue with legacy revenue pricing.</div>
+    {% if contracts.v3_enabled %}
+    <details class="rc-products" open>
+      <summary>Contracted non-energy revenue</summary>
+      <div class="rc-add-controls">
+        <select data-product-type aria-label="Non-energy product type">
+          <option value="capacity_market">Capacity payment</option>
+          <option value="ancillary">Ancillary availability</option>
+          <option value="rec">Unbundled REC</option>
+        </select>
+        <button type="button" data-product-add>+ Add product</button>
+      </div>
+      <input type="hidden" data-product-axis value="{{ contracts.period_axis | tojson | forceescape }}">
+      <div data-product-rows></div>
+      <details><summary>Environmental attribute ownership</summary><div data-product-rights></div></details>
+    </details>
+    {% endif %}
     <div class="rc-feedback" role="status" aria-live="polite" data-revenue-feedback>Saved Working Copy · No changes</div>
     <div class="rc-error" role="alert" data-revenue-error hidden></div>
     <div class="rc-actions">
@@ -97,7 +113,8 @@
     {% if not contracts.rows %}<p class="d-context">Legacy revenue pricing. Create a working copy to configure contracts.</p>{% endif %}
   </div>
   {% endif %}
-  <p class="d-context">Unsupported: capacity availability, ancillary services, REC certificates, lagged settlements, interpolated or extrapolated curve prices. CfD strikes remain fixed and settlement remains two-way.</p>
+  {% if not contracts.v3_enabled %}<p class="d-context" data-testid="revenue-v3-release-closed">Capacity, Ancillary and REC require independent financial release approval and are not enabled.</p>{% endif %}
+  <p class="d-context">Unsupported: physical ancillary dispatch, uncontracted service income, lagged settlements, interpolated or extrapolated prices. Same-period cash settlement only. Contract and environmental declarations are not independently verified.</p>
   {% set audit = (revenue_runtime_summary or {}).get("revenue_multistream_audit") %}
   {% if audit %}
   <details><summary>Last Run contract evidence (kEUR)</summary>
@@ -111,6 +128,19 @@
       {% endfor %}{% endfor %}</tbody>
     </table></div>
   </details>
+  {% if audit | selectattr('products', 'defined') | list %}
+  <details><summary>Last Run non-energy contract evidence</summary>
+    <div class="rc-scroll"><table class="d-table" data-testid="revenue-products-audit">
+      <thead><tr><th>Period</th><th>Contract</th><th>Status</th><th>Quantity</th><th>Quantity unit</th><th>Price</th><th>Price unit</th><th>Revenue kEUR</th><th>Settlement</th><th>Source</th></tr></thead>
+      <tbody>{% for period in audit %}{% for product in period.get('products', []) %}<tr>
+        <td>{{ period.period_index }}</td><td>{{ product.id }}</td><td>{{ product.status }}</td>
+        <td>{{ '%.4f'|format(product.quantity) }}</td><td>{{ product.quantity_unit }}</td>
+        <td>{{ '%.4f'|format(product.price) }}</td><td>{{ product.price_unit }}</td>
+        <td>{{ '%.4f'|format(product.revenue_keur) }}</td><td>{{ product.settlement_date or '-' }}</td><td>{{ product.source_ref }}</td>
+      </tr>{% endfor %}{% endfor %}</tbody>
+    </table></div>
+  </details>
+  {% endif %}
   {% endif %}
 </details>
 <script src="/static/js/model_revenue_contract_editor.js"></script>
