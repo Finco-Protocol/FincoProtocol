@@ -33,7 +33,7 @@
 
 <div id="v2-sheet-overview" class="v2-overview" data-sheet="overview">
 <link rel="stylesheet" href="/static/css/model_financing.css">
-{% include "partials/_model_health.html" %}
+{% include ["partials/_model_health.html", "v2/partials/_model_health.html"] %}
 
 {% if project_code is defined and project_code %}
 <div hx-get="/v2/workbook/financing/integrity?project={{ project_code | urlencode }}"

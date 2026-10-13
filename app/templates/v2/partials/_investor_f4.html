@@ -1,0 +1,78 @@
+{% macro money(value) %}{% if value is not none %}{{ "{:,.2f}".format(value) }}{% else %}UNAVAILABLE{% endif %}{% endmacro %}
+<section id="f4-investor-workspace" class="f4-investor" data-testid="f4-investor" data-state="{{ f4.state }}">
+  <link rel="stylesheet" href="/static/css/investor_f4.css">
+  <script src="/static/js/investor_f4.js" defer></script>
+  <header><h3>Common-equity investor agreement</h3><span class="v2-binding-badge" data-testid="f4-state">{{ f4.state }}</span></header>
+  <p>Residual common equity only. Return-of-capital ordering, preferences, carry, NAV and SHL lender allocation are not authorized.</p>
+  {% if f4.editable %}
+  <form class="f4-agreement-form" hx-post="/v2/workbook/investor/agreement" hx-target="#f4-investor-workspace" hx-swap="outerHTML"
+        data-version="{{ f4.terms.version + 1 if f4.terms else 1 }}" data-agreement-id="{{ f4.terms.agreement_id if f4.terms else '' }}">
+    <input type="hidden" name="project" value="{{ f4.project_code }}">
+    <input type="hidden" name="csrf_token" value="{{ f4.csrf_token }}">
+    <input type="hidden" name="content_hash" value="{{ f4.context.identity.composite_hash }}">
+    <input type="hidden" name="agreement" value="">
+    <label>Agreement ID <input name="agreement_id" required maxlength="128" value="{{ f4.terms.agreement_id if f4.terms else '' }}"></label>
+    <p>Agreement version {{ f4.terms.version if f4.terms else 'not saved' }}. Working scenario: {{ f4.context.workspace.active_scenario_name or 'Base' }}.</p>
+    <div class="f4-scroll"><table class="f4-table"><thead><tr><th>Investor ID</th><th>Legal ownership %</th><th>Commitment kEUR</th><th></th></tr></thead><tbody data-f4-investors>
+      {% for i in (f4.terms.investors if f4.terms else ()) %}
+      <tr data-f4-investor><td><input data-f4-field="investor_id" aria-label="Investor ID" required value="{{ i.investor_id }}"></td>
+        <td><input data-f4-field="ownership_fraction" aria-label="Legal ownership percent" type="number" min="0" max="100" step="any" required value="{{ i.ownership_fraction * 100 }}"></td>
+        <td><input data-f4-field="commitment_keur" aria-label="Commitment kEUR" type="number" min="0" step="any" required value="{{ i.commitment_keur }}"></td>
+        <td><button type="button" data-f4-remove title="Remove investor" aria-label="Remove investor">&times;</button></td></tr>
+      {% endfor %}
+    </tbody></table></div>
+    <button type="button" data-f4-add="investor">Add investor</button>
+    <h4>Actual paid-in capital</h4>
+    <p>Contractual commitments remain separate from actual paid-in cash. Run requires exact-date reconciliation to canonical legal-equity funding.</p>
+    <div class="f4-scroll"><table class="f4-table"><thead><tr><th>Investor ID</th><th>Cash date</th><th>Paid-in kEUR</th><th></th></tr></thead><tbody data-f4-contributions>
+      {% for c in (f4.terms.contributions if f4.terms else ()) %}
+      <tr data-f4-contribution><td><input data-f4-field="investor_id" aria-label="Contribution investor ID" required value="{{ c.investor_id }}"></td>
+        <td><input data-f4-field="cash_date" aria-label="Contribution date" type="date" required value="{{ c.cash_date }}"></td>
+        <td><input data-f4-field="amount_keur" aria-label="Paid-in kEUR" type="number" min="0" step="any" required value="{{ c.amount_keur }}"></td>
+        <td><button type="button" data-f4-remove title="Remove contribution" aria-label="Remove contribution">&times;</button></td></tr>
+      {% endfor %}
+    </tbody></table></div>
+    <button type="button" data-f4-add="contribution">Add contribution</button>
+    <div class="f4-actions"><button type="submit" name="action" value="save">Save agreement</button>
+      {% if f4.terms %}<button type="submit" name="action" value="remove" formnovalidate>Remove working agreement</button>{% endif %}
+      <button type="button" hx-get="/v2/workbook/investor/agreement?project={{ f4.project_code | urlencode }}" hx-target="#f4-investor-workspace" hx-swap="outerHTML">Reload agreement</button>
+    </div><p data-f4-error role="alert" hidden></p>
+    <template data-f4-template="investor"><tr data-f4-investor>
+      <td><input data-f4-field="investor_id" aria-label="Investor ID" required maxlength="128"></td>
+      <td><input data-f4-field="ownership_fraction" aria-label="Legal ownership percent" type="number" min="0" max="100" step="any" required></td>
+      <td><input data-f4-field="commitment_keur" aria-label="Commitment kEUR" type="number" min="0" step="any" required></td>
+      <td><button type="button" data-f4-remove title="Remove investor" aria-label="Remove investor">&times;</button></td>
+    </tr></template>
+    <template data-f4-template="contribution"><tr data-f4-contribution>
+      <td><input data-f4-field="investor_id" aria-label="Contribution investor ID" required maxlength="128"></td>
+      <td><input data-f4-field="cash_date" aria-label="Contribution date" type="date" required></td>
+      <td><input data-f4-field="amount_keur" aria-label="Paid-in kEUR" type="number" min="0" step="any" required></td>
+      <td><button type="button" data-f4-remove title="Remove contribution" aria-label="Remove contribution">&times;</button></td>
+    </tr></template>
+  </form>
+  {% else %}<p>Read-only {{ 'immutable historical Run' if f4.history_id else 'protected reference' }}.</p>{% endif %}
+  {% if f4.funding and not f4.history_id %}
+  <details><summary>Last Run actual equity funding</summary><div class="f4-scroll"><table class="f4-table"><thead><tr><th>Exact cash date</th><th>Paid-in kEUR</th></tr></thead><tbody>
+    {% for row in f4.funding %}<tr><td>{{ row.date }}</td><td>{{ money(row.paid_in_keur) }}</td></tr>{% endfor %}
+  </tbody></table></div></details>
+  {% endif %}
+  <h4>{{ 'Historical' if f4.history_id else 'Last Run' }} investor evidence</h4>
+  {% if f4.evidence %}
+    <p data-testid="f4-run-binding">Run {{ f4.snapshot_id }} &middot; Agreement {{ f4.evidence.agreement.agreement_id }} v{{ f4.evidence.agreement.version }} &middot; EUR / kEUR</p>
+    <p>Net legal-equity receipts after canonical distribution gates, SHL treatment and dividend WHT. No SHL receipts are allocated here.</p>
+    <a href="/v2/workbook/investor/export?project={{ f4.project_code | urlencode }}{% if f4.history_id %}&amp;history_id={{ f4.history_id | urlencode }}{% endif %}">Export Run-bound investor workbook</a>
+    <div class="f4-scroll"><table class="f4-table" data-testid="f4-capital-accounts"><thead><tr>
+      <th>Investor</th><th>Ownership</th><th>Paid-in kEUR</th><th>Uncalled kEUR</th><th>ROC kEUR</th><th>Residual cash kEUR</th><th>Unreturned paid-in kEUR</th><th>DPI / realized MOIC</th><th>XIRR</th>
+    </tr></thead><tbody>{% for i in f4.evidence.investors %}<tr><td>{{ i.investor_id }}</td><td>{{ "{:.2f}%".format(i.ownership_fraction * 100) }}</td>
+      <td>{{ money(i.total_paid_in_keur) }}</td><td>{{ money(i.uncalled_capital_keur) }}</td><td>{{ money(i.returned_capital_keur) }}</td><td>{{ money(i.residual_distributions_keur) }}</td><td>{{ money(i.unreturned_paid_in_keur) }}</td>
+      <td>{{ "{:.3f}x".format(i.dpi) if i.dpi is not none else 'UNAVAILABLE' }}</td><td>{{ "{:.2f}%".format(i.xirr * 100) if i.xirr is not none else i.xirr_status }}</td></tr>{% endfor %}</tbody></table></div>
+    <p>Realized MOIC = cumulative net cash distributions / actual paid-in capital; no NAV or total-value multiple. ROC is zero under residual-only terms; residual cash is not relabelled returned capital.</p>
+    {% for i in f4.evidence.investors %}<details><summary>{{ i.investor_id }} &mdash; dated cash events</summary><div class="f4-scroll"><table class="f4-table" data-testid="f4-cash-events"><thead><tr><th>Date</th><th>Paid-in kEUR</th><th>Residual cash kEUR</th><th>Net cash kEUR</th><th>Unreturned paid-in kEUR</th></tr></thead><tbody>
+      {% for e in i.cash_events %}<tr><td>{{ e.date }}</td><td>{{ money(e.contribution_keur) }}</td><td>{{ money(e.residual_distribution_keur) }}</td><td>{{ money(e.net_cashflow_keur) }}</td><td>{{ money(e.unreturned_paid_in_keur) }}</td></tr>{% endfor %}
+    </tbody></table></div></details>{% endfor %}
+  {% else %}<p role="status" data-testid="f4-evidence-unavailable">{{ f4.unavailable }}</p>{% endif %}
+  {% if f4.history %}<details><summary>Immutable investor Run History</summary><ul>
+    <li><a hx-get="/v2/workbook/investor/agreement?project={{ f4.project_code | urlencode }}" hx-target="#f4-investor-workspace" hx-swap="outerHTML" href="/v2/workbook/investor/agreement?project={{ f4.project_code | urlencode }}">Last Run / Working agreement</a></li>
+    {% for run in f4.history %}<li><a hx-get="/v2/workbook/investor/agreement?project={{ f4.project_code | urlencode }}&amp;history_id={{ run.history_id | urlencode }}" hx-target="#f4-investor-workspace" hx-swap="outerHTML" href="/v2/workbook/investor/agreement?project={{ f4.project_code | urlencode }}&amp;history_id={{ run.history_id | urlencode }}">{{ run.ran_at }} &middot; {{ run.active_scenario_name or 'Base' }}</a></li>{% endfor %}
+  </ul></details>{% endif %}
+</section>

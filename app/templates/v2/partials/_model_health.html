@@ -1,3 +1,14 @@
+{# Presentation-only institutional precision; JSON and canonical evidence stay raw. #}
+{% macro number(value, unit='') -%}
+{%- if value is none -%}—{%- elif value is number -%}
+{%- if value == 0 -%}0
+{%- elif value | abs < 0.005 -%}{{ '%.3e' | format(value) }}
+{%- elif unit | lower in ['ratio', 'multiple', 'x', 'times'] -%}{{ '%.3f' | format(value) }}
+{%- else -%}{{ '%.2f' | format(value) }}
+{%- endif -%}
+{%- else -%}{{ value }}
+{%- endif -%}
+{%- endmacro %}
 {% set d = diagnostics if diagnostics is defined else none %}
 <div id="v2-model-health" class="md-health" role="region" aria-label="Model Health" data-state="{{ d.state if d else 'NOT_RUN' }}">
   <header><h2>Model Health</h2><button type="button" data-nav-tab="tab-diagnostics">View Model Diagnostics →</button></header>
@@ -13,7 +24,7 @@
   <dl class="md-health-facts">
     <div><dt>Run Integrity</dt><dd>{{ d.integrity.overall }}</dd></div>
     <div><dt>Quality advisory score</dt><dd>{{ d.score.score_display or 'NOT SCORED' }}</dd></div>
-    <div><dt>Weighted evidence coverage</dt><dd>{{ d.score.coverage_weighted_pct }}%</dd></div>
+    <div><dt>Weighted evidence coverage</dt><dd>{{ number(d.score.coverage_weighted_pct, '%') }}%</dd></div>
     <div><dt>Blocking findings</dt><dd>{{ d.blocking_count }}</dd></div>
   </dl>
   <p data-md-counts>{{ d.score.counts.fail }} FAIL · {{ d.score.counts.warning }} WARNING · {{ d.score.counts.pass }} PASS · {{ d.score.counts.unavailable }} UNAVAILABLE · {{ d.score.counts.not_applicable }} NOT_APPLICABLE</p>

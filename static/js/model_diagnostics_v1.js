@@ -19,6 +19,22 @@
     r.querySelectorAll('[data-md-group]').forEach(function (group) { group.hidden = !group.querySelector('[data-md-row]:not([hidden])'); });
     r.querySelector('[data-md-filter-count]').textContent = count + ' checks shown';
   }
+  // Display-only formatting. Never mutate the original JSON evidence in payload().
+  function displayNumber(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 'UNAVAILABLE';
+    if (value === 0) return '0';
+    if (Math.abs(value) < 0.005) return value.toExponential(3);
+    return value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+  function displayFact(value) {
+    return typeof value === 'number' ? displayNumber(value) :
+      value === null || value === undefined ? 'UNAVAILABLE' : String(value);
+  }
+  function displayObject(value) {
+    return JSON.stringify(value, function (_key, nested) {
+      return typeof nested === 'number' ? displayNumber(nested) : nested;
+    });
+  }
   function show(id, period) {
     var r = root(), data = payload(); if (!data) return;
     var check = data.checks.find(function (c) { return c.check_id === id; }); if (!check) return;
@@ -27,7 +43,7 @@
     detail.querySelector('[data-md-detail-title]').textContent = check.check_id + ' · ' + check.title;
     function fact(key, value) {
       var dt = document.createElement('dt'), dd = document.createElement('dd');
-      dt.textContent = key; dd.textContent = value === null || value === undefined ? 'UNAVAILABLE' : String(value);
+      dt.textContent = key; dd.textContent = displayFact(value);
       facts.append(dt, dd);
     }
     fact('Category / class', check.category + ' / ' + check.check_class);
@@ -37,7 +53,7 @@
     fact('Snapshot', data.identity.snapshot_id); fact('Run time', data.identity.run_at);
     fact('Composite hash', data.identity.composite_hash); fact('Engine', data.identity.engine_version);
     fact('Measured / residual', check.measured_value); fact('Threshold / tolerance', check.threshold_value);
-    if (check.global_component) fact('Global / boundary component', JSON.stringify(check.global_component));
+    if (check.global_component) fact('Global / boundary component', displayObject(check.global_component));
     var selected = check.periods.find(function (p) { return String(p.period_index) === String(period); });
     if (selected) {
       fact('Period', 'P' + selected.period_index + ' · ' + (selected.date || 'DATE_UNAVAILABLE'));
