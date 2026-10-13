@@ -17,14 +17,14 @@ SELECTIONS = {
     "protocol": ["tests/test_ui_protocol_shell.py", "tests/test_protocol_roadmap_browser.py",
                  "tests/test_crypto_navigation_browser.py", "tests/test_ev_charging_browser.py",
                  "tests/test_yield_browser.py", "-k", "not test_api_b04_placeholders_not_links"],
-    "import": ["tests/test_model_ai_import_browser_c.py"],
+    "import": ["tests/test_model_ai_import_browser_c.py", "tests/test_model_import_v2_browser.py"],
     "grid": ["tests/test_model_hybrid_inputs_grid_routes.py", "tests/test_model_hybrid_inputs_grid_browser.py"],
     "q4": ["tests/test_model_q4_browser.py"],
     "consolidation": ["tests/test_model_workspace_consolidation_browser.py"],
 }
 REQUIRED = {
     "protocol": ["artifacts/reference-driven-correction-a/*.png"],
-    "import": ["artifacts/model-ai-import/*.png"],
+    "import": ["artifacts/model-ai-import/*.png", "artifacts/model-import-v2/*.png"],
     "grid": ["artifacts/wf05/*.png", "artifacts/wf05/timings.json"],
     "q4": ["artifacts/model-q4-browser/*.png"],
     "consolidation": ["artifacts/workspace-consolidation/prb-*.png"],
@@ -76,6 +76,52 @@ def _check_png(path: Path, width: int) -> None:
                 raise EvidenceError(f"Incomplete consolidation screenshot: {path.name}")
             return
     raise EvidenceError(f"Missing consolidation screenshot end: {path.name}")
+
+
+# Import V2 (PR #266): the V2 Chromium module is a mandatory part of the existing `import` role.
+IMPORT_C_MODULE = "tests/test_model_ai_import_browser_c.py"
+IMPORT_V2_MODULE = "tests/test_model_import_v2_browser.py"
+IMPORT_V2_KINDS = ("solar", "wind", "data_center", "ev_charging")
+IMPORT_V2_NODES = tuple(f"{IMPORT_V2_MODULE}::test_intelligent_import_end_to_end[{kind}]" for kind in IMPORT_V2_KINDS) + (
+    f"{IMPORT_V2_MODULE}::test_mobile_layout_has_no_page_overflow_and_keeps_bulk_controls",
+    f"{IMPORT_V2_MODULE}::test_user_unit_correction_is_shown_as_user_reviewed_from_review_to_result",
+)
+IMPORT_V2_SCREENSHOTS = tuple(
+    (f"{kind}-{name}.png", 1440) for kind in IMPORT_V2_KINDS
+    for name in ("01-review-desktop", "02-confirm", "03-applied-stale")
+) + (("solar-04-review-mobile.png", 390), ("solar-05-unit-correction-confirm.png", 1440),
+     ("solar-06-unit-correction-result.png", 1440))
+
+
+def validate_import(folder: Path, inventory: dict, process: dict) -> None:
+    """Fail closed unless BOTH import suites ran: the original C nodes and every required V2 Chromium node/capture."""
+    selected, outcomes = inventory.get("selected", []), inventory.get("outcomes", {})
+    for node in IMPORT_V2_NODES:
+        if node not in selected or node not in inventory.get("collected", []):
+            raise EvidenceError(f"Import V2 node not collected: {node}")
+        if outcomes.get(node, {}).get("status") != "passed":
+            raise EvidenceError(f"Import V2 node failed/skipped/xfail/not executed: {node}")
+    if len(set(selected)) != len(selected):
+        raise EvidenceError("Duplicate import node in selection")
+    c_nodes = [node for node in selected if node.startswith(IMPORT_C_MODULE + "::")]
+    if not c_nodes or any(outcomes.get(node, {}).get("status") != "passed" for node in c_nodes):
+        raise EvidenceError("Original Import C browser suite did not execute and pass")
+    junit = folder / "results.xml"
+    if not junit.is_file() or hashlib.sha256(junit.read_bytes()).hexdigest() != process.get("junit_sha256"):
+        raise EvidenceError("Missing/changed import JUnit")
+    executed = {}
+    for case in ET.parse(junit).getroot().iter("testcase"):
+        node = case.get("classname", "").replace(".", "/") + ".py::" + case.get("name", "")
+        executed[node] = not list(case)                     # any failure/error/skip/xfail child makes it not a clean pass
+    for node in IMPORT_V2_NODES:
+        if executed.get(node) is not True:
+            raise EvidenceError(f"Import V2 JUnit lacks a clean pass for {node}")
+    evidence = folder / "model-import-v2"
+    for name, width in IMPORT_V2_SCREENSHOTS:
+        shot = evidence / name
+        if not shot.is_file():
+            raise EvidenceError(f"Missing Import V2 screenshot: {name}")
+        _check_png(shot, width)
 
 
 def validate_consolidation(folder: Path, inventory: dict, process: dict) -> None:
@@ -151,6 +197,8 @@ def validate_browser_records(root, expected, tree, job_result, prefix="browser")
                 raise EvidenceError("Missing/changed browser JUnit")
             if role == "consolidation":
                 validate_consolidation(folder, inventory, process)
+            if role == "import":
+                validate_import(folder, inventory, process)
         proof[role] = process
     return {"head": expected, "tree": tree, "mandatory_roles": proof,
             "optional_f3": "Separately reported; not counted as mandatory success"}
@@ -174,7 +222,7 @@ def main():
             proof["merge_integration"] = validate_browser_records(args.artifacts, args.merge_sha, merge_tree, args.merge_result, "merge-browser")
         write_json("artifacts/browser-proof.json", proof)
         return 0
-    for folder in ("artifacts/model-ai-import", "artifacts/wf05", "artifacts/model-q4-browser"):
+    for folder in ("artifacts/model-ai-import", "artifacts/model-import-v2", "artifacts/wf05", "artifacts/model-q4-browser"):
         Path(folder).mkdir(parents=True, exist_ok=True)
     if args.role == "protocol":
         os.environ["FINCO_VISUAL_CAPTURE"] = "1"
@@ -196,6 +244,9 @@ def main():
         if args.role == "consolidation":
             validate_consolidation(Path("artifacts"), json.loads(Path("artifacts/inventory.json").read_text()),
                                    json.loads(Path("artifacts/process.json").read_text()))
+        if args.role == "import":
+            validate_import(Path("artifacts"), json.loads(Path("artifacts/inventory.json").read_text()),
+                            json.loads(Path("artifacts/process.json").read_text()))
         write_json("artifacts/manifest.json", manifest(args.role))
     return code
 

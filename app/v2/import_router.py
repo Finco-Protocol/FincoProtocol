@@ -17,6 +17,7 @@ from app.auth import (
     generate_csrf_token, resolve_request_session, validate_csrf_token,
 )
 from app.model_import.intake import MAX_UPLOAD_BYTES, IntakeError, extract_proposals
+from app.model_import.mapping import STRUCTURED_FIELD_OWNERS
 from app.persistence.projects_repository import resolve_accessible_project
 from app.persistence.workspace_repository import get_workspace_state
 from app.services.project_library_service import is_protected_reference
@@ -34,6 +35,8 @@ _templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] /
 def _field_options(project) -> list[dict]:
     options = []
     for spec in WORKBOOK.all_fields():
+        if spec.field_id in STRUCTURED_FIELD_OWNERS:
+            continue            # structured documents keep their own writers (Revenue contracts / Financing)
         if (spec.binding_status != BindingStatus.BOUND
                 or spec.kind != FieldKind.INPUT
                 or spec.source_of_truth != SourceOfTruth.INPUT_SET
@@ -66,7 +69,14 @@ def _context(request, user, project, ws, *, stage, proposals=None, error=None,
             check = WorkbookUpdateService.validate_field_update(q["field_id"], q["normalized_value"])
             if check.is_valid and check.typed_value == q["current_value"]:
                 q["status"] = "unchanged"
+        # Bulk selection is limited to rows that validated independently: a mapped, normalised, non-duplicate,
+        # non-ambiguous target with no outstanding reason.  Everything else needs a deliberate per-row choice.
+        q["bulk_selectable"] = bool(
+            q.get("field_id") and q.get("normalized_value") is not None and q["status"] in ("ready", "needs_review")
+            and not q.get("duplicate_target") and "ambiguous" not in q.get("mapping_method", "")
+            and q.get("reason") in (None, "") and q.get("confidence_class") in ("exact", "exact_label", "high", "medium"))
         rows.append(q)
+    queue = lambda p: p["status"] in ("unsupported", "unsupported_for_apply", "invalid") or p.get("duplicate_target") or "ambiguous" in p.get("mapping_method", "")  # noqa: E731
     return {
         "request": request, "user": user,
         "project": project, "project_code": project.project_code,
@@ -75,6 +85,11 @@ def _context(request, user, project, ws, *, stage, proposals=None, error=None,
         "totals": dict(Counter(r["status"] for r in rows)) if rows else (totals or {}),
         "exact_count": sum(p["mapping_method"] == "exact_field_id" for p in proposals or []),
         "ambiguous_count": sum("ambiguous" in p["mapping_method"] or p["reason"] == "IMPORT_DUPLICATE_TARGET_REQUIRES_REVIEW" for p in proposals or []),
+        "categories": [c for c in ("CAPEX", "OPEX", "REVENUE", "FINANCING", "TAX", "GENERAL", "UNMAPPED")
+                       if any(r.get("category") == c for r in rows)],
+        "category_counts": dict(Counter(r.get("category") for r in rows)),
+        "bulk_selectable_count": sum(r["bulk_selectable"] for r in rows),
+        "attention_count": sum(bool(queue(r)) for r in rows),
         "digest": digest or "",
         "content_hash": identity.composite_hash,
         "workbook_version": WORKBOOK.version,
@@ -212,6 +227,7 @@ async def model_input_import_confirm(
         ctx = _context(request, user, record, ws, stage="confirm")
         ctx["approved"] = approved
         ctx["approved_ticket"] = seal_approved(preview, approved)
+        ctx["unchecked_count"] = max(0, len(preview["rows"]) - len(approved))
         ctx["approved_count"] = len(approved)
         ctx["changed_count"] = sum(bool(r["changed"]) for r in approved)
         return _templates.TemplateResponse(
@@ -280,6 +296,16 @@ async def model_input_import_apply(
         saved = [{
             "field_id": item["field_id"],
             "source": f'{item["sheet"]}!{item["cell"]}',
+            "label": item.get("label"), "original_value": item.get("original_value"),
+            "source_unit": item.get("source_unit"), "normalization": item.get("normalization"),
+            "extracted_unit": item.get("extracted_unit"), "chosen_unit": item.get("chosen_unit"),
+            "canonical_unit": item.get("canonical_unit"), "unit_corrected": item.get("unit_corrected"),
+            "field_remapped": item.get("field_remapped"), "value_overridden": item.get("value_overridden"),
+            "suggested_field_id": item.get("suggested_field_id"), "corrections": item.get("corrections") or [],
+            "correction_note": item.get("correction_note"), "mapping_origin": item.get("mapping_origin"),
+            "previous_value": before_pis.get(item["field_id"]),
+            "method": item.get("method"), "confidence_class": item.get("confidence_class"),
+            "explanation": item.get("explanation") or [],
             "actual_value": pis.get(item["field_id"]),
             "approved_value": item["value"],
         } for item in approved]
@@ -291,6 +317,11 @@ async def model_input_import_apply(
         )
         ctx["skipped_count"] = max(0, int(signed.get("source_count", len(saved))) - len(saved))
         ctx["freshness_state"] = freshness.state.value
+        # Provenance of the transaction: who approved what, when, and the new canonical identity it produced.
+        # Diagnostic only: nothing from the uploaded workbook is persisted by this route.
+        ctx["approval_event"] = signed.get("approval_event")
+        ctx["approved_at"] = signed.get("approved_at")
+        ctx["transaction_identity"] = identity.composite_hash
         return _templates.TemplateResponse(
             request=request, name="import_review.html", context=ctx)
     except (ImportReviewError, BatchApplyError, FieldValidationError,

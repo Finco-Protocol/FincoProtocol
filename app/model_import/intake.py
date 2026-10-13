@@ -22,6 +22,9 @@ from app.workbook.specs import FieldType
 from app.workbook.update_service import (
     BatchApplyError, WorkbookUpdateService, _assert_batch_field_applicable,
 )
+from app.model_import.mapping import (
+    NumberFormatError, UNSUPPORTED_FOR_APPLY, classify_cell, parse_localized_number, source_unit_from_label,
+)
 from app.v2.register_path_map import register_path_for_field
 
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
@@ -59,10 +62,20 @@ def _csv_rows(data: bytes, *, encoding: str, start: float):
         text = data.decode(encoding, errors="strict")
     except UnicodeDecodeError as exc:
         raise IntakeError("IMPORT_CSV_DECODING_FAILED") from exc
-    try:
-        delimiter = csv.Sniffer().sniff(text[:3072], delimiters=",;\t").delimiter
-    except csv.Error:
-        delimiter = ","
+    delimiter = None
+    lines = [ln for ln in text.splitlines()[:60] if ln.strip()]
+    # The structural delimiter is the one present on most lines.  ';' and TAB are tried before ',' because
+    # ',' is also the European decimal mark inside values (single-cell block headers are ignored).
+    for candidate in (";", "\t", ","):
+        with_delimiter = sum(candidate in ln for ln in lines)
+        if lines and with_delimiter * 2 >= len(lines):
+            delimiter = candidate
+            break
+    if delimiter is None:
+        try:
+            delimiter = csv.Sniffer().sniff(text[:3072], delimiters=",;\t").delimiter
+        except csv.Error:
+            delimiter = ","
     rows = []
     total_cells = 0
     try:
@@ -189,19 +202,17 @@ def _numeric(value: object) -> Decimal:
         except InvalidOperation as exc:
             raise IntakeError("IMPORT_VALUE_INVALID") from exc
     else:
-        text = str(value).strip().replace("\u00a0", "")
+        text = str(value).strip().replace("\u00a0", " ")
         if text.startswith("="):
             raise IntakeError("IMPORT_FORMULA_NOT_AUTHORITATIVE")
         if text.endswith("%"):
             text = text[:-1].strip()
-        # No locale guessing: comma-only decimals and grouped numerals
-        # remain unresolved until the user supplies an unambiguous value.
-        if "," in text or " " in text:
-            raise IntakeError("IMPORT_NUMBER_FORMAT_AMBIGUOUS")
+        # Deterministic, never guessed: unambiguous European/US notations are read; an ambiguous
+        # single separator ("1,234") or malformed grouping stays unresolved for the user.
         try:
-            n = Decimal(text)
-        except InvalidOperation as exc:
-            raise IntakeError("IMPORT_VALUE_INVALID") from exc
+            n = parse_localized_number(text)
+        except NumberFormatError as exc:
+            raise IntakeError(exc.code) from exc
     if not n.is_finite():
         raise IntakeError("IMPORT_VALUE_NON_FINITE")
     return n
@@ -278,7 +289,12 @@ def normalize_value(field_id: str, value: object, source_unit: str | None) -> st
             FieldType.FLOAT: {target} if target else {"", "ratio"},
         }
         accepted = numeric_aliases.get(spec.field_type, {target} if target else {""})
-        if unit and unit not in accepted:
+        if spec.field_type == FieldType.MW and unit in ("kw", "gw"):
+            amount = amount / 1000 if unit == "kw" else amount * 1000
+        elif spec.field_type == FieldType.FLOAT and target in ("eur/mwh", "eur/kwh") and unit in (
+                "eur/mwh", "eur/kwh") and unit != target:
+            amount = amount * 1000 if target == "eur/mwh" else amount / 1000
+        elif unit and unit not in accepted:
             raise IntakeError("IMPORT_UNIT_INCOMPATIBLE")
     # Strict integer enforcement is delegated to canonical Workbook validator.
     return format(amount, "f")
@@ -291,6 +307,7 @@ def _tabular_candidates(tables: list[tuple[str, list]], *, start: float):
         if len(sheet_name) > 120:
             raise IntakeError("IMPORT_SHEET_NAME_TOO_LONG")
         header = None
+        section = ""
         for r, cells in enumerate(rows, 1):
             _check_time(start)
             if not cells or all(v is None or str(v).strip() == "" for v, _, _ in cells):
@@ -309,17 +326,23 @@ def _tabular_candidates(tables: list[tuple[str, list]], *, start: float):
                           vals.index("unit") if "unit" in vals else None)
                 continue
             li, vi, ui = header if header is not None else (0, 1, 2 if len(cells) > 2 else None)
+            if len(cells) == 1 and cells[0][0] is not None and str(cells[0][0]).strip():
+                section = str(cells[0][0]).strip()[:120]    # a one-cell row names the block that follows
+                continue
             if max(li, vi) >= len(cells):
                 continue
             label, _, label_cell = cells[li]
             value, fmt_unit, value_cell = cells[vi]
+            if label is not None and str(label).strip() and (value is None or not str(value).strip()):
+                section = str(label).strip()[:120]      # a label-only row names the block that follows
+                continue
             if label is None or value is None or not str(label).strip() or not str(value).strip():
                 continue
             explicit_unit = None
             if ui is not None and ui < len(cells):
                 explicit_unit = str(cells[ui][0]).strip() if cells[ui][0] is not None else None
             extracted.append({
-                "sheet": sheet_name, "source_cell": value_cell,
+                "sheet": sheet_name, "section": section, "source_cell": value_cell,
                 "source_label_cell": label_cell,
                 "label": str(label).strip()[:300],
                 "value": str(value)[:300] if not isinstance(value, (date, datetime)) else value.isoformat(),
@@ -353,9 +376,13 @@ def extract_proposals(data: bytes, filename: str, *,
     proposals = []
     for index, source in enumerate(cells):
         label = source["label"]
+        label_unit, bare_label = source_unit_from_label(label)
+        effective_unit = source["unit"] or label_unit
+        unit_origin = ("column_or_format" if source["unit"] else "label_text" if label_unit else None)
         method = "unmapped"
         field_id = None
-        hits = names.get(_label_key(label), [])
+        hits = names.get(_label_key(label), []) or names.get(_label_key(bare_label), [])
+        info = None
         if label in specs:
             field_id = label
             method = "exact_field_id"
@@ -364,6 +391,12 @@ def extract_proposals(data: bytes, filename: str, *,
             method = "unique_exact_registry_label"
         elif len(hits) > 1:
             method = "ambiguous_exact_registry_label"
+        elif not source["formula"]:
+            info = classify_cell(label=label, unit=effective_unit, sheet=source["sheet"], section=source.get("section", ""),
+                                 project_type=project_type, template_source=template_source)
+            if info["target_kind"] == "SCALAR":
+                field_id = info["suggestion"]["field_id"]
+                method = "ranked_candidate"
         normalized = None
         reason = None
         status = "unsupported" if field_id is None else "needs_review"
@@ -376,7 +409,7 @@ def extract_proposals(data: bytes, filename: str, *,
                     field_id, project_type=project_type,
                     template_source=template_source,
                 )
-                normalized = normalize_value(field_id, source["raw"], source["unit"])
+                normalized = normalize_value(field_id, source["raw"], effective_unit)
                 val = WorkbookUpdateService.validate_field_update(field_id, normalized)
                 if not val.is_valid:
                     status, reason = "invalid", str(val.error)
@@ -386,17 +419,42 @@ def extract_proposals(data: bytes, filename: str, *,
                 status = "invalid" if not isinstance(exc, BatchApplyError) else "unsupported"
                 reason = getattr(exc, "code", str(exc))
         if field_id is None and reason is None:
-            reason = ("IMPORT_MAPPING_AMBIGUOUS" if hits else "IMPORT_UNSUPPORTED_LABEL")
+            if info is not None and info["apply_support"] == UNSUPPORTED_FOR_APPLY:
+                status, reason = "unsupported_for_apply", UNSUPPORTED_FOR_APPLY
+            else:
+                reason = ("IMPORT_MAPPING_AMBIGUOUS" if hits or (info and info["ambiguous"]) else "IMPORT_UNSUPPORTED_LABEL")
+        if info is None and field_id:
+            spec_category = specs[field_id].sheet_id if field_id in specs else None
+            from app.model_import.mapping import CATEGORY_BY_SHEET
+            info = {"target_kind": "SCALAR", "category": CATEGORY_BY_SHEET.get(spec_category, "GENERAL"),
+                    "suggestion": None, "alternatives": [], "ambiguous": False, "apply_support": "APPLYABLE"}
+        suggestion = (info or {}).get("suggestion") or {}
+        confidence_class = ("exact" if method == "exact_field_id" else
+                            "exact_label" if method == "unique_exact_registry_label" else
+                            suggestion.get("confidence", "none") if method == "ranked_candidate" else "none")
+        explanation = (["field id matches exactly"] if method == "exact_field_id" else
+                       ["unique exact registry label match"] if method == "unique_exact_registry_label" else
+                       list(suggestion.get("explanation", ())))
+        recognized = ({"field_id": suggestion.get("field_id"), "label": suggestion.get("label")}
+                      if field_id is None and suggestion.get("field_id") else None)
         proposals.append({
-            "id": index, "sheet": source["sheet"],
+            "id": index, "sheet": source["sheet"], "section": source.get("section", ""),
             "source_cell": source["source_cell"],
             "label_cell": source["source_label_cell"],
             "label": label, "original_value": source["value"],
-            "source_unit": source["unit"], "field_id": field_id,
+            "source_unit": effective_unit, "unit_origin": unit_origin, "field_id": field_id,
             "register_path": register_path_for_field(field_id) if field_id else None,
             "normalized_value": normalized, "mapping_method": method,
             "confidence": "exact" if method == "exact_field_id" else (
-                "proposed" if method == "unique_exact_registry_label" else "unresolved"),
+                "proposed" if method in ("unique_exact_registry_label", "ranked_candidate") else "unresolved"),
+            "confidence_class": confidence_class, "explanation": explanation,
+            "category": (info or {}).get("category", "UNMAPPED"),
+            "target_kind": (info or {}).get("target_kind", "UNSUPPORTED"),
+            "apply_support": (info or {}).get("apply_support", "NONE"),
+            "owner_editor": suggestion.get("owner") if method != "ranked_candidate" else None,
+            "recognized_target": recognized,
+            "alternatives": [a for a in (info or {}).get("alternatives", []) if a["field_id"] != field_id],
+            "duplicate_target": False,
             "status": status, "reason": reason,
         })
     counts = Counter(p["field_id"] for p in proposals if p["field_id"])
@@ -404,6 +462,7 @@ def extract_proposals(data: bytes, filename: str, *,
         if p["field_id"] and counts[p["field_id"]] > 1:
             p["status"] = "needs_review"
             p["reason"] = "IMPORT_DUPLICATE_TARGET_REQUIRES_REVIEW"
+            p["duplicate_target"] = True
     return {
         "filename": name, "format": ext[1:], "source_sheets": len(tables),
         "detected": len(proposals), "proposals": proposals,
