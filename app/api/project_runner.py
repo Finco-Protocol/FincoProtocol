@@ -160,7 +160,8 @@ def _sanitize_df(df):
 
 
 def run_project(project_type: str, scenario: str, period_view: str = "Semiannual",
-               project_inputs_override=None, use_dualrun_validation: bool = False):
+               project_inputs_override=None, use_dualrun_validation: bool = False,
+               investor_evidence_requested: bool = False):
     """Phase B4 production run — ONE clean financial engine, no legacy switch.
 
     resolve typed inputs → classify clean production authority → one clean
@@ -172,11 +173,13 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
     return _run_project_impl(
         project_type, scenario, period_view, project_inputs_override,
         use_dualrun_validation,
+        investor_evidence_requested,
     )
 
 
 def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semiannual",
-                      project_inputs_override=None, use_dualrun_validation: bool = False):
+                      project_inputs_override=None, use_dualrun_validation: bool = False,
+                      investor_evidence_requested: bool = False):
     # ── Phase B4: single production financial authority, clean-only ──────────
     #   CLEAN_PRODUCTION_READY → ONE clean G2C calculation + read-only adapter
     #                            (no legacy waterfall, no legacy sponsor engine);
@@ -397,6 +400,10 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         build_clean_sponsor_schedule,
     )
     sponsor_schedule_payload = build_clean_sponsor_schedule(clean_run)
+    investor_receipts = None
+    if investor_evidence_requested:
+        from app.model_v2.investor_f4 import extract_equity_receipts
+        investor_receipts = extract_equity_receipts(clean_run.g2c_result)
 
     payload = {
         "project_type": project_type,
@@ -454,6 +461,8 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             "returns": returns.to_dict(orient="records"),
         }
     }
+    if investor_receipts is not None:
+        payload["investor_equity_receipts"] = investor_receipts
     if getattr(demo.project_inputs.revenue, "multistream_config_json", ""):
         import json
         provenance = clean_run.g2c_result.financing_result.project_model_result.provenance

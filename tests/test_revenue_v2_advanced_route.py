@@ -88,7 +88,15 @@ def test_successful_readonly_stress_preserves_working_copy_history_and_scenario(
     from app.persistence.workspace_repository import get_workspace_state
     from app.persistence.run_history_repository import get_run_history
     from app.persistence.scenarios_repository import get_scenario
+    from app.persistence.records import ScenarioRecord
     from app.workbook.service import WorkbookService
+
+    def persisted_scenario_snapshot(record):
+        """Value snapshot of every persisted ScenarioRecord slot, not object identity."""
+        assert isinstance(record, ScenarioRecord)
+        slots = ScenarioRecord.__slots__
+        assert len(slots) == 19 and len(set(slots)) == len(slots)
+        return {name: deepcopy(getattr(record, name)) for name in slots}
 
     owner = "decision-user"
     record = env.create()
@@ -114,7 +122,8 @@ def test_successful_readonly_stress_preserves_working_copy_history_and_scenario(
         assert created.status_code == 200
         active = state().active_scenario_id
         assert active is not None
-        selection_before = deepcopy(get_scenario(scenario_id=active, user_id=owner))
+        selection_before = persisted_scenario_snapshot(
+            get_scenario(scenario_id=active, user_id=owner))
     else:
         selection_before = None
 
@@ -126,8 +135,10 @@ def test_successful_readonly_stress_preserves_working_copy_history_and_scenario(
     assert result.status_code == 200, result.text[:1500]
     assert "revenue-stress-results" in result.text
     assert "Bank-specific case: UNAVAILABLE" in result.text
-    assert state() == original_ws
+    assert state() == original_ws  # Includes Working Copy, Last Run and selected scenario
+    assert state().active_scenario_id == original_ws.active_scenario_id
     assert get_run_history(owner, record.project_id) == original_history
     if selection_before is not None:
-        assert get_scenario(scenario_id=original_ws.active_scenario_id,
-                            user_id=owner) == selection_before
+        persisted_after = persisted_scenario_snapshot(
+            get_scenario(scenario_id=original_ws.active_scenario_id, user_id=owner))
+        assert persisted_after == selection_before  # Every persisted slot, recursively and by value

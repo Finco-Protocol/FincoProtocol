@@ -2920,6 +2920,14 @@ async def v2_workbook_run(
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
     # ── Step 11: run the engine ────────────────────────────────────────────── #
+    from app.model_v2.investor_f4 import EVIDENCE_KEY as f4_evidence_key, parse_terms as parse_f4_terms
+    from app.workbook.investor_agreement_service import effective_raw as f4_effective_raw
+    try:
+        f4_terms = parse_f4_terms(f4_effective_raw(
+            pis_draft.snapshot_origin, sc_rec if active_scenario_id else None))
+    except (ValueError, TypeError) as exc:
+        msg = str(exc)
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
     # P0-A: the calculation runs in the bounded model executor (worker process), never on the
     # event loop. The final CAS (v2_atomic_run_commit, step 12) is unchanged and runs only after
     # the calculation returns, so a stale calculation still fails closed.
@@ -2934,6 +2942,7 @@ async def v2_workbook_run(
             runtime_project_key,
             "Base",  # Contract A: always "Base"; display name must not activate legacy ScenarioManager
             project_inputs_override=override,
+            **({"investor_evidence_requested": True} if f4_terms is not None else {}),
         )
         _stage_mark("model_completed")
     except ModelExecutionBusy:
@@ -2989,6 +2998,18 @@ async def v2_workbook_run(
     # ── Step 12: atomic commit (final CAS + promote + dirty=False) ────────── #
     runtime_snapshot_id = _utc_compact()
     ran_at = datetime.now(timezone.utc)
+    if f4_terms is not None:
+        from app.model_v2.investor_f4 import allocate_run
+        try:
+            _kpis_enriched[f4_evidence_key] = allocate_run(
+                f4_terms, result["investor_equity_receipts"], binding={
+                    "owner_id": workspace_owner, "project_id": project_record.project_id,
+                    "scenario_id": active_scenario_id, "snapshot_id": runtime_snapshot_id,
+                    "composite_hash": content_hash,
+                })
+        except (ValueError, TypeError, KeyError) as exc:
+            msg = f"Investor evidence could not be reconciled: {exc}. No Run was committed."
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
     # F1 Correction A: bind engine-produced finance evidence to the exact
     # successful V2 commit. This same runtime_summary is atomically captured
     # in Last Run and the append-only Run History entry by existing CAS.
@@ -5570,3 +5591,6 @@ router.include_router(q4_router)
 # F3.8 is a read-only owned Run fragment, separate from every Save/Run path.
 from app.v2.financing_trace_router import router as f38_router
 router.include_router(f38_router)
+
+from app.v2.investor_f4_router import router as f4_router
+router.include_router(f4_router)

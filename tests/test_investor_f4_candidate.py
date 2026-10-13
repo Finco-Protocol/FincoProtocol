@@ -179,7 +179,7 @@ def test_only_version_one_and_typed_priorities_supported():
         Entitlements((Priority.RESIDUAL, Priority.RESIDUAL))
 
 
-def test_no_production_imports_or_activation_hook():
+def test_candidate_stays_offline_except_exact_p1_contract_and_adapter_reuse():
     root = Path(__file__).resolve().parents[1]
     candidate = root / "app/model_v2/investor_f4_candidate"
     for path in (root / "app").rglob("*.py"):
@@ -189,7 +189,15 @@ def test_no_production_imports_or_activation_hook():
         for node in ast.walk(tree):
             names = ([node.module or ""] if isinstance(node, ast.ImportFrom)
                      else [n.name for n in node.names] if isinstance(node, ast.Import) else [])
-            assert not any("investor_f4_candidate" in n for n in names), str(path)
+            candidate_imports = [n for n in names if "investor_f4_candidate" in n]
+            if candidate_imports:
+                assert path.relative_to(root).as_posix() == "app/model_v2/investor_f4.py"
+                assert set(candidate_imports) <= {
+                    "app.model_v2.investor_f4_candidate.contracts",
+                    "app.model_v2.investor_f4_candidate.adapter",
+                }
+                assert isinstance(node, ast.ImportFrom)
+                assert all(n.name != "evaluate_candidate" for n in node.names)
     for path in candidate.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         assert not any(isinstance(n, ast.ImportFrom) and (n.module or "").startswith(
