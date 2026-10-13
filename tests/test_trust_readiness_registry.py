@@ -318,7 +318,7 @@ def test_csrf_registry_correction_is_only_the_two_approved_sentences():
     # Preserve the historical CSRF proof; the only subsequent registry change
     # authorized here is the separately reviewed terminal-demo retention policy.
     assert _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py") == original
-    assert _read_current("app/trust_readiness/registry.py").strip() == _demo_retention_registry(original)
+    assert _read_current("app/trust_readiness/registry.py").strip() == _f4_csrf_registry(_demo_retention_registry(original))
 
 
 def test_csrf_exact_content_accepts_only_the_reviewed_snapshot():
@@ -461,7 +461,7 @@ def _current_demo_retention_authorized(changed):
 def test_demo_retention_exception_accepts_only_exact_approved_content():
     assert _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, dict(DEMO_RETENTION_BLOBS), True)
     base = _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py")
-    assert _read_current("app/trust_readiness/registry.py").strip() == _demo_retention_registry(base)
+    assert _read_current("app/trust_readiness/registry.py").strip() == _f4_csrf_registry(_demo_retention_registry(base))
 
 
 @pytest.mark.parametrize("path", DEMO_RETENTION_BLOBS)
@@ -502,6 +502,147 @@ def test_demo_retention_exception_rejects_invalid_base_missing_pin_and_git_failu
     assert not _current_demo_retention_authorized(DEMO_RETENTION_PATHS)
 
 
+# PR #267: only the approved Trust correction may follow the reviewed F4 snapshot.
+# The guard itself is independently reviewed, as in WF-05; payloads are blob-pinned.
+F4_CSRF_MAIN = "b47aa732f567e380cbe4c8e20b6c1a7dc0db9fbf"
+F4_CSRF_REVIEWED_HEAD = "a47b89e678ec05d01edcc01b703bc9fdef9887f4"
+F4_CSRF_BLOBS = {
+    "app/trust_readiness/registry.py": "ea39361e3f48ffe2588e5f451afd405e19a1651f",
+    "docs/readiness/03_known_limitations_and_support_matrix.md": "94a4c85b45e2d35389ef612cfb8ec064dc1352ae",
+    "tests/test_trust_readiness_controls.py": "2b197f7dc99c31a8055e4a617537dc56b13b3a6f",
+}
+F4_CSRF_PATHS = frozenset(F4_CSRF_BLOBS) | {CSRF_GUARD_PATH}
+F4_CSRF_CALL_SITES = frozenset({
+    "main_web.py", "app/v2/import_router.py", "app/v2/grid_router.py",
+    "app/crypto_ui.py", "app/v2/router.py", "app/v2/investor_f4_router.py",
+})
+F4_CSRF_OLD = (
+    "CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes, "
+    "Revenue V2 contract writes and one crypto action."
+)
+F4_CSRF_NEW = (
+    "CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes, "
+    "Revenue V2 contract writes, Investor agreement Save and one crypto action."
+)
+
+
+def _f4_csrf_registry(original):
+    assert original.count(F4_CSRF_OLD) == 1
+    return original.replace(F4_CSRF_OLD, F4_CSRF_NEW, 1)
+
+
+def _f4_csrf_exact_content_authorized(changed, blobs, since_review, checkpoint_valid, call_sites):
+    return (
+        checkpoint_valid
+        and blobs == F4_CSRF_BLOBS
+        and {p for p in changed if _in_trust_scope(p)} == F4_CSRF_PATHS
+        and set(since_review) == F4_CSRF_PATHS
+        and frozenset(call_sites) == F4_CSRF_CALL_SITES
+    )
+
+
+def _current_f4_csrf_authorized(changed):
+    try:
+        _git("merge-base", "--is-ancestor", F4_CSRF_REVIEWED_HEAD, "HEAD")
+        base_valid = (
+            _git("merge-base", "origin/main", "HEAD") == F4_CSRF_MAIN
+            and _git("merge-base", F4_CSRF_MAIN, F4_CSRF_REVIEWED_HEAD) == F4_CSRF_MAIN
+            and all(_git("rev-parse", f"{F4_CSRF_MAIN}:{p}") == DEMO_RETENTION_BLOBS[p]
+                    for p in F4_CSRF_BLOBS)
+        )
+        blobs = {p: _git("hash-object", f"--path={p}", p) for p in F4_CSRF_BLOBS}
+        since_review = _git("diff", "--name-only", F4_CSRF_REVIEWED_HEAD).splitlines()
+        return _f4_csrf_exact_content_authorized(
+            changed, blobs, since_review, base_valid, _csrf_call_sites(),
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+def test_f4_csrf_correction_preserves_historical_content_and_authorities():
+    import ast
+
+    original = _git("show", f"{F4_CSRF_MAIN}:app/trust_readiness/registry.py")
+    assert _read_current("app/trust_readiness/registry.py").strip() == _f4_csrf_registry(original)
+    for path, blob in F4_CSRF_BLOBS.items():
+        assert _git("hash-object", f"--path={path}", path) == blob
+
+    def constants(source):
+        return {node.targets[0].id: ast.dump(node.value)
+                for node in ast.parse(source).body
+                if isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name) and node.targets[0].id.isupper()}
+
+    historical = constants(_git("show", f"{F4_CSRF_MAIN}:{CSRF_GUARD_PATH}"))
+    current = constants(_read_current(CSRF_GUARD_PATH))
+    assert {name: current.get(name) for name in historical} == historical
+
+
+def test_f4_csrf_exception_accepts_only_the_exact_approved_correction():
+    assert _f4_csrf_exact_content_authorized(
+        F4_CSRF_PATHS, dict(F4_CSRF_BLOBS), F4_CSRF_PATHS, True, F4_CSRF_CALL_SITES,
+    )
+
+
+@pytest.mark.parametrize("path", sorted(F4_CSRF_BLOBS))
+def test_f4_csrf_exception_rejects_altered_or_missing_blobs(path):
+    for replacement in ("0" * 40, None):
+        blobs = dict(F4_CSRF_BLOBS)
+        if replacement is None:
+            del blobs[path]
+        else:
+            blobs[path] = replacement
+        assert not _f4_csrf_exact_content_authorized(
+            F4_CSRF_PATHS, blobs, F4_CSRF_PATHS, True, F4_CSRF_CALL_SITES,
+        )
+
+
+@pytest.mark.parametrize("path", sorted(F4_CSRF_PATHS))
+def test_f4_csrf_exception_rejects_incomplete_scope(path):
+    incomplete = F4_CSRF_PATHS - {path}
+    for changed, since_review in ((incomplete, F4_CSRF_PATHS), (F4_CSRF_PATHS, incomplete)):
+        assert not _f4_csrf_exact_content_authorized(
+            changed, dict(F4_CSRF_BLOBS), since_review, True, F4_CSRF_CALL_SITES,
+        )
+
+
+@pytest.mark.parametrize("path", (
+    "app/trust_readiness/projection.py", "app/templates/trust/readiness.html",
+    "docs/readiness/07_authentication_and_tenant_audit.md", "tools/render_readiness_docs.py",
+    "tests/test_trust_readiness_claims.py", "static/trust_readiness.css",
+    "financial_engine/orchestrator.py", "finco_core/inputs/_models.py", "domain/tax.py",
+    "tests/model_v2_governance.py", "tests/test_wf07_revenue_governance.py",
+    "app/workbook/update_service.py", "app/persistence/run_history_repository.py",
+    "app/v2/investor_f4_router.py", "app/v2/router.py", "app/auth.py",
+    "app/services/export_service.py", ".github/workflows/public_safety_and_smoke.yml",
+    "tests/test_investor_f4_workspace.py", "unrelated.py",
+))
+def test_f4_csrf_exception_rejects_any_additional_change(path):
+    broader = F4_CSRF_PATHS | {path}
+    assert not _f4_csrf_exact_content_authorized(
+        broader, dict(F4_CSRF_BLOBS), broader, True, F4_CSRF_CALL_SITES,
+    )
+
+
+def test_f4_csrf_exception_rejects_invalid_checkpoint_and_validator_inventory():
+    assert not _f4_csrf_exact_content_authorized(
+        F4_CSRF_PATHS, dict(F4_CSRF_BLOBS), F4_CSRF_PATHS, False, F4_CSRF_CALL_SITES,
+    )
+    for sites in (F4_CSRF_CALL_SITES - {"app/v2/investor_f4_router.py"},
+                  F4_CSRF_CALL_SITES | {"app/v2/unreviewed.py"}):
+        assert not _f4_csrf_exact_content_authorized(
+            F4_CSRF_PATHS, dict(F4_CSRF_BLOBS), F4_CSRF_PATHS, True, sites,
+        )
+
+
+def test_f4_csrf_exception_git_failure_is_not_authorization(monkeypatch):
+    def unavailable(*args):
+        raise subprocess.CalledProcessError(1, ["git", *args])
+
+    monkeypatch.setattr(__import__(__name__, fromlist=["_git"]), "_git", unavailable)
+    assert not _current_f4_csrf_authorized(F4_CSRF_PATHS)
+
+
 def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
     try:
         from finance_integrity_governance import changed_paths_vs_main
@@ -509,9 +650,13 @@ def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
         changed = changed_paths_vs_main()
         read_base = _git_base_reader()
     except Exception as exc:  # no git history or no origin/main in this checkout
+        if F4_CSRF_NEW in _read_current("app/trust_readiness/registry.py"):
+            pytest.fail(f"F4 CSRF correction requires valid Git provenance: {exc}")
         pytest.skip(f"cannot compute the diff against main: {exc}")
     if not any(p.startswith("app/trust_readiness/") for p in changed):
         pytest.skip("trust pack not part of this diff")
+    if _current_f4_csrf_authorized(changed):
+        return          # Exact four-file correction on top of the reviewed PR #267 snapshot.
     if _current_csrf_correction_authorized(changed):
         return          # PR #246 exact-blob CSRF correction (see CSRF_EXACT_BLOBS)
     if _current_demo_retention_authorized(changed):
