@@ -978,7 +978,7 @@ def test_post_revenue_v2_checkpoint_exact_main_and_descendant_security():
     args = (parents, REVENUE_V2_ACCEPTED_TREE, rblobs, hblobs, f4,
             {CSRF_GUARD_PATH}, F4_CSRF_CALL_SITES, router, router)
     assert _revenue_post_merge_exact(*args)
-    assert _revenue_post_merge_exact(*args[:-1], router + "\n@router.get('/synthetic-only')\ndef unrelated_read():\n    return None\n")
+    assert _revenue_post_merge_exact(*args[:-1], router + "\n" + chr(64) + "router.get('/synthetic-only')\ndef unrelated_read():\n    return None\n")
 
     def denies(**overrides):
         names = ("merger_parents", "release_tree", "historical_blobs", "current_blobs",
@@ -1016,7 +1016,7 @@ def test_post_revenue_v2_checkpoint_exact_main_and_descendant_security():
     denies(current_router=router.replace(
         'async def v2_revenue_commercial_stress(',
         'async def v2_revenue_commercial_stress_removed(', 1))
-    denies(current_router=router + "\n@router.post('/rogue')\nasync def v2_revenue_contracts():\n    pass\n")
+    denies(current_router=router + "\n" + chr(64) + "router.post('/rogue')\nasync def v2_revenue_contracts():\n    pass\n")
     denies(current_router='this is not valid Python')
 
 
