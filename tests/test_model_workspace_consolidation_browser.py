@@ -16,6 +16,20 @@ def assert_unique_dom_ids(page):
     assert duplicates == [], duplicates
 
 
+# Additive Diagnostics acceptance belongs to the EXISTING mandatory consolidation role.
+# Its fail-closed execution inventory / JUnit / screenshot verifier remains unchanged.
+@pytest.mark.parametrize('template', ['generic_solar_reference', 'generic_wind_reference',
+                                      'generic_data_center_reference', 'generic_ev_charging_reference'])
+def test_model_diagnostics_vertical_acceptance(workspace, template):
+    from tests.model_diagnostics_browser_acceptance import test_diagnostics_vertical_run_health_matrix_detail_and_readonly
+    test_diagnostics_vertical_run_health_matrix_detail_and_readonly(workspace, template)
+
+
+def test_model_diagnostics_failed_check_mobile_acceptance(workspace):
+    from tests.model_diagnostics_browser_acceptance import test_failed_check_period_residual_drilldown_and_mobile
+    test_failed_check_period_residual_drilldown_and_mobile(workspace)
+
+
 @pytest.fixture
 def workspace(live_server, browser):
     from app.auth import COOKIE_NAME, create_session_token
@@ -201,6 +215,8 @@ def test_consecutive_atomic_save_run_stale_current_with_csp_enabled(workspace):
     assert ran.value.status == 200
     page.wait_for_function("() => document.querySelector('[data-testid=hybrid-run-state]').textContent.trim() === 'CURRENT'", timeout=240000)
     committed = get_workspace_state(record.user_id, record.project_id).last_runtime_snapshot_id
+    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'CURRENT'
+    assert page.locator('#v2-model-health').get_attribute('data-state') == 'CURRENT'
     cell = page.locator(f'.ig-input[data-ig-field="{field}"]')
     cell.fill('1533')
     cell.press('Enter')
@@ -209,11 +225,16 @@ def test_consecutive_atomic_save_run_stale_current_with_csp_enabled(workspace):
     page.wait_for_function("() => document.querySelector('[data-testid=hybrid-run-state]').textContent.trim() === 'STALE'", timeout=30000)
     page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 0')
     assert get_workspace_state(record.user_id, record.project_id).last_runtime_snapshot_id == committed
+    page.wait_for_function("() => document.querySelector('#v2-sheet-diagnostics').dataset.state === 'STALE'", timeout=30000)
+    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'STALE'
+    assert page.locator('#v2-model-health').get_attribute('data-state') == 'STALE'
+    assert 'HISTORICAL' in page.locator('#v2-model-health').inner_text()
     with page.expect_response(lambda response: '/v2/workbook/run' in response.url and response.request.method == 'POST', timeout=240000) as ran:
         page.locator('[data-testid="header-run-btn"]').click()
     assert ran.value.status == 200
     page.wait_for_function("() => document.querySelector('[data-testid=hybrid-run-state]').textContent.trim() === 'CURRENT'", timeout=240000)
     assert get_workspace_state(record.user_id, record.project_id).last_runtime_snapshot_id != committed
+    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'CURRENT'
     assert_unique_dom_ids(page)
     assert not errors, errors
 

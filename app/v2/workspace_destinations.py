@@ -13,6 +13,7 @@ class Destination:
 
 DESTINATIONS = (
     Destination("tab-overview", "Overview", "overview", True),
+    Destination("tab-diagnostics", "Model Diagnostics", "diagnostics", True),
     Destination("tab-input-grid", "All assumptions", "inputs", True),
     Destination("tab-project-setup", "Project & Technical", "inputs"),
     Destination("tab-inputs", "Technical assumptions", "inputs"),
@@ -33,7 +34,7 @@ DESTINATIONS = (
     Destination("tab-trust", "Trust · identity, assumptions & available lineage", "trust", True),
 )
 
-AREAS = (("inputs", "Inputs"), ("scenarios", "Scenarios"), ("outputs", "Outputs"),
+AREAS = (("diagnostics", "Model Diagnostics"), ("inputs", "Inputs"), ("scenarios", "Scenarios"), ("outputs", "Outputs"),
          ("analysis", "Analysis"), ("trust", "Trust"))
 
 

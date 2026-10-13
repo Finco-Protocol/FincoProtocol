@@ -287,11 +287,17 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
     panel = _attach_insight(
         panel, ws=ws_fresh, pis=pis, project_record=project_record, workspace_owner=workspace_owner,
         runtime_state=freshness.state.value, register_view=register_view)
-    return _templates.get_template(
+    rendered = _templates.get_template(
         "partials/_model_smart_panel.html"
     ).render({"smart_panel": panel}).replace(
         '<aside id="model-smart-panel"',
         '<aside id="model-smart-panel" hx-swap-oob="true"', 1)
+    diagnostic_ctx = {"diagnostics": panel.insight["quality"].get("diagnostics"),
+                      "project_name": getattr(project_record, "project_name", "") or project}
+    for template, root in (("_model_health.html", "v2-model-health"),
+                           ("sheet_diagnostics.html", "v2-sheet-diagnostics")):
+        rendered += "\n" + _as_oob(_templates.get_template("partials/" + template).render(diagnostic_ctx), root)
+    return rendered
 
 
 def _build_run_history_oob(ws_fresh, pis_fresh, *, project_record, freshness=None) -> str:

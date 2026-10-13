@@ -193,6 +193,7 @@ def build_quality_insight(
     ws: Any, *, run_state: str, project_inputs: Any = None, active_scenario_id: Optional[str] = None,
     scenario_name: str = "", register_paths: Iterable[str] = (), kpi_keys: Iterable[str] = (),
     terms_override: Optional[ProjectTerms] = None,
+    include_diagnostics: bool = False,
 ) -> dict[str, Any]:
     """Compact, JSON-safe Model Quality + covenant view of the committed Last Run of ``ws``.
 
@@ -208,6 +209,8 @@ def build_quality_insight(
     if state == "NOT_RUN" or not has_run:
         base.update({"state": "NOT_RUN", "message": "No committed Run — Model Quality is evaluated only over a "
                                                    "committed Last Run. Nothing is estimated."})
+        if include_diagnostics:
+            base["diagnostics"] = {"state": "NOT_RUN", "available": False}
         return base
     terms = ProjectTerms()
     terms_bound = False
@@ -251,6 +254,12 @@ def build_quality_insight(
                                     runtime_summary=evidence.runtime_summary, terms=terms),
         "terms_bound": terms_bound,
     })
+    if include_diagnostics:
+        from app.v2.diagnostics_projection import build_diagnostics
+        try:
+            base["diagnostics"] = build_diagnostics(ws, report, score=base["score"], scenario_name=scenario_name)
+        except Exception:  # malformed diagnostic evidence must not hide canonical Insight findings
+            base["diagnostics"] = {"state": "UNAVAILABLE", "available": False}
     return base
 
 
@@ -260,6 +269,7 @@ def build_quality_insight_safe(*args: Any, **kwargs: Any) -> dict[str, Any]:
         return build_quality_insight(*args, **kwargs)
     except Exception:  # noqa: BLE001 - presentation adapter must fail closed
         return {"label": ADVISORY_LABEL, "not_claims": NOT_CLAIMS_LINE, "available": False, "state": "UNAVAILABLE",
+                "diagnostics": {"state": "UNAVAILABLE", "available": False},
                 "run_state": str(kwargs.get("run_state") or ""), "scenario_name": str(kwargs.get("scenario_name") or ""),
                 "message": "Model Quality could not be evaluated from the persisted evidence."}
 

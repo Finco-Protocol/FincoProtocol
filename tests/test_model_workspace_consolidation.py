@@ -34,11 +34,11 @@ def test_manifest_is_complete_unique_and_shared_by_visible_navigation():
     from app.v2.workspace_destinations import DESTINATIONS, navigation_manifest
     from app.v2.workspace_shell_projection import workspace_nav_groups
     ids = [d.tab_id for d in DESTINATIONS]
-    assert len(ids) == len(set(ids)) == 19
+    assert len(ids) == len(set(ids)) == 20
     assert {d.tab_id for d in DESTINATIONS if not d.alias_of} == {
         i.tab_id for g in workspace_nav_groups() for i in g.items}
     assert next(d for d in DESTINATIONS if d.tab_id == 'tab-fs').alias_of == 'tab-outputs'
-    assert [a['label'] for a in navigation_manifest()['areas']] == ['Inputs', 'Scenarios', 'Outputs', 'Analysis', 'Trust']
+    assert [a['label'] for a in navigation_manifest()['areas']] == ['Model Diagnostics', 'Inputs', 'Scenarios', 'Outputs', 'Analysis', 'Trust']
     script = (ROOT / 'static/js/inputs_grid_v1.js').read_text(encoding='utf-8')
     assert 'manifest.destinations.forEach' in script
     assert "inputs:    ['tab-" not in script
