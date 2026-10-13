@@ -1041,6 +1041,7 @@ F35B_CSRF_BASE = "cff1a7b19a72429636ec20325aadf5364365b12d"
 F35B_CSRF_OLD = "Investor agreement Save and one crypto action. Other "
 F35B_CSRF_NEW = "Investor agreement Save, session-bound Capital Stack instrument Save and one crypto action. Other "
 F35B_CSRF_BLOBS = {
+    "tests/model_outputs_workspace_acceptance.py": "07b04003b8a35f2750b9227531c60499b2b65121",
     "app/v2/capital_stack_projection.py": "a42e0258904fd3a9c4aa2b931d63f8007581069f",
     "app/templates/v2/partials/_financing_multisenior.html": "ef9d7cf03cc14c192b3bd8ebfa063e0336235b3c",
     "app/v2/router.py": "82f836ed397e46d8384288a0bd967381af96ea04",
@@ -1048,7 +1049,7 @@ F35B_CSRF_BLOBS = {
     "app/trust_readiness/registry.py": "dfdd0f668ee78e510ed38f17f6b343be63c8a61d",
     "docs/readiness/03_known_limitations_and_support_matrix.md": "d8407e9a318d32f56d2b015e472a5a583a9a5b5b",
     "docs/model_v2/financing_f3/F3_5_B_RELEASE_READINESS_REPORT.md": "625373ef0e93941e37492ce0b38012b02c81adaf",
-    "tests/test_model_financing_f2.py": "57967462ae52b2368cb1eaa9ef783f29edcb9b31",
+    "tests/test_model_financing_f2.py": "0adc439820a36629aa3e0d9aa00c8fae0fc7a9ae",
     "tests/test_trust_readiness_controls.py": "b55f2bc00dd2cefe6a69f9ef9202b4066c0b2415",
     "tests/test_financing_f35b_release_closed.py": "74aba5b2a97090b6ab8c1b5707f01c368078c7a2",
     "tests/test_financing_f35b_numerical.py": "c7b06472a94d858fc8186aece380384121e6e132",
