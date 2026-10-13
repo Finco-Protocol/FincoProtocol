@@ -17,7 +17,7 @@ from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from finco_radar.authority.r_live_policy import (
-    APPROVED_BY_CANONICAL_ID, QUOTE_AUTHORITY_VERSION,
+    APPROVED_RLIVE_ASSETS, QUOTE_AUTHORITY_VERSION,
 )
 from finco_radar.venues.basis import BASIS_MAX_CLOCK_SKEW_SECONDS, compute_basis_bps
 from finco_radar.venues.deepstate_live import (
@@ -155,7 +155,7 @@ def _rlive_binding(registry: VenueRegistry):
     if underlying is None or underlying.canonical_symbol != "NVDA":
         return None
     matches = [
-        (key, policy) for key, policy in APPROVED_BY_CANONICAL_ID.items()
+        (key, policy) for key, policy in APPROVED_RLIVE_ASSETS.items()
         if policy.symbol == "NVDA"
         and key.chain_id == DEEPSTATE_CHAIN_ID
         and key.contract_address.lower() ==
@@ -307,6 +307,32 @@ def _unavailable_pair(evidence: DeepstateMarketEvidence, reason: str,
     )
 
 
+_ESCALATING_SPANS = (timedelta(days=1), timedelta(days=7), HISTORY_WINDOW)
+
+
+def _recent_deepstate_rows(store: VenueMarketStore, since: datetime, now: datetime) -> list:
+    """The newest ``MAX_HISTORICAL_FILLS`` exact-identity fills inside ``[since, now]``.
+
+    Reads escalate over 1 day, 7 days and the full window and stop as soon as enough qualifying
+    rows are found, so a busy book is never read for the whole 30 days. A smaller span is a
+    suffix of the larger one in ``ts`` order, hence the selected rows are identical to slicing the
+    full-window read; only the amount read from the store changes. Public store API only.
+    """
+    rows: list = []
+    for span in _ESCALATING_SPANS:
+        window_start = max(since, now - span)
+        rows = [
+            row for row in store.get_window_for_identity(
+                "NVDA", DEEPSTATE_VENUE, DEEPSTATE_POOL_ID, "tokenized_stock_book",
+                since=window_start, until=now)
+            if _timestamp(row.collected_at) is not None
+            and _timestamp(row.collected_at) <= now
+        ]
+        if len(rows) >= MAX_HISTORICAL_FILLS or window_start <= since:
+            break
+    return rows[-MAX_HISTORICAL_FILLS:]
+
+
 def build_deepstate_historical_context(
     canonical_asset_id: str, *, registry: VenueRegistry, store: VenueMarketStore,
     as_of: datetime, normalization_policy: ReviewedNormalizationPolicy | None = None,
@@ -328,13 +354,7 @@ def build_deepstate_historical_context(
             canonical_asset_id, "UNAVAILABLE", "EXACT_IDENTITY_UNAVAILABLE", (), ())
     policy, venue_id, instrument_id, instrument_type = binding
     since = now - HISTORY_WINDOW
-    deepstate_rows = [
-        row for row in store.get_window_for_identity(
-            "NVDA", DEEPSTATE_VENUE, DEEPSTATE_POOL_ID, "tokenized_stock_book",
-            since=since, until=now)
-        if _timestamp(row.collected_at) is not None
-        and _timestamp(row.collected_at) <= now
-    ][-MAX_HISTORICAL_FILLS:]
+    deepstate_rows = _recent_deepstate_rows(store, since, now)
     if not deepstate_rows:
         return DeepstateHistoricalMarketContext(
             canonical_asset_id, "UNAVAILABLE", "HISTORICAL_COMPARISON_UNAVAILABLE",
