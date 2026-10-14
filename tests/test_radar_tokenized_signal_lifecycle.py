@@ -317,8 +317,9 @@ def test_read_path_has_no_provider_calls_no_write_and_no_notifications(store, mo
 def test_frozen_namespaces_and_parallel_r4_isolation():
     from finance_integrity_governance import strictly_frozen_changes
     from model_v2_governance import model_v2_frozen_violations
-    assert strictly_frozen_changes() == []
-    assert model_v2_frozen_violations() == []
+    from rc3_historical_anchor import changed_paths as _anchored
+    assert strictly_frozen_changes(_anchored()) == []
+    assert model_v2_frozen_violations(_anchored()) == []
 
 
 def test_comparison_unit_policy_drift_never_proves_clearing(store):

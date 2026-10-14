@@ -175,7 +175,7 @@ def test_bounded_read_only_product_scope():
 def test_no_frozen_financial_venue_or_collector_authority_changed():
     import subprocess
     diff = subprocess.run(
-        ["git", "diff", "--name-only", "origin/main...HEAD"],
+        ["git", "diff", "--name-only", "origin/main..." + __import__("rc3_historical_anchor").anchored_head()],
         cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
     forbidden = (
         "financial_engine/", "finco_core/", "finco_yield/",

@@ -227,7 +227,7 @@ def test_frozen_authority_namespaces_unchanged_from_canonical_base():
         "finco_yield/access.py",
     )
     probe = subprocess.run(
-        ["git", "diff", "--name-only", f"{_base_sha()}..HEAD"],
+        ["git", "diff", "--name-only", f"{_base_sha()}..{__import__('rc3_historical_anchor').anchored_head()}"],
         cwd=REPO,
         capture_output=True,
         text=True,

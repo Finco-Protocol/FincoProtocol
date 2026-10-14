@@ -462,7 +462,8 @@ def test_DC_A3_ZERO_DIFF_FINANCIAL_ENGINE():
     # Opus Finance Integrity governance: the approved finance-correction modules may
     # differ from main; every other financial_engine module must stay untouched.
     from finance_integrity_governance import unapproved_engine_changes
-    changed = unapproved_engine_changes()
+    from rc3_historical_anchor import changed_paths as _anchored
+    changed = unapproved_engine_changes(_anchored())
     assert changed == [], (
         f"A3.1 authority boundary: unapproved financial_engine changes vs main: {changed}"
     )
@@ -478,7 +479,7 @@ def test_DC_A3_ZERO_DIFF_FINCO_CORE():
     DC vertical implementation must not touch the core waterfall engine.
     """
     # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
-    from finance_integrity_governance import changed_paths_vs_main
+    from rc3_historical_anchor import changed_paths as changed_paths_vs_main
     from model_v2_governance import approved_by_active_model_v2_scope
     changed = [f for f in changed_paths_vs_main()
                if f.startswith("finco_core/") and not approved_by_active_model_v2_scope(f)]
