@@ -68,6 +68,19 @@ RC2_CSRF_CALL_SITES = frozenset({
 RC2_GOVERNED_ELSEWHERE = frozenset({"app/trust_readiness/registry.py"})
 RC2_FREE_PREFIXES = ("tests/", "docs/", "static/", "app/templates/")
 
+# RC-3 / R5 EXACT-CONTENT SUCCESSOR REVIEW PROPOSAL (not approval).
+# This does NOT extend RC-2 itself, and is not a namespace/descendant grant.
+# Historical RC-2 changes remain enforced by _historical_rc2_violations().
+RC2_MERGE_COMMIT = "6fc77de98bc0562fb51efdbf96e1803a29b5b148"
+RC2_MERGE_PARENTS = (
+    RC2_BASE_MAIN,
+    "2155a76bfff4acc3a4e15f7cf35012933ce1a10c",
+)
+RC2_MERGED_TREE_BLOB = "4fdcd03b5e0ed3c4b87d9016f2522bfe50bf0d05"
+RC3_R5_EXACT_PATH = "app/crypto_terminal/tokenized_signal_lifecycle.py"
+RC3_R5_EXACT_BLOB = "6f3cb95782426dee5ed7dfa1a5bac71b29388014"
+
+
 RC2_CI_WORKFLOW = ".github/workflows/ci_public_job.yml"
 RC2_CI_WORKFLOW_BASE_BLOB = "4c6b913605120673b626b8492a8201d5164e7b0d"
 # REVIEW PROPOSAL ONLY: exact two-line CI successor (3300 -> 4200; 75 -> 90).
@@ -144,8 +157,8 @@ def _router_parts(source):
     return functions, others
 
 
-def rc2_violations(f) -> list[str]:
-    """Pure fail-closed verifier over injected facts; [] means the manifest holds."""
+def _historical_rc2_violations(f) -> list[str]:
+    """Unchanged historical RC-2 fail-closed verifier; no RC-3 exemptions."""
     try:
         problems, previous = [], RC2_BASE_MAIN
         for pr, head in RC2_SOURCE_HEADS:
@@ -206,6 +219,52 @@ def rc2_violations(f) -> list[str]:
         return [f"facts incomplete or malformed: {exc!r}"]
 
 
+def rc3_r5_successor_violations(f) -> list[str]:
+    """The sole proposed RC-3 delta: ONE added file at ONE exact Git blob.
+
+    Never authorizes a sibling, subsequent modification, status rename, RC-2
+    provenance change, or any additional exception to the historical verifier.
+    Both worktree and committed HEAD content must match the same immutable pin.
+    """
+    try:
+        problems = []
+        status = f["status"]
+        if [item for item in status if item[1] == RC3_R5_EXACT_PATH] != [
+                ("A", RC3_R5_EXACT_PATH)]:
+            problems.append(f"{RC3_R5_EXACT_PATH}: successor requires exactly one A status")
+        if f["rc3_r5_worktree_blob"] != RC3_R5_EXACT_BLOB:
+            problems.append(f"{RC3_R5_EXACT_PATH}: not the exact reviewed candidate blob")
+        if f["rc3_r5_head_blob"] != RC3_R5_EXACT_BLOB:
+            problems.append(f"{RC3_R5_EXACT_PATH}: committed HEAD blob differs from reviewed candidate")
+        if tuple(f["rc2_merge_parents"]) != (RC2_MERGE_COMMIT, *RC2_MERGE_PARENTS):
+            problems.append("RC-2 merge commit parents are not the reviewed main/integration HEAD")
+        if f["rc2_merge_tree"] != RC2_MERGED_TREE_BLOB:
+            problems.append("RC-2 merged tree differs from the exact original authority")
+        if f["rc2_merge_ancestor"] is not True:
+            problems.append("RC-2 merged commit is not an ancestor of candidate HEAD")
+        return problems
+    except (KeyError, ValueError, TypeError, AttributeError) as exc:
+        return [f"RC-3 successor facts incomplete or malformed: {exc!r}"]
+
+
+def rc2_violations(f) -> list[str]:
+    """RC-2 immutable baseline + separately proven single-file RC-3 successor.
+
+    Historical RC-2 has no new allowances. The R5 delta is removed from its
+    input ONLY for checking the original RC-2 artifact, and only after its
+    own independently pinned exact-blob/status validation is invoked.
+    The union of both violation sets determines acceptance.
+    """
+    successor = rc3_r5_successor_violations(f)
+    try:
+        historical = dict(f)
+        historical["status"] = [
+            item for item in f["status"] if item[1] != RC3_R5_EXACT_PATH]
+    except (KeyError, ValueError, TypeError, AttributeError) as exc:
+        return [*successor, f"RC-2 status facts incomplete or malformed: {exc!r}"]
+    return [*successor, *_historical_rc2_violations(historical)]
+
+
 def _collect():
     import re
     rows = [r.split() for r in _git("rev-list", "--merges", "--parents", f"{RC2_BASE_MAIN}..HEAD").splitlines()]
@@ -220,7 +279,19 @@ def _collect():
         rel = path.relative_to(ROOT).as_posix()
         if not rel.startswith("app/trust_readiness/") and re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
             sites.add(rel)
+    rc3_path = ROOT / RC3_R5_EXACT_PATH
+    merge_parent_line = _git("rev-list", "--parents", "-n", "1", RC2_MERGE_COMMIT)
+    rc2_is_ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", RC2_MERGE_COMMIT, "HEAD"],
+        cwd=ROOT, capture_output=True, text=True).returncode == 0
     return {
+        "rc3_r5_worktree_blob": _git("hash-object", RC3_R5_EXACT_PATH)
+            if rc3_path.is_file() else None,
+        "rc3_r5_head_blob": _git("rev-parse", f"HEAD:{RC3_R5_EXACT_PATH}")
+            if rc3_path.is_file() else None,
+        "rc2_merge_parents": merge_parent_line.split(),
+        "rc2_merge_tree": _git("rev-parse", f"{RC2_MERGE_COMMIT}^{{tree}}"),
+        "rc2_merge_ancestor": rc2_is_ancestor,
         "merges": merges, "ancestor": ancestor, "status": status, "call_sites": sites,
         "blobs": {p: _git("hash-object", p) for p in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED) if (ROOT / p).exists()},
         "ci_workflow_base_blob": _git("rev-parse", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}"),
@@ -252,6 +323,94 @@ def test_manifest_holds_for_the_integrated_candidate_on_the_actual_observed_stat
     assert all(activation_state(facts["flag_sources"][p], n) == "CLOSED" for p, n in RC2_ACTIVATION_FLAG_FILES.items())
     assert RC2_PROTECTED_FINANCIAL_CANDIDATE <= set(RC2_EXACT_BLOBS)
     assert "app/workbook/junior_debt_config.py" in RC2_PINNED_UNCHANGED and "domain/revenue/advanced_products.py" in RC2_EXACT_BLOBS
+
+
+def test_rc2_historical_manifest_unchanged_under_rc3_successor(facts):
+    """RC-2 verifies the *original* candidate independently of R5."""
+    historical = copy.deepcopy(facts)
+    historical["status"] = [
+        item for item in historical["status"] if item[1] != RC3_R5_EXACT_PATH]
+    assert _historical_rc2_violations(historical) == []
+    # Feeding an unapproved R5 addition into historical RC-2 still fails.
+    assert any("not part of the reviewed RC-2 content" in x
+               for x in _historical_rc2_violations(facts))
+
+
+def test_rc3_r5_successor_exact_status_blob_and_original_merge_provenance(facts):
+    assert rc3_r5_successor_violations(facts) == []
+    assert facts["rc3_r5_worktree_blob"] == RC3_R5_EXACT_BLOB
+    assert facts["rc3_r5_head_blob"] == RC3_R5_EXACT_BLOB
+    assert facts["rc2_merge_parents"] == [RC2_MERGE_COMMIT, *RC2_MERGE_PARENTS]
+    assert facts["rc2_merge_tree"] == RC2_MERGED_TREE_BLOB
+    assert facts["rc2_merge_ancestor"] is True
+
+
+@pytest.mark.parametrize("mutation,reason", (
+    ({"rc3_r5_worktree_blob": "0" * 40}, "exact reviewed candidate blob"),
+    ({"rc3_r5_head_blob": "1" * 40}, "committed HEAD blob differs"),
+    ({"rc2_merge_parents": ["0" * 40, *RC2_MERGE_PARENTS]}, "merge commit parents"),
+    ({"rc2_merge_tree": "0" * 40}, "merged tree differs"),
+    ({"rc2_merge_ancestor": False}, "not an ancestor"),
+))
+def test_rc3_mutated_exact_provenance_rejected(facts, mutation, reason):
+    changed = copy.deepcopy(facts)
+    changed.update(mutation)
+    assert any(reason in p for p in rc2_violations(changed))
+
+
+def test_rc3_r5_actual_byte_mutation_rejected(facts):
+    # Digest the changed bytes instead of inventing a fake expected checksum:
+    # the successor must reject any unreviewed one-byte change.
+    source = (ROOT / RC3_R5_EXACT_PATH).read_bytes()
+    changed = subprocess.run(
+        ["git", "hash-object", "--stdin"],
+        input=source + b"\\n# unauthorized change\\n",
+        capture_output=True, cwd=ROOT, check=True).stdout.decode().strip()
+    assert changed != RC3_R5_EXACT_BLOB
+    mutated = copy.deepcopy(facts)
+    mutated["rc3_r5_worktree_blob"] = changed
+    assert any("exact reviewed candidate blob" in p for p in rc2_violations(mutated))
+
+
+@pytest.mark.parametrize("replacement", (
+    [], [("M", RC3_R5_EXACT_PATH)], [("D", RC3_R5_EXACT_PATH)],
+    [("A", RC3_R5_EXACT_PATH), ("A", RC3_R5_EXACT_PATH)],
+))
+def test_rc3_r5_missing_modified_deleted_or_duplicate_status_rejected(facts, replacement):
+    mutated = copy.deepcopy(facts)
+    mutated["status"] = [
+        item for item in facts["status"] if item[1] != RC3_R5_EXACT_PATH
+    ] + replacement
+    assert any("requires exactly one A status" in p
+               for p in rc2_violations(mutated))
+
+
+@pytest.mark.parametrize("extra", (
+    ("A", "app/crypto_terminal/unreviewed_signal.py"),
+    ("M", "app/crypto_terminal/tokenized_read.py"),
+    ("A", "finco_radar/venues/unreviewed.py"),
+    ("M", "domain/revenue/multistream_runtime.py"),
+    ("A", ".github/workflows/rc3_unreviewed.yml"),
+))
+def test_rc3_r5_extra_or_protected_path_rejected(facts, extra):
+    mutated = copy.deepcopy(facts)
+    mutated["status"].append(extra)
+    assert rc2_violations(mutated)
+
+
+def test_rc3_r5_rc2_provenance_and_protected_mutations_still_rejected(facts):
+    for path in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED):
+        mutated = copy.deepcopy(facts)
+        mutated["blobs"][path] = "a" * 40
+        assert rc2_violations(mutated), path
+    for pr, head in RC2_SOURCE_HEADS:
+        mutated = copy.deepcopy(facts)
+        sha, first, second = mutated["merges"][pr]
+        mutated["merges"][pr] = (sha, first, "b" * 40)
+        assert rc2_violations(mutated), pr
+    mutated = copy.deepcopy(facts)
+    mutated["call_sites"].add("app/v2/unreviewed_router.py")
+    assert rc2_violations(mutated)
 
 
 @pytest.mark.parametrize("path", sorted(RC2_ACTIVATION_FLAG_FILES))
