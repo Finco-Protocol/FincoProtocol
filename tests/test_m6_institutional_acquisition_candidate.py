@@ -360,6 +360,84 @@ def test_case_revision_cas_owner_protection_and_failed_rollback(tmp_path, monkey
                   case_id=case,expected_revision=1)
 
 
+
+def test_http_get_history_and_repeated_page_render_are_schema_readonly(tmp_path, monkeypatch):
+    """FastAPI HTTP smoke of actual M6 GET: no acquisition DDL on first/repeated GET.
+
+    This is in-process HTTP; separate Chromium acceptance is still required
+    before any production activation.
+    """
+    import sys
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from fastapi.responses import HTMLResponse
+    from app.v2 import acquisition_router
+    import app.persistence.run_history_repository as run_repo
+
+    path = _db(tmp_path, monkeypatch)
+    before = _db_state(path)
+    user = NS(user_id="owner-A")
+    record = NS(project_id="project-A", project_code="project-A", project_name="Test")
+    history = NS(history_id="h-1", runtime_snapshot_id="snapshot-123",
+                 composite_hash="c"*64, last_runtime_scenario_id=None,
+                 active_scenario_name="Base", ran_at="2027-01-01",
+                 runtime_summary={})
+    monkeypatch.setattr(acquisition_router, "_record",
+                        lambda request, project: (user, record, "owner-A"))
+    monkeypatch.setattr(run_repo, "get_run_history",
+                        lambda owner, project_id, limit: [history])
+    monkeypatch.setattr(run_repo, "get_run_history_entry",
+                        lambda owner, project_id, hid: history if hid == "h-1" else None)
+    monkeypatch.setitem(sys.modules, "main_web", NS(
+        templates=NS(TemplateResponse=lambda **kw: HTMLResponse(
+            "EVIDENCE_STATUS:" + kw["context"]["evidence_status"]
+            + " CASES:" + str(len(kw["context"]["cases"])),
+            headers=kw.get("headers")))))
+    import app.ui.protected_reference_service as protected_ref
+    monkeypatch.setattr(protected_ref, "is_protected_reference", lambda record: False)
+    import app.persistence.acquisition_repository as repo
+    monkeypatch.setattr(repo, "_table", lambda conn: pytest.fail("GET triggered M6 DDL"))
+
+    app = FastAPI()
+    app.include_router(acquisition_router.router, prefix="/v2")
+    with TestClient(app) as client:
+        for _ in range(3):
+            response = client.get("/v2/valuation-acquisition",
+                                  params={"project": "project-A", "history_id": "h-1"})
+            assert response.status_code == 200
+            assert "EVIDENCE_STATUS:EVIDENCE_UNAVAILABLE CASES:0" in response.text
+            assert response.headers["Cache-Control"] == "private, no-store"
+    assert _db_state(path) == before
+
+
+def test_http_post_rejects_missing_csrf_and_protected_reference(tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.v2 import acquisition_router
+    import app.v2.router as workbook_router
+    import app.ui.protected_reference_service as protected_ref
+    from app.auth import generate_csrf_token
+
+    path = _db(tmp_path, monkeypatch)
+    before = _db_state(path)
+    monkeypatch.setattr(workbook_router, "_get_current_user", lambda request: NS(user_id="owner-A"))
+    monkeypatch.setattr(acquisition_router, "_record",
+                        lambda request, project: (NS(user_id="owner-A"),
+                            NS(project_id="project-A", project_code="project-A"),
+                            "owner-A"))
+    app = FastAPI()
+    app.include_router(acquisition_router.router, prefix="/v2")
+    with TestClient(app) as client:
+        bad = client.post("/v2/valuation-acquisition/save",
+                          data={"project": "project-A", "csrf_token": "invalid"})
+        assert bad.status_code == 403
+        monkeypatch.setattr(protected_ref, "is_protected_reference", lambda record: True)
+        denied = client.post("/v2/valuation-acquisition/save",
+                             data={"project": "project-A", "csrf_token": generate_csrf_token()})
+        assert denied.status_code == 409
+    assert _db_state(path) == before
+
+
 def test_governance_no_secondary_project_run_and_explicit_csrf_boundary():
     import inspect
     from app.v2 import acquisition_router
