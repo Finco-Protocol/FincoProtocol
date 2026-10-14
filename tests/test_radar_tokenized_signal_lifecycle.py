@@ -51,6 +51,8 @@ def _row(seconds_before: int, price: str, *, contract: str = CONTRACT,
         source="fixture-reviewed-tokenized-market",
         freshness_state=state, observation_status=status,
         payload={
+            "chain_id": 4663,
+            "contract_address": contract,
             "reference_state": "AVAILABLE" if reference is not None else "UNAVAILABLE",
             "reference_observed_at": (reference_clock if reference_clock is not None
                                        else ts.isoformat()),
