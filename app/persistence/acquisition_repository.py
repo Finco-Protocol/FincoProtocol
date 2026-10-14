@@ -71,8 +71,12 @@ def _terms_from_doc(document):
     try:
         vals = dict(raw)
         vals["closing_date"] = date.fromisoformat(vals["closing_date"])
+        if vals["closing_date"].isoformat() != raw["closing_date"]:
+            raise ValueError("CLOSING_DATE_NOT_CANONICAL")
         if vals["exit_date"] is not None:
             vals["exit_date"] = date.fromisoformat(vals["exit_date"])
+            if vals["exit_date"].isoformat() != raw["exit_date"]:
+                raise ValueError("EXIT_DATE_NOT_CANONICAL")
         terms = AcquisitionTerms(**vals)
         terms.check()
     except (ValueError, TypeError) as exc:
@@ -202,6 +206,8 @@ def read_case(*, owner_id, project_id, case_id):
     except (TypeError, json.JSONDecodeError):
         raise AcquisitionCaseConflict("CASE_STORED_JSON_INVALID") from None
     _terms_from_doc(doc)
+    if row["source_history_id"] != doc["source"]["history_id"]:
+        raise AcquisitionCaseConflict("CASE_STORED_SOURCE_CORRUPT")
     return {"case_id": row["case_id"], "revision": row["revision"], "document": doc,
             "updated_at": row["updated_at"]}
 
