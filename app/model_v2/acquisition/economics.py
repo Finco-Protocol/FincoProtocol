@@ -94,6 +94,19 @@ def _validated_rows(evidence):
 def buyer_cashflows(evidence, terms: AcquisitionTerms, *, price_override=None):
     terms.check()
     rows = _validated_rows(evidence)
+    if not rows:
+        raise AcquisitionPolicyError("BUYER_SOURCE_PERIODS_MISSING")
+    latest = date.fromisoformat(rows[-1]["date"])
+    if terms.closing_date >= latest:
+        raise AcquisitionPolicyError("CLOSING_NOT_WITHIN_SOURCE_HORIZON")
+    if terms.exit_date is not None and terms.exit_date > latest:
+        raise AcquisitionPolicyError("EXIT_BEYOND_SOURCE_HORIZON")
+    for row in rows:
+        if date.fromisoformat(row["date"]) == terms.closing_date and (
+            abs(row["net_legal_dividend_keur"]) > _EPS
+            or abs(row["legal_equity_contribution_keur"]) > _EPS
+        ):
+            raise AcquisitionPolicyError("CLOSING_DATE_ENTITLEMENT_ORDER_AMBIGUOUS")
     price = terms.purchase_price_keur if price_override is None else _finite(price_override, "bid_price")
     flows = [(terms.closing_date, -(price + terms.transaction_costs_keur
                                      + terms.closing_adjustment_keur),
