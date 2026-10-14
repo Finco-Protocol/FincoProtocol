@@ -243,6 +243,14 @@ def _m6_exact_successor_valid():
     except (ImportError, ValueError, OSError, subprocess.CalledProcessError):
         return False
 
+
+def _m7_successor_valid():
+    try:
+        from tests.m7_bess_successor_proposal import current_m7_successor_valid
+        return current_m7_successor_valid()
+    except (ImportError, ValueError, OSError, subprocess.CalledProcessError):
+        return False
+
 def _csrf_call_sites() -> set[str]:
     import re
     sites = set()
@@ -1739,7 +1747,8 @@ def _rc1_collect_post(ref="6fc77de98bc0562fb51efdbf96e1803a29b5b148"):
 def _current_rc1_post_merge_authorized() -> bool:
     try:
         return (not _rc1_post_merge_violations(_rc1_collect_post())
-                and _m6_exact_successor_valid())
+                and _m6_exact_successor_valid()
+                and _m7_successor_valid())
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, IndexError):
         return False
 

@@ -12,6 +12,11 @@ def bind_scenario_tariff(snapshot: dict, overrides: dict) -> dict:
     Legacy-only snapshots retain their shape and use the existing adapter.
     """
     effective = dict(snapshot)
+    from app.workbook.bess_config import SNAPSHOT_KEY as bess_key, canonical_json as bess_json
+    if bess_key in overrides:
+        if str(snapshot.get("project_type") or "").strip().lower() != "storage":
+            raise ValueError("BESS_STANDALONE_SCOPE_REQUIRED")
+        effective[bess_key] = bess_json(overrides[bess_key])
     from app.workbook.revenue_multistream import SNAPSHOT_KEY, canonical_json
     if SNAPSHOT_KEY in overrides:
         effective[SNAPSHOT_KEY] = canonical_json(overrides[SNAPSHOT_KEY])

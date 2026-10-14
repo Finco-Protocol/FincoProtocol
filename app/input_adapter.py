@@ -998,12 +998,13 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
     # Canonical key wins over legacy when both present (C2B2).
     # Strict: non-empty invalid values raise SnapshotInputError; absent/empty → None (use legacy).
     _canonical_tariff = _snapshot_float_strict(snapshot, "rev_ppa_base_tariff", non_negative=True)
-    _legacy_tariff = _snapshot_float(snapshot, "tariff_eur_mwh", non_negative=True)
+    _native_storage = str(snapshot.get("project_type") or "").strip().lower() == "storage"
+    _legacy_tariff = None if _native_storage else _snapshot_float(snapshot, "tariff_eur_mwh", non_negative=True)
 
     _canonical_ppa_term = _snapshot_float_strict(
         snapshot, "rev_ppa_term_years", min_value=1, max_value=50
     )
-    _legacy_ppa_term = _snapshot_int(snapshot, "ppa_term_years", positive=True)
+    _legacy_ppa_term = None if _native_storage else _snapshot_int(snapshot, "ppa_term_years", positive=True)
 
     return {
         "project_type": _snapshot_text(snapshot, "project_type").title(),
@@ -1029,7 +1030,7 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         "tariff_eur_mwh": _canonical_tariff if _canonical_tariff is not None else _legacy_tariff,
         # Canonical rev_ppa_term_years wins over legacy ppa_term_years.
         "ppa_term_years": int(_canonical_ppa_term) if _canonical_ppa_term is not None else _legacy_ppa_term,
-        "p50_hours": _snapshot_float(
+        "p50_hours": None if _native_storage else _snapshot_float(
             snapshot, "p50_hours", positive=True
         ),
         "operating_hours_p90_10y": None,
@@ -1309,6 +1310,8 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     # sculpted debt sizing).  An empty-string gearing is treated as
     # "not overriding the template default" rather than an error.
     _OPTIONAL_EMPTY = frozenset({"gearing_pct"})
+    if str(snapshot.get("project_type") or "").strip().lower() == "storage":
+        _OPTIONAL_EMPTY = _OPTIONAL_EMPTY | {"tariff_eur_mwh", "ppa_term_years", "p50_hours"}
     missing = [
         key for key in REQUIRED_USER_PROJECT_SNAPSHOT_FIELDS
         if key not in _OPTIONAL_EMPTY
@@ -1333,7 +1336,13 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     # Validate project_type (Data Center and EV Charging join the runnable
     # set; "Ev Charging" is the .title() form of the EV Charging technology).
     project_type = _snapshot_text(snapshot, "project_type").title()
-    if project_type not in {"Solar", "Wind", "Data Center", "Ev Charging"}:
+    if snapshot.get("bess_native_config_json") and project_type != "Storage":
+        raise SnapshotInputError("BESS_STANDALONE_SCOPE_REQUIRED")
+    if project_type == "Storage":
+        from app.workbook.bess_config import ACTIVATION_ENABLED
+        if not ACTIVATION_ENABLED:
+            raise SnapshotInputError("BESS_FINANCIAL_ACTIVATION_RELEASE_CLOSED")
+    if project_type not in {"Solar", "Wind", "Data Center", "Ev Charging", "Storage"}:
         raise SnapshotInputError(
             "project_type must be Solar, Wind, Data Center or EV Charging "
             "for user-created project runtime"
@@ -1345,7 +1354,10 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     # template-seeded fresh-run path (Stack R). Generic templates fall
     # through to the generic Wind/Solar factory (base_inputs=None).
     _template_source = str(snapshot.get("template_source") or "").lower()
-    if _template_source == "generic_wind_reference":
+    if project_type == "Storage":
+        from app.workbook.bess_config import native_base_inputs
+        _base = native_base_inputs()
+    elif _template_source == "generic_wind_reference":
         from app.project_factories import create_generic_wind_reference as _tf
         _base = _tf()
     elif _template_source == "generic_solar_reference":
@@ -1365,7 +1377,17 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     # applies the snapshot field validation (positive,
     # non_negative, ISO date, whole-number int) for the
     # remaining fields.
-    result = _resolve_user_inputs(base_inputs=_base, **_snapshot_to_dict(snapshot))
+    adapter_snapshot = snapshot
+    if project_type == "Storage":
+        adapter_snapshot = dict(snapshot)
+        for key in ("tariff_eur_mwh", "ppa_term_years", "p50_hours", "rev_ppa_base_tariff", "rev_ppa_term_years"):
+            if adapter_snapshot.get(key) not in (None, "", "0", 0, "0.0"):
+                raise SnapshotInputError("BESS_DUPLICATE_REVENUE_AUTHORITY: renewable fields are not battery assumptions")
+            adapter_snapshot.pop(key, None)
+    result = _resolve_user_inputs(base_inputs=_base, **_snapshot_to_dict(adapter_snapshot))
+    if project_type == "Storage" and snapshot.get("bess_native_config_json"):
+        from app.workbook.bess_config import apply_config
+        result = apply_config(result, snapshot["bess_native_config_json"])
 
     # Per-line OPEX fold: apply B.01–B.12 scalar overrides from the snapshot onto
     # the calibrated base item tuple, preserving step_changes, annual_inflation, etc.

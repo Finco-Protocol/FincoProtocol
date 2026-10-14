@@ -322,6 +322,14 @@ class WorkbookUpdateService:
                     error_class=FieldErrorClass.INVALID,
                 )
 
+        if field_id == "project_setup.bess.configuration":
+            from app.workbook.bess_config import canonical_json, ACTIVATION_ENABLED
+            try:
+                if not ACTIVATION_ENABLED:
+                    raise ValueError("BESS_FINANCIAL_ACTIVATION_RELEASE_CLOSED")
+                typed = canonical_json(typed)
+            except ValueError as exc:
+                return FieldValidationResult(field_id, raw_value, None, spec, str(exc), FieldErrorClass.INVALID)
         if field_id == "revenue.multistream.contracts":
             from app.workbook.revenue_multistream import canonical_json
             try:

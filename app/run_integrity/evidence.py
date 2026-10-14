@@ -176,6 +176,8 @@ def _balance_sheet(clean_run) -> list[dict[str, Any]]:
         if isinstance(clean_run.g2c_result.financing_result, JuniorFinancingResult):
             rows[-1]["additional_equity"] = _num(p.additional_equity_keur)
             rows[-1]["junior_debt"] = _num(p.junior_debt_balance_keur)
+        if getattr(getattr(getattr(clean_run, "project_inputs", None), "technical", None), "bess_native_config_json", ""):
+            rows[-1]["additional_equity"] = _num(p.additional_equity_keur)
     return rows
 
 
@@ -225,6 +227,9 @@ def build_run_integrity_evidence(clean_run) -> dict[str, Any]:
         "balance_sheet": _balance_sheet(clean_run),
         "sponsor": _sponsor(g2c),
     }
+    if getattr(getattr(getattr(clean_run, "project_inputs", None), "technical", None), "bess_native_config_json", ""):
+        evidence["accounting_equity_authority"] = "BESS_NATIVE_ADDITIONAL_EQUITY_V1"
+        evidence["return_calculation_authority"] = "CANONICAL_G2B_ROBUST_XIRR_V1"
     from financial_engine.financing.multisenior import MultiSeniorFinancingResult
     if isinstance(financing, MultiSeniorFinancingResult):
         evidence["financing_authority"] = "F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1"

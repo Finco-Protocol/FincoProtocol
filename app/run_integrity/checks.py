@@ -124,6 +124,7 @@ def check_balance_sheet(evidence: Mapping[str, Any]) -> IntegrityCheck:
     deviations, evaluated, evaluated_indices = [], 0, set()
     f3 = evidence.get("financing_authority") in ("F3_TWO_SENIOR_EXPLICIT_COMMITMENTS_V1", "F3_SINGLE_SENIOR_JUNIOR_EXPLICIT_V1")
     junior = evidence.get("financing_authority") == "F3_SINGLE_SENIOR_JUNIOR_EXPLICIT_V1"
+    native_equity = evidence.get("accounting_equity_authority") == "BESS_NATIVE_ADDITIONAL_EQUITY_V1"
     for row in rows:
         if not _complete(row, *_BS_KEYS):
             continue  # construction / incomplete columns carry no balance identity
@@ -132,9 +133,9 @@ def check_balance_sheet(evidence: Mapping[str, Any]) -> IntegrityCheck:
         liabilities_equity = (row["senior_debt"] + row["shl"] + row["share_capital"]
                               + row["share_premium"] + row["legal_reserve"]
                               + row["retained_earnings"] + row["net_cit_payable"])
-        if f3:
+        if f3 or native_equity:
             if not _complete(row, "additional_equity"):
-                return _unavailable(cid, title, "F3_EQUITY_COMPONENTS_MISSING")
+                return _unavailable(cid, title, "BESS_EQUITY_COMPONENTS_MISSING" if native_equity else "F3_EQUITY_COMPONENTS_MISSING")
             liabilities_equity += row["additional_equity"]
         if junior:
             if not _complete(row, "junior_debt"):
@@ -317,6 +318,9 @@ def check_sponsor_return_inputs(evidence: Mapping[str, Any]) -> IntegrityCheck:
         return result
 
     reported = sponsor.get("reported") or {}
+    if (evidence.get("accounting_equity_authority") == "BESS_NATIVE_ADDITIONAL_EQUITY_V1"
+            and evidence.get("return_calculation_authority") != "CANONICAL_G2B_ROBUST_XIRR_V1"):
+        return _unavailable(cid, title, "BESS_RETURN_CALCULATION_AUTHORITY_MISSING")
     dates = [date.fromisoformat(r["date"]) for r in rows]
     if dates != sorted(dates):
         return IntegrityCheck(cid, title, CheckStatus.FAIL, "SPONSOR_FLOW_DATES_NOT_CHRONOLOGICAL",
@@ -329,7 +333,14 @@ def check_sponsor_return_inputs(evidence: Mapping[str, Any]) -> IntegrityCheck:
         if status != "OK" or published is None:
             reasons.append(f"{key}:{status}")
             continue
-        recomputed = _xirr([r[series] for r in rows], dates)
+        if evidence.get("return_calculation_authority") == "CANONICAL_G2B_ROBUST_XIRR_V1":
+            from finco_core.sponsor.xirr import robust_xirr
+            try:
+                recomputed = robust_xirr([r[series] for r in rows], dates)
+            except Exception:
+                recomputed = None
+        else:
+            recomputed = _xirr([r[series] for r in rows], dates)
         if recomputed is None or abs(recomputed - published) > TOL_XIRR:
             return IntegrityCheck(cid, title, CheckStatus.FAIL, "XIRR_RECOMPUTATION_MISMATCH", len(rows),
                                   None if recomputed is None else abs(recomputed - published), TOL_XIRR,

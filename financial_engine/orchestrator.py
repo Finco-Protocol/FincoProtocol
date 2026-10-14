@@ -414,6 +414,13 @@ def derive_debt_sizing_operating_input(
     """
     from dataclasses import replace as _replace
 
+    if getattr(base_op.technical, "bess_native_config_json", "") and (
+        debt_sizing_case.production_yield_scenario != YieldScenario.P50
+        or debt_sizing_case.merchant_price_calendar_start_year is not None
+        or debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh
+        or debt_sizing_case.market_prices_curve_eur_mwh
+    ):
+        raise ValueError("BESS_BANK_CASE_UNSUPPORTED: explicit native dispatch/prices cannot be replaced by renewable yields or curves")
     if getattr(base_op.revenue, "multistream_config_json", "") and (
         debt_sizing_case.merchant_price_calendar_start_year is not None
         or debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh
@@ -457,6 +464,8 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     Raises:
         ValueError: if input validation produces ERROR-level issues.
     """
+    if getattr(inputs.technical, "bess_legacy_unsupported", False):
+        raise ValueError("BESS_NATIVE_CONTRACT_REQUIRED: legacy spread economics are not clean runtime")
     # Step 1: Validate input.
     validation_issues = validate_operating_model_input(inputs)
     if has_errors(validation_issues):
@@ -485,9 +494,18 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     )
     tariff_schedule = _build_ppa_tariff_schedule(inputs, periods_meta)
     proxy = _build_project_inputs_proxy(inputs, tariff_schedule)
-    production_by_idx = full_generation_schedule(proxy, engine)
+    native_bess = getattr(inputs.technical, "bess_native_config_json", "")
+    production_by_idx = {idx: 0.0 for idx in canonical_indices} if native_bess else full_generation_schedule(proxy, engine)
     revenue_notes = ()
-    if getattr(proxy.revenue, "multistream_config_json", ""):
+    if native_bess:
+        import json
+        from financial_engine.bess import operating_evidence, require_native_separation
+        require_native_separation(inputs)
+        revenue_notes = operating_evidence(native_bess, periods_meta)
+        bess_rows = {row["period_index"]: row for row in map(json.loads, revenue_notes)}
+        revenue_by_idx = {idx: float(bess_rows[idx]["gross_sale_revenue_keur"]) if idx in bess_rows else 0.0 for idx in canonical_indices}
+        production_by_idx = {idx: float(bess_rows[idx]["grid_export_mwh"]) if idx in bess_rows else 0.0 for idx in canonical_indices}
+    elif getattr(proxy.revenue, "multistream_config_json", ""):
         import json
         from finco_core.revenue.generation import revenue_decomposition_schedule
         decompositions = revenue_decomposition_schedule(proxy, engine)
@@ -504,6 +522,11 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     # Step 5: OPEX via finco_core leaf.
     from finco_core.opex.projections import opex_schedule_period
     opex_by_idx = opex_schedule_period(proxy, engine)
+    if native_bess:
+        for idx, row in bess_rows.items():
+            opex_by_idx[idx] += sum(float(row[key]) for key in (
+                "charging_purchase_cost_keur", "auxiliary_purchase_cost_keur", "grid_import_charge_keur",
+                "grid_export_charge_keur", "variable_om_keur"))
 
     for label, schedule in (
         ("production", production_by_idx),
@@ -538,7 +561,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
             period_in_year=float(p.period_in_year),
             is_construction=p.is_construction,
             is_operation=p.is_operation,
-            is_ppa_active=decompositions[idx]["is_ppa_active"] if revenue_notes else p.is_ppa_active,
+            is_ppa_active=False if native_bess else decompositions[idx]["is_ppa_active"] if revenue_notes else p.is_ppa_active,
             days_in_period=p.days_in_period,
             day_fraction=p.day_fraction,
             production_mwh=production_by_idx.get(idx, 0.0),
@@ -568,15 +591,15 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     evidence = (
         DerivationEvidence(
             output_path="operating_schedules.production_mwh",
-            source_module="finco_core.revenue.generation",
-            source_function="full_generation_schedule",
+            source_module="financial_engine.bess" if native_bess else "finco_core.revenue.generation",
+            source_function="operating_evidence" if native_bess else "full_generation_schedule",
             input_paths=("technical", "calendar"),
             notes=(),
         ),
         DerivationEvidence(
             output_path="operating_schedules.revenue_keur",
-            source_module="finco_core.revenue.generation",
-            source_function="full_revenue_schedule",
+            source_module="financial_engine.bess" if native_bess else "finco_core.revenue.generation",
+            source_function="operating_evidence" if native_bess else "full_revenue_schedule",
             input_paths=("revenue", "calendar", "technical"),
             notes=revenue_notes,
         ),
@@ -585,7 +608,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
             source_module="finco_core.opex.projections",
             source_function="opex_schedule_period",
             input_paths=("opex", "calendar"),
-            notes=(),
+            notes=revenue_notes if native_bess else (),
         ),
         DerivationEvidence(
             output_path="operating_schedules.ebitda_keur",

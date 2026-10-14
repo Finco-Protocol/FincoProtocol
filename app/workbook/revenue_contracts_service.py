@@ -14,13 +14,20 @@ class RevenueContractConflict(ValueError):
     pass
 
 
-def save_contracts(*, owner, project_id, expected_hash, raw, inherit=False):
+def save_contracts(*, owner, project_id, expected_hash, raw, inherit=False, field_id=FIELD_ID):
     """Replace one payload; selection and content CAS are checked under the write lock.
 
     Caller must resolve project write authority before entry. Identity is never
     supplied by a browser scenario ID. No Run or financial calculation occurs.
     """
-    value = "" if inherit else canonical_json(raw)
+    snapshot_key, canonical = SNAPSHOT_KEY, canonical_json
+    if field_id == "project_setup.bess.configuration":
+        from app.workbook.bess_config import SNAPSHOT_KEY as snapshot_key, canonical_json as canonical, ACTIVATION_ENABLED
+        if not ACTIVATION_ENABLED:
+            raise ValueError("BESS_FINANCIAL_ACTIVATION_RELEASE_CLOSED")
+    elif field_id != FIELD_ID:
+        raise ValueError("TYPED_CONTRACT_FIELD_NOT_AUTHORIZED")
+    value = "" if inherit else canonical(raw)
     conn = get_connection()
     try:
         conn.execute("BEGIN EXCLUSIVE")
@@ -31,6 +38,8 @@ def save_contracts(*, owner, project_id, expected_hash, raw, inherit=False):
         from app.ui.protected_reference_service import is_protected_reference
         if project is None or is_protected_reference(ProjectRecord.from_row(project)):
             raise RevenueContractConflict("Project is unavailable or read-only; reload")
+        if field_id == "project_setup.bess.configuration" and project["project_type"].lower() != "storage":
+            raise ValueError("BESS_STANDALONE_SCOPE_REQUIRED")
         cur.execute("SELECT * FROM workspace_states WHERE user_id=? AND project_id=?", (owner, project_id))
         ws = cur.fetchone()
         if ws is None:
@@ -52,9 +61,9 @@ def save_contracts(*, owner, project_id, expected_hash, raw, inherit=False):
         if scenario is not None and not scenario["is_base_case"]:
             overrides = json.loads(scenario["overrides_json"] or "{}")
             if inherit:
-                overrides.pop(SNAPSHOT_KEY, None)
+                overrides.pop(snapshot_key, None)
             else:
-                overrides[SNAPSHOT_KEY] = value
+                overrides[snapshot_key] = value
             # Match Run: current draft plus explicit scenario contracts, never a stale Base snapshot.
             effective = resolve_scenario_snapshot(draft, overrides)
             ProjectInputSet.from_snapshot(effective).to_projectinputs()
@@ -63,7 +72,7 @@ def save_contracts(*, owner, project_id, expected_hash, raw, inherit=False):
         else:
             if inherit:
                 raise ValueError("Base contracts cannot inherit from another scenario")
-            pis = ProjectInputSet.from_snapshot(draft).with_value(FIELD_ID, value)
+            pis = ProjectInputSet.from_snapshot(draft).with_value(field_id, value)
             pis.to_projectinputs()
             draft = pis.to_snapshot()
         new_identity = assemble_transactional(draft_snapshot_json=_to_json(draft), **identity_args)

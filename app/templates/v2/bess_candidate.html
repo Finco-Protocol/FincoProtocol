@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BESS operating review | FINCO Model</title>
+  <link rel="stylesheet" href="/static/css/workbook_v2.css">
+  <link rel="stylesheet" href="/static/css/model_bess_candidate.css">
+</head>
+<body>
+<header class="m7-header"><a href="/v2/workbook?project={{ project.project_code | urlencode }}">Back to workbook</a><strong>FINCO Model / BESS</strong><span>{{ project.project_name }}</span></header>
+<main class="m7-workspace">
+  <h1>BESS Operating Review</h1>
+  <p class="m7-boundary" data-testid="bess-release-closed">Financial Run unavailable. These are ephemeral operating assumptions, not saved project inputs or Last Run evidence.</p>
+  {% if readonly %}<p data-testid="bess-reference-readonly">Protected reference or shared read-only scope. No edits, Save or Run.</p>{% endif %}
+  <form method="post" action="/v2/workbook/bess/candidate/validate" data-testid="bess-review-form">
+    <input type="hidden" name="project" value="{{ project.project_code }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="content_hash" value="{{ content_hash }}">
+    <input type="hidden" name="configuration" data-m7-payload value="{{ configuration | tojson | forceescape }}">
+    <fieldset {% if readonly %}disabled{% endif %}>
+      <legend>Technical Configuration</legend>
+      <div class="m7-fields">
+        {% set labels = {'charge_power_mw':'AC charging power MW','discharge_power_mw':'AC discharging power MW','grid_import_limit_mw':'Grid import limit MW','grid_export_limit_mw':'Grid export limit MW','installed_energy_mwh':'Installed energy MWh','usable_energy_mwh':'Usable energy MWh','duration_hours':'Duration hours','soc_min':'Minimum SoC %','soc_max':'Maximum SoC %','initial_energy_mwh':'Initial stored energy MWh','terminal_energy_mwh':'Terminal stored energy MWh','charge_efficiency':'Charging efficiency %','discharge_efficiency':'Discharging efficiency %','round_trip_efficiency':'Round-trip efficiency %','calendar_loss_per_year':'Calendar loss % / ACT365 year','cycle_loss_per_efc':'Cycle loss % / EFC','minimum_soh':'Minimum SoH %','useful_life_years':'Physical useful life calendar years'} %}
+        {% set fractions = ['soc_min','soc_max','charge_efficiency','discharge_efficiency','round_trip_efficiency','calendar_loss_per_year','cycle_loss_per_efc','minimum_soh'] %}
+        {% for key,value in configuration.battery.items() %}<label>{{ labels[key] }}<input type="number" data-m7-battery="{{ key }}" data-fraction="{{ 'true' if key in fractions else 'false' }}" value="{{ '%.12g'|format(value * 100 if key in fractions else value) }}" step="{{ '1' if key == 'useful_life_years' else 'any' }}" min="0" {% if key in fractions %}max="100"{% endif %} required></label>{% endfor %}
+        <label>Start UTC<input type="datetime-local" data-m7-root="start" value="{{ configuration.start[:-1] }}" step="3600" required></label>
+        <label>End UTC (exclusive)<input type="datetime-local" data-m7-root="end" value="{{ configuration.end[:-1] }}" step="3600" required></label>
+        <label>Source reference<input data-m7-root="source_ref" value="{{ configuration.source_ref }}" maxlength="200" required></label>
+      </div>
+      <p>UTC hourly / grid-fed auxiliaries / exact terminal inventory. Aggregate DC pool; no per-cell thermal or network model.</p>
+    </fieldset>
+    <fieldset {% if readonly %}disabled{% endif %}>
+      <legend>Dispatch &amp; Merchant Assumptions</legend>
+      <p>Original FINCO synthetic fixed daily plan. Not market history, a price forecast or optimal dispatch. Declared outages suspend the fixed plan; invalid SoC is never repaired.</p>
+      <div class="m7-scroll"><table><thead><tr><th>UTC hour</th><th>Charge MW</th><th>Discharge MW</th><th>Auxiliary MW</th><th>Available</th><th>Buy EUR/MWh</th><th>Sell EUR/MWh</th><th>Import EUR/MWh</th><th>Export EUR/MWh</th><th>Source</th></tr></thead>
+      <tbody>{% for point in configuration.dispatch %}<tr data-m7-point="{{ loop.index0 }}"><td>{{ point.utc_hour }}</td>
+        {% for key in ['charge_mw','discharge_mw','auxiliary_grid_mw'] %}<td><input type="number" min="0" step="any" data-m7-point-field="{{ key }}" value="{{ point[key] }}" aria-label="{{ key }} hour {{ point.utc_hour }}" required></td>{% endfor %}
+        <td><input type="checkbox" data-m7-point-field="available" {% if point.available %}checked{% endif %} aria-label="Available hour {{ point.utc_hour }}"></td>
+        {% for key in ['buy_price_eur_mwh','sell_price_eur_mwh','import_charge_eur_mwh','export_charge_eur_mwh'] %}<td><input type="number" min="0" step="any" data-m7-point-field="{{ key }}" value="{{ point[key] }}" aria-label="{{ key }} hour {{ point.utc_hour }}" required></td>{% endfor %}
+        <td><input data-m7-point-field="source_ref" value="{{ point.source_ref }}" maxlength="200" aria-label="Source hour {{ point.utc_hour }}" required></td>
+      </tr>{% endfor %}</tbody></table></div>
+    </fieldset>
+    <fieldset {% if readonly %}disabled{% endif %}><legend>Lifecycle Events</legend>
+      <p>Paid augmentation/replacement is separate CAPEX evidence. Book, tax, funding and disposal treatment remain unresolved.</p>
+      <div data-m7-events></div><button type="button" data-m7-add-event>Add lifecycle event</button>
+    </fieldset>
+    {% if not readonly %}<button type="submit" data-m7-validate disabled>Validate operating assumptions</button>{% endif %}
+    <p role="alert" data-m7-error hidden></p>
+  </form>
+  <section aria-label="Financial boundary"><h2>Financial Integration</h2><p>Save, scenario persistence, canonical financial Run and immutable Run History are not enabled for this candidate. Charging purchases are not netted into financial revenue. Capacity/Ancillary, Hybrid and Junior activation remain unavailable.</p></section>
+  {% if result %}
+  <section data-testid="bess-operating-evidence"><h2>Operating Evidence</h2>
+    <dl class="m7-fields"><div><dt>Validated hours</dt><dd>{{ result.hours|length }}</dd></div><div><dt>Configuration fingerprint</dt><dd class="m7-fingerprint">{{ result.input_fingerprint }}</dd></div>
+    {% for label,key in [('Import MWh','purchased_import_mwh'),('Export MWh','delivered_export_mwh'),('Gross sale kEUR','gross_sale_revenue_keur'),('Charging purchases kEUR','charging_purchase_cost_keur'),('Auxiliary purchases kEUR','auxiliary_purchase_cost_keur'),('Import charges kEUR','grid_import_charge_keur'),('Export charges kEUR','grid_export_charge_keur'),('Merchant contribution kEUR','net_merchant_contribution_keur'),('Lifecycle CAPEX kEUR','lifecycle_capex_keur'),('Equivalent full cycles','total_equivalent_full_cycles'),('Max energy residual MWh','maximum_energy_residual_mwh')] %}<div><dt>{{ label }}</dt><dd>{{ '%.8f'|format(result[key]) }}</dd></div>{% endfor %}</dl>
+    <p>Interval accrual evidence, not posted financial statements or a bankability PASS. Financial settlement requires the approved full-horizon adapter. First/last 24 hours shown when the horizon exceeds 48 hours.</p>
+    <div class="m7-scroll"><table><thead><tr><th>UTC start</th><th>Opening MWh</th><th>Charge MWh</th><th>Discharge MWh</th><th>Closing MWh</th><th>Capacity MWh</th><th>SoH</th><th>Sale kEUR</th><th>Charge cost kEUR</th><th>Aux cost kEUR</th><th>Import fee kEUR</th><th>Export fee kEUR</th><th>Contribution kEUR</th></tr></thead><tbody>
+    {% for row in sample_hours %}<tr><td>{{ row.start.isoformat() }}</td>{% for key in ['opening_energy_mwh','ac_charge_mwh','ac_discharge_mwh','closing_energy_mwh','available_energy_closing_mwh','soh_closing','gross_sale_revenue_keur','charging_purchase_cost_keur','auxiliary_purchase_cost_keur','grid_import_charge_keur','grid_export_charge_keur','net_merchant_contribution_keur'] %}<td>{{ '%.8f'|format(row[key]) }}</td>{% endfor %}</tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+  {% endif %}
+</main><script src="/static/js/model_bess_candidate.js"></script>
+</body></html>

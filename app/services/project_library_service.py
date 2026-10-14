@@ -592,8 +592,11 @@ def create_working_copy(
     # UnsupportedProjectRuntimeError so the clone route can return a helpful
     # 400 response.  The reference itself remains viewable.
     if getattr(source, "template_source", None) not in CLONEABLE_TEMPLATE_SOURCES:
-        _source_type = (getattr(source, "project_type", "") or "").strip()
-        raise UnsupportedProjectRuntimeError(_source_type)
+        from app.workbook.bess_config import ACTIVATION_ENABLED
+        if not (ACTIVATION_ENABLED and source.template_source == "generic_storage_reference"
+                and (source.project_type or "").lower() == "storage"):
+            _source_type = (getattr(source, "project_type", "") or "").strip()
+            raise UnsupportedProjectRuntimeError(_source_type)
 
     # Step 2 — determine default name
     if requested_name:
