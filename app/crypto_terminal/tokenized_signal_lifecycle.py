@@ -192,10 +192,6 @@ def _dislocated(state: str) -> bool:
 
 
 def _kind(before: str, after: str, crossing: bool) -> LifecycleKind:
-    if before == "AVAILABLE" and after == "STALE":
-        return LifecycleKind.EVIDENCE_BECAME_STALE
-    if before in ("AVAILABLE", "STALE") and after == "UNAVAILABLE":
-        return LifecycleKind.EVIDENCE_BECAME_UNAVAILABLE
     if before in ("STALE", "UNAVAILABLE", "UNKNOWN_PRIOR") and after in (
             "WITHIN_THRESHOLD", "PREMIUM_DISLOCATION", "DISCOUNT_DISLOCATION"):
         return (LifecycleKind.EVIDENCE_RECOVERED if before != "UNKNOWN_PRIOR"
@@ -398,7 +394,9 @@ def build_tokenized_signal_lifecycle(
                                and f.threshold_bps == str(threshold)
                                for f in facts)
             kind = _kind(prior_class, current_class, crossing)
-            if prior is None and current_class not in ("STALE", "UNAVAILABLE"):
+            if prior is None:
+                # A first-ever row (including stale/unavailable evidence)
+                # cannot prove that a state *became* anything.
                 kind = LifecycleKind.NO_MATERIAL_CHANGE
             if (prior is not None and prior_class not in ("STALE", "UNAVAILABLE")
                     and current_class in ("STALE", "UNAVAILABLE")):
@@ -409,7 +407,10 @@ def build_tokenized_signal_lifecycle(
                 # source time, never manufacture elapsed wall-clock uptime.
                 partial_history = replace(
                     history, current_state=effective, points=tuple(prefix_points))
-                persistence = compute_dislocation_persistence(partial_history, now=stamp)
+                persistence = (
+                    compute_dislocation_persistence(partial_history, now=stamp)
+                    if current_class != "UNAVAILABLE" else None
+                )
                 output.append(_event(
                     kind, identity, row, prior, previous=prior_class,
                     current=current_class, basis=basis, reason=reason,
