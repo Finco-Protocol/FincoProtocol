@@ -156,7 +156,8 @@ async def acquisition_page(request: Request, project: str = "", history_id: str 
 async def acquisition_save(request: Request):
     from app.auth import validate_csrf_token
     from app.ui.protected_reference_service import is_protected_reference
-    user = _record(request, "")[0]
+    from app.v2.router import _get_current_user
+    user = _get_current_user(request)
     if user is None:
         return JSONResponse({"error": "UNAUTHENTICATED"}, status_code=401)
     form = await request.form()
