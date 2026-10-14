@@ -297,7 +297,7 @@ def _collect():
         ["git", "merge-base", "--is-ancestor", RC2_MERGE_COMMIT, "HEAD"],
         cwd=ROOT, capture_output=True, text=True).returncode == 0
     return {
-        "rc3_branch_status": [tuple(line.split("\\t", 1))
+        "rc3_branch_status": [tuple(line.split("\t", 1))
             for line in _git("diff", "--name-status", "--no-renames",
                              RC2_MERGE_COMMIT, "HEAD").splitlines()],
         "rc3_r5_worktree_blob": _git("hash-object", RC3_R5_EXACT_PATH)
@@ -379,7 +379,7 @@ def test_rc3_r5_actual_byte_mutation_rejected(facts):
     source = (ROOT / RC3_R5_EXACT_PATH).read_bytes()
     changed = subprocess.run(
         ["git", "hash-object", "--stdin"],
-        input=source + b"\\n# unauthorized change\\n",
+        input=source + b"x",
         capture_output=True, cwd=ROOT, check=True).stdout.decode().strip()
     assert changed != RC3_R5_EXACT_BLOB
     mutated = copy.deepcopy(facts)
