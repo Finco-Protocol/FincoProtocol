@@ -319,9 +319,15 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
         "ev charging", "ev_charging",
     ) if hasattr(pis, "get") else False
     is_ev_charging = _ev_template or _ev_type
+    is_bess = str(pis.get("project_setup.identity.project_type") or "").strip().lower() == "storage"
     rows: list[dict] = []
     for section in sorted(sheet.sections, key=lambda s: s.order):
         for fspec in sorted(section.fields, key=lambda f: f.order):
+            if fspec.field_id == "project_setup.bess.configuration":
+                continue  # Native structured editor owns this payload and CSRF.
+            if is_bess and (fspec.field_id.startswith("revenue.") or fspec.field_id in (
+                "project_setup.technical.p50_hours", "project_setup.technical.capacity_mw")):
+                continue
             if is_data_center and fspec.field_id in DC_RENEWABLE_EXCLUDED_FIELD_IDS:
                 continue
             if not is_data_center and fspec.field_id in DATA_CENTER_FIELD_IDS:
@@ -640,6 +646,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
         "template_source": pis.template_source,
         "is_data_center": _dc_tmpl or _dc_type,
         "is_ev_charging": _ev_tmpl or _ev_type,
+        "is_bess": (getattr(project_record, "project_type", "") or "").strip().lower() == "storage",
         "project_editable": not is_protected_reference(project_record),
         "ws_dirty": ws.dirty,
         "runtime_is_stale": freshness.is_stale,
@@ -1462,7 +1469,8 @@ def _build_debt_ctx(pis, ws, projection=None, *, context=None) -> dict:
     from app.workbook.multisenior_config import (
         FIELD_ID as f3_field, SNAPSHOT_KEY as f3_key, build_view as build_f3_view, scope_for_workspace,
     )
-    f3 = build_f3_view(finance_pi, pis.snapshot_origin.get(f3_key), scope_for_workspace(ws),
+    _bess_without_contract = finance_pi is not None and finance_pi.technical.bess_enabled and not getattr(finance_pi.technical, "bess_native_config_json", "")
+    f3 = build_f3_view(None if _bess_without_contract else finance_pi, pis.snapshot_origin.get(f3_key), scope_for_workspace(ws),
         rr_for_sponsor.runtime_summary if rr_for_sponsor else None,
         owner_id=ws.user_id, project_id=ws.project_id)
     debt_fields = [f for f in debt_fields if f["field_id"] != f3_field]
@@ -1863,7 +1871,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     # migrations, ProjectInputSet construction, hydration, or any economic
     # resolver can read or mutate its persisted state.
     _project_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
-    if _project_type_lower == "storage":
+    from app.workbook.bess_config import ACTIVATION_ENABLED as _bess_enabled
+    if _project_type_lower == "storage" and not _bess_enabled:
         from app.utils.workbook_flag import project_workbook_url as _wbu
         _storage_ref_url = _wbu("generic_storage_reference-reference")
         if is_protected_reference(project_record):
@@ -1945,6 +1954,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "hydration_script": hydration_script,
         "ps_fields": _build_ps_fields(pis),
         "technical_fields": _build_sheet_fields("project_setup", pis),
+        "is_bess": _project_type_lower == "storage",
         "capex_fields": _build_sheet_fields("capex", pis),
         "opex_fields": _build_sheet_fields("opex", pis),
         "debt_fields": _lock_senior_fields_if_calibrated(
@@ -2302,6 +2312,8 @@ async def v2_workbook_update(
             status_code=403,
         )
 
+    if field_id == "project_setup.bess.configuration":
+        return JSONResponse({"error": "Use the owner/CSRF/CAS protected Battery editor"}, status_code=409)
     if field_id == "debt.financing.instruments":
         from app.auth import validate_csrf_token
         from app.workbook.financing_csrf import extract_bound_token
@@ -2696,7 +2708,15 @@ async def v2_workbook_run(
     # the is_protected_reference check — the capability boundary is
     # "protected reference" vs "user-owned editable project".
     _run_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
-    if _run_type_lower not in ("solar", "wind", "data center", "ev charging") and not is_protected_reference(project_record):
+    from app.workbook.bess_config import admitted as _bess_admitted, SNAPSHOT_KEY as _bess_key
+    _bess_snapshot = dict(ws.draft_snapshot or {})
+    if _run_type_lower == "storage" and ws.active_scenario_id:
+        from app.persistence.scenarios_repository import get_scenario as _bess_scenario
+        _bsc = _bess_scenario(ws.active_scenario_id, workspace_owner)
+        if _bsc is not None and _bsc.project_id == ws.project_id and not _bsc.archived and _bess_key in (_bsc.overrides or {}):
+            _bess_snapshot[_bess_key] = _bsc.overrides[_bess_key]
+    _supported_bess = _run_type_lower == "storage" and _bess_admitted(_bess_snapshot)
+    if _run_type_lower not in ("solar", "wind", "data center", "ev charging") and not _supported_bess and not is_protected_reference(project_record):
         _raw_type = project_record.project_type or "Unknown"
         msg = (
             f"{_raw_type} working-copy runtime is not yet supported. "
@@ -2791,6 +2811,8 @@ async def v2_workbook_run(
         runtime_project_key = "Generic Data Center Reference"
     elif project_type_raw in ("ev charging", "ev_charging"):
         runtime_project_key = "Generic EV Charging Hub Reference"
+    elif project_type_raw == "storage" and _supported_bess:
+        runtime_project_key = "Storage"
     else:
         # Unsupported runtime — Storage and any future unimplemented types.
         # HTMX: 200 + banner fragment (HTMX pattern); non-HTMX: 409 Conflict so
@@ -2902,7 +2924,7 @@ async def v2_workbook_run(
                 msg = str(exc)
                 return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
-        if not sc_rec.is_base_case and any(key in (sc_rec.overrides or {}) for key in ("tariff_eur_mwh", "rev_multistream_config_json")):
+        if not sc_rec.is_base_case and any(key in (sc_rec.overrides or {}) for key in ("tariff_eur_mwh", "rev_multistream_config_json", "bess_native_config_json")):
             from app.workbook.scenario_revenue_authority import bind_scenario_tariff
             try:
                 effective_snapshot = bind_scenario_tariff(
@@ -3031,6 +3053,9 @@ async def v2_workbook_run(
             _scenario_revenue_input["multistream_config_json"] = _contracts
             _kpis_enriched["revenue_multistream_audit"] = result["revenue_multistream_audit"]
         _kpis_enriched["scenario_revenue_input"] = _scenario_revenue_input
+    if getattr(override.technical, "bess_native_config_json", ""):
+        _kpis_enriched["bess_operating_audit"] = result["bess_operating_audit"]
+        _kpis_enriched["bess_input_contract"] = override.technical.bess_native_config_json
 
     # ── Step 12: atomic commit (final CAS + promote + dirty=False) ────────── #
     runtime_snapshot_id = _utc_compact()
@@ -3927,7 +3952,7 @@ async def v2_scenario_update_overrides(
     overrides: dict = {}
     items = form.multi_items() if hasattr(form, "multi_items") else form.items()
     for key, val in items:
-        if key == "rev_multistream_config_json":
+        if key in ("rev_multistream_config_json", "bess_native_config_json"):
             return JSONResponse({"error": "Use the CAS-protected Revenue contract editor"}, status_code=422)
         if key in _SKIP_KEYS or not key or not val:
             continue
@@ -5674,3 +5699,5 @@ register_template_globals()
 # M7 operating review is release-closed and does not replace Storage Save/Run.
 from app.v2.bess_candidate_router import router as bess_candidate_router
 router.include_router(bess_candidate_router)
+from app.v2.bess_workspace_router import router as bess_workspace_router
+router.include_router(bess_workspace_router)

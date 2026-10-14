@@ -1,0 +1,39 @@
+<section class="m7-integrated" data-testid="bess-workspace">
+<h2>Standalone Battery</h2>
+{% if readonly and project.project_role == 'reference' %}<form method="post" action="/v2/workbook/bess/working-copy"><input type="hidden" name="project" value="{{ project.project_code }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Create Working Copy</button></form>{% endif %}
+{% if is_initial_example %}<p>Original synthetic assumptions below are not saved. Review physical inputs, merchant prices and project costs before Save and Run.</p>{% endif %}
+<form action="/v2/workbook/bess/save" method="post" data-m7-financial-form>
+<input type="hidden" name="project" value="{{ project.project_code }}">
+<input type="hidden" name="content_hash" value="{{ content_hash }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+<input type="hidden" name="configuration" data-m7-native-payload value="{{ native_contract | tojson | forceescape }}">
+<fieldset {% if readonly %}disabled{% endif %}><legend>Technical Configuration &amp; Degradation</legend>
+<div class="m7-fields">
+{% set fractions = ['soc_min','soc_max','charge_efficiency','discharge_efficiency','round_trip_efficiency','calendar_loss_per_year','cycle_loss_per_efc','minimum_soh'] %}
+{% for key,value in configuration.battery.items() %}<label>{{ key.replace('_',' ') | title }}{% if key in fractions %} %{% endif %}<input type="number" data-m7-battery="{{ key }}" data-fraction="{{ 'true' if key in fractions else 'false' }}" value="{{ '%.12g'|format(value * 100 if key in fractions else value) }}" min="0" step="any" required></label>{% endfor %}
+<label>Start UTC<input type="datetime-local" data-m7-root="start" value="{{ configuration.start[:-1] }}" step="3600" required></label>
+<label>End UTC (exclusive)<input type="datetime-local" data-m7-root="end" value="{{ configuration.end[:-1] }}" step="3600" required></label>
+<label>Source reference<input data-m7-root="source_ref" value="{{ configuration.source_ref }}" required maxlength="200"></label>
+<label>Variable O&amp;M EUR / DC MWh<input type="number" data-m7-variable-om value="{{ variable_om }}" step="any" min="0" required></label>
+</div></fieldset>
+<fieldset {% if readonly %}disabled{% endif %}><legend>Dispatch &amp; Merchant Purchase/Sale</legend>
+{% if configuration.dispatch_mode == 'FIXED_DAILY_PLAN' %}
+<div class="m7-scroll"><table><thead><tr><th>UTC hour</th><th>Charge MW</th><th>Discharge MW</th><th>Aux MW</th><th>Available</th><th>Buy EUR/MWh</th><th>Sell EUR/MWh</th><th>Import EUR/MWh</th><th>Export EUR/MWh</th><th>Source</th></tr></thead>
+<tbody>{% for point in configuration.dispatch %}<tr data-m7-point="{{ loop.index0 }}"><td>{{ point.utc_hour }}</td>
+{% for key in ['charge_mw','discharge_mw','auxiliary_grid_mw'] %}<td><input type="number" min="0" step="any" data-m7-point-field="{{ key }}" value="{{ point[key] }}" required aria-label="{{ key }} hour {{ point.utc_hour }}"></td>{% endfor %}
+<td><input type="checkbox" data-m7-point-field="available" {% if point.available %}checked{% endif %}></td>
+{% for key in ['buy_price_eur_mwh','sell_price_eur_mwh','import_charge_eur_mwh','export_charge_eur_mwh'] %}<td><input type="number" min="0" step="any" data-m7-point-field="{{ key }}" value="{{ point[key] }}" required aria-label="{{ key }} hour {{ point.utc_hour }}"></td>{% endfor %}
+<td><input data-m7-point-field="source_ref" value="{{ point.source_ref }}" required maxlength="200"></td></tr>{% endfor %}</tbody></table></div>
+{% else %}<p>Explicit hourly chronology is preserved. Use the typed configuration editor; the daily table does not reinterpret it.</p>{% endif %}
+<details><summary>Complete typed configuration</summary><textarea data-m7-native-editor aria-label="Native BESS configuration" rows="12">{{ native_contract | tojson }}</textarea><label><input type="checkbox" data-m7-use-native-editor>Replace configuration from this editor</label></details>
+</fieldset>
+<p>Augmentation/replacement finance is not released. Paid physical events remain available only in the isolated operating review. CAPEX and fixed O&amp;M use the existing cost sheets; charging, auxiliary and grid costs are additional identifiable runtime expenses.</p>
+{% if not readonly %}<button type="submit" data-m7-save disabled>Save battery assumptions</button>{% else %}<p>Protected reference: create a Working Copy to edit.</p>{% endif %}
+<p data-m7-error role="alert" hidden></p>
+</form>
+<h3>Last Run Operating Evidence</h3>
+{% if audit %}<div class="m7-scroll"><table data-testid="bess-run-evidence"><thead><tr><th>Period</th><th>Settlement</th><th>Hours</th><th>Export MWh</th><th>Import MWh</th><th>Gross sales kEUR</th><th>Charging kEUR</th><th>Auxiliary kEUR</th><th>Grid import kEUR</th><th>Grid export kEUR</th><th>Merchant contribution kEUR</th><th>Variable O&amp;M kEUR</th><th>Opening MWh</th><th>Closing MWh</th><th>SoH</th><th>Cumulative EFC</th></tr></thead><tbody>
+{% for row in audit %}<tr>{% for key in ['period_index','cash_date','hours','grid_export_mwh','grid_import_mwh','gross_sale_revenue_keur','charging_purchase_cost_keur','auxiliary_purchase_cost_keur','grid_import_charge_keur','grid_export_charge_keur','net_merchant_contribution_keur','variable_om_keur','opening_energy_mwh','closing_energy_mwh','closing_soh','cumulative_efc'] %}<td>{{ row[key] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+{% else %}<p>No completed BESS Run evidence. Current assumptions are not calculated output.</p>{% endif %}
+</section>

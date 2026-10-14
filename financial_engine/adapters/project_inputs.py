@@ -116,7 +116,18 @@ def from_project_inputs(
         ),
     )
 
-    technical = TechnicalInput(
+    technical_class = TechnicalInput
+    technical_extra = {}
+    if getattr(tech, "bess_native_config_json", ""):
+        from financial_engine.bess import NativeBessTechnicalInput
+        if not tech.bess_enabled:
+            raise ValueError("BESS_NATIVE_VERTICAL_REQUIRED")
+        technical_class = NativeBessTechnicalInput
+        technical_extra = {"bess_native_config_json": tech.bess_native_config_json}
+    elif tech.bess_enabled:
+        raise ValueError("BESS_NATIVE_CONTRACT_REQUIRED: legacy spread economics are not clean runtime")
+    technical = technical_class(
+        **technical_extra,
         capacity_mw=tech.capacity_mw,
         yield_scenario=yield_scenario,
         operating_hours_p50=tech.operating_hours_p50,

@@ -1,5 +1,9 @@
 # M7 standalone BESS V1: release-closed development candidate
 
+> Historical first checkpoint (`ec856799`). The financial continuation is
+> documented in `M7_BESS_FINANCIAL_INTEGRATION_REPORT.md`; its protected
+> successor manifest replaces the earlier ZERO-DIFF financial boundary.
+
 ## Disposition and provenance
 
 This is an executable physical/merchant/lifecycle candidate, **not** an enabled
