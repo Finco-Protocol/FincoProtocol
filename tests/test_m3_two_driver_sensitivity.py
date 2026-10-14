@@ -544,5 +544,37 @@ def test_no_engine_or_financial_authority_files_are_touched():
     def reviewed_v3(path):
         head = subprocess.run(["git", "rev-parse", "HEAD:" + path], capture_output=True, text=True).stdout.strip()
         return v3.get(path) == head
+    # M3's financial deny remains closed except for the exact reviewed Revenue V3 blobs.
+    # RC-2 separately authorizes ONLY the two-line CI job change (proposed, not approved).
+    from pathlib import Path
+    from tests.test_rc2_integration_manifest import (
+        RC2_BASE_MAIN, RC2_CI_WORKFLOW, RC2_CI_WORKFLOW_BASE_BLOB,
+        RC2_CI_WORKFLOW_CANDIDATE_BLOB, rc2_workflow_delta_valid,
+    )
+
+    def checked_git(*args):
+        result = subprocess.run(["git", *args], capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    def reviewed_ci_workflow(path):
+        if path != RC2_CI_WORKFLOW:
+            return False
+        root = Path(__file__).resolve().parents[1]
+        current_path = root / path
+        baseline = subprocess.run(
+            ["git", "show", f"{RC2_BASE_MAIN}:{path}"], capture_output=True, text=True
+        )
+        if baseline.returncode != 0 or not current_path.is_file():
+            return False
+        return (
+            checked_git("rev-parse", f"{RC2_BASE_MAIN}:{path}") == RC2_CI_WORKFLOW_BASE_BLOB
+            and checked_git("rev-parse", f"HEAD:{path}") == RC2_CI_WORKFLOW_CANDIDATE_BLOB
+            and checked_git("hash-object", path) == RC2_CI_WORKFLOW_CANDIDATE_BLOB
+            and rc2_workflow_delta_valid(baseline.stdout, current_path.read_text(encoding="utf-8"))
+        )
+
     assert not [p for p in out.split() if p.startswith(("financial_engine/", "finco_core/", "domain/", ".github/"))
-                and not reviewed_v3(p)]
+                and not (reviewed_v3(p) or reviewed_ci_workflow(p))]
+    # Negative checks: another workflow and an unapproved financial path never inherit this exception.
+    assert not reviewed_ci_workflow(".github/workflows/public_safety_and_smoke.yml")
+    assert not reviewed_v3("finco_core/revenue/unreviewed.py")

@@ -70,10 +70,12 @@ RC2_FREE_PREFIXES = ("tests/", "docs/", "static/", "app/templates/")
 
 RC2_CI_WORKFLOW = ".github/workflows/ci_public_job.yml"
 RC2_CI_WORKFLOW_BASE_BLOB = "4c6b913605120673b626b8492a8201d5164e7b0d"
-# REVIEW PROPOSAL ONLY: SHA for the unique 3300 -> 4200 pytest budget change.
-RC2_CI_WORKFLOW_CANDIDATE_BLOB = "a50980d2bcc90e233c5d290b1f1545202487882c"
+# REVIEW PROPOSAL ONLY: exact two-line CI successor (3300 -> 4200; 75 -> 90).
+RC2_CI_WORKFLOW_CANDIDATE_BLOB = "29381575e1c58083613c0df854e096ba89b299be"
 RC2_CI_PYTEST_OLD = "FINCO_CI_PYTEST_BUDGET_S: '3300'"
 RC2_CI_PYTEST_NEW = "FINCO_CI_PYTEST_BUDGET_S: '4200'"
+RC2_CI_JOB_TIMEOUT_OLD = "timeout-minutes: 75"
+RC2_CI_JOB_TIMEOUT_NEW = "timeout-minutes: 90"
 
 
 
@@ -110,14 +112,18 @@ def activation_state(source: str, name: str = "ACTIVATION_ENABLED") -> str:
 
 
 def rc2_workflow_delta_valid(baseline: str, candidate: str) -> bool:
-    """One reviewed budget substitution, no other workflow edits or implicit authorization."""
+    """Exactly two reviewed CI substitutions; neither permits any third workflow edit."""
     return (
         isinstance(baseline, str)
         and isinstance(candidate, str)
         and baseline.count(RC2_CI_PYTEST_OLD) == 1
         and baseline.count(RC2_CI_PYTEST_NEW) == 0
+        and baseline.count(RC2_CI_JOB_TIMEOUT_OLD) == 1
+        and baseline.count(RC2_CI_JOB_TIMEOUT_NEW) == 0
         and candidate.count(RC2_CI_PYTEST_NEW) == 1
-        and candidate == baseline.replace(RC2_CI_PYTEST_OLD, RC2_CI_PYTEST_NEW, 1)
+        and candidate.count(RC2_CI_JOB_TIMEOUT_NEW) == 1
+        and candidate == baseline.replace(RC2_CI_PYTEST_OLD, RC2_CI_PYTEST_NEW, 1).replace(
+            RC2_CI_JOB_TIMEOUT_OLD, RC2_CI_JOB_TIMEOUT_NEW, 1)
     )
 
 
@@ -163,7 +169,7 @@ def rc2_violations(f) -> list[str]:
             elif not (path in RC2_EXACT_BLOBS or path == "app/v2/router.py" or path in RC2_GOVERNED_ELSEWHERE
                       or path.startswith(RC2_FREE_PREFIXES) or path == RC2_CI_WORKFLOW):
                 problems.append(f"{path}: not part of the reviewed RC-2 content")
-        # The sole non-default workflow exception is a proposed, byte-exact 3300 -> 4200 delta.
+        # The sole non-default workflow exception is a proposed, byte-exact two-line CI delta.
         # Historical workflow boundaries remain closed; this is NOT reviewer authorization.
         if [status for status, path in f["status"] if path == RC2_CI_WORKFLOW] != ["M"]:
             problems.append("RC-2 CI workflow must be modified exactly once")
@@ -172,7 +178,7 @@ def rc2_violations(f) -> list[str]:
         if f["ci_workflow_head_blob"] != RC2_CI_WORKFLOW_CANDIDATE_BLOB:
             problems.append("RC-2 CI workflow has an unreviewed blob")
         if not rc2_workflow_delta_valid(f["ci_workflow_base"], f["ci_workflow_head"]):
-            problems.append("RC-2 CI workflow contains more than the one reviewed budget line change")
+            problems.append("RC-2 CI workflow differs from the two reviewed budget and job-timeout substitutions")
         for path, expected in RC2_PINNED_UNCHANGED.items():
             if f["blobs"].get(path) != expected:
                 problems.append(f"{path}: not the exact reviewed blob")
@@ -312,7 +318,7 @@ def test_every_other_mutation_is_rejected(facts):
     assert rc2_violations({})                                                 # missing facts never authorise
 
 
-def test_ci_workflow_is_the_single_exact_timeout_delta_and_rejects_other_edits(facts):
+def test_ci_workflow_is_the_exact_two_line_timeout_delta_and_rejects_other_edits(facts):
     assert facts["ci_workflow_base_blob"] == RC2_CI_WORKFLOW_BASE_BLOB
     assert facts["ci_workflow_head_blob"] == RC2_CI_WORKFLOW_CANDIDATE_BLOB
     assert rc2_workflow_delta_valid(facts["ci_workflow_base"], facts["ci_workflow_head"])
@@ -327,7 +333,8 @@ def test_ci_workflow_is_the_single_exact_timeout_delta_and_rejects_other_edits(f
     for source in (
         candidate.replace(RC2_CI_PYTEST_NEW, RC2_CI_PYTEST_OLD, 1),
         candidate.replace(RC2_CI_PYTEST_NEW, "FINCO_CI_PYTEST_BUDGET_S: '4300'", 1),
-        candidate.replace("timeout-minutes: 75", "timeout-minutes: 90", 1),
+        candidate.replace(RC2_CI_JOB_TIMEOUT_NEW, RC2_CI_JOB_TIMEOUT_OLD, 1),
+        candidate.replace(RC2_CI_JOB_TIMEOUT_NEW, "timeout-minutes: 95", 1),
         candidate.replace("FINCO_CI_EXIT_GRACE_S: '180'", "FINCO_CI_EXIT_GRACE_S: '120'", 1),
         candidate + "\n# unrelated workflow modification",
     ):
