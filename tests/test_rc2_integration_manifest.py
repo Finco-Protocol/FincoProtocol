@@ -18,6 +18,12 @@ RC2_BASE_MAIN = "5058c6b4935168241d6923676cb32955cb903185"
 # IMMUTABLE reviewed RC-2 source and its two-parent, tree-identical main merge.
 RC2_ACCEPTED_HEAD = "2155a76bfff4acc3a4e15f7cf35012933ce1a10c"
 RC2_MERGE_COMMIT = "6fc77de98bc0562fb51efdbf96e1803a29b5b148"
+# Names used by the separate RC-3 successor modules (same immutable objects, one authority).
+# RC-3 integration: reviewed R4 source head; the R4 successor proof is anchored to it (tests/test_rc3_integration_inventory.py binds HEAD).
+R4_REVIEWED_HEAD = "8378e5df30ec10b4de2b2f5330491837a7cd1ffb"
+RC2_CHECKPOINT = RC2_MERGE_COMMIT
+RC2_REVIEWED_HEAD = RC2_ACCEPTED_HEAD
+RC2_CHECKPOINT_TREE = "4fdcd03b5e0ed3c4b87d9016f2522bfe50bf0d05"
 RC2_SOURCE_HEADS = (                       # merge order; each the second parent of a normal two-parent merge
     ("275", "73f698705ec5d72af820974873d9be202cd57f7d"),
     ("274", "0fa0ac5e268a37decbae6bc252487aba3e6e31c9"),
@@ -197,6 +203,11 @@ def rc2_violations(f) -> list[str]:
     """Pure fail-closed verifier over injected facts; [] means the manifest holds."""
     try:
         problems, previous = [], RC2_BASE_MAIN
+        seen_paths = set()
+        for _status, _path in f["status"]:                      # from #279: a real name-status diff lists each path once
+            if _path in seen_paths:
+                problems.append(f"{_path}: duplicate cumulative diff entry is malformed evidence")
+            seen_paths.add(_path)
         if f["accepted_head"] != RC2_ACCEPTED_HEAD or f["release_merge_commit"] != RC2_MERGE_COMMIT:
             problems.append("historical RC-2 identity differs from immutable accepted commit/merge")
         if tuple(f["release_parents"]) != (RC2_BASE_MAIN, RC2_ACCEPTED_HEAD):
@@ -341,20 +352,20 @@ def _collect():
     }
 
 
-def _collect_r4():
-    """Distinct exact-head R4 successor, anchored to verified historical RC-2 merge."""
+def _collect_r4(ref=R4_REVIEWED_HEAD):
+    """Distinct R4 successor proof, anchored to the reviewed R4 source head ``ref`` (an ancestor of the integrated HEAD)."""
     paths = (*R4_SUCCESSOR_BLOBS, *R4_PRESENTATION_BLOBS, *R4_SECURITY_GUARD_BLOBS,
              *RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED,
              RC2_CI_WORKFLOW)
     status = [tuple(l.split("\t", 1)) for l in _git(
-        "diff", "--name-status", "--no-renames", RC2_MERGE_COMMIT, "HEAD").splitlines()]
+        "diff", "--name-status", "--no-renames", RC2_MERGE_COMMIT, ref).splitlines()]
     return {
-        "rc2_ancestor": _ancestor(RC2_MERGE_COMMIT, "HEAD"),
-        "accepted_ancestor": _ancestor(RC2_ACCEPTED_HEAD, "HEAD"),
+        "rc2_ancestor": _ancestor(RC2_MERGE_COMMIT, ref),
+        "accepted_ancestor": _ancestor(RC2_ACCEPTED_HEAD, ref), "ref_is_ancestor_of_head": _ancestor(ref, "HEAD"),
         "status": status,
-        "blobs": {p: _git("rev-parse", f"HEAD:{p}") for p in paths},
-        "call_sites": _csrf_sites("HEAD"),
-        "flag_sources": {p: _git_text("show", f"HEAD:{p}")
+        "blobs": {p: _git("rev-parse", f"{ref}:{p}") for p in paths},
+        "call_sites": _csrf_sites(ref),
+        "flag_sources": {p: _git_text("show", f"{ref}:{p}")
                          for p in RC2_ACTIVATION_FLAG_FILES},
     }
 

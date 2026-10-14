@@ -38,6 +38,13 @@ def test_original_rc2_validator_accepts_only_actual_immutable_checkpoint_facts(f
         "router_head": P.source_at(P.BASE, "app/v2/router.py"),
         "flag_sources": {p: P.source_at(P.BASE, p) for p in M.RC2_ACTIVATION_FLAG_FILES},
     }
+    # the anchored RC-2 verifier (RC-3 integration) additionally takes the immutable accepted-head identity facts
+    historical.update({
+        "accepted_head": P.git("rev-parse", M.RC2_ACCEPTED_HEAD), "release_merge_commit": P.git("rev-parse", M.RC2_MERGE_COMMIT),
+        "release_parents": P.git("rev-list", "-n", "1", "--parents", M.RC2_MERGE_COMMIT).split()[1:],
+        "accepted_tree": P.git("rev-parse", f"{M.RC2_ACCEPTED_HEAD}^{{tree}}"),
+        "release_tree": P.git("rev-parse", f"{M.RC2_MERGE_COMMIT}^{{tree}}"), "release_ancestor": True,
+    })
     assert M.rc2_violations(historical) == []
     for path in historical["blobs"]:
         bad = deepcopy(historical)

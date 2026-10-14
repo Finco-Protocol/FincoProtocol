@@ -6,6 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RC2 = "6fc77de98bc0562fb51efdbf96e1803a29b5b148"
+# RC-3 integration: the reviewed M6 source head (an ancestor of the integrated HEAD) that this proof is anchored to.
+M6_REVIEWED_HEAD = "63f1ded39ab90db24f3503c9fe62e9d7029ea017"
 # --- LITERAL REVIEW-PROPOSAL PINS, NOT runtime-calculated baselines ---
 M6_EXACT_BLOBS = {
     'app/api/project_runner.py': 'd4a83683b42c275c61a452dd09914ad064585e6e',
@@ -40,14 +42,19 @@ M6_VALIDATOR_SITES = frozenset({
 def _git(*args):
     return subprocess.check_output(("git", *args), cwd=ROOT, text=True).strip()
 
-def _sites():
-    sites = set()
-    for p in [*ROOT.joinpath("app").rglob("*.py"), ROOT / "main_web.py"]:
-        rel = p.relative_to(ROOT).as_posix()
-        if not rel.startswith("app/trust_readiness/") and re.search(
-                r"(?<!def )validate_csrf_token\(", p.read_text()):
-            sites.add(rel)
-    return frozenset(sites)
+_SITES_CACHE = {}
+
+def _sites(ref):
+    """CSRF validation call sites at an immutable commit (never the mutable checkout)."""
+    if ref not in _SITES_CACHE:
+        proc = subprocess.run(["git", "grep", "-lP", r"(?<!def )validate_csrf_token\(", ref, "--", "app/*.py", "main_web.py"],
+                              cwd=ROOT, capture_output=True, text=True)
+        if proc.returncode not in (0, 1):
+            raise subprocess.CalledProcessError(proc.returncode, proc.args)
+        _SITES_CACHE[ref] = frozenset(
+            line.split(":", 1)[1] for line in proc.stdout.splitlines()
+            if not line.split(":", 1)[1].startswith("app/trust_readiness/"))
+    return _SITES_CACHE[ref]
 
 def violations(*, ancestry, changed, blobs, sites, economics, router):
     bad = []
@@ -102,19 +109,26 @@ def violations(*, ancestry, changed, blobs, sites, economics, router):
         bad.append("M6 acquisition router source invalid")
     return bad
 
-def current_m6_successor_valid():
+def _show(ref, path):
+    return subprocess.run(["git", "show", f"{ref}:{path}"], cwd=ROOT, capture_output=True, text=True,
+                          check=True).stdout
+
+def m6_facts(ref=None):
+    """Facts of the M6 candidate at an immutable commit. In the integrated RC-3 tree the proof is anchored to the reviewed
+    M6 source head (an ancestor of HEAD); the combined inventory separately binds the integrated HEAD to that content."""
+    ref = ref or M6_REVIEWED_HEAD
+    _git("merge-base", "--is-ancestor", RC2, ref)
+    return dict(
+        ancestry=True, changed=set(_git("diff", "--name-only", RC2, ref).splitlines()),
+        blobs={p: _git("rev-parse", f"{ref}:{p}") for p in M6_EXACT_BLOBS}, sites=_sites(ref),
+        economics=_show(ref, "app/model_v2/acquisition/economics.py"),
+        router=_show(ref, "app/v2/acquisition_router.py"))
+
+def current_m6_successor_valid(ref=None):
     try:
-        _git("merge-base", "--is-ancestor", RC2, "HEAD")
         if not M6_EXACT_BLOBS or not M6_CHANGED_PATHS:
             return False
-        # No unknown added/modified file, including tests, docs or financial code.
-        actual = set(_git("diff", "--name-only", RC2, "HEAD").splitlines())
-        blobs = {p: _git("hash-object", f"--path={p}", p)
-                 for p in M6_EXACT_BLOBS}
-        root = ROOT
-        return not violations(
-            ancestry=True, changed=actual, blobs=blobs, sites=_sites(),
-            economics=(root / "app/model_v2/acquisition/economics.py").read_text(),
-            router=(root / "app/v2/acquisition_router.py").read_text())
+        _git("merge-base", "--is-ancestor", ref or M6_REVIEWED_HEAD, "HEAD")
+        return not violations(**m6_facts(ref))
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError):
         return False

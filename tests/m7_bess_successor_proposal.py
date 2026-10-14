@@ -80,40 +80,44 @@ def csrf_sites(sources: dict[str, str]) -> set[str]:
             and re.search(r"(?<!def )validate_csrf_token\(", s)}
 
 
-def collect() -> dict:
-    """Observe pinned history and real files; never replace a changed observation."""
+# RC-3 integration: the reviewed M7 source head (an ancestor of the integrated HEAD). This proof is anchored to that immutable
+# commit, never to the mutable checkout; tests/test_rc3_integration_inventory.py binds the integrated HEAD to it.
+M7_REVIEWED_HEAD = "62424a8b777133631f4253d75848ba8c846f83e6"
+
+
+def collect(ref: str = M7_REVIEWED_HEAD) -> dict:
+    """Observe pinned history and the immutable reviewed commit ``ref``; never replace a changed observation."""
     historical_paths = git("ls-tree", "-r", "--name-only", BASE).splitlines()
-    # Git scans the entire pinned tree once; only matching source files need loading.
     historical_matches = git("grep", "-l", "-F", "validate_csrf_token(", BASE,
                              "--", "app", "main_web.py").splitlines()
     historical_sources = {row.partition(":")[2]: source_at(BASE, row.partition(":")[2])
                           for row in historical_matches if row.endswith(".py")}
-    current_sources = {p.relative_to(ROOT).as_posix(): p.read_text(encoding="utf-8")
-                       for p in [*(ROOT / "app").rglob("*.py"), ROOT / "main_web.py"]}
-    for path in FLAGS:
-        current_sources[path] = (ROOT / path).read_text(encoding="utf-8")
+    matches = git("grep", "-l", "-F", "validate_csrf_token(", ref, "--", "app", "main_web.py").splitlines()
+    current_sources = {row.partition(":")[2]: source_at(ref, row.partition(":")[2])
+                       for row in matches if row.endswith(".py")}
+    for path in (*FLAGS, *CSRF_PROPOSAL):
+        current_sources[path] = source_at(ref, path)
     paths = set(git("diff", "--name-only", "--no-renames", BASE, CANDIDATE).splitlines()) - PROPOSAL_ONLY_PATHS
-    current_paths = set(git("diff", "--name-only", "--no-renames", BASE).splitlines())
-    current_paths.update(git("ls-files", "--others", "--exclude-standard").splitlines())
+    current_paths = set(git("diff", "--name-only", "--no-renames", BASE, ref).splitlines())
     candidate_blobs = {p: git("rev-parse", f"{CANDIDATE}:{p}") for p in paths}
-    actual_blobs = {p: git("hash-object", f"--path={p}", p) for p in paths if (ROOT / p).is_file()}
+    actual_blobs = {p: git("rev-parse", f"{ref}:{p}") for p in paths}
     immutable_paths = set(git("ls-tree", "-r", "--name-only", BASE).splitlines()) - paths
     immutable_changed = current_paths & immutable_paths - PROPOSAL_ONLY_PATHS
     ancestry = all(subprocess.run(["git", "merge-base", "--is-ancestor", a, b], cwd=ROOT,
                                  capture_output=True).returncode == 0
-                   for a, b in ((BASE, CANDIDATE), (CANDIDATE, "HEAD")))
-    extra = {p: git("hash-object", f"--path={p}", p) for p in GOVERNANCE_PINS if (ROOT / p).is_file()}
+                   for a, b in ((BASE, CANDIDATE), (CANDIDATE, ref)))
+    extra = {p: git("rev-parse", f"{ref}:{p}") for p in GOVERNANCE_PINS}
     return {
         "actual_blobs_extra": extra,
         "base_parents": tuple(git("rev-list", "--parents", "-n", "1", BASE).split()[1:]),
         "ancestry": ancestry, "original_paths": paths, "current_paths": current_paths,
         "candidate_blobs": candidate_blobs, "actual_blobs": actual_blobs,
         "immutable_changed": immutable_changed,
-        "manifest": json.loads((ROOT / MANIFEST_PATH).read_text(encoding="utf-8")),
+        "manifest": json.loads(source_at(ref, MANIFEST_PATH)),
         "historical_sources": historical_sources, "current_sources": current_sources,
         "historical_manifest": source_at(BASE, "tests/test_rc2_integration_manifest.py"),
         "historical_governance": source_at(BASE, "tests/model_v2_governance.py"),
-        "current_governance": (ROOT / "tests/model_v2_governance.py").read_text(encoding="utf-8"),
+        "current_governance": source_at(ref, "tests/model_v2_governance.py"),
     }
 
 

@@ -29,6 +29,9 @@ from tests.test_rc2_integration_manifest import (
 
 ROOT = Path(__file__).resolve().parent.parent
 RC3_BASE = RC2_CHECKPOINT
+# RC-3 integration: the reviewed Diagnostics V2 source head (an ancestor of the integrated HEAD). This proof is anchored to it;
+# tests/test_rc3_integration_inventory.py separately binds the integrated HEAD to that reviewed content.
+RC3_REF = "5c6963879d8bdf0a16458011a5cfe6011fd36021"
 RC3_BASE_TREE = RC2_CHECKPOINT_TREE
 
 # The five reviewed application paths: exact status and exact Git blob SHA-1.
@@ -175,18 +178,18 @@ def _collect():
     blobs = {}
     for path in pinned:
         try:
-            blobs[path] = _git("rev-parse", f"HEAD:{path}")
+            blobs[path] = _git("rev-parse", f"{RC3_REF}:{path}")
         except subprocess.CalledProcessError:
             continue
     return {
         "base": {"sha": _git("rev-parse", f"{RC3_BASE}^{{commit}}"), "tree": _git("rev-parse", f"{RC3_BASE}^{{tree}}"), "parents": tuple(parents[1:])},
-        "ancestor": subprocess.run(["git", "merge-base", "--is-ancestor", RC3_BASE, "HEAD"], cwd=ROOT).returncode == 0,
-        "status": [tuple(line.split("\t", 1)) for line in _git("diff", "--name-status", "--no-renames", RC3_BASE, "HEAD").splitlines()],
+        "ancestor": subprocess.run(["git", "merge-base", "--is-ancestor", RC3_BASE, RC3_REF], cwd=ROOT).returncode == 0,
+        "status": [tuple(line.split("\t", 1)) for line in _git("diff", "--name-status", "--no-renames", RC3_BASE, RC3_REF).splitlines()],
         "blobs": blobs, "router_base_blob": _git("rev-parse", f"{RC3_BASE}:app/v2/router.py"),
-        "call_sites": _grep_csrf("HEAD"),
-        "flag_sources": {p: _git("show", f"HEAD:{p}") + "\n" for p in RC2_ACTIVATION_FLAG_FILES},
-        "protected_changes": [p for p in _git("diff", "--name-only", RC3_BASE, "HEAD", "--", *RC3_PROTECTED_PREFIXES).splitlines() if p],
-        "v1_source": _git("show", f"HEAD:{RC3_V1_PATH}") + "\n",
+        "call_sites": _grep_csrf(RC3_REF),
+        "flag_sources": {p: _git("show", f"{RC3_REF}:{p}") + "\n" for p in RC2_ACTIVATION_FLAG_FILES},
+        "protected_changes": [p for p in _git("diff", "--name-only", RC3_BASE, RC3_REF, "--", *RC3_PROTECTED_PREFIXES).splitlines() if p],
+        "v1_source": _git("show", f"{RC3_REF}:{RC3_V1_PATH}") + "\n",
     }
 
 
@@ -290,7 +293,7 @@ def test_changed_historical_rc2_merge_provenance_is_rejected(facts):
         _bad(facts, base={**base, **change})
     _bad(facts, ancestor=False)
     historical = _rc2_collect()
-    for mutation in ({"checkpoint": {**historical["checkpoint"], "parents": (RC2_BASE_MAIN, "7" * 40)}},
+    for mutation in ({"release_parents": [RC2_BASE_MAIN, "7" * 40]},
                      {"merges": {**historical["merges"], "275": ("8" * 40, "9" * 40, "a" * 40)}}):
         assert rc2_violations({**historical, **mutation})                                         # the historical verifier also rejects
 

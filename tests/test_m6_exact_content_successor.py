@@ -3,14 +3,12 @@ from copy import deepcopy
 import pytest
 from m6_exact_content_successor import (
     M6_EXACT_BLOBS, M6_CHANGED_PATHS, M6_VALIDATOR_SITES,
-    current_m6_successor_valid, violations, ROOT,
+    current_m6_successor_valid, violations, ROOT, m6_facts,
 )
 
 def _facts():
-    return dict(ancestry=True, changed=set(M6_CHANGED_PATHS),
-                blobs=dict(M6_EXACT_BLOBS), sites=set(M6_VALIDATOR_SITES),
-                economics=(ROOT / "app/model_v2/acquisition/economics.py").read_text(),
-                router=(ROOT / "app/v2/acquisition_router.py").read_text())
+    facts = m6_facts()
+    return dict(facts, changed=set(M6_CHANGED_PATHS), blobs=dict(M6_EXACT_BLOBS), sites=set(M6_VALIDATOR_SITES))
 
 def test_exact_current_m6_candidate_is_only_a_proposal():
     assert current_m6_successor_valid()
