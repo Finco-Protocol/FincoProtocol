@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import date, datetime, timezone
+from contextlib import closing
 import json
 import uuid
 
@@ -86,8 +87,9 @@ def _terms_from_doc(document):
             raise AcquisitionCaseConflict("CASE_BRIDGE_DATE_INVALID") from None
         if d.isoformat() != bridge["balance_date"] or d != terms.closing_date:
             raise AcquisitionCaseConflict("CASE_BRIDGE_DATE_NOT_CLOSING")
-        if bridge["basis"] not in ("EXACT_COMMITTED_BALANCE", "EXPLICIT_USER_UNDERWRITING"):
-            raise AcquisitionCaseConflict("CASE_BRIDGE_BASIS_INVALID")
+        if bridge["basis"] != "EXPLICIT_USER_UNDERWRITING":
+            # No fabricated exact-committed closing balance provenance in V1.
+            raise AcquisitionCaseConflict("CASE_BRIDGE_BASIS_NOT_APPROVED")
         from app.model_v2.acquisition.economics import enterprise_equity_bridge
         enterprise_equity_bridge(**{k: v for k, v in bridge.items()
                                     if k not in ("balance_date", "basis")})
@@ -134,7 +136,7 @@ def save_case(*, owner_id, project_id, document, case_id=None, expected_revision
         raise AcquisitionCaseConflict("CASE_REVISION_INVALID")
     if case_id is not None:
         _require_uuid(case_id)
-    with get_connection() as conn:
+    with closing(get_connection()) as conn:
         _table(conn)
         now = datetime.now(timezone.utc).isoformat()
         try:
