@@ -3,6 +3,7 @@ import subprocess
 
 import pytest
 import model_v2_governance as governance
+from tests import rc3_authority_states as authority_states
 from finance_integrity_governance import unapproved_engine_changes, strictly_frozen_changes, approved_frozen_path
 from tests.test_financing_f3_governance import git
 
@@ -14,19 +15,42 @@ PATHS = {
 }
 
 
+# Two of the seven historical WF07 paths now carry the integrated, RELEASE-CLOSED M7 candidate (PR #284). The historical pins are judged at the
+# commit where they were accepted; the M7 content is judged separately as a candidate, never as a released authority.
+CHECKPOINT = authority_states.historical_checkpoint()
+M7_PATHS = frozenset(PATHS) & frozenset(authority_states.M7_CANDIDATE)
+
+
+def _released_blob(path):
+    """The historically released blob of a WF07 path (original pin or its reviewed successor), as pinned in the governance maps."""
+    return governance.F3_5_A_JUNIOR_AUTHORITIES.get(
+        path, governance.REVENUE_V3_CANDIDATE_AUTHORITIES.get(
+            path, governance.REVENUE_V2_ADVANCED_AUTHORITIES.get(path, governance.WF07_REVENUE_AUTHORITIES[path])))
+
+
 def test_exact_seven_content_pins_only():
     assert set(governance.WF07_REVENUE_AUTHORITIES) == PATHS
+    assert M7_PATHS == {"financial_engine/adapters/project_inputs.py", "financial_engine/orchestrator.py"}
     for path, blob in governance.WF07_REVENUE_AUTHORITIES.items():
         assert "*" not in path
-        # The original seven WF07 pins remain historical authority; only the
-        # reviewed Revenue V2 runtime is a separately pinned successor.
-        current_blob = governance.F3_5_A_JUNIOR_AUTHORITIES.get(
-            path, governance.REVENUE_V3_CANDIDATE_AUTHORITIES.get(
-                path, governance.REVENUE_V2_ADVANCED_AUTHORITIES.get(path, blob)))
-        assert git(governance.REPO, "rev-parse", "HEAD:" + path) == current_blob
+        # HISTORICAL_RELEASED: the original seven WF07 pins (and their reviewed successors) at the checkpoint where they were accepted.
+        assert git(governance.REPO, "rev-parse", CHECKPOINT + ":" + path) == _released_blob(path)
+        assert governance.released_engine_authority_matches(path, ref=CHECKPOINT)
+        assert governance.WF07_REVENUE_AUTHORITIES[path] == blob
+    # Current content: five paths are still exactly the released authority ...
+    for path in PATHS - M7_PATHS:
+        assert git(governance.REPO, "rev-parse", "HEAD:" + path) == _released_blob(path)
+        assert authority_states.authority_state(path) == authority_states.HISTORICAL_RELEASED
         assert governance.released_engine_authority_matches(path)
         assert approved_frozen_path(path)
-    assert unapproved_engine_changes(list(PATHS)) == []
+    # ... and the two M7 paths are the exact release-closed candidate: present, byte-identical, NOT released, NOT activated.
+    for path in M7_PATHS:
+        assert git(governance.REPO, "rev-parse", "HEAD:" + path) == authority_states.M7_CANDIDATE[path]
+        assert authority_states.authority_state(path) == authority_states.INTEGRATED_RELEASE_CLOSED_CANDIDATE
+        assert not governance.released_engine_authority_matches(path)       # candidate presence is never release approval
+        assert not approved_frozen_path(path)
+    assert authority_states.release_closed_violations() == []
+    assert unapproved_engine_changes(list(PATHS)) == sorted(M7_PATHS)       # the released-authority guard still rejects the candidate
     assert strictly_frozen_changes(list(PATHS)) == []
 
 
@@ -38,7 +62,8 @@ def test_every_further_edit_invalidates_authorization(path, tmp_path, monkeypatc
     git(repo, "config", "core.autocrlf", "false")
     git(repo, "config", "user.name", "Synthetic Reviewer")
     git(repo, "config", "user.email", "noreply@users.noreply.github.com")
-    original = subprocess.run(["git", "-C", str(governance.REPO), "show", "HEAD:" + path],
+    # Synthetic HISTORICAL_RELEASED case: the content accepted at the historical checkpoint (not whatever HEAD carries now).
+    original = subprocess.run(["git", "-C", str(governance.REPO), "show", CHECKPOINT + ":" + path],
                               check=True, capture_output=True).stdout
     target = repo / path
     target.parent.mkdir(parents=True)
@@ -151,3 +176,53 @@ def test_revenue_v3_successor_authorizes_no_other_revenue_path():
     for other in ("domain/revenue/plan.py", "domain/revenue/plan_engine.py", "domain/revenue/other.py",
                   "finco_core/revenue/other.py", "finco_core/revenue/generation.py.bak", "financial_engine/revenue/new.py"):
         assert not governance.released_engine_authority_matches(other), other
+
+
+@pytest.mark.parametrize("path", sorted(M7_PATHS))
+def test_m7_candidate_is_exact_content_release_closed_and_never_inherits_released_authority(path, tmp_path, monkeypatch):
+    """INTEGRATED_RELEASE_CLOSED_CANDIDATE: one additional byte (or the historical blob) is not the candidate; nothing here is a release."""
+    repo = tmp_path / "synthetic"
+    repo.mkdir()
+    git(repo, "init")
+    git(repo, "config", "core.autocrlf", "false")
+    git(repo, "config", "user.name", "Synthetic Reviewer")
+    git(repo, "config", "user.email", "noreply@users.noreply.github.com")
+    candidate = subprocess.run(["git", "-C", str(governance.REPO), "show", "HEAD:" + path], check=True, capture_output=True).stdout
+    historical = subprocess.run(["git", "-C", str(governance.REPO), "show", CHECKPOINT + ":" + path], check=True, capture_output=True).stdout
+    target = repo / path
+    target.parent.mkdir(parents=True)
+    # the synthetic repo has no release flags, so a candidate can only exist where the real flags are closed: judge content only
+    target.write_bytes(candidate)
+    git(repo, "add", path)
+    git(repo, "commit", "-m", "Exact candidate content")
+    assert authority_states.candidate_matches(path, repo=repo)
+    assert not governance.released_engine_authority_matches(path, repo=repo)          # a candidate is never a released authority
+    target.write_bytes(candidate + b"\n# Unreviewed change\n")
+    git(repo, "add", path)
+    git(repo, "commit", "-m", "One further edit")
+    assert not authority_states.candidate_matches(path, repo=repo)                    # one more byte invalidates the candidate
+    assert authority_states.authority_state(path, repo=repo) == authority_states.UNAUTHORIZED
+    target.write_bytes(historical)
+    git(repo, "add", path)
+    git(repo, "commit", "-m", "Historical released content")
+    assert governance.released_engine_authority_matches(path, repo=repo)              # released state is independent of the candidate
+    assert not authority_states.candidate_matches(path, repo=repo)
+    assert authority_states.authority_state(path, repo=repo) == authority_states.HISTORICAL_RELEASED
+
+
+def test_unknown_future_edits_inherit_no_m7_permission():
+    for path in ("financial_engine/bess_new.py", "financial_engine/tax/engine.py.bak", "finco_core/inputs/bess_native2.py",
+                 "domain/bess/other.py", "financial_engine/senior_debt/new.py"):
+        assert not authority_states.candidate_matches(path)
+        assert not governance.released_engine_authority_matches(path)
+    assert authority_states.ACTIVATED_FINANCIAL_AUTHORITY not in {authority_states.authority_state(p) for p in authority_states.M7_CANDIDATE}
+
+
+def test_historical_wf07_pins_are_not_rewritten_by_the_m7_candidate():
+    assert governance.WF07_REVENUE_AUTHORITIES["financial_engine/adapters/project_inputs.py"] == "fe09548f59497884af492a0ea8139bbbfffbeb05"
+    assert governance.WF07_REVENUE_AUTHORITIES["financial_engine/orchestrator.py"] == "67f9ec6aa3fcb6a8d8acf59cf4c75bcac58b3301"
+    for path in M7_PATHS:
+        assert authority_states.M7_CANDIDATE[path] != governance.WF07_REVENUE_AUTHORITIES[path]
+        for authorities in (governance.F3_5_A_JUNIOR_AUTHORITIES, governance.REVENUE_V3_CANDIDATE_AUTHORITIES,
+                            governance.REVENUE_V2_ADVANCED_AUTHORITIES, governance.WF04_NUMERIC_PRECISION_AUTHORITIES):
+            assert authorities.get(path) != authority_states.M7_CANDIDATE[path]
