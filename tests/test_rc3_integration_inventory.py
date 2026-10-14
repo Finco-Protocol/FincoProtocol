@@ -44,12 +44,16 @@ SOURCES = (                                                # merge order; PR num
     (283, "62424a8b777133631f4253d75848ba8c846f83e6"),
 )
 M7_PR = 283
+# Post-merge anchoring (PR #284 is on main): the integrated candidate is judged as this pinned, immutable commit; HEAD is then bound to it.
+INTEGRATION_HEAD = "b17d3341336fed89624662360c4164184476e7a2"
+PR_MERGE = "4527ceadea7a5b9a8c3e2e63eb9fb3395ef9b66e"            # the normal two-parent merge of PR #284 into main
 STREAM_TIP = "f2a1e386481b11a0a2b5fb8a73206403c839a480"   # merge of #282: every non-financial stream, not M7
 FROZEN_PREFIXES = ("financial_engine/", "finco_core/", "domain/", "finco_radar/", "finco_yield/", "app/radar_rwa/")
 GUARDED_PREFIXES = (".github/",)
 GUARDED_FILES = ("pytest.ini", "requirements.txt", "requirements-ci-tests.txt", "constraints.txt", "pyproject.toml")
 GUARDED_NAME_PARTS = ("tolerance", "golden")                # financial tolerances / goldens: byte-identical to the base
 M7_MANIFEST = "docs/model_v2/M7_BESS_FINANCIAL_CANDIDATE_MANIFEST.json"
+from tests.m7_rc3_candidate_successor import M7_RC3_CANDIDATE_AUTHORITIES as M7_PROTECTED_BLOBS  # noqa: E402
 FLAG_FILES = {**RC2_ACTIVATION_FLAG_FILES, "app/workbook/bess_config.py": "ACTIVATION_ENABLED",
               "app/model_v2/acquisition/economics.py": "ACTIVATION_ENABLED"}
 
@@ -172,7 +176,22 @@ def _auto_merge_blob(path, a_pr, b_pr, heads):
                               check=True).stdout.decode().strip()
 
 
-def collect(ref="HEAD"):
+POST_MERGE_PROTECTED = frozenset({M7_MANIFEST, *FLAG_FILES, "app/workbook/bess_config.py", ".github/workflows/ci_public_job.yml"})
+
+
+def _blob_or_none(ref, path):
+    proc = subprocess.run(["git", "rev-parse", f"{ref}:{path}"], cwd=ROOT, capture_output=True, text=True)
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def _pr_merge_parents(head):
+    """Parents of the PR #284 merge commit, or None when it is not (yet) part of this history (pre-merge branch)."""
+    if subprocess.run(["git", "merge-base", "--is-ancestor", PR_MERGE, head], cwd=ROOT).returncode != 0:
+        return None
+    return tuple(git("rev-list", "--parents", "-n", "1", PR_MERGE).split()[1:])
+
+
+def collect(ref=INTEGRATION_HEAD, head="HEAD"):
     heads = dict(SOURCES)
     trees = {pr: _tree(sha) for pr, sha in SOURCES}
     head_tree, base_tree = _tree(ref), _tree(BASE)
@@ -185,7 +204,7 @@ def collect(ref="HEAD"):
         "heads": heads,
         "head_resolves": {pr: subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=ROOT).returncode == 0
                           for pr, sha in SOURCES},
-        "ancestors": {pr: subprocess.run(["git", "merge-base", "--is-ancestor", sha, ref], cwd=ROOT).returncode == 0
+        "ancestors": {pr: subprocess.run(["git", "merge-base", "--is-ancestor", sha, head], cwd=ROOT).returncode == 0
                       for pr, sha in SOURCES},
         "merges": merge_rows,                                   # [merge, parent0, parent1] oldest first
         "source_status": source_status,
@@ -196,7 +215,14 @@ def collect(ref="HEAD"):
         "m7_manifest_at_source": json.loads(_show(heads[M7_PR], M7_MANIFEST)),
         "auto_merge_oracle": {p: _auto_merge_blob(p, a, b, heads) for p, (a, b) in AUTO_MERGED.items()},
         "texts": {p: _show(ref, p) for p in {**AUTO_MARKERS, **HAND_RESOLVED}},
-        "flag_sources": {p: _show(ref, p) + "\n" for p in FLAG_FILES},
+        "flag_sources": {p: _show(head, p) + "\n" for p in FLAG_FILES},             # flags are judged at the CURRENT head
+        "integration_head": git("rev-parse", f"{ref}^{{commit}}"),
+        "integration_head_ancestor": subprocess.run(["git", "merge-base", "--is-ancestor", INTEGRATION_HEAD, head], cwd=ROOT).returncode == 0,
+        "pr_merge_parents": _pr_merge_parents(head),
+        "post_merge_protected_delta": sorted(
+            p for p in git("diff", "--name-only", INTEGRATION_HEAD, head).splitlines()
+            if p in POST_MERGE_PROTECTED),
+        "m7_blobs_at_head": {p: _blob_or_none(head, p) for p in M7_PROTECTED_BLOBS},
         "stream_tip_status": {p: s[0] for p, s in _status(BASE, STREAM_TIP).items()},
         "ci_workflow_base_text": git("show", f"{BASE}:{RC3_CI_WORKFLOW}") + "\n",
         "ci_workflow_head_text": git("show", f"{ref}:{RC3_CI_WORKFLOW}") + "\n",
@@ -326,11 +352,24 @@ def inventory_violations(f) -> list[str]:
         if f["head_blobs"].get(RC3_CI_WORKFLOW) != RC3_CI_WORKFLOW_BLOB:
             bad.append("the CI workflow is not the reviewed RC-3 budget successor blob")
         bad += workflow_successor_violations(f["ci_workflow_base_text"], f["ci_workflow_head_text"])
-        # 10. release-closed flags
+        # 10. release-closed flags (judged at the current head)
         for path, name in FLAG_FILES.items():
             state = activation_state(f["flag_sources"][path], name)
             if state != "CLOSED":
                 bad.append(f"{path}: {name} is not a literal release-closed False ({state})")
+        # 11. post-merge binding of the current head to the pinned integrated candidate
+        if f["integration_head"] != INTEGRATION_HEAD:
+            bad.append("the integrated candidate is not the pinned immutable commit")
+        if f["integration_head_ancestor"] is not True:
+            bad.append("the integrated candidate is not an ancestor of the current head")
+        parents = f["pr_merge_parents"]
+        if parents is not None and tuple(parents) != (BASE, INTEGRATION_HEAD):
+            bad.append("PR #284 was not merged as a normal two-parent merge of the pinned candidate")
+        if f["post_merge_protected_delta"]:
+            bad.append(f"protected release/CI/flag files changed after the integration: {f['post_merge_protected_delta']}")
+        for path, blob in M7_PROTECTED_BLOBS.items():
+            if f["m7_blobs_at_head"].get(path) != blob:
+                bad.append(f"{path}: the M7 candidate blob changed after the integration (or is missing)")
         return bad
     except (KeyError, TypeError, ValueError, AttributeError, IndexError) as exc:
         return [f"facts incomplete or malformed: {exc!r}"]
@@ -557,3 +596,40 @@ def test_the_successor_is_not_a_general_workflow_exemption(facts):
 def test_the_authorised_budget_fits_inside_the_job_timeout():
     budget, grace, overhead, timeout_min = 4800, 180, 15 * 60, 100
     assert budget + grace + overhead <= timeout_min * 60 and timeout_min * 60 - (budget + grace + overhead) >= 120
+
+
+# ── post-merge negative tests ─────────────────────────────────────────────────────────────────────────────────────────────────
+def test_the_merged_main_state_binds_head_to_the_pinned_candidate(facts):
+    assert facts["integration_head"] == INTEGRATION_HEAD and facts["integration_head_ancestor"] is True
+    if facts["pr_merge_parents"] is not None:                                     # on main: a normal two-parent merge of PR #284
+        assert tuple(facts["pr_merge_parents"]) == (BASE, INTEGRATION_HEAD)
+    assert facts["post_merge_protected_delta"] == []
+    assert facts["m7_blobs_at_head"] == dict(M7_PROTECTED_BLOBS)
+
+
+@pytest.mark.parametrize("path", sorted(M7_PROTECTED_BLOBS))
+def test_a_one_byte_change_or_removal_of_any_m7_blob_after_the_merge_is_rejected(facts, path):
+    assert any(path in p for p in _bad(facts, m7_blobs_at_head={**facts["m7_blobs_at_head"], path: "b" * 40}))
+    _bad(facts, m7_blobs_at_head={k: v for k, v in facts["m7_blobs_at_head"].items() if k != path})
+    _bad(facts, m7_blobs_at_head={**facts["m7_blobs_at_head"], path: None})
+
+
+def test_post_merge_forgery_wrong_ancestry_or_rewritten_merge_is_rejected(facts):
+    _bad(facts, integration_head="c" * 40)
+    _bad(facts, integration_head_ancestor=False)
+    _bad(facts, pr_merge_parents=(BASE,))                                          # squash-like single parent
+    _bad(facts, pr_merge_parents=("d" * 40, INTEGRATION_HEAD))
+    _bad(facts, pr_merge_parents=(BASE, "e" * 40))
+    _bad(facts, pr_merge_parents=(INTEGRATION_HEAD, BASE))
+    for path in sorted(POST_MERGE_PROTECTED):
+        _bad(facts, post_merge_protected_delta=[path])
+
+
+def test_a_reopened_flag_or_forged_manifest_after_the_merge_is_rejected(facts):
+    for path, name in FLAG_FILES.items():
+        source = facts["flag_sources"][path]
+        _bad(facts, flag_sources={**facts["flag_sources"], path: source.replace(f"{name} = False", f"{name} = True", 1)})
+    _bad(facts, post_merge_protected_delta=[M7_MANIFEST])
+    forged = copy.deepcopy(facts["m7_manifest"])
+    forged["release_approved"] = True
+    _bad(facts, m7_manifest=forged, m7_manifest_at_source=forged)

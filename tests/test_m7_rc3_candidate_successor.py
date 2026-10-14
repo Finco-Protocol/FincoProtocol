@@ -107,11 +107,11 @@ def test_the_successor_is_not_wired_into_any_guard_and_touches_no_historical_pin
     for name in ("model_v2_governance.py", "finance_integrity_governance.py", "test_finance_integrity_governance.py",
                  "test_wf07_revenue_governance.py", "test_ci_acceptance.py", "radar_authority_governance.py"):
         assert "m7_rc3_candidate_successor" not in (ROOT / "tests" / name).read_text(encoding="utf-8"), name
-    base = {name: subprocess.run(["git", "rev-parse", f"{S.RC2_CHECKPOINT}:tests/{name}"], cwd=ROOT, capture_output=True,
-                                 text=True, check=True).stdout.strip()
-            for name in ("model_v2_governance.py", "finance_integrity_governance.py", "test_wf07_revenue_governance.py",
-                         "test_finance_integrity_governance.py", "test_ci_acceptance.py")}
-    for name, blob in base.items():                                       # historical authorities byte-identical to RC-2
+    # The historical pin maps and the central guards stay byte-identical to the RC-2 checkpoint. The owner TESTS corrected by the post-merge hotfix
+    # (test_wf07_revenue_governance, test_finance_integrity_governance) may differ - they must not import the acceptance validator (checked above).
+    for name in ("model_v2_governance.py", "finance_integrity_governance.py", "radar_authority_governance.py", "test_ci_acceptance.py"):
+        blob = subprocess.run(["git", "rev-parse", f"{S.RC2_CHECKPOINT}:tests/{name}"], cwd=ROOT, capture_output=True, text=True,
+                              check=True).stdout.strip()
         assert subprocess.run(["git", "hash-object", f"tests/{name}"], cwd=ROOT, capture_output=True, text=True,
                               check=True).stdout.strip() == blob, name
     from app.workbook.bess_config import ACTIVATION_ENABLED
