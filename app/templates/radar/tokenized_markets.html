@@ -149,6 +149,7 @@
     Page loads never call providers.</p>
 </section>
 {% endif %}
+{% if operational.coverage.priced_now != 0 or (rows | selectattr('best_price') | list | length) > 0 %}
 <div class="fs-table-wrap tm-monitor-table" data-testid="tokenized-markets-table">
   <table class="fs-table" aria-label="Current canonical tokenized market and historical intelligence">
     <thead><tr>
@@ -207,6 +208,7 @@
     </tbody>
   </table>
 </div>
+{% endif %}
 {% if not history_available %}
 <p class="fs-note" data-testid="tm-history-note">No history is stored yet. History appears only after the bounded collector persists source-observed evidence.</p>
 {% endif %}
