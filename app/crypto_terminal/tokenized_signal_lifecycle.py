@@ -241,7 +241,7 @@ def _event(kind: LifecycleKind, identity: ExactRepresentation, row: MarketObserv
            prior: MarketObservation | None, *, previous: str, current: str,
            basis: str | None, reason: str | None, threshold: Decimal,
            persistence, distribution: DistributionContext,
-           gap: bool, is_current: bool, as_of: datetime) -> SignalLifecycleEvent:
+           gap: bool, is_current: bool) -> SignalLifecycleEvent:
     """Event IDs exclude evaluation/transport time; original source clock only."""
     timestamp = row.ts
     previous_digest = prior.resolved_digest() if prior is not None else None
@@ -379,7 +379,9 @@ def build_tokenized_signal_lifecycle(
             if prior_stamp is not None and stamp <= prior_stamp:
                 # Equal-clock distinct evidence has no causal ordering;
                 # never invent an economic transition between these rows.
-                current_class, basis, reason = "UNAVAILABLE", None, "SOURCE_TIMESTAMP_COLLISION"
+                current_class, basis, reason = ("UNAVAILABLE", None,
+                                               "SOURCE_TIMESTAMP_COLLISION" if stamp == prior_stamp
+                                               else "SOURCE_TIME_ORDER_INVALID")
             prefix_points.append(BasisPoint(t=row.ts, v=basis, reason=reason))
             prior_point = prefix_points[-2] if len(prefix_points) > 1 else None
             crossing = False
@@ -413,8 +415,8 @@ def build_tokenized_signal_lifecycle(
                     current=current_class, basis=basis, reason=reason,
                     threshold=threshold, persistence=persistence,
                     distribution=distribution, gap=gap,
-                    is_current=is_current and current_class not in ("STALE", "UNAVAILABLE"),
-                    as_of=now))
+                    is_current=is_current,
+                    ))
             # A missing basis always breaks economic continuity, including
             # when its availability recovers at the next real observation.
             gap = current_class in ("STALE", "UNAVAILABLE")
