@@ -350,6 +350,7 @@ def _run(client, rec):
 def test_save_is_stale_not_current_and_identical_inputs_reproduce_identical_results(world, template):
     rec = _project(template)
     run_id, summary = _run(world["owner"], rec)
+    first_run_ws = get_workspace_state(OWNER, rec.project_id)
     history = _snapshot(rec)["history"]
     originals = {("capex", r["sub_line_id"]): r for r in _rows("capex_sub_lines", rec.project_id)}
     originals.update({("opex", r["sub_line_id"]): r for r in _rows("opex_sub_lines", rec.project_id)})
@@ -375,7 +376,19 @@ def test_save_is_stale_not_current_and_identical_inputs_reproduce_identical_resu
     assert _post(world["owner"], rec, tok, restore).status_code == 200
     new_run_id, new_summary = _run(world["owner"], rec)
     assert new_run_id != run_id
-    assert _economic(new_summary) == _economic(summary)
+    from m6_economic_parity import independent_economic_view
+    second_run_ws = get_workspace_state(OWNER, rec.project_id)
+    first = independent_economic_view(
+        summary, owner_id=OWNER, project_id=rec.project_id,
+        snapshot_id=run_id,
+        composite_hash=first_run_ws.last_runtime_composite_hash,
+        scenario_id=first_run_ws.last_runtime_scenario_id)
+    second = independent_economic_view(
+        new_summary, owner_id=OWNER, project_id=rec.project_id,
+        snapshot_id=new_run_id,
+        composite_hash=second_run_ws.last_runtime_composite_hash,
+        scenario_id=second_run_ws.last_runtime_scenario_id)
+    assert _economic(second) == _economic(first)
 
 
 def _current_version(kind, sid, rec):

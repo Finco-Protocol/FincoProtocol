@@ -73,6 +73,17 @@ def test_actual_save_stale_run_current_history_export_and_aggregate_parity(env, 
     from app.workbook.runtime_projection import thaw_runtime_payload
     old_summary = thaw_runtime_payload(old.runtime_summary)
     new_summary = thaw_runtime_payload(rr.runtime_summary)
+    from m6_economic_parity import independent_economic_view
+    old_summary = independent_economic_view(
+        old_summary, owner_id="decision-user", project_id=record.project_id,
+        snapshot_id=before.last_runtime_snapshot_id,
+        composite_hash=before.last_runtime_composite_hash,
+        scenario_id=before.last_runtime_scenario_id)
+    new_summary = independent_economic_view(
+        new_summary, owner_id="decision-user", project_id=record.project_id,
+        snapshot_id=current.last_runtime_snapshot_id,
+        composite_hash=current.last_runtime_composite_hash,
+        scenario_id=current.last_runtime_scenario_id)
     new_summary.pop(EVIDENCE_KEY)
     old_binding = old_summary["financing_evidence"].pop("run_binding")
     new_binding = new_summary["financing_evidence"].pop("run_binding")

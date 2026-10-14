@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Valuation & Acquisition — FINCO Model{% endblock %}
+{% block body %}
+<main class="mx-auto" style="max-width:1100px;padding:24px;font-family:inherit" data-testid="m6-workspace">
+  <nav><a href="/v2/developer-decision?project={{ project_code | urlencode }}">← Investment Decision</a> · <a href="/v2/workbook?project={{ project_code | urlencode }}">Workbook</a></nav>
+  <p style="letter-spacing:.07em">FINCO MODEL · RC-3 / M6</p>
+  <h1>Valuation &amp; Acquisition</h1>
+  <h2>{{ project_name }}</h2>
+  <p data-testid="m6-release-state"><strong>{{ status }}</strong> — candidate financial calculations are not authorized for production or investment use. This is not a FINCO canonical KPI.</p>
+  <p><strong>Transaction scope:</strong> 100% ordinary share cash purchase; no automatic refinancing. SHL lender rights are excluded and remain legally separate. Underwriting case changes do not change Working Copy, Last Run, or Run History.</p>
+  {% if saved %}<p role="status" data-testid="m6-saved">Acquisition case saved. Canonical Last Run unchanged.</p>{% endif %}
+  {% if source_outdated %}<p role="status" data-testid="m6-outdated">SOURCE_OUTDATED: a newer committed Run exists. This case remains pinned to its original Run.</p>{% endif %}
+  <section data-testid="m6-source">
+    <h2>1. Valuation basis &amp; committed Run</h2>
+    <p>Evidence: <strong data-testid="m6-evidence-status">{{ evidence_status }}</strong></p>
+    {% if stored %}<p>Case: {{ stored.case_id }} · revision {{ stored.revision }} · saved {{ stored.updated_at }}</p>{% endif %}
+    {% if selected %}
+      <p>Snapshot: <code>{{ selected.runtime_snapshot_id }}</code></p>
+      <p>Composite hash: <code>{{ selected.composite_hash or 'UNAVAILABLE' }}</code></p>
+      <p>Scenario: <code>{{ selected.last_runtime_scenario_id or 'Base' }}</code> · Model Run: {{ selected.ran_at }}</p>
+    {% else %}<p>No committed Run history available.</p>{% endif %}
+    <h3>Select committed Run</h3>
+    <ul>
+    {% for run in history %}
+      <li><a href="/v2/valuation-acquisition?project={{ project_code | urlencode }}&amp;history_id={{ run.history_id | urlencode }}">{{ run.ran_at }} · {{ run.active_scenario_name or 'Base' }} · {{ run.history_id[:8] }}</a>{% if run.history_id == history_id %} ← selected{% endif %}</li>
+    {% else %}<li>Run History unavailable</li>{% endfor %}
+    </ul>
+    <h3>Saved acquisition cases</h3>
+    <ul>
+    {% for c in cases %}<li><a href="/v2/valuation-acquisition?project={{ project_code | urlencode }}&amp;case_id={{ c.case_id | urlencode }}">{{ c.case_id[:8] }} · revision {{ c.revision }} · {{ c.updated_at }}</a></li>
+    {% else %}<li>No saved cases</li>{% endfor %}
+    </ul>
+  </section>
+  <section data-testid="m6-terms">
+    <h2>2. Acquisition terms · explicit Save</h2>
+    {% if readonly %}<p>Protected Reference: create a Working Copy to save an acquisition case.</p>
+    {% elif selected and evidence_status == 'AVAILABLE_SOURCE_FACTS' %}
+    <form method="post" action="/v2/valuation-acquisition/save" data-testid="m6-save-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="history_id" value="{{ history_id }}">
+      <input type="hidden" name="case_id" value="{{ stored.case_id if stored else '' }}">
+      <input type="hidden" name="expected_revision" value="{{ stored.revision if stored else 0 }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+      {% for key, label, kind in (
+        ('closing_date','Acquisition closing date','date'),
+        ('purchase_price_keur','Equity purchase price (kEUR)','number'),
+        ('transaction_costs_keur','Transaction costs (kEUR)','number'),
+        ('closing_adjustment_keur','Explicit closing adjustment (kEUR)','number'),
+        ('buyer_discount_rate','Buyer discount rate (fraction)','number'),
+        ('target_buyer_irr','Target buyer IRR (fraction)','number'),
+        ('bid_lower_bound_keur','Bid minimum (kEUR)','number'),
+        ('bid_upper_bound_keur','Bid maximum (kEUR)','number'),
+        ('exit_date','Exit date — optional','date'),
+        ('exit_proceeds_keur','Exit proceeds (kEUR) — optional','number')
+      ) %}
+      <label style="display:flex;flex-direction:column;gap:5px">{{ label }}
+        <input name="{{ key }}" type="{{ kind }}" {% if kind == 'number' %}step="any"{% endif %}
+          value="{{ values[key] if values[key] is not none else '' }}" {% if key not in ('exit_date','exit_proceeds_keur') %}required{% endif %}>
+      </label>
+      {% endfor %}
+      </div>
+      <fieldset><legend>Explicit closing enterprise/equity bridge — optional, user-supplied underwriting assumptions</legend>
+        <p>Fill EVERY balance to enable the candidate bridge. These inputs are NOT derived FINCO balance-sheet figures. Closing date must match the case. DSRA / restricted cash remains excluded from unrestricted cash.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
+        {% for key in bridge_keys %}
+          <label style="display:flex;flex-direction:column">{{ key | replace('_',' ') }}
+          <input type="number" step="any" name="{{ key }}" value="{{ bridge[key] if bridge else '' }}"></label>
+        {% endfor %}
+        </div>
+      </fieldset>
+      <p>Closing adjustment is an explicit, signed purchase-price adjustment, not an inferred debt/cash plug. Buyer IRR considers source-proven post-closing equity calls and net legal dividends; SHL interest and principal are excluded.</p>
+      <button type="submit" data-testid="m6-save">Save underwriting case</button>
+    </form>
+    {% else %}<p>Save unavailable until a valid, committed source Run with M6 evidence is selected.</p>{% endif %}
+  </section>
+  <section data-testid="m6-equity-bridge">
+    <h2>3. Enterprise → Equity bridge</h2>
+    <p>WACC = AUTHORITY_MISSING. No company-calculated EV is inferred from Project NPV. Debt and cash must be evidenced at closing or labelled as assumptions. DSRA/restricted cash is not free cash.</p>
+    {% if bridge %}<p>EXPLICIT_USER_UNDERWRITING — closing date {{ bridge.balance_date }}. The financial bridge output remains {{ status }}.</p>
+      <table><thead><tr><th>Input assumption</th><th>Amount (kEUR)</th></tr></thead><tbody>
+      {% for key in bridge_keys %}<tr><td>{{ key | replace('_',' ') }}</td><td>{{ bridge[key] }}</td></tr>{% endfor %}
+      </tbody></table>
+    {% else %}<p>Closing bridge: UNAVAILABLE. No closing balance assumptions saved.</p>{% endif %}
+  </section>
+  <section data-testid="m6-buyer-returns">
+    <h2>4. Buyer returns and bid ceiling</h2>
+    <p>{{ status }} — Buyer IRR, MOIC, acquisition NPV and maximum price are calculated only by the isolated reviewer candidate, not displayed as production financial outputs.</p>
+    <p>Actual proposed price, target return and bid ceiling are distinct metrics. No investment recommendation is generated.</p>
+    {% if review_allowed and stored and evidence_status == 'AVAILABLE_SOURCE_FACTS' %}
+    <form method="post" action="/v2/valuation-acquisition/review-candidate" data-testid="m6-dev-review">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="case_id" value="{{ stored.case_id }}">
+      <button type="submit">Explicit admin-only development candidate review (JSON)</button>
+    </form>
+    <p>Only available in local development/internal mode with FINCO_M6_CANDIDATE_REVIEW=1 and a non-demo admin session; this is NOT deployment or financial approval.</p>
+    {% endif %}
+  </section>
+  <section data-testid="m6-evidence">
+    <h2>5. Canonical dated receipt evidence (kEUR)</h2>
+    {% if evidence_rows %}
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>Date</th><th>Gross dividends</th><th>WHT</th><th>Net dividends</th><th>Equity call</th><th>SHL interest (excluded)</th><th>SHL principal (excluded)</th></tr></thead>
+      <tbody>{% for row in evidence_rows %}<tr>
+      <td>{{ row.date }}</td><td>{{ row.gross_legal_dividend_keur }}</td>
+      <td>{{ row.dividend_wht_keur }}</td><td>{{ row.net_legal_dividend_keur }}</td>
+      <td>{{ row.legal_equity_contribution_keur }}</td>
+      <td>{{ row.shl_interest_keur }}</td><td>{{ row.shl_principal_keur }}</td>
+      </tr>{% endfor %}</tbody></table></div>
+    {% else %}<p>EVIDENCE_UNAVAILABLE: historical data is never backfilled from a Working Copy.</p>{% endif %}
+    <details><summary>Source-proven unlevered project cashflows (not ordinary dividends)</summary>
+      <table><thead><tr><th>Date</th><th>C1 project net cashflow (kEUR)</th></tr></thead>
+      <tbody>{% for row in project_rows %}<tr><td>{{ row.date }}</td><td>{{ row.net_unlevered_project_cashflow_keur }}</td></tr>{% endfor %}</tbody></table>
+    </details>
+  </section>
+  <section data-testid="m6-comparison">
+    <h2>6. Case comparison</h2>
+    <p>Comparison reuses the selected committed Run basis; no second financial matrix engine. A different source or closing date is NOT_COMPARABLE. Candidate returns are not released.</p>
+    <table><thead><tr><th>Case</th><th>Closing</th><th>Proposed price (kEUR)</th><th>Source/date compatibility</th></tr></thead>
+    <tbody>{% for c in comparison %}
+      <tr><td><a href="/v2/valuation-acquisition?project={{ project_code | urlencode }}&amp;case_id={{ c.id | urlencode }}">{{ c.id[:8] }}</a></td><td>{{ c.closing_date }}</td><td>{{ c.price }}</td><td>{{ c.status }}</td></tr>
+    {% else %}<tr><td colspan="4">No saved cases</td></tr>{% endfor %}</tbody></table>
+    <a href="/v2/workbook/run-history?project={{ project_code | urlencode }}">Open Run History</a>
+  </section>
+</main>
+{% endblock %}

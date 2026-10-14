@@ -400,6 +400,14 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         build_clean_sponsor_schedule,
     )
     sponsor_schedule_payload = build_clean_sponsor_schedule(clean_run)
+    # M6: optional read-only full-precision source facts. Source failures never
+    # change canonical Run success, while acquisition evaluation fails closed.
+    acquisition_source = None
+    try:
+        from app.model_v2.acquisition.evidence import extract as extract_acquisition_source
+        acquisition_source = extract_acquisition_source(clean_run.g2c_result)
+    except (ValueError, TypeError, AttributeError):
+        pass
     investor_receipts = None
     if investor_evidence_requested:
         from app.model_v2.investor_f4 import extract_equity_receipts
@@ -461,6 +469,8 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             "returns": returns.to_dict(orient="records"),
         }
     }
+    if acquisition_source is not None:
+        payload["acquisition_source_candidate_v1"] = acquisition_source
     if investor_receipts is not None:
         payload["investor_equity_receipts"] = investor_receipts
     developer_result = getattr(clean_run, "developer_economics_result", None)
