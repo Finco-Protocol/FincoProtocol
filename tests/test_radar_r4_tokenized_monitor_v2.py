@@ -180,3 +180,35 @@ def test_no_frozen_financial_venue_or_collector_authority_changed():
     assert not [path for path in diff if path.startswith(forbidden)]
     assert "app/crypto_terminal/deepstate_composition.py" not in diff
     assert "tools/public_safety_scan.py" not in diff
+
+
+def test_live_http_render_preserves_empty_state_and_exposes_r4_detail(tmp_path, monkeypatch):
+    """Real FastAPI + Jinja integration, with a fresh offline market store and no provider calls."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.radar_ui.tokenized_router import router
+    monkeypatch.setenv("FINCO_VENUE_DB_PATH", str(tmp_path / "venues.db"))
+    monkeypatch.setattr(
+        "app.auth.resolve_request_session",
+        lambda _request: SimpleNamespace(user_id="r4-qa", username="r4-qa",
+                                         login_at=None, session_type="user"),
+    )
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    empty = client.get("/radar/tokenized-markets")
+    assert empty.status_code == 200
+    assert 'data-testid="tm-monitor-summary"' in empty.text
+    assert 'data-testid="tm-monitor-filters"' in empty.text
+    assert 'data-testid="tm-empty"' in empty.text
+    assert 'data-testid="tokenized-markets-table"' not in empty.text
+    catalog = client.get("/radar/tokenized-markets?view=catalog")
+    assert catalog.status_code == 200 and 'data-testid="tm-catalog-table"' in catalog.text
+
+    nvda = client.get("/radar/tokenized-markets/NVDA")
+    assert nvda.status_code == 200
+    assert 'data-testid="tmd-relative-value"' in nvda.text
+    assert 'data-testid="tmd-deepstate-historical"' in nvda.text
+    assert "HISTORICAL EXECUTION" in nvda.text
+    assert 'data-testid="tmd-integrity"' in nvda.text
