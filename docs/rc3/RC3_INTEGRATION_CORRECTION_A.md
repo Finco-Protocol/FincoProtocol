@@ -17,9 +17,15 @@ and every `*_AUTHORITIES` map are byte-identical to `main`). No M7 blob was regi
 
 ## 2. Re-anchored historical guards (technical regressions, not approvals)
 
-crypto roadmap, Data Center A3.1 (2), P1.3 (2), P0a, P3, public product truth (2), staging product truth (2), tokenized markets (2),
-cost templates (2, via `branch_side_only`), revenue runtime parity, M3 two-driver, Radar R4, Radar R5. Each keeps its assertion
-unchanged and only changes which commit the diff is taken to.
+Re-anchored (assertion unchanged; only the commit the diff is taken to): crypto roadmap, crypto P0 reality reset, Data Center A3.1 (2),
+P1.2 XLSX (4), P1.3 (2), P0a, P3, public product truth (2), staging product truth (2), Opus C1 product truth (2), tokenized markets (2),
+tokenized access wiring (2), tokenized live intelligence (2), model market bridge (2), multi-source evidence (2), RWA integrity (2),
+stock-token oracle rejection (2), Yield alerts (2), radar crypto surface coherence, radar R3 deepstate, assumption-trace references,
+cost templates (2, via `branch_side_only`), revenue runtime parity, M3 two-driver, parallel-stream live proof, Radar R4, Radar R5.
+
+Deliberately NOT re-anchored (owner gates of current financial authority, still red until an independent approval exists):
+`tests/test_finance_integrity_governance.py` (3), `tests/test_wf07_revenue_governance.py` (3),
+`tests/test_ci_acceptance.py::test_frozen_financial_namespaces_unmodified`.
 
 ## 3. Shared-file resolutions
 

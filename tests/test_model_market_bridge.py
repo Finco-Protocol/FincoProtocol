@@ -670,7 +670,7 @@ class TestFrozenAuthorities:
         import subprocess
 
         out = subprocess.run(
-            ["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", frozen],
+            ["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--", frozen],
             cwd=REPO, capture_output=True, text=True,
         )
         if out.returncode != 0:

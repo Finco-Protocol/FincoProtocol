@@ -411,7 +411,7 @@ def test_product_truth_separates_code_capability_from_operational_availability()
 # ── frozen boundaries ────────────────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core", "finco_radar/venues"])
 def test_frozen_namespaces_zero_diff(namespace):
-    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", namespace],
+    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--", namespace],
                          cwd=ROOT, capture_output=True, text=True)
     if out.returncode != 0:
         pytest.skip("git unavailable")
