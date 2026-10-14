@@ -3052,6 +3052,14 @@ async def v2_workbook_run(
         _kpis_enriched["developer_economics"] = bind_developer_evidence(
             result["developer_economics"], snapshot_id=runtime_snapshot_id,
             composite_hash=content_hash, scenario_id=active_scenario_id)
+    # M6 candidate: bind exact G2C facts to the committed Run/history identity.
+    if "acquisition_source_candidate_v1" in result:
+        from app.model_v2.acquisition.evidence import bind as bind_acquisition_source
+        _kpis_enriched["acquisition_source_candidate_v1"] = bind_acquisition_source(
+            result["acquisition_source_candidate_v1"],
+            owner_id=workspace_owner, project_id=project_record.project_id,
+            snapshot_id=runtime_snapshot_id, composite_hash=content_hash,
+            scenario_id=active_scenario_id)
     # F1 Correction A: bind engine-produced finance evidence to the exact
     # successful V2 commit. This same runtime_summary is atomically captured
     # in Last Run and the append-only Run History entry by existing CAS.
