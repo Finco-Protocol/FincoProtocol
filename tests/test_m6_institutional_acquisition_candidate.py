@@ -242,6 +242,15 @@ def test_governance_no_secondary_project_run_and_explicit_csrf_boundary():
     assert "validate_csrf_token" in code
     assert "is_protected_reference" in code
     assert "save_case(" in code
+    review = inspect.getsource(acquisition_router.acquisition_review_candidate)
+    assert "_review_gate(request)" in review
+    assert "validate_csrf_token" in review
+    get = inspect.getsource(acquisition_router.acquisition_page)
+    assert "evaluate(" not in get
+    gate = inspect.getsource(acquisition_router._review_gate)
+    assert "resolve_admin_session" in gate
+    assert "FINCO_M6_CANDIDATE_REVIEW" in gate
+    assert '("development", "internal")' in gate
     calc = inspect.getsource(economics)
     assert "run_project(" not in calc
     assert "financial_engine.orchestrator" not in calc
