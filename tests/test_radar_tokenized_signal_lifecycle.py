@@ -319,3 +319,38 @@ def test_frozen_namespaces_and_parallel_r4_isolation():
     from model_v2_governance import model_v2_frozen_violations
     assert strictly_frozen_changes() == []
     assert model_v2_frozen_violations() == []
+
+
+def test_comparison_unit_policy_drift_never_proves_clearing(store):
+    _append(store,
+            _row(170, "100"),
+            _row(130, "102"),
+            _row(20, "100", payload={
+                "comparison_unit": "USDG_PER_NVDA",
+            }))
+    feed = _project(store)
+    assert _kinds(feed) == [LifecycleKind.DISLOCATION_APPEARED]
+    assert LifecycleKind.DISLOCATION_CLEARED not in _kinds(feed)
+    assert all(e.identity.contract_address == CONTRACT for e in feed.events)
+
+
+def test_missing_chain_provenance_cannot_join_market_history(store):
+    baseline = _row(160, "100")
+    malformed = _row(20, "103")
+    bad_payload = dict(malformed.payload)
+    bad_payload.pop("chain_id")
+    bad_payload.pop("contract_address")
+    _append(store, baseline, replace(malformed, payload=bad_payload))
+    assert not any(e.kind == LifecycleKind.DISLOCATION_APPEARED
+                   for e in _project(store).events)
+
+
+def test_current_stale_state_cannot_be_relabelled_fresh_by_collected_at(store):
+    older = _row(3650, "100")
+    market = _row(2000, "103", collected_offset_seconds=1990)
+    _append(store, older, market)
+    feed = _project(store)
+    assert _kinds(feed) == [LifecycleKind.EVIDENCE_BECAME_STALE]
+    assert feed.events[0].source_observed_at == market.ts
+    assert feed.events[0].source_observed_at != market.collected_at
+    assert feed.events[0].suppression_reason == "FACTUAL_CONTEXT_ONLY"
