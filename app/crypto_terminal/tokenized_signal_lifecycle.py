@@ -22,6 +22,7 @@ from finco_radar.venues.intelligence import (
 )
 from finco_radar.venues.models import RegistryStatus
 from finco_radar.venues.observations import FreshnessState, MarketObservation, ObservationStatus
+from finco_radar.venues.robinhood_live import COMPARISON_UNIT
 from finco_radar.venues.relative_value import (
     _classify, compute_basis_distribution, compute_dislocation_persistence,
 )
@@ -150,6 +151,10 @@ def _observation_matches(row: MarketObservation, identity: ExactRepresentation) 
             or row.instrument_type != identity.representation_type):
         return False
     p = row.payload if isinstance(row.payload, dict) else {}
+    # A basis stream cannot cross currency or economic-unit policies.
+    # Do not read Deepstate USDG/NVDA as canonical USD/share evidence.
+    if p.get("comparison_unit") != COMPARISON_UNIT:
+        return False
     # Exact-chain provenance must be present in the persisted claim; the
     # registry chain alone is not evidence that a MARKET row belongs there.
     embedded_asset_key = p.get("asset_key")
