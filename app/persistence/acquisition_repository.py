@@ -32,7 +32,12 @@ def _table(conn):
         FOREIGN KEY(project_id) REFERENCES projects(project_id)
     )""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_m6_cases_owner_project ON model_m6_acquisition_cases(user_id,project_id)")
-    # This table is independent from Run History, Working Copy and Last Run.
+    conn.execute("""CREATE TABLE IF NOT EXISTS model_m6_acquisition_revisions (
+        case_id TEXT NOT NULL, revision INTEGER NOT NULL, document_json TEXT NOT NULL,
+        created_at TEXT NOT NULL, PRIMARY KEY(case_id,revision),
+        FOREIGN KEY(case_id) REFERENCES model_m6_acquisition_cases(case_id)
+    )""")
+    # This independent append-only case revision log never mutates historical Runs.
 
 
 def _require_uuid(value):
@@ -170,6 +175,12 @@ def save_case(*, owner_id, project_id, document, case_id=None, expected_revision
                     (_encode(document),revision,now,case_id,owner_id,project_id,expected_revision))
                 if cur.rowcount != 1:
                     raise AcquisitionCaseConflict("CASE_CAS_CONFLICT")
+            # The previous revisions remain immutable. Failure to append this
+            # evidence aborts the new case save and rolls back the case UPDATE.
+            cur.execute(
+                "INSERT INTO model_m6_acquisition_revisions "
+                "(case_id,revision,document_json,created_at) VALUES (?,?,?,?)",
+                (case_id, revision, _encode(document), now))
             conn.commit()
         except Exception:
             conn.rollback()
