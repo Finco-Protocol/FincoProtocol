@@ -131,3 +131,40 @@ bounded outputs and no read-path provider or database writes.
 
 **Independent final review and exact-head mandatory CI required.**
 No self-approval, merge, staging deploy or R4 UI change.
+
+## RC-2 / RC-3 exact-content successor governance — Correction A proposal
+
+**Not an approval or a deployment authorization.** PR #279 is an R5/RC-3
+candidate developed after the normal RC-2 merge, not a replacement for RC-2
+source authority. The original RC-2 merge is
+`6fc77de98bc0562fb51efdbf96e1803a29b5b148`, with parents
+`5058c6b4935168241d6923676cb32955cb903185` and
+`2155a76bfff4acc3a4e15f7cf35012933ce1a10c`. Its exact tree is
+`4fdcd03b5e0ed3c4b87d9016f2522bfe50bf0d05`.
+
+The historical verifier in `tests/test_rc2_integration_manifest.py` remains
+unchanged in authority and still validates the complete RC-2 exact blob set,
+financial candidates, CSRF call-site inventory, router AST and source-head
+ancestry, release-closed Revenue V3/Junior flags and the byte-exact two-line
+CI-budget workflow delta. It still rejects RC-3 content if applied directly
+to RC-2.
+
+A **separate successor validator** checks that exactly one path is added:
+`app/crypto_terminal/tokenized_signal_lifecycle.py`, with git diff
+**status A**, worktree git blob and committed HEAD git blob both exactly
+`6f3cb95782426dee5ed7dfa1a5bac71b29388014`. It additionally pins
+the merged RC-2 commit parents/tree/ancestry. Only that verified addition
+is subtracted from the input to the *historical* RC-2 verifier. No other
+production path is exempted, including any sibling under
+`app/crypto_terminal/`. No wildcard, status M, descendant grant or
+prospective replacement blob is accepted.
+
+Focused mutations must reject: one-byte R5 content drift, changed committed
+blob, missing/duplicate/M/D R5 status, extra production files, changed
+financial blob, missing/replaced RC-2 source head, CSRF inventory drift and
+changed merge parents/tree/ancestry. Scope excludes all product/price/collector/
+entitlement/notification authority and CI workflow modifications.
+
+The proposer neither approves this successor nor authorizes merge. An
+independent reviewer must verify the pinned content and successful exact-head
+Public Safety before a merge decision.
