@@ -87,6 +87,15 @@
     <h2>4. Buyer returns and bid ceiling</h2>
     <p>{{ status }} — Buyer IRR, MOIC, acquisition NPV and maximum price are calculated only by the isolated reviewer candidate, not displayed as production financial outputs.</p>
     <p>Actual proposed price, target return and bid ceiling are distinct metrics. No investment recommendation is generated.</p>
+    {% if review_allowed and stored and evidence_status == 'AVAILABLE_SOURCE_FACTS' %}
+    <form method="post" action="/v2/valuation-acquisition/review-candidate" data-testid="m6-dev-review">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="case_id" value="{{ stored.case_id }}">
+      <button type="submit">Explicit admin-only development candidate review (JSON)</button>
+    </form>
+    <p>Only available in local development/internal mode with FINCO_M6_CANDIDATE_REVIEW=1 and a non-demo admin session; this is NOT deployment or financial approval.</p>
+    {% endif %}
   </section>
   <section data-testid="m6-evidence">
     <h2>5. Canonical dated receipt evidence (kEUR)</h2>
