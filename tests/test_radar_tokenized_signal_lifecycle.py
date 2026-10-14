@@ -354,3 +354,11 @@ def test_current_stale_state_cannot_be_relabelled_fresh_by_collected_at(store):
     assert feed.events[0].source_observed_at == market.ts
     assert feed.events[0].source_observed_at != market.collected_at
     assert feed.events[0].suppression_reason == "FACTUAL_CONTEXT_ONLY"
+
+
+def test_deepstate_source_identity_cannot_be_relabelled_as_robinhood(store):
+    before = _row(150, "100")
+    execution_as_token = replace(
+        _row(20, "103"), source="DEEPSTATE_PROTOCOL_ROUTER_V1")
+    _append(store, before, execution_as_token)
+    assert _project(store).events == ()
