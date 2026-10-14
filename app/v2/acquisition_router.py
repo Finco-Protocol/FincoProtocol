@@ -56,6 +56,24 @@ def _terms(form):
     return terms
 
 
+_BRIDGE_NUMBERS = (
+    "enterprise_value_keur", "senior_debt_keur", "unrestricted_cash_keur",
+    "restricted_cash_keur", "shl_balance_keur", "debt_like_keur",
+    "working_capital_adjustment_keur", "transaction_adjustment_keur",
+)
+
+
+def _bridge(form, terms):
+    supplied = [str(form.get(k) or "").strip() for k in _BRIDGE_NUMBERS]
+    if not any(supplied):
+        return None
+    if not all(supplied):
+        raise AcquisitionCaseConflict("CASE_BRIDGE_PARTIAL_UNAVAILABLE")
+    values = {k: _num(form.get(k), k) for k in _BRIDGE_NUMBERS}
+    return {"balance_date": terms.closing_date.isoformat(),
+            "basis": "EXPLICIT_USER_UNDERWRITING", **values}
+
+
 def _record(request, project):
     from app.v2.router import _get_current_user
     from app.persistence.projects_repository import resolve_accessible_project
@@ -133,12 +151,31 @@ async def acquisition_page(request: Request, project: str = "", history_id: str 
             target_buyer_irr=0.1, bid_lower_bound_keur=0.0,
             bid_upper_bound_keur=100000.0))
         values = stored["document"]["terms"] if stored else defaults
+        bridge = stored["document"]["closing_bridge"] if stored else None
+        comparison = []
+        for meta in cases:
+            sibling = read_case(owner_id=owner, project_id=record.project_id,
+                                case_id=meta["case_id"])
+            if sibling is None:
+                continue
+            other = sibling["document"]
+            same_basis = bool(stored
+                and other["source"] == stored["document"]["source"]
+                and other["terms"]["closing_date"] == values["closing_date"])
+            comparison.append({
+                "id": meta["case_id"], "revision": meta["revision"],
+                "price": other["terms"]["purchase_price_keur"],
+                "closing_date": other["terms"]["closing_date"],
+                "status": ("COMPARABLE_SOURCE_AND_DATE" if same_basis else "NOT_COMPARABLE"),
+            })
         return templates.TemplateResponse(request=request, name="v2/acquisition.html",
             context={
                 "project_code": record.project_code,
                 "project_name": record.project_name,
                 "history": history, "history_id": history_id, "selected": selected,
                 "cases": cases, "stored": stored, "values": values,
+                "bridge": bridge, "bridge_keys": _BRIDGE_NUMBERS,
+                "comparison": comparison,
                 "source_outdated": source_outdated,
                 "evidence_status": evidence_status,
                 "evidence_rows": evidence["equity_periods"] if evidence else (),
@@ -178,7 +215,7 @@ async def acquisition_save(request: Request):
         existing_id = str(form.get("case_id") or "") or None
         expected_revision = int(str(form.get("expected_revision") or "0"))
         terms = _terms(form)
-        document = make_document(entry, terms)
+        document = make_document(entry, terms, closing_bridge=_bridge(form, terms))
         case_id, revision = save_case(
             owner_id=owner, project_id=record.project_id,
             document=document, case_id=existing_id,
