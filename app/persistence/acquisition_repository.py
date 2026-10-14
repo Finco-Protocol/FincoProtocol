@@ -132,9 +132,11 @@ def _terms_from_doc(document):
         if bridge["basis"] != "EXPLICIT_USER_UNDERWRITING":
             # No fabricated exact-committed closing balance provenance in V1.
             raise AcquisitionCaseConflict("CASE_BRIDGE_BASIS_NOT_APPROVED")
-        from app.model_v2.acquisition.economics import enterprise_equity_bridge
-        enterprise_equity_bridge(**{k: v for k, v in bridge.items()
-                                    if k not in ("balance_date", "basis")})
+        from app.model_v2.acquisition.economics import _finite
+        for key, value in bridge.items():
+            if key not in ("balance_date", "basis"):
+                _finite(value, key, nonnegative=key not in (
+                    "working_capital_adjustment_keur", "transaction_adjustment_keur"))
     return terms
 
 

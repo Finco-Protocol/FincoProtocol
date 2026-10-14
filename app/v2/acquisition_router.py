@@ -118,7 +118,7 @@ def _review_gate(request):
 @router.get("/valuation-acquisition", response_class=HTMLResponse)
 async def acquisition_page(request: Request, project: str = "", history_id: str = "",
                            case_id: str = "", saved: str = ""):
-    from app.auth import generate_csrf_token
+    from app.model_v2.acquisition.csrf_binding import issue_token
     from app.persistence.run_history_repository import get_run_history
     from app.ui.protected_reference_service import is_protected_reference
     from main_web import templates
@@ -192,7 +192,7 @@ async def acquisition_page(request: Request, project: str = "", history_id: str 
                 "status": STATUS, "release_closed": not ACTIVATION_ENABLED,
                 "review_allowed": _review_gate(request),
                 "readonly": is_protected_reference(record),
-                "csrf_token": generate_csrf_token(), "saved": saved == "1",
+                "csrf_token": issue_token(request, record.project_code), "saved": saved == "1",
             }, headers={"Cache-Control": "private, no-store"})
     except (AcquisitionCaseConflict, ValueError, TypeError) as exc:
         return HTMLResponse("UNAVAILABLE: " + str(exc), status_code=409,
@@ -208,9 +208,10 @@ async def acquisition_save(request: Request):
     if user is None:
         return JSONResponse({"error": "UNAUTHENTICATED"}, status_code=401)
     form = await request.form()
-    if not validate_csrf_token(form.get("csrf_token")):
-        return JSONResponse({"error": "M6_CSRF_INVALID"}, status_code=403)
+    from app.model_v2.acquisition.csrf_binding import extract_bound_token
     project = str(form.get("project") or "").strip()
+    if not validate_csrf_token(extract_bound_token(request, project, form.get("csrf_token"))):
+        return JSONResponse({"error": "M6_CSRF_INVALID"}, status_code=403)
     user, record, owner = _record(request, project)
     if record is None:
         return JSONResponse({"error": "PROJECT_NOT_FOUND"}, status_code=404)
@@ -250,7 +251,9 @@ async def acquisition_review_candidate(request: Request):
     from app.model_v2.acquisition.economics import evaluate, enterprise_equity_bridge
     from app.persistence.acquisition_repository import _terms_from_doc
     form = await request.form()
-    if not validate_csrf_token(form.get("csrf_token")):
+    from app.model_v2.acquisition.csrf_binding import extract_bound_token
+    project = str(form.get("project") or "").strip()
+    if not validate_csrf_token(extract_bound_token(request, project, form.get("csrf_token"))):
         return JSONResponse({"error": "M6_REVIEW_CSRF_INVALID"}, status_code=403)
     record, owner = _record(request, str(form.get("project") or ""))[1:]
     if record is None:

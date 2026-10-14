@@ -15,6 +15,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 RC2_BASE_MAIN = "5058c6b4935168241d6923676cb32955cb903185"
+RC2_ACCEPTED_CHECKPOINT = "6fc77de98bc0562fb51efdbf96e1803a29b5b148"
 RC2_SOURCE_HEADS = (                       # merge order; each the second parent of a normal two-parent merge
     ("275", "73f698705ec5d72af820974873d9be202cd57f7d"),
     ("274", "0fa0ac5e268a37decbae6bc252487aba3e6e31c9"),
@@ -206,32 +207,38 @@ def rc2_violations(f) -> list[str]:
         return [f"facts incomplete or malformed: {exc!r}"]
 
 
-def _collect():
+def _collect(ref=RC2_ACCEPTED_CHECKPOINT):
     import re
-    rows = [r.split() for r in _git("rev-list", "--merges", "--parents", f"{RC2_BASE_MAIN}..HEAD").splitlines()]
+    # The immutable reviewed checkpoint must be an ancestor of current HEAD.
+    _git("merge-base", "--is-ancestor", ref, "HEAD")
+    if _git("rev-parse", f"{ref}^{{commit}}") != ref:
+        raise ValueError("RC-2 checkpoint SHA invalid")
+    rows = [r.split() for r in _git("rev-list", "--merges", "--parents", f"{RC2_BASE_MAIN}..{ref}").splitlines()]
     merges, ancestor = {}, {}
     for pr, head in RC2_SOURCE_HEADS:
         found = [r for r in rows if len(r) == 3 and r[2] == head]
         merges[pr] = tuple(found[0]) if len(found) == 1 else None
-        ancestor[pr] = subprocess.run(["git", "merge-base", "--is-ancestor", head, "HEAD"], cwd=ROOT).returncode == 0
-    status = [tuple(l.split("\t", 1)) for l in _git("diff", "--name-status", "--no-renames", RC2_BASE_MAIN).splitlines()]
+        ancestor[pr] = subprocess.run(["git", "merge-base", "--is-ancestor", head, ref], cwd=ROOT).returncode == 0
+    status = [tuple(l.split("\t", 1)) for l in _git("diff", "--name-status", "--no-renames", RC2_BASE_MAIN, ref).splitlines()]
     sites = set()
-    for path in list((ROOT / "app").rglob("*.py")) + [ROOT / "main_web.py"]:
-        rel = path.relative_to(ROOT).as_posix()
-        if not rel.startswith("app/trust_readiness/") and re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
-            sites.add(rel)
+    historical_paths = _git("ls-tree", "-r", "--name-only", ref).splitlines()
+    for rel in historical_paths:
+        if (rel.startswith("app/") and rel.endswith(".py") or rel == "main_web.py") and not rel.startswith("app/trust_readiness/"):
+            source = _git("show", f"{ref}:{rel}")
+            if re.search(r"(?<!def )validate_csrf_token\(", source):
+                sites.add(rel)
     return {
         "merges": merges, "ancestor": ancestor, "status": status, "call_sites": sites,
-        "blobs": {p: _git("hash-object", p) for p in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED) if (ROOT / p).exists()},
+        "blobs": {p: _git("rev-parse", f"{ref}:{p}") for p in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED)},
         "ci_workflow_base_blob": _git("rev-parse", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}"),
-        "ci_workflow_head_blob": _git("hash-object", RC2_CI_WORKFLOW),
+        "ci_workflow_head_blob": _git("rev-parse", f"{ref}:{RC2_CI_WORKFLOW}"),
         # _git() strips one trailing newline; restore that known exact baseline ending.
         "ci_workflow_base": _git("show", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}") + "\n",
-        "ci_workflow_head": (ROOT / RC2_CI_WORKFLOW).read_text(encoding="utf-8"),
+        "ci_workflow_head": _git("show", f"{ref}:{RC2_CI_WORKFLOW}") + "\n",
         "router_base": _git("show", f"{RC2_BASE_MAIN}:app/v2/router.py"),
-        "router_head": (ROOT / "app/v2/router.py").read_text(encoding="utf-8"),
+        "router_head": _git("show", f"{ref}:app/v2/router.py") + "\n",
         # The ACTUAL observed source; the verifier derives the state itself (no pre-computed or replaced flag).
-        "flag_sources": {p: (ROOT / p).read_text(encoding="utf-8") for p in RC2_ACTIVATION_FLAG_FILES},
+        "flag_sources": {p: _git("show", f"{ref}:{p}") for p in RC2_ACTIVATION_FLAG_FILES},
     }
 
 

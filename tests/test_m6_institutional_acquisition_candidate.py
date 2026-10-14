@@ -397,6 +397,13 @@ def test_http_get_history_and_repeated_page_render_are_schema_readonly(tmp_path,
     monkeypatch.setattr(protected_ref, "is_protected_reference", lambda record: False)
     import app.persistence.acquisition_repository as repo
     monkeypatch.setattr(repo, "_table", lambda conn: pytest.fail("GET triggered M6 DDL"))
+    from app.model_v2.acquisition import economics
+    def financial_call_forbidden(*args, **kwargs):
+        pytest.fail("GET executed unauthorized acquisition economics")
+    monkeypatch.setattr(economics, "evaluate", financial_call_forbidden)
+    monkeypatch.setattr(economics, "enterprise_equity_bridge", financial_call_forbidden)
+    monkeypatch.setattr(economics, "robust_xirr", financial_call_forbidden)
+    monkeypatch.setattr(economics, "xnpv", financial_call_forbidden)
 
     app = FastAPI()
     app.include_router(acquisition_router.router, prefix="/v2")
@@ -416,7 +423,8 @@ def test_http_post_rejects_missing_csrf_and_protected_reference(tmp_path, monkey
     from app.v2 import acquisition_router
     import app.v2.router as workbook_router
     import app.ui.protected_reference_service as protected_ref
-    from app.auth import generate_csrf_token
+    from app.auth import create_session_token, COOKIE_NAME
+    from app.model_v2.acquisition.csrf_binding import issue_token
 
     path = _db(tmp_path, monkeypatch)
     before = _db_state(path)
@@ -428,15 +436,102 @@ def test_http_post_rejects_missing_csrf_and_protected_reference(tmp_path, monkey
     app = FastAPI()
     app.include_router(acquisition_router.router, prefix="/v2")
     with TestClient(app) as client:
+        from types import SimpleNamespace
+        session = create_session_token(user_id="owner-A", username="m6-test")
+        client.cookies.set(COOKIE_NAME, session)
+        request_stub = SimpleNamespace(cookies={COOKIE_NAME: session}, state=SimpleNamespace())
+        good_token = issue_token(request_stub, "project-A")
         bad = client.post("/v2/valuation-acquisition/save",
                           data={"project": "project-A", "csrf_token": "invalid"})
         assert bad.status_code == 403
         monkeypatch.setattr(protected_ref, "is_protected_reference", lambda record: True)
         denied = client.post("/v2/valuation-acquisition/save",
-                             data={"project": "project-A", "csrf_token": generate_csrf_token()})
+                             data={"project": "project-A", "csrf_token": good_token})
         assert denied.status_code == 409
     assert _db_state(path) == before
 
+
+
+def test_read_case_with_explicit_closing_bridge_never_calculates(tmp_path, monkeypatch):
+    from app.model_v2.acquisition import economics
+    path = _db(tmp_path, monkeypatch)
+    entry = NS(history_id="h-1", runtime_snapshot_id="snapshot-123",
+               composite_hash="c"*64, last_runtime_scenario_id=None)
+    bridge = dict(balance_date="2027-01-01", basis="EXPLICIT_USER_UNDERWRITING",
+                  enterprise_value_keur=1000.0, senior_debt_keur=200.0,
+                  unrestricted_cash_keur=20.0, restricted_cash_keur=30.0,
+                  shl_balance_keur=10.0, debt_like_keur=0.0,
+                  working_capital_adjustment_keur=0.0, transaction_adjustment_keur=0.0)
+    doc = make_document(entry, terms(), closing_bridge=bridge)
+    case, _ = save_case(owner_id="owner-A", project_id="project-A", document=doc)
+    from app.persistence.acquisition_repository import read_case
+    before = _db_state(path)
+    def forbidden(*args, **kwargs):
+        pytest.fail("read_case called acquisition valuation math")
+    monkeypatch.setattr(economics, "enterprise_equity_bridge", forbidden)
+    for _ in range(3):
+        assert read_case(owner_id="owner-A", project_id="project-A", case_id=case)["document"] == doc
+    assert _db_state(path) == before
+
+
+def test_m6_economic_values_identical_across_separate_valid_snapshots():
+    from m6_economic_parity import independent_economic_view
+    a = evidence()
+    source_only = {k: v for k, v in a.items() if k not in ("binding", "digest")}
+    alternate = {**BINDING, "snapshot_id": "other-snapshot"}
+    b = bind(source_only, **alternate)
+    assert a["digest"] != b["digest"]
+    one = independent_economic_view({"acquisition_source_candidate_v1": a}, **BINDING)
+    two = independent_economic_view({"acquisition_source_candidate_v1": b}, **alternate)
+    assert one == two  # exact, no rounding or missing receipt/debt/funding values
+    bad = copy.deepcopy(source_only)
+    bad["equity_periods"][1]["net_legal_dividend_keur"] += 1.0
+    bad["equity_periods"][1]["gross_legal_dividend_keur"] += 1.0
+    changed = bind(bad, **alternate)
+    view = independent_economic_view({"acquisition_source_candidate_v1": changed}, **alternate)
+    assert view != one
+    with pytest.raises(AcquisitionEvidenceError, match="BINDING"):
+        independent_economic_view({"acquisition_source_candidate_v1": b}, **BINDING)
+    forged = copy.deepcopy(a)
+    forged["digest"] = "0" * 64
+    with pytest.raises(AcquisitionEvidenceError, match="DIGEST"):
+        independent_economic_view({"acquisition_source_candidate_v1": forged}, **BINDING)
+
+
+def test_m6_csrf_binding_is_session_project_and_purpose_specific():
+    from types import SimpleNamespace
+    from app.auth import COOKIE_NAME, create_session_token, validate_csrf_token, generate_csrf_token
+    from app.model_v2.acquisition.csrf_binding import issue_token, extract_bound_token
+    from app.workbook.financing_csrf import issue_token as capital_issue_token
+    session = create_session_token(user_id="owner-A", username="m6")
+    other = create_session_token(user_id="owner-B", username="different")
+    request = SimpleNamespace(cookies={COOKIE_NAME: session}, state=SimpleNamespace())
+    wrong = SimpleNamespace(cookies={COOKIE_NAME: other}, state=SimpleNamespace())
+    token = issue_token(request, "project-A")
+    assert validate_csrf_token(extract_bound_token(request, "project-A", token))
+    for req, project, supplied in (
+        (wrong, "project-A", token),
+        (request, "project-B", token),
+        (request, "project-A", "forged"),
+        (request, "project-A", generate_csrf_token()),
+        (request, "project-A", capital_issue_token(request, "project-A")),
+    ):
+        assert not validate_csrf_token(extract_bound_token(req, project, supplied))
+
+
+def test_m6_expired_csrf_token_is_rejected(monkeypatch):
+    from types import SimpleNamespace
+    from itsdangerous import SignatureExpired
+    from app import auth
+    from app.model_v2.acquisition.csrf_binding import issue_token, extract_bound_token
+    session = auth.create_session_token(user_id="owner-A", username="m6")
+    request = SimpleNamespace(cookies={auth.COOKIE_NAME: session}, state=SimpleNamespace())
+    token = issue_token(request, "project-A")
+    assert auth.validate_csrf_token(extract_bound_token(request, "project-A", token))
+    def expired(*args, **kwargs):
+        raise SignatureExpired("expired")
+    monkeypatch.setattr(auth._get_csrf_serializer(), "loads", expired)
+    assert not auth.validate_csrf_token(extract_bound_token(request, "project-A", token))
 
 def test_governance_no_secondary_project_run_and_explicit_csrf_boundary():
     import inspect
@@ -450,7 +545,7 @@ def test_governance_no_secondary_project_run_and_explicit_csrf_boundary():
     assert "_review_gate(request)" in review
     assert "validate_csrf_token" in review
     get = inspect.getsource(acquisition_router.acquisition_page)
-    assert "evaluate(" not in get
+    # Actual GET behavior is verified with fail-on-use calculation spies below.
     gate = inspect.getsource(acquisition_router._review_gate)
     assert "resolve_admin_session" in gate
     assert "FINCO_M6_CANDIDATE_REVIEW" in gate

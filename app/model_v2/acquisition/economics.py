@@ -58,8 +58,10 @@ class AcquisitionTerms:
     def check(self):
         if type(self.closing_date) is not date:
             raise AcquisitionPolicyError("CLOSING_DATE_INVALID")
-        if self.transaction_type != TRANSACTION or self.shl_policy != SHL_POLICY:
+        if self.transaction_type != TRANSACTION:
             raise AcquisitionPolicyError("TRANSACTION_STRUCTURE_UNSUPPORTED")
+        if self.shl_policy != SHL_POLICY:
+            raise AcquisitionPolicyError("SHL_RIGHTS_POLICY_UNSUPPORTED")
         if self.future_funding_policy != "SOURCE_PROVEN_EQUITY_CALLS":
             raise AcquisitionPolicyError("FUNDING_POLICY_UNSUPPORTED")
         if type(self.ownership_fraction) not in (int, float) or self.ownership_fraction != 1:
