@@ -4,6 +4,12 @@ This is an EXACT-CONTENT PROPOSAL awaiting independent (ChatGPT) review - it is 
 wildcard, no generic allow-list and no descendant rule: any byte change to a listed file, any further router
 function change, any new CSRF call site or a different source head fails until a reviewer re-authorises the
 new exact content. Historical RC-1 authorities stay enforced by tests/test_trust_readiness_registry.py.
+
+HISTORICAL CHECKPOINT (correction B1). RC-2 was accepted as the normal merge commit RC2_CHECKPOINT (#278). Every historical
+assertion below is judged against THAT commit's git objects (merge parents, diff against the RC-2 base, blobs, router,
+workflow, flag sources, CSRF inventory), never against the current HEAD or working tree. A later feature branch that
+descends from the checkpoint therefore cannot change what RC-2 was; changes made AFTER the checkpoint are governed by a
+separate, exact-content successor (tests/test_rc3_diagnostics_manifest.py). Mutating any historical fact still fails.
 """
 import ast
 import copy
@@ -15,6 +21,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 RC2_BASE_MAIN = "5058c6b4935168241d6923676cb32955cb903185"
+# Verified, accepted RC-2 checkpoint: the normal merge commit of PR #278 (first parent = RC2_BASE_MAIN).
+RC2_CHECKPOINT = "6fc77de98bc0562fb51efdbf96e1803a29b5b148"
+RC2_CHECKPOINT_TREE = "4fdcd03b5e0ed3c4b87d9016f2522bfe50bf0d05"
+RC2_REVIEWED_HEAD = "2155a76bfff4acc3a4e15f7cf35012933ce1a10c"      # second parent: the reviewed RC-2 integration head
 RC2_SOURCE_HEADS = (                       # merge order; each the second parent of a normal two-parent merge
     ("275", "73f698705ec5d72af820974873d9be202cd57f7d"),
     ("274", "0fa0ac5e268a37decbae6bc252487aba3e6e31c9"),
@@ -148,6 +158,13 @@ def rc2_violations(f) -> list[str]:
     """Pure fail-closed verifier over injected facts; [] means the manifest holds."""
     try:
         problems, previous = [], RC2_BASE_MAIN
+        checkpoint = f["checkpoint"]
+        if checkpoint.get("sha") != RC2_CHECKPOINT:
+            problems.append("RC-2 checkpoint commit is not the accepted merge commit")
+        if checkpoint.get("tree") != RC2_CHECKPOINT_TREE:
+            problems.append("RC-2 checkpoint tree is not the accepted tree")
+        if tuple(checkpoint.get("parents", ())) != (RC2_BASE_MAIN, RC2_REVIEWED_HEAD):
+            problems.append("RC-2 checkpoint parents are not (verified main, reviewed integration head)")
         for pr, head in RC2_SOURCE_HEADS:
             merge = f["merges"].get(pr)
             if not f["ancestor"].get(pr) or merge is None:
@@ -206,32 +223,54 @@ def rc2_violations(f) -> list[str]:
         return [f"facts incomplete or malformed: {exc!r}"]
 
 
+def _at(path):
+    """Content of ``path`` in the accepted RC-2 checkpoint commit (never the working tree)."""
+    return _git("show", f"{RC2_CHECKPOINT}:{path}")
+
+
+def _checkpoint_csrf_sites():
+    """Files of the checkpoint that CALL ``validate_csrf_token`` (definitions excluded), from git objects."""
+    proc = subprocess.run(["git", "grep", "-lP", r"(?<!def )validate_csrf_token\(", RC2_CHECKPOINT, "--", "app/*.py", "main_web.py"],
+                          cwd=ROOT, capture_output=True, text=True)
+    if proc.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(proc.returncode, proc.args)
+    sites = set()
+    for line in proc.stdout.splitlines():
+        rel = line.split(":", 1)[1]
+        if not rel.startswith("app/trust_readiness/"):
+            sites.add(rel)
+    return sites
+
+
 def _collect():
-    import re
-    rows = [r.split() for r in _git("rev-list", "--merges", "--parents", f"{RC2_BASE_MAIN}..HEAD").splitlines()]
+    rows = [r.split() for r in _git("rev-list", "--merges", "--parents", f"{RC2_BASE_MAIN}..{RC2_CHECKPOINT}").splitlines()]
     merges, ancestor = {}, {}
     for pr, head in RC2_SOURCE_HEADS:
         found = [r for r in rows if len(r) == 3 and r[2] == head]
         merges[pr] = tuple(found[0]) if len(found) == 1 else None
-        ancestor[pr] = subprocess.run(["git", "merge-base", "--is-ancestor", head, "HEAD"], cwd=ROOT).returncode == 0
-    status = [tuple(l.split("\t", 1)) for l in _git("diff", "--name-status", "--no-renames", RC2_BASE_MAIN).splitlines()]
-    sites = set()
-    for path in list((ROOT / "app").rglob("*.py")) + [ROOT / "main_web.py"]:
-        rel = path.relative_to(ROOT).as_posix()
-        if not rel.startswith("app/trust_readiness/") and re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
-            sites.add(rel)
+        ancestor[pr] = subprocess.run(["git", "merge-base", "--is-ancestor", head, RC2_CHECKPOINT], cwd=ROOT).returncode == 0
+    status = [tuple(l.split("\t", 1)) for l in _git("diff", "--name-status", "--no-renames", RC2_BASE_MAIN, RC2_CHECKPOINT).splitlines()]
+    blobs = {}
+    for path in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED):
+        try:
+            blobs[path] = _git("rev-parse", f"{RC2_CHECKPOINT}:{path}")
+        except subprocess.CalledProcessError:
+            continue                                   # absent at the checkpoint: rc2_violations reports it
+    parents = _git("rev-list", "--parents", "-n", "1", RC2_CHECKPOINT).split()
     return {
-        "merges": merges, "ancestor": ancestor, "status": status, "call_sites": sites,
-        "blobs": {p: _git("hash-object", p) for p in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED) if (ROOT / p).exists()},
+        "checkpoint": {"sha": _git("rev-parse", f"{RC2_CHECKPOINT}^{{commit}}"), "tree": _git("rev-parse", f"{RC2_CHECKPOINT}^{{tree}}"),
+                       "parents": tuple(parents[1:])},
+        "merges": merges, "ancestor": ancestor, "status": status, "call_sites": _checkpoint_csrf_sites(),
+        "blobs": blobs,
         "ci_workflow_base_blob": _git("rev-parse", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}"),
-        "ci_workflow_head_blob": _git("hash-object", RC2_CI_WORKFLOW),
+        "ci_workflow_head_blob": _git("rev-parse", f"{RC2_CHECKPOINT}:{RC2_CI_WORKFLOW}"),
         # _git() strips one trailing newline; restore that known exact baseline ending.
         "ci_workflow_base": _git("show", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}") + "\n",
-        "ci_workflow_head": (ROOT / RC2_CI_WORKFLOW).read_text(encoding="utf-8"),
+        "ci_workflow_head": _at(RC2_CI_WORKFLOW) + "\n",
         "router_base": _git("show", f"{RC2_BASE_MAIN}:app/v2/router.py"),
-        "router_head": (ROOT / "app/v2/router.py").read_text(encoding="utf-8"),
-        # The ACTUAL observed source; the verifier derives the state itself (no pre-computed or replaced flag).
-        "flag_sources": {p: (ROOT / p).read_text(encoding="utf-8") for p in RC2_ACTIVATION_FLAG_FILES},
+        "router_head": _at("app/v2/router.py") + "\n",
+        # The ACTUAL checkpoint source; the verifier derives the state itself (no pre-computed or replaced flag).
+        "flag_sources": {p: _at(p) + "\n" for p in RC2_ACTIVATION_FLAG_FILES},
     }
 
 
@@ -242,7 +281,7 @@ def facts():
     except subprocess.CalledProcessError:
         pytest.skip("RC-2 integration history is unavailable in this checkout")
     if not any(merged["ancestor"].values()):
-        pytest.skip("not the RC-2 integration branch")
+        pytest.skip("RC-2 checkpoint lineage is unavailable")
     return merged
 
 
@@ -346,6 +385,37 @@ def test_ci_workflow_is_the_exact_two_line_timeout_delta_and_rejects_other_edits
     rejected(status=[*facts["status"], ("M", RC2_CI_WORKFLOW)])
     for unrelated in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/unreviewed.yml"):
         rejected(status=[*facts["status"], ("M", unrelated)])
+
+
+def test_historical_checkpoint_is_judged_from_its_own_git_objects_not_from_head(facts):
+    assert facts["checkpoint"] == {"sha": RC2_CHECKPOINT, "tree": RC2_CHECKPOINT_TREE, "parents": (RC2_BASE_MAIN, RC2_REVIEWED_HEAD)}
+    # The router / flag / workflow facts are the checkpoint's bytes, byte-for-byte equal to what git holds for that commit.
+    assert facts["router_head"].rstrip("\n") == _git("show", f"{RC2_CHECKPOINT}:app/v2/router.py")
+    for path in RC2_ACTIVATION_FLAG_FILES:
+        assert facts["flag_sources"][path].rstrip("\n") == _git("show", f"{RC2_CHECKPOINT}:{path}")
+    assert facts["blobs"] == {p: _git("rev-parse", f"{RC2_CHECKPOINT}:{p}") for p in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED)}
+    assert {p for _s, p in facts["status"]} >= set(RC2_EXACT_BLOBS)
+
+
+def test_a_descendant_branch_cannot_change_what_rc2_was(facts):
+    """The historical facts do not depend on HEAD: they equal the facts re-collected from the checkpoint commit alone."""
+    again = _collect()
+    assert again == facts and rc2_violations(again) == []
+
+
+def test_mutating_the_historical_checkpoint_evidence_is_rejected(facts):
+    def bad(**changes):
+        mutated = copy.deepcopy(facts)
+        mutated.update(changes)
+        assert rc2_violations(mutated), changes
+    bad(checkpoint={**facts["checkpoint"], "sha": "4" * 40})
+    bad(checkpoint={**facts["checkpoint"], "tree": "5" * 40})
+    bad(checkpoint={**facts["checkpoint"], "parents": (RC2_BASE_MAIN, "6" * 40)})
+    bad(checkpoint={**facts["checkpoint"], "parents": ("7" * 40, RC2_REVIEWED_HEAD)})
+    bad(checkpoint={**facts["checkpoint"], "parents": (RC2_REVIEWED_HEAD, RC2_BASE_MAIN)})
+    bad(checkpoint={})
+    bad(status=[*facts["status"], ("A", "app/v2/diagnostics_dx_checks.py")])      # a post-checkpoint path is NOT RC-2 content
+    assert rc2_violations({k: v for k, v in facts.items() if k != "checkpoint"})  # missing checkpoint facts never authorise
 
 
 def test_missing_git_history_is_not_an_authorisation(monkeypatch):

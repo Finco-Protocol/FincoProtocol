@@ -37,6 +37,18 @@ arguments). `tests/test_model_diagnostics_v1.py` still requires `diagnostics_pro
 2. Authorise no router change, no new route, no CSRF call-site change.
 3. Keep every historical Trust assertion and mutation-negative test effective; the successor must be additive, exact-content and never a path/prefix wildcard.
 
+## 4a. Correction B — historical RC-2 checkpoint and the RC-3 Diagnostics successor (review proposal)
+
+* `tests/test_rc2_integration_manifest.py` now judges RC-2 from the git objects of the verified RC-2 checkpoint (merge commit
+  `6fc77de98bc0562fb51efdbf96e1803a29b5b148`, tree `4fdcd03b5e0ed3c4b87d9016f2522bfe50bf0d05`, parents the RC-2 base `5058c6b…` and the reviewed head
+  `2155a76bfff4acc3a4e15f7cf35012933ce1a10c`), not from the current HEAD. Every original pin (exact blobs, merge chain, CSRF call sites, activation flags,
+  exact two-line CI timeout delta) and every negative mutation test is retained; mutating the checkpoint evidence is rejected.
+* `tests/test_rc3_diagnostics_manifest.py` is an independent, narrow successor: base = the RC-2 checkpoint; exactly the five application paths of section 1
+  with their A/M status and exact blob SHAs; every other changed path must be in a closed exact-path list (templates, CSS/JS, tests, docs); any other
+  change under `app/`, `financial_engine/`, `finco_core/`, `domain/`, `.github/`, Quality, Run Integrity, persistence, auth, workbook, API, tools or
+  the router fails. No wildcard. A later byte change to any of the five blobs, or any further file, fails closed and needs a new review.
+* Both governance test files are part of the diff and must be approved by their exact content by the independent reviewer.
+
 ## 5. Evidence
 
 `tests/test_model_diagnostics_v2.py`, `tests/test_model_diagnostics_v2_real_runs.py`, `tests/model_diagnostics_v2_browser_acceptance.py` (run by the existing mandatory consolidation browser role); existing Diagnostics V1,
