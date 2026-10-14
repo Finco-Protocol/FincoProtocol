@@ -464,6 +464,8 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     Raises:
         ValueError: if input validation produces ERROR-level issues.
     """
+    if getattr(inputs.technical, "bess_legacy_unsupported", False):
+        raise ValueError("BESS_NATIVE_CONTRACT_REQUIRED: legacy spread economics are not clean runtime")
     # Step 1: Validate input.
     validation_issues = validate_operating_model_input(inputs)
     if has_errors(validation_issues):

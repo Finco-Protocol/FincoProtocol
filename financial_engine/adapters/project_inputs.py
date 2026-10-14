@@ -125,7 +125,9 @@ def from_project_inputs(
         technical_class = NativeBessTechnicalInput
         technical_extra = {"bess_native_config_json": tech.bess_native_config_json}
     elif tech.bess_enabled:
-        raise ValueError("BESS_NATIVE_CONTRACT_REQUIRED: legacy spread economics are not clean runtime")
+        # Legacy Storage metadata stays adaptable; execution is rejected at the operating-model boundary.
+        from financial_engine.bess import LegacyBessTechnicalInput
+        technical_class = LegacyBessTechnicalInput
     technical = technical_class(
         **technical_extra,
         capacity_mw=tech.capacity_mw,

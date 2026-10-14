@@ -15,6 +15,17 @@ class NativeBessTechnicalInput(TechnicalInput):
     bess_native_config_json: str = ""
 
 
+@dataclass(frozen=True)
+class LegacyBessTechnicalInput(TechnicalInput):
+    """Legacy ``bess_enabled`` flag WITHOUT a native contract.
+
+    Adaptation (metadata, depreciation classes, reference listings) keeps working exactly as before, but this
+    marker can never be executed: ``run_operating_model`` rejects it with BESS_NATIVE_CONTRACT_REQUIRED, so no
+    legacy spread economics are ever calculated and no financial authority is added.
+    """
+    bess_legacy_unsupported: bool = True
+
+
 @scoped_memo(maxsize=2)
 def operating_evidence(raw: str, periods: tuple):
     """Full hourly proof transient; bounded period evidence is the finance handoff."""
