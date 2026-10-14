@@ -198,7 +198,7 @@ def _waterfall(ws: Any, columns: list[dict], *, integrity_evidence: Mapping, dig
     return out
 
 
-def build_diagnostics(ws: Any, report: QualityReport, *, score: dict, scenario_name: str) -> dict:
+def build_diagnostics(ws: Any, report: QualityReport, *, score: dict, scenario_name: str, evidence: Any = None) -> dict:
     ev = getattr(ws, "last_integrity_evidence", None) or {}
     integrity_report = integrity.run_integrity_checks(ev)
     digest_ok = any(c.check_id == "EVIDENCE_DIGEST" and c.status.value == "PASS" for c in integrity_report.checks)
@@ -236,9 +236,17 @@ def build_diagnostics(ws: Any, report: QualityReport, *, score: dict, scenario_n
             group = {"category": check["category"], "checks": []}
             groups.append(group)
         group["checks"].append(check)
-    return {"state": report.freshness, "available": True, "identity": report.run_identity,
-            "scenario_name": scenario_name, "score": score, "blocking_count": len(report.blocking_findings),
-            "integrity": integrity_report.to_dict(), "checks": checks, "groups": groups, "columns": columns,
-            "total_periods": total_periods, "truncated": total_periods > len(columns),
-            "top_issues": [next(r for r in checks if r["check_id"] == cid) for cid in report.top_issues[:5]],
-            "waterfall": _waterfall(ws, columns, integrity_evidence=ev, digest_ok=digest_ok)}
+    result = {"state": report.freshness, "available": True, "identity": report.run_identity,
+              "scenario_name": scenario_name, "score": score, "blocking_count": len(report.blocking_findings),
+              "integrity": integrity_report.to_dict(), "checks": checks, "groups": groups, "columns": columns,
+              "total_periods": total_periods, "truncated": total_periods > len(columns),
+              "top_issues": [next(r for r in checks if r["check_id"] == cid) for cid in report.top_issues[:5]],
+              "waterfall": _waterfall(ws, columns, integrity_evidence=ev, digest_ok=digest_ok)}
+    if evidence is not None:
+        # V2 is additive: a malformed V2 evidence set must never hide the V1 verdicts.
+        try:
+            from app.v2.diagnostics_v2_projection import build_diagnostics_v2
+            result["v2"] = build_diagnostics_v2(ws, result, evidence=evidence, report=report)
+        except Exception:  # noqa: BLE001 - fail closed to an explicit UNAVAILABLE block
+            result["v2"] = {"state": "UNAVAILABLE", "available": False}
+    return result

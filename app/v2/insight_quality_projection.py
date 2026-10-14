@@ -257,7 +257,8 @@ def build_quality_insight(
     if include_diagnostics:
         from app.v2.diagnostics_projection import build_diagnostics
         try:
-            base["diagnostics"] = build_diagnostics(ws, report, score=base["score"], scenario_name=scenario_name)
+            base["diagnostics"] = build_diagnostics(ws, report, score=base["score"], scenario_name=scenario_name,
+                                                     evidence=evidence)
         except Exception:  # malformed diagnostic evidence must not hide canonical Insight findings
             base["diagnostics"] = {"state": "UNAVAILABLE", "available": False}
     return base

@@ -1,0 +1,7 @@
+.md2-section{margin:16px 0}.md2-heat th:first-child{min-width:150px}.md2-heat td{min-width:34px;text-align:center}
+.md2-heat-cell{min-width:34px}.md2-detail dl{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:4px 12px}.md2-detail dt{font-weight:600}
+.md2-components{border-collapse:collapse;font:12px ui-monospace,monospace;margin:8px 0}.md2-components th,.md2-components td{padding:4px 8px;border-bottom:1px solid var(--md-border,#cbd5e1);text-align:left}
+.md2-items{list-style:none;padding:0;margin:8px 0}.md2-items li{padding:8px 10px;margin:6px 0;border:1px solid var(--md-border,#cbd5e1);border-left-width:4px}
+.md2-confidence{display:inline-block;font:700 11px ui-monospace,monospace;padding:1px 6px;border:1px solid currentColor;margin-right:6px}
+.md2-period-list{list-style:none;padding:0;margin:8px 0}.md2-period-list li{margin:4px 0}
+@media(max-width:600px){.md2-detail dl{grid-template-columns:1fr}}
