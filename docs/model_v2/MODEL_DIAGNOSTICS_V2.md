@@ -96,7 +96,7 @@ distributions. STALE Runs do not inherit unsaved Working Copy terms. This is dec
 duplicates, digest, date join, tolerance bounds, root-cause confidence classes, heatmap axis/exclusions, bankability authority classes, scope guard),
 `tests/test_model_diagnostics_v2_real_runs.py` (4 verticals × legacy / two-Senior / controlled Senior+Junior, Revenue V2 CfD, STALE and new-Run
 identity isolation, GET without engine or writes, owner isolation, no new write route) and
-`tests/test_model_diagnostics_v2_browser.py` (real Chromium: heatmap, advanced checks, drill-down, keyboard, injected failure with root cause, 390 px).
+`tests/model_diagnostics_v2_browser_acceptance.py` (real Chromium, run inside the EXISTING mandatory consolidation browser role through wrappers in `tests/test_model_workspace_consolidation_browser.py`: heatmap, advanced checks, drill-down, keyboard, injected failure with root cause, guided actions, Run comparison, 390 px).
 Existing Diagnostics V1, Quality Q1, Insight Q3, Run Integrity suites run unchanged.
 
 ## 8. Delivered vs deferred

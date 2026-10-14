@@ -1,13 +1,15 @@
 """Diagnostics V2 in real Chromium: period risk heatmap, advanced checks, drill-down with root-cause relationships,
-bankability monitor, keyboard selection and the 390 px layout.  Synthetic projects; read-only; zero console errors."""
+bankability monitor, guided actions, Run comparison, keyboard selection and the 390 px layout.  Synthetic projects; read-only; zero
+console errors.
+
+Not collected directly: like the V1 acceptance module, these functions run inside the EXISTING mandatory consolidation browser role through
+wrappers in ``tests/test_model_workspace_consolidation_browser.py`` (same fixtures, JUnit, screenshot and collection evidence checks)."""
 import json
 
 import pytest
 
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 
-from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401,E402
-from tests.test_model_workspace_consolidation_browser import workspace, assert_unique_dom_ids  # noqa: F401,E402
 from tests.model_diagnostics_browser_acceptance import capture, run  # noqa: E402
 
 

@@ -39,5 +39,5 @@ arguments). `tests/test_model_diagnostics_v1.py` still requires `diagnostics_pro
 
 ## 5. Evidence
 
-`tests/test_model_diagnostics_v2.py`, `tests/test_model_diagnostics_v2_real_runs.py`, `tests/test_model_diagnostics_v2_browser.py`; existing Diagnostics V1,
+`tests/test_model_diagnostics_v2.py`, `tests/test_model_diagnostics_v2_real_runs.py`, `tests/model_diagnostics_v2_browser_acceptance.py` (run by the existing mandatory consolidation browser role); existing Diagnostics V1,
 Quality Q1, Insight Q3 and Run Integrity suites pass unchanged (249 tests). See `docs/model_v2/MODEL_DIAGNOSTICS_V2.md`.

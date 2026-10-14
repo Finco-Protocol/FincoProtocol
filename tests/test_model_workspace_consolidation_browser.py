@@ -35,6 +35,28 @@ def test_model_diagnostics_late_read_cannot_overwrite_new_run(workspace):
     test_delayed_diagnostics_refresh_after_new_run(workspace)
 
 
+@pytest.mark.parametrize('template', ['generic_solar_reference', 'generic_wind_reference',
+                                      'generic_data_center_reference', 'generic_ev_charging_reference'])
+def test_model_diagnostics_v2_vertical_acceptance(workspace, template):
+    from tests.model_diagnostics_v2_browser_acceptance import test_v2_sections_checks_heatmap_and_bankability_per_vertical
+    test_v2_sections_checks_heatmap_and_bankability_per_vertical(workspace, template)
+
+
+def test_model_diagnostics_v2_failed_period_mobile_acceptance(workspace):
+    from tests.model_diagnostics_v2_browser_acceptance import test_failed_period_heatmap_drilldown_root_cause_and_mobile
+    test_failed_period_heatmap_drilldown_root_cause_and_mobile(workspace)
+
+
+def test_model_diagnostics_v2_guided_actions_acceptance(workspace):
+    from tests.model_diagnostics_v2_browser_acceptance import test_guided_actions_navigate_only_and_disabled_actions_state_their_reason
+    test_guided_actions_navigate_only_and_disabled_actions_state_their_reason(workspace)
+
+
+def test_model_diagnostics_v2_run_comparison_acceptance(workspace):
+    from tests.model_diagnostics_v2_browser_acceptance import test_run_comparison_section_between_two_committed_runs
+    test_run_comparison_section_between_two_committed_runs(workspace)
+
+
 @pytest.fixture
 def workspace(live_server, browser):
     from app.auth import COOKIE_NAME, create_session_token
