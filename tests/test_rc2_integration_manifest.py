@@ -79,6 +79,15 @@ RC2_MERGE_PARENTS = (
 RC2_MERGED_TREE_BLOB = "4fdcd03b5e0ed3c4b87d9016f2522bfe50bf0d05"
 RC3_R5_EXACT_PATH = "app/crypto_terminal/tokenized_signal_lifecycle.py"
 RC3_R5_EXACT_BLOB = "6f3cb95782426dee5ed7dfa1a5bac71b29388014"
+# Explicit RC-2-merge -> RC-3 PR branch delta: feature + its already
+# reviewed-scope support files ONLY. Historical RC-2 tests/docs rules are
+# unchanged; they do not grant the successor any broad exemption.
+RC3_R5_ALLOWED_BRANCH_DELTA = frozenset({
+    ("A", RC3_R5_EXACT_PATH),
+    ("A", "tests/test_radar_tokenized_signal_lifecycle.py"),
+    ("A", "docs/radar/R5_TOKENIZED_SIGNAL_LIFECYCLE_V1.md"),
+    ("M", "tests/test_rc2_integration_manifest.py"),
+})
 
 
 RC2_CI_WORKFLOW = ".github/workflows/ci_public_job.yml"
@@ -229,6 +238,9 @@ def rc3_r5_successor_violations(f) -> list[str]:
     try:
         problems = []
         status = f["status"]
+        if frozenset(f["rc3_branch_status"]) != RC3_R5_ALLOWED_BRANCH_DELTA or (
+                len(f["rc3_branch_status"]) != len(RC3_R5_ALLOWED_BRANCH_DELTA)):
+            problems.append("RC-3 successor contains an unexpected or missing branch-owned path/status")
         if [item for item in status if item[1] == RC3_R5_EXACT_PATH] != [
                 ("A", RC3_R5_EXACT_PATH)]:
             problems.append(f"{RC3_R5_EXACT_PATH}: successor requires exactly one A status")
@@ -285,6 +297,9 @@ def _collect():
         ["git", "merge-base", "--is-ancestor", RC2_MERGE_COMMIT, "HEAD"],
         cwd=ROOT, capture_output=True, text=True).returncode == 0
     return {
+        "rc3_branch_status": [tuple(line.split("\\t", 1))
+            for line in _git("diff", "--name-status", "--no-renames",
+                             RC2_MERGE_COMMIT, "HEAD").splitlines()],
         "rc3_r5_worktree_blob": _git("hash-object", RC3_R5_EXACT_PATH)
             if rc3_path.is_file() else None,
         "rc3_r5_head_blob": _git("rev-parse", f"HEAD:{RC3_R5_EXACT_PATH}")
@@ -383,6 +398,29 @@ def test_rc3_r5_missing_modified_deleted_or_duplicate_status_rejected(facts, rep
     ] + replacement
     assert any("requires exactly one A status" in p
                for p in rc2_violations(mutated))
+
+
+@pytest.mark.parametrize("extra", (
+    ("A", "docs/radar/unreviewed_successor.md"),
+    ("A", "tests/test_unreviewed_successor.py"),
+    ("M", "app/crypto_terminal/tokenized_read.py"),
+    ("A", "app/crypto_terminal/unreviewed_signal.py"),
+))
+def test_rc3_only_exact_declared_branch_files_are_permitted(facts, extra):
+    changed = copy.deepcopy(facts)
+    changed["rc3_branch_status"].append(extra)
+    assert any("unexpected or missing branch-owned path" in p
+               for p in rc2_violations(changed))
+
+
+def test_rc3_explicit_support_file_status_mutation_rejected(facts):
+    for status, path in RC3_R5_ALLOWED_BRANCH_DELTA:
+        changed = copy.deepcopy(facts)
+        changed["rc3_branch_status"] = [
+            row for row in facts["rc3_branch_status"] if row[1] != path]
+        assert rc2_violations(changed), path
+        changed["rc3_branch_status"].append(("M" if status == "A" else "A", path))
+        assert rc2_violations(changed), path
 
 
 @pytest.mark.parametrize("extra", (
