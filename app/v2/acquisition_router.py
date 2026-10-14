@@ -106,6 +106,15 @@ def _run_evidence(entry, owner, project_id):
         return None, str(exc)
 
 
+def _review_gate(request):
+    """Off by default; never available in staging/pilot/production or demo."""
+    import os
+    from app.auth import get_app_mode, resolve_admin_session
+    return (get_app_mode() in ("development", "internal")
+            and os.getenv("FINCO_M6_CANDIDATE_REVIEW") == "1"
+            and resolve_admin_session(request) is not None)
+
+
 @router.get("/valuation-acquisition", response_class=HTMLResponse)
 async def acquisition_page(request: Request, project: str = "", history_id: str = "",
                            case_id: str = "", saved: str = ""):
@@ -181,6 +190,7 @@ async def acquisition_page(request: Request, project: str = "", history_id: str 
                 "evidence_rows": evidence["equity_periods"] if evidence else (),
                 "project_rows": evidence["project_cashflows"] if evidence else (),
                 "status": STATUS, "release_closed": not ACTIVATION_ENABLED,
+                "review_allowed": _review_gate(request),
                 "readonly": is_protected_reference(record),
                 "csrf_token": generate_csrf_token(), "saved": saved == "1",
             }, headers={"Cache-Control": "private, no-store"})
@@ -227,3 +237,52 @@ async def acquisition_save(request: Request):
     except (AcquisitionCaseConflict, AcquisitionPolicyError, ValueError, TypeError) as exc:
         return JSONResponse({"error": str(exc), "status": STATUS}, status_code=409,
                             headers={"Cache-Control": "private, no-store"})
+
+
+
+@router.post("/valuation-acquisition/review-candidate")
+async def acquisition_review_candidate(request: Request):
+    """Explicit admin-only DEV review, never financial activation or persisted KPI."""
+    if not _review_gate(request):
+        return JSONResponse({"status": STATUS, "error": "REVIEW_BOUNDARY_CLOSED"},
+                            status_code=403, headers={"Cache-Control": "private, no-store"})
+    from app.auth import validate_csrf_token
+    from app.model_v2.acquisition.economics import evaluate, enterprise_equity_bridge
+    from app.persistence.acquisition_repository import _terms_from_doc
+    form = await request.form()
+    if not validate_csrf_token(form.get("csrf_token")):
+        return JSONResponse({"error": "M6_REVIEW_CSRF_INVALID"}, status_code=403)
+    record, owner = _record(request, str(form.get("project") or ""))[1:]
+    if record is None:
+        return JSONResponse({"error": "PROJECT_NOT_FOUND"}, status_code=404)
+    try:
+        stored = read_case(owner_id=owner, project_id=record.project_id,
+                           case_id=str(form.get("case_id") or ""))
+        if stored is None:
+            raise AcquisitionCaseConflict("CASE_NOT_FOUND")
+        doc = stored["document"]
+        entry = _history_entry(owner, record, doc["source"]["history_id"])
+        if (entry.runtime_snapshot_id, entry.composite_hash, entry.last_runtime_scenario_id) != (
+            doc["source"]["snapshot_id"], doc["source"]["composite_hash"], doc["source"]["scenario_id"]):
+            raise AcquisitionCaseConflict("CASE_RUN_REBIND_DENIED")
+        source, state = _run_evidence(entry, owner, record.project_id)
+        if source is None:
+            raise AcquisitionCaseConflict(state)
+        terms = _terms_from_doc(doc)
+        candidate = evaluate(source, terms)
+        bridge = doc["closing_bridge"]
+        candidate["enterprise_equity_bridge"] = (
+            enterprise_equity_bridge(**{k: v for k, v in bridge.items()
+                                        if k not in ("balance_date", "basis")})
+            if bridge else {"status": "UNAVAILABLE"})
+        return JSONResponse({
+            "status": STATUS, "scope": "EXPLICIT_ADMIN_DEV_REVIEW_ONLY",
+            "source_history_id": entry.history_id,
+            "source_snapshot_id": entry.runtime_snapshot_id,
+            "case_revision": stored["revision"],
+            "candidate": candidate,
+        }, headers={"Cache-Control": "private, no-store"})
+    except (AcquisitionCaseConflict, AcquisitionPolicyError, AcquisitionEvidenceError,
+            ValueError, TypeError, OverflowError) as exc:
+        return JSONResponse({"status": STATUS, "error": str(exc)},
+                            status_code=409, headers={"Cache-Control": "private, no-store"})
