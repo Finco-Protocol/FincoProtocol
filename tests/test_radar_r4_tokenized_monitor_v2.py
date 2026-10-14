@@ -119,10 +119,10 @@ def test_exact_representation_selection_does_not_mix_other_instrument():
 def test_null_vs_zero_filtering_sorting_and_sensitive_sorting_metadata():
     row, view, intel = fixture_row()
     priced = enrich_landing_row(row, view, intel, gates(), now=NOW)
-    no_price = dict(priced, canonical_asset_id="EMPTY", current_basis_bps=None,
+    no_price = dict(priced, canonical_asset_id="EMPTY", underlying_name="Empty Asset", current_basis_bps=None,
                     current_dislocation=False, basis_direction=None,
                     historical=None, persistence=None, deepstate_state=None)
-    par = dict(priced, canonical_asset_id="PAR", current_basis_bps="0",
+    par = dict(priced, canonical_asset_id="PAR", underlying_name="Par Asset", current_basis_bps="0",
                current_dislocation=False, basis_direction="PAR")
     rows = [no_price, par, priced]
     assert [r["canonical_asset_id"] for r in sorted_filtered_rows(rows, sort="basis_abs")] == [
@@ -135,6 +135,11 @@ def test_null_vs_zero_filtering_sorting_and_sensitive_sorting_metadata():
     assert [r["canonical_asset_id"] for r in sorted_filtered_rows(rows, evidence_filter="premium")] == ["NVDA"]
     assert [r["canonical_asset_id"] for r in sorted_filtered_rows(rows, evidence_filter="discount")] == []
     assert [r["canonical_asset_id"] for r in sorted_filtered_rows(rows, query="nVi")] == ["NVDA"]
+    assert [r["canonical_asset_id"] for r in sorted_filtered_rows(rows, query="nVd")] == ["NVDA"]
+    assert [r["canonical_asset_id"] for r in sorted_filtered_rows(rows, query="EMPty ASSET")] == ["EMPTY"]
+    assert [r["canonical_asset_id"] for r in sorted_filtered_rows(rows, query="PAR")] == ["PAR"]
+    assert sorted_filtered_rows(rows, query="unrelated asset") == []
+    assert sorted_filtered_rows(rows, query="price hidden under access gate") == []
     assert [r["canonical_asset_id"] for r in sorted_filtered_rows(rows, sort="duration")][-1] == "EMPTY"
 
 

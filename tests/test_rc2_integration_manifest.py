@@ -15,6 +15,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 RC2_BASE_MAIN = "5058c6b4935168241d6923676cb32955cb903185"
+# IMMUTABLE reviewed RC-2 source and its two-parent, tree-identical main merge.
+RC2_ACCEPTED_HEAD = "2155a76bfff4acc3a4e15f7cf35012933ce1a10c"
+RC2_MERGE_COMMIT = "6fc77de98bc0562fb51efdbf96e1803a29b5b148"
 RC2_SOURCE_HEADS = (                       # merge order; each the second parent of a normal two-parent merge
     ("275", "73f698705ec5d72af820974873d9be202cd57f7d"),
     ("274", "0fa0ac5e268a37decbae6bc252487aba3e6e31c9"),
@@ -78,6 +81,52 @@ RC2_CI_JOB_TIMEOUT_OLD = "timeout-minutes: 75"
 RC2_CI_JOB_TIMEOUT_NEW = "timeout-minutes: 90"
 
 
+
+# CURRENT R4 successor proposal. These are exact, current HEAD Git blobs;
+# they do not modify or substitute any historical RC-2 blob pin above.
+R4_SUCCESSOR_BLOBS = {
+    "app/api/v1/crypto_router.py": "cd6cf33285e60f1ce65000fd893682ad064bf63d",
+    "app/crypto_terminal/tokenized_read.py": "b5aeb78999b522bbe316e7283910b717268c5cec",
+    "app/radar_ui/tokenized_monitor_v2.py": "1f92457a8480c18fb795edf0c68d08d9eb1b82ec",
+    "app/radar_ui/tokenized_router.py": "73a500c6a19ea2415b4d55527dc949191c46b22e",
+}
+R4_PRESENTATION_BLOBS = {
+    "app/templates/radar/tokenized_markets.html": "e74ffaab6a9aebea7035a4f7fb9cb6eb1bb6b904",
+    "app/templates/radar/tokenized_markets_detail.html": "d90194c500c5276dcb5661cfe75cbe12d85bf546",
+    "static/css/radar-monitor-v2.css": "66c6257a467ee272b8490c43c25b3ce69de0ee03",
+}
+R4_SECURITY_GUARD_BLOBS = {
+    # Future test/entitlement/security edits require a separate exact-content review.
+    "tests/test_radar_r4_tokenized_monitor_v2.py": "40b08e2c5de0a8656c56a3406aadc196f6b9ca0c",
+    "tests/test_rc2_integration_acceptance.py": "75636323ad213eb13fa6c7638d76de78daf4e440",
+    "tests/test_trust_readiness_registry.py": "5d768d30e3956a1c1be90327260bc2278515d389",
+    "tools/public_safety_scan.py": "b2484f8da1e71fa01ad9e4ebaf77acb289b9e392",
+    "app/radar_ui/tokenized_gating.py": "5c541b08fb6b90087ea41303b8d4e0f17338f3fc",
+    "app/crypto_api_access.py": "db4fb92b6ade77e96372ecc14d65b246bf5b2810",
+    "app/tokenized_access.py": "d777e372aadd7be8a4ee2f646f48dd5f8f8f52d8",
+}
+# Every changed R4 file has an explicit path and change type; no path wildcards.
+R4_EXACT_CHANGE_STATUS = {
+    "app/api/v1/crypto_router.py": "M",
+    "app/crypto_terminal/tokenized_read.py": "M",
+    "app/radar_ui/tokenized_monitor_v2.py": "A",
+    "app/radar_ui/tokenized_router.py": "M",
+    "app/templates/radar/tokenized_markets.html": "M",
+    "app/templates/radar/tokenized_markets_detail.html": "M",
+    "static/css/radar-monitor-v2.css": "A",
+    "tests/test_radar_r4_tokenized_monitor_v2.py": "A",
+    "docs/radar/R4_TOKENIZED_MONITOR_V2.md": "A",
+    "tests/test_rc2_integration_manifest.py": "M",
+}
+R4_FROZEN_PREFIXES = (
+    "financial_engine/", "finco_core/", "finco_yield/",
+    "finco_radar/venues/", "finco_radar/signals/", "finco_radar/history/",
+    "app/radar_rwa/",
+)
+R4_FROZEN_PATHS = frozenset({
+    "app/crypto_terminal/deepstate_composition.py",
+    "tools/public_safety_scan.py",
+})
 
 RC2_ACTIVATION_FLAG_FILES = {                 # path -> flag name; both must be a single literal ``False`` assignment
     "domain/revenue/advanced_products.py": "ACTIVATION_ENABLED",
@@ -148,6 +197,14 @@ def rc2_violations(f) -> list[str]:
     """Pure fail-closed verifier over injected facts; [] means the manifest holds."""
     try:
         problems, previous = [], RC2_BASE_MAIN
+        if f["accepted_head"] != RC2_ACCEPTED_HEAD or f["release_merge_commit"] != RC2_MERGE_COMMIT:
+            problems.append("historical RC-2 identity differs from immutable accepted commit/merge")
+        if tuple(f["release_parents"]) != (RC2_BASE_MAIN, RC2_ACCEPTED_HEAD):
+            problems.append("historical RC-2 main merge does not have the exact two parents")
+        if not f["release_ancestor"]:
+            problems.append("historical RC-2 main merge is not an ancestor of current HEAD")
+        if f["accepted_tree"] != f["release_tree"]:
+            problems.append("RC-2 merge tree differs from the exact accepted candidate tree")
         for pr, head in RC2_SOURCE_HEADS:
             merge = f["merges"].get(pr)
             if not f["ancestor"].get(pr) or merge is None:
@@ -206,44 +263,145 @@ def rc2_violations(f) -> list[str]:
         return [f"facts incomplete or malformed: {exc!r}"]
 
 
-def _collect():
+def _git_text(*args):
+    """Read Git object bytes as text without stripping trailing newlines."""
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+
+
+def _ancestor(older, newer):
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", older, newer],
+        cwd=ROOT, capture_output=True)
+    if result.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(result.returncode, result.args)
+    return result.returncode == 0
+
+
+def _csrf_sites(ref):
+    """Historical/current CSRF call inventory using only tracked Python commit content.
+
+    This intentionally mirrors the original re.search semantics, including
+    excluding app/trust_readiness. No mutable checkout or generic shell grep.
+    Missing commit trees or required source objects fail closed.
+    """
     import re
-    rows = [r.split() for r in _git("rev-list", "--merges", "--parents", f"{RC2_BASE_MAIN}..HEAD").splitlines()]
-    merges, ancestor = {}, {}
-    for pr, head in RC2_SOURCE_HEADS:
-        found = [r for r in rows if len(r) == 3 and r[2] == head]
-        merges[pr] = tuple(found[0]) if len(found) == 1 else None
-        ancestor[pr] = subprocess.run(["git", "merge-base", "--is-ancestor", head, "HEAD"], cwd=ROOT).returncode == 0
-    status = [tuple(l.split("\t", 1)) for l in _git("diff", "--name-status", "--no-renames", RC2_BASE_MAIN).splitlines()]
+    paths = _git("ls-tree", "-r", "--name-only", ref, "--",
+                 "app", "main_web.py").splitlines()
+    if "main_web.py" not in paths:
+        raise ValueError("CSRF proof missing canonical main_web.py")
     sites = set()
-    for path in list((ROOT / "app").rglob("*.py")) + [ROOT / "main_web.py"]:
-        rel = path.relative_to(ROOT).as_posix()
-        if not rel.startswith("app/trust_readiness/") and re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
-            sites.add(rel)
+    for path in paths:
+        if (path == "main_web.py" or (path.startswith("app/") and path.endswith(".py"))) \
+                and not path.startswith("app/trust_readiness/"):
+            contents = _git_text("show", f"{ref}:{path}")
+            if re.search(r"(?<!def )validate_csrf_token\(", contents):
+                sites.add(path)
+    return sites
+
+
+def _collect():
+    """IMMUTABLE RC-2 historical proof, anchored to ACCEPTED_HEAD, never HEAD's tree.
+
+    Missing commits, ancestry, source snapshots or grep evidence RAISE and fail CI.
+    The source PR merge chain is recovered only from the pinned RC-2 candidate.
+    """
+    rows = [r.split() for r in _git(
+        "rev-list", "--merges", "--parents",
+        f"{RC2_BASE_MAIN}..{RC2_ACCEPTED_HEAD}").splitlines()]
+    merges, ancestor = {}, {}
+    for pr, source_head in RC2_SOURCE_HEADS:
+        found = [r for r in rows if len(r) == 3 and r[2] == source_head]
+        merges[pr] = tuple(found[0]) if len(found) == 1 else None
+        ancestor[pr] = _ancestor(source_head, RC2_ACCEPTED_HEAD)
+
+    status = [tuple(l.split("\t", 1)) for l in _git(
+        "diff", "--name-status", "--no-renames",
+        RC2_BASE_MAIN, RC2_ACCEPTED_HEAD).splitlines()]
     return {
-        "merges": merges, "ancestor": ancestor, "status": status, "call_sites": sites,
-        "blobs": {p: _git("hash-object", p) for p in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED) if (ROOT / p).exists()},
+        "accepted_head": _git("rev-parse", RC2_ACCEPTED_HEAD),
+        "release_merge_commit": _git("rev-parse", RC2_MERGE_COMMIT),
+        "release_parents": _git("rev-list", "-n", "1", "--parents",
+                                RC2_MERGE_COMMIT).split()[1:],
+        "accepted_tree": _git("rev-parse", f"{RC2_ACCEPTED_HEAD}^{{tree}}"),
+        "release_tree": _git("rev-parse", f"{RC2_MERGE_COMMIT}^{{tree}}"),
+        "release_ancestor": _ancestor(RC2_MERGE_COMMIT, "HEAD"),
+        "merges": merges, "ancestor": ancestor, "status": status,
+        "call_sites": _csrf_sites(RC2_ACCEPTED_HEAD),
+        "blobs": {p: _git("rev-parse", f"{RC2_ACCEPTED_HEAD}:{p}")
+                  for p in (*RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED)},
         "ci_workflow_base_blob": _git("rev-parse", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}"),
-        "ci_workflow_head_blob": _git("hash-object", RC2_CI_WORKFLOW),
-        # _git() strips one trailing newline; restore that known exact baseline ending.
-        "ci_workflow_base": _git("show", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}") + "\n",
-        "ci_workflow_head": (ROOT / RC2_CI_WORKFLOW).read_text(encoding="utf-8"),
-        "router_base": _git("show", f"{RC2_BASE_MAIN}:app/v2/router.py"),
-        "router_head": (ROOT / "app/v2/router.py").read_text(encoding="utf-8"),
-        # The ACTUAL observed source; the verifier derives the state itself (no pre-computed or replaced flag).
-        "flag_sources": {p: (ROOT / p).read_text(encoding="utf-8") for p in RC2_ACTIVATION_FLAG_FILES},
+        "ci_workflow_head_blob": _git("rev-parse", f"{RC2_ACCEPTED_HEAD}:{RC2_CI_WORKFLOW}"),
+        "ci_workflow_base": _git_text("show", f"{RC2_BASE_MAIN}:{RC2_CI_WORKFLOW}"),
+        "ci_workflow_head": _git_text("show", f"{RC2_ACCEPTED_HEAD}:{RC2_CI_WORKFLOW}"),
+        "router_base": _git_text("show", f"{RC2_BASE_MAIN}:app/v2/router.py"),
+        "router_head": _git_text("show", f"{RC2_ACCEPTED_HEAD}:app/v2/router.py"),
+        "flag_sources": {p: _git_text("show", f"{RC2_ACCEPTED_HEAD}:{p}")
+                         for p in RC2_ACTIVATION_FLAG_FILES},
     }
+
+
+def _collect_r4():
+    """Distinct exact-head R4 successor, anchored to verified historical RC-2 merge."""
+    paths = (*R4_SUCCESSOR_BLOBS, *R4_PRESENTATION_BLOBS, *R4_SECURITY_GUARD_BLOBS,
+             *RC2_EXACT_BLOBS, *RC2_PINNED_UNCHANGED,
+             RC2_CI_WORKFLOW)
+    status = [tuple(l.split("\t", 1)) for l in _git(
+        "diff", "--name-status", "--no-renames", RC2_MERGE_COMMIT, "HEAD").splitlines()]
+    return {
+        "rc2_ancestor": _ancestor(RC2_MERGE_COMMIT, "HEAD"),
+        "accepted_ancestor": _ancestor(RC2_ACCEPTED_HEAD, "HEAD"),
+        "status": status,
+        "blobs": {p: _git("rev-parse", f"HEAD:{p}") for p in paths},
+        "call_sites": _csrf_sites("HEAD"),
+        "flag_sources": {p: _git_text("show", f"HEAD:{p}")
+                         for p in RC2_ACTIVATION_FLAG_FILES},
+    }
+
+
+def r4_successor_violations(current, historical):
+    """Exact-path successor admission; never changes RC-2 immutable review facts."""
+    errors = rc2_violations(historical)
+    try:
+        if current["rc2_ancestor"] is not True or current["accepted_ancestor"] is not True:
+            errors.append("R4 is not descended from the accepted RC-2 main merge")
+        actual = current["status"]
+        if not isinstance(actual, list) or len(actual) != len(R4_EXACT_CHANGE_STATUS):
+            errors.append("R4 modified-file set differs from the exact reviewed inventory")
+        if dict((path, status) for status, path in actual) != R4_EXACT_CHANGE_STATUS:
+            errors.append("R4 changed paths/status differ from reviewed exact-file inventory")
+        for path, expected in {**R4_SUCCESSOR_BLOBS, **R4_PRESENTATION_BLOBS,
+                               **R4_SECURITY_GUARD_BLOBS}.items():
+            if current["blobs"].get(path) != expected:
+                errors.append(f"{path}: unreviewed R4 successor blob")
+        for path, expected in {**RC2_EXACT_BLOBS, **RC2_PINNED_UNCHANGED}.items():
+            if path not in R4_SUCCESSOR_BLOBS and current["blobs"].get(path) != expected:
+                errors.append(f"{path}: original RC-2 or financial authority modified")
+        if current["blobs"].get(RC2_CI_WORKFLOW) != RC2_CI_WORKFLOW_CANDIDATE_BLOB:
+            errors.append("R4 changed the exact-approved Public Safety workflow")
+        for status, path in actual:
+            if path.startswith(R4_FROZEN_PREFIXES) or path in R4_FROZEN_PATHS:
+                errors.append(f"{path}: forbidden frozen namespace/path modification")
+        if frozenset(current["call_sites"]) != RC2_CSRF_CALL_SITES:
+            errors.append("R4 changed the existing CSRF validation inventory")
+        for path, flag in RC2_ACTIVATION_FLAG_FILES.items():
+            state = activation_state(current["flag_sources"][path], flag)
+            if state != "CLOSED":
+                errors.append(f"{path}: CURRENT release-closed activation changed ({state})")
+    except (KeyError, TypeError, ValueError, AttributeError, SyntaxError) as exc:
+        errors.append(f"R4 successor proof missing or malformed: {exc!r}")
+    return errors
 
 
 @pytest.fixture(scope="module")
 def facts():
-    try:
-        merged = _collect()
-    except subprocess.CalledProcessError:
-        pytest.skip("RC-2 integration history is unavailable in this checkout")
-    if not any(merged["ancestor"].values()):
-        pytest.skip("not the RC-2 integration branch")
-    return merged
+    # No skip on a descendant: missing Git evidence is always a failure.
+    return _collect()
+
+
+@pytest.fixture(scope="module")
+def r4_facts():
+    return _collect_r4()
 
 
 def test_manifest_holds_for_the_integrated_candidate_on_the_actual_observed_state(facts):
@@ -348,6 +506,105 @@ def test_ci_workflow_is_the_exact_two_line_timeout_delta_and_rejects_other_edits
         rejected(status=[*facts["status"], ("M", unrelated)])
 
 
+def test_historical_rc2_release_is_the_exact_normal_two_parent_tree(facts):
+    assert facts["accepted_head"] == RC2_ACCEPTED_HEAD
+    assert facts["release_merge_commit"] == RC2_MERGE_COMMIT
+    assert tuple(facts["release_parents"]) == (RC2_BASE_MAIN, RC2_ACCEPTED_HEAD)
+    assert facts["accepted_tree"] == facts["release_tree"]
+    assert facts["release_ancestor"] is True
+    assert rc2_violations(facts) == []
+
+
+def test_r4_successor_exact_head_proof_and_current_release_gates(facts, r4_facts):
+    assert rc2_violations(facts) == []
+    assert r4_successor_violations(r4_facts, facts) == []
+    assert dict((path, status) for status, path in r4_facts["status"]) == R4_EXACT_CHANGE_STATUS
+    assert all(r4_facts["blobs"][p] == sha for p, sha in R4_SUCCESSOR_BLOBS.items())
+    for path, flag in RC2_ACTIVATION_FLAG_FILES.items():
+        assert activation_state(r4_facts["flag_sources"][path], flag) == "CLOSED"
+
+
+@pytest.mark.parametrize("path", sorted({**R4_SUCCESSOR_BLOBS, **R4_PRESENTATION_BLOBS,
+                                        **R4_SECURITY_GUARD_BLOBS}))
+def test_r4_one_byte_change_in_each_individually_pinned_production_blob_is_denied(facts, r4_facts, path):
+    # Simulate an actual one-byte edit and compute its real Git SHA-1 blob id.
+    source = (ROOT / path).read_bytes()
+    assert source
+    mutated = source[:-1] + bytes([source[-1] ^ 1])
+    git_blob = hashlib.sha1(b"blob " + str(len(mutated)).encode() + b"\0" + mutated).hexdigest()
+    assert git_blob != {**R4_SUCCESSOR_BLOBS, **R4_PRESENTATION_BLOBS, **R4_SECURITY_GUARD_BLOBS}[path]
+    changed = copy.deepcopy(r4_facts)
+    changed["blobs"][path] = git_blob
+    problems = r4_successor_violations(changed, facts)
+    assert any(path in problem and "successor blob" in problem for problem in problems)
+
+
+def test_r4_unrelated_production_and_frozen_namespace_edits_are_all_denied(facts, r4_facts):
+    for path, status in (
+        ("app/radar_ui/unapproved.py", "A"),
+        ("app/api/v1/crypto_access_unreviewed.py", "M"),
+        ("financial_engine/orchestrator.py", "M"),
+        ("finco_core/revenue/new_authority.py", "A"),
+        ("finco_yield/new.py", "A"),
+        ("finco_radar/venues/basis.py", "M"),
+        (".github/workflows/ci_public_job.yml", "M"),
+        ("tests/test_trust_readiness_registry.py", "M"),
+    ):
+        changed = copy.deepcopy(r4_facts)
+        changed["status"].append((status, path))
+        assert r4_successor_violations(changed, facts), path
+
+
+def test_r4_historical_mutations_cannot_be_hidden_by_successor_proof(facts, r4_facts):
+    for mutation in (
+        {"blobs": {**facts["blobs"], "app/crypto_terminal/tokenized_read.py": "1" * 40}},
+        {"merges": {**facts["merges"], "275": (
+            facts["merges"]["275"][0], facts["merges"]["275"][1], "2" * 40)}},
+        {"merges": {**facts["merges"], "274": (
+            facts["merges"]["274"][0], "3" * 40, facts["merges"]["274"][2])}},
+        {"release_parents": [RC2_BASE_MAIN, "4" * 40]},
+        {"accepted_tree": "5" * 40},
+        {"release_tree": "6" * 40},
+        {"accepted_head": "7" * 40},
+        {"release_merge_commit": "8" * 40},
+        {"release_ancestor": False},
+        {"ci_workflow_head_blob": "9" * 40},
+        {"ci_workflow_head": facts["ci_workflow_head"] + "\n# unauthorized"},
+    ):
+        corrupted = copy.deepcopy(facts)
+        corrupted.update(mutation)
+        assert r4_successor_violations(r4_facts, corrupted), mutation
+
+
+def test_r4_current_financial_activation_and_csrf_must_still_be_closed(facts, r4_facts):
+    for path in RC2_ACTIVATION_FLAG_FILES:
+        mutated = copy.deepcopy(r4_facts)
+        original = mutated["flag_sources"][path]
+        assert "ACTIVATION_ENABLED = False" in original
+        mutated["flag_sources"][path] = original.replace(
+            "ACTIVATION_ENABLED = False", "ACTIVATION_ENABLED = True", 1)
+        assert r4_successor_violations(mutated, facts)
+    mutated = copy.deepcopy(r4_facts)
+    mutated["call_sites"].add("app/api/v1/crypto_router.py")
+    assert r4_successor_violations(mutated, facts)
+    mutated = copy.deepcopy(r4_facts)
+    mutated["blobs"][RC2_CI_WORKFLOW] = "a" * 40
+    assert r4_successor_violations(mutated, facts)
+
+
+def test_r4_missing_provenance_and_missing_git_evidence_fail_closed(facts, r4_facts):
+    assert r4_successor_violations({}, facts)
+    assert r4_successor_violations(r4_facts, {})
+    for key in ("status", "blobs", "call_sites", "flag_sources", "rc2_ancestor", "accepted_ancestor"):
+        mutated = copy.deepcopy(r4_facts)
+        del mutated[key]
+        assert r4_successor_violations(mutated, facts), key
+    for key in ("release_parents", "release_tree", "merges", "blobs"):
+        mutated = copy.deepcopy(facts)
+        del mutated[key]
+        assert r4_successor_violations(r4_facts, mutated), key
+
+
 def test_missing_git_history_is_not_an_authorisation(monkeypatch):
     import sys
     def unavailable(*args):
@@ -355,3 +612,5 @@ def test_missing_git_history_is_not_an_authorisation(monkeypatch):
     monkeypatch.setattr(sys.modules[__name__], "_git", unavailable)
     with pytest.raises(subprocess.CalledProcessError):
         _collect()
+    with pytest.raises(subprocess.CalledProcessError):
+        _collect_r4()
