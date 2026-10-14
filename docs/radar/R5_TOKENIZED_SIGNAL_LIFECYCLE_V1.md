@@ -41,8 +41,10 @@ instrument_id + representation_type`.
 The registry must resolve the exact ACTIVE representation. A missing chain or
 contract fails closed (no symbol-only fallback). The existing store is read
 through `get_window_for_identity` and `get_latest_for_identity`.
-An observation must agree with this identity and, where present, the
-embedded chain/contract authority. R-LIVE observations additionally require
+An observation must agree with this identity, must supply independent
+persisted chain/asset-key provenance, and must use the reviewed
+`USD_PER_TOKENIZED_SHARE_EQUIVALENT` comparison unit. R-LIVE observations
+additionally require
 the approved exact `asset_key` and `economic_asset_uid`. Quarantined,
 wrong-lineage and Deepstate execution evidence is never signal-producing.
 Such a rejected row also breaks potential economic continuity.
