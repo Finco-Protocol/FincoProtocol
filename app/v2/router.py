@@ -5670,3 +5670,7 @@ from app.v2.sensitivity_matrix_router import router as sensitivity_matrix_router
 router.include_router(sensitivity_matrix_router)
 from app.v2.sensitivity_matrix_router import register_template_globals
 register_template_globals()
+
+# M7 operating review is release-closed and does not replace Storage Save/Run.
+from app.v2.bess_candidate_router import router as bess_candidate_router
+router.include_router(bess_candidate_router)
