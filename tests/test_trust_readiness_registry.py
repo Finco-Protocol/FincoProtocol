@@ -222,6 +222,27 @@ def wf05_exception_violations(changed, read_base, read_current, csrf_call_sites)
     return problems
 
 
+
+def _csrf_call_sites_at(checkpoint):
+    import re
+    sites = set()
+    for path in _git("ls-tree", "-r", "--name-only", checkpoint).splitlines():
+        if not ((path.startswith("app/") and path.endswith(".py")) or path == "main_web.py"):
+            continue
+        if path.startswith("app/trust_readiness/"):
+            continue
+        if re.search(r"(?<!def )validate_csrf_token\(", _git("show", f"{checkpoint}:{path}")):
+            sites.add(path)
+    return sites
+
+
+def _m7_successor_valid():
+    try:
+        from tests.m7_bess_successor_proposal import current_m7_successor_valid
+        return current_m7_successor_valid()
+    except (ImportError, ValueError, OSError, subprocess.CalledProcessError):
+        return False
+
 def _csrf_call_sites() -> set[str]:
     import re
     sites = set()
@@ -1693,30 +1714,32 @@ def _rc1_post_merge_violations(f) -> list[str]:
         return [f"facts incomplete or malformed: {exc!r}"]
 
 
-def _rc1_collect_post():
+def _rc1_collect_post(ref="6fc77de98bc0562fb51efdbf96e1803a29b5b148"):
     parents = tuple(_git("rev-list", "--parents", "-n", "1", RC1_MERGED_CHECKPOINT).split()[1:])
-    _git("merge-base", "--is-ancestor", RC1_MERGED_CHECKPOINT, "HEAD")
+    _git("merge-base", "--is-ancestor", RC1_MERGED_CHECKPOINT, ref)
+    _git("merge-base", "--is-ancestor", ref, "HEAD")
     ancestor = {}
     for pr, head in RC1_SOURCE_HEADS:
         try:
-            _git("merge-base", "--is-ancestor", head, "HEAD")
+            _git("merge-base", "--is-ancestor", head, ref)
             ancestor[pr] = True
         except subprocess.CalledProcessError:
             ancestor[pr] = False
     return {
         "checkpoint_parents": parents, "checkpoint_ancestor": True, "source_ancestor": ancestor,
-        "blobs": {p: _git("hash-object", f"--path={p}", p) for p in RC1_EXACT_BLOBS if (ROOT / p).exists()},
+        "blobs": {p: _git("rev-parse", f"{ref}:{p}") for p in RC1_EXACT_BLOBS},
         "registry_base": _git("show", f"{RC1_BASE_MAIN}:app/trust_readiness/registry.py"),
-        "registry_current": _read_current("app/trust_readiness/registry.py"),
-        "call_sites": _csrf_call_sites(),
+        "registry_current": _git("show", f"{ref}:app/trust_readiness/registry.py"),
+        "call_sites": _csrf_call_sites_at(ref),
         "router_checkpoint": _git("show", f"{RC1_MERGED_CHECKPOINT}:app/v2/router.py"),
-        "router_head": _read_current("app/v2/router.py"),
+        "router_head": _git("show", f"{ref}:app/v2/router.py"),
     }
 
 
 def _current_rc1_post_merge_authorized() -> bool:
     try:
-        return not _rc1_post_merge_violations(_rc1_collect_post())
+        return (not _rc1_post_merge_violations(_rc1_collect_post())
+                and _m7_successor_valid())
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, IndexError):
         return False
 

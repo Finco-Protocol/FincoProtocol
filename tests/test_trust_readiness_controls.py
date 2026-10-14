@@ -275,9 +275,16 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
     # Login, model import, Inputs grid, Revenue V2 and F4 agreement writes,
     # and one crypto action. The broader POST coverage gap remains.
     # M4 adds the Developer Economics configuration Save (app/v2/developer_decision_router.py).
-    assert users == {"main_web.py", "app/v2/import_router.py", "app/v2/grid_router.py",
-                     "app/crypto_ui.py", "app/v2/router.py", "app/v2/investor_f4_router.py",
-                     "app/v2/developer_decision_router.py"}
+    expected = {"main_web.py", "app/v2/import_router.py", "app/v2/grid_router.py",
+                "app/crypto_ui.py", "app/v2/router.py", "app/v2/investor_f4_router.py",
+                "app/v2/developer_decision_router.py"}
+    # M7 adds exactly two reviewed Save/validate call sites, accepted ONLY while the exact-content successor proposal
+    # (tests/m7_bess_successor_proposal.py: exact blobs, exact scope, closed flags) holds; otherwise the historical
+    # inventory must match exactly.
+    from tests.m7_bess_successor_proposal import current_m7_successor_valid, CSRF_PROPOSAL
+    if current_m7_successor_valid():
+        expected = expected | set(CSRF_PROPOSAL)
+    assert users == expected
     import ast
     tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))
     protected = {

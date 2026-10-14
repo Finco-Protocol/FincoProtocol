@@ -10,10 +10,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "6fc77de98bc0562fb51efdbf96e1803a29b5b148"
-CANDIDATE = "94d73ee7d7e33bf715e93bb021e8e63cb1ecdb0b"
+CANDIDATE = "2fe0fa6fc4c3e12463feb2ff5c4872a5ced22451"   # Correction B candidate (Correction A candidate was 94d73ee7)
 BASE_PARENTS = ("5058c6b4935168241d6923676cb32955cb903185", "2155a76bfff4acc3a4e15f7cf35012933ce1a10c")
 MANIFEST_PATH = "docs/model_v2/M7_BESS_FINANCIAL_CANDIDATE_MANIFEST.json"
-MANIFEST_BLOB = "ef530b83295f114dfa10efcc4e180e42904e2e76"
+MANIFEST_BLOB = "b7d7f2e0467824ac96e1c68023c70b913696b42a"
 RC2_MANIFEST_BLOB = "997e83e6d12c26649b751a15692f0833874bb55a"
 HISTORICAL_GOVERNANCE_BLOB = "bf197d35c79a99656821eb77c441a719415ee0a4"
 PROTECTED_PROPOSAL = {
@@ -23,9 +23,9 @@ PROTECTED_PROPOSAL = {
     "domain/bess/settlement.py": "e10829563e359f1766c6d8f98542e43107dac0dd",
     "domain/bess/synthetic.py": "427ad4589f9726c07e7c3723c2ff7ceed68c38ae",
     "finco_core/inputs/bess_native.py": "57ee798dbe4742c1b36acbfbc1412c90b172d3a2",
-    "financial_engine/bess.py": "e0832b5edad873d151bef9c34aa658cd88dac001",
-    "financial_engine/adapters/project_inputs.py": "eb6ae187bfa8a338b182d5834e3856ecac605c5d",
-    "financial_engine/orchestrator.py": "637f95a039ad104977d9cf0e6e3dc7f8b4d7639e",
+    "financial_engine/bess.py": "a07873816d97240ae02af106cd31b2135ee63316",
+    "financial_engine/adapters/project_inputs.py": "14bd759a9958515a7796626f93c1bd2233d69150",
+    "financial_engine/orchestrator.py": "be7ac31c6c4fed43b5fd7ca49fe53bfd1cc54c03",
     "app/run_integrity/evidence.py": "89faa2c9c3d4dfddb7b8a8096888f3aa7cf83610",
     "app/run_integrity/checks.py": "25e4c3aeb25893694681b4f819c663d1e24ac3a1",
 }
@@ -35,7 +35,16 @@ CSRF_PROPOSAL = {
 }
 CONFIG_PATH = "app/workbook/bess_config.py"
 CONFIG_BLOB = "aaf21b350004107d365565e06ca6d2d70022e5b8"
+# Governance-correction files (Correction B): exact content is pinned in GOVERNANCE_PINS below.
+GOVERNANCE_PINS: dict[str, str] = {
+    "tests/test_rc2_integration_manifest.py": "8848c9d870a2968ac3aa548d16ad40db8fbd22f6",
+    "tests/test_trust_readiness_registry.py": "26253b70b096c6a6e72df242aefa11a2168db73c",
+    "tests/test_trust_readiness_controls.py": "47c8e7b37a467aae140741c8d775e59b5d664be5",
+}
 PROPOSAL_ONLY_PATHS = frozenset({
+    "tests/test_rc2_integration_manifest.py",
+    "tests/test_trust_readiness_registry.py",
+    "tests/test_trust_readiness_controls.py",
     "tests/m7_bess_successor_proposal.py",
     "tests/test_m7_bess_successor_proposal.py",
     "docs/model_v2/M7_BESS_SUCCESSOR_PROPOSAL.md",
@@ -80,7 +89,7 @@ def collect() -> dict:
                        for p in [*(ROOT / "app").rglob("*.py"), ROOT / "main_web.py"]}
     for path in FLAGS:
         current_sources[path] = (ROOT / path).read_text(encoding="utf-8")
-    paths = set(git("diff", "--name-only", "--no-renames", BASE, CANDIDATE).splitlines())
+    paths = set(git("diff", "--name-only", "--no-renames", BASE, CANDIDATE).splitlines()) - PROPOSAL_ONLY_PATHS
     current_paths = set(git("diff", "--name-only", "--no-renames", BASE).splitlines())
     current_paths.update(git("ls-files", "--others", "--exclude-standard").splitlines())
     candidate_blobs = {p: git("rev-parse", f"{CANDIDATE}:{p}") for p in paths}
@@ -90,7 +99,9 @@ def collect() -> dict:
     ancestry = all(subprocess.run(["git", "merge-base", "--is-ancestor", a, b], cwd=ROOT,
                                  capture_output=True).returncode == 0
                    for a, b in ((BASE, CANDIDATE), (CANDIDATE, "HEAD")))
+    extra = {p: git("hash-object", f"--path={p}", p) for p in GOVERNANCE_PINS if (ROOT / p).is_file()}
     return {
+        "actual_blobs_extra": extra,
         "base_parents": tuple(git("rev-list", "--parents", "-n", "1", BASE).split()[1:]),
         "ancestry": ancestry, "original_paths": paths, "current_paths": current_paths,
         "candidate_blobs": candidate_blobs, "actual_blobs": actual_blobs,
@@ -157,3 +168,15 @@ def current_proposal_violations() -> list[str]:
         return violations(collect())
     except (OSError, subprocess.CalledProcessError, ValueError):
         return ["Git/source evidence unavailable; proposal fails closed"]
+
+
+def current_m7_successor_valid() -> bool:
+    """True only while HEAD is exactly the reviewed M7 candidate + pinned governance corrections (fail closed)."""
+    try:
+        facts = collect()
+        for path, blob in GOVERNANCE_PINS.items():
+            if facts["actual_blobs_extra"].get(path) != blob:
+                return False
+        return bool(GOVERNANCE_PINS) and not violations(facts)
+    except Exception:  # noqa: BLE001 - any evidence failure is not an authorization
+        return False
