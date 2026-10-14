@@ -144,6 +144,7 @@ def _exact_identity(underlying: str, entry) -> ExactRepresentation | None:
 def _observation_matches(row: MarketObservation, identity: ExactRepresentation) -> bool:
     """Check immutable store index PLUS independent embedded provenance."""
     if (row.observation_status is ObservationStatus.QUARANTINED
+            or row.source == "DEEPSTATE_PROTOCOL_ROUTER_V1"
             or row.venue_id == "DEEPSTATE"
             or row.canonical_asset_id != identity.canonical_asset_id
             or row.venue_id != identity.venue_id
