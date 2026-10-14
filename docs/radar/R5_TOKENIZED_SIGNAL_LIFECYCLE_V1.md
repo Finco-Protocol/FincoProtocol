@@ -154,10 +154,15 @@ A **separate successor validator** checks that exactly one path is added:
 **status A**, worktree git blob and committed HEAD git blob both exactly
 `6f3cb95782426dee5ed7dfa1a5bac71b29388014`. It additionally pins
 the merged RC-2 commit parents/tree/ancestry. Only that verified addition
-is subtracted from the input to the *historical* RC-2 verifier. No other
-production path is exempted, including any sibling under
-`app/crypto_terminal/`. No wildcard, status M, descendant grant or
-prospective replacement blob is accepted.
+is subtracted from the input to the *historical* RC-2 verifier. A second,
+branch-owned check against the exact RC-2 merge restricts this PR to four
+specific diff entries: `A` R5 production module, `A` R5 tests, `A` this
+R5 document and `M` RC-2 manifest test. Extra files under even the
+historically free `tests/` or `docs/` namespaces are not authorized as
+new RC-3 additions. No other production path is exempted, including any
+sibling under `app/crypto_terminal/`. No wildcard, status M for the
+R5 production module, descendant grant or prospective replacement blob is
+accepted.
 
 Focused mutations must reject: one-byte R5 content drift, changed committed
 blob, missing/duplicate/M/D R5 status, extra production files, changed
