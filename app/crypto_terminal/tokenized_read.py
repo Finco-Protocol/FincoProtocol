@@ -110,12 +110,16 @@ def detail(canonical_asset_id: str, *, gates, now: datetime | None = None) -> di
                 "reference": {}, "history_available": False}
 
     intelligence = None
+    relative_value = []
     if gates.any_premium_allowed:
-        intelligence = redact_intelligence(
-            _surface._intelligence(
-                canonical_asset_id, registry, venue_store,
-                include_points=gates.history.access_allowed, as_of=now),
-            gates)
+        from app.radar_ui.tokenized_monitor_v2 import detail_relative_value
+        raw_intelligence = _surface._intelligence(
+            canonical_asset_id, registry, venue_store,
+            include_points=True, as_of=now)
+        # Compute only entitled projections BEFORE stripping raw history points.
+        # Dislocation-only access still receives canonical persistence, never history.
+        relative_value = detail_relative_value(raw_intelligence, gates, now=now)
+        intelligence = redact_intelligence(raw_intelligence, gates)
     # R3 is a separate historical MARKET component, not an extra registry
     # representation or a modification to #183 own-history statistics.
     # Both existing premium entitlements are required for the combined
@@ -153,4 +157,5 @@ def detail(canonical_asset_id: str, *, gates, now: datetime | None = None) -> di
         "reference": view.reference,
         "history_available": view.history_available,
         "deepstate_history": deepstate_history,
+        "relative_value": relative_value,
     }

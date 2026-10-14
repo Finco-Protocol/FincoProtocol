@@ -161,6 +161,9 @@ async def tokenized_markets_landing(request: Request):
     """
     from app.radar_ui.tokenized_composition import compose_underlying
     from app.radar_ui.tokenized_gating import redact_landing_row, resolve_tokenized_gates
+    from app.radar_ui.tokenized_monitor_v2 import (
+        MAX_MONITORED_UNDERLYINGS, enrich_landing_row, overview, sorted_filtered_rows,
+    )
     from app.radar_ui.tokenized_operational import (
         build_operational_view, classify_identity_catalog, live_eligible_ids,
         representation_conflicts, resolved_taxonomy_disagreements, symbols_with_market_evidence,
@@ -190,7 +193,7 @@ async def tokenized_markets_landing(request: Request):
                         if i in APPROVED_BY_CANONICAL_ID}
     covered = (eligible_symbols | symbols_with_market_evidence(registry, store)) & included_ids
     primary = [row for row in _order_featured_first(included)
-               if row["canonical_asset_id"] in covered]
+               if row["canonical_asset_id"] in covered][:MAX_MONITORED_UNDERLYINGS]
 
     views = []
     composed = []
@@ -204,8 +207,31 @@ async def tokenized_markets_landing(request: Request):
         views.append(view)
         intel = (_intelligence(
             row["canonical_asset_id"], registry, store,
-            include_points=False, as_of=now) if gates.any_premium_allowed else None)
-        composed.append(redact_landing_row(_landing_row(view, intel), gates))
+            include_points=True, as_of=now) if gates.any_premium_allowed else None)
+        public_row = redact_landing_row(_landing_row(view, intel), gates)
+        composed.append(enrich_landing_row(public_row, view, intel, gates, now=now))
+
+    # Single bounded historical NVDA read: NEVER run for denied premium access.
+    if store is not None and gates.history.access_allowed and gates.dislocation.access_allowed:
+        if any(r["canonical_asset_id"] == "NVDA" for r in composed):
+            from app.crypto_terminal.deepstate_composition import build_deepstate_historical_context
+            deepstate_state = "UNAVAILABLE"
+            try:
+                deepstate = build_deepstate_historical_context(
+                    "NVDA", registry=registry, store=store, as_of=now)
+                deepstate_state = deepstate.state
+            except Exception:
+                pass  # an independent market feed failure cannot break the public page
+            for composed_row in composed:
+                if composed_row["canonical_asset_id"] == "NVDA":
+                    composed_row["deepstate_state"] = deepstate_state
+
+    monitor_summary = overview(composed, gates)
+    search = (request.query_params.get("q") or "").strip()[:48]
+    evidence_filter = (request.query_params.get("filter") or "all").strip().lower()
+    sort = (request.query_params.get("sort") or "priority").strip().lower()
+    display_rows = sorted_filtered_rows(
+        composed, query=search, evidence_filter=evidence_filter, sort=sort)
 
     operational = build_operational_view(
         registry, store, _collector_health_object(), now=now, primary_views=views,
@@ -218,7 +244,11 @@ async def tokenized_markets_landing(request: Request):
         name="radar/tokenized_markets.html",
         context={
             "user": user,
-            "rows": composed if mode == "primary" else [],
+            "rows": display_rows if mode == "primary" else [],
+            "monitor": monitor_summary,
+            "monitor_query": search,
+            "monitor_filter": evidence_filter,
+            "monitor_sort": sort,
             "landing_view": mode,
             "catalog_rows": _order_featured_first(included)[: max(limit, 200)] if mode == "catalog" else [],
             "catalog_total": len(included),
@@ -281,6 +311,7 @@ def _landing_row(view, intelligence=None) -> dict:
         "best_price": best.price if best else None,
         "best_basis_bps": best.basis_bps if best else None,
         "best_venue": best.venue_id if best else None,
+        "best_instrument_id": best.instrument_id if best else None,
         "basis_change_24h_bps": (
             history_row.basis_change_24h_bps if history_row else None),
         "basis_change_7d_bps": (
@@ -365,26 +396,16 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             status_code=HTTP_404_NOT_FOUND,
         )
 
-    from app.radar_ui.tokenized_gating import redact_intelligence, resolve_tokenized_gates
+    from app.radar_ui.tokenized_gating import resolve_tokenized_gates
+    from app.crypto_terminal.tokenized_read import detail as shared_tokenized_detail
 
     gates = await resolve_tokenized_gates(request)
-    intelligence = None
-    if gates.any_premium_allowed:
-        intelligence = redact_intelligence(
-            _intelligence(
-                canonical_asset_id, registry, store,
-                include_points=gates.history.access_allowed, as_of=now),
-            gates)
-    basis_series = []
-    if intelligence is not None:
-        for item in intelligence.representations:
-            points = [{"t": point.t, "v": point.v} for point in item.points]
-            if any(point["v"] is not None for point in points):
-                basis_series.append({
-                    "venue_id": item.venue_id,
-                    "instrument_id": item.instrument_id,
-                    "points": points,
-                })
+    # The API and HTML reuse the SAME canonical read model and entitled projection.
+    shared = shared_tokenized_detail(canonical_asset_id, gates=gates, now=now)
+    intelligence = shared["intelligence"]
+    basis_series = shared["basis_series"]
+    relative_value = shared["relative_value"]
+    deepstate_history = shared["deepstate_history"]
 
     # RWA Integrity is factual/public product evidence.  It reuses the exact
     # registry/store/reference context above and has no additional entitlement
@@ -412,6 +433,8 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             "basis_series": basis_series[:2],
             "collector_health": _collector_health(),
             "integrity": integrity,
+            "relative_value": relative_value,
+            "deepstate_history": deepstate_history,
             "access": gates.public_view(),
         },
     )

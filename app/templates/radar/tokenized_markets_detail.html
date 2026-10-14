@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
   <link rel="stylesheet" href="/static/css/finco-surface.css">
+  <link rel="stylesheet" href="/static/css/radar-monitor-v2.css">
   <script src="/static/interaction/overview-charts.js" defer></script>
 </head>
 <body class="radar">
@@ -276,6 +277,100 @@
     </p>
   {% endif %}
 </section>
+
+
+<section class="fs-section" data-testid="tmd-relative-value">
+  <h2>Institutional relative value · own-history distribution &amp; persistence</h2>
+  <p class="fs-note">All statistics reuse the canonical PR #183 evidence methodology. Historical percentiles describe rank within the SAME representation's observed basis sample, not a forward price probability. Stale history remains historical, never a current quote.</p>
+  {% if not access.history.allowed and not access.dislocation.allowed %}
+    <p class="fs-note" data-testid="tmd-r4-locked">Relative-value history and persistence are entitlement-protected.</p>
+  {% elif relative_value %}
+    {% for item in relative_value %}
+      <div class="fs-kpi tm-detail-relative" data-testid="tmd-relative-{{ loop.index }}">
+        <h3>{{ item.venue_id }} · <span class="mono">{{ item.instrument_id }}</span></h3>
+        <p class="fs-sub">Canonical market evidence: {{ item.market_evidence_state }}</p>
+        {% if not access.history.allowed %}
+          <p class="fs-sub" data-testid="tmd-r4-history-locked">Distribution: locked</p>
+        {% elif item.distribution %}
+          {% set d = item.distribution %}
+          <p data-testid="tmd-distribution-state">Historical distribution: <strong>{{ d.state }}</strong>
+            · {{ d.usable_observation_count }} usable observations
+            · {% if d.history_span_seconds is not none %}{{ d.history_span_seconds }} seconds of source history{% else %}span unavailable{% endif %}</p>
+          {% if d.historical_median_basis_bps is not none %}
+            <div class="tm-evidence-grid" data-testid="tmd-distribution-stats">
+              <span>Min: <strong>{{ d.historical_min_basis_bps }} bp</strong></span>
+              <span>Q25: <strong>{{ d.historical_q25_basis_bps }} bp</strong></span>
+              <span>Median: <strong>{{ d.historical_median_basis_bps }} bp</strong></span>
+              <span>Q75: <strong>{{ d.historical_q75_basis_bps }} bp</strong></span>
+              <span>Max: <strong>{{ d.historical_max_basis_bps }} bp</strong></span>
+              <span>Current own-history percentile:
+                <strong>{% if d.current_basis_percentile is not none %}{{ d.current_basis_percentile }}%{% else %}unavailable / not current{% endif %}</strong></span>
+            </div>
+          {% else %}<p class="fs-sub">Distribution not eligible: minimum 8 usable observations spanning at least 3,600 seconds.</p>{% endif %}
+        {% endif %}
+        {% if not access.dislocation.allowed %}
+          <p class="fs-sub" data-testid="tmd-r4-dislocation-locked">Persistence: locked</p>
+        {% elif item.persistence %}
+          {% set p = item.persistence %}
+          <p data-testid="tmd-persistence-state">Current classification: <strong>{{ p.state }}</strong>
+            · threshold {{ p.threshold_bps }} bp
+            · start {{ p.start_state }}</p>
+          <p data-testid="tmd-persistence-duration">
+            {% if p.started_at and p.duration_seconds is not none %}
+              First proven crossing: {{ p.started_at }} · proven duration {{ p.duration_seconds }} seconds
+            {% elif p.start_state == 'PREHISTORY_UNAVAILABLE' %}
+              Start unknown: first observed dislocation or an unusable evidence gap cannot establish an earlier start
+            {% elif p.start_state == 'STALE' %}
+              Current evidence stale: no current dislocation duration
+            {% else %}No provable current duration{% endif %}
+          </p>
+          <p class="fs-sub">Sign reversals begin a new episode; unusable observation gaps do not establish continuity.</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="fs-note" data-testid="tmd-relative-none">No eligible canonical representation history is available.</p>
+  {% endif %}
+</section>
+
+{% if view.canonical_asset_id == 'NVDA' %}
+<section class="fs-section" data-testid="tmd-deepstate-historical">
+  <h2>Deepstate · HISTORICAL EXECUTION evidence</h2>
+  {% if not access.history.allowed or not access.dislocation.allowed %}
+    <p class="fs-note" data-testid="tmd-deepstate-locked">Historical Deepstate execution and cross-venue composition require both tokenized.history and tokenized.dislocation access.</p>
+  {% elif deepstate_history %}
+    <p data-testid="tmd-deepstate-status">Historical status: <strong>{{ deepstate_history.state }}</strong>
+      {% if deepstate_history.reason %}· {{ deepstate_history.reason }}{% endif %}</p>
+    <p data-testid="tmd-deepstate-current"><strong>CURRENT_CROSS_VENUE = {{ deepstate_history.current_cross_venue_state }}</strong>
+      · {{ deepstate_history.current_reason }} · executable quote {{ deepstate_history.current_executable_quote_state }}</p>
+    <p class="fs-note">Original executed price is <strong>USDG/NVDA</strong>, not USD. No USDG/USD normalization is authorized in production. Historical executions are not current executable quotes or cross-venue arbitrage.</p>
+    {% if deepstate_history.evidence %}
+      <div class="fs-table-wrap">
+        <table class="fs-table" data-testid="tmd-deepstate-evidence">
+          <thead><tr><th>Execution (source time)</th><th>Venue / pool</th><th>Original executed price</th><th>Chain provenance</th><th>Normalization</th><th>Historical comparison</th></tr></thead>
+          <tbody>
+          {% for e in deepstate_history.evidence[-12:] | reverse %}
+            <tr>
+              <td>{{ e.execution_timestamp or '—' }}<span class="fs-sub">Collected {{ e.collected_at or '—' }}</span></td>
+              <td>{{ e.venue_id }}<span class="fs-sub mono">{{ e.instrument_id }}</span><span class="fs-sub">Chain {{ e.chain_id }} · {{ e.book_id or '—' }}</span></td>
+              <td class="num">{% if e.raw_price is not none %}{{ e.raw_price }}{% else %}—{% endif %}<span class="fs-sub">{{ e.raw_unit }}</span></td>
+              <td><span class="mono">{{ e.transaction_hash or '—' }}</span><span class="fs-sub">Block {{ e.block_number if e.block_number is not none else '—' }} · log {{ e.log_index if e.log_index is not none else '—' }}</span></td>
+              <td>{{ e.normalization_state }}<span class="fs-sub">{{ e.evidence_state }}</span></td>
+              {% set match = deepstate_history.historical_comparisons | selectattr('deepstate_digest', 'equalto', e.digest) | first | default(none) %}
+              <td>{{ match.state if match else 'UNAVAILABLE' }}
+                {% if match %}<span class="fs-sub">{{ match.reason or '—' }}</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="fs-note">Showing the most recent 12 of {{ deepstate_history.evidence | length }} bounded historical fills; full evidence is available via the existing gated Crypto API detail.</p>
+    {% else %}<p class="fs-note">No source-proven historical executions are available.</p>{% endif %}
+  {% else %}
+    <p class="fs-note" data-testid="tmd-deepstate-unavailable">Deepstate historical execution is unavailable.</p>
+  {% endif %}
+</section>
+{% endif %}
 
 <p class="fs-note">Basis, cross-venue divergence and dislocation events are market-evidence
 analytics, not guaranteed executable arbitrage or profit. This page is read-only over exact
