@@ -357,8 +357,58 @@ def _min_headroom(rows: list[dict]) -> Optional[dict[str, Any]]:
     return best
 
 
+
+# ── guided resolution: verified navigation / context only (no mutation, no Run, no scenario write) ──────────────
+Q4_MAPPED = {"QM-SD-004", "QM-SD-006", "QM-SD-007"}                 # mirrors app.v2.whatif.CANDIDATES (asserted by a test)
+Q4_VERTICALS = {"solar", "wind"}
+FINANCING_GROUPS = {"Senior Debt", "Cash Flow", "Reserves", "SHL", "CAPEX/OPEX"}
+
+
+def _vertical(ws: Any) -> Optional[str]:
+    snapshot = getattr(ws, "draft_snapshot", None)
+    kind = snapshot.get("project_type") if isinstance(snapshot, Mapping) else None
+    return str(kind).strip().lower().replace(" ", "_") if kind else None
+
+
+def guided_actions(check_id: str, *, group: str, navigation_target: Optional[str], related_assumptions: list[str],
+                   vertical: Optional[str]) -> list[dict[str, Any]]:
+    """Context actions for one check. Each is navigation to an EXISTING workflow; unsupported ones are disabled with a reason.
+
+    Diagnostics never writes: Q4 keeps authority over scenario writes and signed confirmation, Goal Seek over its solve and
+    apply, and Run over executing the model. Nothing here changes gearing, repayment or revenue, or creates a Run.
+    """
+    def action(action_id: str, label: str, enabled: bool, reason: str, tab: Optional[str] = None, **extra: Any) -> dict[str, Any]:
+        return {"id": action_id, "label": label, "enabled": enabled, "reason": reason, "target_tab": tab if enabled else None, **extra}
+
+    actions = [
+        action("open_schedule", "Open the financial schedule", bool(navigation_target), "" if navigation_target else
+               "No owning schedule is registered for this check.", navigation_target),
+        action("open_assumptions", "Open the related assumptions (Input Grid)", bool(related_assumptions), "" if related_assumptions else
+               "No registered related assumption for this check; nothing is guessed from labels.", "tab-input-grid",
+               assumptions=list(related_assumptions)),
+        action("open_trace", "Open the Statements & Debt calculation trace", group in FINANCING_GROUPS, "" if group in FINANCING_GROUPS else
+               "The financing calculation trace covers debt, cash, reserve, SHL and funding schedules only.", "tab-outputs"),
+        action("compare_runs", "Open scenario / Run comparison", True, "", "tab-compare"),
+    ]
+    if check_id not in Q4_MAPPED:
+        what_if = action("finding_whatif", "Open Finding-to-What-if (Insight)", False,
+                         "Q4 maps only QM-SD-004, QM-SD-006 and QM-SD-007 to an editable assumption; this finding has no registered mapping.")
+    elif vertical not in Q4_VERTICALS:
+        what_if = action("finding_whatif", "Open Finding-to-What-if (Insight)", False,
+                         "Q4 supports Solar and Wind projects only.")
+    else:
+        what_if = {"id": "finding_whatif", "label": "Open Finding-to-What-if (Insight)", "enabled": True, "reason": "", "target_tab": None,
+                   "opens_insight": True,
+                   "note": "Opens FINCO Insight. Q4 keeps authority over any scenario write, preview and signed confirmation."}
+    actions.append(what_if)
+    goal = ("Goal Seek solves the PPA tariff for a Project / Equity / Sponsor IRR target. A reconciliation or schedule finding is not a "
+            "return shortfall, so no solve is offered.")
+    actions.append(action("goal_seek", "Open Goal Seek / Tender Pricing", False, goal))
+    return actions
+
+
 # ── entry point ─────────────────────────────────────────────────────────────────────────────────────────────────
-def build_diagnostics_v2(ws: Any, v1: Mapping[str, Any], *, evidence: Any, report: Any) -> dict[str, Any]:
+def build_diagnostics_v2(ws: Any, v1: Mapping[str, Any], *, evidence: Any, report: Any, history_quality: Any = None) -> dict[str, Any]:
     digest_ok = any(c.get("check_id") == "EVIDENCE_DIGEST" and c.get("status") == "PASS" for c in (v1.get("integrity") or {}).get("checks", []))
     regime = evidence.terms.reserve_regime if evidence.freshness == "CURRENT" else None
     facts = Facts.from_workspace(ws, digest_ok=digest_ok, reserve_regime=regime)
@@ -377,7 +427,24 @@ def build_diagnostics_v2(ws: Any, v1: Mapping[str, Any], *, evidence: Any, repor
         reasons = sorted({p["reason"] for p in (source["periods"] if source else []) if p["status"] == UNAVAILABLE and p["reason"]})
         root.append(_root_cause(f, findings, reasons))
     counts = {s: sum(1 for c in dx if c["status"] == s) for s in (PASS, FAIL, WARNING, UNAVAILABLE, NOT_APPLICABLE)}
-    return {"schema": SCHEMA, "advanced_checks": dx,
+    vertical = _vertical(ws)
+    actions: dict[str, list[dict[str, Any]]] = {}
+    for c in v1.get("checks", []):
+        actions[c["check_id"]] = guided_actions(c["check_id"], group=V1_GROUP.get(c.get("category"), "Returns/Scenario"),
+                                                navigation_target=c.get("navigation_target"),
+                                                related_assumptions=list(c.get("related_assumption_ids") or []), vertical=vertical)
+    for c in dx:
+        actions[c["check_id"]] = guided_actions(c["check_id"], group=c["family"], navigation_target=c["navigation_target"],
+                                                related_assumptions=list(c["related_assumptions"]), vertical=vertical)
+    for rc in root:
+        rc["actions"] = actions.get(rc["check_id"], [])
+    comparison = {"available": False, "reason": "NOT_REQUESTED"}
+    try:
+        from app.v2.diagnostics_run_compare import build_run_comparison
+        comparison = build_run_comparison(ws, quality_for_entry=history_quality)
+    except Exception:  # noqa: BLE001 - a comparison failure never hides the Run's own diagnostics
+        comparison = {"available": False, "reason": "COMPARISON_UNAVAILABLE"}
+    return {"schema": SCHEMA, "actions": actions, "run_comparison": comparison, "advanced_checks": dx,
             "advanced_summary": {"registered": len(DEFINITIONS), "counts": counts,
                                  "note": "Additive DX checks: they do not change the Quality score, coverage or the 30 QM check identities."},
             "root_causes": root, "heatmap": _heatmap(v1, dx), "bankability": _bankability(ws, report, evidence, facts, v1),

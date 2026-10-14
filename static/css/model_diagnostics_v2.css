@@ -5,3 +5,14 @@
 .md2-confidence{display:inline-block;font:700 11px ui-monospace,monospace;padding:1px 6px;border:1px solid currentColor;margin-right:6px}
 .md2-period-list{list-style:none;padding:0;margin:8px 0}.md2-period-list li{margin:4px 0}
 @media(max-width:600px){.md2-detail dl{grid-template-columns:1fr}}
+.md2-actions button[disabled]{opacity:.6;cursor:not-allowed}[data-md2-compare-row][data-classification="NOT_COMPARABLE"] strong{color:#475569}
+[data-md2-compare-row][data-classification="NEW"] strong{color:#b91c1c}[data-md2-compare-row][data-classification="RESOLVED"] strong{color:#126442}
+
+/* V2 tables reuse the V1 look under their own class names so V1 selectors keep their meaning. */
+.md2-scroll{max-width:100%;overflow:auto;max-height:480px}.md2-matrix{border-collapse:separate;border-spacing:0;font:12px ui-monospace,monospace;white-space:nowrap;min-width:100%}
+.md2-matrix th,.md2-matrix td{padding:7px 9px;border-bottom:1px solid var(--md-border);text-align:right;background:var(--md-bg)!important;color:var(--md-fg)}.md2-matrix thead th{position:sticky;top:0;background:var(--md-bg);z-index:2}
+.md2-matrix th:first-child{position:sticky;left:0;z-index:1;background:var(--md-bg);text-align:left;min-width:220px;max-width:280px;white-space:normal}.md2-matrix thead th:first-child{z-index:3}
+.md2-matrix small{display:block;opacity:.8;margin-top:4px}.md2-matrix th button{width:100%;text-align:left}
+.md-detail{padding:16px;margin:14px 0;border:2px solid #639bd1;border-radius:6px}.md-note{font-size:12px;line-height:1.6;opacity:.85}.md2-matrix .md-selected-period{background:#355c82!important;color:#fff;outline:1px solid #83bafb}
+.md-workspace button:focus-visible,.md2-scroll:focus-visible{outline:2px solid #83bafb;outline-offset:2px}.md-workspace [hidden]{display:none!important}
+@media(max-width:720px){.md-identity,.md-detail dl{grid-template-columns:1fr}.md2-matrix th:first-child{min-width:155px;max-width:180px}.md-filters label{max-width:100%}}

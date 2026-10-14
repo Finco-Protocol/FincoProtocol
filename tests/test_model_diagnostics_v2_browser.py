@@ -99,8 +99,62 @@ def test_failed_period_heatmap_drilldown_root_cause_and_mobile(workspace):
     assert page.locator('[data-md2-row][data-check-id="DX-CASH-001"]').get_attribute('data-status') == 'FAIL'
     # mobile: tables scroll horizontally inside their own container, never the page
     assert page.locator('.md-scroll:visible').first.evaluate('(n) => n.scrollWidth > n.clientWidth')
+    assert page.locator('.md2-scroll:visible').first.evaluate('(n) => n.scrollWidth > n.clientWidth')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
     page.locator('[data-md2-bankability] summary').click()
     assert not page.locator('[data-md2-bankability]').evaluate('(n) => n.open')
     page.locator('[data-md2-bankability] summary').click()
     capture(page, errors, 'v2-failed-period-mobile')
+
+
+def test_guided_actions_navigate_only_and_disabled_actions_state_their_reason(workspace):
+    from app.persistence.workspace_repository import get_workspace_state
+    page, record, errors = workspace('generic_solar_reference')
+    run(page)
+    ws = get_workspace_state(record.user_id, record.project_id)
+    page.reload()
+    open_diagnostics(page)
+    posts = []
+    page.on('request', lambda r: posts.append(r.url) if r.method == 'POST' else None)
+    # an existing V1 check mapped by Q4: what-if is enabled on Solar and only OPENS Insight
+    page.locator('[data-md-search]').fill('QM-SD-004')
+    page.locator('[data-md-select="QM-SD-004"]').first.click()
+    page.wait_for_selector('[data-md2-v1-rootcause] [data-md2-action]')
+    actions = page.locator('[data-md2-v1-rootcause] [data-md2-action]')
+    assert actions.count() == 6
+    whatif = page.locator('[data-md2-v1-rootcause] [data-md2-action="finding_whatif"]')
+    assert whatif.is_enabled()
+    goal = page.locator('[data-md2-v1-rootcause] [data-md2-action="goal_seek"]')
+    assert goal.is_disabled() and 'not a return shortfall' in page.locator('[data-md2-v1-rootcause]').inner_text()
+    page.locator('[data-md2-v1-rootcause] [data-md2-action="open_schedule"]').click()
+    assert page.locator('#panel-debt').is_visible()
+    open_diagnostics_again = page.locator('[data-hy-group="diagnostics"]')
+    open_diagnostics_again.click()
+    # an advanced check has no Q4 mapping: disabled WITH a visible reason
+    check = page.locator('[data-md2-select="DX-CASH-001"]').first
+    check.click()
+    detail = page.locator('[data-md2-detail]')
+    assert detail.locator('[data-md2-action="finding_whatif"]').is_disabled()
+    assert 'no registered mapping' in detail.inner_text() and 'Unavailable:' in detail.inner_text()
+    assert detail.locator('[data-md2-action="compare_runs"]').is_enabled()
+    detail.locator('[data-md2-action="compare_runs"]').click()
+    assert page.locator('#panel-compare').is_visible()
+    assert posts == [], posts                                           # navigation only: no write, no Run
+    assert get_workspace_state(record.user_id, record.project_id) == ws
+    assert not errors, errors
+
+
+def test_run_comparison_section_between_two_committed_runs(workspace):
+    page, record, errors = workspace('generic_wind_reference')
+    run(page)
+    run(page)
+    page.reload()
+    open_diagnostics(page)
+    section = page.locator('[data-md2-compare]')
+    assert section.is_visible()
+    assert page.locator('[data-md2-compare-select] option').count() == 1
+    counts = page.locator('[data-md2-compare-run]:visible [data-md2-compare-counts]').inner_text()
+    assert 'UNCHANGED_PASS' in counts and 'NOT_COMPARABLE' in counts and 'RESOLVED' not in counts
+    assert page.locator('[data-md2-compare-run]:visible [data-md2-compare-row]').count() == 39
+    assert 'never' in section.inner_text() and 'NOT_COMPARABLE' in section.inner_text()
+    assert not errors, errors

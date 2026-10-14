@@ -44,6 +44,26 @@
     });
     return box;
   }
+  function actionsBlock(data, id) {
+    var list = (data.v2 && data.v2.actions && data.v2.actions[id]) || [];
+    var box = el('div', undefined, 'md2-actions');
+    if (!list.length) return box;
+    box.append(el('h3', 'Guided resolution (navigation only — nothing is changed or run from here)'));
+    var ul = el('ul', undefined, 'md2-items');
+    list.forEach(function (a) {
+      var li = el('li'), b = el('button', a.label);
+      b.type = 'button'; b.setAttribute('data-md2-action', a.id);
+      if (a.enabled && a.target_tab) b.setAttribute('data-nav-tab', a.target_tab);
+      else if (a.enabled && a.opens_insight) b.setAttribute('data-md2-open-insight', '');
+      else { b.disabled = true; }
+      li.append(b);
+      var note = a.enabled ? (a.assumptions && a.assumptions.length ? 'Related assumptions: ' + a.assumptions.join(', ') : (a.note || '')) : 'Unavailable: ' + a.reason;
+      if (note) li.append(document.createTextNode(' — ' + note));
+      ul.append(li);
+    });
+    box.append(ul);
+    return box;
+  }
   function rootCausesFor(data, id, period) {
     return ((data.v2 && data.v2.root_causes) || []).filter(function (rc) {
       return rc.check_id === id && (period === undefined || period === null || String(rc.period_index) === String(period));
@@ -74,7 +94,8 @@
       fact('Tolerance', selected.tolerance);
       var t = componentsTable(selected.components); if (t) box.append(el('h3', 'Committed components'), t);
     } else { fact('Period evidence', 'Select a timeline cell; the overall verdict is not a period verdict.'); }
-    panel.querySelector('[data-md2-rootcause]').replaceChildren(rootCauseBlock(rootCausesFor(data, id, selected ? selected.period_index : undefined)));
+    var rcBox = panel.querySelector('[data-md2-rootcause]');
+    rcBox.replaceChildren(rootCauseBlock(rootCausesFor(data, id, selected ? selected.period_index : undefined)), actionsBlock(data, id));
     r.querySelectorAll('[data-md-column]').forEach(function (cell) { cell.classList.toggle('md-selected-period', !!selected && cell.dataset.mdColumn === String(selected.period_index)); });
     panel.focus({preventScroll: true}); panel.scrollIntoView({block: 'nearest'});
   }
@@ -97,7 +118,18 @@
     r.querySelectorAll('[data-md-column]').forEach(function (c) { c.classList.toggle('md-selected-period', c.dataset.mdColumn === String(cell.index)); });
     host.focus({preventScroll: true});
   }
+  document.addEventListener('change', function (event) {
+    var select = event.target.closest('[data-md2-compare-select]'); if (!select) return;
+    var r = root(); if (!r) return;
+    r.querySelectorAll('[data-md2-compare-run]').forEach(function (node) { node.hidden = node.dataset.md2CompareRun !== select.value; });
+  });
   document.addEventListener('click', function (event) {
+    var insight = event.target.closest('[data-md2-open-insight]');
+    if (insight) {
+      var toggle = document.querySelector('.workspace-insight-toggle');
+      if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+      return;
+    }
     var dx = event.target.closest('[data-md2-select]');
     if (dx) { showDx(dx.dataset.md2Select, dx.dataset.md2Period); return; }
     var heat = event.target.closest('[data-md2-period]');
@@ -110,8 +142,10 @@
         var r = root(), data = payload(); if (!r || !data || !data.v2) return;
         var detail = r.querySelector('[data-md-detail]'); if (!detail || detail.hidden) return;
         var old = detail.querySelector('[data-md2-v1-rootcause]'); if (old) old.remove();
-        var rcs = rootCausesFor(data, id, period); if (!rcs.length) return;
-        var wrap = rootCauseBlock(rcs); wrap.setAttribute('data-md2-v1-rootcause', ''); detail.append(wrap);
+        var wrap = el('div'); wrap.setAttribute('data-md2-v1-rootcause', '');
+        var rcs = rootCausesFor(data, id, period);
+        if (rcs.length) wrap.append(rootCauseBlock(rcs));
+        wrap.append(actionsBlock(data, id)); detail.append(wrap);
       }, 0);
     }
   });

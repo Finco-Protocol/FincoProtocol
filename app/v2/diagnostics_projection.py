@@ -198,7 +198,8 @@ def _waterfall(ws: Any, columns: list[dict], *, integrity_evidence: Mapping, dig
     return out
 
 
-def build_diagnostics(ws: Any, report: QualityReport, *, score: dict, scenario_name: str, evidence: Any = None) -> dict:
+def build_diagnostics(ws: Any, report: QualityReport, *, score: dict, scenario_name: str, evidence: Any = None,
+                      history_quality: Any = None) -> dict:
     ev = getattr(ws, "last_integrity_evidence", None) or {}
     integrity_report = integrity.run_integrity_checks(ev)
     digest_ok = any(c.check_id == "EVIDENCE_DIGEST" and c.status.value == "PASS" for c in integrity_report.checks)
@@ -246,7 +247,7 @@ def build_diagnostics(ws: Any, report: QualityReport, *, score: dict, scenario_n
         # V2 is additive: a malformed V2 evidence set must never hide the V1 verdicts.
         try:
             from app.v2.diagnostics_v2_projection import build_diagnostics_v2
-            result["v2"] = build_diagnostics_v2(ws, result, evidence=evidence, report=report)
+            result["v2"] = build_diagnostics_v2(ws, result, evidence=evidence, report=report, history_quality=history_quality)
         except Exception:  # noqa: BLE001 - fail closed to an explicit UNAVAILABLE block
             result["v2"] = {"state": "UNAVAILABLE", "available": False}
     return result

@@ -102,7 +102,24 @@ Existing Diagnostics V1, Quality Q1, Insight Q3, Run Integrity suites run unchan
 ## 8. Delivered vs deferred
 
 P0 delivered: D1 advanced checks (9 families implemented, 1 documented as existing/missing), D2 root-cause drill-down, D3 period heatmap, D6 bankability monitor.
-P1 (D4 Diagnostics Run Comparison, D5 Guided Resolution) — see section 9 of the delivery report.
+P1 delivered after P0: D4 Diagnostics Run Comparison and D5 Guided Resolution (below).
+
+### D4 Diagnostics Run Comparison (`app/v2/diagnostics_run_compare.py`)
+
+No new route, repository or KPI engine. The Last Run is compared with up to four earlier committed Runs read from the existing immutable Run History (one
+read-only repository call, owner and project scoped). Each Run is evaluated with the SAME checks (the Quality evaluation is injected by the existing
+adapter with no Working Copy terms bound; the `DX-*` checks are pure over the entry's committed payloads, digest re-verified per Run).
+Per check: Run A status/residual, Run B status/residual, signed residual change (B − A), and one of RESOLVED / NEW / PERSISTENT / UNCHANGED_PASS — or
+**NOT_COMPARABLE** with the reason of each side when either Run did not evaluate the check (older evidence, digest mismatch, unbound thresholds). A
+missing or UNAVAILABLE check in an older Run is never read as resolved. Historical evidence is never mutated (tested).
+
+### D5 Guided Resolution (navigation only)
+
+Per check (all 30 `QM-*` and 9 `DX-*`): open the owning schedule, open the related assumptions (Input Grid; registered ids only), open the Statements & Debt
+calculation trace (financing families), open scenario/Run comparison, open Finding-to-What-if (Insight) only for the Q4-mapped checks
+(`QM-SD-004/-006/-007`) on Solar/Wind (policy asserted equal to `app.v2.whatif.CANDIDATES` / `SUPPORTED_VERTICALS`), and Goal Seek (always disabled for a
+reconciliation finding, with its reason). Unsupported actions are visibly disabled with the reason. No action writes, runs the model or creates a
+scenario: Q4 keeps authority over scenario writes and signed confirmation.
 
 ## 9. Known limits
 

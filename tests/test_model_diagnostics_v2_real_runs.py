@@ -171,3 +171,28 @@ def test_v2_never_touches_developer_economics_revenue_v3_or_governance_authoriti
         text = Path(name).read_text(encoding="utf-8").lower()
         for token in ("developer_decision", "developer_economics", "multistream_runtime", "advanced_products", "revenue_v3", "bess", "valuation"):
             assert token not in text, (name, token)
+
+
+def test_comparison_of_two_real_committed_runs_is_read_only_and_honest(env):
+    from app.persistence.run_history_repository import get_run_history
+    record = env.create("solar")
+    run(env, record)
+    _, single = _get(env, record)
+    assert single["v2"]["run_comparison"] == {"available": False, "reason": "NEED_AT_LEAST_TWO_COMMITTED_RUNS",
+                                              "last_run": single["v2"]["run_comparison"]["last_run"]}
+    from tests.test_model_decision_workspace_v2 import tokens
+    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
+    env.client.post("/v2/workbook/update", headers={"HX-Request": "true"},
+                    data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "18", **tokens(page)})
+    run(env, record)
+    history_before = [(h.history_id, h.composite_hash) for h in get_run_history(USER, record.project_id, limit=50)]
+    _, data = _get(env, record)
+    cmp = data["v2"]["run_comparison"]
+    assert cmp["available"] and len(cmp["candidates"]) == 1
+    assert cmp["run_b"]["snapshot_id"] == data["identity"]["snapshot_id"] != cmp["candidates"][0]["run_a"]["snapshot_id"]
+    rows = {r["check_id"]: r for r in cmp["candidates"][0]["rows"]}
+    assert len(rows) == 30 + 9 and all(f"DX-{n}" in "".join(rows) for n in ("CAPEX-001", "OPEX-001", "DEP-001"))
+    assert rows["DX-CAPEX-001"]["classification"] == "UNCHANGED_PASS"
+    assert not any(r["classification"] in ("RESOLVED", "NEW") for r in rows.values())          # a clean model change flags nothing
+    assert all(r["classification"] == "NOT_COMPARABLE" for r in rows.values() if r["family"] == "QM" and r["run_a"]["status"] == "UNAVAILABLE")
+    assert [(h.history_id, h.composite_hash) for h in get_run_history(USER, record.project_id, limit=50)] == history_before

@@ -601,7 +601,7 @@ def test_v2_modules_have_no_engine_working_copy_or_write_dependencies():
     import ast
     from pathlib import Path
     forbidden_roots = {"financial_engine", "finco_core", "domain"}
-    for name in ("app/v2/diagnostics_dx_checks.py", "app/v2/diagnostics_v2_projection.py"):
+    for name in ("app/v2/diagnostics_dx_checks.py", "app/v2/diagnostics_v2_projection.py", "app/v2/diagnostics_run_compare.py"):
         text = Path(name).read_text(encoding="utf-8")
         tree = ast.parse(text)
         for node in ast.walk(tree):
@@ -609,6 +609,139 @@ def test_v2_modules_have_no_engine_working_copy_or_write_dependencies():
                     [node.module] if isinstance(node, ast.ImportFrom) and node.module and node.level == 0 else [])
             for mod in mods:
                 assert mod.split(".")[0] not in forbidden_roots, (name, mod)
+                if name.endswith("diagnostics_run_compare.py") and mod == "app.persistence.run_history_repository":
+                    continue                                                 # the single, read-only Run History read
                 assert "repository" not in mod and "persistence" not in mod, (name, mod)
         for token in ("run_project", "save_", "update_", "INSERT", "commit(", "execute("):
             assert token not in text, (name, token)
+
+
+# ── D4 Diagnostics Run Comparison ─────────────────────────────────────────────────────────────────────────────
+from app.v2 import diagnostics_run_compare as rcmp  # noqa: E402
+
+
+def _entry(state, *, history_id="h1", snapshot="snap-1", ran_at="2026-01-01T00:00:00", composite="c1", digest=True):
+    ws = _ws(state)
+    if not digest:
+        ws.last_integrity_evidence["digest"] = "0" * 64
+    return SimpleNamespace(
+        history_id=history_id, runtime_snapshot_id=snapshot, ran_at=ran_at, composite_hash=composite, last_runtime_scenario_id=None,
+        active_scenario_name="Base Case", engine_version="engine-x", financial_statements=ws.last_financial_statements,
+        integrity_evidence=ws.last_integrity_evidence, distribution_schedule=ws.last_distribution_schedule, tax_schedule=ws.last_tax_schedule,
+        runtime_summary=ws.last_runtime_summary, sponsor_schedule=ws.last_sponsor_schedule, debt_schedule={})
+
+
+def _qm(rows):
+    """Injected quality evaluator stand-in: {check_id: (status, residual, reason)}."""
+    def evaluate(_entry):
+        checks = [SimpleNamespace(check_id=k, status=SimpleNamespace(value=v[0]), measured_value=v[1], reason_code=v[2]) for k, v in rows.items()]
+        return SimpleNamespace(checks=checks)
+    return evaluate
+
+
+def test_classification_never_reads_missing_or_unavailable_as_resolved():
+    ok = {"status": "PASS", "residual": None, "reason": None}
+    bad = {"status": "FAIL", "residual": 5.0, "reason": "x"}
+    worse = {"status": "FAIL", "residual": 8.0, "reason": "x"}
+    assert rcmp.classify(bad, ok)[0] == "RESOLVED" and rcmp.classify(ok, bad)[0] == "NEW"
+    kind, delta, _ = rcmp.classify(bad, worse)
+    assert kind == "PERSISTENT" and delta == pytest.approx(3.0)                  # change = B residual - A residual
+    assert rcmp.classify(ok, ok)[0] == "UNCHANGED_PASS"
+    assert rcmp.classify(None, ok) == ("NOT_COMPARABLE", None, "CHECK_NOT_EVALUATED_IN_BOTH_RUNS")
+    kind, _d, reason = rcmp.classify({"status": "UNAVAILABLE", "residual": None, "reason": "EVIDENCE_MISSING"}, ok)
+    assert kind == "NOT_COMPARABLE" and "RUN_A_UNAVAILABLE(EVIDENCE_MISSING)" in reason
+    assert rcmp.classify({"status": "NOT_APPLICABLE", "residual": None, "reason": None}, bad)[0] == "NOT_COMPARABLE"
+    assert rcmp.classify(bad, None)[0] == "NOT_COMPARABLE"
+
+
+def _compare(monkeypatch, entries, *, quality=None, last_snapshot="snap-2"):
+    import app.persistence.run_history_repository as repo
+    monkeypatch.setattr(repo, "get_run_history", lambda user_id, project_id, limit=None: list(entries))
+    ws = SimpleNamespace(user_id="u", project_id="p", last_runtime_snapshot_id=last_snapshot)
+    return rcmp.build_run_comparison(ws, quality_for_entry=quality)
+
+
+def test_run_comparison_resolved_new_persistent_and_unavailable_history(monkeypatch):
+    older_state = _base_state()
+    _row(older_state, "pf", 3).update(fcf_for_distribution_keur=70.0)                # distributable cash mismatch in the older Run
+    older = _entry(older_state, history_id="h1", snapshot="snap-1", ran_at="2026-01-01T00:00:00", composite="c1")
+    newer = _entry(_base_state(), history_id="h2", snapshot="snap-2", ran_at="2026-02-01T00:00:00", composite="c2")
+    out = _compare(monkeypatch, [newer, older], quality=_qm({"QM-ACC-001": ("PASS", None, None)}))
+    assert out["available"] and out["run_b"]["snapshot_id"] == "snap-2" and len(out["candidates"]) == 1
+    rows = {r["check_id"]: r for r in out["candidates"][0]["rows"]}
+    assert rows["DX-CASH-001"]["classification"] == "RESOLVED" and rows["DX-CASH-001"]["run_a"]["status"] == "FAIL"
+    assert rows["DX-CASH-001"]["run_b"]["status"] == "PASS" and rows["QM-ACC-001"]["classification"] == "UNCHANGED_PASS"
+    # a Run whose committed evidence predates a check is NOT_COMPARABLE, never "resolved"
+    legacy = _entry(_base_state(), history_id="h0", snapshot="snap-0", ran_at="2025-01-01T00:00:00", composite="c0")
+    legacy.integrity_evidence = {}
+    legacy.sponsor_schedule = {}
+    out = _compare(monkeypatch, [newer, legacy])
+    rows = {r["check_id"]: r for r in out["candidates"][0]["rows"]}
+    assert rows["DX-DEP-001"]["classification"] == "NOT_COMPARABLE" and "RUN_A_UNAVAILABLE" in rows["DX-DEP-001"]["reason"]
+    assert rows["DX-SHL-002"]["classification"] == "NOT_COMPARABLE"
+    assert not any(r["classification"] == "RESOLVED" for r in rows.values())
+    # a persistent failure keeps its residual change
+    both_state = _base_state()
+    _row(both_state, "pf", 3).update(fcf_for_distribution_keur=75.0)
+    worse = _entry(both_state, history_id="h2", snapshot="snap-2", ran_at="2026-02-01T00:00:00")
+    out = _compare(monkeypatch, [worse, older])
+    row = next(r for r in out["candidates"][0]["rows"] if r["check_id"] == "DX-CASH-001")
+    assert row["classification"] == "PERSISTENT" and row["residual_change"] == pytest.approx(5.0)
+
+
+def test_run_comparison_needs_two_genuine_runs_and_never_mutates_history(monkeypatch):
+    only = _entry(_base_state(), history_id="h2", snapshot="snap-2", ran_at="2026-02-01T00:00:00")
+    assert _compare(monkeypatch, [only])["reason"] == "NEED_AT_LEAST_TWO_COMMITTED_RUNS"
+    assert _compare(monkeypatch, [only], last_snapshot="snap-unknown")["reason"] == "LAST_RUN_NOT_IN_RUN_HISTORY"
+    newer = _entry(_base_state(), history_id="h2", snapshot="snap-2", ran_at="2026-02-01T00:00:00")
+    older = _entry(_base_state(), history_id="h1", snapshot="snap-1", ran_at="2026-01-01T00:00:00")
+    before = copy.deepcopy([vars(newer), vars(older)])
+    _compare(monkeypatch, [newer, older])
+    assert [vars(newer), vars(older)] == before                                     # historical evidence is never rewritten
+    tampered = _entry(_base_state(), history_id="h1", snapshot="snap-1", ran_at="2026-01-01T00:00:00", digest=False)
+    out = _compare(monkeypatch, [newer, tampered])
+    row = next(r for r in out["candidates"][0]["rows"] if r["check_id"] == "DX-DEP-001")
+    assert row["classification"] == "NOT_COMPARABLE" and "EVIDENCE_DIGEST_NOT_INTACT" in row["reason"]
+
+
+def test_run_comparison_module_reads_history_only_and_ranks_at_most_four_candidates(monkeypatch):
+    import inspect
+    source = inspect.getsource(rcmp)
+    for token in ("save_", "update_", "append_", "insert", "delete", "commit(", "execute("):
+        assert token not in source.lower().replace("evaluate_entry", ""), token
+    entries = [_entry(_base_state(), history_id=f"h{i}", snapshot=f"snap-{i}", ran_at=f"2026-0{i}-01T00:00:00") for i in range(1, 8)]
+    out = _compare(monkeypatch, list(reversed(entries)), last_snapshot="snap-7")
+    assert len(out["candidates"]) == rcmp.MAX_CANDIDATES and out["run_b"]["history_id"] == "h7"
+
+
+# ── D5 Guided resolution ──────────────────────────────────────────────────────────────────────────────────────
+def test_guided_actions_are_navigation_only_with_visible_reasons_for_unsupported():
+    actions = {a["id"]: a for a in dv2.guided_actions("QM-SD-004", group="Senior Debt", navigation_target="tab-debt",
+                                                      related_assumptions=["debt.senior.target_dscr"], vertical="solar")}
+    assert actions["finding_whatif"]["enabled"] and actions["finding_whatif"]["opens_insight"] and actions["finding_whatif"]["target_tab"] is None
+    assert actions["open_schedule"]["target_tab"] == "tab-debt" and actions["open_assumptions"]["assumptions"] == ["debt.senior.target_dscr"]
+    assert actions["open_trace"]["enabled"] and actions["compare_runs"]["target_tab"] == "tab-compare"
+    assert not actions["goal_seek"]["enabled"] and "not a return shortfall" in actions["goal_seek"]["reason"]
+    dc = {a["id"]: a for a in dv2.guided_actions("QM-SD-004", group="Senior Debt", navigation_target="tab-debt", related_assumptions=[], vertical="data_center")}
+    assert not dc["finding_whatif"]["enabled"] and dc["finding_whatif"]["reason"] == "Q4 supports Solar and Wind projects only."
+    assert not dc["open_assumptions"]["enabled"] and "nothing is guessed" in dc["open_assumptions"]["reason"]
+    unmapped = {a["id"]: a for a in dv2.guided_actions("DX-CASH-001", group="Cash Flow", navigation_target="tab-fs", related_assumptions=[], vertical="solar")}
+    assert not unmapped["finding_whatif"]["enabled"] and "no registered mapping" in unmapped["finding_whatif"]["reason"]
+    rev = {a["id"]: a for a in dv2.guided_actions("DX-REV-001", group="Revenue", navigation_target="tab-revenue", related_assumptions=[], vertical="solar")}
+    assert not rev["open_trace"]["enabled"] and rev["open_trace"]["reason"]
+    for a in (*actions.values(), *dc.values(), *unmapped.values(), *rev.values()):
+        assert a["id"] in {"open_schedule", "open_assumptions", "open_trace", "compare_runs", "finding_whatif", "goal_seek"}
+        assert a["enabled"] or a["reason"]                                       # a disabled action always says why
+        assert not a["enabled"] or a["target_tab"] or a.get("opens_insight")      # an enabled action only navigates
+
+
+def test_q4_policy_mirrors_the_existing_q4_authority_without_duplicating_writers():
+    from app.v2.whatif import CANDIDATES, SUPPORTED_VERTICALS
+    assert dv2.Q4_MAPPED == set(CANDIDATES) and dv2.Q4_VERTICALS == set(SUPPORTED_VERTICALS)
+
+
+def test_v2_payload_actions_cover_every_check_and_root_cause():
+    out = _v2(mutate=lambda s: _row(s, "pf", 3).update(fcf_for_distribution_keur=70.0))
+    assert "DX-CASH-001" in out["actions"] and all(c["check_id"] in out["actions"] for c in out["advanced_checks"])
+    rc = next(r for r in out["root_causes"] if r["check_id"] == "DX-CASH-001")
+    assert {a["id"] for a in rc["actions"]} == {"open_schedule", "open_assumptions", "open_trace", "compare_runs", "finding_whatif", "goal_seek"}
