@@ -259,6 +259,22 @@ def rc3_r5_successor_violations(f) -> list[str]:
         return [f"RC-3 successor facts incomplete or malformed: {exc!r}"]
 
 
+def _duplicate_status_violations(rows, label) -> list[str]:
+    """A real ``git diff --name-status --no-renames`` lists each path exactly once.
+
+    Duplicate paths are malformed evidence, whether the statuses are identical or
+    conflicting and even when the path belongs to an approved inventory. They are
+    rejected, never deduplicated.
+    """
+    seen, duplicated = {}, set()
+    for status, path in rows:
+        if path in seen:
+            duplicated.add(path)
+        seen[path] = status
+    return [f"{path}: duplicate {label} diff entry is malformed evidence"
+            for path in sorted(duplicated)]
+
+
 def rc2_violations(f) -> list[str]:
     """RC-2 immutable baseline + separately proven single-file RC-3 successor.
 
@@ -269,12 +285,15 @@ def rc2_violations(f) -> list[str]:
     """
     successor = rc3_r5_successor_violations(f)
     try:
+        # Checked on the full cumulative inventory, before the R5 path is removed
+        # for the independent historical check, so no entry can hide in the split.
+        duplicates = _duplicate_status_violations(f["status"], "cumulative")
         historical = dict(f)
         historical["status"] = [
             item for item in f["status"] if item[1] != RC3_R5_EXACT_PATH]
     except (KeyError, ValueError, TypeError, AttributeError) as exc:
         return [*successor, f"RC-2 status facts incomplete or malformed: {exc!r}"]
-    return [*successor, *_historical_rc2_violations(historical)]
+    return [*successor, *duplicates, *_historical_rc2_violations(historical)]
 
 
 def _collect():
@@ -404,6 +423,7 @@ def test_rc3_r5_missing_modified_deleted_or_duplicate_status_rejected(facts, rep
     ("A", "docs/radar/unreviewed_successor.md"),
     ("A", "tests/test_unreviewed_successor.py"),
     ("M", "app/crypto_terminal/tokenized_read.py"),
+    ("M", "domain/revenue/multistream_runtime.py"),
     ("A", "app/crypto_terminal/unreviewed_signal.py"),
 ))
 def test_rc3_only_exact_declared_branch_files_are_permitted(facts, extra):
@@ -433,7 +453,60 @@ def test_rc3_explicit_support_file_status_mutation_rejected(facts):
 def test_rc3_r5_extra_or_protected_path_rejected(facts, extra):
     mutated = copy.deepcopy(facts)
     mutated["status"].append(extra)
-    assert rc2_violations(mutated)
+    problems = rc2_violations(mutated)
+    # Paths already in the legitimate cumulative RC-2 inventory become a duplicate
+    # entry (malformed evidence); genuinely unseen paths are outside RC-2 content.
+    already_listed = any(path == extra[1] for _, path in facts["status"])
+    reason = "duplicate cumulative diff entry" if already_listed else "not part of the reviewed RC-2 content"
+    assert any(reason in problem for problem in problems), (extra, problems)
+
+
+@pytest.mark.parametrize("path", (
+    "app/crypto_terminal/tokenized_read.py",
+    "domain/revenue/multistream_runtime.py",
+))
+@pytest.mark.parametrize("injected_status", ("M", "A", "D"))
+def test_duplicate_cumulative_status_entry_is_rejected_even_for_approved_rc2_paths(
+        facts, path, injected_status):
+    # Both paths are legitimate single RC-2 modifications. A second entry, whether
+    # identical (M) or conflicting (A/D), cannot come from one Git diff.
+    assert [s for s, p in facts["status"] if p == path] == ["M"]
+    mutated = copy.deepcopy(facts)
+    mutated["status"].append((injected_status, path))
+    problems = rc2_violations(mutated)
+    assert any(f"{path}: duplicate cumulative diff entry" in p for p in problems), problems
+    mutated["status"] = [row for row in mutated["status"] if row[1] != path] + [
+        ("M", path), (injected_status, path)]
+    assert any("duplicate cumulative diff entry" in p for p in rc2_violations(mutated))
+
+
+def test_duplicate_status_entry_is_not_silently_deduplicated(facts):
+    mutated = copy.deepcopy(facts)
+    mutated["status"] = [*facts["status"], *facts["status"]]
+    problems = rc2_violations(mutated)
+    flagged = {p.split(":")[0] for p in problems if "duplicate cumulative diff entry" in p}
+    assert flagged == {path for _, path in facts["status"]}
+
+
+def test_actual_cumulative_inventory_has_each_path_exactly_once(facts):
+    paths = [path for _, path in facts["status"]]
+    assert len(paths) == len(set(paths))
+    assert not any("duplicate" in p for p in rc2_violations(facts))
+
+
+@pytest.mark.parametrize("extra", (
+    ("M", "app/crypto_terminal/tokenized_read.py"),
+    ("M", "domain/revenue/multistream_runtime.py"),
+    ("A", "app/crypto_terminal/unreviewed_signal.py"),
+))
+def test_unapproved_post_rc2_change_in_rc3_branch_inventory_is_rejected(facts, extra):
+    # Genuine post-RC-2 change: judged through rc3_branch_status and the exact
+    # R5 allowlist, NOT as a malformed cumulative duplicate.
+    mutated = copy.deepcopy(facts)
+    mutated["rc3_branch_status"].append(extra)
+    problems = rc2_violations(mutated)
+    assert any("unexpected or missing branch-owned path" in p for p in problems), problems
+    assert not any("duplicate" in p for p in problems), problems
 
 
 def test_rc3_r5_rc2_provenance_and_protected_mutations_still_rejected(facts):
