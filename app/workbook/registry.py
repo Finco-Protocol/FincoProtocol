@@ -1092,6 +1092,17 @@ _SHEET_INVESTOR = _sheet("investor", "Investor", [
     ])
 ], icon="", order=6)
 
+_SHEET_DEVELOPER = _sheet("developer", "Developer", [
+    _section("economics", "Developer Economics", "developer", order=0, fields=[
+        _f("developer.economics.configuration", "Developer Economics configuration", "developer_economics_json",
+           FieldType.TEXT, "developer", "economics", kind=FieldKind.INPUT, persisted=True,
+           source_of_truth=SourceOfTruth.INPUT_SET,
+           engine_path="development_economics",
+           scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+           editable=True, description="Typed Developer Economics V1 input (dated spend, reimbursement, developer fee); economics stay in the canonical calculator.")
+    ])
+], icon="", order=7)
+
 WORKBOOK = WorkbookSpec(
     version="2.3.0",
     sheets=(
@@ -1102,5 +1113,6 @@ WORKBOOK = WorkbookSpec(
         _SHEET_DEBT,
         _SHEET_TAX,
         _SHEET_INVESTOR,
+        _SHEET_DEVELOPER,
     ),
 )

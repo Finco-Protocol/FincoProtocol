@@ -240,6 +240,15 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
             assert git("cat-file", "-t", actual) == "blob", f"Missing Revenue V2 authority blob: {path}"
             assert actual == pin, f"Unreviewed Revenue V2 content: {path}"
         return
+    # RC-2 Revenue V3: reviewer-conditional, release-closed candidate successor. Exactly this three-path slice at
+    # exactly these three blobs; any extra/missing protected path or any other content still fails below.
+    from model_v2_governance import REVENUE_V3_CANDIDATE_AUTHORITIES
+    if protected == set(REVENUE_V3_CANDIDATE_AUTHORITIES):
+        for path, pin in REVENUE_V3_CANDIDATE_AUTHORITIES.items():
+            actual = git("rev-parse", "--verify", f"{head}:{path}")
+            assert git("cat-file", "-t", actual) == "blob", f"Missing Revenue V3 authority blob: {path}"
+            assert actual == pin, f"Unreviewed Revenue V3 content: {path}"
+        return
     assert protected == _F3_5_REVIEWED_PROTECTED_PATHS, f"Unapproved or incomplete protected diff: {sorted(protected)}"
     for path in sorted(protected):
         actual = git("rev-parse", "--verify", f"{head}:{path}")
@@ -648,5 +657,58 @@ def test_frozen_guard_rejects_revenue_v2_plus_unapproved_domain_path(reviewed_re
     path.write_text("unauthorized = True\\n", encoding="utf-8")
     git("add", "domain/revenue/unapproved.py")
     git("commit", "-m", "Unapproved domain path")
+    with pytest.raises(AssertionError, match="Unapproved or incomplete protected diff"):
+        _assert_frozen_financial_namespace_authority(root)
+
+
+@pytest.fixture
+def revenue_v3_git_repo(tmp_path):
+    from model_v2_governance import REVENUE_V3_CANDIDATE_AUTHORITIES
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=tmp_path, capture_output=True, check=True).stdout
+
+    git("init")
+    git("config", "core.autocrlf", "false")
+    git("config", "user.name", "Synthetic Governance")
+    git("config", "user.email", "synthetic.invalid")
+    for path in REVENUE_V3_CANDIDATE_AUTHORITIES:
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"Synthetic historical baseline\n")
+    git("add", ".")
+    git("commit", "-m", "Synthetic baseline")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    root = Path(__file__).resolve().parents[1]
+    for path, blob in REVENUE_V3_CANDIDATE_AUTHORITIES.items():
+        (tmp_path / path).write_bytes(subprocess.run(["git", "cat-file", "blob", blob], cwd=root, capture_output=True, check=True).stdout)
+    git("add", ".")
+    git("commit", "-m", "Exact reviewed Revenue V3 candidate")
+    return tmp_path, git
+
+
+def test_revenue_v3_candidate_slice_is_accepted_only_at_the_exact_three_blobs(revenue_v3_git_repo):
+    root, git = revenue_v3_git_repo
+    _assert_frozen_financial_namespace_authority(root)
+    for path in ("domain/revenue/advanced_products.py", "domain/revenue/multistream_runtime.py", "finco_core/revenue/generation.py"):
+        (root / path).write_bytes((root / path).read_bytes() + b"# unreviewed\n")
+        git("add", ".")
+        git("commit", "-m", "Further edit " + path)
+        with pytest.raises(AssertionError, match="Unreviewed Revenue V3 content"):
+            _assert_frozen_financial_namespace_authority(root)
+        git("reset", "--hard", "HEAD~1")
+    # an additional protected path turns the slice into an unapproved diff
+    extra = root / "financial_engine" / "unreviewed.py"
+    extra.parent.mkdir(parents=True, exist_ok=True)
+    extra.write_bytes(b"x = 1\n")
+    git("add", ".")
+    git("commit", "-m", "Extra protected path")
+    with pytest.raises(AssertionError, match="Unapproved or incomplete protected diff"):
+        _assert_frozen_financial_namespace_authority(root)
+    git("reset", "--hard", "HEAD~1")
+    # a missing path is an incomplete slice
+    (root / "finco_core/revenue/generation.py").write_bytes(b"Synthetic historical baseline\n")
+    git("add", ".")
+    git("commit", "-m", "Revert one path")
     with pytest.raises(AssertionError, match="Unapproved or incomplete protected diff"):
         _assert_frozen_financial_namespace_authority(root)

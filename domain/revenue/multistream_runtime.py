@@ -140,6 +140,9 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
         payload = json.loads(raw, object_pairs_hook=_unique_object)
     except (ValueError, TypeError) as exc:
         raise ValueError(f"REVENUE_V2_SCHEMA: {exc}") from exc
+    if isinstance(payload, dict) and type(payload.get("version")) is int and payload["version"] == 3:
+        from domain.revenue.advanced_products import parse_advanced_config
+        return parse_advanced_config(payload)
     _object(payload, {"version", "technology", "indexation_basis", "streams"}, "configuration")
     if type(payload["version"]) is not int or payload["version"] not in (1, 2):
         raise ValueError("REVENUE_V2_VERSION: expected version 1 or 2")

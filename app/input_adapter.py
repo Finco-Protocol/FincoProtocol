@@ -1421,6 +1421,10 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     from app.workbook.bankability_config import SNAPSHOT_KEY, apply_config
     result = apply_config(result, snapshot.get(SNAPSHOT_KEY), project_type=project_type)
     from app.workbook.revenue_multistream import SNAPSHOT_KEY, apply_config
-    return apply_config(result, snapshot.get(SNAPSHOT_KEY), project_type=project_type)
+    result = apply_config(result, snapshot.get(SNAPSHOT_KEY), project_type=project_type)
+    # Developer Economics V1: typed bridge onto ProjectInputs.development_economics. Absent or
+    # disabled is the neutral None; malformed or economically invalid payloads fail closed.
+    from app.workbook.developer_economics_config import SNAPSHOT_KEY as DEV_KEY, apply_config as apply_developer
+    return apply_developer(result, snapshot.get(DEV_KEY))
 
 

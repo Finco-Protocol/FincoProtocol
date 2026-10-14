@@ -271,6 +271,18 @@ def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle) -> b
             ("Period", "Contract", "Type", "Status", "MWh", "EUR/MWh", "Sale kEUR", "CfD settlement kEUR",
              "Net period revenue kEUR", "Unallocated MWh", "Balancing kEUR", "Legacy certificates kEUR", "Source",
              "Start", "End (exclusive)", "Settlement", "Merchant capture fraction"), rows, format_columns={5: "0.0000", 6: "0.0000", 7: "0.0000", 8: "0.0000", 9: "0.0000", 17: "0.00%"})
+    if stream_audit and any(p.get("products") for p in stream_audit):
+        product_sheet = workbook.create_sheet("Revenue_Products")
+        _write_metadata_block(product_sheet, bundle, "persisted runtime")
+        product_rows = [(period["period_index"], p["id"], p["type"], p["status"], p["quantity"],
+            p["quantity_unit"], p["price"], p["price_unit"], p["revenue_keur"], p["entitlement_id"],
+            p["settlement_date"], p["period_fraction"], p["adjustment_factor"], p["source_ref"],
+            p["eligibility_ref"], p["certification_ref"])
+            for period in stream_audit for p in period.get("products", [])]
+        _write_simple_table(product_sheet, 6, "Last Run contracted non-energy revenue; declared evidence is not independently verified",
+            ("Period", "Contract", "Type", "Status", "Quantity", "Quantity unit", "Price EUR", "Price unit",
+             "Revenue kEUR", "Entitlement", "Settlement", "Period fraction", "Adjustment factor", "Source",
+             "Eligibility", "Certification"), product_rows, format_columns={5: "0.0000", 7: "0.0000", 9: "0.0000"})
     _write_senior_debt_sheet(workbook.create_sheet("Senior Debt"), bundle)
     _write_shl_sheet(workbook.create_sheet("SHL"), bundle)
     _write_tax_sheet(workbook.create_sheet("Tax"), bundle)

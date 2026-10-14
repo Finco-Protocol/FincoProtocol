@@ -165,6 +165,16 @@ REVENUE_V2_ADVANCED_AUTHORITIES: dict[str, str] = {
     "domain/revenue/multistream_runtime.py": "48465ce2a298fa1383a7eabcb921eb9fbe4610cb",
 }
 
+# RC-2 Revenue V3 (M2): reviewer-conditional, RELEASE-CLOSED candidate successor. Exact paths and
+# exact blobs only; Revenue V3 activation stays False (domain/revenue/advanced_products.ACTIVATION_ENABLED).
+# This authorizes NO other domain/revenue or finco_core path, NO later edit and NO activation. The WF07 and
+# Revenue V2 maps above remain immutable release provenance and are never rewritten.
+REVENUE_V3_CANDIDATE_AUTHORITIES: dict[str, str] = {
+    "domain/revenue/advanced_products.py": "d4ab263422aac5571e52bee4925fe36588e853cc",
+    "domain/revenue/multistream_runtime.py": "83beda4eb296b02baf2ebd6659fec243ab196206",
+    "finco_core/revenue/generation.py": "35670dc7b5ab4ce01177f9df817a4776c10569ab",
+}
+
 # F3.5-A independently accepted candidate content. This release map is not
 # production activation; Junior's application gate remains explicitly closed.
 F3_5_A_JUNIOR_AUTHORITIES: dict[str, str] = {
@@ -338,6 +348,7 @@ def released_engine_authority_matches(
         WF04_NUMERIC_PRECISION_AUTHORITIES,
         WF07_REVENUE_AUTHORITIES,
         REVENUE_V2_ADVANCED_AUTHORITIES,
+        REVENUE_V3_CANDIDATE_AUTHORITIES,
         F3_5_A_JUNIOR_AUTHORITIES,
     ) if path in authorities}
     if not pinned:

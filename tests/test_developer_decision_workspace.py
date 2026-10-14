@@ -265,10 +265,10 @@ class TestDeveloperDecisionPage:
         r = TestClient(main_web.app).get("/v2/developer-decision?project=nope", follow_redirects=False)
         assert r.status_code in (302, 404) and "dd-page" not in r.text
 
-    def test_disabled_page_shows_neutral_state_and_bridge_gap(self, seeded_db):
+    def test_disabled_page_shows_neutral_state_and_the_configuration_editor(self, seeded_db):
         client, cookies, rec = _client("dd-u1")
         html = client.get(f"/v2/developer-decision?project={rec.project_code}", cookies=cookies).text
-        assert 'data-testid="dd-bridge-gap"' in html
+        assert 'data-testid="dd-config-form"' in html and 'data-testid="dd-bridge-gap"' not in html  # M4: the bridge exists
         assert "Developer Economics: DISABLED" in html
         assert 'data-testid="dd-a-spend"' not in html          # no fabricated sections
         assert 'data-testid="dd-expected_npv"' in html and 'data-available="false"' in html

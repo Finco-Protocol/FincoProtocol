@@ -1155,8 +1155,19 @@ def _build_revenue_contract_editor(pis, ws):
     # htmx re-renders (Save, scenario switch) do not carry the page-level ``project_type``; the editor needs the
     # technology to accept the canonical payload, so it travels with the contracts it validates.
     technology = str(pis.get("project_setup.identity.project_type") or "").strip().lower()
+    from domain.revenue.advanced_products import ACTIVATION_ENABLED
+    payload = json.loads(config.canonical_json) if config else {}
+    axis = []
+    if ACTIVATION_ENABLED and technology in ("solar", "wind"):
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import _build_period_engine
+        axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
+                 "settlement_date": p.end_date.isoformat()}
+                for p in _build_period_engine(from_project_inputs(pis.to_projectinputs())).periods() if p.is_operation]
     return {"active": config is not None, "raw": raw, "scope": scope, "technology": technology,
-            "overridden": overridden, "rows": json.loads(config.canonical_json)["streams"] if config else []}
+            "overridden": overridden, "rows": payload.get("streams", []),
+            "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
+            "period_axis": axis}
 
 
 @router.post("/workbook/revenue/contracts")
@@ -2931,6 +2942,20 @@ async def v2_workbook_run(
         msg = str(exc)
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
+    # Developer Economics V1: the saved Base configuration is already materialised by the canonical
+    # adapter; a non-Base scenario's own explicit override replaces it (missing override = inherit).
+    # The effective input is therefore resolved from the SELECTED scenario, never from a stale Base.
+    if active_scenario_id and not sc_rec.is_base_case:
+        from app.workbook.developer_economics_config import (
+            DeveloperConfigError, SNAPSHOT_KEY as dev_key, apply_config as apply_developer_config,
+        )
+        if (sc_rec.overrides or {}).get(dev_key):
+            try:
+                override = apply_developer_config(override, sc_rec.overrides[dev_key])
+            except DeveloperConfigError as exc:
+                msg = str(exc)
+                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
     # ── Step 11: run the engine ────────────────────────────────────────────── #
     from app.model_v2.investor_f4 import EVIDENCE_KEY as f4_evidence_key, parse_terms as parse_f4_terms
     from app.workbook.investor_agreement_service import effective_raw as f4_effective_raw
@@ -3022,6 +3047,11 @@ async def v2_workbook_run(
         except (ValueError, TypeError, KeyError) as exc:
             msg = f"Investor evidence could not be reconciled: {exc}. No Run was committed."
             return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+    if "developer_economics" in result:
+        from app.model_v2.developer_evidence import bind as bind_developer_evidence
+        _kpis_enriched["developer_economics"] = bind_developer_evidence(
+            result["developer_economics"], snapshot_id=runtime_snapshot_id,
+            composite_hash=content_hash, scenario_id=active_scenario_id)
     # F1 Correction A: bind engine-produced finance evidence to the exact
     # successful V2 commit. This same runtime_summary is atomically captured
     # in Last Run and the append-only Run History entry by existing CAS.
@@ -5634,3 +5664,9 @@ router.include_router(f38_router)
 
 from app.v2.investor_f4_router import router as f4_router
 router.include_router(f4_router)
+
+# M3 two-driver sensitivity matrix: one isolated read-only route (integration hook only).
+from app.v2.sensitivity_matrix_router import router as sensitivity_matrix_router
+router.include_router(sensitivity_matrix_router)
+from app.v2.sensitivity_matrix_router import register_template_globals
+register_template_globals()

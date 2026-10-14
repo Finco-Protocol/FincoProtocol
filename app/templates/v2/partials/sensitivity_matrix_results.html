@@ -1,0 +1,47 @@
+{# M3 two-driver sensitivity matrix — results. Numeric value and status are text; colour is supplementary. #}
+<div class="v2-d-workspace v2-matrix-out" data-testid="matrix-results" data-state="EPHEMERAL">
+  <p class="d-context" data-testid="matrix-banner">
+    <strong>{{ matrix.metric.label }}</strong> — {{ matrix.driver_a.label }} (columns) × {{ matrix.driver_b.label }} (rows) on
+    {{ matrix.run.scenario }}. Ephemeral analysis (not CURRENT, not saved, no Run History). Basis hash {{ matrix.run.basis_hash }}.
+    Base: <span data-testid="matrix-base">{{ matrix.base.display }}{% if matrix.base.status != 'OK' %} (UNAVAILABLE){% endif %}</span>.
+    {% if matrix.threshold %}Threshold ≥ {{ matrix.threshold.display }} — {{ matrix.threshold.origin }}{% endif %}
+  </p>
+  <div class="d-table-wrap">
+    <table class="d-table v2-matrix-table" data-testid="matrix-table">
+      <caption class="v2-matrix-caption">Rows: {{ matrix.driver_b.label }} · Columns: {{ matrix.driver_a.label }}</caption>
+      <thead><tr><th scope="col">B ↓ / A →</th>
+        {% for lv in matrix.driver_a.levels %}<th scope="col">{{ lv.label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for row in matrix.rows %}
+        <tr><th scope="row">{{ matrix.driver_b.levels[loop.index0].label }}</th>
+        {% for c in row %}
+          <td class="v2-matrix-cell th-{{ c.threshold_status | lower }} st-{{ c.status | lower }}{% if c.is_base %} is-base{% endif %}"
+              data-testid="matrix-cell" data-a="{{ c.i }}" data-b="{{ c.j }}" data-status="{{ c.status }}" data-threshold="{{ c.threshold_status }}"
+              tabindex="0" title="A: {{ c.inputs.A.text if c.inputs and c.inputs.A else c.label_a }} | B: {{ c.inputs.B.text if c.inputs and c.inputs.B else c.label_b }}">
+            <span class="v2-matrix-value">{{ c.display if c.status == 'OK' else c.status }}</span>
+            {% if c.status == 'OK' %}<span class="d-muted">{{ c.delta_display }}{% if c.delta_pct %} · {{ c.delta_pct }}{% endif %}</span>{% endif %}
+            {% if c.threshold_status in ('PASS','FAIL') %}<span class="v2-matrix-flag">{{ '✓ PASS' if c.threshold_status == 'PASS' else '✗ FAIL' }}</span>{% endif %}
+            {% if c.status != 'OK' and c.reason %}<span class="d-muted" data-testid="matrix-cell-reason">{{ c.reason }}</span>{% endif %}
+          </td>
+        {% endfor %}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="d-context" data-testid="matrix-run-summary">
+    {{ matrix.run.evaluations }} canonical evaluation(s) in one admitted batch · {{ matrix.run.completed }} of {{ matrix.run.cells }} cells completed ·
+    {{ matrix.run.failed }} failed · {{ matrix.run.unavailable }} unavailable · {{ matrix.run.seconds }} s (local, not a production figure).
+    {% if matrix.run.base_reused_from_zero_cell %}Base is the Base/Base cell.{% else %}Base was computed separately.{% endif %}
+  </p>
+  {% if matrix.threshold %}
+  <div data-testid="matrix-threshold-summary" class="d-context">
+    Threshold: {{ matrix.threshold_counts.PASS }} pass · {{ matrix.threshold_counts.FAIL }} fail · {{ matrix.threshold_counts.UNAVAILABLE }} unavailable.
+    {% if matrix.brackets %}
+    <ul class="v2-matrix-brackets" data-testid="matrix-brackets">
+      {% for b in matrix.brackets %}<li>{{ b.from[0] }} / {{ b.from[1] }} ({{ b.from_status }}) ↔ {{ b.to[0] }} / {{ b.to[1] }} ({{ b.to_status }}) — {{ b.note }}</li>{% endfor %}
+    </ul>
+    {% else %}No adjacent pass/fail pair: this grid brackets no crossing.{% endif %}
+    {% if matrix.goal_seek_hint %}For a precise tariff solve use Tender Pricing (Goal Seek).{% endif %}
+  </div>
+  {% endif %}
+</div>
