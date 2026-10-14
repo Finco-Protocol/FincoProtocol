@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import date, datetime, timezone
-from contextlib import closing
+from contextlib import closing, contextmanager
+from pathlib import Path
+import sqlite3
 import json
 import uuid
 
@@ -39,6 +41,37 @@ def _table(conn):
     )""")
     # This independent append-only case revision log never mutates historical Runs.
 
+
+
+@contextmanager
+def _read_connection():
+    """Open the existing DB READ-ONLY; never run global schema bootstrap on GET.
+
+    get_connection() initializes the global schema and is intentionally reserved
+    for the controlled write boundary. Read-only URI mode cannot create a
+    missing database; the first GET is therefore non-mutating as well.
+    """
+    from app.persistence import db as persistence_db
+
+    path = Path(persistence_db.DB_PATH).resolve()
+    if not path.is_file():
+        yield None
+        return
+    conn = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=30.0)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only=ON")
+        yield conn
+    finally:
+        conn.close()
+
+
+def _cases_table_exists(conn):
+    """Missing optional M6 schema is a supported old-database read state."""
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='model_m6_acquisition_cases'"
+    ).fetchone() is not None
 
 def _require_uuid(value):
     try:
@@ -146,10 +179,12 @@ def save_case(*, owner_id, project_id, document, case_id=None, expected_revision
     if case_id is not None:
         _require_uuid(case_id)
     with closing(get_connection()) as conn:
-        _table(conn)
         now = datetime.now(timezone.utc).isoformat()
         try:
             conn.execute("BEGIN IMMEDIATE")
+            # DDL is a WRITE operation: transactional and rollback-safe.
+            # Never invoked by read_case/list_cases or an HTTP GET.
+            _table(conn)
             cur = conn.cursor()
             _project_write_permission(cur, owner_id, project_id)
             _source_matches(cur, owner_id=owner_id, project_id=project_id, document=document)
@@ -194,8 +229,9 @@ def save_case(*, owner_id, project_id, document, case_id=None, expected_revision
 
 def read_case(*, owner_id, project_id, case_id):
     _require_uuid(case_id)
-    with get_connection() as conn:
-        _table(conn)
+    with _read_connection() as conn:
+        if conn is None or not _cases_table_exists(conn):
+            return None
         row = conn.execute(
             "SELECT * FROM model_m6_acquisition_cases WHERE user_id=? AND project_id=? AND case_id=?",
             (owner_id,project_id,case_id)).fetchone()
@@ -213,10 +249,11 @@ def read_case(*, owner_id, project_id, case_id):
 
 
 def list_cases(*, owner_id, project_id):
-    with get_connection() as conn:
-        _table(conn)
+    with _read_connection() as conn:
+        if conn is None or not _cases_table_exists(conn):
+            return []
         rows = conn.execute(
             "SELECT case_id,revision,source_history_id,updated_at FROM model_m6_acquisition_cases "
             "WHERE user_id=? AND project_id=? ORDER BY updated_at DESC,case_id DESC LIMIT 50",
             (owner_id,project_id)).fetchall()
-    return [dict(row) for row in rows]
+        return [dict(row) for row in rows]
