@@ -160,6 +160,16 @@ def test_buyer_exit_dates_and_transactions_denied_when_unsupported():
     assert out["buyer_cashflows"][-1]["amount_keur"] == 60.0
 
 
+def test_closing_event_order_and_source_horizon_fail_closed():
+    e = evidence()
+    with pytest.raises(AcquisitionPolicyError, match="HORIZON"):
+        evaluate(e, terms(closing_date=date(2029, 1, 1)))
+    with pytest.raises(AcquisitionPolicyError, match="HORIZON"):
+        evaluate(e, terms(exit_date=date(2030, 1, 1), exit_proceeds_keur=10))
+    with pytest.raises(AcquisitionPolicyError, match="ORDER_AMBIGUOUS"):
+        evaluate(e, terms(closing_date=date(2028, 1, 1)))
+
+
 def test_enterprise_equity_signs_and_restricted_reserve_excluded():
     a = enterprise_equity_bridge(enterprise_value_keur=1000,
         senior_debt_keur=400, unrestricted_cash_keur=50, shl_balance_keur=100,
@@ -212,6 +222,11 @@ def test_case_revision_cas_owner_protection_and_failed_rollback(tmp_path, monkey
         save_case(owner_id="owner-A",project_id="project-A",document=changed,
                   case_id=case,expected_revision=1)
     assert read_case(owner_id="owner-A",project_id="project-A",case_id=case)["revision"] == 1
+    with sqlite3.connect(str(tmp_path / "cases.db")) as c:
+        # Successful and failed acquisitions never mutate immutable financial history.
+        assert c.execute("SELECT COUNT(*) FROM model_run_history").fetchone()[0] == 1
+        assert c.execute("SELECT COUNT(*) FROM model_m6_acquisition_revisions").fetchone()[0] == 1
+        assert c.execute("SELECT runtime_snapshot_id FROM model_run_history").fetchone()[0] == "snapshot-123"
     with sqlite3.connect(str(tmp_path / "cases.db")) as c:
         c.execute("UPDATE projects SET is_protected=1 WHERE project_id='project-A'")
     with pytest.raises(AcquisitionCaseConflict, match="PROTECTED"):
