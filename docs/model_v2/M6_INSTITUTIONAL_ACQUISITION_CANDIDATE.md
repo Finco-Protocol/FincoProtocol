@@ -6,6 +6,7 @@
 - Delivery: ONE Draft PR, target main. No merge/deploy/self-approval.
 - All new M6 metrics carry `CANDIDATE_NOT_AUTHORIZED`; `ACTIVATION_ENABLED = False` is a source literal.
 - The workspace never calls `evaluate()` or a project-finance Run on GET.
+- Optional **explicit POST-only** financial candidate preview is closed by default, requires `FINCO_M6_CANDIDATE_REVIEW=1`, `development/internal` app mode, non-demo admin session, owner-scoped saved case and signed CSRF. It returns labelled `CANDIDATE_NOT_AUTHORIZED` JSON with no-store, never a canonical KPI and never enabled in pilot/production.
 - Revenue V3/F4-P2 activation and original project/debt/tax math remain unchanged.
 
 ## Financial authority / source inventory
@@ -59,6 +60,7 @@ Transaction: **100% ordinary share acquisition**, cash purchase, no automatic re
 5. View explicit closing bridge assumptions and SOURCE_OUTDATED status.
 6. Compare case source/date compatibility; actual acquisition return comparison remains closed.
 7. See `CANDIDATE_NOT_AUTHORIZED` rather than production KPI/BUY-SELL recommendation.
+8. An explicit, signed, owner-scoped admin-only DEV POST can expose unapproved candidate figures for review when separately opted in. The production UI stays locked.
 
 ## Exact-path successor proposal for independent reviewer
 Protected/shared modified paths, for **content-specific approval only**:
@@ -68,6 +70,7 @@ Protected/shared modified paths, for **content-specific approval only**:
 - `app/templates/v2/developer_decision.html`: one additive navigation link.
 
 New scoped files:
+- `app/model_v2/acquisition/__init__.py`
 - `app/model_v2/acquisition/evidence.py`
 - `app/model_v2/acquisition/economics.py`
 - `app/persistence/acquisition_repository.py`
