@@ -23,7 +23,9 @@ from typing import Any, Iterable, Mapping, Optional
 
 from app.model_quality import ADVISORY_LABEL, evaluate_model_quality
 from app.model_quality.contracts import CheckStatus, QualityCheck, QualityReport
-from app.model_quality.evidence import ProjectTerms, evidence_from_workspace, terms_from_project_inputs
+from app.model_quality.evidence import (
+    ProjectTerms, evidence_from_history_entry, evidence_from_workspace, terms_from_project_inputs,
+)
 
 # Owning workbook tabs (ids exist in app/templates/v2/workbook.html; parity is test-pinned).
 TAB_LABELS = {
@@ -257,7 +259,10 @@ def build_quality_insight(
     if include_diagnostics:
         from app.v2.diagnostics_projection import build_diagnostics
         try:
-            base["diagnostics"] = build_diagnostics(ws, report, score=base["score"], scenario_name=scenario_name)
+            base["diagnostics"] = build_diagnostics(
+                ws, report, score=base["score"], scenario_name=scenario_name, evidence=evidence,
+                # Historical Runs are evaluated by the SAME canonical evaluator, with no Working Copy terms bound.
+                history_quality=lambda entry: evaluate_model_quality(evidence_from_history_entry(entry, freshness=None)))
         except Exception:  # malformed diagnostic evidence must not hide canonical Insight findings
             base["diagnostics"] = {"state": "UNAVAILABLE", "available": False}
     return base
