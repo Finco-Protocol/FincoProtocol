@@ -150,9 +150,18 @@ def _observation_matches(row: MarketObservation, identity: ExactRepresentation) 
             or row.instrument_type != identity.representation_type):
         return False
     p = row.payload if isinstance(row.payload, dict) else {}
+    # Exact-chain provenance must be present in the persisted claim; the
+    # registry chain alone is not evidence that a MARKET row belongs there.
+    embedded_asset_key = p.get("asset_key")
+    expected_asset_key = f"{identity.chain_id}:{identity.contract_address.lower()}"
+    if ("chain_id" not in p and embedded_asset_key is None):
+        return False
     if "chain_id" in p and p["chain_id"] != identity.chain_id:
         return False
-    if "contract_address" in p and str(p["contract_address"]).lower() != identity.contract_address.lower():
+    if embedded_asset_key is not None and embedded_asset_key != expected_asset_key:
+        return False
+    if ("contract_address" in p and
+            str(p["contract_address"]).lower() != identity.contract_address.lower()):
         return False
     if p.get("authority") == "R_LIVE":
         key = f"{identity.chain_id}:{identity.contract_address.lower()}"
