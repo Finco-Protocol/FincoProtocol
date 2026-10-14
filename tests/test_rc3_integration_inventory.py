@@ -84,8 +84,53 @@ INTEGRATION_ADDED = frozenset({
     "tests/rc3_historical_anchor.py",
     "tests/test_rc3_integration_inventory.py",
     "docs/rc3/RC3_INTEGRATION_CORRECTION_A.md",
+    "docs/rc3/RC3_CORRECTION_B_M7_REVIEW_AND_CI_BUDGET.md",
+    "tests/m7_rc3_candidate_successor.py",
+    "tests/test_m7_rc3_candidate_successor.py",
 })
 INTEGRATION_SELF = frozenset({"tests/test_rc3_integration_inventory.py", "tests/rc3_historical_anchor.py"})
+
+
+# ── RC-3 CI budget successor (owner-authorised budget only; NOT a financial approval) ───────────────────────────────────────
+# Exactly two values of .github/workflows/ci_public_job.yml differ from the accepted RC-2 workflow (the file on the base):
+#   FINCO_CI_PYTEST_BUDGET_S '4200' -> '4800'   and   timeout-minutes 90 -> 100.
+# Everything else (grace, stall, selection, full unsharded run, artifacts, evidence, every other job step) must be byte-identical.
+RC3_CI_WORKFLOW = RC2_CI_WORKFLOW
+RC3_CI_WORKFLOW_BLOB = "036a5aef7cf9738b8bf7bf2f6294f24a998a928c"
+RC3_CI_EDITS = (("timeout-minutes: 90", "timeout-minutes: 100"),
+                ("FINCO_CI_PYTEST_BUDGET_S: '4200'", "FINCO_CI_PYTEST_BUDGET_S: '4800'"))
+
+
+def workflow_successor_violations(base_text: str, head_text: str) -> list[str]:
+    """Pure verifier: ``head_text`` must equal ``base_text`` with exactly the two authorised values replaced, and must still fit."""
+    import re
+    try:
+        bad = []
+        expected = base_text
+        for old, new in RC3_CI_EDITS:
+            if expected.count(old) != 1:
+                bad.append(f"the accepted RC-2 workflow does not contain exactly one {old!r}")
+                continue
+            expected = expected.replace(old, new, 1)
+        if head_text != expected:
+            bad.append("the workflow differs from the accepted RC-2 workflow in more (or other) than the two authorised budget values")
+        budget = int(re.search(r"FINCO_CI_PYTEST_BUDGET_S: '(\d+)'", head_text).group(1))
+        grace = int(re.search(r"FINCO_CI_EXIT_GRACE_S: '(\d+)'", head_text).group(1))
+        stall = int(re.search(r"FINCO_CI_STALL_S: '(\d+)'", head_text).group(1))
+        timeout = int(re.search(r"timeout-minutes: (\d+)", head_text).group(1))
+        if (budget, timeout) != (4800, 100) or grace != 180 or stall != 300:
+            bad.append("budget/timeout/grace/stall are not the authorised 4800 s / 100 min / 180 s / 300 s")
+        if budget + grace + 15 * 60 > timeout * 60:
+            bad.append("the job timeout cannot accommodate budget + exit grace + job overhead")
+        for needle in ("--junitxml=artifacts/results.xml", "tools/ci_pytest_runner.py", "FULL, UNSHARDED, EXACT HEAD",
+                       "if-no-files-found: error", "public-verification-results"):
+            if needle not in head_text:
+                bad.append(f"required evidence/selection element is missing: {needle}")
+        if "continue-on-error" in head_text or "--deselect" in head_text or "-k " in head_text:
+            bad.append("test selection or failure handling was altered")
+        return bad
+    except (AttributeError, TypeError, ValueError) as exc:
+        return [f"workflow facts incomplete or malformed: {exc!r}"]
 
 
 def git(*args):
@@ -153,6 +198,8 @@ def collect(ref="HEAD"):
         "texts": {p: _show(ref, p) for p in {**AUTO_MARKERS, **HAND_RESOLVED}},
         "flag_sources": {p: _show(ref, p) + "\n" for p in FLAG_FILES},
         "stream_tip_status": {p: s[0] for p, s in _status(BASE, STREAM_TIP).items()},
+        "ci_workflow_base_text": git("show", f"{BASE}:{RC3_CI_WORKFLOW}") + "\n",
+        "ci_workflow_head_text": git("show", f"{ref}:{RC3_CI_WORKFLOW}") + "\n",
     }
 
 
@@ -206,6 +253,7 @@ def inventory_violations(f) -> list[str]:
             if path in expected_status:
                 bad.append(f"{path}: listed as integration-added but also changed by a source")
             expected_status[path] = "A"
+        expected_status.setdefault(RC3_CI_WORKFLOW, "M")         # the single owner-authorised CI budget successor
         for path in PINNED_INTEGRATION_EDITS:                    # integration edits on top of main files or source files
             expected_status.setdefault(path, "M" if path in f["base_blobs"] else "A")
         actual = f["head_status"]
@@ -266,13 +314,18 @@ def inventory_violations(f) -> list[str]:
         guarded = [p for p in f["base_blobs"] if p.startswith(GUARDED_PREFIXES) or p in GUARDED_FILES
                    or any(part in p.lower() for part in GUARDED_NAME_PARTS)]
         for path in guarded:
+            if path == RC3_CI_WORKFLOW:
+                continue                                          # judged by the exact successor below, never by a general exemption
             if f["head_blobs"].get(path) != f["base_blobs"].get(path):
                 bad.append(f"{path}: protected workflow/selection/tolerance/golden file differs from the base")
         for path in actual:
             if (path.startswith(GUARDED_PREFIXES) or path in GUARDED_FILES) and path not in f["base_blobs"]:
                 bad.append(f"{path}: unauthorized addition to a protected workflow/selection path")
-        if f["head_blobs"].get(RC2_CI_WORKFLOW) != RC2_CI_WORKFLOW_CANDIDATE_BLOB:
-            bad.append("the CI workflow is not the reviewed RC-2 two-line timeout successor")
+        if f["base_blobs"].get(RC3_CI_WORKFLOW) != RC2_CI_WORKFLOW_CANDIDATE_BLOB:
+            bad.append("the base workflow is not the accepted RC-2 two-line successor")
+        if f["head_blobs"].get(RC3_CI_WORKFLOW) != RC3_CI_WORKFLOW_BLOB:
+            bad.append("the CI workflow is not the reviewed RC-3 budget successor blob")
+        bad += workflow_successor_violations(f["ci_workflow_base_text"], f["ci_workflow_head_text"])
         # 10. release-closed flags
         for path, name in FLAG_FILES.items():
             state = activation_state(f["flag_sources"][path], name)
@@ -383,6 +436,7 @@ def test_changed_protected_workflow_selection_tolerance_or_golden_is_rejected(fa
     assert RC2_CI_WORKFLOW in guarded and "pytest.ini" in guarded
     for path in (RC2_CI_WORKFLOW, "pytest.ini", ".github/workflows/governance_history.yml"):
         _bad(facts, head_blobs={**facts["head_blobs"], path: "6" * 40})
+    _bad(facts, head_blobs={**facts["head_blobs"], ".github/workflows/public_safety_and_smoke.yml": "7" * 40})
     _bad(facts, head_blobs={k: v for k, v in facts["head_blobs"].items() if k != "pytest.ini"})
 
 
@@ -449,3 +503,57 @@ PINNED_INTEGRATION_EDITS = {
     "tests/test_trust_readiness_registry.py": "8bfd684d95358f94db15302385e310bedbcaea2e",
     "tests/test_yield_alerts_core.py": "ae01affe8673fa30c2a931f94846a8d0a279a8e6",
 }
+
+
+# ── RC-3 CI budget successor: negative tests ──────────────────────────────────────────────────────────────────────────────────
+def test_the_actual_workflow_is_exactly_the_two_authorised_values(facts):
+    assert workflow_successor_violations(facts["ci_workflow_base_text"], facts["ci_workflow_head_text"]) == []
+    assert facts["base_blobs"][RC3_CI_WORKFLOW] == RC2_CI_WORKFLOW_CANDIDATE_BLOB          # historical RC-2 workflow blob unchanged
+    assert facts["head_blobs"][RC3_CI_WORKFLOW] == RC3_CI_WORKFLOW_BLOB
+    assert facts["ci_workflow_head_text"].count("timeout-minutes: 100") == 1
+
+
+def _wf_bad(facts, transform):
+    head = transform(facts["ci_workflow_head_text"])
+    assert head != facts["ci_workflow_head_text"]
+    assert workflow_successor_violations(facts["ci_workflow_base_text"], head)
+
+
+@pytest.mark.parametrize("name,transform", [
+    ("timeout reduced to the old 90", lambda t: t.replace("timeout-minutes: 100", "timeout-minutes: 90")),
+    ("timeout reduced below the fit", lambda t: t.replace("timeout-minutes: 100", "timeout-minutes: 95")),
+    ("timeout raised further", lambda t: t.replace("timeout-minutes: 100", "timeout-minutes: 120")),
+    ("budget reduced to the old 4200", lambda t: t.replace("'4800'", "'4200'")),
+    ("budget raised further", lambda t: t.replace("'4800'", "'5400'")),
+    ("exit grace changed", lambda t: t.replace("FINCO_CI_EXIT_GRACE_S: '180'", "FINCO_CI_EXIT_GRACE_S: '240'")),
+    ("stall changed", lambda t: t.replace("FINCO_CI_STALL_S: '300'", "FINCO_CI_STALL_S: '600'")),
+    ("selection narrowed", lambda t: t.replace("--junitxml=artifacts/results.xml", "--junitxml=artifacts/results.xml -k not_slow")),
+    ("tests deselected", lambda t: t.replace("-q -p tools.ci_pytest_inventory", "-q --deselect tests/x.py -p tools.ci_pytest_inventory")),
+    ("failure ignored", lambda t: t.replace("    runs-on: ubuntu-24.04\n", "    runs-on: ubuntu-24.04\n    continue-on-error: true\n")),
+    ("junit evidence removed", lambda t: t.replace("            --junitxml=artifacts/results.xml", "")),
+    ("artifact upload softened", lambda t: t.replace("if-no-files-found: error", "if-no-files-found: ignore")),
+    ("full-run step renamed", lambda t: t.replace("FULL, UNSHARDED, EXACT HEAD", "PARTIAL")),
+    ("unauthorised extra step", lambda t: t + "      - name: extra\n        run: echo changed\n"),
+    ("a trailing byte", lambda t: t + "# x\n"),
+    ("permissions widened", lambda t: t.replace("contents: read", "contents: write")),
+    ("runner changed", lambda t: t.replace("ubuntu-24.04", "ubuntu-latest")),
+])
+def test_every_other_workflow_modification_is_rejected(facts, name, transform):
+    _wf_bad(facts, transform)
+
+
+def test_the_successor_is_not_a_general_workflow_exemption(facts):
+    for path in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/governance_history.yml",
+                 ".github/workflows/pr_compile_and_safety.yml", ".github/workflows/ci_browser_job.yml"):
+        _bad(facts, head_blobs={**facts["head_blobs"], path: "8" * 40})
+        _bad(facts, head_status={**facts["head_status"], path: "M"})
+    _bad(facts, head_status={**facts["head_status"], ".github/workflows/new_unreviewed.yml": "A"})
+    _bad(facts, head_blobs={**facts["head_blobs"], RC3_CI_WORKFLOW: "9" * 40})                   # unreviewed workflow blob
+    _bad(facts, base_blobs={**facts["base_blobs"], RC3_CI_WORKFLOW: "a" * 40})                   # forged RC-2 baseline
+    assert workflow_successor_violations("", "")                                                 # missing facts never authorise
+    assert workflow_successor_violations(facts["ci_workflow_base_text"], facts["ci_workflow_base_text"])   # the unchanged RC-2 file is not the successor
+
+
+def test_the_authorised_budget_fits_inside_the_job_timeout():
+    budget, grace, overhead, timeout_min = 4800, 180, 15 * 60, 100
+    assert budget + grace + overhead <= timeout_min * 60 and timeout_min * 60 - (budget + grace + overhead) >= 120
