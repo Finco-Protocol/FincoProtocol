@@ -6,6 +6,8 @@ from types import SimpleNamespace as NS
 import copy
 import math
 import sqlite3
+from contextlib import closing
+import uuid
 
 import pytest
 
@@ -17,7 +19,7 @@ from app.model_v2.acquisition.economics import (
     buyer_cashflows, evaluate, enterprise_equity_bridge,
 )
 from app.persistence.acquisition_repository import (
-    AcquisitionCaseConflict, make_document, save_case, read_case,
+    AcquisitionCaseConflict, make_document, save_case, read_case, list_cases,
 )
 
 
@@ -192,7 +194,9 @@ def _db(tmp_path, monkeypatch):
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
     monkeypatch.setattr(repo, "get_connection", get)
-    with get() as c:
+    from app.persistence import db as persistence_db
+    monkeypatch.setattr(persistence_db, "DB_PATH", path)
+    with closing(get()) as c:
         c.execute("CREATE TABLE projects (project_id TEXT PRIMARY KEY,user_id TEXT,archived INTEGER,"
                   "is_protected INTEGER,is_readonly INTEGER)")
         c.execute("CREATE TABLE model_run_history (history_id TEXT PRIMARY KEY,user_id TEXT,"
@@ -201,6 +205,128 @@ def _db(tmp_path, monkeypatch):
         c.execute("INSERT INTO model_run_history VALUES ('h-1','owner-A','project-A','snapshot-123',?,NULL)",
                   ('c'*64,))
     return path
+
+
+
+def _db_state(path):
+    """Read-only independent sqlite_master and financial-row snapshot."""
+    with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
+        schema = conn.execute(
+            "SELECT type,name,tbl_name,sql FROM sqlite_master "
+            "ORDER BY type,name,tbl_name"
+        ).fetchall()
+        version = conn.execute("PRAGMA schema_version").fetchone()[0]
+        financial = tuple((
+            table, conn.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall()
+        ) for table in ("projects", "model_run_history"))
+        return (schema, version, financial)
+
+
+def test_first_read_never_creates_sqlite_file_or_acquisition_tables(tmp_path, monkeypatch):
+    import app.persistence.acquisition_repository as repo
+    from app.persistence import db as persistence_db
+
+    missing = tmp_path / "uninitialized.db"
+    monkeypatch.setattr(persistence_db, "DB_PATH", str(missing))
+    def deny_global_bootstrap():
+        pytest.fail("GET must not invoke schema-initializing get_connection()")
+    monkeypatch.setattr(repo, "get_connection", deny_global_bootstrap)
+    id_ = str(uuid.uuid4())
+    for _ in range(3):
+        assert read_case(owner_id="owner-A", project_id="project-A", case_id=id_) is None
+        assert list_cases(owner_id="owner-A", project_id="project-A") == []
+    assert not missing.exists()
+
+
+def test_first_and_repeated_get_and_listing_preserve_schema_and_history(tmp_path, monkeypatch):
+    path = _db(tmp_path, monkeypatch)
+    import app.persistence.acquisition_repository as repo
+    before = _db_state(path)
+    with closing(sqlite3.connect(path)) as conn:
+        assert not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='model_m6_acquisition_cases'"
+        ).fetchone()
+
+    def deny_ddl_on_read(_conn):
+        pytest.fail("M6 schema DDL must not be executed by GET")
+    monkeypatch.setattr(repo, "_table", deny_ddl_on_read)
+    id_ = str(uuid.uuid4())
+    for _ in range(4):
+        assert read_case(owner_id="owner-A", project_id="project-A", case_id=id_) is None
+        assert list_cases(owner_id="owner-A", project_id="project-A") == []
+        # Historical Run lookup remains independent from acquisition schema.
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as con:
+            assert con.execute(
+                "SELECT runtime_snapshot_id FROM model_run_history WHERE history_id='h-1'"
+            ).fetchone()[0] == "snapshot-123"
+    assert _db_state(path) == before
+
+
+def test_reads_after_save_do_not_touch_case_revisions_or_financial_rows(tmp_path, monkeypatch):
+    path = _db(tmp_path, monkeypatch)
+    entry = NS(history_id="h-1", runtime_snapshot_id="snapshot-123",
+               composite_hash="c"*64, last_runtime_scenario_id=None)
+    document = make_document(entry, terms())
+    case, revision = save_case(owner_id="owner-A", project_id="project-A",
+                               document=document)
+    before = _db_state(path)
+    with closing(sqlite3.connect(path)) as conn:
+        before_case = conn.execute("SELECT * FROM model_m6_acquisition_cases").fetchall()
+        before_revisions = conn.execute("SELECT * FROM model_m6_acquisition_revisions").fetchall()
+    import app.persistence.acquisition_repository as repo
+    monkeypatch.setattr(repo, "_table", lambda _conn: pytest.fail("DDL on GET"))
+    for _ in range(5):
+        loaded = read_case(owner_id="owner-A", project_id="project-A", case_id=case)
+        assert loaded["revision"] == revision
+        assert loaded["document"] == document
+        assert [x["case_id"] for x in list_cases(owner_id="owner-A", project_id="project-A")] == [case]
+        assert read_case(owner_id="owner-B", project_id="project-A", case_id=case) is None
+        assert list_cases(owner_id="owner-B", project_id="project-A") == []
+    assert _db_state(path) == before
+    with closing(sqlite3.connect(path)) as conn:
+        assert conn.execute("SELECT * FROM model_m6_acquisition_cases").fetchall() == before_case
+        assert conn.execute("SELECT * FROM model_m6_acquisition_revisions").fetchall() == before_revisions
+
+
+def test_failed_first_save_rolls_back_transactional_acquisition_ddl(tmp_path, monkeypatch):
+    path = _db(tmp_path, monkeypatch)
+    before = _db_state(path)
+    entry = NS(history_id="h-1", runtime_snapshot_id="snapshot-123",
+               composite_hash="c"*64, last_runtime_scenario_id=None)
+    doc = make_document(entry, terms())
+    with pytest.raises(AcquisitionCaseConflict, match="OWNER"):
+        save_case(owner_id="owner-B", project_id="project-A", document=doc)
+    assert _db_state(path) == before
+    assert list_cases(owner_id="owner-A", project_id="project-A") == []
+
+
+def test_all_case_read_connections_are_closed(tmp_path, monkeypatch):
+    path = _db(tmp_path, monkeypatch)
+    import app.persistence.acquisition_repository as repo
+    opened = []
+    closed = []
+    original = sqlite3.connect
+
+    class Tracked(sqlite3.Connection):
+        def close(self):
+            closed.append(id(self))
+            super().close()
+
+    def tracked_connect(*args, **kwargs):
+        kwargs["factory"] = Tracked
+        conn = original(*args, **kwargs)
+        opened.append(id(conn))
+        return conn
+
+    # Patch the module attribute, not global sqlite3.connect used by fixtures.
+    monkeypatch.setattr(repo, "sqlite3", NS(connect=tracked_connect, Row=sqlite3.Row))
+    for _ in range(3):
+        assert list_cases(owner_id="owner-A", project_id="project-A") == []
+        assert read_case(owner_id="owner-A", project_id="project-A",
+                         case_id=str(uuid.uuid4())) is None
+    assert len(opened) == 6
+    assert opened == closed
+    assert _db_state(path)[2][1][1][0][3] == "snapshot-123"
 
 
 def test_case_revision_cas_owner_protection_and_failed_rollback(tmp_path, monkeypatch):
