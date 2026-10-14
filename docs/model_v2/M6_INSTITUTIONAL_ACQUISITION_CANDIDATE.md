@@ -36,7 +36,7 @@ Transaction: **100% ordinary share acquisition**, cash purchase, no automatic re
 - Buyer paid purchase price and explicit fees/closing adjustment are closing-date cash outflows.
 - Buyer receives only net legal equity dividends after closing and funds source-proven subsequent legal equity calls. Existing sponsor contributions before closing are excluded.
 - SHL is an independent lender claim. M6 V1 excludes SHL lender rights and their cashflows from buyer ordinary equity. No automatic SHL acquisition, resale or refinancing.
-- Optional explicit exit proceeds only at an explicit postclosing date.
+- Optional explicit exit proceeds only at an explicit postclosing date **within the committed evidence horizon**. A closing date at/after the last committed receipt date is unsupported. Material dividend or capital-call events exactly on the closing date cause `CLOSING_DATE_ENTITLEMENT_ORDER_AMBIGUOUS` (no invented intraday ordering).
 - No assumed hidden capital calls, tax leakage, debt pay-off, release of restricted cash or WACC.
 - An enterprise/equity bridge, where configured, uses **EXPLICIT_USER_UNDERWRITING** inputs only and excludes restricted cash from free cash. The balance date must be the exact closing date.
 - Existing project cashflows remain independent of acquisition date. Buyer discounting uses dates after closing only (plus closing outflow). No reset of old sponsor funding.
@@ -44,7 +44,7 @@ Transaction: **100% ordinary share acquisition**, cash purchase, no automatic re
 ## Candidate numerical methodology
 - Buyer cashflow: negative equity purchase, fees and explicit signed closing adjustment at closing; after closing source-proven net dividends less actual equity calls, plus optional stated exit.
 - Date axis sorted, same-day components retained separately for correct MOIC.
-- XIRR: existing `robust_xirr`. Multiple sign alternations are conservatively unsupported, instead of presenting an ambiguous return.
+- XIRR: existing `robust_xirr`. Multiple sign alternations are conservatively unsupported, instead of presenting an ambiguous return. The buyer IRR is not Sponsor IRR.
 - NPV: existing `xnpv`, anchored to acquisition closing date, ACT/365, explicit user rate.
 - Bid ceiling: deterministic 100-iteration bisection of buyer XNPV at target IRR versus equity purchase price, only inside declared lower/upper price bounds. No extrapolation, fake closed-form financial equivalence, or artificial WACC.
 - Enterprise/equity: explicit enterprise assumption minus senior/debt-like/SHL liabilities plus unrestricted cash and separately signed underwriting adjustments. Restricted cash excluded.
