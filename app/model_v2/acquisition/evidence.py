@@ -60,6 +60,10 @@ def extract(g2c):
             "net_legal_dividend_keur": net,
             "shl_interest_keur": _number(p.shl_cash_interest_receipt_keur),
             "shl_principal_keur": _number(p.actual_shl_principal_paid_keur),
+            "legal_equity_contribution_keur": math.fsum(_number(getattr(p, key)) for key in (
+                "share_capital_contribution_keur", "share_premium_contribution_keur",
+                "other_committed_equity_contribution_keur", "additional_equity_contribution_keur")),
+            "shl_contribution_keur": _number(p.shl_cash_contribution_keur),
         })
     if not rows:
         raise AcquisitionEvidenceError("SOURCE_PERIODS_MISSING")
@@ -127,6 +131,7 @@ def validate(evidence, *, owner_id, project_id, snapshot_id, composite_hash, sce
             "period_index", "date", "gross_legal_dividend_keur",
             "dividend_wht_keur", "net_legal_dividend_keur",
             "shl_interest_keur", "shl_principal_keur",
+            "legal_equity_contribution_keur", "shl_contribution_keur",
         }:
             raise AcquisitionEvidenceError("EVIDENCE_PERIOD_INVALID")
         try:
@@ -141,6 +146,8 @@ def validate(evidence, *, owner_id, project_id, snapshot_id, composite_hash, sce
             "net_legal_dividend_keur"))
         _number(row["shl_interest_keur"])
         _number(row["shl_principal_keur"])
+        _number(row["legal_equity_contribution_keur"])
+        _number(row["shl_contribution_keur"])
         if abs(gross - wht - net) > TOL:
             raise AcquisitionEvidenceError("EVIDENCE_GROSS_NET_MISMATCH")
     project = evidence.get("project_cashflows")
