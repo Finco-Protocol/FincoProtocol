@@ -167,3 +167,44 @@ def test_non_bess_adaptation_is_unchanged_and_native_contract_is_still_required_
         technical = from_project_inputs(factory()).technical
         assert type(technical).__name__ == "TechnicalInput" and not getattr(technical, "bess_legacy_unsupported", False)
 
+
+
+def test_correction_b_trust_wiring_is_exact_and_fails_closed(monkeypatch):
+    import tests.m7_bess_successor_proposal as proposal
+    assert proposal.current_m7_successor_valid()
+    # every pinned governance file: an altered pin or a missing pin is never an authorization
+    for path in proposal.GOVERNANCE_PINS:
+        monkeypatch.setitem(proposal.GOVERNANCE_PINS, path, "0" * 40)
+        assert not proposal.current_m7_successor_valid(), path
+        monkeypatch.undo()
+        monkeypatch.delitem(proposal.GOVERNANCE_PINS, path)
+        assert not proposal.current_m7_successor_valid(), path
+        monkeypatch.undo()
+    monkeypatch.setattr(proposal, "GOVERNANCE_PINS", {})
+    assert not proposal.current_m7_successor_valid()                      # no pins -> closed
+
+
+def test_correction_b_csrf_inventory_rejects_unreviewed_and_removed_sites():
+    import copy
+    import tests.m7_bess_successor_proposal as proposal
+    facts = proposal.collect()
+    assert not proposal.violations(facts)
+    extra = copy.deepcopy(facts)
+    extra["current_sources"]["app/v2/rogue_router.py"] = "def x():\n    validate_csrf_token(1)\n"
+    assert proposal.violations(extra)
+    for route in proposal.CSRF_PROPOSAL:
+        removed = copy.deepcopy(facts)
+        removed["current_sources"][route] = removed["current_sources"][route].replace("validate_csrf_token(", "skip_validation(")
+        assert proposal.violations(removed), route
+
+
+def test_correction_b_financial_activation_and_freeze_gates_are_not_wired_to_the_proposal():
+    """The proposal never relaxes a frozen-namespace guard: those historical zero-diff controls stay failing/closed."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parent
+    for name in ("model_v2_governance.py", "finance_integrity_governance.py", "test_finance_integrity_governance.py",
+                 "test_wf07_revenue_governance.py", "test_ci_acceptance.py"):
+        assert "m7_bess_successor_proposal" not in (root / name).read_text(encoding="utf-8"), name
+    from app.workbook.bess_config import ACTIVATION_ENABLED
+    assert ACTIVATION_ENABLED is False

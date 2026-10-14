@@ -41,6 +41,9 @@ GOVERNANCE_PINS: dict[str, str] = {
     "tests/test_trust_readiness_registry.py": "26253b70b096c6a6e72df242aefa11a2168db73c",
     "tests/test_trust_readiness_controls.py": "47c8e7b37a467aae140741c8d775e59b5d664be5",
 }
+GOVERNANCE_REQUIRED = frozenset({
+    "tests/test_rc2_integration_manifest.py", "tests/test_trust_readiness_registry.py", "tests/test_trust_readiness_controls.py",
+})
 PROPOSAL_ONLY_PATHS = frozenset({
     "tests/test_rc2_integration_manifest.py",
     "tests/test_trust_readiness_registry.py",
@@ -174,6 +177,8 @@ def current_m7_successor_valid() -> bool:
     """True only while HEAD is exactly the reviewed M7 candidate + pinned governance corrections (fail closed)."""
     try:
         facts = collect()
+        if set(GOVERNANCE_PINS) != GOVERNANCE_REQUIRED:
+            return False
         for path, blob in GOVERNANCE_PINS.items():
             if facts["actual_blobs_extra"].get(path) != blob:
                 return False

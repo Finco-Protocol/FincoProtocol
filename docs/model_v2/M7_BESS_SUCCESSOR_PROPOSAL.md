@@ -218,3 +218,24 @@ of either infrastructure causality or a financial runtime regression.
    the original EV/Storage regression test is unchanged and remains RED.
 
 PR remains OPEN/DRAFT/unmerged. No deployment or self-approval.
+
+
+## Correction B (legacy Storage compatibility and Trust/RC-2 handling)
+
+Status: **STILL A PROPOSAL. FINANCIAL RELEASE NOT APPROVED. ACTIVATION FALSE.**
+
+* **Legacy Storage compatibility.** `from_project_inputs` no longer raises for `bess_enabled` without a native contract (the
+  EV/Storage reference depreciation metadata path is back to its historical behaviour). It returns a
+  `LegacyBessTechnicalInput` marker (`financial_engine/bess.py`); `run_operating_model` rejects it as its first statement with
+  `BESS_NATIVE_CONTRACT_REQUIRED`, and `classify_production_authority` still blocks promotion. Native contracts, hybrid and
+  duplicate-revenue rejection and the closed activation flag are unchanged. No economic policy was added or invented.
+* **Candidate content.** Three of the eleven protected blobs changed (`bess.py`, `project_inputs.py`, `orchestrator.py`). The
+  manifest and `tests/m7_bess_successor_proposal.py` repin them; the Correction B candidate commit is the pin `CANDIDATE`.
+  The manifest remains `CANDIDATE_REVIEW_ONLY`, `release_approved:false`.
+* **RC-2.** `tests/test_rc2_integration_manifest.py` evaluates RC-2 from the immutable checkpoint `6fc77de` (identical to the
+  M6 correction), so historical acceptance and the current candidate have separate evidence authorities.
+* **Trust / CSRF.** The two M7 routers are accepted in the CSRF inventory only while `current_m7_successor_valid()` holds:
+  exact blobs, exact scope, closed flags and the exact content of the three governance test files (`GOVERNANCE_PINS`).
+* **Not done, by design.** The historical financial frozen-namespace guards (zero-diff on `financial_engine/`, `finco_core/`
+  and related pins) are NOT relaxed, allow-listed or wired to this proposal. They stay failing until an independent
+  financial acceptance is cited. This is the pending decision.
