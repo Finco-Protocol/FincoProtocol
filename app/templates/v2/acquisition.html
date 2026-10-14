@@ -60,6 +60,15 @@
       </label>
       {% endfor %}
       </div>
+      <fieldset><legend>Explicit closing enterprise/equity bridge — optional, user-supplied underwriting assumptions</legend>
+        <p>Fill EVERY balance to enable the candidate bridge. These inputs are NOT derived FINCO balance-sheet figures. Closing date must match the case. DSRA / restricted cash remains excluded from unrestricted cash.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
+        {% for key in bridge_keys %}
+          <label style="display:flex;flex-direction:column">{{ key | replace('_',' ') }}
+          <input type="number" step="any" name="{{ key }}" value="{{ bridge[key] if bridge else '' }}"></label>
+        {% endfor %}
+        </div>
+      </fieldset>
       <p>Closing adjustment is an explicit, signed purchase-price adjustment, not an inferred debt/cash plug. Buyer IRR considers source-proven post-closing equity calls and net legal dividends; SHL interest and principal are excluded.</p>
       <button type="submit" data-testid="m6-save">Save underwriting case</button>
     </form>
@@ -67,7 +76,12 @@
   </section>
   <section data-testid="m6-equity-bridge">
     <h2>3. Enterprise → Equity bridge</h2>
-    <p>UNAVAILABLE until exact closing-date debt/cash evidence or explicit and separately identified closing balance assumptions are approved. DSRA/restricted cash is never free cash by default. WACC = AUTHORITY_MISSING.</p>
+    <p>WACC = AUTHORITY_MISSING. No company-calculated EV is inferred from Project NPV. Debt and cash must be evidenced at closing or labelled as assumptions. DSRA/restricted cash is not free cash.</p>
+    {% if bridge %}<p>EXPLICIT_USER_UNDERWRITING — closing date {{ bridge.balance_date }}. The financial bridge output remains {{ status }}.</p>
+      <table><thead><tr><th>Input assumption</th><th>Amount (kEUR)</th></tr></thead><tbody>
+      {% for key in bridge_keys %}<tr><td>{{ key | replace('_',' ') }}</td><td>{{ bridge[key] }}</td></tr>{% endfor %}
+      </tbody></table>
+    {% else %}<p>Closing bridge: UNAVAILABLE. No closing balance assumptions saved.</p>{% endif %}
   </section>
   <section data-testid="m6-buyer-returns">
     <h2>4. Buyer returns and bid ceiling</h2>
@@ -93,7 +107,11 @@
   </section>
   <section data-testid="m6-comparison">
     <h2>6. Case comparison</h2>
-    <p>Use the existing Run Comparison to inspect canonical project metrics. Acquisition comparisons remain source-bound and release-closed; different valuation dates or financial perspectives are NOT_COMPARABLE.</p>
+    <p>Comparison reuses the selected committed Run basis; no second financial matrix engine. A different source or closing date is NOT_COMPARABLE. Candidate returns are not released.</p>
+    <table><thead><tr><th>Case</th><th>Closing</th><th>Proposed price (kEUR)</th><th>Source/date compatibility</th></tr></thead>
+    <tbody>{% for c in comparison %}
+      <tr><td><a href="/v2/valuation-acquisition?project={{ project_code | urlencode }}&amp;case_id={{ c.id | urlencode }}">{{ c.id[:8] }}</a></td><td>{{ c.closing_date }}</td><td>{{ c.price }}</td><td>{{ c.status }}</td></tr>
+    {% else %}<tr><td colspan="4">No saved cases</td></tr>{% endfor %}</tbody></table>
     <a href="/v2/workbook/run-history?project={{ project_code | urlencode }}">Open Run History</a>
   </section>
 </main>
