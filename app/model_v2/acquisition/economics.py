@@ -107,7 +107,8 @@ def buyer_cashflows(evidence, terms: AcquisitionTerms, *, price_override=None):
         # Ordinary shareholder distributions only. SHL lender rights are NOT acquired.
         receipts = float(row["net_legal_dividend_keur"])
         equity_call = float(row["legal_equity_contribution_keur"])
-        flows.append((day, receipts - equity_call, "NET_DIVIDEND_LESS_COMMITTED_EQUITY_CALL"))
+        flows.append((day, receipts, "NET_LEGAL_DIVIDEND"))
+        flows.append((day, -equity_call, "SOURCE_PROVEN_EQUITY_CALL"))
     if terms.exit_date is not None:
         flows.append((terms.exit_date, float(terms.exit_proceeds_keur), "EXPLICIT_EQUITY_EXIT"))
     # Fold equal dates (end-of-period + exit) without silently changing the time axis.
@@ -153,11 +154,17 @@ def evaluate(evidence, terms: AcquisitionTerms):
     rows = buyer_cashflows(evidence, terms)
     dates = [date.fromisoformat(x["date"]) for x in rows]
     amounts = [x["amount_keur"] for x in rows]
-    irr = robust_xirr(amounts, dates) if any(v < 0 for v in amounts) and any(v > 0 for v in amounts) else None
+    signs = [1 if v > _EPS else -1 for v in amounts if abs(v) > _EPS]
+    transitions = sum(a != b for a, b in zip(signs, signs[1:]))
+    ambiguous = transitions > 1
+    irr = (robust_xirr(amounts, dates) if transitions == 1
+           and any(v < 0 for v in amounts) and any(v > 0 for v in amounts) else None)
     if irr is not None and not math.isfinite(irr):
         irr = None
-    invest = -math.fsum(v for v in amounts if v < 0)
-    received = math.fsum(v for v in amounts if v > 0)
+    # MOIC counts actual receipts and capital calls separately even on the SAME date.
+    components = [c["amount_keur"] for row in rows for c in row["components"]]
+    invest = -math.fsum(v for v in components if v < 0)
+    received = math.fsum(v for v in components if v > 0)
     moic = received / invest if invest > 0 else None
     npv = xnpv(terms.buyer_discount_rate, amounts, dates)
     if not math.isfinite(npv):
@@ -182,7 +189,7 @@ def evaluate(evidence, terms: AcquisitionTerms):
         ceiling, ceiling_status = (lo + hi) / 2, "ROOT_FOUND"
     return {"status": STATUS, "methodology_version": "M6_ACQUISITION_CANDIDATE_V1",
             "buyer_cashflows": rows, "buyer_irr": irr,
-            "buyer_irr_status": "AVAILABLE" if irr is not None else "NO_VALID_XIRR",
+            "buyer_irr_status": "AMBIGUOUS_XIRR_UNSUPPORTED" if ambiguous else ("AVAILABLE" if irr is not None else "NO_VALID_XIRR"),
             "buyer_moic": moic, "buyer_npv_keur": npv,
             "target_irr": terms.target_buyer_irr,
             "bid_ceiling_keur": ceiling, "bid_ceiling_status": ceiling_status,
