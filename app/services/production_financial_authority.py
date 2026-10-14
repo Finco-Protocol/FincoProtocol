@@ -166,6 +166,11 @@ def classify_production_authority(project_inputs) -> AuthorityDecision:
             ),
         )
 
+    if getattr(getattr(project_inputs, "technical", None), "bess_enabled", False):
+        from app.workbook.bess_config import ACTIVATION_ENABLED
+        if not ACTIVATION_ENABLED or not getattr(project_inputs.technical, "bess_native_config_json", ""):
+            return AuthorityDecision(ProductionAuthorityClassification.BLOCKED_BY_TYPED_INPUT_GAP,
+                                     "BESS_FINANCIAL_ACTIVATION_RELEASE_CLOSED", "Native standalone BESS authority requires independent release approval.")
     financing = project_inputs.financing
     if getattr(financing, "sponsor_funding_mode", None) is None or (
         getattr(financing, "gearing_basis_mode", None) is None

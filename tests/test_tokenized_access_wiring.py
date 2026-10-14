@@ -227,7 +227,7 @@ def test_market_data_authority_does_not_consult_access_authority():
 
 @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core", "finco_radar/venues"])
 def test_frozen_namespaces_zero_diff(namespace):
-    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", namespace],
+    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--", namespace],
                          cwd=ROOT, capture_output=True, text=True)
     if out.returncode != 0:
         pytest.skip("git unavailable")

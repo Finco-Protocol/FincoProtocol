@@ -220,6 +220,10 @@ def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
                              "reason": intel.cross_venue.reason}
                             if intel.cross_venue else None),
         }
+    # Additive, already-entitled canonical PR #183 distribution / persistence.
+    # The shared read model removes denied fields BEFORE serialization.
+    if result.get("relative_value") and "intelligence" in data:
+        data["intelligence"]["relative_value"] = _jsonify(result["relative_value"])
     # Existing crypto.api gate and Tokenized history/dislocation gates remain
     # the sole access authorities; no new endpoint and no request acquisition.
     # Additive versioned read-model field; historical, NEVER a current quote.

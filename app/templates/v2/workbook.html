@@ -6,6 +6,7 @@
   <title>{{ project_name }} — Workbook</title>
   <script src="/static/vendor/htmx.min.js"></script>
   <link rel="stylesheet" href="/static/css/workbook_v2.css">
+  <link rel="stylesheet" href="/static/css/model_bess_workspace.css">
   <link rel="stylesheet" href="/static/css/model_v2_run_history.css">
   <link rel="stylesheet" href="/static/css/model_v2_decision_support.css">
   <link rel="stylesheet" href="/static/css/model_v2_goal_seek.css">
@@ -13,6 +14,7 @@
   <link rel="stylesheet" href="/static/css/inputs_grid_v1.css">
   <link rel="stylesheet" href="/static/css/model_workspace_consolidation.css">
   <link rel="stylesheet" href="/static/css/model_diagnostics_v1.css">
+  <link rel="stylesheet" href="/static/css/model_diagnostics_v2.css">
 </head>
 <body>
   {# sessionStorage hydration: re-populates schedule data on load without re-run #}
@@ -295,10 +297,12 @@
   </div>{# v2-workspace-body #}
 
   <script src="/static/js/workbook_v2.js"></script>
+  <script src="/static/js/model_bess_workspace.js"></script>
   <script src="/static/js/investor_f4.js" defer></script>
   <script src="/static/js/model_smart_panel_v2.js"></script>
   <script src="/static/js/inputs_grid_v1.js"></script>
   <script src="/static/js/model_diagnostics_v1.js"></script>
+  <script src="/static/js/model_diagnostics_v2.js"></script>
 
   {# UI-2A: C1 spreadsheet interaction foundation — load order is fixed.
      swap-lifecycle loads before focus-manager so authoritative post-

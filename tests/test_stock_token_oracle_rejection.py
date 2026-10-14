@@ -187,7 +187,7 @@ class TestFrozen:
         # Branch-owned changes only (merge-base boundary). Exact released Model V2
         # engine authorities (pinned to their reviewed content) are exempt; every
         # other path in the namespace stays frozen.
-        from finance_integrity_governance import changed_paths_vs_main
+        from rc3_historical_anchor import changed_paths as changed_paths_vs_main
         from finance_integrity_governance import approved_frozen_path
         changed = [p for p in changed_paths_vs_main()
                    if p.startswith(namespace + "/") and not approved_frozen_path(p)]

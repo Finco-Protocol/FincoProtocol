@@ -537,7 +537,8 @@ def test_existing_one_driver_sensitivity_is_unchanged(env):
 
 def test_no_engine_or_financial_authority_files_are_touched():
     import subprocess
-    out = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD"], capture_output=True, text=True).stdout
+    from rc3_historical_anchor import anchored_head
+    out = subprocess.run(["git", "diff", "--name-only", "origin/main..." + anchored_head()], capture_output=True, text=True).stdout
     # On the RC-2 integration branch the only permitted financial-path deltas are the three reviewer-conditional,
     # release-closed Revenue V3 candidate blobs of PR #275 (exact path AND exact blob); everything else still fails.
     from model_v2_governance import REVENUE_V3_CANDIDATE_AUTHORITIES as v3

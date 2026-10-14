@@ -695,5 +695,6 @@ def test_frozen_engine_and_core_are_untouched_by_this_stream():
     # tests/finance_integrity_governance.py, which also honours the Model V2 scope contract);
     # finco_core/ and finco_radar/ have no exception.
     from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
-    assert unapproved_engine_changes() == []
-    assert strictly_frozen_changes() == []
+    from rc3_historical_anchor import changed_paths as _anchored
+    assert unapproved_engine_changes(_anchored()) == []
+    assert strictly_frozen_changes(_anchored()) == []

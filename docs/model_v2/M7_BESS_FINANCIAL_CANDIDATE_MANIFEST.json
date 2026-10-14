@@ -1,0 +1,18 @@
+{
+  "status": "CANDIDATE_REVIEW_ONLY",
+  "release_approved": false,
+  "base": "6fc77de98bc0562fb51efdbf96e1803a29b5b148",
+  "protected_blobs": {
+    "domain/bess/__init__.py": "1905167cfb38bebb69f5f8b24f4100adf2b71f3d",
+    "domain/bess/contracts.py": "1143dced2b27e3b7ed16754ccd3a17f6982d9f98",
+    "domain/bess/dispatch.py": "ff2a9d2be76c2b1be308c596c42e32fe4276a9bc",
+    "domain/bess/settlement.py": "e10829563e359f1766c6d8f98542e43107dac0dd",
+    "domain/bess/synthetic.py": "427ad4589f9726c07e7c3723c2ff7ceed68c38ae",
+    "finco_core/inputs/bess_native.py": "57ee798dbe4742c1b36acbfbc1412c90b172d3a2",
+    "financial_engine/bess.py": "a07873816d97240ae02af106cd31b2135ee63316",
+    "financial_engine/adapters/project_inputs.py": "14bd759a9958515a7796626f93c1bd2233d69150",
+    "financial_engine/orchestrator.py": "be7ac31c6c4fed43b5fd7ca49fe53bfd1cc54c03",
+    "app/run_integrity/evidence.py": "89faa2c9c3d4dfddb7b8a8096888f3aa7cf83610",
+    "app/run_integrity/checks.py": "25e4c3aeb25893694681b4f819c663d1e24ac3a1"
+  }
+}

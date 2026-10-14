@@ -750,8 +750,8 @@ class TestFrozenNamespaces:
         """RUN_CERTIFICATE_FROZEN_NAMESPACES_ZERO_DIFF: financial_engine namespace is ZERO DIFF."""
         # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
         # Opus Finance Integrity governance: allow-listed engine modules only.
-        from finance_integrity_governance import (
-            changed_paths_vs_main, strictly_frozen_changes, unapproved_engine_changes)
+        from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+        from rc3_historical_anchor import changed_paths as changed_paths_vs_main
         listed = [p for p in changed_paths_vs_main()
                   if p.startswith(("financial_engine/", "finco_core/", "finco_radar/"))]
         changed = unapproved_engine_changes(listed) + strictly_frozen_changes(listed)

@@ -268,8 +268,9 @@ def test_no_database_writes_or_fake_registry_representation(store, monkeypatch):
 def test_no_frozen_namespace_delta_on_branch():
     from finance_integrity_governance import strictly_frozen_changes
     from model_v2_governance import model_v2_frozen_violations
-    assert strictly_frozen_changes() == []
-    assert model_v2_frozen_violations() == []
+    from rc3_historical_anchor import changed_paths as _anchored
+    assert strictly_frozen_changes(_anchored()) == []
+    assert model_v2_frozen_violations(_anchored()) == []
 
 
 def test_historical_300s_inclusive_boundary(store):

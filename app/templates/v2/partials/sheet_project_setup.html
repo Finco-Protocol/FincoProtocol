@@ -22,6 +22,9 @@
 
 <div id="v2-sheet-project-setup" data-sheet="project_setup"
      data-fc-grid="project_setup" data-fc-scroll-container>
+  {% if is_bess|default(false) %}
+  <div hx-get="/v2/workbook/bess/inputs?project={{ project_code|urlencode }}" hx-trigger="load" hx-swap="innerHTML" data-testid="bess-inputs-loader"></div>
+  {% endif %}
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">

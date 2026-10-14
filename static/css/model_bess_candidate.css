@@ -1,0 +1,21 @@
+:root { --m7-border: #dce1e6; --m7-ink: #253239; --m7-surface: #fff; }
+body { margin: 0; font: 13px Arial, sans-serif; color: var(--m7-ink); background: var(--m7-surface); }
+.m7-header { display: flex; gap: 20px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--m7-border); background: #eef2f3; }
+.m7-workspace { box-sizing: border-box; max-width: 1360px; margin: 0 auto; padding: 20px; }
+h1 { font-size: 22px; } h2, legend { font-size: 16px; font-weight: 600; }
+.m7-boundary { border-left: 3px solid #a95612; background: #fdf5e9; padding: 12px; }
+fieldset, section { min-width: 0; margin: 18px 0; padding: 14px 0; border: 0; border-top: 1px solid var(--m7-border); }
+.m7-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); gap: 12px; }
+label { display: flex; flex-direction: column; gap: 4px; }
+input, select, button { box-sizing: border-box; min-height: 32px; padding: 5px 7px; border: 1px solid var(--m7-border); border-radius: 4px; background: var(--m7-surface); color: var(--m7-ink); font: inherit; }
+input, select { width: 100%; min-width: 0; } input[type=checkbox] { min-height: 18px; width: 18px; }
+button { cursor: pointer; } button:disabled { opacity: .5; cursor: not-allowed; }
+.m7-scroll { width: 100%; overflow: auto; }
+table { width: 100%; min-width: 1050px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+td, th { padding: 7px; border-bottom: 1px solid var(--m7-border); white-space: nowrap; text-align: right; }
+th { background: #eef2f3; font-size: 12px; } td:first-child, th:first-child { text-align: left; }
+td input { min-width: 95px; } td input[type=checkbox] { min-width: 18px; }
+dt { color: #52656c; } dd { margin: 4px 0; font-variant-numeric: tabular-nums; }
+.m7-fingerprint { overflow-wrap: anywhere; }
+[data-m7-error] { color: #ac241c; } [hidden] { display: none !important; }
+@media (prefers-color-scheme: dark) { :root { --m7-border: #454c50; --m7-ink: #e6eaec; --m7-surface: #202629; } .m7-header, th { background: #30383c; } .m7-boundary { background: #3d3427; } dt { color: #b5c0c5; } a { color: #80cabe; } }

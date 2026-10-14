@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
   <link rel="stylesheet" href="/static/css/finco-surface.css">
+  <link rel="stylesheet" href="/static/css/radar-monitor-v2.css">
 </head>
 <body class="radar">
 {% with proto_active_page="tokenized" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
@@ -96,6 +97,33 @@
   </ul>
 </div>
 {% else %}
+
+<section class="fs-section" data-testid="tm-monitor-v2" aria-label="Institutional monitoring workspace">
+  <h2>Market monitor · evidence-first</h2>
+  <div class="fs-kpis tm-monitor-summary" data-testid="tm-monitor-summary">
+    <div class="fs-kpi"><span class="k">Bounded monitored assets</span><div class="v">{{ monitor.monitored }}</div><div class="m">exact reviewed primary universe, up to 60</div></div>
+    <div class="fs-kpi"><span class="k">Proven current basis</span><div class="v">{{ monitor.current_basis }}</div><div class="m">two fresh compatible source prices</div></div>
+    <div class="fs-kpi"><span class="k">Eligible own-history</span><div class="v">{% if monitor.distribution is not none %}{{ monitor.distribution }}{% else %}Locked{% endif %}</div><div class="m">minimum 8 usable observations, 1h span</div></div>
+    <div class="fs-kpi"><span class="k">Current dislocations</span><div class="v">{% if monitor.current_dislocations is not none %}{{ monitor.current_dislocations }}{% else %}Locked{% endif %}</div><div class="m">threshold + fresh evidence only</div></div>
+    <div class="fs-kpi"><span class="k">Current basis unavailable</span><div class="v">{{ monitor.stale_unavailable }}</div><div class="m">stale / incompatible / missing</div></div>
+    <div class="fs-kpi"><span class="k">Deepstate historical proof</span><div class="v">{% if monitor.deepstate_historical is not none %}{{ monitor.deepstate_historical }}{% else %}Locked{% endif %}</div><div class="m">historical execution, never a live cross-venue quote</div></div>
+  </div>
+  <form class="tm-monitor-controls" method="get" action="/radar/tokenized-markets" data-testid="tm-monitor-filters">
+    <label for="tm-search">Underlying <input id="tm-search" type="search" name="q" maxlength="48" value="{{ monitor_query }}" placeholder="Search exact symbol or name"></label>
+    <label for="tm-filter">Evidence <select id="tm-filter" name="filter">
+      {% for key, label in [('all','All assets'), ('available','Current basis'), ('stale','Stale'), ('unavailable','Basis unavailable'), ('dislocations','Current dislocations'), ('premium','Current premium'), ('discount','Current discount'), ('distribution','History eligible'), ('deepstate','Deepstate historical')] %}
+      <option value="{{ key }}" {% if monitor_filter == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></label>
+    <label for="tm-sort">Sort <select id="tm-sort" name="sort">
+      {% for key, label in [('priority','Current dislocation priority'), ('basis_abs','Highest absolute current basis'), ('percentile','Highest eligible percentile'), ('duration','Longest proven dislocation'), ('symbol','Symbol A–Z')] %}
+      <option value="{{ key }}" {% if monitor_sort == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></label>
+    <button type="submit">Apply</button>
+    <a href="/radar/tokenized-markets">Reset</a>
+  </form>
+  <p class="fs-note">Sorts are deterministic and apply only to disclosed values. Missing, stale or entitlement-denied metrics are never treated as zero or as current observations.</p>
+</section>
+
 {% if operational.coverage.priced_now == 0 %}
 <section class="fs-panel fs-empty" data-testid="tm-empty">
   <h2>{{ operational.coverage.live_eligible }} reviewed assets ready for live collection</h2>
@@ -120,46 +148,69 @@
   <p class="fs-note">The market table appears automatically once canonical source-observed market evidence is persisted.
     Page loads never call providers.</p>
 </section>
-{% else %}
-<div class="fs-table-wrap" data-testid="tokenized-markets-table">
-  <table class="fs-table">
+{% endif %}
+{% if operational.coverage.priced_now != 0 or (rows | selectattr('best_price') | list | length) > 0 %}
+<div class="fs-table-wrap tm-monitor-table" data-testid="tokenized-markets-table">
+  <table class="fs-table" aria-label="Current canonical tokenized market and historical intelligence">
     <thead><tr>
-      <th>Underlying</th><th class="num">Reference</th><th class="num">Token price / venue</th>
-      <th class="num">Basis</th><th class="num">24h change</th><th>Freshness</th><th>State</th>
+      <th>Underlying</th><th class="num">Token market</th><th class="num">Official reference</th>
+      <th class="num">Current basis</th><th class="num">24h / 7d change</th>
+      <th class="num">Own-history</th><th>Current dislocation / duration</th>
+      <th>Deepstate historical</th><th>Source / evidence age</th><th>State</th>
     </tr></thead>
     <tbody>
     {% for row in rows %}
       <tr data-testid="tm-row-{{ row.canonical_asset_id }}">
-        <td>
-          <a href="/radar/tokenized-markets/{{ row.canonical_asset_id }}">{{ row.canonical_asset_id }}</a>
-          {% if row.underlying_name %}<span class="fs-sub">{{ row.underlying_name }}</span>{% endif %}
-        </td>
-        <td class="num">
-          {% if row.reference_price %}${{ row.reference_price }}{% else %}<span class="fs-missing">—</span>{% endif %}
-          <span class="fs-sub">{{ row.reference_state }}</span>
-        </td>
-        <td class="num">
-          {% if row.best_price %}${{ row.best_price }}<span class="fs-sub">{{ row.best_venue }}</span>{% else %}<span class="fs-missing" data-testid="tm-unavailable-{{ row.canonical_asset_id }}">identity available · market unavailable</span>{% endif %}
-        </td>
-        <td class="num">
-          {% if row.best_basis_bps is not none %}{% set bps = row.best_basis_bps | float %}{% if bps > 0 %}+{% elif bps < 0 %}{% else %}±{% endif %}{{ bps | abs | int }} bp{% else %}<span class="fs-missing">—</span>{% endif %}
-        </td>
+        <td><a href="/radar/tokenized-markets/{{ row.canonical_asset_id }}"><strong>{{ row.canonical_asset_id }}</strong></a>
+          {% if row.underlying_name %}<span class="fs-sub">{{ row.underlying_name }}</span>{% endif %}</td>
+        <td class="num">{% if row.best_price is not none %}${{ row.best_price }}<span class="fs-sub">{{ row.best_venue }}</span>
+          {% else %}<span class="fs-missing" data-testid="tm-unavailable-{{ row.canonical_asset_id }}">market unavailable</span>{% endif %}</td>
+        <td class="num">{% if row.reference_price is not none %}${{ row.reference_price }}{% else %}—{% endif %}
+          <span class="fs-sub">{{ row.reference_state or 'UNAVAILABLE' }}</span></td>
+        <td class="num" data-testid="tm-current-basis-{{ row.canonical_asset_id }}">
+          {% if row.current_basis_bps is not none %}{{ row.current_basis_bps }} bp
+          <span class="fs-sub">{{ row.basis_direction }}</span>
+          {% else %}<span class="fs-missing">— (not current)</span>{% endif %}</td>
         <td class="num" data-testid="tm-basis-24h-{{ row.canonical_asset_id }}">
-          {% if access and not access.history.allowed %}<span class="fs-missing" data-testid="tm-locked-history">locked</span>{% elif row.basis_change_24h_bps is not none %}{% set d24 = row.basis_change_24h_bps | float %}{% if d24 > 0 %}+{% endif %}{{ d24 | int }} bp{% else %}<span class="fs-missing">—</span>{% endif %}
-        </td>
-        <td><span class="fs-sub">{{ row.evaluation_time[:16] }} UTC</span></td>
-        <td>
-          <span class="fs-badge {% if row.overall_state == 'FRESH' %}fs-badge--ok{% elif row.overall_state in ('PARTIAL', 'STALE') %}fs-badge--warn{% endif %}"
-                data-testid="tm-state-{{ row.canonical_asset_id }}">{{ row.overall_state }}</span>
-        </td>
+          {% if access and not access.history.allowed %}<span class="fs-missing" data-testid="tm-locked-history">locked</span>
+          {% else %}
+            {% if row.basis_change_24h_bps is not none %}{{ row.basis_change_24h_bps }} bp{% else %}—{% endif %}
+            <span class="fs-sub">7d {% if row.basis_change_7d_bps is not none %}{{ row.basis_change_7d_bps }} bp{% else %}—{% endif %}</span>
+          {% endif %}</td>
+        <td class="num" data-testid="tm-distribution-{{ row.canonical_asset_id }}">
+          {% if access and not access.history.allowed %}locked
+          {% elif row.historical and row.historical.historical_median_basis_bps is not none %}
+            median {{ row.historical.historical_median_basis_bps }} bp
+            <span class="fs-sub">percentile {% if row.historical.current_basis_percentile is not none %}{{ row.historical.current_basis_percentile }}%{% else %}—{% endif %}</span>
+            <span class="fs-sub">{{ row.historical.state }} · n={{ row.historical.usable_observation_count }}</span>
+          {% else %}—{% endif %}</td>
+        <td data-testid="tm-persistence-{{ row.canonical_asset_id }}">
+          {% if access and not access.dislocation.allowed %}locked
+          {% elif row.persistence %}
+            <span class="fs-badge {% if row.current_dislocation %}fs-badge--warn{% endif %}">{{ row.persistence.state }}</span>
+            {% if row.persistence.duration_seconds is not none %}<span class="fs-sub">{{ row.persistence.duration_seconds }}s proven</span>
+            {% elif row.persistence.start_state == 'PREHISTORY_UNAVAILABLE' %}<span class="fs-sub">Start unknown / prehistory</span>
+            {% endif %}
+          {% else %}—{% endif %}</td>
+        <td data-testid="tm-deepstate-{{ row.canonical_asset_id }}">
+          {% if not access.history.allowed or not access.dislocation.allowed %}locked
+          {% elif row.deepstate_state %}{{ row.deepstate_state }}<span class="fs-sub">HISTORICAL ONLY</span>
+          {% else %}—{% endif %}</td>
+        <td>{% if row.source_timestamp %}<span class="fs-sub">Source {{ row.source_timestamp[:19] }} UTC</span>{% else %}—{% endif %}
+          {% if row.evidence_age_seconds is not none %}<span class="fs-sub">Age {{ row.evidence_age_seconds }}s</span>{% endif %}
+          {% if row.collected_at %}<span class="fs-sub">Collected {{ row.collected_at[:19] }} UTC</span>{% endif %}</td>
+        <td><span class="fs-badge {% if row.current_basis_bps is not none %}fs-badge--ok{% else %}fs-badge--warn{% endif %}"
+          data-testid="tm-state-{{ row.canonical_asset_id }}">{{ row.evidence_state }}</span></td>
       </tr>
+    {% else %}
+      <tr><td colspan="10" class="fs-note" data-testid="tm-filter-empty">No monitored assets match the selected evidence filter.</td></tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+{% endif %}
 {% if not history_available %}
 <p class="fs-note" data-testid="tm-history-note">No history is stored yet. History appears only after the bounded collector persists source-observed evidence.</p>
-{% endif %}
 {% endif %}
 {% endif %}
 

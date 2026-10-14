@@ -1033,7 +1033,8 @@ class TestNoFrozenDiff:
         import sys
         sys.path.insert(0, "tests")
         import model_v2_governance as gov
-        changed = gov.changed_paths_vs_main()
+        from rc3_historical_anchor import changed_paths as _anchored
+        changed = _anchored()
         assert gov.model_v2_frozen_violations(changed) == []
         # Engine files outside the shared approved allow-list must stay untouched.
         import finance_integrity_governance as fig

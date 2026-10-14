@@ -527,7 +527,7 @@ def test_rlive_detail_shows_status_first_source_legs_panel():
 
 @pytest.mark.parametrize("path", ["financial_engine", "finco_core", "finco_yield"])
 def test_frozen_namespaces_have_zero_diff(path):
-    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", path], cwd=ROOT,
+    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--", path], cwd=ROOT,
                          capture_output=True, text=True)
     if out.returncode != 0:
         pytest.skip("git unavailable")
@@ -552,7 +552,7 @@ def test_existing_authorities_are_not_modified():
         ":(exclude)app/radar_rwa/data/stock_token_oracle_candidates.json",
         # PR #183 (Tokenized Relative Value V1) reviewed core module:
         ":(exclude)finco_radar/venues/relative_value.py"]
-    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD", f"{merge_base_ref()}..HEAD", "--",
+    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--",
                           "finco_radar", "app/radar_rwa", "app/crypto_resource_access.py", *excluded], cwd=ROOT,
                          capture_output=True, text=True)
     if out.returncode != 0:

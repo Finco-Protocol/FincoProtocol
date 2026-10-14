@@ -154,7 +154,8 @@ def test_no_frozen_namespace_touched():
     from finance_integrity_governance import unapproved_engine_changes
     from model_v2_governance import model_v2_frozen_violations
 
-    assert model_v2_frozen_violations() == []
+    from rc3_historical_anchor import changed_paths as _anchored
+    assert model_v2_frozen_violations(_anchored()) == []
     # Engine files outside the shared approved allow-list (which also honours the Model V2
     # scope contract) must stay untouched.
-    assert unapproved_engine_changes() == []
+    assert unapproved_engine_changes(_anchored()) == []

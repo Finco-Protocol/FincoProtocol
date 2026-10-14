@@ -1,0 +1,13 @@
+.m7-integrated { min-width: 0; padding: 12px; }
+.m7-integrated fieldset { min-width: 0; border: 0; border-top: 1px solid var(--wb-border, #c9d1d5); margin: 12px 0; padding: 12px 0; }
+.m7-integrated .m7-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 10px; }
+.m7-integrated label { display: flex; flex-direction: column; gap: 4px; }
+.m7-integrated input, .m7-integrated textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 6px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--wb-border, #c9d1d5); }
+.m7-integrated input[type=checkbox] { width: 18px; }
+.m7-integrated textarea { font-family: monospace; }
+.m7-integrated .m7-scroll { overflow: auto; max-width: 100%; }
+.m7-integrated table { width: 100%; min-width: 1200px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.m7-integrated td, .m7-integrated th { padding: 6px; text-align: right; white-space: nowrap; }
+.m7-integrated td input { min-width: 95px; }
+.m7-integrated td input[type=checkbox] { min-width: 18px; }
+.m7-integrated button { min-height: 32px; }

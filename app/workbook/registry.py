@@ -220,7 +220,14 @@ _ps_technical = _section("technical", "Technical Parameters", _PS, order=1, fiel
        export_mapping="Horizon (years)", order=5),
 ])
 
-_SHEET_PROJECT_SETUP = _sheet(_PS, "Project Setup", [_ps_identity, _ps_technical], icon="⚙️", order=0)
+_ps_bess = _section("bess", "Standalone Battery", _PS, order=2, fields=[
+    _f("project_setup.bess.configuration", "Native BESS configuration", "bess_native_config_json",
+       FieldType.TEXT, _PS, "bess", kind=FieldKind.INPUT, persisted=True,
+       source_of_truth=SourceOfTruth.INPUT_SET, engine_path="technical.bess_native_config_json",
+       scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+       editable=True, description="Versioned standalone hourly BESS assumptions; financial activation requires independent review.")
+])
+_SHEET_PROJECT_SETUP = _sheet(_PS, "Project Setup", [_ps_identity, _ps_technical, _ps_bess], icon="⚙️", order=0)
 
 
 # ---------------------------------------------------------------------------

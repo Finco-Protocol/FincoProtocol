@@ -1,0 +1,22 @@
+/* R4 Tokenized Markets V2 — presentation only, no client-side authority. */
+.tm-monitor-summary { margin-top: .75rem; }
+.tm-monitor-controls { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; margin: 1rem 0; }
+.tm-monitor-controls label { display: flex; flex-direction: column; gap: .3rem; font-size: .78rem; font-weight: 600; color: var(--muted, #64748b); }
+.tm-monitor-controls input, .tm-monitor-controls select {
+  min-height: 36px; min-width: 155px; max-width: 260px; border: 1px solid #94a3b866; border-radius: 6px;
+  padding: .35rem .55rem; color: inherit; background: var(--surface, transparent); font: inherit;
+}
+.tm-monitor-controls button { min-height: 36px; border: 1px solid #64748b; border-radius: 6px; padding: .35rem .8rem; cursor: pointer; }
+.tm-monitor-controls a { font-size: .82rem; padding: .4rem .2rem; }
+.tm-monitor-table { overflow-x: auto; }
+.tm-monitor-table .fs-table { min-width: 1300px; font-variant-numeric: tabular-nums; }
+.tm-monitor-table .fs-table th { white-space: nowrap; text-align: left; }
+.tm-monitor-table .fs-table th.num, .tm-monitor-table .fs-table td.num { text-align: right; }
+.tm-monitor-table .fs-sub { display: block; font-size: .73rem; font-weight: normal; overflow-wrap: anywhere; }
+.tm-evidence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .5rem 1rem; padding: .7rem 0; font-variant-numeric: tabular-nums; }
+.tm-detail-relative { margin-top: 1rem; }
+[data-testid="tmd-deepstate-evidence"] .mono { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .tm-monitor-controls { align-items: stretch; }
+  .tm-monitor-controls label, .tm-monitor-controls input, .tm-monitor-controls select { width: 100%; max-width: none; }
+}

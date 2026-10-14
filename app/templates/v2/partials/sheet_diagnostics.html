@@ -38,6 +38,21 @@
   <p>Run Integrity: <strong>{{ d.integrity.overall }}</strong> · Quality advisory: <strong>{{ d.score.score_display or 'NOT SCORED' }}</strong> · Weighted coverage: {{ number(d.score.coverage_weighted_pct, '%') }}% · Blocking: {{ d.blocking_count }}</p>
   <p data-md-counts>{{ d.score.counts.fail }} FAIL · {{ d.score.counts.warning }} WARNING · {{ d.score.counts.pass }} PASS · {{ d.score.counts.unavailable }} UNAVAILABLE · {{ d.score.counts.not_applicable }} NOT_APPLICABLE</p>
   <p class="md-note">Project thresholds are not verified contractual covenants. Quality, Integrity and period diagnostics are separate scopes, not independent asset verification.</p>
+  {% if d.v2 and d.v2.heatmap %}
+  <section class="md2-section" data-md2 aria-label="Period risk overview">
+    <h2>Period risk heatmap</h2>
+    <p class="md-note">{{ d.v2.heatmap.rules }} Axis: {{ d.v2.heatmap.axis }}. Counts are proven period findings only; unavailable evidence is shown separately and is never a pass.</p>
+    <div class="md2-scroll" tabindex="0" aria-label="Period risk heatmap timeline">
+      <table class="md2-matrix md2-heat"><thead><tr><th scope="col">Group</th>{% for c in d.v2.heatmap.cells %}<th scope="col" title="{{ c.date or 'DATE_UNAVAILABLE' }}">{{ c.label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      <tr><th scope="row">All groups<small>fail · warn · unavailable</small></th>{% for c in d.v2.heatmap.cells %}<td><button type="button" class="md-cell md2-heat-cell {% if c.proven_fail %}md-fail{% elif c.warning %}md-warning{% elif c.unavailable %}md-unavailable{% else %}md-pass{% endif %}" data-md2-period="{{ c.index }}" aria-label="{{ c.label }}: {{ c.proven_fail }} failed, {{ c.warning }} warnings, {{ c.unavailable }} unavailable of {{ c.applicable }} applicable checks{% if c.highest %}; highest severity {{ c.highest }}{% endif %}">{% if c.proven_fail %}✕{{ c.proven_fail }}{% elif c.warning %}!{{ c.warning }}{% elif c.unavailable %}?{{ c.unavailable }}{% else %}✓{% endif %}</button></td>{% endfor %}</tr>
+      {% for group in d.v2.heatmap.groups %}<tr data-md2-group="{{ group }}"><th scope="row">{{ group }}</th>{% for c in d.v2.heatmap.cells %}{% set g = c.groups[group] %}<td class="md-{{ 'fail' if g.fail else ('warning' if g.warning else ('unavailable' if g.unavailable else ('pass' if g.pass else 'not_applicable'))) }}">{% if g.fail %}✕{{ g.fail }}{% elif g.warning %}!{{ g.warning }}{% elif g.unavailable %}?{{ g.unavailable }}{% elif g.pass %}✓{% else %}·{% endif %}</td>{% endfor %}</tr>{% endfor %}
+      </tbody></table></div>
+    <p class="md-note">✕ proven failed checks · ! warnings · ? unavailable evidence · ✓ all evaluated checks passed · · no evaluated check in this group. Select a period for its checks.</p>
+    <div data-md2-period-detail hidden tabindex="-1" aria-live="polite"></div>
+    {% if d.v2.heatmap.global_findings %}<h3>Global / aggregate findings (not attributed to a period)</h3><ul data-md2-globals>{% for g in d.v2.heatmap.global_findings %}<li><button type="button" data-md-select="{{ g.check_id }}">{{ g.check_id }} · {{ g.title }}</button> · {{ g.status }} · {{ g.severity }} — {{ g.note }}</li>{% endfor %}</ul>{% endif %}
+  </section>
+  {% endif %}
   <div class="md-filters">
     <label>Status <select data-md-status><option value="">All checks</option>{% for status in ['FAIL','WARNING','PASS','UNAVAILABLE','NOT_APPLICABLE'] %}<option>{{ status }}</option>{% endfor %}</select></label>
     <label>Category <select data-md-category><option value="">All categories</option>{% for category in d.checks | map(attribute='category') | unique %}<option>{{ category }}</option>{% endfor %}</select></label>
@@ -57,6 +72,53 @@
     </table></div>
   </details>{% endfor %}
   <p class="md-note">✓ PASS · ✕ FAIL · ? UNAVAILABLE · N/A NOT_APPLICABLE · Σ AGGREGATE_ONLY · — NOT_PERIODIC. A cumulative cell includes continuity and all earlier debt periods. Global prerequisites remain visible in details.</p>
+  {% if d.v2 and d.v2.advanced_checks %}
+  <details class="md-category md2-section" open data-md2-advanced><summary>Advanced financial checks (DX) — additive, not part of the Quality score</summary>
+    <p class="md-note">{{ d.v2.advanced_summary.note }} PASS means every evaluated period satisfied the stated identity; periods marked ? are unevaluated, never passed. Zero is a committed value; missing is UNAVAILABLE.</p>
+    <div class="md2-scroll" tabindex="0" aria-label="Advanced checks timeline">
+    <table class="md2-matrix"><thead><tr><th scope="col">Check</th><th scope="col">Overall</th><th scope="col">Coverage</th><th scope="col">Worst residual</th>{% for p in d.columns %}<th scope="col" title="{{ p.date or 'DATE_UNAVAILABLE' }}">{{ p.label }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for c in d.v2.advanced_checks %}<tr data-md2-row data-check-id="{{ c.check_id }}" data-status="{{ c.status }}">
+      <th scope="row"><button type="button" data-md2-select="{{ c.check_id }}">{{ c.title }}<small>{{ c.check_id }} · {{ c.family }} · {{ c.severity }} · {{ c.classification }}</small></button></th>
+      <td><span class="md-status md-{{ c.status | lower }}">{{ c.status }}</span>{% if c.reason_code %}<small>{{ c.reason_code }}</small>{% endif %}</td>
+      <td>{{ c.coverage.evaluated_periods }} / {{ c.coverage.applicable_periods }}{% if c.coverage.applicable_periods and not c.coverage.complete %} · partial{% endif %}</td>
+      <td>{{ number(c.measured_value, 'kEUR') }}</td>
+      {% for a in c.aligned %}<td>{% if a.status == 'NOT_IN_SCOPE' %}<span class="md-not_applicable" title="No evidence scope for this check in this period">·</span>{% else %}<button type="button" class="md-cell md-{{ a.status | lower }}" data-md2-select="{{ c.check_id }}" data-md2-period="{{ a.period_index }}" aria-label="{{ c.title }} · P{{ a.period_index }} · {{ a.status }}" title="{{ a.status }} · {{ a.scope }} · {{ a.reason or 'Evaluated' }}">{{ {'PASS':'✓','FAIL':'✕','WARNING':'!','NOT_APPLICABLE':'N/A','UNAVAILABLE':'?'}.get(a.status, a.status) }}</button>{% endif %}</td>{% endfor %}
+    </tr>{% endfor %}</tbody></table></div>
+    <section class="md-detail md2-detail" data-md2-detail hidden aria-label="Selected advanced check evidence" tabindex="-1"><h2 data-md2-detail-title></h2><dl data-md2-detail-facts></dl><div data-md2-components></div><div data-md2-rootcause></div></section>
+  </details>
+  <details class="md2-section" data-md2-bankability open><summary>Bankability &amp; covenant monitoring (committed Run {{ d.identity.snapshot_id or 'UNAVAILABLE' }})</summary>
+    {% set b = d.v2.bankability %}
+    <p class="md-note">{{ b.disclosure }}</p>
+    <table class="md2-matrix"><thead><tr><th>Threshold</th><th>Value</th><th>Authority class</th><th>Source</th><th>Note</th></tr></thead><tbody>
+    {% for t in b.thresholds %}<tr><th scope="row">{{ t.subject }}</th><td>{{ number(t.value, 'ratio') if t.value is not none else 'NOT SOURCE-PROVEN' }}</td><td><span class="md-status">{{ t.class }}</span></td><td>{{ t.source }}</td><td>{{ t.note }}</td></tr>{% endfor %}</tbody></table>
+    <p>Missing contractual authorities: {% if b.missing_contractual_authorities %}{{ b.missing_contractual_authorities | join(' · ') }}{% else %}none{% endif %}.</p>
+    {% if b.min_dscr_headroom %}<p data-md2-min-headroom>Smallest measured DSCR headroom: {{ number(b.min_dscr_headroom.headroom_abs, 'ratio') }}x ({{ number(b.min_dscr_headroom.headroom_pct * 100 if b.min_dscr_headroom.headroom_pct is not none else none, '%') }}%) against <strong>{{ b.min_dscr_headroom.kind }}</strong> ({{ b.min_dscr_headroom.class }}) = {{ number(b.min_dscr_headroom.threshold, 'ratio') }}x in P{{ b.min_dscr_headroom.period_index }} {{ b.min_dscr_headroom.date or '' }}; measured DSCR {{ number(b.min_dscr_headroom.dscr, 'ratio') }}x.</p>{% else %}<p>No measured DSCR headroom is available: no threshold of any class could be tested.</p>{% endif %}
+    <p>Reserve: regime <strong>{{ b.reserve.regime }}</strong> — {{ b.reserve.note }} · LLCR: {{ number(b.llcr.measured_min, 'ratio') if b.llcr.measured_min is not none else 'UNAVAILABLE' }} · {{ b.llcr.by_period }}</p>
+    <h3>Periods at risk</h3>
+    {% if b.periods_at_risk %}<ul data-md2-at-risk>{% for r in b.periods_at_risk %}<li><button type="button" data-md2-period="{{ r.period_index }}">P{{ r.period_index }} {{ r.date or '' }}</button> — {{ r.reasons | join('; ') }}</li>{% endfor %}</ul>{% else %}<p data-md2-at-risk>No period is below a tested threshold, in debt-service shortfall or flagged lock-up in the committed evidence. This is not a covenant compliance statement.</p>{% endif %}
+    <p>Debt maturity (canonical terminal state): {{ b.debt_maturity.status if b.debt_maturity else 'UNAVAILABLE' }} · Sponsor distributions: {{ number(b.sponsor_distributions.total_legal_equity_distributions_keur, 'kEUR') }} kEUR · lock-up periods: {{ b.sponsor_distributions.lockup_periods }}</p>
+  </details>
+  <details class="md2-section" data-md2-compare open><summary>Diagnostics Run comparison (committed Runs from Run History)</summary>
+    {% set rc = d.v2.run_comparison %}
+    {% if rc and rc.available %}
+    <p class="md-note">{{ rc.rules }}</p>
+    <label>Compare Run A <select data-md2-compare-select>{% for cand in rc.candidates %}<option value="{{ cand.run_a.history_id }}">{{ cand.run_a.ran_at }} · {{ cand.run_a.scenario_name or 'Base Case' }} · {{ cand.run_a.snapshot_id }}</option>{% endfor %}</select></label>
+    <p>against Run B (Last Run): {{ rc.run_b.ran_at }} · {{ rc.run_b.snapshot_id }} · {{ rc.run_b.composite_hash }}</p>
+    {% for cand in rc.candidates %}
+    <div data-md2-compare-run="{{ cand.run_a.history_id }}" {% if not loop.first %}hidden{% endif %}>
+      <p data-md2-compare-counts>{% for k, v in cand.counts.items() | sort %}{{ k }}: {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+      <p>Run A identity: {{ cand.run_a.composite_hash }} · engine {{ cand.run_a.engine_version or 'UNAVAILABLE' }}</p>
+      <div class="md2-scroll" tabindex="0" aria-label="Run comparison"><table class="md2-matrix"><thead><tr><th>Check</th><th>Run A status</th><th>Run A residual</th><th>Run B status</th><th>Run B residual</th><th>Change</th><th>Classification</th></tr></thead><tbody>
+      {% for r in cand.rows %}<tr data-md2-compare-row data-classification="{{ r.classification }}"><th scope="row">{{ r.check_id }}</th><td>{{ r.run_a.status if r.run_a else 'NOT_EVALUATED' }}</td><td>{{ number(r.run_a.residual if r.run_a else none) }}</td><td>{{ r.run_b.status if r.run_b else 'NOT_EVALUATED' }}</td><td>{{ number(r.run_b.residual if r.run_b else none) }}</td><td>{{ number(r.residual_change) }}</td><td><strong>{{ r.classification }}</strong>{% if r.reason %}<small> {{ r.reason }}</small>{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>
+    </div>{% endfor %}
+    {% else %}<p role="status" data-md2-compare-unavailable>Run comparison unavailable: {{ rc.reason if rc else 'UNAVAILABLE' }}. A comparison needs at least two genuine committed Runs; nothing is inferred.</p>{% endif %}
+  </details>
+  <details class="md2-section" data-md2-inventory><summary>Check evidence inventory (source → period → validator → tolerance → status → gap)</summary>
+    <div class="md2-scroll" tabindex="0"><table class="md2-matrix"><thead><tr><th>Check</th><th>Family</th><th>Source</th><th>Period</th><th>Validator</th><th>Tolerance</th><th>Classification</th><th>Evidence gap</th></tr></thead><tbody>
+    {% for r in d.v2.inventory %}<tr><th scope="row">{{ r.check_id }}</th><td>{{ r.family }}</td><td>{{ r.source }}</td><td>{{ r.financial_period }}</td><td>{{ r.validator }}</td><td>{{ r.tolerance }}</td><td>{{ r.classification }}</td><td>{{ r.evidence_gap }}</td></tr>{% endfor %}</tbody></table></div>
+  </details>
+  {% elif d.v2 %}<p role="status">Diagnostics V2 evidence is UNAVAILABLE for this Run; V1 diagnostics above are unaffected.</p>{% endif %}
   <section class="md-detail" data-md-detail hidden aria-label="Selected check evidence" tabindex="-1">
     <h2 data-md-detail-title></h2><dl data-md-detail-facts></dl>
     <button type="button" data-md-schedule>Open authoritative schedule</button>
