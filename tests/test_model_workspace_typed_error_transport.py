@@ -55,6 +55,21 @@ class TestTriggerHelper:
         payload = self._payload(_add_field_error_trigger(self._resp(), "f", "m", bogus))
         assert payload["error_class"] is None
 
+    def test_ordinary_events_omit_the_conflict_key_entirely(self):
+        from app.v2.router import _add_field_error_trigger
+        from app.workbook.update_service import FieldErrorClass
+        for args in ((), (FieldErrorClass.INVALID,)):
+            payload = self._payload(_add_field_error_trigger(self._resp(), "f", "m", *args))
+            assert set(payload) == {"field_id", "message", "error_class"}
+        for flag in (False, None, 1, "yes"):                                      # only a literal True can add the key
+            payload = self._payload(_add_field_error_trigger(self._resp(), "f", "m", conflict=flag))
+            assert "conflict" not in payload
+
+    def test_a_stale_cas_rejection_adds_exactly_one_extra_property(self):
+        from app.v2.router import _add_field_error_trigger
+        payload = self._payload(_add_field_error_trigger(self._resp(), "f.id", "text", conflict=True))
+        assert payload == {"field_id": "f.id", "message": "text", "error_class": None, "conflict": True}
+
     def test_payload_has_exactly_three_keys_and_no_internals(self):
         from app.v2.router import _add_field_error_trigger
         from app.workbook.update_service import FieldErrorClass
@@ -68,9 +83,16 @@ class TestTriggerHelper:
         assert len(handlers) == 2
         for body in handlers:
             assert "exc.error_class" in body
-        # every other emitter stays untyped
-        untyped = re.findall(r"_add_field_error_trigger\(resp, field_id, (?:msg|str\(exc\))\)", ROUTER)
+        # every other emitter stays untyped; only the stale-CAS rejection may add the explicit conflict marker
+        untyped = re.findall(r"_add_field_error_trigger\(resp, field_id, (?:msg|str\(exc\))(, conflict=True)?\)", ROUTER)
         assert len(untyped) == 2     # protected + stale on the general path
+        assert sum(bool(marker) for marker in untyped) == 1
+        stale = re.search(r"except StaleContentError as exc:(.*?)(?=\n    except )", ROUTER, flags=re.S)
+        assert stale and "conflict=True" in stale.group(1)                      # the marker sits in the stale-content handler ...
+        protected = re.search(r"except ProtectedReferenceError as exc:(.*?)(?=\n    except )", ROUTER, flags=re.S)
+        assert protected and "conflict" not in protected.group(1)                # ... and nowhere else
+        for body in re.findall(r"except FieldValidationError as exc:(.*?)(?=\n    except |\n    # |\n    updated_)", ROUTER, flags=re.S):
+            assert "conflict" not in body                                         # typed validation errors never claim a conflict
 
     def test_no_message_parsing_anywhere_in_the_transport(self):
         source = inspect.getsource(__import__("app.v2.router", fromlist=["x"])._add_field_error_trigger)

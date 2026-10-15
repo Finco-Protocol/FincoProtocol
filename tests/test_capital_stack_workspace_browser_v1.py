@@ -92,7 +92,7 @@ def test_table_draft_status_unsupported_and_no_run_on_open(live_server, browser,
     assert page.locator("[data-testid=cs-row]").count() == 2
     expect(page.locator("[data-testid=cs-stack-status]")).to_have_text("DRAFT")
     assert page.locator("[data-testid=cs-row-status]").all_inner_texts() == ["DRAFT", "DRAFT"]
-    page.locator("[data-testid=cs-unsupported] summary").click()
+    page.locator("[data-testid=cs-unsupported] button[data-accordion-target]").click()                       # Flowbite accordion (was a <details> summary)
     text = page.locator("[data-testid=cs-unsupported]").inner_text()
     assert "UNSUPPORTED" in text and "Junior" in text and "Mezzanine" in text
     assert page.locator("[data-testid=cs-unsupported] input").count() == 0

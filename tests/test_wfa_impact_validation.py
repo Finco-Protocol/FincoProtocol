@@ -416,11 +416,26 @@ def test_P9_invalid_contract_books_are_rejected_without_persisting(env, name, mu
             "verdict": "FAILS_CLOSED", "explanation": "Invalid contract configuration is rejected; nothing persisted."})
 
 
-def test_release_closed_features_and_engine_boundary_unchanged():
+# Historical provenance of WF-A (PR #287): its authorised scope was validation tooling and tests only. The check is pinned to the reviewed WF-A range, so it
+# stays true after WF-A merged and does not misclassify later, separately authorised UI or financial PRs as WF-A violations.
+WFA_BASE = "03e2b9638e9324bb18ea8420ce8f9823f4f0a676"       # main before WF-A
+WFA_REVIEWED_HEAD = "d4431bc3f0b6f51b5042e69ea62b9d67184c5e4b"   # the reviewed WF-A head (merged by 38018e9a190715023568b68512fe766576a5be89)
+WFA_PROTECTED_PATHS = ("financial_engine", "finco_core", "domain", "app/v2", "app/templates", "static")
+
+
+def _git(*args):
     import subprocess
-    out = subprocess.run(["git", "diff", "--name-only", "origin/main", "--", "financial_engine", "finco_core", "domain", "app/v2",
-                          "app/templates", "static"], capture_output=True, text=True).stdout.strip()
-    assert out == "", f"WF-A must not touch the engine, domain or UI: {out}"
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+
+def test_release_closed_features_and_engine_boundary_unchanged():
+    for commit in (WFA_BASE, WFA_REVIEWED_HEAD):
+        # Provenance must be establishable: a missing object (for example a shallow checkout) is a failure, never a silent skip.
+        found = _git("cat-file", "-e", f"{commit}^{{commit}}")
+        assert found.returncode == 0, f"WF-A provenance commit {commit} is not available in this checkout (full history required): {found.stderr.strip()}"
+    diff = _git("diff", "--name-only", WFA_BASE, WFA_REVIEWED_HEAD, "--", *WFA_PROTECTED_PATHS)
+    assert diff.returncode == 0, diff.stderr
+    assert diff.stdout.strip() == "", f"WF-A must not have touched the engine, domain or UI: {diff.stdout.strip()}"
 
 
 def test_case_verdict_requires_feature_specific_identities():

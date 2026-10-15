@@ -8,7 +8,7 @@
   never recorded in canonical history — stated honestly, never fabricated.
   No engine execution, no mutation functionality.
 #}
-<div id="v2-sheet-run-history" class="v2-run-history" data-sheet="run-history"
+<div id="v2-sheet-run-history" class="v2-run-history fx-ui" data-sheet="run-history"
      data-testid="run-history">
   <div class="v2-rh-head">
     <span class="v2-rh-title">Run History</span>
@@ -28,8 +28,8 @@
     <span class="v2-rh-error-code">{{ error_code }}</span>
   </div>
   {% elif rows %}
-  <table class="v2-rh-table" data-testid="run-history-table">
-    <thead>
+  <div class="v2-rh-scroll relative overflow-x-auto border border-gray-200 rounded-lg shadow-sm dark:border-gray-700" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table w-full text-sm text-left text-gray-600 dark:text-gray-300" data-testid="run-history-table">
+    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-300">
       <tr>
         <th>Ran at</th><th>Scenario</th><th>Status</th><th>Origin</th>
         <th>Engine</th><th>Workbook</th><th>Snapshot</th><th>Identity</th>
@@ -43,13 +43,13 @@
         <td class="v2-rh-ts">{{ row.ran_at_display }}</td>
         <td>{{ row.scenario_name }}</td>
         <td>
-          <span class="v2-rh-chip {% if row.is_last_run %}v2-rh-chip--lastrun{% else %}v2-rh-chip--historical{% endif %}"
+          <span class="v2-rh-chip text-xs font-medium px-2.5 py-0.5 rounded {% if row.is_last_run %}v2-rh-chip--lastrun bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300{% else %}v2-rh-chip--historical bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{% endif %}"
                 data-testid="run-history-status-{{ loop.index }}">{{ row.status_label }}</span>
           {% if row.is_last_run %}
           <span class="v2-rh-chip v2-rh-chip--state">see header</span>
           {% endif %}
           {% if row.matches_working_copy %}
-          <span class="v2-rh-chip v2-rh-chip--matches"
+          <span class="v2-rh-chip v2-rh-chip--matches text-xs font-medium px-2.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
                 data-testid="run-history-matches-{{ loop.index }}"
                 title="Stored identity equals the current Working Copy — presentation indicator only; the row remains HISTORICAL.">{{ 'MATCHES WORKING COPY' }}</span>
           {% endif %}
@@ -76,7 +76,7 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
   <div class="v2-rh-empty" data-testid="run-history-empty">
     No runs recorded yet for this project.

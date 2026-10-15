@@ -26,3 +26,41 @@
 .v2-skip-link:focus { top: 0.5rem; }
 #v2-workbook-shell:focus { outline: none; }
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--fx-focus); outline-offset: 2px; }
+/* Shared Start + Duration -> End control (RC-UX Phase 2 / Addendum D). */
+.dd { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.5rem 0.75rem; align-items: end; min-width: 0; }
+.dd label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.8rem; min-width: 0; }
+.dd input[readonly] { background: var(--fx-surface-alt, #f3f4f6); }
+.dd .dd-manual { flex-direction: row; align-items: center; gap: 0.4rem; }
+.dd .dd-note { grid-column: 1 / -1; margin: 0; min-height: 1em; }
+.ct { border: 1px solid var(--fx-border, #cbd5e1); border-radius: 3px; padding: 0.6rem 0.75rem; margin: 0 0 0.75rem; background: var(--fx-surface-alt, #f3f4f6); }
+.ct h3 { margin: 0 0 0.25rem; font-size: 0.95rem; }
+.ct-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 0.5rem; }
+.fo-library-notice { margin: 0 0 1rem; padding: 0.6rem 0.9rem; border: 1px solid var(--fx-warn, #92400e); background: var(--fx-warn-bg, #fef3c7); color: var(--fx-warn, #92400e); border-radius: 6px; font-size: 0.9rem; }
+
+/* UX-010: one project / scenario / state presentation. The toolbar and the workspace header already carry project, scenario and the CURRENT / STALE / NOT RUN chip,
+   so the persistent strip keeps only the state, the Last Run time and the integrity verdict on desktop (its identity text stays available to assistive technology), and
+   messages that merely repeat "CURRENT" are not shown. STALE, NOT RUN and error messages stay fully visible. */
+#v2-sheet-overview .v2-overview-state-strip.v2-state-strip--current { display: none; }
+#v2-status-banner .v2-banner-clean { display: none; }
+@media (min-width: 900px) {
+  #v2-hybrid-status [data-testid="hybrid-identity"] { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+}
+
+/* UX-016: compact enterprise headings for the OPEX sheet - title and one muted line on a single baseline, no stretched badges, numbers first. */
+.v2-sheet-section-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.6rem; margin: 0.6rem 0 0.25rem; font-weight: 600; font-size: 0.85rem; }
+.v2-sheet-section-heading > small { font-weight: 400; font-size: 0.72rem; color: var(--fx-text-muted, #4b5563); }
+.v2-opex-ro-row .v2-binding-badge, .v2-opex-ro-row .v2-opex-badge-calc { flex: 0 0 auto; width: auto; align-self: center; margin-left: 0.4rem; }
+.v2-theme-toggle { margin-left: auto; padding: 0.2rem 0.55rem; font-size: 0.72rem; border: 1px solid var(--fx-border, #cbd5e1); border-radius: 4px; background: transparent; color: inherit; cursor: pointer; }
+.v2-theme-toggle:hover { background: var(--fx-surface-alt, #f3f4f6); }
+
+/* UX-030: phone ergonomics (390 px). Touch targets of at least 44 px for the controls people actually press, 16 px text in fields (no iOS zoom), and the
+   Save bars stay reachable at the bottom of the screen instead of scrolling away. Dense desktop tables keep their compact density. */
+@media (max-width: 640px) {
+  .v2-toolbar button, .v2-toolbar a, .v2-toolbar select, .hy-group, .v2-tab, .v2-run-btn, .v2-ws-header-run, .ig-btn, .v2-cost-stage-btn, .v2-theme-toggle,
+  [data-revenue-save], [data-revenue-add], [data-quick-add], [data-ct-save], [data-f3-save], .f4-actions button, .v2-rh-link, .v2-scenario-action-btn, .v2-scenario-create-btn,
+  .v2-sheet-panel select, .v2-sheet-panel input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) { min-height: 44px !important; }   /* hard requirement: wins over component CSS loaded later */
+  .v2-sheet-panel input:not([type="checkbox"]):not([type="radio"]), .v2-sheet-panel select, .v2-sheet-panel textarea { font-size: 16px; }
+  .ig-bar { position: fixed; left: 0; right: 0; top: auto; bottom: 0; z-index: 90; background: var(--fx-surface, #fff); border-top: 1px solid var(--fx-border, #cbd5e1); padding: 0.4rem 0.75rem; }
+  .ig { padding-bottom: 9rem; }                                                                          /* room so the fixed bar never covers the last rows */
+  .v2-cost-stagebar { position: sticky; top: auto; bottom: 0; z-index: 30; background: var(--fx-surface, #fff); border-top: 1px solid var(--fx-border, #cbd5e1); }
+}

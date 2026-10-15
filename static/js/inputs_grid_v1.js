@@ -602,6 +602,7 @@
     stagedCount: function () { return stagedInputs().length; },
     validating: function () { return busy.validating; },
     save: save,
+    applyIdentity: applyIdentity,
     hybridGroups: HYBRID_GROUPS
   };
 

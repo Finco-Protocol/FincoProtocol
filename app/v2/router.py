@@ -174,9 +174,16 @@ def _add_field_saved_trigger(resp: HTMLResponse, field_id: str, new_hash: str) -
     return resp
 
 
+# UX-021: the one sentence for a rejected stale-view field save. It says the edit was NOT saved and how to recover; it never claims the values were
+# refreshed (the field keeps what the user typed so it can be re-entered). The server-side CAS remains the only authority.
+STALE_FIELD_MESSAGE = ("Draft changed since page loaded, so your edit was not saved. "
+                       "Reload the page to see the current value, then enter it again.")
+
+
 def _add_field_error_trigger(
     resp: HTMLResponse, field_id: str, message: str,
     error_class: Optional[FieldErrorClass] = None,
+    conflict: bool = False,
 ) -> HTMLResponse:
     """Attach the field-error HX event.
 
@@ -188,13 +195,15 @@ def _add_field_error_trigger(
     is serialised, so nothing else can reach the browser as a class.
     """
     import json as _json
-    resp.headers["HX-Trigger"] = _json.dumps({
-        "workbook-field-error": {
-            "field_id": field_id,
-            "message": message,
-            "error_class": error_class.value if isinstance(error_class, FieldErrorClass) else None,
-        }
-    })
+    payload = {
+        "field_id": field_id,
+        "message": message,
+        "error_class": error_class.value if isinstance(error_class, FieldErrorClass) else None,
+    }
+    if conflict is True:
+        # Only a genuine stale-CAS rejection carries the extra key; every other event keeps the strict three-key contract.
+        payload["conflict"] = True
+    resp.headers["HX-Trigger"] = _json.dumps({"workbook-field-error": payload})
     return resp
 
 
@@ -212,6 +221,11 @@ def _cit_rate_display(pis) -> str:
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates", "v2"))
+from app.v2 import display_labels as _display_labels  # noqa: E402
+_templates.env.globals.update({
+    "readable_code": _display_labels.readable_code, "reason_sentence": _display_labels.reason_sentence,
+    "is_complex": _display_labels.is_complex, "evidence_json": _display_labels.evidence_json,
+    "evidence_summary": _display_labels.evidence_summary})
 
 
 def _get_current_user(request: Request):
@@ -641,6 +655,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
         "request": request,
         "project_code": project,
         "financing_csrf_token": issue_token(request, project),
+        "grid_csrf_token": __import__("app.auth", fromlist=["generate_csrf_token"]).generate_csrf_token(),
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
@@ -693,6 +708,9 @@ def _render_htmx_sheet(
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
     if not field_error:
         oob += "\n" + _build_run_controls_oob(ctx)
+        # The toolbar chip is what the persistent strip mirrors: refresh it with the same freshness read, otherwise a sheet refresh that
+        # follows a Save would flip the strip back to the previous Run state.
+        oob += "\n" + _build_toolbar_state_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -1166,13 +1184,34 @@ def _build_revenue_contract_editor(pis, ws):
     from domain.revenue.advanced_products import ACTIVATION_ENABLED
     payload = json.loads(config.canonical_json) if config else {}
     axis = []
-    if ACTIVATION_ENABLED and technology in ("solar", "wind"):
-        from financial_engine.adapters.project_inputs import from_project_inputs
-        from financial_engine.orchestrator import _build_period_engine
-        axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
-                 "settlement_date": p.end_date.isoformat()}
-                for p in _build_period_engine(from_project_inputs(pis.to_projectinputs())).periods() if p.is_operation]
-    return {"active": config is not None, "raw": raw, "scope": scope, "technology": technology,
+    operating_window = None
+    operating_starts = []
+    operating_boundaries = []
+    if technology in ("solar", "wind"):
+        # Read-only: the operating period boundaries the model already derives from the project's own dates. They only
+        # pre-fill the guided PPA form; the canonical validator still decides what is accepted.
+        try:
+            from financial_engine.adapters.project_inputs import from_project_inputs
+            from financial_engine.orchestrator import _build_period_engine
+            operating = [p for p in _build_period_engine(from_project_inputs(pis.to_projectinputs())).periods() if p.is_operation]
+            if operating:
+                operating_window = {"start": operating[0].start_date.isoformat(), "end": operating[-1].end_date.isoformat()}
+                operating_starts = [p.start_date.isoformat() for p in operating]
+                operating_boundaries = sorted({p.start_date.isoformat() for p in operating} | {p.end_date.isoformat() for p in operating})
+            if ACTIVATION_ENABLED:
+                axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
+                         "settlement_date": p.end_date.isoformat()} for p in operating]
+        except Exception:
+            operating_window = None
+            operating_starts = []
+            operating_boundaries = []
+            axis = []
+    try:
+        _term = float(pis.get("revenue.ppa.term_years"))
+        ppa_term_years = _term if _term > 0 else None
+    except (TypeError, ValueError):
+        ppa_term_years = None
+    return {"ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
             "overridden": overridden, "rows": payload.get("streams", []),
             "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
             "period_axis": axis}
@@ -1861,11 +1900,11 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
 
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
-        return RedirectResponse(url="/library", status_code=302)
+        return RedirectResponse(url="/library?notice=project-unavailable", status_code=302)
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
-        return RedirectResponse(url="/library", status_code=302)
+        return RedirectResponse(url="/library?notice=project-unavailable", status_code=302)
 
     # Decide unsupported runtime capability immediately after access and
     # workspace resolution.  Storage must return its controlled surface before
@@ -2211,7 +2250,7 @@ async def v2_inputs_slice1_update(
             if is_htmx else _json_error(str(exc), 409)
         )
     except StaleContentError:
-        msg = "Draft changed since page loaded - values refreshed. Please try your edit again."
+        msg = STALE_FIELD_MESSAGE
         return _render_field_error(msg, 409) if is_htmx else _json_error(msg, 409)
     except VersionMismatchError as exc:
         if is_htmx:
@@ -2389,12 +2428,11 @@ async def v2_workbook_update(
     except StaleContentError as exc:
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
-            msg = (
-                "Draft changed since page loaded — values refreshed. "
-                "Please try your edit again."
-            )
+            msg = STALE_FIELD_MESSAGE
+            # The conflict is shown once, at the field (with a Reload action). The message stays in the response body (the banner carries it hidden, so the
+            # response contract is unchanged) but the banner is not shown or announced a second time.
             resp = _htmx_error(pis, msg)
-            return _add_field_error_trigger(resp, field_id, msg)
+            return _add_field_error_trigger(resp, field_id, msg, conflict=True)
         return _redirect_with_error(str(exc))
     except VersionMismatchError as exc:
         return JSONResponse({"error": str(exc), "reload": True}, status_code=409)

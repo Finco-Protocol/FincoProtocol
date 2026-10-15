@@ -161,8 +161,8 @@ def test_hybrid_groups_switch_real_tabs_and_keep_every_tab_reachable(make):
     s = make("u-wf05-nav")
     s.open_grid()
     labels = s.page.locator('[data-testid="hybrid-nav"] .hy-group').all_inner_texts()
-    assert [t.strip().lower() for t in labels] == ["model diagnostics", "inputs", "scenarios", "outputs", "analysis", "trust"]
-    expectations = {"diagnostics": "tab-diagnostics", "inputs": "tab-input-grid", "scenarios": "tab-scenarios", "outputs": "tab-outputs",
+    assert [t.strip().lower() for t in labels] == ["inputs", "financing", "results", "scenarios", "analysis", "model checks", "trust"]
+    expectations = {"diagnostics": "tab-diagnostics", "financing": "tab-debt", "inputs": "tab-input-grid", "scenarios": "tab-scenarios", "outputs": "tab-outputs",
                     "analysis": "tab-sensitivity", "trust": "tab-trust"}
     for group, tab in expectations.items():
         s.page.locator(f'[data-hy-group="{group}"]').click()
@@ -243,6 +243,8 @@ def test_four_consecutive_edits_save_atomically_with_stable_focus_and_scroll(mak
     s.cell(EDITS[2][0]).click()
     s.page.evaluate("window.scrollTo(0, 120)")
     before_scroll = s.page.evaluate("window.scrollY")
+    probe = "(() => ({y: window.scrollY, h: document.documentElement.scrollHeight, top: document.activeElement.getBoundingClientRect().top}))()"
+    before = s.page.evaluate(probe)
     before_posts = len(s.posts)
 
     t0 = time.perf_counter()
@@ -258,7 +260,9 @@ def test_four_consecutive_edits_save_atomically_with_stable_focus_and_scroll(mak
         assert float(s.persisted(field_id)) == float(value)
     assert s.staged() == 0
     assert s.active_field() == EDITS[2][0], "focus must stay on the cell the user was in"
-    assert abs(s.page.evaluate("window.scrollY") - before_scroll) <= 2, "Save must not scroll the page"
+    assert abs(s.page.evaluate("window.scrollY") - before_scroll) <= 2, "Save must not scroll the page"        # original assertion, restored
+    after = s.page.evaluate(probe)                                                                                # additional: the edited cell itself stays put
+    assert abs(after["top"] - before["top"]) <= 2, "Save must not move the cell the user is editing"
     assert s.page.locator('[data-ig-flag-notrun]:not([hidden])').count() == 0   # no Last Run to compare with
     hashes = set(s.page.evaluate(
         "Array.from(document.querySelectorAll('input[name=content_hash]')).map(i => i.value)"))

@@ -22,7 +22,7 @@
     {% endif %}
     <dt>Threshold authority</dt><dd>{{ c.threshold_authority }}</dd>
     <dt>Evidence source</dt><dd>{{ c.evidence_source }}</dd>
-    {% if c.reason_code %}<dt>Reason</dt><dd>{{ c.reason_code }}</dd>{% endif %}
+    {% if c.reason_code %}<dt>Reason</dt><dd>{% if reason_sentence is defined %}{{ reason_sentence(c.reason_code) }} <small class="v2-sp-code"><code>{{ c.reason_code }}</code></small>{% else %}{{ c.reason_code }}{% endif %}</dd>{% endif %}
     {% if c.detail %}<dt>Detail</dt><dd>{{ c.detail }}</dd>{% endif %}
   </dl>
   <div class="v2-sp-q3-links">

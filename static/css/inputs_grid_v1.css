@@ -48,6 +48,9 @@
 .hy-chip--integrity-unavailable { color: var(--ig-muted); }
 .hy-chip--unsaved { color: var(--ig-edit); border-color: var(--ig-edit); background: var(--ig-edit-bg); }
 .hy-chip[hidden] { display: none; }
+/* The "N unsaved" chip keeps its space while hidden: showing it must never re-wrap the sticky strip and shift the page by a line
+   (scroll review of the Inputs grid Save). visibility:hidden also removes it from the accessibility tree. */
+.hy-chip--unsaved[hidden] { display: inline-block; visibility: hidden; }
 /* The persistent strip sits directly under the sticky toolbar; the sheet tab bar sticks beneath it
    (offsets are measured by inputs_grid_v1.js so wrapping toolbars cannot overlap the strip). */
 #v2-sheet-tabs.v2-tabs { top: calc(var(--hy-top, 42px) + var(--hy-h, 43px)); }
@@ -118,3 +121,13 @@
 /* Cost-line rows: saved after the Last Run, not yet run. */
 .v2-notrun-mark { margin-left: .3rem; color: var(--ig-accent); font-size: .7rem; line-height: 1; cursor: help; }
 .ig-link--line { margin-left: .5rem; text-decoration: underline; white-space: nowrap; }
+
+/* The strip keeps one line on desktop: the identity text shrinks (ellipsis) instead of the strip re-wrapping when the "N unsaved edits" chip
+   gets longer, which used to push the whole page down by a line (scroll review of the Inputs grid Save). Phones keep wrapping. */
+@media (min-width: 900px) {
+  .hy { flex-wrap: nowrap; }
+  .hy-groups { flex: 0 0 auto; flex-wrap: nowrap; }
+  .hy-status { flex: 1 1 0; flex-wrap: nowrap; justify-content: flex-end; }
+  .hy-status > .hy-id { flex: 0 1 auto; min-width: 0; }
+  .hy-status > .hy-chip, .hy-status > [data-testid="hybrid-last-run"] { flex: 0 0 auto; white-space: nowrap; }
+}

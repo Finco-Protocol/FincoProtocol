@@ -68,3 +68,6 @@ __pycache__/
 # Runtime-generated offline verifier artifacts — never commit key documents
 tools/_offline_cert.json
 tools/_offline_keys.json
+
+# FINCO UI build tooling
+tools/ui/node_modules/

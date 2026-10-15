@@ -31,7 +31,7 @@
 #}
 {% macro kpi_metric(key) %}{{ ov.output_metrics[key].display_value if key in ov.output_metrics else "—" }}{% endmacro %}
 
-<div id="v2-sheet-overview" class="v2-overview" data-sheet="overview">
+<div id="v2-sheet-overview" class="v2-overview fx-ui" data-sheet="overview">
 <link rel="stylesheet" href="/static/css/model_financing.css">
 {% include ["partials/_model_health.html", "v2/partials/_model_health.html"] %}
 
@@ -49,28 +49,28 @@
 {% set is_clean  = ov.state.value == "CLEAN" %}
 
 {# ── Model state strip ───────────────────────────────────────────────── #}
-<div class="v2-overview-state-strip
-  {% if is_clean %}v2-state-strip--current
-  {% elif is_stale %}v2-state-strip--stale
-  {% else %}v2-state-strip--notrun{% endif %}"
+<div class="v2-overview-state-strip flex items-center gap-2 p-3 mb-3 text-sm border rounded-lg
+  {% if is_clean %}v2-state-strip--current text-green-800 bg-green-50 border-green-300 dark:bg-gray-800 dark:text-green-300 dark:border-green-800
+  {% elif is_stale %}v2-state-strip--stale text-yellow-800 bg-yellow-50 border-yellow-300 dark:bg-gray-800 dark:text-yellow-300 dark:border-yellow-800
+  {% else %}v2-state-strip--notrun text-gray-800 bg-gray-50 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600{% endif %}"
   role="status" data-testid="overview-state-strip">
   {% if is_clean %}
     <span class="v2-state-strip-dot" aria-hidden="true">●</span>
-    <span class="v2-state-strip-label">CURRENT</span>
+    <span class="v2-state-strip-label px-2.5 py-0.5 text-xs font-semibold rounded bg-white/70 dark:bg-gray-700">CURRENT</span>
     <span class="v2-state-strip-detail">
       Outputs reflect the current inputs.
       {% if ov.run_timestamp_display %} Last run {{ ov.run_timestamp_display }}.{% endif %}
     </span>
   {% elif is_stale %}
     <span class="v2-state-strip-dot" aria-hidden="true">●</span>
-    <span class="v2-state-strip-label">STALE</span>
+    <span class="v2-state-strip-label px-2.5 py-0.5 text-xs font-semibold rounded bg-white/70 dark:bg-gray-700">STALE</span>
     <span class="v2-state-strip-detail">
       Inputs changed since the last run — prior results shown below.
       Run Model to refresh.
     </span>
   {% else %}
     <span class="v2-state-strip-dot" aria-hidden="true">●</span>
-    <span class="v2-state-strip-label">NOT RUN</span>
+    <span class="v2-state-strip-label px-2.5 py-0.5 text-xs font-semibold rounded bg-white/70 dark:bg-gray-700">NOT RUN</span>
     <span class="v2-state-strip-detail">
       Run the model to generate financial outputs.
     </span>
@@ -113,11 +113,11 @@
                     "total_revenue_keur": "tab-revenue", "total_ebitda_keur": "tab-fs",
                     "total_capex_keur": "tab-capex"}.get(key) %}
     {% if key in ov.output_metrics and ov.output_metrics[key].raw_value is not none %}
-    <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+    <div class="v2-kpi-tile p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md dark:bg-gray-800 dark:border-gray-700 {% if is_stale %}v2-kpi-tile--stale opacity-80{% endif %}"
          data-testid="kpi-{{ testid }}"{% if title %} title="{{ title }}"{% endif %}
          {% if drill %}data-kpi-drill="{{ drill }}" role="button" tabindex="0"{% endif %}>
-      <span class="v2-kpi-label">{{ ov.output_metrics[key].label }}</span>
-      <span class="v2-kpi-value">{{ kpi_metric(key) }}</span>
+      <span class="v2-kpi-label block text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-gray-400">{{ ov.output_metrics[key].label }}</span>
+      <span class="v2-kpi-value block mt-1 text-xl font-semibold text-gray-900 dark:text-white">{{ kpi_metric(key) }}</span>
     </div>
     {% endif %}
   {%- endmacro %}
@@ -125,12 +125,12 @@
   <section class="v2-overview-section" aria-label="Key metrics">
     <div class="v2-overview-section-title">Key Metrics
       {% if is_stale %}
-        <span class="v2-overview-stale-badge" title="Inputs changed since last run">Prior run</span>
+        <span class="v2-overview-stale-badge bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-yellow-900 dark:text-yellow-300" title="Inputs changed since last run">Prior run</span>
       {% endif %}
     </div>
 
     <div class="v2-kpi-group" data-testid="kpi-group-returns">
-      <div class="v2-kpi-group-label">Returns</div>
+      <div class="v2-kpi-group-label mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">Returns</div>
       <div class="v2-kpi-grid v2-overview-kpi-grid">
         {{ kpi_tile("project_irr", "project-irr") }}
         {{ kpi_tile("equity_irr", "equity-irr") }}
@@ -145,7 +145,7 @@
     </div>
 
     <div class="v2-kpi-group" data-testid="kpi-group-debt">
-      <div class="v2-kpi-group-label">Debt &amp; Coverage</div>
+      <div class="v2-kpi-group-label mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">Debt &amp; Coverage</div>
       <div class="v2-kpi-grid v2-overview-kpi-grid">
         {{ kpi_tile("senior_debt_keur", "senior-debt") }}
         {{ kpi_tile("min_dscr", "min-dscr") }}
@@ -155,7 +155,7 @@
     </div>
 
     <div class="v2-kpi-group" data-testid="kpi-group-operating">
-      <div class="v2-kpi-group-label">Operating</div>
+      <div class="v2-kpi-group-label mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">Operating</div>
       <div class="v2-kpi-grid v2-overview-kpi-grid">
         {{ kpi_tile("total_revenue_keur", "total-revenue") }}
         {{ kpi_tile("total_ebitda_keur", "total-ebitda") }}

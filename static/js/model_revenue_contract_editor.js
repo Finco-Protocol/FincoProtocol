@@ -90,13 +90,63 @@
       error.hidden = !message;
       if (message) feedback.textContent = 'Not saved · Review the contract details';
     }
+    function curveIssue(axis) {
+      for (const row of book.streams) {
+        if (!Array.isArray(row.price_curve)) continue;
+        const label = row.id || 'a Scheduled contract';
+        if (!row.price_curve.length) return label + ' has no price points.';
+        const required = axis.filter(d => d >= row.start_date && d < row.end_date);
+        const seen = new Set();
+        for (const pt of row.price_curve) {
+          if (!pt.period_start) return label + ' has a price point without a date.';
+          if (seen.has(pt.period_start)) return label + ' repeats the period ' + pt.period_start + '.';
+          seen.add(pt.period_start);
+          if (axis.length && !required.includes(pt.period_start)) return label + ': ' + pt.period_start + ' is not an operating period inside the contract.';
+          if (typeof pt.price_eur_mwh !== 'number' || !Number.isFinite(pt.price_eur_mwh) || pt.price_eur_mwh < 0)
+            return label + ': the price for ' + pt.period_start + ' must be a number of zero or more.';
+        }
+        const missing = required.filter(d => !seen.has(d));
+        if (missing.length) return label + ' is missing ' + missing.length + ' operating period' + (missing.length === 1 ? '' : 's') + ' (first: ' + missing[0] + ').';
+        const dates = row.price_curve.map(pt => pt.period_start);
+        if (dates.some((d, i) => i && d <= dates[i - 1])) return label + ': price points must be in date order.';
+      }
+      return '';
+    }
+    // Contracted / residual / unallocated production, computed per contract-date segment exactly like the canonical validator (explicit shares only).
+    function allocationSummary() {
+      const box = form.querySelector('[data-revenue-allocation]');
+      if (!box) return;
+      const rows = book.streams.filter(r => r.start_date && r.end_date);
+      if (!rows.length) { box.textContent = ''; return; }
+      const cuts = Array.from(new Set(rows.flatMap(r => [r.start_date, r.end_date]))).sort();
+      let peak = 0, peakAt = '', residual = rows.some(r => r.type === 'merchant' && r.volume_share === null);
+      for (let i = 0; i < cuts.length - 1; i += 1) {
+        const total = rows.filter(r => typeof r.volume_share === 'number' && r.start_date <= cuts[i] && cuts[i] < r.end_date).reduce((a, r) => a + r.volume_share, 0);
+        if (total > peak + 1e-12) { peak = total; peakAt = cuts[i]; }
+      }
+      const pct = (x) => String(Number((x * 100).toPrecision(10))) + '%';
+      box.dataset.over = String(peak > 1 + 1e-9);
+      box.textContent = peak > 1 + 1e-9
+        ? 'Contracted production adds up to ' + pct(peak) + ' from ' + peakAt + ' - it cannot exceed 100%.'
+        : 'Contracted production up to ' + pct(peak) + ' · ' + (residual ? 'residual Merchant takes the remainder (price entered on its row)' : 'unallocated up to ' + pct(1 - peak) + ' (add a residual Merchant contract to sell it)');
+    }
     function status() {
       dirty = JSON.stringify(book) !== baseline;
       form.dataset.dirty = String(dirty);
       feedback.dataset.dirty = String(dirty);
       feedback.textContent = dirty ? 'Unsaved changes · Save contracts to update Working Copy (Run separately)' :
         'Saved Working Copy · No changes';
-      save.disabled = !dirty || blocked;
+      // A Scheduled contract must carry exactly one valid, non-negative price for EVERY operating period inside its dates (no interpolation,
+      // no hold-last, nothing inferred for a point the user removed). Anything else is an incomplete draft and cannot be saved.
+      const axis = (() => { try { return JSON.parse(form.querySelector('[data-revenue-quick]')?.dataset.periodStarts || '[]'); } catch (_) { return []; } })();
+      const issue = curveIssue(axis);
+      const incomplete = !!issue;
+      form.dataset.incomplete = String(incomplete);
+      if (dirty && incomplete) feedback.textContent = 'Incomplete draft · ' + issue;
+      allocationSummary();
+      const over = form.querySelector('[data-revenue-allocation]')?.dataset.over === 'true';
+      if (dirty && over && !incomplete) feedback.textContent = 'Not saveable · ' + form.querySelector('[data-revenue-allocation]').textContent;
+      save.disabled = !dirty || blocked || incomplete || over;
     }
     function advancedMode(enabled) {
       advanced = !!enabled;
@@ -292,6 +342,17 @@
             const remove = document.createElement('button'); remove.type = 'button';
             remove.textContent = 'Remove point';
             day.addEventListener('input', () => { point.period_start = day.value; showError(''); status(); });
+            // Once a date is committed, keep the points in date order (presentation only: no value is changed, added or inferred).
+            day.addEventListener('change', () => {
+              const sorted = row.price_curve.slice().sort((a, b) => (a.period_start || '9999') < (b.period_start || '9999') ? -1 : (a.period_start || '9999') > (b.period_start || '9999') ? 1 : 0);
+              if (sorted.some((pt, i) => pt !== row.price_curve[i])) {
+                row.price_curve = sorted;
+                const at = book.streams.indexOf(row);
+                render(); status();
+                const editors = tbody.querySelectorAll('.rc-price-curve-row details');
+                if (editors[at]) editors[at].open = true;
+              }
+            });
             price.addEventListener('input', () => {
               point.price_eur_mwh = price.value.trim() === '' ? '' : Number(price.value);
               showError(''); status();
@@ -538,6 +599,97 @@
       const last = tbody.lastElementChild;
       last?.querySelector('[data-field=id]')?.focus();
     });
+    // Guided "Add a PPA": builds ONE ordinary typed stream with a generated ID. Nothing is inferred - every contractual term,
+    // including the contract reference, comes from the user; the existing validator and Save path stay authoritative.
+    // The action is ATOMIC: every check runs first and the contract book is only touched once all of them pass.
+    const quick = form.querySelector('[data-revenue-quick]');
+    if (quick) {
+      const q = (name) => quick.querySelector('[data-quick="' + name + '"]');
+      const qErr = quick.querySelector('[data-quick-error]');
+      const dates = quick.querySelector('[data-dd-root]');
+      const AMOUNT = /^[-+]?(\d+\.?\d*|\.\d+)$/;
+      const num = (el) => { const t = el.value.trim(); return AMOUNT.test(t) ? Number(t) : NaN; };
+      const json = (name) => { try { return JSON.parse(quick.dataset[name] || '[]'); } catch (_) { return []; } };
+      const quickError = (message, suggestion) => {
+        qErr.replaceChildren(document.createTextNode(message || ''));
+        if (suggestion) {
+          const use = document.createElement('button');
+          use.type = 'button'; use.dataset.quickSuggest = suggestion.value;
+          use.textContent = 'Use ' + suggestion.value;
+          use.addEventListener('click', () => {
+            const el = dates.querySelector('[data-dd="' + suggestion.field + '"]');
+            if (suggestion.field === 'end') { const manual = dates.querySelector('[data-dd="manual"]'); manual.checked = true; }
+            el.value = suggestion.value;
+            dates.ddRecalc();
+            quickError('');
+          });
+          qErr.append(' ', use);
+        }
+        qErr.hidden = !message;
+        return false;
+      };
+      const nearest = (list, target) => {
+        const t = Date.parse(target + 'T00:00:00Z');
+        return list.reduce((best, d) => best === null || Math.abs(Date.parse(d + 'T00:00:00Z') - t) < Math.abs(Date.parse(best + 'T00:00:00Z') - t) ? d : best, null);
+      };
+      const syncKind = () => {
+        const kind = q('kind').value;
+        quick.querySelector('[data-quick-index]').hidden = kind !== 'indexed_ppa';
+        quick.querySelector('[data-quick-scheduled-note]').hidden = kind !== 'scheduled_ppa';
+        quick.querySelector('[data-quick-price-label]').textContent = kind === 'scheduled_ppa' ? 'Starting price for every period (EUR/MWh)' : 'Starting price (EUR/MWh)';
+      };
+      q('kind').addEventListener('change', syncKind);
+      syncKind();
+      const nextId = () => { let n = 1; const used = new Set(book.streams.map(r => r.id)); while (used.has('ppa-' + n)) n += 1; return 'ppa-' + n; };
+      quick.querySelector('[data-quick-add]').addEventListener('click', () => {
+        if (blocked) return quickError('Editing is blocked for this configuration.');
+        if (book.streams.length >= 24) return quickError('At most 24 contracts are supported.');
+        window.FincoDates?.mount(dates);
+        const kind = q('kind').value, scheduled = kind === 'scheduled_ppa';
+        const price = num(q('price')), share = num(q('share')), index = kind === 'indexed_ppa' ? num(q('index')) : 0;
+        const ref = q('ref').value.trim();
+        const span = dates.ddState();
+        // 1. dates: valid, derived from start + duration (or explicit manual end), and ON the project's operating-period boundaries
+        if (!span.valid) return quickError(span.message);
+        const boundaries = json('boundaries');
+        if (boundaries.length) {
+          if (!boundaries.includes(span.start))
+            return quickError('The start date ' + span.start + ' is not an operating-period boundary, so the contract cannot be saved as entered.', {field: 'start', value: nearest(boundaries, span.start)});
+          if (!boundaries.includes(span.end))
+            return quickError('The end date ' + span.end + ' is not an operating-period boundary, so the contract cannot be saved as entered.', {field: 'end', value: nearest(boundaries, span.end)});
+        }
+        // 2. operating periods inside the contract (Scheduled needs one explicit price for each)
+        const periods = json('periodStarts').filter(d => d >= span.start && d < span.end);
+        if (scheduled && !periods.length) return quickError('No operating periods fall inside these dates. Adjust the start date or the duration.');
+        // 3. pricing, allocation, indexation and the declared contract reference
+        if (!(price >= 0)) return quickError('Enter the starting price as a number, for example 62.5.');
+        if (!(share > 0 && share <= 100)) return quickError('Contracted production must be above 0% and at most 100%.');
+        if (kind === 'indexed_ppa' && !(index >= 0 && index <= 100)) return quickError('Enter the indexation as a percentage between 0 and 100.');
+        if (!ref || ref.length > 200) return quickError('Enter the contract reference (up to 200 characters).');
+        // 4. build the complete contract in LOCAL state; only now is the book touched
+        const added = newRow(kind);
+        Object.assign(added, {id: nextId(), start_date: span.start, end_date: span.end, volume_share: share / 100,
+          price_eur_mwh: price, indexation_rate: index / 100, source_ref: ref});
+        if (scheduled) {
+          added.price_curve = periods.map(d => ({period_start: d, price_eur_mwh: price}));
+          added.price_eur_mwh = 0;
+        }
+        if (scheduled && book.version !== 3) book.version = 2;
+        book.streams.push(added);
+        kindOverrides.set(added, kind);
+        quickError(''); showError(''); render(); status();
+        q('ref').value = ''; q('price').value = '';
+        // The added-note never hides an incomplete or over-allocated state reported by status().
+        const clean = form.dataset.incomplete !== 'true' && form.querySelector('[data-revenue-allocation]')?.dataset.over !== 'true';
+        if (clean) feedback.textContent = 'PPA added to the draft · Save contracts to update the Working Copy (Run separately)';
+        if (scheduled) {
+          if (clean) feedback.textContent = 'Scheduled PPA added · ' + periods.length + ' operating periods · review the price for each, then Save contracts';
+          const rows = tbody.querySelectorAll('.rc-price-curve-row details');
+          const editor = rows[rows.length - 1];
+          if (editor) { editor.open = true; editor.querySelector('input[type=number]')?.focus(); editor.scrollIntoView({block: 'nearest'}); }
+        }
+      });
+    }
     form.querySelector('[data-product-add]')?.addEventListener('click', () => {
       if ((book.products || []).length >= 24) { showError('At most 24 products.'); return; }
       if (book.version !== 3) { book.version = 3; book.products = []; book.environmental_rights = []; }
@@ -590,12 +742,31 @@
       let message = 'Save failed. Working Copy was not changed; check the inputs and reload if the scenario moved.';
       try { message = JSON.parse(event.detail.xhr.responseText).error || message; } catch (_) {}
       showError(message);
+      document.dispatchEvent(new CustomEvent('rc:failed', {detail: {message}}));
     });
     advancedMode(false);
     render();
     status();
   }
 
+  document.addEventListener('htmx:afterRequest', (event) => {
+    const elt = event.detail && event.detail.elt;
+    if (elt && elt.matches && elt.matches('form[data-revenue-editor]') && event.detail.successful) document.dispatchEvent(new CustomEvent('rc:saved'));
+  });
+  // Unsaved contract edits must never disappear silently: a scenario change or a Run waits until they are saved or discarded.
+  document.addEventListener('htmx:confirm', (event) => {
+    const elt = event.detail && event.detail.elt;
+    if (!elt || !elt.matches) return;
+    const post = String(elt.getAttribute('hx-post') || '');
+    const isScenario = post.indexOf('/v2/workbook/scenarios/') === 0;
+    const isRun = elt.classList.contains('v2-run-form');
+    if (!isScenario && !isRun) return;
+    const dirty = document.querySelector('form[data-revenue-editor][data-dirty="true"]');
+    if (!dirty) return;
+    event.preventDefault();
+    const box = dirty.querySelector('[data-revenue-error]');
+    if (box) { box.textContent = isRun ? 'Save or discard the unsaved contract changes before running the model.' : 'Save or discard the unsaved contract changes before changing the scenario.'; box.hidden = false; box.scrollIntoView({block: 'nearest'}); }
+  });
   function scan() {
     document.querySelectorAll('form[data-revenue-editor]').forEach(begin);
   }

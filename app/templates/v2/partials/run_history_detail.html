@@ -11,7 +11,7 @@
     <span class="v2-rh-sub">Read-only · immutable record</span>
     <button type="button" class="v2-rh-link"
             hx-get="/v2/workbook/run-history?project={{ project_code }}"
-            hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
+            hx-target="#v2-run-detail" hx-swap="outerHTML"
             data-testid="run-detail-back">← Back to Run History</button>
   </div>
 
@@ -27,7 +27,7 @@
   </div>
 
   <div class="v2-rh-section-title">Key metrics (persisted)</div>
-  <table class="v2-rh-table" data-testid="run-detail-kpis">
+  <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table" data-testid="run-detail-kpis">
     <thead><tr><th>Metric</th><th>Value</th></tr></thead>
     <tbody>
       {% for key, label, display in metrics %}
@@ -37,17 +37,20 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 
   <div class="v2-rh-section-title">Integrity evidence</div>
   {% if integrity_items %}
-  <table class="v2-rh-table" data-testid="run-detail-integrity">
+  <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table" data-testid="run-detail-integrity">
     <tbody>
       {% for k, v in integrity_items %}
-      <tr><td>{{ k }}</td><td class="v2-rh-mono">{{ v }}</td></tr>
+      {% set _complex = is_complex(v) if is_complex is defined else false %}
+      <tr><td>{{ readable_code(k) if readable_code is defined else k }}</td><td class="v2-rh-mono">
+        {% if _complex %}<details><summary>{{ evidence_summary(v) }}</summary><pre class="v2-rh-pre" data-testid="run-detail-evidence-json" data-evidence-key="{{ k }}">{{ evidence_json(v) }}</pre></details>
+        {% else %}{{ v }}{% endif %}</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
   <div class="v2-rh-empty">No integrity evidence recorded for this run.</div>
   {% endif %}

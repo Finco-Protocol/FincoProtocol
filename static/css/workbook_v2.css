@@ -128,12 +128,17 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
 .v2-run-btn:hover  { background: #1d4ed8; }
 .v2-run-btn:active { background: #1e40af; }
 .v2-run-btn:disabled,
-.htmx-request .v2-run-btn { opacity: 0.55; cursor: not-allowed; }
+form.htmx-request .v2-run-btn,
+.v2-run-btn.htmx-request { opacity: 0.55; cursor: not-allowed; }
 
 /* ── Run button loading state ────────────────────────────────── */
 .v2-run-loading { display: none; }
-.htmx-request .v2-run-loading { display: inline; }
-.htmx-request .v2-run-label  { display: none; }
+/* UX-012: the busy label belongs to the control whose OWN request is running (its form or the button itself). An ancestor panel that is
+   merely loading something else (for example an Insight or lazy-panel fetch) must not make other commands read "Running…". */
+form.htmx-request .v2-run-loading,
+.v2-run-btn.htmx-request .v2-run-loading { display: inline; }
+form.htmx-request .v2-run-label,
+.v2-run-btn.htmx-request .v2-run-label  { display: none; }
 
 /* ── Sheet tabs ──────────────────────────────────────────────── */
 .v2-tabs {

@@ -6,7 +6,7 @@
   State priority: field_error > flash_error > run_failed > ws_dirty > has_runtime > not_run
 #}
 {% if field_error or flash_error %}
-  <div class="v2-banner v2-banner-error" role="alert" data-testid="banner-error">
+  <div class="v2-banner v2-banner-error" role="alert" data-testid="banner-error"{% if field_error and field_error.startswith('Draft changed since page loaded') %} hidden aria-hidden="true"{% endif %}>
     {{ field_error or flash_error }}
   </div>
 {% elif run_failed %}

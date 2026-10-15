@@ -206,3 +206,15 @@
 .v2-rh-cmp-name { font-weight: 600; color: #111827; }
 
 .v2-rh-cmp-ts { color: #6b7280; font-variant-numeric: tabular-nums; }
+
+/* RC-UX Phase 2 (UX-024): wide Run History tables scroll inside their own region instead of widening the document. */
+.v2-rh-scroll { max-width: 100%; overflow-x: auto; }
+.v2-rh-scroll:focus-visible { outline: 2px solid var(--fx-focus, #1d4ed8); outline-offset: 2px; }
+
+/* UX-024: long identity values (snapshot / composite hashes, engine ids) wrap inside their grid cell instead of pushing the document wider. */
+.v2-rh-detail-grid > * { min-width: 0; }
+.v2-rh-v { overflow-wrap: anywhere; min-width: 0; }
+.v2-rh-kv { min-width: 0; }
+
+/* UX-024: structured evidence is a readable summary with the exact stored value in a contained, scrollable block. */
+.v2-rh-pre { max-height: 18rem; max-width: 100%; overflow: auto; margin: 0.25rem 0 0; padding: 0.5rem; font-size: 0.72rem; white-space: pre; background: var(--fx-surface-alt, #f3f4f6); border: 1px solid var(--fx-border, #cbd5e1); border-radius: 3px; }

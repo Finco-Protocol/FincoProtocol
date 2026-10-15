@@ -531,7 +531,7 @@ class TestSmartPanelValidationSummary:
         html = render_panel(default_panel())
         for key in ("REQUIRED_MISSING", "INVALID", "OUT_OF_BOUNDS", "SAVE_REJECTED"):
             assert re.search(rf'data-summary-class="{key}"[^>]*\bhidden\b', html), key
-        assert "No rejected edits in this session." in html
+        assert "No rejected edits in this session." not in html      # no default message when there is nothing to report
 
     def test_stale_last_run_is_not_an_input_error(self):
         register = {"available": True, "entry_count": 1}

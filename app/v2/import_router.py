@@ -55,6 +55,9 @@ def _field_options(project) -> list[dict]:
     return options
 
 
+EXACT_MAPPING_METHODS = frozenset({"exact_field_id", "unique_exact_registry_label"})
+
+
 def _context(request, user, project, ws, *, stage, proposals=None, error=None,
              detected=0, totals=None, digest=None):
     pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
@@ -83,7 +86,9 @@ def _context(request, user, project, ws, *, stage, proposals=None, error=None,
         "stage": stage, "csrf_token": generate_csrf_token(),
         "error": error, "proposals": rows, "detected": detected,
         "totals": dict(Counter(r["status"] for r in rows)) if rows else (totals or {}),
-        "exact_count": sum(p["mapping_method"] == "exact_field_id" for p in proposals or []),
+        # UX-026: "exact" is every unambiguous exact match (the field id, or a registry label that matches one field exactly) - the same notion the review
+        # table calls "exact label". The counters come only from the proposals the import transaction produced.
+        "exact_count": sum(p["mapping_method"] in EXACT_MAPPING_METHODS for p in proposals or []),
         "ambiguous_count": sum("ambiguous" in p["mapping_method"] or p["reason"] == "IMPORT_DUPLICATE_TARGET_REQUIRES_REVIEW" for p in proposals or []),
         "categories": [c for c in ("CAPEX", "OPEX", "REVENUE", "FINANCING", "TAX", "GENERAL", "UNMAPPED")
                        if any(r.get("category") == c for r in rows)],
