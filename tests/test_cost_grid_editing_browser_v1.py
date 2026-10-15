@@ -238,10 +238,13 @@ def test_arrow_keys_adjust_numbers_and_move_between_rows_in_text_cells(make):
     cell.click()
     s.page.keyboard.type("100")
     s.page.keyboard.press("ArrowUp")
+    assert cell.input_value() == "100"                 # UX-018: plain arrows only move between cells, they never change a number
+    cell.click()
+    s.page.keyboard.press("Alt+ArrowUp")               # an explicit modifier nudges the value
     assert cell.input_value() == "101"
-    s.page.keyboard.press("Shift+ArrowUp")
+    s.page.keyboard.press("Shift+Alt+ArrowUp")
     assert cell.input_value() == "111"
-    s.page.keyboard.press("ArrowDown")
+    s.page.keyboard.press("Alt+ArrowDown")
     assert cell.input_value() == "110"
     s.page.keyboard.press("Escape")
     s.rows().nth(1).locator('input[name="label"]').click()

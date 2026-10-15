@@ -58,7 +58,7 @@
     region().appendChild(toast);
     try { if (window.Dismiss) new window.Dismiss(toast, close, {transition: 'transition-opacity', duration: 150, timing: 'ease-out'}); } catch (_) { /* manual fallback below */ }
     close.addEventListener('click', () => remove(toast));
-    if (!options.sticky && kind !== 'error') setTimeout(() => remove(toast), options.ms || 6000);
+    if (!options.sticky) setTimeout(() => remove(toast), options.ms || (kind === 'error' ? 15000 : 6000));       // errors stay longer, but never indefinitely over the content
     return {id, dismiss: () => remove(toast)};
   }
   window.FincoToast = {show};
@@ -95,8 +95,13 @@
     const p = e.detail && e.detail.requestConfig && e.detail.requestConfig.path;
     if (!p || String(p).indexOf('/v2/workbook/run') !== 0) return;
     if (runToast) { runToast.dismiss(); runToast = null; }
-    const ok = e.detail.successful && /banner-current/.test((e.detail.xhr && e.detail.xhr.responseText) || "");
-    if (ok) show({kind: 'success', message: 'Model run complete · results are current'});
-    else show({kind: 'error', message: 'The model run did not complete. Nothing was saved over the previous results.'});
+    if (!e.detail.successful) { show({kind: 'error', message: 'The model run did not complete. Nothing was saved over the previous results.'}); return; }
+    // The committed state is what the page reports after the response has been applied (toolbar chip, refreshed out of band by the same response).
+    setTimeout(() => {
+      const chip = document.querySelector('[data-testid="toolbar-runtime-state"]');
+      const current = !!chip && /current/i.test(chip.textContent);
+      show(current ? {kind: 'success', message: 'Model run complete · results are current'}
+                   : {kind: 'error', message: 'The model run did not complete. Nothing was saved over the previous results.'});
+    }, 400);
   });
 })();

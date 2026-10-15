@@ -46,7 +46,16 @@ F3 multi-Senior activation is **enabled** in this release (`multisenior_config.A
 - **Scroll review (section 7)**: see section 6.
 
 ## 3. Test evidence (real Chromium, real CSP, no bypass)
-REG_PLACEHOLDER
+Run on this branch (local, `FINCO_TEST_CHROMIUM_PATH` set, Python 3.12):
+
+| Group | Result |
+|---|---|
+| Affected non-browser suites (92 files + RC-UX unit suites, 2839 tests) | **2831 passed, 4 skipped, 4 failed**; the 4 failures are environmental in this sandbox: 3 in `test_ci_acceptance.py` (`No module named 'yaml'`) and `test_ui_protocol_shell.py::test_api_b04_placeholders_not_links` (no Chromium path set for that group) - not code failures, they must be green in CI |
+| Existing browser suites (consolidation, hybrid grid, capital stack, investor F4, Goal Seek, cost grid editing, cost batch save; 117 tests) | 109 passed, 8 failed at first run. Triage: 4x capital-stack and 1x cost-grid failures were stale test expectations (the unsupported list is now a Flowbite accordion, not `<summary>`; plain arrows no longer change numbers since PR #286 - that test also fails on `main`); updated accordingly. Re-verification of the remaining 3 (consolidation legacy-links, investor wind, cost-grid ten-edit) was still running when this PR was opened - see the PR comment/body for the final count |
+| Phase 2 browser suites (PPA 32, construction timing 16, Flowbite 11, Run History 2, scoped progress 2, debt/equity journeys 6; 69 tests) | 67 passed; 1 failed (Run History: an error toast from a mis-detected Run result covered the Detail button) -> toast result detection now reads the committed state and error toasts auto-dismiss; re-run pending |
+
+Real-CSP guarantee: none of the Phase 2 suites uses `bypass_csp`; they fail on any `EvalError`, console error or page error (favicon excluded, as in the consolidation suite).
+Flowbite acceptance (`test_rcux2_flowbite_ui_browser.py`, 11 cases, last full run 11/11): assets self-hosted and no third-party host; computed styles prove the Flowbite classes apply (8 px radius, 1 px border, shadow, light and dark palettes); accordion toggles once after repeated HTMX settles; accessible dismissible toast; loading toast then result toast on Run; no document overflow at 390 px dark on Overview, Revenue, Debt, Investor and Run History.
 
 ## 4. Flowbite adoption - what is Flowbite and what is not
 | Component | Source | Reason |
@@ -59,7 +68,18 @@ REG_PLACEHOLDER
 No CDN, no `unsafe-eval`, no change to the CSP. The Flowbite plugin forms/tooltips base styles are disabled so no existing control is restyled.
 
 ## 5. Performance (local Chromium, not staging)
-PERF_PLACEHOLDER
+Local Chromium, 1440x900 light, first load of each sheet. Before = `main`, after = this branch (Flowbite layer included). Server render time dominates; no calculation time is affected.
+
+| Sheet | First response ms (main / branch) | Load event ms (main / branch) | Subresource KB (main / branch) | Document overflow (main / branch) |
+|---|---|---|---|---|
+| Overview | 1876 / 838 | 3045 / 3176 | 540 / 725 | no / no |
+| Revenue | 2171 / 1883 | 2921 / 2851 | 2 / 2 | no / no |
+| Debt | 2064 / 1602 | 3199 / 2350 | 2 / 2 | no / no |
+| Investor | 1966 / 1991 | 3150 / 3144 | 2 / 2 | no / no |
+| Run History | 1837 / 2034 | 2843 / 2860 | 2 / 2 | **yes / no** |
+
+Static cost of the Flowbite layer: `flowbite.min.js` 135.8 KB (29.6 KB gzip), `flowbite_finco.min.css` 19.5 KB (3.0 KB gzip), plus `fx_ui.js`, `date_duration.js`, `construction_timing.js` (about 14 KB). Differences in first-response time are within the run-to-run noise of one local measurement per cell and are not claimed as improvements. This is not staging and not a statement about calculation speed.
+Screenshots (5 screens x 4 viewports, before and after) were captured locally under `artifacts/rcux2-screens/` (git-ignored) and shared in the session.
 
 ## 6. Scroll assertion review (`test_four_consecutive_edits_save_atomically_with_stable_focus_and_scroll`)
 - Reproduced: on `main` the Save leaves `scrollY` 120 -> 120, document height 3400 -> 3400, cell top unchanged. On this branch before the fixes: `scrollY` 120 -> 95, document height 3424 -> 3556, cell top +0.6.
