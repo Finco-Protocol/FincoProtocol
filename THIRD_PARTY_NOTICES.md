@@ -24,3 +24,11 @@ Runtime authority remains FINCO's: imported registry facts are seed
 identity data, never live market evidence, and every representation row is
 re-derived (quarantine / conflict / inactive) by
 `finco_radar.venues.registry` at load time.
+
+
+## FINCO Model UI layer (RC-UX Phase 2)
+
+| Component | Version | License | Use |
+|---|---|---|---|
+| Flowbite (`flowbite`) | 2.5.2 | MIT | `static/vendor/flowbite.min.js` (Accordion / Collapse / Dismiss behaviour) and the Flowbite component markup used in the Model workspace templates. Self-hosted; no CDN. |
+| Tailwind CSS (`tailwindcss`) | 3.4.17 | MIT | Build-time only (`tools/ui`): generates the scoped `static/css/flowbite_finco.min.css`. Not shipped or run at runtime. |

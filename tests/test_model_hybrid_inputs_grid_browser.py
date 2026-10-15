@@ -260,11 +260,9 @@ def test_four_consecutive_edits_save_atomically_with_stable_focus_and_scroll(mak
         assert float(s.persisted(field_id)) == float(value)
     assert s.staged() == 0
     assert s.active_field() == EDITS[2][0], "focus must stay on the cell the user was in"
-    # The user-visible property is that the cell being edited does not move. Browser scroll anchoring may legitimately adjust scrollY when
-    # content above the viewport changes height (here the unsaved-edits row collapses), so scrollY is only allowed to move by that exact height change.
-    after = s.page.evaluate(probe)
+    assert abs(s.page.evaluate("window.scrollY") - before_scroll) <= 2, "Save must not scroll the page"        # original assertion, restored
+    after = s.page.evaluate(probe)                                                                                # additional: the edited cell itself stays put
     assert abs(after["top"] - before["top"]) <= 2, "Save must not move the cell the user is editing"
-    assert abs(after["y"] - before["y"]) <= abs(after["h"] - before["h"]) + 2, "Save must not scroll the page beyond layout anchoring"
     assert s.page.locator('[data-ig-flag-notrun]:not([hidden])').count() == 0   # no Last Run to compare with
     hashes = set(s.page.evaluate(
         "Array.from(document.querySelectorAll('input[name=content_hash]')).map(i => i.value)"))

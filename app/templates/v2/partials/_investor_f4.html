@@ -1,8 +1,8 @@
 {% macro money(value) %}{% if value is not none %}{{ "{:,.2f}".format(value) }}{% else %}UNAVAILABLE{% endif %}{% endmacro %}
-<section id="f4-investor-workspace" class="f4-investor" data-testid="f4-investor" data-state="{{ f4.state }}">
+<section id="f4-investor-workspace" class="f4-investor fx-ui" data-testid="f4-investor" data-state="{{ f4.state }}">
   <link rel="stylesheet" href="/static/css/investor_f4.css">
   <script src="/static/js/investor_f4.js" defer></script>
-  <header><h3>Common-equity investor agreement</h3><span class="v2-binding-badge" data-testid="f4-state">{{ f4.state }}</span></header>
+  <header><h3>Common-equity investor agreement</h3><span class="v2-binding-badge text-xs font-medium px-2.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300" data-testid="f4-state">{{ f4.state }}</span></header>
   <p>Residual common equity only. <strong>Ownership %</strong> allocates results between investors and does not change Sources &amp; Uses; <strong>commitments and paid-in capital</strong> describe funding and must reconcile with the equity in the financing plan before Run. Return-of-capital ordering, preferences, carry, NAV and SHL lender allocation are not available.</p>
   {% if f4.editable %}
   <form class="f4-agreement-form" hx-post="/v2/workbook/investor/agreement" hx-target="#f4-investor-workspace" hx-swap="outerHTML"
@@ -15,38 +15,38 @@
     <p>Agreement version {{ f4.terms.version if f4.terms else 'not saved' }}. Working scenario: {{ f4.context.workspace.active_scenario_name or 'Base' }}.</p>
     <div class="f4-scroll"><table class="f4-table"><thead><tr><th>Investor ID</th><th>Legal ownership %</th><th>Commitment kEUR</th><th></th></tr></thead><tbody data-f4-investors>
       {% for i in (f4.terms.investors if f4.terms else ()) %}
-      <tr data-f4-investor><td><input data-f4-field="investor_id" aria-label="Investor ID" required value="{{ i.investor_id }}"></td>
-        <td><input data-f4-field="ownership_fraction" aria-label="Legal ownership percent" type="number" min="0" max="100" step="any" required value="{{ i.ownership_fraction * 100 }}"></td>
-        <td><input data-f4-field="commitment_keur" aria-label="Commitment kEUR" type="number" min="0" step="any" required value="{{ i.commitment_keur }}"></td>
+      <tr data-f4-investor><td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="investor_id" aria-label="Investor ID" required value="{{ i.investor_id }}"></td>
+        <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="ownership_fraction" aria-label="Legal ownership percent" type="number" min="0" max="100" step="any" required value="{{ i.ownership_fraction * 100 }}"></td>
+        <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="commitment_keur" aria-label="Commitment kEUR" type="number" min="0" step="any" required value="{{ i.commitment_keur }}"></td>
         <td><button type="button" data-f4-remove title="Remove investor" aria-label="Remove investor">&times;</button></td></tr>
       {% endfor %}
     </tbody></table></div>
-    <button type="button" data-f4-add="investor">Add investor</button>
+    <button type="button" data-f4-add="investor" class="text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-3 py-1.5 dark:bg-gray-800 dark:text-white dark:border-gray-600 dark:hover:bg-gray-700">Add investor</button>
     <h4>Actual paid-in capital</h4>
     <p>Contractual commitments remain separate from actual paid-in cash. Run requires exact-date reconciliation to canonical legal-equity funding.</p>
     <div class="f4-scroll"><table class="f4-table"><thead><tr><th>Investor ID</th><th>Cash date</th><th>Paid-in kEUR</th><th></th></tr></thead><tbody data-f4-contributions>
       {% for c in (f4.terms.contributions if f4.terms else ()) %}
-      <tr data-f4-contribution><td><input data-f4-field="investor_id" aria-label="Contribution investor ID" required value="{{ c.investor_id }}"></td>
-        <td><input data-f4-field="cash_date" aria-label="Contribution date" type="date" required value="{{ c.cash_date }}"></td>
-        <td><input data-f4-field="amount_keur" aria-label="Paid-in kEUR" type="number" min="0" step="any" required value="{{ c.amount_keur }}"></td>
+      <tr data-f4-contribution><td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="investor_id" aria-label="Contribution investor ID" required value="{{ c.investor_id }}"></td>
+        <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="cash_date" aria-label="Contribution date" type="date" required value="{{ c.cash_date }}"></td>
+        <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="amount_keur" aria-label="Paid-in kEUR" type="number" min="0" step="any" required value="{{ c.amount_keur }}"></td>
         <td><button type="button" data-f4-remove title="Remove contribution" aria-label="Remove contribution">&times;</button></td></tr>
       {% endfor %}
     </tbody></table></div>
-    <button type="button" data-f4-add="contribution">Add contribution</button>
-    <div class="f4-actions"><button type="submit" name="action" value="save">Save agreement</button>
+    <button type="button" data-f4-add="contribution" class="text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-3 py-1.5 dark:bg-gray-800 dark:text-white dark:border-gray-600 dark:hover:bg-gray-700">Add contribution</button>
+    <div class="f4-actions"><button type="submit" name="action" value="save" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2 dark:bg-blue-600">Save agreement</button>
       {% if f4.terms %}<button type="submit" name="action" value="remove" formnovalidate>Remove working agreement</button>{% endif %}
       <button type="button" hx-get="/v2/workbook/investor/agreement?project={{ f4.project_code | urlencode }}" hx-target="#f4-investor-workspace" hx-swap="outerHTML">Reload agreement</button>
     </div><p data-f4-error role="alert" hidden></p>
     <template data-f4-template="investor"><tr data-f4-investor>
-      <td><input data-f4-field="investor_id" aria-label="Investor ID" required maxlength="128"></td>
-      <td><input data-f4-field="ownership_fraction" aria-label="Legal ownership percent" type="number" min="0" max="100" step="any" required></td>
-      <td><input data-f4-field="commitment_keur" aria-label="Commitment kEUR" type="number" min="0" step="any" required></td>
+      <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="investor_id" aria-label="Investor ID" required maxlength="128"></td>
+      <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="ownership_fraction" aria-label="Legal ownership percent" type="number" min="0" max="100" step="any" required></td>
+      <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="commitment_keur" aria-label="Commitment kEUR" type="number" min="0" step="any" required></td>
       <td><button type="button" data-f4-remove title="Remove investor" aria-label="Remove investor">&times;</button></td>
     </tr></template>
     <template data-f4-template="contribution"><tr data-f4-contribution>
-      <td><input data-f4-field="investor_id" aria-label="Contribution investor ID" required maxlength="128"></td>
-      <td><input data-f4-field="cash_date" aria-label="Contribution date" type="date" required></td>
-      <td><input data-f4-field="amount_keur" aria-label="Paid-in kEUR" type="number" min="0" step="any" required></td>
+      <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="investor_id" aria-label="Contribution investor ID" required maxlength="128"></td>
+      <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="cash_date" aria-label="Contribution date" type="date" required></td>
+      <td><input class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-f4-field="amount_keur" aria-label="Paid-in kEUR" type="number" min="0" step="any" required></td>
       <td><button type="button" data-f4-remove title="Remove contribution" aria-label="Remove contribution">&times;</button></td>
     </tr></template>
   </form>

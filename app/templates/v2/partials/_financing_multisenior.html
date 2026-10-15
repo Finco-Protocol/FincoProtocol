@@ -1,5 +1,5 @@
 {% if multisenior is defined %}
-<section data-testid="multisenior-workspace" class="cs-workspace">
+<section data-testid="multisenior-workspace" class="cs-workspace fx-ui">
   <h3>Capital stack</h3>
   {% if not multisenior.available %}
     <p>{{ multisenior.reason }}</p>
@@ -24,7 +24,7 @@
     <input type="hidden" data-f3-scope value="{{ multisenior.scope }}">
     <input type="hidden" data-f3-authority value="{{ multisenior.authority }}">
   {% endif %}
-    <p class="v2-section-label">WORKING INPUTS · Selected scenario only · <span class="cs-badge cs-{{ cs.status | lower | replace(' ', '-') }}" data-testid="cs-stack-status">{{ cs.status }}</span>
+    <p class="v2-section-label">WORKING INPUTS · Selected scenario only · <span class="cs-badge text-xs font-medium px-2.5 py-0.5 rounded bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 cs-{{ cs.status | lower | replace(' ', '-') }}" data-testid="cs-stack-status">{{ cs.status }}</span>{% if cs.status == 'SAVED PROPOSAL' %} <span class="text-xs font-medium px-2.5 py-0.5 rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" data-testid="cs-not-active">Not active in Run</span>{% endif %}
       · <span data-testid="cs-dirty" data-cs-dirty hidden>● <span data-cs-dirty-count>0</span> unsaved</span></p>
     <div class="f2-scroll">
     <table class="cs-table" data-testid="capital-stack-table">
@@ -44,7 +44,7 @@
           <td>{% if row_editable %}<select data-f3="repayment_mode" data-cs-cell aria-label="Repayment method"><option value="LEVEL_PRINCIPAL" {{ 'selected' if r.repayment_mode == 'LEVEL_PRINCIPAL' }}>Level principal</option><option value="BULLET" {{ 'selected' if r.repayment_mode == 'BULLET' }}>Bullet at maturity</option></select>{% else %}{{ r.repayment }}{% endif %}</td>
           <td class="cs-num">{% if row_editable %}<input data-f3="grace_months" data-cs-cell type="number" min="0" step="1" value="{{ r.grace_months }}" required aria-label="Principal grace months">{% else %}{{ r.grace_months }}{% endif %}</td>
           <td>{% if row_editable %}<input data-f3="maturity_date" data-cs-cell type="date" value="{{ r.maturity_date }}" required aria-label="Maturity, operating period end">{% else %}{{ r.maturity_date }}{% endif %}</td>
-          <td><span class="cs-badge cs-{{ r.status | lower | replace(' ', '-') }}" data-testid="cs-row-status">{{ r.status }}</span>{% if r.readiness %}<small class="cs-note" data-testid="cs-junior-readiness">{{ r.readiness }}</small>{% endif %}</td>
+          <td><span class="cs-badge text-xs font-medium px-2.5 py-0.5 rounded bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 cs-{{ r.status | lower | replace(' ', '-') }}" data-testid="cs-row-status">{{ r.status }}</span>{% if r.readiness %}<small class="cs-note" data-testid="cs-junior-readiness">{{ r.readiness }}</small>{% endif %}</td>
         </tr>
         <tr class="cs-detail" data-cs-detail hidden>
           <td></td>
@@ -94,16 +94,19 @@
     {% else %}
     <p>Explicit pari-passu commitments; fixed cash interest; construction-only draws; semiannual operating periods. Fees and IDC are capitalized once. No prefunding, active SHL, DSRA/DSRF, floating rates, DSCR sizing or agency fee in this mode.</p>
     {% endif %}
+    {% if cs.release_enabled %}<p class="text-sm text-gray-500 dark:text-gray-400" data-testid="cs-activation-note">{{ 'These terms are active: the next Run uses them.' if multisenior.active else 'Saved terms are a proposal and do not affect the model until you activate them below.' }}</p>{% endif %}
     <label><input data-f3-activate type="checkbox" {{ 'checked' if multisenior.active and cs.release_enabled }} {{ 'disabled' if not cs.release_enabled }}> Activate these terms; fund residual Uses with equity only and use reserve NONE</label>
     {% if not cs.release_enabled %}<p data-testid="f3-activation-blocked">Saved financing proposals are stored for review only and do not change the model or the next Run until activation is released.</p>{% endif %}
     <p data-f3-error role="alert"></p>
     <button type="submit" data-f3-save disabled>Save financing proposal</button>
     {% endif %}
   {% if editable %}</form>{% endif %}
-  <details class="cs-unsupported" data-testid="cs-unsupported">
-    <summary>Not available in this release ({{ cs.unsupported | length }})</summary>
-    <ul>{% for u in cs.unsupported %}<li><span class="cs-badge cs-unsupported-badge">{{ u.status }}</span> <strong>{{ u.name }}</strong> — {{ u.reason }}</li>{% endfor %}</ul>
-  </details>
+  <div class="cs-unsupported mt-3" data-testid="cs-unsupported" data-accordion="collapse" id="cs-unsupported-accordion">
+    <h4 id="cs-unsupported-heading"><button type="button" class="flex items-center justify-between w-full p-3 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800" data-accordion-target="#cs-unsupported-body" aria-expanded="false" aria-controls="cs-unsupported-body"><span>Not available in this release ({{ cs.unsupported | length }})</span><svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0" aria-hidden="true" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/></svg></button></h4>
+    <div id="cs-unsupported-body" class="hidden" aria-labelledby="cs-unsupported-heading">
+    <div class="p-3 text-sm border border-t-0 border-gray-200 rounded-b-lg dark:border-gray-700"><ul>{% for u in cs.unsupported %}<li><span class="cs-badge cs-unsupported-badge text-xs font-medium px-2.5 py-0.5 rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">{{ u.status }}</span> <strong>{{ u.name }}</strong> — {{ u.reason }}</li>{% endfor %}</ul></div>
+    </div>
+  </div>
   {% if editable %}<script src="/static/js/model_multisenior.js"></script>{% endif %}
   {% endif %}
   {% if multisenior.available and multisenior.last_run %}

@@ -641,6 +641,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
         "request": request,
         "project_code": project,
         "financing_csrf_token": issue_token(request, project),
+        "grid_csrf_token": __import__("app.auth", fromlist=["generate_csrf_token"]).generate_csrf_token(),
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
@@ -693,6 +694,9 @@ def _render_htmx_sheet(
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
     if not field_error:
         oob += "\n" + _build_run_controls_oob(ctx)
+        # The toolbar chip is what the persistent strip mirrors: refresh it with the same freshness read, otherwise a sheet refresh that
+        # follows a Save would flip the strip back to the previous Run state.
+        oob += "\n" + _build_toolbar_state_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -1168,6 +1172,7 @@ def _build_revenue_contract_editor(pis, ws):
     axis = []
     operating_window = None
     operating_starts = []
+    operating_boundaries = []
     if technology in ("solar", "wind"):
         # Read-only: the operating period boundaries the model already derives from the project's own dates. They only
         # pre-fill the guided PPA form; the canonical validator still decides what is accepted.
@@ -1178,14 +1183,21 @@ def _build_revenue_contract_editor(pis, ws):
             if operating:
                 operating_window = {"start": operating[0].start_date.isoformat(), "end": operating[-1].end_date.isoformat()}
                 operating_starts = [p.start_date.isoformat() for p in operating]
+                operating_boundaries = sorted({p.start_date.isoformat() for p in operating} | {p.end_date.isoformat() for p in operating})
             if ACTIVATION_ENABLED:
                 axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
                          "settlement_date": p.end_date.isoformat()} for p in operating]
         except Exception:
             operating_window = None
             operating_starts = []
+            operating_boundaries = []
             axis = []
-    return {"operating_window": operating_window, "operating_starts": operating_starts, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
+    try:
+        _term = float(pis.get("revenue.ppa.term_years"))
+        ppa_term_years = _term if _term > 0 else None
+    except (TypeError, ValueError):
+        ppa_term_years = None
+    return {"ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
             "overridden": overridden, "rows": payload.get("streams", []),
             "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
             "period_axis": axis}

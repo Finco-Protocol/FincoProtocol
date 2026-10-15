@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/static/css/model_diagnostics_v1.css">
   <link rel="stylesheet" href="/static/css/model_diagnostics_v2.css">
   <link rel="stylesheet" href="/static/css/model_tokens.css">
+  <link rel="stylesheet" href="/static/css/flowbite_finco.min.css">{# self-hosted Tailwind/Flowbite layer, scoped to .fx-ui (tools/ui) #}
 </head>
 <body>
   <a class="v2-skip-link" href="#v2-workbook-shell">Skip to model content</a>
@@ -299,7 +300,9 @@
   </div>{# model-workspace-main #}
   </div>{# v2-workspace-body #}
 
+  <script src="/static/vendor/flowbite.min.js"></script>{# Flowbite 2.5.2, MIT, self-hosted #}
   <script src="/static/js/workbook_v2.js"></script>
+  <script src="/static/js/fx_ui.js"></script>
   <script src="/static/js/cost_staging.js"></script>{# C-0: cost staging module, extracted verbatim from workbook_v2.js #}
   <script src="/static/js/model_bess_workspace.js"></script>
   <script src="/static/js/investor_f4.js" defer></script>

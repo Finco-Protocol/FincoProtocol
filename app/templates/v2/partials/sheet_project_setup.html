@@ -19,6 +19,7 @@
   Values always come from pis.get(field_id).  Snapshot keys never appear here.
 #}
 {% from "partials/field_editor.html" import render_field %}
+{% from "partials/_date_duration.html" import date_duration %}
 
 <div id="v2-sheet-project-setup" data-sheet="project_setup"
      data-fc-grid="project_setup" data-fc-scroll-container>
@@ -37,6 +38,22 @@
 
   {% if field_error %}
     <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {% set _cod = (ps_fields | selectattr('field_id', 'equalto', 'project_setup.technical.cod_date') | list | first) %}
+  {% set _months = (ps_fields | selectattr('field_id', 'equalto', 'project_setup.technical.construction_months') | list | first) %}
+  {% if _cod and _months and project_editable %}
+  <section class="ct fx-ui p-4 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700" data-construction-timing data-testid="construction-timing" aria-labelledby="ct-title"
+           data-project="{{ project_code }}" data-csrf="{{ grid_csrf_token | default('') }}"
+           data-content-hash="{{ content_hash }}" data-workbook-version="{{ workbook_version }}"
+           data-scenario-id="{{ active_scenario_id | default('') }}"
+           data-cod="{{ _cod.value or '' }}" data-months="{{ _months.value if _months.value is not none else '' }}">
+    <h3 id="ct-title" class="text-base font-semibold text-gray-900 dark:text-white">Construction timing</h3>
+    <p class="d-context text-sm text-gray-500 dark:text-gray-400 !border-0 !bg-transparent !p-0">Enter when construction starts and how long it takes; the end of construction is the Commercial Operation Date (COD). Saving updates the project inputs only: Run the model afterwards. Existing revenue contracts keep their dates; if they no longer match the new operating periods you will be asked to adjust them.</p>
+    {{ date_duration("ct-dates", "Construction start date", "Construction end / COD", "", "", "months", "construction-timing-dates") }}
+    <div class="ct-actions"><button type="button" data-ct-save disabled class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-600">Save construction timing</button>
+      <span class="d-context text-sm text-gray-500 dark:text-gray-400 !border-0 !bg-transparent !p-0" data-ct-msg role="status" aria-live="polite" data-testid="construction-timing-msg"></span></div>
+  </section>
   {% endif %}
 
   {% set ns = namespace(current_section=None) %}
@@ -63,3 +80,5 @@
   {% endif %}
 
 </div>{# v2-sheet-project-setup #}
+<script src="/static/js/date_duration.js"></script>
+<script src="/static/js/construction_timing.js"></script>
