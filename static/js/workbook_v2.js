@@ -1025,3 +1025,43 @@ document.addEventListener('htmx:afterSettle', function (e) {
   window.v2JumpToField = jump;
 })();
 
+
+// RC-UX (UX-004): Goal Seek lazy-panel lifecycle without any JavaScript expression in hx-trigger (the CSP forbids
+// 'unsafe-eval'). Opening the tab asks the panel to load ONLY while it holds no result, so a completed solve is never
+// replaced; the panel's own hx-sync drops a repeated request, and a late load is discarded (never swapped) when a solve is running or has answered.
+(function () {
+  var PANEL = '#v2-sheet-goal-seek';
+  var RESULT = '#v2-goal-seek-results [data-testid="gs-result"]';
+  document.addEventListener('click', function (e) {
+    var tab = e.target && e.target.closest ? e.target.closest('#tab-goal-seek') : null;
+    if (!tab || !window.htmx) return;
+    var panel = document.querySelector(PANEL);
+    if (!panel || panel.querySelector(RESULT)) return;
+    window.htmx.trigger(panel, 'gs-load');
+  });
+  document.addEventListener('htmx:beforeSwap', function (e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || elt.id !== 'v2-sheet-goal-seek' || !elt.querySelector) return;
+    var results = elt.querySelector('#v2-goal-seek-results');
+    var target = elt.querySelector('#gs-target-value');
+    var typing = (target && target.value !== '') || (document.activeElement && elt.contains(document.activeElement) && document.activeElement !== document.body);
+    if (elt.querySelector('form.htmx-request') || (results && results.childElementCount) || typing) e.detail.shouldSwap = false;
+  });
+  // htmx does not swap 4xx/5xx bodies: a failed solve must still be visible, never a silent no-op.
+  function showFailure(e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || !elt.matches || !elt.matches('form[hx-post="/v2/workbook/goal-seek/run"]')) return;
+    var box = document.querySelector('#v2-goal-seek-results');
+    if (!box) return;
+    box.innerHTML = '';
+    var p = document.createElement('p');
+    p.className = 'd-context';
+    p.setAttribute('role', 'alert');
+    p.setAttribute('data-testid', 'gs-error');
+    p.textContent = 'Goal Seek could not be completed. Nothing was changed. Check the target and try again.';
+    box.appendChild(p);
+  }
+  document.addEventListener('htmx:responseError', showFailure);
+  document.addEventListener('htmx:sendError', showFailure);
+  document.addEventListener('htmx:timeout', showFailure);
+}());

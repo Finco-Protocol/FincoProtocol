@@ -3661,6 +3661,9 @@ def _scenario_authority_oob(
         include_banner_and_controls=True,
         include_scenario_list=False,
     )
+    # A scenario change makes an earlier Goal Seek result obsolete: clear it instead of presenting it under the new scenario.
+    html += ('\n<div id="v2-goal-seek-results" class="v2-gs-results" data-testid="gs-results" hx-swap-oob="true">'
+             '<p class="d-context" data-testid="gs-context-changed">The scenario changed. Run Goal Seek again for this scenario.</p></div>')
     if include_revenue and str(project_record.project_type).lower() in ("solar", "wind"):
         from app.v2.post_run_ui import _as_oob
         pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)

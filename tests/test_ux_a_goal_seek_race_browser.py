@@ -1,6 +1,6 @@
 """Stream A (UX-004): a Goal Seek result must never be wiped by the lazy panel GET.
 
-Real Chromium against a live uvicorn server. The lazy ``GET /decision/goal-seek`` is HELD by a route handler so the order of
+Real Chromium against a live uvicorn server under the application's REAL Content-Security-Policy (no bypass). The lazy ``GET /decision/goal-seek`` is HELD by a route handler so the order of
 responses is deterministic; the solve (POST) is fulfilled with a result fragment so no engine run is needed.
 """
 from __future__ import annotations
@@ -16,6 +16,7 @@ pytest.importorskip("playwright", reason="playwright not installed in this workf
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 PORT = 8799
+RESULT2 = '<div id="v2-goal-seek-result" data-testid="gs-result">Required tariff 63.80 EUR/MWh</div>'
 RESULT = '<div id="v2-goal-seek-result" data-testid="gs-result">Required tariff 61.20 EUR/MWh</div>'
 
 
@@ -59,49 +60,162 @@ def browser():
         instance.close()
 
 
-def _open(live_server, browser, uid):
-    from app.auth import COOKIE_NAME, create_session_token
-    from app.services.reference_seed_service import create_reference_seeded_project
+class _Page:
+    """A page under the real CSP that records every page error and console error."""
 
-    rec = create_reference_seeded_project(user_id=uid, template_source="generic_solar_reference", requested_name="GS", capacity_mw=40.0)
-    ctx = browser.new_context(viewport={"width": 1440, "height": 900}, bypass_csp=True)
-    ctx.add_cookies([{"name": COOKIE_NAME, "value": create_session_token(user_id=uid, username="admin"), "url": live_server}])
-    page = ctx.new_page()
-    page.goto(f"{live_server}/v2/workbook?project={rec.project_code}")
-    page.wait_for_selector("#tab-goal-seek", state="attached")
-    return ctx, page
+    def __init__(self, live_server, browser, uid):
+        from app.auth import COOKIE_NAME, create_session_token
+        from app.services.reference_seed_service import create_reference_seeded_project
+
+        self.uid = uid
+        self.rec = create_reference_seeded_project(
+            user_id=uid, template_source="generic_solar_reference", requested_name="GS", capacity_mw=40.0)
+        self.ctx = browser.new_context(viewport={"width": 1440, "height": 900})          # NO bypass_csp: the real policy applies
+        self.ctx.add_cookies([{"name": COOKIE_NAME, "value": create_session_token(user_id=uid, username="admin"), "url": live_server}])
+        self.page = self.ctx.new_page()
+        self.errors = []
+        self.run_posts = 0
+        self.page.on("pageerror", lambda e: self.errors.append(str(e)))
+        # Chromium's implicit /favicon.ico probe is browser chrome, not an application request (same rule as the consolidation suite).
+        self.page.on("console", lambda m: self.errors.append(m.text) if m.type == "error"
+                     and not str((m.location or {}).get("url", "")).endswith("/favicon.ico") else None)
+        self.page.on("request", self._count)
+        self.page.goto(f"{live_server}/v2/workbook?project={self.rec.project_code}")
+        self.page.wait_for_selector("#tab-goal-seek", state="attached")
+
+    def _count(self, request):
+        if request.method == "POST" and request.url.endswith("/goal-seek/run"):
+            self.run_posts += 1
+
+    def open_tab(self):
+        self.page.evaluate("document.getElementById('tab-goal-seek').click()")
+
+    def open_and_load(self):
+        """Open the tab and wait for the lazy GET to be swapped in, so the form the test types into is the final one."""
+        with self.page.expect_response(lambda r: "/decision/goal-seek" in r.url):
+            self.open_tab()
+        self.page.wait_for_selector(".htmx-request", state="detached")      # a locator wait: string predicates would need unsafe-eval
+
+    def solve(self, target="9.5"):
+        self.page.wait_for_selector("#gs-target-value", state="attached")
+        self.page.fill("#gs-target-value", target)
+        self.page.click("[data-testid=gs-run-btn]")
+
+    def assert_clean(self):
+        relevant = [e for e in self.errors if "EvalError" in e or "unsafe-eval" in e or "Content Security Policy" in e or "htmx" in e.lower()]
+        assert relevant == [], relevant
+        assert self.errors == [], self.errors
+
+    def close(self):
+        self.ctx.close()
+
+
+def _fulfil(page, body, status=200, delay=0.0):
+    def handler(route):
+        if delay:
+            time.sleep(delay)
+        route.fulfill(status=status, content_type="text/html", body=body)
+    page.route("**/goal-seek/run", handler)
+
+
+def test_the_workbook_and_the_first_opening_of_goal_seek_raise_no_csp_or_htmx_error(live_server, browser):
+    s = _Page(live_server, browser, "uxa-gs-0")
+    s.page.wait_for_selector("#v2-workbook-shell", state="attached")
+    s.open_tab()
+    s.page.wait_for_selector("#gs-target-value", state="attached")
+    s.assert_clean()
+    s.close()
 
 
 def test_a_delayed_lazy_get_cannot_wipe_a_result_that_was_requested_after_it(live_server, browser):
-    ctx, page = _open(live_server, browser, "uxa-gs-1")
+    s = _Page(live_server, browser, "uxa-gs-1")
     held = {}
-    page.route("**/decision/goal-seek*", lambda route: held.setdefault("route", route))      # hold the lazy GET
-    page.route("**/goal-seek/run", lambda route: route.fulfill(status=200, content_type="text/html", body=RESULT))
-    page.evaluate("document.getElementById('tab-goal-seek').click()")
+    s.page.route("**/decision/goal-seek*", lambda route: held.setdefault("route", route))      # hold the lazy GET
+    _fulfil(s.page, RESULT)
+    s.open_tab()
     for _ in range(50):
         if "route" in held:
             break
         time.sleep(0.1)
     assert "route" in held, "the lazy GET was not issued"
-    page.fill("#gs-target-value", "9.5")
-    page.click("[data-testid=gs-run-btn]")
-    page.wait_for_selector("[data-testid=gs-result]", state="attached")
-    held["route"].continue_()                                                                  # the late GET answers now (or was aborted)
+    s.page.fill("#gs-target-value", "9.5")
+    s.page.click("[data-testid=gs-run-btn]")
+    s.page.wait_for_selector("[data-testid=gs-result]", state="attached")
+    try:
+        held["route"].continue_()                                                                  # the late GET answers now (or was aborted)
+    except Exception:
+        pass
     time.sleep(1.0)
-    assert page.locator("[data-testid=gs-result]").count() == 1, "UX-004: the Goal Seek result disappeared"
-    ctx.close()
+    assert s.page.locator("[data-testid=gs-result]").count() == 1, "UX-004: the Goal Seek result disappeared"
+    s.assert_clean()
+    s.close()
 
 
-def test_reopening_the_tab_keeps_an_existing_result(live_server, browser):
-    ctx, page = _open(live_server, browser, "uxa-gs-2")
-    page.route("**/goal-seek/run", lambda route: route.fulfill(status=200, content_type="text/html", body=RESULT))
-    page.evaluate("document.getElementById('tab-goal-seek').click()")
-    page.wait_for_selector("#gs-target-value", state="attached")
-    time.sleep(0.5)
-    page.fill("#gs-target-value", "9.5")
-    page.click("[data-testid=gs-run-btn]")
-    page.wait_for_selector("[data-testid=gs-result]", state="attached")
-    page.evaluate("document.getElementById('tab-goal-seek').click()")
+def test_reopening_the_tab_keeps_an_existing_result_and_a_second_solve_replaces_it(live_server, browser):
+    s = _Page(live_server, browser, "uxa-gs-2")
+    _fulfil(s.page, RESULT)
+    s.open_and_load()
+    s.solve()
+    s.page.wait_for_selector("[data-testid=gs-result]", state="attached")
+    s.open_tab()
     time.sleep(1.0)
-    assert page.locator("[data-testid=gs-result]").count() == 1
-    ctx.close()
+    assert s.page.locator("[data-testid=gs-result]").count() == 1 and "61.20" in s.page.inner_text("#v2-goal-seek-results")
+    s.page.unroute("**/goal-seek/run")
+    _fulfil(s.page, RESULT2)
+    s.solve("10.5")
+    s.page.locator("#v2-goal-seek-results").filter(has_text="63.80").wait_for()
+    assert s.run_posts == 2
+    s.assert_clean()
+    s.close()
+
+
+def test_repeated_clicks_do_not_run_the_solve_twice(live_server, browser):
+    s = _Page(live_server, browser, "uxa-gs-3")
+    _fulfil(s.page, RESULT, delay=0.8)
+    s.open_and_load()
+    s.page.wait_for_selector("#gs-target-value", state="attached")
+    s.page.fill("#gs-target-value", "9.5")
+    s.page.dblclick("[data-testid=gs-run-btn]")
+    s.page.wait_for_selector("[data-testid=gs-result]", state="attached", timeout=15000)
+    for _ in range(3):
+        s.open_tab()
+    time.sleep(1.0)
+    assert s.run_posts == 1, s.run_posts
+    s.assert_clean()
+    s.close()
+
+
+def test_a_failed_solve_is_visible(live_server, browser):
+    s = _Page(live_server, browser, "uxa-gs-4")
+    _fulfil(s.page, "<p>Workspace not found.</p>", status=500)
+    s.open_and_load()
+    s.solve()
+    s.page.wait_for_selector("[data-testid=gs-error]", state="attached")
+    assert "could not be completed" in s.page.inner_text("[data-testid=gs-error]")
+    s.close()                                                              # the 500 itself is a logged network error by design
+
+
+def test_a_scenario_change_clears_a_result_that_belonged_to_the_previous_scenario(live_server, browser):
+    from app.persistence.scenarios_repository import add_scenario, get_or_create_base_case_scenario
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.service import WorkbookService
+    s = _Page(live_server, browser, "uxa-gs-5")
+    ws = get_workspace_state(s.uid, s.rec.project_id)
+    values = dict(WorkbookService.build_draft_input_set_from_workspace(ws).values)
+    base = get_or_create_base_case_scenario(
+        user_id=s.uid, project_id=s.rec.project_id, project_code=s.rec.project_code, project_name="GS", project_type="solar",
+        source_project_template="", base_input_set=values, governance_state={})
+    add_scenario(user_id=s.uid, project_id=s.rec.project_id, project_code=s.rec.project_code, scenario_name="Alt",
+                 parent_scenario_id=base.scenario_id, base_input_set=values, overrides={})
+    s.page.goto(f"{live_server}/v2/workbook?project={s.rec.project_code}")
+    _fulfil(s.page, RESULT)
+    s.open_and_load()
+    s.solve()
+    s.page.wait_for_selector("[data-testid=gs-result]", state="attached")
+    s.page.evaluate("document.getElementById('tab-scenarios').click()")
+    row = s.page.locator(".v2-scenario-row").filter(has_text="Alt")
+    row.get_by_role("button", name="Select", exact=True).click()
+    s.page.wait_for_selector("[data-testid=gs-context-changed]", state="attached")
+    assert s.page.locator("[data-testid=gs-result]").count() == 0
+    s.assert_clean()
+    s.close()
