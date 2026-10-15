@@ -46,6 +46,8 @@ UPDATE fails the whole transaction rolls back.
 """
 from __future__ import annotations
 
+import re
+
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator, List, Mapping, Optional, Sequence
@@ -120,12 +122,17 @@ class CapexInvalidAmountError(CapexCommandError):
 # ---------------------------------------------------------------------------
 
 
+_STRICT_AMOUNT = re.compile(r"[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?")  # ASCII only (UX-017)
+
+
 def _parse_finite_amount_keur(raw: Any) -> float:
     """Convert *raw* to a finite float for amount_keur.
 
     Raises CapexInvalidAmountError for NaN, +Inf, -Inf, or overflow.
     """
     try:
+        if isinstance(raw, str) and not _STRICT_AMOUNT.fullmatch(raw):
+            raise ValueError("amount syntax")
         v = float(raw)
         assert_finite_float(v, label="Amount (kEUR)")
     except (ValueError, TypeError, NumericGuardError) as exc:

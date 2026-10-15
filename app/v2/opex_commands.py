@@ -17,6 +17,8 @@ See capex_commands.py for the full transaction sequence and design rationale.
 """
 from __future__ import annotations
 
+import re
+
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator, List, Mapping, Optional, Sequence
@@ -90,6 +92,9 @@ class OpexInvalidAmountError(OpexCommandError):
 # ---------------------------------------------------------------------------
 
 
+_STRICT_AMOUNT = re.compile(r"[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?")  # ASCII only (UX-017)
+
+
 def _parse_finite_opex_numerics(raw_amount: Any, raw_inflation: Any) -> tuple[float, float]:
     """Validate and convert amount_keur and inflation_pct to finite floats.
 
@@ -98,6 +103,8 @@ def _parse_finite_opex_numerics(raw_amount: Any, raw_inflation: Any) -> tuple[fl
     results = []
     for raw, label in ((raw_amount, "Amount (kEUR)"), (raw_inflation, "Inflation (%)")):
         try:
+            if isinstance(raw, str) and not _STRICT_AMOUNT.fullmatch(raw):
+                raise ValueError("amount syntax")
             v = float(raw)
             assert_finite_float(v, label=label)
         except (ValueError, TypeError, NumericGuardError) as exc:

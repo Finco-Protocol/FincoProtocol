@@ -26,7 +26,9 @@ from model_workspace_harness import (
 
 ROOT = Path(__file__).resolve().parents[1]
 CSS = (ROOT / "static/css/workbook_v2.css").read_text(encoding="utf-8")
-JS = (ROOT / "static/js/workbook_v2.js").read_text(encoding="utf-8")
+# C-0: the cost-grid module now lives in cost_staging.js (loaded right after workbook_v2.js); the contracts below read both as the one text they were.
+JS = ((ROOT / "static/js/workbook_v2.js").read_text(encoding="utf-8")
+      + (ROOT / "static/js/cost_staging.js").read_text(encoding="utf-8"))
 SHEETS_UNDER_TEST = ("project_setup", "revenue", "debt", "tax")
 
 

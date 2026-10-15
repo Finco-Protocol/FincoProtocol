@@ -15,8 +15,10 @@
   <link rel="stylesheet" href="/static/css/model_workspace_consolidation.css">
   <link rel="stylesheet" href="/static/css/model_diagnostics_v1.css">
   <link rel="stylesheet" href="/static/css/model_diagnostics_v2.css">
+  <link rel="stylesheet" href="/static/css/model_tokens.css">
 </head>
 <body>
+  <a class="v2-skip-link" href="#v2-workbook-shell">Skip to model content</a>
   {# sessionStorage hydration: re-populates schedule data on load without re-run #}
   {{ hydration_script | safe }}
 
@@ -154,11 +156,12 @@
        data-content-hash="{{ content_hash }}"
        data-workbook-version="{{ workbook_version }}"
        data-active-scenario-id="{{ active_scenario_id or '' }}"></div>
-  <div id="v2-workbook-shell"
+  <main id="v2-workbook-shell" tabindex="-1"
        data-project="{{ project_code }}"
        data-workbook-version="{{ workbook_version }}"
        data-content-hash="{{ content_hash }}"
        data-template-source="{{ template_source }}">
+    <h1 class="v2-visually-hidden">{{ project_name }} — financial model</h1>
 
     <div class="v2-sheet-panel" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
       <div class="v2-sheet-body">
@@ -288,7 +291,7 @@
       </div>
     </div>
 
-  </div>{# v2-workbook-shell #}
+  </main>{# v2-workbook-shell #}
 
   {# ── UX Foundation: contextual Smart Panel (UX-3) — availability +
      navigation only; links activate existing tabs. ── #}
@@ -297,6 +300,7 @@
   </div>{# v2-workspace-body #}
 
   <script src="/static/js/workbook_v2.js"></script>
+  <script src="/static/js/cost_staging.js"></script>{# C-0: cost staging module, extracted verbatim from workbook_v2.js #}
   <script src="/static/js/model_bess_workspace.js"></script>
   <script src="/static/js/investor_f4.js" defer></script>
   <script src="/static/js/model_smart_panel_v2.js"></script>

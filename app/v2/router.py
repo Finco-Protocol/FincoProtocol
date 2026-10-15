@@ -950,6 +950,7 @@ def _build_opex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "") 
     for _summary_field in opex_summary_fields:
         if _summary_field["field_id"] == "opex.summary.total_y1":
             _summary_field["value"] = opex_vm.y1_total_opex
+            _summary_field["display_value"] = opex_vm.y1_total_opex      # UX-003: the template renders display_value, not value
 
     # F06 Correction A — escalation display authority. The summary strip's
     # "Escalation" card previously showed the FIRST line's escalation (or a
@@ -1937,6 +1938,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     ) if hasattr(pis, "get") else False
 
     from app.workbook.financing_csrf import issue_token
+    from app.v2.result_status import with_current_scenario_label
+    ws = with_current_scenario_label(ws, workspace_owner)
     context = {
         "project_code": project,
         "financing_csrf_token": issue_token(request, project),
@@ -1996,21 +1999,14 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             any_run_committed=bool(ws.any_run_committed),
         )
     except Exception:  # fail closed — an evidence surface must never 500
-        from app.api.v1_1.institutional import STATE_UNAVAILABLE as _TUP
-        context["trust_pack"] = {
-            "overall_state": _TUP,
-            "last_run": {"state": _TUP, "working_copy_changed_since_run": False},
-            "kpis": {"state": _TUP, "rows": [], "lineage": {}},
-            "validation": {
-                "state": "DEFERRED",
-                "load_url": f"/v2/workbook/trust/validation?project={project_record.project_code}",
-                "gaps": [],
-                "gap_count": 0,
-            },
-            "verify": {"state": _TUP, "verify_url": f"/verify/run/{project_record.project_code}"},
-            "export": {"state": _TUP},
-            "methodology": {"state": _TUP, "rows": [], "page_url": "/model/methodology"},
-        }
+        from app.v2.result_status import unavailable_trust_pack
+        context["trust_pack"] = unavailable_trust_pack(project_record.project_code)
+    # RC-UX (UX-001/002): ONE result-status projection for the persistent strip; the Trust sheet reads the same pack.
+    from app.v2.result_status import build_result_status
+    context["result_status"] = build_result_status(
+        runtime_state=context["runtime_state"], has_runtime=context["has_runtime"],
+        last_runtime_at_display=context["last_runtime_at"], active_scenario_name=context["active_scenario_name"],
+        trust_pack=context.get("trust_pack"))
     _capex_ctx = _build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
     _opex_ctx = _build_opex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
     context.update(_capex_ctx)
@@ -2564,16 +2560,16 @@ async def v2_workbook_update(
     )
 
 
-# Presentation-only: typed engine fail-closed reasons -> plain language.
+# Presentation-only: typed engine fail-closed reasons -> plain language. The sentence leads; the code trails as a reference (UX-031).
 # The engine's decision (and its typed reason) is unchanged; nothing is saved
 # on a failed run and the previous Last Run stays exactly as it was.
 _ENGINE_FAIL_CLOSED_MESSAGES = (
-    ("F3_PERIOD_OVERFUNDING", "F3_PERIOD_OVERFUNDING: A dated facility draw exceeds construction Uses in that period. Adjust the draw dates or amounts. No Run was saved."),
-    ("F3_AGGREGATE_GEARING_CAP_EXCEEDED", "F3_AGGREGATE_GEARING_CAP_EXCEEDED: The explicit facility commitments exceed the project gearing cap. No automatic resizing is applied; no Run was saved."),
-    ("F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL", "F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL: Base cash cannot pay the contractual Senior service, including maturity principal. No repayment or refinancing was manufactured; no Run was saved."),
-    ("F3_MATURITY_NOT_ON_OPERATING_BOUNDARY", "F3_MATURITY_NOT_ON_OPERATING_BOUNDARY: Facility maturity must match a canonical operating period end. No Run was saved."),
-    ("F3_DRAW_OUTSIDE_CONSTRUCTION", "F3_DRAW_OUTSIDE_CONSTRUCTION: Facility draws must fall within construction. No Run was saved."),
-    ("F3_GRACE_EXCEEDS_MATURITY", "F3_GRACE_EXCEEDS_MATURITY: No principal-eligible period remains before maturity. No Run was saved."),
+    ("F3_PERIOD_OVERFUNDING", "A dated facility draw exceeds construction Uses in that period. Adjust the draw dates or amounts. No Run was saved. (Reference: F3_PERIOD_OVERFUNDING)"),
+    ("F3_AGGREGATE_GEARING_CAP_EXCEEDED", "The explicit facility commitments exceed the project gearing cap. No automatic resizing is applied; no Run was saved. (Reference: F3_AGGREGATE_GEARING_CAP_EXCEEDED)"),
+    ("F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL", "Base cash cannot pay the contractual Senior service, including maturity principal. No repayment or refinancing was manufactured; no Run was saved. (Reference: F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL)"),
+    ("F3_MATURITY_NOT_ON_OPERATING_BOUNDARY", "Facility maturity must match a canonical operating period end. No Run was saved. (Reference: F3_MATURITY_NOT_ON_OPERATING_BOUNDARY)"),
+    ("F3_DRAW_OUTSIDE_CONSTRUCTION", "Facility draws must fall within construction. No Run was saved. (Reference: F3_DRAW_OUTSIDE_CONSTRUCTION)"),
+    ("F3_GRACE_EXCEEDS_MATURITY", "No principal-eligible period remains before maturity. No Run was saved. (Reference: F3_GRACE_EXCEEDS_MATURITY)"),
     ("SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
      "These inputs leave part of the shareholder loan unpaid at its maturity, so "
      "the model did not produce a result. Review OPEX, CAPEX, revenue or "
@@ -3653,7 +3649,9 @@ def _scenario_authority_oob(
 ) -> str:
     """Refresh every runtime-backed surface after a scenario mutation."""
     from app.v2.post_run_ui import build_post_save_ui_state
+    from app.v2.result_status import with_current_scenario_label
 
+    ws = with_current_scenario_label(ws, workspace_owner)
     html = build_post_save_ui_state(
         ws_fresh=ws,
         project_record=project_record,
@@ -3663,6 +3661,9 @@ def _scenario_authority_oob(
         include_banner_and_controls=True,
         include_scenario_list=False,
     )
+    # A scenario change makes an earlier Goal Seek result obsolete: clear it instead of presenting it under the new scenario.
+    html += ('\n<div id="v2-goal-seek-results" class="v2-gs-results" data-testid="gs-results" hx-swap-oob="true">'
+             '<p class="d-context" data-testid="gs-context-changed">The scenario changed. Run Goal Seek again for this scenario.</p></div>')
     if include_revenue and str(project_record.project_type).lower() in ("solar", "wind"):
         from app.v2.post_run_ui import _as_oob
         pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
@@ -3867,6 +3868,8 @@ async def v2_scenario_rename(
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
         html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        if ws is not None and ws.active_scenario_id == scenario_id:
+            html += "\n" + _scenario_authority_oob(request, ws, project_record, project, workspace_owner)
         return HTMLResponse(content=html)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 

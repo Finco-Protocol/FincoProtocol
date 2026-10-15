@@ -454,7 +454,9 @@
     return fetch('/v2/workbook/grid/panel?project=' + encodeURIComponent(g.getAttribute('data-project')), { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.text() : Promise.reject(new Error('panel')); })
       .then(function (html) {
-        if (stagedInputs().length || busy.saving) return false;       // the user started editing meanwhile
+        // The user started editing meanwhile (staged, validating, or typing in a cell): never swap the grid away under an edit.
+        if (stagedInputs().length || busy.saving || busy.validating ||
+            (!force && document.activeElement && document.activeElement.classList.contains('ig-input') && root().contains(document.activeElement))) return false;
         root().outerHTML = html; restoreView(view); paintAll(); lastRefresh = Date.now(); return true;
       }).catch(function () { return false; });
   }
