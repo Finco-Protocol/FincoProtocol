@@ -950,6 +950,7 @@ def _build_opex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "") 
     for _summary_field in opex_summary_fields:
         if _summary_field["field_id"] == "opex.summary.total_y1":
             _summary_field["value"] = opex_vm.y1_total_opex
+            _summary_field["display_value"] = opex_vm.y1_total_opex      # UX-003: the template renders display_value, not value
 
     # F06 Correction A — escalation display authority. The summary strip's
     # "Escalation" card previously showed the FIRST line's escalation (or a

@@ -778,13 +778,16 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   padding: 0.2rem 0.5rem; border: 1px solid #e5e7eb; text-align: right;
 }
 .v2-opex-proj-table thead th { background: #f9fafb; font-weight: 600; }
+/* UX-005: one variable drives the code column width AND the name column offset, so the two sticky columns cannot drift apart. */
+.v2-opex-proj-table { --v2-proj-code-w: 5rem; }
 .v2-opex-proj-sticky-code {
   position: sticky; left: 0; z-index: 2;
   background: #f9fafb; text-align: left !important;
-  min-width: 4rem; border-right: 2px solid #d1d5db;
+  box-sizing: border-box; width: var(--v2-proj-code-w); min-width: var(--v2-proj-code-w); max-width: var(--v2-proj-code-w);
+  border-right: 2px solid #d1d5db;
 }
 .v2-opex-proj-sticky-name {
-  position: sticky; left: 4.2rem; z-index: 2;
+  position: sticky; left: var(--v2-proj-code-w); z-index: 2;
   background: #f9fafb; text-align: left !important;
   min-width: 12rem; border-right: 2px solid #d1d5db;
 }
