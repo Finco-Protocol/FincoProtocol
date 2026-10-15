@@ -23,6 +23,12 @@ class PPAParams:
     ppa_price_index: float = 0.02  # Annual indexation (e.g., 0.02 = 2% HICP)
     ppa_price_floor: float = 0.0  # Minimum price (floor) - 0 if no floor
     ppa_price_cap: float = 0.0  # Maximum price (cap) - 0 if no cap
+    # Explicit index series (optional): index level per contract year (e.g.
+    # the HICP/CPI print for that year). When non-empty it REPLACES the flat
+    # ``ppa_price_index`` clock: price = base × values[year-1] / values[0].
+    # Fail-closed: every priced year must be covered by the series (no
+    # silent fallback to the flat rate on a mixed basis).
+    ppa_index_values: tuple = ()
     
     # Duration and volume
     ppa_start_year: int = 1  # Start year (from COD)
@@ -40,23 +46,51 @@ class PPAParams:
     
     def price_at_year(self, year: int) -> float:
         """Return PPA price in year with indexation.
-        
+
         Args:
             year: 1-based year index
-        
+
         Returns:
             Price in EUR/MWh
+
+        Raises:
+            ValueError: when ``ppa_index_values`` is set but does not cover
+                ``year`` or contains a non-positive/non-finite entry (no
+                silent fallback to the flat index on a mixed basis).
         """
-        price = self.ppa_base_price_eur_mwh * (1 + self.ppa_price_index) ** (year - 1)
-        
+        if self.ppa_index_values:
+            idx = year - 1
+            if idx < 0 or idx >= len(self.ppa_index_values):
+                raise ValueError(
+                    f"ppa_index_values does not cover year {year} "
+                    f"(series length {len(self.ppa_index_values)}); extend the "
+                    "series to the full priced horizon — no silent fallback "
+                    "to the flat index on a mixed basis"
+                )
+            for i, v in enumerate(self.ppa_index_values):
+                fv = float(v)
+                if fv != fv or fv <= 0.0:
+                    raise ValueError(
+                        f"ppa_index_values[{i}] must be finite and positive, "
+                        f"got {v!r}"
+                    )
+            base_level = float(self.ppa_index_values[0])
+            price = (
+                self.ppa_base_price_eur_mwh
+                * float(self.ppa_index_values[idx])
+                / base_level
+            )
+        else:
+            price = self.ppa_base_price_eur_mwh * (1 + self.ppa_price_index) ** (year - 1)
+
         # Apply floor
         if self.ppa_price_floor > 0:
             price = max(price, self.ppa_price_floor)
-        
+
         # Apply cap
         if self.ppa_price_cap > 0:
             price = min(price, self.ppa_price_cap)
-        
+
         return price
     
     def is_active(self, year: int) -> bool:
