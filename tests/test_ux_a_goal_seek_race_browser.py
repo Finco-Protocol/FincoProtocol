@@ -219,3 +219,29 @@ def test_a_scenario_change_clears_a_result_that_belonged_to_the_previous_scenari
     assert s.page.locator("[data-testid=gs-result]").count() == 0
     s.assert_clean()
     s.close()
+
+
+def test_goal_seek_progress_reports_only_real_states(live_server, browser):
+    """UX-015: request sent -> finished, or failed. No percentage, no invented stages; the solve itself is mocked here, so nothing is claimed about solver time."""
+    s = _Page(live_server, browser, "uxa-gs-6")
+    held = {}
+    s.page.route("**/goal-seek/run", lambda route: held.setdefault("route", route))
+    s.open_and_load()
+    s.page.fill("#gs-target-value", "9.5")
+    s.page.click("[data-testid=gs-run-btn]")
+    for _ in range(50):
+        if "route" in held:
+            break
+        time.sleep(0.1)
+    assert "route" in held
+    toast = s.page.locator("[data-testid=toast-info]")
+    toast.wait_for()
+    assert "request sent" in toast.inner_text() and "%" not in toast.inner_text()                 # a real state, never a simulated percentage
+    held["route"].fulfill(status=200, content_type="text/html", body=RESULT)
+    s.page.locator("[data-testid=toast-success]").filter(has_text="Goal Seek finished").wait_for()
+    assert s.page.locator("[data-testid=toast-info]").count() == 0                                # the waiting toast is gone
+    s.page.unroute("**/goal-seek/run")
+    _fulfil(s.page, "<p>Workspace not found.</p>", status=500)
+    s.page.click("[data-testid=gs-run-btn]")
+    s.page.locator("[data-testid=toast-error]").filter(has_text="did not complete").wait_for()
+    s.close()

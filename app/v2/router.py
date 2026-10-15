@@ -174,9 +174,16 @@ def _add_field_saved_trigger(resp: HTMLResponse, field_id: str, new_hash: str) -
     return resp
 
 
+# UX-021: the one sentence for a rejected stale-view field save. It says the edit was NOT saved and how to recover; it never claims the values were
+# refreshed (the field keeps what the user typed so it can be re-entered). The server-side CAS remains the only authority.
+STALE_FIELD_MESSAGE = ("Draft changed since page loaded, so your edit was not saved. "
+                       "Reload the page to see the current value, then enter it again.")
+
+
 def _add_field_error_trigger(
     resp: HTMLResponse, field_id: str, message: str,
     error_class: Optional[FieldErrorClass] = None,
+    conflict: bool = False,
 ) -> HTMLResponse:
     """Attach the field-error HX event.
 
@@ -193,6 +200,7 @@ def _add_field_error_trigger(
             "field_id": field_id,
             "message": message,
             "error_class": error_class.value if isinstance(error_class, FieldErrorClass) else None,
+            "conflict": bool(conflict),
         }
     })
     return resp
@@ -212,6 +220,11 @@ def _cit_rate_display(pis) -> str:
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates", "v2"))
+from app.v2 import display_labels as _display_labels  # noqa: E402
+_templates.env.globals.update({
+    "readable_code": _display_labels.readable_code, "reason_sentence": _display_labels.reason_sentence,
+    "is_complex": _display_labels.is_complex, "evidence_json": _display_labels.evidence_json,
+    "evidence_summary": _display_labels.evidence_summary})
 
 
 def _get_current_user(request: Request):
@@ -1886,11 +1899,11 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
 
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
-        return RedirectResponse(url="/library", status_code=302)
+        return RedirectResponse(url="/library?notice=project-unavailable", status_code=302)
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
-        return RedirectResponse(url="/library", status_code=302)
+        return RedirectResponse(url="/library?notice=project-unavailable", status_code=302)
 
     # Decide unsupported runtime capability immediately after access and
     # workspace resolution.  Storage must return its controlled surface before
@@ -2236,7 +2249,7 @@ async def v2_inputs_slice1_update(
             if is_htmx else _json_error(str(exc), 409)
         )
     except StaleContentError:
-        msg = "Draft changed since page loaded - values refreshed. Please try your edit again."
+        msg = STALE_FIELD_MESSAGE
         return _render_field_error(msg, 409) if is_htmx else _json_error(msg, 409)
     except VersionMismatchError as exc:
         if is_htmx:
@@ -2414,12 +2427,10 @@ async def v2_workbook_update(
     except StaleContentError as exc:
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
-            msg = (
-                "Draft changed since page loaded — values refreshed. "
-                "Please try your edit again."
-            )
-            resp = _htmx_error(pis, msg)
-            return _add_field_error_trigger(resp, field_id, msg)
+            msg = STALE_FIELD_MESSAGE
+            # The conflict is shown once, at the field (with a Reload action); the status banner keeps describing the model state instead of repeating it.
+            resp = _htmx_error(pis, "")
+            return _add_field_error_trigger(resp, field_id, msg, conflict=True)
         return _redirect_with_error(str(exc))
     except VersionMismatchError as exc:
         return JSONResponse({"error": str(exc), "reload": True}, status_code=409)

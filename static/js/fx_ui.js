@@ -81,6 +81,87 @@
   }
   ['ig:saved', 'ct:saved', 'rc:saved'].forEach((name) => document.addEventListener(name, () => setTimeout(refreshRunHistory, 50)));
 
+  // Long analysis operations (Goal Seek, sensitivity, two-driver matrix): report only states the browser actually knows - request sent and awaiting the
+  // server, then completed or failed. No percentage and no invented stages; the solver itself is untouched.
+  const ANALYSIS = [
+    ['/v2/workbook/goal-seek/run', 'Goal Seek'],
+    ['/v2/workbook/goal-seek/apply', 'Applying the solved tariff'],
+    ['/v2/workbook/sensitivity/matrix/run', 'Two-driver matrix'],
+    ['/v2/workbook/scenarios/sensitivity/run', 'Sensitivity'],
+  ];
+  const analysisToasts = {};
+  const analysisName = (path) => { const hit = ANALYSIS.find(([p]) => String(path || '').indexOf(p) === 0); return hit ? hit[1] : null; };
+  document.addEventListener('htmx:beforeRequest', (e) => {
+    const path = e.detail && e.detail.requestConfig && e.detail.requestConfig.path, name = analysisName(path);
+    if (name && !analysisToasts[path]) analysisToasts[path] = show({kind: 'info', loading: true, sticky: true, message: name + ': request sent, waiting for the model…'});
+  });
+  document.addEventListener('htmx:afterRequest', (e) => {
+    const path = e.detail && e.detail.requestConfig && e.detail.requestConfig.path, name = analysisName(path);
+    if (!name) return;
+    if (analysisToasts[path]) { analysisToasts[path].dismiss(); delete analysisToasts[path]; }
+    const xhr = e.detail.xhr;
+    show(e.detail.successful ? {kind: 'success', message: name + ' finished.'}
+                             : {kind: 'error', message: name + ' did not complete' + (xhr && xhr.status ? ' (HTTP ' + xhr.status + ')' : '') + '. Nothing was changed.'});
+  });
+
+  // Table accessibility (UX-029): every table gets an accessible name and every header cell a scope, without touching the (partly governed) templates.
+  // The name comes from the nearest preceding heading in the sheet; the sheet's own tab label is the fallback. Existing names are never replaced.
+  const HEADING = 'h1, h2, h3, h4, h5, .v2-section-label, .v2-sheet-section-heading > span, .v2-rh-title, .v2-trust-title, summary';
+  function nameFor(table) {
+    for (let node = table; node && node.nodeType === 1 && node.getAttribute('role') !== 'tabpanel'; node = node.parentElement) {
+      for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) {
+        const hit = sib.matches(HEADING) ? sib : sib.querySelector(HEADING);
+        const text = hit && (hit.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text) return text.slice(0, 80);
+      }
+    }
+    const panel = table.closest('[role="tabpanel"]');
+    const tab = panel && panel.getAttribute('aria-labelledby') && document.getElementById(panel.getAttribute('aria-labelledby'));
+    return (tab ? tab.textContent.trim() : 'Model') + ' table';
+  }
+  function enhanceTables(root) {
+    (root || document).querySelectorAll('table').forEach((t) => {
+      if (!t.querySelector('caption') && !t.getAttribute('aria-label') && !t.getAttribute('aria-labelledby')) t.setAttribute('aria-label', nameFor(t));
+      t.querySelectorAll('thead th:not([scope])').forEach((h) => h.setAttribute('scope', 'col'));
+      t.querySelectorAll('tbody th:not([scope])').forEach((h) => h.setAttribute('scope', 'row'));
+    });
+  }
+  // The page has exactly one level-1 heading (the project h1 in the shell). A sheet that renders its own h1 (for example Model Diagnostics) keeps its text and
+  // markup; it is exposed to assistive technology as a level-2 heading instead.
+  function normalizeHeadings(root) {
+    (root || document).querySelectorAll('main h1:not(.v2-visually-hidden):not([aria-level])').forEach((h) => { h.setAttribute('role', 'heading'); h.setAttribute('aria-level', '2'); });
+  }
+  const enhanceAll = (root) => { enhanceTables(root); normalizeHeadings(root); };
+  window.FincoEnhanceTables = enhanceAll;
+  document.addEventListener('DOMContentLoaded', () => enhanceAll());
+  document.addEventListener('htmx:afterSettle', (e) => enhanceAll(e.target && e.target.querySelectorAll ? e.target : document));
+  if (document.readyState !== 'loading') enhanceAll();
+
+  // Theme control (UX-009): sets the same `data-theme` attribute every theme-aware stylesheet already reads. "Auto" removes it so the OS preference applies.
+  // The choice is a per-browser convenience (localStorage in try/catch); nothing else holds theme state.
+  const THEMES = ['auto', 'light', 'dark'];
+  const readTheme = () => { try { const v = window.localStorage.getItem('finco-theme'); return THEMES.indexOf(v) >= 0 ? v : 'auto'; } catch (_) { return 'auto'; } };
+  const applyTheme = (t) => { if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); };
+  applyTheme(readTheme());
+  function mountThemeControl() {
+    const host = document.querySelector('.v2-toolbar');
+    if (!host || host.querySelector('[data-testid="theme-toggle"]')) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'v2-theme-toggle';
+    b.setAttribute('data-testid', 'theme-toggle');
+    const label = () => { const t = readTheme(); b.textContent = 'Theme: ' + t.charAt(0).toUpperCase() + t.slice(1); b.setAttribute('aria-label', 'Colour theme: ' + t + '. Activate to change.'); };
+    b.addEventListener('click', () => {
+      const next = THEMES[(THEMES.indexOf(readTheme()) + 1) % THEMES.length];
+      try { window.localStorage.setItem('finco-theme', next); } catch (_) { /* the theme still applies for this page */ }
+      applyTheme(next); label();
+    });
+    label();
+    host.appendChild(b);
+  }
+  document.addEventListener('DOMContentLoaded', mountThemeControl);
+  if (document.readyState !== 'loading') mountThemeControl();
+
   // ---- Save / Run feedback driven by events the existing flows already emit -------------------------------------------------
   document.addEventListener('ig:saved', (e) => show({kind: 'success', message: 'Saved ' + e.detail.count + ' edit' + (e.detail.count === 1 ? '' : 's') + (e.detail.runState === 'STALE' ? ' · results are now STALE: run the model' : '')}));
   document.addEventListener('ct:saved', (e) => show({kind: 'success', message: 'Construction timing saved · COD ' + e.detail.cod + (e.detail.runState === 'STALE' ? ' · results are now STALE' : '')}));

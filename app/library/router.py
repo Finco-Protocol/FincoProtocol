@@ -141,6 +141,7 @@ async def project_library_page(
     role: Optional[str] = None,
     page: int = 1,
     project: Optional[str] = None,
+    notice: Optional[str] = None,
 ):
     user = _get_current_user(request)
     if not user:
@@ -178,6 +179,10 @@ async def project_library_page(
         "has_prev": page > 1,
         "has_next": page < total_pages,
         "selected_project": project or "",
+        # UX-027: a fixed vocabulary only (never echoed free text). The same message covers "does not exist" and "not yours", so it cannot be used to probe
+        # for other users' projects.
+        "library_notice": ("That project is not available. It may have been removed or you may not have access to it."
+                           if notice == "project-unavailable" else ""),
         # sidebar context — no active project on the library page
         "project_record": None,
         "project_ctx": None,

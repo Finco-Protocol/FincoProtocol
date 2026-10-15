@@ -215,3 +215,6 @@
 .v2-rh-detail-grid > * { min-width: 0; }
 .v2-rh-v { overflow-wrap: anywhere; min-width: 0; }
 .v2-rh-kv { min-width: 0; }
+
+/* UX-024: structured evidence is a readable summary with the exact stored value in a contained, scrollable block. */
+.v2-rh-pre { max-height: 18rem; max-width: 100%; overflow: auto; margin: 0.25rem 0 0; padding: 0.5rem; font-size: 0.72rem; white-space: pre; background: var(--fx-surface-alt, #f3f4f6); border: 1px solid var(--fx-border, #cbd5e1); border-radius: 3px; }

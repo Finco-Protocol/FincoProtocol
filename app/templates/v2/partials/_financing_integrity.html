@@ -11,7 +11,7 @@
        {{ financing_integrity.counts.get('UNAVAILABLE', 0) }} unavailable;
        {{ financing_integrity.counts.get('NOT_APPLICABLE', 0) }} not applicable.</p>
     {% for check in financing_integrity.reasons[:1] %}
-      <p>{{ check.title }}: {{ check.detail or check.reason_code }}</p>
+      <p>{{ check.title }}: {{ check.detail or (reason_sentence(check.reason_code) if reason_sentence is defined else check.reason_code) }}</p>
     {% endfor %}
     <details><summary>Detailed check evidence</summary>
       {% for check in financing_integrity.checks %}

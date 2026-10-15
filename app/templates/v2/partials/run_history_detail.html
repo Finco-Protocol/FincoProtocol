@@ -44,7 +44,10 @@
   <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table" data-testid="run-detail-integrity">
     <tbody>
       {% for k, v in integrity_items %}
-      <tr><td>{{ k }}</td><td class="v2-rh-mono">{{ v }}</td></tr>
+      {% set _complex = is_complex(v) if is_complex is defined else false %}
+      <tr><td>{{ readable_code(k) if readable_code is defined else k }}</td><td class="v2-rh-mono">
+        {% if _complex %}<details><summary>{{ evidence_summary(v) }}</summary><pre class="v2-rh-pre" data-testid="run-detail-evidence-json" data-evidence-key="{{ k }}">{{ evidence_json(v) }}</pre></details>
+        {% else %}{{ v }}{% endif %}</td></tr>
       {% endfor %}
     </tbody>
   </table></div>

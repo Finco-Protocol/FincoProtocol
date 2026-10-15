@@ -14,9 +14,9 @@ class Destination:
 DESTINATIONS = (
     Destination("tab-overview", "Overview", "overview", True),
     Destination("tab-diagnostics", "Model Diagnostics", "diagnostics", True),
-    Destination("tab-input-grid", "All assumptions", "inputs", True),
-    Destination("tab-project-setup", "Project & Technical", "inputs"),
-    Destination("tab-inputs", "Technical assumptions", "inputs"),
+    Destination("tab-input-grid", "Assumptions grid", "inputs", True),
+    Destination("tab-project-setup", "Project setup", "inputs"),
+    Destination("tab-inputs", "Inputs summary", "inputs"),
     Destination("tab-revenue", "Revenue", "inputs"),
     Destination("tab-capex", "CAPEX", "inputs"),
     Destination("tab-opex", "OPEX", "inputs"),

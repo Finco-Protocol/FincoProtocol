@@ -429,7 +429,8 @@
         message: detail.message,
         // `error_class` present (even null) means the server spoke: it is the only authority.
         hasServerClass: Object.prototype.hasOwnProperty.call(detail, 'error_class'),
-        errorClass: detail.error_class
+        errorClass: detail.error_class,
+        conflict: detail.conflict === true
       });
     }
     if (_runQueued) {
@@ -815,6 +816,14 @@ document.addEventListener('htmx:afterSettle', function (e) {
     label.textContent = CLASS_LABELS[entry.errorClass] + ': ';
     msg.appendChild(label);
     msg.appendChild(document.createTextNode(entry.message || 'This value was not saved.'));
+    if (entry.conflict && !msg.querySelector('[data-conflict-reload]')) {       // explicit recovery route; the server CAS is untouched
+      var reload = document.createElement('button');
+      reload.type = 'button';
+      reload.setAttribute('data-conflict-reload', '');
+      reload.textContent = ' Reload';
+      reload.addEventListener('click', function () { window.location.reload(); });
+      msg.appendChild(reload);
+    }
     return true;
   }
 
@@ -922,6 +931,7 @@ document.addEventListener('htmx:afterSettle', function (e) {
       message: (info && info.message) || '',
       value: value,
       errorClass: _resolveClass(info, row, value),
+      conflict: !!(info && info.conflict),
       reannounce: true
     };
     _decorate(_errors[fieldId], true);

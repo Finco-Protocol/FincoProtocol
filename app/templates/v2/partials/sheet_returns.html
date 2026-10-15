@@ -80,7 +80,7 @@
           <tbody>
           {% for row in returns.sponsor_rows %}
             <tr>
-              <td>{{ row.get('period', '—') }}</td><td>{{ row.get('date') or '—' }}</td>
+              <td>{{ row.get('period', '—') }}{% if loop.nextitem and loop.nextitem.get('period') == row.get('period') %} · construction{% elif loop.previtem and loop.previtem.get('period') == row.get('period') %} · operations{% endif %}</td><td>{{ row.get('date') or '—' }}</td>
               <td class="v2-num">{{ money(row.get('share_capital_contribution_keur')) }}</td>
               <td class="v2-num">{{ money(row.get('share_premium_contribution_keur')) }}</td>
               <td class="v2-num">{{ money(row.get('other_committed_equity_contribution_keur')) }}</td>

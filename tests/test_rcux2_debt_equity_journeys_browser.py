@@ -1,7 +1,7 @@
 """RC-UX Phase 2 / Section 5: Debt proposal and Investor Agreement journeys in real Chromium under the real CSP.
 
-* Senior financing: the journey ends honestly at SAVED PROPOSAL - NOT ACTIVE IN RUN. Activation stays release-closed; an inactive proposal must not
-  alter the active financial results.
+* Senior financing: a saved proposal is visibly NOT ACTIVE IN RUN and cannot alter the results; an explicitly activated configuration (F3 multi-Senior activation is
+  enabled in this release: `multisenior_config.ACTIVATION_ENABLED = True`) is shown as ACTIVE and reaches the Run. Junior stays release-closed.
 * Investors: ownership allocates results between investors and does not change project economics or Sources & Uses; funding (commitments and
   paid-in capital) must reconcile before a Run is committed.
 Numerical reconciliation of the results themselves belongs to WF-A.

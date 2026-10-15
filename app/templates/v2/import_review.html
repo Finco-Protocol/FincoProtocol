@@ -82,7 +82,7 @@
     <p class="notice">Source labels suggest mappings, but do not prove canonical identity. Every proposed field needs explicit review. Unsupported and ambiguous rows are never silently written.</p>
     <div class="metrics" role="status">
       <span>Detected: <strong>{{ detected }}</strong></span>
-      <span>Exact mappings: <strong>{{ exact_count }}</strong></span>
+      <span title="Rows matched to exactly one field by its field id or its exact registry label">Exact mappings: <strong>{{ exact_count }}</strong></span>
       <span>Ambiguous: <strong>{{ ambiguous_count }}</strong></span>
       <span>Ready: <strong>{{ totals.get('ready',0) }}</strong></span>
       <span>Needs review: <strong>{{ totals.get('needs_review',0) }}</strong></span>
