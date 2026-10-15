@@ -51,7 +51,7 @@ def test_a_stale_tab_save_is_rejected_once_clearly_without_overwriting_newer_dat
     assert messages.count() == 1                                                     # one inline message at the field
     text = messages.inner_text()
     assert "not saved" in text and "Reload" in text and "values refreshed" not in text   # truthful, with a recovery action
-    assert b.locator("[data-testid=banner-error]").count() == 0                       # the status banner does not repeat it
+    assert b.locator("[data-testid=banner-error]:visible").count() == 0               # the status banner does not show it a second time
     assert _persisted(uid, rec) == 1611.0 and _persisted(uid, rec) != original       # server-side CAS: the newer value was never overwritten
     assert errors_a == [] and errors_b == [], (errors_a, errors_b)
     row_b.locator("[data-conflict-reload]").click()                                  # explicit reload shows the current value

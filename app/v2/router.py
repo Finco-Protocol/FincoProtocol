@@ -2428,8 +2428,9 @@ async def v2_workbook_update(
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
             msg = STALE_FIELD_MESSAGE
-            # The conflict is shown once, at the field (with a Reload action); the status banner keeps describing the model state instead of repeating it.
-            resp = _htmx_error(pis, "")
+            # The conflict is shown once, at the field (with a Reload action). The message stays in the response body (the banner carries it hidden, so the
+            # response contract is unchanged) but the banner is not shown or announced a second time.
+            resp = _htmx_error(pis, msg)
             return _add_field_error_trigger(resp, field_id, msg, conflict=True)
         return _redirect_with_error(str(exc))
     except VersionMismatchError as exc:
