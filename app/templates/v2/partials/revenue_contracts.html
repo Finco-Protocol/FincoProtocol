@@ -12,24 +12,26 @@
     <input type="hidden" name="csrf_token" value="{{ revenue_contracts_csrf_token }}">
     <input type="hidden" name="contracts" data-revenue-payload value="">
     <section class="rc-quick" data-revenue-quick data-testid="ppa-quick-add" aria-labelledby="rc-quick-title"
-             data-window-start="{{ (contracts.operating_window or {}).get('start', '') }}" data-window-end="{{ (contracts.operating_window or {}).get('end', '') }}">
+             data-window-start="{{ (contracts.operating_window or {}).get('start', '') }}" data-window-end="{{ (contracts.operating_window or {}).get('end', '') }}"
+             data-period-starts="{{ (contracts.operating_starts or []) | tojson | forceescape }}">
       <h3 id="rc-quick-title">Add a PPA</h3>
       <p class="d-context">For a signed or term-sheet PPA. To test an illustrative price without a contract, use the PPA terms under Revenue inputs instead. Contract IDs are generated for you.</p>
       <div class="rc-quick-grid">
         <label>Pricing<select data-quick="kind"><option value="fixed_ppa">Fixed</option><option value="indexed_ppa">Indexed</option><option value="scheduled_ppa">Scheduled</option></select></label>
-        <label data-quick-price>Starting price (EUR/MWh)<input data-quick="price" inputmode="decimal" autocomplete="off"></label>
+        <label data-quick-price><span data-quick-price-label>Starting price (EUR/MWh)</span><input data-quick="price" inputmode="decimal" autocomplete="off"></label>
         <label>Contracted production (%)<input data-quick="share" inputmode="decimal" autocomplete="off" value="100"></label>
         <label>Start date<input data-quick="start" type="date" value="{{ (contracts.operating_window or {}).get('start', '') }}"></label>
         <label>End date (exclusive)<input data-quick="end" type="date" value="{{ (contracts.operating_window or {}).get('end', '') }}"></label>
         <label data-quick-index hidden>Indexation (%/yr)<input data-quick="index" inputmode="decimal" autocomplete="off" value="0"></label>
         <label>Contract reference<input data-quick="ref" maxlength="200" autocomplete="off" placeholder="e.g. agreement or term-sheet reference"></label>
       </div>
+      <p class="d-context" data-quick-scheduled-note hidden>Scheduled pricing needs an explicit price for every operating period. The price above is entered for each period as a starting point; edit the periods that differ, then Save.</p>
       <p class="d-context">The contract reference identifies the agreement behind this price; the model does not invent one. Adding a PPA changes the draft only: Save contracts, then Run.</p>
       <div class="rc-quick-actions"><button type="button" data-quick-add>Add PPA</button><span class="rc-quick-error" role="alert" data-quick-error hidden></span></div>
     </section>
     <div class="rc-toolbar">
       <div class="rc-add-controls">
-        <label for="rc-add-type">New contract</label>
+        <label for="rc-add-type">Other contract types</label>
         <select id="rc-add-type" data-revenue-add-type aria-label="Revenue stream type">
           <option value="fixed_ppa">Fixed PPA</option>
           <option value="indexed_ppa">Indexed PPA</option>

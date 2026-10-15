@@ -36,7 +36,7 @@
   {% for section in sections %}
   <div class="v2-ds-section" data-testid="ds-section-{{ section.key }}">
     <div class="v2-ds-section-title">{{ section.title }}</div>
-    <table class="v2-rh-table">
+    <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table">
       <thead><tr><th>Metric</th><th>Run A</th><th>Run B</th><th>Δ absolute</th><th>Δ pp</th><th>Δ %</th></tr></thead>
       <tbody>
         {% for row in section.rows %}
@@ -51,14 +51,14 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
   {% endfor %}
 
   <div class="v2-ds-section" data-testid="ds-assumptions">
     <div class="v2-ds-section-title">Changed assumptions</div>
     {% if assumptions %}
-    <table class="v2-rh-table">
+    <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table">
       <thead><tr><th>Category</th><th>Assumption</th><th>Run A</th><th>Run B</th></tr></thead>
       <tbody>
         {% for a in assumptions %}
@@ -69,7 +69,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="v2-rh-empty">No assumption differences between the two runs.</div>
     {% endif %}

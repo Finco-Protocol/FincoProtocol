@@ -206,3 +206,7 @@
 .v2-rh-cmp-name { font-weight: 600; color: #111827; }
 
 .v2-rh-cmp-ts { color: #6b7280; font-variant-numeric: tabular-nums; }
+
+/* RC-UX Phase 2 (UX-024): wide Run History tables scroll inside their own region instead of widening the document. */
+.v2-rh-scroll { max-width: 100%; overflow-x: auto; }
+.v2-rh-scroll:focus-visible { outline: 2px solid var(--fx-focus, #1d4ed8); outline-offset: 2px; }

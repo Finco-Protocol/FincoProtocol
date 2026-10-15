@@ -20,11 +20,11 @@ DESTINATIONS = (
     Destination("tab-revenue", "Revenue", "inputs"),
     Destination("tab-capex", "CAPEX", "inputs"),
     Destination("tab-opex", "OPEX", "inputs"),
-    Destination("tab-debt", "Financing · Senior Debt", "inputs"),
-    Destination("tab-investor", "Financing · Investor", "inputs"),
+    Destination("tab-debt", "Senior debt", "financing", True),
+    Destination("tab-investor", "Investors", "financing"),
     Destination("tab-tax", "Tax assumptions", "inputs"),
     Destination("tab-scenarios", "Selection & overrides", "scenarios", True),
-    Destination("tab-outputs", "Financial Outputs", "outputs", True),
+    Destination("tab-outputs", "Financial results", "outputs", True),
     Destination("tab-fs", "Financial Statements (compatibility)", "outputs", alias_of="tab-outputs"),
     Destination("tab-returns", "Returns", "outputs"),
     Destination("tab-run-history", "Run History", "outputs"),
@@ -34,8 +34,8 @@ DESTINATIONS = (
     Destination("tab-trust", "Trust · identity, assumptions & available lineage", "trust", True),
 )
 
-AREAS = (("diagnostics", "Model Diagnostics"), ("inputs", "Inputs"), ("scenarios", "Scenarios"), ("outputs", "Outputs"),
-         ("analysis", "Analysis"), ("trust", "Trust"))
+AREAS = (("inputs", "Inputs"), ("financing", "Financing"), ("outputs", "Results"), ("scenarios", "Scenarios"),
+         ("analysis", "Analysis"), ("diagnostics", "Model Checks"), ("trust", "Trust"))
 
 
 def navigation_manifest():

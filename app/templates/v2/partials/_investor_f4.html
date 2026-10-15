@@ -3,7 +3,7 @@
   <link rel="stylesheet" href="/static/css/investor_f4.css">
   <script src="/static/js/investor_f4.js" defer></script>
   <header><h3>Common-equity investor agreement</h3><span class="v2-binding-badge" data-testid="f4-state">{{ f4.state }}</span></header>
-  <p>Residual common equity only. Return-of-capital ordering, preferences, carry, NAV and SHL lender allocation are not authorized.</p>
+  <p>Residual common equity only. <strong>Ownership %</strong> allocates results between investors and does not change Sources &amp; Uses; <strong>commitments and paid-in capital</strong> describe funding and must reconcile with the equity in the financing plan before Run. Return-of-capital ordering, preferences, carry, NAV and SHL lender allocation are not available.</p>
   {% if f4.editable %}
   <form class="f4-agreement-form" hx-post="/v2/workbook/investor/agreement" hx-target="#f4-investor-workspace" hx-swap="outerHTML"
         data-version="{{ f4.terms.version + 1 if f4.terms else 1 }}" data-agreement-id="{{ f4.terms.agreement_id if f4.terms else '' }}">

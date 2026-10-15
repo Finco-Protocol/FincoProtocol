@@ -30,7 +30,7 @@
     {% endfor %}
   </div>
 
-  <table class="v2-rh-table" data-testid="run-compare-table">
+  <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table" data-testid="run-compare-table">
     <thead>
       <tr><th>Metric</th>
         {% for col in compare.columns %}<th>{{ 'Last Run' if loop.index == 1 else 'Historical' }}</th>{% endfor %}
@@ -47,7 +47,7 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 
   {% if last_run_state == 'STALE' %}
   <div class="v2-rh-note" data-testid="run-compare-stale-note">

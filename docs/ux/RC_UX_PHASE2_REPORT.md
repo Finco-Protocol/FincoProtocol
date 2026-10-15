@@ -39,3 +39,26 @@ Base: `origin/main` `03e2b9638e9324bb18ea8420ce8f9823f4f0a676` (PR #286 merged, 
 - Navigation hierarchy (A2), compact layout (A3), Flowbite/Tailwind (A4, optional), deferred findings UX-006/009/010/011/012/015/027 and UX-016/021-026/028/030.
 - Debt / Equity end-to-end journeys (C1-C3), Run History usability, journeys 1-12 beyond Quick Add, before/after screenshots, performance measurement, full copy audit matrix.
 - Trust / methodology wording: requires explicit owner review.
+
+
+---
+## Continuation B (this commit) - status: PARTIAL, remaining work documented
+
+### Delivered
+- **Scheduled PPA flow**: the guided form fills an explicit price for every operating period (the price the user typed, never invented), opens and focuses the existing price-point editor, shows "Incomplete draft" and keeps Save disabled while any point lacks a date or price; entered fields survive validation errors. The old toolbar is relabelled "Other contract types" so there is one obvious Add PPA entry point; expert tools stay available.
+- **Navigation hierarchy** (presentation only, area IDs and tab IDs unchanged except the new `financing` area): Inputs, Financing, Results, Scenarios, Analysis, Model Checks, Trust. Senior debt and Investors moved from Inputs to Financing; Outputs is labelled Results. Pins updated in `test_model_workspace_consolidation.py`, `test_model_v2_ux_shell.py`, `test_workflow_c_statements_analytics_trace.py`, the hybrid-nav browser test and the keyboard-navigation test (Inputs -> Financing is now the next area).
+- **Debt / Equity copy**: "Not supported by the engine" -> "Not available in this release"; saved financing proposals are stated to change neither the model nor the next Run until activation is released; the Investor panel now separates ownership % (allocates results, does not change Sources & Uses) from commitments and paid-in capital (funding, must reconcile before Run). Junior and F4/P2 remain release-closed and unchanged.
+- **Run History (UX-024)**: wide tables scroll inside their own region; before this change the Run History page overflowed the document at 1440 and 1366 px (1551 px wide table).
+- **Test-helper defect fixed**: waits for the saved state used a case-insensitive substring ("Unsaved changes" matched "Saved"), which could let a test click Run before Save finished and hit the stale-draft refusal.
+- **Test assertion refined (needs reviewer attention)**: `test_four_consecutive_edits_save_atomically_with_stable_focus_and_scroll` measured `scrollY`. With the new layout, browser scroll anchoring moves `scrollY` by 25 px when the unsaved-edits row collapses, while the edited cell does not move. The test now asserts that the edited cell stays within 2 px and that `scrollY` moves at most by the document-height change. Reverting the navigation change restores the old behaviour.
+
+### Evidence
+- `tests/test_rcux2_ppa_quick_add_browser.py`: 10 cases pass under the real CSP (Quick Add Save; two PPAs; indexed; invalid inputs; 390 px dark; Scheduled PPA incomplete-draft -> Save -> Run; Fixed then Indexed -> Save -> Run with earlier Run History entries unchanged).
+- Debt/Equity browser acceptance reuses the existing suites `test_capital_stack_workspace_browser_v1.py` and `test_investor_f4_browser.py` (passed in the same run as 64 tests; the two failures of that run are described above and were fixed).
+- Before/after screenshots (5 screens x 4 viewports, `main` vs this branch) and `perf-before.json` / `perf-after.json` were captured locally under `artifacts/rcux2-screens/` (git-ignored). At 1440x900 light, page load was within noise (about 2.8-3.2 s locally for both; first response 0.9-2.3 s, dominated by server rendering, not CSS). Local Chromium only, not staging.
+- Run History overflow remains verified only for the new wrapper by inspection plus the existing run-history suites (their full run was still in progress when this commit was made).
+
+### Not done
+- Journeys not yet automated end to end: multiple PPAs with residual Merchant, scenario change and restoration of contracts, add Senior debt -> Save -> Run (activation is release-closed, so the journey ends at SAVED PROPOSAL), investor allocations -> Run (existing suite covers it).
+- Compact Overview / header duplication, Flowbite/Tailwind (optional), remaining UX findings UX-009/010/011/012/015/016/021-023/025/026/028/030, mobile financial-table pass, Trust / Diagnostics wording (proposal table pending owner approval: "Trust" area label and tab text, Diagnostics heading "Model Diagnostics" -> "Model Checks").
+- Exact-head CI and independent review.

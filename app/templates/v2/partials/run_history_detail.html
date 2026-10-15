@@ -27,7 +27,7 @@
   </div>
 
   <div class="v2-rh-section-title">Key metrics (persisted)</div>
-  <table class="v2-rh-table" data-testid="run-detail-kpis">
+  <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table" data-testid="run-detail-kpis">
     <thead><tr><th>Metric</th><th>Value</th></tr></thead>
     <tbody>
       {% for key, label, display in metrics %}
@@ -37,17 +37,17 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 
   <div class="v2-rh-section-title">Integrity evidence</div>
   {% if integrity_items %}
-  <table class="v2-rh-table" data-testid="run-detail-integrity">
+  <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table" data-testid="run-detail-integrity">
     <tbody>
       {% for k, v in integrity_items %}
       <tr><td>{{ k }}</td><td class="v2-rh-mono">{{ v }}</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
   <div class="v2-rh-empty">No integrity evidence recorded for this run.</div>
   {% endif %}

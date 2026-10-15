@@ -119,7 +119,7 @@ class TestWorkspaceNavMapping:
 
         labels = [g.label for g in workspace_nav_groups()]
         assert labels[0] == "Project landing"
-        for expected in ("Inputs", "Scenarios", "Outputs", "Analysis", "Trust"):
+        for expected in ("Inputs", "Financing", "Results", "Scenarios", "Analysis", "Model Checks", "Trust"):
             assert expected in labels
 
 

@@ -96,7 +96,12 @@
       feedback.dataset.dirty = String(dirty);
       feedback.textContent = dirty ? 'Unsaved changes · Save contracts to update Working Copy (Run separately)' :
         'Saved Working Copy · No changes';
-      save.disabled = !dirty || blocked;
+      // A Scheduled contract without a dated price for every point is an incomplete draft: say so and do not offer Save.
+      const incomplete = book.streams.some(r => Array.isArray(r.price_curve) &&
+        (!r.price_curve.length || r.price_curve.some(pt => !pt.period_start || pt.price_eur_mwh === '' || pt.price_eur_mwh === null || !Number.isFinite(pt.price_eur_mwh))));
+      form.dataset.incomplete = String(incomplete);
+      if (dirty && incomplete) feedback.textContent = 'Incomplete draft · every Scheduled contract needs a date and a price at each point before it can be saved';
+      save.disabled = !dirty || blocked || incomplete;
     }
     function advancedMode(enabled) {
       advanced = !!enabled;
@@ -551,7 +556,8 @@
       const syncKind = () => {
         const kind = q('kind').value;
         quick.querySelector('[data-quick-index]').hidden = kind !== 'indexed_ppa';
-        quick.querySelector('[data-quick-price]').hidden = kind === 'scheduled_ppa';
+        quick.querySelector('[data-quick-scheduled-note]').hidden = kind !== 'scheduled_ppa';
+        quick.querySelector('[data-quick-price-label]').textContent = kind === 'scheduled_ppa' ? 'Starting price for every period (EUR/MWh)' : 'Starting price (EUR/MWh)';
       };
       q('kind').addEventListener('change', syncKind);
       syncKind();
@@ -560,9 +566,9 @@
         if (blocked) { quickError('Editing is blocked for this configuration.'); return; }
         if (book.streams.length >= 24) { quickError('At most 24 contracts are supported.'); return; }
         const kind = q('kind').value, scheduled = kind === 'scheduled_ppa';
-        const price = scheduled ? 0 : num(q('price')), share = num(q('share')), index = kind === 'indexed_ppa' ? num(q('index')) : 0;
+        const price = num(q('price')), share = num(q('share')), index = kind === 'indexed_ppa' ? num(q('index')) : 0;
         const start = q('start').value, end = q('end').value, ref = q('ref').value.trim();
-        if (!scheduled && !(price >= 0)) return quickError('Enter the starting price as a number, for example 62.5.');
+        if (!(price >= 0)) return quickError('Enter the starting price as a number, for example 62.5.');
         if (!(share > 0 && share <= 100)) return quickError('Contracted production must be above 0% and at most 100%.');
         if (kind === 'indexed_ppa' && !(index >= 0 && index <= 100)) return quickError('Enter the indexation as a percentage between 0 and 100.');
         if (!realDate(start) || !realDate(end) || end <= start) return quickError('Enter a start date and a later end date.');
@@ -571,12 +577,25 @@
         Object.assign(added, {id: nextId(), start_date: start, end_date: end, volume_share: share / 100,
           price_eur_mwh: price, indexation_rate: index / 100, source_ref: ref});
         if (scheduled && book.version !== 3) book.version = 2;
+        if (scheduled) {
+          let starts = [];
+          try { starts = JSON.parse(quick.dataset.periodStarts || '[]'); } catch (_) { starts = []; }
+          starts = starts.filter(d => d >= start && d < end);
+          if (!starts.length) return quickError('No operating periods fall inside these dates. Adjust the start and end dates.');
+          added.price_curve = starts.map(d => ({period_start: d, price_eur_mwh: price}));
+          added.price_eur_mwh = 0;
+        }
         book.streams.push(added);
         kindOverrides.set(added, kind);
         quickError(''); showError(''); render(); status();
         q('ref').value = ''; q('price').value = '';
         feedback.textContent = 'PPA added to the draft · Save contracts to update the Working Copy (Run separately)';
-        if (scheduled) feedback.textContent += ' · Add the price points in the table';
+        if (scheduled) {
+          feedback.textContent = 'Scheduled PPA added · review the price for each operating period, then Save contracts';
+          const rows = tbody.querySelectorAll('.rc-price-curve-row details');
+          const editor = rows[rows.length - 1];
+          if (editor) { editor.open = true; editor.querySelector('input[type=number]')?.focus(); editor.scrollIntoView({block: 'nearest'}); }
+        }
       });
     }
     form.querySelector('[data-product-add]')?.addEventListener('click', () => {

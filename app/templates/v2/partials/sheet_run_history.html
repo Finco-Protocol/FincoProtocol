@@ -28,7 +28,7 @@
     <span class="v2-rh-error-code">{{ error_code }}</span>
   </div>
   {% elif rows %}
-  <table class="v2-rh-table" data-testid="run-history-table">
+  <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table" data-testid="run-history-table">
     <thead>
       <tr>
         <th>Ran at</th><th>Scenario</th><th>Status</th><th>Origin</th>
@@ -76,7 +76,7 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
   <div class="v2-rh-empty" data-testid="run-history-empty">
     No runs recorded yet for this project.
