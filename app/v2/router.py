@@ -195,14 +195,15 @@ def _add_field_error_trigger(
     is serialised, so nothing else can reach the browser as a class.
     """
     import json as _json
-    resp.headers["HX-Trigger"] = _json.dumps({
-        "workbook-field-error": {
-            "field_id": field_id,
-            "message": message,
-            "error_class": error_class.value if isinstance(error_class, FieldErrorClass) else None,
-            "conflict": bool(conflict),
-        }
-    })
+    payload = {
+        "field_id": field_id,
+        "message": message,
+        "error_class": error_class.value if isinstance(error_class, FieldErrorClass) else None,
+    }
+    if conflict is True:
+        # Only a genuine stale-CAS rejection carries the extra key; every other event keeps the strict three-key contract.
+        payload["conflict"] = True
+    resp.headers["HX-Trigger"] = _json.dumps({"workbook-field-error": payload})
     return resp
 
 
