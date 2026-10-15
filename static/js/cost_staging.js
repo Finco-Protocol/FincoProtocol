@@ -33,10 +33,16 @@
   function cellsOf(row) { return qsa('input[data-cost-cell]', row); }
   function visible(el) { return !!(el && (el.offsetParent !== null || el.getClientRects().length)); }
 
+  // Strict amount syntax (UX-017). A value is normalised ONLY when its meaning is unambiguous; anything else is returned
+  // trimmed but unchanged so the validity gate rejects it and the cell stays editable and unsaved. Accepted: an optional
+  // sign, ASCII digits, one decimal point OR one decimal comma (not three digits after a lone comma: "1,234" is ambiguous),
+  // or a comma-grouped integer part with a decimal point ("1,234.56"). No embedded whitespace, no line breaks, no letters.
+  var AMOUNT = /^[-+]?(\d+\.?\d*|\.\d+)$/;
   function normNumber(raw) {
-    var v = String(raw == null ? '' : raw).replace(/\s+/g, '');
-    if (v.indexOf(',') >= 0 && v.indexOf('.') >= 0) v = v.replace(/,/g, '');
-    else if (v.indexOf(',') >= 0) v = v.replace(',', '.');
+    var v = String(raw == null ? '' : raw).trim();
+    if (AMOUNT.test(v)) return v;
+    if (/^[-+]?\d{1,3}(,\d{3})+\.\d+$/.test(v)) return v.replace(/,/g, '');
+    if (/^[-+]?\d+,\d+$/.test(v) && !/,\d{3}$/.test(v)) return v.replace(',', '.');
     return v;
   }
   function isNumeric(input) { return input.getAttribute('data-cost-cell') !== 'label'; }
@@ -101,7 +107,7 @@
     if (!isDirty(row)) { if (st === 'dirty' || st === 'staged') { setState(row, '', ''); updateStagebars(); } return; }
     var bad = null;
     cellsOf(row).forEach(function (i) {
-      if (isNumeric(i) && !/^[-+]?(\d+\.?\d*|\.\d+)$/.test(normNumber(i.value))) bad = i;
+      if (isNumeric(i) && !AMOUNT.test(normNumber(i.value))) bad = i;
       if (!isNumeric(i) && i.required && !i.value.trim()) bad = i;
     });
     if (bad) {
@@ -202,8 +208,9 @@
   }
   function adjust(input, dir, big) {
     var step = parseFloat(input.getAttribute('data-step') || '1') || 1;
-    var cur = parseFloat(normNumber(input.value));
-    if (!isFinite(cur)) return;
+    var shown = normNumber(input.value);
+    if (!AMOUNT.test(shown)) return;                       // never nudge a value that is not a valid amount
+    var cur = parseFloat(shown);
     var decimals = (String(step).split('.')[1] || '').length;
     var next = cur + dir * step * (big ? 10 : 1);
     input.value = next.toFixed(decimals);
@@ -271,8 +278,10 @@
       t.select();
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       var dir = e.key === 'ArrowUp' ? 1 : -1;
-      if (isNumeric(t)) { e.preventDefault(); adjust(t, dir, e.shiftKey); }
-      else { e.preventDefault(); moveFocus(t, -dir); }
+      // Plain arrows only move between cells (UX-018); a nudge needs the explicit Alt modifier (Shift+Alt = x10).
+      e.preventDefault();
+      if (isNumeric(t) && e.altKey) adjust(t, dir, e.shiftKey);
+      else moveFocus(t, -dir);
     }
   });
 
@@ -393,6 +402,15 @@
     var isRun = elt.classList && elt.classList.contains('v2-run-form');
     var isScenario = String(elt.getAttribute('hx-post') || '').indexOf('/v2/workbook/scenarios/') === 0;
     if (!structural && !isRun && !isScenario) return;
+    // A row whose save FAILED (or whose value is invalid) is still unsaved: a structural action, scenario change or Run must
+    // not swap it away silently (UX-019). Nothing is retried; the user saves or discards explicitly.
+    var unsavedFailed = qsa(ROW).some(function (r) { return isDirty(r) && r.getAttribute('data-save-state') === 'failed'; });
+    if (unsavedFailed) {
+      e.preventDefault();
+      showGuard(isRun ? 'Run needs your cost edits saved first.' :
+        'A cost edit failed to save and is still unsaved. Retry or discard it before ' + (isScenario ? 'changing the scenario.' : 'continuing.'));
+      return;
+    }
     if (!gridBusy()) return;
     if (isScenario || (stageMode && stageHasEdits())) {   // never silently save, never silently drop staged edits
       e.preventDefault();
