@@ -1,0 +1,28 @@
+/* RC-UX Stream B: shared presentation tokens for the Model workspace (UX-009, UX-029).
+   Self-hosted and CSP-compatible (no external fonts or scripts). Tokens only add a11y affordances and a
+   coherent light/dark pair for the shared status components; they never change financial values or copy meaning. */
+:root {
+  --fx-text: #111827; --fx-text-muted: #4b5563; --fx-surface: #ffffff; --fx-surface-alt: #f3f4f6; --fx-border: #cbd5e1;
+  --fx-link: #1d4ed8; --fx-focus: #1d4ed8;
+  --fx-ok: #166534; --fx-warn: #92400e; --fx-bad: #991b1b; --fx-info: #1e40af;
+  --fx-ok-bg: #dcfce7; --fx-warn-bg: #fef3c7; --fx-bad-bg: #fee2e2; --fx-info-bg: #dbeafe;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fx-text: #f3f4f6; --fx-text-muted: #cbd5e1; --fx-surface: #111827; --fx-surface-alt: #1f2937; --fx-border: #475569;
+    --fx-link: #93c5fd; --fx-focus: #93c5fd;
+    --fx-ok: #86efac; --fx-warn: #fcd34d; --fx-bad: #fca5a5; --fx-info: #bfdbfe;
+    --fx-ok-bg: #14532d; --fx-warn-bg: #78350f; --fx-bad-bg: #7f1d1d; --fx-info-bg: #1e3a8a;
+  }
+}
+:root[data-theme="dark"] {
+  --fx-text: #f3f4f6; --fx-text-muted: #cbd5e1; --fx-surface: #111827; --fx-surface-alt: #1f2937; --fx-border: #475569;
+  --fx-link: #93c5fd; --fx-focus: #93c5fd;
+  --fx-ok: #86efac; --fx-warn: #fcd34d; --fx-bad: #fca5a5; --fx-info: #bfdbfe;
+  --fx-ok-bg: #14532d; --fx-warn-bg: #78350f; --fx-bad-bg: #7f1d1d; --fx-info-bg: #1e3a8a;
+}
+.v2-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.v2-skip-link { position: absolute; left: 0.5rem; top: -4rem; z-index: 1000; padding: 0.5rem 0.75rem; background: var(--fx-surface); color: var(--fx-link); border: 2px solid var(--fx-focus); border-radius: 3px; }
+.v2-skip-link:focus { top: 0.5rem; }
+#v2-workbook-shell:focus { outline: none; }
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--fx-focus); outline-offset: 2px; }

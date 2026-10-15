@@ -2564,16 +2564,16 @@ async def v2_workbook_update(
     )
 
 
-# Presentation-only: typed engine fail-closed reasons -> plain language.
+# Presentation-only: typed engine fail-closed reasons -> plain language. The sentence leads; the code trails as a reference (UX-031).
 # The engine's decision (and its typed reason) is unchanged; nothing is saved
 # on a failed run and the previous Last Run stays exactly as it was.
 _ENGINE_FAIL_CLOSED_MESSAGES = (
-    ("F3_PERIOD_OVERFUNDING", "F3_PERIOD_OVERFUNDING: A dated facility draw exceeds construction Uses in that period. Adjust the draw dates or amounts. No Run was saved."),
-    ("F3_AGGREGATE_GEARING_CAP_EXCEEDED", "F3_AGGREGATE_GEARING_CAP_EXCEEDED: The explicit facility commitments exceed the project gearing cap. No automatic resizing is applied; no Run was saved."),
-    ("F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL", "F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL: Base cash cannot pay the contractual Senior service, including maturity principal. No repayment or refinancing was manufactured; no Run was saved."),
-    ("F3_MATURITY_NOT_ON_OPERATING_BOUNDARY", "F3_MATURITY_NOT_ON_OPERATING_BOUNDARY: Facility maturity must match a canonical operating period end. No Run was saved."),
-    ("F3_DRAW_OUTSIDE_CONSTRUCTION", "F3_DRAW_OUTSIDE_CONSTRUCTION: Facility draws must fall within construction. No Run was saved."),
-    ("F3_GRACE_EXCEEDS_MATURITY", "F3_GRACE_EXCEEDS_MATURITY: No principal-eligible period remains before maturity. No Run was saved."),
+    ("F3_PERIOD_OVERFUNDING", "A dated facility draw exceeds construction Uses in that period. Adjust the draw dates or amounts. No Run was saved. (Reference: F3_PERIOD_OVERFUNDING)"),
+    ("F3_AGGREGATE_GEARING_CAP_EXCEEDED", "The explicit facility commitments exceed the project gearing cap. No automatic resizing is applied; no Run was saved. (Reference: F3_AGGREGATE_GEARING_CAP_EXCEEDED)"),
+    ("F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL", "Base cash cannot pay the contractual Senior service, including maturity principal. No repayment or refinancing was manufactured; no Run was saved. (Reference: F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL)"),
+    ("F3_MATURITY_NOT_ON_OPERATING_BOUNDARY", "Facility maturity must match a canonical operating period end. No Run was saved. (Reference: F3_MATURITY_NOT_ON_OPERATING_BOUNDARY)"),
+    ("F3_DRAW_OUTSIDE_CONSTRUCTION", "Facility draws must fall within construction. No Run was saved. (Reference: F3_DRAW_OUTSIDE_CONSTRUCTION)"),
+    ("F3_GRACE_EXCEEDS_MATURITY", "No principal-eligible period remains before maturity. No Run was saved. (Reference: F3_GRACE_EXCEEDS_MATURITY)"),
     ("SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
      "These inputs leave part of the shareholder loan unpaid at its maturity, so "
      "the model did not produce a result. Review OPEX, CAPEX, revenue or "
