@@ -11,7 +11,6 @@ shock by design, so each expectation is stated per sizing mode.  An unexpected d
 """
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from typing import Any
@@ -87,7 +86,7 @@ def build(cases: Sequence[Mapping[str, Any]], directionals: Sequence[Mapping[str
           unavailable_cases: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
     rows = [r for case in cases for r in case["rows"]]
     counts = {s: sum(r["result"] == s for r in rows) for s in ("PASS", "FAIL", "UNAVAILABLE", "NOT_COMPARABLE")}
-    dcounts = {s: sum(d["result"] == s for d in directionals) for s in ("PASS", "FAIL", "UNAVAILABLE")}
+    dcounts = {s: sum(d["result"] == s for d in directionals) for s in ("PASS", "FAIL", "UNAVAILABLE", "NOT_ASSERTED")}
     return {"schema": SCHEMA, "cases": [{"case": c["case"], "run_key": c["run_key"], "assessment": c.get("assessment", [])}
                                         for c in cases],
             "rows": rows, "metric_counts": counts, "directional_checks": list(directionals),
@@ -127,4 +126,4 @@ def _short(value: Any) -> str:
     return format(d.quantize(Decimal("0.000001")) if d != d.to_integral() else d, "f")
 
 
-__all__ = ["SCHEMA", "METRICS", "AUTHORITY_REVIEW", "metric_rows", "directional", "build", "render", "json"]
+__all__ = ["SCHEMA", "METRICS", "AUTHORITY_REVIEW", "metric_rows", "directional", "build", "render"]

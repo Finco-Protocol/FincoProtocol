@@ -67,6 +67,10 @@ def metrics_of(entry: Any, bundle: dict) -> dict[str, Decimal | None]:
         "total_ebitda": sc("summary.total_ebitda_keur"), "project_irr": sc("summary.project_irr"),
         "equity_irr": sc("summary.equity_irr"),
         "lockup_periods": _d(getattr(entry, "runtime_summary", {}).get("periods_in_lockup")),
+        "base_capex": sc("su.base_project_capex_keur"), "idc": sc("su.capitalized_idc_keur"),
+        "financing_fees": None if None in (sc("su.commitment_fee_keur"), sc("su.structuring_fee_keur"), sc("su.other_financing_costs_keur"))
+        else sc("su.commitment_fee_keur") + sc("su.structuring_fee_keur") + sc("su.other_financing_costs_keur"),
+        "initial_dsra": sc("su.initial_dsra_funding_keur"),
         "total_cfads": sum(x for x in series("stmt.pf.fcf_banks").values() if x is not None) if series("stmt.pf.fcf_banks") else None,
     }
 
