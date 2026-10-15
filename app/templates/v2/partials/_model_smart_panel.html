@@ -48,7 +48,7 @@
            data-sp-view="solutions" data-testid="smart-panel-solutions">
     <p class="v2-sp-intro">Findings from existing model checks and committed evidence. No automated changes to financial assumptions.</p>
     {% include "partials/_model_insight_q3.html" %}
-    <h3 class="v2-sp-q3-heading">Workbook and Trust Pack findings</h3>
+    <h3 class="v2-sp-q3-heading">Model Checks</h3>
     {% if smart_panel.issues %}
       {% for issue in smart_panel.issues %}
       <details class="v2-sp-issue v2-sp-issue--{{ issue.severity }}"
@@ -65,9 +65,9 @@
       </details>
       {% endfor %}
     {% else %}
-      <p class="v2-sp-intro" data-testid="smart-panel-solutions-clear">No additional confirmed issues in the available server-side checks. This is not a bankability certification.</p>
+      <p class="v2-sp-intro" data-testid="smart-panel-solutions-clear">No further issues found in the available checks. This is not a bankability certification.</p>
     {% endif %}
-    <p class="v2-sp-intro">Field-level save errors are listed below from the existing validation authority. Financing covenant findings appear only when authoritative evidence exists.</p>
+    <p class="v2-sp-intro">Input errors are listed below. Covenant findings appear only when the Last Run provides the evidence.</p>
 
   {% if smart_panel.stale_note %}
   <div class="v2-smart-panel-note v2-smart-panel-note--{{ smart_panel.run_state | lower }}"
@@ -97,7 +97,7 @@
       {% endfor %}
     </ul>
     <div class="v2-summary-empty" data-summary-empty
-         data-testid="smart-panel-summary-empty">No rejected edits in this session.</div>
+         data-testid="smart-panel-summary-empty" hidden></div>
   </div>
   {% endif %}
 

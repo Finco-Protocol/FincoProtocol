@@ -538,6 +538,47 @@
       const last = tbody.lastElementChild;
       last?.querySelector('[data-field=id]')?.focus();
     });
+    // Guided "Add a PPA": builds ONE ordinary typed stream with a generated ID. Nothing is inferred - every contractual term,
+    // including the contract reference, comes from the user; the existing validator and Save path stay authoritative.
+    const quick = form.querySelector('[data-revenue-quick]');
+    if (quick) {
+      const q = (name) => quick.querySelector('[data-quick="' + name + '"]');
+      const qErr = quick.querySelector('[data-quick-error]');
+      const AMOUNT = /^[-+]?(\d+\.?\d*|\.\d+)$/;
+      const num = (el) => { const t = el.value.trim(); return AMOUNT.test(t) ? Number(t) : NaN; };
+      const quickError = (message) => { qErr.textContent = message; qErr.hidden = !message; };
+      const realDate = (t) => /^\d{4}-\d{2}-\d{2}$/.test(t) && new Date(t + 'T00:00:00Z').toISOString().slice(0, 10) === t;
+      const syncKind = () => {
+        const kind = q('kind').value;
+        quick.querySelector('[data-quick-index]').hidden = kind !== 'indexed_ppa';
+        quick.querySelector('[data-quick-price]').hidden = kind === 'scheduled_ppa';
+      };
+      q('kind').addEventListener('change', syncKind);
+      syncKind();
+      const nextId = () => { let n = 1; const used = new Set(book.streams.map(r => r.id)); while (used.has('ppa-' + n)) n += 1; return 'ppa-' + n; };
+      quick.querySelector('[data-quick-add]').addEventListener('click', () => {
+        if (blocked) { quickError('Editing is blocked for this configuration.'); return; }
+        if (book.streams.length >= 24) { quickError('At most 24 contracts are supported.'); return; }
+        const kind = q('kind').value, scheduled = kind === 'scheduled_ppa';
+        const price = scheduled ? 0 : num(q('price')), share = num(q('share')), index = kind === 'indexed_ppa' ? num(q('index')) : 0;
+        const start = q('start').value, end = q('end').value, ref = q('ref').value.trim();
+        if (!scheduled && !(price >= 0)) return quickError('Enter the starting price as a number, for example 62.5.');
+        if (!(share > 0 && share <= 100)) return quickError('Contracted production must be above 0% and at most 100%.');
+        if (kind === 'indexed_ppa' && !(index >= 0 && index <= 100)) return quickError('Enter the indexation as a percentage between 0 and 100.');
+        if (!realDate(start) || !realDate(end) || end <= start) return quickError('Enter a start date and a later end date.');
+        if (!ref || ref.length > 200) return quickError('Enter the contract reference (up to 200 characters).');
+        const added = newRow(kind);
+        Object.assign(added, {id: nextId(), start_date: start, end_date: end, volume_share: share / 100,
+          price_eur_mwh: price, indexation_rate: index / 100, source_ref: ref});
+        if (scheduled && book.version !== 3) book.version = 2;
+        book.streams.push(added);
+        kindOverrides.set(added, kind);
+        quickError(''); showError(''); render(); status();
+        q('ref').value = ''; q('price').value = '';
+        feedback.textContent = 'PPA added to the draft · Save contracts to update the Working Copy (Run separately)';
+        if (scheduled) feedback.textContent += ' · Add the price points in the table';
+      });
+    }
     form.querySelector('[data-product-add]')?.addEventListener('click', () => {
       if ((book.products || []).length >= 24) { showError('At most 24 products.'); return; }
       if (book.version !== 3) { book.version = 3; book.products = []; book.environmental_rights = []; }

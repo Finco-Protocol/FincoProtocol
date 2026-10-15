@@ -1,7 +1,7 @@
 <link rel="stylesheet" href="/static/css/model_revenue_contract_editor.css">
 <details class="v2-inputs-section rc-section" open data-testid="revenue-contracts">
   <summary class="v2-inputs-section-summary">Revenue contracts</summary>
-  <p class="d-context">{{ contracts.scope }} · {% if contracts.active %}Explicit PPA / Merchant / CfD authority{% else %}Legacy revenue authority{% endif %}. Saving assumptions never runs the financial model.</p>
+  <p class="d-context">{{ contracts.scope }} · {% if contracts.active %}Contract-based pricing{% else %}Standard revenue inputs{% endif %}. Saving assumptions never runs the financial model.</p>
   {% if project_editable %}
   <form method="post" action="/v2/workbook/revenue/contracts"
         hx-post="/v2/workbook/revenue/contracts" hx-target="#v2-sheet-revenue" hx-swap="outerHTML"
@@ -11,6 +11,22 @@
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
     <input type="hidden" name="csrf_token" value="{{ revenue_contracts_csrf_token }}">
     <input type="hidden" name="contracts" data-revenue-payload value="">
+    <section class="rc-quick" data-revenue-quick data-testid="ppa-quick-add" aria-labelledby="rc-quick-title"
+             data-window-start="{{ (contracts.operating_window or {}).get('start', '') }}" data-window-end="{{ (contracts.operating_window or {}).get('end', '') }}">
+      <h3 id="rc-quick-title">Add a PPA</h3>
+      <p class="d-context">For a signed or term-sheet PPA. To test an illustrative price without a contract, use the PPA terms under Revenue inputs instead. Contract IDs are generated for you.</p>
+      <div class="rc-quick-grid">
+        <label>Pricing<select data-quick="kind"><option value="fixed_ppa">Fixed</option><option value="indexed_ppa">Indexed</option><option value="scheduled_ppa">Scheduled</option></select></label>
+        <label data-quick-price>Starting price (EUR/MWh)<input data-quick="price" inputmode="decimal" autocomplete="off"></label>
+        <label>Contracted production (%)<input data-quick="share" inputmode="decimal" autocomplete="off" value="100"></label>
+        <label>Start date<input data-quick="start" type="date" value="{{ (contracts.operating_window or {}).get('start', '') }}"></label>
+        <label>End date (exclusive)<input data-quick="end" type="date" value="{{ (contracts.operating_window or {}).get('end', '') }}"></label>
+        <label data-quick-index hidden>Indexation (%/yr)<input data-quick="index" inputmode="decimal" autocomplete="off" value="0"></label>
+        <label>Contract reference<input data-quick="ref" maxlength="200" autocomplete="off" placeholder="e.g. agreement or term-sheet reference"></label>
+      </div>
+      <p class="d-context">The contract reference identifies the agreement behind this price; the model does not invent one. Adding a PPA changes the draft only: Save contracts, then Run.</p>
+      <div class="rc-quick-actions"><button type="button" data-quick-add>Add PPA</button><span class="rc-quick-error" role="alert" data-quick-error hidden></span></div>
+    </section>
     <div class="rc-toolbar">
       <div class="rc-add-controls">
         <label for="rc-add-type">New contract</label>
@@ -67,8 +83,8 @@
       <span class="d-context">End date exclusive · Same-period settlement · Operating-year indexation</span>
     </div>
     <details class="rc-diagnostic">
-      <summary>Advanced JSON · read-only diagnostic</summary>
-      <label for="revenue-contracts-json">Canonical contract payload (read-only)</label>
+      <summary>Technical details (read-only)</summary>
+      <label for="revenue-contracts-json">Contract data (read-only)</label>
       <textarea id="revenue-contracts-json" data-revenue-source rows="5" spellcheck="false" readonly>{{ contracts.raw }}</textarea>
     </details>
   </form>

@@ -1166,13 +1166,23 @@ def _build_revenue_contract_editor(pis, ws):
     from domain.revenue.advanced_products import ACTIVATION_ENABLED
     payload = json.loads(config.canonical_json) if config else {}
     axis = []
-    if ACTIVATION_ENABLED and technology in ("solar", "wind"):
-        from financial_engine.adapters.project_inputs import from_project_inputs
-        from financial_engine.orchestrator import _build_period_engine
-        axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
-                 "settlement_date": p.end_date.isoformat()}
-                for p in _build_period_engine(from_project_inputs(pis.to_projectinputs())).periods() if p.is_operation]
-    return {"active": config is not None, "raw": raw, "scope": scope, "technology": technology,
+    operating_window = None
+    if technology in ("solar", "wind"):
+        # Read-only: the operating period boundaries the model already derives from the project's own dates. They only
+        # pre-fill the guided PPA form; the canonical validator still decides what is accepted.
+        try:
+            from financial_engine.adapters.project_inputs import from_project_inputs
+            from financial_engine.orchestrator import _build_period_engine
+            operating = [p for p in _build_period_engine(from_project_inputs(pis.to_projectinputs())).periods() if p.is_operation]
+            if operating:
+                operating_window = {"start": operating[0].start_date.isoformat(), "end": operating[-1].end_date.isoformat()}
+            if ACTIVATION_ENABLED:
+                axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
+                         "settlement_date": p.end_date.isoformat()} for p in operating]
+        except Exception:
+            operating_window = None
+            axis = []
+    return {"operating_window": operating_window, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
             "overridden": overridden, "rows": payload.get("streams", []),
             "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
             "period_axis": axis}
