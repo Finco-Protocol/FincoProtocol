@@ -11,7 +11,7 @@ Statuses: **VALIDATED** · **FUNCTIONALLY EXECUTED — NUMERICAL VALIDATION INCO
 | Two PPAs + residual merchant | Revenue V2 | VALIDATED (P2) |
 | Indexation by operating year | OPERATING_YEAR only | VALIDATED for that convention; convention itself REQUIRES FINANCIAL APPROVAL |
 | Partial indexed share | expressible only by splitting a PPA into a fixed and an indexed stream | FUNCTIONALLY EXECUTED — NUMERICAL VALIDATION INCOMPLETE |
-| Stepped price | `price_curve` (version 2, no indexation with a curve) | supported; reconciled in the PPA price identity where exercised |
+| Stepped price | `price_curve` (version 2, no indexation with a curve) | VALIDATED (P4, exact-period curve, 50 explicit prices reconciled per period) |
 | PPA expiry then merchant | windows on period boundaries | VALIDATED (P5) |
 | CfD overlay | signed settlement vs reference stream | VALIDATED (P6) |
 | Price base year / indexation basis other than operating year | not supported | NOT COMPARABLE |
@@ -49,3 +49,12 @@ No authorised private reference material is available in this environment, and n
 ## Release-closed
 
 Junior, BESS M7, M6 valuation, F4/P2, Revenue V3 — **RELEASE-CLOSED**; not exercised and not opened by this work.
+
+## Correction A additions
+
+| Item | Status |
+|---|---|
+| P50 versus P90-10y lender case (paired Runs, P8) | operating generation/EBITDA identical, sized debt and DSCR capacity differ — VALIDATED for the observable metrics |
+| P90 sizing CFADS as a separate series | NOT COMPARABLE (not persisted; only its effect on DSCR capacity and sized debt is observable) |
+| Feature-case verdicts | require feature-specific identities; baselines are BASELINE_VERIFIED only |
+| F-1 … F-8 | unchanged, unresolved, REQUIRE FINANCIAL APPROVAL / authority decision |

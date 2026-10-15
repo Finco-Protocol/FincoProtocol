@@ -13,7 +13,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "37dc59f2b2a3b09355792327017c9a981c941bd1d73206c14af5846ee793165d",
+   "history_id": "1700e4079dbd4bfd9bfe9016ef4608cc",
+   "run_key": "1700e4079dbd4bfd9bfe9016ef4608cc",
+   "snapshot_id": "20261015T112758.871473+0000"
+  },
   "case": "D0",
   "difference": {
    "avg_dscr": "0.0000000000000000",
@@ -43,7 +48,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "37dc59f2b2a3b09355792327017c9a981c941bd1d73206c14af5846ee793165d",
+   "history_id": "1700e4079dbd4bfd9bfe9016ef4608cc",
+   "run_key": "1700e4079dbd4bfd9bfe9016ef4608cc",
+   "snapshot_id": "20261015T112758.871473+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -227,7 +237,8 @@
     "UNIT-CONSISTENCY"
    ]
   },
-  "verdict": "VERIFIED"
+  "required_identities": [],
+  "verdict": "BASELINE_VERIFIED"
  },
  {
   "actual_activation": "F3 collection activated by the Run (authority recorded)",
@@ -243,7 +254,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "8e1f26b838c1a60d6c71f1d82bda474cd4a3574f62ef88cacd61da52b1cb5fdf",
+   "history_id": "b4533ef3624946bc9a05c6c554775384",
+   "run_key": "b4533ef3624946bc9a05c6c554775384",
+   "snapshot_id": "20261015T112804.304487+0000"
+  },
   "case": "D1",
   "difference": {
    "avg_dscr": "5.6823313804520405",
@@ -273,7 +289,12 @@
    "total_service": "1644.7527777777777",
    "total_uses": "8342.523888888889"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "e927f04e4d9f12f4cb26a26f0d4a23a6bc55ebd315df3478fc47c4d0049963bd",
+   "history_id": "dfd1bb26fd0741b4afff43e800f24a6c",
+   "run_key": "dfd1bb26fd0741b4afff43e800f24a6c",
+   "snapshot_id": "20261015T112808.432583+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -457,6 +478,15 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "FT-DRAWS",
+   "FT-IDC",
+   "FT-COMMITMENT-FEE",
+   "FT-UPFRONT",
+   "FT-INTEREST",
+   "FT-REPAYMENT",
+   "FT-MATURITY"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -473,7 +503,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "f71a698bca9524c823c686851f885c4a4f82b808a7b10b8482ba2eae51489e74",
+   "history_id": "16bbcc5e32994e5f95155d80ee0459cf",
+   "run_key": "16bbcc5e32994e5f95155d80ee0459cf",
+   "snapshot_id": "20261015T112814.392723+0000"
+  },
   "case": "D2",
   "difference": {
    "avg_dscr": "5.6013534102032880",
@@ -503,7 +538,12 @@
    "total_service": "1677.0740277777775",
    "total_uses": "8351.710555555555"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "304724236790034b4ad3d64985442b8b8048ccf77628ae6713bb96dfca5f0313",
+   "history_id": "839b33bcebeb4b1b8980bc950f33bccf",
+   "run_key": "839b33bcebeb4b1b8980bc950f33bccf",
+   "snapshot_id": "20261015T112817.767015+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -687,6 +727,15 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "FT-DRAWS",
+   "FT-IDC",
+   "FT-COMMITMENT-FEE",
+   "FT-UPFRONT",
+   "FT-INTEREST",
+   "FT-REPAYMENT",
+   "FT-MATURITY"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -703,7 +752,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "5d08e5d54194cbb82c4c2e82df3de03489229ab9d038b6e3fa8c031b2972279b",
+   "history_id": "a9c431c6cc5b4e9985dddc6a9beb1108",
+   "run_key": "a9c431c6cc5b4e9985dddc6a9beb1108",
+   "snapshot_id": "20261015T112823.331252+0000"
+  },
   "case": "D3",
   "difference": {
    "avg_dscr": "5.3486335720272840",
@@ -733,7 +787,12 @@
    "total_service": "1663.2156666666665",
    "total_uses": "8342.523888888889"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "cd35e23155b308c632d58d9ec700b0315ebf2672d5a515d98f9c3c1dcc13f2f7",
+   "history_id": "475f0489982947908c690d40ecaffa7c",
+   "run_key": "475f0489982947908c690d40ecaffa7c",
+   "snapshot_id": "20261015T112826.805625+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -917,6 +976,15 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "FT-DRAWS",
+   "FT-IDC",
+   "FT-COMMITMENT-FEE",
+   "FT-UPFRONT",
+   "FT-INTEREST",
+   "FT-REPAYMENT",
+   "FT-MATURITY"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -933,7 +1001,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "1f4ecb72a4737cf4ecb9c9469244eb73d614267520841d9362d42f5c0def0d67",
+   "history_id": "ff72a3b8e45e452e85792d9839a00987",
+   "run_key": "ff72a3b8e45e452e85792d9839a00987",
+   "snapshot_id": "20261015T112832.415804+0000"
+  },
   "case": "D4",
   "difference": {
    "avg_dscr": "5.6823313804520405",
@@ -963,7 +1036,12 @@
    "total_service": "1644.7527777777777",
    "total_uses": "8340.173055555555"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "2b7b1f88dc4addea7da7bf337df9e18abe1f5a1a2c60af3e459096e4faf237f9",
+   "history_id": "b3af6e6192554ab5951ae60a6812e02f",
+   "run_key": "b3af6e6192554ab5951ae60a6812e02f",
+   "snapshot_id": "20261015T112835.524711+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -1147,6 +1225,15 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "FT-DRAWS",
+   "FT-IDC",
+   "FT-COMMITMENT-FEE",
+   "FT-UPFRONT",
+   "FT-INTEREST",
+   "FT-REPAYMENT",
+   "FT-MATURITY"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -1171,7 +1258,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "46ea15b0a54880ef575f65512d0f2bbe1226e72cbf75bb25bfcbfb62989dc58f",
+   "history_id": "0ac0bd4445384ab58e5d57f6d1fb43e4",
+   "run_key": "0ac0bd4445384ab58e5d57f6d1fb43e4",
+   "snapshot_id": "20261015T112854.077207+0000"
+  },
   "case": "D5",
   "difference": {
    "avg_dscr": "0.0000000000000000",
@@ -1201,8 +1293,14 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "e8fc9fed34ddd07e4be127aed44cd5affc288d9651d5808ddd11783eb9ab572e",
+   "history_id": "779dc9d7b3d4457090a1933445e7b763",
+   "run_key": "779dc9d7b3d4457090a1933445e7b763",
+   "snapshot_id": "20261015T112857.746101+0000"
+  },
   "reconciliation": null,
+  "required_identities": [],
   "verdict": "INERT_IDENTICAL_TO_BASELINE"
  },
  {
@@ -1219,7 +1317,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "5f5b037dc0d858223760d6cd6cf237cd9c2fdfb6c3ec4bc12c5be9b9b09e87cb",
+   "history_id": "886783d115b74c14b02f6933a11fa8b8",
+   "run_key": "886783d115b74c14b02f6933a11fa8b8",
+   "snapshot_id": "20261015T112907.458749+0000"
+  },
   "case": "E0",
   "difference": {
    "avg_dscr": "0.0000000000000000",
@@ -1249,7 +1352,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "5f5b037dc0d858223760d6cd6cf237cd9c2fdfb6c3ec4bc12c5be9b9b09e87cb",
+   "history_id": "886783d115b74c14b02f6933a11fa8b8",
+   "run_key": "886783d115b74c14b02f6933a11fa8b8",
+   "snapshot_id": "20261015T112907.458749+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -1433,7 +1541,8 @@
     "UNIT-CONSISTENCY"
    ]
   },
-  "verdict": "VERIFIED"
+  "required_identities": [],
+  "verdict": "BASELINE_VERIFIED"
  },
  {
   "actual_activation": "agreement bound and reconciled by the Run",
@@ -1449,7 +1558,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "463d363b11e3a962f6b976b5e338b08c02b2ce5fe4af01c892813d75d725f07b",
+   "history_id": "738e6aa780054b95a726545d858e4fdf",
+   "run_key": "738e6aa780054b95a726545d858e4fdf",
+   "snapshot_id": "20261015T112912.738568+0000"
+  },
   "case": "E1",
   "difference": {
    "avg_dscr": "0.0000000000000000",
@@ -1479,7 +1593,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "f69a2509e96d5449aa142fd46be5a805f4ff1919c216e8ec667b6b464389b232",
+   "history_id": "18a3ef9464ab4651aec5acbd2f0eedbf",
+   "run_key": "18a3ef9464ab4651aec5acbd2f0eedbf",
+   "snapshot_id": "20261015T112914.479497+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -1663,6 +1782,13 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "IV-OWNERSHIP",
+   "IV-AGGREGATE",
+   "IV-PAIDIN",
+   "IV-MULTIPLE",
+   "IV-XIRR"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -1679,7 +1805,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "463d363b11e3a962f6b976b5e338b08c02b2ce5fe4af01c892813d75d725f07b",
+   "history_id": "738e6aa780054b95a726545d858e4fdf",
+   "run_key": "738e6aa780054b95a726545d858e4fdf",
+   "snapshot_id": "20261015T112912.738568+0000"
+  },
   "case": "E2",
   "difference": {
    "avg_dscr": "0.0000000000000000",
@@ -1709,7 +1840,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "d08b57bb5c462e8245443b999ec93486b83ef1d3733eafac166665f29987e6b9",
+   "history_id": "ba26e8ced0e44442b3c18bcfcd2c84d9",
+   "run_key": "ba26e8ced0e44442b3c18bcfcd2c84d9",
+   "snapshot_id": "20261015T112925.391431+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -1893,6 +2029,13 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "IV-OWNERSHIP",
+   "IV-AGGREGATE",
+   "IV-PAIDIN",
+   "IV-MULTIPLE",
+   "IV-XIRR"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -1909,7 +2052,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "5d1ad10eaa5d02ca7dd031ca257facfcdd6017e9c11cf5cef49f7cb3b6843421",
+   "history_id": "8319692de0fe4de29d32079459284a8c",
+   "run_key": "8319692de0fe4de29d32079459284a8c",
+   "snapshot_id": "20261015T112934.179525+0000"
+  },
   "case": "E3",
   "difference": {
    "avg_dscr": "0.0000000000000000",
@@ -1939,7 +2087,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "0e6c9aeb99d34b2d228acc471d6048e0df4627408bfd5976ae5930c579b4e3c5",
+   "history_id": "dff3af1271534b36bc38c2f40674c492",
+   "run_key": "dff3af1271534b36bc38c2f40674c492",
+   "snapshot_id": "20261015T112936.061632+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -2123,6 +2276,13 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "IV-OWNERSHIP",
+   "IV-AGGREGATE",
+   "IV-PAIDIN",
+   "IV-MULTIPLE",
+   "IV-XIRR"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -2155,7 +2315,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "32ce2dac5f9bfcd65f6644cccda6ae7de943d6c0dd6e5fe2c7616f1ff2075ae7",
+   "history_id": "2f23e6074b914a02ba2843c6801b577b",
+   "run_key": "2f23e6074b914a02ba2843c6801b577b",
+   "snapshot_id": "20261015T112948.912981+0000"
+  },
   "case": "P0",
   "difference": {
    "avg_dscr": "0.0000000000000000",
@@ -2185,7 +2350,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "32ce2dac5f9bfcd65f6644cccda6ae7de943d6c0dd6e5fe2c7616f1ff2075ae7",
+   "history_id": "2f23e6074b914a02ba2843c6801b577b",
+   "run_key": "2f23e6074b914a02ba2843c6801b577b",
+   "snapshot_id": "20261015T112948.912981+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -2369,7 +2539,8 @@
     "UNIT-CONSISTENCY"
    ]
   },
-  "verdict": "VERIFIED"
+  "required_identities": [],
+  "verdict": "BASELINE_VERIFIED"
  },
  {
   "actual_activation": "contract book saved and applied by the Run",
@@ -2385,7 +2556,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "7c3029d8f928a6bff89b1cd674db823e8c67e72a51eba7ae24486be08ea55ccb",
+   "history_id": "4ebb4e569bcb42ac922099ceda30f713",
+   "run_key": "4ebb4e569bcb42ac922099ceda30f713",
+   "snapshot_id": "20261015T112954.009983+0000"
+  },
   "case": "P1",
   "difference": {
    "avg_dscr": "0.2109536871963258",
@@ -2415,7 +2591,12 @@
    "total_service": "8337.983913087868",
    "total_uses": "9259.840594229465"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "3bae52dc3fed297bcfdc87fd4b1cfbf23eaaf17a275db644edf9a248c079fa17",
+   "history_id": "4f55a995d0da40318db0a8f0f0099c3f",
+   "run_key": "4f55a995d0da40318db0a8f0f0099c3f",
+   "snapshot_id": "20261015T112958.775102+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -2599,6 +2780,12 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "RC-PRICE",
+   "RC-ALLOCATION",
+   "RC-RESIDUAL",
+   "RC-WINDOW"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -2615,7 +2802,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "8c1772224107e3a35e896acfea35468bdc64276d7ed223c037d85fabbbfb5302",
+   "history_id": "9367d42a04bf42b1a17d8ce22e455ad8",
+   "run_key": "9367d42a04bf42b1a17d8ce22e455ad8",
+   "snapshot_id": "20261015T113035.248652+0000"
+  },
   "case": "P2",
   "difference": {
    "avg_dscr": "0.0000222012218407",
@@ -2645,7 +2837,12 @@
    "total_service": "8426.710623177429",
    "total_uses": "9181.322139375652"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "245764934eadfe56253e4db6e9c1e9f7af30cdb92e06bc00de007d0295bd76fc",
+   "history_id": "b6c26574c45946ae84a5091acbaa88ef",
+   "run_key": "b6c26574c45946ae84a5091acbaa88ef",
+   "snapshot_id": "20261015T113040.331480+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -2829,6 +3026,12 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "RC-PRICE",
+   "RC-ALLOCATION",
+   "RC-RESIDUAL",
+   "RC-WINDOW"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -2845,7 +3048,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "4a4998fd85f7590e9f7ccd6dcc17081495c7079d7955bbcec8db563504233f47",
+   "history_id": "7aac54a83f064509a457d1fb0ba8ef99",
+   "run_key": "7aac54a83f064509a457d1fb0ba8ef99",
+   "snapshot_id": "20261015T113004.080590+0000"
+  },
   "case": "P3",
   "difference": {
    "avg_dscr": "0.0895376206187662",
@@ -2875,7 +3083,12 @@
    "total_service": "8324.412778440921",
    "total_uses": "9321.423172068076"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "9ed3ac7db155231ac78ce6fe20465200815b05a309e2eb9b09b60da32f6e7422",
+   "history_id": "48bd61e54f3c42afaab465a7d05cef83",
+   "run_key": "48bd61e54f3c42afaab465a7d05cef83",
+   "snapshot_id": "20261015T113009.621386+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -3059,6 +3272,264 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "RC-PRICE",
+   "RC-ALLOCATION",
+   "RC-RESIDUAL",
+   "RC-WINDOW"
+  ],
+  "verdict": "VERIFIED"
+ },
+ {
+  "actual_activation": "Revenue V2 contract book (version 2, exact-period curve) saved and applied by the Run",
+  "baseline_result": {
+   "avg_dscr": "1.3416631835292445",
+   "equity_funding": "2243.821815117764",
+   "equity_irr": "0.2860002692340028",
+   "idc": "136.3483821403665",
+   "min_dscr": "1.2756202286909233",
+   "project_irr": "0.11767978038866951",
+   "senior_debt": "6731.46544535329",
+   "total_ebitda": "36953.63386164085",
+   "total_service": "9181.15981431785",
+   "total_uses": "8975.287260471054"
+  },
+  "baseline_run": {
+   "composite_hash": "74139ab567025a4787161c85808565e31756dfd65708b784b1208d33c96536b0",
+   "history_id": "09f01d71d91a471ab3734b4667301bd3",
+   "run_key": "09f01d71d91a471ab3734b4667301bd3",
+   "snapshot_id": "20261015T113045.613901+0000"
+  },
+  "case": "P4",
+  "curve_points": 50,
+  "difference": {
+   "avg_dscr": "1.7027222664070375",
+   "equity_funding": "40.260289395968",
+   "equity_irr": "0.1422960424713401",
+   "idc": "-1.42818455537953",
+   "min_dscr": "0.0130060086346082",
+   "project_irr": "0.03890448593252839",
+   "senior_debt": "120.780868187905",
+   "total_ebitda": "5764.666047626535",
+   "total_service": "-685.713389238235",
+   "total_uses": "161.041157583873"
+  },
+  "distinct_declared_prices": [
+   80.0,
+   90.0,
+   100.0
+  ],
+  "explanation": "Distinct declared steps are reproduced period by period; revenue and sized debt differences follow the declared prices.",
+  "family": "PPA",
+  "independent_expectation": "declared price at each operating-period start compared with the recorded stream price; no interpolation, no indexation",
+  "input_modification": "PPA 60 % with explicit stepped price_curve 80 / 90 / 100 EUR/MWh (one price per operating period), residual merchant 70",
+  "modified_result": {
+   "avg_dscr": "3.044385449936282",
+   "equity_funding": "2284.082104513732",
+   "equity_irr": "0.4282963117053429",
+   "idc": "134.92019758498697",
+   "min_dscr": "1.2886262373255315",
+   "project_irr": "0.1565842663211979",
+   "senior_debt": "6852.246313541195",
+   "total_ebitda": "42718.299909267385",
+   "total_service": "8495.446425079615",
+   "total_uses": "9136.328418054927"
+  },
+  "modified_run": {
+   "composite_hash": "f764f8deb4484378de0b42ce9c4caba4ae8c68326ba98dcf8e7098b9e54099c8",
+   "history_id": "1873d76906c24084bd2a8f5b3143655b",
+   "run_key": "1873d76906c24084bd2a8f5b3143655b",
+   "snapshot_id": "20261015T113050.384457+0000"
+  },
+  "reconciliation": {
+   "by_identity": {
+    "ASM-DAYFRACTION": "VERIFIED",
+    "AXIS-INTEGRITY": "VERIFIED",
+    "BS-IDENTITY": "PARTIAL",
+    "CAPEX-LINK": "VERIFIED",
+    "CF-AFTER-SENIOR": "VERIFIED",
+    "CF-DISTRIBUTION-TOTAL": "VERIFIED",
+    "CF-STATEMENT-CFADS": "VERIFIED",
+    "CF-STATEMENT-SERVICE": "VERIFIED",
+    "DEBT-CHAIN": "VERIFIED",
+    "DEBT-DSCR": "VERIFIED",
+    "DEBT-FIRST-OPENING": "VERIFIED",
+    "DEBT-INTEREST": "VERIFIED",
+    "DEBT-NONNEGATIVE": "VERIFIED",
+    "DEBT-PRINCIPAL-TOTAL": "VERIFIED",
+    "DEBT-ROLLFORWARD": "VERIFIED",
+    "DEBT-SERVICE": "VERIFIED",
+    "DEBT-STATEMENT-BALANCE": "VERIFIED",
+    "DEBT-STATEMENT-INTEREST": "VERIFIED",
+    "DEBT-STATEMENT-PRINCIPAL": "VERIFIED",
+    "DEBT-STATEMENT-SERVICE": "VERIFIED",
+    "DEBT-TOTAL-SERVICE": "VERIFIED",
+    "EBIT-PERIOD": "VERIFIED",
+    "EBITDA-PERIOD": "VERIFIED",
+    "EBITDA-REVENUE-LINK": "VERIFIED",
+    "EBITDA-SUMMARY": "VERIFIED",
+    "EBITDA-TOTAL": "VERIFIED",
+    "FAC-AGGREGATE-SENIOR": "UNAVAILABLE",
+    "FAC-CHAIN": "UNAVAILABLE",
+    "FAC-JUNIOR-CASH": "UNAVAILABLE",
+    "FAC-JUNIOR-INTEGRITY": "UNAVAILABLE",
+    "FAC-JUNIOR-INTEREST": "UNAVAILABLE",
+    "FAC-NONNEGATIVE": "UNAVAILABLE",
+    "FAC-ROLLFORWARD": "UNAVAILABLE",
+    "FAC-SERVICE": "UNAVAILABLE",
+    "FT-COMMITMENT-FEE": "UNAVAILABLE",
+    "FT-DRAWS": "UNAVAILABLE",
+    "FT-IDC": "UNAVAILABLE",
+    "FT-INTEREST": "UNAVAILABLE",
+    "FT-MATURITY": "UNAVAILABLE",
+    "FT-REPAYMENT": "UNAVAILABLE",
+    "FT-UPFRONT": "UNAVAILABLE",
+    "FUND-COMMITMENT": "UNAVAILABLE",
+    "FUND-COMMITMENT-FEES": "UNAVAILABLE",
+    "FUND-FUNDED-OPENING": "UNAVAILABLE",
+    "FUND-IDC": "UNAVAILABLE",
+    "FUND-JUNIOR-IDC": "UNAVAILABLE",
+    "FUND-UPFRONT-FEES": "UNAVAILABLE",
+    "IV-AGGREGATE": "UNAVAILABLE",
+    "IV-MULTIPLE": "UNAVAILABLE",
+    "IV-OWNERSHIP": "UNAVAILABLE",
+    "IV-PAIDIN": "UNAVAILABLE",
+    "IV-XIRR": "UNAVAILABLE",
+    "OPEX-TOTAL": "VERIFIED",
+    "RC-ALLOCATION": "VERIFIED",
+    "RC-PRICE": "VERIFIED",
+    "RC-RESIDUAL": "VERIFIED",
+    "RC-WINDOW": "VERIFIED",
+    "RET-FLOW-PURE": "VERIFIED",
+    "RET-FLOW-TOTAL": "VERIFIED",
+    "RET-LINK": "VERIFIED",
+    "RET-NPV": "UNAVAILABLE",
+    "RET-XIRR-PURE": "VERIFIED",
+    "RET-XIRR-TOTAL": "VERIFIED",
+    "REV-STATEMENT": "VERIFIED",
+    "REV-STATEMENT-TOTAL": "VERIFIED",
+    "REV-TOTAL": "VERIFIED",
+    "RV2-CFD-SETTLEMENT": "UNAVAILABLE",
+    "RV2-ENERGY-REVENUE": "VERIFIED",
+    "RV2-GENERATION-ALLOCATION": "VERIFIED",
+    "RV2-NET-REVENUE": "VERIFIED",
+    "RV2-NET-VS-REVENUE-PERIOD": "VERIFIED",
+    "STM-DEPRECIATION": "VERIFIED",
+    "STM-SENIOR-INTEREST": "VERIFIED",
+    "SU-AUDIT-SOURCES": "VERIFIED",
+    "SU-AUDIT-SOURCES-CONSTRUCTION": "UNAVAILABLE",
+    "SU-AUDIT-USES": "VERIFIED",
+    "SU-AUDIT-USES-CONSTRUCTION": "UNAVAILABLE",
+    "SU-BALANCE": "VERIFIED",
+    "SU-PERIOD": "VERIFIED",
+    "SU-SOURCES-SUM": "VERIFIED",
+    "SU-USES-SUM": "VERIFIED",
+    "TAX-CASH-LINK": "VERIFIED",
+    "TAX-LOSS-USE": "UNAVAILABLE",
+    "TAX-TOTAL": "VERIFIED",
+    "UNIT-CONSISTENCY": "VERIFIED"
+   },
+   "counts": {
+    "FAIL": 0,
+    "NOT_COMPARABLE": 0,
+    "PASS": 1482,
+    "UNAVAILABLE": 33
+   },
+   "fails": [],
+   "identities": [
+    "ASM-DAYFRACTION",
+    "AXIS-INTEGRITY",
+    "BS-IDENTITY",
+    "CAPEX-LINK",
+    "CF-AFTER-SENIOR",
+    "CF-DISTRIBUTION-TOTAL",
+    "CF-STATEMENT-CFADS",
+    "CF-STATEMENT-SERVICE",
+    "DEBT-CHAIN",
+    "DEBT-DSCR",
+    "DEBT-FIRST-OPENING",
+    "DEBT-INTEREST",
+    "DEBT-NONNEGATIVE",
+    "DEBT-PRINCIPAL-TOTAL",
+    "DEBT-ROLLFORWARD",
+    "DEBT-SERVICE",
+    "DEBT-STATEMENT-BALANCE",
+    "DEBT-STATEMENT-INTEREST",
+    "DEBT-STATEMENT-PRINCIPAL",
+    "DEBT-STATEMENT-SERVICE",
+    "DEBT-TOTAL-SERVICE",
+    "EBIT-PERIOD",
+    "EBITDA-PERIOD",
+    "EBITDA-REVENUE-LINK",
+    "EBITDA-SUMMARY",
+    "EBITDA-TOTAL",
+    "FAC-AGGREGATE-SENIOR",
+    "FAC-CHAIN",
+    "FAC-JUNIOR-CASH",
+    "FAC-JUNIOR-INTEGRITY",
+    "FAC-JUNIOR-INTEREST",
+    "FAC-NONNEGATIVE",
+    "FAC-ROLLFORWARD",
+    "FAC-SERVICE",
+    "FT-COMMITMENT-FEE",
+    "FT-DRAWS",
+    "FT-IDC",
+    "FT-INTEREST",
+    "FT-MATURITY",
+    "FT-REPAYMENT",
+    "FT-UPFRONT",
+    "FUND-COMMITMENT",
+    "FUND-COMMITMENT-FEES",
+    "FUND-FUNDED-OPENING",
+    "FUND-IDC",
+    "FUND-JUNIOR-IDC",
+    "FUND-UPFRONT-FEES",
+    "IV-AGGREGATE",
+    "IV-MULTIPLE",
+    "IV-OWNERSHIP",
+    "IV-PAIDIN",
+    "IV-XIRR",
+    "OPEX-TOTAL",
+    "RC-ALLOCATION",
+    "RC-PRICE",
+    "RC-RESIDUAL",
+    "RC-WINDOW",
+    "RET-FLOW-PURE",
+    "RET-FLOW-TOTAL",
+    "RET-LINK",
+    "RET-NPV",
+    "RET-XIRR-PURE",
+    "RET-XIRR-TOTAL",
+    "REV-STATEMENT",
+    "REV-STATEMENT-TOTAL",
+    "REV-TOTAL",
+    "RV2-CFD-SETTLEMENT",
+    "RV2-ENERGY-REVENUE",
+    "RV2-GENERATION-ALLOCATION",
+    "RV2-NET-REVENUE",
+    "RV2-NET-VS-REVENUE-PERIOD",
+    "STM-DEPRECIATION",
+    "STM-SENIOR-INTEREST",
+    "SU-AUDIT-SOURCES",
+    "SU-AUDIT-SOURCES-CONSTRUCTION",
+    "SU-AUDIT-USES",
+    "SU-AUDIT-USES-CONSTRUCTION",
+    "SU-BALANCE",
+    "SU-PERIOD",
+    "SU-SOURCES-SUM",
+    "SU-USES-SUM",
+    "TAX-CASH-LINK",
+    "TAX-LOSS-USE",
+    "TAX-TOTAL",
+    "UNIT-CONSISTENCY"
+   ]
+  },
+  "required_identities": [
+   "RC-PRICE",
+   "RC-ALLOCATION",
+   "RC-RESIDUAL",
+   "RC-WINDOW"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -3075,7 +3546,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "9a176855ae91ffbbce8ef744a0c0ec9167c5b31e92ca5678a2858e4ed9522b1c",
+   "history_id": "0c90cfeb9d3c43f09e70a2ebc5e60030",
+   "run_key": "0c90cfeb9d3c43f09e70a2ebc5e60030",
+   "snapshot_id": "20261015T113055.503481+0000"
+  },
   "case": "P5",
   "difference": {
    "avg_dscr": "0.0236579275154325",
@@ -3105,7 +3581,12 @@
    "total_service": "8416.808747207118",
    "total_uses": "9189.262207844014"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "7d871261adc399e5dfe62000719a6136e5952d2a8b16078dfb60629dbef5a4e1",
+   "history_id": "f67493f85b0046b29d43921dc6e62187",
+   "run_key": "f67493f85b0046b29d43921dc6e62187",
+   "snapshot_id": "20261015T113100.054959+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -3289,6 +3770,12 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "RC-PRICE",
+   "RC-ALLOCATION",
+   "RC-RESIDUAL",
+   "RC-WINDOW"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -3305,7 +3792,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "bd3a6fc16bde44a6eb8ec20ae55da3c04066fea8eeebbfc6a3b88f050cb6516a",
+   "history_id": "e3967362a46b478c8cd1d60db709149a",
+   "run_key": "e3967362a46b478c8cd1d60db709149a",
+   "snapshot_id": "20261015T113015.081666+0000"
+  },
   "case": "P6",
   "difference": {
    "avg_dscr": "0.0778848426790480",
@@ -3335,7 +3827,12 @@
    "total_service": "8346.362633579138",
    "total_uses": "9251.018295931284"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "40d9b2f239dbe77ee692b909b2238b27d50db1db80373f9fd2628e07569c1bea",
+   "history_id": "064e767c4e4440548fd2255bd151876d",
+   "run_key": "064e767c4e4440548fd2255bd151876d",
+   "snapshot_id": "20261015T113019.471286+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -3519,6 +4016,12 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "RC-PRICE",
+   "RC-ALLOCATION",
+   "RC-RESIDUAL",
+   "RC-WINDOW"
+  ],
   "verdict": "VERIFIED"
  },
  {
@@ -3535,7 +4038,12 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
+  "baseline_run": {
+   "composite_hash": "1a575499e93330b4530379f066a965dbe9cbd7ce2b9d24d8bfbdb9c1da19c01f",
+   "history_id": "424a633cb7d3477d9f02de8fc8e7c073",
+   "run_key": "424a633cb7d3477d9f02de8fc8e7c073",
+   "snapshot_id": "20261015T113024.543753+0000"
+  },
   "case": "P7",
   "difference": {
    "avg_dscr": "0.0585735528582512",
@@ -3565,7 +4073,12 @@
    "total_service": "8602.819340364118",
    "total_uses": "9083.39462826584"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "28c19b110b314b051c8366df6bfea089d1626147b3249ea800ec55433a8eb59e",
+   "history_id": "4436bca77ca5499fa8d48fce5f40ce19",
+   "run_key": "4436bca77ca5499fa8d48fce5f40ce19",
+   "snapshot_id": "20261015T113030.128014+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -3749,10 +4262,16 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "RC-PRICE",
+   "RC-ALLOCATION",
+   "RC-RESIDUAL",
+   "RC-WINDOW"
+  ],
   "verdict": "VERIFIED"
  },
  {
-  "actual_activation": "contract book applied",
+  "actual_activation": "contract book + lender_case=P_50 applied by the Run",
   "baseline_result": {
    "avg_dscr": "1.3416631835292445",
    "equity_funding": "2243.821815117764",
@@ -3765,8 +4284,260 @@
    "total_service": "9181.15981431785",
    "total_uses": "8975.287260471054"
   },
-  "baseline_run": null,
-  "case": "P8",
+  "baseline_run": {
+   "composite_hash": "a812a0ac50af7049d725426b552039e56a46cde4a7fa6a8d19be9692d68bf197",
+   "history_id": "3db0d13d02934b909245c1ef44ea5f20",
+   "run_key": "3db0d13d02934b909245c1ef44ea5f20",
+   "snapshot_id": "20261015T113105.096059+0000"
+  },
+  "case": "P8-P50",
+  "difference": {
+   "avg_dscr": "-0.1285206649069301",
+   "equity_funding": "4.971096203242",
+   "equity_irr": "-0.06729766479596828",
+   "idc": "-0.17634356154152",
+   "min_dscr": "-0.0756202286945600",
+   "project_irr": "-0.01722164029061723",
+   "senior_debt": "14.913288609732",
+   "total_ebitda": "-9909.756842555685",
+   "total_service": "-312.969967697786",
+   "total_uses": "19.884384812974"
+  },
+  "explanation": "A price downside Run alone is not a P50/P90 comparison; see P8-compare for the paired evidence.",
+  "family": "PPA",
+  "independent_expectation": "per-period price/allocation recomputed; lender case verified by the Run's DSCR capacity and unchanged operating generation",
+  "input_modification": "PPA 60 % at 60 EUR/MWh, merchant 45, lender case P_50 saved through the F2 bankability configuration",
+  "lender_case": "P_50",
+  "modified_result": {
+   "avg_dscr": "1.2131425186223144",
+   "equity_funding": "2248.792911321006",
+   "equity_irr": "0.21870260443803452",
+   "idc": "136.17203857882498",
+   "min_dscr": "1.1999999999963633",
+   "project_irr": "0.10045814009805228",
+   "senior_debt": "6746.378733963022",
+   "total_ebitda": "27043.877019085165",
+   "total_service": "8868.189846620064",
+   "total_uses": "8995.171645284028"
+  },
+  "modified_run": {
+   "composite_hash": "a7a0a10e31de773c82d8565d0a725dbeddc39ced15a45ac2e3c6e2e854b04c55",
+   "history_id": "5a10b764f517400cbb7e81910c3c8d6e",
+   "run_key": "5a10b764f517400cbb7e81910c3c8d6e",
+   "snapshot_id": "20261015T113111.461223+0000"
+  },
+  "reconciliation": {
+   "by_identity": {
+    "ASM-DAYFRACTION": "VERIFIED",
+    "AXIS-INTEGRITY": "VERIFIED",
+    "BS-IDENTITY": "PARTIAL",
+    "CAPEX-LINK": "VERIFIED",
+    "CF-AFTER-SENIOR": "VERIFIED",
+    "CF-DISTRIBUTION-TOTAL": "VERIFIED",
+    "CF-STATEMENT-CFADS": "VERIFIED",
+    "CF-STATEMENT-SERVICE": "VERIFIED",
+    "DEBT-CHAIN": "VERIFIED",
+    "DEBT-DSCR": "VERIFIED",
+    "DEBT-FIRST-OPENING": "VERIFIED",
+    "DEBT-INTEREST": "VERIFIED",
+    "DEBT-NONNEGATIVE": "VERIFIED",
+    "DEBT-PRINCIPAL-TOTAL": "VERIFIED",
+    "DEBT-ROLLFORWARD": "VERIFIED",
+    "DEBT-SERVICE": "VERIFIED",
+    "DEBT-STATEMENT-BALANCE": "VERIFIED",
+    "DEBT-STATEMENT-INTEREST": "VERIFIED",
+    "DEBT-STATEMENT-PRINCIPAL": "VERIFIED",
+    "DEBT-STATEMENT-SERVICE": "VERIFIED",
+    "DEBT-TOTAL-SERVICE": "VERIFIED",
+    "EBIT-PERIOD": "VERIFIED",
+    "EBITDA-PERIOD": "VERIFIED",
+    "EBITDA-REVENUE-LINK": "VERIFIED",
+    "EBITDA-SUMMARY": "VERIFIED",
+    "EBITDA-TOTAL": "VERIFIED",
+    "FAC-AGGREGATE-SENIOR": "UNAVAILABLE",
+    "FAC-CHAIN": "UNAVAILABLE",
+    "FAC-JUNIOR-CASH": "UNAVAILABLE",
+    "FAC-JUNIOR-INTEGRITY": "UNAVAILABLE",
+    "FAC-JUNIOR-INTEREST": "UNAVAILABLE",
+    "FAC-NONNEGATIVE": "UNAVAILABLE",
+    "FAC-ROLLFORWARD": "UNAVAILABLE",
+    "FAC-SERVICE": "UNAVAILABLE",
+    "FT-COMMITMENT-FEE": "UNAVAILABLE",
+    "FT-DRAWS": "UNAVAILABLE",
+    "FT-IDC": "UNAVAILABLE",
+    "FT-INTEREST": "UNAVAILABLE",
+    "FT-MATURITY": "UNAVAILABLE",
+    "FT-REPAYMENT": "UNAVAILABLE",
+    "FT-UPFRONT": "UNAVAILABLE",
+    "FUND-COMMITMENT": "UNAVAILABLE",
+    "FUND-COMMITMENT-FEES": "UNAVAILABLE",
+    "FUND-FUNDED-OPENING": "UNAVAILABLE",
+    "FUND-IDC": "UNAVAILABLE",
+    "FUND-JUNIOR-IDC": "UNAVAILABLE",
+    "FUND-UPFRONT-FEES": "UNAVAILABLE",
+    "IV-AGGREGATE": "UNAVAILABLE",
+    "IV-MULTIPLE": "UNAVAILABLE",
+    "IV-OWNERSHIP": "UNAVAILABLE",
+    "IV-PAIDIN": "UNAVAILABLE",
+    "IV-XIRR": "UNAVAILABLE",
+    "OPEX-TOTAL": "VERIFIED",
+    "RC-ALLOCATION": "VERIFIED",
+    "RC-PRICE": "VERIFIED",
+    "RC-RESIDUAL": "VERIFIED",
+    "RC-WINDOW": "VERIFIED",
+    "RET-FLOW-PURE": "VERIFIED",
+    "RET-FLOW-TOTAL": "VERIFIED",
+    "RET-LINK": "VERIFIED",
+    "RET-NPV": "UNAVAILABLE",
+    "RET-XIRR-PURE": "VERIFIED",
+    "RET-XIRR-TOTAL": "VERIFIED",
+    "REV-STATEMENT": "VERIFIED",
+    "REV-STATEMENT-TOTAL": "VERIFIED",
+    "REV-TOTAL": "VERIFIED",
+    "RV2-CFD-SETTLEMENT": "UNAVAILABLE",
+    "RV2-ENERGY-REVENUE": "VERIFIED",
+    "RV2-GENERATION-ALLOCATION": "VERIFIED",
+    "RV2-NET-REVENUE": "VERIFIED",
+    "RV2-NET-VS-REVENUE-PERIOD": "VERIFIED",
+    "STM-DEPRECIATION": "VERIFIED",
+    "STM-SENIOR-INTEREST": "VERIFIED",
+    "SU-AUDIT-SOURCES": "VERIFIED",
+    "SU-AUDIT-SOURCES-CONSTRUCTION": "UNAVAILABLE",
+    "SU-AUDIT-USES": "VERIFIED",
+    "SU-AUDIT-USES-CONSTRUCTION": "UNAVAILABLE",
+    "SU-BALANCE": "VERIFIED",
+    "SU-PERIOD": "VERIFIED",
+    "SU-SOURCES-SUM": "VERIFIED",
+    "SU-USES-SUM": "VERIFIED",
+    "TAX-CASH-LINK": "VERIFIED",
+    "TAX-LOSS-USE": "UNAVAILABLE",
+    "TAX-TOTAL": "VERIFIED",
+    "UNIT-CONSISTENCY": "VERIFIED"
+   },
+   "counts": {
+    "FAIL": 0,
+    "NOT_COMPARABLE": 0,
+    "PASS": 1486,
+    "UNAVAILABLE": 33
+   },
+   "fails": [],
+   "identities": [
+    "ASM-DAYFRACTION",
+    "AXIS-INTEGRITY",
+    "BS-IDENTITY",
+    "CAPEX-LINK",
+    "CF-AFTER-SENIOR",
+    "CF-DISTRIBUTION-TOTAL",
+    "CF-STATEMENT-CFADS",
+    "CF-STATEMENT-SERVICE",
+    "DEBT-CHAIN",
+    "DEBT-DSCR",
+    "DEBT-FIRST-OPENING",
+    "DEBT-INTEREST",
+    "DEBT-NONNEGATIVE",
+    "DEBT-PRINCIPAL-TOTAL",
+    "DEBT-ROLLFORWARD",
+    "DEBT-SERVICE",
+    "DEBT-STATEMENT-BALANCE",
+    "DEBT-STATEMENT-INTEREST",
+    "DEBT-STATEMENT-PRINCIPAL",
+    "DEBT-STATEMENT-SERVICE",
+    "DEBT-TOTAL-SERVICE",
+    "EBIT-PERIOD",
+    "EBITDA-PERIOD",
+    "EBITDA-REVENUE-LINK",
+    "EBITDA-SUMMARY",
+    "EBITDA-TOTAL",
+    "FAC-AGGREGATE-SENIOR",
+    "FAC-CHAIN",
+    "FAC-JUNIOR-CASH",
+    "FAC-JUNIOR-INTEGRITY",
+    "FAC-JUNIOR-INTEREST",
+    "FAC-NONNEGATIVE",
+    "FAC-ROLLFORWARD",
+    "FAC-SERVICE",
+    "FT-COMMITMENT-FEE",
+    "FT-DRAWS",
+    "FT-IDC",
+    "FT-INTEREST",
+    "FT-MATURITY",
+    "FT-REPAYMENT",
+    "FT-UPFRONT",
+    "FUND-COMMITMENT",
+    "FUND-COMMITMENT-FEES",
+    "FUND-FUNDED-OPENING",
+    "FUND-IDC",
+    "FUND-JUNIOR-IDC",
+    "FUND-UPFRONT-FEES",
+    "IV-AGGREGATE",
+    "IV-MULTIPLE",
+    "IV-OWNERSHIP",
+    "IV-PAIDIN",
+    "IV-XIRR",
+    "OPEX-TOTAL",
+    "RC-ALLOCATION",
+    "RC-PRICE",
+    "RC-RESIDUAL",
+    "RC-WINDOW",
+    "RET-FLOW-PURE",
+    "RET-FLOW-TOTAL",
+    "RET-LINK",
+    "RET-NPV",
+    "RET-XIRR-PURE",
+    "RET-XIRR-TOTAL",
+    "REV-STATEMENT",
+    "REV-STATEMENT-TOTAL",
+    "REV-TOTAL",
+    "RV2-CFD-SETTLEMENT",
+    "RV2-ENERGY-REVENUE",
+    "RV2-GENERATION-ALLOCATION",
+    "RV2-NET-REVENUE",
+    "RV2-NET-VS-REVENUE-PERIOD",
+    "STM-DEPRECIATION",
+    "STM-SENIOR-INTEREST",
+    "SU-AUDIT-SOURCES",
+    "SU-AUDIT-SOURCES-CONSTRUCTION",
+    "SU-AUDIT-USES",
+    "SU-AUDIT-USES-CONSTRUCTION",
+    "SU-BALANCE",
+    "SU-PERIOD",
+    "SU-SOURCES-SUM",
+    "SU-USES-SUM",
+    "TAX-CASH-LINK",
+    "TAX-LOSS-USE",
+    "TAX-TOTAL",
+    "UNIT-CONSISTENCY"
+   ]
+  },
+  "required_identities": [
+   "RC-PRICE",
+   "RC-ALLOCATION",
+   "RC-RESIDUAL",
+   "RC-WINDOW"
+  ],
+  "verdict": "VERIFIED"
+ },
+ {
+  "actual_activation": "contract book + lender_case=P90-10y applied by the Run",
+  "baseline_result": {
+   "avg_dscr": "1.3416631835292445",
+   "equity_funding": "2243.821815117764",
+   "equity_irr": "0.2860002692340028",
+   "idc": "136.3483821403665",
+   "min_dscr": "1.2756202286909233",
+   "project_irr": "0.11767978038866951",
+   "senior_debt": "6731.46544535329",
+   "total_ebitda": "36953.63386164085",
+   "total_service": "9181.15981431785",
+   "total_uses": "8975.287260471054"
+  },
+  "baseline_run": {
+   "composite_hash": "a812a0ac50af7049d725426b552039e56a46cde4a7fa6a8d19be9692d68bf197",
+   "history_id": "3db0d13d02934b909245c1ef44ea5f20",
+   "run_key": "3db0d13d02934b909245c1ef44ea5f20",
+   "snapshot_id": "20261015T113105.096059+0000"
+  },
+  "case": "P8-P90",
   "difference": {
    "avg_dscr": "-0.0029790268975611",
    "equity_funding": "-8.262351244029",
@@ -3779,10 +4550,11 @@
    "total_service": "-71.657725754759",
    "total_uses": "-33.049404976113"
   },
-  "explanation": "Debt re-sizes to the lower CFADS or the gearing cap; direction is not asserted (see credit matrix findings).",
+  "explanation": "A price downside Run alone is not a P50/P90 comparison; see P8-compare for the paired evidence.",
   "family": "PPA",
-  "independent_expectation": "per-period price and allocation recomputed; credit identities are validated on the same Run",
-  "input_modification": "PPA 60 % at 60 EUR/MWh, merchant 45 (price downside)",
+  "independent_expectation": "per-period price/allocation recomputed; lender case verified by the Run's DSCR capacity and unchanged operating generation",
+  "input_modification": "PPA 60 % at 60 EUR/MWh, merchant 45, lender case P90-10y saved through the F2 bankability configuration",
+  "lender_case": "P90-10y",
   "modified_result": {
    "avg_dscr": "1.3386841566316834",
    "equity_funding": "2235.559463873735",
@@ -3795,7 +4567,12 @@
    "total_service": "9109.502088563091",
    "total_uses": "8942.237855494941"
   },
-  "modified_run": null,
+  "modified_run": {
+   "composite_hash": "7b18adc0f9fe73e106460b5e384edd7290edea9e8d4e0bbbdf8205a091afe335",
+   "history_id": "18185c7bc565423c9ed38c86a90a2a73",
+   "run_key": "18185c7bc565423c9ed38c86a90a2a73",
+   "snapshot_id": "20261015T113115.753144+0000"
+  },
   "reconciliation": {
    "by_identity": {
     "ASM-DAYFRACTION": "VERIFIED",
@@ -3979,7 +4756,70 @@
     "UNIT-CONSISTENCY"
    ]
   },
+  "required_identities": [
+   "RC-PRICE",
+   "RC-ALLOCATION",
+   "RC-RESIDUAL",
+   "RC-WINDOW"
+  ],
   "verdict": "VERIFIED"
+ },
+ {
+  "actual_activation": "both lender cases saved and executed",
+  "baseline_run": {
+   "composite_hash": "a812a0ac50af7049d725426b552039e56a46cde4a7fa6a8d19be9692d68bf197",
+   "history_id": "3db0d13d02934b909245c1ef44ea5f20",
+   "run_key": "3db0d13d02934b909245c1ef44ea5f20",
+   "snapshot_id": "20261015T113105.096059+0000"
+  },
+  "case": "P8-compare",
+  "comparison": {
+   "binding_constraint": {
+    "P90-10y": "GEARING",
+    "P_50": "GEARING"
+   },
+   "dscr_debt_capacity_keur": {
+    "P90-10y": 7899.945804354998,
+    "P_50": 8740.927057546816
+   },
+   "equity_irr": {
+    "P90-10y": "0.2598463358013635",
+    "P_50": "0.21870260443803452"
+   },
+   "final_senior_commitment_keur": {
+    "P90-10y": 6706.678391621206,
+    "P_50": 6746.378733963022
+   },
+   "generation_identical": true,
+   "min_dscr": {
+    "P90-10y": "1.2776970231900302",
+    "P_50": "1.1999999999963633"
+   },
+   "not_comparable": [
+    "CFADS-at-P90 is not persisted as a separate series (the P90 sizing CFADS is internal to the solver); only its effect on DSCR capacity and sized debt is observable"
+   ],
+   "senior_debt": {
+    "P90-10y": "6706.678391621206",
+    "P_50": "6746.378733963022"
+   },
+   "total_ebitda_identical": true
+  },
+  "explanation": "Operating generation and EBITDA are identical across the two Runs; only sizing capacity and the sized debt differ.",
+  "family": "PPA",
+  "input_modification": "same PPA downside contract book, lender case P_50 then P90-10y",
+  "run_p50": {
+   "composite_hash": "a7a0a10e31de773c82d8565d0a725dbeddc39ced15a45ac2e3c6e2e854b04c55",
+   "history_id": "5a10b764f517400cbb7e81910c3c8d6e",
+   "run_key": "5a10b764f517400cbb7e81910c3c8d6e",
+   "snapshot_id": "20261015T113111.461223+0000"
+  },
+  "run_p90": {
+   "composite_hash": "7b18adc0f9fe73e106460b5e384edd7290edea9e8d4e0bbbdf8205a091afe335",
+   "history_id": "18185c7bc565423c9ed38c86a90a2a73",
+   "run_key": "18185c7bc565423c9ed38c86a90a2a73",
+   "snapshot_id": "20261015T113115.753144+0000"
+  },
+  "verdict": "VERIFIED_PAIRED_COMPARISON"
  },
  {
   "actual_activation": "rejected",

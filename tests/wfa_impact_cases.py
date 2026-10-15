@@ -76,17 +76,59 @@ def verdict(result) -> dict[str, Any]:
             "by_identity": {r["identity"]: r["verdict"] for r in result["by_identity"]}}
 
 
+FT_ALL = ("FT-DRAWS", "FT-IDC", "FT-COMMITMENT-FEE", "FT-UPFRONT", "FT-INTEREST", "FT-REPAYMENT", "FT-MATURITY")
+IV_ALL = ("IV-OWNERSHIP", "IV-AGGREGATE", "IV-PAIDIN", "IV-MULTIPLE", "IV-XIRR")
+RC_ALL = ("RC-PRICE", "RC-ALLOCATION", "RC-RESIDUAL", "RC-WINDOW")
+
+
+def identity(entry) -> dict[str, Any] | None:
+    """The immutable Run identity exactly as the independent source binds it (never inferred from the entry object)."""
+    if entry is None:
+        return None
+    from tools.numerical_validation.source import bundle_from_history_entry
+    ident = bundle_from_history_entry(entry)["identity"]
+    return {k: ident[k] for k in ("run_key", "snapshot_id", "composite_hash") if k in ident} | {"history_id": getattr(entry, "history_id", None)}
+
+
+def classify(result, required: tuple[str, ...] = (), *, baseline: bool = False) -> str:
+    """Case verdict from per-identity outcomes.
+
+    A feature case is VERIFIED only when EVERY identity in ``required`` (the feature-specific FT-/IV-/RC- family that applies
+    to the case) has at least one PASS, no FAIL, no UNAVAILABLE and no NOT_COMPARABLE outcome.  PASS results of unrelated
+    identities (for example the F3.9 statement identities) never contribute.  A baseline is only BASELINE_VERIFIED: it makes
+    no claim that an inapplicable feature was independently validated.
+    """
+    if result is None:
+        return "NOT_RECONCILED"
+    counts = result["counts"]
+    if counts.get("FAIL"):
+        return "FAIL"
+    if baseline:
+        return "BASELINE_VERIFIED" if counts.get("PASS") else "NOT_RECONCILED"
+    if not required:
+        raise ValueError("a feature case must declare the identities it requires")
+    per = {r["identity"]: r["counts"] for r in result["by_identity"]}
+    if any(i not in per for i in required):
+        return "INCOMPLETE_FEATURE_IDENTITIES_NOT_EVALUATED"
+    counts_of = [per[i] for i in required]
+    if any(c.get("UNAVAILABLE") or not (c.get("PASS") or c.get("NOT_COMPARABLE")) for c in counts_of):
+        return "INCOMPLETE_FEATURE_IDENTITIES_NOT_EVALUATED"
+    if any(c.get("NOT_COMPARABLE") for c in counts_of):
+        return "NOT_COMPARABLE"
+    return "VERIFIED"
+
+
 def row(case: str, *, family: str, entry, baseline, modification: str, activated: str, result=None, independent: str = "",
-        explanation: str = "", extra: dict | None = None, baseline_entry=None) -> dict[str, Any]:
+        explanation: str = "", extra: dict | None = None, baseline_entry=None, required: tuple[str, ...] = (),
+        is_baseline: bool = False) -> dict[str, Any]:
     now = scalars(entry)
     base = baseline if baseline is not None else {}
     v = verdict(result) if result is not None else None
-    status = ("NOT_RECONCILED" if v is None else "FAIL" if v["counts"].get("FAIL") else
-              "VERIFIED" if v["counts"].get("PASS") else "NOT_COMPARABLE")
-    return emit({"case": case, "family": family, "baseline_run": getattr(baseline_entry, "run_key", None) or getattr(baseline_entry, "snapshot_id", None),
-                 "modified_run": getattr(entry, "run_key", None) or getattr(entry, "snapshot_id", None),
+    return emit({"case": case, "family": family, "baseline_run": identity(baseline_entry), "modified_run": identity(entry),
                  "input_modification": modification, "actual_activation": activated,
                  "baseline_result": {k: None if x is None else format(x, "f") for k, x in base.items()},
                  "modified_result": {k: None if x is None else format(x, "f") for k, x in now.items()},
                  "difference": delta(base, now) if base else {}, "independent_expectation": independent,
-                 "reconciliation": v, "verdict": status, "explanation": explanation, **(extra or {})})
+                 "required_identities": list(required), "reconciliation": v,
+                 "verdict": classify(result, required, baseline=is_baseline) if result is not None else "NOT_RECONCILED",
+                 "explanation": explanation, **(extra or {})})

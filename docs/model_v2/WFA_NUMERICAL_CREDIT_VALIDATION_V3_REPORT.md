@@ -70,27 +70,30 @@ Every case is a real committed Run produced through the released route; ‘indep
 
 | Case | Family | Input modification | Activation | Verdict | PASS/FAIL/UNAVAIL | Δ Senior debt | Δ equity funding | Δ min DSCR |
 |---|---|---|---|---|---|---|---|---|
-| D0 | DEBT | none (single-Senior baseline) | no F3 collection | **VERIFIED** | 938/0/42 | 0.00 | 0.00 | 0.0000 |
+| D0 | DEBT | none (single-Senior baseline) | no F3 collection | **BASELINE_VERIFIED** | 938/0/42 | 0.00 | 0.00 | 0.0000 |
 | D1 | DEBT | two explicit Senior facilities (senior-a 4 %, senior-b 7 %, 12 m grace) | F3 collection activated by the Run (authority recorded) | **VERIFIED** | 1143/0/25 | -5,431.47 | 4,798.70 | 2.3582 |
 | D2 | DEBT | senior-a fixed rate +100 bp | F3 collection activated by the Run (authority recorded) | **VERIFIED** | 1143/0/25 | -5,431.47 | 4,807.89 | 2.2698 |
 | D3 | DEBT | senior-b grace 12 → 24 months | F3 collection activated by the Run (authority recorded) | **VERIFIED** | 1143/0/25 | -5,431.47 | 4,798.70 | 2.3339 |
 | D4 | DEBT | senior-a drawdown date +31 days (commitment/draw timing) | F3 collection activated by the Run (authority recorded) | **VERIFIED** | 1143/0/25 | -5,431.47 | 4,796.35 | 2.3582 |
 | D5-invalid | DEBT | negative commitment | rejected | **FAILS_CLOSED** | — | — | — | — |
 | D5 | DEBT | proposal saved, activation absent | NOT activated | **INERT_IDENTICAL_TO_BASELINE** | — | 0.00 | 0.00 | 0.0000 |
-| E0 | EQUITY | none | no investor agreement | **VERIFIED** | 938/0/42 | 0.00 | 0.00 | 0.0000 |
+| E0 | EQUITY | none | no investor agreement | **BASELINE_VERIFIED** | 938/0/42 | 0.00 | 0.00 | 0.0000 |
 | E1 | EQUITY | one investor, 100 % ownership | agreement bound and reconciled by the Run | **VERIFIED** | 997/0/37 | 0.00 | 0.00 | 0.0000 |
 | E2 | EQUITY | two investors 60/40 | agreement bound and reconciled by the Run | **VERIFIED** | 1054/0/37 | 0.00 | 0.00 | 0.0000 |
 | E3 | EQUITY | ownership 60/40 with contributions 50/50 | agreement bound by the Run | **VERIFIED** | 1054/0/37 | 0.00 | 0.00 | 0.0000 |
 | E4 | EQUITY | contribution total 5 kEUR below project funding | Run rejected | **FAILS_CLOSED** | — | — | — | — |
 | E5 | EQUITY | ownership fractions not summing to 1 | rejected | **FAILS_CLOSED** | — | — | — | — |
-| P0 | PPA | none (legacy single PPA) | legacy path | **VERIFIED** | 938/0/42 | 0.00 | 0.00 | 0.0000 |
+| P0 | PPA | none (legacy single PPA) | legacy path | **BASELINE_VERIFIED** | 938/0/42 | 0.00 | 0.00 | 0.0000 |
 | P1 | PPA | one fixed PPA, 100 % share | contract book saved and applied by the Run | **VERIFIED** | 1429/0/33 | 213.42 | 71.14 | 0.0180 |
 | P2 | PPA | two PPAs 30 % + 30 % with residual merchant 40 % | contract book saved and applied by the Run | **VERIFIED** | 1680/0/33 | 154.53 | 51.51 | 0.0150 |
 | P3 | PPA | PPA 60 % indexed 2 %/operating year + residual merchant | contract book saved and applied by the Run | **VERIFIED** | 1478/0/33 | 259.60 | 86.53 | 0.0192 |
+| P4 | PPA | PPA 60 % with explicit stepped price_curve 80 / 90 / 100 EUR/MWh (one price per operating period), residual merchant 70 | Revenue V2 contract book (version 2, exact-period curve) saved and applied by the Run | **VERIFIED** | 1482/0/33 | 120.78 | 40.26 | 0.0130 |
 | P5 | PPA | PPA expires mid-life; residual merchant continues | contract book saved and applied by the Run | **VERIFIED** | 1405/0/58 | 160.48 | 53.49 | 0.0153 |
 | P6 | PPA | PPA + CfD overlay (strike 95 vs merchant 70) | contract book saved and applied by the Run | **VERIFIED** | 1579/0/33 | 206.80 | 68.93 | 0.0177 |
 | P7 | PPA | PPA 40 % with residual merchant at 60 | contract book saved and applied by the Run | **VERIFIED** | 1483/0/33 | 81.08 | 27.03 | 0.0105 |
-| P8 | PPA | PPA 60 % at 60 EUR/MWh, merchant 45 (price downside) | contract book applied | **VERIFIED** | 1489/0/33 | -24.79 | -8.26 | 0.0021 |
+| P8-P50 | PPA | PPA 60 % at 60 EUR/MWh, merchant 45, lender case P_50 saved through the F2 bankability configuration | contract book + lender_case=P_50 applied by the Run | **VERIFIED** | 1486/0/33 | 14.91 | 4.97 | -0.0756 |
+| P8-P90 | PPA | PPA 60 % at 60 EUR/MWh, merchant 45, lender case P90-10y saved through the F2 bankability configuration | contract book + lender_case=P90-10y applied by the Run | **VERIFIED** | 1489/0/33 | -24.79 | -8.26 | 0.0021 |
+| P8-compare | PPA | same PPA downside contract book, lender case P_50 then P90-10y | both lender cases saved and executed | **VERIFIED_PAIRED_COMPARISON** | — | — | — | — |
 | P9-negative_price | PPA | negative_price | rejected | **FAILS_CLOSED** | — | — | — | — |
 | P9-share_over_100 | PPA | share_over_100 | rejected | **FAILS_CLOSED** | — | — | — | — |
 | P9-unknown_type | PPA | unknown_type | rejected | **FAILS_CLOSED** | — | — | — | — |
@@ -100,6 +103,28 @@ Reading the matrix:
 * **Add Debt** — D1–D4 change the Run only when the proposal is *activated by the Run*; D5 shows a saved-but-not-activated proposal leaves every result identical and records no facility authority; an invalid proposal persists nothing. IDC, commitment fee, upfront fee, operating interest, level principal and maturity are recomputed independently (residuals ≤ 3e-15).
 * **Add Equity** — ownership allocation and actual funding are separate: E1–E3 leave Senior debt and equity funding identical to baseline; actual funding is determined by project financing / Sources & Uses. A contribution total that does not match project funding cannot commit a Run (E4).
 * **Add PPA** — price, indexation (by operating year), allocation, residual merchant, CfD settlement and window are recomputed per period. Debt re-sizes to the changed CFADS or the gearing cap; direction is not asserted (see finding F-3).
+
+## 4a. Case-level verdict integrity (Correction A)
+
+A case is **VERIFIED** only when every feature-specific identity that applies to it (`FT-*` for Add Debt, `IV-*` for Add Equity, `RC-*` for Add PPA) has at least one PASS and no FAIL, UNAVAILABLE or NOT_COMPARABLE outcome. Passing F3.9 statement identities never contribute. Baselines are **BASELINE_VERIFIED** (no claim that an inapplicable feature was validated); an inert case is **INERT_IDENTICAL_TO_BASELINE**; a missing or unavailable required identity yields **INCOMPLETE_FEATURE_IDENTITIES_NOT_EVALUATED**; a NOT_COMPARABLE required identity stays **NOT_COMPARABLE**, distinct from FAIL. Regression: `test_case_verdict_requires_feature_specific_identities` (800 existing PASS results but no feature checks cannot be VERIFIED). Run identities (run key, snapshot id, composite hash) are now recorded for every baseline and modified Run.
+
+### P4 — scheduled / stepped PPA (Revenue V2 exact-period curve)
+
+Executed on a committed Run (`1873d76906c2`): version-2 contract book, PPA 60 % with an explicit price at each of 50 operating-period starts (declared steps [80.0, 90.0, 100.0] EUR/MWh, no indexation, no interpolation), residual merchant 70. Verdict **VERIFIED**; `RC-PRICE` reconciles every period and at least three distinct declared prices were reproduced.
+
+### P8 — P50 versus P90-10y lender case (paired Runs)
+
+Same PPA downside contract book (60 % at 60, merchant 45); lender case saved through the F2 bankability configuration and executed twice. P50 Run `5a10b764f517`, P90-10y Run `18185c7bc565` (distinct run keys, snapshots and composite hashes). The saved configuration was read back for each case.
+
+| Metric | P50 | P90-10y |
+|---|---|---|
+| dscr_debt_capacity_keur | 8,740.9271 | 7,899.9458 |
+| final_senior_commitment_keur | 6,746.3787 | 6,706.6784 |
+| binding_constraint | GEARING | GEARING |
+| min_dscr | 1.2000 | 1.2777 |
+| equity_irr | 0.2187 | 0.2598 |
+
+Generation and total EBITDA are identical across the two Runs (lender assumptions are separate from the operating case); only DSCR capacity and the sized debt differ. Gearing is the binding constraint in both, so the sized debt moves only through uses (finding F-3). **NOT COMPARABLE:** CFADS-at-P90 is not persisted as a separate series (the P90 sizing CFADS is internal to the solver); only its effect on DSCR capacity and sized debt is observable.
 
 ## 5. Findings
 

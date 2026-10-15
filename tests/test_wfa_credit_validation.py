@@ -129,7 +129,7 @@ def test_unsealed_edit_wrong_identity_and_missing_evidence_fail_closed(solar):
     ev = deepcopy(solar.credit)
     ev["summary"]["min_dscr"] = "9"
     r = recredit(solar, evidence=ev)          # hash not resealed
-    assert not fails(r) or True
+    assert not fails(r), "an unsealed edit must fail closed, never produce a numerical verdict"
     statuses = {o["status"] for o in r["outcomes"] if o["identity"].startswith("CR-")}
     assert statuses == {"NOT_COMPARABLE"}
     ev2 = deepcopy(solar.credit)
@@ -194,7 +194,7 @@ def test_lockup_threshold_is_strictly_below(solar):
 def test_zero_debt_service_periods_report_no_dscr(solar):
     r = solar.result
     nods = [o for o in r["outcomes"] if o["identity"] == "CR-DSCR-NODS"]
-    assert all(o["status"] == "PASS" for o in nods)
+    assert not [o for o in nods if o["status"] != "PASS"], "a period without debt service must never carry a reported DSCR"
 
 
 def test_terminal_tolerance_and_floor_are_the_documented_constants():
