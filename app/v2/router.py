@@ -1937,6 +1937,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     ) if hasattr(pis, "get") else False
 
     from app.workbook.financing_csrf import issue_token
+    from app.v2.result_status import with_current_scenario_label
+    ws = with_current_scenario_label(ws, workspace_owner)
     context = {
         "project_code": project,
         "financing_csrf_token": issue_token(request, project),
@@ -1996,21 +1998,14 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             any_run_committed=bool(ws.any_run_committed),
         )
     except Exception:  # fail closed — an evidence surface must never 500
-        from app.api.v1_1.institutional import STATE_UNAVAILABLE as _TUP
-        context["trust_pack"] = {
-            "overall_state": _TUP,
-            "last_run": {"state": _TUP, "working_copy_changed_since_run": False},
-            "kpis": {"state": _TUP, "rows": [], "lineage": {}},
-            "validation": {
-                "state": "DEFERRED",
-                "load_url": f"/v2/workbook/trust/validation?project={project_record.project_code}",
-                "gaps": [],
-                "gap_count": 0,
-            },
-            "verify": {"state": _TUP, "verify_url": f"/verify/run/{project_record.project_code}"},
-            "export": {"state": _TUP},
-            "methodology": {"state": _TUP, "rows": [], "page_url": "/model/methodology"},
-        }
+        from app.v2.result_status import unavailable_trust_pack
+        context["trust_pack"] = unavailable_trust_pack(project_record.project_code)
+    # RC-UX (UX-001/002): ONE result-status projection for the persistent strip; the Trust sheet reads the same pack.
+    from app.v2.result_status import build_result_status
+    context["result_status"] = build_result_status(
+        runtime_state=context["runtime_state"], has_runtime=context["has_runtime"],
+        last_runtime_at_display=context["last_runtime_at"], active_scenario_name=context["active_scenario_name"],
+        trust_pack=context.get("trust_pack"))
     _capex_ctx = _build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
     _opex_ctx = _build_opex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
     context.update(_capex_ctx)
@@ -3653,7 +3648,9 @@ def _scenario_authority_oob(
 ) -> str:
     """Refresh every runtime-backed surface after a scenario mutation."""
     from app.v2.post_run_ui import build_post_save_ui_state
+    from app.v2.result_status import with_current_scenario_label
 
+    ws = with_current_scenario_label(ws, workspace_owner)
     html = build_post_save_ui_state(
         ws_fresh=ws,
         project_record=project_record,
@@ -3867,6 +3864,8 @@ async def v2_scenario_rename(
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
         html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        if ws is not None and ws.active_scenario_id == scenario_id:
+            html += "\n" + _scenario_authority_oob(request, ws, project_record, project, workspace_owner)
         return HTMLResponse(content=html)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 

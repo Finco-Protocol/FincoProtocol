@@ -1,0 +1,18 @@
+{#
+  Persistent project / scenario / Last Run strip (UX-002). Rendered on page load AND refreshed out of band after every Run and every
+  scenario/Save state change, from the one ResultStatus projection (app/v2/result_status.py). Freshness (CURRENT / STALE / NOT RUN) and the Last
+  Run integrity verdict (PASS / FAIL / UNAVAILABLE) are independent: freshness is never an integrity verdict and vice versa.
+#}
+<div id="v2-hybrid-status" class="hy-status" role="status" aria-label="Project, scenario and run status" data-testid="hybrid-status">
+  <span class="hy-id" data-testid="hybrid-identity">
+    <strong>{{ project_name }}</strong>
+    {% if project_type %}<span class="hy-dim">· {{ project_type }}</span>{% endif %}
+    <span class="hy-dim">· {{ 'Working Copy' if project_editable else 'Reference' }}</span>
+    <span class="hy-dim" data-testid="hybrid-scenario">· Scenario: {{ result_status.scenario_name }}</span>
+  </span>
+  <span class="hy-chip hy-chip--{{ result_status.freshness|lower }}" data-hy-run-state data-testid="hybrid-run-state">{{ result_status.freshness_label }}</span>
+  <span class="hy-dim" data-testid="hybrid-last-run">Last Run: {{ result_status.run_at_display if result_status.has_run and result_status.run_at_display else '—' }}</span>
+  <span class="hy-chip hy-chip--integrity-{{ result_status.integrity|lower }}" data-testid="hybrid-integrity"
+        title="Run integrity checks of the Last Run — independent of CURRENT / STALE">Integrity: {{ result_status.integrity }}</span>
+  <span class="hy-chip hy-chip--unsaved" data-hy-unsaved hidden data-testid="hybrid-unsaved">0 unsaved</span>
+</div>
