@@ -1,6 +1,6 @@
 # RC-UX Phase 2 - final report (branch `feat/model-rcux2-institutional-workspace`)
 
-Base: `origin/main` `03e2b9638e9324bb18ea8420ce8f9823f4f0a676` (PR #286 merged). PR #287 (WF-A numerical and credit validation) was **open** at the last check and is not merged; no WF-A source is touched here.
+Base: `origin/main` `03e2b9638e9324bb18ea8420ce8f9823f4f0a676` (PR #286 merged). PR #287 (WF-A numerical and credit validation) is **merged**; this branch contains `main` `38018e9` through the normal merge commit `ce52de5` (behind 0, no conflicts). No WF-A source is touched here.
 Protected paths `financial_engine/`, `finco_core/`, `domain/`: **unchanged** (empty diff against main). No release flag, pin map, golden or CI workflow is changed.
 F3 multi-Senior activation is **enabled** in this release (`multisenior_config.ACTIVATION_ENABLED = True`); Junior, F4/P2, Revenue V3, M6 and M7 stay release-closed and are untouched.
 
@@ -99,46 +99,48 @@ Screenshots (5 screens x 4 viewports, before and after) were captured locally un
 | Reference regression / synthetic evidence copy | "Reference check (example data)" in the technical details only | `_trust_validation_body.html` | Must keep "not independently verified" meaning | Owner |
 
 ## 8. UX finding matrix (original descriptions from the audit)
+Status vocabulary: FIXED, PARTIAL, UNRESOLVED, AUTHORITY BLOCKED, NOT REPRODUCIBLE. Totals: AUTHORITY BLOCKED 3, FIXED 17, NOT REPRODUCIBLE 1, PARTIAL 9, UNRESOLVED 1. PARTIAL means at least one relevant sub-finding is not verified.
+
 | ID | Sev | Original finding | Status | Evidence / limitation |
 |---|---|---|---|---|
-| UX-001 | P0 | Trust sheet / strip name an older Run than the toolbar after a new Run | FIXED — VERIFIED | PR #286: `test_ux_a_result_coherence.py`; PR #286 browser CI |
-| UX-002 | P1 | Persistent strip keeps the previous Run time/scenario after a Run | FIXED — VERIFIED | PR #286 `ResultStatus`; this branch: Run History also follows Save (`test_history_identities_and_states...`) |
-| UX-003 | P1 | OPEX Y1 total shows a stale `display_value` | FIXED — VERIFIED | PR #286 `test_ux_c_strict_numbers.py` (static contract) |
-| UX-004 | P1 | Goal Seek result lost to the lazy-panel GET race | FIXED — VERIFIED | `test_ux_a_goal_seek_race_browser.py` (6 cases, real CSP) incl. the CSP-safe lifecycle |
-| UX-005 | P1 | OPEX sticky columns leave an uncovered band | FIXED — VERIFIED | PR #286 CSS variable; static test only, no pixel measurement |
-| UX-006 | P2 | Engineering copy in primary screens (50 audit entries) | UNRESOLVED — NOT ACCEPTED | About 15 entries rewritten (Model Checks, empty messages, revenue/returns/financing/investor wording); the remaining entries sit mostly in Trust/Diagnostics (governed, section 7) or were not reached |
-| UX-007 | P2 | Revenue header disagrees on vertical | NOT REPRODUCIBLE — EVIDENCE ATTACHED | Audit itself: not reproduced after reload (`POST_RC3_MODEL_STAGING_ACCEPTANCE.md`) |
-| UX-008 | P2 | Trust 18-19k px tall on 390 px | UNRESOLVED — NOT ACCEPTED | Trust is governed; not changed |
-| UX-009 | P2 | Mixed dark/light treatment, low link contrast, no theme toggle | UNRESOLVED — NOT ACCEPTED | Dark palette applied to the new Flowbite components and tokens (`test_dark_mode_uses_the_dark_flowbite_palette`); the legacy screens and the toggle are not done |
-| UX-010 | P2 | Three project/Run-state zones repeat; Run Model twice | UNRESOLVED — NOT ACCEPTED | Header duplication remains (visible in the screenshots) |
-| UX-011 | P2 | All assumptions / Project & Technical / Technical assumptions overlap | UNRESOLVED — NOT ACCEPTED | Area hierarchy Inputs > Financing > Results > Scenarios > Analysis > Model Checks done and tested; the three overlapping Inputs labels are unchanged |
-| UX-012 | P2 | 'Running…' shown on commands whose own request is not active | FIXED — VERIFIED | `test_rcux2_progress_scope_browser.py` (2 cases) |
-| UX-013 | P2 | Raw LLCR/DSRA reason codes | UNRESOLVED — NOT ACCEPTED | Not reached |
-| UX-014 | P2 | Two rows labelled model period 4 | UNRESOLVED — NOT ACCEPTED | Not re-tested in the audit; not reached |
-| UX-015 | P2 | Goal Seek 43-62 s with text-only progress | UNRESOLVED — NOT ACCEPTED | Run now has a loading toast; Goal Seek/Sensitivity progress not changed |
-| UX-016 | P3 | Crowded OPEX heading/subtitle | UNRESOLVED — NOT ACCEPTED | Not reached |
-| UX-017 | P1 | Cost cells normalise `410 420 430` to 410420430 and persist it | FIXED — VERIFIED | PR #286: `test_ux_c_strict_numbers.py` (browser module + writer boundary) |
-| UX-018 | P2 | Arrows change the number in cost cells | FIXED — VERIFIED | PR #286 static contract (Alt needed to nudge) |
-| UX-019 | P2 | Add/Duplicate drops other staged edits | FIXED — VERIFIED | PR #286 guard for failed unsaved rows; static contract |
-| UX-020 | P2 | Rename of the active scenario not shown | FIXED — VERIFIED | PR #286 `test_a_renamed_active_scenario_label...` |
-| UX-021 | P3 | Rejected stale-tab save: message x3 and the rejected value stays | UNRESOLVED — NOT ACCEPTED | Not reached |
-| UX-022 | P2 | 'End date (exclusive)' but only period-end boundaries are accepted; server returns bare JSON | FIXED — VERIFIED | Guided Add a PPA states the boundary rule, blocks with an actionable message and offers the nearest boundary (`test_a_duration_ending_off_the_period_boundary...`); the legacy table editor still relies on the server message |
-| UX-023 | P2 | Scenario tariff override while explicit contracts exist makes the scenario unrunnable | BLOCKED — AUTHORITY REQUIRED | `scenario_revenue_authority.py` is financial-authority adjacent |
-| UX-024 | P2 | Run History detail: unbounded width, Python reprs, dead Back | FIXED — VERIFIED (width, Back) | `test_rcux2_run_history_browser.py` (list/detail/compare/expanded at 1440, 1366, 390 light + 390 dark; Back works; no document overflow). Python-repr evidence rendering: UNRESOLVED |
-| UX-025 | P2 | Export identity (template id as project id, unknown build fields) | BLOCKED — AUTHORITY REQUIRED | Protected export contract |
-| UX-026 | P3 | AI Import counters contradict the confirmation page | UNRESOLVED — NOT ACCEPTED | Not reached |
-| UX-027 | P3 | Back leaves the workbook; unknown project redirects silently | UNRESOLVED — NOT ACCEPTED | Not reached |
-| UX-028 | P2 | 4.76 MB document, 23k DOM nodes, multi-second first response | UNRESOLVED — NOT ACCEPTED | Measured before/after (section 5); no regression, no improvement claimed |
-| UX-029 | P2 | No main/h1/skip link, contrast, table captions | UNRESOLVED — NOT ACCEPTED | PR #286 added main, h1 and skip link; contrast and captions not done |
-| UX-030 | P3 | Mobile 390: Save bar, tap targets, Trust height | UNRESOLVED — NOT ACCEPTED | 390 px no-overflow tests for the new forms, history and Flowbite screens only |
-| UX-031 | P2 | Three error styles on Run/Save failures | FIXED — VERIFIED | PR #286 (`test_ux_b_error_copy.py`): refusal sentences lead, code trails; not every error source converted |
+| UX-001 | P0 | Trust sheet / strip name an older Run than the toolbar after a new Run | FIXED | PR #286 `test_ux_a_result_coherence.py` |
+| UX-002 | P1 | Persistent strip keeps the previous Run time/scenario | FIXED | PR #286 `ResultStatus`; Run History now also follows a Save (`test_history_identities_and_states_are_truthful...`) |
+| UX-003 | P1 | OPEX Y1 total shows a stale `display_value` | FIXED | PR #286 `test_ux_c_strict_numbers.py` (static contract) |
+| UX-004 | P1 | Goal Seek result lost to the lazy-panel GET race | FIXED | `test_ux_a_goal_seek_race_browser.py` (real CSP) |
+| UX-005 | P1 | OPEX sticky columns leave an uncovered band | FIXED | PR #286 CSS variable; static test, no pixel measurement |
+| UX-006 | P2 | Engineering copy in primary screens (50 audit entries) | PARTIAL | About 20 entries rewritten in ordinary screens (Model Checks, empty states, revenue/returns/financing/investor wording, reason sentences, Run History evidence, stale-save). The remaining entries are mostly in Trust/Diagnostics (governed, report section 7) or were not reached |
+| UX-007 | P2 | Revenue header disagrees on a vertical | NOT REPRODUCIBLE | The audit itself could not reproduce it after reload |
+| UX-008 | P2 | Trust 18-19k px tall on 390 px | AUTHORITY BLOCKED | Trust content and structure are governed (exact-content pins); a contained-scroll or disclosure change needs the owner's approval and a governance successor |
+| UX-009 | P2 | Mixed dark/light treatment, no theme control | PARTIAL | Theme control (Auto / Light / Dark on the existing `data-theme`) and a dark palette for the new components are tested; legacy screens were not all re-themed and no contrast measurement was run |
+| UX-010 | P2 | Three project/Run-state zones repeat; Run Model twice | PARTIAL | The CURRENT banner and the overview CURRENT strip are no longer shown and the strip keeps state only (identity stays for assistive technology) - `test_a_current_state_is_presented_once...`; STALE/NOT RUN/errors stay visible. Two Run Model buttons remain because many mandatory tests drive both |
+| UX-011 | P2 | All assumptions / Project & Technical / Technical assumptions overlap | PARTIAL | Labels are now Assumptions grid / Project setup / Inputs summary and the area hierarchy is Inputs > Financing > Results > Scenarios > Analysis > Model Checks (`test_the_inputs_navigation_labels_no_longer_overlap`); deep pages on the legacy shell were not migrated |
+| UX-012 | P2 | 'Running…' shown on commands whose own request is not active | FIXED | `test_rcux2_progress_scope_browser.py` |
+| UX-013 | P2 | Raw LLCR/DSRA reason codes | PARTIAL | Ordinary screens (Overview integrity, Insight reasons) show a plain sentence with the typed code beside it (`test_rcux2_display_labels.py`); the raw codes in Diagnostics are governed: AUTHORITY BLOCKED |
+| UX-014 | P2 | Two rows labelled model period 4 | FIXED | The periods are distinct (construction vs operations share the index at the boundary); only the label changed to `3 · construction` / `3 · operations` (`test_a_model_period_index_shared...`); no index, date or amount changed |
+| UX-015 | P2 | Goal Seek 43-62 s with text-only progress | FIXED | Real states only (request sent, finished, failed) for Goal Seek, apply, sensitivity and matrix (`test_goal_seek_progress_reports_only_real_states`); no percentage, solver untouched |
+| UX-016 | P3 | Crowded OPEX heading/subtitle, stretched badge | FIXED | Compact headings and constrained badge; duplicate projection title removed (`test_opex_headings_are_compact...`) |
+| UX-017 | P1 | Cost cells normalise `410 420 430` to 410420430 | FIXED | PR #286 `test_ux_c_strict_numbers.py` |
+| UX-018 | P2 | Arrows change the number in cost cells | FIXED | PR #286; the stale cost-grid test now asserts Alt-nudge (it also failed on main before) |
+| UX-019 | P2 | Add/Duplicate drops other staged edits | FIXED | PR #286 guard for failed unsaved rows; static contract |
+| UX-020 | P2 | Rename of the active scenario not shown | FIXED | PR #286 `test_a_renamed_active_scenario_label...` |
+| UX-021 | P3 | Rejected stale-tab save: message x3, rejected value implied | FIXED | `test_a_stale_tab_save_is_rejected_once_clearly_without_overwriting_newer_data` (two real views: one inline message, truthful wording, Reload action, server CAS untouched) |
+| UX-022 | P2 | 'End date (exclusive)' vs boundary-only dates; bare JSON error | FIXED | Guided Add a PPA states the rule, blocks with an actionable message and offers the nearest boundary (`test_a_duration_ending_off_the_period_boundary...`); the legacy table editor still relies on the server message |
+| UX-023 | P2 | Scenario tariff override with explicit contracts makes the scenario unrunnable | AUTHORITY BLOCKED | `scenario_revenue_authority.py` is financial-authority adjacent |
+| UX-024 | P2 | Run History detail: unbounded width, Python reprs, dead Back | FIXED | `test_rcux2_run_history_browser.py` (width, Back at 1440/1366/390 light+dark) and structured evidence as a summary with the exact stored value in a contained block (`test_rcux2_display_labels.py`) |
+| UX-025 | P2 | Export identity (template id as project id, unknown build fields) | AUTHORITY BLOCKED | Protected export contract |
+| UX-026 | P3 | AI Import counters contradict the confirmation page | PARTIAL | One definition of Exact mappings (field id or exact registry label) from the import transaction's proposals (`test_rcux2_import_counters.py`); the header row still counts as a detected row (import-authority change, not made) |
+| UX-027 | P3 | Back leaves the workbook; unknown project redirects silently | FIXED | Unknown and foreign projects get one identical, non-revealing library notice (`test_rcux2_navigation_safety.py`); hash navigation already created history entries (`test_legacy_links_context_navigation_history_and_keyboard`) |
+| UX-028 | P2 | 4.76 MB document, 23k DOM nodes, multi-second first response | UNRESOLVED | Re-measured under comparable conditions (3 loads each, local): main 4613 KB / 22,715 nodes (21,505 hidden), branch 4632 KB / 22,807 nodes; first response 680-990 ms on both. The weight is the post-Run state (a fresh project is 774 KB); no safe reduction was made. No improvement claimed |
+| UX-029 | P2 | No main/h1/skip link, contrast, table captions | PARTIAL | Landmarks and skip link (PR #286); every table now has an accessible name and every header a scope, one level-1 heading (`test_every_table_has_an_accessible_name...`); contrast was not measured |
+| UX-030 | P3 | Mobile 390: Save bar, tap targets, font, Trust height | PARTIAL | Primary controls >= 44 px, 16 px field text, grid Save bar pinned at the bottom (`test_phone_controls_meet_the_44px_target...`); not every control and not Trust height |
+| UX-031 | P2 | Three error styles on Run/Save failures | PARTIAL | PR #286: refusal sentences lead, codes trail; the stale-save refusal now follows it; not every error source was converted |
 
 ## 9. Financial and governance approvals still required
 - Optional or draft-persisted `source_ref` for Working PPA contracts (schema/validation change) - not done, not needed for this UX.
 - Capability gaps (price base year, partial indexation share, market-linked pricing, contracted volume limits, P50/P90 lender pricing): REQUIRES FINANCIAL AUTHORIZATION (see the capability matrix in the previous revision of this document; unchanged).
 - Construction: a month-end COD round trip (`_subtract_months` vs `relativedelta`) is a pre-existing finance-adjacent edge case that needs an owner decision (adapter or engine side); the UI blocks it.
 - Trust / Diagnostics wording (section 7).
-- UX-025 export identity (protected export contract) and UX-023 tariff override while explicit contracts exist (`scenario_revenue_authority.py`, financial-authority adjacent).
+- UX-025 export identity (protected export contract), UX-023 tariff override while explicit contracts exist (`scenario_revenue_authority.py`), UX-008 Trust mobile structure and the raw reason codes inside Diagnostics (UX-013): governed content.
 
 ## 10. Revenue capability matrix (no engine change proposed here)
 | Capability | Status |
