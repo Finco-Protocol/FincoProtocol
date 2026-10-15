@@ -167,5 +167,6 @@ def build_page(*, project_editable: bool = True, collapsed_sheets: tuple[str, ..
 {smart}
 </div></div>
 <script>{_read('static/js/workbook_v2.js')}</script>
+<script>{_read('static/js/cost_staging.js')}</script>
 {scripts}
 </body></html>"""
