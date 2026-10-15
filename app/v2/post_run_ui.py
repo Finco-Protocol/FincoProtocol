@@ -192,11 +192,18 @@ def build_post_run_ui_state(
         freshness=freshness))
 
     # K. Smart Panel (UX Foundation): run-state note + availability refresh.
+    #    RC-UX (UX-001/002): the SAME trust pack also refreshes the persistent strip and the Trust sheet, so no surface can keep
+    #    naming an older Run (or "No committed Last Run") than the toolbar.
+    _pack = _build_trust_pack_for_state(
+        ws_fresh, workspace_owner=workspace_owner, project_record=project_record, project=project, context=context)
+    fragments.append(_build_result_surfaces_oob(
+        pack=_pack, ws_fresh=ws_fresh, project_record=project_record, project=project,
+        project_editable=not is_protected_reference(project_record), freshness=freshness, context=context))
     fragments.append(_build_smart_panel_oob(
         ws_fresh, workspace_owner=workspace_owner,
         project_record=project_record, project=project,
         project_editable=not is_protected_reference(project_record),
-        freshness=freshness, context=context))
+        freshness=freshness, context=context, pack=_pack))
 
     # L. Run History (Run Intelligence V1): the successful run just appended
     #    an immutable history entry atomically — refresh the listing without
@@ -241,30 +248,77 @@ def _build_workspace_header_oob(pis, ws_fresh, *, project_record,
         '<div id="model-workspace-header" hx-swap-oob="true"', 1)
 
 
+def _build_trust_pack_for_state(ws_fresh, *, workspace_owner: str, project_record, project: str, context=None):
+    """The ONE trust-pack read of a state-changing response: a pure read, fail-closed to the explicit UNAVAILABLE pack."""
+    from app.ui.trust_pack import build_trust_pack
+    from app.v2.result_status import unavailable_trust_pack
+    try:
+        return build_trust_pack(
+            workspace_owner, project_record.project_id, project_code=project,
+            any_run_committed=bool(getattr(ws_fresh, "any_run_committed", False)),
+            **({"context": context} if context is not None else {}))
+    except Exception:  # an evidence surface must never 500 nor keep showing an older Run
+        return unavailable_trust_pack(project)
+
+
+def _assumption_register_for_state(ws_fresh, *, context=None):
+    """Read-only assumption register view for the Trust sheet (pure construction over the SAME draft inputs the Smart Panel uses)."""
+    try:
+        from app.v2.router import _build_assumption_register_view
+        from app.workbook.service import WorkbookService
+        pis = context.draft_inputs if context is not None else WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
+        return _build_assumption_register_view(pis)
+    except Exception:  # fail closed to the template's own "not available" branch
+        return None
+
+
+def _build_result_surfaces_oob(*, pack, ws_fresh, project_record, project: str, project_editable: bool, freshness,
+                               context=None) -> str:
+    """OOB refresh of the persistent strip (UX-002) and the Trust sheet (UX-001) from ONE trust pack and ONE freshness read.
+
+    ``resolve_runtime_freshness`` / ``trust_pack`` are the existing authorities; the projection only arranges their values.
+    """
+    from app.v2.result_status import build_result_status
+    from app.v2.router import _fmt_runtime_at, _templates
+    status = build_result_status(
+        runtime_state=freshness.state.value, has_runtime=bool(getattr(ws_fresh, "last_runtime_snapshot_id", None)),
+        last_runtime_at_display=_fmt_runtime_at(getattr(ws_fresh, "last_runtime_at", None) or ""),
+        active_scenario_name=getattr(ws_fresh, "active_scenario_name", None) or "", trust_pack=pack)
+    strip = _templates.get_template("partials/_hybrid_status.html").render({
+        "project_name": getattr(project_record, "project_name", "") or project,
+        "project_type": (getattr(project_record, "project_type", "") or "").capitalize(),
+        "project_editable": project_editable, "result_status": status})
+    trust = _templates.get_template("partials/sheet_trust.html").render({
+        "trust_pack": pack, "project_code": project, "project_editable": project_editable,
+        "assumption_register_view": _assumption_register_for_state(ws_fresh, context=context)})
+    return _as_oob(strip, "v2-hybrid-status") + "\n" + _as_oob(trust, "v2-sheet-trust")
+
+
 def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
                            project_record, project: str,
-                           project_editable: bool, freshness, context=None) -> str:
+                           project_editable: bool, freshness, context=None, pack=_NOTSET) -> str:
     """OOB refresh for the Smart Panel (runtime-state note + availability).
 
     Rebuilds the panel from the SAME single workspace read; Trust Pack
     composition is a pure read (no engine execution) by contract.
     """
-    from app.ui.trust_pack import build_trust_pack
     from app.v2.router import _templates
     from app.v2.smart_panel_projection import build_smart_panel_projection
     if context is not None:
         context.require_scope(workspace_owner, project_record.project_id)
         context.require_binding(ws_fresh, project_record, context.runtime_result)
-    try:
-        pack = build_trust_pack(
-            workspace_owner, project_record.project_id,
-            project_code=project,
-            any_run_committed=bool(
-                getattr(ws_fresh, "any_run_committed", False)),
-            **({"context": context} if context is not None else {}),
-        )
-    except Exception:
-        pack = None
+    if pack is _NOTSET:
+        try:
+            from app.ui.trust_pack import build_trust_pack
+            pack = build_trust_pack(
+                workspace_owner, project_record.project_id,
+                project_code=project,
+                any_run_committed=bool(
+                    getattr(ws_fresh, "any_run_committed", False)),
+                **({"context": context} if context is not None else {}),
+            )
+        except Exception:
+            pack = None
     from app.workbook.service import WorkbookService
     register_view = None
     pis = None
@@ -503,11 +557,16 @@ def build_post_save_ui_state(
             project_editable=not is_protected_reference(project_record),
             freshness=freshness))
         if workspace_owner:
+            _pack = _build_trust_pack_for_state(
+                ws_fresh, workspace_owner=workspace_owner, project_record=project_record, project=project)
+            fragments.append(_build_result_surfaces_oob(
+                pack=_pack, ws_fresh=ws_fresh, project_record=project_record, project=project,
+                project_editable=not is_protected_reference(project_record), freshness=freshness))
             fragments.append(_build_smart_panel_oob(
                 ws_fresh, workspace_owner=workspace_owner,
                 project_record=project_record, project=project,
                 project_editable=not is_protected_reference(project_record),
-                freshness=freshness))
+                freshness=freshness, pack=_pack))
 
     return chr(10).join(fragments)
 

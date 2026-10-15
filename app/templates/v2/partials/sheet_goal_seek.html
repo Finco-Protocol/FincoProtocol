@@ -1,7 +1,7 @@
 <link rel="stylesheet" href="/static/css/model_decision_workspace.css">
 <div id="v2-sheet-goal-seek" class="v2-gs v2-d-workspace" data-sheet="goal-seek" data-testid="goal-seek-panel"
      hx-get="/v2/workbook/decision/goal-seek?project={{ project_code | urlencode }}"
-     hx-trigger="click from:#tab-goal-seek" hx-target="this" hx-swap="outerHTML">
+     hx-trigger="gs-load" hx-sync="this:drop" hx-target="this" hx-swap="outerHTML">
   <section class="v2-gs-section" aria-labelledby="gs-title">
     <div class="v2-gs-section-title" id="gs-title">Goal Seek — target-return pricing (Tender)</div>
     <p class="v2-gs-note">
@@ -23,6 +23,8 @@
           hx-post="/v2/workbook/goal-seek/run"
           hx-target="#v2-goal-seek-results"
           hx-swap="innerHTML"
+          hx-sync="this:drop"
+          hx-disabled-elt="[data-testid=gs-run-btn]"
           hx-indicator="#v2-goal-seek-spinner">
       <input type="hidden" name="project" value="{{ project_code }}">
       <div class="v2-gs-row">
