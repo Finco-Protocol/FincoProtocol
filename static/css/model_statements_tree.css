@@ -1,0 +1,30 @@
+/* Statements V2 drill-down.  Horizontal scrolling is contained in .st-region; the page itself never scrolls sideways. */
+.st-viewbar { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0; }
+.st-viewbtn { font: inherit; padding: .3rem .7rem; border: 1px solid var(--border, #b8c0cc); border-radius: 6px; background: var(--surface, #fff); color: inherit; cursor: pointer; }
+.st-viewbtn[aria-pressed="true"] { background: var(--accent, #0b5cab); color: #fff; border-color: transparent; }
+.st-viewbtn:focus-visible, .st-toggle:focus-visible, .st-link:focus-visible, .st-period:focus-visible, .st-row:focus-visible, .st-region:focus-visible { outline: 3px solid var(--focus, #1a73e8); outline-offset: 2px; }
+.st-context { margin: .3rem 0 .6rem; font-size: .9rem; }
+.st-context--historical_run, .st-context--working_copy_differs { border-left: 4px solid var(--warn, #b26a00); padding-left: .6rem; }
+.st-region { position: relative; /* contain the absolutely positioned screen-reader text of each cell */ max-width: 100%; overflow: auto; overscroll-behavior-x: contain; border: 1px solid var(--border, #d5dae1); border-radius: 6px; }
+.st-tree { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-variant-numeric: tabular-nums; }
+.st-tree th, .st-tree td { padding: .3rem .6rem; border-bottom: 1px solid var(--border, #e3e7ec); white-space: nowrap; }
+.st-tree thead th { position: sticky; top: 0; background: var(--surface, #fff); z-index: 2; }
+.st-label, .st-label-col { position: sticky; left: 0; background: var(--surface, #fff); z-index: 1; text-align: left; min-width: 15rem; }
+.st-label { padding-left: calc(.6rem + var(--st-depth, 0) * 1.25rem) !important; font-weight: 400; }
+.st-row--group .st-label { font-weight: 600; }
+.st-row.out-total .st-label, .st-row.out-total td { font-weight: 600; }
+.st-toggle { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; margin-right: .25rem; padding: 0; border: 0; background: transparent; cursor: pointer; vertical-align: middle; color: inherit; }
+.st-chevron { width: .5rem; height: .5rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .12s; }
+.st-toggle[aria-expanded="true"] .st-chevron { transform: rotate(45deg); }
+.st-spacer { display: inline-block; width: 1.85rem; }
+.st-link { color: var(--link, #0b5cab); text-decoration: underline; text-underline-offset: 2px; }
+.st-link--provenance { color: inherit; text-decoration-style: dotted; }
+.st-kind { margin-left: .5rem; opacity: .75; }
+.st-col-selected { background: var(--selected, rgba(26, 115, 232, .12)); }
+.st-period { font: inherit; background: transparent; border: 0; padding: 0; cursor: pointer; color: inherit; text-decoration: underline dotted; }
+.st-period[aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
+.out-dims { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin: .4rem 0; }
+.out-dims > div { display: flex; gap: .4rem; align-items: baseline; }
+.out-dims dt { font-weight: 600; } .out-dims dd { margin: 0; }
+@media (max-width: 720px) { .st-label, .st-label-col { min-width: 11rem; } .st-viewbtn { padding: .4rem .6rem; } }
+@media (prefers-reduced-motion: reduce) { .st-chevron { transition: none; } }

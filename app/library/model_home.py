@@ -58,6 +58,9 @@ class RecentProjectRow:
     updated_display: Optional[str]
     has_last_run: bool
     last_run_at_display: Optional[str]
+    # SC-03: engine identity of the committed Last Run, independent of CURRENT/STALE input freshness (which this list
+    # still does not classify).  "" when there is no Last Run.
+    engine_currency: str = ""
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,17 @@ class ReferenceModelCard:
     preview: bool
     # (key, label, display_value) triples — AVAILABLE evidence only.
     kpis: tuple[tuple[str, str, str], ...]
+
+
+def _engine_currency(ws: Any) -> str:
+    """Engine currency of the persisted Last Run (presentation evidence only; never rewrites or re-runs anything)."""
+    from app.workbook.runtime_authority import resolve_engine_currency
+    try:
+        return resolve_engine_currency(
+            identity=getattr(ws, "last_runtime_identity", None),
+            replay_metadata=getattr(ws, "replay_metadata", None)).state.value
+    except Exception:  # noqa: BLE001 - fail closed to unknown, never to current
+        return "ENGINE_IDENTITY_UNKNOWN"
 
 
 def build_recent_project_rows(
@@ -100,6 +114,7 @@ def build_recent_project_rows(
             last_run_at_display=(
                 _display_date(getattr(ws, "last_runtime_at", None))
                 if has_run else None),
+            engine_currency=_engine_currency(ws) if has_run else "",
         ))
     return rows
 

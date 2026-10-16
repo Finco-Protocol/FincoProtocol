@@ -28,7 +28,10 @@
     root.querySelectorAll('.out-caption-unit').forEach(function (e) { e.textContent = unit === 'eur' ? 'EUR' : 'kEUR'; });
   }
   function init() {
-    var root = document.getElementById('v2-sheet-outputs');
+    // Both the Outputs sheet and the historical Run statements fragment (distinct ids; either may be in the document).
+    Array.prototype.forEach.call(document.querySelectorAll('#v2-sheet-outputs, #v2-run-statements'), initRoot);
+  }
+  function initRoot(root) {
     if (!root || root.getAttribute('data-out-ready') === '1') { return; }
     root.setAttribute('data-out-ready', '1');
     var prefs = Object.assign({ unit: 'keur', decimals: 2, year0: true, basis: 'annual' }, load());

@@ -25,7 +25,9 @@
           <td>{% if row.is_working_copy %}<span class="fo-library-badge fo-library-badge--working-copy" data-testid="badge-working-copy-{{ row.project_code }}">Working copy</span>{% else %}My project{% endif %}</td>
           <td class="fo-library-cell-lastrun">
             {% if row.has_last_run %}
-              <span class="fo-library-lastrun" data-testid="last-run-{{ row.project_code }}">Last run · {{ row.last_run_at_display }}</span>
+              <span class="fo-library-lastrun" data-testid="last-run-{{ row.project_code }}" data-engine-currency="{{ row.engine_currency }}">Last run · {{ row.last_run_at_display }}</span>
+              {# SC-03: engine identity is its own fact. ENGINE_SUPERSEDED stays evidence-only (data attribute) until decision D2. #}
+              {% if row.engine_currency == 'ENGINE_IDENTITY_UNKNOWN' %}<small class="fo-library-engine" data-testid="engine-unknown-{{ row.project_code }}">Engine identity not recorded</small>{% endif %}
             {% else %}
               <span class="fo-library-lastrun fo-library-lastrun--none" data-testid="last-run-none-{{ row.project_code }}">Not run</span>
             {% endif %}
