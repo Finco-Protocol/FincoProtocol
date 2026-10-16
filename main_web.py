@@ -361,6 +361,9 @@ from app.v2.opex_router import opex_router as _v2_opex_router
 app.include_router(_v2_opex_router, prefix="/v2/opex")
 from app.v2.developer_decision_router import router as _v2_developer_decision_router
 app.include_router(_v2_developer_decision_router, prefix="/v2")
+# RC-4/B: read-only institutional credit decision workspace (committed Run evidence only).
+from app.v2.credit_decision_router import router as _v2_credit_decision_router
+app.include_router(_v2_credit_decision_router, prefix="/v2")
 # RC-3/M6: independent release-closed acquisition workspace.
 from app.v2.acquisition_router import router as _v2_acquisition_router
 app.include_router(_v2_acquisition_router, prefix="/v2")

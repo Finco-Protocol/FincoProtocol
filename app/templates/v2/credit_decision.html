@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}Credit Decision — FINCO Model{% endblock %}
+{% macro cell(c, why=true) -%}
+  {%- if c.v is none -%}<span class="cd-na">{{ c.d }}</span>{% if why and c.reason %}<span class="cd-why"> {{ c.reason }}</span>{% endif %}
+  {%- else -%}{{ c.d }}{%- endif -%}
+{%- endmacro %}
+{% macro pill(klass) -%}
+  <span class="cd-class cd-class--{{ klass | lower }}">{{ klass | replace('_', ' ') }}</span>
+{%- endmacro %}
+{% block body %}
+<link rel="stylesheet" href="/static/css/model_credit_decision.css?v={{ asset_version }}" />
+<div class="cd-page" id="cd-root" data-testid="cd-page">
+  <header class="cd-head">
+    <div>
+      <p class="cd-eyebrow">INSTITUTIONAL CREDIT DECISION · READ-ONLY EVIDENCE</p>
+      <h1 data-testid="cd-title">{{ project_name }}</h1>
+      <p class="cd-note">How much debt do the committed Runs support, which constraints bind, where is debt service tight and how does credit change across scenarios?
+        Every figure is a value persisted by a committed Run. This page never runs the model, never writes, and never recalculates a result.
+        It is decision intelligence, not lender certification.</p>
+    </div>
+    <nav class="cd-links" aria-label="Related workspaces">
+      <a href="/v2/workbook?project={{ project_code | urlencode }}" data-testid="cd-open-workbook">← Workbook</a>
+      <a href="/v2/workbook?project={{ project_code | urlencode }}#diagnostics">Model Diagnostics</a>
+      <a href="/v2/workbook?project={{ project_code | urlencode }}#debt">Senior debt</a>
+    </nav>
+  </header>
+
+  <section class="cd-section" aria-labelledby="cd-select-h" data-testid="cd-select">
+    <h2 id="cd-select-h">Choose committed Runs</h2>
+    <form method="get" action="/v2/credit-decision" class="cd-select" data-cd-select data-max="{{ max_runs }}">
+      <input type="hidden" name="project" value="{{ project_code }}" />
+      {% if history_rows %}
+      <div class="cd-scroll" tabindex="0" role="region" aria-label="Committed Runs of this project">
+      <table class="cd-table" data-testid="cd-run-picker"><thead><tr>
+        <th scope="col"><span class="cd-sr">Select</span></th><th scope="col">Ran at (UTC)</th><th scope="col">Scenario</th><th scope="col">Engine</th><th scope="col">Status</th><th scope="col">Run id</th></tr></thead>
+        <tbody>{% for r in history_rows %}
+        <tr><td><input type="checkbox" name="run" value="{{ r.history_id }}" id="cd-run-{{ loop.index }}" {% if r.selected %}checked{% endif %} aria-label="Select Run {{ r.ran_at }} {{ r.scenario }}" data-testid="cd-run-checkbox" /></td>
+          <td><label for="cd-run-{{ loop.index }}">{{ r.ran_at }}</label></td><td>{{ r.scenario }}</td><td>{{ r.engine }}</td>
+          <td>{% if r.is_last %}LAST RUN{% else %}HISTORICAL{% endif %}</td><td><code>{{ r.history_id[:8] }}</code></td></tr>{% endfor %}</tbody></table></div>
+      <p class="cd-note">Select one to {{ max_runs }} Runs; the first selected Run is the comparison reference. Only successfully committed Runs exist in Run History — a failed or fail-closed Run is never recorded and cannot be compared as a scenario.</p>
+      <button type="submit" class="cd-btn" data-testid="cd-submit">Review selected Runs</button>
+      <span class="cd-limit" role="status" data-cd-limit></span>
+      {% else %}
+      <p data-testid="cd-no-run">NO COMMITTED RUN. Run the model from the Workbook to create credit evidence; nothing is estimated here.</p>
+      {% endif %}
+    </form>
+  </section>
+
+  {% if data %}
+  {% set runs = data.runs %}
+  <p class="cd-policy" data-testid="cd-policy">{{ data.policy.failed_runs }}</p>
+  <nav class="cd-toc" aria-label="Sections">
+    <a href="#cd-a">A · Financing structure</a><a href="#cd-b">B · Debt capacity and service</a><a href="#cd-c">C · Credit-risk timeline</a>
+    <a href="#cd-d">D · Scenario comparison</a><a href="#cd-findings">Credit findings</a><a href="#cd-policy-h">Credit policy (WF-A)</a>
+  </nav>
+
+  <section class="cd-section" aria-label="Selected Run identities" data-testid="cd-identities">
+    <h2>Selected Runs</h2>
+    <div class="cd-scroll" tabindex="0" role="region" aria-label="Run identities">
+    <table class="cd-table"><thead><tr><th scope="col">Identity</th>{% for r in runs %}<th scope="col">{% if loop.first and runs|length > 1 %}Reference · {% endif %}Run {{ loop.index }}</th>{% endfor %}</tr></thead><tbody>
+      <tr><th scope="row">Status</th>{% for r in runs %}<td data-testid="cd-run-state">{{ r.identity.state }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Scenario</th>{% for r in runs %}<td data-testid="cd-run-scenario">{{ r.identity.scenario }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Ran at</th>{% for r in runs %}<td>{{ r.identity.ran_at }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Run id</th>{% for r in runs %}<td><code>{{ r.identity.history_id }}</code></td>{% endfor %}</tr>
+      <tr><th scope="row">Snapshot</th>{% for r in runs %}<td><code>{{ r.identity.snapshot_id }}</code></td>{% endfor %}</tr>
+      <tr><th scope="row">Composite input hash</th>{% for r in runs %}<td><code>{{ (r.identity.composite_hash or '')[:12] }}</code></td>{% endfor %}</tr>
+      <tr><th scope="row">Engine</th>{% for r in runs %}<td>{{ r.identity.engine_version or 'UNAVAILABLE' }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Run Integrity</th>{% for r in runs %}<td data-testid="cd-integrity">{{ r.identity.integrity }}{% if r.identity.committed_with_integrity_failure %} — <strong>failure state, not a bankable scenario</strong>{% endif %}</td>{% endfor %}</tr>
+      <tr><th scope="row">Evidence</th>{% for r in runs %}<td><a href="{{ r.links.statements }}">Statements</a> · <a href="{{ r.links.run_detail }}">Run detail</a> · <a href="{{ r.links.diagnostics }}">Diagnostics</a> · <a href="{{ r.links.financing }}">Financing</a></td>{% endfor %}</tr>
+    </tbody></table></div>
+  </section>
+
+  <section class="cd-section" id="cd-a" aria-labelledby="cd-a-h" data-testid="cd-a">
+    <h2 id="cd-a-h">A · Financing structure <small>committed Run evidence</small></h2>
+    <div class="cd-scroll" tabindex="0" role="region" aria-label="Financing structure">
+    <table class="cd-table"><thead><tr><th scope="col">Item</th>{% for r in runs %}<th scope="col">Run {{ loop.index }} · {{ r.identity.scenario }}</th>{% endfor %}</tr></thead><tbody>
+      <tr><th scope="row">Evidence state</th>{% for r in runs %}<td>{{ r.structure.state }}{% if r.structure.reason %} — {{ r.structure.reason }}{% endif %}</td>{% endfor %}</tr>
+      <tr><th scope="row">Financing authority</th>{% for r in runs %}<td>{{ r.structure.sizing_note }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Senior commitment (actual)</th>{% for r in runs %}<td class="cd-num">{{ cell(r.structure.commitment) }}<br><small>{{ r.structure.commitment_label }}</small></td>{% endfor %}</tr>
+      <tr><th scope="row">Requested gearing cap (Run)</th>{% for r in runs %}<td class="cd-num">{{ cell(r.structure.requested_gearing) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Actual gearing</th>{% for r in runs %}<td class="cd-num">{{ cell(r.structure.actual_gearing) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Total uses · sources</th>{% for r in runs %}<td class="cd-num">{{ cell(r.structure.total_uses, false) }} · {{ cell(r.structure.total_sources, false) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Equity (share capital and other)</th>{% for r in runs %}<td class="cd-num">{{ cell(r.structure.equity_sources) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Shareholder loan cash</th>{% for r in runs %}<td class="cd-num">{{ cell(r.structure.shl_cash) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Debt tenor (observed)</th>{% for r in runs %}<td>{{ cell(r.structure.tenor.first_debt_service_date, false) }} → {{ cell(r.structure.tenor.last_debt_service_date, false) }} · {{ cell(r.structure.tenor.debt_service_periods, false) }} periods<br><small>Contractual maturity: {{ cell(r.structure.tenor.contractual_maturity_date, false) }} — {{ r.structure.tenor.basis }}</small></td>{% endfor %}</tr>
+      <tr><th scope="row">Interest policy (observed)</th>{% for r in runs %}<td>Day count {{ cell(r.structure.interest.day_count, false) }} · all-in rate {{ cell(r.structure.interest.annual_rate_min, false) }} – {{ cell(r.structure.interest.annual_rate_max, false) }}<br><small>{{ r.structure.interest.basis }}</small></td>{% endfor %}</tr>
+      <tr><th scope="row">Fees and IDC (kEUR)</th>{% for r in runs %}<td class="cd-num">Commitment {{ cell(r.structure.fees.commitment_fee, false) }}<br>Structuring {{ cell(r.structure.fees.structuring_fee, false) }}<br>IDC {{ cell(r.structure.fees.capitalized_idc, false) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">DSRA / DSRF</th>{% for r in runs %}<td class="cd-num">Initial DSRA {{ cell(r.structure.reserve.initial_dsra_funding, false) }}<br>Peak balance {{ cell(r.structure.reserve.dsra_peak_balance, false) }}<br>Regime: {{ cell(r.structure.reserve.regime) }}<br><small>{{ r.structure.reserve.dsrf_note }}</small></td>{% endfor %}</tr>
+      <tr><th scope="row">Lender case (P50 / P90)</th>{% for r in runs %}<td data-testid="cd-lender-case">{{ cell(r.structure.lender_case.value) }}<br><small>{{ r.structure.lender_case.operating_case }}<br>{{ r.structure.lender_case.credit_case }}</small></td>{% endfor %}</tr>
+      <tr><th scope="row">Sizing mode (F-1)</th>{% for r in runs %}<td>{{ cell(r.structure.sizing_mode.value) }}<br><small>{{ r.structure.sizing_mode.note }}</small></td>{% endfor %}</tr>
+      <tr><th scope="row">Senior at contractual maturity</th>{% for r in runs %}<td>{{ cell(r.structure.maturity.status, false) }}</td>{% endfor %}</tr>
+    </tbody></table></div>
+    {% for r in runs %}{% if r.structure.facilities %}
+    <h3>Facilities — Run {{ loop.index }}</h3>
+    <div class="cd-scroll" tabindex="0" role="region" aria-label="Facilities of Run {{ loop.index }}"><table class="cd-table" data-testid="cd-facilities"><thead><tr><th scope="col">Facility</th><th scope="col">Role</th><th scope="col">Commitment</th><th scope="col">Construction draws</th><th scope="col">IDC</th><th scope="col">Upfront fee</th><th scope="col">Commitment fee</th><th scope="col">Draw state</th></tr></thead><tbody>
+      {% for f in r.structure.facilities %}<tr><th scope="row">{{ f.id }}</th><td>{{ f.role }}</td><td class="cd-num">{{ f.commitment.d }}</td><td class="cd-num">{{ f.drawn.d }}</td><td class="cd-num">{{ f.idc.d }}</td><td class="cd-num">{{ f.upfront_fee.d }}</td><td class="cd-num">{{ f.commitment_fee.d }}</td><td>{{ f.draw_state }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% elif r.structure.instrument_note %}<p class="cd-note">Run {{ loop.index }}: {{ r.structure.instrument_note }}</p>{% endif %}{% endfor %}
+    {% if data.working_proposal %}
+    <aside class="cd-aside" data-testid="cd-working-proposal"><h3>Working Copy financing proposal (not committed evidence)</h3>
+      {% if data.working_proposal.available %}<p>Two-Senior / facility proposal: {% if data.working_proposal.saved_only %}<strong>saved only — not active</strong>{% elif data.working_proposal.active_in_working_copy %}<strong>active in the Working Copy</strong>{% else %}none saved{% endif %}. {{ data.working_proposal.note }}</p>
+      {% else %}<p>{{ data.working_proposal.reason }}</p>{% endif %}</aside>
+    {% endif %}
+  </section>
+
+  <section class="cd-section" id="cd-b" aria-labelledby="cd-b-h" data-testid="cd-b">
+    <h2 id="cd-b-h">B · Debt capacity and debt service <small>committed values; a missing constraint is never reconstructed</small></h2>
+    <div class="cd-scroll" tabindex="0" role="region" aria-label="Debt capacity and debt service">
+    <table class="cd-table"><thead><tr><th scope="col">Metric</th>{% for r in runs %}<th scope="col">Run {{ loop.index }} · {{ r.identity.scenario }}</th>{% endfor %}</tr></thead><tbody>
+      <tr><th scope="row">Actual Senior commitment (kEUR)</th>{% for r in runs %}<td class="cd-num">{{ cell(r.structure.commitment) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">DSCR debt capacity (kEUR)</th>{% for r in runs %}<td class="cd-num" data-testid="cd-dscr-capacity">{{ cell(r.capacity.dscr_debt_capacity) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Gearing debt capacity (kEUR)</th>{% for r in runs %}<td class="cd-num">{{ cell(r.capacity.gearing_debt_capacity) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Binding Senior constraint</th>{% for r in runs %}<td data-testid="cd-binding">{{ cell(r.capacity.binding_constraint) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Solver termination</th>{% for r in runs %}<td data-testid="cd-convergence">{{ cell(r.capacity.convergence.termination_reason) }}{% if r.capacity.convergence.authoritative is not none %} · authoritative: {{ 'yes' if r.capacity.convergence.authoritative else 'no' }}{% endif %}<br><small>{{ r.capacity.convergence.note }}</small></td>{% endfor %}</tr>
+      <tr><th scope="row">Minimum · average DSCR</th>{% for r in runs %}<td class="cd-num" data-testid="cd-min-dscr">{{ cell(r.capacity.min_dscr, false) }} · {{ cell(r.capacity.avg_dscr, false) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Sizing target DSCR</th>{% for r in runs %}<td class="cd-num">{{ cell(r.capacity.target_dscr) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Minimum LLCR</th>{% for r in runs %}<td class="cd-num" data-testid="cd-llcr">{{ cell(r.capacity.min_llcr) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Σ Senior principal (kEUR)</th>{% for r in runs %}<td class="cd-num">{{ cell(r.capacity.principal_total) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Σ Senior interest (kEUR)</th>{% for r in runs %}<td class="cd-num">{{ cell(r.capacity.interest_total) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Σ Senior debt service (kEUR)</th>{% for r in runs %}<td class="cd-num">{{ cell(r.capacity.debt_service_total) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Σ CFADS base · lender case (kEUR)</th>{% for r in runs %}<td class="cd-num">{{ cell(r.capacity.base_cfads_total, false) }} · {{ cell(r.capacity.bank_cfads_total, false) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Financing fees (kEUR)</th>{% for r in runs %}<td class="cd-num">Commitment {{ cell(r.structure.fees.commitment_fee, false) }} · structuring {{ cell(r.structure.fees.structuring_fee, false) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Tightest debt-service periods</th>{% for r in runs %}<td data-testid="cd-tightest">{% for t in r.capacity.tightest %}P{{ t.period_index }} {{ t.date or '' }}: {{ t.dscr.d }} (target {{ t.target.d }}){% if not loop.last %}<br>{% endif %}{% else %}<span class="cd-na">UNAVAILABLE</span>{% endfor %}</td>{% endfor %}</tr>
+    </tbody></table></div>
+    <p class="cd-note">Σ rows are presentation sums of the committed period values (basis: the scheduled Senior-debt periods of each Run). They are not new financial outputs.</p>
+  </section>
+
+  <section class="cd-section" id="cd-c" aria-labelledby="cd-c-h" data-testid="cd-c">
+    <h2 id="cd-c-h">C · Credit-risk timeline <small>committed period identities · arrow keys move between periods</small></h2>
+    {% for r in runs %}
+    <h3>Run {{ loop.index }} · {{ r.identity.scenario }} · {{ r.identity.state }}</h3>
+    {% if r.timeline.available %}
+    <div class="cd-scroll cd-matrix" tabindex="0" role="region" aria-label="Credit-risk timeline of Run {{ loop.index }}" data-cd-matrix data-run="{{ loop.index0 }}">
+      <table class="cd-table cd-table--matrix" data-testid="cd-timeline"><thead><tr><th scope="col" class="cd-sticky">Metric</th>
+        {% for c in r.timeline.columns %}<th scope="col"><button type="button" class="cd-period" data-period="{{ c.index }}" data-run="{{ loop.index0 }}" aria-label="Period {{ c.index }} {{ c.date or '' }}">P{{ c.index }}<br><small>{{ c.date or '' }}</small></button></th>{% endfor %}</tr></thead>
+      <tbody>{% for row in r.timeline.rows %}<tr data-row="{{ row.key }}"><th scope="row" class="cd-sticky"><a href="{{ r.links[row.link] }}" title="Open the existing {{ row.link }} evidence">{{ row.label }}</a></th>
+        {% for c in row.cells %}<td class="cd-num{% if c.v is none %} cd-na{% endif %}{% if row.kind == 'flag' and c.v %} cd-flag{% endif %}" data-period="{{ r.timeline.columns[loop.index0].index }}"{% if c.reason %} title="{{ c.reason }}"{% endif %}>{{ c.d }}</td>{% endfor %}</tr>{% endfor %}</tbody></table>
+    </div>
+    <div class="cd-detail" role="status" aria-live="polite" data-cd-detail data-run="{{ loop.index0 }}" hidden></div>
+    <p class="cd-note">{{ r.timeline.basis }}</p>
+    {% else %}<p class="cd-note" data-testid="cd-timeline-unavailable">{{ r.timeline.reason }}</p>{% endif %}
+    {% endfor %}
+  </section>
+
+  <section class="cd-section" id="cd-d" aria-labelledby="cd-d-h" data-testid="cd-d">
+    <h2 id="cd-d-h">D · Scenario comparison <small>committed Runs only</small></h2>
+    {% if data.comparison.available %}
+    {% for n in data.comparison.notes %}<p class="cd-callout" role="note">{{ n }}</p>{% endfor %}
+    <div class="cd-scroll" tabindex="0" role="region" aria-label="Scenario comparison">
+    <table class="cd-table"><thead><tr><th scope="col">Metric</th>{% for r in runs %}<th scope="col">{% if loop.first %}Reference · {% endif %}{{ r.identity.scenario }}<br><small>{{ r.identity.state }}</small></th>{% if not loop.first %}<th scope="col" class="cd-delta">Δ vs reference</th>{% endif %}{% endfor %}</tr></thead>
+      {% for g in data.comparison.groups %}<tbody><tr class="cd-group"><th scope="rowgroup" colspan="{{ 1 + runs|length * 2 - 1 }}">{{ g.title }}</th></tr>
+      {% for row in g.rows %}<tr data-testid="cd-cmp-{{ row.key }}"><th scope="row">{{ row.label }}</th>{% for c in row.cells %}<td class="cd-num">{{ cell(c, false) }}</td>{% if not loop.first %}<td class="cd-num cd-delta">{% if row.deltas[loop.index0] %}{{ row.deltas[loop.index0].d }}{% else %}—{% endif %}</td>{% endif %}{% endfor %}</tr>{% endfor %}</tbody>{% endfor %}
+    </table></div>
+    <p class="cd-note">{{ data.comparison.basis }}</p>
+    {% for f in data.comparison.f3 %}
+    <aside class="cd-aside" data-testid="cd-f3"><h3>Debt capacity rose while revenue fell (WF-A F-3) — {{ f.scenario }}</h3>
+      <p>Revenue {{ f.revenue_change.d }} kEUR · Senior commitment {{ f.commitment_change.d }} kEUR · attribution: <strong>{{ f.attribution }}</strong></p>
+      <p>{{ f.statement }}</p>
+      {% if f.attribution == 'COMMITTED_USES_LINES' %}<ul>{% for k, d in f.uses_changes.items() %}<li>{{ k | replace('_', ' ') }}: {{ d.d }} kEUR</li>{% endfor %}</ul>{% endif %}</aside>
+    {% endfor %}
+    {% else %}<p class="cd-note" data-testid="cd-compare-unavailable">{{ data.comparison.reason }}</p>{% endif %}
+  </section>
+
+  <section class="cd-section" id="cd-findings" aria-labelledby="cd-f-h" data-testid="cd-findings">
+    <h2 id="cd-f-h">Credit findings <small>deterministic · grounded in committed evidence</small></h2>
+    <div class="cd-filters" role="group" aria-label="Filter findings by class" data-cd-filters>
+      <button type="button" class="cd-chip is-on" data-class="ALL" aria-pressed="true">All ({{ data.findings|length }})</button>
+      {% for k, n in data.finding_counts.items() %}<button type="button" class="cd-chip" data-class="{{ k }}" aria-pressed="false">{{ k | replace('_', ' ') | title }} ({{ n }})</button>{% endfor %}
+    </div>
+    <div class="cd-scroll" tabindex="0" role="region" aria-label="Credit findings">
+    <table class="cd-table cd-findings"><thead><tr><th scope="col">Finding</th><th scope="col">Class</th><th scope="col">Status</th><th scope="col">Run · scenario</th><th scope="col">Period</th><th scope="col">Actual</th><th scope="col">Threshold · authority</th><th scope="col">Headroom</th><th scope="col">Evidence</th><th scope="col">Open</th></tr></thead><tbody>
+    {% for f in data.findings %}<tr data-class="{{ f.classification }}" data-testid="cd-finding" data-finding="{{ f.check_id or f.id.split(':')[-1] }}">
+      <th scope="row">{{ f.title }}{% if f.severity and f.severity != 'INFORMATION' %}<br><small>severity {{ f.severity }} (existing rule)</small>{% endif %}<br><small>{{ f.metric }}</small></th>
+      <td>{{ pill(f.classification) }}</td><td>{{ f.status }}</td>
+      <td>{% for r in runs %}{% if r.identity.history_id == f.run_history_id %}Run {{ loop.index }}{% endif %}{% endfor %} · {{ f.scenario }}</td><td>{{ f.period }}</td>
+      <td class="cd-num">{{ cell(f.actual) }}</td><td class="cd-num">{{ cell(f.threshold, false) }}<br><small>{{ f.threshold_authority }}</small></td><td class="cd-num">{{ cell(f.headroom, false) }}</td>
+      <td><small>{{ f.evidence_source }}{% if f.reason_code %} · {{ f.reason_code }}{% endif %}</small>{% if f.detail %}<br><small>{{ f.detail }}</small>{% endif %}</td>
+      <td><a href="{{ f.links.diagnostics }}">Diagnostics</a> · <a href="{{ f.links.financing }}">Financing</a> · <a href="{{ f.links.statements }}">Statements</a></td></tr>{% endfor %}
+    </tbody></table></div>
+    <dl class="cd-classes">{% for k, text in data.policy.classes.items() %}<dt>{{ pill(k) }}</dt><dd>{{ text }}</dd>{% endfor %}</dl>
+  </section>
+
+  <section class="cd-section" id="cd-policy-h" aria-labelledby="cd-p-h" data-testid="cd-policy-section">
+    <h2 id="cd-p-h">Credit policy and governance (WF-A findings)</h2>
+    <div class="cd-scroll" tabindex="0" role="region" aria-label="WF-A policy treatment">
+    <table class="cd-table"><thead><tr><th scope="col">ID</th><th scope="col">Topic</th><th scope="col">How this workspace treats it</th></tr></thead><tbody>
+      <tr><th scope="row">F-1</th><td>Sizing-mode naming and gearing cap</td><td>The active method and its limitation are shown with the Run (section A). The sizing formula is not changed.</td></tr>
+      <tr><th scope="row">F-2</th><td>DSCR below 1.0x with CONVERGED</td><td>Solver termination and minimum DSCR are shown side by side; a finding states when a Run converged but base CFADS does not cover debt service.</td></tr>
+      <tr><th scope="row">F-3</th><td>Debt capacity rising when revenue falls</td><td>Uses, IDC, fee and DSRA differences are listed from committed Sources &amp; Uses; attribution is labelled UNAVAILABLE unless GEARING binds in both Runs.</td></tr>
+      <tr><th scope="row">F-5</th><td>Unavailable equity IRR</td><td>Shown as UNAVAILABLE with the Run's status — never zero and never an estimate.</td></tr>
+      <tr><th scope="row">F-6</th><td>LLCR / PLCR / EoD / cash sweep</td><td>Only persisted values are shown. PLCR and event of default are UNSUPPORTED; no default or covenant breach is declared without a source-proven contractual term.</td></tr>
+      <tr><th scope="row">F-7</th><td>P50/P90 operating vs lender case</td><td>The operating case and the credit-sizing case are labelled separately; the lender case is shown only for a CURRENT Last Run.</td></tr>
+      <tr><th scope="row">F-8</th><td>Failed stress Run</td><td>Failed Runs are not committed, so they cannot appear as scenarios; a committed Run with failed Run Integrity is labelled as a failure.</td></tr>
+    </tbody></table></div>
+    <p class="cd-note">{{ data.policy.disclosure }}</p>
+  </section>
+  <script type="application/json" data-cd-payload>{{ data | tojson }}</script>
+  {% endif %}
+</div>
+<script src="/static/js/model_credit_decision.js?v={{ asset_version }}" defer></script>
+{% endblock %}
