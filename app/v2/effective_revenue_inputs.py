@@ -76,3 +76,22 @@ def build_effective_revenue_inputs(pis: Any, *, contracts_active: bool = False) 
                          "Saved input", "Deducted from merchant (spot) electricity revenue only, not from contracted PPA revenue.",
                          "Editable in 2. Merchant Adjustments."))
     return tuple(rows)
+
+
+def effective_pricing_fallbacks(pis: Any) -> dict:
+    """Resolved values for the Revenue Pricing Basis summary when the matching input field is empty (display only; no field is written)."""
+    try:
+        revenue = pis.to_projectinputs().revenue
+    except Exception:
+        return {}
+    out = {}
+    tariff = _num(getattr(revenue, "ppa_base_tariff", None))
+    term = _num(getattr(revenue, "ppa_term_years", None))
+    index = _num(getattr(revenue, "ppa_index", None))
+    if tariff is not None:
+        out["tariff"] = tariff
+    if term is not None:
+        out["term"] = term
+    if index is not None:
+        out["escalation"] = round(index * 100, 6)
+    return out

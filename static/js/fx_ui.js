@@ -177,6 +177,11 @@
     if (!p || String(p).indexOf('/v2/workbook/run') !== 0) return;
     if (runToast) { runToast.dismiss(); runToast = null; }
     if (!e.detail.successful) { show({kind: 'error', message: 'The model run did not complete. Nothing was saved over the previous results.'}); return; }
+    // SC-10: the server states the outcome explicitly. A refused Run answers HTTP 200 (HTMX contract), so the status code never decides success.
+    if (e.detail.xhr && e.detail.xhr.getResponseHeader('X-Finco-Run-Outcome') === 'FAILED') {
+      show({kind: 'error', message: 'The model refused to run. Your previous Last Run is unchanged; see the explanation at the top of the page.'});
+      return;
+    }
     // The committed state is what the page reports after the response has been applied (toolbar chip, refreshed out of band by the same response).
     setTimeout(() => {
       const chip = document.querySelector('[data-testid="toolbar-runtime-state"]');

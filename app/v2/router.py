@@ -430,6 +430,12 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
     return apply_ev_presentation(rows, pis)
 
 
+def _ps_horizon_notice(pis):
+    """SC-08: advisory notice when the horizon leaves the SHL maturity off the period grid (read-only; the Run still fails closed)."""
+    from app.v2.horizon_readiness import shl_horizon_notice
+    return shl_horizon_notice(pis)
+
+
 def _build_ps_fields(pis) -> list[dict]:
     """Build project_setup field list — delegates to _build_sheet_fields."""
     return _build_sheet_fields("project_setup", pis)
@@ -703,6 +709,7 @@ def _render_htmx_sheet(
     """Render the project_setup sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
     ctx["ps_fields"] = _build_ps_fields(pis)
+    ctx["ps_horizon_notice"] = _ps_horizon_notice(pis)
     sheet_html = _templates.get_template("partials/sheet_project_setup.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -1091,22 +1098,31 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
             # silently interpreted as a price authority in this projection.
             curve_rows = ()
 
-    from app.v2.effective_revenue_inputs import build_effective_revenue_inputs
+    from app.v2.effective_revenue_inputs import build_effective_revenue_inputs, effective_pricing_fallbacks
     _contract_editor = _build_revenue_contract_editor(pis, ws)
+    _effective_fallback = effective_pricing_fallbacks(pis)
+    _effective_rows = build_effective_revenue_inputs(pis, contracts_active=bool(_contract_editor.get("active")))
+    _effective_balancing = next((r["value"] for r in _effective_rows if r["key"] == "balancing"), None)
+
+    def _first_set(value, fallback):
+        """The entered value when there is one (0 counts), else the resolved effective value."""
+        return value if value not in (None, "") and not (isinstance(value, float) and value == 0.0 and fallback not in (None, 0, 0.0)) else fallback
     return {
         "revenue_fields": fields,
         "revenue_multistream": _contract_editor,
         "revenue_contracts_csrf_token": generate_csrf_token(),
         "revenue_state": revenue_state.value,
         # SC-06: what the next Run will actually use, with provenance (display only).
-        "revenue_effective_inputs": build_effective_revenue_inputs(pis, contracts_active=bool(_contract_editor.get("active"))),
+        "revenue_effective_inputs": _effective_rows,
         "revenue_runtime_summary": rs,
         "revenue_pricing_basis": (
-            ("Contracted tariff", _value("revenue.ppa.base_tariff"), "EUR/MWh"),
-            ("PPA term", _value("revenue.ppa.term_years"), "years"),
-            ("PPA escalation", _value("revenue.ppa.index"), "%"),
+            # SC-06: an empty input field no longer renders as "—" when the model uses a saved legacy-key or template value; the effective
+            # value is shown (with its source in the panel below) and nothing is written to the field.
+            ("Contracted tariff", _first_set(_value("revenue.ppa.base_tariff"), _effective_fallback.get("tariff")), "EUR/MWh"),
+            ("PPA term", _first_set(_value("revenue.ppa.term_years"), _effective_fallback.get("term")), "years"),
+            ("PPA escalation", _first_set(_value("revenue.ppa.index"), _effective_fallback.get("escalation")), "%"),
             ("Merchant balancing", _value("revenue.balancing.merchant_pct"), "% of spot sales"),
-            ("Balancing cost", _value("revenue.balancing.cost_eur_per_mwh"), "EUR/MWh"),
+            ("Balancing cost", _first_set(_value("revenue.balancing.cost_eur_per_mwh"), _effective_balancing), "EUR/MWh"),
             ("CO2 revenue", _value("revenue.balancing.co2_enabled"), ""),
             ("CO2 certificate price", _value("revenue.balancing.co2_price_eur_mwh"), "EUR/MWh"),
         ),
@@ -1999,6 +2015,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "template_source": pis.template_source,
         "hydration_script": hydration_script,
         "ps_fields": _build_ps_fields(pis),
+        "ps_horizon_notice": _ps_horizon_notice(pis),
         "technical_fields": _build_sheet_fields("project_setup", pis),
         "is_bess": _project_type_lower == "storage",
         "capex_fields": _build_sheet_fields("capex", pis),
@@ -2709,7 +2726,7 @@ async def v2_workbook_run(
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
-    def _htmx_error(msg: str, ws_for_render=None) -> HTMLResponse:
+    def _htmx_error(msg: str, ws_for_render=None, run_failure=None) -> HTMLResponse:
         ctx: dict = {
             "ws_dirty": getattr(ws_for_render, "dirty", True),
             "has_runtime": bool(
@@ -2717,12 +2734,14 @@ async def v2_workbook_run(
             ) if ws_for_render else False,
             "field_error": msg,
             "flash_error": "",
+            "run_failure": run_failure,
         }
         banner_html = _templates.get_template(
             "partials/_v2_status_banner.html"
         ).render(ctx)
         oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
-        return HTMLResponse(content=oob)
+        # SC-10: the transport status stays 200 (HTMX contract); the outcome is explicit so nothing infers success from the status code.
+        return HTMLResponse(content=oob, headers={"X-Finco-Run-Outcome": "FAILED"})
 
     def _non_htmx_error(msg: str) -> RedirectResponse:
         return RedirectResponse(
@@ -3060,16 +3079,20 @@ async def v2_workbook_run(
             return busy
         return JSONResponse({"state": "MODEL_EXECUTION_BUSY", "message": BUSY_MESSAGE},
                             status_code=429, headers={"Retry-After": "5"})
-    except (ModelExecutionTimeout, ModelExecutionFailed):
+    except (ModelExecutionTimeout, ModelExecutionFailed) as exc:
         import logging
         logging.getLogger(__name__).error("v2_workbook_run: executor failure or timeout")
         msg = "The calculation could not be completed. Nothing was saved; please retry."
-        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        from app.v2.run_failure_explanation import explain_run_failure
+        return (_htmx_error(msg, ws, explain_run_failure(exc, message=msg, ws=ws, kind="EXECUTION_ERROR"))
+                if is_htmx else _non_htmx_error(msg))
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("v2_workbook_run: engine failure")
         msg = _engine_failure_message(exc)
-        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        from app.v2.run_failure_explanation import explain_run_failure
+        return (_htmx_error(msg, ws, explain_run_failure(exc, message=msg, ws=ws, pis=pis_draft))
+                if is_htmx else _non_htmx_error(msg))
 
     # ── Step 11b: enrich runtime_summary with derivation evidence ────────────── #
     # result["kpis"] is the raw engine KPI dict.  Derivation evidence is a

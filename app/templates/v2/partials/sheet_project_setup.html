@@ -40,6 +40,18 @@
     <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
   {% endif %}
 
+  {% if ps_horizon_notice is defined and ps_horizon_notice %}
+  <section class="sc34-notice fx-ui" role="alert" data-testid="shl-horizon-notice" aria-labelledby="shl-horizon-title">
+    <h3 id="shl-horizon-title">Shareholder loan matures after the model horizon</h3>
+    <p>The shareholder loan matures in model period {{ ps_horizon_notice.maturity_period }}, but with a {{ ps_horizon_notice.horizon_years }}-year project horizon the model ends at period {{ ps_horizon_notice.last_period }} ({{ ps_horizon_notice.last_period_end }}). The model refuses to run in this state; nothing has been moved or changed for you.</p>
+    <p>{% if ps_horizon_notice.min_horizon_years %}To keep the current shareholder-loan terms, set the project horizon to at least <strong data-testid="shl-min-horizon">{{ ps_horizon_notice.min_horizon_years }} years</strong>. {% endif %}Or review the shareholder-loan terms on the Investor tab.</p>
+    <p class="sc34-notice-actions">
+      <button type="button" data-sc34-goto-field="{{ ps_horizon_notice.horizon_field_id }}" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2 dark:bg-blue-600">Go to Project Horizon</button>
+      <button type="button" data-sc34-goto-tab="tab-investor" class="text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-4 py-2 dark:bg-gray-800 dark:text-white dark:border-gray-600">View shareholder-loan terms</button>
+    </p>
+  </section>
+  {% endif %}
+
   {% set _cod = (ps_fields | selectattr('field_id', 'equalto', 'project_setup.technical.cod_date') | list | first) %}
   {% set _months = (ps_fields | selectattr('field_id', 'equalto', 'project_setup.technical.construction_months') | list | first) %}
   {% if _cod and _months and project_editable %}
@@ -82,3 +94,4 @@
 </div>{# v2-sheet-project-setup #}
 <script src="/static/js/date_duration.js"></script>
 <script src="/static/js/construction_timing.js"></script>
+<script src="/static/js/input_guidance.js"></script>

@@ -3508,3 +3508,16 @@ form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #
 .v2-effective-detail { flex-basis: 100%; opacity: .85; }
 .v2-effective-note { margin: .4rem 0 0; font-size: .8rem; opacity: .85; }
 @media (max-width: 700px) { .v2-effective-row { grid-template-columns: minmax(0, 1fr); } }
+
+/* SC34-B: guided input notice (blocking-state explanation with field navigation) */
+.sc34-notice { margin: .5rem 0 .75rem; padding: .7rem .85rem; border: 1px solid var(--fb-danger, #c43e3e); border-left-width: 4px; border-radius: .5rem; }
+.sc34-notice h3 { margin: 0 0 .3rem; font-size: .95rem; }
+.sc34-notice p { margin: .25rem 0; }
+.sc34-notice-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+/* SC-10: structured failed-Run explanation inside the status banner */
+.v2-run-failure { margin: .5rem 0 0; display: grid; grid-template-columns: minmax(7rem, 9rem) minmax(0, 1fr); gap: .25rem .75rem; font-size: .875rem; }
+.v2-run-failure dt { font-weight: 600; }
+.v2-run-failure dd { margin: 0; }
+.v2-run-failure-goto { text-decoration: underline; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; font: inherit; }
+@media (max-width: 700px) { .v2-run-failure { grid-template-columns: minmax(0, 1fr); } .v2-run-failure dd { margin-bottom: .35rem; } }
