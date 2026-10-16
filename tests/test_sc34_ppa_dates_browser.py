@@ -105,3 +105,43 @@ def test_fixed_indexed_and_scheduled_ppas_over_a_partial_term_save_with_explicit
     assert s.page.locator('[data-field="start_date"]').first.input_value() == a        # the saved dates are what reopens
     assert s.errors == [], s.errors
     s.close()
+
+
+@pytest.mark.parametrize("template", TEMPLATES)
+def test_a_mid_period_cod_changes_the_axis_and_the_offered_dates_are_still_accepted(live_server, browser, template):
+    """Construction-date boundary: a COD that is not on a calendar-year boundary shifts every operating period; the helper follows the new axis."""
+    s = Session(live_server, browser, f"sc34-dates-cod-{template[8:12]}", template=template)
+    page = s.page
+    page.evaluate("document.getElementById('tab-project-setup').click()")
+    card = page.locator("[data-testid=construction-timing]")
+    card.scroll_into_view_if_needed()
+    page.wait_for_function("() => document.querySelector('[data-testid=construction-timing] [data-dd=end]').value !== ''")
+    card.locator('[data-dd="start"]').fill("2030-02-15")
+    card.locator('[data-dd="duration"]').fill("14")
+    card.locator('[data-dd="unit"]').select_option("months")
+    assert card.locator('[data-dd="end"]').input_value() == "2031-04-15"
+    with page.expect_response(lambda r: "/grid/save" in r.url and r.request.method == "POST") as done:
+        page.locator("[data-ct-save]").click()
+    assert done.value.status == 200
+    page.reload()
+    boundaries = _open(s)
+    assert boundaries and not all(b.endswith(("-06-30", "-12-31")) for b in boundaries)   # the axis really moved off the calendar-year grid
+    window_start = s.window_end and page.locator("[data-testid=ppa-quick-add]").get_attribute("data-window-start")
+    assert window_start in boundaries
+    bad_end = _day_before(boundaries[7])
+    assert bad_end not in boundaries
+    s.fill(price="58", share="40", ref="REF-COD")
+    s.set_dates(end=bad_end)
+    s.add()
+    error = page.locator("[data-quick-error]")
+    offered = {error.locator("[data-quick-suggest]").get_attribute("data-quick-suggest"),
+               error.locator("[data-quick-suggest-alt]").get_attribute("data-quick-suggest-alt")}
+    assert offered == {boundaries[6], boundaries[7]}
+    error.locator(f'[data-quick-suggest-alt="{boundaries[7]}"], [data-quick-suggest="{boundaries[7]}"]').click()
+    s.add()
+    assert page.locator("[data-quick-error]").is_hidden()
+    _save(s)                                                                         # the canonical validator accepted the offered date
+    stream = s.saved_book()["streams"][0]
+    assert (stream["start_date"], stream["end_date"]) == (window_start, boundaries[7])
+    assert s.errors == [], s.errors
+    s.close()
