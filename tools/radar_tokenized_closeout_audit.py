@@ -193,7 +193,10 @@ def _audit_assets(registry: VenueRegistry, store: VenueMarketStore,
                 "earliest_usable_source_timestamp": min(usable) if usable else None,
                 "latest_usable_source_timestamp": max(usable) if usable else None,
                 "eligible_source_span_seconds": distribution.history_span_seconds,
-                "clock_contract_valid": bool(usable),
+                # Usable source-timed history is NOT itself proof that a
+                # forward-only V2 clock contract was independently attested.
+                "source_timed_basis_history_present": bool(usable),
+                "clock_contract_validation_state": "NOT_INDEPENDENTLY_ATTESTED",
                 "basis_valid": h.latest_basis_bps is not None,
                 "history_sufficient": (
                     distribution.usable_observation_count >= MIN_USABLE_OBSERVATIONS
@@ -268,8 +271,11 @@ def run_audit(source: Path, *, as_of: datetime, max_assets: int = MAX_UNDERLYING
                 x.state == "HISTORICAL_COMPARISON_AVAILABLE"
                 for x in deepstate.historical_comparisons),
             "raw_unit": RAW_COMPARISON_UNIT,
+            "historical_normalization_states": dict(sorted(Counter(
+                x.normalization_state for x in deepstate.evidence).items())),
             "normalization_authority": "NOT_APPROVED_FOR_CURRENT_MARKET",
             "current_cross_venue": CURRENT_CROSS_VENUE,
+            "current_freshness_reason": deepstate.current_reason,
             "current_executable_quote": deepstate.current_executable_quote_state,
         },
         "release_gate": "NOT_ASSESSED_NO_DEPLOYMENT_EVIDENCE",
