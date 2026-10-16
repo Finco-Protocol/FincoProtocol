@@ -486,15 +486,65 @@ def test_unavailable_venue_store_degrades_terminal(venue_env, monkeypatch, tmp_p
 
 # ── 16. no execution/signing/custody surface ────────────────────────────────
 
+_FORBIDDEN_CRYPTO_EXECUTION_SEGMENTS = frozenset({
+    "sign", "signing", "order", "orders", "execute", "trade", "swap", "custody",
+})
+
+
+def _assert_crypto_route_is_observational(route):
+    """Reject actual execution route tokens without mistaking signals for signing."""
+    methods = getattr(route, "methods", set())
+    assert methods == {"GET"}, f"{route.path} must be GET-only"
+    segments = {
+        segment.casefold()
+        for segment in route.path.strip("/").split("/")
+        if segment and not (segment.startswith("{") and segment.endswith("}"))
+    }
+    prohibited = segments & _FORBIDDEN_CRYPTO_EXECUTION_SEGMENTS
+    assert not prohibited, (
+        f"{route.path} contains prohibited execution route segments: {sorted(prohibited)}")
+
+
 def test_crypto_api_is_read_only_get_only():
     from app.api.v1.crypto_router import router
     for route in router.routes:
-        methods = getattr(route, "methods", set())
-        assert methods == {"GET"}, f"{route.path} must be GET-only"
-        assert "sign" not in route.path and "order" not in route.path
+        _assert_crypto_route_is_observational(route)
     source = open("app/api/v1/crypto_router.py", encoding="utf-8").read().lower()
     for forbidden in ("post", "put(", "delete(", "sign", "custody", "swap"):
         assert f'"{forbidden}' not in source
+
+
+@pytest.mark.parametrize("path", [
+    "/crypto/sign",
+    "/crypto/signing",
+    "/crypto/orders",
+    "/crypto/order",
+    "/crypto/execute",
+    "/crypto/trade",
+    "/crypto/swap",
+    "/crypto/custody",
+    "/crypto/tokenized/{canonical_asset_id}/signals/execute",
+    "/crypto/tokenized/{canonical_asset_id}/orders",
+])
+def test_crypto_api_execution_route_negative_control(path):
+    """A future GET-only execution endpoint is still forbidden."""
+    from types import SimpleNamespace
+
+    with pytest.raises(AssertionError, match="prohibited execution"):
+        _assert_crypto_route_is_observational(
+            SimpleNamespace(path=path, methods={"GET"}))
+
+
+def test_crypto_api_signals_are_observational_not_signing():
+    from types import SimpleNamespace
+
+    _assert_crypto_route_is_observational(SimpleNamespace(
+        path="/crypto/tokenized/{canonical_asset_id}/signals",
+        methods={"GET"}))
+    with pytest.raises(AssertionError, match="GET-only"):
+        _assert_crypto_route_is_observational(SimpleNamespace(
+            path="/crypto/tokenized/{canonical_asset_id}/signals",
+            methods={"POST"}))
 
 
 # ── product truth contract ──────────────────────────────────────────────────
