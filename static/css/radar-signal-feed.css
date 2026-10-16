@@ -1,0 +1,16 @@
+/* R6 Tokenized Signals: existing Radar tokens, read-only detail disclosure. */
+.tm-signal-feed { display: grid; gap: .55rem; margin-block: .9rem; }
+.tm-signal-event { border: 1px solid #94a3b855; border-radius: .5rem; background: transparent; overflow: hidden; }
+.tm-signal-event > summary { padding: .75rem .95rem; display: flex; align-items: center; justify-content: space-between; gap: .8rem; cursor: pointer; }
+.tm-signal-event > summary:hover { background: #94a3b815; }
+.tm-signal-main { display: grid; gap: .2rem; min-width: 0; }
+.tm-signal-status { display: grid; gap: .2rem; flex-shrink: 0; justify-items: end; }
+.tm-signal-evidence { padding: .85rem 1rem; border-top: 1px solid #94a3b833; overflow-wrap: anywhere; }
+.tm-signal-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: .7rem; padding: .8rem 0; }
+.tm-signal-details > div { display: flex; flex-direction: column; gap: .18rem; min-width: 0; }
+.tm-signal-details span { font-size: .77rem; color: var(--text-muted, #64748b); }
+.tm-signal-details strong { font-size: .83rem; font-weight: 600; }
+.tm-signal-digests { display: grid; gap: .45rem; padding: .7rem 0; border-block: 1px dashed #94a3b855; }
+.tm-signal-digests span { font-size: .8rem; }
+.tm-signal-digests code, .tm-signal-details code { overflow-wrap: anywhere; white-space: normal; word-break: break-all; }
+@media (max-width: 640px) { .tm-signal-event > summary { align-items: flex-start; flex-direction: column; } .tm-signal-status { display: flex; align-items: center; } }

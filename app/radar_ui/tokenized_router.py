@@ -407,6 +407,21 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
     relative_value = shared["relative_value"]
     deepstate_history = shared["deepstate_history"]
 
+    # R6 source-observed lifecycle feed is an EXTRA read and is never built
+    # unless BOTH existing premium entitlements have already been granted.
+    signal_feed = None
+    if gates.history.access_allowed and gates.dislocation.access_allowed:
+        from app.crypto_terminal.tokenized_signal_read import read_tokenized_signals
+        if store is not None:
+            try:
+                signal_feed = read_tokenized_signals(
+                    canonical_asset_id, gates=gates, registry=registry,
+                    store=store, as_of=now)
+            except Exception:
+                # Provider-free read errors must fail closed, never disclose
+                # data or break the public Tokenized Markets detail page.
+                signal_feed = None
+
     # RWA Integrity is factual/public product evidence.  It reuses the exact
     # registry/store/reference context above and has no additional entitlement
     # or acquisition path.  Any evidence-dimension failure degrades fail-soft.
@@ -435,6 +450,7 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             "integrity": integrity,
             "relative_value": relative_value,
             "deepstate_history": deepstate_history,
+            "signal_feed": signal_feed,
             "access": gates.public_view(),
         },
     )

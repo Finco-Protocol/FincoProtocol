@@ -364,7 +364,21 @@ def test_crypto_api_handlers_are_plain_def():
     import inspect
     from app.api.v1.crypto_router import router
     endpoints = [r for r in router.routes if hasattr(r, "endpoint")]
-    assert len(endpoints) == 7
+    expected_paths = {
+        "/crypto/tokenized",
+        "/crypto/tokenized/{canonical_asset_id}",
+        "/crypto/tokenized/{canonical_asset_id}/signals",
+        "/crypto/tokenized/{canonical_asset_id}/integrity",
+        "/crypto/tokenized/{canonical_asset_id}/history",
+        "/crypto/tokenized/{canonical_asset_id}/dislocations",
+        "/crypto/yield",
+        "/crypto/yield/{canonical_id}",
+    }
+    paths = [route.path for route in endpoints]
+    assert len(paths) == len(set(paths)), "duplicate Crypto API route registration"
+    assert set(paths) == expected_paths, (
+        f"Crypto API route inventory changed: "
+        f"missing={expected_paths - set(paths)}, unexpected={set(paths) - expected_paths}")
     for route in endpoints:
         assert not asyncio.iscoroutinefunction(route.endpoint), (
             f"Handler {route.endpoint.__name__!r} must be a plain def")

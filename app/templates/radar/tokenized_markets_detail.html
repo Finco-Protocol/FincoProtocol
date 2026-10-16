@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
   <link rel="stylesheet" href="/static/css/finco-surface.css">
   <link rel="stylesheet" href="/static/css/radar-monitor-v2.css">
+  <link rel="stylesheet" href="/static/css/radar-signal-feed.css">
   <script src="/static/interaction/overview-charts.js" defer></script>
 </head>
 <body class="radar">
@@ -330,6 +331,77 @@
     {% endfor %}
   {% else %}
     <p class="fs-note" data-testid="tmd-relative-none">No eligible canonical representation history is available.</p>
+  {% endif %}
+</section>
+
+<section class="fs-section" id="tokenized-signals" data-testid="tmd-signals-feed">
+  <h2>Signals &amp; Events <span class="fs-badge">Observed market evidence</span></h2>
+  <p class="fs-note">
+    Read-only Tokenized dislocation lifecycle, not a trading signal or notification log.
+    Events preserve their original market-observed timestamps and exact venue identities.
+    Historical events do not imply current prices or continuous dislocation.
+  </p>
+  {% if not access.history.allowed or not access.dislocation.allowed %}
+    <p class="fs-note" data-testid="tmd-signals-locked">
+      Full Signals &amp; Events evidence requires both tokenized.history and
+      tokenized.dislocation. No protected event feed was constructed for this request.
+    </p>
+  {% elif not signal_feed %}
+    <p class="fs-note" data-testid="tmd-signals-unavailable">
+      The source-observed lifecycle feed is unavailable. This does not indicate that a dislocation cleared.
+    </p>
+  {% else %}
+    <p class="fs-note" data-testid="tmd-signals-summary">
+      {{ signal_feed.state }} · {{ signal_feed.events | length }} observed events
+      · evaluation {{ signal_feed.as_of }} · {{ signal_feed.policy_version }}
+      · Deepstate current signals {{ signal_feed.current_deepstate_signals }}
+    </p>
+    {% if signal_feed.events %}
+      <div class="tm-signal-feed" data-testid="tmd-signals-list">
+        {% for event in signal_feed.events %}
+          <details class="tm-signal-event" data-testid="tmd-signal-event">
+            <summary>
+              <span class="tm-signal-main">
+                <strong>{{ event.kind }}</strong>
+                <span class="fs-sub">{{ event.source_observed_at }}</span>
+                <span class="fs-sub">{{ event.identity.venue_id }} · {{ event.identity.instrument_id }}</span>
+              </span>
+              <span class="tm-signal-status">
+                <span class="fs-badge {% if event.temporal_classification == 'CURRENT' and event.evidence_state == 'AVAILABLE' %}fs-badge--ok{% else %}fs-badge--warn{% endif %}">{{ event.temporal_classification }}</span>
+                <span class="fs-sub">{{ event.evidence_state }}</span>
+              </span>
+            </summary>
+            <div class="tm-signal-evidence">
+              <p>{{ event.description }}</p>
+              <div class="tm-signal-details">
+                <div><span>Canonical asset</span><strong>{{ event.identity.canonical_asset_id }}</strong></div>
+                <div><span>Venue / chain</span><strong>{{ event.identity.venue_id }} · {{ event.identity.chain_id }}</strong></div>
+                <div><span>Exact contract</span><code>{{ event.identity.contract_address }}</code></div>
+                <div><span>Representation type</span><strong>{{ event.identity.representation_type }}</strong></div>
+                <div><span>Previous → current classification</span><strong>{{ event.previous_classification }} → {{ event.current_classification }}</strong></div>
+                <div><span>Basis / threshold</span><strong>{{ event.basis_bps if event.basis_bps is not none else 'Unavailable' }} / {{ event.threshold_bps }} bp</strong></div>
+                <div><span>Evidence / reason</span><strong>{{ event.evidence_state }} · {{ event.basis_reason or '—' }}</strong></div>
+                <div><span>Continuity / previous context</span><strong>{{ event.continuity_state }} · {{ event.persistence_start_state or 'UNKNOWN' }}</strong></div>
+                <div><span>First proven crossing</span><strong>{{ event.proven_crossing_source_timestamp or 'Not proven' }}</strong></div>
+                <div><span>Observed span</span><strong>{{ event.observed_span_seconds if event.observed_span_seconds is not none else 'Unknown' }}{% if event.observed_span_seconds is not none %} seconds of observed history{% endif %}</strong></div>
+                <div><span>Historical distribution</span><strong>{% if event.distribution %}{{ event.distribution.state }} · n={{ event.distribution.usable_observation_count }} · percentile {{ event.distribution.current_basis_percentile if event.distribution.current_basis_percentile is not none else 'unavailable' }}{% else %}Unavailable{% endif %}</strong></div>
+                <div><span>Suppression reason</span><strong>{{ event.suppression_reason or 'None recorded' }}</strong></div>
+                <div><span>Eligible for possible future alert</span><strong>{{ 'Yes (not delivered)' if event.eligible_for_future_alert else 'No' }}</strong></div>
+              </div>
+              <div class="tm-signal-digests">
+                <span>Original event ID <code>{{ event.event_id }}</code></span>
+                <span>Prior observation digest <code>{{ event.prior_observation_digest or 'UNKNOWN_PRIOR' }}</code></span>
+                <span>Current observation digest <code>{{ event.current_observation_digest }}</code></span>
+              </div>
+              <p class="fs-note">Observations establish only source-proven steps; same-direction events or stale evidence do not establish continuous persistence. Alert eligibility is not delivery.</p>
+            </div>
+          </details>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="fs-note" data-testid="tmd-signals-empty">No material lifecycle transitions are proven by the bounded persisted observations. Unknown prehistory does not establish a new dislocation.</p>
+    {% endif %}
+    <p class="fs-sub">The feed is bounded to 30 observations-derived events per request, newest first. Read-only, no acquisition or notification delivery.</p>
   {% endif %}
 </section>
 
