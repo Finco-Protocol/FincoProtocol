@@ -14,7 +14,7 @@ import subprocess
 import sys
 import types
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -330,3 +330,76 @@ def test_commercial_stress_scales_a_series_price_proportionally_without_touching
     shocked = json.loads(changed_book(raw, "ppa_down", 10))
     assert shocked["streams"][0]["index_series"] == json.loads(raw)["streams"][0]["index_series"]
     assert shocked["streams"][0]["price_eur_mwh"] == pytest.approx(54.0)
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+@pytest.mark.parametrize("price,level", [(60.0, 1e308), (1e-200, 1e-200), (1e-300, 1e-200),
+                                      (1e-320, 1e-300), (1e200, 1e200), (0.0, 1e308)])
+def test_model_year_base_identity_survives_extreme_index_scales(kind, price, level):
+    pi = _project(kind); op = _operating(pi)
+    raw = _payload(kind, op, price=price, series=_series([level] * _n(op)))
+    out = _run(pi, raw, kind)
+    cfg = parse_config(json.dumps(raw))
+    for period in op:
+        row = next(r for r in out[period.index]["multistream_evidence"]["streams"] if r["id"] == "ppa-1")
+        with localcontext() as context:
+            context.prec = 80
+            expected = Decimal(str(price)) * Decimal(str(level)) / Decimal(str(level))
+        assert row["price_eur_mwh"] == float(expected) == price
+        if price > 0:
+            assert row["revenue_keur"] > 0
+        else:
+            assert row["revenue_keur"] == 0
+    controlled = next(r for r in cfg.evaluate(op[0], 1000).stream_results if r.stream_id == "ppa-1")
+    with localcontext() as context:
+        context.prec = 80
+        # The unchanged revenue kernel rounds EUR multiplication before kEUR conversion.
+        gross_eur = float(Decimal(600) * Decimal.from_float(price))
+        expected_revenue = float(Decimal.from_float(gross_eur) / Decimal(1000))
+    assert controlled.stream_revenue_keur == expected_revenue
+    if price == 1e-200:
+        assert controlled.stream_revenue_keur == 6e-201
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+@pytest.mark.parametrize("base_level,later_level", [(1e-308, 1e308), (1e308, 1e-308)])
+def test_genuine_zero_base_price_is_not_rejected_for_an_extreme_index_ratio(kind, base_level, later_level):
+    pi = _project(kind); op = _operating(pi)
+    raw = _payload(kind, op, price=0, series=_series([base_level] + [later_level] * (_n(op) - 1)))
+    for row in _run(pi, raw, kind).values():
+        assert row["ppa_revenue_keur"] == 0
+        if row["is_operation"]:
+            assert row["ppa_tariff_eur_mwh"] == 0
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+@pytest.mark.parametrize("scale", ["1e-300", "1e-200", "1", "1e200", "1e300"])
+def test_model_year_index_scale_invariance_uses_the_canonical_schedule(kind, scale):
+    pi = _project(kind); op = _operating(pi)
+    unscaled = [100, 125, 80] + [110] * (_n(op) - 3)
+    levels = [float(Decimal(level) * Decimal(scale)) for level in unscaled]
+    out = _run(pi, _payload(kind, op, series=_series(levels)), kind)
+    for period in op:
+        row = next(r for r in out[period.index]["multistream_evidence"]["streams"] if r["id"] == "ppa-1")
+        with localcontext() as context:
+            context.prec = 80
+            expected = Decimal("60") * Decimal(str(levels[period.year_index - 1])) / Decimal(str(levels[0]))
+        assert row["price_eur_mwh"] == float(expected)
+        assert row["price_eur_mwh"] == 60 * unscaled[period.year_index - 1] / 100
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+@pytest.mark.parametrize("price,base_level,later_level", [(60.0, 1e-308, 1e308), (1e-200, 1e308, 1e-308)])
+def test_unrepresentable_final_model_year_price_refuses_the_production_schedule(kind, price, base_level, later_level):
+    pi = _project(kind); op = _operating(pi)
+    levels = [base_level] + [later_level] * (_n(op) - 1)
+    with localcontext() as context:
+        context.prec = 80
+        expected = Decimal(str(price)) * Decimal(str(later_level)) / Decimal(str(base_level))
+    converted = float(expected)
+    assert expected > 0 and (converted == float("inf") or converted == 0)
+    raw = _payload(kind, op, price=price, series=_series(levels))
+    # Valid observations and full axis coverage do not authorize an unrepresentable price.
+    parse_config(json.dumps(raw)).validate_axis(op)
+    with pytest.raises(ValueError, match="REVENUE_V2_INDEX_PRICE"):
+        _run(pi, raw, kind)

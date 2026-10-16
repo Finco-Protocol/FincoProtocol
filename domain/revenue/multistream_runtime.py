@@ -238,8 +238,15 @@ class MultiStreamRevenue:
                         raise ValueError(f"REVENUE_V2_INDEX_COVERAGE: no index level for operating year {year_index}; "
                                          "the series is never extrapolated or replaced by an annual rate")
                     base_level = dated.index_series[0][1]
+                    with localcontext() as context:
+                        context.prec = 34
+                        indexed_price = (Decimal(str(stream.ppa.ppa_base_price_eur_mwh))
+                                         * Decimal(str(levels[year_index])) / Decimal(str(base_level)))
+                    price = float(indexed_price)
+                    if not math.isfinite(price) or (indexed_price != 0 and price == 0):
+                        raise ValueError("REVENUE_V2_INDEX_PRICE: indexed price cannot be represented as a finite float without underflow to zero")
                     stream = replace(stream, ppa=replace(stream.ppa,
-                        ppa_base_price_eur_mwh=stream.ppa.ppa_base_price_eur_mwh * levels[year_index] / base_level,
+                        ppa_base_price_eur_mwh=price,
                         ppa_price_index=0.0))
                 if stream.enabled and dated.price_curve:
                     point = next((price for starts, price in dated.price_curve if starts == when), None)
