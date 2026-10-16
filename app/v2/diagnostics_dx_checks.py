@@ -12,12 +12,13 @@ Rules enforced here (and pinned by tests):
   balances and flows, an explicit reserve regime);
 * no balancing plug: the residual is the signed difference ``observed - expected`` of a stated identity;
 * tolerance sources: ``TOL_KEUR`` (Run Integrity, full-precision evidence) plus, only for values the product persists
-  rounded to 2 decimals, a half-quantum representation allowance per non-zero rounded term - reported, never hidden.
+  rounded to 2 decimals, the check's stated half-quantum representation allowance - reported, never hidden.
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Callable, Mapping, Optional
 
 from app.run_integrity.contracts import TOL_KEUR
@@ -99,12 +100,13 @@ DEFINITIONS: tuple[DxDefinition, ...] = (
         "tab-returns", ("shl.maturity",), ("QM-TERM-002",)),
     DxDefinition(
         "DX-DIST-001", "Cash Flow", "Distributions stay within distributable cash and the model's own lock-up gate",
-        "Per period: committed net dividends do not exceed cash available for distribution; no distribution is paid in a "
-        "period the committed distribution schedule flags as lock-up; the sponsor legal-equity distribution equals the "
-        "cash-waterfall dividend. No contractual lock-up rule is invented.",
+        "Per period: dividends cannot exceed the committed distribution-account release, including retained opening "
+        "funds. Adjacent account balances reconcile with inflow and the committed lock-up/release gate; no dividend "
+        "is paid during lock-up. Sponsor legal-equity distributions equal cash-waterfall dividends. No contractual rule is invented.",
         "HIGH", ("financial_statements.pf_cash_waterfall", "distribution_schedule.periods.lockup_active",
+                 "distribution_schedule.periods.distribution_source", "integrity_evidence.balance_sheet.distribution_account",
                  "integrity_evidence.sponsor.periods"),
-        "TOL_KEUR + half-quantum per non-zero 2dp statement term", "pf_cash_waterfall + distribution_schedule + sponsor",
+        "TOL_KEUR + half-quantum per 2dp statement term (including rounded zero)", "pf_cash_waterfall + distribution_schedule + integrity_evidence",
         "tab-returns", ("debt.senior.lockup_dscr",), ("QM-COV-003",)),
     DxDefinition(
         "DX-RES-001", "Reserves", "Cash DSRA balance roll-forward",
@@ -538,6 +540,8 @@ def _eval_shl_maturity(facts: Facts) -> tuple[list[dict], Optional[dict]]:
 
 
 def _eval_dist(facts: Facts) -> tuple[list[dict], Optional[dict]]:
+    if not facts.digest_ok:
+        return _unavailable_all(facts, "EVIDENCE_DIGEST_NOT_INTACT"), None
     out = []
     for i in facts.indices():
         pf = facts.pf.get(i)
@@ -553,25 +557,69 @@ def _eval_dist(facts: Facts) -> tuple[list[dict], Optional[dict]]:
         if paid is None or available is None or not isinstance(lock, bool):
             out.append(_period(i, facts, UNAVAILABLE, reason="DISTRIBUTION_OR_LOCKUP_EVIDENCE_MISSING"))
             continue
-        legal = _num((facts.sp(i) or {}).get("legal_equity_distribution")) if facts.digest_ok else None
+        # This persisted source identifies the existing retain-while-locked / release-when-open policy.
+        # Other schedule producers do not prove authority to release an opening account balance.
+        if d.get("distribution_source") != "clean_g2c_cf109_gate":
+            out.append(_period(i, facts, UNAVAILABLE, reason="DISTRIBUTION_RELEASE_AUTHORITY_MISSING"))
+            continue
+        sp = facts.sp(i)
+        legal = _num((sp or {}).get("legal_equity_distribution"))
+        opening = _num((facts.ibs.get(i - 1) or {}).get("distribution_account"))
+        closing = _num((facts.ibs.get(i) or {}).get("distribution_account"))
+        if opening is None or closing is None:
+            out.append(_period(i, facts, UNAVAILABLE, reason="ADJACENT_DISTRIBUTION_ACCOUNT_BALANCE_MISSING"))
+            continue
+        if legal is None:
+            out.append(_period(i, facts, UNAVAILABLE, reason="SPONSOR_DISTRIBUTION_EVIDENCE_MISSING"))
+            continue
+        previous_pf = facts.pf.get(i - 1)
+        try:
+            ordered = date.fromisoformat(previous_pf["date"]) < date.fromisoformat(pf["date"])
+        except (KeyError, TypeError, ValueError):
+            ordered = False
+        if (not ordered or not d.get("date") or not sp.get("date")
+                or not _same_dates(pf, d, sp, facts.bs.get(i), facts.pnl.get(i))
+                or not _same_dates(previous_pf, facts.bs.get(i - 1), facts.pnl.get(i - 1))):
+            out.append(_period(i, facts, UNAVAILABLE, reason="DISTRIBUTION_PERIOD_ALIGNMENT_NOT_PROVEN"))
+            continue
+        # Release is an audit movement, not a new waterfall calculation. It may also service SHL;
+        # legal-equity dividends therefore have an upper bound, not an equality to this release.
+        account_available = opening + available
+        release = account_available - closing
+        expected_closing = account_available if lock else 0.0
         comps = {"net_dividends": _comp(paid, "pf_cash_waterfall.net_dividends_keur", ROUNDED),
                  "cash_available_for_distribution": _comp(available, "pf_cash_waterfall.fcf_for_distribution_keur", ROUNDED),
+                 "opening_distribution_account": _comp(opening, "integrity_evidence.balance_sheet[i-1].distribution_account", FULL),
+                 "closing_distribution_account": _comp(closing, "integrity_evidence.balance_sheet[i].distribution_account", FULL),
+                 "distribution_account_release": _comp(release, "opening distribution account + committed inflow - closing distribution account", ROUNDED),
                  "lockup_active_committed_flag": {"value": lock, "source": "distribution_schedule.lockup_active", "basis": "FLAG"},
                  "sponsor_legal_equity_distribution": _comp(legal, "integrity_evidence.sponsor.legal_equity_distribution", FULL)}
-        tol_cap = _tol([paid, available])
-        problems = []
-        if paid - available > tol_cap:
-            problems.append("DISTRIBUTION_EXCEEDS_CASH_AVAILABLE")
-        if lock and paid >= QUANTUM_2DP:
-            problems.append("DISTRIBUTION_PAID_IN_COMMITTED_LOCKUP_PERIOD")
-        if legal is not None and abs(legal - paid) > _tol([paid]):
-            problems.append("SPONSOR_DISTRIBUTION_DISAGREES_WITH_CASH_WATERFALL")
-        excess = max(paid - available, 0.0)
-        status = FAIL if problems else PASS
-        out.append(_period(i, facts, status, observed=paid, expected=min(paid, available) if not lock else 0.0,
-                           tolerance=tol_cap, components=comps, reason=";".join(problems) or None,
-                           residual=(excess if "DISTRIBUTION_EXCEEDS_CASH_AVAILABLE" in problems else (paid if lock and problems else
-                                     (paid - legal if legal is not None and problems else 0.0)))))
+        # A persisted zero can represent a nonzero amount below half a quantum. These are
+        # representation bounds for these two rounded lines, not new financial tolerances.
+        tol_flow = TOL_KEUR + QUANTUM_2DP
+        tol_paid = TOL_KEUR + QUANTUM_2DP
+        tol_cap = TOL_KEUR + 2 * QUANTUM_2DP
+        breaches = []
+        limit = 0.0 if lock else max(0.0, release)
+        if paid - limit > tol_cap:
+            breaches.append(("DISTRIBUTION_EXCEEDS_CASH_AVAILABLE", paid, limit, tol_cap))
+        if legal - limit > tol_flow:
+            breaches.append(("DISTRIBUTION_EXCEEDS_CASH_AVAILABLE", legal, limit, tol_flow))
+        if lock and paid > tol_paid:
+            breaches.append(("DISTRIBUTION_PAID_IN_COMMITTED_LOCKUP_PERIOD", paid, 0.0, tol_paid))
+        if lock and legal > TOL_KEUR:
+            breaches.append(("DISTRIBUTION_PAID_IN_COMMITTED_LOCKUP_PERIOD", legal, 0.0, TOL_KEUR))
+        if abs(closing - expected_closing) > tol_flow:
+            breaches.append(("DISTRIBUTION_ACCOUNT_MOVEMENT_DISAGREES_WITH_COMMITTED_GATE", closing, expected_closing, tol_flow))
+        if abs(legal - paid) > tol_paid:
+            breaches.append(("SPONSOR_DISTRIBUTION_DISAGREES_WITH_CASH_WATERFALL", paid, legal, tol_paid))
+        if breaches:
+            identity, observed, expected, tolerance = breaches[0]
+            comps["identity_evaluated"] = {"value": identity, "source": "first failed distribution identity", "basis": "TEXT"}
+            out.append(_period(i, facts, FAIL, observed=observed, expected=expected, tolerance=tolerance,
+                               components=comps, reason=";".join(dict.fromkeys(b[0] for b in breaches))))
+        else:
+            out.append(_period(i, facts, PASS, observed=paid, expected=paid, tolerance=tol_cap, components=comps))
     return out, None
 
 
@@ -668,7 +716,7 @@ EVALUATORS: dict[str, Callable[[Facts], tuple[list[dict], Optional[dict]]]] = {
 
 
 USES_SOURCES = {"DX-CAPEX-001": (), "DX-OPEX-001": ("pnl", "pf"), "DX-DEP-001": ("ibs", "pnl", "bs"), "DX-CASH-001": ("pf",),
-                "DX-SHL-001": ("ibs", "sponsor", "pnl"), "DX-SHL-002": ("ibs",), "DX-DIST-001": ("pf", "dist", "sponsor"),
+                "DX-SHL-001": ("ibs", "sponsor", "pnl"), "DX-SHL-002": ("ibs",), "DX-DIST-001": ("pf", "dist", "sponsor", "ibs", "bs", "pnl"),
                 "DX-RES-001": ("ibs", "pf"), "DX-REV-001": ("pnl", "pf")}
 
 

@@ -42,12 +42,13 @@ def _base_state() -> dict:
                    "fcf_for_distribution_keur": 60.0 if op else 0.0, "net_dividends_keur": 50.0 if op else 0.0})
         bs.append({"period_index": i, "date": date, "net_fixed_assets_keur": 1000.0 - acc})
         ibs.append({"period_index": i, "gross_fixed_assets": 1000.0, "accumulated_depreciation": acc,
-                    "dsra_balance": 50.0 if i >= 2 else 0.0, "shl": shl[i]})
+                    "dsra_balance": 50.0 if i >= 2 else 0.0, "shl": shl[i], "distribution_account": 0.0})
         f = flows.get(i, (0.0, 0.0, 0.0, 0.0))
         sp.append({"period": i + 100, "date": date, "is_construction": not op,       # own index deliberately NOT the statement index
                    "shl_contribution": 300.0 if i == 1 else 0.0, "shl_cash_interest": f[1], "shl_principal": f[2],
                    "legal_equity_distribution": 50.0 if op else 0.0})
-        dist.append({"period": i, "date": date, "lockup_active": False, "distribution_keur": 50.0 if op else 0.0})
+        dist.append({"period": i, "date": date, "lockup_active": False, "distribution_keur": 50.0 if op else 0.0,
+                     "distribution_source": "clean_g2c_cf109_gate"})
         tax.append({"period": i, "date": date, "is_operation": op})
     evidence = {"schema": "RUN_INTEGRITY_EVIDENCE_V1",
                 "sources_uses": {"summary": {"total_uses_keur": 1050.0, "initial_dsra_funding_keur": 50.0, "shareholder_loan_cash_keur": 300.0},
