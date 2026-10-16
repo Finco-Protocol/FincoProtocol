@@ -98,7 +98,9 @@ def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
 
 
 def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
+    import model_v2_governance as _governance
     from model_v2_governance import released_engine_authority_matches
+    from ppa01_candidate_authority import frozen_scope_exempt as ppa01_candidate_exempt
     from radar_authority_governance import reviewed_radar_authority_matches
 
     changed = changed_paths_vs_main() if changed is None else changed
@@ -112,6 +114,9 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
         and not (f.startswith("finco_core/") and released_engine_authority_matches(f))
         and f != "finco_radar/venues/relative_value.py"  # PR #183 core
         and not reviewed_radar_authority_matches(f)  # PR #237 exact blob
+        # RC-3 C2: the exact three-blob PPA-01 candidate (RELEASE-CLOSED, NOT approved, NOT released), recognised only while ALL three paths are
+        # exactly the reviewed blobs. approved_frozen_path below deliberately does NOT include it: it is not a released exemption.
+        and not ppa01_candidate_exempt(f, repo=_governance.REPO)   # same repo the released-authority check reads
     )
 
 

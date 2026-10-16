@@ -249,6 +249,15 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
             assert git("cat-file", "-t", actual) == "blob", f"Missing Revenue V3 authority blob: {path}"
             assert actual == pin, f"Unreviewed Revenue V3 content: {path}"
         return
+    # RC-3 C2: the PPA-01 candidate slice - exactly these three paths at exactly these three blobs. This recognises CONTENT only (a release-closed
+    # candidate); it is not financial approval or release (see tests/ppa01_candidate_authority.py). Any extra/missing path or other content fails.
+    from ppa01_candidate_authority import PPA01_CANDIDATE_AUTHORITIES
+    if protected == set(PPA01_CANDIDATE_AUTHORITIES):
+        for path, pin in PPA01_CANDIDATE_AUTHORITIES.items():
+            actual = git("rev-parse", "--verify", f"{head}:{path}")
+            assert git("cat-file", "-t", actual) == "blob", f"Missing PPA-01 candidate blob: {path}"
+            assert actual == pin, f"Unreviewed PPA-01 candidate content: {path}"
+        return
     assert protected == _F3_5_REVIEWED_PROTECTED_PATHS, f"Unapproved or incomplete protected diff: {sorted(protected)}"
     for path in sorted(protected):
         actual = git("rev-parse", "--verify", f"{head}:{path}")

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import tests.m7_rc3_candidate_successor as S
+from tests import ppa01_candidate_authority as ppa01
 
 ROOT = Path(__file__).resolve().parent.parent
 GOOD_RECORD = {
@@ -18,7 +19,13 @@ GOOD_RECORD = {
 
 @pytest.fixture(scope="module")
 def facts():
-    return S.collect()
+    facts = S.collect()
+    # RC-3 C2 coexistence: the exact PPA-01 candidate (tests/ppa01_candidate_authority.py) is a SEPARATE, independently exact slice. It is not an M7
+    # change, so it is excluded from the M7 frozen-change facts ONLY while its own three blobs are exactly the reviewed ones; a modified, partial or
+    # substituted PPA-01 slice stays in the facts and makes the M7 content check fail. Neither slice confers approval on the other.
+    if ppa01.candidate_content_matches_exactly():
+        facts["frozen_changes"] = [p for p in facts["frozen_changes"] if p not in ppa01.PPA01_CANDIDATE_AUTHORITIES]
+    return facts
 
 
 def _bad(facts, fn, **changes):
@@ -107,12 +114,21 @@ def test_the_successor_is_not_wired_into_any_guard_and_touches_no_historical_pin
     for name in ("model_v2_governance.py", "finance_integrity_governance.py", "test_finance_integrity_governance.py",
                  "test_wf07_revenue_governance.py", "test_ci_acceptance.py", "radar_authority_governance.py"):
         assert "m7_rc3_candidate_successor" not in (ROOT / "tests" / name).read_text(encoding="utf-8"), name
-    # The historical pin maps and the central guards stay byte-identical to the RC-2 checkpoint. The owner TESTS corrected by the post-merge hotfix
-    # (test_wf07_revenue_governance, test_finance_integrity_governance) may differ - they must not import the acceptance validator (checked above).
-    for name in ("model_v2_governance.py", "finance_integrity_governance.py", "radar_authority_governance.py", "test_ci_acceptance.py"):
+    # The historical pin maps and the central guards stay byte-identical to the RC-2 checkpoint. Two central guards were extended ADDITIVELY by RC-3 C2
+    # to recognise the exact PPA-01 candidate (finance_integrity_governance.strictly_frozen_changes, test_ci_acceptance's slice check): for those the
+    # contract is that every top-level literal (pin maps, allow-lists, constants) is unchanged, and neither imports the M7 successor (checked above).
+    import ast
+
+    def literals(text):
+        return [ast.dump(node) for node in ast.parse(text).body if isinstance(node, (ast.Assign, ast.AnnAssign))]
+
+    for name in ("model_v2_governance.py", "radar_authority_governance.py"):
         blob = subprocess.run(["git", "rev-parse", f"{S.RC2_CHECKPOINT}:tests/{name}"], cwd=ROOT, capture_output=True, text=True,
                               check=True).stdout.strip()
         assert subprocess.run(["git", "hash-object", f"tests/{name}"], cwd=ROOT, capture_output=True, text=True,
                               check=True).stdout.strip() == blob, name
+    for name in ("finance_integrity_governance.py", "test_ci_acceptance.py"):
+        historical = subprocess.run(["git", "show", f"{S.RC2_CHECKPOINT}:tests/{name}"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        assert literals((ROOT / "tests" / name).read_text(encoding="utf-8")) == literals(historical), name
     from app.workbook.bess_config import ACTIVATION_ENABLED
     assert ACTIVATION_ENABLED is False

@@ -46,8 +46,30 @@ def test_no_historical_pin_map_was_rewritten_by_rc3(name):
 
 
 def test_the_central_governance_files_are_byte_identical_to_the_checkpoint():
-    for name in ("model_v2_governance.py", "finance_integrity_governance.py", "radar_authority_governance.py"):
+    for name in ("model_v2_governance.py", "radar_authority_governance.py"):
         assert _git("hash-object", f"tests/{name}").strip() == _git("rev-parse", f"{S.historical_checkpoint()}:tests/{name}").strip(), name
+
+
+def test_the_finance_integrity_guard_keeps_every_historical_literal_and_only_adds_the_candidate_exemption():
+    """RC-3 C2: strictly_frozen_changes gained ONE additive clause (exact PPA-01 candidate, release-closed). Every top-level literal - the engine
+    allow-list and frozen prefixes - and every other function stay exactly as at the checkpoint."""
+    import ast
+
+    def tree(text):
+        return ast.parse(text)
+
+    def literals(module):
+        return [ast.dump(n) for n in module.body if isinstance(n, (ast.Assign, ast.AnnAssign))]
+
+    def other_functions(module):
+        return {n.name: ast.dump(n) for n in module.body if isinstance(n, ast.FunctionDef) and n.name != "strictly_frozen_changes"}
+
+    historical = tree(_git("show", f"{S.historical_checkpoint()}:tests/finance_integrity_governance.py"))
+    current = tree((ROOT / "tests/finance_integrity_governance.py").read_text(encoding="utf-8"))
+    assert literals(current) == literals(historical)
+    assert other_functions(current) == other_functions(historical)
+    text = (ROOT / "tests/finance_integrity_governance.py").read_text(encoding="utf-8")
+    assert text.count("ppa01_candidate_exempt(") == 1 and "m7_rc3_candidate_successor" not in text
 
 
 def test_the_three_states_are_distinct_and_activation_is_unreachable_for_m7():
