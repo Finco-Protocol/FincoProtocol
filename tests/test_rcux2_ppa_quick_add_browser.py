@@ -62,12 +62,12 @@ def browser():
 
 
 class Session:
-    def __init__(self, live_server, browser, uid, viewport=None, scheme="light"):
+    def __init__(self, live_server, browser, uid, viewport=None, scheme="light", template="generic_solar_reference"):
         from app.auth import COOKIE_NAME, create_session_token
         from app.services.reference_seed_service import create_reference_seeded_project
 
         self.uid = uid
-        self.rec = create_reference_seeded_project(user_id=uid, template_source="generic_solar_reference", requested_name="PPA", capacity_mw=40.0)
+        self.rec = create_reference_seeded_project(user_id=uid, template_source=template, requested_name="PPA", capacity_mw=40.0)
         self.ctx = browser.new_context(viewport=viewport or {"width": 1440, "height": 900}, color_scheme=scheme)   # real CSP: no bypass
         self.ctx.add_cookies([{"name": COOKIE_NAME, "value": create_session_token(user_id=uid, username="admin"), "url": live_server}])
         self.page = self.ctx.new_page()

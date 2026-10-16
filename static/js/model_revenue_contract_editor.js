@@ -610,12 +610,16 @@
       const AMOUNT = /^[-+]?(\d+\.?\d*|\.\d+)$/;
       const num = (el) => { const t = el.value.trim(); return AMOUNT.test(t) ? Number(t) : NaN; };
       const json = (name) => { try { return JSON.parse(quick.dataset[name] || '[]'); } catch (_) { return []; } };
-      const quickError = (message, suggestion) => {
+      // Suggestions are explicit, confirmable choices (never applied silently). The first keeps the historic `data-quick-suggest` hook; any
+      // alternative carries `data-quick-suggest-alt` so both sides of an unacceptable date can be offered with what each one means.
+      const quickError = (message, suggestions) => {
         qErr.replaceChildren(document.createTextNode(message || ''));
-        if (suggestion) {
+        const list = Array.isArray(suggestions) ? suggestions : (suggestions ? [suggestions] : []);
+        list.forEach((suggestion, i) => {
           const use = document.createElement('button');
-          use.type = 'button'; use.dataset.quickSuggest = suggestion.value;
-          use.textContent = 'Use ' + suggestion.value;
+          use.type = 'button';
+          use.setAttribute(i === 0 ? 'data-quick-suggest' : 'data-quick-suggest-alt', suggestion.value);
+          use.textContent = suggestion.label || ('Use ' + suggestion.value);
           use.addEventListener('click', () => {
             const el = dates.querySelector('[data-dd="' + suggestion.field + '"]');
             if (suggestion.field === 'end') { const manual = dates.querySelector('[data-dd="manual"]'); manual.checked = true; }
@@ -624,7 +628,7 @@
             quickError('');
           });
           qErr.append(' ', use);
-        }
+        });
         qErr.hidden = !message;
         return false;
       };
@@ -653,10 +657,28 @@
         if (!span.valid) return quickError(span.message);
         const boundaries = json('boundaries');
         if (boundaries.length) {
+          const starts = json('periodStarts'), windowEnd = quick.dataset.windowEnd || boundaries[boundaries.length - 1];
+          const D = window.FincoDates;
+          // What a candidate end date means for the contract: its term and how many operating periods it covers (end is EXCLUSIVE).
+          const meaning = (from, to) => {
+            const months = D ? D.impliedMonths(from, to) : null;
+            const n = starts.filter(d => d >= from && d < to).length;
+            return (months ? D.describe(months) + ', ' : '') + n + ' operating period' + (n === 1 ? '' : 's');
+          };
+          const options = (field, value, fixedOther) => {
+            const earlier = boundaries.filter(d => d < value && (field === 'start' || d > fixedOther)).pop();
+            const later = boundaries.find(d => d > value && (field === 'start' ? d < fixedOther : true));
+            const make = (d) => ({field, value: d, label: 'Use ' + d + ' (' + (field === 'end' ? meaning(fixedOther, d) : meaning(d, fixedOther)) + ')'});
+            const picks = [earlier, later].filter(Boolean).map(make);
+            const near = nearest(boundaries, value);
+            return picks.sort((a, b) => (a.value === near ? -1 : 0) - (b.value === near ? -1 : 0));
+          };
           if (!boundaries.includes(span.start))
-            return quickError('The start date ' + span.start + ' is not an operating-period boundary, so the contract cannot be saved as entered.', {field: 'start', value: nearest(boundaries, span.start)});
+            return quickError('The start date ' + span.start + ' is not an operating-period boundary, so the contract cannot be saved as entered. Accepted start dates are the first day of a model operating period.', options('start', span.start, span.end));
+          if (span.end > windowEnd)
+            return quickError('The contract end ' + span.end + ' is after the model operating period ends (' + windowEnd + '). A contract term can be longer than the model horizon, but only the modelled operating periods are priced; choose an end on or before ' + windowEnd + '.', [{field: 'end', value: windowEnd, label: 'Use ' + windowEnd + ' (' + meaning(span.start, windowEnd) + ')'}]);
           if (!boundaries.includes(span.end))
-            return quickError('The end date ' + span.end + ' is not an operating-period boundary, so the contract cannot be saved as entered.', {field: 'end', value: nearest(boundaries, span.end)});
+            return quickError('The end date ' + span.end + ' is not an operating-period boundary, so the contract cannot be saved as entered. The end date is exclusive: the contract covers every operating period that starts before it. Choose one of the nearest accepted dates; the term is never rounded for you.', options('end', span.end, span.start));
         }
         // 2. operating periods inside the contract (Scheduled needs one explicit price for each)
         const periods = json('periodStarts').filter(d => d >= span.start && d < span.end);
@@ -741,7 +763,21 @@
     form.addEventListener('htmx:responseError', event => {
       let message = 'Save failed. Working Copy was not changed; check the inputs and reload if the scenario moved.';
       try { message = JSON.parse(event.detail.xhr.responseText).error || message; } catch (_) {}
-      showError(message);
+      // SC-04: a rejected Save never swaps the sheet, so the typed contract draft stays in the editor. A 409 (stale/changed Working Copy) says
+      // so and offers an explicit Reload; the write is never replayed automatically and the persisted values are not overwritten.
+      const status = event.detail.xhr.status;
+      if (status === 409) {
+        showError(message + ' Your unsaved contract draft is still on screen; reloading discards it.');
+        const reload = document.createElement('button');
+        reload.type = 'button';
+        reload.setAttribute('data-conflict-reload', '');
+        reload.textContent = 'Reload current values';
+        reload.addEventListener('click', () => window.location.reload());
+        error.appendChild(document.createTextNode(' '));
+        error.appendChild(reload);
+      } else {
+        showError(message);
+      }
       document.dispatchEvent(new CustomEvent('rc:failed', {detail: {message}}));
     });
     advancedMode(false);

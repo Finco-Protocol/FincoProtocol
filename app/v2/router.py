@@ -2369,6 +2369,14 @@ async def v2_workbook_update(
         )
 
     def _htmx_error(pis_for_render, field_error: str) -> HTMLResponse:
+        resp = _htmx_error_sheet(pis_for_render, field_error)
+        if field_id == "debt.financing.instruments":
+            # SC-04: the capital stack form holds many typed cells. A rejected Save must not swap the persisted sheet over them; the
+            # browser shows the error in the form (workbook-field-error) and keeps the draft. OOB swaps are still processed.
+            resp.headers["HX-Reswap"] = "none"
+        return resp
+
+    def _htmx_error_sheet(pis_for_render, field_error: str) -> HTMLResponse:
         if sheet_id == "inputs":
             return _render_inputs_htmx_sheet(
                 request, pis_for_render, ws, project_record, project,
