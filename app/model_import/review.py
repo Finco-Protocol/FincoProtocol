@@ -38,7 +38,7 @@ def seal_preview(
     *,
     owner: str, project_id: str, scenario_id: str | None,
     content_hash: str, workbook_version: str, digest: str,
-    proposals: list[dict],
+    proposals: list[dict], migration: dict | None = None,
 ) -> str:
     if len(proposals) > _MAX_ROWS:
         raise ImportReviewError("IMPORT_PROPOSAL_LIMIT_EXCEEDED")
@@ -56,27 +56,35 @@ def seal_preview(
         "section": p.get("section", ""),
         # The ORIGINAL automatic outcome, so a later user correction can be shown against it.
         "suggested_normalized": p.get("normalized_value"),
+        # Display-only context so a review can be re-rendered from the signed ticket without re-uploading.
+        "label_cell": p.get("label_cell"), "target_kind": p.get("target_kind"), "apply_support": p.get("apply_support"),
+        "owner_editor": p.get("owner_editor"), "duplicate_target": bool(p.get("duplicate_target")),
+        "recognized_target": p.get("recognized_target"), "register_path": p.get("register_path"),
+        "alternatives": [{"field_id": a.get("field_id"), "label": a.get("label"), "confidence": a.get("confidence")}
+                         for a in (p.get("alternatives") or [])[:3]],
     } for p in proposals]
     body = {
         "kind": "preview", "owner": owner, "project_id": project_id,
         "scenario_id": scenario_id, "content_hash": content_hash,
         "workbook_version": workbook_version, "digest": digest, "rows": rows,
     }
+    if migration is not None:
+        body["migration"] = migration
     token = _serializer("preview").dumps(body)
     if len(token) > _MAX_TICKET_CHARS:
         raise ImportReviewError("IMPORT_REVIEW_TICKET_TOO_LARGE")
     return token
 
 
-def _unseal(ticket: str, *, kind: str, owner: str, project_id: str) -> dict:
+def _unseal(ticket: str, *, kind: str, owner: str, project_id: str | None, max_age: int = _TTL_SECONDS) -> dict:
     if not isinstance(ticket, str) or len(ticket) > _MAX_TICKET_CHARS:
         raise ImportReviewError("IMPORT_REVIEW_TICKET_INVALID")
     try:
-        body = _serializer(kind).loads(ticket, max_age=_TTL_SECONDS)
+        body = _serializer(kind).loads(ticket, max_age=max_age)
     except (BadSignature, SignatureExpired) as exc:
         raise ImportReviewError("IMPORT_REVIEW_EXPIRED_OR_TAMPERED") from exc
     if (not isinstance(body, dict) or body.get("kind") != kind
-            or body.get("owner") != owner or body.get("project_id") != project_id):
+            or body.get("owner") != owner or (project_id is not None and body.get("project_id") != project_id)):
         raise ImportReviewError("IMPORT_REVIEW_OWNER_MISMATCH")
     return body
 
@@ -99,6 +107,10 @@ def resolve_review(
     rows = preview.get("rows")
     if not isinstance(rows, list) or len(rows) > _MAX_ROWS:
         raise ImportReviewError("IMPORT_REVIEW_ROWS_INVALID")
+    migration = preview.get("migration")
+    if isinstance(migration, dict) and migration.get("confirmation_required") and str(selections.get("scenario_confirmed", "")) != "on":
+        # A human must state that the source scenario/case is the one intended for the active target scenario.
+        raise ImportReviewError("IMPORT_SCENARIO_CONFIRMATION_REQUIRED")
     for row in rows:
         idx = row["id"]
         if f"keep_{idx}" not in selections:
@@ -193,6 +205,7 @@ def seal_approved(preview: dict, approved: list[dict]) -> str:
         "workbook_version": preview["workbook_version"],
         "digest": preview["digest"], "source_count": len(preview["rows"]), "approved": approved,
         "approval_event": "USER_CONFIRMED_REVIEW",
+        "migration": preview.get("migration"),
         "approved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     token = _serializer("approved").dumps(body)
@@ -210,3 +223,46 @@ def unseal_approved(ticket: str, *, owner: str, project_id: str) -> dict:
     if len(ids) != len(set(ids)):
         raise ImportReviewError("IMPORT_DUPLICATE_TARGET")
     return body
+
+
+def rows_to_proposals(rows: list[dict]) -> list[dict]:
+    """Re-create the review table rows from a signed preview ticket (display only; confirm re-derives everything)."""
+    out = []
+    for r in rows:
+        field_id = r.get("field_id")
+        out.append({
+            "id": r["id"], "sheet": r["sheet"], "section": r.get("section", ""), "source_cell": r["source_cell"],
+            "label_cell": r.get("label_cell"), "label": r["label"], "original_value": r["original_value"],
+            "source_unit": r.get("source_unit"), "unit_origin": r.get("unit_origin"), "field_id": field_id,
+            "register_path": r.get("register_path"), "normalized_value": r.get("suggested_normalized"),
+            "mapping_method": r.get("method") or "unmapped",
+            "confidence": "exact" if r.get("method") == "exact_field_id" else "proposed" if field_id else "unresolved",
+            "confidence_class": r.get("confidence_class") or "none", "explanation": list(r.get("explanation") or ()),
+            "category": r.get("category") or "UNMAPPED", "target_kind": r.get("target_kind") or ("SCALAR" if field_id else "UNSUPPORTED"),
+            "apply_support": r.get("apply_support") or "NONE", "owner_editor": r.get("owner_editor"),
+            "recognized_target": r.get("recognized_target"), "alternatives": list(r.get("alternatives") or ()),
+            "duplicate_target": bool(r.get("duplicate_target")), "status": r["status"], "reason": r.get("reason"),
+        })
+    return out
+
+
+# ── applied-evidence ticket: what the signed Apply wrote, for the later (bounded, 6 h) reconciliation step ──────
+_APPLIED_TTL_SECONDS = 6 * 3600
+
+
+def seal_applied(*, owner: str, project_id: str, scenario_id: str | None, project_code: str, migration: dict,
+                 applied: list[dict], transaction_identity: str, applied_at: str, reconciliation_basis: list[dict]) -> str:
+    body = {
+        "kind": "applied", "owner": owner, "project_id": project_id, "scenario_id": scenario_id, "project_code": project_code,
+        "migration": migration, "transaction_identity": transaction_identity, "applied_at": applied_at,
+        "applied": [{"cell": f'{a["sheet"]}!{a["cell"]}', "field_id": a["field_id"], "value": a["value"]} for a in applied],
+        "reconciliation_basis": reconciliation_basis,
+    }
+    token = _serializer("applied").dumps(body)
+    if len(token) > _MAX_TICKET_CHARS:
+        raise ImportReviewError("IMPORT_APPLIED_TICKET_TOO_LARGE")
+    return token
+
+
+def unseal_applied(ticket: str, *, owner: str, project_id: str) -> dict:
+    return _unseal(ticket, kind="applied", owner=owner, project_id=project_id, max_age=_APPLIED_TTL_SECONDS)

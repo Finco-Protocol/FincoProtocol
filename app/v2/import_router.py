@@ -235,6 +235,8 @@ async def model_input_import_confirm(
         ctx["unchecked_count"] = max(0, len(preview["rows"]) - len(approved))
         ctx["approved_count"] = len(approved)
         ctx["changed_count"] = sum(bool(r["changed"]) for r in approved)
+        ctx["migration"] = preview.get("migration")
+        ctx["manifest_token"] = str(form.get("manifest_token", "") or "")
         return _templates.TemplateResponse(
             request=request, name="import_review.html", context=ctx)
     except (ImportReviewError, IntakeError, ValueError) as exc:
@@ -275,6 +277,7 @@ async def model_input_import_apply(
             context=_context(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"),
             status_code=403)
     try:
+        form = await request.form()
         signed = unseal_approved(approved_ticket, owner=owner, project_id=record.project_id)
         approved = signed["approved"]
         # Capture the exact pre-CAS values for truthful changed-field reporting.
@@ -327,6 +330,10 @@ async def model_input_import_apply(
         ctx["approval_event"] = signed.get("approval_event")
         ctx["approved_at"] = signed.get("approved_at")
         ctx["transaction_identity"] = identity.composite_hash
+        migration = signed.get("migration")
+        if isinstance(migration, dict):
+            _attach_migration_result(ctx, migration=migration, signed=signed, approved=approved, owner=owner, record=record,
+                                     identity_hash=identity.composite_hash, manifest_token=str(form.get("manifest_token", "") or ""))
         return _templates.TemplateResponse(
             request=request, name="import_review.html", context=ctx)
     except (ImportReviewError, BatchApplyError, FieldValidationError,
@@ -337,3 +344,314 @@ async def model_input_import_apply(
             request=request, name="import_review.html",
             context=_context(request, user, record, ws, stage="upload", error=code),
             status_code=409 if isinstance(exc, (StaleContentError, VersionMismatchError)) else 422)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# Excel migration V3: macro-aware assessment, scenario-aware slices, reconciliation, portfolio manifest.
+# Additive.  Reuses the signed C0 review tickets and the canonical batch writer above; adds NO writer, NO engine
+# call and NO persistence.  The uploaded workbook is read in memory only and is never stored.
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+_MAX_RENDERED_ITEMS_PER_CLASS = 120
+_MIGRATION_TEMPLATE = "import_migration.html"
+
+
+def _migration_guard(request: Request, project: str):
+    """(user, record, owner, ws) for an owned, non-reference project - or a redirect response."""
+    user = resolve_request_session(request)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=302)
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None or owner != user.user_id or is_protected_reference(record):
+        return RedirectResponse(url="/library", status_code=302)
+    ws = get_workspace_state(owner, record.project_id)
+    if ws is None:
+        return RedirectResponse(url="/library", status_code=302)
+    return user, record, owner, ws
+
+
+def _migration_base(request, user, record, ws, *, stage, error=None, manifest_token="", **extra):
+    return {"request": request, "user": user, "project": record, "project_code": record.project_code, "stage": stage,
+            "csrf_token": generate_csrf_token(), "error": error, "manifest_token": manifest_token,
+            "active_scenario_id": ws.active_scenario_id, "active_scenario_name": ws.active_scenario_name, **extra}
+
+
+def _plan_view(plan: dict) -> dict:
+    """Bounded, template-safe projection of the plan (no private proposal payloads)."""
+    grouped: dict[str, list] = {}
+    for item in plan["items"]:
+        grouped.setdefault(item["class"], []).append(item)
+    return {c: grouped.get(c, [])[:_MAX_RENDERED_ITEMS_PER_CLASS] for c in plan["class_counts"]}
+
+
+def _safe_manifest(token, owner):
+    from app.model_import.migration_portfolio import ManifestError, unseal_manifest
+    try:
+        return unseal_manifest(token, owner=owner), None
+    except ManifestError as exc:
+        return unseal_manifest(None, owner=owner), exc.code
+
+
+def _attach_migration_result(ctx, *, migration, signed, approved, owner, record, identity_hash, manifest_token):
+    """After a committed Apply: expose source-scenario provenance, the changed-not-run state and the applied evidence."""
+    from datetime import datetime, timezone
+    from app.model_import.migration_portfolio import ManifestError, mark, seal_manifest
+    from app.model_import.review import seal_applied
+    applied_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ctx["migration"] = migration
+    ctx["applied_ticket"] = seal_applied(
+        owner=owner, project_id=record.project_id, scenario_id=signed["scenario_id"], project_code=record.project_code,
+        migration={k: migration.get(k) for k in ("kind", "workbook_sha256", "slice", "target")},
+        applied=approved, transaction_identity=identity_hash, applied_at=applied_at,
+        reconciliation_basis=list(migration.get("basis") or ()))
+    ctx["history_options"] = _history_options(owner, record.project_id)
+    if manifest_token:
+        manifest, _ = _safe_manifest(manifest_token, owner)
+        try:
+            ctx["manifest_token"] = seal_manifest(mark(manifest, migration["workbook_sha256"], review_status="SCALARS_APPLIED"))
+        except (ManifestError, KeyError):
+            ctx["manifest_token"] = manifest_token
+
+
+def _history_options(owner, project_id):
+    from app.persistence.run_history_repository import get_run_history
+    entries = get_run_history(owner, project_id) or []
+    return [{"history_id": e.history_id, "ran_at": e.ran_at, "snapshot": e.runtime_snapshot_id,
+             "scenario": e.active_scenario_name or "default"} for e in entries][:10]        # get_run_history is newest first
+
+
+@router.post("/workbook/import/assess", response_class=HTMLResponse)
+async def model_migration_assess(
+    request: Request,
+    project: str = Form(...),
+    csrf_token: str = Form(...),
+    manifest_token: str = Form(""),
+    upload: UploadFile = File(...),
+    _: None = Depends(require_v2_active),
+):
+    """Inspect an XLSX/XLSM in memory (no execution) and show the migration plan.  Writes nothing, runs nothing."""
+    from app.model_import.migration_plan import build_plan
+    from app.model_import.migration_portfolio import ManifestError, entry_from_plan, seal_manifest, upsert
+    from app.model_import.review import ImportReviewError, seal_preview
+    from app.model_import.workbook_inspect import inspect_workbook
+    guard = _migration_guard(request, project)
+    if isinstance(guard, RedirectResponse):
+        return guard
+    user, record, owner, ws = guard
+    if not validate_csrf_token(csrf_token):
+        return _templates.TemplateResponse(
+            request=request, name=_MIGRATION_TEMPLATE,
+            context=_migration_base(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"), status_code=403)
+    try:
+        header_length = request.headers.get("content-length")
+        if header_length and int(header_length) > MAX_UPLOAD_BYTES + 16 * 1024:
+            raise IntakeError("IMPORT_BODY_SIZE_INVALID")
+        data = await upload.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise IntakeError("IMPORT_FILE_SIZE_INVALID")
+        insp = inspect_workbook(data, upload.filename or "")
+        plan = build_plan(insp, project_type=record.project_type or "", template_source=record.template_source or "",
+                          project_code=record.project_code, target_scenario_id=ws.active_scenario_id,
+                          target_scenario_name=ws.active_scenario_name)
+        identity = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
+        for sl in plan["slices"]:
+            sl["ticket"] = None
+            if not sl["apply_eligible"]:
+                continue
+            sl["ticket"] = seal_preview(
+                owner=owner, project_id=record.project_id, scenario_id=ws.active_scenario_id,
+                content_hash=identity.composite_hash, workbook_version=WORKBOOK.version, digest=insp.digest,
+                proposals=sl["_proposals"],
+                migration={"kind": "EXCEL_MIGRATION_V3", "workbook_sha256": insp.digest,
+                           "slice": {"key": sl["key"], "label": sl["label"], "kind": sl["kind"], "resolution": sl["resolution"]},
+                           "target": plan["target"], "confirmation_required": True,
+                           "basis": plan["reconciliation_basis"]})
+        manifest, manifest_error = _safe_manifest(manifest_token, owner)
+        manifest = upsert(manifest, entry_from_plan(plan, insp.report, candidate_project_code=record.project_code))
+        ctx = _migration_base(
+            request, user, record, ws, stage="assess", manifest_token=seal_manifest(manifest), report=insp.report, plan=plan,
+            plan_view=_plan_view(plan), manifest=manifest, manifest_error=manifest_error,
+            classes=list(plan["class_counts"]), max_items=_MAX_RENDERED_ITEMS_PER_CLASS)
+        return _templates.TemplateResponse(request=request, name=_MIGRATION_TEMPLATE, context=ctx)
+    except (IntakeError, ImportReviewError, ManifestError, ValueError) as exc:
+        code = getattr(exc, "code", "IMPORT_ASSESS_REJECTED")
+        return _templates.TemplateResponse(
+            request=request, name=_MIGRATION_TEMPLATE,
+            context=_migration_base(request, user, record, ws, stage="upload", error=code), status_code=422)
+    finally:
+        await upload.close()
+
+
+@router.post("/workbook/import/review-slice", response_class=HTMLResponse)
+async def model_migration_review_slice(
+    request: Request,
+    project: str = Form(...),
+    csrf_token: str = Form(...),
+    slice_ticket: str = Form(...),
+    manifest_token: str = Form(""),
+    _: None = Depends(require_v2_active),
+):
+    """Open one scenario slice in the EXISTING review UI.  The signed ticket is the only source; nothing is re-read."""
+    from collections import Counter
+    from app.model_import.migration_portfolio import ManifestError, mark, seal_manifest
+    from app.model_import.review import ImportReviewError, rows_to_proposals, unseal_preview
+    guard = _migration_guard(request, project)
+    if isinstance(guard, RedirectResponse):
+        return guard
+    user, record, owner, ws = guard
+    if not validate_csrf_token(csrf_token):
+        return _templates.TemplateResponse(
+            request=request, name="import_review.html",
+            context=_context(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"), status_code=403)
+    try:
+        preview = unseal_preview(slice_ticket, owner=owner, project_id=record.project_id)
+        migration = preview.get("migration")
+        if not isinstance(migration, dict):
+            raise ImportReviewError("IMPORT_REVIEW_TICKET_NOT_A_MIGRATION_SLICE")
+        current = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
+        if (preview["scenario_id"] != ws.active_scenario_id or preview["content_hash"] != current.composite_hash
+                or preview["workbook_version"] != WORKBOOK.version):
+            raise ImportReviewError("IMPORT_PREVIEW_STALE")
+        proposals = rows_to_proposals(preview["rows"])
+        ctx = _context(request, user, record, ws, stage="review", proposals=proposals, detected=len(proposals),
+                       totals=dict(Counter(p["status"] for p in proposals)), digest=preview["digest"])
+        ctx["preview_ticket"] = slice_ticket
+        ctx["migration"] = migration
+        ctx["manifest_token"] = manifest_token
+        if manifest_token:
+            manifest, _ = _safe_manifest(manifest_token, owner)
+            try:
+                ctx["manifest_token"] = seal_manifest(mark(manifest, migration["workbook_sha256"], review_status="REVIEW_IN_PROGRESS"))
+            except (ManifestError, KeyError):
+                pass
+        return _templates.TemplateResponse(request=request, name="import_review.html", context=ctx)
+    except (ImportReviewError, ValueError) as exc:
+        code = getattr(exc, "code", "IMPORT_REVIEW_INVALID")
+        return _templates.TemplateResponse(
+            request=request, name="import_review.html",
+            context=_context(request, user, record, ws, stage="upload", error=code),
+            status_code=409 if code == "IMPORT_PREVIEW_STALE" else 422)
+
+
+@router.post("/workbook/import/reconcile", response_class=HTMLResponse)
+async def model_migration_reconcile(
+    request: Request,
+    project: str = Form(...),
+    csrf_token: str = Form(...),
+    applied_ticket: str = Form(...),
+    history_id: str = Form(""),
+    conventions_attested: str = Form(""),
+    abs_tolerance: str = Form("0"),
+    rel_tolerance: str = Form("0"),
+    manifest_token: str = Form(""),
+    _: None = Depends(require_v2_active),
+):
+    """Compare source outputs with a COMMITTED native Run through P0-B3.  Reads only; never starts a Run."""
+    from app.model_import.migration_portfolio import ManifestError, mark, seal_manifest
+    from app.model_import.migration_reconcile import reconcile_output, reconciliation_summary
+    from app.model_import.review import ImportReviewError, unseal_applied
+    from app.persistence.run_history_repository import get_run_history
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+    from app.workbook.update_service import WorkbookUpdateService
+    guard = _migration_guard(request, project)
+    if isinstance(guard, RedirectResponse):
+        return guard
+    user, record, owner, ws = guard
+    if not validate_csrf_token(csrf_token):
+        return _templates.TemplateResponse(
+            request=request, name=_MIGRATION_TEMPLATE,
+            context=_migration_base(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"), status_code=403)
+    try:
+        evidence = unseal_applied(applied_ticket, owner=owner, project_id=record.project_id)
+        try:
+            from decimal import Decimal
+            if any(Decimal(str(v)) < 0 for v in (abs_tolerance, rel_tolerance)):
+                raise ValueError
+        except Exception as exc:                         # noqa: BLE001 - any malformed tolerance is a typed rejection
+            raise ImportReviewError("RECONCILE_TOLERANCE_INVALID") from exc
+        entries = list(get_run_history(owner, record.project_id) or [])
+        # get_run_history is newest first.  The default is the newest committed Run OF THE TARGET SCENARIO.
+        entry = (next((e for e in entries if e.history_id == history_id), None) if history_id else
+                 next((e for e in entries if (e.active_scenario_id or None) == (evidence["scenario_id"] or None)), None))
+        if history_id and entry is None:
+            raise ImportReviewError("RECONCILE_RUN_NOT_IN_THIS_PROJECT")     # cross-project / forged run id
+        identity = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
+        freshness = resolve_runtime_freshness(ws, current_composite_hash=identity.composite_hash)
+        pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
+        intact = True
+        for a in evidence["applied"]:
+            check = WorkbookUpdateService.validate_field_update(a["field_id"], a["value"])
+            if not check.is_valid or check.typed_value != pis.get(a["field_id"]):
+                intact = False
+        run_current = bool(entry is not None and freshness.state.value == "CURRENT"
+                           and entry.runtime_snapshot_id == ws.last_runtime_snapshot_id
+                           and entry.composite_hash == identity.composite_hash)
+        scenario_ok = bool(entry is not None and (entry.active_scenario_id or None) == (evidence["scenario_id"] or None)
+                           and ws.active_scenario_id == evidence["scenario_id"])
+        run = ({} if entry is None else {
+            "history_id": entry.history_id, "runtime_snapshot_id": entry.runtime_snapshot_id, "ran_at": entry.ran_at,
+            "engine_version": entry.engine_version, "composite_hash": entry.composite_hash,
+            "active_scenario_id": entry.active_scenario_id, "runtime_summary": entry.runtime_summary})
+        applied_cells = {a["cell"] for a in evidence["applied"]}
+        rows = [reconcile_output(
+            output={**o, "workbook_sha256": evidence["migration"].get("workbook_sha256")}, applied_cells=applied_cells,
+            applied_fields=evidence["applied"], run=run, run_current=run_current, applied_values_intact=intact,
+            scenario_ok=scenario_ok, slice_key=(evidence["migration"].get("slice") or {}).get("key", ""),
+            attested=(conventions_attested == "on"), abs_tolerance=abs_tolerance or "0", rel_tolerance=rel_tolerance or "0",
+            project_code=record.project_code) for o in evidence["reconciliation_basis"]]
+        summary = reconciliation_summary(rows)
+        token = manifest_token
+        if manifest_token:
+            manifest, _ = _safe_manifest(manifest_token, owner)
+            try:
+                token = seal_manifest(mark(manifest, evidence["migration"]["workbook_sha256"], reconciliation={
+                    "status": summary["status"], "comparable": summary["comparable"]}))
+            except (ManifestError, KeyError):
+                token = manifest_token
+        manifest_view, _ = _safe_manifest(token, owner) if token else (None, None)
+        ctx = _migration_base(
+            request, user, record, ws, stage="reconcile", manifest_token=token, manifest=manifest_view, rows=rows, summary=summary,
+            run=({k: v for k, v in run.items() if k != "runtime_summary"} if run else None),
+            freshness=freshness.state.value, applied_ticket=applied_ticket, intact=intact, run_current=run_current,
+            history_options=_history_options(owner, record.project_id), attested=(conventions_attested == "on"),
+            applied_count=len(evidence["applied"]), evidence_migration=evidence["migration"],
+            abs_tolerance=abs_tolerance, rel_tolerance=rel_tolerance)
+        return _templates.TemplateResponse(request=request, name=_MIGRATION_TEMPLATE, context=ctx)
+    except (ImportReviewError, ValueError) as exc:
+        code = getattr(exc, "code", "RECONCILE_REJECTED")
+        return _templates.TemplateResponse(
+            request=request, name=_MIGRATION_TEMPLATE,
+            context=_migration_base(request, user, record, ws, stage="upload", error=code), status_code=422)
+
+
+@router.post("/workbook/import/manifest", response_class=HTMLResponse)
+async def model_migration_manifest(
+    request: Request,
+    project: str = Form(...),
+    csrf_token: str = Form(...),
+    manifest_token: str = Form(...),
+    download: str = Form(""),
+    _: None = Depends(require_v2_active),
+):
+    """Show (or download as JSON) the signed, value-free portfolio manifest.  Holds no server state."""
+    from fastapi.responses import Response
+    from app.model_import.migration_portfolio import ManifestError, manifest_json, unseal_manifest
+    guard = _migration_guard(request, project)
+    if isinstance(guard, RedirectResponse):
+        return guard
+    user, record, owner, ws = guard
+    if not validate_csrf_token(csrf_token):
+        return _templates.TemplateResponse(
+            request=request, name=_MIGRATION_TEMPLATE,
+            context=_migration_base(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"), status_code=403)
+    try:
+        manifest = unseal_manifest(manifest_token, owner=owner)
+    except ManifestError as exc:
+        return _templates.TemplateResponse(
+            request=request, name=_MIGRATION_TEMPLATE,
+            context=_migration_base(request, user, record, ws, stage="upload", error=exc.code), status_code=422)
+    if download == "json":
+        return Response(manifest_json(manifest), media_type="application/json",
+                        headers={"Content-Disposition": 'attachment; filename="finco-migration-manifest.json"'})
+    return _templates.TemplateResponse(
+        request=request, name=_MIGRATION_TEMPLATE,
+        context=_migration_base(request, user, record, ws, stage="manifest", manifest_token=manifest_token, manifest=manifest))
