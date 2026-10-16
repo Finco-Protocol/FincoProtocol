@@ -1100,13 +1100,34 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
 
     from app.v2.effective_revenue_inputs import build_effective_revenue_inputs, effective_pricing_fallbacks
     _contract_editor = _build_revenue_contract_editor(pis, ws)
-    _effective_fallback = effective_pricing_fallbacks(pis)
-    _effective_rows = build_effective_revenue_inputs(pis, contracts_active=bool(_contract_editor.get("active")))
+    _effective_pis = pis
+    _scenario_tariff = False
+    if ws.active_scenario_id:
+        from app.persistence.scenarios_repository import get_scenario
+        from app.workbook.input_set import ProjectInputSet
+        from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+
+        scenario = get_scenario(ws.active_scenario_id, ws.user_id)
+        if (scenario is not None and scenario.project_id == ws.project_id and not scenario.archived
+                and not scenario.is_base_case and "tariff_eur_mwh" in scenario.overrides):
+            _scenario_tariff = True
+            try:
+                # Use the same admitted tariff binding as Run, without changing the editable base fields.
+                _effective_pis = ProjectInputSet.from_snapshot(bind_scenario_tariff(dict(pis.snapshot_origin), scenario.overrides))
+            except ValueError:
+                _effective_pis = None
+    _effective_fallback = effective_pricing_fallbacks(_effective_pis)
+    _effective_rows = build_effective_revenue_inputs(_effective_pis, contracts_active=bool(_contract_editor.get("active")))
+    if _scenario_tariff and not _contract_editor.get("active"):
+        for row in _effective_rows:
+            if row["key"] == "tariff":
+                row.update(source="Scenario override", detail="The selected scenario supplies this tariff for the next Run.",
+                           editable="Editable in the Scenario Override Editor.")
     _effective_balancing = next((r["value"] for r in _effective_rows if r["key"] == "balancing"), None)
 
     def _first_set(value, fallback):
         """The entered value when there is one (0 counts), else the resolved effective value."""
-        return value if value not in (None, "") and not (isinstance(value, float) and value == 0.0 and fallback not in (None, 0, 0.0)) else fallback
+        return value if value not in (None, "") else fallback
     return {
         "revenue_fields": fields,
         "revenue_multistream": _contract_editor,
@@ -1118,11 +1139,11 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
         "revenue_pricing_basis": (
             # SC-06: an empty input field no longer renders as "—" when the model uses a saved legacy-key or template value; the effective
             # value is shown (with its source in the panel below) and nothing is written to the field.
-            ("Contracted tariff", _first_set(_value("revenue.ppa.base_tariff"), _effective_fallback.get("tariff")), "EUR/MWh"),
+            ("Contracted tariff", _effective_fallback.get("tariff") if _scenario_tariff else _first_set(_value("revenue.ppa.base_tariff"), _effective_fallback.get("tariff")), "EUR/MWh"),
             ("PPA term", _first_set(_value("revenue.ppa.term_years"), _effective_fallback.get("term")), "years"),
             ("PPA escalation", _first_set(_value("revenue.ppa.index"), _effective_fallback.get("escalation")), "%"),
             ("Merchant balancing", _value("revenue.balancing.merchant_pct"), "% of spot sales"),
-            ("Balancing cost", _first_set(_value("revenue.balancing.cost_eur_per_mwh"), _effective_balancing), "EUR/MWh"),
+            ("Balancing cost", _effective_balancing, "EUR/MWh"),
             ("CO2 revenue", _value("revenue.balancing.co2_enabled"), ""),
             ("CO2 certificate price", _value("revenue.balancing.co2_price_eur_mwh"), "EUR/MWh"),
         ),

@@ -721,7 +721,10 @@ def mirror_project_name_cursor(cur: Any, *, user_id: str, project_id: str, befor
         "UPDATE projects SET project_name=?, updated_at=? WHERE project_id=? AND user_id=?",
         (new_name.strip(), now_iso, project_id, user_id),
     )
-    return cur.rowcount > 0
+    if cur.rowcount != 1:
+        from app.workbook.update_service import StaleContentError
+        raise StaleContentError("PROJECT_NAME_WRITE_CONFLICT")
+    return True
 
 
 def v2_atomic_draft_update(

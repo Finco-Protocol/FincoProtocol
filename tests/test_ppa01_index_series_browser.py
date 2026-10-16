@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 
 from tests.test_rcux2_ppa_quick_add_browser import Session, browser, live_server  # noqa: F401,E402
+from tests.model_workspace_navigation import activate_destination
 
 SAVED = re.compile(r"^Saved Working Copy")
 SHOTS = os.environ.get("PPA01_SCREENSHOT_DIR")
@@ -28,7 +29,7 @@ def _shot(page, name):
 
 def _open(s):
     s.page.on("dialog", lambda d: d.accept())
-    s.page.evaluate("document.getElementById('tab-revenue').click()")
+    activate_destination(s.page, "tab-revenue")
     s.page.locator("[data-testid=ppa-quick-add]").scroll_into_view_if_needed()
     return json.loads(s.page.locator("[data-testid=ppa-quick-add]").get_attribute("data-operating-years"))
 
@@ -181,7 +182,7 @@ def test_two_tabs_a_stale_series_save_keeps_the_typed_levels_and_never_overwrite
     _add_series_ppa(s, years, "\n".join(str(v) for v in _levels(years)))
     _save(s)
     committed = s.saved_book()
-    b.evaluate("document.getElementById('tab-revenue').click()")
+    activate_destination(b, "tab-revenue")
     b.locator("[data-testid=ppa-quick-add]").scroll_into_view_if_needed()
     b.locator('[data-testid=ppa-quick-add] [data-quick="kind"]').select_option("indexed_ppa")
     b.locator('[data-quick="index_mode"]').select_option("series")
@@ -241,7 +242,7 @@ def test_run_after_save_then_edit_makes_results_stale_and_rerun_is_current(live_
     page.locator("[data-testid=hybrid-run-state]").filter(has_text="CURRENT").wait_for(timeout=240000)
     from app.persistence.run_history_repository import get_run_history
     assert len(get_run_history("ppa01-b-run", s.rec.project_id)) == 1
-    page.evaluate("document.getElementById('tab-revenue').click()")
+    activate_destination(page, "tab-revenue")
     page.locator(".rc-index-editor summary").first.click()
     page.locator("[data-index-level]").nth(3).fill("120")
     _save(s)

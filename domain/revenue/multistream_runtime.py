@@ -59,6 +59,14 @@ class MultiStreamRevenue:
     canonical_json: str
 
     def plan_at(self, when, year_index=None):
+        """Resolve a financial plan; active index-series prices require an explicit operating year."""
+        return self._plan_at(when, year_index, structural=False)
+
+    def validate_structure_at(self, when) -> None:
+        """Validate dated activity, allocation and overlays without producing a price authority."""
+        self._plan_at(when, None, structural=True)
+
+    def _plan_at(self, when, year_index, *, structural):
         # V1 keeps the exact historical code path and floating-point operations.
         if not any(s.price_curve or s.index_series for s in self.streams):
             streams = tuple(replace(s.stream, enabled=s.active(when)) for s in self.streams)
@@ -66,7 +74,9 @@ class MultiStreamRevenue:
             adjusted = []
             for dated in self.streams:
                 stream = replace(dated.stream, enabled=dated.active(when))
-                if stream.enabled and dated.index_series and year_index is not None:
+                if stream.enabled and dated.index_series and not structural:
+                    if type(year_index) is not int or year_index < 1:
+                        raise ValueError("REVENUE_V2_INDEX_YEAR_CONTEXT: active index-series pricing requires a positive integer operating year")
                     # Explicit CPI/PPI index level for this operating year; never a fallback to a rate, never extrapolated.
                     levels = {year: level for year, level, _basis in dated.index_series}
                     if year_index not in levels:
@@ -283,5 +293,5 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
     config = MultiStreamRevenue(payload["technology"], tuple(dated_streams),
                                 json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False))
     for when in sorted({s.start_date for s in dated_streams} | {s.end_date for s in dated_streams}):
-        config.plan_at(when)
+        config.validate_structure_at(when)
     return config

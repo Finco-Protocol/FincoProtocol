@@ -121,3 +121,135 @@ def test_a_rename_never_touches_committed_run_history_or_other_owners(env):
     assert _rename(env, rec, "Renamed After Run", ch2, wv2).status_code == 200
     assert json.dumps(get_run_history("sc34-id-5", rec.project_id), default=str, sort_keys=True) == before
     assert _record("sc34-id-6", other).project_name == "Other Owner Project"            # owner isolation
+
+
+@pytest.fixture()
+def identity_case(tmp_path, monkeypatch):
+    from app.persistence import db
+    from app.persistence.projects_repository import _compute_baseline_snapshot, create_project_record
+    from app.persistence.workspace_repository import save_workspace_state
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "identity-atomic.db"))
+    db.init_db()
+    snapshot = _compute_baseline_snapshot("Solar", "generic_solar_reference")
+    snapshot.update(project_name="Original Name", project_origin="saved_baseline")
+    record = create_project_record(
+        user_id="a4-identity", project_code="a4-identity", project_name="Original Name", project_type="Solar",
+        project_origin="saved_baseline", template_source="generic_solar_reference", baseline_snapshot=snapshot,
+    )
+    save_workspace_state(
+        user_id=record.user_id, project_id=record.project_id, project_code=record.project_code,
+        draft_snapshot=snapshot, saved_snapshot=snapshot,
+    )
+    token = assemble_consistent_for_get(user_id=record.user_id, project_id=record.project_id, workbook_version=WORKBOOK.version).composite_hash
+    return record, token
+
+
+def _atomic_rows(record):
+    from app.persistence.db import get_connection
+
+    conn = get_connection()
+    try:
+        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        return {
+            table: [dict(row) for row in conn.execute(f"SELECT * FROM {table} WHERE project_id=?", (record.project_id,))]
+            for table in ("projects", "workspace_states", "model_run_history")
+        }
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("failure", ["ignore", "abort", "owner_mismatch"])
+def test_rename_project_update_failure_rolls_back_entire_workspace(identity_case, failure):
+    import sqlite3
+    from app.persistence.db import get_cursor
+    from app.persistence.workspace_repository import v2_atomic_draft_update
+    from app.workbook.update_service import StaleContentError
+
+    record, token = identity_case
+    with get_cursor() as cur:
+        assert cur.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        if failure == "owner_mismatch":
+            cur.execute("UPDATE projects SET user_id=? WHERE project_id=?", ("other-owner", record.project_id))
+        else:
+            action = "IGNORE" if failure == "ignore" else "ABORT, 'synthetic project update failure'"
+            cur.execute(f"CREATE TRIGGER reject_project_rename BEFORE UPDATE OF project_name ON projects BEGIN SELECT RAISE({action}); END")
+    before = _atomic_rows(record)
+    expected_error = sqlite3.IntegrityError if failure == "abort" else StaleContentError
+    message = "synthetic project update failure" if failure == "abort" else "PROJECT_NAME_WRITE_CONFLICT"
+    with pytest.raises(expected_error, match=message):
+        v2_atomic_draft_update(
+            user_id=record.user_id, project_id=record.project_id, expected_content_hash=token,
+            field_id=NAME_FIELD, typed_value="Must Roll Back",
+        )
+    assert _atomic_rows(record) == before
+
+
+def test_missing_project_name_mirror_fails_closed_with_foreign_keys_on(identity_case):
+    from app.persistence.db import get_cursor
+    from app.persistence.workspace_repository import mirror_project_name_cursor
+    from app.workbook.update_service import StaleContentError
+
+    record, _ = identity_case
+    before = _atomic_rows(record)
+    with pytest.raises(StaleContentError, match="PROJECT_NAME_WRITE_CONFLICT"):
+        with get_cursor() as cur:
+            assert cur.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+            mirror_project_name_cursor(
+                cur, user_id=record.user_id, project_id="missing-project",
+                before={"project_name": "Original"}, after={"project_name": "Missing"}, now_iso="2026-10-16T00:00:00+00:00",
+            )
+    assert _atomic_rows(record) == before
+
+
+def test_synthetic_stale_rename_never_attempts_project_update(identity_case):
+    from app.persistence.db import get_cursor
+    from app.persistence.workspace_repository import v2_atomic_draft_update
+
+    record, _ = identity_case
+    with get_cursor() as cur:
+        cur.execute("CREATE TRIGGER reject_project_rename BEFORE UPDATE OF project_name ON projects BEGIN SELECT RAISE(ABORT, 'must not reach project update'); END")
+    before = _atomic_rows(record)
+    result = v2_atomic_draft_update(
+        user_id=record.user_id, project_id=record.project_id, expected_content_hash="0" * 64,
+        field_id=NAME_FIELD, typed_value="Stale",
+    )
+    assert result is None
+    assert _atomic_rows(record) == before
+
+
+def test_zero_row_project_update_is_reported_as_conflict_not_saved(env):
+    from app.persistence.db import get_cursor
+
+    record = _project(env, "a4-identity-http")
+    token, version, _ = _identity(env, record)
+    with get_cursor() as cur:
+        assert cur.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        cur.execute("CREATE TRIGGER reject_project_rename BEFORE UPDATE OF project_name ON projects BEGIN SELECT RAISE(IGNORE); END")
+    before = _atomic_rows(record)
+    response = _rename(env, record, "Must Roll Back", token, version)
+    events = json.loads(response.headers["HX-Trigger"])
+    assert events["workbook-field-error"]["conflict"] is True
+    assert "workbook-field-saved" not in events
+    assert _atomic_rows(record) == before
+
+
+def test_non_name_scalar_update_does_not_require_project_name_write(identity_case):
+    from app.persistence.db import get_cursor
+    from app.persistence.workspace_repository import v2_atomic_draft_update
+
+    record, token = identity_case
+    with get_cursor() as cur:
+        cur.execute("CREATE TRIGGER reject_project_rename BEFORE UPDATE OF project_name ON projects BEGIN SELECT RAISE(ABORT, 'not a rename'); END")
+    before = _atomic_rows(record)
+    result = v2_atomic_draft_update(
+        user_id=record.user_id, project_id=record.project_id, expected_content_hash=token,
+        field_id="revenue.balancing.cost_eur_per_mwh", typed_value=5.5,
+    )
+    assert result is not None
+    assert float(result.draft_snapshot["rev_balancing_cost_eur_per_mwh"]) == 5.5
+    after = _atomic_rows(record)
+    assert after["projects"] == before["projects"]
+    assert after["model_run_history"] == before["model_run_history"]

@@ -9,6 +9,7 @@ Status: implemented on `feat/model-sc34-input-workflow-reliability`; for indepen
   operating year from COD, partial first period included). The index series uses exactly the same year key. Contract-year ≠ operating-year when a
   contract starts after COD or COD is mid-period; the series is keyed by operating year so no second basis is introduced.
 * Price for operating year *y*: `P_y = price_eur_mwh × level[y] ÷ level[base]`, base = first observation. `price_eur_mwh` is the price at the base level.
+* The year key is the existing canonical `PeriodMeta.year_index`: for the semiannual axis it advances after two operating periods, including a partial first period. It is not a calendar-year label, contract anniversary or an independently reconstructed elapsed-year count.
 * Distinct economic inputs stay distinct: `indexation_rate` (annual %), `price_curve` (explicit EUR/MWh) and `index_series` (published levels) are
   mutually exclusive on one stream (`REVENUE_V2_INDEX_MIXED_BASIS`).
 * Levels are supplied by the user (observed = published, forecast = user assumption; the flag is evidence only and does not change the
@@ -21,6 +22,14 @@ Status: implemented on `feat/model-sc34-input-workflow-reliability`; for indepen
 
 Axis validation (Save and Run, `validate_axis`): the first (base) year must be ≤ the first priced operating year (`REVENUE_V2_INDEX_BASE`) and every
 priced operating year needs a level (`REVENUE_V2_INDEX_COVERAGE`). A series longer than the contract is allowed (unused years are ignored).
+
+## Structural versus financial evaluation (Correction A)
+
+`validate_structure_at(date)` checks dated activity, volume allocation and overlay coverage and returns no financial plan. The parser calls this method before the canonical axis is available; it neither invents a year nor claims an indexed price.
+
+`plan_at(date, year_index)` is financial pricing. An active index-series PPA requires a positive integer canonical operating-year key; a missing, boolean, fractional or string key fails with `REVENUE_V2_INDEX_YEAR_CONTEXT`. A valid year without a supplied observation fails with `REVENUE_V2_INDEX_COVERAGE`. Canonical `evaluate(period, generation)` passes `period.year_index`. No annual-rate fallback, interpolation or extrapolation is permitted. Legacy non-series plans retain their existing no-year behavior, and an inactive series does not require an irrelevant year.
+
+This is a candidate financial-authority change. No new release pin is authorized by this document; independent exact-blob and operating-year convention acceptance is required before governance release.
 
 ## Unchanged
 

@@ -13,6 +13,7 @@ import pytest
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 
 from tests.test_rcux2_ppa_quick_add_browser import Session, browser, live_server  # noqa: F401,E402
+from tests.model_workspace_navigation import activate_destination
 
 SHOTS = os.environ.get("SC34_SCREENSHOT_DIR")
 
@@ -34,7 +35,7 @@ def _no_horizontal_scroll(page):
 
 def test_wind_revenue_sheet_shows_the_real_effective_tariff_and_balancing(live_server, browser):
     s = Session(live_server, browser, "sc34-j-wind", template="generic_wind_reference")
-    s.page.evaluate("document.getElementById('tab-revenue').click()")
+    activate_destination(s.page, "tab-revenue")
     panel = s.page.locator("[data-testid=revenue-effective-inputs]")
     panel.scroll_into_view_if_needed()
     assert re.match(r"^60 EUR/MWh", panel.locator("[data-testid=effective-tariff-value]").inner_text().strip())
@@ -53,7 +54,7 @@ def test_wind_revenue_sheet_shows_the_real_effective_tariff_and_balancing(live_s
 
 def test_effective_inputs_fit_a_phone_viewport(live_server, browser):
     s = Session(live_server, browser, "sc34-j-wind-m", template="generic_wind_reference", viewport={"width": 390, "height": 844})
-    s.page.evaluate("document.getElementById('tab-revenue').click()")
+    activate_destination(s.page, "tab-revenue")
     s.page.locator("[data-testid=revenue-effective-inputs]").scroll_into_view_if_needed()
     box = s.page.locator("[data-testid=revenue-effective-inputs]").bounding_box()
     assert box["x"] >= 0 and box["x"] + box["width"] <= 391                          # never wider than the screen
@@ -64,7 +65,7 @@ def test_effective_inputs_fit_a_phone_viewport(live_server, browser):
 
 def test_project_rename_is_coherent_in_the_browser(live_server, browser):
     s = Session(live_server, browser, "sc34-j-rename")
-    s.page.evaluate("document.getElementById('tab-project-setup').click()")
+    activate_destination(s.page, "tab-project-setup")
     field = s.page.locator('[data-field-id="project_setup.identity.project_name"] input[name="value"]').first
     with s.page.expect_response(lambda r: r.url.endswith("/v2/workbook/update")) as done:
         field.fill("Renamed In Browser"); field.press("Tab")
@@ -76,7 +77,7 @@ def test_project_rename_is_coherent_in_the_browser(live_server, browser):
     s.page.goto(f"{live_server}/library")
     assert s.page.get_by_text("Renamed In Browser").first.is_visible()
     s.page.goto(f"{live_server}/v2/workbook?project={s.rec.project_code}&sheet=project_setup")
-    s.page.evaluate("document.getElementById('tab-project-setup').click()")
+    activate_destination(s.page, "tab-project-setup")
     assert s.page.locator('[data-field-id="project_setup.identity.project_name"] input[name="value"]').first.input_value() == "Renamed In Browser"
     assert s.errors == [], s.errors
     s.close()
@@ -85,14 +86,14 @@ def test_project_rename_is_coherent_in_the_browser(live_server, browser):
 def test_shortened_horizon_journey_notice_navigation_refusal_and_recovery(live_server, browser):
     s = Session(live_server, browser, "sc34-j-horizon")
     page = s.page
-    page.evaluate("document.getElementById('tab-project-setup').click()")
+    activate_destination(page, "tab-project-setup")
     # a committed Run first, so there is a previous result to protect
     with page.expect_response(lambda r: r.url.endswith("/v2/workbook/run") and r.request.method == "POST", timeout=240000):
         page.locator('[data-testid="header-run-btn"]').click()
     page.locator("[data-testid=hybrid-run-state]").filter(has_text="CURRENT").wait_for(timeout=240000)
     runs_before = _history("sc34-j-horizon", s.rec)
     assert runs_before == 1
-    last_run_text = page.locator("[data-testid=toolbar-lastrun]").inner_text()
+    last_run_text = page.locator("[data-testid=hybrid-last-run]").inner_text()
     horizon = page.locator('[data-field-id="project_setup.technical.horizon_years"] input[name="value"]').first
     with page.expect_response(lambda r: r.url.endswith("/v2/workbook/update")):
         horizon.fill("20"); horizon.press("Tab")
@@ -107,7 +108,7 @@ def test_shortened_horizon_journey_notice_navigation_refusal_and_recovery(live_s
     notice.get_by_role("button", name="View shareholder-loan terms").focus()
     page.keyboard.press("Enter")
     assert page.locator("#tab-investor").get_attribute("aria-selected") == "true"
-    page.evaluate("document.getElementById('tab-project-setup').click()")
+    activate_destination(page, "tab-project-setup")
     # Run is refused, explained, and records nothing
     with page.expect_response(lambda r: r.url.endswith("/v2/workbook/run") and r.request.method == "POST", timeout=240000) as ran:
         page.locator('[data-testid="header-run-btn"]').click()
@@ -119,7 +120,7 @@ def test_shortened_horizon_journey_notice_navigation_refusal_and_recovery(live_s
     assert page.locator("[data-testid=banner-current]").count() == 0                  # nothing claims the model is current
     _shot(page, "sc10-run-refusal-explained")
     assert _history("sc34-j-horizon", s.rec) == runs_before
-    assert page.locator("[data-testid=toolbar-lastrun]").inner_text() == last_run_text   # previous Last Run untouched
+    assert page.locator("[data-testid=hybrid-last-run]").inner_text() == last_run_text   # previous Last Run untouched
     # recovery: follow the guidance, restore the horizon, run again
     detail.get_by_role("button").first.click()
     assert page.locator("#tab-project-setup").get_attribute("aria-selected") == "true"
@@ -139,18 +140,18 @@ def test_unsaved_contract_fields_block_a_scenario_switch_and_survive(live_server
     from fastapi.testclient import TestClient  # noqa: F401  (documented dependency of the live app)
     s = Session(live_server, browser, "sc34-j-scn")
     page = s.page
-    page.evaluate("document.getElementById('tab-scenarios').click()")
+    activate_destination(page, "tab-scenarios")
     page.locator("[data-testid=scenario-name-input], input[name=scenario_name]").first.fill("Upside")
     with page.expect_response(lambda r: r.url.endswith("/v2/workbook/scenarios/create")):
         page.get_by_role("button", name=re.compile("Create", re.I)).first.click()
-    page.evaluate("document.getElementById('tab-revenue').click()")
+    activate_destination(page, "tab-revenue")
     page.locator("[data-testid=ppa-quick-add]").scroll_into_view_if_needed()
     s.fill(price="61", share="50", ref="PPA-SCN"); s.use_full_window(); s.add()
     assert page.locator("[data-revenue-editor]").get_attribute("data-dirty") == "true"
-    page.evaluate("document.getElementById('tab-scenarios').click()")
+    activate_destination(page, "tab-scenarios")
     select = page.locator("form[hx-post='/v2/workbook/scenarios/select'] button").first
     select.click()
-    page.evaluate("document.getElementById('tab-revenue').click()")
+    activate_destination(page, "tab-revenue")
     box = page.locator("[data-revenue-error]")
     assert "Save or discard the unsaved contract changes before changing the scenario" in box.inner_text()
     assert page.locator("[data-revenue-editor]").get_attribute("data-dirty") == "true"      # the draft is still there

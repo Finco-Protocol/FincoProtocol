@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from pathlib import Path
+import subprocess
+import sys
+import types
 from datetime import date
 from decimal import Decimal
 
@@ -154,6 +158,96 @@ def test_legacy_contracts_are_byte_for_byte_unchanged():
     cfg = parse_config(json.dumps(payload))
     assert json.loads(cfg.canonical_json) == payload and all(not s.index_series for s in cfg.streams)
     assert "index_series" not in cfg.canonical_json
+
+
+@pytest.mark.parametrize("missing_year", [None, True, 1.0, "1", 0, -1])
+def test_active_index_pricing_without_a_typed_operating_year_fails_closed(missing_year):
+    op = _operating(_project("solar"))
+    cfg = parse_config(json.dumps(_payload("solar", op, series=_series([100.0 + i for i in range(_n(op))]))))
+    with pytest.raises(ValueError, match="REVENUE_V2_INDEX_YEAR_CONTEXT"):
+        cfg.plan_at(op[0].start_date, missing_year)
+
+
+def test_structural_validation_cannot_be_mistaken_for_a_financial_price_plan():
+    op = _operating(_project("solar"))
+    # Parsing validates allocation even though the runtime axis/year is not supplied yet.
+    cfg = parse_config(json.dumps(_payload("solar", op, series=_series([100.0, 106.0, 115.0]))))
+    assert cfg.validate_structure_at(op[0].start_date) is None
+    with pytest.raises(ValueError, match="REVENUE_V2_INDEX_YEAR_CONTEXT"):
+        cfg.plan_at(op[0].start_date)
+    third = next(p for p in op if p.year_index == 3)
+    resolved = cfg.plan_at(third.start_date, third.year_index)
+    assert resolved.streams[0].ppa.ppa_base_price_eur_mwh == pytest.approx(float(Decimal("60") * Decimal("115") / Decimal("100")), abs=PRICE_ABS)
+    with pytest.raises(ValueError, match="REVENUE_V2_INDEX_COVERAGE"):
+        cfg.validate_axis(op)
+
+
+def test_structural_validation_still_rejects_volume_double_allocation():
+    op = _operating(_project("solar"))
+    raw = _payload("solar", op, series=_series([100.0, 106.0]), share=0.7)
+    raw["streams"][1]["volume_share"] = 0.4
+    with pytest.raises(ValueError):
+        parse_config(json.dumps(raw))
+
+
+def test_inactive_index_contract_does_not_require_an_irrelevant_pricing_year():
+    op = _operating(_project("solar"))
+    first = op[4].year_index
+    cfg = parse_config(json.dumps(_payload("solar", op, series=_series([100.0, 110.0], first_year=first), start=4, end=8)))
+    plan = cfg.plan_at(op[0].start_date)
+    assert not plan.streams[0].enabled and plan.streams[1].enabled
+
+
+def test_legacy_unindexed_pricing_remains_available_without_year_context():
+    op = _operating(_project("solar"))
+    cfg = parse_config(json.dumps(_payload("solar", op, rate=.015)))
+    assert cfg.plan_at(op[0].start_date) == cfg.plan_at(op[0].start_date, 1)
+
+
+@pytest.fixture(scope="module")
+def released_runtime():
+    """Immutable pre-PPA-01 implementation, not a regenerated golden or a runtime input."""
+    repo = Path(__file__).resolve().parents[1]
+    ref = "540e1f4bb54d53ad6d2c1628074b94fdb0c9eb06:domain/revenue/multistream_runtime.py"
+    blob = subprocess.run(["git", "rev-parse", ref], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+    assert blob == "83beda4eb296b02baf2ebd6659fec243ab196206"
+    source = subprocess.run(["git", "show", ref], cwd=repo, check=True, capture_output=True).stdout
+    name = "_ppa01_released_runtime_reference"
+    module = types.ModuleType(name)
+    sys.modules[name] = module
+    try:
+        exec(compile(source, ref, "exec"), module.__dict__)
+        yield module
+    finally:
+        sys.modules.pop(name, None)
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+@pytest.mark.parametrize("mid_period_cod", [False, True])
+@pytest.mark.parametrize("contract", ["fixed", "annual_index", "cfd", "scheduled_ppa", "scheduled_merchant"])
+def test_legacy_full_revenue_schedule_is_bit_exact_against_released_content(kind, mid_period_cod, contract, released_runtime, monkeypatch):
+    from domain.revenue import multistream_runtime
+
+    pi = _project(kind, mid_period_cod=mid_period_cod)
+    op = _operating(pi)
+    payload = _payload(kind, op, rate=.02 if contract == "annual_index" else 0)
+    payload["version"] = 1
+    if contract.startswith("scheduled_"):
+        payload["version"] = 2
+        row = payload["streams"][0 if contract == "scheduled_ppa" else 1]
+        row["price_curve"] = [{"period_start": p.start_date.isoformat(), "price_eur_mwh": 52.0 if i < 4 else 81.0}
+                              for i, p in enumerate(op)]
+    if contract == "cfd":
+        payload["streams"].append(dict(id="settlement", type="cfd", volume_share=.4, price_eur_mwh=75.0,
+            indexation_rate=0, reference_stream_id="market", start_date=op[0].start_date.isoformat(),
+            end_date=op[-1].end_date.isoformat(), settlement="SAME_PERIOD", source_ref="synthetic-settlement"))
+    active = apply_config(pi, json.dumps(payload), project_type=kind)
+    axis = _build_period_engine(from_project_inputs(active))
+    candidate = revenue_decomposition_schedule(active, axis)
+    with monkeypatch.context() as reference:
+        reference.setattr(multistream_runtime, "parse_config", released_runtime.parse_config)
+        original = revenue_decomposition_schedule(active, axis)
+    assert candidate == original
 
 
 def test_floor_and_cap_still_apply_to_the_series_price():
