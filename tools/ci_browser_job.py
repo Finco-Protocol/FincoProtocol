@@ -28,7 +28,8 @@ REQUIRED = {
     "grid": ["artifacts/wf05/*.png", "artifacts/wf05/timings.json"],
     "q4": ["artifacts/model-q4-browser/*.png"],
     "consolidation": ["artifacts/workspace-consolidation/prb-*.png"],
-    "outputs": ["artifacts/outputs-workspace/browser-results.json", "artifacts/outputs-workspace/*.png"],
+    "outputs": ["artifacts/outputs-workspace/browser-results.json", "artifacts/outputs-workspace/*.png",
+                "artifacts/statements-tree/browser-results.json", "artifacts/statements-tree/*.png", "artifacts/outputs-role.json"],
 }
 
 
@@ -48,7 +49,7 @@ CONSOLIDATION_TEMPLATES = (
 )
 
 
-def _check_png(path: Path, width: int) -> None:
+def _check_png(path: Path, width: int | None = None) -> None:
     """Verify the PNG structure, CRC, image data and source viewport width."""
     raw = path.read_bytes()
     if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
@@ -65,7 +66,7 @@ def _check_png(path: Path, width: int) -> None:
         if (zlib.crc32(raw[offset + 4:offset + 8 + size]) & 0xffffffff) != expected_crc:
             raise EvidenceError(f"Invalid consolidation screenshot CRC: {path.name}")
         if first and (tag != b"IHDR" or size != 13
-                      or int.from_bytes(data[:4], "big") != width
+                      or (width is not None and int.from_bytes(data[:4], "big") != width)
                       or int.from_bytes(data[4:8], "big") < 100):
             raise EvidenceError(f"Wrong consolidation screenshot size: {path.name}")
         if tag == b"IDAT":
@@ -162,6 +163,61 @@ def validate_consolidation(folder: Path, inventory: dict, process: dict) -> None
     if process.get("exit_code") != 0 or process.get("normal_exit") is not True:
         raise EvidenceError("Consolidation browser process exit not normal")
 
+# PR #292: the existing `outputs` role runs BOTH Chromium acceptance modules against the real application registration.
+OUTPUTS_ACCEPTANCE = {
+    "tests.model_outputs_workspace_acceptance": {
+        "folder": "outputs-workspace", "schema": "finco.outputs-workspace.browser-acceptance.v1", "min_total": 60, "required_checks": ()},
+    "tests.model_statements_tree_acceptance": {
+        "folder": "statements-tree", "schema": "finco.statements-tree.browser-acceptance.v1", "min_total": 40, "min_screenshots": 10,
+        "required_checks": (
+            "four independent status dimensions are shown",
+            "Back restores statement, view, expansion, period, focused row and scroll",
+            "Run detail offers the statements link for the selected Run",
+            "historical statements show exactly the selected Run; no duplicate DOM ids",
+            "native browser Back returns to the Run detail and Forward to the statements",
+            "keyboard-only expansion and drill-down, then Back to the same historical view",
+            "Outputs workspace still works and is a single root",
+            "statement scrolling is contained within its region at 390px",
+            "historical statements scrolling is contained at 390px",
+            "opening, navigating and returning never changed or added a committed Run")},
+}
+
+
+def validate_outputs(folder: Path, process: dict) -> None:
+    """Fail closed unless BOTH acceptance modules ran, exited normally and recorded all-pass evidence with intact screenshots."""
+    role_file = folder / "outputs-role.json"
+    if not role_file.is_file():
+        raise EvidenceError("Missing outputs role record")
+    record = json.loads(role_file.read_text(encoding="utf-8")).get("modules", {})
+    if set(record) != set(OUTPUTS_ACCEPTANCE):
+        raise EvidenceError("Outputs role did not run exactly the mandatory acceptance modules")
+    for module, spec in OUTPUTS_ACCEPTANCE.items():
+        if record[module].get("exit_code") != 0 or record[module].get("normal_exit") is not True:
+            raise EvidenceError(f"Outputs acceptance module exited abnormally: {module}")
+        results_file = folder / spec["folder"] / "browser-results.json"
+        if not results_file.is_file():
+            raise EvidenceError(f"Missing browser results for {module}")
+        results = json.loads(results_file.read_text(encoding="utf-8"))
+        if results.get("schema") != spec["schema"]:
+            raise EvidenceError(f"Wrong browser results schema for {module}")
+        checks = results.get("checks") or []
+        if (results.get("all_pass") is not True or results.get("total") != len(checks) or results.get("passed") != len(checks)
+                or len(checks) < spec["min_total"] or any(c.get("status") != "PASS" for c in checks)):
+            raise EvidenceError(f"Browser acceptance failed or incomplete: {module}")
+        passed = {c.get("check") for c in checks if c.get("status") == "PASS"}
+        for name in spec["required_checks"]:
+            if name not in passed:
+                raise EvidenceError(f"Required browser check not recorded as PASS in {module}: {name}")
+        shots = sorted((folder / spec["folder"]).glob("*.png"))
+        recorded = results.get("screenshot_sha256") or {}
+        if len(shots) < spec.get("min_screenshots", 1) or set(recorded) != {p.name for p in shots}:
+            raise EvidenceError(f"Browser screenshots missing or unlisted: {module}")
+        for shot in shots:
+            if hashlib.sha256(shot.read_bytes()).hexdigest() != recorded[shot.name]:
+                raise EvidenceError(f"Browser screenshot changed: {shot.name}")
+            _check_png(shot)
+
+
 def validate_browser_records(root, expected, tree, job_result, prefix="browser"):
     if job_result != "success":
         raise EvidenceError(f"Browser matrix failed/missing/cancelled: {job_result}")
@@ -199,6 +255,8 @@ def validate_browser_records(root, expected, tree, job_result, prefix="browser")
                 validate_consolidation(folder, inventory, process)
             if role == "import":
                 validate_import(folder, inventory, process)
+        if role == "outputs":
+            validate_outputs(folder, process)
         proof[role] = process
     return {"head": expected, "tree": tree, "mandatory_roles": proof,
             "optional_f3": "Separately reported; not counted as mandatory success"}
@@ -232,7 +290,7 @@ def main():
         os.environ.update(WF05_SCREENSHOT_DIR="artifacts/workspace-consolidation", FINCO_MODEL_EXECUTION_MODE="thread")
     if args.role == "outputs":
         os.environ["FINCO_MODEL_EXECUTION_MODE"] = "thread"
-        command = [sys.executable, "-m", "tests.model_outputs_workspace_acceptance", "--out", "artifacts/outputs-workspace"]
+        command = [sys.executable, "-m", "tools.ci_outputs_role"]      # runs BOTH outputs-role modules; fails if either does
         junit = None
     else:
         junit = "artifacts/results.xml"

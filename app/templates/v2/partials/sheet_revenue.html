@@ -80,6 +80,22 @@
       {% endfor %}
     </div>
     {% endif %}
+    {% if not is_data_center and not is_ev_charging and revenue_effective_inputs is defined and revenue_effective_inputs %}
+    <section class="v2-effective-inputs fx-ui" data-testid="revenue-effective-inputs" aria-labelledby="eff-inputs-title">
+      <h4 id="eff-inputs-title">Effective inputs for the next Run</h4>
+      <dl class="v2-effective-list">
+        {% for row in revenue_effective_inputs %}
+        <div class="v2-effective-row" data-testid="effective-{{ row.key }}" data-source="{{ row.source }}">
+          <dt>{{ row.label }}</dt>
+          <dd><strong data-testid="effective-{{ row.key }}-value">{% if row.value is not none %}{{ ('%.4f' | format(row.value)).rstrip('0').rstrip('.') }} <small>{{ row.unit }}</small>{% else %}—{% endif %}</strong>
+            <span class="v2-effective-source" data-testid="effective-{{ row.key }}-source">{{ row.source }}</span>
+            <small class="v2-effective-detail">{{ row.detail }} {{ row.editable }}</small></dd>
+        </div>
+        {% endfor %}
+      </dl>
+      <p class="v2-effective-note" data-testid="effective-run-note">{{ revenue_effective_inputs[0].run_note }}</p>
+    </section>
+    {% endif %}
     <div class="v2-revenue-output-context" data-testid="revenue-output-context">
       <span>{% if is_data_center %}Equivalent IT Load Energy used in current output{% elif is_ev_charging %}Charging energy used in current output{% else %}Generation used in current output{% endif %}</span>
       <strong>{% if revenue_output_context.generation is not none and revenue_output_context.generation != 'NOT_AVAILABLE' %}{{ revenue_output_context.generation }}{% if revenue_output_context.period %} · {{ revenue_output_context.period }}{% endif %}{% else %}—{% endif %}</strong>

@@ -1,8 +1,11 @@
 # Model V2 Cost Template Contract
 
-Status: Workflow 03 domain/service foundation. No runtime wiring, no
-ProjectInputs integration, no UI. The canonical financial engine never learns
-that a template existed.
+Status: Workflow 03 domain/service foundation. Runtime wiring now exists —
+V2 workbook persistence consumes templates via MaterializationPlan, and the
+cost editing UI (batch commands + staging) is active; sub-lines fold into
+the /run route. ProjectInputs materialization remains the integration seam:
+the canonical financial engine still never learns that a template existed
+(it only ever sees materialized inputs).
 
 ## 1. Existing authority inventory (independently verified)
 

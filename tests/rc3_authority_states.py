@@ -5,7 +5,8 @@ deliberately in a different state. Three states are kept apart and are never col
 
 HISTORICAL_RELEASED                  the exact blob is in a released pin map (WF07, F3.5, Developer Economics, Revenue V2/V3, ...), judged by
                                      ``model_v2_governance.released_engine_authority_matches`` against its own historical checkpoint.
-INTEGRATED_RELEASE_CLOSED_CANDIDATE  the exact M7 candidate blob that PR #284 put on main: present, byte-identical to the reviewed M7 source head,
+INTEGRATED_RELEASE_CLOSED_CANDIDATE  the exact M7 candidate blob that PR #284 put on main, or one of the three exact PPA-01 candidate blobs
+                                     (tests/ppa01_candidate_authority.py, RC-3 C2): present, byte-identical to the reviewed source head,
                                      NOT released, NOT activated. Requires every release flag to be literal False.
 ACTIVATED_FINANCIAL_AUTHORITY        needs a separate independent financial AND production-release approval. No code path here can return it for
                                      M7: it is unavailable by construction.
@@ -74,7 +75,15 @@ def authority_state(path: str, *, repo=None, ref: str = "HEAD") -> str:
         return HISTORICAL_RELEASED
     if candidate_matches(path, repo=repo, ref=ref) and not release_closed_violations(repo=repo, ref=ref):
         return INTEGRATED_RELEASE_CLOSED_CANDIDATE
+    if ppa01_candidate_matches(path, repo=repo, ref=ref) and not release_closed_violations(repo=repo, ref=ref):
+        return INTEGRATED_RELEASE_CLOSED_CANDIDATE
     return UNAUTHORIZED
+
+
+def ppa01_candidate_matches(path: str, *, repo=None, ref: str = "HEAD") -> bool:
+    """Exact-content test of the PPA-01 candidate: the path is one of the three AND all three blobs are the reviewed ones. Not an authority check."""
+    from ppa01_candidate_authority import frozen_scope_exempt
+    return frozen_scope_exempt(path, repo=repo, ref=ref)
 
 
 def historical_checkpoint() -> str:

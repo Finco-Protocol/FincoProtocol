@@ -21,6 +21,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 # Merge commit of PR #282 inside the RC-3 integration: contains R4, R5, Diagnostics V2 and M6, NOT the M7 financial candidate.
 STREAM_TIP = "f2a1e386481b11a0a2b5fb8a73206403c839a480"
+# RC-3 / C2: merge commit of PR #292 inside the model/radar integration RC (#294). It contains the accepted Radar R6 (#290), Radar closeout (#291)
+# and Run-Provenance/Statements (#292) streams and NOT the PPA-01 financial candidate (#293), which none of those streams own. Verified: no
+# financial_engine/, finco_core/ or domain/ path differs from origin/main at this commit. Newest first; the first usable tip wins.
+PPA01_PRE_INTEGRATION_TIP = "30473e36de681040a79efb381eddd3968f12af3e"
+STREAM_TIPS = (PPA01_PRE_INTEGRATION_TIP, STREAM_TIP)
 
 
 def _rc(*args: str) -> int:
@@ -31,18 +36,27 @@ def _out(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
 
 
-def anchored_head(tip: str = STREAM_TIP) -> str:
-    """``tip`` while the integration is pending and verifiably part of this history; otherwise ``HEAD`` (fail closed)."""
+def _usable(tip: str) -> bool:
+    if _rc("cat-file", "-e", f"{tip}^{{commit}}") != 0:
+        return False
+    if _rc("merge-base", "--is-ancestor", tip, "HEAD") != 0:
+        return False
+    if _rc("rev-parse", "--verify", "-q", "origin/main") != 0:
+        return False
+    return _rc("merge-base", "--is-ancestor", tip, "origin/main") != 0      # already landed on main: the original guards apply to HEAD again
+
+
+def anchored_head(tip: str | None = None) -> str:
+    """The newest usable pre-candidate tip while the integration is pending and verifiably part of this history; otherwise ``HEAD`` (fail closed).
+
+    With an explicit ``tip`` only that tip is considered (historical call sites). Missing provenance of every tip yields ``HEAD``, so a guard that
+    cannot prove its historical boundary evaluates the full current tree and fails rather than silently passing.
+    """
     try:
-        if _rc("cat-file", "-e", f"{tip}^{{commit}}") != 0:
-            return "HEAD"
-        if _rc("merge-base", "--is-ancestor", tip, "HEAD") != 0:
-            return "HEAD"
-        if _rc("rev-parse", "--verify", "-q", "origin/main") != 0:
-            return "HEAD"
-        if _rc("merge-base", "--is-ancestor", tip, "origin/main") == 0:
-            return "HEAD"                      # the integration has landed: the original guards apply to HEAD again
-        return tip
+        for candidate in ((tip,) if tip else STREAM_TIPS):
+            if _usable(candidate):
+                return candidate
+        return "HEAD"
     except OSError:
         return "HEAD"
 

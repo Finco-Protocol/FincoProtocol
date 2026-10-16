@@ -237,6 +237,58 @@ def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
         as_of=as_of.isoformat()))
 
 
+@router.get("/tokenized/{canonical_asset_id}/signals")
+def crypto_tokenized_signals(request: Request, canonical_asset_id: str):
+    """Full historical R5 signal evidence, requiring BOTH premium resources.
+
+    crypto.api is checked first. The lifecycle read is not imported or
+    executed until history AND dislocation checks have passed. This changes
+    nothing about the existing independently entitled /dislocations API.
+    """
+    as_of = _request_as_of()
+    gate = _require_crypto_api(request)
+    if gate is not None:
+        return gate
+
+    from app.tokenized_access import TokenizedResource
+    history_decision = _tokenized_access(request, TokenizedResource.HISTORY)
+    if not history_decision.access_allowed:
+        return _tokenized_denied(history_decision)
+    dislocation_decision = _tokenized_access(request, TokenizedResource.DISLOCATION)
+    if not dislocation_decision.access_allowed:
+        return _tokenized_denied(dislocation_decision)
+
+    # Only now can a read-model import or market-history composition occur.
+    from app.radar_ui.tokenized_gating import TokenizedGates
+    from app.crypto_terminal.tokenized_signal_read import read_tokenized_signals
+    from app.tokenized_access import TokenizedResource as Resource
+    # Basic resource is public and its decision remains owned by the adapter.
+    basic_decision = _tokenized_access(request, Resource.BASIC)
+    if not basic_decision.access_allowed:
+        return _tokenized_denied(basic_decision)
+    gates = TokenizedGates(basic=basic_decision, history=history_decision,
+                           dislocation=dislocation_decision)
+    try:
+        data = read_tokenized_signals(
+            canonical_asset_id, gates=gates, as_of=as_of)
+    except KeyError:
+        return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
+            "tokenized.signals", "UNKNOWN_IDENTITY", None,
+            canonical_id=canonical_asset_id,
+            reason="CANONICAL_ASSET_ID_UNKNOWN", as_of=as_of.isoformat()))
+    except Exception:
+        # Do not echo datastore errors, protected observations or credentials.
+        return JSONResponse(status_code=503, headers=_CACHE, content=_envelope(
+            "tokenized.signals", "EVIDENCE_UNAVAILABLE", None,
+            canonical_id=canonical_asset_id,
+            reason="SIGNAL_EVIDENCE_UNAVAILABLE", as_of=as_of.isoformat()))
+
+    return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
+        "tokenized.signals", data["state"], data,
+        canonical_id=canonical_asset_id,
+        access=gates.public_view(), as_of=as_of.isoformat()))
+
+
 @router.get("/tokenized/{canonical_asset_id}/integrity")
 def crypto_tokenized_integrity(request: Request, canonical_asset_id: str):
     """Canonical RWA Integrity evidence profile (read-only, acquisition-free).

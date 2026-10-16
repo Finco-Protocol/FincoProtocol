@@ -19,6 +19,10 @@ PATHS = {
 # commit where they were accepted; the M7 content is judged separately as a candidate, never as a released authority.
 CHECKPOINT = authority_states.historical_checkpoint()
 M7_PATHS = frozenset(PATHS) & frozenset(authority_states.M7_CANDIDATE)
+# Two more of the seven paths now carry the integrated, RELEASE-CLOSED PPA-01 candidate (PR #293 via the RC-3 integration, #294). Recognised by exact
+# content in tests/ppa01_candidate_authority.py; never a released authority, never an approval.
+from tests import ppa01_candidate_authority as ppa01
+PPA01_PATHS = frozenset(PATHS) & frozenset(ppa01.PPA01_CANDIDATE_AUTHORITIES)
 
 
 def _released_blob(path):
@@ -31,6 +35,7 @@ def _released_blob(path):
 def test_exact_seven_content_pins_only():
     assert set(governance.WF07_REVENUE_AUTHORITIES) == PATHS
     assert M7_PATHS == {"financial_engine/adapters/project_inputs.py", "financial_engine/orchestrator.py"}
+    assert PPA01_PATHS == {"domain/revenue/multistream_runtime.py", "finco_core/revenue/generation.py"}
     for path, blob in governance.WF07_REVENUE_AUTHORITIES.items():
         assert "*" not in path
         # HISTORICAL_RELEASED: the original seven WF07 pins (and their reviewed successors) at the checkpoint where they were accepted.
@@ -38,7 +43,7 @@ def test_exact_seven_content_pins_only():
         assert governance.released_engine_authority_matches(path, ref=CHECKPOINT)
         assert governance.WF07_REVENUE_AUTHORITIES[path] == blob
     # Current content: five paths are still exactly the released authority ...
-    for path in PATHS - M7_PATHS:
+    for path in PATHS - M7_PATHS - PPA01_PATHS:
         assert git(governance.REPO, "rev-parse", "HEAD:" + path) == _released_blob(path)
         assert authority_states.authority_state(path) == authority_states.HISTORICAL_RELEASED
         assert governance.released_engine_authority_matches(path)
@@ -48,6 +53,13 @@ def test_exact_seven_content_pins_only():
         assert git(governance.REPO, "rev-parse", "HEAD:" + path) == authority_states.M7_CANDIDATE[path]
         assert authority_states.authority_state(path) == authority_states.INTEGRATED_RELEASE_CLOSED_CANDIDATE
         assert not governance.released_engine_authority_matches(path)       # candidate presence is never release approval
+        assert not approved_frozen_path(path)
+    # ... and the two PPA-01 paths are the exact release-closed candidate: byte-identical to the reviewed blobs, NOT released, NOT approved.
+    for path in PPA01_PATHS:
+        assert git(governance.REPO, "rev-parse", "HEAD:" + path) == ppa01.PPA01_CANDIDATE_AUTHORITIES[path]
+        assert git(governance.REPO, "rev-parse", "HEAD:" + path) != _released_blob(path)    # a different blob from the historical release
+        assert authority_states.authority_state(path) == authority_states.INTEGRATED_RELEASE_CLOSED_CANDIDATE
+        assert not governance.released_engine_authority_matches(path)
         assert not approved_frozen_path(path)
     assert authority_states.release_closed_violations() == []
     assert unapproved_engine_changes(list(PATHS)) == sorted(M7_PATHS)       # the released-authority guard still rejects the candidate
@@ -95,11 +107,12 @@ def test_advanced_revenue_successor_is_one_exact_blob_without_rewriting_wf07_his
     assert governance.REVENUE_V2_ADVANCED_AUTHORITIES == {
         path: "48465ce2a298fa1383a7eabcb921eb9fbe4610cb",
     }
-    # RC-2: HEAD carries the reviewed Revenue V3 successor of this runtime; the V2 pin above is unchanged history.
-    assert git(governance.REPO, "rev-parse", "HEAD:" + path) in {
+    # The reviewed V2/V3 successors are judged at the commit where they were accepted. HEAD now carries the release-closed PPA-01 candidate.
+    assert git(governance.REPO, "rev-parse", CHECKPOINT + ":" + path) in {
         governance.REVENUE_V2_ADVANCED_AUTHORITIES[path], governance.REVENUE_V3_CANDIDATE_AUTHORITIES[path]}
-    assert governance.released_engine_authority_matches(path)
-    assert approved_frozen_path(path)
+    assert governance.released_engine_authority_matches(path, ref=CHECKPOINT)
+    assert git(governance.REPO, "rev-parse", "HEAD:" + path) == ppa01.PPA01_CANDIDATE_AUTHORITIES[path]
+    assert not governance.released_engine_authority_matches(path) and not approved_frozen_path(path)
 
 
 def test_revenue_successor_rejects_extra_byte_and_unlisted_domain_path(tmp_path, monkeypatch):
@@ -110,8 +123,8 @@ def test_revenue_successor_rejects_extra_byte_and_unlisted_domain_path(tmp_path,
     git(repo, "config", "user.name", "Synthetic Reviewer")
     git(repo, "config", "user.email", "noreply@users.noreply.github.com")
     path = "domain/revenue/multistream_runtime.py"
-    original = subprocess.run(["git", "-C", str(governance.REPO), "show", "HEAD:" + path],
-                              check=True, capture_output=True).stdout
+    original = subprocess.run(["git", "-C", str(governance.REPO), "show", CHECKPOINT + ":" + path],
+                              check=True, capture_output=True).stdout        # the reviewed Revenue V2/V3 content at its own checkpoint
     target = repo / path
     target.parent.mkdir(parents=True)
     target.write_bytes(original)
@@ -142,8 +155,16 @@ def test_revenue_v3_candidate_is_exactly_three_blobs_and_does_not_rewrite_histor
     assert governance.WF07_REVENUE_AUTHORITIES["domain/revenue/multistream_runtime.py"] == "94e1559472d0f3051fb7faccf3b67ce44337188f"
     assert governance.REVENUE_V2_ADVANCED_AUTHORITIES == {"domain/revenue/multistream_runtime.py": "48465ce2a298fa1383a7eabcb921eb9fbe4610cb"}
     for path, blob in V3_PATHS.items():
-        assert git(governance.REPO, "rev-parse", "HEAD:" + path) == blob
-        assert governance.released_engine_authority_matches(path)
+        # HISTORICAL_RELEASED at the checkpoint where the reviewed V3 successor was accepted (never rewritten by the PPA-01 candidate).
+        assert git(governance.REPO, "rev-parse", CHECKPOINT + ":" + path) == blob
+        assert governance.released_engine_authority_matches(path, ref=CHECKPOINT)
+        if path in PPA01_PATHS:
+            assert git(governance.REPO, "rev-parse", "HEAD:" + path) == ppa01.PPA01_CANDIDATE_AUTHORITIES[path]
+            assert not governance.released_engine_authority_matches(path)
+        else:
+            assert git(governance.REPO, "rev-parse", "HEAD:" + path) == blob
+            assert governance.released_engine_authority_matches(path)
+    # HEAD's finco_core/revenue/generation.py is the exact PPA-01 candidate: exempt from the strict freeze only as a candidate, not as a release.
     assert strictly_frozen_changes(["finco_core/revenue/generation.py"]) == []
 
 
@@ -155,7 +176,7 @@ def test_revenue_v3_candidate_rejects_any_further_byte_and_other_paths(path, tmp
     git(repo, "config", "core.autocrlf", "false")
     git(repo, "config", "user.name", "Synthetic Reviewer")
     git(repo, "config", "user.email", "noreply@users.noreply.github.com")
-    original = subprocess.run(["git", "-C", str(governance.REPO), "show", "HEAD:" + path], check=True, capture_output=True).stdout
+    original = subprocess.run(["git", "-C", str(governance.REPO), "show", CHECKPOINT + ":" + path], check=True, capture_output=True).stdout
     target = repo / path
     target.parent.mkdir(parents=True)
     target.write_bytes(original)

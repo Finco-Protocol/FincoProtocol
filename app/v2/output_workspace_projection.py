@@ -392,8 +392,23 @@ def build_output_workspace(*, runtime_result: Any, workspace: Any, freshness: An
     else:
         overall = "RECONCILED"
     identity = _identity(runtime_result, workspace, last_run_scenario)
+    integrity = _integrity(integrity_report)
+    from app.v2.statement_drilldown import build_statement_drilldown, input_context
+    from app.workbook.runtime_authority import RunContext, resolve_run_status_dimensions
+    # Four independent dimensions of the displayed Run (SC-03).  Input freshness is the canonical state above; engine
+    # currency compares the engine identity the Run itself committed with the running engine; Integrity is the Run's own
+    # verdict.  None of them is derived from another.
+    dimensions = resolve_run_status_dimensions(
+        run_context=RunContext.LAST_RUN, input_freshness=state, integrity=integrity["status"],
+        identity=getattr(workspace, "last_runtime_identity", None),
+        replay_metadata=getattr(workspace, "replay_metadata", None))
+    drill_context = input_context(run_context="LAST_RUN", freshness_state=state)
+    audit = summary.get("revenue_multistream_audit") if isinstance(summary, Mapping) else None
     return {
-        "state": state, "identity": identity, "integrity": _integrity(integrity_report),
+        "status_dimensions": dimensions.to_dict(),
+        "drilldown": {"context": drill_context, "statements": build_statement_drilldown(
+            statements, multistream_audit=audit, context=drill_context)},
+        "state": state, "identity": identity, "integrity": integrity,
         "reconciliation": {"overall": overall, "checks": [{"name": n, **c} for n, c in
                            zip(["Balance sheet check", "Facility service vs PF waterfall"], checks)]},
         "statements": statements, "cfads": _cfads_table(pf_periods, debt_schedule.get("periods")),

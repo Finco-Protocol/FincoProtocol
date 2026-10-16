@@ -47,6 +47,27 @@
   document.addEventListener('htmx:configRequest', e => {
     if (e.detail.elt.matches('[data-f3-form]')) e.detail.parameters.value = e.detail.elt.querySelector('[name="value"]').value;
   });
+  /* SC-04: a rejected Save keeps every typed cell. The server answers with HX-Reswap: none plus a typed workbook-field-error event; the
+     message is shown once, inside the form, with an explicit Reload for a stale-draft conflict. The write is never replayed automatically. */
+  document.addEventListener('workbook-field-error', e => {
+    const d = (e && e.detail) || {};
+    if (d.field_id !== 'debt.financing.instruments') return;
+    const form = document.querySelector('[data-f3-form]');
+    const box = form && form.querySelector('[data-f3-error]');
+    if (!box) return;
+    box.textContent = '';
+    box.appendChild(document.createTextNode((d.message || 'The financing proposal was not saved.') + ' Your typed values are kept below. '));
+    if (d.conflict === true) {
+      const reload = document.createElement('button');
+      reload.type = 'button';
+      reload.setAttribute('data-conflict-reload', '');
+      reload.textContent = 'Reload current values';
+      reload.addEventListener('click', () => window.location.reload());
+      box.appendChild(reload);
+    }
+    form.dataset.f3Rejected = d.conflict === true ? 'conflict' : 'rejected';
+    form.querySelectorAll('[data-f3-save]').forEach(button => { button.disabled = false; });
+  });
   /* Capital Stack cell-first editing: presentation only (dirty markers, keyboard, expand). */
   const cells = form => Array.from(form.querySelectorAll('[data-cs-cell]'));
   const mark = form => {
