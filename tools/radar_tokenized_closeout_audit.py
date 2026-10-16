@@ -30,7 +30,7 @@ from finco_radar.venues.relative_value import (
 from finco_radar.venues.robinhood_live import EVIDENCE_CLOCK_CONTRACT
 from finco_radar.venues.basis import BASIS_MAX_CLOCK_SKEW_SECONDS
 from app.crypto_terminal.deepstate_composition import (
-    RAW_COMPARISON_UNIT, CURRENT_CROSS_VENUE,
+    RAW_COMPARISON_UNIT, CURRENT_CROSS_VENUE, MAX_HISTORICAL_FILLS,
     build_deepstate_historical_context,
 )
 
@@ -264,9 +264,10 @@ def run_audit(source: Path, *, as_of: datetime, max_assets: int = MAX_UNDERLYING
         "deepstate": {
             "historical_state": deepstate.state,
             "historical_reason": deepstate.reason,
-            "real_historical_execution_count": sum(
+            "bounded_real_historical_execution_count": sum(
                 x.evidence_state == "HISTORICAL_EXECUTION_PROVEN"
                 for x in deepstate.evidence),
+            "historical_evidence_cap": MAX_HISTORICAL_FILLS,
             "historical_comparison_count": sum(
                 x.state == "HISTORICAL_COMPARISON_AVAILABLE"
                 for x in deepstate.historical_comparisons),
