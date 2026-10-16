@@ -32,5 +32,11 @@ def apply_config(inputs, raw, *, project_type):
     candidate = replace(inputs, revenue=revenue)
     from financial_engine.adapters.project_inputs import from_project_inputs
     from financial_engine.orchestrator import _build_period_engine
-    config.validate_axis(_build_period_engine(from_project_inputs(candidate)).periods())
+    engine = _build_period_engine(from_project_inputs(candidate))
+    if getattr(config, "has_contractual_indexation", False):
+        if engine.cod != candidate.info.cod_date:
+            raise ValueError("REVENUE_V2_TIMELINE_COD: Project Timeline and PeriodEngine COD disagree")
+        config.validate_axis(engine.periods(), project_cod=candidate.info.cod_date)
+    else:
+        config.validate_axis(engine.periods())
     return candidate

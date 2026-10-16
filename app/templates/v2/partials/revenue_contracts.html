@@ -8,6 +8,9 @@
         hx-post="/v2/workbook/revenue/contracts" hx-target="#v2-sheet-revenue" hx-swap="outerHTML"
         data-testid="revenue-contracts-form" data-revenue-editor data-technology="{{ (contracts.technology or project_type | default('')) | lower | e }}"
         data-v3-enabled="{{ 'true' if contracts.v3_enabled else 'false' }}" autocomplete="off">
+    <input type="hidden" data-calendar-cod value="{{ contracts.project_cod | default('') }}">
+    <input type="hidden" data-calendar-preview value="{{ contracts.calendar_preview | default({}) | tojson | forceescape }}">
+    {% if contracts.calendar_preview_error %}<p role="alert" data-calendar-validation>{{ contracts.calendar_preview_error }}</p>{% endif %}
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
     <input type="hidden" name="csrf_token" value="{{ revenue_contracts_csrf_token }}">
@@ -96,7 +99,7 @@
     <div class="rc-actions">
       <button type="submit" name="action" value="save" data-revenue-save disabled class="fx-ui text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-600">Save contracts</button>
       {% if contracts.overridden %}<button type="submit" name="action" value="inherit" data-revenue-inherit>Restore Base contracts</button>{% endif %}
-      <span class="d-context">End date exclusive · Same-period settlement · Operating-year indexation</span>
+      <span class="d-context">End date exclusive · Same-period settlement · {% if contracts.calendar_preview %}Contractual calendar reviews{% else %}Operating-year indexation{% endif %}</span>
     </div>
     <details class="rc-diagnostic">
       <summary>Technical details (read-only)</summary>
@@ -138,7 +141,7 @@
         <tbody>{% for row in contracts.rows %}<tr><td>{{ row.id }}</td><td>{{ row.type }}</td>
           <td>{{ row.start_date }}</td><td>{{ row.end_date }}</td>
           <td>{% if row.volume_share is none %}Residual{% else %}{{ "%.2f"|format(row.volume_share * 100) }}%{% endif %}</td>
-          <td>{{ row.price_eur_mwh }}</td><td>{{ "%.2f"|format(row.indexation_rate * 100) }}%</td>
+          <td>{{ row.price_eur_mwh }}</td><td>{% if row.indexation_timing %}{{ row.indexation_timing.method }} · {{ row.indexation_timing.start_rule }} · {{ row.indexation_timing.resolved_start_date }}{% else %}{{ "%.2f"|format(row.indexation_rate * 100) }}%{% endif %}</td>
           <td>{{ row.source_ref }}</td></tr>{% endfor %}</tbody>
       </table>
     </div>

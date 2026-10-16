@@ -1229,13 +1229,28 @@ def _build_revenue_contract_editor(pis, ws):
     operating_starts = []
     operating_boundaries = []
     operating_years = {}
+    calendar_preview = {}
+    calendar_preview_error = ""
+    project_cod = ""
     if technology in ("solar", "wind"):
         # Read-only: the operating period boundaries the model already derives from the project's own dates. They only
         # pre-fill the guided PPA form; the canonical validator still decides what is accepted.
         try:
             from financial_engine.adapters.project_inputs import from_project_inputs
             from financial_engine.orchestrator import _build_period_engine
-            operating = [p for p in _build_period_engine(from_project_inputs(pis.to_projectinputs())).periods() if p.is_operation]
+            if config and getattr(config, "has_contractual_indexation", False):
+                # Read Timeline independently of stale contract terms; never write or rebind them on GET.
+                from app.workbook.input_set import ProjectInputSet
+                from app.persistence.scenarios_repository import resolve_scenario_snapshot
+                timeline_snapshot = dict(pis.snapshot_origin)
+                if scenario is not None and scenario.project_id == ws.project_id and not scenario.archived and not scenario.is_base_case:
+                    timeline_snapshot = resolve_scenario_snapshot(timeline_snapshot, scenario.overrides)
+                timeline_snapshot.pop(SNAPSHOT_KEY, None)
+                editor_inputs = ProjectInputSet.from_snapshot(timeline_snapshot).to_projectinputs()
+            else:
+                editor_inputs = pis.to_projectinputs()
+            project_cod = editor_inputs.info.cod_date.isoformat()
+            operating = [p for p in _build_period_engine(from_project_inputs(editor_inputs)).periods() if p.is_operation]
             if operating:
                 operating_window = {"start": operating[0].start_date.isoformat(), "end": operating[-1].end_date.isoformat()}
                 operating_starts = [p.start_date.isoformat() for p in operating]
@@ -1245,6 +1260,19 @@ def _build_revenue_contract_editor(pis, ws):
                     entry["end"] = p.end_date.isoformat()
                     entry["period_starts"].append(p.start_date.isoformat())
                 operating_boundaries = sorted({p.start_date.isoformat() for p in operating} | {p.end_date.isoformat() for p in operating})
+                if config:
+                    if getattr(config, "has_contractual_indexation", False):
+                        try:
+                            config.validate_axis(operating, project_cod=editor_inputs.info.cod_date)
+                        except ValueError as exc:
+                            calendar_preview_error = str(exc)
+                    for dated in config.streams:
+                        if getattr(dated, "indexation_timing", None) and not calendar_preview_error:
+                            calendar_preview[dated.stream.stream_id] = [
+                                {"start": p.start_date.isoformat(), "end": p.end_date.isoformat(),
+                                 "price": next(s for s in config.plan_at(p.start_date, p.year_index).streams
+                                               if s.stream_id == dated.stream.stream_id).ppa.price_at_year(p.year_index)}
+                                for p in operating if dated.active(p.start_date)]
             if ACTIVATION_ENABLED:
                 axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
                          "settlement_date": p.end_date.isoformat()} for p in operating]
@@ -1254,12 +1282,13 @@ def _build_revenue_contract_editor(pis, ws):
             operating_boundaries = []
             operating_years = {}
             axis = []
+            calendar_preview = {}
     try:
         _term = float(pis.get("revenue.ppa.term_years"))
         ppa_term_years = _term if _term > 0 else None
     except (TypeError, ValueError):
         ppa_term_years = None
-    return {"operating_years": list(operating_years.values()), "ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
+    return {"project_cod": project_cod, "calendar_preview": calendar_preview, "calendar_preview_error": calendar_preview_error, "operating_years": list(operating_years.values()), "ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
             "overridden": overridden, "rows": payload.get("streams", []),
             "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
             "period_axis": axis}

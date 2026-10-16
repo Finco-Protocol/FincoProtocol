@@ -2,6 +2,41 @@
 
 Status: **PENDING independent financial/governance acceptance. NOT a release approval.**
 
+## Contractual-date scope addendum (supersedes the one-path proposal below)
+
+The owner authorized candidate-only SIGNATURE/COD/PPA_START/CUSTOM timing and
+PERIOD_BOUNDARY_ONLY reviews, then explicitly authorized the minimal canonical
+COD bridge in `finco_core/revenue/generation.py`. Project Timeline remains the
+only project-date authority. No financial blob or release pin was approved.
+
+Current exact protected candidates:
+
+| Path | Main blob | New candidate blob |
+|---|---|---|
+| domain/revenue/multistream_runtime.py | 83beda4eb296b02baf2ebd6659fec243ab196206 | 4c53ed15491e3f4a3faddde0e142681ed0a13ae2 |
+| finco_core/revenue/generation.py | 35670dc7b5ab4ce01177f9df817a4776c10569ab | 8e23a949e72acc6422a6c7cd46f034b31f81fdfb |
+
+Source parent is `1c257cb909d79af3a9afaa3a55c7e6da534231ec`; the exact committed
+candidate HEAD/tree and current CI belong to the PR handoff (a document cannot
+contain its own containing Git commit hash). No additional protected financial
+paths change. The prior `e5e26082...` candidate is NOT the final financial scope
+and must not be authorized as its substitute.
+
+Read `PPA01_CONTRACTUAL_INDEXATION_METHODOLOGY.md` before reviewing the diff:
+explicit contractual dates, annual anniversaries, pre-COD reviews, dated index
+references/publication dates and held-base versus explicit index-ratio behavior
+are distinct from the legacy model-year series. Missing required data and
+within-operating-period reviews refuse Save/Run. No automatic date shift or
+within-period financial weighting is introduced.
+
+Evidence is in `PPA01_CONTRACTUAL_INDEXATION_CANDIDATE_REPORT.md`. Independent
+review must cover BOTH exact blobs, the methodology and limitations, not just
+the old five WF07 assertions. Any new successor must preserve all historical
+WF07/V2/V3/F3.5 pins and M7 candidate boundaries; no successor is implemented
+or self-authorized here. M7 and Revenue V3 release gates remain unchanged.
+
+## Previous model-year-only proposal (historical candidate context)
+
 Repository: Finco-Protocol/FincoProtocol. Existing Draft PR: #293.
 Reviewed starting HEAD: `dcd7d21368d669fbc8ef054f20bf4c92f556e60e`.
 Base: `540e1f4bb54d53ad6d2c1628074b94fdb0c9eb06`.

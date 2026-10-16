@@ -92,4 +92,5 @@
 .rc-index-editor textarea{display:block;width:min(100%,420px);margin:6px 0}
 .rc-index-editor button{margin:4px 6px 0 0}
 .rc-quick-series{margin:6px 0}
+.rc-calendar-prices-scroll{max-height:320px;overflow:auto}
 @media (max-width:700px){.rc-index-table{min-width:520px}}

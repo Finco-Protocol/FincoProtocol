@@ -5,6 +5,7 @@ import json
 import math
 from dataclasses import dataclass, replace
 from datetime import date
+from decimal import Decimal, localcontext
 
 from domain.revenue.plan import RevenuePlan, RevenueStream, RevenueStreamType
 from domain.revenue.plan_engine import StreamPeriodStatus, evaluate_revenue_plan
@@ -36,6 +37,152 @@ def _unique_object(pairs):
     return result
 
 
+def _contract_date(value):
+    if not isinstance(value, str) or len(value) != 10:
+        raise ValueError("REVENUE_V2_TIMING_DATE: exact ISO date required")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("REVENUE_V2_TIMING_DATE: exact ISO date required") from exc
+    if parsed.isoformat() != value:
+        raise ValueError("REVENUE_V2_TIMING_DATE: exact ISO date required")
+    return parsed
+
+
+def _anniversary(anchor, years):
+    try:
+        return anchor.replace(year=anchor.year + years)
+    except ValueError as exc:
+        raise ValueError("REVENUE_V2_REVIEW_ANNIVERSARY: no exact annual anniversary; date rounding is unsupported") from exc
+
+
+@dataclass(frozen=True)
+class DatedIndexObservation:
+    reference_date: date
+    level: float
+    basis: str
+    publication_date: date | None
+    source_ref: str
+
+
+@dataclass(frozen=True)
+class PPAIndexationTiming:
+    method: str
+    price_base_date: date
+    start_rule: str
+    resolved_start_date: date
+    first_review_date: date
+    signing_date: date | None = None
+    custom_start_date: date | None = None
+    index_base_date: date | None = None
+    observations: tuple[DatedIndexObservation, ...] = ()
+    reviews: tuple[tuple[date, date], ...] = ()
+
+    def review_dates(self, end):
+        dates = []
+        for year in range(1, 602):
+            review = _anniversary(self.resolved_start_date, year)
+            if review >= end:
+                return tuple(dates)
+            dates.append(review)
+        raise ValueError("REVENUE_V2_TIMING_RANGE: at most 600 annual reviews supported")
+
+    def price_at(self, when, base_price, annual_rate, end):
+        dates = self.review_dates(end)
+        effective = [d for d in dates if d <= when]
+        if not effective:
+            return base_price
+        if self.method == "ANNUAL_FIXED":
+            try:
+                price = base_price * (1.0 + annual_rate) ** len(effective)
+            except OverflowError as exc:
+                raise ValueError("REVENUE_V2_TIMING_PRICE: nonfinite indexed price") from exc
+        else:
+            levels = {o.reference_date: o.level for o in self.observations}
+            references = dict(self.reviews)
+            # Avoid an overflowing intermediate when the final price is finite.
+            with localcontext() as context:
+                context.prec = 34
+                price = float(Decimal(str(base_price)) * Decimal(str(levels[references[effective[-1]]])) / Decimal(str(levels[self.index_base_date])))
+        if not math.isfinite(price):
+            raise ValueError("REVENUE_V2_TIMING_PRICE: nonfinite indexed price")
+        return price
+
+
+def _parse_indexation_timing(raw, version, kind, rate, start, end, *, has_series, has_curve):
+    if version != 2 or kind is not RevenueStreamType.PPA:
+        raise ValueError("REVENUE_V2_TIMING_UNSUPPORTED: calendar terms require a version 2 PPA")
+    if has_series or has_curve:
+        raise ValueError("REVENUE_V2_TIMING_MIXED_BASIS: calendar terms cannot combine with model-year levels or price curves")
+    common = {"method", "price_base_date", "start_rule", "resolved_start_date", "first_review_date", "review_frequency", "mid_period_policy"}
+    _object(raw, common, "calendar indexation", {"signing_date", "custom_start_date", "index_base_date", "observations", "reviews"})
+    method, rule = raw["method"], raw["start_rule"]
+    if method not in ("ANNUAL_FIXED", "DATED_INDEX_LEVELS") or rule not in ("SIGNATURE", "COD", "PPA_START", "CUSTOM"):
+        raise ValueError("REVENUE_V2_TIMING_RULE: unsupported indexation method or commencement rule")
+    if raw["review_frequency"] != "ANNUAL" or raw["mid_period_policy"] != "PERIOD_BOUNDARY_ONLY":
+        raise ValueError("REVENUE_V2_REVIEW_POLICY: only annual, period-boundary reviews are supported")
+    required = common | ({"signing_date"} if rule == "SIGNATURE" else {"custom_start_date"} if rule == "CUSTOM" else set())
+    if method == "DATED_INDEX_LEVELS":
+        required |= {"index_base_date", "observations", "reviews"}
+        if rate != 0:
+            raise ValueError("REVENUE_V2_TIMING_MIXED_BASIS: dated levels cannot combine with an annual rate")
+    if set(raw) != required:
+        raise ValueError("REVENUE_V2_TIMING_SCHEMA: supply exactly the dates and terms required by the selected rule and method")
+    base, anchor, first = (_contract_date(raw[key]) for key in ("price_base_date", "resolved_start_date", "first_review_date"))
+    signing = _contract_date(raw["signing_date"]) if rule == "SIGNATURE" else None
+    custom = _contract_date(raw["custom_start_date"]) if rule == "CUSTOM" else None
+    expected = signing if rule == "SIGNATURE" else start if rule == "PPA_START" else custom if rule == "CUSTOM" else anchor
+    if anchor != expected or base > min(anchor, start) or first != _anniversary(anchor, 1) or anchor >= end:
+        raise ValueError("REVENUE_V2_TIMING_ORDER: check the price base, resolved commencement and explicit first annual review")
+    terms = PPAIndexationTiming(method, base, rule, anchor, first, signing, custom)
+    dates = terms.review_dates(end)
+    if method == "ANNUAL_FIXED":
+        return terms
+    raw_obs, raw_reviews = raw["observations"], raw["reviews"]
+    if not isinstance(raw_obs, list) or not 1 <= len(raw_obs) <= 601 or not isinstance(raw_reviews, list) or len(raw_reviews) > 600:
+        raise ValueError("REVENUE_V2_TIMING_OBSERVATIONS: bounded explicit observations and reviews required")
+    observations = []
+    for point in raw_obs:
+        _object(point, {"reference_date", "level", "basis", "publication_date", "source_ref"}, "dated index observation")
+        reference = _contract_date(point["reference_date"])
+        level = point["level"]
+        if type(level) not in (int, float) or not math.isfinite(level) or level <= 0:
+            raise ValueError("REVENUE_V2_INDEX_LEVEL: each dated level must be finite and above zero")
+        if point["basis"] not in ("OBSERVED", "FORECAST"):
+            raise ValueError("REVENUE_V2_INDEX_BASIS: expected OBSERVED or FORECAST")
+        publication = _contract_date(point["publication_date"]) if point["basis"] == "OBSERVED" else None
+        if (point["basis"] == "FORECAST" and point["publication_date"] is not None) or (publication and publication < reference):
+            raise ValueError("REVENUE_V2_INDEX_PUBLICATION: declare observed publication or a forecast with null publication")
+        source = point["source_ref"]
+        if not isinstance(source, str) or not source.strip() or len(source) > 200:
+            raise ValueError("REVENUE_V2_INDEX_SOURCE: explicit bounded observation source required")
+        if observations and reference <= observations[-1].reference_date:
+            raise ValueError("REVENUE_V2_INDEX_ORDER: dated observations must be unique and ordered")
+        observations.append(DatedIndexObservation(reference, float(level), point["basis"], publication, source))
+    by_date = {p.reference_date: p for p in observations}
+    base_reference = _contract_date(raw["index_base_date"])
+    if base_reference not in by_date or base_reference > anchor:
+        raise ValueError("REVENUE_V2_INDEX_BASE: explicit index-base observation required at or before commencement")
+    def available(reference, effective):
+        point = by_date.get(reference)
+        if point is None or reference > effective:
+            raise ValueError("REVENUE_V2_INDEX_COVERAGE: explicit observation missing for a contractual reference date")
+        if point.publication_date and point.publication_date > effective:
+            raise ValueError("REVENUE_V2_INDEX_PUBLICATION: observed index was not published by the effective review")
+    available(base_reference, anchor)
+    reviews = []
+    for review in raw_reviews:
+        _object(review, {"effective_date", "reference_date"}, "index review")
+        effective, reference = _contract_date(review["effective_date"]), _contract_date(review["reference_date"])
+        if reference < base_reference or (reviews and reference < reviews[-1][1]):
+            raise ValueError("REVENUE_V2_INDEX_ORDER: review references cannot move before the base or backwards")
+        available(reference, effective)
+        reviews.append((effective, reference))
+    if tuple(r[0] for r in reviews) != dates:
+        raise ValueError("REVENUE_V2_INDEX_COVERAGE: exactly one explicit reference for every annual review, including pre-COD reviews, is required")
+    return replace(terms, index_base_date=base_reference, observations=tuple(observations), reviews=tuple(reviews))
+
+
 @dataclass(frozen=True)
 class DatedRevenueStream:
     stream: RevenueStream
@@ -47,6 +194,7 @@ class DatedRevenueStream:
     # PPA-01: explicit published CPI/PPI index levels keyed by MODEL OPERATING YEAR (the same year basis as the existing OPERATING_YEAR
     # indexation): ((operating_year, level, basis), ...). The first point is the base; price = price_eur_mwh x level / base_level.
     index_series: tuple[tuple[int, float, str], ...] = ()
+    indexation_timing: PPAIndexationTiming | None = None
 
     def active(self, when):
         return self.start_date <= when < self.end_date
@@ -58,6 +206,10 @@ class MultiStreamRevenue:
     streams: tuple[DatedRevenueStream, ...]
     canonical_json: str
 
+    @property
+    def has_contractual_indexation(self):
+        return any(s.indexation_timing for s in self.streams)
+
     def plan_at(self, when, year_index=None):
         """Resolve a financial plan; active index-series prices require an explicit operating year."""
         return self._plan_at(when, year_index, structural=False)
@@ -68,12 +220,15 @@ class MultiStreamRevenue:
 
     def _plan_at(self, when, year_index, *, structural):
         # V1 keeps the exact historical code path and floating-point operations.
-        if not any(s.price_curve or s.index_series for s in self.streams):
+        if not any(s.price_curve or s.index_series or s.indexation_timing for s in self.streams):
             streams = tuple(replace(s.stream, enabled=s.active(when)) for s in self.streams)
         else:
             adjusted = []
             for dated in self.streams:
                 stream = replace(dated.stream, enabled=dated.active(when))
+                if stream.enabled and dated.indexation_timing and not structural:
+                    price = dated.indexation_timing.price_at(when, stream.ppa.ppa_base_price_eur_mwh, stream.ppa.ppa_price_index, dated.end_date)
+                    stream = replace(stream, ppa=replace(stream.ppa, ppa_base_price_eur_mwh=price, ppa_price_index=0.0))
                 if stream.enabled and dated.index_series and not structural:
                     if type(year_index) is not int or year_index < 1:
                         raise ValueError("REVENUE_V2_INDEX_YEAR_CONTEXT: active index-series pricing requires a positive integer operating year")
@@ -120,7 +275,7 @@ class MultiStreamRevenue:
                 raise ValueError("REVENUE_V2_CFD_COVERAGE: settlement volume exceeds merchant volume")
         return plan
 
-    def validate_axis(self, periods):
+    def validate_axis(self, periods, *, project_cod=None):
         operating = tuple(p for p in periods if p.is_operation)
         boundaries = {p.start_date for p in operating} | {p.end_date for p in operating}
         if not operating:
@@ -128,6 +283,13 @@ class MultiStreamRevenue:
         for dated in self.streams:
             if dated.start_date not in boundaries or dated.end_date not in boundaries:
                 raise ValueError("REVENUE_V2_AXIS: contract dates must match canonical operating boundaries")
+            if dated.indexation_timing:
+                terms = dated.indexation_timing
+                if terms.start_rule == "COD" and (type(project_cod) is not date or terms.resolved_start_date != project_cod):
+                    raise ValueError("REVENUE_V2_TIMING_COD: resolved COD must match the canonical project COD; review the contract dates")
+                for review in terms.review_dates(dated.end_date):
+                    if any(dated.active(p.start_date) and p.start_date < review < p.end_date for p in operating):
+                        raise ValueError(f"REVENUE_V2_REVIEW_PERIOD_ALIGNMENT: review {review.isoformat()} falls inside an operating period; within-period price resets are unsupported. Keep the contractual date and revise the supported terms; no date is moved.")
             if dated.price_curve:
                 expected = tuple(p.start_date for p in operating
                                  if dated.start_date <= p.start_date < dated.end_date)
@@ -225,7 +387,7 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
     for row in payload["streams"]:
         _object(row, {"id", "type", "start_date", "end_date", "volume_share", "price_eur_mwh",
                       "indexation_rate", "settlement", "source_ref"}, "stream",
-                {"capture_rate", "reference_stream_id", "price_curve", "index_series"})
+                {"capture_rate", "reference_stream_id", "price_curve", "index_series", "indexation_timing"})
         if not isinstance(row["type"], str) or row["type"] not in SUPPORTED_TYPES:
             raise ValueError(f"REVENUE_V2_UNSUPPORTED_STREAM: {row['type']!r}")
         for key in ("id", "source_ref"):
@@ -269,6 +431,9 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
             curve = tuple(parsed)
         index_series = _parse_index_series(row["index_series"], payload["version"], kind, index, "price_curve" in row) \
             if "index_series" in row else ()
+        timing = _parse_indexation_timing(row["indexation_timing"], payload["version"], kind, index, start, end,
+                                         has_series="index_series" in row, has_curve="price_curve" in row) \
+            if "indexation_timing" in row else None
         options = {}
         if kind is RevenueStreamType.PPA:
             options["ppa"] = PPAParams(ppa_enabled=True, ppa_base_price_eur_mwh=price,
@@ -289,7 +454,7 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
         if kind is not RevenueStreamType.CFD and "reference_stream_id" in row:
             raise ValueError("REVENUE_V2_SCHEMA: reference_stream_id belongs only to CfD")
         stream = RevenueStream(stream_id=row["id"], stream_type=kind, volume_share=share, **options)
-        dated_streams.append(DatedRevenueStream(stream, start, end, row["source_ref"], curve, index_series))
+        dated_streams.append(DatedRevenueStream(stream, start, end, row["source_ref"], curve, index_series, timing))
     config = MultiStreamRevenue(payload["technology"], tuple(dated_streams),
                                 json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False))
     for when in sorted({s.start_date for s in dated_streams} | {s.end_date for s in dated_streams}):

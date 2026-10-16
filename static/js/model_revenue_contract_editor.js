@@ -10,7 +10,7 @@
   const ROOT_KEYS = ['version', 'technology', 'indexation_basis', 'streams'];
   const BASE_KEYS = ['id', 'type', 'start_date', 'end_date', 'volume_share',
     'price_eur_mwh', 'indexation_rate', 'settlement', 'source_ref'];
-  const OPTIONAL_KEYS = ['capture_rate', 'reference_stream_id', 'price_curve', 'index_series'];
+  const OPTIONAL_KEYS = ['capture_rate', 'reference_stream_id', 'price_curve', 'index_series', 'indexation_timing'];
   const INDEX_KEYS = ['operating_year', 'level', 'basis'];
   const KINDS = [
     ['fixed_ppa', 'Fixed PPA'], ['indexed_ppa', 'Indexed PPA'],
@@ -28,7 +28,7 @@
   const displayKind = (row) => Array.isArray(row.price_curve)
     ? (row.type === 'ppa' ? 'scheduled_ppa' : 'scheduled_merchant')
     : row.type === 'ppa'
-      ? (row.indexation_rate > 0 || Array.isArray(row.index_series) ? 'indexed_ppa' : 'fixed_ppa')
+      ? (row.indexation_rate > 0 || Array.isArray(row.index_series) || row.indexation_timing ? 'indexed_ppa' : 'fixed_ppa')
       : row.type === 'merchant'
         ? (row.volume_share === null ? 'residual_merchant' : 'merchant') : 'cfd';
 
@@ -58,7 +58,10 @@
               !('period_start' in point) || !('price_eur_mwh' in point)))) ||
           ('index_series' in row && (![2, 3].includes(book.version) || row.type !== 'ppa' || row.indexation_rate !== 0 ||
             'price_curve' in row || !Array.isArray(row.index_series) || row.index_series.length > 60 ||
-            row.index_series.some(point => !legalKeys(point, INDEX_KEYS) || INDEX_KEYS.some(k => !(k in point)))))) {
+            row.index_series.some(point => !legalKeys(point, INDEX_KEYS) || INDEX_KEYS.some(k => !(k in point))))) ||
+          ('indexation_timing' in row && (book.version !== 2 || row.type !== 'ppa' || 'price_curve' in row || 'index_series' in row ||
+            !legalKeys(row.indexation_timing, ['method','price_base_date','start_rule','resolved_start_date','first_review_date',
+              'review_frequency','mid_period_policy','signing_date','custom_start_date','index_base_date','observations','reviews'])))) {
         throw Error('An existing stream contains unsupported terms. Editing is blocked to preserve it.');
       }
     }
@@ -199,6 +202,140 @@
         ? 'Contracted production adds up to ' + pct(peak) + ' from ' + peakAt + ' - it cannot exceed 100%.'
         : 'Contracted production up to ' + pct(peak) + ' · ' + (residual ? 'residual Merchant takes the remainder (price entered on its row)' : 'unallocated up to ' + pct(1 - peak) + ' (add a residual Merchant contract to sell it)');
     }
+    function calendarEditor(row) {
+      const box = document.createElement('div'); box.dataset.calendarEditor = '';
+      const terms = row.indexation_timing;
+      const grid = document.createElement('div'); grid.className = 'rc-product-fields';
+      const changed = () => { showError(''); status(); };
+      const resolve = () => {
+        terms.resolved_start_date = terms.start_rule === 'SIGNATURE' ? terms.signing_date || '' :
+          terms.start_rule === 'CUSTOM' ? terms.custom_start_date || '' :
+          terms.start_rule === 'PPA_START' ? row.start_date : form.querySelector('[data-calendar-cod]').value;
+        box.querySelector('[data-calendar-resolved]').textContent = terms.resolved_start_date || 'Date required';
+      };
+      function field(key, title, options) {
+        const label = document.createElement('label'); label.textContent = title;
+        const el = document.createElement(options ? 'select' : 'input');
+        el.dataset.calendarField = key; el.setAttribute('aria-label', title);
+        if (!options) el.type = 'date';
+        else options.forEach(([value, text]) => {
+          const option = document.createElement('option'); option.value = value; option.textContent = text; el.appendChild(option);
+        });
+        el.value = terms[key] || '';
+        el.addEventListener(options ? 'change' : 'input', () => {
+          terms[key] = el.value;
+          if (key === 'start_rule') {
+            delete terms.signing_date; delete terms.custom_start_date;
+            if (el.value === 'SIGNATURE') terms.signing_date = '';
+            if (el.value === 'CUSTOM') terms.custom_start_date = '';
+          }
+          if (key === 'method') {
+            if (el.value === 'DATED_INDEX_LEVELS') {
+              row.indexation_rate = 0;
+              terms.index_base_date = ''; terms.observations = []; terms.reviews = [];
+            } else {
+              delete terms.index_base_date; delete terms.observations; delete terms.reviews;
+            }
+          }
+          resolve(); changed();
+          if (options) { render(); status(); }
+        });
+        label.appendChild(el); grid.appendChild(label);
+      }
+      field('method', 'Indexation method', [['ANNUAL_FIXED','Fixed annual rate'], ['DATED_INDEX_LEVELS','Dated CPI/PPI levels']]);
+      field('price_base_date', 'Price base date');
+      field('start_rule', 'Indexation starts from', [['SIGNATURE','Contract signing date'], ['COD','COD'], ['PPA_START','PPA commencement date'], ['CUSTOM','Custom date']]);
+      if (terms.start_rule === 'SIGNATURE') field('signing_date', 'Contract signing date');
+      if (terms.start_rule === 'CUSTOM') field('custom_start_date', 'Custom indexation date');
+      field('first_review_date', 'First effective price review');
+      if (terms.method === 'DATED_INDEX_LEVELS') field('index_base_date', 'Base index reference date');
+      box.appendChild(grid);
+      const dates = document.createElement('p');
+      dates.append('Effective indexation start: ');
+      const resolved = document.createElement('output'); resolved.dataset.calendarResolved = '';
+      resolved.textContent = terms.resolved_start_date || 'Date required'; dates.append(resolved);
+      box.appendChild(dates);
+      const projectCod = form.querySelector('[data-calendar-cod]').value;
+      if (terms.start_rule === 'COD' && projectCod && terms.resolved_start_date !== projectCod) {
+        const rebind = document.createElement('button'); rebind.type = 'button';
+        rebind.textContent = 'Use Project Timeline COD: ' + projectCod;
+        rebind.addEventListener('click', () => { resolve(); changed(); }); box.appendChild(rebind);
+      }
+      // Only date selection/serialization happens here. The server resolves financial prices.
+      if (terms.method === 'DATED_INDEX_LEVELS') {
+        const note = document.createElement('p'); note.textContent = 'Supply the base and every annual review, including reviews before COD. Reference dates and publication dates are distinct.'; box.appendChild(note);
+        function records(key, title, columns, blank) {
+          const section = document.createElement('details'); section.open = true;
+          const heading = document.createElement('summary'); heading.textContent = title; section.appendChild(heading);
+          const table = document.createElement('table'); table.className = 'rc-index-table'; table.dataset.calendarTable = key;
+          const head = table.createTHead().insertRow();
+          columns.forEach(([, label]) => { const th = document.createElement('th'); th.scope = 'col'; th.textContent = label; head.appendChild(th); });
+          const body = table.createTBody();
+          terms[key].forEach((point, at) => {
+            const line = body.insertRow();
+            columns.forEach(([name, title, type]) => {
+              const cell = line.insertCell();
+              const input = document.createElement(type === 'basis' ? 'select' : 'input');
+              if (type === 'basis') ['OBSERVED','FORECAST'].forEach(value => { const option = document.createElement('option'); option.value = value; option.textContent = value; input.appendChild(option); });
+              else input.type = type || 'text';
+              if (type === 'number') input.step = 'any';
+              input.value = point[name] == null ? '' : point[name];
+              input.setAttribute('aria-label', title + ' row ' + (at+1)); input.dataset.calendarPoint = name;
+              input.addEventListener(type === 'basis' ? 'change' : 'input', () => {
+                point[name] = type === 'number' ? (input.value === '' ? '' : Number(input.value)) :
+                  name === 'publication_date' && input.value === '' ? null : input.value;
+                changed();
+              });
+              cell.appendChild(input);
+            });
+            const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove';
+            remove.setAttribute('aria-label','Remove ' + title + ' row ' + (at+1));
+            remove.addEventListener('click', () => { terms[key].splice(at,1); render(); status(); }); line.insertCell().appendChild(remove);
+          });
+          const scroll = document.createElement('div'); scroll.className = 'rc-index-scroll'; scroll.appendChild(table); section.appendChild(scroll);
+          const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add row';
+          add.addEventListener('click', () => { terms[key].push({...blank}); render(); status(); }); section.appendChild(add);
+          const paste = document.createElement('textarea'); paste.rows = 3;
+          paste.setAttribute('aria-label','Paste ' + title); paste.placeholder = columns.map(c => c[1]).join('\t');
+          section.appendChild(paste);
+          const use = document.createElement('button'); use.type = 'button'; use.textContent = 'Replace with pasted rows';
+          use.addEventListener('click', () => {
+            const lines = paste.value.trim().split(/\r?\n/);
+            if (!paste.value.trim() || lines.length > 601) { showError('Paste explicit rows, at most 601.'); return; }
+            const parsed = [];
+            for (const line of lines) {
+              const cells = line.split('\t');
+              if (cells.length !== columns.length) { showError('Use tab-separated columns: ' + columns.map(c => c[1]).join(', ')); return; }
+              const record = {};
+              for (let i=0; i<columns.length; i++) {
+                const [name,,type] = columns[i]; const text = cells[i].trim();
+                if (type === 'number' && (!LEVEL.test(text) || !(Number(text)>0))) { showError('Every index level must be a finite number above zero.'); return; }
+                record[name] = type === 'number' ? Number(text) : name === 'publication_date' && !text ? null : text;
+              }
+              parsed.push(record);
+            }
+            terms[key] = parsed; showError(''); render(); status();
+          });
+          section.appendChild(use); box.appendChild(section);
+        }
+        records('observations', 'Index observations', [['reference_date','Reference date','date'],['level','Level','number'],['basis','Basis','basis'],['publication_date','Publication date','date'],['source_ref','Source reference','text']],
+          {reference_date:'',level:'',basis:'FORECAST',publication_date:null,source_ref:''});
+        records('reviews', 'Price reviews', [['effective_date','Effective review','date'],['reference_date','Index reference date','date']], {effective_date:'',reference_date:''});
+      }
+      const preview = document.createElement('details');
+      const title = document.createElement('summary'); title.textContent = 'Period prices (saved contracts)'; preview.appendChild(title);
+      const pending = document.createElement('p'); pending.dataset.calendarRefresh = ''; pending.textContent = 'Save contracts to refresh the price preview.'; preview.appendChild(pending);
+      const prices = document.createElement('table'); prices.className = 'rc-index-table'; prices.dataset.calendarPrices = '';
+      const header = prices.createTHead().insertRow();
+      ['Period start','Period end','Price EUR/MWh'].forEach(text => { const th = document.createElement('th'); th.textContent = text; header.appendChild(th); });
+      const priceBody = prices.createTBody();
+      const saved = JSON.parse(form.querySelector('[data-calendar-preview]').value || '{}');
+      (saved[row.id] || []).forEach(p => {
+        const line = priceBody.insertRow(); [p.start,p.end,p.price.toFixed(4)].forEach(value => { line.insertCell().textContent = value; });
+      });
+      const wrap = document.createElement('div'); wrap.className = 'rc-index-scroll rc-calendar-prices-scroll'; wrap.appendChild(prices); preview.appendChild(wrap); box.appendChild(preview);
+      return box;
+    }
     function status() {
       dirty = JSON.stringify(book) !== baseline;
       form.dataset.dirty = String(dirty);
@@ -216,6 +353,8 @@
       const over = form.querySelector('[data-revenue-allocation]')?.dataset.over === 'true';
       if (dirty && over && !incomplete) feedback.textContent = 'Not saveable · ' + form.querySelector('[data-revenue-allocation]').textContent;
       save.disabled = !dirty || blocked || incomplete || over;
+      form.querySelectorAll('[data-calendar-prices]').forEach(el => { el.hidden = dirty; });
+      form.querySelectorAll('[data-calendar-refresh]').forEach(el => { el.hidden = !dirty; });
     }
     function advancedMode(enabled) {
       advanced = !!enabled;
@@ -253,6 +392,11 @@
         const row = book.streams[index];
         row[field] = opts.percent ? fromPct(input.value) :
           opts.number ? (input.value.trim() === '' ? '' : Number(input.value)) : input.value;
+        if (field === 'start_date' && row.indexation_timing?.start_rule === 'PPA_START') {
+          row.indexation_timing.resolved_start_date = row.start_date;
+          const out = tr.nextElementSibling?.querySelector('[data-calendar-resolved]');
+          if (out) out.textContent = row.start_date || 'Date required';
+        }
         tr.classList.add('rc-row-dirty');
         showError('');
         status();
@@ -315,7 +459,7 @@
             delete changed.reference_stream_id;
           }
           if (!isScheduled(next)) delete changed.price_curve;
-          if (next !== 'indexed_ppa') delete changed.index_series;
+          if (next !== 'indexed_ppa') { delete changed.index_series; delete changed.indexation_timing; }
           book.streams[index] = changed;
           kindOverrides.set(changed, next);
           showError('');
@@ -348,7 +492,9 @@
             {type:'number',number:true,min:0,step:'any',label:'Contract price EUR per MWh'}),
             kind !== 'cfd');
         }
-        if (Array.isArray(row.index_series)) {
+        if (row.indexation_timing?.method === 'DATED_INDEX_LEVELS') {
+          setCell(tr, 'Index %', document.createTextNode('Dated CPI/PPI'));
+        } else if (Array.isArray(row.index_series)) {
           const tag = document.createElement('span');
           tag.textContent = 'Index series (' + row.index_series.length + ')';
           tag.dataset.revenueIndexSeriesTag = 'true';
@@ -399,29 +545,41 @@
           const details = document.createElement('details');
           details.className = 'rc-index-editor';
           const hasSeries = Array.isArray(row.index_series);
-          details.open = hasSeries && !!seriesProblem(row, '');
+          const hasCalendar = !!row.indexation_timing;
+          details.open = hasCalendar || (hasSeries && !!seriesProblem(row, ''));
           const summary = document.createElement('summary');
-          summary.textContent = 'Indexation · ' + (row.id || 'new contract') + ' · ' + (hasSeries ? 'explicit CPI/PPI index series' : 'fixed annual escalation');
+          summary.textContent = 'Indexation · ' + (row.id || 'new contract') + ' · ' + (hasCalendar ? 'contractual calendar dates' : hasSeries ? 'explicit CPI/PPI index series' : 'fixed annual escalation');
           details.appendChild(summary);
           const modes = document.createElement('div');
           modes.className = 'rc-index-modes';
           modes.setAttribute('role', 'radiogroup'); modes.setAttribute('aria-label', 'Indexation basis for ' + (row.id || 'new contract'));
-          for (const [value, title] of [['rate', 'Fixed annual escalation (%)'], ['series', 'Explicit CPI/PPI index series']]) {
+          for (const [value, title] of [['rate', 'Fixed annual escalation (%)'], ['series', 'Explicit CPI/PPI index series'], ['calendar', 'Contractual calendar dates']]) {
             const label = document.createElement('label');
             const radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'rc-index-mode-' + index; radio.value = value;
-            radio.checked = (value === 'series') === hasSeries;
+            radio.checked = value === (hasCalendar ? 'calendar' : hasSeries ? 'series' : 'rate');
+            if (value === 'calendar' && book.version === 3) radio.disabled = true;
             radio.dataset.indexMode = value;
             radio.addEventListener('change', () => {
               if (!radio.checked) return;
-              if (value === 'series') {
+              if (hasCalendar && !window.confirm('Replace the contractual calendar terms? Save remains manual.')) { render(); return; }
+              if (value === 'calendar') {
+                if (hasSeries && !window.confirm('Replace the model-year index levels with calendar terms?')) { render(); return; }
+                delete row.index_series;
+                if (book.version !== 3) book.version = 2;
+                row.indexation_timing = {method:'ANNUAL_FIXED', price_base_date:'', start_rule:'COD',
+                  resolved_start_date:form.querySelector('[data-calendar-cod]').value, first_review_date:'',
+                  review_frequency:'ANNUAL', mid_period_policy:'PERIOD_BOUNDARY_ONLY'};
+              } else if (value === 'series') {
                 const years = contractYears(row);
                 if (!years.length) { radio.checked = false; modes.querySelector('[data-index-mode=rate]').checked = true; showError('Enter the contract start and end dates first; the index series needs one level per priced operating year.'); return; }
                 if (book.version !== 3) book.version = 2;
+                delete row.indexation_timing;
                 row.indexation_rate = 0;
                 row.index_series = years.map(year => ({operating_year: year, level: '', basis: 'FORECAST'}));
               } else {
                 if (hasSeries && row.index_series.some(p => p.level !== '') && !window.confirm('Switch to a fixed annual escalation? The typed index levels will be discarded from the draft.')) { radio.checked = false; modes.querySelector('[data-index-mode=series]').checked = true; return; }
                 delete row.index_series;
+                delete row.indexation_timing;
                 row.indexation_rate = 0;
               }
               kindOverrides.set(row, 'indexed_ppa');          // the contract stays an Indexed PPA: a positive annual rate (or a series) is required
@@ -434,7 +592,9 @@
             modes.appendChild(label);
           }
           details.appendChild(modes);
-          if (!hasSeries) {
+          if (hasCalendar) {
+            details.appendChild(calendarEditor(row));
+          } else if (!hasSeries) {
             const note = document.createElement('p'); note.className = 'd-context';
             note.textContent = 'The annual escalation percentage in the table applies. Choose the index series to price from published CPI/PPI levels instead.';
             details.appendChild(note);
@@ -775,7 +935,7 @@
             return 'Row ' + n + ': an index series belongs to a version 2 PPA without an annual rate or price curve.';
           const problem = seriesProblem(row, 'Row ' + n);
           if (problem) return problem;
-        } else if (kindOverrides.get(row) === 'indexed_ppa' && !(row.indexation_rate > 0))
+        } else if (!row.indexation_timing && kindOverrides.get(row) === 'indexed_ppa' && !(row.indexation_rate > 0))
           return 'Row ' + n + ': indexed PPA requires a positive annual indexation rate.';
       }
       return '';
