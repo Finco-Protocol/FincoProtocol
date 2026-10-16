@@ -221,6 +221,9 @@ def run_audit(source: Path, *, as_of: datetime, max_assets: int = MAX_UNDERLYING
         raise ValueError("as_of must be timezone-aware")
     now = as_of.astimezone(timezone.utc)
     source = Path(source).expanduser().absolute()
+    # Hold the full original signature across the entire computation, not
+    # merely the backup step. Changes at the same byte length still block.
+    source_signature = _existing_safe_source(source, max_db_bytes)
     # Missing data never causes a new SQLite file to be created.
     with tempfile.TemporaryDirectory(prefix="finco-radar-closeout-") as directory:
         offline_copy = Path(directory) / "snapshot.db"
@@ -235,7 +238,7 @@ def run_audit(source: Path, *, as_of: datetime, max_assets: int = MAX_UNDERLYING
         deepstate = build_deepstate_historical_context(
             "NVDA", registry=registry, store=store, as_of=now)
         proof_after = _existing_safe_source(source, max_db_bytes)
-        if proof_after[2] != source_proof["source_bytes"]:
+        if proof_after != source_signature:
             raise AuditBlocked("SOURCE_CHANGED_DURING_AUDIT")
     return {
         "contract": AUDIT_CONTRACT,
