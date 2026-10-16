@@ -1,11 +1,20 @@
 """Real-browser V2 scheduled contract Save/reload and read-only preview UI."""
 import json
 from pathlib import Path
+import re
 import uuid
 
 import pytest
 
-from tests.test_model_golden_flows_browser import golden_app, browser, _page, _click_tab
+from tests.test_model_golden_flows_browser import golden_app, browser, _page
+from tests.model_workspace_navigation import activate_destination
+
+
+def _save_contracts(page, form):
+    with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith("/v2/workbook/revenue/contracts")) as response:
+        form.locator('[data-revenue-save]').click()
+    assert response.value.status == 200
+    form.locator('[data-revenue-feedback]').filter(has_text=re.compile(r"^Saved Working Copy")).wait_for(timeout=30000)
 
 
 @pytest.mark.parametrize("kind", ["solar", "wind"])
@@ -31,7 +40,8 @@ def test_price_curve_editor_real_save_reload_and_mobile(golden_app, browser, kin
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.goto(golden_app["url"] + "/v2/workbook?project=" + record.project_code)
-    _click_tab(page, "tab-revenue", "panel-revenue")
+    activate_destination(page, "tab-revenue")
+    page.locator("#panel-revenue").wait_for(state="visible")
     form = page.locator('[data-testid="revenue-contracts-form"]')
     form.locator('[data-revenue-add-type]').select_option(scheduled_type)
     form.locator('[data-revenue-add]').click()
@@ -62,9 +72,9 @@ def test_price_curve_editor_real_save_reload_and_mobile(golden_app, browser, kin
     merchant.locator('[data-field="end_date"]').fill(op[-1].end_date.isoformat())
     merchant.locator('[data-field="price_eur_mwh"]').fill("75")
     merchant.locator('[data-field="source_ref"]').fill("synthetic-reference-market")
-    form.get_by_role("button", name="Save contracts").click()
+    _save_contracts(page, form)
     form = page.locator('[data-testid="revenue-contracts-form"]')
-    form.locator('[data-revenue-source]').wait_for(timeout=30000)
+    form.locator('[data-revenue-source]').wait_for(state="attached", timeout=30000)
     saved = json.loads(form.locator('[data-revenue-source]').input_value())
     assert saved["version"] == 2
     assert saved["streams"][0]["id"] == "scheduled-contract"
@@ -74,7 +84,8 @@ def test_price_curve_editor_real_save_reload_and_mobile(golden_app, browser, kin
     assert saved["streams"][0]["price_curve"][2]["price_eur_mwh"] == 47
     assert form.locator('[data-revenue-save]').is_disabled()
     page.reload()
-    _click_tab(page, "tab-revenue", "panel-revenue")
+    activate_destination(page, "tab-revenue")
+    page.locator("#panel-revenue").wait_for(state="visible")
     form = page.locator('[data-testid="revenue-contracts-form"]')
     assert json.loads(form.locator('[data-revenue-source]').input_value()) == saved
     scheduled_row = form.locator('[data-revenue-row]').first
@@ -109,7 +120,8 @@ def test_fixed_indexed_ppa_and_merchant_prices_edit_save_reload(golden_app, brow
     operating = [p for p in _build_period_engine(from_project_inputs(pi)).periods() if p.is_operation]
     page = _page(browser, golden_app, user_id=owner)
     page.goto(golden_app["url"] + "/v2/workbook?project=" + record.project_code)
-    _click_tab(page, "tab-revenue", "panel-revenue")
+    activate_destination(page, "tab-revenue")
+    page.locator("#panel-revenue").wait_for(state="visible")
     form = page.locator('[data-testid="revenue-contracts-form"]')
     for variant, contract_id, price, index, share in (
         ("fixed_ppa", "fixed", "40", "0", "30"),
@@ -131,15 +143,19 @@ def test_fixed_indexed_ppa_and_merchant_prices_edit_save_reload(golden_app, brow
             row.locator('[data-field="indexation_rate"]').fill(index)
         row.locator('[data-field="source_ref"]').fill("synthetic-" + contract_id)
 
-    form.locator('[data-revenue-save]').click()
+    _save_contracts(page, form)
     saved = json.loads(form.locator('[data-revenue-source]').input_value())
     assert saved["version"] == 1
     assert [row["price_eur_mwh"] for row in saved["streams"]] == [40, 60, 75]
     assert [row["indexation_rate"] for row in saved["streams"]] == [0, .02, .01]
     assert all("price_curve" not in row for row in saved["streams"])
     page.reload()
-    _click_tab(page, "tab-revenue", "panel-revenue")
+    activate_destination(page, "tab-revenue")
+    page.locator("#panel-revenue").wait_for(state="visible")
     form = page.locator('[data-testid="revenue-contracts-form"]')
     assert json.loads(form.locator('[data-revenue-source]').input_value()) == saved
     assert form.locator('[data-field="price_eur_mwh"]').count() == 3
+    evidence = Path(__file__).resolve().parents[1] / "reports" / "revenue_v2_advanced"
+    evidence.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(evidence / (kind + "-fixed-indexed-merchant-desktop.png")), full_page=True)
     page.close()

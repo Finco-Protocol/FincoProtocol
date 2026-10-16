@@ -8,6 +8,15 @@
 {% if field_error or flash_error %}
   <div class="v2-banner v2-banner-error" role="alert" data-testid="banner-error"{% if field_error and field_error.startswith('Draft changed since page loaded') %} hidden aria-hidden="true"{% endif %}>
     {{ field_error or flash_error }}
+    {% if run_failure is defined and run_failure %}
+    <dl class="v2-run-failure" data-testid="run-failure-detail">
+      <dt>Classification</dt><dd data-testid="run-failure-class"><code>{{ run_failure.classification }}</code> · {{ run_failure.kind_label }}</dd>
+      <dt>What it means</dt><dd>{{ run_failure.explanation }}</dd>
+      {% if run_failure.section %}<dt>Where to look</dt><dd><button type="button" class="v2-run-failure-goto" data-sc34-goto-tab="{{ run_failure.tab }}" data-testid="run-failure-goto">{{ run_failure.section }}</button></dd>{% endif %}
+      <dt>Last Run</dt><dd data-testid="run-failure-prior">{{ run_failure.prior_run }}</dd>
+      <dt>What to do</dt><dd>{{ run_failure.recovery }}</dd>
+    </dl>
+    {% endif %}
   </div>
 {% elif run_failed %}
   <div class="v2-banner v2-banner-error" role="alert" data-testid="banner-run-failed">

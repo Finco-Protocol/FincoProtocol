@@ -79,3 +79,18 @@
 .rc-quick-grid label[hidden] { display: none; }
 .rc-quick-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 .rc-quick-error { color: var(--fx-bad, #991b1b); font-size: 0.82rem; }
+
+/* PPA-01: explicit CPI/PPI index series editor */
+.rc-index-editor{border:1px solid var(--rc-line);border-radius:6px;padding:8px;margin:4px 0}
+.rc-index-editor summary{cursor:pointer;font-weight:600}
+.rc-index-modes{display:flex;flex-wrap:wrap;gap:6px 18px;margin:6px 0}
+.rc-index-scroll{overflow-x:auto;max-width:100%}
+.rc-index-table{border-collapse:collapse;min-width:560px}
+.rc-index-table th,.rc-index-table td{padding:3px 8px;text-align:left;border-bottom:1px solid var(--rc-line);white-space:nowrap}
+.rc-index-table input[type=text]{width:110px;font-variant-numeric:tabular-nums}
+.rc-index-table output{font-variant-numeric:tabular-nums}
+.rc-index-editor textarea{display:block;width:min(100%,420px);margin:6px 0}
+.rc-index-editor button{margin:4px 6px 0 0}
+.rc-quick-series{margin:6px 0}
+.rc-calendar-prices-scroll{max-height:320px;overflow:auto}
+@media (max-width:700px){.rc-index-table{min-width:520px}}

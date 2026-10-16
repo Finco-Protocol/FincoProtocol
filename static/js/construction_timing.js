@@ -74,9 +74,18 @@
       }).then(r => r.json().catch(() => ({ok: false})).then(j => ({status: r.status, body: j}))).then(({status, body}) => {
         save.dataset.busy = 'false';
         if (!body.ok) {
-          msg.textContent = status === 409 ? 'The model changed since this page loaded. Reload to continue; nothing was saved.'
+          // SC-04: a rejected Save keeps the typed dates. A stale-page conflict offers an explicit Reload (never an automatic replay).
+          const text = status === 409 ? 'The model changed since this page loaded, so nothing was saved. Your typed dates are kept here; reload to see the current values.'
             : (body.message || 'The timing was not saved. Check the dates and try again.');
-          refresh(); return;
+          refresh();
+          msg.textContent = text;
+          if (status === 409) {
+            const reload = document.createElement('button');
+            reload.type = 'button'; reload.setAttribute('data-conflict-reload', ''); reload.textContent = 'Reload current values';
+            reload.addEventListener('click', () => window.location.reload());
+            msg.appendChild(document.createTextNode(' ')); msg.appendChild(reload);
+          }
+          return;
         }
         card.dataset.cod = p.end; card.dataset.months = String(p.months);
         card.dataset.contentHash = body.content_hash; card.dataset.workbookVersion = body.workbook_version;

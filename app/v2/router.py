@@ -430,6 +430,12 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
     return apply_ev_presentation(rows, pis)
 
 
+def _ps_horizon_notice(pis):
+    """SC-08: advisory notice when the horizon leaves the SHL maturity off the period grid (read-only; the Run still fails closed)."""
+    from app.v2.horizon_readiness import shl_horizon_notice
+    return shl_horizon_notice(pis)
+
+
 def _build_ps_fields(pis) -> list[dict]:
     """Build project_setup field list — delegates to _build_sheet_fields."""
     return _build_sheet_fields("project_setup", pis)
@@ -703,6 +709,7 @@ def _render_htmx_sheet(
     """Render the project_setup sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
     ctx["ps_fields"] = _build_ps_fields(pis)
+    ctx["ps_horizon_notice"] = _ps_horizon_notice(pis)
     sheet_html = _templates.get_template("partials/sheet_project_setup.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -1091,18 +1098,52 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
             # silently interpreted as a price authority in this projection.
             curve_rows = ()
 
+    from app.v2.effective_revenue_inputs import build_effective_revenue_inputs, effective_pricing_fallbacks
+    _contract_editor = _build_revenue_contract_editor(pis, ws)
+    _effective_pis = pis
+    _scenario_tariff = False
+    if ws.active_scenario_id:
+        from app.persistence.scenarios_repository import get_scenario
+        from app.workbook.input_set import ProjectInputSet
+        from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+
+        scenario = get_scenario(ws.active_scenario_id, ws.user_id)
+        if (scenario is not None and scenario.project_id == ws.project_id and not scenario.archived
+                and not scenario.is_base_case and "tariff_eur_mwh" in scenario.overrides):
+            _scenario_tariff = True
+            try:
+                # Use the same admitted tariff binding as Run, without changing the editable base fields.
+                _effective_pis = ProjectInputSet.from_snapshot(bind_scenario_tariff(dict(pis.snapshot_origin), scenario.overrides))
+            except ValueError:
+                _effective_pis = None
+    _effective_fallback = effective_pricing_fallbacks(_effective_pis)
+    _effective_rows = build_effective_revenue_inputs(_effective_pis, contracts_active=bool(_contract_editor.get("active")))
+    if _scenario_tariff and not _contract_editor.get("active"):
+        for row in _effective_rows:
+            if row["key"] == "tariff":
+                row.update(source="Scenario override", detail="The selected scenario supplies this tariff for the next Run.",
+                           editable="Editable in the Scenario Override Editor.")
+    _effective_balancing = next((r["value"] for r in _effective_rows if r["key"] == "balancing"), None)
+
+    def _first_set(value, fallback):
+        """The entered value when there is one (0 counts), else the resolved effective value."""
+        return value if value not in (None, "") else fallback
     return {
         "revenue_fields": fields,
-        "revenue_multistream": _build_revenue_contract_editor(pis, ws),
+        "revenue_multistream": _contract_editor,
         "revenue_contracts_csrf_token": generate_csrf_token(),
         "revenue_state": revenue_state.value,
+        # SC-06: what the next Run will actually use, with provenance (display only).
+        "revenue_effective_inputs": _effective_rows,
         "revenue_runtime_summary": rs,
         "revenue_pricing_basis": (
-            ("Contracted tariff", _value("revenue.ppa.base_tariff"), "EUR/MWh"),
-            ("PPA term", _value("revenue.ppa.term_years"), "years"),
-            ("PPA escalation", _value("revenue.ppa.index"), "%"),
+            # SC-06: an empty input field no longer renders as "—" when the model uses a saved legacy-key or template value; the effective
+            # value is shown (with its source in the panel below) and nothing is written to the field.
+            ("Contracted tariff", _effective_fallback.get("tariff") if _scenario_tariff else _first_set(_value("revenue.ppa.base_tariff"), _effective_fallback.get("tariff")), "EUR/MWh"),
+            ("PPA term", _first_set(_value("revenue.ppa.term_years"), _effective_fallback.get("term")), "years"),
+            ("PPA escalation", _first_set(_value("revenue.ppa.index"), _effective_fallback.get("escalation")), "%"),
             ("Merchant balancing", _value("revenue.balancing.merchant_pct"), "% of spot sales"),
-            ("Balancing cost", _value("revenue.balancing.cost_eur_per_mwh"), "EUR/MWh"),
+            ("Balancing cost", _effective_balancing, "EUR/MWh"),
             ("CO2 revenue", _value("revenue.balancing.co2_enabled"), ""),
             ("CO2 certificate price", _value("revenue.balancing.co2_price_eur_mwh"), "EUR/MWh"),
         ),
@@ -1187,17 +1228,58 @@ def _build_revenue_contract_editor(pis, ws):
     operating_window = None
     operating_starts = []
     operating_boundaries = []
+    operating_years = {}
+    calendar_preview = {}
+    rounding_preview = {}
+    calendar_preview_error = ""
+    project_cod = ""
     if technology in ("solar", "wind"):
         # Read-only: the operating period boundaries the model already derives from the project's own dates. They only
         # pre-fill the guided PPA form; the canonical validator still decides what is accepted.
         try:
             from financial_engine.adapters.project_inputs import from_project_inputs
             from financial_engine.orchestrator import _build_period_engine
-            operating = [p for p in _build_period_engine(from_project_inputs(pis.to_projectinputs())).periods() if p.is_operation]
+            if config and getattr(config, "has_contractual_indexation", False):
+                # Read Timeline independently of stale contract terms; never write or rebind them on GET.
+                from app.workbook.input_set import ProjectInputSet
+                from app.persistence.scenarios_repository import resolve_scenario_snapshot
+                timeline_snapshot = dict(pis.snapshot_origin)
+                if scenario is not None and scenario.project_id == ws.project_id and not scenario.archived and not scenario.is_base_case:
+                    timeline_snapshot = resolve_scenario_snapshot(timeline_snapshot, scenario.overrides)
+                timeline_snapshot.pop(SNAPSHOT_KEY, None)
+                editor_inputs = ProjectInputSet.from_snapshot(timeline_snapshot).to_projectinputs()
+            else:
+                editor_inputs = pis.to_projectinputs()
+            project_cod = editor_inputs.info.cod_date.isoformat()
+            operating = [p for p in _build_period_engine(from_project_inputs(editor_inputs)).periods() if p.is_operation]
             if operating:
                 operating_window = {"start": operating[0].start_date.isoformat(), "end": operating[-1].end_date.isoformat()}
                 operating_starts = [p.start_date.isoformat() for p in operating]
+                # PPA-01: the model's operating years (the year basis of every index series) with their calendar span and period starts.
+                for p in operating:
+                    entry = operating_years.setdefault(p.year_index, {"year": p.year_index, "start": p.start_date.isoformat(), "period_starts": []})
+                    entry["end"] = p.end_date.isoformat()
+                    entry["period_starts"].append(p.start_date.isoformat())
                 operating_boundaries = sorted({p.start_date.isoformat() for p in operating} | {p.end_date.isoformat() for p in operating})
+                if config:
+                    if getattr(config, "has_contractual_indexation", False):
+                        try:
+                            config.validate_axis(operating, project_cod=editor_inputs.info.cod_date)
+                        except ValueError as exc:
+                            calendar_preview_error = str(exc)
+                    for dated in config.streams:
+                        if getattr(dated, "indexation_timing", None) and not calendar_preview_error:
+                            calendar_preview[dated.stream.stream_id] = [
+                                {"start": p.start_date.isoformat(), "end": p.end_date.isoformat(),
+                                 "price": next(s for s in config.plan_at(p.start_date, p.year_index).streams
+                                               if s.stream_id == dated.stream.stream_id).ppa.price_at_year(p.year_index)}
+                                for p in operating if dated.active(p.start_date)]
+                    if getattr(config, "has_price_rounding", False) and not calendar_preview_error:
+                        for p in operating:
+                            for stream_id, quote in config.price_details(p.start_date, p.year_index).items():
+                                if quote["rounding_enabled"]:
+                                    rounding_preview.setdefault(stream_id, []).append({
+                                        "start": p.start_date.isoformat(), "end": p.end_date.isoformat(), **quote})
             if ACTIVATION_ENABLED:
                 axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
                          "settlement_date": p.end_date.isoformat()} for p in operating]
@@ -1205,14 +1287,17 @@ def _build_revenue_contract_editor(pis, ws):
             operating_window = None
             operating_starts = []
             operating_boundaries = []
+            operating_years = {}
             axis = []
+            calendar_preview = {}
+            rounding_preview = {}
     try:
         _term = float(pis.get("revenue.ppa.term_years"))
         ppa_term_years = _term if _term > 0 else None
     except (TypeError, ValueError):
         ppa_term_years = None
-    return {"ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
-            "overridden": overridden, "rows": payload.get("streams", []),
+    return {"project_cod": project_cod, "calendar_preview": calendar_preview, "calendar_preview_error": calendar_preview_error, "operating_years": list(operating_years.values()), "ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
+            "overridden": overridden, "rows": payload.get("streams", []), "rounding_preview": rounding_preview,
             "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
             "period_axis": axis}
 
@@ -1995,6 +2080,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "template_source": pis.template_source,
         "hydration_script": hydration_script,
         "ps_fields": _build_ps_fields(pis),
+        "ps_horizon_notice": _ps_horizon_notice(pis),
         "technical_fields": _build_sheet_fields("project_setup", pis),
         "is_bess": _project_type_lower == "storage",
         "capex_fields": _build_sheet_fields("capex", pis),
@@ -2369,6 +2455,14 @@ async def v2_workbook_update(
         )
 
     def _htmx_error(pis_for_render, field_error: str) -> HTMLResponse:
+        resp = _htmx_error_sheet(pis_for_render, field_error)
+        if field_id == "debt.financing.instruments":
+            # SC-04: the capital stack form holds many typed cells. A rejected Save must not swap the persisted sheet over them; the
+            # browser shows the error in the form (workbook-field-error) and keeps the draft. OOB swaps are still processed.
+            resp.headers["HX-Reswap"] = "none"
+        return resp
+
+    def _htmx_error_sheet(pis_for_render, field_error: str) -> HTMLResponse:
         if sheet_id == "inputs":
             return _render_inputs_htmx_sheet(
                 request, pis_for_render, ws, project_record, project,
@@ -2697,7 +2791,7 @@ async def v2_workbook_run(
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
-    def _htmx_error(msg: str, ws_for_render=None) -> HTMLResponse:
+    def _htmx_error(msg: str, ws_for_render=None, run_failure=None) -> HTMLResponse:
         ctx: dict = {
             "ws_dirty": getattr(ws_for_render, "dirty", True),
             "has_runtime": bool(
@@ -2705,12 +2799,14 @@ async def v2_workbook_run(
             ) if ws_for_render else False,
             "field_error": msg,
             "flash_error": "",
+            "run_failure": run_failure,
         }
         banner_html = _templates.get_template(
             "partials/_v2_status_banner.html"
         ).render(ctx)
         oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
-        return HTMLResponse(content=oob)
+        # SC-10: the transport status stays 200 (HTMX contract); the outcome is explicit so nothing infers success from the status code.
+        return HTMLResponse(content=oob, headers={"X-Finco-Run-Outcome": "FAILED"})
 
     def _non_htmx_error(msg: str) -> RedirectResponse:
         return RedirectResponse(
@@ -3048,16 +3144,20 @@ async def v2_workbook_run(
             return busy
         return JSONResponse({"state": "MODEL_EXECUTION_BUSY", "message": BUSY_MESSAGE},
                             status_code=429, headers={"Retry-After": "5"})
-    except (ModelExecutionTimeout, ModelExecutionFailed):
+    except (ModelExecutionTimeout, ModelExecutionFailed) as exc:
         import logging
         logging.getLogger(__name__).error("v2_workbook_run: executor failure or timeout")
         msg = "The calculation could not be completed. Nothing was saved; please retry."
-        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        from app.v2.run_failure_explanation import explain_run_failure
+        return (_htmx_error(msg, ws, explain_run_failure(exc, message=msg, ws=ws, kind="EXECUTION_ERROR"))
+                if is_htmx else _non_htmx_error(msg))
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("v2_workbook_run: engine failure")
         msg = _engine_failure_message(exc)
-        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        from app.v2.run_failure_explanation import explain_run_failure
+        return (_htmx_error(msg, ws, explain_run_failure(exc, message=msg, ws=ws, pis=pis_draft))
+                if is_htmx else _non_htmx_error(msg))
 
     # ── Step 11b: enrich runtime_summary with derivation evidence ────────────── #
     # result["kpis"] is the raw engine KPI dict.  Derivation evidence is a

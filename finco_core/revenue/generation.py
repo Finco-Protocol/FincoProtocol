@@ -202,7 +202,12 @@ def revenue_decomposition_schedule(
     if getattr(inputs.revenue, "multistream_config_json", ""):
         from domain.revenue.multistream_runtime import parse_config
         multistream = parse_config(inputs.revenue.multistream_config_json)
-        multistream.validate_axis(engine.periods())
+        if getattr(multistream, "has_contractual_indexation", False):
+            if engine.cod != inputs.info.cod_date:
+                raise ValueError("REVENUE_V2_TIMELINE_COD: Project Timeline and PeriodEngine COD disagree")
+            multistream.validate_axis(engine.periods(), project_cod=inputs.info.cod_date)
+        else:
+            multistream.validate_axis(engine.periods())
         if getattr(multistream, "has_rec", False) and inputs.revenue.co2_enabled:
             raise ValueError("REVENUE_V3_REC_LEGACY_CONFLICT: explicit REC cannot coexist with legacy certificate/CO2 authority")
 

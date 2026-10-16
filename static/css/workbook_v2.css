@@ -3496,3 +3496,28 @@ form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #
 .v2-kpi-tile[data-kpi-drill]:hover { box-shadow: 0 0 0 1px #93c5fd; }
 .v2-kpi-tile[data-kpi-drill]:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
 .v2-cost-action.v2-cost-stage-btn { width: auto; height: auto; padding: .2rem .65rem; line-height: 1.3; }
+
+/* SC-06: effective revenue inputs (value, unit, provenance) */
+.v2-effective-inputs { margin: .5rem 0 .75rem; padding: .6rem .75rem; border: 1px solid var(--fb-border, #d1d5db); border-radius: .5rem; }
+.v2-effective-inputs h4 { margin: 0 0 .35rem; font-size: .9rem; }
+.v2-effective-list { margin: 0; display: grid; gap: .5rem; }
+.v2-effective-row { display: grid; grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr); gap: .5rem; }
+.v2-effective-row dt { font-weight: 600; }
+.v2-effective-row dd { margin: 0; display: flex; flex-wrap: wrap; gap: .25rem .6rem; align-items: baseline; }
+.v2-effective-source { font-size: .75rem; padding: .05rem .45rem; border-radius: .35rem; background: var(--fb-surface-2, #eef2f7); }
+.v2-effective-detail { flex-basis: 100%; opacity: .85; }
+.v2-effective-note { margin: .4rem 0 0; font-size: .8rem; opacity: .85; }
+@media (max-width: 700px) { .v2-effective-row { grid-template-columns: minmax(0, 1fr); } }
+
+/* SC34-B: guided input notice (blocking-state explanation with field navigation) */
+.sc34-notice { margin: .5rem 0 .75rem; padding: .7rem .85rem; border: 1px solid var(--fb-danger, #c43e3e); border-left-width: 4px; border-radius: .5rem; }
+.sc34-notice h3 { margin: 0 0 .3rem; font-size: .95rem; }
+.sc34-notice p { margin: .25rem 0; }
+.sc34-notice-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+/* SC-10: structured failed-Run explanation inside the status banner */
+.v2-run-failure { margin: .5rem 0 0; display: grid; grid-template-columns: minmax(7rem, 9rem) minmax(0, 1fr); gap: .25rem .75rem; font-size: .875rem; }
+.v2-run-failure dt { font-weight: 600; }
+.v2-run-failure dd { margin: 0; }
+.v2-run-failure-goto { text-decoration: underline; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; font: inherit; }
+@media (max-width: 700px) { .v2-run-failure { grid-template-columns: minmax(0, 1fr); } .v2-run-failure dd { margin-bottom: .35rem; } }
