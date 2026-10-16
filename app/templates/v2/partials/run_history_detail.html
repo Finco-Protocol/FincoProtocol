@@ -26,6 +26,12 @@
     <div class="v2-rh-kv"><span class="v2-rh-k">Status</span><span class="v2-rh-v"><span class="v2-rh-chip v2-rh-chip--historical">HISTORICAL</span></span></div>
   </div>
 
+  {# Integration hook: set by the router once app.v2.statements_drilldown_router is included (see that module). #}
+  {% if statements_drilldown_available %}
+  <p><button type="button" class="v2-rh-link" hx-get="/v2/workbook/run-history/statements?project={{ project_code | urlencode }}&history_id={{ entry.history_id | urlencode }}"
+     hx-target="#v2-run-detail" hx-swap="outerHTML" data-testid="run-detail-open-statements">Open this Run's financial statements (drill-down)</button></p>
+  {% endif %}
+
   <div class="v2-rh-section-title">Key metrics (persisted)</div>
   <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table" data-testid="run-detail-kpis">
     <thead><tr><th>Metric</th><th>Value</th></tr></thead>

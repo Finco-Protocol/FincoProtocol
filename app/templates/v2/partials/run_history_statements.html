@@ -1,0 +1,41 @@
+{#
+  Historical Run Statements V2 (read-only).  Values are the immutable history entry's; the Working Copy is never shown
+  as this Run's inputs.  Root: #v2-sheet-outputs so the shared display controls and drill-down script apply unchanged.
+#}
+{% from "partials/_statement_tree.html" import statement_tree, status_dimensions %}
+<div id="v2-sheet-outputs" data-sheet="outputs" data-testid="historical-statements" data-out-state="HISTORICAL" data-out-project="{{ project_code }}"
+     data-out-snapshot="{{ statements.identity.snapshot_id }}" data-out-scenario="{{ statements.identity.scenario }}" data-history-id="{{ statements.history_id }}">
+  <link rel="stylesheet" href="/static/css/model_outputs_workspace.css">
+  <link rel="stylesheet" href="/static/css/model_statements_tree.css">
+  <div class="out-toolbar" data-testid="historical-toolbar">
+    <span class="out-badge" data-testid="historical-badge">HISTORICAL RUN</span>
+    <span class="out-identity" data-testid="outputs-identity">Run {{ statements.identity.ran_at }} · snapshot {{ statements.identity.snapshot_id[:22] }} · {{ statements.identity.scenario }}</span>
+    <button type="button" class="v2-rh-link" hx-get="/v2/workbook/run-history/detail?project={{ project_code | urlencode }}&history_id={{ statements.history_id | urlencode }}" hx-target="#v2-sheet-outputs" hx-swap="outerHTML">← Back to Run detail</button>
+    <div class="out-controls" role="group" aria-label="Display options (formatting only; never recalculates)">
+      <label>Statement basis <select data-out-basis aria-label="Statement period basis"><option value="annual">Annual</option><option value="model">Model periods · full tenor</option></select></label>
+      <fieldset class="out-unit"><legend class="out-sr">Unit</legend>
+        <label><input type="radio" name="out-unit" value="keur" checked data-out-unit> kEUR</label>
+        <label><input type="radio" name="out-unit" value="eur" data-out-unit> EUR</label></fieldset>
+      <label class="out-prec">Decimals <select data-out-precision aria-label="Decimal precision"><option value="0">0</option><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label>
+      <label class="out-year0"><input type="checkbox" data-out-year0 checked> Show Year 0</label>
+    </div>
+  </div>
+  {{ status_dimensions(statements.status_dimensions) }}
+  <p class="out-banner out-banner--stale" role="status" data-testid="historical-context-banner">Immutable historical record. Statement values are exactly what this Run committed; nothing is recalculated. {{ statements.drilldown.context.banner }}</p>
+  {% if statements.integrity.status == 'FAIL' %}<p class="out-banner out-banner--fail" role="alert" data-testid="outputs-integrity-fail">Run Integrity FAIL on this Run: {% for f in statements.integrity.failures %}{{ f.title }}{% if not loop.last %}; {% endif %}{% endfor %}. The values below are the Run's evidence and are shown unchanged.</p>{% endif %}
+  {% for drill in statements.drilldown.statements %}
+  <section id="out-{{ drill.id }}" class="out-section" aria-labelledby="out-h-{{ drill.id }}" data-testid="out-section-{{ drill.id }}">
+    <h3 id="out-h-{{ drill.id }}">{{ drill.title }}</h3>
+    <div class="st-viewbar" role="group" aria-label="{{ drill.title }} detail" data-st-viewbar="{{ drill.id }}">
+      <button type="button" class="st-viewbtn st-viewbtn--aux" data-st-expand-all>Expand all</button>
+      <button type="button" class="st-viewbtn st-viewbtn--aux" data-st-collapse-all>Collapse all</button>
+    </div>
+    <div data-st-pane="tree" data-st-statement="{{ drill.id }}">
+      {% if drill.views.model %}<div data-out-view="model" hidden>{{ statement_tree(drill, 'model', drill.views.model, 'st-cap-' ~ drill.id ~ '-model') }}</div>{% endif %}
+      {% if drill.views.annual %}<div data-out-view="annual">{{ statement_tree(drill, 'annual', drill.views.annual, 'st-cap-' ~ drill.id ~ '-annual') }}</div>{% endif %}
+    </div>
+  </section>
+  {% else %}<p class="out-empty" role="status">This Run did not persist statements. Nothing is estimated.</p>{% endfor %}
+  <script src="/static/js/model_outputs_workspace.js"></script>
+  <script src="/static/js/model_statements_tree.js"></script>
+</div>

@@ -1,0 +1,61 @@
+{#
+  Statements V2 drill-down (SC-09/SC-11).  Read-only: every cell is a value the Run persisted, formatted by the shared
+  Statements display controls (data-raw / data-unit).  No arithmetic, aggregation or recomputation happens here or in
+  the dedicated script.  The chevron button (expand/collapse) and the line link (navigate) are two independent controls.
+  Progressive enhancement: without JavaScript every line is visible.
+#}
+{% macro statement_tree(st, basis, view, caption_id) %}
+<div class="st-region" tabindex="0" role="group" aria-labelledby="{{ caption_id }}" data-st-region data-testid="st-region-{{ st.id }}-{{ basis }}">
+  <span id="{{ caption_id }}" class="out-sr">{{ st.title }} drill-down — {{ 'annual' if basis == 'annual' else 'per model period' }}. Up and Down arrows move between lines, Right expands, Left collapses, Enter or Space on the chevron toggles. Parent lines are persisted values, never summed from the detail below them.</span>
+  <table class="st-tree" role="treegrid" aria-labelledby="{{ caption_id }}" data-st-tree="{{ st.id }}" data-st-basis="{{ basis }}" data-testid="st-tree-{{ st.id }}-{{ basis }}">
+    <thead><tr role="row">
+      <th scope="col" role="columnheader" class="st-label-col">Line item</th>
+      {% for c in view.columns %}<th scope="col" role="columnheader" class="out-num st-period-col" data-col="{{ c.index }}"{% if c.year0 %} data-year0="1"{% endif %} title="{{ c.date }}"><button type="button" class="st-period" data-st-period="{{ c.date or c.label }}" aria-pressed="false" aria-label="Select period {{ c.label }}">{{ c.label }}</button></th>{% endfor %}
+    </tr></thead>
+    <tbody>
+    {% for n in view.nodes %}
+      <tr role="row" id="{{ n.node_id }}" tabindex="-1" class="st-row st-row--{{ n.kind }}{{ ' out-total' if n.total else '' }} {{ n.css_class or '' }}"
+          data-st-row data-st-key="{{ n.key }}" data-st-parent="{{ n.parent or '' }}" data-st-depth="{{ n.depth }}" data-st-source="{{ n.value_source }}"
+          aria-level="{{ n.depth + 1 }}"{% if n.children %} aria-expanded="true"{% endif %}{% if n.status_title %} title="{{ n.status_title }}"{% endif %}>
+        <th scope="row" role="rowheader" class="st-label" style="--st-depth: {{ n.depth }}">
+          {% if n.children %}<button type="button" class="st-toggle" data-st-toggle tabindex="-1" aria-expanded="true"
+                  aria-controls="{% for k in view.nodes if k.parent == n.key %}{{ k.node_id }}{% if not loop.last %} {% endif %}{% endfor %}"
+                  aria-label="Collapse {{ n.label }} detail"><span class="st-chevron" aria-hidden="true"></span></button>
+          {% else %}<span class="st-spacer" aria-hidden="true"></span>{% endif %}
+          {% if n.destination %}
+          <a class="st-link st-link--{{ n.destination.kind }}" href="{{ n.destination.href }}" tabindex="-1" data-st-link
+             data-st-dest="{{ n.destination.tab_id }}" data-st-kind="{{ n.destination.kind }}"
+             title="{{ n.destination.title }}" aria-label="{{ n.label }}: {{ n.destination.title }}">{{ n.label }}</a>
+          <small class="st-kind st-kind--{{ n.destination.kind }}">{% if n.destination.kind == 'input' %}{{ n.destination.tab_label }}{% if n.destination.changes_context %} · Working Copy{% endif %}{% elif n.destination.kind == 'explanation' %}{{ n.destination.tab_label }}{% else %}provenance only{% endif %}</small>
+          {% else %}<span class="st-name">{{ n.label }}</span>{% endif %}
+        </th>
+        {% for c in view.columns %}
+          {% if n.cells is none %}<td role="gridcell" class="st-group-cell" aria-label="no value on a group line" data-col="{{ c.index }}"{% if c.year0 %} data-year0="1"{% endif %}></td>
+          {% else %}{% set cell = n.cells[loop.index0] %}
+            {% if cell.v is none %}<td role="gridcell" class="out-num out-na" data-col="{{ c.index }}"{% if c.year0 %} data-year0="1"{% endif %} data-unit="{{ cell.unit }}" data-raw="" title="Not available in the persisted Run">—<span class="out-sr">not available</span></td>
+            {% else %}<td role="gridcell" class="out-num{% if cell.neg %} out-neg{% endif %}" data-col="{{ c.index }}"{% if c.year0 %} data-year0="1"{% endif %} data-unit="{{ cell.unit }}" data-raw="{{ cell.v }}">{{ cell.text }}</td>{% endif %}
+          {% endif %}
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro status_dimensions(dims) %}
+{% if dims %}
+<dl class="out-dims" data-testid="outputs-status-dimensions" aria-label="Independent Run status dimensions">
+  <div><dt>Run</dt><dd data-testid="outputs-dim-context" data-state="{{ dims.run_context }}">{{ 'Historical Run' if dims.run_context == 'HISTORICAL_RUN' else 'Last Run' }}</dd></div>
+  <div><dt>Inputs</dt><dd data-testid="outputs-dim-inputs" data-state="{{ dims.input_freshness or 'NOT_EVALUATED' }}" title="{{ dims.input_freshness_basis }}">{{ dims.input_freshness or 'not evaluated' }}<small> vs {{ dims.input_freshness_basis }}</small></dd></div>
+  <div><dt>Engine</dt><dd data-testid="outputs-dim-engine" data-state="{{ dims.engine_currency }}" data-superseded-treatment="{{ dims.engine_superseded_treatment }}"
+        data-engine-persisted="{{ dims.engine_persisted_version or '' }}" data-engine-current="{{ dims.engine_current_version or '' }}"
+        title="Engine identity source: {{ dims.engine_identity_source }} ({{ dims.engine_reason }})">
+    {% if dims.engine_currency == 'CURRENT_ENGINE' %}Current engine <small>{{ dims.engine_persisted_version }}</small>
+    {% elif dims.engine_currency == 'ENGINE_SUPERSEDED' and dims.engine_superseded_treatment == 'GOVERNED' %}ENGINE SUPERSEDED <small>Run: {{ dims.engine_persisted_version }} · running: {{ dims.engine_current_version }}</small>
+    {% elif dims.engine_currency == 'ENGINE_SUPERSEDED' %}Recorded engine <small>{{ dims.engine_persisted_version }}</small>
+    {% else %}Engine identity unknown <small>not recorded by this Run</small>{% endif %}</dd></div>
+  <div><dt>Integrity</dt><dd data-testid="outputs-dim-integrity" data-state="{{ dims.integrity }}">{{ dims.integrity }}</dd></div>
+</dl>
+{% endif %}
+{% endmacro %}

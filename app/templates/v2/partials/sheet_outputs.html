@@ -4,11 +4,13 @@
   app.v2.output_workspace_projection (None renders as "not available", never as zero).
 #}
 {% from "partials/_statement_table.html" import out_table %}
+{% from "partials/_statement_tree.html" import statement_tree, status_dimensions %}
 <div id="v2-sheet-outputs" data-sheet="outputs" data-testid="outputs-sheet" data-out-state="{{ outputs.state }}" data-out-project="{{ project_code }}"{% if outputs.identity %} data-out-snapshot="{{ outputs.identity.snapshot_id }}" data-out-scenario="{{ outputs.identity.scenario }}"{% endif %}
      hx-get="/v2/workbook/outputs?project={{ project_code | urlencode }}"
      hx-trigger="click from:#tab-outputs"
      hx-swap="outerHTML">
   <link rel="stylesheet" href="/static/css/model_outputs_workspace.css">
+  <link rel="stylesheet" href="/static/css/model_statements_tree.css">
 
   {% if outputs.state in ('CURRENT', 'STALE') and outputs.identity %}
   <section class="out-toolbar" aria-label="Output toolbar" data-testid="outputs-toolbar">
@@ -35,6 +37,7 @@
       <label class="out-year0"><input type="checkbox" data-out-year0 checked> Show Year 0</label>
     </div>
   </section>
+  {{ status_dimensions(outputs.status_dimensions) }}
   {% if outputs.banner %}<p class="out-banner out-banner--stale" role="status" data-testid="outputs-stale-banner">{{ outputs.banner }}</p>{% endif %}
   {% if outputs.integrity.status == 'FAIL' %}
   <p class="out-banner out-banner--fail" role="alert" data-testid="outputs-integrity-fail">Run Integrity FAIL on this Run:
@@ -55,8 +58,26 @@
   <section id="out-{{ t.id }}" class="out-section" aria-labelledby="out-h-{{ t.id }}" data-testid="out-section-{{ t.id }}">
     <h3 id="out-h-{{ t.id }}">{{ t.title }}</h3><p class="out-note">{{ t.note }}</p>
     {% if t.unavailable %}<p class="out-note out-unavailable" data-testid="out-unavailable-{{ t.id }}">Not persisted by this Run in any period (shown as not available, never as zero): {{ t.unavailable | join(', ') }}.</p>{% endif %}
+    {% set drill = (outputs.drilldown.statements | selectattr('id', 'equalto', t.id) | list | first) if outputs.drilldown else none %}
+    {% if drill %}
+    <div class="st-viewbar" role="group" aria-label="{{ t.title }} view" data-st-viewbar="{{ t.id }}">
+      <button type="button" class="st-viewbtn" data-st-view="flat" aria-pressed="true">Flat lines</button>
+      <button type="button" class="st-viewbtn" data-st-view="tree" aria-pressed="false" data-testid="st-view-tree-{{ t.id }}">Drill-down</button>
+      <button type="button" class="st-viewbtn st-viewbtn--aux" data-st-expand-all hidden>Expand all</button>
+      <button type="button" class="st-viewbtn st-viewbtn--aux" data-st-collapse-all hidden>Collapse all</button>
+    </div>
+    {% endif %}
+    <div data-st-pane="flat">
     <div data-out-view="model" hidden>{{ out_table(t, 'out-cap-' ~ t.id) }}</div>
     <div data-out-view="annual">{{ out_table(t.annual, 'out-cap-' ~ t.id ~ '-annual') }}</div>
+    </div>
+    {% if drill %}
+    <div data-st-pane="tree" hidden data-st-statement="{{ t.id }}">
+      <p class="st-context st-context--{{ outputs.drilldown.context.kind | lower }}" role="note" data-testid="st-context-{{ t.id }}" data-st-context="{{ outputs.drilldown.context.kind }}">Parent lines are the Run's persisted values, not sums of the detail below them. {% if outputs.drilldown.context.banner %}<strong>{{ outputs.drilldown.context.banner }}</strong>{% else %}Links open the matching assumption sheet; lines with no one-to-one input open read-only Run provenance.{% endif %}</p>
+      {% if drill.views.model %}<div data-out-view="model" hidden>{{ statement_tree(drill, 'model', drill.views.model, 'st-cap-' ~ t.id ~ '-model') }}</div>{% endif %}
+      {% if drill.views.annual %}<div data-out-view="annual">{{ statement_tree(drill, 'annual', drill.views.annual, 'st-cap-' ~ t.id ~ '-annual') }}</div>{% endif %}
+    </div>
+    {% endif %}
   </section>
   {% endfor %}
 
@@ -104,4 +125,5 @@
   <section class="out-section" data-testid="outputs-unavailable"><p class="out-empty" role="status">{{ outputs.message or 'Statements are unavailable for this view.' }}</p></section>
   {% endif %}
   <script src="/static/js/model_outputs_workspace.js"></script>
+  <script src="/static/js/model_statements_tree.js"></script>
 </div>
