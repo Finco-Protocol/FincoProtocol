@@ -1091,11 +1091,15 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
             # silently interpreted as a price authority in this projection.
             curve_rows = ()
 
+    from app.v2.effective_revenue_inputs import build_effective_revenue_inputs
+    _contract_editor = _build_revenue_contract_editor(pis, ws)
     return {
         "revenue_fields": fields,
-        "revenue_multistream": _build_revenue_contract_editor(pis, ws),
+        "revenue_multistream": _contract_editor,
         "revenue_contracts_csrf_token": generate_csrf_token(),
         "revenue_state": revenue_state.value,
+        # SC-06: what the next Run will actually use, with provenance (display only).
+        "revenue_effective_inputs": build_effective_revenue_inputs(pis, contracts_active=bool(_contract_editor.get("active"))),
         "revenue_runtime_summary": rs,
         "revenue_pricing_basis": (
             ("Contracted tariff", _value("revenue.ppa.base_tariff"), "EUR/MWh"),

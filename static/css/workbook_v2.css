@@ -3496,3 +3496,15 @@ form.v2-cost-row:focus-within { background: #eff6ff; box-shadow: inset 2px 0 0 #
 .v2-kpi-tile[data-kpi-drill]:hover { box-shadow: 0 0 0 1px #93c5fd; }
 .v2-kpi-tile[data-kpi-drill]:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
 .v2-cost-action.v2-cost-stage-btn { width: auto; height: auto; padding: .2rem .65rem; line-height: 1.3; }
+
+/* SC-06: effective revenue inputs (value, unit, provenance) */
+.v2-effective-inputs { margin: .5rem 0 .75rem; padding: .6rem .75rem; border: 1px solid var(--fb-border, #d1d5db); border-radius: .5rem; }
+.v2-effective-inputs h4 { margin: 0 0 .35rem; font-size: .9rem; }
+.v2-effective-list { margin: 0; display: grid; gap: .5rem; }
+.v2-effective-row { display: grid; grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr); gap: .5rem; }
+.v2-effective-row dt { font-weight: 600; }
+.v2-effective-row dd { margin: 0; display: flex; flex-wrap: wrap; gap: .25rem .6rem; align-items: baseline; }
+.v2-effective-source { font-size: .75rem; padding: .05rem .45rem; border-radius: .35rem; background: var(--fb-surface-2, #eef2f7); }
+.v2-effective-detail { flex-basis: 100%; opacity: .85; }
+.v2-effective-note { margin: .4rem 0 0; font-size: .8rem; opacity: .85; }
+@media (max-width: 700px) { .v2-effective-row { grid-template-columns: minmax(0, 1fr); } }

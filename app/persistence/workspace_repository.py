@@ -707,6 +707,23 @@ def _assert_f3_effective_candidate(persisted_snapshot: dict, scope: str, candida
 # v2_atomic_draft_update
 # -----------------------------------------------------------------
 
+def mirror_project_name_cursor(cur: Any, *, user_id: str, project_id: str, before: Mapping[str, Any], after: Mapping[str, Any], now_iso: str) -> bool:
+    """SC-07: the project record is the canonical owner of the display name (library, navigation header, search, Run History labels).
+
+    The Project setup ``project_name`` input is written through to the record INSIDE the same exclusive transaction as the Working Copy write, so
+    the two can never disagree after a successful Save and a rejected/stale Save changes neither. Only the display name moves: stable project id
+    and code, owner, and every committed Run / certificate row are untouched.
+    """
+    new_name = after.get("project_name")
+    if not isinstance(new_name, str) or not new_name.strip() or new_name == before.get("project_name"):
+        return False
+    cur.execute(
+        "UPDATE projects SET project_name=?, updated_at=? WHERE project_id=? AND user_id=?",
+        (new_name.strip(), now_iso, project_id, user_id),
+    )
+    return cur.rowcount > 0
+
+
 def v2_atomic_draft_update(
     *,
     user_id: str,
@@ -845,6 +862,8 @@ def v2_atomic_draft_update(
                 user_id,
             ),
         )
+        mirror_project_name_cursor(
+            cur, user_id=user_id, project_id=project_id, before=row_snapshot, after=new_snapshot, now_iso=now.isoformat())
         conn.execute("COMMIT")
 
         cur.execute(
@@ -1510,6 +1529,8 @@ def v2_atomic_batch_draft_update(
             )
             if cur.rowcount != 1:
                 raise StaleContentError("BATCH_WRITE_CONFLICT")
+            mirror_project_name_cursor(
+                cur, user_id=user_id, project_id=project_id, before=snapshot, after=new_snapshot, now_iso=_now_utc().isoformat())
         else:
             # Re-import without economic changes must preserve Last Run CURRENT.
             pass
