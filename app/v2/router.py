@@ -4286,6 +4286,7 @@ async def v2_run_history_detail(
         "integrity_items": (
             sorted(integrity.items()) if isinstance(integrity, dict) else []),
         "project_code": project_record.project_code,
+        "statements_drilldown_available": _statements_drilldown_registered(),
     }
     return _templates.TemplateResponse(
         request=request, name="partials/run_history_detail.html", context=ctx)
@@ -5738,6 +5739,15 @@ router.include_router(f38_router)
 
 from app.v2.investor_f4_router import router as f4_router
 router.include_router(f4_router)
+
+# SC-09: read-only historical-Run statements fragment (isolated route; no Save/Run/engine path is involved).
+from app.v2.statements_drilldown_router import router as statements_drilldown_router
+router.include_router(statements_drilldown_router)
+
+
+def _statements_drilldown_registered() -> bool:
+    """True only when the historical statements route is actually mounted (gates the Run History link)."""
+    return any(getattr(r, "path", "") == "/workbook/run-history/statements" for r in router.routes)
 
 # M3 two-driver sensitivity matrix: one isolated read-only route (integration hook only).
 from app.v2.sensitivity_matrix_router import router as sensitivity_matrix_router

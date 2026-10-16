@@ -218,8 +218,7 @@ def test_flat_statement_tables_are_unchanged_and_tree_values_match_them_cell_for
 # ───────────────────────────── historical Run (isolated router) ─────────────────────────────
 @pytest.fixture
 def hist_env(env):
-    from app.v2.statements_drilldown_router import router
-    env.client.app.include_router(router, prefix="/v2")
+    """The historical route is registered by ``app.v2.router`` itself; nothing is mounted by the test."""
     return env
 
 
@@ -302,9 +301,10 @@ def test_historical_view_is_immutable_and_never_runs_the_engine(hist_env, monkey
     assert history(record)[0].to_dict() == before
 
 
-def test_run_detail_links_to_statements_only_when_the_hook_is_wired(env):
+def test_run_detail_links_to_the_mounted_statements_route(env):
     record = env.create("solar")
     run(env, record)
     entry = history(record)[0]
     r = env.client.get("/v2/workbook/run-history/detail", params={"project": record.project_code, "history_id": entry.history_id})
-    assert r.status_code == 200 and "run-detail-open-statements" not in r.text      # inert until the integration hook sets the flag
+    assert r.status_code == 200 and 'data-testid="run-detail-open-statements"' in r.text
+    assert f"/v2/workbook/run-history/statements?project={record.project_code}" in r.text.replace("&amp;", "&")

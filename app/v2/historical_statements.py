@@ -60,7 +60,7 @@ def build_historical_statements(entry: Any, *, current_composite_hash: Optional[
                      "scenario_proven": scenario_label is not None, "engine_version": str(entry.engine_version or "")},
         "status_dimensions": dimensions.to_dict(), "integrity": integrity,
         "drilldown": {"context": context, "statements": build_statement_drilldown(
-            statements, multistream_audit=audit, context=context)},
+            statements, multistream_audit=audit, context=context, id_prefix="hst")},
     }
 
 

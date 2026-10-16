@@ -107,12 +107,12 @@ def _stream_rows(audit: Any, columns: Sequence[Mapping[str, Any]]) -> list[dict[
 
 
 def _flatten(spec: Sequence[tuple], rows_by_key: Mapping[str, Mapping[str, Any]], *, statement: str, basis: str,
-             streams: Sequence[Mapping[str, Any]], context: Mapping[str, Any]) -> list[dict[str, Any]]:
+             streams: Sequence[Mapping[str, Any]], context: Mapping[str, Any], id_prefix: str = "st") -> list[dict[str, Any]]:
     """Pre-order list of nodes.  A parent whose own row is absent from this Run lifts its children (nothing is dropped)."""
     seen: set[str] = set()
 
     def node_id(key: str) -> str:
-        return f"st-{statement}-{basis}-" + key.replace(":", "-").replace(" ", "-")
+        return f"{id_prefix}-{statement}-{basis}-" + key.replace(":", "-").replace(" ", "-")
 
     def build(node: tuple, depth: int, parent: Optional[str]) -> list[dict[str, Any]]:
         key, children = node
@@ -164,8 +164,11 @@ def input_context(*, run_context: str, freshness_state: Optional[str]) -> dict[s
 
 
 def build_statement_drilldown(statements: Sequence[Mapping[str, Any]], *, multistream_audit: Any = None,
-                              context: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """One drill-down per statement table, for the model-period and the annual view."""
+                              context: Mapping[str, Any], id_prefix: str = "st") -> list[dict[str, Any]]:
+    """One drill-down per statement table, for the model-period and the annual view.
+
+    ``id_prefix`` namespaces every DOM id: the Outputs sheet and a historical-Run fragment can be in the document together,
+    so they must never share an id."""
     result = []
     for table in statements or ():
         sid = str(table.get("id") or "")
@@ -180,7 +183,7 @@ def build_statement_drilldown(statements: Sequence[Mapping[str, Any]], *, multis
             streams = _stream_rows(multistream_audit, source["columns"]) if basis == "model" else []
             entry["views"][basis] = {
                 "id": source["id"], "columns": source["columns"],
-                "nodes": _flatten(spec, rows_by_key, statement=sid, basis=basis, streams=streams, context=context)}
+                "nodes": _flatten(spec, rows_by_key, statement=sid, basis=basis, streams=streams, context=context, id_prefix=id_prefix)}
         if entry["views"]:
             result.append(entry)
     return result

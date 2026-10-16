@@ -5,7 +5,7 @@
 .st-viewbtn:focus-visible, .st-toggle:focus-visible, .st-link:focus-visible, .st-period:focus-visible, .st-row:focus-visible, .st-region:focus-visible { outline: 3px solid var(--focus, #1a73e8); outline-offset: 2px; }
 .st-context { margin: .3rem 0 .6rem; font-size: .9rem; }
 .st-context--historical_run, .st-context--working_copy_differs { border-left: 4px solid var(--warn, #b26a00); padding-left: .6rem; }
-.st-region { max-width: 100%; overflow: auto; overscroll-behavior-x: contain; border: 1px solid var(--border, #d5dae1); border-radius: 6px; }
+.st-region { position: relative; /* contain the absolutely positioned screen-reader text of each cell */ max-width: 100%; overflow: auto; overscroll-behavior-x: contain; border: 1px solid var(--border, #d5dae1); border-radius: 6px; }
 .st-tree { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-variant-numeric: tabular-nums; }
 .st-tree th, .st-tree td { padding: .3rem .6rem; border-bottom: 1px solid var(--border, #e3e7ec); white-space: nowrap; }
 .st-tree thead th { position: sticky; top: 0; background: var(--surface, #fff); z-index: 2; }

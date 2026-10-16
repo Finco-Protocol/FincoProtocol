@@ -2,8 +2,8 @@
 
 Run with:  python -m tests.model_statements_tree_acceptance --out artifacts/statements-tree
 
-Real application server (``main_web``), real Save/Run routes, synthetic reference project only.  The historical-Run route is
-mounted in-process from its isolated router (the integration hook is documented in that module).  Every check is written to
+Real application server (``main_web``), real Save/Run routes, synthetic reference project only.  The historical-Run route is the
+production-registered one (nothing is mounted by this script).  Every check is written to
 ``browser-results.json``; screenshots are CI artifacts, never committed.  Exit code is non-zero if any check fails.
 """
 from __future__ import annotations
@@ -39,10 +39,8 @@ def main() -> int:
     from app.persistence.run_history_repository import get_run_history
     from app.persistence.workspace_repository import get_workspace_state
     from app.services.reference_seed_service import create_reference_seeded_project
-    from app.v2.statements_drilldown_router import router as historical_router
     from main_web import app
 
-    app.include_router(historical_router, prefix="/v2")     # test-only mount of the isolated historical route
     results: list[dict] = []
     logs: dict[str, dict] = {}
 
@@ -242,23 +240,114 @@ def main() -> int:
                           shot(pg, f"05-tree-{width}.png"))
                     ctx2.close()
 
-                # ── historical Run ──
-                entry = get_run_history(USER, record.project_id)[0]
-                hctx, hp = new_page("historical")
-                hp.goto(f"{url}/v2/workbook/run-history/statements?project={record.project_code}&history_id={entry.history_id}")
-                hp.wait_for_function("() => { const r = document.getElementById('v2-sheet-outputs'); return !!r && r.dataset.stReady === '1'; }")
-                hd = hp.evaluate("() => Object.fromEntries([...document.querySelectorAll('[data-testid^=outputs-dim-]')].map(e => [e.dataset.testid, e.dataset.state]))")
-                check("historical view: context HISTORICAL_RUN, explicit banner, tree-only", hd.get("outputs-dim-context") == "HISTORICAL_RUN"
-                      and "not the inputs this Run used" in hp.inner_text('[data-testid="historical-context-banner"]')
-                      and hp.locator('table[data-st-tree]').count() == 6, hd, shot(hp, "06-historical-1440.png"))
-                hp.locator('[data-st-viewbar="pnl"] [data-st-expand-all]').click()
-                check("historical view: Expand all reveals every line", hp.evaluate("() => [...document.querySelectorAll('table[data-st-tree=\"pnl\"][data-st-basis=\"annual\"] tr[data-st-row]')].every(r => !r.hidden)"))
+                # ── Run History -> historical Statements -> Run detail (real UI, production registration) ──
+                second = page.request.post(f"{url}/v2/workbook/run", form=dict(project=record.project_code, **tokens(page)), headers={"HX-Request": "true"})
+                entries = sorted(get_run_history(USER, record.project_id), key=lambda h: h.created_at)
+                check("a second Run gives a second distinct history entry", second.status == 200 and len(entries) == 2 and entries[0].history_id != entries[1].history_id)
+                before_hist = [h.to_dict() for h in entries]
+                hctx, hp = new_page("history-flow")
+                open_outputs(hp, 1440)                      # the Outputs sheet (#v2-sheet-outputs) is in the document ...
+                hp.locator('[data-testid="st-view-tree-pnl"]').click()
+                hp.locator('table[data-st-tree="pnl"][data-st-basis="annual"] tr[data-st-key="net_income_keur"] [data-st-toggle]').click()
+                outputs_state = hp.evaluate("() => window.__fincoStatements.capture().statements.pnl")
+                activate_destination(hp, "tab-run-history")  # ... while the Run History sheet is used
+                hp.wait_for_selector('[data-testid="run-history-detail-1"]')
+                row_ids = hp.evaluate("() => [...document.querySelectorAll('#v2-sheet-run-history tr[data-history-id]')].map(r => r.dataset.historyId)")
+                hp.locator('[data-testid="run-history-detail-1"]').click()
+                hp.wait_for_selector("#v2-run-detail")
+                open_btn = hp.locator('[data-testid="run-detail-open-statements"]')
+                chosen = open_btn.get_attribute("data-history-id")
+                check("Run detail offers the statements link for the selected Run", open_btn.count() == 1 and chosen == row_ids[0], (chosen, row_ids))
+                open_btn.click()
+                hp.wait_for_function("() => { const r = document.getElementById('v2-run-statements'); return !!r && r.dataset.stReady === '1'; }")
+                dup = lambda: hp.evaluate("() => { const ids = [...document.querySelectorAll('[id]')].map(e => e.id); return ids.filter((x, i) => ids.indexOf(x) !== i); }")
+                check("historical statements show exactly the selected Run; no duplicate DOM ids",
+                      hp.get_attribute("#v2-run-statements", "data-history-id") == chosen
+                      and hp.get_attribute("#v2-run-statements", "data-out-snapshot") == next(e.runtime_snapshot_id for e in entries if e.history_id == chosen)
+                      and dup() == [] and hp.locator("#v2-sheet-outputs").count() == 1 and hp.locator("#v2-run-detail").count() == 0, dup(),
+                      shot(hp, "06-historical-from-run-history-1440.png"))
+                check("focus lands on the statements heading", hp.evaluate("() => document.activeElement && document.activeElement.id") == "rh-stmt-title")
+                htree = hp.locator('#v2-run-statements table[data-st-tree="pnl"][data-st-basis="annual"]')
+                htree.locator('tr[data-st-key="net_income_keur"] [data-st-toggle]').click()
+                htree.locator('tr[data-st-key="earnings_before_tax_keur"] [data-st-toggle]').click()
+                hdate = htree.locator(".st-period").nth(2).get_attribute("data-st-period")
+                htree.locator(".st-period").nth(2).click()
+                htree.locator('tr[data-st-key="ebit_keur"] [data-st-link]').focus()
+                hp.wait_for_timeout(50)
+                # "Back to Run detail" drives the browser Back, returns focus to the opener
+                hp.locator('[data-testid="historical-back-to-detail"]').click()
+                hp.wait_for_selector("#v2-run-detail")
+                hp.wait_for_function("() => document.activeElement && document.activeElement.dataset && document.activeElement.dataset.testid === 'run-detail-open-statements'")
+                check("Back to Run detail returns to the same Run detail with focus on the opener", hp.get_attribute('[data-testid="run-detail-open-statements"]', "data-history-id") == chosen
+                      and hp.locator("#v2-run-statements").count() == 0 and dup() == [])
+                hp.locator('[data-testid="run-detail-open-statements"]').click()
+                hp.wait_for_function("() => { const r = document.getElementById('v2-run-statements'); return !!r && r.dataset.stReady === '1'; }")
+                hp.wait_for_function("() => document.activeElement && document.activeElement.dataset && document.activeElement.dataset.stKey === 'ebit_keur'")
+                htree = hp.locator('#v2-run-statements table[data-st-tree="pnl"][data-st-basis="annual"]')
+                restored = {"expanded": [k for k in ("net_income_keur", "earnings_before_tax_keur") if htree.locator(f'tr[data-st-key="{k}"]').get_attribute("aria-expanded") == "true"],
+                            "period": htree.locator('.st-period[aria-pressed="true"]').get_attribute("data-st-period")}
+                check("reopening the same Run restores expansion, period and focused line", restored == {"expanded": ["net_income_keur", "earnings_before_tax_keur"], "period": hdate}, restored)
+                # native browser Back / Forward
+                hp.go_back()
+                hp.wait_for_selector("#v2-run-detail")
+                back_ok = hp.locator("#v2-run-statements").count() == 0
+                hp.go_forward()
+                hp.wait_for_function("() => !!document.getElementById('v2-run-statements')")
+                check("native browser Back returns to the Run detail and Forward to the statements", back_ok and hp.locator("#v2-run-detail").count() == 0 and dup() == [])
+                # keyboard only: Tab/arrows expand, Enter on a line link follows to the current Working Copy, Back returns to the same view
+                hp.wait_for_function("() => document.getElementById('v2-run-statements').dataset.stReady === '1'")
+                htree = hp.locator('#v2-run-statements table[data-st-tree="pnl"][data-st-basis="annual"]')
+                htree.locator('tr[data-st-key="ebit_keur"]').focus()
+                hp.keyboard.press("ArrowRight")
+                keyboard_expanded = htree.locator('tr[data-st-key="ebit_keur"]').get_attribute("aria-expanded") == "true"
+                hp.keyboard.press("ArrowDown")
+                hp.keyboard.press("ArrowDown")
+                on_opex = hp.evaluate("() => document.activeElement.dataset.stKey")
+                hp.keyboard.press("Tab")                      # to the line's link (its chevron is absent on a leaf)
+                hp.keyboard.press("Enter")
+                hp.wait_for_function("() => location.hash === '#opex' && document.getElementById('tab-opex').getAttribute('aria-selected') === 'true'")
+                hp.go_back()
+                hp.wait_for_function("() => location.hash === '#run-history' && document.getElementById('tab-run-history').getAttribute('aria-selected') === 'true'")
+                hp.wait_for_function("(id) => { const r = document.getElementById('v2-run-statements'); return !!r && r.dataset.stReady === '1' && r.dataset.historyId === id; }", arg=chosen)
+                same_dom = (hp.locator("#v2-run-statements").count() == 1 and hp.get_attribute("#v2-run-statements", "data-history-id") == chosen
+                            and hp.locator('#v2-run-statements table[data-st-tree="pnl"][data-st-basis="annual"] tr[data-st-key="ebit_keur"]').get_attribute("aria-expanded") == "true")
+                check("keyboard-only expansion and drill-down, then Back to the same historical view", keyboard_expanded and on_opex == "operating_expenses_keur" and same_dom,
+                      (keyboard_expanded, on_opex, same_dom, hp.evaluate("() => ({stmts: document.querySelectorAll('#v2-run-statements').length, detail: document.querySelectorAll('#v2-run-detail').length, list: document.querySelectorAll('#v2-sheet-run-history').length, hid: (document.getElementById('v2-run-statements') || {dataset: {}}).dataset.historyId, hash: location.hash})"), chosen), shot(hp, "07-historical-after-keyboard-back-1440.png"))
+                # the Outputs sheet is untouched by the historical flow
+                activate_destination(hp, "tab-outputs")
+                hp.wait_for_function("() => { const r = document.getElementById('v2-sheet-outputs'); return !!r && r.dataset.stReady === '1' && !!r.querySelector('table[data-st-tree]'); }")
+                check("Outputs workspace still works and is a single root", hp.locator("#v2-sheet-outputs").count() == 1 and hp.locator("#v2-sheet-outputs table.out-table").count() >= 7 and dup() == [])
+                # subsequent selection: the other Run opens its own evidence
+                activate_destination(hp, "tab-run-history")
+                hp.evaluate("() => { const l = document.querySelector('#v2-run-statements [data-rh-back-detail]'); if (l) l.click(); }")
+                hp.wait_for_selector("#v2-run-detail")
+                hp.locator('[data-testid="run-detail-back"]').click()
+                hp.wait_for_selector('[data-testid="run-history-detail-2"]')
+                hp.locator('[data-testid="run-history-detail-2"]').click()
+                hp.wait_for_selector('[data-testid="run-detail-open-statements"]')
+                hp.locator('[data-testid="run-detail-open-statements"]').click()
+                hp.wait_for_function("(id) => { const r = document.getElementById('v2-run-statements'); return !!r && r.dataset.stReady === '1' && r.dataset.historyId === id; }", arg=row_ids[1])
+                check("a different Run selected afterwards shows its own immutable evidence", hp.get_attribute("#v2-run-statements", "data-history-id") == row_ids[1] != chosen
+                      and dup() == [])
+                # responsive containment of the historical view
+                for width in (768, 390):
+                    hp.set_viewport_size({"width": width, "height": 1000})
+                    hp.wait_for_function("(w) => window.innerWidth === w", arg=width)
+                    hp.wait_for_timeout(300)                      # let the responsive layout settle before measuring
+                    g = hp.evaluate("""() => { const r = [...document.querySelectorAll('#v2-run-statements [data-st-region]')].find(e => e.offsetParent !== null); return {page: document.documentElement.scrollWidth - window.innerWidth,
+                        overflowX: getComputedStyle(r).overflowX, right: r.getBoundingClientRect().right, vw: window.innerWidth,
+                        offenders: [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && e.getBoundingClientRect().width > 0 && !e.closest('[data-st-region] table'))
+                          .sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right).slice(0, 6).map(e => e.tagName + '#' + e.id + '.' + String(e.className).slice(0, 40) + ' r=' + Math.round(e.getBoundingClientRect().right))}; }""")
+                    check(f"historical statements scrolling is contained at {width}px", g["page"] <= 1 and g["overflowX"] in ("auto", "scroll") and g["right"] <= g["vw"] + 1, g,
+                          shot(hp, f"08-historical-{width}.png"))
+                after = {h.history_id: h.to_dict() for h in get_run_history(USER, record.project_id)}
+                check("opening, navigating and returning never changed or added a committed Run", after == {h["history_id"]: h for h in before_hist}, len(after))
                 hctx.close()
 
                 for tag, log in logs.items():
                     check(f"[{tag}] no page errors, console errors or failing responses", not (log["page_errors"] or log["console_errors"] or log["bad_responses"]),
                           json.dumps({k: v[:3] for k, v in log.items()}))
-                check("the committed Run history entry is unchanged by all of the above", get_run_history(USER, record.project_id)[0].to_dict() == before_hist)
+                check("the committed Run history is unchanged by all of the above", {h.history_id: h.to_dict() for h in get_run_history(USER, record.project_id)} == {h["history_id"]: h for h in before_hist})
                 browser.close()
         finally:
             if server is not None:

@@ -121,6 +121,35 @@ def _workspace_ci_png(width):
             + chunk(b"IDAT", zlib.compress(row * height)) + chunk(b"IEND", b""))
 
 
+def _workspace_ci_outputs_evidence(folder, *, drop=None, fail=None, exit_code=0):
+    """PR #292: the outputs role carries BOTH acceptance modules' results, screenshots and exit records."""
+    import hashlib
+    import json
+    from tools.ci_browser_job import OUTPUTS_ACCEPTANCE
+    modules = {}
+    for module, spec in OUTPUTS_ACCEPTANCE.items():
+        out = folder / spec["folder"]
+        out.mkdir(parents=True, exist_ok=True)
+        for stale in out.glob("*.png"):          # the generic REQUIRED-pattern placeholder is replaced by the real, listed captures
+            stale.unlink()
+        shots = {}
+        for index in range(max(spec.get("min_screenshots", 1), 1)):
+            shot = out / f"shot-{index}.png"
+            shot.write_bytes(_workspace_ci_png(1440))
+            shots[shot.name] = hashlib.sha256(shot.read_bytes()).hexdigest()
+        names = list(spec["required_checks"]) + [f"synthetic check {i}" for i in range(spec["min_total"])]
+        checks = [{"check": name, "status": "FAIL" if fail == module and i == 0 else "PASS", "observed": "", "screenshot": ""}
+                  for i, name in enumerate(names)]
+        if drop == module:
+            checks = [c for c in checks if c["check"] not in spec["required_checks"][:1]] if spec["required_checks"] else checks[:-1]
+        passed = sum(c["status"] == "PASS" for c in checks)
+        (out / "browser-results.json").write_text(json.dumps({
+            "schema": spec["schema"], "checks": checks, "passed": passed, "total": len(checks), "all_pass": passed == len(checks),
+            "screenshot_sha256": shots}), encoding="utf-8")
+        modules[module] = {"exit_code": exit_code if fail == module else 0, "normal_exit": True, "out": f"artifacts/{spec['folder']}"}
+    (folder / "outputs-role.json").write_text(json.dumps({"modules": modules}), encoding="utf-8")
+
+
 def _workspace_ci_role_evidence(root, prefix, role, head, tree, case="pass"):
     import hashlib
     import json
@@ -153,6 +182,8 @@ def _workspace_ci_role_evidence(root, prefix, role, head, tree, case="pass"):
 
     process = {"head": head, "tree": tree, "label": role, "exit_code": 0,
                "normal_exit": True, "junit_failures": 0}
+    if role == "outputs":
+        _workspace_ci_outputs_evidence(folder)
     if role == "import":
         # PR #266: the import role runs BOTH suites; the V2 captures carry their real viewport widths.
         from tools.ci_browser_job import IMPORT_V2_SCREENSHOTS

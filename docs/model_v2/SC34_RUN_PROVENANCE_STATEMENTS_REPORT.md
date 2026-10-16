@@ -92,13 +92,37 @@ stays visible. The drill-down markup deliberately avoids `<caption>`/`role="regi
 3. **D2-c** Whether the drill-down becomes the default statements view (flat is default today to protect existing tests/behaviour).
 4. **D2-d** The forward-only `engine_provenance` persistence field (section 2).
 
-## 6. Integration hooks (for the integration agent; `app/v2/router.py` was not touched)
-1. `from app.v2.statements_drilldown_router import router as statements_drilldown_router` then
-   `router.include_router(statements_drilldown_router)` beside the other `include_router(...)` calls.
-2. In `v2_run_history_detail`, pass `statements_drilldown_available=True` in the template context (the link is inert until then).
-3. CI: add `tests.model_statements_tree_acceptance` next to the other browser scripts (`tools/ci_browser_job.py`,
-   `tools/ci_contract_inventory.py`) — CI governance files were not edited here.
-4. Optional: show the four dimensions in the workspace header projection (`workspace_shell_projection`) and Run History rows.
+## 6. Production wiring (PR #292 Correction A)
+1. `app/v2/router.py` now registers the historical route (`router.include_router(statements_drilldown_router)`) beside the other isolated
+   routers: `GET /v2/workbook/run-history/statements`. No other line of that file changed except the one context key below. Shared-file
+   note: the only concurrently open model branch (`feat/revenue-index-series-v1`, #289) touches `domain/revenue`, a cost doc and a test —
+   no overlap with `app/v2/router.py`, Run History templates or CI tooling.
+2. `v2_run_history_detail` passes `statements_drilldown_available`, computed from the mounted routes (`_statements_drilldown_registered()`),
+   so the link exists only while the route does.
+3. CI: the established `outputs` browser role (one of the SIX mandatory roles) now runs **both** `tests.model_outputs_workspace_acceptance`
+   and `tests.model_statements_tree_acceptance` through `tools/ci_outputs_role.py` (each in its own process, both always executed, exit
+   status recorded in `artifacts/outputs-role.json`). `tools/ci_browser_job.py` validates, fail-closed: the role record names exactly the two
+   modules with normal zero exits; each module's `browser-results.json` has the right schema, `all_pass`, `passed == total == len(checks)`,
+   a minimum check count and (for Statements V2) ten named required checks; every screenshot is listed, hash-matched and a valid PNG. HEAD/tree
+   provenance is the existing per-role `process.json` check. No workflow file was edited; the other five roles and every selection are unchanged.
+4. Defects found by the new browser checks and fixed: (a) the historical fragment reused `id="v2-sheet-outputs"` and several section/row ids
+   that the Outputs sheet already owns, so both could be in the document at once — the fragment now uses `#v2-run-statements` and an
+   `hst-` id prefix, the shared CSS/JS bind to either root; (b) the cells' absolutely positioned screen-reader text escaped the scroll region and
+   widened the page (1151 px at 768 px) — `.st-region` is now a positioned containing block.
+
+### Run History navigation contract
+Detail → "Open this Run's financial statements" records one history entry; browser Back returns to the Run detail, Forward to the statements;
+"Back to Run detail" drives that same Back; focus returns to the opener; reopening the same Run restores expansion, selected period and focused
+line (session storage keyed by project + Run); a different Run opens its own evidence; following a line link to the Working Copy and pressing
+Back returns to the same statements view. The Outputs sheet and its state are untouched.
+
+### Response safety
+Failure responses are fixed generic texts (no exception text, payload or id is echoed or logged); persisted values are auto-escaped
+(tested with a `<script>` snapshot id and a sentinel in malformed evidence); unauthenticated and foreign-owner/foreign-project requests get no content.
+
+## 6b. Remaining integration notes
+* Optional: show the four dimensions in the workspace header projection and the Run History list rows (outside this correction).
+* `tests/model_statements_tree_acceptance.py` is now part of the mandatory `outputs` role; the optional `ci_contract_inventory` lists it.
 
 ## 7. Files
 New: `app/v2/statement_drilldown.py`, `app/v2/historical_statements.py`, `app/v2/statements_drilldown_router.py`,
@@ -106,7 +130,11 @@ New: `app/v2/statement_drilldown.py`, `app/v2/historical_statements.py`, `app/v2
 `static/js/model_statements_tree.js`, `static/css/model_statements_tree.css`, tests `test_sc34_*.py`,
 `tests/model_statements_tree_acceptance.py`. Modified (additive): `app/workbook/runtime_authority.py`,
 `app/v2/output_workspace_projection.py`, `app/library/model_home.py`, `app/templates/v2/partials/sheet_outputs.html`,
-`app/templates/v2/partials/run_history_detail.html` (inert link), `app/templates/library/project_library_list.html`.
+`app/templates/v2/partials/run_history_detail.html` (link, now active), `app/templates/library/project_library_list.html`, and in Correction A:
+`app/v2/router.py` (registration + one context key), `static/js/model_outputs_workspace.js` (binds both roots), `static/css/model_outputs_workspace.css`
+(`:is(#v2-sheet-outputs, #v2-run-statements)`), `static/js/model_run_history_statements_nav.js` (new), `tools/ci_browser_job.py`, `tools/ci_outputs_role.py` (new),
+`tools/ci_contract_inventory.py`, tests `test_sc34_historical_production_wiring.py`, `test_sc34_ci_outputs_role.py` and the outputs-role fixture in
+`test_model_workspace_consolidation.py`.
 
 ## 8. Known limitations
 * The outputs fragment grows (drill-down tables are server-rendered for both bases); it is not lazy-loaded.

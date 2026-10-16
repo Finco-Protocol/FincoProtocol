@@ -5,7 +5,7 @@
   'use strict';
   var STATE_KEY = 'fincoStmt';
 
-  function rootEl() { return document.getElementById('v2-sheet-outputs'); }
+  function roots() { return all(document, '#v2-sheet-outputs, #v2-run-statements'); }
   function all(el, sel) { return Array.prototype.slice.call(el.querySelectorAll(sel)); }
   function identity(root) {
     return { project: root.getAttribute('data-out-project') || '', snapshot: root.getAttribute('data-out-snapshot') || '',
@@ -114,6 +114,15 @@
              focus: focused ? { statement: statementOf(focusTable), basis: focusTable.getAttribute('data-st-basis'), key: focused.getAttribute('data-st-key') } : null,
              scroll: scroll, windowY: window.pageYOffset || 0 };
   }
+  function storeKey(root) { return 'finco.stmt.hist.' + (root.getAttribute('data-out-project') || '') + '.' + (root.getAttribute('data-history-id') || ''); }
+  function persist(root) {
+    if (root.getAttribute('data-st-historical') !== '1') { return; }
+    try { window.sessionStorage.setItem(storeKey(root), JSON.stringify(capture(root))); } catch (e) { /* storage may be blocked */ }
+  }
+  function stored(root) {
+    if (root.getAttribute('data-st-historical') !== '1') { return null; }
+    try { return JSON.parse(window.sessionStorage.getItem(storeKey(root)) || 'null'); } catch (e) { return null; }
+  }
   function remember(root) {
     var ctx = capture(root);
     try { var s = Object.assign({}, window.history.state || {}); s[STATE_KEY] = ctx; window.history.replaceState(s, '', window.location.href); } catch (e) { /* history may be unavailable */ }
@@ -191,8 +200,8 @@
     }
   }
 
-  function init() {
-    var root = rootEl();
+  function init() { roots().forEach(initRoot); }
+  function initRoot(root) {
     if (!root || root.getAttribute('data-st-ready') === '1') { return; }
     root.setAttribute('data-st-ready', '1');
     all(root, 'table[data-st-tree]').forEach(function (t) {
@@ -200,8 +209,12 @@
     });
     // Default reading state: every parent collapsed, flat view.  (Without this script every line stays visible.)
     all(root, '[data-st-viewbar]').forEach(function (bar) { var id = bar.getAttribute('data-st-viewbar'); setAll(root, id, false); setView(root, id, currentView(root, id) === 'tree' && !bar.querySelector('[data-st-view]') ? 'tree' : 'flat'); });
-    var state = window.history.state && window.history.state[STATE_KEY];
+    var state = (window.history.state && window.history.state[STATE_KEY]) || stored(root);
     restore(root, state);
+    if (root.getAttribute('data-st-historical') === '1' && !state) {
+      var title = root.querySelector('#rh-stmt-title');
+      if (title) { title.focus({ preventScroll: true }); }
+    }
 
     root.addEventListener('click', function (e) {
       var t = e.target;
@@ -209,27 +222,29 @@
       if (toggle) {
         var row = toggle.closest('tr'), table = row.closest('table');
         applyExpansion(root, statementOf(table), row.getAttribute('data-st-key'), !isExpanded(row));
-        setRoving(table, row); toggle.focus(); return;
+        setRoving(table, row); toggle.focus(); persist(root); return;
       }
       var link = t.closest && t.closest('[data-st-link]');
       if (link) { remember(root); return; }                       // navigation proceeds natively; Back returns here
       var period = t.closest && t.closest('.st-period');
-      if (period) { var date = period.getAttribute('data-st-period'); selectPeriod(root, selectedPeriod(root) === date ? '' : date); return; }
+      if (period) { var date = period.getAttribute('data-st-period'); selectPeriod(root, selectedPeriod(root) === date ? '' : date); persist(root); return; }
       var v = t.closest && t.closest('[data-st-view]');
       if (v) { var bar = v.closest('[data-st-viewbar]'); setView(root, bar.getAttribute('data-st-viewbar'), v.getAttribute('data-st-view')); return; }
       var ex = t.closest && t.closest('[data-st-expand-all]');
-      if (ex) { setAll(root, ex.closest('[data-st-viewbar]').getAttribute('data-st-viewbar'), true); return; }
+      if (ex) { setAll(root, ex.closest('[data-st-viewbar]').getAttribute('data-st-viewbar'), true); persist(root); return; }
       var co = t.closest && t.closest('[data-st-collapse-all]');
-      if (co) { setAll(root, co.closest('[data-st-viewbar]').getAttribute('data-st-viewbar'), false); return; }
+      if (co) { setAll(root, co.closest('[data-st-viewbar]').getAttribute('data-st-viewbar'), false); persist(root); return; }
       var cellRow = t.closest && t.closest('tr[data-st-row]');
       if (cellRow) { setRoving(cellRow.closest('table'), cellRow); }
     });
     root.addEventListener('focusin', function (e) {
       var r = e.target.closest && e.target.closest('tr[data-st-row]');
-      if (r) { setRoving(r.closest('table'), r); }
+      if (r) { setRoving(r.closest('table'), r); persist(root); }
     });
-    root.addEventListener('keydown', function (e) { onKeydown(root, e); });
+    root.addEventListener('scroll', function () { persist(root); }, true);
+    root.addEventListener('keydown', function (e) { onKeydown(root, e); window.setTimeout(function () { persist(root); }, 0); });
     window.__fincoStatements = { capture: function () { return capture(root); }, remember: function () { return remember(root); } };
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
+  document.addEventListener('htmx:afterSwap', init);
 })();
