@@ -16,7 +16,7 @@ def open_calendar(s):
     activate_destination(s.page,'tab-revenue')
     s.fill(kind='indexed_ppa',price='60',share='60',index='2',ref='synthetic-calendar-contract')
     s.use_full_window(); s.add()
-    s.page.locator('.rc-index-editor summary').click()
+    s.page.locator('.rc-index-editor > summary').click()
     s.page.locator('[data-index-mode=calendar]').check()
 
 

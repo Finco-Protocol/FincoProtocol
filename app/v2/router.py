@@ -1230,6 +1230,7 @@ def _build_revenue_contract_editor(pis, ws):
     operating_boundaries = []
     operating_years = {}
     calendar_preview = {}
+    rounding_preview = {}
     calendar_preview_error = ""
     project_cod = ""
     if technology in ("solar", "wind"):
@@ -1273,6 +1274,12 @@ def _build_revenue_contract_editor(pis, ws):
                                  "price": next(s for s in config.plan_at(p.start_date, p.year_index).streams
                                                if s.stream_id == dated.stream.stream_id).ppa.price_at_year(p.year_index)}
                                 for p in operating if dated.active(p.start_date)]
+                    if getattr(config, "has_price_rounding", False) and not calendar_preview_error:
+                        for p in operating:
+                            for stream_id, quote in config.price_details(p.start_date, p.year_index).items():
+                                if quote["rounding_enabled"]:
+                                    rounding_preview.setdefault(stream_id, []).append({
+                                        "start": p.start_date.isoformat(), "end": p.end_date.isoformat(), **quote})
             if ACTIVATION_ENABLED:
                 axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
                          "settlement_date": p.end_date.isoformat()} for p in operating]
@@ -1283,13 +1290,14 @@ def _build_revenue_contract_editor(pis, ws):
             operating_years = {}
             axis = []
             calendar_preview = {}
+            rounding_preview = {}
     try:
         _term = float(pis.get("revenue.ppa.term_years"))
         ppa_term_years = _term if _term > 0 else None
     except (TypeError, ValueError):
         ppa_term_years = None
     return {"project_cod": project_cod, "calendar_preview": calendar_preview, "calendar_preview_error": calendar_preview_error, "operating_years": list(operating_years.values()), "ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
-            "overridden": overridden, "rows": payload.get("streams", []),
+            "overridden": overridden, "rows": payload.get("streams", []), "rounding_preview": rounding_preview,
             "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
             "period_axis": axis}
 

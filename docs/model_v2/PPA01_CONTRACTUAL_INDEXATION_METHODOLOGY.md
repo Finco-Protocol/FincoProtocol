@@ -3,6 +3,46 @@
 Status: methodology authorized for candidate development; exact financial
 content, governance successor and production release NOT approved.
 
+## C2 optional contractual rounding
+
+Version-2 PPA contracts may explicitly supply `price_rounding` with boolean
+`enabled`, `decimal_places` (2, 3, 4 or 6) and `method` (HALF_UP or HALF_EVEN).
+Absent or disabled means OFF, without migrating any saved contract. Enabled
+policies require explicit precision and method. Merchant, CfD, version-3 books
+and explicit price curves cannot acquire this indexed-PPA policy.
+
+The single existing PPAParams price authority applies original base price,
+indexation, existing floor/cap, then Decimal quantization, then existing revenue
+and settlement. No new floor/cap JSON fields exist. It never rounds an earlier
+rounded price: every review starts from the original base and index methodology.
+Before the first completed annual review the base is not quantized; the first
+model-year index observation is a base, not a completed review. Pre-COD reviews
+can establish a rounded opening contractual price, without pre-COD sales.
+
+At 1000 MWh, indexed 63.07404 rounded HALF_UP/2 becomes 63.07 EUR/MWh and
+63.07 kEUR gross revenue. Ties 62.345 give 62.35 (HALF_UP) or 62.34 (HALF_EVEN);
+62.355 gives 62.36 for both. Rounding after a cap of 62.345 may yield 62.35;
+rounding after a floor of 62.345 may yield 62.34. There is deliberately no second
+clamp or hidden financial correction.
+
+Enabled calculations retain Decimal through indexation and quantization. An
+explicitly quantized zero is valid, unlike loss of a positive unrounded Decimal
+during float conversion. The owner separately authorized rejecting that loss
+in the dated CPI/PPI OFF path: positive 1e-816 now refuses deterministically;
+representable subnormals and genuine zero keep their previous float values.
+C1 model-year overflow/underflow protections remain intact.
+
+The existing editor exposes a collapsed policy control, default OFF, and saved
+price stages from Python. Unsaved edits hide those stages until a successful
+Save. JavaScript serializes policy, never computes contractual rounding.
+The existing committed `scenario_revenue_input.multistream_config_json` binds
+the exact policy and original terms; period revenue audit binds actual prices,
+quantities and outcomes. Historical evidence is not recomputed or migrated.
+
+These are candidate semantics, not released financial authority. Three exact
+protected blobs require renewed independent review and explicit owner release
+authorization before a governance successor can be enabled.
+
 ## Dates and review convention
 
 `price_base_date` identifies the contractual reference date of the entered

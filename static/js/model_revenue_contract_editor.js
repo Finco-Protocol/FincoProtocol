@@ -10,7 +10,7 @@
   const ROOT_KEYS = ['version', 'technology', 'indexation_basis', 'streams'];
   const BASE_KEYS = ['id', 'type', 'start_date', 'end_date', 'volume_share',
     'price_eur_mwh', 'indexation_rate', 'settlement', 'source_ref'];
-  const OPTIONAL_KEYS = ['capture_rate', 'reference_stream_id', 'price_curve', 'index_series', 'indexation_timing'];
+  const OPTIONAL_KEYS = ['capture_rate', 'reference_stream_id', 'price_curve', 'index_series', 'indexation_timing', 'price_rounding'];
   const INDEX_KEYS = ['operating_year', 'level', 'basis'];
   const KINDS = [
     ['fixed_ppa', 'Fixed PPA'], ['indexed_ppa', 'Indexed PPA'],
@@ -64,6 +64,17 @@
               'review_frequency','mid_period_policy','signing_date','custom_start_date','index_base_date','observations','reviews'])))) {
         throw Error('An existing stream contains unsupported terms. Editing is blocked to preserve it.');
       }
+      if ('price_rounding' in row) {
+        const p = row.price_rounding;
+        if (book.version !== 2 || row.type !== 'ppa' ||
+            !legalKeys(p, ['enabled', 'decimal_places', 'method']) || typeof p.enabled !== 'boolean' ||
+            ('decimal_places' in p && ![2, 3, 4, 6].includes(p.decimal_places)) ||
+            ('method' in p && !['HALF_UP', 'HALF_EVEN'].includes(p.method)) ||
+            (p.enabled && (!('decimal_places' in p) || !('method' in p) ||
+              row.price_curve || !(row.indexation_rate > 0 || row.index_series || row.indexation_timing)))) {
+          throw Error('Unsupported contractual price rounding terms. No changes have been made.');
+        }
+      }
     }
     return book;
   }
@@ -108,6 +119,7 @@
     const yearSpan = (year) => { const y = operatingYears.find(e => e.year === year); return y ? y.start + ' → ' + y.end : ''; };
     const levelOf = (point) => (typeof point.level === 'number' && Number.isFinite(point.level) && point.level > 0) ? point.level : null;
     function effectivePrice(row, point) {            // read-only preview of price x level / base level; the Run decides the committed price
+      if (row.price_rounding?.enabled) return 'See saved period prices';
       const base = row.index_series.length ? levelOf(row.index_series[0]) : null, level = levelOf(point);
       if (base === null || level === null || typeof row.price_eur_mwh !== 'number' || !Number.isFinite(row.price_eur_mwh)) return '—';
       return (row.price_eur_mwh * level / base).toFixed(4);
@@ -336,6 +348,52 @@
       const wrap = document.createElement('div'); wrap.className = 'rc-index-scroll rc-calendar-prices-scroll'; wrap.appendChild(prices); preview.appendChild(wrap); box.appendChild(preview);
       return box;
     }
+    function roundingEditor(row) {
+      const box = document.createElement('details'); box.className = 'rc-rounding-editor';
+      const summary = document.createElement('summary'); summary.textContent = 'Contractual Price Rounding'; box.appendChild(summary);
+      const toggleLabel = document.createElement('label');
+      const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.dataset.roundingEnabled = '';
+      toggle.checked = row.price_rounding?.enabled === true; toggle.disabled = book.version === 3;
+      toggleLabel.append(toggle, document.createTextNode(' Apply contractual price rounding'));
+      const controls = document.createElement('div'); controls.className = 'rc-index-modes'; controls.hidden = !toggle.checked;
+      const selects = {};
+      for (const [key, title, values] of [['decimal_places', 'Decimal places', [2, 3, 4, 6]],
+        ['method', 'Rounding method', ['HALF_UP', 'HALF_EVEN']]]) {
+        const label = document.createElement('label'); label.textContent = title;
+        const select = document.createElement('select'); select.setAttribute('aria-label', title); selects[key] = select;
+        values.forEach(value => { const option = document.createElement('option'); option.value = value; option.textContent = value;
+          option.selected = value === (row.price_rounding?.[key] ?? (key === 'decimal_places' ? 2 : 'HALF_UP')); select.appendChild(option); });
+        select.addEventListener('change', () => { row.price_rounding[key] = key === 'decimal_places' ? Number(select.value) : select.value; status(); });
+        label.appendChild(select); controls.appendChild(label);
+      }
+      toggle.addEventListener('change', () => {
+        if (book.version !== 3) book.version = 2;
+        row.price_rounding = {enabled: toggle.checked, decimal_places: Number(selects.decimal_places.value), method: selects.method.value};
+        controls.hidden = !toggle.checked;
+        const outputs = box.closest('tr').querySelectorAll('[data-index-effective]');
+        outputs.forEach((out, i) => { out.textContent = effectivePrice(row, row.index_series[i]); });
+        showError(''); status();
+      });
+      const note = document.createElement('p'); note.className = 'd-context'; note.textContent = 'This setting changes calculated PPA revenue.';
+      box.append(toggleLabel, controls, note);
+      const refresh = document.createElement('p'); refresh.dataset.roundingRefresh = ''; refresh.hidden = true;
+      refresh.textContent = 'Save contracts to refresh period prices.'; box.appendChild(refresh);
+      const preview = document.createElement('details'); preview.dataset.roundingPrices = '';
+      const heading = document.createElement('summary'); heading.textContent = 'Contractual rounding prices (saved contracts)'; preview.appendChild(heading);
+      const table = document.createElement('table'); table.className = 'rc-index-table';
+      table.innerHTML = '<thead><tr><th>Period</th><th>Base price</th><th>Indexed price</th><th>After floor/cap</th><th>Rounding</th><th>Effective price (EUR/MWh)</th></tr></thead>';
+      const body = table.createTBody();
+      const saved = JSON.parse(form.querySelector('[data-rounding-preview]')?.value || '{}');
+      (saved[row.id] || []).forEach(p => {
+        const line = body.insertRow();
+        [p.start + ' / ' + p.end, p.base_price, p.indexed_price, p.price_after_floor_cap,
+          p.rounding_applied ? p.method + ' / ' + p.decimal_places : 'Not applied before first review', p.effective_price]
+          .forEach(value => { line.insertCell().textContent = String(value); });
+      });
+      const wrap = document.createElement('div'); wrap.className = 'rc-index-scroll rc-calendar-prices-scroll'; wrap.appendChild(table);
+      preview.appendChild(wrap); box.appendChild(preview);
+      return box;
+    }
     function status() {
       dirty = JSON.stringify(book) !== baseline;
       form.dataset.dirty = String(dirty);
@@ -353,8 +411,8 @@
       const over = form.querySelector('[data-revenue-allocation]')?.dataset.over === 'true';
       if (dirty && over && !incomplete) feedback.textContent = 'Not saveable · ' + form.querySelector('[data-revenue-allocation]').textContent;
       save.disabled = !dirty || blocked || incomplete || over;
-      form.querySelectorAll('[data-calendar-prices]').forEach(el => { el.hidden = dirty; });
-      form.querySelectorAll('[data-calendar-refresh]').forEach(el => { el.hidden = !dirty; });
+      form.querySelectorAll('[data-calendar-prices], [data-rounding-prices]').forEach(el => { el.hidden = dirty; });
+      form.querySelectorAll('[data-calendar-refresh], [data-rounding-refresh]').forEach(el => { el.hidden = !dirty; });
     }
     function advancedMode(enabled) {
       advanced = !!enabled;
@@ -459,7 +517,7 @@
             delete changed.reference_stream_id;
           }
           if (!isScheduled(next)) delete changed.price_curve;
-          if (next !== 'indexed_ppa') { delete changed.index_series; delete changed.indexation_timing; }
+          if (next !== 'indexed_ppa') { delete changed.index_series; delete changed.indexation_timing; delete changed.price_rounding; }
           book.streams[index] = changed;
           kindOverrides.set(changed, next);
           showError('');
@@ -584,7 +642,7 @@
               }
               kindOverrides.set(row, 'indexed_ppa');          // the contract stays an Indexed PPA: a positive annual rate (or a series) is required
               showError(''); render(); status();
-              const editors = tbody.querySelectorAll('.rc-index-series-row details');
+              const editors = tbody.querySelectorAll('.rc-index-series-row .rc-index-editor');
               const at = book.streams.filter(r => (kindOverrides.get(r) || displayKind(r)) === 'indexed_ppa').indexOf(row);
               if (editors[at]) editors[at].open = true;
             });
@@ -645,7 +703,7 @@
             const wrap = document.createElement('div'); wrap.className = 'rc-index-scroll'; wrap.appendChild(table);
             details.appendChild(wrap);
             function reopen() {
-              const editors = tbody.querySelectorAll('.rc-index-series-row details');
+              const editors = tbody.querySelectorAll('.rc-index-series-row .rc-index-editor');
               const at = book.streams.filter(r => (kindOverrides.get(r) || displayKind(r)) === 'indexed_ppa').indexOf(row);
               if (editors[at]) editors[at].open = true;
             }
@@ -670,6 +728,7 @@
             });
             details.append(add, paste, apply);
           }
+          details.appendChild(roundingEditor(row));
           td.appendChild(details); extra.appendChild(td); tbody.appendChild(extra);
         }
         if (isScheduled(kind)) {
@@ -1095,7 +1154,7 @@
         const clean = form.dataset.incomplete !== 'true' && form.querySelector('[data-revenue-allocation]')?.dataset.over !== 'true';
         if (clean) feedback.textContent = 'PPA added to the draft · Save contracts to update the Working Copy (Run separately)';
         if (indexSeries) {
-          const editors = tbody.querySelectorAll('.rc-index-series-row details');
+          const editors = tbody.querySelectorAll('.rc-index-series-row .rc-index-editor');
           const editor = editors[editors.length - 1];
           if (editor) { editor.open = true; editor.scrollIntoView({block: 'nearest'}); editor.querySelector('[data-index-level]')?.focus(); }
           if (clean) feedback.textContent = 'Indexed PPA added with an index series · review the levels, then Save contracts (Run separately)';

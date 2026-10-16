@@ -4,6 +4,47 @@ Status: **NEW PPA01 FINANCIAL CANDIDATE READY FOR INDEPENDENT REVIEW** describes
 functional candidate delivery only. Financial release/governance approval,
 integration, merge and deployment remain NOT APPROVED.
 
+## C2 rounding candidate update
+
+This section supersedes older candidate identities/results below, which remain
+historical evidence. Current base is 540e1f4bb54d53ad6d2c1628074b94fdb0c9eb06;
+C2 parent is 9df9d3b908c57cbad093e29eeb676de849a39b83.
+
+Implemented optional version-2 indexed-PPA rounding in the existing price
+kernel, not a parallel calculator. OFF preserves original arithmetic. ON keeps
+Decimal through indexation, existing floor/cap and explicit quantization,
+then uses the existing revenue calculation. Four precisions, both tie methods,
+three indexing methodologies, four calendar anchors, pre-COD reviews and
+delayed sales are covered. No first-base rounding or recursive compounding.
+No new floor/cap JSON fields, hidden reclamp, or Merchant/CfD rounding.
+
+The additional owner-authorized dated OFF underflow guard rejects a positive
+1e-816 price rather than returning zero. It preserves 1e-320 and the smallest
+positive subnormal conversion. Enabled quantization may deliberately produce
+zero. Numerical refusal is distinct from an explicitly agreed zero tariff.
+
+New focused tests live in `test_ppa01_price_rounding.py`,
+`test_ppa01_rounding_workspace.py` and `test_ppa01_rounding_browser.py`.
+Saved preview stages reuse Python PPAParams authority; the actual Run retains
+the existing JSON policy/terms binding and per-period tariff/revenue evidence.
+No new writer, Run repository, export calculator or execution path exists.
+
+Initial numerical acceptance: 221 passed, process rc=0 (new rounding tests,
+existing model-year/C1 and contractual timing suites). Real Chromium: 10 passed,
+rc=0, Solar/Wind desktop/light and mobile/dark, including six existing calendar
+cases. Full focused results, exact final HEAD/tree, independent review and
+current CI are recorded in the final PR handoff after validation.
+
+Protected candidate hashes are listed in the current three-path section of
+`PPA01_FINANCIAL_AUTHORITY_SUCCESSOR_PROPOSAL.md`. No source outside those
+protected paths changes. All historical pins and release-closed flags remain
+unchanged. The 41 historical governance failures are not waived: final C2
+governance work awaits exact-content review plus actual owner authorization.
+
+Router overlap with #292 remains separate: this candidate only extends the
+Revenue editor projection, not its statements-drilldown routes or Run identity.
+Do not merge another workstream into this branch to substitute for RC review.
+
 ## Provenance
 
 Repository Finco-Protocol/FincoProtocol; existing Draft PR #293; existing branch

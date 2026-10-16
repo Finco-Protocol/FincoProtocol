@@ -1,13 +1,28 @@
 """Revenue configuration - supports PPA, Merchant, FiT, CfD, Capacity Market, BESS revenue.
 """
 from dataclasses import dataclass
+from decimal import Decimal, DecimalException, ROUND_HALF_EVEN, ROUND_HALF_UP, localcontext
 from enum import Enum
+import math
 from typing import Optional
 
 
 # =============================================================================
 # PPA PARAMS
 # =============================================================================
+@dataclass(frozen=True)
+class PPAContractPriceRounding:
+    enabled: bool = False
+    decimal_places: int = 2
+    method: str = "HALF_UP"
+
+    def __post_init__(self):
+        if (type(self.enabled) is not bool or type(self.decimal_places) is not int
+                or self.decimal_places not in (2, 3, 4, 6)
+                or self.method not in ("HALF_UP", "HALF_EVEN")):
+            raise ValueError("REVENUE_V2_PRICE_ROUNDING: expected boolean enabled, 2/3/4/6 places and HALF_UP/HALF_EVEN")
+
+
 @dataclass(frozen=True)
 class PPAParams:
     """PPA (Power Purchase Agreement) parameters.
@@ -38,6 +53,21 @@ class PPAParams:
     offtaker_credit_rating: str = ""  # Rating for due diligence
     termination_fee_keur: float = 0.0  # Termination fee (force majeure/default)
     
+    price_rounding: Optional[PPAContractPriceRounding] = None
+    indexation_review_completed: bool = False
+    resolved_index_price: Optional[Decimal] = None
+
+    def __post_init__(self):
+        if self.price_rounding is not None and not isinstance(self.price_rounding, PPAContractPriceRounding):
+            raise ValueError("REVENUE_V2_PRICE_ROUNDING: typed contractual policy required")
+        if type(self.indexation_review_completed) is not bool:
+            raise ValueError("REVENUE_V2_PRICE_ROUNDING: explicit review state required")
+        if self.resolved_index_price is not None:
+            if (not self.price_rounding or not self.price_rounding.enabled
+                    or not isinstance(self.resolved_index_price, Decimal)
+                    or not self.resolved_index_price.is_finite() or self.resolved_index_price < 0):
+                raise ValueError("REVENUE_V2_PRICE_ROUNDING: resolved Decimal price requires an enabled policy")
+
     def price_at_year(self, year: int) -> float:
         """Return PPA price in year with indexation.
         
@@ -47,6 +77,8 @@ class PPAParams:
         Returns:
             Price in EUR/MWh
         """
+        if self.price_rounding and self.price_rounding.enabled:
+            return self.price_details_at_year(year)["effective_price"]
         price = self.ppa_base_price_eur_mwh * (1 + self.ppa_price_index) ** (year - 1)
         
         # Apply floor
@@ -58,6 +90,45 @@ class PPAParams:
             price = min(price, self.ppa_price_cap)
         
         return price
+
+    def price_details_at_year(self, year: int) -> dict:
+        """Canonical PPA price stages; only an explicit completed review enables rounding."""
+        policy = self.price_rounding
+        active = bool(policy and policy.enabled)
+        if not active:
+            indexed = self.ppa_base_price_eur_mwh * (1 + self.ppa_price_index) ** (year - 1)
+            bounded = self.price_at_year(year)
+            return {"base_price": self.ppa_base_price_eur_mwh, "indexed_price": str(indexed),
+                    "price_after_floor_cap": str(bounded), "rounding_enabled": False,
+                    "rounding_applied": False, "decimal_places": None, "method": None,
+                    "floor": self.ppa_price_floor, "cap": self.ppa_price_cap, "effective_price": bounded}
+        try:
+            with localcontext() as context:
+                context.prec = 34
+                indexed = self.resolved_index_price
+                if indexed is None:
+                    indexed = (Decimal(str(self.ppa_base_price_eur_mwh))
+                               * (1 + Decimal(str(self.ppa_price_index))) ** (year - 1))
+                bounded = indexed
+                if self.ppa_price_floor > 0:
+                    bounded = max(bounded, Decimal(str(self.ppa_price_floor)))
+                if self.ppa_price_cap > 0:
+                    bounded = min(bounded, Decimal(str(self.ppa_price_cap)))
+                effective = bounded
+                if self.indexation_review_completed:
+                    context.prec = max(34, bounded.adjusted() + policy.decimal_places + 2)
+                    effective = bounded.quantize(Decimal(1).scaleb(-policy.decimal_places),
+                        rounding=ROUND_HALF_UP if policy.method == "HALF_UP" else ROUND_HALF_EVEN)
+                price = float(effective)
+                if not math.isfinite(price) or (effective != 0 and price == 0):
+                    raise ValueError("REVENUE_V2_ROUNDING_PRICE: final PPA price is not representable")
+        except (DecimalException, OverflowError) as exc:
+            raise ValueError("REVENUE_V2_ROUNDING_PRICE: final PPA price is not representable") from exc
+        return {"base_price": self.ppa_base_price_eur_mwh, "indexed_price": str(indexed),
+                "price_after_floor_cap": str(bounded), "rounding_enabled": True,
+                "rounding_applied": self.indexation_review_completed,
+                "decimal_places": policy.decimal_places, "method": policy.method,
+                "floor": self.ppa_price_floor, "cap": self.ppa_price_cap, "effective_price": price}
     
     def is_active(self, year: int) -> bool:
         """Check if PPA is active in given year.

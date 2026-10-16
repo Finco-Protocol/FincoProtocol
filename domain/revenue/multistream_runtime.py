@@ -9,7 +9,7 @@ from decimal import Decimal, localcontext
 
 from domain.revenue.plan import RevenuePlan, RevenueStream, RevenueStreamType
 from domain.revenue.plan_engine import StreamPeriodStatus, evaluate_revenue_plan
-from domain.revenue.revenue_config import CfDParams, MerchantParams, PPAParams
+from domain.revenue.revenue_config import CfDParams, MerchantParams, PPAParams, PPAContractPriceRounding
 
 SUPPORTED_TYPES = frozenset({"ppa", "merchant", "cfd"})
 UNSUPPORTED_TYPES = frozenset({"capacity_market", "ancillary", "rec"})
@@ -103,10 +103,28 @@ class PPAIndexationTiming:
             # Avoid an overflowing intermediate when the final price is finite.
             with localcontext() as context:
                 context.prec = 34
-                price = float(Decimal(str(base_price)) * Decimal(str(levels[references[effective[-1]]])) / Decimal(str(levels[self.index_base_date])))
+                indexed_price = (Decimal(str(base_price)) * Decimal(str(levels[references[effective[-1]]]))
+                                 / Decimal(str(levels[self.index_base_date])))
+                price = float(indexed_price)
+                if indexed_price > 0 and price == 0:
+                    raise ValueError("REVENUE_V2_TIMING_PRICE: indexed price cannot be represented as a finite float without underflow to zero")
         if not math.isfinite(price):
             raise ValueError("REVENUE_V2_TIMING_PRICE: nonfinite indexed price")
         return price
+
+    def decimal_price_at(self, when, base_price, annual_rate, end):
+        """Keep the indexed value unconverted until canonical floor/cap and rounding."""
+        effective = [d for d in self.review_dates(end) if d <= when]
+        with localcontext() as context:
+            context.prec = 34
+            base = Decimal(str(base_price))
+            if not effective:
+                return base
+            if self.method == "ANNUAL_FIXED":
+                return base * (1 + Decimal(str(annual_rate))) ** len(effective)
+            levels = {o.reference_date: o.level for o in self.observations}
+            reference = dict(self.reviews)[effective[-1]]
+            return base * Decimal(str(levels[reference])) / Decimal(str(levels[self.index_base_date]))
 
 
 def _parse_indexation_timing(raw, version, kind, rate, start, end, *, has_series, has_curve):
@@ -210,6 +228,11 @@ class MultiStreamRevenue:
     def has_contractual_indexation(self):
         return any(s.indexation_timing for s in self.streams)
 
+    @property
+    def has_price_rounding(self):
+        return any(s.stream.ppa and s.stream.ppa.price_rounding and s.stream.ppa.price_rounding.enabled
+                   for s in self.streams)
+
     def plan_at(self, when, year_index=None):
         """Resolve a financial plan; active index-series prices require an explicit operating year."""
         return self._plan_at(when, year_index, structural=False)
@@ -220,15 +243,22 @@ class MultiStreamRevenue:
 
     def _plan_at(self, when, year_index, *, structural):
         # V1 keeps the exact historical code path and floating-point operations.
-        if not any(s.price_curve or s.index_series or s.indexation_timing for s in self.streams):
+        if not self.has_price_rounding and not any(s.price_curve or s.index_series or s.indexation_timing for s in self.streams):
             streams = tuple(replace(s.stream, enabled=s.active(when)) for s in self.streams)
         else:
             adjusted = []
             for dated in self.streams:
                 stream = replace(dated.stream, enabled=dated.active(when))
+                rounding = bool(stream.ppa and stream.ppa.price_rounding and stream.ppa.price_rounding.enabled)
                 if stream.enabled and dated.indexation_timing and not structural:
-                    price = dated.indexation_timing.price_at(when, stream.ppa.ppa_base_price_eur_mwh, stream.ppa.ppa_price_index, dated.end_date)
-                    stream = replace(stream, ppa=replace(stream.ppa, ppa_base_price_eur_mwh=price, ppa_price_index=0.0))
+                    terms = dated.indexation_timing
+                    if rounding:
+                        indexed = terms.decimal_price_at(when, stream.ppa.ppa_base_price_eur_mwh, stream.ppa.ppa_price_index, dated.end_date)
+                        stream = replace(stream, ppa=replace(stream.ppa, resolved_index_price=indexed,
+                            indexation_review_completed=any(d <= when for d in terms.review_dates(dated.end_date))))
+                    else:
+                        price = terms.price_at(when, stream.ppa.ppa_base_price_eur_mwh, stream.ppa.ppa_price_index, dated.end_date)
+                        stream = replace(stream, ppa=replace(stream.ppa, ppa_base_price_eur_mwh=price, ppa_price_index=0.0))
                 if stream.enabled and dated.index_series and not structural:
                     if type(year_index) is not int or year_index < 1:
                         raise ValueError("REVENUE_V2_INDEX_YEAR_CONTEXT: active index-series pricing requires a positive integer operating year")
@@ -242,12 +272,19 @@ class MultiStreamRevenue:
                         context.prec = 34
                         indexed_price = (Decimal(str(stream.ppa.ppa_base_price_eur_mwh))
                                          * Decimal(str(levels[year_index])) / Decimal(str(base_level)))
-                    price = float(indexed_price)
-                    if not math.isfinite(price) or (indexed_price != 0 and price == 0):
-                        raise ValueError("REVENUE_V2_INDEX_PRICE: indexed price cannot be represented as a finite float without underflow to zero")
-                    stream = replace(stream, ppa=replace(stream.ppa,
-                        ppa_base_price_eur_mwh=price,
-                        ppa_price_index=0.0))
+                    if rounding:
+                        stream = replace(stream, ppa=replace(stream.ppa, resolved_index_price=indexed_price,
+                            indexation_review_completed=year_index > dated.index_series[0][0]))
+                    else:
+                        price = float(indexed_price)
+                        if not math.isfinite(price) or (indexed_price != 0 and price == 0):
+                            raise ValueError("REVENUE_V2_INDEX_PRICE: indexed price cannot be represented as a finite float without underflow to zero")
+                        stream = replace(stream, ppa=replace(stream.ppa,
+                            ppa_base_price_eur_mwh=price, ppa_price_index=0.0))
+                if stream.enabled and rounding and not structural and not (dated.indexation_timing or dated.index_series):
+                    if type(year_index) is not int or year_index < 1:
+                        raise ValueError("REVENUE_V2_INDEX_YEAR_CONTEXT: rounding requires an explicit positive operating year")
+                    stream = replace(stream, ppa=replace(stream.ppa, indexation_review_completed=year_index > 1))
                 if stream.enabled and dated.price_curve:
                     point = next((price for starts, price in dated.price_curve if starts == when), None)
                     if point is None:
@@ -331,6 +368,11 @@ class MultiStreamRevenue:
             raise ValueError("REVENUE_V2_VALUE: period revenue must be finite")
         return replace(result, stream_results=rows)
 
+    def price_details(self, when, year_index):
+        return {s.stream_id: s.ppa.price_details_at_year(year_index)
+                for s in self.plan_at(when, year_index).streams
+                if s.enabled and s.stream_type is RevenueStreamType.PPA}
+
 
 INDEX_BASES = frozenset({"OBSERVED", "FORECAST"})
 MAX_INDEX_POINTS = 60
@@ -369,6 +411,18 @@ def _parse_index_series(raw, version, kind, rate, has_curve):
     return tuple(parsed)
 
 
+def _parse_price_rounding(raw, version, kind, *, indexed, has_curve):
+    if version != 2 or kind is not RevenueStreamType.PPA:
+        raise ValueError("REVENUE_V2_PRICE_ROUNDING: only version-2 PPA contracts support rounding")
+    _object(raw, {"enabled"}, "price rounding", {"decimal_places", "method"})
+    if raw["enabled"] is True and set(raw) != {"enabled", "decimal_places", "method"}:
+        raise ValueError("REVENUE_V2_PRICE_ROUNDING: enabled rounding requires explicit places and method")
+    policy = PPAContractPriceRounding(raw["enabled"], raw.get("decimal_places", 2), raw.get("method", "HALF_UP"))
+    if policy.enabled and (not indexed or has_curve):
+        raise ValueError("REVENUE_V2_PRICE_ROUNDING: enabled rounding requires indexed PPA review authority, not a price curve")
+    return policy
+
+
 def parse_config(raw: str | None) -> MultiStreamRevenue | None:
     if raw is None or raw == "":
         return None
@@ -394,7 +448,7 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
     for row in payload["streams"]:
         _object(row, {"id", "type", "start_date", "end_date", "volume_share", "price_eur_mwh",
                       "indexation_rate", "settlement", "source_ref"}, "stream",
-                {"capture_rate", "reference_stream_id", "price_curve", "index_series", "indexation_timing"})
+                {"capture_rate", "reference_stream_id", "price_curve", "index_series", "indexation_timing", "price_rounding"})
         if not isinstance(row["type"], str) or row["type"] not in SUPPORTED_TYPES:
             raise ValueError(f"REVENUE_V2_UNSUPPORTED_STREAM: {row['type']!r}")
         for key in ("id", "source_ref"):
@@ -444,7 +498,10 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
         options = {}
         if kind is RevenueStreamType.PPA:
             options["ppa"] = PPAParams(ppa_enabled=True, ppa_base_price_eur_mwh=price,
-                                       ppa_price_index=index, balancing_cost_pct=0.0)
+                                       ppa_price_index=index, balancing_cost_pct=0.0,
+                                       price_rounding=_parse_price_rounding(row["price_rounding"], payload["version"], kind,
+                                           indexed=bool(index or index_series or timing), has_curve=bool(curve))
+                                       if "price_rounding" in row else None)
         elif kind is RevenueStreamType.MERCHANT:
             capture = _number(row.get("capture_rate", 1.0), "capture_rate", 1.0)
             options["merchant"] = MerchantParams(merchant_enabled=True, base_price_eur_mwh=price,
@@ -456,6 +513,8 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
                 raise ValueError("REVENUE_V2_CFD_REFERENCE: explicit merchant reference required")
             options["cfd"] = CfDParams(cfd_enabled=True, strike_price_eur_mwh=price, two_way_cfd=True)
             options["reference_stream_id"] = row["reference_stream_id"]
+        if kind is not RevenueStreamType.PPA and "price_rounding" in row:
+            raise ValueError("REVENUE_V2_PRICE_ROUNDING: rounding belongs only to version-2 PPA contracts")
         if kind is not RevenueStreamType.MERCHANT and "capture_rate" in row:
             raise ValueError("REVENUE_V2_SCHEMA: capture_rate belongs only to merchant")
         if kind is not RevenueStreamType.CFD and "reference_stream_id" in row:

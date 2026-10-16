@@ -2,6 +2,62 @@
 
 Status: **PENDING independent financial/governance acceptance. NOT a release approval.**
 
+## Current C2 three-path candidate (supersedes older proposals below)
+
+The owner approved optional post-floor/cap rounding in the existing PPAParams
+authority and the dated CPI/PPI underflow rejection. Scope approval is not
+exact-content acceptance. Initial C2 parent is
+`9df9d3b908c57cbad093e29eeb676de849a39b83`; base remains
+`540e1f4bb54d53ad6d2c1628074b94fdb0c9eb06`.
+
+| Protected path | C2 candidate Git blob |
+|---|---|
+| domain/revenue/multistream_runtime.py | b1896bdb156a53c8371286bb4198381d0c7904fe |
+| finco_core/revenue/generation.py | 8e23a949e72acc6422a6c7cd46f034b31f81fdfb |
+| domain/revenue/revenue_config.py | d62fc2c7d97986d2c0aed6c0ac9068759011e1ef |
+
+The COD bridge is unchanged. No other protected financial source, historical
+authority map or activation flag is changed. These hashes identify candidates
+only: they are not an approval map and are not consumed by a released guard.
+The final containing HEAD/tree must be recorded after commit, not fabricated
+inside a self-referential report.
+
+### Conditional reconciliation of the 41 prior failures
+
+Prior completed Public Safety run 38923907296/job 117050452546 produced
+41 failed / 11718 passed / 88 skipped, process exit 1. Its independently
+inspected families were 28 shared frozen guards, 6 WF07/V2/V3 content checks,
+3 M7 historical checks, 1 CI slice guard, 1 M3 direct guard and 2 cost-template
+guards. This is historical evidence, not a claim about a newer running head.
+The new third path may expose additional scope checks; none may be hidden.
+
+After separate exact-content technical review AND actual required owner
+authorization, propose one centralized additive three-path successor, never
+41 unrelated exceptions. Preserve all historical maps byte-for-byte. Bind the
+constant reviewed blobs to a real source commit, ancestry, exact protected
+slice, independent decision evidence and unchanged activation flags. Fail
+closed on missing refs or approval; never derive approved hashes from HEAD.
+
+Shared authority predicates may recognize that complete reviewed slice only.
+Direct CI/M3/cost-template consumers must use the same predicate rather than
+prefix allowances. Historical WF07/V2/V3 assertions should evaluate their
+immutable reviewed checkpoints; separate current-HEAD checks must enforce the
+new successor, with the same changed-content rejection. Historical M7 facts
+must remain attached to M7's original eleven-file candidate. A future integrated
+guard must partition that slice from PPA content, not authorize M7 by association.
+
+Before release require mutation tests for each of the three blobs and their
+combination; missing file; extra domain/core/engine path; wrong ancestor;
+missing object; missing/invalid independent acceptance; changed historical pin;
+changed rounding content; and unauthorized V3, M7 or Junior activation. A
+partial financial slice must not acquire approval through per-path matching.
+Re-execute every original failed node and all existing negatives unchanged in
+intent. No skip, xfail, broader namespace permission or tolerance change.
+
+No such release map is activated or committed by this candidate. Financial
+owner exact-content authorization remains required; implementation scope and
+an AI technical review cannot substitute for it.
+
 ## Contractual-date scope addendum (supersedes the one-path proposal below)
 
 The owner authorized candidate-only SIGNATURE/COD/PPA_START/CUSTOM timing and

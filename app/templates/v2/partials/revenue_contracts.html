@@ -10,6 +10,7 @@
         data-v3-enabled="{{ 'true' if contracts.v3_enabled else 'false' }}" autocomplete="off">
     <input type="hidden" data-calendar-cod value="{{ contracts.project_cod | default('') }}">
     <input type="hidden" data-calendar-preview value="{{ contracts.calendar_preview | default({}) | tojson | forceescape }}">
+    <input type="hidden" data-rounding-preview value="{{ contracts.rounding_preview | default({}) | tojson | forceescape }}">
     {% if contracts.calendar_preview_error %}<p role="alert" data-calendar-validation>{{ contracts.calendar_preview_error }}</p>{% endif %}
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
