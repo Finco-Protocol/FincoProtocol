@@ -1207,6 +1207,7 @@ def _build_revenue_contract_editor(pis, ws):
     operating_window = None
     operating_starts = []
     operating_boundaries = []
+    operating_years = {}
     if technology in ("solar", "wind"):
         # Read-only: the operating period boundaries the model already derives from the project's own dates. They only
         # pre-fill the guided PPA form; the canonical validator still decides what is accepted.
@@ -1217,6 +1218,11 @@ def _build_revenue_contract_editor(pis, ws):
             if operating:
                 operating_window = {"start": operating[0].start_date.isoformat(), "end": operating[-1].end_date.isoformat()}
                 operating_starts = [p.start_date.isoformat() for p in operating]
+                # PPA-01: the model's operating years (the year basis of every index series) with their calendar span and period starts.
+                for p in operating:
+                    entry = operating_years.setdefault(p.year_index, {"year": p.year_index, "start": p.start_date.isoformat(), "period_starts": []})
+                    entry["end"] = p.end_date.isoformat()
+                    entry["period_starts"].append(p.start_date.isoformat())
                 operating_boundaries = sorted({p.start_date.isoformat() for p in operating} | {p.end_date.isoformat() for p in operating})
             if ACTIVATION_ENABLED:
                 axis = [{"period_start": p.start_date.isoformat(), "period_end": p.end_date.isoformat(),
@@ -1225,13 +1231,14 @@ def _build_revenue_contract_editor(pis, ws):
             operating_window = None
             operating_starts = []
             operating_boundaries = []
+            operating_years = {}
             axis = []
     try:
         _term = float(pis.get("revenue.ppa.term_years"))
         ppa_term_years = _term if _term > 0 else None
     except (TypeError, ValueError):
         ppa_term_years = None
-    return {"ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
+    return {"operating_years": list(operating_years.values()), "ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
             "overridden": overridden, "rows": payload.get("streams", []),
             "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
             "period_axis": axis}

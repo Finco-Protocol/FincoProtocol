@@ -10,7 +10,8 @@
   const ROOT_KEYS = ['version', 'technology', 'indexation_basis', 'streams'];
   const BASE_KEYS = ['id', 'type', 'start_date', 'end_date', 'volume_share',
     'price_eur_mwh', 'indexation_rate', 'settlement', 'source_ref'];
-  const OPTIONAL_KEYS = ['capture_rate', 'reference_stream_id', 'price_curve'];
+  const OPTIONAL_KEYS = ['capture_rate', 'reference_stream_id', 'price_curve', 'index_series'];
+  const INDEX_KEYS = ['operating_year', 'level', 'basis'];
   const KINDS = [
     ['fixed_ppa', 'Fixed PPA'], ['indexed_ppa', 'Indexed PPA'],
     ['merchant', 'Merchant'], ['residual_merchant', 'Residual Merchant'],
@@ -27,7 +28,7 @@
   const displayKind = (row) => Array.isArray(row.price_curve)
     ? (row.type === 'ppa' ? 'scheduled_ppa' : 'scheduled_merchant')
     : row.type === 'ppa'
-      ? (row.indexation_rate > 0 ? 'indexed_ppa' : 'fixed_ppa')
+      ? (row.indexation_rate > 0 || Array.isArray(row.index_series) ? 'indexed_ppa' : 'fixed_ppa')
       : row.type === 'merchant'
         ? (row.volume_share === null ? 'residual_merchant' : 'merchant') : 'cfd';
 
@@ -54,7 +55,10 @@
             !Array.isArray(row.price_curve) || row.indexation_rate !== 0 ||
             row.price_curve.length > 600 || row.price_curve.some(point =>
               !legalKeys(point, ['period_start', 'price_eur_mwh']) ||
-              !('period_start' in point) || !('price_eur_mwh' in point))))) {
+              !('period_start' in point) || !('price_eur_mwh' in point)))) ||
+          ('index_series' in row && (![2, 3].includes(book.version) || row.type !== 'ppa' || row.indexation_rate !== 0 ||
+            'price_curve' in row || !Array.isArray(row.index_series) || row.index_series.length > 60 ||
+            row.index_series.some(point => !legalKeys(point, INDEX_KEYS) || INDEX_KEYS.some(k => !(k in point)))))) {
         throw Error('An existing stream contains unsupported terms. Editing is blocked to preserve it.');
       }
     }
@@ -89,6 +93,71 @@
       error.textContent = message;
       error.hidden = !message;
       if (message) feedback.textContent = 'Not saved · Review the contract details';
+    }
+    // PPA-01 explicit CPI/PPI index series. Presentation/serialization only: levels are typed or pasted by the user, never invented; the canonical
+    // Python validator and runtime remain the only authority for what is accepted and what a Run prices.
+    const operatingYears = (() => { try { return JSON.parse(form.querySelector('[data-revenue-quick]')?.dataset.operatingYears || '[]'); } catch (_) { return []; } })();
+    const LEVEL = /^\d+(\.\d+)?$/;
+    const contractYears = (row) => {
+      if (!row.start_date || !row.end_date) return [];
+      return operatingYears.filter(y => y.period_starts.some(d => d >= row.start_date && d < row.end_date)).map(y => y.year);
+    };
+    const yearSpan = (year) => { const y = operatingYears.find(e => e.year === year); return y ? y.start + ' → ' + y.end : ''; };
+    const levelOf = (point) => (typeof point.level === 'number' && Number.isFinite(point.level) && point.level > 0) ? point.level : null;
+    function effectivePrice(row, point) {            // read-only preview of price x level / base level; the Run decides the committed price
+      const base = row.index_series.length ? levelOf(row.index_series[0]) : null, level = levelOf(point);
+      if (base === null || level === null || typeof row.price_eur_mwh !== 'number' || !Number.isFinite(row.price_eur_mwh)) return '—';
+      return (row.price_eur_mwh * level / base).toFixed(4);
+    }
+    // Strict paste: one level per line (aligned to the base year) or year / level [/ OBSERVED|FORECAST]. Anything else is rejected, never guessed.
+    function parseIndexPaste(text, baseYear, fallbackLength) {
+      const lines = text.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (!lines.length || lines.length > 60) throw Error('Paste 1-60 index rows.');
+      const out = [];
+      for (const [i, line] of lines.entries()) {
+        const cells = line.split(/[\t;]/).map(v => v.trim());
+        let year = baseYear + i, levelText, basis = 'FORECAST';
+        if (cells.length === 1) levelText = cells[0];
+        else if (cells.length >= 2 && cells.length <= 3 && /^\d+$/.test(cells[0])) {
+          year = Number(cells[0]); levelText = cells[1];
+          if (cells[2] !== undefined) {
+            const b = cells[2].toUpperCase();
+            if (!['OBSERVED', 'FORECAST'].includes(b)) throw Error('Row ' + (i + 1) + ': basis must be OBSERVED or FORECAST.');
+            basis = b;
+          }
+        } else throw Error('Row ' + (i + 1) + ': use one level per line, or year, level and optionally OBSERVED/FORECAST separated by tabs.');
+        if (!LEVEL.test(levelText) || !(Number(levelText) > 0)) throw Error('Row ' + (i + 1) + ': "' + levelText + '" is not an index level above zero (use a dot as the decimal separator).');
+        if (out.length && year !== out[out.length - 1].operating_year + 1) throw Error('Row ' + (i + 1) + ': operating years must be consecutive; year ' + (out[out.length - 1].operating_year + 1) + ' is missing.');
+        out.push({operating_year: year, level: Number(levelText), basis});
+      }
+      return out;
+    }
+    function seriesProblem(row, label) {
+      const series = row.index_series;
+      if (!Array.isArray(series) || !series.length || series.length > 60) return label + ': enter 1-60 index observations.';
+      let previous = null;
+      for (const point of series) {
+        if (!Number.isInteger(point.operating_year) || point.operating_year < 1) return label + ': each observation needs an operating year from 1.';
+        if (previous !== null && point.operating_year !== previous + 1) return label + ': operating year ' + (previous + 1) + ' has no index level; the series must be continuous (no interpolation or fallback rate).';
+        previous = point.operating_year;
+        if (levelOf(point) === null) return label + ': enter a published index level above zero for operating year ' + point.operating_year + '.';
+        if (!['OBSERVED', 'FORECAST'].includes(point.basis)) return label + ': mark operating year ' + point.operating_year + ' as observed or forecast.';
+      }
+      const years = contractYears(row);
+      if (years.length) {
+        if (series[0].operating_year > years[0]) return label + ': the base index (year ' + series[0].operating_year + ') must be at or before the first priced operating year ' + years[0] + '.';
+        const last = series[series.length - 1].operating_year;
+        if (last < years[years.length - 1]) return label + ': no index level for operating year ' + (last + 1) + (last + 1 < years[years.length - 1] ? '–' + years[years.length - 1] : '') + '; levels are never extrapolated or replaced by an annual rate.';
+      }
+      return '';
+    }
+    function seriesIssue() {
+      for (const row of book.streams) {
+        if (!Array.isArray(row.index_series)) continue;
+        const problem = seriesProblem(row, row.id || 'An indexed PPA');
+        if (problem) return problem;
+      }
+      return '';
     }
     function curveIssue(axis) {
       for (const row of book.streams) {
@@ -139,7 +208,7 @@
       // A Scheduled contract must carry exactly one valid, non-negative price for EVERY operating period inside its dates (no interpolation,
       // no hold-last, nothing inferred for a point the user removed). Anything else is an incomplete draft and cannot be saved.
       const axis = (() => { try { return JSON.parse(form.querySelector('[data-revenue-quick]')?.dataset.periodStarts || '[]'); } catch (_) { return []; } })();
-      const issue = curveIssue(axis);
+      const issue = curveIssue(axis) || seriesIssue();
       const incomplete = !!issue;
       form.dataset.incomplete = String(incomplete);
       if (dirty && incomplete) feedback.textContent = 'Incomplete draft · ' + issue;
@@ -246,6 +315,7 @@
             delete changed.reference_stream_id;
           }
           if (!isScheduled(next)) delete changed.price_curve;
+          if (next !== 'indexed_ppa') delete changed.index_series;
           book.streams[index] = changed;
           kindOverrides.set(changed, next);
           showError('');
@@ -278,9 +348,17 @@
             {type:'number',number:true,min:0,step:'any',label:'Contract price EUR per MWh'}),
             kind !== 'cfd');
         }
-        setCell(tr, 'Index %', entry(tr,index,'indexation_rate',toPct(row.indexation_rate),
-          {type:'number',number:true,percent:true,min:0,max:100,step:'any',label:'Annual indexation percent'}),
-          kind === 'indexed_ppa' || (isMerchant(kind) && !isScheduled(kind)));
+        if (Array.isArray(row.index_series)) {
+          const tag = document.createElement('span');
+          tag.textContent = 'Index series (' + row.index_series.length + ')';
+          tag.dataset.revenueIndexSeriesTag = 'true';
+          tag.title = 'Priced from explicit CPI/PPI index levels; no annual percentage applies.';
+          setCell(tr, 'Index %', tag);
+        } else {
+          setCell(tr, 'Index %', entry(tr,index,'indexation_rate',toPct(row.indexation_rate),
+            {type:'number',number:true,percent:true,min:0,max:100,step:'any',label:'Annual indexation percent'}),
+            kind === 'indexed_ppa' || (isMerchant(kind) && !isScheduled(kind)));
+        }
         const curveCell = document.createElement('button');
         curveCell.type = 'button';
         curveCell.textContent = 'Edit points (' + (row.price_curve?.length || 0) + ')';
@@ -313,6 +391,127 @@
         });
         setCell(tr,'Remove',remove);
         tbody.appendChild(tr);
+        if (kind === 'indexed_ppa') {
+          const extra = document.createElement('tr');
+          extra.className = 'rc-index-series-row';
+          const td = document.createElement('td');
+          td.colSpan = 14;
+          const details = document.createElement('details');
+          details.className = 'rc-index-editor';
+          const hasSeries = Array.isArray(row.index_series);
+          details.open = hasSeries && !!seriesProblem(row, '');
+          const summary = document.createElement('summary');
+          summary.textContent = 'Indexation · ' + (row.id || 'new contract') + ' · ' + (hasSeries ? 'explicit CPI/PPI index series' : 'fixed annual escalation');
+          details.appendChild(summary);
+          const modes = document.createElement('div');
+          modes.className = 'rc-index-modes';
+          modes.setAttribute('role', 'radiogroup'); modes.setAttribute('aria-label', 'Indexation basis for ' + (row.id || 'new contract'));
+          for (const [value, title] of [['rate', 'Fixed annual escalation (%)'], ['series', 'Explicit CPI/PPI index series']]) {
+            const label = document.createElement('label');
+            const radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'rc-index-mode-' + index; radio.value = value;
+            radio.checked = (value === 'series') === hasSeries;
+            radio.dataset.indexMode = value;
+            radio.addEventListener('change', () => {
+              if (!radio.checked) return;
+              if (value === 'series') {
+                const years = contractYears(row);
+                if (!years.length) { radio.checked = false; modes.querySelector('[data-index-mode=rate]').checked = true; showError('Enter the contract start and end dates first; the index series needs one level per priced operating year.'); return; }
+                if (book.version !== 3) book.version = 2;
+                row.indexation_rate = 0;
+                row.index_series = years.map(year => ({operating_year: year, level: '', basis: 'FORECAST'}));
+              } else {
+                if (hasSeries && row.index_series.some(p => p.level !== '') && !window.confirm('Switch to a fixed annual escalation? The typed index levels will be discarded from the draft.')) { radio.checked = false; modes.querySelector('[data-index-mode=series]').checked = true; return; }
+                delete row.index_series;
+                row.indexation_rate = 0;
+              }
+              kindOverrides.set(row, 'indexed_ppa');          // the contract stays an Indexed PPA: a positive annual rate (or a series) is required
+              showError(''); render(); status();
+              const editors = tbody.querySelectorAll('.rc-index-series-row details');
+              const at = book.streams.filter(r => (kindOverrides.get(r) || displayKind(r)) === 'indexed_ppa').indexOf(row);
+              if (editors[at]) editors[at].open = true;
+            });
+            label.append(radio, document.createTextNode(' ' + title));
+            modes.appendChild(label);
+          }
+          details.appendChild(modes);
+          if (!hasSeries) {
+            const note = document.createElement('p'); note.className = 'd-context';
+            note.textContent = 'The annual escalation percentage in the table applies. Choose the index series to price from published CPI/PPI levels instead.';
+            details.appendChild(note);
+          } else {
+            const note = document.createElement('p'); note.className = 'd-context';
+            note.textContent = 'Published index level for each model operating year (year 1 = first operating year from COD). The contract price applies at the first level; every later year is price × level ÷ first level. Mark each level as observed (published) or forecast (your assumption). Nothing is interpolated, extrapolated or replaced by an annual rate.';
+            details.appendChild(note);
+            const table = document.createElement('table'); table.className = 'rc-index-table';
+            table.innerHTML = '<thead><tr><th scope="col">Operating year</th><th scope="col">Model dates</th><th scope="col">Index level</th><th scope="col">Basis</th><th scope="col">Effective price (EUR/MWh, preview)</th><th scope="col"></th></tr></thead>';
+            const body = document.createElement('tbody');
+            row.index_series.forEach((point, i) => {
+              const line = document.createElement('tr'); line.dataset.indexPoint = String(point.operating_year);
+              const th = document.createElement('th'); th.scope = 'row'; th.textContent = 'Year ' + point.operating_year + (i === 0 ? ' (base)' : '');
+              const dates = document.createElement('td'); dates.textContent = yearSpan(point.operating_year);
+              const levelTd = document.createElement('td'); const level = document.createElement('input');
+              level.type = 'text'; level.inputMode = 'decimal'; level.autocomplete = 'off'; level.dataset.indexLevel = '';
+              level.setAttribute('aria-label', 'Index level for operating year ' + point.operating_year);
+              level.value = point.level === '' ? '' : String(point.level);
+              const priceTd = document.createElement('td'); const out = document.createElement('output'); out.dataset.indexEffective = '';
+              out.textContent = effectivePrice(row, point);
+              const refreshPrices = () => body.querySelectorAll('tr').forEach((tr, at) => { tr.querySelector('output').textContent = effectivePrice(row, row.index_series[at]); });
+              level.addEventListener('input', () => {
+                const text = level.value.trim();
+                point.level = text === '' ? '' : (LEVEL.test(text) ? Number(text) : NaN);
+                level.setAttribute('aria-invalid', String(text !== '' && !LEVEL.test(text)));
+                showError(''); refreshPrices(); status();
+              });
+              levelTd.appendChild(level);
+              const basisTd = document.createElement('td'); const basis = document.createElement('select'); basis.dataset.indexBasis = '';
+              basis.setAttribute('aria-label', 'Basis for operating year ' + point.operating_year);
+              for (const [value, title] of [['OBSERVED', 'Observed (published)'], ['FORECAST', 'Forecast (assumption)']]) {
+                const option = document.createElement('option'); option.value = value; option.textContent = title; option.selected = point.basis === value; basis.appendChild(option);
+              }
+              basis.addEventListener('change', () => { point.basis = basis.value; showError(''); status(); });
+              basisTd.appendChild(basis);
+              priceTd.appendChild(out);
+              const actionTd = document.createElement('td');
+              if (i === row.index_series.length - 1 && row.index_series.length > 1) {      // only the last year can go: the series stays continuous
+                const del = document.createElement('button'); del.type = 'button'; del.textContent = 'Remove year';
+                del.setAttribute('aria-label', 'Remove operating year ' + point.operating_year);
+                del.addEventListener('click', () => { row.index_series.pop(); showError(''); render(); status(); reopen(); });
+                actionTd.appendChild(del);
+              }
+              line.append(th, dates, levelTd, basisTd, priceTd, actionTd);
+              body.appendChild(line);
+            });
+            table.appendChild(body);
+            const wrap = document.createElement('div'); wrap.className = 'rc-index-scroll'; wrap.appendChild(table);
+            details.appendChild(wrap);
+            function reopen() {
+              const editors = tbody.querySelectorAll('.rc-index-series-row details');
+              const at = book.streams.filter(r => (kindOverrides.get(r) || displayKind(r)) === 'indexed_ppa').indexOf(row);
+              if (editors[at]) editors[at].open = true;
+            }
+            const maxYear = operatingYears.length ? operatingYears[operatingYears.length - 1].year : 0;
+            const add = document.createElement('button'); add.type = 'button'; add.textContent = '+ Operating year';
+            add.addEventListener('click', () => {
+              const next = row.index_series[row.index_series.length - 1].operating_year + 1;
+              if (row.index_series.length >= 60 || (maxYear && next > maxYear)) { showError('No further model operating year exists.'); return; }
+              row.index_series.push({operating_year: next, level: '', basis: 'FORECAST'});
+              showError(''); render(); status(); reopen();
+            });
+            const paste = document.createElement('textarea'); paste.rows = 3;
+            paste.placeholder = '100.0\n102.5\n105.1';
+            paste.setAttribute('aria-label', 'Paste index levels (one level per line, or year TAB level TAB OBSERVED or FORECAST)');
+            const apply = document.createElement('button'); apply.type = 'button'; apply.textContent = 'Replace levels with pasted values';
+            apply.addEventListener('click', () => {
+              try {
+                const parsed = parseIndexPaste(paste.value, row.index_series[0].operating_year, row.index_series.length);
+                row.index_series = parsed;
+                showError(''); render(); status(); reopen();
+              } catch (err) { showError(err.message); }
+            });
+            details.append(add, paste, apply);
+          }
+          td.appendChild(details); extra.appendChild(td); tbody.appendChild(extra);
+        }
         if (isScheduled(kind)) {
           const extra = document.createElement('tr');
           extra.className = 'rc-price-curve-row';
@@ -571,7 +770,12 @@
           }
           // Server validates one price per actual canonical operating period.
         }
-        if (kindOverrides.get(row) === 'indexed_ppa' && !(row.indexation_rate > 0))
+        if ('index_series' in row) {
+          if (row.type !== 'ppa' || row.indexation_rate !== 0 || Array.isArray(row.price_curve) || ![2, 3].includes(book.version))
+            return 'Row ' + n + ': an index series belongs to a version 2 PPA without an annual rate or price curve.';
+          const problem = seriesProblem(row, 'Row ' + n);
+          if (problem) return problem;
+        } else if (kindOverrides.get(row) === 'indexed_ppa' && !(row.indexation_rate > 0))
           return 'Row ' + n + ': indexed PPA requires a positive annual indexation rate.';
       }
       return '';
@@ -638,11 +842,15 @@
       };
       const syncKind = () => {
         const kind = q('kind').value;
-        quick.querySelector('[data-quick-index]').hidden = kind !== 'indexed_ppa';
+        const series = kind === 'indexed_ppa' && q('index_mode')?.value === 'series';
+        quick.querySelector('[data-quick-index]').hidden = kind !== 'indexed_ppa' || series;
+        const modeBox = quick.querySelector('[data-quick-index-mode]'); if (modeBox) modeBox.hidden = kind !== 'indexed_ppa';
+        const seriesBox = quick.querySelector('[data-quick-index-series]'); if (seriesBox) seriesBox.hidden = !series;
         quick.querySelector('[data-quick-scheduled-note]').hidden = kind !== 'scheduled_ppa';
         quick.querySelector('[data-quick-price-label]').textContent = kind === 'scheduled_ppa' ? 'Starting price for every period (EUR/MWh)' : 'Starting price (EUR/MWh)';
       };
       q('kind').addEventListener('change', syncKind);
+      q('index_mode')?.addEventListener('change', syncKind);
       syncKind();
       const nextId = () => { let n = 1; const used = new Set(book.streams.map(r => r.id)); while (used.has('ppa-' + n)) n += 1; return 'ppa-' + n; };
       quick.querySelector('[data-quick-add]').addEventListener('click', () => {
@@ -650,7 +858,8 @@
         if (book.streams.length >= 24) return quickError('At most 24 contracts are supported.');
         window.FincoDates?.mount(dates);
         const kind = q('kind').value, scheduled = kind === 'scheduled_ppa';
-        const price = num(q('price')), share = num(q('share')), index = kind === 'indexed_ppa' ? num(q('index')) : 0;
+        const seriesMode = kind === 'indexed_ppa' && q('index_mode')?.value === 'series';
+        const price = num(q('price')), share = num(q('share')), index = kind === 'indexed_ppa' && !seriesMode ? num(q('index')) : 0;
         const ref = q('ref').value.trim();
         const span = dates.ddState();
         // 1. dates: valid, derived from start + duration (or explicit manual end), and ON the project's operating-period boundaries
@@ -686,7 +895,23 @@
         // 3. pricing, allocation, indexation and the declared contract reference
         if (!(price >= 0)) return quickError('Enter the starting price as a number, for example 62.5.');
         if (!(share > 0 && share <= 100)) return quickError('Contracted production must be above 0% and at most 100%.');
-        if (kind === 'indexed_ppa' && !(index >= 0 && index <= 100)) return quickError('Enter the indexation as a percentage between 0 and 100.');
+        if (kind === 'indexed_ppa' && !seriesMode && !(index >= 0 && index <= 100)) return quickError('Enter the indexation as a percentage between 0 and 100.');
+        // PPA-01: the series covers one level per priced operating year, starting at the first priced year (the base). Pasted levels are parsed
+        // strictly and must match the contract's years exactly; with nothing pasted the rows start empty and the contract is an incomplete draft.
+        let indexSeries = null;
+        if (seriesMode) {
+          const years = contractYears({start_date: span.start, end_date: span.end});
+          if (!years.length) return quickError('No model operating years fall inside these dates. Adjust the start date or the duration.');
+          const pasted = (q('index_levels')?.value || '').trim();
+          if (pasted) {
+            try { indexSeries = parseIndexPaste(pasted, years[0], years.length); } catch (err) { return quickError(err.message); }
+            if (indexSeries[0].operating_year > years[0]) return quickError('The first pasted year is after the first priced operating year ' + years[0] + '; the base index must be at or before it.');
+            const last = indexSeries[indexSeries.length - 1].operating_year;
+            if (last < years[years.length - 1]) return quickError('The pasted levels stop at operating year ' + last + ' but the contract prices through year ' + years[years.length - 1] + '. Supply every priced year; levels are never extrapolated.');
+          } else {
+            indexSeries = years.map(year => ({operating_year: year, level: '', basis: 'FORECAST'}));
+          }
+        }
         if (!ref || ref.length > 200) return quickError('Enter the contract reference (up to 200 characters).');
         // 4. build the complete contract in LOCAL state; only now is the book touched
         const added = newRow(kind);
@@ -697,13 +922,24 @@
           added.price_eur_mwh = 0;
         }
         if (scheduled && book.version !== 3) book.version = 2;
+        if (indexSeries) {
+          added.index_series = indexSeries;
+          if (book.version !== 3) book.version = 2;
+        }
         book.streams.push(added);
         kindOverrides.set(added, kind);
         quickError(''); showError(''); render(); status();
         q('ref').value = ''; q('price').value = '';
+        if (q('index_levels')) q('index_levels').value = '';
         // The added-note never hides an incomplete or over-allocated state reported by status().
         const clean = form.dataset.incomplete !== 'true' && form.querySelector('[data-revenue-allocation]')?.dataset.over !== 'true';
         if (clean) feedback.textContent = 'PPA added to the draft · Save contracts to update the Working Copy (Run separately)';
+        if (indexSeries) {
+          const editors = tbody.querySelectorAll('.rc-index-series-row details');
+          const editor = editors[editors.length - 1];
+          if (editor) { editor.open = true; editor.scrollIntoView({block: 'nearest'}); editor.querySelector('[data-index-level]')?.focus(); }
+          if (clean) feedback.textContent = 'Indexed PPA added with an index series · review the levels, then Save contracts (Run separately)';
+        }
         if (scheduled) {
           if (clean) feedback.textContent = 'Scheduled PPA added · ' + periods.length + ' operating periods · review the price for each, then Save contracts';
           const rows = tbody.querySelectorAll('.rc-price-curve-row details');

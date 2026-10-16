@@ -44,6 +44,9 @@ class DatedRevenueStream:
     source_ref: str
     # Version-2 explicit nominal EUR/MWh points, exactly one per active operating period.
     price_curve: tuple[tuple[date, float], ...] = ()
+    # PPA-01: explicit published CPI/PPI index levels keyed by MODEL OPERATING YEAR (the same year basis as the existing OPERATING_YEAR
+    # indexation): ((operating_year, level, basis), ...). The first point is the base; price = price_eur_mwh x level / base_level.
+    index_series: tuple[tuple[int, float, str], ...] = ()
 
     def active(self, when):
         return self.start_date <= when < self.end_date
@@ -55,14 +58,24 @@ class MultiStreamRevenue:
     streams: tuple[DatedRevenueStream, ...]
     canonical_json: str
 
-    def plan_at(self, when):
+    def plan_at(self, when, year_index=None):
         # V1 keeps the exact historical code path and floating-point operations.
-        if not any(s.price_curve for s in self.streams):
+        if not any(s.price_curve or s.index_series for s in self.streams):
             streams = tuple(replace(s.stream, enabled=s.active(when)) for s in self.streams)
         else:
             adjusted = []
             for dated in self.streams:
                 stream = replace(dated.stream, enabled=dated.active(when))
+                if stream.enabled and dated.index_series and year_index is not None:
+                    # Explicit CPI/PPI index level for this operating year; never a fallback to a rate, never extrapolated.
+                    levels = {year: level for year, level, _basis in dated.index_series}
+                    if year_index not in levels:
+                        raise ValueError(f"REVENUE_V2_INDEX_COVERAGE: no index level for operating year {year_index}; "
+                                         "the series is never extrapolated or replaced by an annual rate")
+                    base_level = dated.index_series[0][1]
+                    stream = replace(stream, ppa=replace(stream.ppa,
+                        ppa_base_price_eur_mwh=stream.ppa.ppa_base_price_eur_mwh * levels[year_index] / base_level,
+                        ppa_price_index=0.0))
                 if stream.enabled and dated.price_curve:
                     point = next((price for starts, price in dated.price_curve if starts == when), None)
                     if point is None:
@@ -111,13 +124,22 @@ class MultiStreamRevenue:
                 actual = tuple(point[0] for point in dated.price_curve)
                 if actual != expected:
                     raise ValueError("REVENUE_V2_CURVE_AXIS: exactly one ordered price for every active operating period; no interpolation or extrapolation")
+            if dated.index_series:
+                active_years = {p.year_index for p in operating if dated.start_date <= p.start_date < dated.end_date}
+                years = [year for year, _level, _basis in dated.index_series]
+                if not active_years or years[0] > min(active_years):
+                    raise ValueError("REVENUE_V2_INDEX_BASE: the base index must be at or before the first priced operating year")
+                missing = sorted(active_years - set(years))
+                if missing:
+                    raise ValueError("REVENUE_V2_INDEX_COVERAGE: no index level for operating year(s) "
+                                     f"{', '.join(map(str, missing))}; the series is never extrapolated or replaced by an annual rate")
             for p in operating:
                 if dated.start_date < p.end_date and dated.end_date > p.start_date:
                     if not (dated.start_date <= p.start_date and p.end_date <= dated.end_date):
                         raise ValueError("REVENUE_V2_AXIS: partial-period contracts are unsupported")
 
     def evaluate(self, period, generation_mwh):
-        result = evaluate_revenue_plan(self.plan_at(period.start_date), period.year_index,
+        result = evaluate_revenue_plan(self.plan_at(period.start_date, period.year_index), period.year_index,
                                        generation_mwh, technology=self.technology)
         states = {s.stream.stream_id: s for s in self.streams}
         rows = tuple(replace(r, status=StreamPeriodStatus.NOT_STARTED
@@ -129,6 +151,43 @@ class MultiStreamRevenue:
         if not math.isfinite(result.total_revenue_keur):
             raise ValueError("REVENUE_V2_VALUE: period revenue must be finite")
         return replace(result, stream_results=rows)
+
+
+INDEX_BASES = frozenset({"OBSERVED", "FORECAST"})
+MAX_INDEX_POINTS = 60
+
+
+def _parse_index_series(raw, version, kind, rate, has_curve):
+    """Explicit published CPI/PPI levels for one PPA, keyed by model operating year (PPA-01).
+
+    Distinct from an annual percentage (``indexation_rate``) and from explicit EUR/MWh prices (``price_curve``): combining them would mix indexing
+    bases, so it is rejected. Levels are supplied by the user or an approved source; nothing is invented, filled, interpolated or extrapolated.
+    """
+    if version != 2 or kind is not RevenueStreamType.PPA:
+        raise ValueError("REVENUE_V2_INDEX_UNSUPPORTED: explicit index series require a version 2 PPA")
+    if rate != 0:
+        raise ValueError("REVENUE_V2_INDEX_MIXED_BASIS: an explicit index series cannot be combined with an annual indexation rate")
+    if has_curve:
+        raise ValueError("REVENUE_V2_INDEX_MIXED_BASIS: an explicit index series cannot be combined with an explicit price curve")
+    if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_INDEX_POINTS:
+        raise ValueError(f"REVENUE_V2_INDEX_POINTS: expected 1-{MAX_INDEX_POINTS} index observations (the first is the base)")
+    parsed = []
+    for point in raw:
+        _object(point, {"operating_year", "level", "basis"}, "index observation")
+        year, level = point["operating_year"], point["level"]
+        if type(year) is not int or year < 1:
+            raise ValueError("REVENUE_V2_INDEX_YEAR: operating_year must be a whole number from 1")
+        if isinstance(level, bool) or not isinstance(level, (int, float)) or not math.isfinite(level) or level <= 0:
+            raise ValueError("REVENUE_V2_INDEX_LEVEL: every index level must be a finite number above zero")
+        if point["basis"] not in INDEX_BASES:
+            raise ValueError("REVENUE_V2_INDEX_BASIS: basis must be OBSERVED or FORECAST")
+        if parsed and year <= parsed[-1][0]:
+            raise ValueError("REVENUE_V2_INDEX_ORDER: duplicate or unordered operating years")
+        if parsed and year != parsed[-1][0] + 1:
+            raise ValueError(f"REVENUE_V2_INDEX_GAP: operating year {parsed[-1][0] + 1} has no index level; "
+                             "no interpolation or fallback rate is applied")
+        parsed.append((year, float(level), point["basis"]))
+    return tuple(parsed)
 
 
 def parse_config(raw: str | None) -> MultiStreamRevenue | None:
@@ -156,7 +215,7 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
     for row in payload["streams"]:
         _object(row, {"id", "type", "start_date", "end_date", "volume_share", "price_eur_mwh",
                       "indexation_rate", "settlement", "source_ref"}, "stream",
-                {"capture_rate", "reference_stream_id", "price_curve"})
+                {"capture_rate", "reference_stream_id", "price_curve", "index_series"})
         if not isinstance(row["type"], str) or row["type"] not in SUPPORTED_TYPES:
             raise ValueError(f"REVENUE_V2_UNSUPPORTED_STREAM: {row['type']!r}")
         for key in ("id", "source_ref"):
@@ -198,6 +257,8 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
                     raise ValueError("REVENUE_V2_CURVE_ORDER: duplicate, unordered or overlapping points")
                 parsed.append((when, _number(point["price_eur_mwh"], "curve.price_eur_mwh")))
             curve = tuple(parsed)
+        index_series = _parse_index_series(row["index_series"], payload["version"], kind, index, "price_curve" in row) \
+            if "index_series" in row else ()
         options = {}
         if kind is RevenueStreamType.PPA:
             options["ppa"] = PPAParams(ppa_enabled=True, ppa_base_price_eur_mwh=price,
@@ -218,7 +279,7 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
         if kind is not RevenueStreamType.CFD and "reference_stream_id" in row:
             raise ValueError("REVENUE_V2_SCHEMA: reference_stream_id belongs only to CfD")
         stream = RevenueStream(stream_id=row["id"], stream_type=kind, volume_share=share, **options)
-        dated_streams.append(DatedRevenueStream(stream, start, end, row["source_ref"], curve))
+        dated_streams.append(DatedRevenueStream(stream, start, end, row["source_ref"], curve, index_series))
     config = MultiStreamRevenue(payload["technology"], tuple(dated_streams),
                                 json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False))
     for when in sorted({s.start_date for s in dated_streams} | {s.end_date for s in dated_streams}):
