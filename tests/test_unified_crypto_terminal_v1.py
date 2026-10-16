@@ -505,13 +505,125 @@ def _assert_crypto_route_is_observational(route):
         f"{route.path} contains prohibited execution route segments: {sorted(prohibited)}")
 
 
+def _assert_crypto_source_is_observational(source: str) -> None:
+    """AST safety: reject *operations*, not substrings in factual API labels.
+
+    A read-only resource like `signals` or the quoted API error
+    `SIGNAL_EVIDENCE_UNAVAILABLE` cannot be mistaken for signing.
+    Existing route-token validation remains an independent first line of defense.
+    """
+    import ast
+    import re
+
+    tree = ast.parse(source)
+    prohibited_operations = frozenset({
+        "sign", "signing", "signer", "order", "orders", "execute",
+        "execution", "trade", "trading", "swap", "custody",
+    })
+    prohibited_mutation_methods = frozenset({"post", "put", "patch", "delete"})
+
+    def call_parts(function):
+        """Extract syntactic call-target identifiers, not string literals."""
+        parts = []
+        while isinstance(function, ast.Attribute):
+            parts.append(function.attr)
+            function = function.value
+        if isinstance(function, ast.Name):
+            parts.append(function.id)
+        return parts
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for decorator in node.decorator_list:
+                if (isinstance(decorator, ast.Call)
+                        and isinstance(decorator.func, ast.Attribute)
+                        and isinstance(decorator.func.value, ast.Name)
+                        and decorator.func.value.id == "router"):
+                    assert decorator.func.attr == "get", (
+                        f"Only router.get may register Crypto API handlers: {node.name}")
+                    assert isinstance(node, ast.FunctionDef), (
+                        f"Crypto API handler must be synchronous def: {node.name}")
+                    assert (len(decorator.args) >= 1
+                            and isinstance(decorator.args[0], ast.Constant)
+                            and isinstance(decorator.args[0].value, str)), (
+                        f"Crypto API route path must be an explicit string: {node.name}")
+                    from types import SimpleNamespace
+                    _assert_crypto_route_is_observational(SimpleNamespace(
+                        path="/crypto" + decorator.args[0].value, methods={"GET"}))
+        if not isinstance(node, ast.Call):
+            continue
+        parts = call_parts(node.func)
+        if not parts:
+            # Dynamic callable expressions are not accepted as a safe
+            # operation by default (e.g., registry['sign'](...)).
+            assert isinstance(node.func, (ast.Name, ast.Attribute)), (
+                "Crypto API cannot invoke dynamically selected execution operations")
+            continue
+        tokens = {
+            token
+            for part in parts
+            for token in re.findall(r"[a-z0-9]+", part.casefold())
+        }
+        prohibited = tokens & prohibited_operations
+        assert not prohibited, (
+            f"Crypto API invokes prohibited operation tokens: {sorted(prohibited)}")
+        assert parts[0].casefold() not in prohibited_mutation_methods, (
+            f"Crypto API calls prohibited mutating method: {parts[0]}")
+
+
 def test_crypto_api_is_read_only_get_only():
+    import inspect
     from app.api.v1.crypto_router import router
+    route_keys = set()
     for route in router.routes:
         _assert_crypto_route_is_observational(route)
-    source = open("app/api/v1/crypto_router.py", encoding="utf-8").read().lower()
-    for forbidden in ("post", "put(", "delete(", "sign", "custody", "swap"):
-        assert f'"{forbidden}' not in source
+        key = (route.path, tuple(sorted(route.methods)))
+        assert key not in route_keys, f"Duplicate Crypto API route: {key}"
+        route_keys.add(key)
+        assert not inspect.iscoroutinefunction(route.endpoint), (
+            f"{route.path} must have a plain synchronous def handler")
+    source = open("app/api/v1/crypto_router.py", encoding="utf-8").read()
+    _assert_crypto_source_is_observational(source)
+
+
+@pytest.mark.parametrize("literal", [
+    '"SIGNAL_EVIDENCE_UNAVAILABLE"',
+    '"tokenized.signals"',
+    '"signals"',
+])
+def test_crypto_api_observational_source_literals_are_not_execution(literal):
+    source = ('@router.get("/tokenized/{canonical_asset_id}/signals")\n'
+              'def observe(request):\n'
+              f'    return {literal}\n')
+    _assert_crypto_source_is_observational(source)
+
+
+@pytest.mark.parametrize("source", [
+    '@router.get("/sign")\ndef handler():\n    return "observed"\n',
+    '@router.post("/tokenized/signals")\ndef handler():\n    return {}\n',
+    '@router.put("/tokenized/signals")\ndef handler():\n    return {}\n',
+    '@router.delete("/tokenized/signals")\ndef handler():\n    return {}\n',
+    'def observe():\n    return wallet.sign_transaction(payload)\n',
+    'def observe():\n    return signer.sign(message)\n',
+    'def observe():\n    return exchange.place_order(order)\n',
+    'def observe():\n    return custody.withdraw(asset)\n',
+    'def observe():\n    return swap.execute_transaction(quote)\n',
+    'def observe():\n    return httpx.post(url, json=payload)\n',
+    '@router.get("/signals")\nasync def handler():\n    return {}\n',
+])
+def test_crypto_api_source_negative_execution_controls(source):
+    with pytest.raises(AssertionError):
+        _assert_crypto_source_is_observational(source)
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "DELETE", "PATCH"])
+def test_crypto_api_read_only_route_negative_methods(method):
+    from types import SimpleNamespace
+    with pytest.raises(AssertionError, match="GET-only"):
+        _assert_crypto_route_is_observational(
+            SimpleNamespace(path="/crypto/tokenized/{canonical_asset_id}/signals",
+                            methods={method}))
+
 
 
 @pytest.mark.parametrize("path", [
