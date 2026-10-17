@@ -188,3 +188,32 @@ def test_formula_and_oversized_uploads_stay_rejected(env):
                                                                 "encoding": "utf-8"},
                           files={"upload": ("big.csv", b"a" * (2 * 1024 * 1024 + 10), "text/csv")})
     assert big.status_code == 422 and "IMPORT_FILE_SIZE_INVALID" in big.text
+
+
+def test_unrecognized_numeric_scalar_can_be_manually_mapped_and_validated(env):
+    project = env.create("solar")
+    before = _evidence(project)
+    response, ticket = _preview(env, project)
+    # Guard services starts without a suggestion and is never auto-approved.
+    guard = re.search(r'<tr class="review-row"[^>]*data-manual-scalar="true"[^>]*>.*?Guard services.*?</tr>', response.text, re.S)
+    assert guard is not None
+    assert 'name="keep_3"' in guard.group(0) and 'disabled' in guard.group(0)
+    confirmed = _confirm(env, project, ticket, keep_3="on", field_3="opex.lines.security", unit_3="EUR/yr")
+    assert confirmed.status_code == 200 and "manual_reviewed" in confirmed.text
+    assert _evidence(project) == before
+    applied = _apply(env, project, _approved_ticket(confirmed))
+    assert applied.status_code == 200
+    pis = ProjectInputSet.from_snapshot(_ws(project).draft_snapshot, workbook=WORKBOOK)
+    assert float(pis.get("opex.lines.security")) == pytest.approx(18.0)
+
+
+def test_structured_source_cannot_be_forged_to_a_scalar_target(env):
+    project = env.create("solar")
+    before = _evidence(project)
+    _, ticket = _preview(env, project)
+    # A valid canonical field does not make a source originally classified as a contract applyable.
+    response = _confirm(env, project, ticket, keep_2="on", field_2="opex.lines.security",
+                        unit_2="EUR/yr", manual_2="18")
+    assert response.status_code == 422
+    assert "IMPORT_SOURCE_ROW_NOT_APPLYABLE" in response.text
+    assert _evidence(project) == before

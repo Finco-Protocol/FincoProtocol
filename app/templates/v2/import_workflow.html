@@ -1,0 +1,46 @@
+{# Import-only reusable presentation. Evidence authority stays in the existing routes. #}
+{% macro stages(stage, run_current=false, comparison_status='') %}
+{% set is_assess = stage == 'assess' %}
+{% set is_review = stage == 'review' %}
+{% set is_confirm = stage == 'confirm' %}
+{% set is_result = stage == 'result' %}
+{% set is_reconcile = stage == 'reconcile' %}
+<nav aria-label="Excel migration workflow" data-testid="migration-stages" class="migration-steps">
+  <ol>
+    <li><strong>1. Assess workbook</strong><span>{{ 'ASSESSED' if stage in ('assess','review','confirm','result','reconcile') else 'NOT STARTED' }}</span></li>
+    <li><strong>2. Match scenarios</strong><span>{{ 'CONFIRMED FOR REVIEW' if stage in ('confirm','result','reconcile') else 'CONFIRM SOURCE → TARGET' if is_review else 'REVIEW AVAILABLE' if is_assess else 'NOT STARTED' }}</span></li>
+    <li><strong>3. Review mappings</strong><span>{{ 'REVIEWED' if stage in ('confirm','result','reconcile') else 'IN REVIEW' if is_review else 'NOT STARTED' }}</span></li>
+    <li><strong>4. Apply scalars</strong><span>{{ 'APPLIED' if stage in ('result','reconcile') else 'AWAITING FINAL APPROVAL' if is_confirm else 'NOT STARTED' }}</span></li>
+    <li><strong>5. Run &amp; reconcile</strong><span>{{ 'CHECKED · ' ~ (comparison_status or 'NO COMPARABLE OUTCOME') if is_reconcile else 'CHANGED — NOT RUN' if is_result else 'NOT STARTED' }}</span></li>
+  </ol>
+</nav>
+{% endmacro %}
+
+{% macro matrix(rows, truncated=false) %}
+<section class="panel" aria-labelledby="migration-matrix-heading" data-testid="scenario-matrix">
+  <h2 id="migration-matrix-heading">Source-to-target scenario matrix</h2>
+  <p class="notice">Source case names are labels, not proof of workbook scenario logic. Each eligible source slice requires an independent review and Apply transaction into the currently selected target scenario. This matrix is a proposal, not a transaction record.</p>
+  <div class="table-wrap" role="region" aria-label="Scenario mapping matrix" tabindex="0">
+    <table>
+      <thead><tr><th>Source scenario</th><th>Resolution</th><th>Target scenario</th><th>Eligible scalar rows</th><th>Human review</th><th>Unsupported dependencies</th><th>Apply eligibility</th><th>Applied status</th><th>Reconciliation</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr data-source-key="{{ r.source_key }}">
+        <td><strong>{{ r.source_scenario }}</strong><div class="muted">{{ r.semantics }}</div></td>
+        <td>{{ r.scenario_resolution }}</td>
+        <td>{{ r.target_scenario }}</td>
+        <td>{{ r.mapped_scalar_count }}</td>
+        <td>{{ 'REQUIRED' if r.requires_review else 'NOT TRACKED' }}</td>
+        <td>{% for dep in r.unsupported_dependencies %}<div>{{ dep|replace('_', ' ') }}</div>{% else %}—{% endfor %}</td>
+        <td>{{ r.apply_eligibility }}</td>
+        <td>{{ r.applied_status }}</td>
+        <td>{{ r.reconciliation_status }}</td>
+      </tr>
+      {% else %}<tr><td colspan="9">No distinct source scenario slice detected. Review the workbook assessment before proceeding.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if truncated %}<p role="status">Scenario inspection was bounded or truncated. Unshown cases must not be treated as reviewed.</p>{% endif %}
+  <p class="muted">NOT_TRACKED means the existing workbook-level manifest does not independently establish this scenario's Apply or reconciliation outcome. A successful scalar import does not establish financial parity.</p>
+</section>
+{% endmacro %}

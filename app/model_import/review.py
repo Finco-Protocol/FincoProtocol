@@ -13,6 +13,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from app.auth import SECRET_KEY
 from app.model_import.intake import IntakeError, normalize_value
 from app.model_import.mapping import STRUCTURED_FIELD_OWNERS, UNSUPPORTED_FOR_APPLY, validate_candidate
+from app.model_import.migration_ux import manual_scalar_mapping_allowed
 from app.workbook.registry import WORKBOOK
 from app.workbook.update_service import (
     BatchApplyError, FieldValidationError, WorkbookUpdateService,
@@ -121,6 +122,9 @@ def resolve_review(
         field_id = str(selections.get(f"field_{idx}", "") or "")
         if not field_id:
             raise ImportReviewError("IMPORT_MAPPING_UNRESOLVED", str(idx))
+        if row.get("status") in ("unsupported", "unsupported_for_apply") and not manual_scalar_mapping_allowed(row):
+            # A forged scalar target cannot convert a structured / pre-rejected source into a scalar input.
+            raise ImportReviewError("IMPORT_SOURCE_ROW_NOT_APPLYABLE", str(idx))
         if field_id in seen_fields:
             raise ImportReviewError("IMPORT_DUPLICATE_TARGET", field_id)
         seen_fields.add(field_id)
