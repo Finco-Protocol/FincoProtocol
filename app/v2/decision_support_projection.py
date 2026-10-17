@@ -149,15 +149,31 @@ class VarianceSection:
     rows: tuple[VarianceRow, ...]
 
 
+def _signed(kind: str, d: float) -> str:
+    """Signed delta text. Convention for every comparison: delta = Selected Run - Reference Run; direction is never dropped (no abs()).
+
+    Only an exactly zero delta is shown unsigned; a real but sub-display-precision movement keeps its sign (e.g. -0.00x) so the text agrees with the
+    direction marker.
+    """
+    if d == 0:
+        return {"pct": "0.00 pp", "x": "0.00x"}.get(kind, "0")
+    if kind == "pct":
+        return f"{d * 100:+.2f} pp"
+    if kind == "x":
+        return f"{d:+.2f}x"
+    return f"{d:+,.0f}"
+
+
 def _variance_fields(kind: str, a: Optional[float], b: Optional[float]):
+    """(signed delta, pp delta, % delta, direction) with delta = b - a, i.e. Selected (B) minus Reference (A)."""
     abs_delta = pp_delta = pct_delta = _NA
     direction = ""
     if a is None or b is None:
         return abs_delta, pp_delta, pct_delta, direction
     d = b - a
-    abs_delta = _fmt(kind, abs(d)) if kind != "pct" else f"{d * 100:+.2f} pp"
+    abs_delta = _signed(kind, d)
     if kind == "pct":
-        pp_delta = f"{d * 100:+.2f} pp"
+        pp_delta = abs_delta
         pct_delta = _NA          # never present an IRR delta as % growth (§5)
     elif d != 0 and a != 0:
         pct_delta = f"{d / abs(a) * 100:+.1f}%"
@@ -249,20 +265,121 @@ def build_assumption_diff(identity_a: Optional[dict],
     a_ov, b_ov = a.get("scenario_overrides") or {}, b.get("scenario_overrides") or {}
     for key in sorted(set(a_ov) | set(b_ov)):
         if a_ov.get(key) != b_ov.get(key):
+            if key == "rev_multistream_config_json":
+                itemized = _contract_book_rows(a_ov.get(key), b_ov.get(key))
+                if itemized:
+                    rows.extend(itemized)
+                    continue
             rows.append(AssumptionDiffRow(
-                category="scenario", name=str(key),
-                value_a=_NA if a_ov.get(key) is None else str(a_ov[key]),
-                value_b=_NA if b_ov.get(key) is None else str(b_ov[key]),
+                category=_override_category(str(key)), name=str(key),
+                value_a=_NA if a_ov.get(key) is None else _short(a_ov[key]),
+                value_b=_NA if b_ov.get(key) is None else _short(b_ov[key]),
             ))
     return rows
 
 
+def _short(value: Any, limit: int = 80) -> str:
+    text = str(value)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _override_category(key: str) -> str:
+    if key.startswith("rev_") or key in ("tariff_eur_mwh", "ppa_term_years"):
+        return "revenue"
+    if key.startswith(("developer_", "development_")):
+        return "development"
+    if key.startswith(("bankability", "f3_", "multisenior", "debt_", "financing")) or "gearing" in key or "interest" in key:
+        return "financing"
+    if "tax" in key:
+        return "tax"
+    return "scenario"
+
+
+_CONTRACT_FIELDS = ("price_eur_mwh", "volume_share", "indexation_rate", "start_date", "end_date", "capture_rate", "index_series", "price_curve")
+
+
+def _contract_book_rows(raw_a: Any, raw_b: Any) -> list[AssumptionDiffRow]:
+    """Per-contract changes between two persisted scenario contract books (evidence stored with the Runs; never the current Working Copy)."""
+    import json
+
+    def streams(raw):
+        if raw in (None, ""):
+            return {}
+        try:
+            book = json.loads(raw) if isinstance(raw, str) else raw
+            return {str(s.get("id")): s for s in book.get("streams", []) if isinstance(s, dict)}
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    sa, sb = streams(raw_a), streams(raw_b)
+    if sa is None or sb is None:
+        return []
+    out = []
+    for sid in sorted(set(sa) | set(sb)):
+        ca, cb = sa.get(sid), sb.get(sid)
+        if ca is None or cb is None:
+            out.append(AssumptionDiffRow("revenue", f"Contract {sid}", _NA if ca is None else "present", _NA if cb is None else "present"))
+            continue
+        for field in _CONTRACT_FIELDS:
+            if ca.get(field) != cb.get(field):
+                show = (lambda v: _NA if v is None else (f"{len(v)} points" if isinstance(v, list) else _short(v)))
+                out.append(AssumptionDiffRow("revenue", f"Contract {sid} · {field}", show(ca.get(field)), show(cb.get(field))))
+    return out
+
+
+@dataclass(frozen=True)
+class AssumptionAttribution:
+    """What can truthfully be said about input differences between two committed Runs (RC-5A).
+
+    IDENTICAL            both committed effective-input identities exist and are equal
+    DIFFERENT_EXPLAINED  identities differ and some changes are itemized from evidence actually persisted with the Runs
+    DIFFERENT_UNEXPLAINED identities differ and no persisted detail explains them (never shown as "no differences")
+    UNKNOWN              an identity is missing (legacy record): no comparison is possible
+    Nothing here reads the current Working Copy or reruns the engine.
+    """
+
+    status: str
+    message: str
+    caveat: str = ""
+
+
+ATTRIBUTION_MESSAGES = {
+    "IDENTICAL": "Identical committed effective-input identity.",
+    "DIFFERENT_UNEXPLAINED": "Committed input identities differ. Detailed historical attribution is unavailable.",
+    "DIFFERENT_EXPLAINED": "Committed input identities differ. The changes below are the ones recorded with each Run.",
+    "UNKNOWN": "A committed input identity is missing for at least one Run (legacy record). No assumption comparison is possible.",
+}
+_PARTIAL_CAVEAT = ("Only inputs persisted with each Run (CAPEX/OPEX rows and scenario overrides) can be itemized; other committed inputs, such as the "
+                   "base revenue contracts, financing or tax, were not recorded per Run, so this list may not be complete.")
+
+
+def _hash_of(identity: Optional[dict], explicit: Optional[str]) -> str:
+    value = explicit or ((identity or {}).get("composite_hash") if isinstance(identity, dict) else None)
+    return str(value) if value else ""
+
+
+def build_assumption_attribution(identity_a: Optional[dict], identity_b: Optional[dict],
+                                 rows: list, hash_a: Optional[str] = None,
+                                 hash_b: Optional[str] = None) -> AssumptionAttribution:
+    ha, hb = _hash_of(identity_a, hash_a), _hash_of(identity_b, hash_b)
+    if not ha or not hb:
+        return AssumptionAttribution("UNKNOWN", ATTRIBUTION_MESSAGES["UNKNOWN"])
+    if ha == hb:
+        return AssumptionAttribution("IDENTICAL", ATTRIBUTION_MESSAGES["IDENTICAL"])
+    if rows:
+        return AssumptionAttribution("DIFFERENT_EXPLAINED", ATTRIBUTION_MESSAGES["DIFFERENT_EXPLAINED"], _PARTIAL_CAVEAT)
+    return AssumptionAttribution("DIFFERENT_UNEXPLAINED", ATTRIBUTION_MESSAGES["DIFFERENT_UNEXPLAINED"])
+
+
 def build_drivers_of_change(assumptions: list[AssumptionDiffRow],
                             sections: list[VarianceSection],
-                            changed_output_limit: int = 6) -> dict:
+                            changed_output_limit: int = 6,
+                            attribution: Optional[AssumptionAttribution] = None) -> dict:
     """Deterministic factual summary (§7): changed assumptions + moved
     outputs.  NOT attribution mathematics — no causal percentages, no
-    generated explanations."""
+    generated explanations.  ``no_assumption_changes`` is True ONLY when the
+    committed identities are known to be identical; an unexplained identity
+    difference is never reported as "no changes"."""
     changed_names = [a.name for a in assumptions]
     moved = []
     for section in sections:
@@ -272,9 +389,14 @@ def build_drivers_of_change(assumptions: list[AssumptionDiffRow],
                               row.pp_delta if row.pp_delta != _NA
                               else (row.pct_delta if row.pct_delta != _NA
                                     else row.abs_delta)))
+    if attribution is None:
+        identical = not changed_names            # legacy callers without identity evidence
+    else:
+        identical = attribution.status == "IDENTICAL"
     return {
         "changed_assumptions": changed_names,
-        "no_assumption_changes": not changed_names,
+        "no_assumption_changes": identical,
+        "attribution_status": attribution.status if attribution else ("IDENTICAL" if identical else "DIFFERENT_EXPLAINED"),
         "moved_outputs": tuple(moved[:changed_output_limit]),
         "more_outputs": max(0, len(moved) - changed_output_limit),
     }
@@ -410,6 +532,8 @@ __all__ = [
     "VarianceRow",
     "VarianceSection",
     "build_assumption_diff",
+    "build_assumption_attribution",
+    "AssumptionAttribution",
     "build_cross_project_rows",
     "build_drivers_of_change",
     "build_run_variance",

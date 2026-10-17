@@ -18,13 +18,13 @@
 
   <div class="v2-rh-cmp-columns" data-testid="ds-run-sides">
     <div class="v2-rh-cmp-col">
-      <span class="v2-rh-cmp-name">Run A · {{ side_a.label }}</span>
+      <span class="v2-rh-cmp-name" data-testid="ds-reference-name">Reference (Run A) · {{ side_a.label }}</span>
       <span class="v2-rh-chip {% if side_a.state == 'STALE' %}v2-rh-chip--stale{% elif side_a.is_last %}v2-rh-chip--lastrun{% else %}v2-rh-chip--historical{% endif %}"
             data-testid="ds-side-a-state">{{ side_a.state }}</span>
       <span class="v2-rh-cmp-ts">{{ side_a.ran_at }} · {{ side_a.scenario }} · {{ side_a.snapshot }}</span>
     </div>
     <div class="v2-rh-cmp-col">
-      <span class="v2-rh-cmp-name">Run B · {{ side_b.label }}</span>
+      <span class="v2-rh-cmp-name" data-testid="ds-selected-name">Selected (Run B) · {{ side_b.label }}</span>
       <span class="v2-rh-chip v2-rh-chip--historical" data-testid="ds-side-b-state">HISTORICAL</span>
       {% if side_b.matches_working_copy %}
       <span class="v2-rh-chip v2-rh-chip--matches">MATCHES WORKING COPY</span>
@@ -33,11 +33,13 @@
     </div>
   </div>
 
+  <p class="v2-rh-note" data-testid="ds-delta-convention">Δ = Selected Run (B) − Reference Run (A). A positive Δ means the selected Run is higher; direction is never hidden.</p>
+
   {% for section in sections %}
   <div class="v2-ds-section" data-testid="ds-section-{{ section.key }}">
     <div class="v2-ds-section-title">{{ section.title }}</div>
     <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table">
-      <thead><tr><th>Metric</th><th>Run A</th><th>Run B</th><th>Δ absolute</th><th>Δ pp</th><th>Δ %</th></tr></thead>
+      <thead><tr><th>Metric</th><th>Reference (A)</th><th>Selected (B)</th><th>Δ (B − A)</th><th>Δ pp</th><th>Δ %</th></tr></thead>
       <tbody>
         {% for row in section.rows %}
         <tr data-testid="ds-var-{{ row.label | lower | replace(' ', '-') }}"
@@ -57,9 +59,10 @@
 
   <div class="v2-ds-section" data-testid="ds-assumptions">
     <div class="v2-ds-section-title">Changed assumptions</div>
+    <p class="v2-rh-note" data-testid="ds-attribution" data-status="{{ attribution.status }}">{{ attribution.message }}</p>
     {% if assumptions %}
     <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table">
-      <thead><tr><th>Category</th><th>Assumption</th><th>Run A</th><th>Run B</th></tr></thead>
+      <thead><tr><th>Category</th><th>Assumption</th><th>Reference (A)</th><th>Selected (B)</th></tr></thead>
       <tbody>
         {% for a in assumptions %}
         <tr data-assumption-category="{{ a.category }}">
@@ -70,22 +73,20 @@
         {% endfor %}
       </tbody>
     </table></div>
-    {% else %}
-    <div class="v2-rh-empty">No assumption differences between the two runs.</div>
     {% endif %}
+    {% if attribution.caveat %}<p class="v2-rh-note" data-testid="ds-attribution-caveat">{{ attribution.caveat }}</p>{% endif %}
   </div>
 
   <div class="v2-ds-section" data-testid="ds-drivers">
     <div class="v2-ds-section-title">Drivers of Change (factual summary)</div>
     {% if drivers.no_assumption_changes %}
     <div class="v2-rh-empty">
-      The two runs share the same recorded input identity — result movement
-      comes from the iterative solve path, not from input changes.
+      The two Runs share the same committed input identity. No attribution of result differences is made.
     </div>
     {% else %}
-    <div class="v2-rh-note">Changed assumptions:
+    {% if drivers.changed_assumptions %}<div class="v2-rh-note">Recorded changed assumptions:
       {% for name in drivers.changed_assumptions %}{{ name }}{% if not loop.last %}, {% endif %}{% endfor %}.
-    </div>
+    </div>{% else %}<div class="v2-rh-note">No itemized assumption changes are recorded for these Runs.</div>{% endif %}
     <div class="v2-rh-note">Result movement:
       {% for label, delta in drivers.moved_outputs %}
       <span class="v2-ds-driver">{{ label }} {{ delta }}</span>{% if not loop.last %}; {% endif %}
