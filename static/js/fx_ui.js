@@ -73,6 +73,7 @@
   // Run History states the Last Run CURRENT / STALE; after any successful Save it must say STALE like every other surface (UX-001 class).
   // The listing is re-read (read-only GET); a detail or compare view the user is looking at is never replaced.
   function refreshRunHistory() {
+    if (window.FincoModelViews) return;
     const root = document.getElementById('v2-sheet-run-history'), shell = document.getElementById('v2-workbook-shell');
     if (!root || !shell || !window.htmx) return;
     if (!root.querySelector('[data-testid="run-history-table"], [data-testid="run-history-empty"]')) return;

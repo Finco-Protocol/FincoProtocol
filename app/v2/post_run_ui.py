@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
+from app.services.model_performance import observed, span
 
 _NOTSET = object()  # sentinel: distinguishes "caller passed rr=None" from "caller did not pass rr"
 
@@ -162,9 +163,13 @@ def build_post_run_ui_state(
 
     # G. Financial Statements runtime presentation (canonical unavailable
     #    stays typed-unavailable — never manufactured).
-    ctx.update(_build_financial_statements_ctx(pis_fresh, ws_fresh, projection=projection))
-    fs_html = _templates.get_template(
-        "partials/sheet_financial_statements.html").render(ctx)
+    if request is not None and request.headers.get("X-Finco-Lazy-Views") == "1":
+        ctx["fs_state"] = "FS_UNAVAILABLE" if projection.fs.state.value == "UNAVAILABLE" else projection.fs.state.value
+        fs_html = _templates.get_template("partials/_financial_statements_placeholder.html").render(ctx)
+    else:
+        ctx.update(_build_financial_statements_ctx(pis_fresh, ws_fresh, projection=projection))
+        fs_html = _templates.get_template(
+            "partials/sheet_financial_statements.html").render(ctx)
     fragments.append(_as_oob(fs_html, "v2-sheet-financial-statements"))
 
     # H. Returns — sponsor/distribution evidence from the same persisted run.
@@ -295,9 +300,11 @@ def _build_result_surfaces_oob(*, pack, ws_fresh, project_record, project: str, 
     return _as_oob(strip, "v2-hybrid-status") + "\n" + _as_oob(trust, "v2-sheet-trust")
 
 
+@observed("response_assembly")
 def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
                            project_record, project: str,
-                           project_editable: bool, freshness, context=None, pack=_NOTSET) -> str:
+                           project_editable: bool, freshness, context=None, pack=_NOTSET,
+                           include_diagnostics: bool = False) -> str:
     """OOB refresh for the Smart Panel (runtime-state note + availability).
 
     Rebuilds the panel from the SAME single workspace read; Trust Pack
@@ -343,7 +350,8 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
     from app.v2.router import _attach_insight
     panel = _attach_insight(
         panel, ws=ws_fresh, pis=pis, project_record=project_record, workspace_owner=workspace_owner,
-        runtime_state=freshness.state.value, register_view=register_view)
+        runtime_state=freshness.state.value, register_view=register_view,
+        include_diagnostics=include_diagnostics)
     rendered = _templates.get_template(
         "partials/_model_smart_panel.html"
     ).render({"smart_panel": panel}).replace(
@@ -351,9 +359,12 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
         '<aside id="model-smart-panel" hx-swap-oob="true"', 1)
     diagnostic_ctx = {"diagnostics": panel.insight["quality"].get("diagnostics"),
                       "project_name": getattr(project_record, "project_name", "") or project}
-    for template, root in (("_model_health.html", "v2-model-health"),
-                           ("sheet_diagnostics.html", "v2-sheet-diagnostics")):
-        rendered += "\n" + _as_oob(_templates.get_template("partials/" + template).render(diagnostic_ctx), root)
+    diagnostics_template = (
+        "sheet_diagnostics.html" if include_diagnostics else "_diagnostics_placeholder.html")
+    with span("template_render"):
+        for template, root in (("_model_health.html", "v2-model-health"),
+                               (diagnostics_template, "v2-sheet-diagnostics")):
+            rendered += "\n" + _as_oob(_templates.get_template("partials/" + template).render(diagnostic_ctx), root)
     return rendered
 
 
@@ -412,6 +423,8 @@ def build_post_save_ui_state(
     include_scenario_list: bool = True,
     projection=None,
     rr=_NOTSET,
+    context: Optional[PostRunRequestContext] = None,
+    include_heavy_sheets: bool = True,
 ) -> str:
     """R6 Correction A — ONE post-Save runtime-state refresh authority.
 
@@ -440,21 +453,26 @@ def build_post_save_ui_state(
         _templates,
         _build_returns_ctx,
     )
+    from app.ui.protected_reference_service import is_protected_reference
 
+    if context is not None:
+        context.require_scope(workspace_owner, project_record.project_id)
+        context.require_binding(ws_fresh, project_record, context.runtime_result)
+        rr = context.runtime_result
     if rr is _NOTSET:
         rr = WorkbookService.get_runtime_result(ws_fresh)
     pis_fresh = None
     if project_record is not None and workspace_owner:
-        pis_fresh = _build_pis_with_composite_identity(
+        pis_fresh = context.inputs if context is not None else _build_pis_with_composite_identity(
             ws_fresh, project_record, workspace_owner)
     from app.workbook.runtime_authority import resolve_runtime_freshness
-    freshness = resolve_runtime_freshness(
+    freshness = context.freshness if context is not None else resolve_runtime_freshness(
         ws_fresh,
         current_composite_hash=(
             pis_fresh.content_hash if pis_fresh is not None else None),
     )
     if projection is None:
-        projection = build_runtime_projection_bundle(rr, freshness.is_stale)
+        projection = context.projection if context is not None else build_runtime_projection_bundle(rr, freshness.is_stale)
     dirty = bool(getattr(ws_fresh, "dirty", True))
     has_runtime = bool(getattr(ws_fresh, "last_runtime_snapshot_id", None))
     fragments: list[str] = []
@@ -466,7 +484,7 @@ def build_post_save_ui_state(
             "workbook_version": pis_fresh.workbook_version,
             "content_hash": pis_fresh.content_hash,
             "template_source": pis_fresh.template_source,
-            "project_editable": True,
+            "project_editable": project_record is not None and not is_protected_reference(project_record),
             "ws_dirty": dirty,
             "runtime_is_stale": freshness.is_stale,
             "has_runtime": has_runtime,
@@ -506,7 +524,7 @@ def build_post_save_ui_state(
 
     # Overview: KPI values stay visible for reference but are classified
     # stale while the workspace is dirty (v2-kpi-tile--stale + is_stale).
-    pis = WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
+    pis = context.inputs if context is not None else WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
     ov = build_overview_projection(
         rr, freshness.is_stale, pis,
         active_scenario_name=getattr(ws_fresh, "active_scenario_name", None) or "",
@@ -531,23 +549,22 @@ def build_post_save_ui_state(
 
     # Returns values remain those of the persisted Last Run while their state
     # changes to stale.  This is a presentation refresh, never a calculation.
-    returns_ctx = {
-        "returns": _build_returns_ctx(
-            ws_fresh, rr=rr,
-            runtime_is_stale=freshness.is_stale)["returns"],
-        "project_code": project,
-        "project_editable": True,
-    }
-    if project_record is not None:
-        from app.ui.protected_reference_service import is_protected_reference
-        returns_ctx["project_editable"] = not is_protected_reference(project_record)
-    returns_html = _templates.get_template("partials/sheet_returns.html").render(returns_ctx)
-    fragments.append(_as_oob(returns_html, "v2-sheet-returns"))
+    if include_heavy_sheets:
+        returns_ctx = {
+            "returns": _build_returns_ctx(
+                ws_fresh, rr=rr,
+                runtime_is_stale=freshness.is_stale)["returns"],
+            "project_code": project,
+            "project_editable": not is_protected_reference(project_record) if project_record is not None else True,
+        }
+        returns_html = _templates.get_template("partials/sheet_returns.html").render(returns_ctx)
+        fragments.append(_as_oob(returns_html, "v2-sheet-returns"))
 
     # Scenario last-run statuses (persisted by the previous Run's step 12b).
     if include_scenario_list and project_record is not None and workspace_owner:
         scenarios_html = _scenario_list_html(
-            workspace_owner, project_record.project_id, project, ws_fresh)
+            workspace_owner, project_record.project_id, project, ws_fresh,
+            **({"context": context} if context is not None else {}))
         fragments.append(_as_oob(scenarios_html, "v2-sheet-scenarios"))
 
     # Workspace header (UX Foundation): STALE after a financially causal
@@ -561,15 +578,16 @@ def build_post_save_ui_state(
             freshness=freshness))
         if workspace_owner:
             _pack = _build_trust_pack_for_state(
-                ws_fresh, workspace_owner=workspace_owner, project_record=project_record, project=project)
+                ws_fresh, workspace_owner=workspace_owner, project_record=project_record, project=project,
+                context=context)
             fragments.append(_build_result_surfaces_oob(
                 pack=_pack, ws_fresh=ws_fresh, project_record=project_record, project=project,
-                project_editable=not is_protected_reference(project_record), freshness=freshness))
+                project_editable=not is_protected_reference(project_record), freshness=freshness, context=context))
             fragments.append(_build_smart_panel_oob(
                 ws_fresh, workspace_owner=workspace_owner,
                 project_record=project_record, project=project,
                 project_editable=not is_protected_reference(project_record),
-                freshness=freshness, pack=_pack))
+                freshness=freshness, pack=_pack, context=context))
 
     return chr(10).join(fragments)
 

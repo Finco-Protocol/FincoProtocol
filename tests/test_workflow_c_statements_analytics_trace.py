@@ -277,7 +277,9 @@ def test_statement_cells_equal_the_persisted_payload(seeded_db, template):
     ws = _ws(uid, rec)
     rr = WorkbookService.get_runtime_result(ws)
     payload = rr.financial_statements
-    pg = client.get(f"/v2/workbook?project={rec.project_code}").text
+    initial = client.get(f"/v2/workbook?project={rec.project_code}").text
+    assert 'data-testid="fs-pnl-table"' not in initial
+    pg = client.get(f"/v2/workbook?project={rec.project_code}&sheet=fs").text
 
     def cell(v):
         if not isinstance(v, (int, float)) or isinstance(v, bool):
@@ -318,6 +320,8 @@ def test_statement_state_bar_distinguishes_the_four_states(state, badge, text):
 def test_not_run_project_statements_show_no_fabricated_figures(seeded_db):
     client, rec = _project("u-wc-fs-notrun", "generic_solar_reference")
     pg = client.get(f"/v2/workbook?project={rec.project_code}").text
+    assert 'data-testid="fs-pnl-table"' not in pg and 'data-fs-state="NOT_RUN"' in pg
+    pg = client.get(f"/v2/workbook?project={rec.project_code}&sheet=fs").text
     assert "Run the model to generate the Income Statement." in pg
     assert 'data-testid="fs-pnl-table"' not in pg and 'data-fs-state="NOT_RUN"' in pg
 

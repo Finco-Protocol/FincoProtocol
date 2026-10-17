@@ -1,7 +1,6 @@
 """Real Chromium Option C acceptance, with CSP enabled and isolated synthetic projects."""
 import os
 from pathlib import Path
-from urllib.parse import urljoin
 
 import pytest
 
@@ -277,17 +276,24 @@ def test_consecutive_htmx_workbook_saves_refresh_investor_once_each(workspace, m
         raise AssertionError('Investor GET must not run the financial engine')
     monkeypatch.setattr(project_runner, 'run_project', forbidden_run)
     investor_gets = []
+    def investor_read(response):
+        return '/grid/sheet?' in response.url and 'sheet=investor' in response.url
     page.on('response', lambda response: investor_gets.append(response.status)
-            if '/workbook/financing/investor?' in response.url else None)
-    activate_destination(page, 'tab-inputs')
+            if investor_read(response) else None)
     for index, value in enumerate(('1601', '1602'), 1):
+        activate_destination(page, 'tab-inputs')
+        page.wait_for_function("() => document.querySelector('#v2-sheet-inputs').dataset.modelViewState === 'loaded'")
         form = page.locator('.v2-inputs-slice1-row[data-field-id="project_setup.technical.p50_hours"] form')
         form.locator('input[name=value]').fill(value)
-        with page.expect_response(lambda response: '/workbook/financing/investor?' in response.url) as refreshed:
-            with page.expect_response(lambda response: '/inputs-slice1/update' in response.url) as saved:
-                form.locator('button[type=submit]').click()
+        with page.expect_response(lambda response: '/inputs-slice1/update' in response.url) as saved:
+            form.locator('button[type=submit]').click()
         assert saved.value.status == 200
+        page.wait_for_timeout(100)
+        assert len(investor_gets) == index - 1
+        with page.expect_response(investor_read) as refreshed:
+            activate_destination(page, 'tab-investor')
         assert refreshed.value.status == 200
+        page.wait_for_function("() => document.querySelector('#v2-sheet-investor').dataset.modelViewState === 'loaded'")
         page.wait_for_timeout(100)  # Observe unintended follow-up GET loops too.
         assert len(investor_gets) == index
     assert get_workspace_state(record.user_id, record.project_id).last_runtime_snapshot_id is None
@@ -303,13 +309,12 @@ def test_investor_delayed_response_cannot_restore_pre_scenario_evidence(workspac
                               and response.request.method == 'POST', timeout=240000):
         page.locator('[data-testid="header-run-btn"]').click()
     page.wait_for_function("() => document.querySelector('[data-testid=hybrid-run-state]').textContent.trim() === 'CURRENT'", timeout=240000)
-    page.wait_for_function("() => document.querySelector('[data-testid=investor-freshness]')?.textContent.startsWith('CURRENT')")
-    response = page.request.get(urljoin(page.url, page.locator('#v2-sheet-investor').get_attribute('hx-get')))
-    assert response.status == 200
+    assert page.locator('#v2-sheet-investor').get_attribute('data-model-view-state') == 'pending'
     held = []
     page.evaluate("""() => {
-        const source = document.getElementById('v2-sheet-investor');
-        source.addEventListener('htmx:beforeOnLoad', () => { window.__prbDelayedInvestorHandled = true; });
+        document.addEventListener('htmx:beforeOnLoad', e => {
+            if (e.detail.xhr.responseURL.includes('/grid/sheet?')) window.__prbDelayedInvestorHandled = true;
+        });
     }""")
 
     def delay_first(route):
@@ -318,10 +323,12 @@ def test_investor_delayed_response_cannot_restore_pre_scenario_evidence(workspac
         else:
             route.continue_()
 
-    page.route('**/v2/workbook/financing/investor?*', delay_first)
+    page.route('**/v2/workbook/grid/sheet?**sheet=investor', delay_first)
     activate_destination(page, 'tab-investor')
     page.wait_for_timeout(100)  # Dispatch Playwright route callbacks; do not fabricate a response.
     assert held
+    response = page.request.get(held[0].request.url)
+    assert response.status == 200 and 'CURRENT' in response.text()
     activate_destination(page, 'tab-scenarios')
     page.locator('[aria-label="New scenario name"]').fill('Delayed Investor acceptance')
     with page.expect_response(lambda response: '/scenarios/create' in response.url
@@ -329,7 +336,7 @@ def test_investor_delayed_response_cannot_restore_pre_scenario_evidence(workspac
         page.locator('.v2-scenario-create-form button[type=submit]').click()
     assert created.value.status == 200
     page.wait_for_function("() => document.querySelector('[data-testid=hybrid-run-state]').textContent.trim() === 'NOT RUN'")
-    page.wait_for_function("() => document.querySelector('[data-testid=investor-freshness]')?.textContent.startsWith('NOT RUN')")
+    assert page.locator('#v2-sheet-investor').get_attribute('data-model-view-state') == 'pending'
     swaps = []
     page.expose_function('recordInvestorSwap', lambda text: swaps.append(text))
     page.evaluate("""() => document.addEventListener('htmx:afterSwap', event => {
@@ -340,6 +347,8 @@ def test_investor_delayed_response_cannot_restore_pre_scenario_evidence(workspac
     page.wait_for_function('() => window.__prbDelayedInvestorHandled === true')
     page.wait_for_timeout(100)
     assert not any(text.startswith('CURRENT') for text in swaps), swaps
+    activate_destination(page, 'tab-investor')
+    page.wait_for_function("() => document.querySelector('#v2-sheet-investor').dataset.modelViewState === 'loaded'")
     assert page.locator('[data-testid=investor-freshness]').inner_text().startswith('NOT RUN')
     assert_unique_dom_ids(page)
     assert not errors, errors
