@@ -44,6 +44,10 @@
     Project name
     <input class="create-form-input" type="text" name="project_name" id="npm-project_name" value="{{ submitted.project_name or '' }}" required placeholder="Project name" />
   </label>
+  <p class="create-form-desc" data-testid="reference-assumptions-note">
+    Reference models start from generic, editable assumptions (tariff or price, costs and financing). They are not verified for the selected
+    country or market; review every assumption in your working copy before relying on a result.
+  </p>
   <label class="create-form-label">
     <span id="capacity-label" data-testid="capacity-label">{{ submitted.capacity_label or 'Installed Capacity (MW)' }}</span>
     <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0.001" value="{{ submitted.capacity_mw or '' }}" required placeholder="{{ submitted.capacity_label or 'Installed Capacity (MW)' }}" />
@@ -56,7 +60,7 @@
       {% endfor %}
     </select>
     <small class="create-form-desc" data-testid="country-tax-note">
-      Country identifies project location. Country-specific tax templates are not yet active;
+      Country identifies project location only and does not change tariff, market or cost assumptions. Country-specific tax templates are not yet active;
       new projects currently use the FINCO {{ tax_template_label or 'Generic Tax Template' }}.
     </small>
   </label>
