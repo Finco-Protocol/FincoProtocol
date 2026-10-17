@@ -18,6 +18,7 @@ from app.auth import (
 )
 from app.model_import.intake import MAX_UPLOAD_BYTES, IntakeError, extract_proposals
 from app.model_import.mapping import STRUCTURED_FIELD_OWNERS
+from app.model_import.migration_ux import scenario_review_matrix, scenario_review_acknowledged, manual_scalar_mapping_allowed
 from app.persistence.projects_repository import resolve_accessible_project
 from app.persistence.workspace_repository import get_workspace_state
 from app.services.project_library_service import is_protected_reference
@@ -72,6 +73,7 @@ def _context(request, user, project, ws, *, stage, proposals=None, error=None,
             check = WorkbookUpdateService.validate_field_update(q["field_id"], q["normalized_value"])
             if check.is_valid and check.typed_value == q["current_value"]:
                 q["status"] = "unchanged"
+        q["manual_scalar_mapping_allowed"] = manual_scalar_mapping_allowed(q)
         # Bulk selection is limited to rows that validated independently: a mapped, normalised, non-duplicate,
         # non-ambiguous target with no outstanding reason.  Everything else needs a deliberate per-row choice.
         q["bulk_selectable"] = bool(
@@ -469,7 +471,7 @@ async def model_migration_assess(
         manifest = upsert(manifest, entry_from_plan(plan, insp.report, candidate_project_code=record.project_code))
         ctx = _migration_base(
             request, user, record, ws, stage="assess", manifest_token=seal_manifest(manifest), report=insp.report, plan=plan,
-            plan_view=_plan_view(plan), manifest=manifest, manifest_error=manifest_error,
+            plan_view=_plan_view(plan), scenario_rows=scenario_review_matrix(plan), manifest=manifest, manifest_error=manifest_error,
             classes=list(plan["class_counts"]), max_items=_MAX_RENDERED_ITEMS_PER_CLASS)
         return _templates.TemplateResponse(request=request, name=_MIGRATION_TEMPLATE, context=ctx)
     except (IntakeError, ImportReviewError, ManifestError, ValueError) as exc:
@@ -487,6 +489,7 @@ async def model_migration_review_slice(
     project: str = Form(...),
     csrf_token: str = Form(...),
     slice_ticket: str = Form(...),
+    source_target_ack: str = Form(""),
     manifest_token: str = Form(""),
     _: None = Depends(require_v2_active),
 ):
@@ -503,6 +506,8 @@ async def model_migration_review_slice(
             request=request, name="import_review.html",
             context=_context(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"), status_code=403)
     try:
+        if not scenario_review_acknowledged(source_target_ack):
+            raise ImportReviewError("IMPORT_SOURCE_SCENARIO_ACK_REQUIRED")
         preview = unseal_preview(slice_ticket, owner=owner, project_id=record.project_id)
         migration = preview.get("migration")
         if not isinstance(migration, dict):
