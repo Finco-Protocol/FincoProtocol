@@ -35,6 +35,9 @@
     </div>
     <p class="v2-opex-profile-note">The displayed Y2/Y3 values are taken directly from the existing OPEX ViewModel and may include effective escalation or steps. The view does not independently classify a change as a step unless source evidence explicitly identifies one. Derived contingency and inactive rows are not independently editable.</p>
   </details>
+  {% if not project_editable %}
+  <p data-testid="opex-profile-reference" class="v2-opex-profile-note">Protected Reference: current OPEX amounts can be inspected but event or seasonal candidates require a Working Copy. No financial changes can be made here.</p>
+  {% else %}
   <div class="v2-opex-candidate" data-wf11-candidate data-max-year="{{ opex_vm.display_years }}" data-testid="opex-candidate-editor">
     <h3>Major maintenance — candidate only</h3>
     <p class="v2-opex-profile-note">Major maintenance is a separate event, not a permanent increase to annual base OPEX. No Save or Run integration exists. Amounts are in <strong>kEUR</strong>; accounting classification, potential double counting with the existing OPEX base and tax/CFADS treatment require financial approval.</p>
@@ -80,5 +83,6 @@
       <table><thead><tr><th>Canonical annual view · kEUR</th><th>Candidate H1 · kEUR</th><th>Candidate H2 · kEUR</th><th>Total · kEUR</th></tr></thead><tbody data-wf11-seasonal-output><tr><td colspan="4">No candidate preview.</td></tr></tbody></table>
     </div>
   </div>
+  {% endif %}
 </details>
 <script src="/static/js/model_opex_profiles_v1.js" defer></script>
