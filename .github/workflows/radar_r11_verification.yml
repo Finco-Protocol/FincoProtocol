@@ -520,7 +520,7 @@ jobs:
         run: python tools/public_safety_scan.py
       - name: Upload R11 verification evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: radar-r11-verification-evidence
           path: |

@@ -35,7 +35,7 @@ jobs:
         run: python -m tools.ci_acceptance run --expected '${{ github.event.pull_request.head.sha || github.sha }}' --label compile --output artifacts/compile.json -- python -m compileall -q .
       - name: Upload mandatory safety evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: public-source-safety
           path: artifacts/
@@ -85,7 +85,7 @@ jobs:
             --merge-sha "$MERGE_SHA" --output artifacts/public-single-proof.json
       - name: Upload mandatory aggregate proof (historical artifact alias)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: public-shadow-proof
           path: artifacts/
