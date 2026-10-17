@@ -478,7 +478,8 @@ def test_existing_browser_selection_is_not_weakened():
         "tests/test_yield_browser.py", "-k", "not test_api_b04_placeholders_not_links"]
     # The original Import C suite is kept first and unchanged; the Import V2 module was ADDED to the same role.
     assert SELECTIONS["import"][0] == "tests/test_model_ai_import_browser_c.py"
-    assert SELECTIONS["import"] == ["tests/test_model_ai_import_browser_c.py", "tests/test_model_import_v2_browser.py"]
+    assert SELECTIONS["import"] == ["tests/test_model_ai_import_browser_c.py", "tests/test_model_import_v2_browser.py",
+                                    "tests/test_model_import_excel_migration_browser.py"]
     assert "artifacts/model-ai-import/*.png" in REQUIRED["import"] and "artifacts/model-import-v2/*.png" in REQUIRED["import"]
     assert SELECTIONS["grid"] == ["tests/test_model_hybrid_inputs_grid_routes.py", "tests/test_model_hybrid_inputs_grid_browser.py"]
     assert SELECTIONS["q4"] == ["tests/test_model_q4_browser.py"]

@@ -43,6 +43,8 @@
   .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0}.toolbar .secondary{background:white;color:#1f4c6c;border:1px solid #b4c6d6;font-weight:500;padding:7px 13px}
   .toolbar label{font-size:.85rem;color:#354e62}.dup{color:#8b2f28;font-weight:650}
   .owner{font-size:.8rem;color:#43307a}.prov td{font-size:.84rem}
+  button.secondary-action{background:white;color:#1f4c6c;border:1px solid #b4c6d6;font-weight:600}
+  .migration-banner{border-left:4px solid #7e610f;background:#fffaf0;padding:10px 14px;margin:10px 0}
   @media(max-width:640px){main{padding:12px}header{padding:13px}h1{font-size:1.32rem}.panel{padding:12px}.box>.field{min-width:0;width:100%;max-width:100%}input[type=file]{display:block;width:100%;min-width:0;box-sizing:border-box}}
   </style>
 </head>
@@ -62,17 +64,19 @@
   {% endif %}
   <section class="panel">
     <h2>1. Select financial input file</h2>
-    <p>CSV and XLSX only. Maximum 2 MB, 12 sheets and 12,000 cells. Formula outputs and external references are not authoritative. No data is sent to an external AI provider.</p>
+    <p>CSV and XLSX for direct review; XLSX/XLSM can also be <strong>assessed</strong> as an existing Excel model (read-only: macros, formulas, external links and DDE are never executed). Maximum 2 MB, 12 sheets and 12,000 cells. Formula outputs and external references are not authoritative. No data is sent to an external AI provider.</p>
     <form action="/v2/workbook/import/preview" method="post" enctype="multipart/form-data">
       <input type="hidden" name="project" value="{{ project_code }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="box">
-        <div class="field"><label for="upload">File</label><input type="file" id="upload" name="upload" accept=".csv,.xlsx" required></div>
+        <div class="field"><label for="upload">File</label><input type="file" id="upload" name="upload" accept=".csv,.xlsx,.xlsm" required></div>
         <div class="field"><label for="encoding">CSV encoding</label><select id="encoding" name="encoding">
           <option value="utf-8-sig">UTF-8 / UTF-8 BOM</option><option value="utf-8">UTF-8</option>
           <option value="cp1250">Windows-1250</option><option value="cp1252">Windows-1252</option>
         </select></div>
         <button type="submit">Extract and review</button>
+        <input type="hidden" name="manifest_token" value="{{ manifest_token or '' }}">
+        <button type="submit" class="secondary-action" formaction="/v2/workbook/import/assess" data-testid="assess-workbook">Assess workbook &amp; scenarios</button>
       </div>
     </form>
   </section>
@@ -111,6 +115,15 @@
       <input type="hidden" name="project" value="{{ project_code }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="preview_ticket" value="{{ preview_ticket }}">
+    {% if migration %}
+    <div class="migration-banner" data-testid="migration-banner">
+      <strong>Excel migration · scenario slice “{{ migration.slice.label }}”</strong> ({{ migration.slice.kind|lower|replace('_',' ') }}, source {{ migration.slice.resolution|replace('_',' ')|lower }}).
+      Target: <strong>{{ migration.target.project }}</strong> · scenario <strong>{{ migration.target.scenario_name }}</strong>{% if migration.target.scenario_id %} (<code>{{ migration.target.scenario_id }}</code>){% endif %}.
+      <div class="muted">A scenario name in a workbook is a label, not proof of its meaning. Approve only if this source case is the case intended for the target scenario above. Each Apply writes this one scenario only; there is no cross-scenario atomicity.</div>
+      <label><input type="checkbox" name="scenario_confirmed" value="on" required data-testid="scenario-confirm"> I confirm “{{ migration.slice.label }}” is the intended source case for the target scenario shown.</label>
+    </div>
+    <input type="hidden" name="manifest_token" value="{{ manifest_token or '' }}">
+    {% endif %}
     <div class="table-wrap" role="region" aria-label="Import proposals" tabindex="0">
       <table>
         <thead><tr><th>Approve</th><th>Source cell / label</th><th>Original value</th><th>Suggested FINCO field</th><th>Working Copy</th><th>Proposed value / units</th><th>Confidence, validation &amp; explanation</th></tr></thead>
@@ -178,6 +191,8 @@
       <input type="hidden" name="project" value="{{ project_code }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="approved_ticket" value="{{ approved_ticket }}">
+      {% if migration %}<input type="hidden" name="manifest_token" value="{{ manifest_token or '' }}">
+      <div class="migration-banner" data-testid="migration-banner-confirm">Excel migration · slice <strong>{{ migration.slice.label }}</strong> → scenario <strong>{{ migration.target.scenario_name }}</strong>. Confirmed by you at review.</div>{% endif %}
       <div class="summary panel"><p>Confirm that these are exactly the values you want to save in this Working Copy and active scenario.</p>
       <button type="submit">Apply {{ approved_count }} approved fields atomically</button></div>
     </form>
@@ -198,6 +213,25 @@
        <td>{{ row.approved_value }}</td><td><strong>{{ row.actual_value }}</strong></td><td>{{ origin(row) }}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
+    {% if migration and applied_ticket %}
+    <div class="panel" data-testid="migration-result">
+      <h2>Migration status</h2>
+      <p><span class="pill needs_review" data-testid="changed-not-run">CHANGED — NOT RUN</span>
+         Source scenario <strong>{{ migration.slice.label }}</strong> ({{ migration.slice.resolution|replace('_',' ')|lower }}) → target scenario <strong>{{ migration.target.scenario_name }}</strong>.
+         Provenance is held in this result and the signed evidence below; the workbook itself was not stored. Run the model from the Inputs workspace to create a committed Run, then compare.</p>
+      <form action="/v2/workbook/import/reconcile" method="post" data-testid="reconcile-form">
+        <input type="hidden" name="project" value="{{ project_code }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="applied_ticket" value="{{ applied_ticket }}">
+        <input type="hidden" name="manifest_token" value="{{ manifest_token or '' }}">
+        <div class="box">
+          <button type="submit">Compare with source evidence (after a manual Run)</button>
+        </div>
+        <p class="muted">Reconciliation only compares against a committed, current Run for this target scenario and never starts one.</p>
+      </form>
+      {% if manifest_token %}<form action="/v2/workbook/import/manifest" method="post"><input type="hidden" name="project" value="{{ project_code }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="manifest_token" value="{{ manifest_token }}"><button type="submit" class="secondary-action">Open portfolio manifest</button></form>{% endif %}
+    </div>
+    {% endif %}
     <div class="summary panel">
       <p>You can return to the canonical Inputs workspace, review changed cells, and start the existing Run manually.</p>
       <a href="/v2/workbook?project={{ project_code|urlencode }}&sheet=inputs">Review inputs &amp; Run manually →</a>

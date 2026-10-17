@@ -382,7 +382,7 @@ app.include_router(_v2_grid_router, prefix="/v2")
 # endpoint-only read limit would not provide an actual request-body bound.
 @app.middleware("http")
 async def _model_import_content_length_gate(request: Request, call_next):
-    if request.url.path == "/v2/workbook/import/preview":
+    if request.url.path in ("/v2/workbook/import/preview", "/v2/workbook/import/assess"):
         raw = request.headers.get("content-length")
         try:
             size = int(raw) if raw is not None else 0

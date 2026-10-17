@@ -1,0 +1,214 @@
+{% macro manifest_table(manifest) %}
+<div class="table-wrap" role="region" aria-label="Portfolio manifest" tabindex="0"><table data-testid="manifest-table">
+  <thead><tr><th>Workbook</th><th>Candidate project</th><th>Scenarios</th><th>Input mapping</th><th>Unsupported features</th><th>Review</th><th>Apply eligible</th><th>Reconciliation</th></tr></thead>
+  <tbody>{% for e in manifest.entries %}
+    <tr data-sha="{{ e.workbook_sha256 }}">
+      <td><strong>{{ e.filename_hint }}</strong><div class="muted">{{ e.format }}{% if e.macro_bearing %} · macro-bearing{% endif %} · {{ e.size_bytes }} B</div><code>{{ e.workbook_sha256[:16] }}…</code>
+        <div class="muted">{% for s in e.sheet_provenance %}{{ s.sheet }}{% if s.hidden %} (hidden){% endif %} [{{ s.used_rows }}×{{ s.used_columns }}]{% if not loop.last %}, {% endif %}{% endfor %}</div></td>
+      <td>{{ e.candidate_project }}</td>
+      <td>{{ e.scenario_overall|replace('_',' ')|lower }}{% for s in e.scenarios %}<div class="muted">{{ s.label }} · {{ s.resolution|replace('_',' ')|lower }}</div>{% endfor %}</td>
+      <td>{{ e.mapping.direct_mapped }} / {{ e.mapping.input_candidates }}{% if e.mapping.completeness is not none %} ({{ (e.mapping.completeness * 100)|round(1) }}%){% endif %}</td>
+      <td>{% for u in e.unsupported_features %}<span class="pill unsupported">{{ u|replace('_',' ')|lower }}</span> {% else %}—{% endfor %}</td>
+      <td><span class="pill {{ 'ready' if e.review_status == 'SCALARS_APPLIED' else 'needs_review' }}">{{ e.review_status|replace('_',' ')|lower }}</span></td>
+      <td>{{ 'yes' if e.apply_eligible else 'no' }}</td>
+      <td><span class="pill {{ e.reconciliation.status|lower }}">{{ e.reconciliation.status|replace('_',' ')|lower }}</span><div class="muted">{{ e.reconciliation.comparable }} comparable of {{ e.reconciliation.outputs_available }} source outputs</div></td>
+    </tr>{% else %}<tr><td colspan="8">No workbook assessed yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endmacro %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO — Excel Migration Assessment</title>
+  <style>
+  :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172535;background:#f6f8fb}
+  body{margin:0}a{color:#165b94}button,select,input{font:inherit}main{max-width:1400px;margin:0 auto;padding:24px;overflow-wrap:anywhere}
+  header{background:#112a40;color:white;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  header a{color:white}.brand{font-weight:750;letter-spacing:.07em}h1{font-size:1.65rem;margin:12px 0 4px}h2{font-size:1.1rem}h3{font-size:1rem;margin:14px 0 6px}p{line-height:1.5}
+  .muted{color:#687688}.panel{background:white;border:1px solid #d8e2ec;border-radius:12px;padding:19px;margin:18px 0}
+  .box{display:flex;gap:14px;flex-wrap:wrap;align-items:end}.field{display:grid;gap:6px}.field label{font-size:.9rem;font-weight:600}
+  input[type=file],select,input[type=text]{padding:9px 10px;border:1px solid #a9b9cb;border-radius:7px;max-width:100%;background:white}
+  button{padding:10px 16px;border-radius:8px;border:1px solid #104f82;background:#145b91;color:white;font-weight:650;cursor:pointer}
+  button.secondary{background:white;color:#1f4c6c;border:1px solid #b4c6d6;font-weight:600}
+  .error{color:#9d2020;font-weight:700}.notice{border-left:4px solid #a0abb6;padding-left:13px}
+  .metrics{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.metrics span{border:1px solid #d5dfe7;border-radius:8px;background:#fff;padding:8px 11px;font-size:.91rem}
+  .table-wrap{overflow-x:auto;background:white;border:1px solid #d8e2ec;border-radius:10px;margin:8px 0}
+  table{border-collapse:collapse;min-width:900px;width:100%;font-size:.88rem}th{text-align:left;white-space:nowrap;color:#354e62;background:#edf3f8;font-weight:650}
+  th,td{border-bottom:1px solid #e3ebf2;padding:10px 9px;vertical-align:top}td code{font-size:.79rem;overflow-wrap:anywhere}
+  .pill{display:inline-block;padding:3px 7px;border-radius:5px;font-size:.78rem;background:#e9edf2;margin:1px 0}
+  .pill.ready,.pill.pass,.pill.compared{background:#d9efdf;color:#275a37}.pill.invalid,.pill.fail,.pill.blocked{background:#fbe0dd;color:#8b2f28}
+  .pill.needs_review,.pill.not_comparable,.pill.warn{background:#fff1c5;color:#7e610f}.pill.unsupported,.pill.not_started,.pill.unavailable{background:#eceff3;color:#4b5663}
+  .scen{border:1px solid #d8e2ec;border-radius:10px;padding:12px;margin:8px 0;background:#fcfdff}
+  ul.tight{margin:4px 0;padding-left:18px}ul.tight li{margin:2px 0}
+  details{margin:8px 0}summary{cursor:pointer;font-weight:650}
+  @media(max-width:640px){main{padding:12px}header{padding:13px}h1{font-size:1.32rem}.panel{padding:12px}.box>.field{min-width:0;width:100%}input[type=file]{display:block;width:100%;min-width:0;box-sizing:border-box}}
+  </style>
+</head>
+<body>
+<header><div class="brand">FINCO MODEL · EXCEL MIGRATION</div><a href="/v2/workbook/import?project={{ project_code|urlencode }}">Back to Import</a></header>
+<main>
+  <h1>Excel model migration assessment</h1>
+  <p class="muted">{{ project.project_name }} · {{ project.project_type }} · target scenario <strong>{{ active_scenario_name or 'default Working Copy' }}</strong>. Assessment is read-only: no macro, formula, external link or DDE is executed, and nothing is stored or run.</p>
+  {% if error %}<p role="alert" class="error" data-testid="migration-error">Request rejected: {{ error }}</p>{% endif %}
+
+  {% if stage == "upload" %}
+  <section class="panel"><p>Return to <a href="/v2/workbook/import?project={{ project_code|urlencode }}">Import</a> and upload an .xlsx or .xlsm workbook to assess.</p></section>
+  {% endif %}
+
+  {% if stage == "assess" %}
+  <section class="panel" data-testid="assess-summary">
+    <h2>1. Workbook inspection</h2>
+    <div class="metrics">
+      <span>Format: <strong>{{ report.format }}</strong></span><span>Size: <strong>{{ report.size_bytes }} B</strong></span>
+      <span>SHA-256: <code>{{ report.sha256[:16] }}…</code></span>
+      <span>Sheets: <strong>{{ report.sheets|length }}</strong></span>
+      <span>Formula cells: <strong>{{ report.formulas.total }}</strong> ({{ report.formulas.with_cached_value }} with stored result)</span>
+      <span>Literal cells: <strong>{{ report.literal_cells }}</strong></span>
+      <span data-testid="macro-flag">Macro-bearing: <strong>{{ 'yes' if report.macro_bearing else 'no' }}</strong></span>
+      <span>Executed: <strong>nothing</strong> (VBA / formulas / links / DDE)</span>
+    </div>
+    {% if report.warnings %}<p>{% for w in report.warnings %}<span class="pill warn" data-testid="warning">{{ w|replace('_',' ')|lower }}</span> {% endfor %}</p>{% endif %}
+    <details open><summary>Sheets &amp; hidden state</summary>
+    <div class="table-wrap"><table><thead><tr><th>Sheet</th><th>State</th><th>Used range</th><th>Literals</th><th>Formulas</th><th>Formula results stored</th></tr></thead><tbody>
+      {% for s in report.sheets %}<tr><td>{{ s.name }}</td><td>{% if s.hidden %}<span class="pill warn">{{ s.state }}</span>{% else %}visible{% endif %}</td><td>{{ s.used_rows }} × {{ s.used_columns }}</td><td>{{ s.literal_cells }}</td><td>{{ s.formula_cells }}</td><td>{{ s.formula_with_cached_value }} of {{ s.formula_cells }}</td></tr>{% endfor %}
+    </tbody></table></div></details>
+    {% if report.defined_names %}<details><summary>Named ranges ({{ report.defined_names|length }})</summary>
+    <div class="table-wrap"><table><thead><tr><th>Name</th><th>Scope</th><th>Refers to</th><th>Kind</th></tr></thead><tbody>
+      {% for n in report.defined_names %}<tr><td>{{ n.name }}{% if n.hidden %} <span class="pill warn">hidden</span>{% endif %}</td><td>{{ n.scope }}</td><td><code>{{ n.refers_to }}</code></td><td>{{ n.kind }}</td></tr>{% endfor %}
+    </tbody></table></div></details>{% endif %}
+    {% if report.external_links %}<details open><summary>External links ({{ report.external_links|length }}) — never opened</summary><ul class="tight">{% for l in report.external_links %}<li>{{ l.kind|replace('_',' ') }} · {{ l.target_mode }} · <code>{{ l.target_hint }}</code></li>{% endfor %}</ul></details>{% endif %}
+    {% if report.macro_bearing %}<details open data-testid="vba-block"><summary>VBA project (metadata only)</summary>
+      <p>Container: <strong>{{ report.vba.status|replace('_',' ')|lower }}</strong>{% if report.vba.reason %} ({{ report.vba.reason }}){% endif %} · modules: {{ report.vba.module_count }}. Source code was not read or interpreted and nothing was executed.</p>
+      {% if report.vba.modules %}<p>{% for m in report.vba.modules %}<code>{{ m.name }}</code> {% endfor %}</p>{% endif %}</details>{% endif %}
+    {% if report.formulas.functions %}<details><summary>Formula functions used</summary><p>{% for f, n in report.formulas.functions.items() %}<code>{{ f }}</code>×{{ n }} {% endfor %}</p></details>{% endif %}
+  </section>
+
+  <section class="panel" data-testid="scenario-block">
+    <h2>2. Scenario structures</h2>
+    <p class="notice">Overall: <strong data-testid="scenario-overall">{{ plan.scenarios.overall }}</strong>. A scenario name is a label, not proof of its meaning; every scenario below is <code>LABEL_ONLY_UNVERIFIED</code> and needs your confirmation before apply.</p>
+    {% for st in plan.scenarios.structures %}<div class="scen"><strong>{{ st.id }} · {{ st.evidence|replace('_',' ')|lower }}</strong>{% if st.sheet %} on “{{ st.sheet }}”{% endif %}
+      <ul class="tight">{% for s in st.scenarios %}<li data-scenario="{{ s.key }}"><strong>{{ s.label }}</strong> ({{ s.kind|lower|replace('_',' ') }}) — <span class="pill {{ 'ready' if s.resolution == 'STATIC_OBSERVABLE' else 'needs_review' if s.resolution == 'PARTIALLY_OBSERVABLE' else 'blocked' }}" data-testid="scenario-resolution">{{ s.resolution }}</span> · {{ s.literal_cells }} literal / {{ s.formula_cells }} formula cells{% if s.column %} · column {{ s.column }}{% endif %}{% if s.reason %} · {{ s.reason }}{% endif %}</li>{% endfor %}</ul></div>{% endfor %}
+    {% for sel in plan.scenarios.selectors %}<div class="scen" data-testid="selector"><strong>Switch cell {{ sel.sheet }}!{{ sel.cell }}</strong> “{{ sel.name }}” = <code>{{ sel.cell_value }}</code> · read by {{ sel.dependent_formula_count }} formula(s){% if sel.dependents_sample %} ({{ sel.dependents_sample|join(', ') }}){% endif %}
+      <div>{% for r in sel.reasons %}<span class="pill warn">{{ r|replace('_',' ')|lower }}</span> {% endfor %}</div>
+      <div class="muted">Only the currently selected case is observable in stored results. Other cases need recalculation or macro execution, which is never performed here — <strong>SCENARIO_LOGIC_UNRESOLVED</strong>.</div></div>{% endfor %}
+    {% if not plan.scenarios.structures and not plan.scenarios.selectors %}<p class="muted">No scenario structure detected: the workbook is treated as a single case.</p>{% endif %}
+  </section>
+
+  <section class="panel" data-testid="plan-block">
+    <h2>3. Migration plan</h2>
+    <div class="metrics">
+      {% for c in classes %}<span data-class="{{ c }}">{{ c|replace('_',' ')|lower }}: <strong>{{ plan.class_counts[c] }}</strong></span>{% endfor %}
+    </div>
+    <p class="muted" data-testid="completeness">Input mapping completeness: <strong>{{ plan.mapping.direct_mapped }} / {{ plan.mapping.input_candidates }}</strong>{% if plan.mapping.input_mapping_completeness is not none %} ({{ (plan.mapping.input_mapping_completeness * 100)|round(1) }}%){% endif %} — {{ plan.mapping.definition }}. This is not financial parity; reconciliation is separate.</p>
+    {% if plan.coverage.numeric_cells_not_interpreted %}<p class="muted">Numeric cells outside label/value layouts (not interpreted): {% for s, n in plan.coverage.numeric_cells_not_interpreted.items() %}{{ s }}: {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+    {% for c in classes %}{% if plan_view[c] %}
+    <details {% if c == 'DIRECT_INPUT_MAPPING' %}open{% endif %} data-class-block="{{ c }}"><summary>{{ c|replace('_',' ')|lower }} ({{ plan.class_counts[c] }}{% if plan.class_counts[c] > max_items %}, first {{ max_items }} shown{% endif %})</summary>
+    <div class="table-wrap"><table><thead><tr><th>Source</th><th>Value / unit</th><th>FINCO field</th><th>Scenario</th><th>Target</th><th>Writer</th><th>Decision / dependency</th></tr></thead><tbody>
+      {% for i in plan_view[c] %}<tr data-item="{{ i.item_id }}" data-class="{{ i.class }}" data-scenario="{{ i.scenario_key }}">
+        <td><strong>{{ i.source.sheet }}!{{ i.source.cell }}</strong><div>{{ i.label }}</div>{% if i.formula %}<div class="muted">formula <code>{{ i.formula.text }}</code>{% if i.formula.has_cached %}; stored result <code>{{ i.formula.cached }}</code> (not authoritative){% endif %}</div>{% endif %}</td>
+        <td><code>{{ i.source_value }}</code><div class="muted">{{ i.source_unit or 'unit unspecified' }}</div>{% if i.unit_conversion %}<div class="muted">{{ i.unit_conversion }}</div>{% endif %}</td>
+        <td>{% if i.proposed_field %}<code>{{ i.proposed_field }}</code><div class="muted">{{ i.proposed_label }}</div><span class="pill {{ 'ready' if i.item_status == 'READY_EXACT_FIELD_ID' else 'blocked' if i.item_status.startswith('BLOCKED') else 'needs_review' }}">{{ i.item_status|replace('_',' ')|lower }}</span>{% if i.mapping_explanation %}<ul class="tight">{% for e in i.mapping_explanation %}<li class="muted">{{ e }}</li>{% endfor %}</ul>{% endif %}{% else %}—{% endif %}</td>
+        <td>{{ i.scenario_label }}</td>
+        <td>{{ i.target.project }} · {{ i.target.scenario_name }}</td>
+        <td>{{ i.supported_writer or '—' }}</td>
+        <td>{{ i.required_decision }}{% if i.reason %}<div class="muted"><code>{{ i.reason }}</code></div>{% endif %}{% if i.unsupported_dependency %}<div class="muted">{{ i.unsupported_dependency }}</div>{% endif %}{% if i.required_unit_decision %}<div><span class="pill warn">unit decision required</span></div>{% endif %}</td>
+      </tr>{% endfor %}
+    </tbody></table></div></details>
+    {% endif %}{% endfor %}
+  </section>
+
+  <section class="panel" data-testid="macro-assessment">
+    <h2>4. Macro-aware migration assessment</h2>
+    <p class="muted">{{ plan.macro_assessment.interpretation }}</p>
+    <ul class="tight">
+      <li>Inputs extractable as plain data: <strong>{{ plan.macro_assessment.plain_data_inputs_extractable }}</strong></li>
+      <li>Scenarios statically observable: <strong>{{ plan.macro_assessment.scenarios_statically_observable|join(', ') or 'none' }}</strong></li>
+      <li>Scenarios requiring macro execution or recalculation: <strong>{{ plan.macro_assessment.scenarios_requiring_macro_or_recalculation|join(', ') or 'none detected' }}</strong></li>
+      <li>Native Excel formula cells (not translated): <strong>{{ plan.macro_assessment.native_excel_formula_cells }}</strong></li>
+      <li>Map to existing FINCO authorities: scalar batch writer {{ plan.macro_assessment.maps_to_existing_finco_authorities.scalar_batch_writer }}; owner editors {{ plan.macro_assessment.maps_to_existing_finco_authorities.owner_editors }}</li>
+    </ul>
+    {% if plan.macro_assessment.requires_separate_approved_feature %}<h3>Would require a separate approved financial feature</h3><ul class="tight">{% for x in plan.macro_assessment.requires_separate_approved_feature %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+    {% if plan.macro_assessment.prevents_accurate_migration %}<h3>Prevents an accurate full migration</h3><ul class="tight" data-testid="blockers">{% for x in plan.macro_assessment.prevents_accurate_migration %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+    <p><span class="pill warn">{{ plan.macro_assessment.automation_level|replace('_',' ')|lower }}</span></p>
+  </section>
+
+  <section class="panel" data-testid="slices-block">
+    <h2>5. Review supported scalar assumptions</h2>
+    <p class="notice">Each slice is applied through the existing signed review → canonical batch writer, into the <strong>active scenario “{{ active_scenario_name or 'default Working Copy' }}”</strong> only. To target another scenario or Working Copy, switch to it first with the existing scenario workflow, then assess again. Applying several slices means several separate transactions — there is no cross-scenario atomicity.</p>
+    {% for sl in plan.slices %}<div class="scen" data-slice="{{ sl.key }}">
+      <strong>{{ sl.label }}</strong> <span class="muted">({{ sl.kind|lower|replace('_',' ') }} · {{ sl.resolution|replace('_',' ')|lower }})</span> —
+      {{ sl.applyable_rows }} applyable of {{ sl.rows }} rows
+      {% for n in sl.notes %}<span class="pill warn">{{ n|replace('_',' ')|lower }}</span>{% endfor %}
+      {% if sl.apply_eligible %}
+      <form action="/v2/workbook/import/review-slice" method="post" style="display:inline">
+        <input type="hidden" name="project" value="{{ project_code }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="slice_ticket" value="{{ sl.ticket }}"><input type="hidden" name="manifest_token" value="{{ manifest_token }}">
+        <button type="submit" data-testid="review-slice-{{ sl.key }}">Review {{ sl.applyable_rows }} scalar assumptions</button>
+      </form>
+      {% else %}<span class="pill blocked" data-testid="slice-blocked">not apply-eligible: {{ sl.blockers|join(', ')|replace('_',' ')|lower }}</span>{% endif %}
+    </div>{% else %}<p class="muted">No slice can be applied from this workbook.</p>{% endfor %}
+  </section>
+  {% endif %}
+
+  {% if stage == "reconcile" %}
+  <section class="panel" data-testid="reconcile-block">
+    <h2>Migration reconciliation</h2>
+    <p class="notice">Source outputs are compared with the committed native FINCO Run only when every comparability gate holds (dependency evidence, current Run for this scenario, applied values intact, conventions attested). Otherwise the row is <strong>NOT_COMPARABLE</strong> with the reason — no parity is assumed. Delegated to P0-B3; differences are FINCO − source.</p>
+    <div class="metrics">
+      <span>Run: {% if run %}<code>{{ run.history_id }}</code> · {{ run.ran_at }}{% else %}<strong>none committed</strong>{% endif %}</span>
+      <span>Runtime state: <strong data-testid="run-state">{{ freshness }}</strong></span>
+      <span>Applied values intact: <strong>{{ 'yes' if intact else 'NO' }}</strong></span>
+      <span>Current Run: <strong>{{ 'yes' if run_current else 'no' }}</strong></span>
+      <span>Applied inputs: <strong>{{ applied_count }}</strong></span>
+    </div>
+    <p class="muted" data-testid="recon-summary">Outputs: {{ summary.outputs }} · comparable: {{ summary.comparable }} · {% for k, v in summary.counts.items() %}{{ k|replace('_',' ')|lower }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}. Input mapping success is reported separately and is not parity.</p>
+    <div class="table-wrap"><table><thead><tr><th>Source output</th><th>Source value</th><th>FINCO metric</th><th>FINCO value</th><th>Difference (FINCO − source)</th><th>Status</th><th>Reasons</th></tr></thead><tbody>
+      {% for r in rows %}<tr data-status="{{ r.status }}"><td><strong>{{ r.source }}</strong><div>{{ r.label }}</div><div class="muted">{{ r.scenario_key }}</div></td>
+        <td><code>{{ r.source_value }}</code> <span class="muted">{{ r.source_unit or '' }}</span></td>
+        <td>{{ r.finco_metric or '—' }}<div class="muted">{{ r.unit or '' }}</div></td>
+        <td>{% if r.comparison %}<code>{{ r.comparison.finco_value }}</code>{% else %}—{% endif %}</td>
+        <td>{% if r.comparison %}<code>{{ r.comparison.delta_finco_minus_reference }}</code><div class="muted">abs {{ r.comparison.absolute_difference }} · rel {{ r.comparison.relative_difference }} · allowed {{ r.comparison.tolerance_allowance }}</div>{% else %}—{% endif %}</td>
+        <td><span class="pill {{ r.status|lower }}" data-testid="recon-status">{{ r.status|replace('_',' ') }}</span></td>
+        <td>{% for x in r.reasons %}<div class="muted"><code>{{ x }}</code></div>{% endfor %}{% if r.unapplied_leaf_sample %}<div class="muted">e.g. {{ r.unapplied_leaf_sample|join(', ') }}</div>{% endif %}{% if r.horizon_note %}<div class="muted">{{ r.horizon_note }}</div>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="7">The workbook has no numeric output cells recognised as source evidence.</td></tr>{% endfor %}
+    </tbody></table></div>
+    <form action="/v2/workbook/import/reconcile" method="post">
+      <input type="hidden" name="project" value="{{ project_code }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="applied_ticket" value="{{ applied_ticket }}"><input type="hidden" name="manifest_token" value="{{ manifest_token }}">
+      <div class="box">
+        <div class="field"><label for="history_id">Committed Run</label><select id="history_id" name="history_id"><option value="">Newest Run of the target scenario</option>{% for h in history_options %}<option value="{{ h.history_id }}">{{ h.ran_at }} · {{ h.scenario }} · {{ h.history_id[:10] }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="abs_tolerance">Absolute tolerance</label><input type="text" id="abs_tolerance" name="abs_tolerance" value="{{ abs_tolerance or '0' }}"></div>
+        <div class="field"><label for="rel_tolerance">Relative tolerance</label><input type="text" id="rel_tolerance" name="rel_tolerance" value="{{ rel_tolerance or '0' }}"></div>
+        <label><input type="checkbox" name="conventions_attested" value="on" data-testid="attest" {% if attested %}checked{% endif %}> I attest the source outputs and the FINCO metrics have the same scope, currency, period and conventions.</label>
+        <button type="submit">Compare</button>
+      </div>
+      <p class="muted">Tolerances are yours to justify; the default is zero (strict). Nothing is balanced, fitted or widened.</p>
+    </form>
+  </section>
+  {% endif %}
+
+  {% if stage in ("assess", "manifest", "reconcile") and (manifest or manifest_token) %}
+  <section class="panel" data-testid="manifest-block">
+    <h2>Portfolio manifest</h2>
+    <p class="muted">A signed, value-free ledger held by your browser session — up to 12 workbooks, nothing stored on the server, no values or formulas, no background processing. It never starts a Run or overwrites a project. Assess the next workbook below to add it.</p>
+    {% if manifest_error %}<p class="error" role="alert">Previous manifest rejected: {{ manifest_error }}</p>{% endif %}
+    {% if manifest %}{{ manifest_table(manifest) }}{% endif %}
+    {% if manifest_token %}
+    <form action="/v2/workbook/import/assess" method="post" enctype="multipart/form-data" class="box">
+      <input type="hidden" name="project" value="{{ project_code }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="manifest_token" value="{{ manifest_token }}">
+      <div class="field"><label for="next-upload">Assess another workbook for this project</label><input type="file" id="next-upload" name="upload" accept=".xlsx,.xlsm" required></div>
+      <button type="submit" class="secondary">Add to manifest</button>
+    </form>
+    <form action="/v2/workbook/import/manifest" method="post" class="box" style="margin-top:10px">
+      <input type="hidden" name="project" value="{{ project_code }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="manifest_token" value="{{ manifest_token }}">
+      <button type="submit" class="secondary" name="download" value="json" data-testid="download-manifest">Download manifest (JSON)</button>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+</main>
+</body>
+</html>
