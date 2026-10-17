@@ -79,13 +79,14 @@
     <article class="fo-library-reference-card" data-testid="library-row-{{ card.project_code }}">
       <div class="fo-library-reference-topline">
         <span class="fo-library-reference-technology">{{ card.project_type or 'Reference' }}</span>
+        <span class="fo-library-badge fo-library-badge--reference" data-testid="badge-reference-{{ card.project_code }}" title="Protected canonical reference: inspect it, then create your own editable working copy.">Canonical reference · read-only</span>
         {% if card.preview %}
         <span class="fo-library-badge fo-library-badge--preview" data-testid="preview-state-{{ card.project_code }}">PREVIEW</span>
         {% endif %}
       </div>
       <h3>{{ card.project_name }}</h3>
       {% if card.preview %}
-      <p class="fo-library-reference-preview-note">Reference model available. Editable runtime not yet supported.</p>
+      <p class="fo-library-reference-preview-note">Reference model available. Editable runtime not yet supported. Preview only: not released for editing or Runs.</p>
       {% endif %}
       {% if card.kpis %}
       <p data-testid="reference-evidence-{{ card.project_code }}" data-engine-currency="{{ card.engine_currency }}">
@@ -102,6 +103,7 @@
         {% endfor %}
       </dl>
       {% endif %}
+      {% if not card.kpis %}<p class="fo-library-reference-note" data-testid="reference-no-evidence-{{ card.project_code }}">No saved reference results are recorded for this model, so no figures are shown (an absent result is never displayed as zero).</p>{% endif %}
       <p>Explore the {{ card.project_type or 'project' }} reference model, then create your own working copy.</p>
       <div class="fo-library-reference-actions">
         <a href="{{ workbook_destination_fn(card.project_code) }}" data-testid="open-{{ card.project_code }}" data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}" class="fo-library-link">Open model</a>

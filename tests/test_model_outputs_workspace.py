@@ -209,7 +209,8 @@ def test_navigation_and_lazy_panel_are_additive(env):
     record = env.create("solar")
     page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
     assert 'id="tab-outputs"' in page and 'id="panel-outputs"' in page and "Statements &amp; Debt" in page
-    assert 'hx-get="/v2/workbook/outputs?project=' in page
+    assert 'src="/static/js/model_view_refresh.js"' in page
+    assert re.search(r'id="v2-sheet-outputs"[^>]*data-model-view-state="pending"', page)
     # The lazy panel carries no statement data until the tab is opened.
     panel = page[page.index('id="panel-outputs"'):page.index('id="panel-trust"')]
     assert "<table" not in panel
@@ -381,7 +382,10 @@ def test_refresh_is_a_plain_listener_not_a_csp_blocked_trigger_filter():
     from pathlib import Path
     template = Path("app/templates/v2/partials/sheet_outputs.html").read_text(encoding="utf-8")
     script = Path("static/js/model_outputs_workspace.js").read_text(encoding="utf-8")
-    assert "htmx:afterRequest[" not in template and 'hx-trigger="click from:#tab-outputs"' in template
+    manager = Path("static/js/model_view_refresh.js").read_text(encoding="utf-8")
+    assert "htmx:afterRequest[" not in template and 'hx-trigger=' not in template
+    assert "new MutationObserver(schedule)" in manager and "!visible(view)" in manager
+    assert "'/v2/workbook/outputs?'" in manager and "X-Finco-View-Hash" in manager
     assert "addEventListener('htmx:afterRequest'" in script and "'post'" in script
 
 

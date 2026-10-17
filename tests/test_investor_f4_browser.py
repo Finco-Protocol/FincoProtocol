@@ -43,8 +43,11 @@ def test_actual_editor_save_reload_run_history_and_responsive_layout(live_server
         row = root.locator('tr[data-f4-contribution]').last
         for field, value in contribution.items():
             row.locator(f'[data-f4-field={field}]').fill(str(value))
+    expect(root.locator('[data-f4-draft]')).to_have_attribute('data-draft', 'dirty')       # S7-07: unsaved edits are visible
     root.locator('button[value=save]').click()
     expect(root).to_have_attribute('data-state', 'STALE')
+    expect(root.locator('[data-testid=f4-workflow-state]')).to_have_attribute('data-workflow', 'SAVED_NOT_RUN')   # saved, not yet in any Run
+    expect(root.locator('[data-f4-draft]')).to_have_attribute('data-draft', 'clean')
     root.get_by_role('button', name='Reload agreement').click()
     expect(root.locator('tr[data-f4-investor]')).to_have_count(2)
     expect(root).to_have_attribute('data-state', 'STALE')
@@ -58,6 +61,7 @@ def test_actual_editor_save_reload_run_history_and_responsive_layout(live_server
     expect(page.locator('[data-testid=f4-agreement-panel]')).to_have_attribute('open', '')
     root.get_by_role('button', name='Reload agreement').click()
     expect(root).to_have_attribute('data-state', 'CURRENT', timeout=30000)
+    expect(root.locator('[data-testid=f4-workflow-state]')).to_have_attribute('data-workflow', 'INCORPORATED')   # recorded by the canonical Run
     expect(root.locator('[data-testid=f4-capital-accounts] tbody tr')).to_have_count(2)
     expect(root.locator('[data-testid=f4-run-binding]')).to_contain_text(doc['agreement_id'])
     with page.expect_download() as download:

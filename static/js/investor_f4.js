@@ -83,6 +83,17 @@
       contributions: Array.from(form.querySelectorAll('[data-f4-contribution]')).map(fields)
     });
   });
+  // S7-07: make unsaved edits visible. The server renders the clean state; any edit in the agreement form marks it as an unsaved draft.
+  function markDraft(event) {
+    var form = event.target.closest && event.target.closest('.f4-agreement-form');
+    if (!form) return;
+    var note = document.querySelector('[data-f4-draft]');
+    if (!note || note.dataset.draft === 'dirty') return;
+    note.dataset.draft = 'dirty';
+    note.textContent = 'Unsaved draft changes: nothing is stored until you select Save agreement. Saving never runs the model.';
+  }
+  document.addEventListener('input', markDraft);
+  document.addEventListener('click', function (event) { if (event.target.closest && event.target.closest('[data-f4-add],[data-f4-remove]')) markDraft(event); });
   document.addEventListener('htmx:responseError', function (event) {
     var form = event.target.closest('.f4-agreement-form');
     if (!form) return;

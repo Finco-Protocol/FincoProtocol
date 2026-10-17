@@ -171,7 +171,7 @@
     </div>
 
     <div class="v2-sheet-panel" role="tabpanel" id="panel-diagnostics" aria-labelledby="tab-diagnostics" hidden>
-      <div class="v2-sheet-body">{% include "partials/sheet_diagnostics.html" %}</div>
+      <div class="v2-sheet-body">{% if diagnostics_lazy %}{% include "partials/_diagnostics_placeholder.html" %}{% else %}{% include "partials/sheet_diagnostics.html" %}{% endif %}</div>
     </div>
 
     <div class="v2-sheet-panel" role="tabpanel" id="panel-scenarios" aria-labelledby="tab-scenarios" hidden>
@@ -260,7 +260,7 @@
 
     <div class="v2-sheet-panel" role="tabpanel" id="panel-fs" aria-labelledby="tab-fs" hidden>
       <div class="v2-sheet-body">
-        {% include "partials/sheet_financial_statements.html" %}
+        {% if statements_lazy %}{% include "partials/_financial_statements_placeholder.html" %}{% else %}{% include "partials/sheet_financial_statements.html" %}{% endif %}
       </div>
     </div>
 
@@ -273,8 +273,7 @@
     <div class="v2-sheet-panel" role="tabpanel" id="panel-outputs" aria-labelledby="tab-outputs" hidden>
       <div class="v2-sheet-body">
         {# Lazy: the output workspace is fetched from /v2/workbook/outputs when this tab is opened. #}
-        <div id="v2-sheet-outputs" data-sheet="outputs" data-testid="outputs-sheet" data-out-state="PENDING"
-             hx-get="/v2/workbook/outputs?project={{ project_code | urlencode }}" hx-trigger="click from:#tab-outputs" hx-swap="outerHTML">
+        <div id="v2-sheet-outputs" data-sheet="outputs" data-testid="outputs-sheet" data-out-state="PENDING" data-model-view-state="pending">
           <p role="status">Open this tab to load the persisted Statements &amp; Debt output.</p>
         </div>
       </div>
@@ -301,6 +300,7 @@
   </div>{# v2-workspace-body #}
 
   <script src="/static/vendor/flowbite.min.js"></script>{# Flowbite 2.5.2, MIT, self-hosted #}
+  <script src="/static/js/model_view_refresh.js"></script>
   <script src="/static/js/workbook_v2.js"></script>
   <script src="/static/js/fx_ui.js"></script>
   <script src="/static/js/input_guidance.js"></script>
@@ -309,6 +309,7 @@
   <script src="/static/js/investor_f4.js" defer></script>
   <script src="/static/js/model_smart_panel_v2.js"></script>
   <script src="/static/js/inputs_grid_v1.js"></script>
+  <script src="/static/js/model_diagnostics_loader.js"></script>
   <script src="/static/js/model_diagnostics_v1.js"></script>
   <script src="/static/js/model_diagnostics_v2.js"></script>
 

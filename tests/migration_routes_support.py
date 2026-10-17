@@ -75,9 +75,12 @@ def hidden(response, name):
     return html.unescape(m.group(1)) if m else ""
 
 
-def review_slice(env, project, ticket, manifest=""):
-    return env.client.post("/v2/workbook/import/review-slice", data={
-        "project": project.project_code, "csrf_token": generate_csrf_token(), "slice_ticket": ticket, "manifest_token": manifest})
+def review_slice(env, project, ticket, manifest="", *, acknowledged=True):
+    data = {"project": project.project_code, "csrf_token": generate_csrf_token(),
+            "slice_ticket": ticket, "manifest_token": manifest}
+    if acknowledged:
+        data["source_target_ack"] = "on"
+    return env.client.post("/v2/workbook/import/review-slice", data=data)
 
 
 def ids_for(reviewed, label):

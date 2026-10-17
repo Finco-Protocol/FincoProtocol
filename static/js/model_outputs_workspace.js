@@ -75,7 +75,7 @@
       var d = e.detail || {};
       var cfg = d.requestConfig || {};
       var root = document.getElementById('v2-sheet-outputs');
-      if (!root || !d.successful || String(cfg.verb).toLowerCase() !== 'post') { return; }
+      if (window.FincoModelViews || !root || !d.successful || String(cfg.verb).toLowerCase() !== 'post') { return; }
       if (String(cfg.path || '').indexOf('/v2/workbook/') !== 0) { return; }
       var url = root.getAttribute('hx-get');
       if (url && window.htmx) { window.htmx.ajax('GET', url, { target: '#v2-sheet-outputs', swap: 'outerHTML' }); }

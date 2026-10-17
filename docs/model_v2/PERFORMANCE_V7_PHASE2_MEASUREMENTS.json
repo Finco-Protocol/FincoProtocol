@@ -1,0 +1,3223 @@
+{
+  "protocol": {
+    "baseline_head": "fb7b4514090a190b7fc97fdb592b3126e82dfcb1",
+    "main": "97de3833449d91f3febc450c7e163287b63e208d",
+    "python": "3.12.10",
+    "platform": "Windows",
+    "chromium": "151.0.7922.34",
+    "executor": "process",
+    "samples_per_vertical": 5,
+    "network_quiet_ms": 500,
+    "timeout_seconds": 60,
+    "raf_count": 2,
+    "fixture": "40 MW generic reference Working Copy; each Save increments its own p50_hours by 1",
+    "ordering": "Control Solar/Wind, then candidate Solar/Wind; not randomized or interleaved",
+    "save_ui_definition": "Save invocation through completed required network reads, 500 ms quiet, two animation frames",
+    "response_application_definition": "Maximum cumulative beforeSwap-to-afterSwap span, not a sum of overlapping OOB durations"
+  },
+  "cpu_profile_before_chart_reuse": {
+    "sampled_ms": 2225.559,
+    "idle_ms": 1334.329,
+    "workbook_chart_inclusive_ms": 319.889,
+    "source": "one private V8 sample; excluded from acceptance timing samples"
+  },
+  "summaries": {
+    "solar": {
+      "v": "solar",
+      "before": {
+        "saveUI": 1748.4752000309527,
+        "savePromise": 348.62629999406636,
+        "saveHTTP": 186.405,
+        "bytes": 618049,
+        "oob": 11,
+        "longTasks": 308,
+        "longestTask": 100,
+        "applySpan": 99.59999999403954,
+        "runHTTP": 2957.564,
+        "runUI": 4451.149799977429,
+        "runBytes": 758343,
+        "initialBytes": 1584270,
+        "initialDOM": 16109,
+        "fsBytes": 225644,
+        "fsDOM": 2989,
+        "worker": 2266.205,
+        "commit": 80.077,
+        "postEngine": 501.997,
+        "prepare": 91.324,
+        "response": 162.142
+      },
+      "after": {
+        "saveUI": 1548.426199995447,
+        "savePromise": 784.7074000164866,
+        "saveHTTP": 165.934,
+        "bytes": 401528,
+        "oob": 17,
+        "longTasks": 349,
+        "longestTask": 216,
+        "applySpan": 198.40000000596046,
+        "runHTTP": 2865.591,
+        "runUI": 4482.491699978709,
+        "runBytes": 536183,
+        "initialBytes": 1362089,
+        "initialDOM": 13126,
+        "fsBytes": 620,
+        "fsDOM": 6,
+        "worker": 2269.922,
+        "commit": 85.72,
+        "postEngine": 327.945,
+        "prepare": 96.633,
+        "response": 97.542
+      }
+    },
+    "wind": {
+      "v": "wind",
+      "before": {
+        "saveUI": 1913.496799999848,
+        "savePromise": 382.58879998466,
+        "saveHTTP": 176.121,
+        "bytes": 628022,
+        "oob": 11,
+        "longTasks": 474,
+        "longestTask": 122,
+        "applySpan": 120.09999999403954,
+        "runHTTP": 3373.447,
+        "runUI": 4859.729099960532,
+        "runBytes": 796381,
+        "initialBytes": 1648260,
+        "initialDOM": 16766,
+        "fsBytes": 246635,
+        "fsDOM": 3269,
+        "worker": 2674.148,
+        "commit": 80.914,
+        "postEngine": 361.19,
+        "prepare": 92.905,
+        "response": 118.234
+      },
+      "after": {
+        "saveUI": 1631.216499954462,
+        "savePromise": 796.012700011488,
+        "saveHTTP": 174.902,
+        "bytes": 407026,
+        "oob": 17,
+        "longTasks": 320,
+        "longestTask": 186,
+        "applySpan": 171.09999999403954,
+        "runHTTP": 3318.452,
+        "runUI": 4916.957499983255,
+        "runBytes": 553518,
+        "initialBytes": 1405376,
+        "initialDOM": 13503,
+        "fsBytes": 620,
+        "fsDOM": 6,
+        "worker": 2715.252,
+        "commit": 37.907,
+        "postEngine": 321.528,
+        "prepare": 91.728,
+        "response": 96.393
+      }
+    }
+  },
+  "control": {
+    "solar": [
+      {
+        "sample": 0,
+        "initial": {
+          "bytes": 1580974,
+          "dom": 16081,
+          "fs_bytes": 225646,
+          "fs_dom": 2989
+        },
+        "save": {
+          "promise_ms": 292.7987999864854,
+          "usable_ui_ms": 1649.2871000082232,
+          "save_http_ms": 124.652,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 124.5,
+                "ttfb_ms": 123.30000001192093,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 128,
+                "ttfb_ms": 126.39999997615814,
+                "decoded_bytes": 62754,
+                "encoded_bytes": 62754
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 298,
+                "ttfb_ms": 224.7999999821186,
+                "decoded_bytes": 180169,
+                "encoded_bytes": 180169
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 528.3000000119209,
+                "ttfb_ms": 432.89999997615814,
+                "decoded_bytes": 214741,
+                "encoded_bytes": 214741
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 529.4000000059605,
+                "ttfb_ms": 526.5,
+                "decoded_bytes": 85407,
+                "encoded_bytes": 85407
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 529.2999999821186,
+                "ttfb_ms": 526.4000000059605,
+                "decoded_bytes": 27657,
+                "encoded_bytes": 27657
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 529.5,
+                "ttfb_ms": 526.2000000178814,
+                "decoded_bytes": 40369,
+                "encoded_bytes": 40369
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 471.40000000596046,
+                "ttfb_ms": 468.89999997615814,
+                "decoded_bytes": 3380,
+                "encoded_bytes": 3380
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3326.0999999940395,
+                "duration": 77
+              },
+              {
+                "start": 3557.199999988079,
+                "duration": 72
+              },
+              {
+                "start": 3630.199999988079,
+                "duration": 56
+              },
+              {
+                "start": 3689.300000011921,
+                "duration": 94
+              }
+            ],
+            "swap_durations_ms": [
+              46.19999998807907,
+              59.19999998807907,
+              75.7999999821186,
+              42.099999994039536,
+              55.5,
+              70.40000000596046,
+              27.400000005960464,
+              40.69999998807907,
+              54.400000005960464,
+              18,
+              30.69999998807907,
+              43.400000005960464,
+              58.400000005960464,
+              70.2999999821186,
+              81.40000000596046,
+              93.59999999403954,
+              20,
+              30.799999982118607,
+              44.900000005960464,
+              13.400000005960464
+            ],
+            "feedback_ms": 281,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=121.088",
+            "/v2/workbook/grid/panel": "input_build;dur=17.349, server;dur=124.520",
+            "/v2/workbook/grid/sheet": "input_build;dur=21.374, server;dur=72.411",
+            "/v2/workbook/run-history": "input_build;dur=22.062, server;dur=92.869"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5114.786199992523,
+          "http_ms": 3550.209,
+          "bytes": 755046,
+          "server_timing": "other_projection;dur=150.153, post_engine;dur=542.691, response_assembly;dur=162.142, run_commit;dur=86.595, run_prepare;dur=85.697, server;dur=3544.255, statements;dur=109.438, template_render;dur=0.389, worker_roundtrip;dur=2764.968"
+        }
+      },
+      {
+        "sample": 1,
+        "initial": {
+          "bytes": 1582743,
+          "dom": 16095,
+          "fs_bytes": 225646,
+          "fs_dom": 2989
+        },
+        "save": {
+          "promise_ms": 387.71430001361296,
+          "usable_ui_ms": 1830.1292000105605,
+          "save_http_ms": 186.405,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 186.30000001192093,
+                "ttfb_ms": 184.59999999403954,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 150.7000000178814,
+                "ttfb_ms": 148.7000000178814,
+                "decoded_bytes": 62754,
+                "encoded_bytes": 62754
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 354.59999999403954,
+                "ttfb_ms": 275.69999998807907,
+                "decoded_bytes": 180169,
+                "encoded_bytes": 180169
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 510.80000001192093,
+                "ttfb_ms": 351.5,
+                "decoded_bytes": 214741,
+                "encoded_bytes": 214741
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 675.6999999880791,
+                "ttfb_ms": 670.8000000119209,
+                "decoded_bytes": 85410,
+                "encoded_bytes": 85410
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 675.7999999821186,
+                "ttfb_ms": 669.0999999940395,
+                "decoded_bytes": 27657,
+                "encoded_bytes": 27657
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 676,
+                "ttfb_ms": 668.8999999761581,
+                "decoded_bytes": 40375,
+                "encoded_bytes": 40375
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 614.4000000059605,
+                "ttfb_ms": 610.6999999880791,
+                "decoded_bytes": 5034,
+                "encoded_bytes": 5034
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3517.4000000059605,
+                "duration": 92
+              },
+              {
+                "start": 3630.9000000059605,
+                "duration": 58
+              },
+              {
+                "start": 3744.9000000059605,
+                "duration": 94
+              },
+              {
+                "start": 3844.5,
+                "duration": 61
+              },
+              {
+                "start": 3905.7000000178814,
+                "duration": 114
+              },
+              {
+                "start": 4023.5999999940395,
+                "duration": 62
+              }
+            ],
+            "swap_durations_ms": [
+              50.400000005960464,
+              68.40000000596046,
+              88.19999998807907,
+              53.30000001192093,
+              70.69999998807907,
+              91.30000001192093,
+              28.599999994039536,
+              43.5,
+              59.400000005960464,
+              18.700000017881393,
+              32.60000002384186,
+              47,
+              61,
+              78.30000001192093,
+              93.7000000178814,
+              112.5,
+              27.700000017881393,
+              45.400000005960464,
+              61.30000001192093,
+              15.699999988079071
+            ],
+            "feedback_ms": 373,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=182.010",
+            "/v2/workbook/grid/panel": "input_build;dur=19.484, server;dur=145.179",
+            "/v2/workbook/grid/sheet": "input_build;dur=21.860, server;dur=83.359",
+            "/v2/workbook/run-history": "input_build;dur=23.250, server;dur=160.558"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4175.171300012153,
+          "http_ms": 2809.154,
+          "bytes": 756679,
+          "server_timing": "other_projection;dur=83.338, post_engine;dur=309.443, response_assembly;dur=90.687, run_commit;dur=76.539, run_prepare;dur=91.324, server;dur=2803.611, statements;dur=3.031, template_render;dur=0.200, worker_roundtrip;dur=2266.205"
+        }
+      },
+      {
+        "sample": 2,
+        "initial": {
+          "bytes": 1584270,
+          "dom": 16109,
+          "fs_bytes": 225644,
+          "fs_dom": 2989
+        },
+        "save": {
+          "promise_ms": 348.62629999406636,
+          "usable_ui_ms": 1565.167399996426,
+          "save_http_ms": 187.685,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 187.69999998807907,
+                "ttfb_ms": 186.2999999821186,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 125,
+                "ttfb_ms": 123.40000000596046,
+                "decoded_bytes": 62754,
+                "encoded_bytes": 62754
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 254.5,
+                "ttfb_ms": 194.59999999403954,
+                "decoded_bytes": 180169,
+                "encoded_bytes": 180169
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 454.80000001192093,
+                "ttfb_ms": 371,
+                "decoded_bytes": 214741,
+                "encoded_bytes": 214741
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 456.69999998807907,
+                "ttfb_ms": 454.10000002384186,
+                "decoded_bytes": 85410,
+                "encoded_bytes": 85410
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 456.90000000596046,
+                "ttfb_ms": 453.5,
+                "decoded_bytes": 27657,
+                "encoded_bytes": 27657
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 456.59999999403954,
+                "ttfb_ms": 452.90000000596046,
+                "decoded_bytes": 40374,
+                "encoded_bytes": 40374
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 400,
+                "ttfb_ms": 397.2999999821186,
+                "decoded_bytes": 6688,
+                "encoded_bytes": 6688
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3240.800000011921,
+                "duration": 61
+              },
+              {
+                "start": 3536.800000011921,
+                "duration": 73
+              }
+            ],
+            "swap_durations_ms": [
+              31.19999998807907,
+              46.599999994039536,
+              59.19999998807907,
+              28.5,
+              37.79999998211861,
+              48.29999998211861,
+              19.700000017881393,
+              31.099999994039536,
+              41.70000001788139,
+              17.30000001192093,
+              26.69999998807907,
+              35.900000005960464,
+              46.5,
+              55.099999994039536,
+              64,
+              72.40000000596046,
+              15.5,
+              24.900000005960464,
+              38.60000002384186,
+              29.900000005960464
+            ],
+            "feedback_ms": 337,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=184.348",
+            "/v2/workbook/grid/panel": "input_build;dur=16.054, server;dur=121.497",
+            "/v2/workbook/grid/sheet": "input_build;dur=16.708, server;dur=60.195",
+            "/v2/workbook/run-history": "input_build;dur=17.329, server;dur=81.763"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4797.2937999875285,
+          "http_ms": 3132.633,
+          "bytes": 758343,
+          "server_timing": "other_projection;dur=252.160, post_engine;dur=574.427, response_assembly;dur=263.461, run_commit;dur=78.479, run_prepare;dur=93.018, server;dur=3127.179, statements;dur=3.198, template_render;dur=0.476, worker_roundtrip;dur=2282.967"
+        }
+      },
+      {
+        "sample": 3,
+        "initial": {
+          "bytes": 1585932,
+          "dom": 16123,
+          "fs_bytes": 225644,
+          "fs_dom": 2989
+        },
+        "save": {
+          "promise_ms": 406.7113999626599,
+          "usable_ui_ms": 2082.9207999631763,
+          "save_http_ms": 222.352,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 222.19999998807907,
+                "ttfb_ms": 220,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 137.59999999403954,
+                "ttfb_ms": 136,
+                "decoded_bytes": 62754,
+                "encoded_bytes": 62754
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 519.1999999880791,
+                "ttfb_ms": 448,
+                "decoded_bytes": 180169,
+                "encoded_bytes": 180169
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 742.1000000238419,
+                "ttfb_ms": 601.0999999940395,
+                "decoded_bytes": 214741,
+                "encoded_bytes": 214741
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 743.7000000178814,
+                "ttfb_ms": 741,
+                "decoded_bytes": 85410,
+                "encoded_bytes": 85410
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 744.7000000178814,
+                "ttfb_ms": 739.4000000059605,
+                "decoded_bytes": 27657,
+                "encoded_bytes": 27657
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 744.0999999940395,
+                "ttfb_ms": 739,
+                "decoded_bytes": 40374,
+                "encoded_bytes": 40374
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 682.8000000119209,
+                "ttfb_ms": 680.1999999880791,
+                "decoded_bytes": 8342,
+                "encoded_bytes": 8342
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3932.0999999940395,
+                "duration": 98
+              },
+              {
+                "start": 4048.2000000178814,
+                "duration": 78
+              },
+              {
+                "start": 4199.4000000059605,
+                "duration": 81
+              },
+              {
+                "start": 4280.700000017881,
+                "duration": 68
+              },
+              {
+                "start": 4354.200000017881,
+                "duration": 124
+              },
+              {
+                "start": 4484.700000017881,
+                "duration": 60
+              }
+            ],
+            "swap_durations_ms": [
+              55.599999994039536,
+              72.40000000596046,
+              93.19999998807907,
+              46.80000001192093,
+              62.099999994039536,
+              78.5,
+              30.5,
+              47.599999994039536,
+              65.30000001192093,
+              22.5,
+              37.099999994039536,
+              63.400000005960464,
+              79.90000000596046,
+              92.69999998807907,
+              108.19999998807907,
+              123.19999998807907,
+              26.69999998807907,
+              41.599999994039536,
+              58.29999998211861,
+              18.599999994039536
+            ],
+            "feedback_ms": 394,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=217.579",
+            "/v2/workbook/grid/panel": "input_build;dur=18.102, server;dur=133.291",
+            "/v2/workbook/grid/sheet": "input_build;dur=23.779, server;dur=82.644",
+            "/v2/workbook/run-history": "input_build;dur=23.470, server;dur=136.895"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4324.705799983349,
+          "http_ms": 2821.831,
+          "bytes": 760020,
+          "server_timing": "other_projection;dur=118.740, post_engine;dur=359.209, response_assembly;dur=127.101, run_commit;dur=80.077, run_prepare;dur=91.183, server;dur=2816.346, statements;dur=3.912, template_render;dur=0.259, worker_roundtrip;dur=2184.636"
+        }
+      },
+      {
+        "sample": 4,
+        "initial": {
+          "bytes": 1587650,
+          "dom": 16137,
+          "fs_bytes": 225644,
+          "fs_dom": 2989
+        },
+        "save": {
+          "promise_ms": 316.7599000153132,
+          "usable_ui_ms": 1748.4752000309527,
+          "save_http_ms": 143.021,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 143,
+                "ttfb_ms": 141.59999999403954,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 134.30000001192093,
+                "ttfb_ms": 133,
+                "decoded_bytes": 62754,
+                "encoded_bytes": 62754
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 407.2999999821186,
+                "ttfb_ms": 339.90000000596046,
+                "decoded_bytes": 180169,
+                "encoded_bytes": 180169
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 598.2999999821186,
+                "ttfb_ms": 595.5,
+                "decoded_bytes": 214741,
+                "encoded_bytes": 214741
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 598.7999999821186,
+                "ttfb_ms": 595.6999999880791,
+                "decoded_bytes": 85410,
+                "encoded_bytes": 85410
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 599.2999999821186,
+                "ttfb_ms": 596,
+                "decoded_bytes": 27657,
+                "encoded_bytes": 27657
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 599,
+                "ttfb_ms": 595.3000000119209,
+                "decoded_bytes": 40370,
+                "encoded_bytes": 40370
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 546.5999999940395,
+                "ttfb_ms": 544.3000000119209,
+                "decoded_bytes": 9996,
+                "encoded_bytes": 9996
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3366.0999999940395,
+                "duration": 87
+              },
+              {
+                "start": 3582,
+                "duration": 69
+              },
+              {
+                "start": 3652.0999999940395,
+                "duration": 52
+              },
+              {
+                "start": 3707.7999999821186,
+                "duration": 100
+              }
+            ],
+            "swap_durations_ms": [
+              45.69999998807907,
+              65.40000000596046,
+              84.69999998807907,
+              38.900000005960464,
+              52.900000005960464,
+              67.60000002384186,
+              24.19999998807907,
+              36.5,
+              50.599999994039536,
+              21.19999998807907,
+              34.89999997615814,
+              48.19999998807907,
+              61.69999998807907,
+              74.2999999821186,
+              85.89999997615814,
+              99.59999999403954,
+              20.900000005960464,
+              32.20000001788139,
+              45.400000005960464,
+              13
+            ],
+            "feedback_ms": 305,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=139.611",
+            "/v2/workbook/grid/panel": "input_build;dur=20.053, server;dur=130.828",
+            "/v2/workbook/grid/sheet": "input_build;dur=19.084, server;dur=70.377",
+            "/v2/workbook/run-history": "input_build;dur=21.495, server;dur=118.682"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4451.149799977429,
+          "http_ms": 2957.564,
+          "bytes": 761667,
+          "server_timing": "other_projection;dur=160.181, post_engine;dur=501.997, response_assembly;dur=172.742, run_commit;dur=99.584, run_prepare;dur=99.070, server;dur=2950.538, statements;dur=2.949, template_render;dur=0.302, worker_roundtrip;dur=2148.205"
+        }
+      }
+    ],
+    "wind": [
+      {
+        "sample": 0,
+        "initial": {
+          "bytes": 1644968,
+          "dom": 16738,
+          "fs_bytes": 246635,
+          "fs_dom": 3269
+        },
+        "save": {
+          "promise_ms": 360.9284999547526,
+          "usable_ui_ms": 1913.496799999848,
+          "save_http_ms": 167.553,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 167.39999997615814,
+                "ttfb_ms": 165.19999998807907,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 141.2000000178814,
+                "ttfb_ms": 139.5,
+                "decoded_bytes": 62728,
+                "encoded_bytes": 62728
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 365.39999997615814,
+                "ttfb_ms": 284.7000000178814,
+                "decoded_bytes": 184370,
+                "encoded_bytes": 184370
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 518.5999999940395,
+                "ttfb_ms": 362,
+                "decoded_bytes": 214927,
+                "encoded_bytes": 214927
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 626.6999999880791,
+                "ttfb_ms": 622.5999999940395,
+                "decoded_bytes": 88374,
+                "encoded_bytes": 88374
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 626.9000000059605,
+                "ttfb_ms": 622.5,
+                "decoded_bytes": 27656,
+                "encoded_bytes": 27656
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 626.5,
+                "ttfb_ms": 622,
+                "decoded_bytes": 43020,
+                "encoded_bytes": 43020
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 562.0999999940395,
+                "ttfb_ms": 559.0999999940395,
+                "decoded_bytes": 3380,
+                "encoded_bytes": 3380
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3512,
+                "duration": 96
+              },
+              {
+                "start": 3628,
+                "duration": 60
+              },
+              {
+                "start": 3770.300000011921,
+                "duration": 92
+              },
+              {
+                "start": 3863.2000000178814,
+                "duration": 72
+              },
+              {
+                "start": 3940,
+                "duration": 133
+              },
+              {
+                "start": 4078.4000000059605,
+                "duration": 77
+              }
+            ],
+            "swap_durations_ms": [
+              49.5,
+              71,
+              93.09999999403954,
+              50.80000001192093,
+              67,
+              88.59999999403954,
+              33.30000001192093,
+              50.80000001192093,
+              69.59999999403954,
+              25.400000005960464,
+              46,
+              62,
+              81.30000001192093,
+              97.40000000596046,
+              114.09999999403954,
+              131.90000000596046,
+              26.599999994039536,
+              52.099999994039536,
+              74.90000000596046,
+              17.599999994039536
+            ],
+            "feedback_ms": 345,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=161.437",
+            "/v2/workbook/grid/panel": "input_build;dur=18.957, server;dur=136.537",
+            "/v2/workbook/grid/sheet": "input_build;dur=24.453, server;dur=81.646",
+            "/v2/workbook/run-history": "input_build;dur=24.990, server;dur=104.247"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5173.988300026394,
+          "http_ms": 3472.676,
+          "bytes": 793092,
+          "server_timing": "other_projection;dur=133.366, post_engine;dur=504.633, response_assembly;dur=145.726, run_commit;dur=78.625, run_prepare;dur=92.905, server;dur=3466.547, statements;dur=5.725, template_render;dur=0.510, worker_roundtrip;dur=2657.606"
+        }
+      },
+      {
+        "sample": 1,
+        "initial": {
+          "bytes": 1646621,
+          "dom": 16752,
+          "fs_bytes": 246635,
+          "fs_dom": 3269
+        },
+        "save": {
+          "promise_ms": 382.58879998466,
+          "usable_ui_ms": 1831.2036999850534,
+          "save_http_ms": 174.506,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 174.40000000596046,
+                "ttfb_ms": 172.09999999403954,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 157,
+                "ttfb_ms": 155.19999998807907,
+                "decoded_bytes": 62728,
+                "encoded_bytes": 62728
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 377.30000001192093,
+                "ttfb_ms": 315.7999999821186,
+                "decoded_bytes": 184370,
+                "encoded_bytes": 184370
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 541.5999999940395,
+                "ttfb_ms": 538.4000000059605,
+                "decoded_bytes": 214927,
+                "encoded_bytes": 214927
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 540.9000000059605,
+                "ttfb_ms": 538.0999999940395,
+                "decoded_bytes": 88374,
+                "encoded_bytes": 88374
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 542.5,
+                "ttfb_ms": 538.0999999940395,
+                "decoded_bytes": 27656,
+                "encoded_bytes": 27656
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 542.1999999880791,
+                "ttfb_ms": 537.6999999880791,
+                "decoded_bytes": 43019,
+                "encoded_bytes": 43019
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 485.2999999821186,
+                "ttfb_ms": 481.2000000178814,
+                "decoded_bytes": 5034,
+                "encoded_bytes": 5034
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3560.7999999821186,
+                "duration": 76
+              },
+              {
+                "start": 3755.5999999940395,
+                "duration": 69
+              },
+              {
+                "start": 3828.699999988079,
+                "duration": 69
+              },
+              {
+                "start": 3898,
+                "duration": 120
+              },
+              {
+                "start": 4021.5,
+                "duration": 64
+              }
+            ],
+            "swap_durations_ms": [
+              39.400000005960464,
+              55.900000005960464,
+              73.80000001192093,
+              38.29999998211861,
+              51.19999998807907,
+              67.59999999403954,
+              32.599999994039536,
+              49.599999994039536,
+              67.19999998807907,
+              19.5,
+              36,
+              52.900000005960464,
+              73,
+              88.40000000596046,
+              104.40000000596046,
+              118.69999998807907,
+              27.099999994039536,
+              44,
+              63.69999998807907,
+              15
+            ],
+            "feedback_ms": 368,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=168.781",
+            "/v2/workbook/grid/panel": "input_build;dur=19.118, server;dur=151.918",
+            "/v2/workbook/grid/sheet": "input_build;dur=18.465, server;dur=70.410",
+            "/v2/workbook/run-history": "input_build;dur=17.454, server;dur=91.013"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5265.222299960442,
+          "http_ms": 3479.998,
+          "bytes": 794749,
+          "server_timing": "other_projection;dur=76.809, post_engine;dur=311.497, response_assembly;dur=85.507, run_commit;dur=83.884, run_prepare;dur=90.241, server;dur=3474.985, statements;dur=6.430, template_render;dur=0.324, worker_roundtrip;dur=2869.117"
+        }
+      },
+      {
+        "sample": 2,
+        "initial": {
+          "bytes": 1648260,
+          "dom": 16766,
+          "fs_bytes": 246635,
+          "fs_dom": 3269
+        },
+        "save": {
+          "promise_ms": 377.3788000107743,
+          "usable_ui_ms": 1848.1611000024714,
+          "save_http_ms": 176.121,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 176,
+                "ttfb_ms": 174.40000000596046,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 153.30000001192093,
+                "ttfb_ms": 151.09999999403954,
+                "decoded_bytes": 62728,
+                "encoded_bytes": 62728
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 404.40000000596046,
+                "ttfb_ms": 340.59999999403954,
+                "decoded_bytes": 184370,
+                "encoded_bytes": 184370
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 580.9000000059605,
+                "ttfb_ms": 577.5,
+                "decoded_bytes": 214927,
+                "encoded_bytes": 214927
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 580,
+                "ttfb_ms": 576.9000000059605,
+                "decoded_bytes": 88374,
+                "encoded_bytes": 88374
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 580.3000000119209,
+                "ttfb_ms": 576.1999999880791,
+                "decoded_bytes": 27656,
+                "encoded_bytes": 27656
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 580.0999999940395,
+                "ttfb_ms": 574.0999999940395,
+                "decoded_bytes": 43023,
+                "encoded_bytes": 43023
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 527.6999999880791,
+                "ttfb_ms": 524.2000000178814,
+                "decoded_bytes": 6688,
+                "encoded_bytes": 6688
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3308.2999999821186,
+                "duration": 72
+              },
+              {
+                "start": 3502,
+                "duration": 79
+              },
+              {
+                "start": 3585.0999999940395,
+                "duration": 58
+              },
+              {
+                "start": 3643.4000000059605,
+                "duration": 138
+              },
+              {
+                "start": 3785.199999988079,
+                "duration": 52
+              }
+            ],
+            "swap_durations_ms": [
+              38.5,
+              52.69999998807907,
+              70,
+              42.099999994039536,
+              56,
+              77.40000000596046,
+              27.100000023841858,
+              41.30000001192093,
+              56.80000001192093,
+              19.399999976158142,
+              33.29999998211861,
+              47.19999998807907,
+              89.59999999403954,
+              106,
+              122.69999998807907,
+              136.69999998807907,
+              23.30000001192093,
+              36.400000005960464,
+              50.5,
+              16.099999994039536
+            ],
+            "feedback_ms": 364,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=170.624",
+            "/v2/workbook/grid/panel": "input_build;dur=22.765, server;dur=148.334",
+            "/v2/workbook/grid/sheet": "input_build;dur=17.831, server;dur=68.377",
+            "/v2/workbook/run-history": "input_build;dur=19.694, server;dur=105.907"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4771.389499946963,
+          "http_ms": 3344.397,
+          "bytes": 796381,
+          "server_timing": "other_projection;dur=109.687, post_engine;dur=356.360, response_assembly;dur=118.234, run_commit;dur=81.805, run_prepare;dur=80.892, server;dur=3340.425, statements;dur=3.962, template_render;dur=0.223, worker_roundtrip;dur=2754.927"
+        }
+      },
+      {
+        "sample": 3,
+        "initial": {
+          "bytes": 1649950,
+          "dom": 16780,
+          "fs_bytes": 246635,
+          "fs_dom": 3269
+        },
+        "save": {
+          "promise_ms": 486.1593000241555,
+          "usable_ui_ms": 2012.6951000420377,
+          "save_http_ms": 270.178,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 270,
+                "ttfb_ms": 267.60000002384186,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 154.59999999403954,
+                "ttfb_ms": 152.69999998807907,
+                "decoded_bytes": 62728,
+                "encoded_bytes": 62728
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 420.80000001192093,
+                "ttfb_ms": 341,
+                "decoded_bytes": 184370,
+                "encoded_bytes": 184370
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 692.6999999880791,
+                "ttfb_ms": 492.30000001192093,
+                "decoded_bytes": 214927,
+                "encoded_bytes": 214927
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 698,
+                "ttfb_ms": 692.3000000119209,
+                "decoded_bytes": 88374,
+                "encoded_bytes": 88374
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 696.2999999821186,
+                "ttfb_ms": 691.0999999940395,
+                "decoded_bytes": 27656,
+                "encoded_bytes": 27656
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 695.6999999880791,
+                "ttfb_ms": 690.6999999880791,
+                "decoded_bytes": 43022,
+                "encoded_bytes": 43022
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 641.3000000119209,
+                "ttfb_ms": 638,
+                "decoded_bytes": 8342,
+                "encoded_bytes": 8342
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 4077.0999999940395,
+                "duration": 100
+              },
+              {
+                "start": 4200.5999999940395,
+                "duration": 65
+              },
+              {
+                "start": 4350,
+                "duration": 78
+              },
+              {
+                "start": 4432.9000000059605,
+                "duration": 73
+              },
+              {
+                "start": 4506.0999999940395,
+                "duration": 107
+              },
+              {
+                "start": 4617.5999999940395,
+                "duration": 51
+              }
+            ],
+            "swap_durations_ms": [
+              51.60000002384186,
+              75.80000001192093,
+              97.5,
+              45.19999998807907,
+              59.599999994039536,
+              76.40000000596046,
+              33.20000001788139,
+              53.20000001788139,
+              70.80000001192093,
+              19.100000023841858,
+              32.60000002384186,
+              47.10000002384186,
+              62.900000005960464,
+              78.60000002384186,
+              92,
+              106.10000002384186,
+              21.900000005960464,
+              35.80000001192093,
+              49.69999998807907,
+              14.199999988079071
+            ],
+            "feedback_ms": 466,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=264.168",
+            "/v2/workbook/grid/panel": "input_build;dur=19.831, server;dur=149.652",
+            "/v2/workbook/grid/sheet": "input_build;dur=21.318, server;dur=81.219",
+            "/v2/workbook/run-history": "input_build;dur=20.323, server;dur=116.303"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4859.729099960532,
+          "http_ms": 3373.447,
+          "bytes": 798014,
+          "server_timing": "other_projection;dur=82.520, post_engine;dur=381.771, response_assembly;dur=90.384, run_commit;dur=80.914, run_prepare;dur=104.783, server;dur=3367.441, statements;dur=3.456, template_render;dur=0.231, worker_roundtrip;dur=2674.148"
+        }
+      },
+      {
+        "sample": 4,
+        "initial": {
+          "bytes": 1651578,
+          "dom": 16794,
+          "fs_bytes": 246637,
+          "fs_dom": 3269
+        },
+        "save": {
+          "promise_ms": 423.988799971994,
+          "usable_ui_ms": 2084.993999975268,
+          "save_http_ms": 226.039,
+          "oob_fragments": 11,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 226,
+                "ttfb_ms": 223.69999998807907,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 148.30000001192093,
+                "ttfb_ms": 146.80000001192093,
+                "decoded_bytes": 62728,
+                "encoded_bytes": 62728
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 363.7000000178814,
+                "ttfb_ms": 284.10000002384186,
+                "decoded_bytes": 184370,
+                "encoded_bytes": 184370
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 701,
+                "ttfb_ms": 552.8000000119209,
+                "decoded_bytes": 214927,
+                "encoded_bytes": 214927
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 704.2999999821186,
+                "ttfb_ms": 694.5999999940395,
+                "decoded_bytes": 88374,
+                "encoded_bytes": 88374
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 705.3000000119209,
+                "ttfb_ms": 694.9000000059605,
+                "decoded_bytes": 27656,
+                "encoded_bytes": 27656
+              },
+              {
+                "path": "/v2/workbook/grid/sheet",
+                "duration_ms": 703.2999999821186,
+                "ttfb_ms": 692.3999999761581,
+                "decoded_bytes": 43015,
+                "encoded_bytes": 43015
+              },
+              {
+                "path": "/v2/workbook/run-history",
+                "duration_ms": 643.3000000119209,
+                "ttfb_ms": 640.4000000059605,
+                "decoded_bytes": 9996,
+                "encoded_bytes": 9996
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3944.300000011921,
+                "duration": 120
+              },
+              {
+                "start": 4186.5,
+                "duration": 71
+              },
+              {
+                "start": 4284.0999999940395,
+                "duration": 122
+              },
+              {
+                "start": 4412.5999999940395,
+                "duration": 68
+              },
+              {
+                "start": 4481.5,
+                "duration": 74
+              },
+              {
+                "start": 4559.9000000059605,
+                "duration": 114
+              }
+            ],
+            "swap_durations_ms": [
+              63.10000002384186,
+              84,
+              117.2000000178814,
+              62.599999994039536,
+              92.69999998807907,
+              120.09999999403954,
+              32.5,
+              48,
+              66.2999999821186,
+              38.599999994039536,
+              54.29999998211861,
+              72.19999998807907,
+              23.400000005960464,
+              39.20000001788139,
+              55.5,
+              70.30000001192093,
+              84.30000001192093,
+              99.09999999403954,
+              112.90000000596046,
+              14.900000005960464
+            ],
+            "feedback_ms": 410,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=220.318",
+            "/v2/workbook/grid/panel": "input_build;dur=19.588, server;dur=144.500",
+            "/v2/workbook/grid/sheet": "input_build;dur=24.026, server;dur=91.782",
+            "/v2/workbook/run-history": "input_build;dur=23.044, server;dur=144.078"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4620.271199964918,
+          "http_ms": 3290.951,
+          "bytes": 799627,
+          "server_timing": "other_projection;dur=112.133, post_engine;dur=361.190, response_assembly;dur=119.411, run_commit;dur=62.476, run_prepare;dur=93.756, server;dur=3285.899, statements;dur=3.399, template_render;dur=0.201, worker_roundtrip;dur=2673.699"
+        }
+      }
+    ]
+  },
+  "rejected_pre_chart_optimization": {
+    "reason": "Solar median Save regressed, Wind effectively unchanged; do not treat fewer requests as speed acceptance",
+    "solar": [
+      {
+        "sample": 0,
+        "initial": {
+          "bytes": 1358791,
+          "dom": 13098,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 1058.432299993001,
+          "usable_ui_ms": 1850.5141999921761,
+          "save_http_ms": 118.843,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 118.7000000178814,
+                "ttfb_ms": 117,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 385.19999998807907,
+                "ttfb_ms": 382.39999997615814,
+                "decoded_bytes": 399863,
+                "encoded_bytes": 399863
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 167.80000001192093,
+                "ttfb_ms": 166.09999999403954,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3233.5,
+                "duration": 537
+              },
+              {
+                "start": 3829.800000011921,
+                "duration": 117
+              }
+            ],
+            "swap_durations_ms": [
+              166.09999999403954,
+              182.39999997615814,
+              200,
+              214.5,
+              229.39999997615814,
+              246.5,
+              263.39999997615814,
+              280.59999999403954,
+              302.59999999403954,
+              319.5,
+              334.5,
+              350.09999999403954,
+              367,
+              384.69999998807907,
+              400.59999999403954,
+              416.7999999821186,
+              433.19999998807907,
+              448.89999997615814,
+              472.2999999821186,
+              490.7999999821186,
+              509.2999999821186,
+              21.400000005960464
+            ],
+            "feedback_ms": 1050,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=114.293",
+            "/v2/workbook/grid/panel": "coherence_check;dur=28.279, other_projection;dur=139.652, response_assembly;dur=152.715, server;dur=379.696, snapshot_capture;dur=52.148, template_render;dur=1.803",
+            "/v2/workbook/financing/integrity": "server;dur=163.116"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5906.402199994773,
+          "http_ms": 3241.905,
+          "bytes": 532884,
+          "server_timing": "other_projection;dur=131.750, post_engine;dur=437.098, response_assembly;dur=140.664, run_commit;dur=79.160, run_prepare;dur=96.669, server;dur=3235.636, template_render;dur=0.269, worker_roundtrip;dur=2526.239"
+        }
+      },
+      {
+        "sample": 1,
+        "initial": {
+          "bytes": 1360560,
+          "dom": 13112,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 1315.9711000043899,
+          "usable_ui_ms": 2133.193099987693,
+          "save_http_ms": 176.625,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 176.5,
+                "ttfb_ms": 174.90000000596046,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 407.09999999403954,
+                "ttfb_ms": 404,
+                "decoded_bytes": 399866,
+                "encoded_bytes": 399866
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 229.40000000596046,
+                "ttfb_ms": 228.30000001192093,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3357.4000000059605,
+                "duration": 717
+              },
+              {
+                "start": 4123.100000023842,
+                "duration": 160
+              }
+            ],
+            "swap_durations_ms": [
+              167.5,
+              184.7999999821186,
+              215.7999999821186,
+              245.2999999821186,
+              275,
+              302.69999998807907,
+              328,
+              354.59999999403954,
+              379,
+              404.5,
+              425,
+              445.19999998807907,
+              462,
+              489.09999999403954,
+              512.5,
+              564.1999999880791,
+              584,
+              602.6999999880791,
+              650.7999999821186,
+              680.6999999880791,
+              701.5,
+              12.899999976158142
+            ],
+            "feedback_ms": 1309,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=172.004",
+            "/v2/workbook/grid/panel": "coherence_check;dur=30.747, other_projection;dur=151.126, response_assembly;dur=165.886, server;dur=400.582, snapshot_capture;dur=59.810, template_render;dur=2.340",
+            "/v2/workbook/financing/integrity": "server;dur=226.335"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5650.557500019204,
+          "http_ms": 3047.35,
+          "bytes": 534519,
+          "server_timing": "other_projection;dur=80.005, post_engine;dur=288.098, response_assembly;dur=88.411, run_commit;dur=81.275, run_prepare;dur=91.392, server;dur=3041.962, template_render;dur=0.477, worker_roundtrip;dur=2490.659"
+        }
+      },
+      {
+        "sample": 2,
+        "initial": {
+          "bytes": 1362089,
+          "dom": 13126,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 1003.61310003791,
+          "usable_ui_ms": 1735.350400034804,
+          "save_http_ms": 165.276,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 165.19999998807907,
+                "ttfb_ms": 163.40000000596046,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 333.40000000596046,
+                "ttfb_ms": 330.59999999403954,
+                "decoded_bytes": 399848,
+                "encoded_bytes": 399848
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 117.10000002384186,
+                "ttfb_ms": 115.90000000596046,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3234.5,
+                "duration": 491
+              },
+              {
+                "start": 3777.2999999821186,
+                "duration": 121
+              }
+            ],
+            "swap_durations_ms": [
+              128.69999998807907,
+              143.09999999403954,
+              158,
+              172.5,
+              186.40000000596046,
+              200.2999999821186,
+              213.7999999821186,
+              228.40000000596046,
+              243.09999999403954,
+              268.5,
+              311.5,
+              331.90000000596046,
+              352.69999998807907,
+              373.09999999403954,
+              392.7999999821186,
+              406.7999999821186,
+              420.69999998807907,
+              434.2999999821186,
+              448.59999999403954,
+              460.90000000596046,
+              474.2999999821186,
+              18
+            ],
+            "feedback_ms": 997,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=159.967",
+            "/v2/workbook/grid/panel": "coherence_check;dur=25.703, other_projection;dur=99.492, response_assembly;dur=111.569, server;dur=328.001, snapshot_capture;dur=60.684, template_render;dur=1.825",
+            "/v2/workbook/financing/integrity": "server;dur=113.908"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5293.012999987695,
+          "http_ms": 2823.817,
+          "bytes": 536183,
+          "server_timing": "other_projection;dur=69.462, post_engine;dur=276.130, response_assembly;dur=77.983, run_commit;dur=76.368, run_prepare;dur=99.278, server;dur=2819.778, template_render;dur=0.253, worker_roundtrip;dur=2271.479"
+        }
+      },
+      {
+        "sample": 3,
+        "initial": {
+          "bytes": 1363751,
+          "dom": 13140,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 1167.1346999937668,
+          "usable_ui_ms": 1981.2068999744952,
+          "save_http_ms": 173.899,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 173.80000001192093,
+                "ttfb_ms": 172.2000000178814,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 395.2999999821186,
+                "ttfb_ms": 392.19999998807907,
+                "decoded_bytes": 399856,
+                "encoded_bytes": 399856
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 206.90000000596046,
+                "ttfb_ms": 205.69999998807907,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3269,
+                "duration": 578
+              },
+              {
+                "start": 3912.4000000059605,
+                "duration": 127
+              }
+            ],
+            "swap_durations_ms": [
+              147.5,
+              167.2999999821186,
+              185.19999998807907,
+              202.59999999403954,
+              220.40000000596046,
+              234.7999999821186,
+              251.40000000596046,
+              272.7999999821186,
+              304.40000000596046,
+              319.19999998807907,
+              333,
+              346.7999999821186,
+              359.5,
+              375,
+              392.7999999821186,
+              409.7999999821186,
+              424.19999998807907,
+              440.69999998807907,
+              457.2999999821186,
+              473.40000000596046,
+              504.69999998807907,
+              12.900000005960464
+            ],
+            "feedback_ms": 1153,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=169.546",
+            "/v2/workbook/grid/panel": "coherence_check;dur=26.631, other_projection;dur=144.172, response_assembly;dur=159.770, server;dur=389.132, snapshot_capture;dur=55.065, template_render;dur=1.954",
+            "/v2/workbook/financing/integrity": "server;dur=203.582"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5089.433599961922,
+          "http_ms": 2599.259,
+          "bytes": 537860,
+          "server_timing": "other_projection;dur=77.745, post_engine;dur=314.201, response_assembly;dur=88.027, run_commit;dur=79.631, run_prepare;dur=99.217, server;dur=2594.744, template_render;dur=0.226, worker_roundtrip;dur=1992.366"
+        }
+      },
+      {
+        "sample": 4,
+        "initial": {
+          "bytes": 1365469,
+          "dom": 13154,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 827.2649000282399,
+          "usable_ui_ms": 1599.2498000268824,
+          "save_http_ms": 148.815,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 148.69999998807907,
+                "ttfb_ms": 147.7000000178814,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 284.90000000596046,
+                "ttfb_ms": 283.2000000178814,
+                "decoded_bytes": 399879,
+                "encoded_bytes": 399879
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 163.5,
+                "ttfb_ms": 162.09999999403954,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 2956.300000011921,
+                "duration": 382
+              },
+              {
+                "start": 3391.199999988079,
+                "duration": 101
+              }
+            ],
+            "swap_durations_ms": [
+              93,
+              103.80000001192093,
+              113.09999999403954,
+              125.19999998807907,
+              136.69999998807907,
+              147.59999999403954,
+              159.59999999403954,
+              171.80000001192093,
+              182.09999999403954,
+              204.59999999403954,
+              214.19999998807907,
+              227.59999999403954,
+              238.19999998807907,
+              247.19999998807907,
+              257.80000001192093,
+              270,
+              286.5,
+              299.30000001192093,
+              310.40000000596046,
+              322.80000001192093,
+              332.69999998807907,
+              11.299999982118607
+            ],
+            "feedback_ms": 821,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=145.650",
+            "/v2/workbook/grid/panel": "coherence_check;dur=24.558, other_projection;dur=80.592, response_assembly;dur=89.741, server;dur=281.422, snapshot_capture;dur=47.507, template_render;dur=1.309",
+            "/v2/workbook/financing/integrity": "server;dur=160.364"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5645.374400017317,
+          "http_ms": 2870.339,
+          "bytes": 539507,
+          "server_timing": "other_projection;dur=369.536, post_engine;dur=633.453, response_assembly;dur=383.330, run_commit;dur=83.594, run_prepare;dur=89.456, server;dur=2864.840, template_render;dur=0.812, worker_roundtrip;dur=1965.328"
+        }
+      }
+    ],
+    "wind": [
+      {
+        "sample": 0,
+        "initial": {
+          "bytes": 1402084,
+          "dom": 13475,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 938.304600014817,
+          "usable_ui_ms": 1713.6642999830656,
+          "save_http_ms": 132.595,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 132.40000000596046,
+                "ttfb_ms": 130.5,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 331.7999999821186,
+                "ttfb_ms": 329.30000001192093,
+                "decoded_bytes": 405361,
+                "encoded_bytes": 405361
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 168.5,
+                "ttfb_ms": 166.90000000596046,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3063.9000000059605,
+                "duration": 456
+              },
+              {
+                "start": 3579.5999999940395,
+                "duration": 109
+              }
+            ],
+            "swap_durations_ms": [
+              141.40000000596046,
+              154.7000000178814,
+              170.59999999403954,
+              185,
+              198,
+              210.30000001192093,
+              222.90000000596046,
+              235.5,
+              255.30000001192093,
+              268,
+              281.5,
+              295.09999999403954,
+              308.7000000178814,
+              324.09999999403954,
+              339.30000001192093,
+              354.09999999403954,
+              369.59999999403954,
+              387.2000000178814,
+              406.40000000596046,
+              421.7000000178814,
+              436.80000001192093,
+              14.200000017881393
+            ],
+            "feedback_ms": 931,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=127.105",
+            "/v2/workbook/grid/panel": "coherence_check;dur=24.253, other_projection;dur=98.652, response_assembly;dur=112.343, server;dur=325.927, snapshot_capture;dur=59.812, template_render;dur=1.551",
+            "/v2/workbook/financing/integrity": "server;dur=164.878"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 6129.0663999971,
+          "http_ms": 3475.908,
+          "bytes": 550229,
+          "server_timing": "other_projection;dur=81.364, post_engine;dur=382.651, response_assembly;dur=91.714, run_commit;dur=103.241, run_prepare;dur=94.867, server;dur=3470.291, template_render;dur=0.319, worker_roundtrip;dur=2791.696"
+        }
+      },
+      {
+        "sample": 1,
+        "initial": {
+          "bytes": 1403737,
+          "dom": 13489,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 1084.4868999556638,
+          "usable_ui_ms": 1877.9840999632142,
+          "save_http_ms": 152.308,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 152.19999998807907,
+                "ttfb_ms": 150.5,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 347.30000001192093,
+                "ttfb_ms": 345.19999998807907,
+                "decoded_bytes": 405378,
+                "encoded_bytes": 405378
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 180.5,
+                "ttfb_ms": 178.80000001192093,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3380,
+                "duration": 563
+              },
+              {
+                "start": 4000.300000011921,
+                "duration": 170
+              }
+            ],
+            "swap_durations_ms": [
+              141.09999999403954,
+              157.40000000596046,
+              172.80000001192093,
+              188.80000001192093,
+              208.30000001192093,
+              230,
+              247.69999998807907,
+              266.09999999403954,
+              291.40000000596046,
+              309.69999998807907,
+              325.59999999403954,
+              341.90000000596046,
+              357.69999998807907,
+              372.80000001192093,
+              387.40000000596046,
+              401.09999999403954,
+              418.80000001192093,
+              435.5,
+              450.90000000596046,
+              473,
+              535.4000000059605,
+              13.399999976158142
+            ],
+            "feedback_ms": 1077,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=147.516",
+            "/v2/workbook/grid/panel": "coherence_check;dur=27.667, other_projection;dur=107.862, response_assembly;dur=119.893, server;dur=342.277, snapshot_capture;dur=60.069, template_render;dur=1.894",
+            "/v2/workbook/financing/integrity": "server;dur=176.038"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 6203.040199994575,
+          "http_ms": 3507.463,
+          "bytes": 551886,
+          "server_timing": "other_projection;dur=136.872, post_engine;dur=424.715, response_assembly;dur=148.906, run_commit;dur=83.421, run_prepare;dur=92.206, server;dur=3502.346, template_render;dur=0.325, worker_roundtrip;dur=2798.726"
+        }
+      },
+      {
+        "sample": 2,
+        "initial": {
+          "bytes": 1405376,
+          "dom": 13503,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 1149.4806000264362,
+          "usable_ui_ms": 1932.7471000142395,
+          "save_http_ms": 140.01,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 139.90000000596046,
+                "ttfb_ms": 137.90000000596046,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 382.2000000178814,
+                "ttfb_ms": 379.5,
+                "decoded_bytes": 405377,
+                "encoded_bytes": 405377
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 140.2999999821186,
+                "ttfb_ms": 138.69999998807907,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3257.800000011921,
+                "duration": 612
+              },
+              {
+                "start": 3936.199999988079,
+                "duration": 148
+              }
+            ],
+            "swap_durations_ms": [
+              148.40000000596046,
+              170,
+              238.90000000596046,
+              269.5,
+              296.90000000596046,
+              318.90000000596046,
+              345.5,
+              364.80000001192093,
+              382.59999999403954,
+              399.40000000596046,
+              415.09999999403954,
+              431.80000001192093,
+              448.80000001192093,
+              466,
+              482.59999999403954,
+              499.90000000596046,
+              516.0999999940395,
+              532.9000000059605,
+              549.0999999940395,
+              565.5,
+              582.9000000059605,
+              13.299999982118607
+            ],
+            "feedback_ms": 1142,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=135.120",
+            "/v2/workbook/grid/panel": "coherence_check;dur=28.539, other_projection;dur=111.442, response_assembly;dur=127.132, server;dur=376.945, snapshot_capture;dur=63.043, template_render;dur=2.035",
+            "/v2/workbook/financing/integrity": "server;dur=136.370"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5924.581400002353,
+          "http_ms": 3348.75,
+          "bytes": 553518,
+          "server_timing": "other_projection;dur=80.927, post_engine;dur=314.055, response_assembly;dur=88.871, run_commit;dur=46.794, run_prepare;dur=98.807, server;dur=3342.380, template_render;dur=0.230, worker_roundtrip;dur=2809.808"
+        }
+      },
+      {
+        "sample": 3,
+        "initial": {
+          "bytes": 1407066,
+          "dom": 13517,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 1156.565800018143,
+          "usable_ui_ms": 2000.205799995456,
+          "save_http_ms": 166.069,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 165.90000000596046,
+                "ttfb_ms": 164.40000000596046,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 358,
+                "ttfb_ms": 355.40000000596046,
+                "decoded_bytes": 405356,
+                "encoded_bytes": 405356
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 217.90000000596046,
+                "ttfb_ms": 216.5,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3289.5,
+                "duration": 616
+              },
+              {
+                "start": 3960.7000000178814,
+                "duration": 132
+              }
+            ],
+            "swap_durations_ms": [
+              203,
+              228.90000000596046,
+              261.7000000178814,
+              283.90000000596046,
+              300.80000001192093,
+              316.40000000596046,
+              335.2000000178814,
+              383.80000001192093,
+              406.30000001192093,
+              426.59999999403954,
+              443.09999999403954,
+              458.90000000596046,
+              475.09999999403954,
+              490,
+              505.09999999403954,
+              520.7000000178814,
+              536.5999999940395,
+              552.8000000119209,
+              567.3000000119209,
+              582,
+              597.3000000119209,
+              16.400000005960464
+            ],
+            "feedback_ms": 1150,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=161.548",
+            "/v2/workbook/grid/panel": "coherence_check;dur=27.123, other_projection;dur=106.608, response_assembly;dur=123.537, server;dur=352.497, snapshot_capture;dur=56.148, template_render;dur=2.615",
+            "/v2/workbook/financing/integrity": "server;dur=214.037"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5794.302799971774,
+          "http_ms": 3340.64,
+          "bytes": 555149,
+          "server_timing": "other_projection;dur=80.970, post_engine;dur=303.825, response_assembly;dur=88.959, run_commit;dur=87.480, run_prepare;dur=93.480, server;dur=3335.037, template_render;dur=0.262, worker_roundtrip;dur=2745.370"
+        }
+      },
+      {
+        "sample": 4,
+        "initial": {
+          "bytes": 1408692,
+          "dom": 13531,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 1320.3557999804616,
+          "usable_ui_ms": 2081.4189999946393,
+          "save_http_ms": 184.072,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 184.09999999403954,
+                "ttfb_ms": 182.40000000596046,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 487.40000000596046,
+                "ttfb_ms": 484.59999999403954,
+                "decoded_bytes": 405336,
+                "encoded_bytes": 405336
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 152.09999999403954,
+                "ttfb_ms": 150.69999998807907,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3492.0999999940395,
+                "duration": 629
+              },
+              {
+                "start": 4179.800000011921,
+                "duration": 156
+              }
+            ],
+            "swap_durations_ms": [
+              201,
+              217.10000002384186,
+              232.10000002384186,
+              248,
+              262.80000001192093,
+              279,
+              294,
+              309.5,
+              325.5,
+              341.7000000178814,
+              358.5,
+              434.40000000596046,
+              458.90000000596046,
+              491.60000002384186,
+              511.60000002384186,
+              530,
+              546.8000000119209,
+              561.8000000119209,
+              578.3000000119209,
+              593.2000000178814,
+              608.3000000119209,
+              14.099999994039536
+            ],
+            "feedback_ms": 1313,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=179.786",
+            "/v2/workbook/grid/panel": "coherence_check;dur=29.384, other_projection;dur=125.484, response_assembly;dur=143.483, server;dur=481.310, snapshot_capture;dur=88.616, template_render;dur=2.213",
+            "/v2/workbook/financing/integrity": "server;dur=148.672"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5785.90749995783,
+          "http_ms": 3584.961,
+          "bytes": 556762,
+          "server_timing": "other_projection;dur=87.693, post_engine;dur=305.887, response_assembly;dur=96.343, run_commit;dur=80.371, run_prepare;dur=109.728, server;dur=3579.962, template_render;dur=0.224, worker_roundtrip;dur=2980.721"
+        }
+      }
+    ]
+  },
+  "candidate": {
+    "solar": [
+      {
+        "sample": 0,
+        "initial": {
+          "bytes": 1358791,
+          "dom": 13098,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 813.554499996826,
+          "usable_ui_ms": 1531.0726999887265,
+          "save_http_ms": 131.355,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 131.19999998807907,
+                "ttfb_ms": 129.59999999403954,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 449.40000000596046,
+                "ttfb_ms": 429.89999997615814,
+                "decoded_bytes": 399863,
+                "encoded_bytes": 399863
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 137.59999999403954,
+                "ttfb_ms": 135.2999999821186,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3329.5999999940395,
+                "duration": 216
+              },
+              {
+                "start": 3598.4000000059605,
+                "duration": 133
+              }
+            ],
+            "swap_durations_ms": [
+              170.40000000596046,
+              172.2000000178814,
+              173.5,
+              174.59999999403954,
+              175.80000001192093,
+              177,
+              178.2000000178814,
+              180.30000001192093,
+              181.90000000596046,
+              183.59999999403954,
+              184.90000000596046,
+              186.09999999403954,
+              187.30000001192093,
+              188.5,
+              189.59999999403954,
+              190.80000001192093,
+              192,
+              193.2000000178814,
+              194.40000000596046,
+              196.40000000596046,
+              198.40000000596046,
+              2.7999999821186066
+            ],
+            "feedback_ms": 808,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=126.879",
+            "/v2/workbook/grid/panel": "coherence_check;dur=26.136, other_projection;dur=144.774, response_assembly;dur=157.953, server;dur=427.148, snapshot_capture;dur=56.730, template_render;dur=1.963",
+            "/v2/workbook/financing/integrity": "server;dur=132.966"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4834.300199989229,
+          "http_ms": 3327.448,
+          "bytes": 532884,
+          "server_timing": "other_projection;dur=89.095, post_engine;dur=327.945, response_assembly;dur=98.397, run_commit;dur=90.259, run_prepare;dur=92.654, server;dur=3320.153, template_render;dur=0.445, worker_roundtrip;dur=2715.901"
+        }
+      },
+      {
+        "sample": 1,
+        "initial": {
+          "bytes": 1360560,
+          "dom": 13112,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 760.5020999908447,
+          "usable_ui_ms": 1663.7493000016548,
+          "save_http_ms": 168.961,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 168.80000001192093,
+                "ttfb_ms": 167.39999997615814,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 351.19999998807907,
+                "ttfb_ms": 348,
+                "decoded_bytes": 399866,
+                "encoded_bytes": 399866
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 252,
+                "ttfb_ms": 250,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3280.5,
+                "duration": 224
+              },
+              {
+                "start": 3573.9000000059605,
+                "duration": 295
+              }
+            ],
+            "swap_durations_ms": [
+              163,
+              165.5,
+              167.30000001192093,
+              168.90000000596046,
+              170.5,
+              172.2000000178814,
+              173.80000001192093,
+              177.2000000178814,
+              179.59999999403954,
+              181.30000001192093,
+              182.59999999403954,
+              183.80000001192093,
+              185.5,
+              187.09999999403954,
+              188.80000001192093,
+              190.40000000596046,
+              192.7000000178814,
+              195.90000000596046,
+              197.90000000596046,
+              199.7000000178814,
+              201.59999999403954,
+              5.800000011920929
+            ],
+            "feedback_ms": 753,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=164.924",
+            "/v2/workbook/grid/panel": "coherence_check;dur=26.773, other_projection;dur=108.564, response_assembly;dur=124.687, server;dur=344.444, snapshot_capture;dur=58.265, template_render;dur=2.352",
+            "/v2/workbook/financing/integrity": "server;dur=246.247"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4206.626800005324,
+          "http_ms": 2678.366,
+          "bytes": 534519,
+          "server_timing": "other_projection;dur=89.136, post_engine;dur=292.798, response_assembly;dur=97.542, run_commit;dur=30.941, run_prepare;dur=87.494, server;dur=2673.632, template_render;dur=0.400, worker_roundtrip;dur=2172.545"
+        }
+      },
+      {
+        "sample": 2,
+        "initial": {
+          "bytes": 1362089,
+          "dom": 13126,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 835.156100045424,
+          "usable_ui_ms": 1647.8786999941804,
+          "save_http_ms": 172.367,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 172.2000000178814,
+                "ttfb_ms": 170.59999999403954,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 386.90000000596046,
+                "ttfb_ms": 384.2000000178814,
+                "decoded_bytes": 399848,
+                "encoded_bytes": 399848
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 226.40000000596046,
+                "ttfb_ms": 224.2999999821186,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3267.5999999940395,
+                "duration": 262
+              },
+              {
+                "start": 3584.199999988079,
+                "duration": 176
+              }
+            ],
+            "swap_durations_ms": [
+              172.09999999403954,
+              178.59999999403954,
+              182.69999998807907,
+              185.89999997615814,
+              188.59999999403954,
+              201.2999999821186,
+              204.7999999821186,
+              209.09999999403954,
+              211.5,
+              213.2999999821186,
+              215.2999999821186,
+              217.19999998807907,
+              219.89999997615814,
+              223.7999999821186,
+              227.39999997615814,
+              229.7999999821186,
+              231.7999999821186,
+              233.59999999403954,
+              235.39999997615814,
+              237.09999999403954,
+              239.69999998807907,
+              4.800000011920929
+            ],
+            "feedback_ms": 828,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=167.964",
+            "/v2/workbook/grid/panel": "coherence_check;dur=25.820, other_projection;dur=104.105, response_assembly;dur=120.472, server;dur=381.130, snapshot_capture;dur=58.620, template_render;dur=1.918",
+            "/v2/workbook/financing/integrity": "server;dur=220.938"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4494.039100012742,
+          "http_ms": 3011.591,
+          "bytes": 536183,
+          "server_timing": "other_projection;dur=82.474, post_engine;dur=413.045, response_assembly;dur=91.407, run_commit;dur=83.990, run_prepare;dur=96.633, server;dur=3006.525, template_render;dur=0.255, worker_roundtrip;dur=2317.045"
+        }
+      },
+      {
+        "sample": 3,
+        "initial": {
+          "bytes": 1363751,
+          "dom": 13140,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 784.7074000164866,
+          "usable_ui_ms": 1548.426199995447,
+          "save_http_ms": 165.934,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 165.90000000596046,
+                "ttfb_ms": 164.10000002384186,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 412.59999999403954,
+                "ttfb_ms": 409.7999999821186,
+                "decoded_bytes": 399856,
+                "encoded_bytes": 399856
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 175.19999998807907,
+                "ttfb_ms": 173.10000002384186,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3204.4000000059605,
+                "duration": 191
+              },
+              {
+                "start": 3447.300000011921,
+                "duration": 151
+              }
+            ],
+            "swap_durations_ms": [
+              132,
+              134.7000000178814,
+              138.5,
+              140.2000000178814,
+              141.59999999403954,
+              143,
+              144.7000000178814,
+              146.30000001192093,
+              147.90000000596046,
+              149.59999999403954,
+              152,
+              155.7000000178814,
+              157.59999999403954,
+              159.2000000178814,
+              161,
+              162.59999999403954,
+              164.2000000178814,
+              165.90000000596046,
+              168,
+              170.2000000178814,
+              171.80000001192093,
+              4.5
+            ],
+            "feedback_ms": 778,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=161.691",
+            "/v2/workbook/grid/panel": "coherence_check;dur=27.483, other_projection;dur=162.013, response_assembly;dur=180.712, server;dur=406.336, snapshot_capture;dur=60.487, template_render;dur=2.834",
+            "/v2/workbook/financing/integrity": "server;dur=170.685"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4396.367400011513,
+          "http_ms": 2774.208,
+          "bytes": 537860,
+          "server_timing": "other_projection;dur=135.699, post_engine;dur=400.167, response_assembly;dur=146.919, run_commit;dur=85.720, run_prepare;dur=106.260, server;dur=2768.658, template_render;dur=0.380, worker_roundtrip;dur=2081.653"
+        }
+      },
+      {
+        "sample": 4,
+        "initial": {
+          "bytes": 1365469,
+          "dom": 13154,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 767.6817999454215,
+          "usable_ui_ms": 1497.71269998746,
+          "save_http_ms": 131.931,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 131.90000000596046,
+                "ttfb_ms": 130.2999999821186,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 439,
+                "ttfb_ms": 435.7999999821186,
+                "decoded_bytes": 399879,
+                "encoded_bytes": 399879
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 142.90000000596046,
+                "ttfb_ms": 141.5,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3425.5,
+                "duration": 183
+              },
+              {
+                "start": 3651,
+                "duration": 112
+              }
+            ],
+            "swap_durations_ms": [
+              131.2000000178814,
+              133,
+              134.30000001192093,
+              136.09999999403954,
+              137.5,
+              139,
+              140.80000001192093,
+              142.40000000596046,
+              146,
+              148.59999999403954,
+              150.2000000178814,
+              151.59999999403954,
+              153.30000001192093,
+              155.30000001192093,
+              156.80000001192093,
+              158.30000001192093,
+              160.5,
+              163.40000000596046,
+              165.30000001192093,
+              166.7000000178814,
+              167.80000001192093,
+              2.5
+            ],
+            "feedback_ms": 762,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=127.579",
+            "/v2/workbook/grid/panel": "coherence_check;dur=29.812, other_projection;dur=119.678, response_assembly;dur=138.868, server;dur=431.751, snapshot_capture;dur=61.740, template_render;dur=3.297",
+            "/v2/workbook/financing/integrity": "server;dur=139.618"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4482.491699978709,
+          "http_ms": 2865.591,
+          "bytes": 539507,
+          "server_timing": "other_projection;dur=76.251, post_engine;dur=308.040, response_assembly;dur=84.158, run_commit;dur=86.501, run_prepare;dur=99.979, server;dur=2860.214, template_render;dur=0.221, worker_roundtrip;dur=2269.922"
+        }
+      }
+    ],
+    "wind": [
+      {
+        "sample": 0,
+        "initial": {
+          "bytes": 1402084,
+          "dom": 13475,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 806.9016999797896,
+          "usable_ui_ms": 1631.216499954462,
+          "save_http_ms": 172.826,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 172.7000000178814,
+                "ttfb_ms": 171.40000000596046,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 353.2000000178814,
+                "ttfb_ms": 349.59999999403954,
+                "decoded_bytes": 405361,
+                "encoded_bytes": 405361
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 225.5,
+                "ttfb_ms": 223.89999997615814,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3302.300000011921,
+                "duration": 265
+              },
+              {
+                "start": 3619.4000000059605,
+                "duration": 170
+              }
+            ],
+            "swap_durations_ms": [
+              185.7999999821186,
+              190.5,
+              195.69999998807907,
+              199.89999997615814,
+              204.7999999821186,
+              208.2999999821186,
+              210.7999999821186,
+              213,
+              214.59999999403954,
+              216.59999999403954,
+              220.2999999821186,
+              223.39999997615814,
+              225.89999997615814,
+              228.09999999403954,
+              229.89999997615814,
+              231.39999997615814,
+              233.09999999403954,
+              235.09999999403954,
+              238.39999997615814,
+              240.69999998807907,
+              243.19999998807907,
+              4.200000017881393
+            ],
+            "feedback_ms": 801,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=167.881",
+            "/v2/workbook/grid/panel": "coherence_check;dur=27.577, other_projection;dur=111.909, response_assembly;dur=126.566, server;dur=346.892, snapshot_capture;dur=58.745, template_render;dur=1.849",
+            "/v2/workbook/financing/integrity": "server;dur=221.414"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4916.957499983255,
+          "http_ms": 3322.667,
+          "bytes": 550229,
+          "server_timing": "other_projection;dur=71.315, post_engine;dur=298.793, response_assembly;dur=79.909, run_commit;dur=78.557, run_prepare;dur=98.147, server;dur=3317.633, template_render;dur=0.241, worker_roundtrip;dur=2740.701"
+        }
+      },
+      {
+        "sample": 1,
+        "initial": {
+          "bytes": 1403737,
+          "dom": 13489,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 693.5284999781288,
+          "usable_ui_ms": 1482.7594999806024,
+          "save_http_ms": 160.181,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 160,
+                "ttfb_ms": 158.80000001192093,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 334,
+                "ttfb_ms": 331.69999998807907,
+                "decoded_bytes": 405378,
+                "encoded_bytes": 405378
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 217.59999999403954,
+                "ttfb_ms": 216.30000001192093,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3116.300000011921,
+                "duration": 186
+              },
+              {
+                "start": 3343.5,
+                "duration": 120
+              }
+            ],
+            "swap_durations_ms": [
+              137.80000001192093,
+              140.19999998807907,
+              142.09999999403954,
+              143.69999998807907,
+              145.30000001192093,
+              146.80000001192093,
+              148.40000000596046,
+              149.80000001192093,
+              151.5,
+              153,
+              154.5,
+              156.80000001192093,
+              158.69999998807907,
+              160.5,
+              162.5,
+              164.30000001192093,
+              166.09999999403954,
+              167.5,
+              168.69999998807907,
+              169.90000000596046,
+              171.09999999403954,
+              3.4000000059604645
+            ],
+            "feedback_ms": 688,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=154.587",
+            "/v2/workbook/grid/panel": "coherence_check;dur=25.009, other_projection;dur=103.332, response_assembly;dur=117.845, server;dur=328.716, snapshot_capture;dur=58.528, template_render;dur=1.778",
+            "/v2/workbook/financing/integrity": "server;dur=214.056"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4797.818200022448,
+          "http_ms": 3312.643,
+          "bytes": 551886,
+          "server_timing": "other_projection;dur=131.716, post_engine;dur=357.703, response_assembly;dur=140.592, run_commit;dur=81.721, run_prepare;dur=88.976, server;dur=3307.344, template_render;dur=0.281, worker_roundtrip;dur=2680.185"
+        }
+      },
+      {
+        "sample": 2,
+        "initial": {
+          "bytes": 1405376,
+          "dom": 13503,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 864.1907999990508,
+          "usable_ui_ms": 1695.8972999709658,
+          "save_http_ms": 185.465,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 185.30000001192093,
+                "ttfb_ms": 183.09999999403954,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 459.80000001192093,
+                "ttfb_ms": 457.09999999403954,
+                "decoded_bytes": 405377,
+                "encoded_bytes": 405377
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 255.69999998807907,
+                "ttfb_ms": 252.19999998807907,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3356.5999999940395,
+                "duration": 202
+              },
+              {
+                "start": 3610.7999999821186,
+                "duration": 189
+              }
+            ],
+            "swap_durations_ms": [
+              142.59999999403954,
+              145.2999999821186,
+              147.69999998807907,
+              150.2999999821186,
+              152.19999998807907,
+              153.90000000596046,
+              155.59999999403954,
+              157.2999999821186,
+              159,
+              160.59999999403954,
+              162.69999998807907,
+              165.19999998807907,
+              167.59999999403954,
+              169.40000000596046,
+              171.19999998807907,
+              172.90000000596046,
+              174.40000000596046,
+              176.19999998807907,
+              178,
+              179.40000000596046,
+              181.5,
+              6.200000017881393
+            ],
+            "feedback_ms": 857,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=180.374",
+            "/v2/workbook/grid/panel": "coherence_check;dur=29.420, other_projection;dur=131.479, response_assembly;dur=144.703, server;dur=454.149, snapshot_capture;dur=69.945, template_render;dur=1.626",
+            "/v2/workbook/financing/integrity": "server;dur=248.811"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 5068.595800024923,
+          "http_ms": 3318.452,
+          "bytes": 553518,
+          "server_timing": "other_projection;dur=122.387, post_engine;dur=347.712, response_assembly;dur=132.471, run_commit;dur=37.907, run_prepare;dur=98.640, server;dur=3313.498, template_render;dur=0.295, worker_roundtrip;dur=2715.252"
+        }
+      },
+      {
+        "sample": 3,
+        "initial": {
+          "bytes": 1407066,
+          "dom": 13517,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 746.3384000002407,
+          "usable_ui_ms": 1472.779100004118,
+          "save_http_ms": 228.535,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 228.39999997615814,
+                "ttfb_ms": 226.80000001192093,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 372.7999999821186,
+                "ttfb_ms": 371.30000001192093,
+                "decoded_bytes": 405356,
+                "encoded_bytes": 405356
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 150,
+                "ttfb_ms": 149,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3443,
+                "duration": 132
+              },
+              {
+                "start": 3610,
+                "duration": 104
+              }
+            ],
+            "swap_durations_ms": [
+              93.5,
+              94.90000000596046,
+              96.2999999821186,
+              98.09999999403954,
+              99.5,
+              100.90000000596046,
+              102.2999999821186,
+              103.59999999403954,
+              105,
+              106.19999998807907,
+              107.69999998807907,
+              108.7999999821186,
+              109.69999998807907,
+              110.5,
+              111.5,
+              113.40000000596046,
+              115.2999999821186,
+              116.69999998807907,
+              117.69999998807907,
+              118.69999998807907,
+              119.5,
+              2
+            ],
+            "feedback_ms": 740,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=224.242",
+            "/v2/workbook/grid/panel": "coherence_check;dur=21.342, other_projection;dur=96.420, response_assembly;dur=105.864, server;dur=368.835, snapshot_capture;dur=53.846, template_render;dur=1.313",
+            "/v2/workbook/financing/integrity": "server;dur=147.430"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4649.367399979383,
+          "http_ms": 3141.777,
+          "bytes": 555149,
+          "server_timing": "other_projection;dur=84.890, post_engine;dur=313.870, response_assembly;dur=93.194, run_commit;dur=32.554, run_prepare;dur=87.215, server;dur=3137.721, template_render;dur=0.235, worker_roundtrip;dur=2611.621"
+        }
+      },
+      {
+        "sample": 4,
+        "initial": {
+          "bytes": 1408692,
+          "dom": 13531,
+          "fs_bytes": 620,
+          "fs_dom": 6
+        },
+        "save": {
+          "promise_ms": 796.012700011488,
+          "usable_ui_ms": 1697.3456999985501,
+          "save_http_ms": 174.902,
+          "oob_fragments": 17,
+          "resources": {
+            "resources": [
+              {
+                "path": "/v2/workbook/grid/save",
+                "duration_ms": 174.7999999821186,
+                "ttfb_ms": 173.2999999821186,
+                "decoded_bytes": 256,
+                "encoded_bytes": 256
+              },
+              {
+                "path": "/v2/workbook/grid/panel",
+                "duration_ms": 423.30000001192093,
+                "ttfb_ms": 419.5,
+                "decoded_bytes": 405336,
+                "encoded_bytes": 405336
+              },
+              {
+                "path": "/v2/workbook/financing/integrity",
+                "duration_ms": 294.30000001192093,
+                "ttfb_ms": 292.90000000596046,
+                "decoded_bytes": 1409,
+                "encoded_bytes": 1409
+              }
+            ],
+            "long_tasks": [
+              {
+                "start": 3386.4000000059605,
+                "duration": 182
+              },
+              {
+                "start": 3617.0999999940395,
+                "duration": 138
+              }
+            ],
+            "swap_durations_ms": [
+              123.89999997615814,
+              125.89999997615814,
+              128.39999997615814,
+              131.09999999403954,
+              133.59999999403954,
+              135.39999997615814,
+              136.7999999821186,
+              138.39999997615814,
+              140.09999999403954,
+              141.59999999403954,
+              143.2999999821186,
+              145.09999999403954,
+              147.2999999821186,
+              149.5,
+              151.2999999821186,
+              152.7999999821186,
+              154.39999997615814,
+              156,
+              157.69999998807907,
+              160.19999998807907,
+              162.39999997615814,
+              2.699999988079071
+            ],
+            "feedback_ms": 789,
+            "focused_field": "project_setup.technical.construction_months"
+          },
+          "timings": {
+            "/v2/workbook/grid/save": "server;dur=170.292",
+            "/v2/workbook/grid/panel": "coherence_check;dur=27.887, other_projection;dur=100.649, response_assembly;dur=112.906, server;dur=416.759, snapshot_capture;dur=67.014, template_render;dur=1.588",
+            "/v2/workbook/financing/integrity": "server;dur=290.819"
+          }
+        },
+        "run": {
+          "usable_ui_ms": 4949.5101000065915,
+          "http_ms": 3407.642,
+          "bytes": 556762,
+          "server_timing": "other_projection;dur=88.382, post_engine;dur=321.528, response_assembly;dur=96.393, run_commit;dur=32.954, run_prepare;dur=91.728, server;dur=3387.274, template_render;dur=0.327, worker_roundtrip;dur=2832.947"
+        }
+      }
+    ]
+  },
+  "numeric": {
+    "solar": {
+      "leaves": 5843,
+      "differences": 0,
+      "max_residual": 0,
+      "sha256": "ce01e08e458eccd158cfcdb0cdcc6856ba1f984dbf41d827d8eeae877ba24fcb"
+    },
+    "wind": {
+      "leaves": 6344,
+      "differences": 0,
+      "max_residual": 0,
+      "sha256": "38e95d5a1103558ab2fde47e281e3c6fba55906d166be4a3e720e32f90cf1b5c"
+    }
+  }
+}

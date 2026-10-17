@@ -196,6 +196,7 @@ def build_quality_insight(
     scenario_name: str = "", register_paths: Iterable[str] = (), kpi_keys: Iterable[str] = (),
     terms_override: Optional[ProjectTerms] = None,
     include_diagnostics: bool = False,
+    include_diagnostics_summary: bool = False,
 ) -> dict[str, Any]:
     """Compact, JSON-safe Model Quality + covenant view of the committed Last Run of ``ws``.
 
@@ -211,7 +212,7 @@ def build_quality_insight(
     if state == "NOT_RUN" or not has_run:
         base.update({"state": "NOT_RUN", "message": "No committed Run — Model Quality is evaluated only over a "
                                                    "committed Last Run. Nothing is estimated."})
-        if include_diagnostics:
+        if include_diagnostics or include_diagnostics_summary:
             base["diagnostics"] = {"state": "NOT_RUN", "available": False}
         return base
     terms = ProjectTerms()
@@ -256,6 +257,9 @@ def build_quality_insight(
                                     runtime_summary=evidence.runtime_summary, terms=terms),
         "terms_bound": terms_bound,
     })
+    if include_diagnostics_summary and not include_diagnostics:
+        from app.v2.diagnostics_projection import build_diagnostics_summary
+        base["diagnostics"] = build_diagnostics_summary(ws, report, score=base["score"], scenario_name=scenario_name)
     if include_diagnostics:
         from app.v2.diagnostics_projection import build_diagnostics
         try:

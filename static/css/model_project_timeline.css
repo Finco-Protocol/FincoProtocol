@@ -1,0 +1,30 @@
+/* WF-10 Project Timeline V1: read-only presentation of saved Project Setup dates. Uses the shared --fx-* tokens (light/dark pair). */
+.pt { border: 1px solid var(--fx-border, #cbd5e1); border-radius: 6px; padding: 0.75rem 1rem; margin: 0 0 0.75rem; background: var(--fx-surface, #fff); color: var(--fx-text, #111827); min-width: 0; }
+.pt h3 { margin: 0 0 0.25rem; font-size: 1rem; }
+.pt-lead { margin: 0 0 0.6rem; font-size: 0.85rem; color: var(--fx-text-muted, #4b5563); }
+.pt-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.pt-stage { border: 1px solid var(--fx-border, #cbd5e1); border-left-width: 6px; border-radius: 4px; padding: 0.55rem 0.75rem; background: var(--fx-surface-alt, #f3f4f6); min-width: 0; overflow-wrap: anywhere; }
+.pt-stage[data-stage="construction"] { border-left-color: var(--fx-info, #1e40af); }
+.pt-stage[data-stage="operations"] { border-left-color: var(--fx-ok, #166534); }
+.pt-stage h4 { margin: 0 0 0.3rem; font-size: 0.9rem; }
+.pt-stage dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.75rem; font-size: 0.85rem; }
+.pt-stage dt { color: var(--fx-text-muted, #4b5563); }
+.pt-stage dd { margin: 0; font-variant-numeric: tabular-nums; }
+.pt-tag { display: inline-block; margin-left: 0.4rem; padding: 0 0.4rem; border: 1px solid var(--fx-border, #cbd5e1); border-radius: 3px; font-size: 0.72rem; color: var(--fx-text-muted, #4b5563); background: var(--fx-surface, #fff); }
+.pt-bar { display: flex; height: 0.9rem; margin: 0.5rem 0 0.2rem; border: 1px solid var(--fx-border, #cbd5e1); border-radius: 3px; overflow: hidden; }
+.pt-bar > span { display: block; min-width: 4px; }
+.pt-bar .pt-seg-c { background: var(--fx-info, #1e40af); }
+.pt-bar .pt-seg-o { background: var(--fx-ok, #166534); background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255,255,255,.35) 4px 6px); }
+.pt-bar-caption { margin: 0 0 0.5rem; font-size: 0.75rem; color: var(--fx-text-muted, #4b5563); }
+.pt-notes { margin: 0.6rem 0 0; padding: 0; list-style: none; display: grid; gap: 0.35rem; }
+.pt-warn { padding: 0.4rem 0.6rem; border: 1px solid var(--fx-warn, #92400e); border-radius: 4px; background: var(--fx-warn-bg, #fef3c7); color: var(--fx-warn, #92400e); font-size: 0.85rem; }
+.pt-warn::before { content: "Review: "; font-weight: 600; }
+.pt-draft { padding: 0.4rem 0.6rem; border: 1px dashed var(--fx-info, #1e40af); border-radius: 4px; background: var(--fx-info-bg, #dbeafe); color: var(--fx-info, #1e40af); font-size: 0.85rem; }
+.pt-na { margin: 0.6rem 0 0; font-size: 0.85rem; }
+.pt-na summary { cursor: pointer; font-weight: 600; }
+.pt-na ul { margin: 0.3rem 0 0 1.1rem; padding: 0; color: var(--fx-text-muted, #4b5563); }
+@media (min-width: 900px) {
+  .pt-stages { flex-direction: row; align-items: stretch; }
+  .pt-stage { flex: 1 1 0; position: relative; }
+  .pt-stage + .pt-stage::before { content: "\2192"; position: absolute; left: -1.05rem; top: 50%; transform: translateY(-50%); color: var(--fx-text-muted, #4b5563); font-size: 1rem; }
+}
