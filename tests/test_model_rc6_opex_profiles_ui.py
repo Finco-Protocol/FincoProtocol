@@ -10,7 +10,7 @@ TEMPLATES = ROOT / 'app/templates/v2/partials'
 JS = ROOT / 'static/js/model_opex_profiles_v1.js'
 
 
-def render():
+def render(*, editable=True):
     env=Environment(loader=FileSystemLoader(str(TEMPLATES)),autoescape=select_autoescape(('html',)))
     def line(code,name,y1,read_only=False,derived=False):
         return N(code=code,name=name,is_active=True,is_derived=derived,is_contingency=derived,
@@ -18,7 +18,7 @@ def render():
     vm=N(display_years=3,groups=[N(lines=[line('B.03.01','Maintenance',100),
                                                   line('B.05.01','Security',30),
                                                   line('B.13.01','Contingency',3,read_only=True,derived=True)])])
-    return env.get_template('_opex_profile_candidate.html').render(opex_vm=vm,ws_dirty=True).replace('<script src="/static/js/model_opex_profiles_v1.js" defer></script>','')
+    return env.get_template('_opex_profile_candidate.html').render(opex_vm=vm,ws_dirty=True,project_editable=editable).replace('<script src="/static/js/model_opex_profiles_v1.js" defer></script>','')
 
 
 def test_wf11_candidate_template_protects_derived_rows_and_explains_authority():
@@ -63,3 +63,9 @@ def test_wf11_candidate_browser_real_chromium(width):
         assert 'WEIGHTS_MUST_TOTAL_100' in page.locator('[data-wf11-seasonal-status]').inner_text()
         assert page.locator('body').evaluate('(e) => e.scrollWidth <= window.innerWidth + 1')
         browser.close()
+
+def test_protected_reference_omits_candidate_editor():
+    html = render(editable=False)
+    assert 'data-testid="opex-profile-reference"' in html
+    assert 'data-wf11-candidate' not in html
+    assert 'data-testid="opex-existing-annual"' in html
