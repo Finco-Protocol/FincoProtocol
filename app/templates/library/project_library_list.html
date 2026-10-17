@@ -88,6 +88,11 @@
       <p class="fo-library-reference-preview-note">Reference model available. Editable runtime not yet supported.</p>
       {% endif %}
       {% if card.kpis %}
+      <p data-testid="reference-evidence-{{ card.project_code }}" data-engine-currency="{{ card.engine_currency }}">
+        Saved reference results{% if card.last_run_at_display %} · {{ card.last_run_at_display }}{% else %} · Run date not recorded{% endif %}.
+        {% if card.engine_currency == 'ENGINE_SUPERSEDED' %}Calculated with an earlier engine version.{% elif card.engine_currency != 'CURRENT_ENGINE' %}Engine version not verified.{% endif %}
+        Not recalculated when opening this page.
+      </p>
       <dl class="fo-library-reference-kpis" data-testid="reference-kpis-{{ card.project_code }}">
         {% for key, label, display in card.kpis %}
         <div class="fo-library-reference-kpi">
