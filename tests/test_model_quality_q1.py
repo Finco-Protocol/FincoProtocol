@@ -529,8 +529,9 @@ class TestIsolation:
         diagnostics_adapter = REPO / "app/v2/diagnostics_projection.py"
         # RC-4 Credit Decision V3: ONE exact read-only projection evaluates the selected COMMITTED Run entries through the single Q1 evaluator
         # (same pattern as the Q3 scenario adapter). No package or v2 exemption; it must not import or run the engine.
-        credit_adapter = REPO / "app/v2/credit_decision_projection.py"
-        allowed_adapters = q3_adapters | q4_adapters | {diagnostics_adapter, credit_adapter}
+        # The exact read-only router only converts committed project terms (terms_from_project_inputs); it holds no evaluator.
+        credit_adapters = {REPO / "app/v2/credit_decision_projection.py", REPO / "app/v2/credit_decision_router.py"}
+        allowed_adapters = q3_adapters | q4_adapters | {diagnostics_adapter} | credit_adapters
         diagnostic_imports = [n.module for n in ast.walk(ast.parse(diagnostics_adapter.read_text()))
                               if isinstance(n, ast.ImportFrom) and n.module and n.module.startswith("app.model_quality")]
         assert diagnostic_imports == ["app.model_quality.contracts"]

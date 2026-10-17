@@ -42,7 +42,7 @@ def test_head_equal_main_and_inherited_feature_and_integration_branches(inherite
     git(inherited, "checkout", "-q", "-b", "feature")
     _write_commit(inherited, {"docs/synthetic_feature.md": "nonfinancial\n"}, "feature")
     assert_closed_candidate(inherited)
-    git(inherited, "checkout", "-q", "-b", "integration", MERGED_MAIN)
+    git(inherited, "checkout", "-q", "-b", "synthetic-integration", MERGED_MAIN)
     _write_commit(inherited, {"docs/synthetic_integration.md": "nonfinancial\n"}, "integration")
     git(inherited, "merge", "-q", "--no-ff", "feature", "-m", "normal integration")
     assert_closed_candidate(inherited)
