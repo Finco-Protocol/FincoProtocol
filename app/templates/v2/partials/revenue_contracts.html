@@ -103,11 +103,9 @@
       {% if contracts.overridden %}<button type="submit" name="action" value="inherit" data-revenue-inherit>Restore Base contracts</button>{% endif %}
       <span class="d-context">End date exclusive · Same-period settlement · {% if contracts.calendar_preview %}Contractual calendar reviews{% else %}Operating-year indexation{% endif %}</span>
     </div>
-    <details class="rc-diagnostic">
-      <summary>Technical details (read-only)</summary>
-      <label for="revenue-contracts-json">Contract data (read-only)</label>
-      <textarea id="revenue-contracts-json" data-revenue-source rows="5" spellcheck="false" readonly>{{ contracts.raw }}</textarea>
-    </details>
+    {# S7-16: the canonical contract payload is carried for the editor as a hidden, unnamed value. It is never shown or edited as raw text;
+       Save still posts the editor-serialized book through the existing payload field, and nothing is deleted. #}
+    <input type="hidden" id="revenue-contracts-json" data-revenue-source value="{{ contracts.raw }}">
   </form>
   <details class="rc-stress-section" data-testid="revenue-contract-stress">
     <summary>Commercial / Bank-case comparison (read-only)</summary>
