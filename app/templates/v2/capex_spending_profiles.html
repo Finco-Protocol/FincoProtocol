@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO — CAPEX Spending Profiles (Preview)</title>
+  <style>
+  :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#172535;background:#f6f8fb}
+  body{margin:0}main{max-width:1400px;margin:0 auto;padding:20px;overflow-wrap:anywhere}a{color:#165b94}
+  header{background:#112a40;color:#fff;padding:14px 24px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}header a{color:#fff}
+  .panel{background:#fff;border:1px solid #d8e2ec;border-radius:12px;padding:16px;margin:16px 0}
+  .banner{border-left:4px solid #7e610f;background:#fffaf0;padding:10px 14px;margin:12px 0;font-weight:600}
+  .muted{color:#687688}.error{color:#9d2020;font-weight:700}
+  .table-wrap{overflow-x:auto;border:1px solid #d8e2ec;border-radius:8px;margin:8px 0}
+  table{border-collapse:collapse;min-width:760px;width:100%;font-size:.86rem}th{background:#edf3f8;text-align:left;white-space:nowrap}
+  th,td{border-bottom:1px solid #e3ebf2;padding:7px 8px;vertical-align:top}td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  input[type=text]{padding:6px;border:1px solid #a9b9cb;border-radius:6px;max-width:100%}select{padding:6px}
+  button{padding:9px 16px;border-radius:8px;border:1px solid #104f82;background:#145b91;color:#fff;font-weight:650;cursor:pointer}
+  .pill{display:inline-block;padding:2px 7px;border-radius:5px;font-size:.78rem;background:#e9edf2}.pill.bad{background:#fbe0dd;color:#8b2f28}.pill.ok{background:#d9efdf;color:#275a37}
+  </style>
+</head>
+<body>
+<header><strong>FINCO MODEL · CAPEX SPENDING PROFILES (CANDIDATE PREVIEW)</strong><a href="/v2/workbook?project={{ project_code|urlencode }}#capex">Back to CAPEX</a></header>
+<main>
+  <h1>Monthly construction spending profile — preview</h1>
+  <p class="banner" data-testid="preview-banner">Planning preview only. Nothing is saved and no Run is started: the committed Run, its construction funding, IDC and Sources &amp; Uses are unchanged. The existing Run consumes a per-category, construction-period timing from the cost template; a monthly profile is not yet bound to it (see the WF-09 report).</p>
+  <p class="muted">{{ project.project_name }} · construction duration {{ months }} months{% if timeline.available %} · dates from the project timeline ({{ timeline.source }}){% else %} · dates unavailable ({{ timeline.reason }}){% endif %}.</p>
+  {% if error %}<p role="alert" class="error" data-testid="profile-error">Request rejected: {{ error }}</p>{% endif %}
+
+  <section class="panel">
+    <h2>1. Choose a shape per CAPEX item</h2>
+    <p class="muted">Eligible items are leaf CAPEX rows only (active sub-lines and category inputs), so a parent and its children are never both profiled. Contingency (C.13), C.17/C.18, IDC, fees, VAT costs and reserves are derived/financing items and are listed read-only below. Front/back-loaded are linear shapes you select; explicit percentages must be given for every month and sum to 100 %. Invalid input is rejected, never normalised.</p>
+    <form method="post" action="/v2/capex/spending-profiles/preview">
+      <input type="hidden" name="project" value="{{ project_code }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="table-wrap"><table data-testid="item-table"><thead><tr><th>Item</th><th class="num">Amount kEUR</th><th>Shape</th><th>Explicit % per month (comma-separated)</th><th>Milestone month</th></tr></thead><tbody>
+      {% for item in items %}{% set fr = form_rows.get(item.item_key, {}) %}
+        <tr data-item="{{ item.item_key }}"><td><input type="hidden" name="key_{{ loop.index0 }}" value="{{ item.item_key }}"><strong>{{ item.item_key }}</strong> {{ item.label }}<div class="muted">{{ item.category_code }}</div></td>
+          <td class="num">{{ '%.3f'|format(item.amount_keur) }}</td>
+          <td><select name="shape_{{ loop.index0 }}" aria-label="Shape for {{ item.label }}"><option value="">— none —</option>{% for s in shapes %}<option value="{{ s }}" {% if fr.get('shape') == s %}selected{% endif %}>{{ s|replace('_',' ')|lower }}</option>{% endfor %}</select></td>
+          <td><input type="text" name="explicit_{{ loop.index0 }}" value="{{ fr.get('explicit','') }}" size="28" aria-label="Explicit percentages for {{ item.label }}"></td>
+          <td><input type="text" name="milestone_{{ loop.index0 }}" value="{{ fr.get('milestone','') }}" size="4" aria-label="Milestone month for {{ item.label }}"></td></tr>
+      {% else %}<tr><td colspan="5">No eligible CAPEX items with a positive amount.</td></tr>{% endfor %}
+      </tbody></table></div>
+      <button type="submit" data-testid="preview-submit">Preview monthly allocation (no save)</button>
+    </form>
+    {% if excluded %}<details><summary>Derived / financing items (not spending-profile eligible): {{ excluded|length }}</summary><ul>{% for e in excluded %}<li><code>{{ e.item_key }}</code> {{ e.label }} — {{ '%.3f'|format(e.amount_keur) }} kEUR</li>{% endfor %}</ul></details>{% endif %}
+  </section>
+
+  {% if plan %}
+  <section class="panel" data-testid="plan-result" data-canonical="false">
+    <h2>2. Hypothetical monthly allocation</h2>
+    <p class="banner">{{ plan.notice }}</p>
+    {% for e in plan.global_errors %}<p class="error" role="alert" data-testid="plan-global-error">{{ e }}</p>{% endfor %}
+    <p>Planned (all eligible items): <strong data-testid="planned-total">{{ plan.planned_total_keur }}</strong> kEUR · profiled: <strong data-testid="profiled-total">{{ plan.profiled_total_keur }}</strong> kEUR · unallocated / invalid: <strong data-testid="unallocated-total">{{ plan.unallocated_total_keur }}</strong> kEUR</p>
+    <div class="table-wrap"><table data-testid="row-table"><thead><tr><th>Item</th><th>Shape</th><th class="num">Total kEUR</th><th>Status</th><th class="num">Unallocated kEUR</th><th>Existing-period equivalent kEUR</th></tr></thead><tbody>
+    {% for r in plan.rows if r.spec %}<tr data-item="{{ r.item.item_key }}" data-status="{{ 'invalid' if r.error_code else 'ok' }}"><td>{{ r.item.item_key }} {{ r.item.label }}</td><td>{{ r.spec.shape.value|replace('_',' ')|lower }}</td><td class="num">{{ '%.3f'|format(r.item.amount_keur) }}</td>
+      <td>{% if r.error_code %}<span class="pill bad" data-testid="row-error">{{ r.error_code }}</span>{% else %}<span class="pill ok">valid</span> rounding residual {{ r.result.rounding_residual_keur }}{% endif %}</td>
+      <td class="num">{{ r.unallocated_keur }}</td><td>{% if r.period_equivalent_keur %}{% for v in r.period_equivalent_keur %}P{{ loop.index0 }}: {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}—{% endif %}</td></tr>
+    {% endfor %}</tbody></table></div>
+    <h3>Monthly uses of the profiled items</h3>
+    <div class="table-wrap"><table data-testid="month-table"><thead><tr><th>Month</th><th>Month start</th><th>Period</th>{% for r in plan.rows if r.result %}<th class="num">{{ r.item.item_key }}</th>{% endfor %}<th class="num">Total</th><th class="num">Cumulative</th><th class="num">Remaining</th></tr></thead><tbody>
+    {% for k in range(plan.months) %}<tr data-month="{{ k + 1 }}"><td>{{ k + 1 }}</td><td>{{ plan.timeline.month_start[k] if plan.timeline.available else '—' }}</td><td>{{ ('P' ~ plan.timeline.month_to_period[k]) if plan.timeline.available else '—' }}</td>
+      {% for r in plan.rows if r.result %}<td class="num">{{ r.result.months[k].amount_keur }}</td>{% endfor %}
+      <td class="num">{{ plan.monthly_total_keur[k] }}</td><td class="num">{{ plan.monthly_cumulative_keur[k] }}</td><td class="num">{{ plan.monthly_remaining_keur[k] }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% if plan.period_equivalent_total_keur %}<p class="muted" data-testid="period-equivalent">Equivalent on the existing construction periods (end-of-period payment convention; intra-period monthly timing is not represented there): {% for v in plan.period_equivalent_total_keur %}P{{ loop.index0 }} {{ plan.timeline.period_starts[loop.index0] }}–{{ plan.timeline.period_ends[loop.index0] }}: <strong>{{ v }}</strong>{% if not loop.last %} · {% endif %}{% endfor %} kEUR.</p>{% endif %}
+  </section>
+  {% endif %}
+</main>
+</body>
+</html>
