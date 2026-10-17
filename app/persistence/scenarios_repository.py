@@ -188,8 +188,22 @@ def resolve_active_scenario_runtime_snapshot(
 # ============================================================
 
 
-def rename_scenario(user_id: str, scenario_id: str, new_name: str) -> bool:
+def rename_scenario(user_id: str, scenario_id: str, new_name: str, *, reject_duplicate_name: bool = False) -> bool:
+    """Rename a scenario.
+
+    ``reject_duplicate_name`` makes the clash check and the UPDATE ONE transaction (same rule as :func:`add_scenario`: another
+    non-archived, non-base scenario of the same project with the same case-insensitive name); the scenario itself is excluded so a
+    case-only rename of its own name still works.  Raises :class:`DuplicateScenarioName`; off by default for existing callers.
+    """
     with get_cursor() as cur:
+        if reject_duplicate_name:
+            cur.execute(
+                "SELECT 1 FROM scenarios t JOIN scenarios o ON o.project_id=t.project_id AND o.user_id=t.user_id "
+                "WHERE t.scenario_id=? AND t.user_id=? AND o.scenario_id<>t.scenario_id AND o.archived=0 AND o.is_base_case=0 "
+                "AND lower(trim(o.scenario_name))=? LIMIT 1",
+                (scenario_id, user_id, (new_name or "").strip().lower()))
+            if cur.fetchone() is not None:
+                raise DuplicateScenarioName(new_name)
         cur.execute(
             "UPDATE scenarios SET scenario_name=?, updated_at=? WHERE scenario_id=? AND user_id=?",
             (new_name, _now_utc().isoformat(), scenario_id, user_id),

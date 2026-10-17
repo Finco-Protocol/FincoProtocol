@@ -3197,6 +3197,12 @@ async def v2_workbook_run(
             _scenario_revenue_input["multistream_config_json"] = _contracts
             _kpis_enriched["revenue_multistream_audit"] = result["revenue_multistream_audit"]
         _kpis_enriched["scenario_revenue_input"] = _scenario_revenue_input
+    # RC-5 / S7-01: Run-bound proof (or explicit absence of proof) that the overrides saved for this Run were applied. Kept apart
+    # from Run artifact integrity; a Run never claims more than the canonical binding evidence above.
+    from app.workbook.effective_input_evidence import build_effective_input_evidence
+    _kpis_enriched["effective_input_evidence"] = build_effective_input_evidence(
+        overrides=dict(_scenario_overrides_for_fold or {}), scenario_revenue_input=_scenario_revenue_input,
+        q4_effective_input=_q4_effective_binding)
     if getattr(override.technical, "bess_native_config_json", ""):
         _kpis_enriched["bess_operating_audit"] = result["bess_operating_audit"]
         _kpis_enriched["bess_input_contract"] = override.technical.bess_native_config_json
@@ -4017,7 +4023,12 @@ async def v2_scenario_rename(
     if not name or len(name) > 80:
         return JSONResponse({"error": "Invalid scenario name."}, status_code=422)
 
-    rename_scenario(user_id=workspace_owner, scenario_id=scenario_id, new_name=name)
+    from app.persistence.scenarios_repository import DuplicateScenarioName
+    try:
+        rename_scenario(user_id=workspace_owner, scenario_id=scenario_id, new_name=name, reject_duplicate_name=True)
+    except DuplicateScenarioName:
+        return JSONResponse({"error": f"SCENARIO_NAME_DUPLICATE: a scenario named {name!r} already exists in this project.",
+                             "code": "SCENARIO_NAME_DUPLICATE"}, status_code=409)
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
 
     is_htmx = request.headers.get("HX-Request") == "true"
