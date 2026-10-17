@@ -1,3 +1,4 @@
+{% import "import_workflow.html" as wf %}
 {% macro prov(r) %}
   <div data-testid="prov-original">Original: <code>{{ r.original_value }}</code> · extracted unit <strong>{{ r.extracted_unit or 'unspecified' }}</strong></div>
   <div data-testid="prov-unit">Unit used: <strong>{{ r.chosen_unit or 'unspecified' }}</strong>{% if r.unit_corrected %} <span class="pill needs_review" data-testid="unit-corrected">corrected by you</span>{% endif %} → FINCO <strong>{{ r.canonical_unit or r.unit or '—' }}</strong></div>
@@ -45,6 +46,12 @@
   .owner{font-size:.8rem;color:#43307a}.prov td{font-size:.84rem}
   button.secondary-action{background:white;color:#1f4c6c;border:1px solid #b4c6d6;font-weight:600}
   .migration-banner{border-left:4px solid #7e610f;background:#fffaf0;padding:10px 14px;margin:10px 0}
+  .migration-steps ol{list-style:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:0;margin:14px 0}
+  .migration-steps li{border:1px solid #cfdae5;border-radius:9px;padding:10px;min-width:0;background:#fff}
+  .migration-steps li strong{display:block;font-size:.83rem}.migration-steps li span{display:block;font-size:.73rem;color:#54687b;margin-top:5px}
+  @media(max-width:820px){.migration-steps ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:480px){.migration-steps ol{grid-template-columns:1fr}}
+
   @media(max-width:640px){main{padding:12px}header{padding:13px}h1{font-size:1.32rem}.panel{padding:12px}.box>.field{min-width:0;width:100%;max-width:100%}input[type=file]{display:block;width:100%;min-width:0;box-sizing:border-box}}
   </style>
 </head>
@@ -53,6 +60,7 @@
 <main>
   <h1>CSV/XLSX Input Import</h1>
   <p class="muted">{{ project.project_name }} · {{ project.project_type }} · Working Copy · Import never runs the model automatically.</p>
+  {% if migration %}{{ wf.stages(stage) }}{% endif %}
   {% if error %}
     {% if error == "F3_COMPETING_FINANCING_EDITOR_REJECTED" %}
       <p role="alert" class="error">Import rejected: an active two-Senior financing configuration owns these debt assumptions. Use the authorized Financing editor; no Import fields were saved. ({{ error }})</p>
@@ -129,14 +137,15 @@
         <thead><tr><th>Approve</th><th>Source cell / label</th><th>Original value</th><th>Suggested FINCO field</th><th>Working Copy</th><th>Proposed value / units</th><th>Confidence, validation &amp; explanation</th></tr></thead>
         <tbody>
         {% for p in proposals %}
+        {% set read_only = p.status in ('unsupported', 'unsupported_for_apply') or p.reason == 'IMPORT_FORMULA_NOT_AUTHORITATIVE' or p.apply_support == 'UNSUPPORTED_FOR_APPLY' %}
         <tr class="review-row" data-status="{{ p.status }}" data-category="{{ p.category }}" data-confidence="{{ p.confidence_class }}" data-bulk="{{ 'true' if p.bulk_selectable else 'false' }}" data-index="{{ p.id }}"
-            data-attention="{{ 'true' if (p.status in ['unsupported','unsupported_for_apply','invalid'] or p.duplicate_target or 'ambiguous' in p.mapping_method) else 'false' }}">
+            data-attention="{{ 'true' if (p.status in ['unsupported','unsupported_for_apply','invalid'] or p.duplicate_target or 'ambiguous' in p.mapping_method) else 'false' }}" data-readonly="{{ 'true' if read_only else 'false' }}">
           <td><input type="checkbox" class="approve-box" name="keep_{{ p.id }}" value="on"
             aria-label="Approve proposal {{ p.id + 1 }}"
-            {% if p.reason == 'IMPORT_FORMULA_NOT_AUTHORITATIVE' or p.status == 'unsupported_for_apply' and not p.field_id %}disabled{% endif %}></td>
+            {% if read_only %}disabled{% endif %}></td>
           <td><strong>{{ p.sheet }}!{{ p.source_cell }}</strong><div>{{ p.label }}</div><small class="muted">Label at {{ p.label_cell }}{% if p.section %} · block “{{ p.section }}”{% endif %}</small></td>
           <td><code>{{ p.original_value }}</code><div class="muted">{{ p.source_unit or 'Unit unspecified' }}</div></td>
-          <td><select name="field_{{ p.id }}" aria-label="Map proposal {{ p.id + 1 }} to FINCO field">
+          <td><select name="field_{{ p.id }}" aria-label="Map proposal {{ p.id + 1 }} to FINCO field" {% if read_only %}disabled{% endif %}>
             <option value="">Unmapped — skip</option>
             {% if p.alternatives %}<optgroup label="Suggested alternatives">{% for a in p.alternatives if a.field_id %}<option value="{{ a.field_id }}">{{ a.label }} ({{ a.field_id }}) · {{ a.confidence }}</option>{% endfor %}</optgroup>{% endif %}
             {% for f in fields %}<option value="{{ f.id }}" {% if p.field_id == f.id %}selected{% endif %}>{{ f.label }} ({{ f.id }})</option>{% endfor %}
@@ -145,16 +154,17 @@
             {% if p.apply_support == 'UNSUPPORTED_FOR_APPLY' and p.owner_editor %}<div class="owner" data-testid="owner-editor">UNSUPPORTED_FOR_APPLY · edit in: {{ p.owner_editor }}</div>{% endif %}</td>
           <td><code>{{ p.current_value if p.current_value is not none else 'Not set' }}</code></td>
           <td><label class="muted" for="unit-{{ p.id }}">Source unit</label>
-            <select id="unit-{{ p.id }}" name="unit_{{ p.id }}" aria-label="Original source unit for {{ p.label }}">
+            <select id="unit-{{ p.id }}" name="unit_{{ p.id }}" aria-label="Original source unit for {{ p.label }}" {% if read_only %}disabled{% endif %}>
               <option value="{{ p.source_unit or '' }}" selected>{{ p.source_unit or 'Unspecified' }} (source)</option>
               {% for u in ['%', 'fraction', 'EUR', 'EUR/yr', 'kEUR', 'kEUR/yr', 'EUR/MWh', 'EUR/kWh', 'MW', 'h/yr', 'years', 'months', 'date', ''] %}
               {% if u != (p.source_unit or '') %}<option value="{{ u }}">{{ u if u else 'Unspecified' }}</option>{% endif %}
               {% endfor %}
             </select>
             <div class="muted">Proposed FINCO value: <strong>{{ p.normalized_value if p.normalized_value is not none else '—' }}</strong></div>
+            {% if read_only %}<div class="owner">Read-only: this content cannot be approved through scalar Import. Use the owning workflow or resolve the dependency at source.</div>{% endif %}
             <input name="manual_{{ p.id }}" type="text"
               aria-label="Optional corrected FINCO value for proposal {{ p.id + 1 }}"
-              placeholder="Optional override (FINCO units)">
+              placeholder="Optional override (FINCO units)" {% if read_only %}disabled{% endif %}>
           </td>
           <td><span class="pill {{ p.status }}">{{ p.status|replace('_',' ') }}</span>
             <span class="pill cat">{{ p.category|title }}</span><span class="pill conf-{{ p.confidence_class }}" data-testid="confidence">{{ p.confidence_class|replace('_',' ') }}</span>
@@ -219,6 +229,8 @@
       <p><span class="pill needs_review" data-testid="changed-not-run">CHANGED — NOT RUN</span>
          Source scenario <strong>{{ migration.slice.label }}</strong> ({{ migration.slice.resolution|replace('_',' ')|lower }}) → target scenario <strong>{{ migration.target.scenario_name }}</strong>.
          Provenance is held in this result and the signed evidence below; the workbook itself was not stored. Run the model from the Inputs workspace to create a committed Run, then compare.</p>
+      <p class="notice">Step 5: first commit a native Run for this exact target scenario. Use the Inputs workspace, then return to this review tab. The existing reconciliation service will check Run identity, input freshness, source evidence and conventions; missing evidence is NOT_COMPARABLE, never PASS.</p>
+      <p><a href="/v2/workbook?project={{ project_code|urlencode }}&amp;sheet=inputs" target="_blank" rel="noopener" data-testid="migration-open-run">Open Inputs &amp; Run in another tab →</a></p>
       <form action="/v2/workbook/import/reconcile" method="post" data-testid="reconcile-form">
         <input type="hidden" name="project" value="{{ project_code }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
