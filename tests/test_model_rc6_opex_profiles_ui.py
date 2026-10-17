@@ -1,5 +1,6 @@
 """Scoped template+real Chromium smoke with synthetic OPEX lines only (not authenticated app)."""
 from pathlib import Path
+import shutil
 from types import SimpleNamespace as N
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import pytest
@@ -29,11 +30,12 @@ def test_wf11_candidate_template_protects_derived_rows_and_explains_authority():
     assert 'data-wf11-candidate' in html
 
 
-def test_wf11_candidate_browser_real_chromium():
+@pytest.mark.parametrize("width", [390, 1440])
+def test_wf11_candidate_browser_real_chromium(width):
     playwright=pytest.importorskip('playwright.sync_api')
     with playwright.sync_playwright() as p:
-        browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
-        page=browser.new_page(viewport={'width':390,'height':844})
+        browser=p.chromium.launch(headless=True,args=['--no-sandbox'], **({'executable_path': shutil.which('chromium')} if shutil.which('chromium') else {}))
+        page=browser.new_page(viewport={'width':width,'height':844})
         page.set_content(render())
         page.add_script_tag(path=str(JS))
         page.get_by_test_id('opex-profile-workspace').locator('summary').first.click()
