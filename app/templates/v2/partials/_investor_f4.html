@@ -4,6 +4,27 @@
   <script src="/static/js/investor_f4.js" defer></script>
   <header><h3>Common-equity investor agreement</h3><span class="v2-binding-badge text-xs font-medium px-2.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300" data-testid="f4-state">{{ f4.state }}</span></header>
   <p>Residual common equity only. <strong>Ownership %</strong> allocates results between investors and does not change Sources &amp; Uses; <strong>commitments and paid-in capital</strong> describe funding and must reconcile with the equity in the financing plan before Run. Return-of-capital ordering, preferences, carry, NAV and SHL lender allocation are not available.</p>
+  {# S7-07: workflow state, derived only from what is already loaded (saved terms vs the Last Run's recorded agreement). It never claims an agreement
+     changes Sources & Uses or a committed Run: only a canonical Run that records the agreement incorporates it. #}
+  {% set _ev = f4.evidence.agreement if f4.evidence else none %}
+  <div class="f4-workflow" data-testid="f4-workflow" role="status">
+    {% if f4.history_id %}
+    <p data-testid="f4-workflow-state" data-workflow="HISTORICAL">Historical committed agreement: the agreement recorded in this immutable Run. It cannot be edited and no later change affects it.</p>
+    {% elif not f4.terms %}
+    <p data-testid="f4-workflow-state" data-workflow="NONE">No working agreement is saved. Investor allocations exist only for Runs that record a saved agreement.</p>
+    {% elif _ev and _ev.agreement_id == f4.terms.agreement_id and _ev.version == f4.terms.version and f4.state == 'CURRENT' %}
+    <p data-testid="f4-workflow-state" data-workflow="INCORPORATED">Saved agreement {{ f4.terms.agreement_id }} v{{ f4.terms.version }} is incorporated in the Last Run.</p>
+    {% elif _ev and _ev.agreement_id == f4.terms.agreement_id and _ev.version == f4.terms.version %}
+    <p data-testid="f4-workflow-state" data-workflow="INCORPORATED_STALE">Saved agreement {{ f4.terms.agreement_id }} v{{ f4.terms.version }} was recorded in the Last Run, but other inputs have changed since: Run again to refresh the investor evidence.</p>
+    {% elif _ev %}
+    <p data-testid="f4-workflow-state" data-workflow="SAVED_NOT_RUN">Saved agreement {{ f4.terms.agreement_id }} v{{ f4.terms.version }} is not yet in a Run. The Last Run used {{ _ev.agreement_id }} v{{ _ev.version }}. Run to apply the saved agreement.</p>
+    {% else %}
+    <p data-testid="f4-workflow-state" data-workflow="SAVED_NOT_RUN">Saved agreement {{ f4.terms.agreement_id }} v{{ f4.terms.version }} has not been incorporated in any canonical Run. Run to produce investor evidence.</p>
+    {% endif %}
+    {% if f4.editable %}
+    <p class="f4-draft" data-f4-draft data-draft="clean" data-testid="f4-draft-state">No unsaved edits. Saving stores the working agreement only; it never runs the model or changes a committed Run.</p>
+    {% endif %}
+  </div>
   {% if f4.editable %}
   <form class="f4-agreement-form" hx-post="/v2/workbook/investor/agreement" hx-target="#f4-investor-workspace" hx-swap="outerHTML"
         data-version="{{ f4.terms.version + 1 if f4.terms else 1 }}" data-agreement-id="{{ f4.terms.agreement_id if f4.terms else '' }}">
