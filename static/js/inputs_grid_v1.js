@@ -485,6 +485,7 @@
     refreshBar();
     setMsg('Saving ' + staged.length + ' edit' + (staged.length === 1 ? '' : 's') + '…', 'busy');
     saveStartedAt = performance.now();
+    document.dispatchEvent(new CustomEvent('model:diagnostics-write-start'));
     var project = g.getAttribute('data-project');
     var view = captureView();
     var cells = staged.map(function (i) { return { field_id: i.getAttribute('data-ig-field'), value: committedOf(i) }; });
@@ -543,7 +544,11 @@
       setMsg('Save could not be completed (network). Nothing was confirmed saved; your edits are kept.', 'error');
       refreshBar();
       return false;
-    }).then(function (ok) { busy.saving = false; refreshBar(); return ok; });
+    }).then(function (ok) {
+      busy.saving = false; refreshBar();
+      document.dispatchEvent(new CustomEvent('model:diagnostics-write-end', {detail: {saved: ok}}));
+      return ok;
+    });
   }
 
   document.addEventListener('click', function (e) {

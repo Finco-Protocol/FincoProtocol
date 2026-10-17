@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
+from app.services.model_performance import observed, span
 
 _NOTSET = object()  # sentinel: distinguishes "caller passed rr=None" from "caller did not pass rr"
 
@@ -294,9 +295,11 @@ def _build_result_surfaces_oob(*, pack, ws_fresh, project_record, project: str, 
     return _as_oob(strip, "v2-hybrid-status") + "\n" + _as_oob(trust, "v2-sheet-trust")
 
 
+@observed("response_assembly")
 def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
                            project_record, project: str,
-                           project_editable: bool, freshness, context=None, pack=_NOTSET) -> str:
+                           project_editable: bool, freshness, context=None, pack=_NOTSET,
+                           include_diagnostics: bool = False) -> str:
     """OOB refresh for the Smart Panel (runtime-state note + availability).
 
     Rebuilds the panel from the SAME single workspace read; Trust Pack
@@ -340,7 +343,8 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
     from app.v2.router import _attach_insight
     panel = _attach_insight(
         panel, ws=ws_fresh, pis=pis, project_record=project_record, workspace_owner=workspace_owner,
-        runtime_state=freshness.state.value, register_view=register_view)
+        runtime_state=freshness.state.value, register_view=register_view,
+        include_diagnostics=include_diagnostics)
     rendered = _templates.get_template(
         "partials/_model_smart_panel.html"
     ).render({"smart_panel": panel}).replace(
@@ -348,9 +352,12 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
         '<aside id="model-smart-panel" hx-swap-oob="true"', 1)
     diagnostic_ctx = {"diagnostics": panel.insight["quality"].get("diagnostics"),
                       "project_name": getattr(project_record, "project_name", "") or project}
-    for template, root in (("_model_health.html", "v2-model-health"),
-                           ("sheet_diagnostics.html", "v2-sheet-diagnostics")):
-        rendered += "\n" + _as_oob(_templates.get_template("partials/" + template).render(diagnostic_ctx), root)
+    diagnostics_template = (
+        "sheet_diagnostics.html" if include_diagnostics else "_diagnostics_placeholder.html")
+    with span("template_render"):
+        for template, root in (("_model_health.html", "v2-model-health"),
+                               (diagnostics_template, "v2-sheet-diagnostics")):
+            rendered += "\n" + _as_oob(_templates.get_template("partials/" + template).render(diagnostic_ctx), root)
     return rendered
 
 

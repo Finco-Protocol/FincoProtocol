@@ -171,7 +171,7 @@
     </div>
 
     <div class="v2-sheet-panel" role="tabpanel" id="panel-diagnostics" aria-labelledby="tab-diagnostics" hidden>
-      <div class="v2-sheet-body">{% include "partials/sheet_diagnostics.html" %}</div>
+      <div class="v2-sheet-body">{% if diagnostics_lazy %}{% include "partials/_diagnostics_placeholder.html" %}{% else %}{% include "partials/sheet_diagnostics.html" %}{% endif %}</div>
     </div>
 
     <div class="v2-sheet-panel" role="tabpanel" id="panel-scenarios" aria-labelledby="tab-scenarios" hidden>
@@ -309,6 +309,7 @@
   <script src="/static/js/investor_f4.js" defer></script>
   <script src="/static/js/model_smart_panel_v2.js"></script>
   <script src="/static/js/inputs_grid_v1.js"></script>
+  <script src="/static/js/model_diagnostics_loader.js"></script>
   <script src="/static/js/model_diagnostics_v1.js"></script>
   <script src="/static/js/model_diagnostics_v2.js"></script>
 
