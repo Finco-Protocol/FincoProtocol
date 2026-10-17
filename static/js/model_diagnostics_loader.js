@@ -27,18 +27,37 @@
     active = null;
     var node = root();
     if (node) {
+      var payload = node.querySelector('[data-md-payload]');
+      if (payload) {
+        try { node.dataset.lastRunIdentity = JSON.stringify(JSON.parse(payload.textContent).identity); }
+        catch (error) { delete node.dataset.lastRunIdentity; }
+      }
       node.dataset.diagnosticsLoadState = 'pending';
-      node.dataset.state = 'UNAVAILABLE';
-      message(node, 'Checks need refreshing. Previous results are not current.');
+      // A pending/rejected write is not a new financial state. Only server
+      // evidence (OOB HTML or the successful Save response) can change it.
+      message(node, pendingMessage(node.dataset.state));
     }
   }
-  function invalidateHealth() {
+  function pendingMessage(state) {
+    return state === 'STALE' ? 'STALE - HISTORICAL Last Run. Open Diagnostics to refresh the checks.' :
+      'Open Diagnostics to refresh the latest available checks.';
+  }
+  function savedFreshness(state) {
+    if (!/^(CURRENT|STALE|NOT_RUN|UNAVAILABLE)$/.test(state || '')) return;
+    var node = root();
+    if (node) {
+      node.dataset.state = state;
+      message(node, pendingMessage(state));
+    }
     var health = document.getElementById('v2-model-health');
-    if (!health) return;
-    health.dataset.state = 'UNAVAILABLE';
-    var p = document.createElement('p'); p.setAttribute('role', 'status');
-    p.textContent = 'Checks need refreshing after Save. Previous results are not current.';
-    health.replaceChildren(p);
+    // A normal Save already refreshes the canonical Health summary via OOB.
+    // Retain its score, findings and Run identity instead of discarding them.
+    if (!health || health.dataset.state === state) return;
+    health.dataset.state = state;
+    var status = health.querySelector('[data-md-freshness]');
+    if (status && status.firstChild && status.firstChild.nodeType === 3) {
+      status.firstChild.nodeValue = state + (state === 'STALE' ? ' - HISTORICAL Last Run, not the edited Working Copy ' : ' ');
+    }
   }
   function schedule() {
     if (queued) return;
@@ -109,12 +128,11 @@
     gridWrites++; invalidate();
   });
   document.addEventListener('model:diagnostics-write-end', function (event) {
-    if ((event.detail || {}).saved) invalidateHealth();
     gridWrites = Math.max(0, gridWrites - 1); schedule();
   });
-  document.addEventListener('ig:saved', function () {
+  document.addEventListener('ig:saved', function (event) {
     invalidate();
-    invalidateHealth();
+    savedFreshness((event.detail || {}).runState);
     schedule();
   });
   document.addEventListener('click', function (event) {

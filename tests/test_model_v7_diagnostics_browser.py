@@ -38,6 +38,7 @@ def test_lazy_payload_hidden_save_deep_link_and_history(live_server, browser, te
                 viewport={'width':width,'height':844 if width == 390 else 900}, scheme=scheme, template=template)
     try:
         page = s.page
+        assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'NOT_RUN'
         assert page.locator('[data-md-payload]').count() == 0
         assert page.locator('#v2-sheet-diagnostics').get_attribute('data-diagnostics-load-state') == 'pending'
         assert not [u for m,u in s.requests if '/workbook/diagnostics?' in u]
@@ -62,6 +63,10 @@ def test_lazy_payload_hidden_save_deep_link_and_history(live_server, browser, te
         page.wait_for_timeout(150)
         assert not [u for m,u in s.requests if '/workbook/diagnostics?' in u]
         assert page.locator('[data-md-payload]').count() == 0
+        assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'STALE'
+        assert page.locator('#v2-model-health').get_attribute('data-state') == 'STALE'
+        assert 'HISTORICAL' in page.locator('#v2-model-health').inner_text()
+        assert json.loads(page.locator('#v2-sheet-diagnostics').get_attribute('data-last-run-identity')) == data['identity']
         assert _open(page)['state'] == 'STALE'
         after = get_workspace_state(s.uid, s.rec.project_id)
         assert after.last_runtime_snapshot_id == before.last_runtime_snapshot_id
@@ -145,5 +150,40 @@ def test_unavailable_read_retry_not_run_and_keyboard_focus(live_server, browser)
         assert len(attempts) == 2
         assert page.locator('#v2-sheet-diagnostics').evaluate('(n) => n === document.activeElement')
         assert not s.posts_to('/v2/workbook/run')
+    finally:
+        s.close()
+
+
+@pytest.mark.parametrize('template', ['generic_solar_reference', 'generic_wind_reference'])
+def test_rejected_save_preserves_current_freshness_and_committed_evidence(live_server, browser, template):
+    from app.persistence.workspace_repository import get_workspace_state
+
+    s = Session(live_server, browser, 'v7-rejected-' + template, template=template)
+    try:
+        page = s.page
+        _run(page)
+        before = get_workspace_state(s.uid, s.rec.project_id)
+        data = _open(page)
+        activate_destination(page, 'tab-input-grid')
+        cell = page.locator('.ig-input[data-ig-field="project_setup.technical.p50_hours"]')
+        cell.fill(str(float(cell.input_value()) + 1)); cell.press('Enter')
+        page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 1')
+
+        def reject_token(route):
+            body = route.request.post_data_json
+            body['csrf_token'] = 'invalid-disposable-test-token'
+            route.continue_(post_data=json.dumps(body))
+
+        page.route('**/v2/workbook/grid/save', reject_token)
+        assert page.evaluate('() => window.FincoInputGrid.save()') is False
+        assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'CURRENT'
+        assert page.locator('#v2-model-health').get_attribute('data-state') == 'CURRENT'
+        assert page.locator('[data-testid=hybrid-run-state]').inner_text().strip() == 'CURRENT'
+        assert page.locator('#v2-sheet-diagnostics').get_attribute('data-diagnostics-load-state') == 'pending'
+        assert json.loads(page.locator('#v2-sheet-diagnostics').get_attribute('data-last-run-identity')) == data['identity']
+        assert page.evaluate('() => window.FincoInputGrid.stagedCount()') == 1
+        after = get_workspace_state(s.uid, s.rec.project_id)
+        for field in ('draft_snapshot', 'last_runtime_snapshot_id', 'last_financial_statements', 'last_integrity_evidence'):
+            assert getattr(after, field) == getattr(before, field)
     finally:
         s.close()

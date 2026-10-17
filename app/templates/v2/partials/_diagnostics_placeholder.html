@@ -1,7 +1,8 @@
 <div id="v2-sheet-diagnostics" class="md-workspace" data-sheet="diagnostics"
      data-state="{{ diagnostics.state if diagnostics else 'UNAVAILABLE' }}"
+     {% if diagnostics and diagnostics.identity %}data-last-run-identity='{{ diagnostics.identity | tojson }}'{% endif %}
      data-diagnostics-load-state="pending" aria-live="polite">
   <h1>Model Diagnostics</h1>
-  <p role="status">Open Diagnostics to review the latest available checks.</p>
+  <p role="status">{% if diagnostics and diagnostics.state == 'STALE' %}STALE - HISTORICAL Last Run. {% endif %}Open Diagnostics to review the latest available checks.</p>
   <button type="button" data-diagnostics-retry>Load Diagnostics</button>
 </div>
