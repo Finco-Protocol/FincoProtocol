@@ -10,6 +10,11 @@ A Run Certificate ATTESTS TO:
   - the issuer / signing-key identity;
   - payload integrity (Ed25519 signature over the canonical serialization).
 
+Effective-input application is a DIFFERENT question from artifact integrity.  The payload's ``effective_input_evidence`` block says
+whether the scenario overrides saved when the Run executed are proven (by the Run's own canonical binding evidence) to have been
+applied: ``ESTABLISHED``, ``NOT_APPLICABLE`` or ``EFFECTIVENESS_NOT_ESTABLISHED`` (older Runs and anything unproven).  A valid
+signature never implies the first.
+
 A Run Certificate MUST NEVER be read as a claim that:
   - FINCO Verify is true for the project;
   - any evidence or market data is economically true;
@@ -183,8 +188,22 @@ def build_certificate_payload(ws, *, issued_at: datetime | None = None) -> dict:
         "kpi_digest": hashlib.sha256(
             _canonical_json_bytes(summary)
         ).hexdigest(),
+        # RC-5 / S7-01: artifact integrity (this signature, the digests above) is NOT a claim that scenario overrides were applied.
+        # That is stated separately, and only as far as the Run's own canonical binding evidence proves it.
+        "effective_input_evidence": _effective_input_evidence(ws),
     }
     return payload
+
+
+def _effective_input_evidence(ws) -> dict:
+    """Run-bound effective-input status; any failure to establish it is the explicit EFFECTIVENESS_NOT_ESTABLISHED, never absence."""
+    from app.workbook.effective_input_evidence import (
+        NOT_ESTABLISHED, R_UNREADABLE, SCHEMA, SCOPE_NOTE, resolve_effective_input_evidence)
+    try:
+        return resolve_effective_input_evidence(ws)
+    except Exception:  # noqa: BLE001 - fail closed
+        return {"schema": SCHEMA, "basis": "historical_run_evidence", "scope": SCOPE_NOTE, "status": NOT_ESTABLISHED,
+                "reason": R_UNREADABLE, "overrides_at_run": None, "bound_fields": [], "unbound_fields": []}
 
 
 def _sign_bytes(seed: bytes, data: bytes) -> bytes:

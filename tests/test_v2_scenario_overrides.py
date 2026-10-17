@@ -266,7 +266,7 @@ def test_update_overrides_non_numeric_value_skipped():
     """Case F: non-numeric value for a field is silently dropped; other fields proceed."""
     client = _get_test_client()
     sc = _make_scenario()
-    updated_sc = _make_scenario(overrides={"gearing_pct": 70.0})
+    updated_sc = _make_scenario(overrides={"tariff_eur_mwh": 70.0})
 
     with (
         patch("app.v2.router._get_current_user", return_value=_mock_user()),
@@ -291,14 +291,14 @@ def test_update_overrides_non_numeric_value_skipped():
             {
                 "project": "test_proj",
                 "scenario_id": "sc-1",
-                "tariff_eur_mwh": "not_a_number",  # dropped
-                "gearing_pct": "70",                # kept
+                "gearing_pct": "not_a_number",  # dropped (non-numeric)
+                "tariff_eur_mwh": "70",         # kept (RC-5A: the only Run-bound field)
             },
         )
 
     assert resp.status_code == 200
     # Only the numeric field reaches the persistence layer
-    mock_upo.assert_called_once_with("user-sc", "sc-1", {"gearing_pct": 70.0})
+    mock_upo.assert_called_once_with("user-sc", "sc-1", {"tariff_eur_mwh": 70.0})
 
 
 # ─── Case G: missing required params ─────────────────────────────────────────
@@ -391,7 +391,7 @@ def test_update_overrides_non_htmx_redirects():
     """Case J: non-HTMX request → 303 redirect to workbook page."""
     client = _get_test_client()
     sc = _make_scenario()
-    updated_sc = _make_scenario(overrides={"gearing_pct": 65.0})
+    updated_sc = _make_scenario(overrides={"tariff_eur_mwh": 65.0})
 
     with (
         patch("app.v2.router._get_current_user", return_value=_mock_user()),
@@ -412,7 +412,7 @@ def test_update_overrides_non_htmx_redirects():
     ):
         resp = _post_overrides(
             client,
-            {"project": "test_proj", "scenario_id": "sc-1", "gearing_pct": "65"},
+            {"project": "test_proj", "scenario_id": "sc-1", "tariff_eur_mwh": "65"},
             htmx=False,
             follow_redirects=False,
         )

@@ -23,6 +23,8 @@
       <span class="v2-trust-k">Active scenario</span>
       <span class="v2-trust-v">{{ trust_certificate.active_scenario_id }}</span>
     {% endif %}
+    <span class="v2-trust-k">Effective scenario inputs</span>
+    <span class="v2-trust-v" data-testid="trust-pack-certificate-effective-inputs">{{ trust_certificate.effective_input_status or 'EFFECTIVENESS_NOT_ESTABLISHED' }}</span>
     {% if trust_certificate.run_origin %}
       <span class="v2-trust-k">Run origin</span>
       <span class="v2-trust-v">{{ trust_certificate.run_origin }}</span>
@@ -34,6 +36,7 @@
     <span class="v2-trust-k">Payload digest</span>
     <span class="v2-trust-v">{{ trust_certificate.payload_digest or '—' }}</span>
   </div>
+  <div class="v2-trust-note" data-testid="trust-pack-certificate-effective-note">Artifact integrity and effective-input application are separate: the signature proves the committed Run is unaltered, not that scenario overrides were applied.{% if trust_certificate.effective_input_status == 'EFFECTIVENESS_NOT_ESTABLISHED' %} Effectiveness is not established for this Run{% if trust_certificate.effective_input_unbound %} (no canonical binding evidence for: {{ trust_certificate.effective_input_unbound | join(', ') }}){% endif %}.{% endif %}</div>
   <div class="v2-trust-note">Authority: {{ trust_certificate.authority }}.</div>
 {% else %}
   <div class="v2-trust-note" data-testid="trust-pack-certificate-fragment-unavailable">

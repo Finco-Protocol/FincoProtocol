@@ -65,6 +65,9 @@ class ScenarioPresentation:
 
     # Current financial overrides (non-base-case only; {} for base case)
     overrides: dict = field(default_factory=dict)
+    # Saved override keys the canonical Run does not apply (RC-5A): kept visible
+    # and removable, but a Run is refused until they are removed.
+    unbound_overrides: tuple = ()
     metrics: dict = field(default_factory=dict)
 
 
@@ -163,6 +166,7 @@ def build_scenario_presentation(
     run_at_raw = rs.get("ran_at") if rs else None
     updated_at_raw = getattr(sc, "updated_at", None)
     from app.v2.scenario_kpi_projection import build_scenario_projection
+    from app.workbook.scenario_override_authority import unbound_override_keys
 
     return ScenarioPresentation(
         scenario_id=sc.scenario_id,
@@ -175,6 +179,8 @@ def build_scenario_presentation(
         is_stale=stale,
         has_run=has_run,
         overrides=dict(getattr(sc, "overrides", None) or {}),
+        unbound_overrides=tuple(unbound_override_keys(
+            getattr(sc, "overrides", None) or {}, getattr(sc, "replay_metadata", None))),
         metrics=build_scenario_projection(sc.scenario_name, rs.get("kpis") if has_run else None,
                                           run_at_raw, stale).kpis,
     )
