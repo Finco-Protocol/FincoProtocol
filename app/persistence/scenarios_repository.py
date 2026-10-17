@@ -69,6 +69,10 @@ if TYPE_CHECKING:
 # ============================================================
 
 
+class DuplicateScenarioName(ValueError):
+    """A non-archived scenario with this name already exists in the project."""
+
+
 def resolve_scenario_snapshot(
     base_input_set: dict[str, Any],
     overrides: dict[str, Any],
@@ -636,8 +640,12 @@ def add_scenario(
     governance_state: Optional[dict[str, Any]] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
     full_inputs: Optional[dict[str, Any]] = None,  # V3-8
+    reject_duplicate_name: bool = False,
 ) -> "Optional[ScenarioRecord]":
     """Add a non-base scenario inheriting from a parent (typically the Base Case).
+
+    ``reject_duplicate_name`` makes the name check and the insert ONE transaction: a repeated submission raises
+    :class:`DuplicateScenarioName` instead of creating a second scenario (off by default for existing callers).
 
     The new scenario starts with empty overrides, so its effective snapshot
     is identical to the parent's base_input_set.
@@ -655,6 +663,13 @@ def add_scenario(
     replay_metadata["action"] = "add_scenario"
 
     with get_cursor() as cur:
+        if reject_duplicate_name:
+            cur.execute(
+                "SELECT 1 FROM scenarios WHERE user_id=? AND project_id=? AND archived=0 AND is_base_case=0 "
+                "AND lower(trim(scenario_name))=? LIMIT 1",
+                (user_id, project_id, (scenario_name or "").strip().lower()))
+            if cur.fetchone() is not None:
+                raise DuplicateScenarioName(scenario_name)
         cur.execute(
             """
             INSERT INTO scenarios (

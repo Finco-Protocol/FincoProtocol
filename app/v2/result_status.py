@@ -25,6 +25,7 @@ class ResultStatus:
     scenario_name: str        # display name of the active scenario ("Base" when none)
     run_at_display: str       # time of the Last Run, "" when there is none
     has_run: bool
+    integrity_note: str = ""  # why the integrity verdict is UNAVAILABLE when the Last Run is not the active scenario's
 
 
 def unavailable_trust_pack(project_code: str) -> dict:
@@ -50,17 +51,82 @@ def _integrity(trust_pack: Optional[Mapping[str, Any]]) -> str:
     return overall if overall in _INTEGRITY_VERDICTS else "UNAVAILABLE"
 
 
+def last_run_matches_active_scenario(ws: Any, owner: str) -> Optional[bool]:
+    """True when the committed Last Run belongs to the ACTIVE scenario, False when it belongs to another one, None when unproven.
+
+    The workspace keeps one Last Run.  After a scenario switch it can still be another scenario's Run; its Integrity verdict must
+    not be shown as the active scenario's.  Base Case is the scenario with ``scenario_id`` None (pre-scenario Runs) or a Base record.
+    Read-only; any unreadable scenario record is "unproven", never "matches".
+    """
+    if not getattr(ws, "last_runtime_snapshot_id", None):
+        return None
+    active, last = getattr(ws, "active_scenario_id", None), getattr(ws, "last_runtime_scenario_id", None)
+    if active == last:
+        return True
+    try:
+        from app.persistence.scenarios_repository import get_scenario
+
+        def is_base(scenario_id):
+            if scenario_id is None:
+                return True
+            rec = get_scenario(scenario_id=scenario_id, user_id=owner)
+            return None if rec is None else bool(rec.is_base_case)
+
+        a, b = is_base(active), is_base(last)
+    except Exception:  # noqa: BLE001
+        return None
+    if a is None or b is None:
+        return None
+    return bool(a and b)
+
+
+_NO_SCENARIO_RUN_NOTE = ("This scenario has no committed Run of its own; the project's other Run integrity verdict is not shown here."
+                         " Run the scenario to establish its integrity evidence.")
+_UNPROVEN_NOTE = "Which scenario the Last Run belongs to could not be proven, so its integrity verdict is not shown here."
+_OTHER_SCENARIO_NOTE = "The Last Run belongs to a different scenario; this scenario has no committed Run of its own."
+
+
+def scope_trust_pack_to_active_scenario(pack: Optional[Mapping[str, Any]], ws: Any, owner: str) -> Optional[Mapping[str, Any]]:
+    """Return the pack with its Run Integrity section withheld when the Last Run is not proven to be the ACTIVE scenario's.
+
+    The Trust pack reads the project's latest committed Run; after a scenario switch that Run may belong to another scenario (or
+    the active one has none).  Presenting its PASS under the active scenario would be a false integrity claim.  Pure projection:
+    the committed evidence and every other section are untouched.
+    """
+    if not isinstance(pack, Mapping) or not isinstance(pack.get("integrity"), Mapping):
+        return pack
+    if last_run_matches_active_scenario(ws, owner) is True:
+        return pack
+    if str(pack["integrity"].get("state") or "").upper() != "AVAILABLE":
+        return pack
+    from app.api.v1_1.institutional import STATE_UNAVAILABLE as unavailable
+    scoped = dict(pack)
+    scoped["integrity"] = {
+        "state": unavailable, "overall": None, "counts": {}, "checks": [], "authority": "RUN_INTEGRITY_CHECKS",
+        "scope": "Not available for the active scenario: it has no committed Run of its own.", "reason": "NO_ACTIVE_SCENARIO_RUN"}
+    return scoped
+
+
 def build_result_status(*, runtime_state: str, has_runtime: bool, last_runtime_at_display: str,
-                        active_scenario_name: Optional[str], trust_pack: Optional[Mapping[str, Any]]) -> ResultStatus:
+                        active_scenario_name: Optional[str], trust_pack: Optional[Mapping[str, Any]],
+                        last_run_matches_scenario: Optional[bool] = True) -> ResultStatus:
+    """``last_run_matches_scenario`` False/None => the integrity verdict belongs to a Run the active scenario did not produce."""
     state = str(runtime_state or "").upper()
     label = _FRESHNESS_LABELS.get(state)
     if label is None:                       # an unknown state is never promoted to CURRENT
         state, label = "NOT_RUN", "NOT RUN"
     has_run = bool(has_runtime) and state != "NOT_RUN"
+    integrity, note = _integrity(trust_pack), ""
+    block = (trust_pack or {}).get("integrity") if isinstance(trust_pack, Mapping) else None
+    withheld = isinstance(block, Mapping) and block.get("reason") == "NO_ACTIVE_SCENARIO_RUN"
+    if (integrity != "UNAVAILABLE" or withheld) and last_run_matches_scenario is not True:
+        integrity = "UNAVAILABLE"
+        note = (_UNPROVEN_NOTE if last_run_matches_scenario is None and has_runtime else
+                _OTHER_SCENARIO_NOTE if has_runtime else _NO_SCENARIO_RUN_NOTE)
     return ResultStatus(
-        freshness=state, freshness_label=label, integrity=_integrity(trust_pack),
+        freshness=state, freshness_label=label, integrity=integrity,
         scenario_name=(active_scenario_name or "").strip() or "Base",
-        run_at_display=(last_runtime_at_display or "") if has_run else "", has_run=has_run)
+        run_at_display=(last_runtime_at_display or "") if has_run else "", has_run=has_run, integrity_note=note)
 
 
 def with_current_scenario_label(ws, workspace_owner: str):

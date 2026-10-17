@@ -125,6 +125,9 @@
         {% endif %}
       </div>
     </div>
+    {% if sc.unbound_overrides %}
+    <p class="d-context" data-testid="scenario-unbound-overrides" role="alert">Not applied to Run: {{ sc.unbound_overrides | join(', ') }}. The canonical Run does not consume {{ 'this saved override' if sc.unbound_overrides | length == 1 else 'these saved overrides' }}, so Run is refused for this scenario until {{ 'it is' if sc.unbound_overrides | length == 1 else 'they are' }} removed (open Edit overrides, then "↩ Base Case").</p>
+    {% endif %}
     {% if sc.overrides.get('tariff_eur_mwh') is not none %}
     <p class="d-context" data-testid="scenario-tariff-binding">The tariff override binds canonical pricing on the next Run. Historical Runs without effective tariff evidence require a rerun; a stored override alone does not prove the price used.</p>
     {% endif %}
@@ -204,10 +207,11 @@
       <input type="hidden" name="scenario_id" id="v2-override-scenario-id">
 
       <div class="v2-scenario-modal-label" id="v2-override-modal-title">Edit scenario overrides</div>
-      <p class="v2-scenario-override-hint">
-        Scenario cost overrides currently apply aggregate <strong>Total CAPEX</strong>
-        and <strong>OPEX year 1</strong> only; detailed line-item schedules remain
-        the Base working-copy schedule.
+      <p class="v2-scenario-override-hint" data-testid="override-authority-hint">
+        A scenario can override the <strong>PPA tariff</strong> only. The other fields
+        are shown for reference but are <strong>not applied by the canonical Run</strong>
+        and cannot be saved; change them in the Working Copy (they then apply to
+        every scenario). Saving an unsupported override is refused.
       </p>
       <p class="v2-scenario-override-hint">
         Enter a new value to set or update an override.
@@ -232,7 +236,7 @@
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-p50_hours">P50 hours</label>
           <input class="v2-override-input" type="number" step="any" min="0"
-                 name="p50_hours" id="ov-p50_hours"
+                 name="p50_hours" id="ov-p50_hours" disabled data-unbound="1"
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">h/yr</span>
         </div>
@@ -244,14 +248,14 @@
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-opex_y1_keur">OPEX year 1</label>
           <input class="v2-override-input" type="number" step="any" min="0"
-                 name="opex_y1_keur" id="ov-opex_y1_keur"
+                 name="opex_y1_keur" id="ov-opex_y1_keur" disabled data-unbound="1"
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">k€</span>
         </div>
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-total_capex_keur">Total CAPEX</label>
           <input class="v2-override-input" type="number" step="any" min="0"
-                 name="total_capex_keur" id="ov-total_capex_keur"
+                 name="total_capex_keur" id="ov-total_capex_keur" disabled data-unbound="1"
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">k€</span>
         </div>
@@ -261,28 +265,28 @@
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-gearing_pct">Gearing</label>
           <input class="v2-override-input" type="number" step="any" min="0" max="100"
-                 name="gearing_pct" id="ov-gearing_pct"
+                 name="gearing_pct" id="ov-gearing_pct" disabled data-unbound="1"
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">%</span>
         </div>
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-interest_rate_pct">Interest rate</label>
           <input class="v2-override-input" type="number" step="any" min="0"
-                 name="interest_rate_pct" id="ov-interest_rate_pct"
+                 name="interest_rate_pct" id="ov-interest_rate_pct" disabled data-unbound="1"
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">%</span>
         </div>
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-tenor_years">Tenor</label>
           <input class="v2-override-input" type="number" step="any" min="1"
-                 name="tenor_years" id="ov-tenor_years"
+                 name="tenor_years" id="ov-tenor_years" disabled data-unbound="1"
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">years</span>
         </div>
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-target_dscr">Target DSCR</label>
           <input class="v2-override-input" type="number" step="any" min="1"
-                 name="target_dscr" id="ov-target_dscr"
+                 name="target_dscr" id="ov-target_dscr" disabled data-unbound="1"
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">x</span>
         </div>
@@ -315,6 +319,9 @@ function v2ScenarioRename(id, currentName) {
 }
 
 // Override fields listed in the editor (must match form input names above).
+// Only these keys are consumed by the canonical Run (RC-5A authority); every other
+// saved override is flagged "Not applied to Run" but stays visible and removable.
+var _V2_RUN_BOUND_FIELDS = ['tariff_eur_mwh'];
 var _V2_OVERRIDE_FIELDS = [
   'tariff_eur_mwh', 'p50_hours', 'opex_y1_keur', 'total_capex_keur',
   'gearing_pct', 'interest_rate_pct', 'tenor_years', 'target_dscr'
@@ -385,6 +392,10 @@ function v2ScenarioEditOverrides(scenarioId, scenarioName, currentOverrides) {
       var desc = document.createElement('span');
       desc.className = 'v2-override-active-desc';
       desc.textContent = label + ': ' + val;
+      if (_V2_RUN_BOUND_FIELDS.indexOf(k) === -1) {
+        desc.textContent += ' — Not applied to Run';
+        desc.setAttribute('data-unbound', '1');
+      }
       row.appendChild(resetBtn);
       row.appendChild(desc);
       activeList.appendChild(row);
@@ -395,7 +406,7 @@ function v2ScenarioEditOverrides(scenarioId, scenarioName, currentOverrides) {
 
   document.getElementById('v2-scenario-override-modal').hidden = false;
   // Focus first input
-  var first = document.querySelector('#v2-scenario-override-form input[type="number"]');
+  var first = document.querySelector('#v2-scenario-override-form input[type="number"]:not([disabled])');
   if (first) first.focus();
 }
 

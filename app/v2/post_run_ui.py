@@ -251,12 +251,12 @@ def _build_workspace_header_oob(pis, ws_fresh, *, project_record,
 def _build_trust_pack_for_state(ws_fresh, *, workspace_owner: str, project_record, project: str, context=None):
     """The ONE trust-pack read of a state-changing response: a pure read, fail-closed to the explicit UNAVAILABLE pack."""
     from app.ui.trust_pack import build_trust_pack
-    from app.v2.result_status import unavailable_trust_pack
+    from app.v2.result_status import scope_trust_pack_to_active_scenario, unavailable_trust_pack
     try:
-        return build_trust_pack(
+        return scope_trust_pack_to_active_scenario(build_trust_pack(
             workspace_owner, project_record.project_id, project_code=project,
             any_run_committed=bool(getattr(ws_fresh, "any_run_committed", False)),
-            **({"context": context} if context is not None else {}))
+            **({"context": context} if context is not None else {})), ws_fresh, workspace_owner)
     except Exception:  # an evidence surface must never 500 nor keep showing an older Run
         return unavailable_trust_pack(project)
 
@@ -278,12 +278,13 @@ def _build_result_surfaces_oob(*, pack, ws_fresh, project_record, project: str, 
 
     ``resolve_runtime_freshness`` / ``trust_pack`` are the existing authorities; the projection only arranges their values.
     """
-    from app.v2.result_status import build_result_status
+    from app.v2.result_status import build_result_status, last_run_matches_active_scenario
     from app.v2.router import _fmt_runtime_at, _templates
     status = build_result_status(
         runtime_state=freshness.state.value, has_runtime=bool(getattr(ws_fresh, "last_runtime_snapshot_id", None)),
         last_runtime_at_display=_fmt_runtime_at(getattr(ws_fresh, "last_runtime_at", None) or ""),
-        active_scenario_name=getattr(ws_fresh, "active_scenario_name", None) or "", trust_pack=pack)
+        active_scenario_name=getattr(ws_fresh, "active_scenario_name", None) or "", trust_pack=pack,
+        last_run_matches_scenario=last_run_matches_active_scenario(ws_fresh, getattr(ws_fresh, "user_id", "") or ""))
     strip = _templates.get_template("partials/_hybrid_status.html").render({
         "project_name": getattr(project_record, "project_name", "") or project,
         "project_type": (getattr(project_record, "project_type", "") or "").capitalize(),
@@ -317,6 +318,8 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
                     getattr(ws_fresh, "any_run_committed", False)),
                 **({"context": context} if context is not None else {}),
             )
+            from app.v2.result_status import scope_trust_pack_to_active_scenario
+            pack = scope_trust_pack_to_active_scenario(pack, ws_fresh, workspace_owner)
         except Exception:
             pack = None
     from app.workbook.service import WorkbookService
