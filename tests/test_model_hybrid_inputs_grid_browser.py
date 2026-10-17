@@ -386,6 +386,7 @@ def test_other_verticals_render_the_same_grid_and_save_atomically(make, template
 def _select_immediate_cost_mode(s, kind):
     """Batch editing is the default; these tests validate the explicit per-row immediate mode (Enter commits and
     saves the row), so they select it through the real control, exactly as a user would."""
+    s.page.wait_for_function("kind => !window.FincoModelViews || document.getElementById('v2-sheet-' + kind).dataset.modelViewState === 'loaded'", arg=kind)
     s.page.locator(f"#v2-sheet-{kind} [data-cost-stage-toggle]").uncheck()
     s.page.wait_for_function("window.v2CostGrid.state().stageMode === false")
 

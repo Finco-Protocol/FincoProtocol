@@ -310,16 +310,20 @@ def _display(value: Any) -> str:
 
 @router.get("/workbook/grid/sheet", response_class=HTMLResponse)
 async def grid_sheet(request: Request, project: str = "", sheet: str = "",
+                     presentation_only: bool = False, content_hash: str = "",
                      _: None = Depends(require_v2_active)):
     """Re-render one grid sheet (+ OOB banner / run controls) for an in-place swap."""
     user = resolve_request_session(request)
     if user is None:
         return HTMLResponse("", status_code=401)
-    if sheet not in GRID_SHEETS:
+    from app.v2.presentation_views import PRESENTATION_SHEETS, render_sheet
+    if sheet not in (PRESENTATION_SHEETS if presentation_only else GRID_SHEETS):
         return HTMLResponse("", status_code=404)
     record, owner = resolve_accessible_project(user.user_id, project)
     if record is None:
         return HTMLResponse("", status_code=404)
+    if presentation_only:
+        return render_sheet(request, record, owner, project, sheet, content_hash)
     ws = get_workspace_state(owner, record.project_id)
     if ws is None:
         return HTMLResponse("", status_code=404)
@@ -338,6 +342,7 @@ async def grid_sheet(request: Request, project: str = "", sheet: str = "",
 
 @router.get("/workbook/grid/panel", response_class=HTMLResponse)
 async def grid_panel(request: Request, project: str = "",
+                     refresh_state: bool = False, content_hash: str = "", grid_only: bool = False,
                      _: None = Depends(require_v2_active)):
     """Re-render the Inputs grid panel (after Save) for an in-place swap that keeps focus/scroll."""
     user = resolve_request_session(request)
@@ -346,6 +351,9 @@ async def grid_panel(request: Request, project: str = "",
     record, owner = resolve_accessible_project(user.user_id, project)
     if record is None:
         return HTMLResponse("", status_code=404)
+    if refresh_state:
+        from app.v2.presentation_views import render_saved_grid
+        return render_saved_grid(request, record, owner, project, content_hash, include_shared_state=not grid_only)
     ws = get_workspace_state(owner, record.project_id)
     if ws is None:
         return HTMLResponse("", status_code=404)

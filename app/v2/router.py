@@ -2157,7 +2157,10 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     context.update(_build_revenue_ctx(pis, ws, projection=_projection))
     context.update(_build_debt_ctx(pis, ws, projection=_projection))
     context.update(_build_tax_ctx(pis, ws, projection=_projection))
-    context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
+    context["statements_lazy"] = sheet != "fs"
+    context["fs_state"] = "FS_UNAVAILABLE" if _projection.fs.state.value == "UNAVAILABLE" else _projection.fs.state.value
+    if not context["statements_lazy"]:
+        context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
     context.update(_build_returns_ctx(
         ws, rr=_rr, runtime_is_stale=runtime_freshness.is_stale))
     from app.v2.overview_projection import build_overview_projection
@@ -3621,6 +3624,7 @@ async def v2_outputs_workspace(request: Request, project: str):
     record, owner = resolve_accessible_project(user.user_id, project)
     if record is None:
         return HTMLResponse("Project not found.", status_code=404)
+    response_headers = {"Cache-Control": "no-store"}
     try:
         context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
         state, report = get_run_integrity_checks(owner, record.project_id, context=context)
@@ -3638,11 +3642,12 @@ async def v2_outputs_workspace(request: Request, project: str):
             statement_projection=context.projection.fs)
         outputs["working_cit_rate"] = _cit_rate_display(context.inputs)
         context.validate_current()
+        response_headers["X-Finco-View-Hash"] = context.inputs.content_hash
     except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
         outputs = {"state": "UNAVAILABLE", "message": "Statements unavailable: the workspace changed while the response "
                    "was assembled. Reload to refresh."}
     html = _templates.get_template("partials/sheet_outputs.html").render(outputs=outputs, project_code=project)
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+    return HTMLResponse(html, headers=response_headers)
 
 
 @router.get("/workbook/financing/integrity")
