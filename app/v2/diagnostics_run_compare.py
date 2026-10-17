@@ -89,6 +89,24 @@ def _identity(entry: Any) -> dict[str, Any]:
             "scenario_name": entry.active_scenario_name, "engine_version": entry.engine_version}
 
 
+def qualifications(entry_a: Any, entry_b: Any) -> list[dict[str, str]]:
+    """What limits the comparability of two committed Runs. Never changes a classification: it states the limit beside it."""
+    out: list[dict[str, str]] = []
+    ea, eb = getattr(entry_a, "engine_version", None), getattr(entry_b, "engine_version", None)
+    if not ea or not eb:
+        out.append({"code": "ENGINE_VERSION_UNKNOWN", "message": "The engine version is not recorded for "
+                    + " and ".join(n for n, v in (("Run A", ea), ("Run B", eb)) if not v)
+                    + ": the two Runs cannot be shown to have been produced by the same engine."})
+    elif ea != eb:
+        out.append({"code": "ENGINE_VERSION_DIFFERS", "message": f"Run A was produced by engine {ea} and Run B by engine {eb}: differences may "
+                    "come from the engine, not only from inputs."})
+    sa, sb = getattr(entry_a, "last_runtime_scenario_id", None), getattr(entry_b, "last_runtime_scenario_id", None)
+    if sa != sb:
+        out.append({"code": "DIFFERENT_SCENARIO_CONTEXT", "message": "The two Runs belong to different scenario contexts: the comparison is "
+                    "between scenarios, not between two Runs of the same inputs."})
+    return out
+
+
 def build_run_comparison(ws: Any, *, quality_for_entry: Optional[Callable[[Any], Any]] = None, limit: int = MAX_CANDIDATES) -> dict[str, Any]:
     """Each of the previous committed Runs of this project against the Last Run, from the immutable Run History."""
     try:
@@ -118,10 +136,13 @@ def build_run_comparison(ws: Any, *, quality_for_entry: Optional[Callable[[Any],
         counts: dict[str, int] = {}
         for r in rows:
             counts[r["classification"]] = counts.get(r["classification"], 0) + 1
-        candidates.append({"run_a": _identity(entry), "counts": counts, "rows": rows})
+        quals = qualifications(entry, newest)
+        for r in rows:
+            r["qualified"] = bool(quals) and r["classification"] != "NOT_COMPARABLE"
+        candidates.append({"run_a": _identity(entry), "counts": counts, "rows": rows, "qualifications": quals})
     return {"available": True, "run_b": _identity(newest), "candidates": candidates,
             "rules": "Run A is an earlier committed Run, Run B the Last Run. A check that is missing or UNAVAILABLE on either side is NOT_COMPARABLE, never "
                      "'resolved'. Historical evidence is never mutated; thresholds are not bound to historical Runs."}
 
 
-__all__ = ["build_run_comparison", "classify", "evaluate_entry"]
+__all__ = ["build_run_comparison", "classify", "evaluate_entry", "qualifications"]

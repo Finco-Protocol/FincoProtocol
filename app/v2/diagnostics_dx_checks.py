@@ -322,7 +322,13 @@ def _eval_capex(facts: Facts) -> tuple[list[dict], Optional[dict]]:
     out: list[dict] = []
     cumulative = 0.0
     ordered = sorted(rows, key=lambda r: _index(r, "period"))
+    indices = [_index(r, "period") for r in ordered]
+    if len(set(indices)) != len(indices):
+        # A repeated committed period would be summed twice: the cumulative identity is not evaluable, and a duplicate is
+        # an evidence defect, never a financial residual.
+        return [_period(i, facts, UNAVAILABLE, reason="DUPLICATE_PERIOD_IN_COMMITTED_EVIDENCE") for i in sorted(set(indices))], None
     last = _index(ordered[-1], "period")
+    broken = False                       # once one period's spending is missing, no later cumulative value is defined
     for row in ordered:
         i = _index(row, "period")
         if not facts.digest_ok:
@@ -333,7 +339,10 @@ def _eval_capex(facts: Facts) -> tuple[list[dict], Optional[dict]]:
             reason = ("PERIOD_USES_MISSING" if amount is None else "TOTAL_USES_AUTHORITY_MISSING" if total is None
                       else "NON_CONSTRUCTION_FC_USE_EVIDENCE_MISSING")
             out.append(_period(i, facts, UNAVAILABLE, reason=reason))
-            cumulative = float("nan")
+            broken = True
+            continue
+        if broken:
+            out.append(_period(i, facts, UNAVAILABLE, reason="CUMULATIVE_BASE_UNAVAILABLE_AFTER_MISSING_PERIOD"))
             continue
         cumulative += amount
         budget = total - nc_uses
@@ -401,8 +410,11 @@ def _eval_dep(facts: Facts) -> tuple[list[dict], Optional[dict]]:
             continue
         close_a, open_a, dep = _num(cur.get("accumulated_depreciation")), _num(prev.get("accumulated_depreciation")), _num((pnl or {}).get("depreciation_keur"))
         gross, nfa = _num(cur.get("gross_fixed_assets")), _num((bs or {}).get("net_fixed_assets_keur"))
-        if None in (close_a, open_a, dep, gross, nfa) or not _same_dates(pnl, bs):
+        if None in (close_a, open_a, dep, gross, nfa):
             out.append(_period(i, facts, UNAVAILABLE, reason="DEPRECIATION_EVIDENCE_MISSING"))
+            continue
+        if not _same_dates(pnl, bs, cur):
+            out.append(_period(i, facts, UNAVAILABLE, reason="STATEMENT_DATES_DISAGREE"))
             continue
         comps = {"opening_accumulated_depreciation": _comp(open_a, "integrity_evidence.balance_sheet[i-1].accumulated_depreciation", FULL),
                  "depreciation_charge": _comp(dep, "pnl.depreciation_keur", ROUNDED),
@@ -486,7 +498,10 @@ def _eval_shl(facts: Facts) -> tuple[list[dict], Optional[dict]]:
         if None in (draw, cash_int, principal):
             out.append(_period(i, facts, UNAVAILABLE, reason="SHL_FLOW_MISSING"))
             continue
-        if accrual is None or not _same_dates(pnl, sp):
+        if not _same_dates(pnl, sp, cur):
+            out.append(_period(i, facts, UNAVAILABLE, reason="SHL_DATES_DISAGREE"))
+            continue
+        if accrual is None:
             out.append(_period(i, facts, UNAVAILABLE, reason="SHL_INTEREST_ACCRUAL_EVIDENCE_MISSING"))
             continue
         capitalised = accrual - cash_int
@@ -549,6 +564,9 @@ def _eval_dist(facts: Facts) -> tuple[list[dict], Optional[dict]]:
             continue
         paid, available = _num(pf.get("net_dividends_keur")), _num(pf.get("fcf_for_distribution_keur"))
         d = facts.dist.get(i)
+        if not _same_dates(pf, d, facts.sp(i)):
+            out.append(_period(i, facts, UNAVAILABLE, reason="DISTRIBUTION_DATES_DISAGREE"))
+            continue
         lock = d.get("lockup_active") if d is not None else None
         if paid is None or available is None or not isinstance(lock, bool):
             out.append(_period(i, facts, UNAVAILABLE, reason="DISTRIBUTION_OR_LOCKUP_EVIDENCE_MISSING"))
@@ -589,12 +607,18 @@ def _eval_res(facts: Facts) -> tuple[list[dict], Optional[dict]]:
     if known and all(abs(b) <= TOL_KEUR for b in known) and len(known) == len(balances) and regime is None:
         return [], {"status": UNAVAILABLE, "reason": "RESERVE_STRUCTURE_NOT_PROVEN_ZERO_BALANCES_ARE_NOT_COMPLIANCE"}
     initial = _num((facts.su.get("summary") or {}).get("initial_dsra_funding_keur"))
+    # The Financial Close funding is established at the START of operations. An unexplained movement of the same size in any other
+    # period is an arithmetic coincidence, not evidence, and stays a FAIL (a numerical match is never a proof of cause).
+    first_operating = min((k for k, flag in facts.phase.items() if flag is True), default=None)
     out: list[dict] = []
     explained = 0
     for i in facts.indices():
         cur, prev, pf = balances.get(i), balances.get(i - 1), facts.pf.get(i)
         if i not in balances or cur is None or prev is None or pf is None:
             out.append(_period(i, facts, UNAVAILABLE, reason="ADJACENT_RESERVE_BALANCE_OR_MOVEMENT_MISSING"))
+            continue
+        if not _same_dates(pf, facts.ibs.get(i)):
+            out.append(_period(i, facts, UNAVAILABLE, reason="RESERVE_DATES_DISAGREE"))
             continue
         fund, rel = _num(pf.get("dsra_funding_keur")), _num(pf.get("dsra_release_keur"))
         if fund is None or rel is None:
@@ -610,7 +634,8 @@ def _eval_res(facts: Facts) -> tuple[list[dict], Optional[dict]]:
                  "reserve_regime": {"value": regime or "UNPROVEN", "source": "terms.reserve_regime (Quality evidence)", "basis": "TEXT"}}
         if abs(unexplained) <= tol:
             out.append(_period(i, facts, PASS, observed=cur, expected=prev + fund - rel, tolerance=tol, components=comps))
-        elif initial is not None and initial > TOL_KEUR and abs(unexplained - initial) <= TOL_KEUR and explained == 0:
+        elif (initial is not None and initial > TOL_KEUR and abs(unexplained - initial) <= TOL_KEUR and explained == 0
+              and i == first_operating):
             explained += 1
             comps["financial_close_initial_funding"] = _comp(initial, "integrity_evidence.sources_uses.summary.initial_dsra_funding_keur", FULL)
             out.append(_period(i, facts, PASS, observed=cur, expected=prev + fund - rel + initial, tolerance=TOL_KEUR, components=comps,
