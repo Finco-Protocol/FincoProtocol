@@ -831,7 +831,8 @@ def build_institutional_workbook_export(
         "export_working_changed_since_run": str(authority.working_changed_since_run).lower(),
     }
 
-    filename = f"phase10_{safe_project or runtime_project_code}_institutional_workbook_skeleton.xlsx"
+    from app.export.filename import model_results_filename
+    filename = model_results_filename(bundle.project_name, bundle.scenario_name, bundle.runtime_snapshot_id)
     return ExportResponse(
         bytes_data=workbook_bytes,
         filename=filename,

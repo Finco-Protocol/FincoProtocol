@@ -235,6 +235,14 @@ def _build_persisted_bundle(
         run_at=run_at,
         runtime_timestamp=runtime_timestamp,
     )
+    # The factory key selects a serializer, not the identity of an owned Working Copy.
+    export_code = getattr(project_record, "project_code", None) or project_key_norm
+    export_name = getattr(project_record, "project_name", None) or project_inputs.info.name
+    for row in runtime_rows:
+        row["project"] = export_name
+        row["active_project"] = export_code
+        if row["metric"] == "active_project":
+            row["value"] = export_name
 
     # Project context: prefer record-authoritative for user projects.
     context = get_project_context(project_key_norm)
@@ -278,7 +286,7 @@ def _build_persisted_bundle(
             _senior_debt_auth = None
 
     return WorkbookExportBundle(
-        project_key=project_key_norm,
+        project_key=export_code,
         project_name=runtime_rows[0]["project"],
         generated_at=runtime_rows[0]["export_generated_at"],
         branch=runtime_rows[0]["branch_name"],
@@ -302,8 +310,13 @@ def _build_persisted_bundle(
         runtime_result=result_adapter,
         runtime_rows=runtime_rows,
         statements=statements_adapter,
-        authority_metadata=({"revenue_multistream_audit": result_adapter.revenue_multistream_audit}
-                            if result_adapter.revenue_multistream_audit else {}),
+        authority_metadata={
+            "project_owner_id": getattr(project_record, "user_id", None) or "NOT_AVAILABLE",
+            "run_project_name": (current_snapshot or {}).get("project_name") or "NOT_AVAILABLE",
+            "serialization_template": project_key_norm,
+            **({"revenue_multistream_audit": result_adapter.revenue_multistream_audit}
+               if result_adapter.revenue_multistream_audit else {}),
+        },
         contingency_authority=dict(contingency_authority) if contingency_authority else None,
         export_authority=export_authority,
         working_changed_since_run=runtime_rows[0]["working_changed_since_run"],
@@ -442,6 +455,9 @@ def build_canonical_last_run_institutional_workbook_export(
         )
 
     metadata = {
+        "export_project_id": bundle.project_id,
+        "export_project_code": bundle.active_project,
+        "export_project_name": bundle.project_name,
         "export_generated_at": first_row["export_generated_at"],
         "runtime_generated_at": first_row["runtime_generated_at"],
         "runtime_origin": first_row["runtime_origin"],
@@ -457,10 +473,8 @@ def build_canonical_last_run_institutional_workbook_export(
         "export_working_changed_since_run": str(authority.working_changed_since_run).lower(),
     }
 
-    filename = (
-        f"phase10_{safe_project or runtime_project_code}"
-        "_institutional_workbook_skeleton.xlsx"
-    )
+    from app.export.filename import model_results_filename
+    filename = model_results_filename(bundle.project_name, authority.active_scenario_name, rr.snapshot_id)
     return ExportResponse(
         bytes_data=workbook_bytes,
         filename=filename,
