@@ -3,7 +3,7 @@
 Three separate questions are kept apart and are never collapsed into one boolean:
 
 ``candidate_content_matches_exactly``   the integrated tree carries EXACTLY the three reviewed PPA-01 blobs, no other protected
-                                        (financial_engine / finco_core / domain) path differs from the base, and the reviewed source head is
+                                        (financial_engine / finco_core / domain) path differs from the immutable publication base, and the reviewed source head is
                                         an ancestor. This is a statement about bytes. It is what lets the cross-stream frozen-scope gates
                                         distinguish "the candidate" from "an unauthorized change".
 ``candidate_is_financially_approved``   a SEPARATE, committed, independent acceptance record exists and is valid
@@ -14,6 +14,7 @@ Three separate questions are kept apart and are never collapsed into one boolean
 The historical pin maps (WF07, Revenue V2 advanced, Revenue V3, F3.5/Junior, Developer Economics, ...) and the M7 eleven-blob candidate are not
 touched, extended or reinterpreted by this module: the PPA-01 paths overlap two of them, but each is judged against its own checkpoint.
 Any changed byte in any of the three blobs, or any missing path, makes ``candidate_content_matches_exactly`` False.
+RC-4 keeps branch-delta ownership as separate evidence: landing on main does not erase candidate identity.
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # The reviewed source head of PR #293 (the PPA-01 candidate) and the exact protected blobs it carries.
 PPA01_REVIEWED_SOURCE_HEAD = "153a00384b2e4658863a967eec2184b5c5417eb4"
+PPA01_PUBLICATION_BASE = "540e1f4bb54d53ad6d2c1628074b94fdb0c9eb06"
 PPA01_CANDIDATE_AUTHORITIES = {
     "domain/revenue/multistream_runtime.py": "b1896bdb156a53c8371286bb4198381d0c7904fe",
     "domain/revenue/revenue_config.py": "d62fc2c7d97986d2c0aed6c0ac9068759011e1ef",
@@ -54,19 +56,32 @@ def candidate_blobs_match(*, repo=None, ref: str = "HEAD") -> bool:
 def collect(*, repo=None, ref: str = "HEAD", base_ref: str = "origin/main") -> dict:
     root = repo or ROOT
     base = _git(root, "merge-base", base_ref, ref)
-    changed = _git(root, "diff", "--name-only", base, ref, "--", *PROTECTED_PREFIXES) if base else None
+    # The candidate remains the same after landing on main; branch ownership does not.
+    publication_base = _git(root, "merge-base", PPA01_PUBLICATION_BASE, ref)
+    source_base = _git(root, "merge-base", PPA01_PUBLICATION_BASE, PPA01_REVIEWED_SOURCE_HEAD)
+    provenance_valid = publication_base == source_base == PPA01_PUBLICATION_BASE
+    changed = (_git(root, "diff", "--name-only", "--no-renames", PPA01_PUBLICATION_BASE, ref, "--", *PROTECTED_PREFIXES)
+               if base and provenance_valid else None)
+    branch_changed = _git(root, "diff", "--name-only", base, ref, "--", *PROTECTED_PREFIXES) if base else None
     source_blobs = {p: _git(root, "rev-parse", f"{PPA01_REVIEWED_SOURCE_HEAD}:{p}") for p in PPA01_CANDIDATE_AUTHORITIES}
     record_text = _git(root, "show", f"{ref}:{ACCEPTANCE_RECORD}")
     try:
         record = json.loads(record_text) if record_text is not None else None
     except ValueError:
         record = "malformed"
+    from tests.rc3_authority_states import release_closed_violations
+    historical_path = "tests/model_v2_governance.py"
+    historical_blob = blob(historical_path, repo=root, ref=PPA01_PUBLICATION_BASE)
     return {
         "blobs": {p: blob(p, repo=root, ref=ref) for p in PPA01_CANDIDATE_AUTHORITIES},
         "source_blobs": source_blobs,
         "source_head_ancestor": subprocess.run(["git", "merge-base", "--is-ancestor", PPA01_REVIEWED_SOURCE_HEAD, ref],
                                                cwd=str(root), capture_output=True).returncode == 0,
         "protected_changes": sorted(changed.splitlines()) if changed is not None else None,
+        "branch_protected_changes": sorted(branch_changed.splitlines()) if branch_changed is not None else None,
+        "publication_base_valid": provenance_valid,
+        "historical_authorities_unchanged": historical_blob is not None and blob(historical_path, repo=root, ref=ref) == historical_blob,
+        "release_closed_violations": release_closed_violations(repo=root, ref=ref),
         "record": record,
     }
 
@@ -77,6 +92,12 @@ def content_violations(facts) -> list[str]:
         bad = []
         if facts["source_head_ancestor"] is not True:
             bad.append("the reviewed PPA-01 source head is not an ancestor")
+        if facts["publication_base_valid"] is not True:
+            bad.append("the immutable candidate publication base is unavailable or has invalid ancestry")
+        if facts["historical_authorities_unchanged"] is not True:
+            bad.append("historical financial authority maps changed or are unavailable")
+        if facts["release_closed_violations"] != []:
+            bad.append("candidate release flags or manifest are not verifiably closed")
         for path, pin in PPA01_CANDIDATE_AUTHORITIES.items():
             if facts["blobs"].get(path) != pin:
                 bad.append(f"{path}: not the exact reviewed candidate blob")
@@ -87,7 +108,7 @@ def content_violations(facts) -> list[str]:
             bad.append(f"substituted or extra protected files: {sorted(extra)}")
         changes = facts["protected_changes"]
         if changes is None:
-            bad.append("the protected-path diff against the base is unavailable")
+            bad.append("the protected-path diff against the immutable publication base is unavailable")
         else:
             unlisted = [p for p in changes if p not in PPA01_CANDIDATE_AUTHORITIES]
             if unlisted:
