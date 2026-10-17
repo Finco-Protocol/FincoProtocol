@@ -535,6 +535,51 @@ def test_existing_one_driver_sensitivity_is_unchanged(env):
     assert r.status_code == 200 and "sensitivity-range" in r.text or "v2-sens-table" in r.text
 
 
+def _checked_git(*args):
+    import subprocess
+    result = subprocess.run(["git", *args], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def reviewed_ci_workflow_candidate(path):
+    """Exact-path, exact-blob recognition of the two reviewed CI workflow states (never a ``.github/`` exception).
+
+    RC-2 candidate: the historical two-line budget change over the RC-2 base. RC-5 successor: the pinned owner-authorised budget workflow, accepted only
+    when the RC-3 reference is independently verified at its fixed blob, HEAD and the worktree are both the fixed RC-5 blob, and the existing RC-5
+    verifier confirms exactly the three authorised limit values (evidence, selection, permissions and every other step byte-identical).
+    """
+    import subprocess
+    from pathlib import Path
+    from tests.test_rc2_integration_manifest import (
+        RC2_BASE_MAIN, RC2_CI_WORKFLOW, RC2_CI_WORKFLOW_BASE_BLOB,
+        RC2_CI_WORKFLOW_CANDIDATE_BLOB, rc2_workflow_delta_valid,
+    )
+    if path != RC2_CI_WORKFLOW:
+        return False
+    root = Path(__file__).resolve().parents[1]
+    current_path = root / path
+    if not current_path.is_file():
+        return False
+    baseline = subprocess.run(["git", "show", f"{RC2_BASE_MAIN}:{path}"], capture_output=True, text=True)
+    if (baseline.returncode == 0
+            and _checked_git("rev-parse", f"{RC2_BASE_MAIN}:{path}") == RC2_CI_WORKFLOW_BASE_BLOB
+            and _checked_git("rev-parse", f"HEAD:{path}") == RC2_CI_WORKFLOW_CANDIDATE_BLOB
+            and _checked_git("hash-object", path) == RC2_CI_WORKFLOW_CANDIDATE_BLOB
+            and rc2_workflow_delta_valid(baseline.stdout, current_path.read_text(encoding="utf-8"))):
+        return True
+    from tests.test_rc3_integration_inventory import (
+        INTEGRATION_HEAD, RC3_CI_WORKFLOW_BLOB, RC5_CI_WORKFLOW_BLOB, rc5_workflow_successor_violations,
+    )
+    rc3 = subprocess.run(["git", "show", f"{INTEGRATION_HEAD}:{path}"], capture_output=True, text=True)
+    return (
+        rc3.returncode == 0
+        and _checked_git("rev-parse", f"{INTEGRATION_HEAD}:{path}") == RC3_CI_WORKFLOW_BLOB
+        and _checked_git("rev-parse", f"HEAD:{path}") == RC5_CI_WORKFLOW_BLOB
+        and _checked_git("hash-object", path) == RC5_CI_WORKFLOW_BLOB
+        and not rc5_workflow_successor_violations(rc3.stdout, current_path.read_text(encoding="utf-8"))
+    )
+
+
 def test_no_engine_or_financial_authority_files_are_touched():
     import subprocess
     from rc3_historical_anchor import anchored_head
@@ -547,32 +592,7 @@ def test_no_engine_or_financial_authority_files_are_touched():
         return v3.get(path) == head
     # M3's financial deny remains closed except for the exact reviewed Revenue V3 blobs.
     # RC-2 separately authorizes ONLY the two-line CI job change (proposed, not approved).
-    from pathlib import Path
-    from tests.test_rc2_integration_manifest import (
-        RC2_BASE_MAIN, RC2_CI_WORKFLOW, RC2_CI_WORKFLOW_BASE_BLOB,
-        RC2_CI_WORKFLOW_CANDIDATE_BLOB, rc2_workflow_delta_valid,
-    )
-
-    def checked_git(*args):
-        result = subprocess.run(["git", *args], capture_output=True, text=True)
-        return result.stdout.strip() if result.returncode == 0 else None
-
-    def reviewed_ci_workflow(path):
-        if path != RC2_CI_WORKFLOW:
-            return False
-        root = Path(__file__).resolve().parents[1]
-        current_path = root / path
-        baseline = subprocess.run(
-            ["git", "show", f"{RC2_BASE_MAIN}:{path}"], capture_output=True, text=True
-        )
-        if baseline.returncode != 0 or not current_path.is_file():
-            return False
-        return (
-            checked_git("rev-parse", f"{RC2_BASE_MAIN}:{path}") == RC2_CI_WORKFLOW_BASE_BLOB
-            and checked_git("rev-parse", f"HEAD:{path}") == RC2_CI_WORKFLOW_CANDIDATE_BLOB
-            and checked_git("hash-object", path) == RC2_CI_WORKFLOW_CANDIDATE_BLOB
-            and rc2_workflow_delta_valid(baseline.stdout, current_path.read_text(encoding="utf-8"))
-        )
+    reviewed_ci_workflow = reviewed_ci_workflow_candidate     # module-level, shared with the negative-control tests
 
     assert not [p for p in out.split() if p.startswith(("financial_engine/", "finco_core/", "domain/", ".github/"))
                 and not (reviewed_v3(p) or reviewed_ci_workflow(p))]

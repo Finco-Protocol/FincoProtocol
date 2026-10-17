@@ -140,18 +140,41 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds()
                 owner, record.project_id, WORKBOOK.version).composite_hash
             assert current_before == old_runtime_hash
 
+            from app.persistence.run_history_repository import get_run_history
+            import copy as _copy
+            frozen_history = _copy.deepcopy([(h.history_id, h.runtime_summary) for h in get_run_history(owner, record.project_id)])
             calls_before_mutation = calls
-            changed_p50 = float(snapshot["p50_hours"]) * 1.1
+
+            # RC-5: P50 is not a bound scenario override. The rejected Save persists nothing, mutates nothing, runs nothing and invents no STALE.
+            ws_before_reject = get_workspace_state(owner, record.project_id)
+            rejected = client.post(
+                "/v2/workbook/scenarios/update-overrides",
+                data={"project": code, "scenario_id": scenario_id, "p50_hours": str(float(snapshot["p50_hours"]) * 1.1)},
+                headers=htmx,
+            )
+            assert rejected.status_code == 422 and "SCENARIO_OVERRIDE_UNBOUND" in rejected.text, rejected.text[:300]
+            assert "p50_hours" not in (get_scenario(scenario_id, owner).overrides or {})
+            ws_after_reject = get_workspace_state(owner, record.project_id)
+            for field in ("draft_snapshot", "dirty", "last_runtime_snapshot_id", "last_runtime_composite_hash", "last_runtime_at"):
+                assert getattr(ws_after_reject, field) == getattr(ws_before_reject, field), field
+            assert assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version).composite_hash == old_runtime_hash
+            assert calls == calls_before_mutation
+
+            # A genuine supported scenario override: the contracted tariff (a valid value different from the starting one).
+            start_tariff = float(snapshot["tariff_eur_mwh"])
+            changed_tariff = round(start_tariff * 1.1, 2)
+            assert changed_tariff != start_tariff
             mutated = client.post(
                 "/v2/workbook/scenarios/update-overrides",
                 data={
                     "project": code,
                     "scenario_id": scenario_id,
-                    "p50_hours": str(changed_p50),
+                    "tariff_eur_mwh": str(changed_tariff),
                 },
                 headers=htmx,
             )
             assert mutated.status_code == 200, mutated.text
+            assert float(get_scenario(scenario_id, owner).overrides["tariff_eur_mwh"]) == changed_tariff       # persisted
             assert calls == calls_before_mutation
             assert 'id="v2-run-controls" hx-swap-oob="true"' in mutated.text
             assert 'data-testid="toolbar-runtime-state">Stale<' in mutated.text
@@ -199,3 +222,11 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds()
             assert final_ws.last_runtime_composite_hash == final_hash
             assert final_ws.last_runtime_snapshot_id != old_snapshot_id
             assert final_ws.last_runtime_at != old_runtime_at
+            # the new tariff override was consumed by the canonical Run, and the earlier committed Run evidence is unchanged
+            consumed = final_ws.last_runtime_summary["scenario_revenue_input"]
+            assert float(consumed["effective_tariff_eur_mwh"]) == changed_tariff and consumed["scenario_id"] == scenario_id, consumed
+            history = get_run_history(owner, record.project_id)
+            by_id = {h.history_id: h.runtime_summary for h in history}
+            for history_id, summary in frozen_history:
+                assert by_id[history_id] == summary
+            assert len(history) == len(frozen_history) + 1
