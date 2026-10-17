@@ -22,7 +22,7 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 100
+    timeout-minutes: 130
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -53,8 +53,8 @@ jobs:
             bash -e -c 'python -m pip install --upgrade pip; pip install -r requirements.txt -c constraints.txt; pip install -r requirements-ci-tests.txt -c constraints.txt; python -m pip check'
       - name: Synthetic reference and regression tests (FULL, UNSHARDED, EXACT HEAD)
         env:
-          FINCO_CI_PYTEST_BUDGET_S: '4800'
-          FINCO_CI_EXIT_GRACE_S: '180'
+          FINCO_CI_PYTEST_BUDGET_S: '6000'
+          FINCO_CI_EXIT_GRACE_S: '240'
           FINCO_CI_DIAG_PATH: artifacts/ci-hang-diagnostics.txt
           FINCO_CI_PROGRESS_DIR: artifacts/progress
           FINCO_CI_STALL_S: '300'

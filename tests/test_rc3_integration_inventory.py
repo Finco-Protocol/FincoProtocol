@@ -137,6 +137,49 @@ def workflow_successor_violations(base_text: str, head_text: str) -> list[str]:
         return [f"workflow facts incomplete or malformed: {exc!r}"]
 
 
+# ── RC-5 CI runtime successor (owner-authorised limits only; NOT a financial approval) ──────────────────────────────────────────
+# The FULL UNSHARDED suite outgrew the RC-3 budget (main at 97de3833 already used 4739 of 4800 s; the RC-5 integration needs 12,395 tests).
+# Exactly three values of the accepted RC-3 workflow may differ, to the owner-approved limits below. Everything else (stall, selection,
+# full unsharded run, artifacts, evidence, every other step and job) must stay byte-identical, and the job timeout must still contain
+# budget + exit grace + job overhead, so a genuine timeout still ends in a non-zero exit.
+RC5_CI_WORKFLOW_BLOB = "0fa7e2bec303bb94053fe7799186e666dd1e06a9"
+RC5_CI_EDITS = (("timeout-minutes: 100", "timeout-minutes: 130"),
+                ("FINCO_CI_PYTEST_BUDGET_S: '4800'", "FINCO_CI_PYTEST_BUDGET_S: '6000'"),
+                ("FINCO_CI_EXIT_GRACE_S: '180'", "FINCO_CI_EXIT_GRACE_S: '240'"))
+
+
+def rc5_workflow_successor_violations(rc3_text: str, head_text: str) -> list[str]:
+    """Pure verifier: ``head_text`` must equal the accepted RC-3 workflow with exactly the three authorised values replaced, and must still fit."""
+    import re
+    try:
+        bad = []
+        expected = rc3_text
+        for old, new in RC5_CI_EDITS:
+            if expected.count(old) != 1:
+                bad.append(f"the accepted RC-3 workflow does not contain exactly one {old!r}")
+                continue
+            expected = expected.replace(old, new, 1)
+        if head_text != expected:
+            bad.append("the workflow differs from the accepted RC-3 workflow in more (or other) than the three authorised limit values")
+        budget = int(re.search(r"FINCO_CI_PYTEST_BUDGET_S: '(\d+)'", head_text).group(1))
+        grace = int(re.search(r"FINCO_CI_EXIT_GRACE_S: '(\d+)'", head_text).group(1))
+        stall = int(re.search(r"FINCO_CI_STALL_S: '(\d+)'", head_text).group(1))
+        timeout = int(re.search(r"timeout-minutes: (\d+)", head_text).group(1))
+        if (budget, timeout, grace, stall) != (6000, 130, 240, 300):
+            bad.append("budget/timeout/grace/stall are not the authorised 6000 s / 130 min / 240 s / 300 s")
+        if budget + grace + 15 * 60 > timeout * 60:
+            bad.append("the job timeout cannot accommodate budget + exit grace + job overhead")
+        for needle in ("--junitxml=artifacts/results.xml", "tools/ci_pytest_runner.py", "FULL, UNSHARDED, EXACT HEAD",
+                       "if-no-files-found: error", "public-verification-results"):
+            if needle not in head_text:
+                bad.append(f"required evidence/selection element is missing: {needle}")
+        if "continue-on-error" in head_text or "--deselect" in head_text or "-k " in head_text:
+            bad.append("test selection or failure handling was altered")
+        return bad
+    except (AttributeError, TypeError, ValueError) as exc:
+        return [f"workflow facts incomplete or malformed: {exc!r}"]
+
+
 def git(*args):
     return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
 
@@ -221,7 +264,10 @@ def collect(ref=INTEGRATION_HEAD, head="HEAD"):
         "pr_merge_parents": _pr_merge_parents(head),
         "post_merge_protected_delta": sorted(
             p for p in git("diff", "--name-only", INTEGRATION_HEAD, head).splitlines()
-            if p in POST_MERGE_PROTECTED),
+            if p in POST_MERGE_PROTECTED and not (
+                p == RC3_CI_WORKFLOW and _blob_or_none(head, p) == RC5_CI_WORKFLOW_BLOB
+                and not rc5_workflow_successor_violations(_show(ref, p) + "\n", _show(head, p) + "\n"))),
+        "ci_workflow_current_text": _show(head, RC3_CI_WORKFLOW) + "\n",
         "m7_blobs_at_head": {p: _blob_or_none(head, p) for p in M7_PROTECTED_BLOBS},
         "stream_tip_status": {p: s[0] for p, s in _status(BASE, STREAM_TIP).items()},
         "ci_workflow_base_text": git("show", f"{BASE}:{RC3_CI_WORKFLOW}") + "\n",
@@ -352,6 +398,9 @@ def inventory_violations(f) -> list[str]:
         if f["head_blobs"].get(RC3_CI_WORKFLOW) != RC3_CI_WORKFLOW_BLOB:
             bad.append("the CI workflow is not the reviewed RC-3 budget successor blob")
         bad += workflow_successor_violations(f["ci_workflow_base_text"], f["ci_workflow_head_text"])
+        # the CURRENT workflow is either the accepted RC-3 workflow or exactly its RC-5 limit successor; nothing in between
+        if f["ci_workflow_current_text"] != f["ci_workflow_head_text"]:
+            bad += rc5_workflow_successor_violations(f["ci_workflow_head_text"], f["ci_workflow_current_text"])
         # 10. release-closed flags (judged at the current head)
         for path, name in FLAG_FILES.items():
             state = activation_state(f["flag_sources"][path], name)
@@ -591,6 +640,58 @@ def test_the_successor_is_not_a_general_workflow_exemption(facts):
     _bad(facts, base_blobs={**facts["base_blobs"], RC3_CI_WORKFLOW: "a" * 40})                   # forged RC-2 baseline
     assert workflow_successor_violations("", "")                                                 # missing facts never authorise
     assert workflow_successor_violations(facts["ci_workflow_base_text"], facts["ci_workflow_base_text"])   # the unchanged RC-2 file is not the successor
+
+
+def _rc5_bad(facts, transform):
+    base = facts["ci_workflow_head_text"]                   # the accepted RC-3 workflow (judged at the pinned integration commit)
+    candidate = transform(facts["ci_workflow_current_text"])
+    assert candidate != facts["ci_workflow_current_text"]
+    assert rc5_workflow_successor_violations(base, candidate)
+
+
+def test_the_rc5_workflow_is_exactly_the_three_authorised_limits_over_the_rc3_workflow(facts):
+    head, current = facts["ci_workflow_head_text"], facts["ci_workflow_current_text"]
+    assert rc5_workflow_successor_violations(head, current) == []
+    assert RC3_CI_WORKFLOW_BLOB == facts["head_blobs"][RC3_CI_WORKFLOW]                      # the accepted RC-3 workflow is the baseline
+    assert current.count("timeout-minutes: 130") == 1 and current.count("FINCO_CI_PYTEST_BUDGET_S: '6000'") == 1
+    assert facts["post_merge_protected_delta"] == []                                          # only because the successor is exact
+
+
+@pytest.mark.parametrize("name,transform", [
+    ("timeout back to 100", lambda t: t.replace("timeout-minutes: 130", "timeout-minutes: 100")),
+    ("timeout below the fit", lambda t: t.replace("timeout-minutes: 130", "timeout-minutes: 120")),
+    ("timeout raised further", lambda t: t.replace("timeout-minutes: 130", "timeout-minutes: 150")),
+    ("budget back to 4800", lambda t: t.replace("'6000'", "'4800'")),
+    ("budget raised further", lambda t: t.replace("'6000'", "'7200'")),
+    ("grace back to 180", lambda t: t.replace("FINCO_CI_EXIT_GRACE_S: '240'", "FINCO_CI_EXIT_GRACE_S: '180'")),
+    ("grace raised further", lambda t: t.replace("FINCO_CI_EXIT_GRACE_S: '240'", "FINCO_CI_EXIT_GRACE_S: '600'")),
+    ("stall changed", lambda t: t.replace("FINCO_CI_STALL_S: '300'", "FINCO_CI_STALL_S: '600'")),
+    ("selection narrowed", lambda t: t.replace("--junitxml=artifacts/results.xml", "--junitxml=artifacts/results.xml -k not_slow")),
+    ("tests deselected", lambda t: t.replace("-q -p tools.ci_pytest_inventory", "-q --deselect tests/x.py -p tools.ci_pytest_inventory")),
+    ("failure ignored", lambda t: t.replace("    runs-on: ubuntu-24.04\n", "    runs-on: ubuntu-24.04\n    continue-on-error: true\n")),
+    ("junit evidence removed", lambda t: t.replace("            --junitxml=artifacts/results.xml", "")),
+    ("artifact upload softened", lambda t: t.replace("if-no-files-found: error", "if-no-files-found: ignore")),
+    ("full-run step renamed", lambda t: t.replace("FULL, UNSHARDED, EXACT HEAD", "PARTIAL")),
+    ("unauthorised extra step", lambda t: t + "      - name: extra\n        run: echo changed\n"),
+    ("a trailing byte", lambda t: t + "# x\n"),
+    ("permissions widened", lambda t: t.replace("contents: read", "contents: write")),
+    ("runner changed", lambda t: t.replace("ubuntu-24.04", "ubuntu-latest")),
+])
+def test_every_other_rc5_workflow_modification_is_rejected(facts, name, transform):
+    _rc5_bad(facts, transform)
+
+
+def test_the_rc5_successor_is_not_a_general_exemption(facts):
+    base = facts["ci_workflow_head_text"]
+    assert rc5_workflow_successor_violations(base, base)                  # the unchanged RC-3 file is not the successor
+    assert rc5_workflow_successor_violations("", "")                      # missing facts never authorise
+    # An edit that does not match the pinned successor blob remains a protected post-merge delta in the real collector.
+    assert RC5_CI_WORKFLOW_BLOB != RC3_CI_WORKFLOW_BLOB
+
+
+def test_the_rc5_budget_fits_inside_the_job_timeout():
+    budget, grace, overhead, timeout_min = 6000, 240, 15 * 60, 130
+    assert budget + grace + overhead <= timeout_min * 60 and timeout_min * 60 - (budget + grace + overhead) >= 120
 
 
 def test_the_authorised_budget_fits_inside_the_job_timeout():
