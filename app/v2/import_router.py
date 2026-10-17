@@ -18,7 +18,7 @@ from app.auth import (
 )
 from app.model_import.intake import MAX_UPLOAD_BYTES, IntakeError, extract_proposals
 from app.model_import.mapping import STRUCTURED_FIELD_OWNERS
-from app.model_import.migration_ux import scenario_review_matrix
+from app.model_import.migration_ux import scenario_review_matrix, scenario_review_acknowledged
 from app.persistence.projects_repository import resolve_accessible_project
 from app.persistence.workspace_repository import get_workspace_state
 from app.services.project_library_service import is_protected_reference
@@ -488,6 +488,7 @@ async def model_migration_review_slice(
     project: str = Form(...),
     csrf_token: str = Form(...),
     slice_ticket: str = Form(...),
+    source_target_ack: str = Form(""),
     manifest_token: str = Form(""),
     _: None = Depends(require_v2_active),
 ):
@@ -504,6 +505,8 @@ async def model_migration_review_slice(
             request=request, name="import_review.html",
             context=_context(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"), status_code=403)
     try:
+        if not scenario_review_acknowledged(source_target_ack):
+            raise ImportReviewError("IMPORT_SOURCE_SCENARIO_ACK_REQUIRED")
         preview = unseal_preview(slice_ticket, owner=owner, project_id=record.project_id)
         migration = preview.get("migration")
         if not isinstance(migration, dict):

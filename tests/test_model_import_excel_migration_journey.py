@@ -92,3 +92,16 @@ def test_real_scenario_workflow_targets_the_new_scenario_and_leaves_base_untouch
     sw = env.client.post("/v2/workbook/scenarios/select", data={"project": project.project_code, "scenario_id": ws.active_scenario_id})
     assert sw.status_code in (200, 303)
     assert base_before[0] != ws.draft_snapshot
+
+
+def test_source_target_ack_required_before_mapping_review(env):
+    project = env.create("solar")
+    assessed = assess(env, project, journey_workbook())
+    assert assessed.status_code == 200, err(assessed)
+    ticket = slice_ticket(assessed, "base_case")
+    refused = review_slice(env, project, ticket, acknowledged=False)
+    assert refused.status_code == 422
+    assert "IMPORT_SOURCE_SCENARIO_ACK_REQUIRED" in refused.text
+    accepted = review_slice(env, project, ticket, acknowledged=True)
+    assert accepted.status_code == 200
+    assert 'data-testid="migration-banner"' in accepted.text

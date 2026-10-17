@@ -73,3 +73,9 @@ def test_five_stage_progress_never_calls_apply_a_run():
     compared = tmpl.render(stage="reconcile", status="NOT_COMPARABLE")
     assert 'CHECKED · NOT_COMPARABLE' in compared
     assert 'PASS' not in compared
+
+
+def test_entry_acknowledgement_requires_explicit_user_action():
+    assert MOD.scenario_review_acknowledged("on") is True
+    for value in (None, "", "yes", "true", "off"):
+        assert MOD.scenario_review_acknowledged(value) is False

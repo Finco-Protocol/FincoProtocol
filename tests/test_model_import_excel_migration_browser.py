@@ -77,6 +77,7 @@ def test_assess_review_apply_run_reconcile_in_chromium(browser, app_server, tmp_
         assert get_workspace_state(OWNER, project.project_id).draft_snapshot == target.draft_snapshot       # assessment is read-only
         assert tuple(h.history_id for h in get_run_history(OWNER, project.project_id)) == history_before
 
+        page.get_by_test_id("source-target-ack-upside").check()
         page.get_by_test_id("review-slice-upside").click()
         page.get_by_text("Review detected assumptions").wait_for()
         assert page.get_by_test_id("migration-banner").count() == 1 and page.locator(".approve-box:checked").count() == 0

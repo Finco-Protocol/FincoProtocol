@@ -65,3 +65,8 @@ def scenario_review_matrix(plan: Mapping[str, Any]) -> list[dict[str, Any]]:
             append(key, str(slice_.get("label") or key), str(slice_.get("resolution") or "NOT_TRACKED"),
                    scenario_kind=str(slice_.get("kind") or "SOURCE_CASE"))
     return rows
+
+
+def scenario_review_acknowledged(value: str | None) -> bool:
+    """An explicit source-to-target acknowledgement, never inferred from labels."""
+    return value == "on"
