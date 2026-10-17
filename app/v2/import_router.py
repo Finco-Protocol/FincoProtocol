@@ -18,6 +18,7 @@ from app.auth import (
 )
 from app.model_import.intake import MAX_UPLOAD_BYTES, IntakeError, extract_proposals
 from app.model_import.mapping import STRUCTURED_FIELD_OWNERS
+from app.model_import.migration_ux import scenario_review_matrix
 from app.persistence.projects_repository import resolve_accessible_project
 from app.persistence.workspace_repository import get_workspace_state
 from app.services.project_library_service import is_protected_reference
@@ -469,7 +470,7 @@ async def model_migration_assess(
         manifest = upsert(manifest, entry_from_plan(plan, insp.report, candidate_project_code=record.project_code))
         ctx = _migration_base(
             request, user, record, ws, stage="assess", manifest_token=seal_manifest(manifest), report=insp.report, plan=plan,
-            plan_view=_plan_view(plan), manifest=manifest, manifest_error=manifest_error,
+            plan_view=_plan_view(plan), scenario_rows=scenario_review_matrix(plan), manifest=manifest, manifest_error=manifest_error,
             classes=list(plan["class_counts"]), max_items=_MAX_RENDERED_ITEMS_PER_CLASS)
         return _templates.TemplateResponse(request=request, name=_MIGRATION_TEMPLATE, context=ctx)
     except (IntakeError, ImportReviewError, ManifestError, ValueError) as exc:
