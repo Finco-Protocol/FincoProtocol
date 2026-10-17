@@ -98,7 +98,14 @@ def _col(index: int) -> str:
     return result
 
 
-def _check_xlsx_zip(data: bytes, start: float) -> None:
+def _check_xlsx_zip(data: bytes, start: float, *, inspect: bool = False) -> dict:
+    """Bounded container checks.
+
+    ``inspect=True`` is the read-only assessment mode: active/external members are RECORDED (never opened,
+    parsed for execution or loaded) instead of rejected.  Every size, ratio, path and entry-count guard is
+    identical in both modes, and the apply/preview path keeps ``inspect=False``.
+    """
+    flags: dict = {"vba_members": [], "external_members": [], "active_members": [], "member_names": []}
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             members = archive.infolist()
@@ -121,14 +128,24 @@ def _check_xlsx_zip(data: bytes, start: float) -> None:
                 if entry.compress_size and entry.file_size / entry.compress_size > 150:
                     raise IntakeError("IMPORT_XLSX_UNSAFE_COMPRESSION")
                 low = name.casefold()
-                if ("vbaproject" in low or "/externallinks/" in low
-                        or "/activex/" in low or "/embeddings/" in low
-                        or "/connections" in low or "querytable" in low):
-                    raise IntakeError("IMPORT_XLSX_ACTIVE_OR_EXTERNAL_CONTENT")
+                if "vbaproject" in low:
+                    if not inspect:
+                        raise IntakeError("IMPORT_XLSX_ACTIVE_OR_EXTERNAL_CONTENT")
+                    flags["vba_members"].append(name)
+                elif "/externallinks/" in low or "/connections" in low or "querytable" in low:
+                    if not inspect:
+                        raise IntakeError("IMPORT_XLSX_ACTIVE_OR_EXTERNAL_CONTENT")
+                    flags["external_members"].append(name)
+                elif "/activex/" in low or "/embeddings/" in low:
+                    if not inspect:
+                        raise IntakeError("IMPORT_XLSX_ACTIVE_OR_EXTERNAL_CONTENT")
+                    flags["active_members"].append(name)
             if "xl/workbook.xml" not in names or "[Content_Types].xml" not in names:
                 raise IntakeError("IMPORT_XLSX_INVALID_STRUCTURE")
+            flags["member_names"] = sorted(names)
     except (zipfile.BadZipFile, EOFError) as exc:
         raise IntakeError("IMPORT_XLSX_MALFORMED") from exc
+    return flags
 
 
 def _xlsx_rows(data: bytes, *, start: float):
@@ -371,6 +388,18 @@ def extract_proposals(data: bytes, filename: str, *,
     else:
         raise IntakeError("IMPORT_FORMAT_UNSUPPORTED")
 
+    result = proposals_from_tables(tables, project_type=project_type, template_source=template_source, start=start)
+    return {"filename": name, "format": ext[1:], "source_sheets": len(tables), **result}
+
+
+def proposals_from_tables(tables: list[tuple[str, list]], *, project_type: str, template_source: str,
+                          start: float | None = None) -> dict:
+    """The one scalar-proposal engine (exact id / exact label / ranked candidate, unit + value validation).
+
+    Shared by the flat Import path and the Excel migration slices so mapping, unit and applicability rules
+    can never diverge between them.  Pure: no persistence, no writer, no engine.
+    """
+    start = time.monotonic() if start is None else start
     cells = _tabular_candidates(tables, start=start)
     specs, names = _registry_index()
     proposals = []
@@ -464,7 +493,6 @@ def extract_proposals(data: bytes, filename: str, *,
             p["reason"] = "IMPORT_DUPLICATE_TARGET_REQUIRES_REVIEW"
             p["duplicate_target"] = True
     return {
-        "filename": name, "format": ext[1:], "source_sheets": len(tables),
         "detected": len(proposals), "proposals": proposals,
         "totals": dict(Counter(p["status"] for p in proposals)),
     }

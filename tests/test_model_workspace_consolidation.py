@@ -186,19 +186,19 @@ def _workspace_ci_role_evidence(root, prefix, role, head, tree, case="pass"):
         _workspace_ci_outputs_evidence(folder)
     if role == "import":
         # PR #266: the import role runs BOTH suites; the V2 captures carry their real viewport widths.
-        from tools.ci_browser_job import IMPORT_V2_SCREENSHOTS
+        from tools.ci_browser_job import IMPORT_V2_SCREENSHOTS, IMPORT_V3_SCREENSHOTS
         shots = folder / "model-import-v2"
         shots.mkdir(exist_ok=True)
-        for name, width in IMPORT_V2_SCREENSHOTS:
+        for name, width in IMPORT_V2_SCREENSHOTS + IMPORT_V3_SCREENSHOTS:
             (shots / name).write_bytes(_workspace_ci_png(width))
     if role in SELECTIONS:
         if role == "consolidation":
             cases = [("test_model_workspace_consolidation_browser", f"test_synthetic_{index}") for index in range(17)]
         elif role == "import":
-            from tools.ci_browser_job import IMPORT_V2_NODES
+            from tools.ci_browser_job import IMPORT_V2_NODES, IMPORT_V3_NODES
             cases = [("test_model_ai_import_browser_c", "test_synthetic")] + [
                 (node.split("::")[0].removeprefix("tests/").removesuffix(".py"), node.split("::", 1)[1])
-                for node in IMPORT_V2_NODES]
+                for node in IMPORT_V2_NODES + IMPORT_V3_NODES]
         else:
             cases = [("test_ci_synthetic", "test_synthetic")]
         nodes = [f"tests/{module}.py::{name}" for module, name in cases]
@@ -443,3 +443,82 @@ def test_import_role_without_any_v2_screenshot_directory_cannot_pass(tmp_path):
     _rewrite_workspace_manifest(folder)
     with pytest.raises(EvidenceError):
         validate_browser_records(tmp_path, head, tree, "success")
+
+
+@pytest.mark.parametrize("mutation", [
+    "v3-node-not-collected", "v3-node-skipped", "v3-node-failed", "v3-node-not-in-junit", "v3-junit-failure",
+    "v3-screenshot-missing", "v3-screenshot-wrong-width", "v3-screenshot-corrupt",
+])
+def test_import_v3_evidence_is_fail_closed(tmp_path, mutation):
+    """PR #296: a missing, skipped, failed or uncaptured Excel-migration browser node cannot be reported as success."""
+    import json
+    import xml.etree.ElementTree as ET
+    import hashlib
+    from tools.ci_acceptance import EvidenceError
+    from tools.ci_browser_job import IMPORT_V3_NODES, validate_browser_records
+    folder, head, tree = _import_matrix(tmp_path)
+    victim = IMPORT_V3_NODES[0]
+    inventory = json.loads((folder / "inventory.json").read_text())
+    if mutation == "v3-node-not-collected":
+        for key in ("collected", "selected"):
+            inventory[key].remove(victim)
+        inventory["outcomes"].pop(victim)
+    elif mutation == "v3-node-skipped":
+        inventory["outcomes"][victim] = {"status": "skipped", "reason": "playwright missing"}
+    elif mutation == "v3-node-failed":
+        inventory["outcomes"][victim] = {"status": "failed", "reason": ""}
+    (folder / "inventory.json").write_text(json.dumps(inventory), encoding="utf-8")
+    if mutation in ("v3-node-not-in-junit", "v3-junit-failure"):
+        tree_xml = ET.parse(folder / "results.xml")
+        suite = tree_xml.getroot()
+        module = victim.split("::")[0].removesuffix(".py").replace("/", ".")
+        for case in list(suite):
+            if case.get("classname") == module and case.get("name") == victim.split("::", 1)[1]:
+                if mutation == "v3-node-not-in-junit":
+                    suite.remove(case)
+                else:
+                    ET.SubElement(case, "failure")
+        tree_xml.write(folder / "results.xml", encoding="utf-8")
+        process = json.loads((folder / "process.json").read_text())
+        process["junit_sha256"] = hashlib.sha256((folder / "results.xml").read_bytes()).hexdigest()
+        (folder / "process.json").write_text(json.dumps(process), encoding="utf-8")
+    shots = folder / "model-import-v2"
+    if mutation == "v3-screenshot-missing":
+        (shots / "migration-06-reconciliation.png").unlink()
+    elif mutation == "v3-screenshot-wrong-width":
+        (shots / "migration-05-manifest-mobile.png").write_bytes(_workspace_ci_png(1440))
+    elif mutation == "v3-screenshot-corrupt":
+        target = shots / "migration-01-assess-desktop.png"
+        raw = bytearray(target.read_bytes()); raw[40] ^= 0x01; target.write_bytes(raw)
+    _rewrite_workspace_manifest(folder)
+    with pytest.raises(EvidenceError):
+        validate_browser_records(tmp_path, head, tree, "success")
+
+
+def test_import_v3_nodes_match_the_real_browser_module():
+    """The mandatory node list must name tests that really exist in the V3 module (a rename cannot silently drop coverage)."""
+    import re
+    from pathlib import Path
+    from tools.ci_browser_job import IMPORT_V3_MODULE, IMPORT_V3_NODES
+    source = Path(IMPORT_V3_MODULE).read_text(encoding="utf-8")
+    defined = set(re.findall(r"^def (test_\w+)\(", source, re.M))
+    assert {node.split("::", 1)[1] for node in IMPORT_V3_NODES} == defined
+    for name in ("migration-01-assess-desktop.png", "migration-06-reconciliation.png", "migration-05-manifest-mobile.png"):
+        assert name in source
+
+
+def test_defusedxml_is_a_declared_runtime_dependency_in_every_install_manifest():
+    """app/model_import/workbook_inspect.py imports defusedxml at runtime: every CI/deploy install path must provide it."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    assert re.search(r"^defusedxml>=0\.7\.1,<0\.8\s*$", (root / "requirements.txt").read_text(), re.M)
+    assert re.search(r"^defusedxml==0\.7\.1\s*$", (root / "constraints.txt").read_text(), re.M)
+    assert '"defusedxml"' in (root / "pyproject.toml").read_text()
+    assert "defusedxml" not in (root / "requirements-ci-tests.txt").read_text()       # not a CI-only helper
+    module = (root / "app/model_import/workbook_inspect.py").read_text()
+    assert "from defusedxml import ElementTree as SafeET" in module and "from defusedxml.common import DefusedXmlException" in module
+    assert "xml.etree" not in module and "lxml" not in module                          # no unrestricted parser fallback
+    for workflow in ("ci_public_job.yml", "ci_browser_job.yml", "pr_compile_and_safety.yml", "model_ai_import_c0_gate.yml",
+                     "dependency_security_audit.yml"):
+        assert "-r requirements.txt" in (root / ".github/workflows" / workflow).read_text(), workflow

@@ -1,0 +1,52 @@
+/* Institutional Credit Decision workspace (RC-4 / B): presentation only. Horizontal scrolling is contained to financial matrices. */
+.cd-page{max-width:1280px;margin:0 auto;padding:16px;color:var(--fo-text,#111827)}
+.cd-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:flex-end}
+.cd-eyebrow{font-size:.75rem;letter-spacing:.08em;opacity:.7;margin:0}
+.cd-head h1{margin:2px 0;font-size:1.5rem}
+.cd-links{display:flex;flex-wrap:wrap;gap:12px;font-size:.875rem}
+.cd-note{font-size:.85rem;opacity:.85;margin:4px 0;overflow-wrap:anywhere}
+.cd-policy{font-size:.85rem;border-left:4px solid #1d4ed8;padding:6px 10px;margin:8px 0;background:rgba(29,78,216,.06)}
+.cd-toc{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0 12px;font-size:.85rem}
+.cd-section{border:1px solid var(--fo-line,#d1d5db);border-radius:6px;padding:12px 14px;margin:0 0 14px;background:var(--fo-surface,#fff)}
+.cd-section h2{margin:0 0 8px;font-size:1.05rem}
+.cd-section h2 small{font-weight:400;opacity:.7;font-size:.78rem;margin-left:6px}
+.cd-section h3{margin:12px 0 4px;font-size:.95rem}
+.cd-scroll{overflow-x:auto;max-width:100%;border:1px solid var(--fo-line,#e5e7eb);border-radius:4px}
+.cd-scroll:focus{outline:2px solid #1d4ed8;outline-offset:1px}
+.cd-table{width:100%;border-collapse:collapse;font-size:.85rem}
+.cd-table th,.cd-table td{padding:5px 8px;border-bottom:1px solid var(--fo-line,#e5e7eb);text-align:left;vertical-align:top;background:var(--fo-surface,#fff)}
+.cd-table thead th{position:sticky;top:0;z-index:2;font-weight:600}
+.cd-table tbody th[scope=row]{font-weight:500}
+.cd-num{text-align:right!important;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cd-na{opacity:.75;font-style:italic}
+.cd-why{font-size:.75rem;opacity:.8;white-space:normal;display:block}
+.cd-group th{background:rgba(0,0,0,.05);font-weight:700}
+.cd-delta{opacity:.9;font-variant-numeric:tabular-nums}
+.cd-table--matrix th.cd-sticky,.cd-table--matrix td.cd-sticky{position:sticky;left:0;z-index:1;min-width:230px;max-width:280px;white-space:normal;background:var(--fo-surface,#fff)}
+.cd-table--matrix thead th.cd-sticky{z-index:3}
+.cd-table--matrix td,.cd-table--matrix thead th:not(.cd-sticky){min-width:84px}
+.cd-period{background:none;border:0;font:inherit;cursor:pointer;padding:2px 4px;border-radius:3px;text-align:center}
+.cd-period:focus-visible{outline:2px solid #1d4ed8}
+.cd-period.is-selected,.cd-table--matrix td.is-selected{background:rgba(29,78,216,.12)}
+.cd-flag{color:#991b1b;font-weight:700}
+.cd-detail{margin:8px 0;padding:8px 10px;border:1px solid var(--fo-line,#d1d5db);border-radius:4px}
+.cd-detail h4{margin:0 0 6px;font-size:.9rem}
+.cd-detail-list{display:grid;grid-template-columns:minmax(180px,1fr) 1fr;gap:2px 12px;margin:0;font-size:.82rem}
+.cd-detail-list dt{opacity:.8}.cd-detail-list dd{margin:0;font-variant-numeric:tabular-nums}
+.cd-class{display:inline-block;border-radius:999px;padding:1px 8px;font-size:.72rem;border:1px solid currentColor;white-space:nowrap}
+.cd-class--contractual_covenant{color:#7c2d12}.cd-class--project_input_advisory{color:#1d4ed8}
+.cd-class--observed_financial_result{color:#065f46}.cd-class--unsupported_evidence_missing{color:#4b5563}
+.cd-filters{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+.cd-chip{border:1px solid var(--fo-line,#d1d5db);background:var(--fo-surface,#fff);border-radius:999px;padding:3px 10px;font-size:.8rem;cursor:pointer}
+.cd-chip.is-on{border-color:#1d4ed8;background:rgba(29,78,216,.1)}
+.cd-chip:focus-visible,.cd-btn:focus-visible{outline:2px solid #1d4ed8;outline-offset:1px}
+.cd-btn{border:1px solid #1d4ed8;background:#1d4ed8;color:#fff;border-radius:4px;padding:5px 12px;cursor:pointer}
+.cd-limit{font-size:.8rem;margin-left:8px;opacity:.85}
+.cd-aside{border-left:4px solid #b45309;padding:6px 10px;margin:10px 0;background:rgba(180,83,9,.07);font-size:.85rem}
+.cd-aside h3{margin:0 0 4px}
+.cd-callout{border-left:4px solid #b45309;padding:6px 10px;margin:6px 0;background:rgba(180,83,9,.08);font-size:.85rem}
+.cd-classes{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:.8rem;margin:10px 0 0}.cd-classes dd{margin:0}
+.cd-findings tr[hidden]{display:none}
+.cd-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (max-width:700px){.cd-page{padding:12px 16px}.cd-table--matrix th.cd-sticky,.cd-table--matrix td.cd-sticky{min-width:150px}.cd-detail-list{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){.cd-period{transition:background .1s}}

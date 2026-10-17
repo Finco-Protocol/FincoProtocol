@@ -18,6 +18,7 @@
       Last Run · {% if last_run_state == 'STALE' %}STALE{% elif last_run_state == 'CURRENT' %}CURRENT{% else %}NOT RUN{% endif %}
       · {{ last_run_at or '—' }}
     </span>
+    {% if project_code %}<a class="v2-rh-sub" href="/v2/credit-decision?project={{ project_code | urlencode }}" data-testid="run-history-credit-decision">Credit decision →</a>{% endif %}
   </div>
 
   <p class="v2-rh-sub">Last Run freshness and immutable Run History coverage are separate. A legacy reference Last Run can exist without a recorded history entry; missing ledger evidence is never reconstructed here.</p>

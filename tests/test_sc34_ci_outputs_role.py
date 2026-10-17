@@ -42,7 +42,8 @@ def _rewrite_outputs(folder, **kwargs):
 
 def test_all_six_roles_and_every_existing_selection_are_preserved():
     assert set(REQUIRED) == {"protocol", "import", "grid", "q4", "outputs", "consolidation"}
-    assert SELECTIONS["import"] == ["tests/test_model_ai_import_browser_c.py", "tests/test_model_import_v2_browser.py"]
+    assert SELECTIONS["import"] == ["tests/test_model_ai_import_browser_c.py", "tests/test_model_import_v2_browser.py",
+                                    "tests/test_model_import_excel_migration_browser.py"]
     assert SELECTIONS["q4"] == ["tests/test_model_q4_browser.py"] and "outputs" not in SELECTIONS
     assert "artifacts/outputs-workspace/browser-results.json" in REQUIRED["outputs"] and "artifacts/outputs-workspace/*.png" in REQUIRED["outputs"]
     assert "artifacts/statements-tree/browser-results.json" in REQUIRED["outputs"] and "artifacts/statements-tree/*.png" in REQUIRED["outputs"]

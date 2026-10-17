@@ -277,9 +277,12 @@ def test_previously_frozen_surfaces_remain_rejected(path):
         assert fig.strictly_frozen_changes([path]) == [path]
 
 
-def test_the_real_anchor_points_before_the_candidate_and_the_integration_has_not_landed():
+def test_the_real_anchor_returns_to_head_after_integration_and_keeps_historical_proof():
     tip = anchor.anchored_head()
-    assert tip == anchor.PPA01_PRE_INTEGRATION_TIP
+    assert tip == "HEAD"
     assert anchor.changed_paths("finco_core", "domain", "financial_engine") == []
-    assert subprocess.run(["git", "merge-base", "--is-ancestor", tip, "HEAD"], cwd=ROOT).returncode == 0
-    assert subprocess.run(["git", "merge-base", "--is-ancestor", tip, "origin/main"], cwd=ROOT).returncode != 0
+    historical_tip = anchor.PPA01_PRE_INTEGRATION_TIP
+    assert subprocess.run(["git", "merge-base", "--is-ancestor", historical_tip, "HEAD"], cwd=ROOT).returncode == 0
+    assert subprocess.run(["git", "merge-base", "--is-ancestor", historical_tip, "origin/main"], cwd=ROOT).returncode == 0
+    assert git(ROOT, "diff", "--name-only", P.PPA01_PUBLICATION_BASE, historical_tip,
+               "--", "finco_core", "domain", "financial_engine") == ""

@@ -17,7 +17,8 @@ SELECTIONS = {
     "protocol": ["tests/test_ui_protocol_shell.py", "tests/test_protocol_roadmap_browser.py",
                  "tests/test_crypto_navigation_browser.py", "tests/test_ev_charging_browser.py",
                  "tests/test_yield_browser.py", "-k", "not test_api_b04_placeholders_not_links"],
-    "import": ["tests/test_model_ai_import_browser_c.py", "tests/test_model_import_v2_browser.py"],
+    "import": ["tests/test_model_ai_import_browser_c.py", "tests/test_model_import_v2_browser.py",
+               "tests/test_model_import_excel_migration_browser.py"],
     "grid": ["tests/test_model_hybrid_inputs_grid_routes.py", "tests/test_model_hybrid_inputs_grid_browser.py"],
     "q4": ["tests/test_model_q4_browser.py"],
     "consolidation": ["tests/test_model_workspace_consolidation_browser.py"],
@@ -94,14 +95,29 @@ IMPORT_V2_SCREENSHOTS = tuple(
      ("solar-06-unit-correction-result.png", 1440))
 
 
+# Excel migration V3 (PR #296): its Chromium module is a mandatory part of the same existing `import` role.
+IMPORT_V3_MODULE = "tests/test_model_import_excel_migration_browser.py"
+IMPORT_V3_NODES = (
+    f"{IMPORT_V3_MODULE}::test_assess_review_apply_run_reconcile_in_chromium",
+    f"{IMPORT_V3_MODULE}::test_macro_workbook_and_unresolved_switch_are_inspection_only_in_chromium",
+    f"{IMPORT_V3_MODULE}::test_portfolio_manifest_and_mobile_layout_in_chromium",
+)
+IMPORT_V3_SCREENSHOTS = (
+    ("migration-01-assess-desktop.png", 1440), ("migration-02-review-scenario.png", 1440),
+    ("migration-03-applied-not-run.png", 1440), ("migration-04-macro-unresolved.png", 1440),
+    ("migration-05-manifest-mobile.png", 390), ("migration-06-reconciliation.png", 1440),
+)
+
+
 def validate_import(folder: Path, inventory: dict, process: dict) -> None:
-    """Fail closed unless BOTH import suites ran: the original C nodes and every required V2 Chromium node/capture."""
+    """Fail closed unless ALL import suites ran: the original C nodes and every required V2 and V3 Chromium node/capture."""
     selected, outcomes = inventory.get("selected", []), inventory.get("outcomes", {})
-    for node in IMPORT_V2_NODES:
-        if node not in selected or node not in inventory.get("collected", []):
-            raise EvidenceError(f"Import V2 node not collected: {node}")
-        if outcomes.get(node, {}).get("status") != "passed":
-            raise EvidenceError(f"Import V2 node failed/skipped/xfail/not executed: {node}")
+    for label, nodes in (("V2", IMPORT_V2_NODES), ("V3", IMPORT_V3_NODES)):
+        for node in nodes:
+            if node not in selected or node not in inventory.get("collected", []):
+                raise EvidenceError(f"Import {label} node not collected: {node}")
+            if outcomes.get(node, {}).get("status") != "passed":
+                raise EvidenceError(f"Import {label} node failed/skipped/xfail/not executed: {node}")
     if len(set(selected)) != len(selected):
         raise EvidenceError("Duplicate import node in selection")
     c_nodes = [node for node in selected if node.startswith(IMPORT_C_MODULE + "::")]
@@ -114,15 +130,17 @@ def validate_import(folder: Path, inventory: dict, process: dict) -> None:
     for case in ET.parse(junit).getroot().iter("testcase"):
         node = case.get("classname", "").replace(".", "/") + ".py::" + case.get("name", "")
         executed[node] = not list(case)                     # any failure/error/skip/xfail child makes it not a clean pass
-    for node in IMPORT_V2_NODES:
-        if executed.get(node) is not True:
-            raise EvidenceError(f"Import V2 JUnit lacks a clean pass for {node}")
+    for label, nodes in (("V2", IMPORT_V2_NODES), ("V3", IMPORT_V3_NODES)):
+        for node in nodes:
+            if executed.get(node) is not True:
+                raise EvidenceError(f"Import {label} JUnit lacks a clean pass for {node}")
     evidence = folder / "model-import-v2"
-    for name, width in IMPORT_V2_SCREENSHOTS:
-        shot = evidence / name
-        if not shot.is_file():
-            raise EvidenceError(f"Missing Import V2 screenshot: {name}")
-        _check_png(shot, width)
+    for label, shots in (("V2", IMPORT_V2_SCREENSHOTS), ("V3", IMPORT_V3_SCREENSHOTS)):
+        for name, width in shots:
+            shot = evidence / name
+            if not shot.is_file():
+                raise EvidenceError(f"Missing Import {label} screenshot: {name}")
+            _check_png(shot, width)
 
 
 def validate_consolidation(folder: Path, inventory: dict, process: dict) -> None:
