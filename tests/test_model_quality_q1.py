@@ -527,7 +527,10 @@ class TestIsolation:
         # Diagnostics consumes the typed report only; no evaluator/scorer import.
         # Exact file allowance, not an exemption for the v2 package or engine/core.
         diagnostics_adapter = REPO / "app/v2/diagnostics_projection.py"
-        allowed_adapters = q3_adapters | q4_adapters | {diagnostics_adapter}
+        # RC-4 Credit Decision V3: ONE exact read-only projection evaluates the selected COMMITTED Run entries through the single Q1 evaluator
+        # (same pattern as the Q3 scenario adapter). No package or v2 exemption; it must not import or run the engine.
+        credit_adapter = REPO / "app/v2/credit_decision_projection.py"
+        allowed_adapters = q3_adapters | q4_adapters | {diagnostics_adapter, credit_adapter}
         diagnostic_imports = [n.module for n in ast.walk(ast.parse(diagnostics_adapter.read_text()))
                               if isinstance(n, ast.ImportFrom) and n.module and n.module.startswith("app.model_quality")]
         assert diagnostic_imports == ["app.model_quality.contracts"]
