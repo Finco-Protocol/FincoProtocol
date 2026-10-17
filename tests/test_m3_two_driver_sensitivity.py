@@ -574,8 +574,25 @@ def test_no_engine_or_financial_authority_files_are_touched():
             and rc2_workflow_delta_valid(baseline.stdout, current_path.read_text(encoding="utf-8"))
         )
 
+    def reviewed_rc5_ci_workflow(path):
+        """RC-5 owner-approved CI limits: the pinned RC-3 workflow plus exactly the three authorised values (exact blob AND exact text)."""
+        if path != RC2_CI_WORKFLOW:
+            return False
+        from tests.test_rc3_integration_inventory import INTEGRATION_HEAD, RC3_CI_WORKFLOW_BLOB, RC5_CI_WORKFLOW_BLOB, rc5_workflow_successor_violations
+        baseline = subprocess.run(["git", "show", f"{INTEGRATION_HEAD}:{path}"], capture_output=True, text=True)
+        current_path = Path(__file__).resolve().parents[1] / path
+        if baseline.returncode != 0 or not current_path.is_file():
+            return False
+        return (
+            checked_git("rev-parse", f"{INTEGRATION_HEAD}:{path}") == RC3_CI_WORKFLOW_BLOB
+            and checked_git("rev-parse", f"HEAD:{path}") == RC5_CI_WORKFLOW_BLOB
+            and checked_git("hash-object", path) == RC5_CI_WORKFLOW_BLOB
+            and not rc5_workflow_successor_violations(baseline.stdout + "\n", current_path.read_text(encoding="utf-8") + "\n")
+        )
+
     assert not [p for p in out.split() if p.startswith(("financial_engine/", "finco_core/", "domain/", ".github/"))
-                and not (reviewed_v3(p) or reviewed_ci_workflow(p))]
+                and not (reviewed_v3(p) or reviewed_ci_workflow(p) or reviewed_rc5_ci_workflow(p))]
     # Negative checks: another workflow and an unapproved financial path never inherit this exception.
     assert not reviewed_ci_workflow(".github/workflows/public_safety_and_smoke.yml")
+    assert not reviewed_rc5_ci_workflow(".github/workflows/public_safety_and_smoke.yml")
     assert not reviewed_v3("finco_core/revenue/unreviewed.py")

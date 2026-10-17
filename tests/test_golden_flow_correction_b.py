@@ -141,13 +141,13 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds()
             assert current_before == old_runtime_hash
 
             calls_before_mutation = calls
-            changed_p50 = float(snapshot["p50_hours"]) * 1.1
+            changed_tariff = float(snapshot["tariff_eur_mwh"]) * 1.1      # RC-5A: the tariff is the only scenario override the canonical Run consumes
             mutated = client.post(
                 "/v2/workbook/scenarios/update-overrides",
                 data={
                     "project": code,
                     "scenario_id": scenario_id,
-                    "p50_hours": str(changed_p50),
+                    "tariff_eur_mwh": str(changed_tariff),
                 },
                 headers=htmx,
             )
