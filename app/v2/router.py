@@ -4535,6 +4535,7 @@ def _run_side_view(entry):
         "scenario": getattr(entry, "active_scenario_name", None) or "Base",
         "snapshot": str(getattr(entry, "runtime_snapshot_id", "") or "")[:8],
         "identity": _run_identity_of(entry),
+        "runtime_summary": dict(getattr(entry, "runtime_summary", None) or {}),
         "sponsor_summary": (getattr(entry, "sponsor_schedule", None) or {}).get("summary", {}),
         "debt_summary": (getattr(entry, "debt_schedule", None) or {}).get("summary", {}),
     }
@@ -4565,6 +4566,7 @@ def _last_run_side(ws, freshness):
             ws, "active_scenario_name", None) or "Base",
         "snapshot": str(getattr(ws, "last_runtime_snapshot_id", "") or "")[:8],
         "identity": identity,
+        "runtime_summary": dict(getattr(ws, "last_runtime_summary", None) or {}),
         "sponsor_summary": (getattr(ws, "last_sponsor_schedule", None) or {}).get("summary", {}),
         "debt_summary": (getattr(ws, "last_debt_schedule", None) or {}).get("summary", {}),
         "state": freshness.state.value,
@@ -4656,8 +4658,17 @@ async def v2_run_compare_expanded(
                              side_b_view["debt_summary"])
     sections = build_run_variance(view_a, view_b)
     assumptions = build_assumption_diff(
-        side_a_view["identity"], side_b_view["identity"])
-    drivers = build_drivers_of_change(assumptions, sections)
+        side_a_view["identity"], side_b_view["identity"],
+        side_a_view["runtime_summary"], side_b_view["runtime_summary"])
+    from app.v2.decision_support_projection import build_assumption_attribution, build_assumption_limitations
+    _hash_a = (getattr(entry_a, "composite_hash", None) if entry_a is not None
+               else getattr(ws, "last_runtime_composite_hash", None))
+    attribution = build_assumption_attribution(
+        side_a_view["identity"], side_b_view["identity"], assumptions,
+        hash_a=_hash_a, hash_b=getattr(entry_b, "composite_hash", None))
+    drivers = build_drivers_of_change(assumptions, sections, attribution=attribution)
+    limitations = ([] if attribution.status == "IDENTICAL" else build_assumption_limitations(
+        side_a_view["identity"], side_b_view["identity"], side_a_view["runtime_summary"], side_b_view["runtime_summary"]))
 
     ctx = {
         "project_code": project_record.project_code,
@@ -4678,6 +4689,8 @@ async def v2_run_compare_expanded(
                        and str(entry_b.composite_hash) == str(pis.content_hash))},
         "sections": sections,
         "assumptions": assumptions,
+        "attribution": attribution,
+        "limitations": limitations,
         "drivers": drivers,
         "back_url": f"/v2/workbook/run-history?project={project_record.project_code}",
         "workspace_url": f"/v2/workbook?project={project_record.project_code}",
@@ -5223,6 +5236,20 @@ async def v2_scenario_sensitivity_run(
     # Snapshot of pis_base values before any sensitivity run (for non-destructive check)
     _pis_base_values_snapshot = dict(pis_base.values)
 
+    # RC-5A: under active explicit revenue contracts the scalar tariff is not a price authority, so a tariff shock applied to it would change
+    # nothing and look like a successful flat sensitivity. Refuse explicitly (HTTP 200 fragment: HTMX does not swap 4xx), the same stance as the
+    # two-driver matrix and Goal Seek. No contract-shock economics are invented here.
+    if driver == "tariff":
+        from app.services.sensitivity_service import CONTRACTED_PRICE_SHOCK_REFUSAL
+        _probe = WorkbookService.to_projectinputs(pis_base)
+        if (getattr(_probe.revenue, "multistream_config_json", "")
+                or (_scenario_overrides_for_fold or {}).get("rev_multistream_config_json")):
+            from html import escape as _esc
+            return HTMLResponse(
+                content=('<div class="v2-sens-refusal" role="alert" data-testid="sensitivity-refused" data-status="REFUSED">'
+                         '<strong>Sensitivity not run.</strong> ' + _esc(CONTRACTED_PRICE_SHOCK_REFUSAL) + '</div>'),
+                headers={"X-Finco-Sensitivity-Outcome": "REFUSED"})
+
     # Resolve base value from the canonical field_id in pis_base.values.
     # For tariff, fall back to the legacy field_id if the canonical one is absent.
     base_val = pis_base.values.get(field_id)
@@ -5620,12 +5647,13 @@ async def v2_workbook_goal_seek_run(
         return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
             "target_metric_label": metric.label, "message": str(exc)}, "apply": None, "request": request})
 
+    from app.services.sensitivity_service import CONTRACTED_PRICE_SHOCK_REFUSAL
     if getattr(override.revenue, "multistream_config_json", "") or (
         (_scenario_overrides_for_fold or {}).get("rev_multistream_config_json")
     ):
         return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
             "target_metric_label": metric.label,
-            "message": "Explicit revenue contracts have no scalar Goal Seek tariff authority. Use scenario contracts."},
+            "message": CONTRACTED_PRICE_SHOCK_REFUSAL},
             "apply": None, "request": request})
     # ── Current canonical tariff (draft state the user sees) ──────────────── #
     apply_field_id, raw_current = _goal_seek_resolve_tariff_field(variable, pis_draft)
