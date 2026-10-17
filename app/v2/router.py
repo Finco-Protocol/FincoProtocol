@@ -137,7 +137,6 @@ def _fmt_runtime_at(ts) -> str:
         return ""
 
 
-@observed("input_build")
 def _build_pis_with_composite_identity(ws, project_record, workspace_owner_id: str):
     """Build ProjectInputSet with composite Workbook V2 identity.
 
@@ -2049,7 +2048,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     except Exception:
         pass  # migration failure must never block page render
 
-    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    with span("input_build"):
+        pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
     runtime_freshness = _runtime_freshness(ws, pis)
     hydration_script = WorkbookService.runtime_hydration_script(ws)
 
@@ -2133,15 +2133,18 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             project_code=project_record.project_code,
             any_run_committed=bool(ws.any_run_committed),
         )
+        from app.v2.result_status import scope_trust_pack_to_active_scenario
+        context["trust_pack"] = scope_trust_pack_to_active_scenario(context["trust_pack"], ws, workspace_owner)
     except Exception:  # fail closed — an evidence surface must never 500
         from app.v2.result_status import unavailable_trust_pack
         context["trust_pack"] = unavailable_trust_pack(project_record.project_code)
     # RC-UX (UX-001/002): ONE result-status projection for the persistent strip; the Trust sheet reads the same pack.
-    from app.v2.result_status import build_result_status
+    from app.v2.result_status import build_result_status, last_run_matches_active_scenario
     context["result_status"] = build_result_status(
         runtime_state=context["runtime_state"], has_runtime=context["has_runtime"],
         last_runtime_at_display=context["last_runtime_at"], active_scenario_name=context["active_scenario_name"],
-        trust_pack=context.get("trust_pack"))
+        trust_pack=context.get("trust_pack"),
+        last_run_matches_scenario=last_run_matches_active_scenario(ws, workspace_owner))
     _capex_ctx = _build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
     _opex_ctx = _build_opex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
     context.update(_capex_ctx)
@@ -2286,9 +2289,10 @@ async def v2_inputs_slice1_update(
         render_ws = ws_for_render or ws
         render_pis = pis_for_render
         if render_pis is None:
-            render_pis = _build_pis_with_composite_identity(
-                render_ws, project_record, workspace_owner
-            )
+            with span("input_build"):
+                render_pis = _build_pis_with_composite_identity(
+                    render_ws, project_record, workspace_owner
+                )
         submitted = (
             {field_id: value or ""}
             if preserve_submitted and classify_slice1_field_id(field_id) == KNOWN_SLICE1_EDITABLE
@@ -2316,9 +2320,10 @@ async def v2_inputs_slice1_update(
         message: str, status_code: int, *, preserve_submitted: bool = False,
         error_class: Optional[FieldErrorClass] = None,
     ) -> HTMLResponse:
-        pis_for_render = _build_pis_with_composite_identity(
-            ws, project_record, workspace_owner
-        )
+        with span("input_build"):
+            pis_for_render = _build_pis_with_composite_identity(
+                ws, project_record, workspace_owner
+            )
         resp = _render_sheet_response(
             message,
             status_code=status_code,
@@ -3016,6 +3021,13 @@ async def v2_workbook_run(
             msg = "Active scenario does not belong to this project. Please re-select and try again."
             return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
         _scenario_overrides_for_fold = sc_rec.overrides
+        # RC-5: refuse BEFORE the engine runs or anything is committed when a saved override is not consumed by the Run.
+        if not sc_rec.is_base_case:
+            from app.workbook.scenario_override_authority import ScenarioOverrideUnbound, unbound_override_keys
+            _unbound_saved = unbound_override_keys(sc_rec.overrides, sc_rec.replay_metadata)
+            if _unbound_saved:
+                msg = str(ScenarioOverrideUnbound(_unbound_saved))
+                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
         # Keep display name for provenance only; engine always receives "Base"
         # so the legacy ScenarioManager is never activated by a user-created name.
         scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
@@ -3202,6 +3214,12 @@ async def v2_workbook_run(
             _scenario_revenue_input["multistream_config_json"] = _contracts
             _kpis_enriched["revenue_multistream_audit"] = result["revenue_multistream_audit"]
         _kpis_enriched["scenario_revenue_input"] = _scenario_revenue_input
+    # RC-5 / S7-01: Run-bound proof (or explicit absence of proof) that the overrides saved for this Run were applied. Kept apart
+    # from Run artifact integrity; a Run never claims more than the canonical binding evidence above.
+    from app.workbook.effective_input_evidence import build_effective_input_evidence
+    _kpis_enriched["effective_input_evidence"] = build_effective_input_evidence(
+        overrides=dict(_scenario_overrides_for_fold or {}), scenario_revenue_input=_scenario_revenue_input,
+        q4_effective_input=_q4_effective_binding)
     if getattr(override.technical, "bess_native_config_json", ""):
         _kpis_enriched["bess_operating_audit"] = result["bess_operating_audit"]
         _kpis_enriched["bess_input_contract"] = override.technical.bess_native_config_json
@@ -3887,15 +3905,22 @@ async def v2_scenario_create(
         governance_state={},
     )
 
-    new_sc = add_scenario(
-        user_id=workspace_owner,
-        project_id=project_record.project_id,
-        project_code=project,
-        scenario_name=name,
-        parent_scenario_id=base_case.scenario_id,
-        base_input_set=base_input_set,
-        overrides={},
-    )
+    from app.persistence.scenarios_repository import DuplicateScenarioName
+    try:
+        new_sc = add_scenario(
+            user_id=workspace_owner,
+            project_id=project_record.project_id,
+            project_code=project,
+            scenario_name=name,
+            parent_scenario_id=base_case.scenario_id,
+            base_input_set=base_input_set,
+            overrides={},
+            reject_duplicate_name=True,
+        )
+    except DuplicateScenarioName:
+        # Repeated submission (double click, retry) or a name clash: never a second scenario.  The existing one is left untouched.
+        return JSONResponse({"error": f"SCENARIO_NAME_DUPLICATE: a scenario named {name!r} already exists in this project.",
+                             "code": "SCENARIO_NAME_DUPLICATE"}, status_code=409)
     if new_sc is None:
         return JSONResponse({"error": "Failed to create scenario."}, status_code=500)
 
@@ -4020,7 +4045,12 @@ async def v2_scenario_rename(
     if not name or len(name) > 80:
         return JSONResponse({"error": "Invalid scenario name."}, status_code=422)
 
-    rename_scenario(user_id=workspace_owner, scenario_id=scenario_id, new_name=name)
+    from app.persistence.scenarios_repository import DuplicateScenarioName
+    try:
+        rename_scenario(user_id=workspace_owner, scenario_id=scenario_id, new_name=name, reject_duplicate_name=True)
+    except DuplicateScenarioName:
+        return JSONResponse({"error": f"SCENARIO_NAME_DUPLICATE: a scenario named {name!r} already exists in this project.",
+                             "code": "SCENARIO_NAME_DUPLICATE"}, status_code=409)
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
 
     is_htmx = request.headers.get("HX-Request") == "true"
@@ -4151,6 +4181,16 @@ async def v2_scenario_update_overrides(
             {"error": "Base Case overrides cannot be edited via this endpoint. Use the Inputs tab."},
             status_code=409,
         )
+
+    # RC-5: only an override the canonical Run consumes may be saved (all-or-nothing, before any write).
+    from app.workbook.scenario_override_authority import (
+        UNBOUND_CODE, supported_editor_fields, unbound_override_keys)
+    _unbound = unbound_override_keys(overrides, getattr(sc, "replay_metadata", None))
+    if _unbound:
+        return JSONResponse({
+            "error": (f"{UNBOUND_CODE}: the canonical Run does not apply {', '.join(_unbound)}, so it was not saved. "
+                      "A scenario can currently override the PPA tariff only; change other assumptions in the Working Copy."),
+            "code": UNBOUND_CODE, "unbound_fields": _unbound, "supported_fields": supported_editor_fields()}, status_code=422)
 
     if "tariff_eur_mwh" in overrides:
         from app.workbook.scenario_revenue_authority import bind_scenario_tariff
@@ -4517,6 +4557,7 @@ def _run_side_view(entry):
         "scenario": getattr(entry, "active_scenario_name", None) or "Base",
         "snapshot": str(getattr(entry, "runtime_snapshot_id", "") or "")[:8],
         "identity": _run_identity_of(entry),
+        "runtime_summary": dict(getattr(entry, "runtime_summary", None) or {}),
         "sponsor_summary": (getattr(entry, "sponsor_schedule", None) or {}).get("summary", {}),
         "debt_summary": (getattr(entry, "debt_schedule", None) or {}).get("summary", {}),
     }
@@ -4547,6 +4588,7 @@ def _last_run_side(ws, freshness):
             ws, "active_scenario_name", None) or "Base",
         "snapshot": str(getattr(ws, "last_runtime_snapshot_id", "") or "")[:8],
         "identity": identity,
+        "runtime_summary": dict(getattr(ws, "last_runtime_summary", None) or {}),
         "sponsor_summary": (getattr(ws, "last_sponsor_schedule", None) or {}).get("summary", {}),
         "debt_summary": (getattr(ws, "last_debt_schedule", None) or {}).get("summary", {}),
         "state": freshness.state.value,
@@ -4638,8 +4680,17 @@ async def v2_run_compare_expanded(
                              side_b_view["debt_summary"])
     sections = build_run_variance(view_a, view_b)
     assumptions = build_assumption_diff(
-        side_a_view["identity"], side_b_view["identity"])
-    drivers = build_drivers_of_change(assumptions, sections)
+        side_a_view["identity"], side_b_view["identity"],
+        side_a_view["runtime_summary"], side_b_view["runtime_summary"])
+    from app.v2.decision_support_projection import build_assumption_attribution, build_assumption_limitations
+    _hash_a = (getattr(entry_a, "composite_hash", None) if entry_a is not None
+               else getattr(ws, "last_runtime_composite_hash", None))
+    attribution = build_assumption_attribution(
+        side_a_view["identity"], side_b_view["identity"], assumptions,
+        hash_a=_hash_a, hash_b=getattr(entry_b, "composite_hash", None))
+    drivers = build_drivers_of_change(assumptions, sections, attribution=attribution)
+    limitations = ([] if attribution.status == "IDENTICAL" else build_assumption_limitations(
+        side_a_view["identity"], side_b_view["identity"], side_a_view["runtime_summary"], side_b_view["runtime_summary"]))
 
     ctx = {
         "project_code": project_record.project_code,
@@ -4660,6 +4711,8 @@ async def v2_run_compare_expanded(
                        and str(entry_b.composite_hash) == str(pis.content_hash))},
         "sections": sections,
         "assumptions": assumptions,
+        "attribution": attribution,
+        "limitations": limitations,
         "drivers": drivers,
         "back_url": f"/v2/workbook/run-history?project={project_record.project_code}",
         "workspace_url": f"/v2/workbook?project={project_record.project_code}",
@@ -5205,6 +5258,20 @@ async def v2_scenario_sensitivity_run(
     # Snapshot of pis_base values before any sensitivity run (for non-destructive check)
     _pis_base_values_snapshot = dict(pis_base.values)
 
+    # RC-5A: under active explicit revenue contracts the scalar tariff is not a price authority, so a tariff shock applied to it would change
+    # nothing and look like a successful flat sensitivity. Refuse explicitly (HTTP 200 fragment: HTMX does not swap 4xx), the same stance as the
+    # two-driver matrix and Goal Seek. No contract-shock economics are invented here.
+    if driver == "tariff":
+        from app.services.sensitivity_service import CONTRACTED_PRICE_SHOCK_REFUSAL
+        _probe = WorkbookService.to_projectinputs(pis_base)
+        if (getattr(_probe.revenue, "multistream_config_json", "")
+                or (_scenario_overrides_for_fold or {}).get("rev_multistream_config_json")):
+            from html import escape as _esc
+            return HTMLResponse(
+                content=('<div class="v2-sens-refusal" role="alert" data-testid="sensitivity-refused" data-status="REFUSED">'
+                         '<strong>Sensitivity not run.</strong> ' + _esc(CONTRACTED_PRICE_SHOCK_REFUSAL) + '</div>'),
+                headers={"X-Finco-Sensitivity-Outcome": "REFUSED"})
+
     # Resolve base value from the canonical field_id in pis_base.values.
     # For tariff, fall back to the legacy field_id if the canonical one is absent.
     base_val = pis_base.values.get(field_id)
@@ -5602,12 +5669,13 @@ async def v2_workbook_goal_seek_run(
         return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
             "target_metric_label": metric.label, "message": str(exc)}, "apply": None, "request": request})
 
+    from app.services.sensitivity_service import CONTRACTED_PRICE_SHOCK_REFUSAL
     if getattr(override.revenue, "multistream_config_json", "") or (
         (_scenario_overrides_for_fold or {}).get("rev_multistream_config_json")
     ):
         return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
             "target_metric_label": metric.label,
-            "message": "Explicit revenue contracts have no scalar Goal Seek tariff authority. Use scenario contracts."},
+            "message": CONTRACTED_PRICE_SHOCK_REFUSAL},
             "apply": None, "request": request})
     # ── Current canonical tariff (draft state the user sees) ──────────────── #
     apply_field_id, raw_current = _goal_seek_resolve_tariff_field(variable, pis_draft)

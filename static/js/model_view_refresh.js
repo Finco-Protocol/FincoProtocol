@@ -150,7 +150,16 @@
   document.addEventListener('model:diagnostics-write-end',function(){writes=Math.max(0,writes-1);schedule();});
   document.addEventListener('ct:saved',function(){invalidate();schedule();});
   document.addEventListener('htmx:afterSettle',schedule);
-  window.addEventListener('popstate',schedule);window.addEventListener('hashchange',schedule);
+  // Browser Back/Forward returns to the read-only Outputs projection through a freshly authorized read (it re-initializes the
+  // statement tree, which restores its view/expansion/period/focus/scroll from history state).  Only the Outputs view and only on
+  // history traversal: ordinary tab clicks never refetch, and nothing else is loaded eagerly.
+  window.addEventListener('popstate',function(){
+    var outputs=views.find(function(v){return v.name==='outputs';});
+    var node=outputs && document.getElementById(outputs.id);
+    if(node && !outputs.active && node.dataset.modelViewState==='loaded')node.dataset.modelViewState='pending';
+    schedule();
+  });
+  window.addEventListener('hashchange',schedule);
   window.FincoModelViews={capture:capture,isCurrent:current,generation:function(){return generation;},
     refreshSavedGrid:function(hash,saved){
       if(!saved && (writes || pendingWrites.size))return Promise.resolve(false);

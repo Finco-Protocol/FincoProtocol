@@ -75,6 +75,8 @@ class ReferenceModelCard:
     preview: bool
     # (key, label, display_value) triples — AVAILABLE evidence only.
     kpis: tuple[tuple[str, str, str], ...]
+    last_run_at_display: Optional[str] = None
+    engine_currency: str = ""
 
 
 def _engine_currency(ws: Any) -> str:
@@ -153,6 +155,8 @@ def build_reference_cards(
             preview=(record.project_type or "").strip().lower()
             in _PREVIEW_TECHNOLOGIES,
             kpis=tuple(kpis),
+            last_run_at_display=_display_date(getattr(ws, "last_runtime_at", None)),
+            engine_currency=_engine_currency(ws) if summary else "",
         ))
     return cards
 

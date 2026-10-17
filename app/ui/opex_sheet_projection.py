@@ -80,14 +80,17 @@ class OpexSheetGroup:
 
     # ViewModel-derived values (None when the group has no VM row for this project)
     vm_group: Optional["OpexGroupVM"]
+    derived_values: Optional[tuple[float, ...]] = None
 
     # Convenience: is the VM row present?
     @property
     def has_vm_data(self) -> bool:
-        return self.vm_group is not None
+        return self.vm_group is not None or self.derived_values is not None
 
     @property
     def subtotal_y1(self) -> float:
+        if self.derived_values is not None:
+            return self.derived_values[0] if self.derived_values else 0.0
         if self.vm_group and self.vm_group.subtotal_per_year:
             return self.vm_group.subtotal_per_year[0]
         return 0.0
@@ -163,6 +166,8 @@ class OpexSheetGroup:
     @property
     def year_rows(self) -> tuple[float, ...]:
         """Per-year subtotals for the projection table (empty if no VM data)."""
+        if self.derived_values is not None:
+            return self.derived_values
         if self.vm_group:
             return self.vm_group.subtotal_per_year
         return ()
@@ -213,6 +218,7 @@ def build_opex_sheet_projection(
             is_always_derived=canonical.is_always_derived,
             field=field,
             vm_group=vm_by_code.get(canonical.code),
+            derived_values=(opex_vm.contingency_by_year if canonical.code == "B.13" else None),
         ))
 
     return tuple(result)

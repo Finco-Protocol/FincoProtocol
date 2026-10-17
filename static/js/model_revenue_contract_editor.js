@@ -108,6 +108,42 @@
       error.hidden = !message;
       if (message) feedback.textContent = 'Not saved · Review the contract details';
     }
+    function revealInvalid(input) {
+      if (!input || !input.willValidate) return;
+      const row = input.closest('[data-revenue-row]');
+      if (input.closest('[data-revenue-advanced-cell]')) advancedMode(true);
+      for (let parent = input.parentElement; parent && parent !== form; parent = parent.parentElement) {
+        if (parent.tagName === 'DETAILS') parent.open = true;
+      }
+      form.querySelectorAll('[data-field-error]').forEach(el => el.remove());
+      form.querySelectorAll('[data-revenue-invalid]').forEach(el => {
+        el.removeAttribute('aria-invalid'); el.removeAttribute('data-revenue-invalid');
+        if (el.getAttribute('aria-describedby') === 'rc-invalid-field') el.removeAttribute('aria-describedby');
+      });
+      const index = row ? Number(row.dataset.revenueRow) : null;
+      const contract = index === null ? 'Contract' : 'Contract ' + (book.streams[index]?.id || '(unnamed)') + ' (row ' + (index + 1) + ')';
+      const message = contract + ' · ' + (input.getAttribute('aria-label') || input.name || 'Field') + ': ' + input.validationMessage;
+      const note = document.createElement('span');
+      note.dataset.fieldError = ''; note.className = 'rc-field-error'; note.setAttribute('role', 'alert');
+      note.id = 'rc-invalid-field'; note.textContent = message;
+      input.after(note); input.setAttribute('aria-invalid', 'true'); input.setAttribute('data-revenue-invalid', '');
+      input.setAttribute('aria-describedby', note.id);
+      showError(message);
+      input.focus({preventScroll:true});
+      input.scrollIntoView({block:'center', inline:'center'});
+    }
+    // Native validation runs before submit (including HTMX); hidden advanced cells must not fail silently.
+    form.addEventListener('invalid', event => {
+      event.preventDefault();
+      if (event.target === [...form.elements].find(el => el.willValidate && !el.validity.valid)) revealInvalid(event.target);
+    }, true);
+    form.addEventListener('input', event => {
+      const input = event.target;
+      if (!input.hasAttribute('data-revenue-invalid')) return;
+      input.removeAttribute('aria-invalid'); input.removeAttribute('data-revenue-invalid');
+      if (input.getAttribute('aria-describedby') === 'rc-invalid-field') input.removeAttribute('aria-describedby');
+      form.querySelector('[data-field-error]')?.remove();
+    });
     // PPA-01 explicit CPI/PPI index series. Presentation/serialization only: levels are typed or pasted by the user, never invented; the canonical
     // Python validator and runtime remain the only authority for what is accepted and what a Run prices.
     const operatingYears = (() => { try { return JSON.parse(form.querySelector('[data-revenue-quick]')?.dataset.operatingYears || '[]'); } catch (_) { return []; } })();
@@ -940,7 +976,22 @@
       add.addEventListener('click', () => { book.environmental_rights.push({energy_stream_id:'', status:'', source_ref:''}); renderProducts(); status(); });
       rights.appendChild(add);
     }
+    let invalidField = null;
+    function invalidRow(index, field, message) {
+      invalidField = tbody.querySelector('[data-revenue-row="' + index + '"] [data-field="' + field + '"]');
+      return 'Row ' + (index + 1) + ': ' + message;
+    }
+    function reportProblem(problem) {
+      if (invalidField) {
+        invalidField.setCustomValidity(problem);
+        revealInvalid(invalidField);
+        invalidField.setCustomValidity('');
+      } else {
+        showError(problem); error.scrollIntoView({block:'center'});
+      }
+    }
     function validate() {
+      invalidField = null;
       if (book.streams.length > 24) return 'At most 24 contracts are supported.';
       if (!book.streams.length) return book.version === 3 ? 'V3 requires an explicit energy book.' : '';
       if (book.version === 3 && (!book.products.length || book.products.length > 24)) return 'V3 requires 1-24 products.';
@@ -948,31 +999,32 @@
       for (const [index,row] of book.streams.entries()) {
         const n = index + 1;
         if (!row.id || !row.id.trim() || row.id.length > 200 || seen.has(row.id))
-          return 'Row ' + n + ': contract ID is required and must be unique.';
+          return invalidRow(index, 'id', 'contract ID is required and must be unique.');
         seen.add(row.id);
         if (!row.source_ref || !row.source_ref.trim() || row.source_ref.length > 200) {
           advancedMode(true);
-          return 'Row ' + n + ': a source reference is required.';
+          return invalidRow(index, 'source_ref', 'a source reference is required.');
         }
         const realDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
           Number.isFinite(Date.parse(s)) && new Date(s + 'T00:00:00Z').toISOString().slice(0,10) === s;
-        if (!realDate(row.start_date) || !realDate(row.end_date) || row.end_date <= row.start_date)
-          return 'Row ' + n + ': supply valid dates (end exclusive, after start).';
+        if (!realDate(row.start_date)) return invalidRow(index, 'start_date', 'supply a valid start date.');
+        if (!realDate(row.end_date) || row.end_date <= row.start_date)
+          return invalidRow(index, 'end_date', 'supply a valid end date, after start (exclusive).');
         for (const key of ['price_eur_mwh', 'indexation_rate', 'volume_share']) {
           if (key === 'volume_share' && row.type === 'merchant' && row.volume_share === null) continue;
           const value = row[key];
           if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 ||
               (key !== 'price_eur_mwh' && value > 1))
-            return 'Row ' + n + ': invalid ' + key + '. Values must be finite and nonnegative.';
+            return invalidRow(index, key, 'Values must be finite and nonnegative.');
         }
         if (row.type === 'merchant' && 'capture_rate' in row &&
             (typeof row.capture_rate !== 'number' || !Number.isFinite(row.capture_rate) ||
              row.capture_rate < 0 || row.capture_rate > 1))
-          return 'Row ' + n + ': merchant capture must be between 0 and 100%.';
+          return invalidRow(index, 'capture_rate', 'merchant capture must be between 0 and 100%.');
         if (row.type === 'cfd' && (row.indexation_rate !== 0 || !row.reference_stream_id ||
              !book.streams.some(s => s.type === 'merchant' && s.id === row.reference_stream_id))) {
           advancedMode(true);
-          return 'Row ' + n + ': CfD requires a valid Merchant reference and a non-indexed strike.';
+          return invalidRow(index, 'reference_stream_id', 'CfD requires a valid Merchant reference and a non-indexed strike.');
         }
         if (Array.isArray(row.price_curve)) {
           if (row.type === 'cfd' || ![2, 3].includes(book.version) || row.indexation_rate !== 0 ||
@@ -1203,7 +1255,7 @@
       const problem = validate();
       if (problem) {
         event.preventDefault(); event.stopImmediatePropagation();
-        showError(problem); error.scrollIntoView({block:'nearest'}); return;
+        reportProblem(problem); return;
       }
       payload.value = book.streams.length ? JSON.stringify(book) : '';
     }, true);
@@ -1211,7 +1263,7 @@
       if (event.detail.elt !== form) return;
       if (event.detail.parameters.action === 'inherit') return;
       const problem = validate();
-      if (problem) { event.preventDefault(); showError(problem); return; }
+      if (problem) { event.preventDefault(); reportProblem(problem); return; }
       payload.value = book.streams.length ? JSON.stringify(book) : '';
       event.detail.parameters.contracts = payload.value;
     });
