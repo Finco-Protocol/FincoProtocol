@@ -10,6 +10,7 @@ import re
 from dataclasses import replace
 
 import pytest
+from bs4 import BeautifulSoup
 
 from app.v2 import decision_support_projection as dsp
 from tests.test_developer_economics_persistence_v1 import OWNER, Flow, env  # noqa: F401
@@ -136,9 +137,16 @@ def test_real_runs_same_identity_then_different_contracts(env, kind, monkeypatch
     newest, older = ids[0], ids[2]                          # reference = first run, selected = newest (different contracts)
     html = _compare(flow, older, newest).text
     status, message = _attribution(html)
-    assert status == "DIFFERENT_UNEXPLAINED"                # base contracts are not persisted per Run: nothing is invented
-    assert message == "Committed input identities differ. Detailed historical attribution is unavailable."
+    # S7-03: both Runs persisted the contract book that was EFFECTIVE for them (scenario_revenue_input), so the change is itemized from
+    # that evidence - never from the current Working Copy.
+    assert status == "DIFFERENT_EXPLAINED"
+    assert message == "Committed input identities differ. The changes below are the ones recorded with each Run."
     assert "No assumption differences" not in html and "iterative solve" not in html
+    soup = BeautifulSoup(html, "html.parser")
+    revenue_rows = [[td.get_text(strip=True) for td in tr.find_all("td")] for tr in soup.select('tr[data-assumption-category="revenue"]')]
+    price_rows = [r for r in revenue_rows if r[1].endswith("price_eur_mwh")]
+    assert len(price_rows) == 1 and price_rows[0][2:] == ["95", "110"], revenue_rows
+    assert "Contract " in price_rows[0][1] and price_rows[0][1].startswith("Contract ")
     # signed Δ = Selected − Reference against the persisted Run values (independent arithmetic)
     from app.persistence.run_history_repository import get_run_history_entry
     ref = get_run_history_entry(OWNER, flow.record.project_id, older).runtime_summary["total_revenue_keur"]

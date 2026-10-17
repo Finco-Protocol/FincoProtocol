@@ -4497,6 +4497,7 @@ def _run_side_view(entry):
         "scenario": getattr(entry, "active_scenario_name", None) or "Base",
         "snapshot": str(getattr(entry, "runtime_snapshot_id", "") or "")[:8],
         "identity": _run_identity_of(entry),
+        "runtime_summary": dict(getattr(entry, "runtime_summary", None) or {}),
         "sponsor_summary": (getattr(entry, "sponsor_schedule", None) or {}).get("summary", {}),
         "debt_summary": (getattr(entry, "debt_schedule", None) or {}).get("summary", {}),
     }
@@ -4527,6 +4528,7 @@ def _last_run_side(ws, freshness):
             ws, "active_scenario_name", None) or "Base",
         "snapshot": str(getattr(ws, "last_runtime_snapshot_id", "") or "")[:8],
         "identity": identity,
+        "runtime_summary": dict(getattr(ws, "last_runtime_summary", None) or {}),
         "sponsor_summary": (getattr(ws, "last_sponsor_schedule", None) or {}).get("summary", {}),
         "debt_summary": (getattr(ws, "last_debt_schedule", None) or {}).get("summary", {}),
         "state": freshness.state.value,
@@ -4618,14 +4620,17 @@ async def v2_run_compare_expanded(
                              side_b_view["debt_summary"])
     sections = build_run_variance(view_a, view_b)
     assumptions = build_assumption_diff(
-        side_a_view["identity"], side_b_view["identity"])
-    from app.v2.decision_support_projection import build_assumption_attribution
+        side_a_view["identity"], side_b_view["identity"],
+        side_a_view["runtime_summary"], side_b_view["runtime_summary"])
+    from app.v2.decision_support_projection import build_assumption_attribution, build_assumption_limitations
     _hash_a = (getattr(entry_a, "composite_hash", None) if entry_a is not None
                else getattr(ws, "last_runtime_composite_hash", None))
     attribution = build_assumption_attribution(
         side_a_view["identity"], side_b_view["identity"], assumptions,
         hash_a=_hash_a, hash_b=getattr(entry_b, "composite_hash", None))
     drivers = build_drivers_of_change(assumptions, sections, attribution=attribution)
+    limitations = ([] if attribution.status == "IDENTICAL" else build_assumption_limitations(
+        side_a_view["identity"], side_b_view["identity"], side_a_view["runtime_summary"], side_b_view["runtime_summary"]))
 
     ctx = {
         "project_code": project_record.project_code,
@@ -4647,6 +4652,7 @@ async def v2_run_compare_expanded(
         "sections": sections,
         "assumptions": assumptions,
         "attribution": attribution,
+        "limitations": limitations,
         "drivers": drivers,
         "back_url": f"/v2/workbook/run-history?project={project_record.project_code}",
         "workspace_url": f"/v2/workbook?project={project_record.project_code}",

@@ -75,6 +75,11 @@
     </table></div>
     {% endif %}
     {% if attribution.caveat %}<p class="v2-rh-note" data-testid="ds-attribution-caveat">{{ attribution.caveat }}</p>{% endif %}
+    {% if limitations %}
+    <ul class="v2-rh-note" data-testid="ds-limitations">
+      {% for item in limitations %}<li data-limitation="{{ item.code }}">{{ item.message }}</li>{% endfor %}
+    </ul>
+    {% endif %}
   </div>
 
   <div class="v2-ds-section" data-testid="ds-drivers">
