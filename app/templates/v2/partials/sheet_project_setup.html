@@ -52,6 +52,40 @@
   </section>
   {% endif %}
 
+  {# WF-10 Project Timeline V1: read-only; values are the SAVED Project Setup inputs. Owns no date authority and runs nothing. #}
+  {% set _tl_cod = (ps_fields | selectattr('field_id', 'equalto', 'project_setup.technical.cod_date') | list | first) %}
+  {% set _tl_months = (ps_fields | selectattr('field_id', 'equalto', 'project_setup.technical.construction_months') | list | first) %}
+  {% set _tl_horizon = (ps_fields | selectattr('field_id', 'equalto', 'project_setup.technical.horizon_years') | list | first) %}
+  {% if _tl_cod or _tl_months or _tl_horizon %}
+  <link rel="stylesheet" href="/static/css/model_project_timeline.css">
+  <section class="pt" data-project-timeline data-testid="project-timeline" aria-labelledby="pt-title"
+           data-cod="{{ (_tl_cod.value if _tl_cod and _tl_cod.value is not none else '') }}"
+           data-months="{{ (_tl_months.value if _tl_months and _tl_months.value is not none else '') }}"
+           data-horizon="{{ (_tl_horizon.value if _tl_horizon and _tl_horizon.value is not none else '') }}">
+    <h3 id="pt-title">Project timeline</h3>
+    <p class="pt-lead">Saved Project Setup dates, read-only. Edit them in Construction timing or the fields below. Nothing here runs the model.</p>
+    <div data-pt-view>
+      <dl data-testid="project-timeline-fallback">
+        <dt>COD</dt><dd>{{ (_tl_cod.value if _tl_cod and _tl_cod.value is not none else 'Not available') }}</dd>
+        <dt>Construction duration (months)</dt><dd>{{ (_tl_months.value if _tl_months and _tl_months.value is not none else 'Not available') }}</dd>
+        <dt>Project horizon (years)</dt><dd>{{ (_tl_horizon.value if _tl_horizon and _tl_horizon.value is not none else 'Not available') }}</dd>
+      </dl>
+    </div>
+    <details class="pt-na" data-testid="project-timeline-unavailable">
+      <summary>Milestones not recorded in the model inputs</summary>
+      <ul>
+        <li>Financial Close (the model's period axis starts at the derived construction start; no separate date is stored)</li>
+        <li>Notice to Proceed</li>
+        <li>Debt drawdown dates</li>
+        <li>Refinancing date</li>
+        <li>Financing maturity (shown on the Debt sheet when instruments are defined)</li>
+        <li>Decommissioning</li>
+      </ul>
+      <p>These are not shown as dates because the project inputs do not establish them.</p>
+    </details>
+  </section>
+  {% endif %}
+
   {% set _cod = (ps_fields | selectattr('field_id', 'equalto', 'project_setup.technical.cod_date') | list | first) %}
   {% set _months = (ps_fields | selectattr('field_id', 'equalto', 'project_setup.technical.construction_months') | list | first) %}
   {% if _cod and _months and project_editable %}
@@ -94,4 +128,5 @@
 </div>{# v2-sheet-project-setup #}
 <script src="/static/js/date_duration.js"></script>
 <script src="/static/js/construction_timing.js"></script>
+<script src="/static/js/model_project_timeline.js"></script>
 <script src="/static/js/input_guidance.js"></script>
