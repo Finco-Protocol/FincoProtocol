@@ -35,8 +35,10 @@ def test_form_has_single_original_authorized_writer_and_composite_cas():
     assert form.select_one('input[name="csrf_token"]')["value"] == "signed-csrf"
     payloads = form.select('[name="contracts"]')
     assert len(payloads) == 1 and payloads[0].name == "input"
-    assert form.select_one("#revenue-contracts-json").has_attr("readonly")
-    assert not form.select_one("#revenue-contracts-json").has_attr("name")
+    # S7-16: no raw-JSON text control exists in the ordinary workflow; the payload is a hidden, unnamed carrier for the structured editor.
+    source = form.select_one("#revenue-contracts-json")
+    assert source.name == "input" and source["type"] == "hidden" and not source.has_attr("name")
+    assert not form.select("textarea#revenue-contracts-json") and not form.select("details.rc-diagnostic")
     assert form.select_one('[data-revenue-save]')["value"] == "save"
     assert form.select_one('[data-revenue-table]')
     assert form.select_one('[data-revenue-feedback]')
@@ -77,7 +79,8 @@ def test_existing_contract_raw_is_preserved_in_readonly_diagnostic():
             }]}
     original = json.dumps(book)
     page = BeautifulSoup(render(original), "html.parser")
-    assert page.select_one("#revenue-contracts-json").text == original
+    assert page.select_one("#revenue-contracts-json")["value"] == original           # data is preserved for the editor, not displayed as text
+    assert "Contract data (read-only)" not in page.text and not page.select("textarea[data-revenue-source]")
     assert page.select_one('[data-revenue-payload]')["value"] == ""
     assert "Revenue contracts" in page.text
 
