@@ -69,6 +69,10 @@ if TYPE_CHECKING:
 # ============================================================
 
 
+class DuplicateScenarioName(ValueError):
+    """A non-archived scenario with this name already exists in the project."""
+
+
 def resolve_scenario_snapshot(
     base_input_set: dict[str, Any],
     overrides: dict[str, Any],
@@ -184,8 +188,22 @@ def resolve_active_scenario_runtime_snapshot(
 # ============================================================
 
 
-def rename_scenario(user_id: str, scenario_id: str, new_name: str) -> bool:
+def rename_scenario(user_id: str, scenario_id: str, new_name: str, *, reject_duplicate_name: bool = False) -> bool:
+    """Rename a scenario.
+
+    ``reject_duplicate_name`` makes the clash check and the UPDATE ONE transaction (same rule as :func:`add_scenario`: another
+    non-archived, non-base scenario of the same project with the same case-insensitive name); the scenario itself is excluded so a
+    case-only rename of its own name still works.  Raises :class:`DuplicateScenarioName`; off by default for existing callers.
+    """
     with get_cursor() as cur:
+        if reject_duplicate_name:
+            cur.execute(
+                "SELECT 1 FROM scenarios t JOIN scenarios o ON o.project_id=t.project_id AND o.user_id=t.user_id "
+                "WHERE t.scenario_id=? AND t.user_id=? AND o.scenario_id<>t.scenario_id AND o.archived=0 AND o.is_base_case=0 "
+                "AND lower(trim(o.scenario_name))=? LIMIT 1",
+                (scenario_id, user_id, (new_name or "").strip().lower()))
+            if cur.fetchone() is not None:
+                raise DuplicateScenarioName(new_name)
         cur.execute(
             "UPDATE scenarios SET scenario_name=?, updated_at=? WHERE scenario_id=? AND user_id=?",
             (new_name, _now_utc().isoformat(), scenario_id, user_id),
@@ -636,8 +654,12 @@ def add_scenario(
     governance_state: Optional[dict[str, Any]] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
     full_inputs: Optional[dict[str, Any]] = None,  # V3-8
+    reject_duplicate_name: bool = False,
 ) -> "Optional[ScenarioRecord]":
     """Add a non-base scenario inheriting from a parent (typically the Base Case).
+
+    ``reject_duplicate_name`` makes the name check and the insert ONE transaction: a repeated submission raises
+    :class:`DuplicateScenarioName` instead of creating a second scenario (off by default for existing callers).
 
     The new scenario starts with empty overrides, so its effective snapshot
     is identical to the parent's base_input_set.
@@ -655,6 +677,13 @@ def add_scenario(
     replay_metadata["action"] = "add_scenario"
 
     with get_cursor() as cur:
+        if reject_duplicate_name:
+            cur.execute(
+                "SELECT 1 FROM scenarios WHERE user_id=? AND project_id=? AND archived=0 AND is_base_case=0 "
+                "AND lower(trim(scenario_name))=? LIMIT 1",
+                (user_id, project_id, (scenario_name or "").strip().lower()))
+            if cur.fetchone() is not None:
+                raise DuplicateScenarioName(scenario_name)
         cur.execute(
             """
             INSERT INTO scenarios (

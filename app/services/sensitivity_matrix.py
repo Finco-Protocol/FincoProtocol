@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Mapping, Optional
 
+from app.services.sensitivity_service import CONTRACTED_PRICE_SHOCK_REFUSAL
 from app.v2.sensitivity_matrix_projection import (
     ABS, FIELD, PCT, TYPED, TYPED_ORDER, DriverSpec, MatrixRequestError,
 )
@@ -147,7 +148,7 @@ def pre_financing_inputs(basis: Basis, shocks: list[tuple[DriverSpec, float]]) -
 
     if any(spec.key == "tariff" for spec, _ in active) and getattr(pi.revenue, "multistream_config_json", ""):
         raise CellBuildError("REVENUE_V2_CONTRACTS_UNSUPPORTED",
-                             "explicit revenue contracts have no scalar tariff authority; use scenario contracts")
+                             CONTRACTED_PRICE_SHOCK_REFUSAL)
 
     typed = {spec.typed_shock: (spec, level) for spec, level in active if spec.apply == TYPED}
     for name in TYPED_ORDER:

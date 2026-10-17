@@ -117,7 +117,9 @@ def test_build_institutional_workbook_export_factory_path_returns_bytes():
     assert len(export.bytes_data) > 0
     assert export.media_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert export.filename is not None
-    assert "institutional_workbook_skeleton" in export.filename
+    assert export.filename.startswith("finco-Generic-Wind-Reference-")
+    assert "-results-" in export.filename and export.filename.endswith(".xlsx")
+    assert "phase10" not in export.filename and "skeleton" not in export.filename
     assert not export.has_error()
 
 

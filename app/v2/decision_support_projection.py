@@ -149,15 +149,31 @@ class VarianceSection:
     rows: tuple[VarianceRow, ...]
 
 
+def _signed(kind: str, d: float) -> str:
+    """Signed delta text. Convention for every comparison: delta = Selected Run - Reference Run; direction is never dropped (no abs()).
+
+    Only an exactly zero delta is shown unsigned; a real but sub-display-precision movement keeps its sign (e.g. -0.00x) so the text agrees with the
+    direction marker.
+    """
+    if d == 0:
+        return {"pct": "0.00 pp", "x": "0.00x"}.get(kind, "0")
+    if kind == "pct":
+        return f"{d * 100:+.2f} pp"
+    if kind == "x":
+        return f"{d:+.2f}x"
+    return f"{d:+,.0f}"
+
+
 def _variance_fields(kind: str, a: Optional[float], b: Optional[float]):
+    """(signed delta, pp delta, % delta, direction) with delta = b - a, i.e. Selected (B) minus Reference (A)."""
     abs_delta = pp_delta = pct_delta = _NA
     direction = ""
     if a is None or b is None:
         return abs_delta, pp_delta, pct_delta, direction
     d = b - a
-    abs_delta = _fmt(kind, abs(d)) if kind != "pct" else f"{d * 100:+.2f} pp"
+    abs_delta = _signed(kind, d)
     if kind == "pct":
-        pp_delta = f"{d * 100:+.2f} pp"
+        pp_delta = abs_delta
         pct_delta = _NA          # never present an IRR delta as % growth (§5)
     elif d != 0 and a != 0:
         pct_delta = f"{d / abs(a) * 100:+.1f}%"
@@ -192,7 +208,7 @@ def build_run_variance(view_a: dict[str, Optional[float]],
 # ---------------------------------------------------------------------------
 
 _ASSUMPTION_CATEGORY = (
-    ("revenue", "Revenue"), ("capex", "CAPEX"), ("opex", "OPEX"),
+    ("revenue", "Revenue"), ("technical", "Technical"), ("capex", "CAPEX"), ("opex", "OPEX"),
     ("financing", "Financing"), ("tax", "Tax"),
     ("development", "Development Economics"), ("scenario", "Scenario"),
     ("other", "Other"),
@@ -207,62 +223,321 @@ class AssumptionDiffRow:
     value_b: str
 
 
+_CAPEX_CATEGORY_NAMES = {
+    "C.01": "Production Units", "C.02": "EPC Contract", "C.03": "Grid Connection", "C.04": "Operations Preparation",
+    "C.05": "Other EPC Costs", "C.06": "Construction Insurances", "C.07": "Lease / Construction Taxes", "C.08": "Audit & Legal",
+    "C.09": "Construction Management A", "C.10": "Commissioning", "C.11": "Other Professional Services",
+    "C.12": "Construction Management B", "C.13": "Contingency", "C.14": "Construction Taxes",
+    "C.15": "Project Acquisition / Development", "C.16": "Project Rights", "C.17": "Financing Costs", "C.18": "Reserve Accounts",
+}
+_NAME_NOT_RECORDED = "name not recorded with this Run"
+
+# Effective scalar inputs a Run may have recorded about itself (``runtime_summary["effective_scalar_inputs"]``): the engine-effective
+# values at commit.  Compared ONLY when BOTH Runs recorded them; the current Working Copy is never consulted.
+SCALAR_INPUTS_KEY = "effective_scalar_inputs"
+_SCALAR_ROWS = (
+    ("operating_hours_p50", "P50 operating hours (h/yr)", "technical"),
+    ("ppa_base_tariff_eur_mwh", "PPA base tariff (EUR/MWh)", "revenue"),
+    ("gearing_ratio", "Senior gearing ratio", "financing"),
+    ("target_dscr", "Target DSCR", "financing"),
+    ("senior_tenor_years", "Senior tenor (years)", "financing"),
+)
+
+
+def _scalars_of(summary: Optional[dict]) -> Optional[dict]:
+    block = (summary or {}).get(SCALAR_INPUTS_KEY) if isinstance(summary, dict) else None
+    values = block.get("values") if isinstance(block, dict) else None
+    return values if isinstance(values, dict) else None
+
+
+def _effective_contracts(summary: Optional[dict]) -> Optional[str]:
+    """The revenue contract book the Run itself recorded as effective (``scenario_revenue_input``), else None."""
+    block = (summary or {}).get("scenario_revenue_input") if isinstance(summary, dict) else None
+    book = block.get("multistream_config_json") if isinstance(block, dict) else None
+    return book if isinstance(book, str) and book else None
+
+
+def _recorded_label(identity: dict, kind: str, sub_line_id: str) -> str:
+    labels = (identity.get("row_labels") or {}).get(kind) if isinstance(identity.get("row_labels"), dict) else None
+    value = labels.get(sub_line_id) if isinstance(labels, dict) else None
+    return value.strip() if isinstance(value, str) and value.strip() else ""
+
+
+def _cost_rows(a: dict, b: dict, kind: str, key: str) -> list["AssumptionDiffRow"]:
+    """Changed CAPEX/OPEX lines.  A line is named only from evidence recorded with a Run: its ``row_labels`` entry, or - for Runs that
+    predate it - its category/group (and OPEX business code) from the static cost-template registry plus an explicit "name not
+    recorded" marker.  A sub-line id is never shown as a label."""
+    def rows(side):
+        return {str(item.get("sub_line_id", item.get("name", i))): item
+                for i, item in enumerate(side.get(key) or ()) if isinstance(item, dict)}
+
+    ra, rb = rows(a), rows(b)
+    out: list[AssumptionDiffRow] = []
+    ordinals: dict[str, int] = {}
+    for ident in sorted(set(ra) | set(rb)):
+        ia, ib = ra.get(ident), rb.get(ident)
+        if (ia or {}).get("amount_keur") == (ib or {}).get("amount_keur"):
+            continue
+        row = ia or ib or {}
+        name = _recorded_label(a, kind, ident) or _recorded_label(b, kind, ident) or str(row.get("name") or "").strip()
+        if not name:
+            if kind == "capex":
+                group = str(row.get("parent_category_code") or "")
+                base = f"{_CAPEX_CATEGORY_NAMES.get(group, group or 'CAPEX')} · sub-line"
+            else:
+                group, code = str(row.get("parent_group_code") or ""), str(row.get("business_code") or "")
+                try:
+                    from app.ui.opex_sheet_projection import CANONICAL_OPEX_GROUP_BY_CODE
+                    group_name = CANONICAL_OPEX_GROUP_BY_CODE[group].name
+                except Exception:  # noqa: BLE001 - label only; fall back to the recorded code
+                    group_name = group or "OPEX"
+                base = f"{group_name} · {code}" if code else f"{group_name} · sub-line"
+            ordinals[base] = ordinals.get(base, 0) + 1
+            n = ordinals[base]
+            name = f"{base} ({_NAME_NOT_RECORDED}{'' if n == 1 and kind == 'opex' else f', line {n}'})"
+        out.append(AssumptionDiffRow(
+            category=kind, name=name,
+            value_a=_fmt("keur", _fetch(ia or {}, "amount_keur")), value_b=_fmt("keur", _fetch(ib or {}, "amount_keur"))))
+    return out
+
+
+def _scalar_rows(sa: Optional[dict], sb: Optional[dict]) -> list["AssumptionDiffRow"]:
+    va, vb = _scalars_of(sa), _scalars_of(sb)
+    if va is None or vb is None:
+        return []
+    out = []
+    for key, label, category in _SCALAR_ROWS:
+        if key in va and key in vb and va[key] != vb[key]:
+            out.append(AssumptionDiffRow(category, label, _short(va[key]), _short(vb[key])))
+    return out
+
+
+@dataclass(frozen=True)
+class AssumptionLimitation:
+    """Something about the input comparison that the Runs' own persisted evidence cannot support (RC-5, S7-03)."""
+
+    code: str
+    message: str
+
+
+def build_assumption_limitations(identity_a: Optional[dict], identity_b: Optional[dict],
+                                 summary_a: Optional[dict] = None, summary_b: Optional[dict] = None) -> list[AssumptionLimitation]:
+    """Explicit, deterministic limitations - never an inference.  Only meaningful when the committed identities differ."""
+    ia, ib = identity_a or {}, identity_b or {}
+    names = (("Reference (A)", ia, summary_a), ("Selected (B)", ib, summary_b))
+    out: list[AssumptionLimitation] = []
+
+    def missing(pred):
+        return [label for label, ident, summ in names if not pred(ident, summ)]
+
+    lacking = missing(lambda ident, _s: isinstance(ident.get("row_labels"), dict))
+    if lacking and any((ia.get("capex_rows"), ia.get("opex_rows"), ib.get("capex_rows"), ib.get("opex_rows"))):
+        out.append(AssumptionLimitation("ROW_NAMES_NOT_RECORDED",
+            f"CAPEX/OPEX line names were not recorded with {' and '.join(lacking)}; such lines are identified by category and code only."))
+    lacking = missing(lambda _i, summ: _scalars_of(summ) is not None)
+    if lacking:
+        out.append(AssumptionLimitation("SCALAR_INPUTS_NOT_RECORDED",
+            f"Effective scalar inputs (P50 hours, tariff, gearing, target DSCR, tenor) were not recorded with {' and '.join(lacking)}; "
+            "changes in them cannot be itemized and are not inferred from the current Working Copy."))
+    books = [(label, _effective_contracts(summ)) for label, _i, summ in names]
+    if any(book for _l, book in books) and not all(book for _l, book in books):
+        lacking = [label for label, book in books if not book]
+        out.append(AssumptionLimitation("CONTRACT_BOOK_NOT_RECORDED",
+            f"The effective revenue contract book was not recorded with {' and '.join(lacking)}; contract values cannot be compared."))
+    return out
+
+
 def build_assumption_diff(identity_a: Optional[dict],
-                          identity_b: Optional[dict]) -> list[AssumptionDiffRow]:
+                          identity_b: Optional[dict],
+                          summary_a: Optional[dict] = None,
+                          summary_b: Optional[dict] = None) -> list[AssumptionDiffRow]:
     """Changed assumptions between two persisted run-bound input identities.
 
-    Compares the canonical persisted binding payloads: CAPEX/OPEX rows by
-    their sub-line identity and scenario overrides by key.  Rows identical
-    in both runs are omitted (changed-only view, §6).  Presentation-only
-    state is never consulted.
+    Compares ONLY evidence persisted with the two Runs: CAPEX/OPEX rows by sub-line identity (named from the Run's own recorded
+    labels), scenario overrides by key, the effective scalar inputs (P50, tariff, gearing, target DSCR, tenor) and the effective
+    revenue contract book when both Runs recorded them.  Rows identical in both runs are omitted (changed-only view, section 6).
+    Presentation-only state and the current Working Copy are never consulted; what cannot be compared is reported by
+    :func:`build_assumption_limitations`.
     """
     a = identity_a or {}
     b = identity_b or {}
     rows: list[AssumptionDiffRow] = []
-
-    def _rows(side, key):
-        payload = side.get(key) or ()
-        return {str(item.get("sub_line_id", item.get("name", i))): item
-                for i, item in enumerate(payload)
-                if isinstance(item, dict)}
-
-    a_capex, b_capex = _rows(a, "capex_rows"), _rows(b, "capex_rows")
-    for idx in sorted(set(a_capex) | set(b_capex)):
-        ca, cb = a_capex.get(idx), b_capex.get(idx)
-        if (ca or {}).get("amount_keur") != (cb or {}).get("amount_keur"):
-            rows.append(AssumptionDiffRow(
-                category="capex",
-                name=(ca or cb).get("name") or idx,
-                value_a=_fmt("keur", _fetch(ca or {}, "amount_keur")),
-                value_b=_fmt("keur", _fetch(cb or {}, "amount_keur")),
-            ))
-    a_opex, b_opex = _rows(a, "opex_rows"), _rows(b, "opex_rows")
-    for idx in sorted(set(a_opex) | set(b_opex)):
-        oa, ob = a_opex.get(idx), b_opex.get(idx)
-        if (oa or {}).get("amount_keur") != (ob or {}).get("amount_keur"):
-            rows.append(AssumptionDiffRow(
-                category="opex",
-                name=(oa or ob).get("name") or idx,
-                value_a=_fmt("keur", _fetch(oa or {}, "amount_keur")),
-                value_b=_fmt("keur", _fetch(ob or {}, "amount_keur")),
-            ))
+    rows.extend(_cost_rows(a, b, "capex", "capex_rows"))
+    rows.extend(_cost_rows(a, b, "opex", "opex_rows"))
+    rows.extend(_scalar_rows(summary_a, summary_b))
+    book_a, book_b = _effective_contracts(summary_a), _effective_contracts(summary_b)
+    effective_books = bool(book_a and book_b)
+    if effective_books and book_a != book_b:
+        rows.extend(_contract_book_rows(book_a, book_b) or [
+            AssumptionDiffRow("revenue", "Revenue contract book", _short(book_a), _short(book_b))])
     a_ov, b_ov = a.get("scenario_overrides") or {}, b.get("scenario_overrides") or {}
     for key in sorted(set(a_ov) | set(b_ov)):
         if a_ov.get(key) != b_ov.get(key):
+            if key == "rev_multistream_config_json":
+                if effective_books:
+                    continue                      # already itemized from the contract book each Run recorded as effective
+                itemized = _contract_book_rows(a_ov.get(key), b_ov.get(key))
+                if itemized:
+                    rows.extend(itemized)
+                    continue
             rows.append(AssumptionDiffRow(
-                category="scenario", name=str(key),
-                value_a=_NA if a_ov.get(key) is None else str(a_ov[key]),
-                value_b=_NA if b_ov.get(key) is None else str(b_ov[key]),
+                category=_override_category(str(key)), name=_override_label(str(key)),
+                value_a=_NA if a_ov.get(key) is None else _override_value(a_ov[key], key, summary_a),
+                value_b=_NA if b_ov.get(key) is None else _override_value(b_ov[key], key, summary_b),
             ))
     return rows
 
 
+def _override_label(key: str) -> str:
+    """Human-readable name of a saved scenario override (the editor's own label); unknown keys keep their recorded key."""
+    try:
+        from app.v2.scenario_presentation import OVERRIDE_EDITOR_FIELDS
+        for field_key, label, unit in OVERRIDE_EDITOR_FIELDS:
+            if field_key == key:
+                return f"Scenario override · {label}" + (f" ({unit})" if unit else "")
+    except Exception:  # noqa: BLE001 - label only
+        pass
+    return key
+
+
+def _override_value(value: Any, key: str, summary: Optional[dict]) -> str:
+    """The recorded override value; flagged when the Run's own effective-input evidence says it was saved but never applied."""
+    text = _short(value)
+    block = (summary or {}).get("effective_input_evidence") if isinstance(summary, dict) else None
+    if isinstance(block, dict) and key in (block.get("unbound_fields") or ()):
+        return f"{text} (saved, not applied by this Run)"
+    return text
+
+
+def _short(value: Any, limit: int = 80) -> str:
+    text = str(value)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _override_category(key: str) -> str:
+    if key.startswith("rev_") or key in ("tariff_eur_mwh", "ppa_term_years"):
+        return "revenue"
+    if key.startswith(("developer_", "development_")):
+        return "development"
+    if key.startswith(("bankability", "f3_", "multisenior", "debt_", "financing")) or "gearing" in key or "interest" in key:
+        return "financing"
+    if "tax" in key:
+        return "tax"
+    return "scenario"
+
+
+_CONTRACT_FIELDS = ("price_eur_mwh", "volume_share", "indexation_rate", "start_date", "end_date", "capture_rate", "index_series", "price_curve")
+
+
+def _contract_book_rows(raw_a: Any, raw_b: Any) -> list[AssumptionDiffRow]:
+    """Per-contract changes between two persisted scenario contract books (evidence stored with the Runs; never the current Working Copy)."""
+    import json
+
+    def book_of(raw):
+        if raw in (None, ""):
+            return []
+        try:
+            book = json.loads(raw) if isinstance(raw, str) else raw
+            return [s for s in book.get("streams", []) if isinstance(s, dict)]
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    la, lb = book_of(raw_a), book_of(raw_b)
+    if la is None or lb is None:
+        return []
+    sa, sb = {str(s.get("id")): s for s in la}, {str(s.get("id")): s for s in lb}
+    labels = _contract_labels(la + lb)
+    out = []
+    for sid in sorted(set(sa) | set(sb)):
+        ca, cb = sa.get(sid), sb.get(sid)
+        name = labels.get(sid, "Contract")
+        if ca is None or cb is None:
+            out.append(AssumptionDiffRow("revenue", name, _NA if ca is None else "present", _NA if cb is None else "present"))
+            continue
+        for field in _CONTRACT_FIELDS:
+            if ca.get(field) != cb.get(field):
+                show = (lambda v: _NA if v is None else (f"{len(v)} points" if isinstance(v, list) else _short(v)))
+                out.append(AssumptionDiffRow("revenue", f"{name} · {field}", show(ca.get(field)), show(cb.get(field))))
+    return out
+
+
+_UUID_LIKE = __import__("re").compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def _contract_labels(streams: list) -> dict:
+    """Readable contract names: the recorded name/label, else its (non-UUID) id, else "<type> contract <n>" - never a raw UUID."""
+    labels: dict = {}
+    counters: dict = {}
+    for item in streams:
+        sid = str(item.get("id"))
+        if sid in labels:
+            continue
+        recorded = str(item.get("name") or item.get("label") or "").strip()
+        kind = str(item.get("type") or "contract").strip() or "contract"
+        counters[kind] = counters.get(kind, 0) + 1
+        if recorded:
+            labels[sid] = f"Contract {recorded}"
+        elif not _UUID_LIKE.match(sid):
+            labels[sid] = f"Contract {sid}"
+        else:
+            labels[sid] = f"{kind.upper()} contract {counters[kind]}"
+    return labels
+
+
+@dataclass(frozen=True)
+class AssumptionAttribution:
+    """What can truthfully be said about input differences between two committed Runs (RC-5A).
+
+    IDENTICAL            both committed effective-input identities exist and are equal
+    DIFFERENT_EXPLAINED  identities differ and some changes are itemized from evidence actually persisted with the Runs
+    DIFFERENT_UNEXPLAINED identities differ and no persisted detail explains them (never shown as "no differences")
+    UNKNOWN              an identity is missing (legacy record): no comparison is possible
+    Nothing here reads the current Working Copy or reruns the engine.
+    """
+
+    status: str
+    message: str
+    caveat: str = ""
+
+
+ATTRIBUTION_MESSAGES = {
+    "IDENTICAL": "Identical committed effective-input identity.",
+    "DIFFERENT_UNEXPLAINED": "Committed input identities differ. Detailed historical attribution is unavailable.",
+    "DIFFERENT_EXPLAINED": "Committed input identities differ. The changes below are the ones recorded with each Run.",
+    "UNKNOWN": "A committed input identity is missing for at least one Run (legacy record). No assumption comparison is possible.",
+}
+_PARTIAL_CAVEAT = ("Only inputs persisted with each Run (CAPEX/OPEX rows, scenario overrides, and the effective scalar inputs and revenue contract book "
+                   "when recorded) can be itemized; other committed inputs, such as financing instruments or tax, were not recorded per Run, so "
+                   "this list may not be complete.")
+
+
+def _hash_of(identity: Optional[dict], explicit: Optional[str]) -> str:
+    value = explicit or ((identity or {}).get("composite_hash") if isinstance(identity, dict) else None)
+    return str(value) if value else ""
+
+
+def build_assumption_attribution(identity_a: Optional[dict], identity_b: Optional[dict],
+                                 rows: list, hash_a: Optional[str] = None,
+                                 hash_b: Optional[str] = None) -> AssumptionAttribution:
+    ha, hb = _hash_of(identity_a, hash_a), _hash_of(identity_b, hash_b)
+    if not ha or not hb:
+        return AssumptionAttribution("UNKNOWN", ATTRIBUTION_MESSAGES["UNKNOWN"])
+    if ha == hb:
+        return AssumptionAttribution("IDENTICAL", ATTRIBUTION_MESSAGES["IDENTICAL"])
+    if rows:
+        return AssumptionAttribution("DIFFERENT_EXPLAINED", ATTRIBUTION_MESSAGES["DIFFERENT_EXPLAINED"], _PARTIAL_CAVEAT)
+    return AssumptionAttribution("DIFFERENT_UNEXPLAINED", ATTRIBUTION_MESSAGES["DIFFERENT_UNEXPLAINED"])
+
+
 def build_drivers_of_change(assumptions: list[AssumptionDiffRow],
                             sections: list[VarianceSection],
-                            changed_output_limit: int = 6) -> dict:
+                            changed_output_limit: int = 6,
+                            attribution: Optional[AssumptionAttribution] = None) -> dict:
     """Deterministic factual summary (§7): changed assumptions + moved
     outputs.  NOT attribution mathematics — no causal percentages, no
-    generated explanations."""
+    generated explanations.  ``no_assumption_changes`` is True ONLY when the
+    committed identities are known to be identical; an unexplained identity
+    difference is never reported as "no changes"."""
     changed_names = [a.name for a in assumptions]
     moved = []
     for section in sections:
@@ -272,9 +547,14 @@ def build_drivers_of_change(assumptions: list[AssumptionDiffRow],
                               row.pp_delta if row.pp_delta != _NA
                               else (row.pct_delta if row.pct_delta != _NA
                                     else row.abs_delta)))
+    if attribution is None:
+        identical = not changed_names            # legacy callers without identity evidence
+    else:
+        identical = attribution.status == "IDENTICAL"
     return {
         "changed_assumptions": changed_names,
-        "no_assumption_changes": not changed_names,
+        "no_assumption_changes": identical,
+        "attribution_status": attribution.status if attribution else ("IDENTICAL" if identical else "DIFFERENT_EXPLAINED"),
         "moved_outputs": tuple(moved[:changed_output_limit]),
         "more_outputs": max(0, len(moved) - changed_output_limit),
     }
@@ -410,6 +690,10 @@ __all__ = [
     "VarianceRow",
     "VarianceSection",
     "build_assumption_diff",
+    "build_assumption_attribution",
+    "build_assumption_limitations",
+    "AssumptionAttribution",
+    "AssumptionLimitation",
     "build_cross_project_rows",
     "build_drivers_of_change",
     "build_run_variance",

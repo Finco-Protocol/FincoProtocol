@@ -13,6 +13,8 @@
   <span class="hy-chip hy-chip--{{ result_status.freshness|lower }}" data-hy-run-state data-testid="hybrid-run-state">{{ result_status.freshness_label }}</span>
   <span class="hy-dim" data-testid="hybrid-last-run">Last Run: {{ result_status.run_at_display if result_status.has_run and result_status.run_at_display else '—' }}</span>
   <span class="hy-chip hy-chip--integrity-{{ result_status.integrity|lower }}" data-testid="hybrid-integrity"
-        title="Run integrity checks of the Last Run — independent of CURRENT / STALE">Integrity: {{ result_status.integrity }}</span>
+        title="{{ result_status.integrity_note or 'Run integrity checks of the Last Run — independent of CURRENT / STALE' }}"
+        data-integrity-scope="{{ 'last-run-other-scenario' if result_status.integrity_note else 'last-run' }}">Integrity: {{ result_status.integrity }}</span>
+  {% if result_status.integrity_note %}<span class="hy-dim" data-testid="hybrid-integrity-note">{{ result_status.integrity_note }}</span>{% endif %}
   <span class="hy-chip hy-chip--unsaved" data-hy-unsaved hidden data-testid="hybrid-unsaved">0 unsaved</span>
 </div>

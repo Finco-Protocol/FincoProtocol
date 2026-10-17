@@ -93,4 +93,6 @@
 .rc-index-editor button{margin:4px 6px 0 0}
 .rc-quick-series{margin:6px 0}
 .rc-calendar-prices-scroll{max-height:320px;overflow:auto}
+.rc-field-error{display:block;max-width:240px;white-space:normal;color:var(--fx-bad,#991b1b);font-size:12px;margin-top:4px}
+.rc-table [aria-invalid=true]{outline:2px solid var(--fx-bad,#991b1b);outline-offset:1px}
 @media (max-width:700px){.rc-index-table{min-width:520px}}

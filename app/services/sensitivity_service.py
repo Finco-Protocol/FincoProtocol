@@ -223,6 +223,13 @@ def _extract_kpis(result: Any) -> dict[str, Optional[float]]:
     return kpis
 
 
+# One refusal sentence shared by every price-shock surface (single-driver, two-driver matrix, Goal Seek, service): explicit revenue contracts carry
+# their own prices, so a shock on the scalar tariff / legacy price fields would be inactive. Modify the actual contracted revenue assumptions instead.
+CONTRACTED_PRICE_SHOCK_REFUSAL = (
+    "This project prices revenue from explicit revenue contracts, so a shock on the scalar tariff would change nothing and is refused rather than "
+    "shown as a flat result. To test price risk, change the contracted prices in the Revenue contracts (or a scenario's contracts) and run the model.")
+
+
 def _apply_shock(proj: Any, shock_type: str, level_pct: float,
                  dc_drivers: Any | None = None) -> Any:
     """Return a new ProjectInputs with the given shock applied.
@@ -254,7 +261,7 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float,
 
     elif shock_type == "ppa_price":
         if getattr(proj.revenue, "multistream_config_json", ""):
-            raise ValueError("REVENUE_V2_SENSITIVITY_UNSUPPORTED: select explicit scenario contracts instead")
+            raise ValueError("REVENUE_V2_SENSITIVITY_UNSUPPORTED: " + CONTRACTED_PRICE_SHOCK_REFUSAL)
         return replace(
             proj,
             revenue=replace(proj.revenue, ppa_base_tariff=proj.revenue.ppa_base_tariff * factor),
@@ -262,7 +269,7 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float,
 
     elif shock_type == "merchant_price":
         if getattr(proj.revenue, "multistream_config_json", ""):
-            raise ValueError("REVENUE_V2_SENSITIVITY_UNSUPPORTED: select explicit scenario contracts instead")
+            raise ValueError("REVENUE_V2_SENSITIVITY_UNSUPPORTED: " + CONTRACTED_PRICE_SHOCK_REFUSAL)
         orig = proj.revenue.market_prices_curve
         if orig:
             new_curve = tuple(v * factor for v in orig)

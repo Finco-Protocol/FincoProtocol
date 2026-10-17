@@ -523,8 +523,15 @@ def _build_export_bundle(
             current_snapshot=current_snapshot,
             effective_project_inputs=project_inputs,
         )
+    export_code = getattr(project_record, "project_code", None) or project_key
+    export_name = getattr(project_record, "project_name", None) or runtime_rows[0]["project"]
+    for row in runtime_rows:
+        row["project"] = export_name
+        row["active_project"] = export_code
+        if row["metric"] == "active_project":
+            row["value"] = export_name
     return WorkbookExportBundle(
-        project_key=project_key,
+        project_key=export_code,
         project_name=runtime_rows[0]["project"],
         generated_at=runtime_rows[0]["export_generated_at"],
         branch=runtime_rows[0]["branch_name"],
@@ -548,7 +555,12 @@ def _build_export_bundle(
         runtime_result=runtime_result,
         runtime_rows=runtime_rows,
         statements=statements,
-        authority_metadata=dict(authority_metadata or {}),
+        authority_metadata={
+            **dict(authority_metadata or {}),
+            "project_owner_id": getattr(project_record, "user_id", None) or "NOT_AVAILABLE",
+            "run_project_name": (current_snapshot or {}).get("project_name") or "NOT_AVAILABLE",
+            "serialization_template": project_key,
+        },
         contingency_authority=dict(contingency_authority) if contingency_authority else None,
         export_authority=runtime_rows[0]["export_authority"],
         working_changed_since_run=runtime_rows[0]["working_changed_since_run"],
@@ -561,7 +573,7 @@ def _build_export_bundle(
         debt_table=build_debt_table(runtime_result),
         senior_debt_keur_authority=_senior_debt_auth,
         sources_uses_authority=_sources_uses_auth,
-        project_id=project_key,
+        project_id=getattr(project_record, "project_id", None) or project_key,
         input_composite_hash="not_applicable",
         engine_version=_engine_version_str,
     )
@@ -577,7 +589,7 @@ def _write_cover_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     sheet["A1"].font = Font(color="FFFFFF", bold=True, size=18, name="Calibri")
     sheet["A2"] = bundle.project_name
     sheet["A2"].font = Font(size=14, bold=True, name="Calibri")
-    sheet["A3"] = "Institutional lender, IC, and audit workbook built from existing runtime outputs and documented assumptions."
+    sheet["A3"] = "Values-only results and assumptions from the recorded Run. This is not an editable Excel calculation model."
     sheet["A3"].alignment = Alignment(wrap_text=True)
     rows = [
         ("Project", bundle.project_name),
@@ -767,6 +779,17 @@ def _write_opex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         _opex_contingency_pct_row(bundle),
         ("Runtime/evidence boundary", "Line items below are template assumptions; runtime total above is authoritative", "review", "No workbook-only OPEX calculations."),
     ]
+    ca = bundle.contingency_authority or {}
+    if ca.get("opex_pct") is not None:
+        from app.ui.opex_view_model import build_opex_view_model
+        # Reuse the sheet's budget projection, not a second financial OPEX calculation.
+        vm = build_opex_view_model(bundle.context, is_user_project=True,
+                                  contingency_pct=ca["opex_pct"], contingency_source=ca.get("opex_source", "project"))
+        rows.extend([
+            ("Year 1 other OPEX budget", vm.total_excl_contingency[0], "run inputs", "Annual budget projection, not a partial-period cash amount.", K_EUR_FORMAT),
+            ("B.13 Year 1 contingency budget", vm.contingency_by_year[0], "run inputs", "Same B.13 display projection as the OPEX sheet.", K_EUR_FORMAT),
+            ("Year 1 OPEX budget including contingency", vm.y1_total_opex, "run inputs", "Includes B.13 once. Runtime total above remains authoritative.", K_EUR_FORMAT),
+        ])
     next_row = _write_key_value_section(sheet, 6, "OPEX summary", rows, include_format=True)
     def _opex_cell(item, key, attr):
         # R5/F04: the record-authoritative context carries typed OpexItem
@@ -779,10 +802,12 @@ def _write_opex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     item_rows = [
         (
             _opex_cell(item, "name", "name"),
-            _opex_cell(item, "y1_keur", "y1_amount_keur"),
+            (None if _opex_cell(item, "percentage_of_opex", "percentage_of_opex")
+             else _opex_cell(item, "y1_keur", "y1_amount_keur")),
             _opex_cell(item, "inflation_pct", "annual_inflation"),
             "template assumption",
-            "Template OPEX item",
+            ("Percentage-based cost; see applied B.13 budget and runtime total. Stored zero is not its effective cost."
+             if _opex_cell(item, "percentage_of_opex", "percentage_of_opex") else "Template OPEX item"),
         )
         for item in bundle.context.opex_items
     ]
@@ -1567,18 +1592,18 @@ def _write_export_metadata_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _meta = getattr(bundle, "authority_metadata", None) or {}
     sheet["A3"] = (
         "Runtime authority: "
-        + str(_meta.get("runtime_authority", "clean_not_ready"))
+        + str(_meta.get("runtime_authority", "NOT_RECORDED"))
         + (" | classification " + str(_meta.get("classification", "n/a")) if _meta else "")
         + (" | reason " + str(_meta.get("reason_code", "n/a")) if _meta else "")
         + " | calculation_count "
-        + str(_meta.get("calculation_count", 1))
+        + str(_meta.get("calculation_count", "NOT_RECORDED"))
     )
     sheet["A3"].font = Font(size=11, bold=True, name="Calibri")
     sheet["A2"].font = Font(size=11, italic=True, name="Calibri")
 
     # Build export metadata from bundle fields
     meta = build_export_metadata(
-        project_id=bundle.project_key,
+        project_id=bundle.project_id,
         project_name=bundle.project_name,
         scenario_id=bundle.scenario_id,
         scenario_name=bundle.scenario_name,

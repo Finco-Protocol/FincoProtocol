@@ -424,7 +424,7 @@
         {%- if sg.is_derived -%}
           {# Contingency: always calculated by engine #}
           {%- if sg.field -%}
-            {{ opex_ro_row(sg.field.label, sg.field.value, badge="Calculated") }}
+            {{ opex_ro_row(sg.field.label, sg.subtotal_y1, badge="Calculated") }}
           {%- else -%}
             {{ opex_ro_row(sg.display_name, sg.subtotal_y1 if sg.has_vm_data else none, badge="Calculated") }}
           {%- endif -%}
