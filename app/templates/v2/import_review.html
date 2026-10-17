@@ -237,6 +237,7 @@
         <input type="hidden" name="applied_ticket" value="{{ applied_ticket }}">
         <input type="hidden" name="manifest_token" value="{{ manifest_token or '' }}">
         <div class="box">
+          <label><input type="checkbox" name="run_confirmed" value="on" required data-testid="run-confirmed"> I have committed a native Run for this target scenario. The service independently verifies Run identity and freshness.</label>
           <button type="submit">Compare with source evidence (after a manual Run)</button>
         </div>
         <p class="muted">Reconciliation only compares against a committed, current Run for this target scenario and never starts one.</p>

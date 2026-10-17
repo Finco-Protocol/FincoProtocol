@@ -107,6 +107,7 @@ def test_assess_review_apply_run_reconcile_in_chromium(browser, app_server, tmp_
         run_tab = ctx.new_page()
         current = _run_in_real_browser_context(ctx, run_tab, root, project)
         assert not current.dirty and len(get_run_history(OWNER, project.project_id)) == len(history_before) + 1
+        page.get_by_test_id("run-confirmed").check()
         page.get_by_test_id("reconcile-form").get_by_role("button").click()
         page.get_by_test_id("reconcile-block").wait_for()
         assert page.get_by_test_id("run-state").inner_text() == "CURRENT"
