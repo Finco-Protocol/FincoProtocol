@@ -324,11 +324,16 @@
   }
 
   // ── Entry point ─────────────────────────────────────────────────────── //
+  const workbookRenders = new WeakMap();
   function initWorkbookChart(el) {
     const type    = el.dataset.chartType;
     const raw     = el.dataset.periods;
     const target  = el.dataset.target;
     if (!raw) return;
+    // One response emits many OOB swaps. Reuse only this exact node's SVG
+    // for identical presentation inputs, never another node or Run's data.
+    const signature = JSON.stringify([type, raw, target]);
+    if (workbookRenders.get(el) === signature && el.querySelector('svg')) return;
     let periods;
     try { periods = JSON.parse(raw); } catch (e) { return; }
     if (!Array.isArray(periods) || !periods.length) return;
@@ -346,6 +351,7 @@
       {key:'fcf_banks_keur', label:'FCF Banks', color:'#0f766e'},
       {key:'senior_total_ds_keur', label:'Debt service (outflow)', color:'#6366f1'},
     ]);
+    workbookRenders.set(el, signature);
   }
 
   function init() {

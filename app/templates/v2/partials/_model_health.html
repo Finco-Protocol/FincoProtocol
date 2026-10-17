@@ -32,7 +32,7 @@
   <p>No committed diagnostics available. Run the model to establish Last Run evidence; no score is estimated.</p>
   {% endif %}
   {% else %}
-  <p>{{ d.state }}{% if d.state == 'STALE' %} · HISTORICAL Last Run, not the edited Working Copy{% endif %}
+  <p data-md-freshness>{{ d.state }}{% if d.state == 'STALE' %} · HISTORICAL Last Run, not the edited Working Copy{% endif %}
     · Scenario: {{ d.scenario_name or 'UNAVAILABLE' }} · Last Run: {{ stamp(d.identity.run_at) }}</p>
   <dl class="md-health-facts">
     <div><dt>Run Integrity</dt><dd>{{ d.integrity.overall }}</dd></div>

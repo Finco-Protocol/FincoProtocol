@@ -52,6 +52,8 @@ class RunStageTimer:
         if stage not in STAGE_ORDER or stage in self.stages:
             return
         self.stages[stage] = time.monotonic()
+        from app.services.model_performance import run_mark
+        run_mark(stage)
 
     def breakdown(self) -> dict[str, int]:
         """Per-stage milliseconds from run start + inter-stage deltas."""
