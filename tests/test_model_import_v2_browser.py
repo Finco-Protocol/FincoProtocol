@@ -108,6 +108,11 @@ def test_intelligent_import_end_to_end(browser, app_server, tmp_path, kind):
             assert text in row.inner_text(), (label, row.inner_text())
             assert row.locator(".approve-box").is_disabled() or row.get_attribute("data-status") == "unsupported"
         assert _row(page, "Weather station").get_attribute("data-status") == "unsupported"
+        for locked in ("Transformer", "Merchant price curve", "Junior debt amount", "Nameplate capacity", "Weather station"):
+            row = _row(page, locked)
+            assert row.get_attribute("data-readonly") == "true"
+            assert row.locator('select[name^="field_"]').is_disabled()
+            assert row.locator(".approve-box").is_disabled()
         page.screenshot(path=str(SHOTS / f"{kind}-01-review-desktop.png"), full_page=True)
 
         # Category filter, attention queue, sort.
@@ -135,7 +140,12 @@ def test_intelligent_import_end_to_end(browser, app_server, tmp_path, kind):
 
         # A user-modified mapping: Guard services -> Security (OPEX); Audit and legal is rejected by unchecking it.
         guard = _row(page, "Guard services")
+        assert guard.get_attribute("data-manual-scalar") == "true"
+        assert guard.locator(".approve-box").is_disabled()
+        assert guard.locator('select[name^="field_"]').is_enabled()
         guard.locator('select[name^="field_"]').select_option("opex.lines.security")
+        assert guard.locator(".approve-box").is_enabled()
+        assert not guard.locator(".approve-box").is_checked()
         guard.locator(".approve-box").check()
         _row(page, "Audit and legal").locator(".approve-box").uncheck()
         approved_count = page.locator(".approve-box:checked").count()

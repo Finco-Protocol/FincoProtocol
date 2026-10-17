@@ -137,12 +137,13 @@
         <thead><tr><th>Approve</th><th>Source cell / label</th><th>Original value</th><th>Suggested FINCO field</th><th>Working Copy</th><th>Proposed value / units</th><th>Confidence, validation &amp; explanation</th></tr></thead>
         <tbody>
         {% for p in proposals %}
-        {% set read_only = p.status in ('unsupported', 'unsupported_for_apply') or p.reason == 'IMPORT_FORMULA_NOT_AUTHORITATIVE' or p.apply_support == 'UNSUPPORTED_FOR_APPLY' %}
+        {% set manual_scalar = p.manual_scalar_mapping_allowed %}
+        {% set read_only = (p.status in ('unsupported', 'unsupported_for_apply') and not manual_scalar) or p.reason == 'IMPORT_FORMULA_NOT_AUTHORITATIVE' or p.apply_support == 'UNSUPPORTED_FOR_APPLY' or p.target_kind in ('CAPEX_LINE', 'OPEX_LINE', 'REVENUE_CONTRACT', 'FINANCING_INSTRUMENT') %}
         <tr class="review-row" data-status="{{ p.status }}" data-category="{{ p.category }}" data-confidence="{{ p.confidence_class }}" data-bulk="{{ 'true' if p.bulk_selectable else 'false' }}" data-index="{{ p.id }}"
-            data-attention="{{ 'true' if (p.status in ['unsupported','unsupported_for_apply','invalid'] or p.duplicate_target or 'ambiguous' in p.mapping_method) else 'false' }}" data-readonly="{{ 'true' if read_only else 'false' }}">
+            data-attention="{{ 'true' if (p.status in ['unsupported','unsupported_for_apply','invalid'] or p.duplicate_target or 'ambiguous' in p.mapping_method) else 'false' }}" data-readonly="{{ 'true' if read_only else 'false' }}" data-manual-scalar="{{ 'true' if manual_scalar else 'false' }}">
           <td><input type="checkbox" class="approve-box" name="keep_{{ p.id }}" value="on"
             aria-label="Approve proposal {{ p.id + 1 }}"
-            {% if read_only %}disabled{% endif %}></td>
+            {% if read_only or manual_scalar %}disabled{% endif %}></td>
           <td><strong>{{ p.sheet }}!{{ p.source_cell }}</strong><div>{{ p.label }}</div><small class="muted">Label at {{ p.label_cell }}{% if p.section %} · block “{{ p.section }}”{% endif %}</small></td>
           <td><code>{{ p.original_value }}</code><div class="muted">{{ p.source_unit or 'Unit unspecified' }}</div></td>
           <td><select name="field_{{ p.id }}" aria-label="Map proposal {{ p.id + 1 }} to FINCO field" {% if read_only %}disabled{% endif %}>
@@ -161,7 +162,7 @@
               {% endfor %}
             </select>
             <div class="muted">Proposed FINCO value: <strong>{{ p.normalized_value if p.normalized_value is not none else '—' }}</strong></div>
-            {% if read_only %}<div class="owner">Read-only: this content cannot be approved through scalar Import. Use the owning workflow or resolve the dependency at source.</div>{% endif %}
+            {% if read_only %}<div class="owner">Read-only: this content cannot be approved through scalar Import. Use the owning workflow or resolve the dependency at source.</div>{% elif manual_scalar %}<div class="muted" data-testid="manual-scalar-guidance">Unrecognized numeric scalar: choose a canonical target, then approve explicitly. Server validation of the unit, value and field is still required.</div>{% endif %}
             <input name="manual_{{ p.id }}" type="text"
               aria-label="Optional corrected FINCO value for proposal {{ p.id + 1 }}"
               placeholder="Optional override (FINCO units)" {% if read_only %}disabled{% endif %}>
@@ -274,6 +275,19 @@
    });
  }
  for(const el of document.querySelectorAll(".approve-box")) el.addEventListener("change",refreshCount);
+ // An unknown numeric scalar is only a candidate for manual review. Never auto-approve it.
+ for(const row of document.querySelectorAll('.review-row[data-manual-scalar="true"]')){
+   const field = row.querySelector('select[name^="field_"]');
+   const approve = row.querySelector(".approve-box");
+   if(!field || !approve) continue;
+   const sync = () => {
+     approve.disabled = !field.value;
+     if(approve.disabled) approve.checked = false;
+     refreshCount();
+   };
+   field.addEventListener("change", sync);
+   sync();
+ }
  statusBtns.forEach(b => b.addEventListener("click", () => {
    statusBtns.forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
    status = b.dataset.filter; applyFilters();

@@ -70,3 +70,31 @@ def scenario_review_matrix(plan: Mapping[str, Any]) -> list[dict[str, Any]]:
 def scenario_review_acknowledged(value: str | None) -> bool:
     """An explicit source-to-target acknowledgement, never inferred from labels."""
     return value == "on"
+
+def manual_scalar_mapping_allowed(proposal: Mapping[str, Any]) -> bool:
+    """Presentation-only eligibility for explicitly mapping an unrecognized numeric scalar.
+
+    The original status remains unsupported. Selecting a field must still pass
+    signed-ticket, canonical field, technology, unit and numeric validation.
+    Neither a structured owner nor a pre-rejected canonical target can be unlocked.
+    """
+    import re
+
+    if proposal.get("status") != "unsupported":
+        return False
+    if proposal.get("reason") not in ("IMPORT_UNSUPPORTED_LABEL", "IMPORT_MAPPING_AMBIGUOUS"):
+        return False
+    if proposal.get("target_kind") != "UNSUPPORTED" or proposal.get("apply_support") != "NONE":
+        return False
+    if (proposal.get("field_id") or proposal.get("recognized_target")
+            or proposal.get("owner_editor") or proposal.get("formula")):
+        return False
+    if (proposal.get("mapping_method") or proposal.get("method")) not in (
+            "unmapped", "ambiguous_exact_registry_label"):
+        return False
+    original = proposal.get("original_value")
+    if original is None or isinstance(original, bool):
+        return False
+    # Syntactic source shape only, NOT numeric normalisation. Ambiguous locales
+    # remain blocked until an explicit unit/value choice passes server validation.
+    return bool(re.fullmatch(r"[+-]?\d[\d\s.,]*\s*%?", str(original).strip()))

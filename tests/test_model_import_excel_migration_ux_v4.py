@@ -79,3 +79,38 @@ def test_entry_acknowledgement_requires_explicit_user_action():
     assert MOD.scenario_review_acknowledged("on") is True
     for value in (None, "", "yes", "true", "off"):
         assert MOD.scenario_review_acknowledged(value) is False
+
+
+def _unrecognized_numeric():
+    return dict(status="unsupported", reason="IMPORT_UNSUPPORTED_LABEL",
+                target_kind="UNSUPPORTED", apply_support="NONE", field_id=None,
+                mapping_method="unmapped", original_value="18000", source_unit="EUR/yr",
+                recognized_target=None, owner_editor=None)
+
+
+def test_manual_scalar_mapping_for_unknown_numeric_label_only():
+    src = _unrecognized_numeric()
+    assert MOD.manual_scalar_mapping_allowed(src)
+    assert MOD.manual_scalar_mapping_allowed({**src, "original_value": "0"})
+    assert MOD.manual_scalar_mapping_allowed({**src, "reason": "IMPORT_MAPPING_AMBIGUOUS"})
+    assert MOD.manual_scalar_mapping_allowed({**src, "original_value": "1,234"})
+
+
+def test_manual_scalar_mapping_preserves_unsupported_and_formula_boundaries():
+    src = _unrecognized_numeric()
+    blocked = [
+        {"original_value": "n/a"},
+        {"original_value": "=SUM(A1:A5)"},
+        {"reason": "UNSUPPORTED_FOR_APPLY", "apply_support": "UNSUPPORTED_FOR_APPLY"},
+        {"reason": "BATCH_FIELD_REQUIRES_ATOMIC_CASCADE_SUPPORT"},
+        {"status": "unsupported_for_apply", "target_kind": "CAPEX_LINE", "apply_support": "UNSUPPORTED_FOR_APPLY"},
+        {"status": "invalid", "reason": "IMPORT_FORMULA_NOT_AUTHORITATIVE"},
+        {"recognized_target": {"field_id": "project_setup.technical.capacity_mw"}},
+        {"owner_editor": "Capital Stack workspace"},
+        {"field_id": "project_setup.technical.capacity_mw"},
+        {"target_kind": "FINANCING_INSTRUMENT", "apply_support": "UNSUPPORTED_FOR_APPLY"},
+        {"mapping_method": "ranked_candidate"},
+        {"formula": True},
+    ]
+    for patch in blocked:
+        assert not MOD.manual_scalar_mapping_allowed({**src, **patch}), patch

@@ -18,7 +18,7 @@ from app.auth import (
 )
 from app.model_import.intake import MAX_UPLOAD_BYTES, IntakeError, extract_proposals
 from app.model_import.mapping import STRUCTURED_FIELD_OWNERS
-from app.model_import.migration_ux import scenario_review_matrix, scenario_review_acknowledged
+from app.model_import.migration_ux import scenario_review_matrix, scenario_review_acknowledged, manual_scalar_mapping_allowed
 from app.persistence.projects_repository import resolve_accessible_project
 from app.persistence.workspace_repository import get_workspace_state
 from app.services.project_library_service import is_protected_reference
@@ -73,6 +73,7 @@ def _context(request, user, project, ws, *, stage, proposals=None, error=None,
             check = WorkbookUpdateService.validate_field_update(q["field_id"], q["normalized_value"])
             if check.is_valid and check.typed_value == q["current_value"]:
                 q["status"] = "unchanged"
+        q["manual_scalar_mapping_allowed"] = manual_scalar_mapping_allowed(q)
         # Bulk selection is limited to rows that validated independently: a mapped, normalised, non-duplicate,
         # non-ambiguous target with no outstanding reason.  Everything else needs a deliberate per-row choice.
         q["bulk_selectable"] = bool(
