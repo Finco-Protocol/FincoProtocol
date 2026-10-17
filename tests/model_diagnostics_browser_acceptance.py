@@ -116,11 +116,15 @@ def test_delayed_diagnostics_refresh_after_new_run(workspace):
     from tests.model_workspace_navigation import activate_destination
     page, record, errors = workspace()
     run(page)
+    activate_destination(page, 'tab-diagnostics')
     first = json.loads(page.locator('[data-md-payload]').text_content())['identity']['snapshot_id']
     held = []
 
     def delay(route):
-        held.append(route)
+        if not held:
+            held.append(route)
+        else:
+            route.continue_()
 
     page.route('**/v2/workbook/diagnostics?*', delay)
     activate_destination(page, 'tab-input-grid')
@@ -131,8 +135,13 @@ def test_delayed_diagnostics_refresh_after_new_run(workspace):
         page.keyboard.press('Control+S')
     page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 0')
     page.wait_for_timeout(100)  # dispatch the real browser request interception
+    assert len(held) == 0  # V7: a hidden panel invalidates without an eager full read.
+    activate_destination(page, 'tab-diagnostics')
+    page.wait_for_timeout(150)
     assert len(held) == 1
-    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'UNAVAILABLE'
+    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'STALE'
+    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-diagnostics-load-state') == 'pending'
+    assert page.locator('#v2-model-health').get_attribute('data-state') == 'STALE'
     # Capture an actual authorized stale response before starting the new Run.
     stale = page.request.get(held[0].request.url)
     assert stale.status == 200 and 'data-state="STALE"' in stale.text()

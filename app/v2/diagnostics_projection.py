@@ -14,6 +14,7 @@ from typing import Any, Mapping
 from app.model_quality.contracts import QualityReport
 from app.run_integrity import checks as integrity
 from app.v2.output_workspace_projection import _num, period_label
+from app.services.model_performance import observed
 
 
 @dataclass(frozen=True)
@@ -198,6 +199,16 @@ def _waterfall(ws: Any, columns: list[dict], *, integrity_evidence: Mapping, dig
     return out
 
 
+def build_diagnostics_summary(ws: Any, report: QualityReport, *, score: dict, scenario_name: str) -> dict:
+    """Same canonical whole-Run summary, without period/DX evaluation or history reads."""
+    by_id = {check.check_id: check for check in report.checks}
+    return {"state": report.freshness, "available": True, "identity": report.run_identity,
+            "scenario_name": scenario_name, "score": score, "blocking_count": len(report.blocking_findings),
+            "integrity": integrity.run_integrity_checks(getattr(ws, "last_integrity_evidence", None) or {}).to_dict(),
+            "top_issues": [by_id[cid].to_dict() for cid in report.top_issues[:5]], "summary_only": True}
+
+
+@observed("diagnostics")
 def build_diagnostics(ws: Any, report: QualityReport, *, score: dict, scenario_name: str, evidence: Any = None,
                       history_quality: Any = None) -> dict:
     ev = getattr(ws, "last_integrity_evidence", None) or {}

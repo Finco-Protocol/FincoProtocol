@@ -23,7 +23,7 @@
 {%- endif -%}
 {%- endif -%}
 {%- endmacro %}
-<div id="v2-sheet-diagnostics" class="md-workspace" data-sheet="diagnostics" data-state="{{ d.state if d else 'NOT_RUN' }}">
+<div id="v2-sheet-diagnostics" class="md-workspace" data-sheet="diagnostics" data-diagnostics-load-state="loaded" data-state="{{ d.state if d else 'NOT_RUN' }}">
   <header><h1>Model Diagnostics</h1><p>{{ project_name | default('Project') }} · Committed Last Run only</p></header>
   {% if not d or not d.available %}
   {% if d and d.state == 'UNAVAILABLE' %}
@@ -32,7 +32,7 @@
   <p role="status">Diagnostics unavailable: no evaluated committed Last Run. No score or passing periods are estimated.</p>
   {% endif %}
   {% else %}
-  <script type="application/json" data-md-payload>{{ d | tojson }}</script>
+  <script type="application/json" data-md-payload>{{ diagnostics_client_json(d) if diagnostics_client_json is defined else d | tojson }}</script>
   <p role="status">{{ d.state }}{% if d.state == 'STALE' %} — HISTORICAL evidence of the prior Run; Working Copy changes are not evaluated{% endif %} · Scenario: {{ d.scenario_name or 'UNAVAILABLE' }}</p>
   <dl class="md-identity"><dt>Snapshot</dt><dd>{{ d.identity.snapshot_id or 'UNAVAILABLE' }}</dd><dt>Run time</dt><dd>{{ stamp(d.identity.run_at) }}</dd><dt>Composite hash</dt><dd>{{ d.identity.composite_hash or 'UNAVAILABLE' }}</dd><dt>Engine</dt><dd>{{ d.identity.engine_version or 'UNAVAILABLE' }}</dd></dl>
   <p>Run Integrity: <strong>{{ d.integrity.overall }}</strong> · Quality advisory: <strong>{{ d.score.score_display or 'NOT SCORED' }}</strong> · Weighted coverage: {{ number(d.score.coverage_weighted_pct, '%') }}% · Blocking: {{ d.blocking_count }}</p>

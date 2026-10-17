@@ -170,6 +170,8 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+from app.services.model_performance import ModelPerformanceMiddleware
+app.add_middleware(ModelPerformanceMiddleware)
 
 # -- P0-A: bounded model execution (typed BUSY / failure responses) ----------------
 # Expensive model computation runs behind ONE process-local admission gate

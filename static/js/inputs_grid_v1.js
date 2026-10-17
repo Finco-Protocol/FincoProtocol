@@ -415,8 +415,11 @@
       scheduleRefresh();
     }
     new MutationObserver(read).observe(toolbar, { childList: true, subtree: true, characterData: true });
+    // The status strip itself can be replaced later in the same OOB response.
+    document.addEventListener('htmx:afterSettle', read);
   }
   function refreshDependentSheets(project) {
+    if (window.FincoModelViews) return;
     if (!window.htmx) return;
     // Every legacy single-field editor of a saved field must show the new value and the new CAS hash,
     // so the two editing surfaces can never silently write conflicting values.
@@ -445,12 +448,20 @@
 
   // Re-render the grid panel in place from the server (fresh totals / Last Run markers) while keeping the
   // focused cell, scroll and open sections.  Never while edits are staged, saving, or the user is typing.
-  var lastRefresh = 0, refreshTimer = null;
+  var lastRefresh = 0, refreshTimer = null, refreshedGeneration = -1;
   function refreshPanel(force) {
     var g = root();
     if (!g || busy.saving || busy.validating || stagedInputs().length) return Promise.resolve(false);
     if (!force && g.contains(document.activeElement) && document.activeElement.classList.contains('ig-input')) return Promise.resolve(false);
     var view = captureView();
+    var manager = window.FincoModelViews, ticket = manager && manager.capture();
+    if (manager) {
+      if (!force && refreshedGeneration === ticket.generation) return Promise.resolve(false);
+      return manager.refreshSavedGrid(ticket.hash, false).then(function (ok) {
+        if (!ok) return false;
+        restoreView(view); paintAll(); refreshedGeneration = ticket.generation; return true;
+      });
+    }
     return fetch('/v2/workbook/grid/panel?project=' + encodeURIComponent(g.getAttribute('data-project')), { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.text() : Promise.reject(new Error('panel')); })
       .then(function (html) {
@@ -485,6 +496,8 @@
     refreshBar();
     setMsg('Saving ' + staged.length + ' edit' + (staged.length === 1 ? '' : 's') + '…', 'busy');
     saveStartedAt = performance.now();
+    document.dispatchEvent(new CustomEvent('model:diagnostics-write-start'));
+    var manager = window.FincoModelViews, saveTicket = manager && manager.capture();
     var project = g.getAttribute('data-project');
     var view = captureView();
     var cells = staged.map(function (i) { return { field_id: i.getAttribute('data-ig-field'), value: committedOf(i) }; });
@@ -499,14 +512,27 @@
       cells: cells
     }).then(function (res) {
       if (res && res.ok) {
+        if (manager && !manager.isCurrent(saveTicket)) {
+          setMsg('Saved atomically, but the model selection changed. Reload before continuing.', 'error');
+          return true;
+        }
         applyIdentity(res.content_hash, res.workbook_version, res.run_state);
         g.setAttribute('data-content-hash', res.content_hash);
         g.setAttribute('data-workbook-version', res.workbook_version);
-        return fetch('/v2/workbook/grid/panel?project=' + encodeURIComponent(project), { credentials: 'same-origin' })
+        var completionTicket = manager && manager.capture();
+        var refreshed = manager ? manager.refreshSavedGrid(res.content_hash, true).then(function (ok) {
+          if (!ok) throw new Error('panel changed');
+          if (manager.isCurrent(completionTicket)) refreshedGeneration = completionTicket.generation;
+        }) : fetch('/v2/workbook/grid/panel?project=' + encodeURIComponent(project), { credentials: 'same-origin' })
           .then(function (r) { return r.ok ? r.text() : Promise.reject(new Error('panel')); })
           .then(function (html) {
             var current = root();
             current.outerHTML = html;
+          });
+        return refreshed.then(function () {
+            // HTMX settles after the primary swap. A user may already have
+            // started another Save/Run; never publish this older Save's state.
+            if (manager && !manager.isCurrent(completionTicket)) return true;
             restoreView(view);
             paintAll();
             refreshDependentSheets(project);
@@ -517,6 +543,7 @@
             document.dispatchEvent(new CustomEvent('ig:saved', { detail: { count: cells.length, ms: ms, runState: res.run_state } }));
             return true;
           }).catch(function () {
+            if (manager && !manager.isCurrent(completionTicket)) return true;
             // The batch IS committed; only the in-place refresh failed. Say so — never "not saved".
             busy.saving = false;
             allInputs().forEach(function (i) { i.readOnly = false; });
@@ -543,7 +570,11 @@
       setMsg('Save could not be completed (network). Nothing was confirmed saved; your edits are kept.', 'error');
       refreshBar();
       return false;
-    }).then(function (ok) { busy.saving = false; refreshBar(); return ok; });
+    }).then(function (ok) {
+      busy.saving = false; refreshBar();
+      document.dispatchEvent(new CustomEvent('model:diagnostics-write-end', {detail: {saved: ok}}));
+      return ok;
+    });
   }
 
   document.addEventListener('click', function (e) {

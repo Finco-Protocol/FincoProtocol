@@ -114,7 +114,7 @@
   });
   document.addEventListener('htmx:afterRequest', function (event) {
     var detail = event.detail || {}, config = detail.requestConfig || {};
-    if (!detail.successful || !workbookPost(config)) return;
+    if (window.FincoModelViews || !detail.successful || !workbookPost(config)) return;
     var root = document.getElementById('v2-sheet-investor');
     if (root && window.htmx) {
       root.textContent = 'Refreshing Investor evidence…';

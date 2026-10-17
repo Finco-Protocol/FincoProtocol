@@ -1,7 +1,6 @@
 // Delegated once: safe across repeated HTMX replacements. No numerical calculations or writes.
 (function () {
   'use strict';
-  var generation = 0, refreshRequests = new WeakMap();
   function root() { return document.getElementById('v2-sheet-diagnostics'); }
   function payload() {
     var r = root(), node = r && r.querySelector('[data-md-payload]');
@@ -82,30 +81,7 @@
     if (panel && !panel.hidden && params.has('diagnostic_check')) show(params.get('diagnostic_check'), params.get('diagnostic_period'));
   }
   document.addEventListener('htmx:afterSettle', restore);
-  document.addEventListener('htmx:beforeRequest', function (event) {
-    var d = event.detail || {}, request = d.requestConfig || {};
-    if (String(request.verb).toLowerCase() === 'post') generation++;
-    if (String(request.path || '').indexOf('/v2/workbook/diagnostics?') === 0 && d.xhr) refreshRequests.set(d.xhr, generation);
-  });
-  document.addEventListener('htmx:beforeOnLoad', function (event) {
-    var xhr = (event.detail || {}).xhr;
-    if (xhr && refreshRequests.has(xhr) && refreshRequests.get(xhr) !== generation) event.preventDefault();
-  });
-  document.addEventListener('ig:saved', function () {
-    generation++;
-    var shell = document.getElementById('v2-workbook-shell');
-    if (!shell || !window.htmx) return;
-    // Never leave a CURRENT score/threshold on-screen while the canonical refresh is pending.
-    ['v2-sheet-diagnostics','v2-model-health'].forEach(function (id) {
-      var node = document.getElementById(id); if (!node) return;
-      node.dataset.state = 'UNAVAILABLE';
-      var message = document.createElement('p'); message.setAttribute('role','status');
-      message.textContent = 'Diagnostics refresh pending after Save — committed evidence not yet resolved. Reload if the read cannot complete.';
-      node.replaceChildren(message);
-    });
-    window.htmx.ajax('GET', '/v2/workbook/diagnostics?project=' + encodeURIComponent(shell.dataset.project),
-                    {source: document.body, target:'#v2-sheet-diagnostics', swap:'none'});
-  });
+  document.addEventListener('model:diagnostics-loaded', restore);
   window.addEventListener('popstate', restore);
   window.addEventListener('hashchange', restore);
   document.addEventListener('DOMContentLoaded', restore);

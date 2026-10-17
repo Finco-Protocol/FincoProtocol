@@ -92,6 +92,7 @@ from app.ui.protected_reference_service import is_protected_reference
 from app.v2.scenario_presentation import OVERRIDE_EDITOR_FIELDS
 from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
+from app.services.model_performance import observed, span
 from app.workbook.workbook_identity import assemble_consistent_for_get, assemble_for_workspace
 from app.workbook.update_service import (
     FieldErrorClass,
@@ -221,6 +222,8 @@ def _cit_rate_display(pis) -> str:
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates", "v2"))
+from app.v2.diagnostics_client import diagnostics_client_json
+_templates.env.globals["diagnostics_client_json"] = diagnostics_client_json
 from app.v2 import display_labels as _display_labels  # noqa: E402
 _templates.env.globals.update({
     "readable_code": _display_labels.readable_code, "reason_sentence": _display_labels.reason_sentence,
@@ -558,7 +561,9 @@ def _quality_row_from_block(quality: dict) -> dict:
             "blocking_ids": [c["check_id"] for c in quality["groups"]["blocking"]]}
 
 
-def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, runtime_state, register_view):
+@observed("other_projection")
+def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, runtime_state, register_view,
+                    include_diagnostics=True):
     """Q3: attach the read-only Model Quality / covenant / scenario views to the Smart Panel projection.
 
     Pure reads of persisted evidence (workspace Last Run, Run History, scenario records); never runs the
@@ -593,7 +598,8 @@ def _attach_insight(smart_panel, *, ws, pis, project_record, workspace_owner, ru
     quality = build_quality_insight_safe(
         ws, run_state=runtime_state, project_inputs=effective_inputs, active_scenario_id=active_id,
         scenario_name=last_run_scenario_name,
-        register_paths=register_paths, kpi_keys=kpi_keys, include_diagnostics=True)
+        register_paths=register_paths, kpi_keys=kpi_keys, include_diagnostics=include_diagnostics,
+        include_diagnostics_summary=not include_diagnostics)
     # Q4 conditional action availability is presentation-only; no writes, no engine Run.
     # Q1 statuses and Q3 Last Run identities remain unmodified.
     from app.v2.whatif import CANDIDATES as _Q4_CANDIDATES, display_eligibility as _q4_eligible
@@ -1779,6 +1785,7 @@ _FS_STATE_STALE          = "STALE"
 _FS_STATE_FS_UNAVAILABLE = "FS_UNAVAILABLE"
 
 
+@observed("statements")
 def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
     """Build Financial Statements sheet context from persisted RuntimeResult.
 
@@ -1983,11 +1990,13 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
 
-    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    with span("workspace_read"):
+        project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
         return RedirectResponse(url="/library?notice=project-unavailable", status_code=302)
 
-    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    with span("workspace_read"):
+        ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
         return RedirectResponse(url="/library?notice=project-unavailable", status_code=302)
 
@@ -2039,7 +2048,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     except Exception:
         pass  # migration failure must never block page render
 
-    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    with span("input_build"):
+        pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
     runtime_freshness = _runtime_freshness(ws, pis)
     hydration_script = WorkbookService.runtime_hydration_script(ws)
 
@@ -2150,7 +2160,10 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     context.update(_build_revenue_ctx(pis, ws, projection=_projection))
     context.update(_build_debt_ctx(pis, ws, projection=_projection))
     context.update(_build_tax_ctx(pis, ws, projection=_projection))
-    context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
+    context["statements_lazy"] = sheet != "fs"
+    context["fs_state"] = "FS_UNAVAILABLE" if _projection.fs.state.value == "UNAVAILABLE" else _projection.fs.state.value
+    if not context["statements_lazy"]:
+        context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
     context.update(_build_returns_ctx(
         ws, rr=_rr, runtime_is_stale=runtime_freshness.is_stale))
     from app.v2.overview_projection import build_overview_projection
@@ -2198,8 +2211,9 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     context["smart_panel"] = _attach_insight(
         context["smart_panel"], ws=ws, pis=pis, project_record=project_record,
         workspace_owner=workspace_owner, runtime_state=runtime_freshness.state.value,
-        register_view=context.get("assumption_register_view"))
+        register_view=context.get("assumption_register_view"), include_diagnostics=sheet == "diagnostics")
     context["diagnostics"] = context["smart_panel"].insight["quality"].get("diagnostics")
+    context["diagnostics_lazy"] = sheet != "diagnostics"
 
     # UI-3B: inject scenario presentations for the Scenarios tab.
     # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
@@ -2220,7 +2234,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         context["scenarios"] = []
         context.setdefault("active_scenario_id", None)
 
-    return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
+    with span("template_render"):
+        return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
 @router.post("/workbook/inputs-slice1/update")
@@ -2274,9 +2289,10 @@ async def v2_inputs_slice1_update(
         render_ws = ws_for_render or ws
         render_pis = pis_for_render
         if render_pis is None:
-            render_pis = _build_pis_with_composite_identity(
-                render_ws, project_record, workspace_owner
-            )
+            with span("input_build"):
+                render_pis = _build_pis_with_composite_identity(
+                    render_ws, project_record, workspace_owner
+                )
         submitted = (
             {field_id: value or ""}
             if preserve_submitted and classify_slice1_field_id(field_id) == KNOWN_SLICE1_EDITABLE
@@ -2304,9 +2320,10 @@ async def v2_inputs_slice1_update(
         message: str, status_code: int, *, preserve_submitted: bool = False,
         error_class: Optional[FieldErrorClass] = None,
     ) -> HTMLResponse:
-        pis_for_render = _build_pis_with_composite_identity(
-            ws, project_record, workspace_owner
-        )
+        with span("input_build"):
+            pis_for_render = _build_pis_with_composite_identity(
+                ws, project_record, workspace_owner
+            )
         resp = _render_sheet_response(
             message,
             status_code=status_code,
@@ -3585,16 +3602,19 @@ async def v2_model_diagnostics(request: Request, project: str):
     from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
     from app.workbook.workbook_identity import WorkbookIdentityError
     from app.v2.post_run_ui import _build_smart_panel_oob, _as_oob
-    record, owner = resolve_accessible_project(user.user_id, project)
+    with span("workspace_read"):
+        record, owner = resolve_accessible_project(user.user_id, project)
     if record is None:
         return HTMLResponse("", status_code=404, headers={"Cache-Control": "no-store"})
     try:
-        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        with span("snapshot_capture"):
+            context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
         html = _build_smart_panel_oob(context.workspace, workspace_owner=owner,
             project_record=context.project_record, project=project,
             project_editable=not is_protected_reference(context.project_record),
-            freshness=context.freshness, context=context)
-        context.validate_current()
+            freshness=context.freshness, context=context, include_diagnostics=True)
+        with span("coherence_check"):
+            context.validate_current()
     except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
         unavailable = {"diagnostics": {"state": "UNAVAILABLE", "available": False}}
         html = "\n".join(_as_oob(_templates.get_template("partials/" + template).render(unavailable), root)
@@ -3622,6 +3642,7 @@ async def v2_outputs_workspace(request: Request, project: str):
     record, owner = resolve_accessible_project(user.user_id, project)
     if record is None:
         return HTMLResponse("Project not found.", status_code=404)
+    response_headers = {"Cache-Control": "no-store"}
     try:
         context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
         state, report = get_run_integrity_checks(owner, record.project_id, context=context)
@@ -3639,11 +3660,12 @@ async def v2_outputs_workspace(request: Request, project: str):
             statement_projection=context.projection.fs)
         outputs["working_cit_rate"] = _cit_rate_display(context.inputs)
         context.validate_current()
+        response_headers["X-Finco-View-Hash"] = context.inputs.content_hash
     except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
         outputs = {"state": "UNAVAILABLE", "message": "Statements unavailable: the workspace changed while the response "
                    "was assembled. Reload to refresh."}
     html = _templates.get_template("partials/sheet_outputs.html").render(outputs=outputs, project_code=project)
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+    return HTMLResponse(html, headers=response_headers)
 
 
 @router.get("/workbook/financing/integrity")
