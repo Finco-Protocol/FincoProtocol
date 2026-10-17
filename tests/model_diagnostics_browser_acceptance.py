@@ -139,7 +139,9 @@ def test_delayed_diagnostics_refresh_after_new_run(workspace):
     activate_destination(page, 'tab-diagnostics')
     page.wait_for_timeout(150)
     assert len(held) == 1
-    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'UNAVAILABLE'
+    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-state') == 'STALE'
+    assert page.locator('#v2-sheet-diagnostics').get_attribute('data-diagnostics-load-state') == 'pending'
+    assert page.locator('#v2-model-health').get_attribute('data-state') == 'STALE'
     # Capture an actual authorized stale response before starting the new Run.
     stale = page.request.get(held[0].request.url)
     assert stale.status == 200 and 'data-state="STALE"' in stale.text()
