@@ -345,6 +345,46 @@ def _build_persisted_bundle(
     )
 
 
+# ─── Freshness (existing authority; fail-closed) ─────────────────────────────
+
+
+def _resolve_freshness(ws: Any, user_id: str, project_id: str) -> Any:
+    """CURRENT/STALE of the Last Run via the existing freshness authority.
+
+    If the current Working Copy identity cannot be resolved, ``None`` is passed and the
+    authority fails closed to STALE -- an export never claims CURRENT it cannot prove.
+    """
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+
+    current_hash = None
+    try:
+        from app.workbook.registry import WORKBOOK
+        from app.workbook.workbook_identity import assemble_consistent_for_get
+
+        current_hash = assemble_consistent_for_get(user_id, project_id, WORKBOOK.version).composite_hash
+    except Exception:  # noqa: BLE001 - unresolved identity must degrade to STALE, not crash the export
+        current_hash = None
+    return resolve_runtime_freshness(ws, current_composite_hash=current_hash)
+
+
+def _history_id_for_snapshot(user_id: str, project_id: str, snapshot_id: "str | None") -> "str | None":
+    """History row id of the Run that equals the Last Run (its immutable UUID), if one exists.
+
+    Best effort: legacy workspaces have no history row; a read problem never blocks the export.
+    """
+    if not snapshot_id:
+        return None
+    try:
+        from app.persistence.run_history_repository import get_run_history
+
+        for entry in get_run_history(user_id, project_id, limit=25):
+            if entry.runtime_snapshot_id == snapshot_id:
+                return entry.history_id
+    except Exception:  # noqa: BLE001 - identity enrichment only
+        return None
+    return None
+
+
 # ─── Public service function ──────────────────────────────────────────────────
 
 
@@ -439,8 +479,16 @@ def build_canonical_last_run_institutional_workbook_export(
             contingency_authority=authority.contingency_authority,
         )
 
+        # RC-7: freeze the SAME ws read as an immutable evidence package; the V2 reporting
+        # sheets read only it, so a Working Copy edit can never reach them.
         from app.export.institutional_workbook import export_institutional_workbook_from_bundle
-        workbook_bytes = export_institutional_workbook_from_bundle(bundle)
+        from app.export.run_evidence import evidence_from_workspace
+
+        freshness = _resolve_freshness(ws, user_id, project_record.project_id)
+        evidence = evidence_from_workspace(
+            ws, project_record, user_id, is_stale=freshness.is_stale, freshness_source=freshness.source,
+            history_id=_history_id_for_snapshot(user_id, project_record.project_id, ws.last_runtime_snapshot_id))
+        workbook_bytes = export_institutional_workbook_from_bundle(bundle, run_evidence=evidence)
         first_row = bundle.runtime_rows[0]
 
     except ValueError:
@@ -471,6 +519,8 @@ def build_canonical_last_run_institutional_workbook_export(
         "export_run_at": authority.run_at or "",
         "export_snapshot_id": getattr(rr, "snapshot_id", None) or "",  # F05: for audit
         "export_working_changed_since_run": str(authority.working_changed_since_run).lower(),
+        "export_run_state": evidence.state,
+        "export_evidence_digest": evidence.evidence_digest,
     }
 
     from app.export.filename import model_results_filename
@@ -481,4 +531,84 @@ def build_canonical_last_run_institutional_workbook_export(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         status_code=200,
         metadata=metadata,
+    )
+
+
+
+def build_historical_run_workbook_export(
+    *,
+    project_record: Any,
+    user_id: "str | None",
+    history_id: "str | None",
+) -> Any:  # ExportResponse
+    """Zero-engine export of ONE immutable Run History row (E3).
+
+    The workbook is built only from that row's persisted evidence and is byte-reproducible.
+    Run History does not persist the input snapshot, so no input-assumption sheet is produced
+    and the current Working Copy is never substituted.  Fails closed (400/404 semantics via
+    ``ExportResponse``) for a missing/foreign project, unknown or foreign history id, or a
+    malformed stored row.  ``user_id`` must be the workspace owner resolved by the caller.
+    """
+    from app.services.export_service import ExportResponse
+
+    def _fail(status: int, message: str) -> Any:
+        return ExportResponse(
+            status_code=status,
+            error_content=(
+                f"<html><body><h2>Run export failed</h2><p>{message}</p>"
+                "<a href='/library'>Back to Library</a></body></html>"
+            ),
+        )
+
+    if project_record is None or user_id is None or not history_id:
+        return _fail(400, "Project and Run history ID required.")
+    if (getattr(project_record, "project_origin", "") or "") != "user_created":
+        return _fail(400, "Run history export requires a user project with committed Runs.")
+    try:
+        from app.persistence.run_history_repository import RunHistoryError, get_run_history_entry
+        from app.persistence.workspace_repository import get_workspace_state
+
+        try:
+            entry = get_run_history_entry(user_id, project_record.project_id, history_id)
+        except RunHistoryError:
+            return _fail(422, "The stored Run record is malformed and cannot be exported.")
+        if entry is None or entry.project_id != project_record.project_id or entry.user_id != user_id:
+            return _fail(404, "Run history entry not found.")
+
+        ws = get_workspace_state(user_id, project_record.project_id)
+        freshness = _resolve_freshness(ws, user_id, project_record.project_id) if ws is not None else None
+        from app.export.institutional_reporting_v2 import build_run_evidence_workbook
+        from app.export.run_evidence import evidence_from_history_entry
+
+        evidence = evidence_from_history_entry(
+            entry, project_record,
+            last_run_snapshot_id=getattr(ws, "last_runtime_snapshot_id", None) if ws is not None else None,
+            last_run_is_stale=bool(freshness.is_stale) if freshness is not None else True,
+            freshness_source=freshness.source if freshness is not None else "workspace_unavailable",
+        )
+        workbook_bytes = build_run_evidence_workbook(evidence)
+    except ValueError:
+        return _fail(400, "Run history export failed.")
+
+    from app.export.filename import model_results_filename
+
+    return ExportResponse(
+        bytes_data=workbook_bytes,
+        filename=model_results_filename(evidence.project_name, evidence.scenario_name, evidence.snapshot_id),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        status_code=200,
+        metadata={
+            "export_project_id": evidence.project_id,
+            "export_project_code": evidence.project_code,
+            "export_project_name": evidence.project_name,
+            "export_authority": "RUN_HISTORY_ENTRY",
+            "export_run_id": evidence.snapshot_id,
+            "export_run_at": evidence.ran_at,
+            "export_history_id": evidence.history_id or "",
+            "export_snapshot_id": evidence.snapshot_id,
+            "export_run_state": evidence.state,
+            "export_evidence_digest": evidence.evidence_digest,
+            "export_active_scenario_id": evidence.scenario_id or "",
+            "export_active_scenario_name": evidence.scenario_name or "",
+        },
     )

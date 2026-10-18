@@ -43,7 +43,17 @@ INSTITUTIONAL_SHEET_INVENTORY = [
     ("Balance Sheet", "Offline balance sheet assembly from runtime result", "Reviewers", "Runtime", ""),
     ("Audit", "Runtime source notes, provenance, audit boundary", "Reviewers", "Review", ""),
     ("Gap Register", "Known gaps and accepted conventions", "Reviewers", "Review", ""),
-    ("Validation Status", "Per-metric validation tier and disclosures", "All users", "Review", "Last sheet"),
+    ("Validation Status", "Per-metric validation tier and disclosures", "All users", "Review", "Last template sheet"),
+    # RC-7 run-bound reporting sheets (appended when the Run evidence is bound to the export)
+    ("Report_Guide", "Run identity, CURRENT/STALE/HISTORICAL context, conventions, non-claims", "All users", "Review", "Placed after Workbook_Index"),
+    ("Periods_Dates", "Persisted period axes, declared/observed frequency, key dates", "Reviewers", "Runtime", ""),
+    ("Sources_Uses", "Engine-audited Sources & Uses (full precision) with reconciliation", "Reviewers", "Runtime", ""),
+    ("Construction_Funding", "Construction funding and Senior draws by period", "Reviewers", "Runtime", "Where persisted"),
+    ("Debt_DSCR", "Senior debt balance, service, DSCR; consistency checks", "Reviewers", "Runtime", "No covenant compliance declared"),
+    ("Reserves", "DSRA / MRA balances and contributions", "Reviewers", "Runtime", ""),
+    ("Tax_Bridge", "Tax bridge by period from the persisted tax schedule", "Reviewers", "Runtime", ""),
+    ("Run_Integrity", "Existing Run Integrity checks over persisted evidence", "Reviewers", "Runtime", ""),
+    ("Disclosures", "Methodology and unavailable-data register", "All users", "Review", "Last sheet when bound"),
 ]
 
 CALIBRATION_SHEET_INVENTORY = [
