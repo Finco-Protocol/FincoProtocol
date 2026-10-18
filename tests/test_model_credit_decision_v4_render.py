@@ -50,7 +50,8 @@ def test_v4_template_shows_two_run_shortfalls_and_no_false_covenant():
     assert "PLCR" in html and "UNAVAILABLE" in html
     assert "not an approval" in html
     assert "Contractual covenant/default" in html
-    assert "committed-1" in html
+    # the template deliberately shows history_id[:12]; ids are kept <= 12 chars so both Run identities are visible in full
+    assert "committed-1" in html and "committed-2" in html
 
 
 @pytest.mark.parametrize("width", [390, 1440])
