@@ -3213,6 +3213,8 @@ async def v2_workbook_run(
             _scenario_revenue_input.pop("effective_tariff_eur_mwh")
             _scenario_revenue_input["multistream_config_json"] = _contracts
             _kpis_enriched["revenue_multistream_audit"] = result["revenue_multistream_audit"]
+            if result.get("revenue_energy_ledger") is not None:
+                _kpis_enriched["revenue_energy_ledger"] = result["revenue_energy_ledger"]       # RC-7 / C1: Run-bound physical-energy classification
         _kpis_enriched["scenario_revenue_input"] = _scenario_revenue_input
     # RC-5 / S7-01: Run-bound proof (or explicit absence of proof) that the overrides saved for this Run were applied. Kept apart
     # from Run artifact integrity; a Run never claims more than the canonical binding evidence above.
