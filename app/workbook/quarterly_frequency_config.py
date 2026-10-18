@@ -145,4 +145,10 @@ def run_evidence(project_inputs) -> dict:
         "classification": "RC7B_QUARTERLY_CANDIDATE_RELEASE_CLOSED",
         "owner_decisions": "D-01..D-12 OPEN; D-06/D-07 deferred",
         "sponsor_returns_status": "PENDING_D08_DISTRIBUTION_ELIGIBILITY",
+        # Explicit, recorded consequence of the 3/3 selection (never silent):
+        # the Working Copy's SHL and automatic DSRA are not part of this Run.
+        "financing_structure_binding": {
+            "sponsor_funding_mode": "EQUITY_ONLY", "reserve_support_mode": "NONE",
+            "shareholder_loan": "EXCLUDED_BY_3_3_SELECTION", "automatic_dsra": "EXCLUDED_BY_3_3_SELECTION",
+        },
     }
