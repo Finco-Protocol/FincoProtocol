@@ -7,7 +7,6 @@ Runtime calculations remain authoritative in the model layer.
 
 import os
 import threading
-import uuid
 from contextlib import contextmanager
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
@@ -16,80 +15,59 @@ DB_PATH = os.getenv("FINCO_DB_PATH", os.path.join(DATA_DIR, "finco_runs.db"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
-# V8-A: process-local optimisation only. A fresh process always verifies/migrates
-# its database; a cached result can never attest to another process's progress.
-# Bump this contract when adding new DDL to _init_schema.
-_SCHEMA_CONTRACT_VERSION = "v8a-schema-1"
+# V8-A: schema checks are bypassed ONLY after this process has completed
+# the migrations on this same database file and observed its SQLite DDL version.
+# Bump this constant when changing _init_schema without changing its DDL.
+_SCHEMA_CONTRACT_VERSION = 1
 _SCHEMA_GUARD_LOCK = threading.RLock()
 _SCHEMA_GUARD_SEEN = {}
 
 
 def _database_file_identity():
-    """Identify the *file*, not just its pathname; uncertain identities are never cached."""
+    """Use file identity, never pathname alone; fail closed when uncertain.
+
+    The optional birthtime distinguishes recycled inodes on filesystems which
+    expose it. SQLite's on-disk schema generation independently detects a new
+    empty database, a restored older database, and external DDL.
+    """
     if not DB_PATH or DB_PATH == ":memory:" or str(DB_PATH).startswith("file:"):
         return None
     try:
         stat = os.stat(DB_PATH)
-        return (os.getpid(), os.path.realpath(DB_PATH), stat.st_dev, stat.st_ino)
+        return (
+            os.getpid(), os.path.realpath(DB_PATH), stat.st_dev, stat.st_ino,
+            getattr(stat, "st_birthtime_ns", None),
+        )
     except (OSError, TypeError, ValueError):
         return None
 
 
-def _schema_state(conn):
-    """A durable per-incarnation marker plus SQLite's current DDL generation.
-
-    SQLite schema_version changes on external DDL, including another process's
-    migrations. The stored random incarnation catches delete/recreate at the
-    same pathname even when a filesystem recycles an inode. This is a cheap
-    read, not a substitute for process-first initialization.
-    """
-    import sqlite3
-
-    try:
-        row = conn.execute(
-            "SELECT incarnation, contract_version FROM _finco_schema_state WHERE singleton=1"
-        ).fetchone()
-        generation = conn.execute("PRAGMA schema_version").fetchone()[0]
-    except sqlite3.DatabaseError:
-        return None
-    if row is None or not row[0] or not row[1]:
-        return None
-    return (str(row[0]), str(row[1]), int(generation))
+def _schema_generation(conn):
+    """SQLite's durable schema cookie; changes on DDL in another process."""
+    return int(conn.execute("PRAGMA schema_version").fetchone()[0])
 
 
 def _ensure_schema_ready(conn):
-    """Run DDL once per process, database incarnation, and schema generation.
+    """Process-local schema check, with cross-process transactional DDL.
 
-    All first-time and upgrade work happens inside BEGIN IMMEDIATE, which
-    serialises cross-process migrations. No marker is published until the DDL
-    commits successfully. A new process still executes the idempotent
-    migrations at least once; it never trusts another process's local cache.
+    Each process performs the full migration at least once per file identity;
+    the local cache holds only a successfully committed schema generation.
+    After an external schema change, the generation differs and the full
+    migration is repeated. Uncertain identities always migrate. No table,
+    tenant metadata, user_version, or backup format is added or modified.
     """
     identity = _database_file_identity()
     with _SCHEMA_GUARD_LOCK:
-        state = _schema_state(conn)
-        if (identity is not None and state is not None
-                and state[1] == _SCHEMA_CONTRACT_VERSION
-                and _SCHEMA_GUARD_SEEN.get(identity) == state):
+        generation = _schema_generation(conn)
+        if (identity is not None
+                and _SCHEMA_GUARD_SEEN.get(identity)
+                == (_SCHEMA_CONTRACT_VERSION, generation)):
             return
-
         try:
+            # BEGIN IMMEDIATE serialises first-boot DDL across processes.
+            # _init_schema never commits inside this transaction.
             conn.execute("BEGIN IMMEDIATE")
             _init_schema(conn, commit=False)
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS _finco_schema_state ("
-                "singleton INTEGER PRIMARY KEY CHECK (singleton=1), "
-                "incarnation TEXT NOT NULL, contract_version TEXT NOT NULL)"
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO _finco_schema_state "
-                "(singleton, incarnation, contract_version) VALUES (1, ?, ?)",
-                (uuid.uuid4().hex, _SCHEMA_CONTRACT_VERSION),
-            )
-            conn.execute(
-                "UPDATE _finco_schema_state SET contract_version=? WHERE singleton=1",
-                (_SCHEMA_CONTRACT_VERSION,),
-            )
             conn.commit()
         except BaseException:
             conn.rollback()
@@ -98,13 +76,13 @@ def _ensure_schema_ready(conn):
             raise
 
         current_identity = _database_file_identity()
-        current_state = _schema_state(conn)
-        if (identity is not None and identity == current_identity
-                and current_state is not None
-                and current_state[1] == _SCHEMA_CONTRACT_VERSION):
+        if identity is not None and identity == current_identity:
+            current_generation = _schema_generation(conn)
             if len(_SCHEMA_GUARD_SEEN) >= 128:
-                _SCHEMA_GUARD_SEEN.clear()  # bounded across temporary test DBs
-            _SCHEMA_GUARD_SEEN[identity] = current_state
+                _SCHEMA_GUARD_SEEN.clear()
+            _SCHEMA_GUARD_SEEN[identity] = (
+                _SCHEMA_CONTRACT_VERSION, current_generation
+            )
 
 
 def get_connection():
