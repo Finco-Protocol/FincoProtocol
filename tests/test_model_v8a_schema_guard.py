@@ -212,3 +212,25 @@ def test_cached_connections_do_not_repeat_create_statements(isolated_db, monkeyp
         for statement in second
     )
     assert len(second) < len(first), (len(first), len(second))
+
+
+def test_same_inode_and_schema_cookie_replaced_database(isolated_db, tmp_path):
+    """An in-place restore can retain both inode and PRAGMA schema_version."""
+    _open_and_close()
+    original_inode = isolated_db.stat().st_ino
+    with sqlite3.connect(isolated_db) as conn:
+        original_generation = conn.execute("PRAGMA schema_version").fetchone()[0]
+
+    donor = tmp_path / "restore-source.sqlite"
+    with sqlite3.connect(donor) as conn:
+        conn.execute("CREATE TABLE incomplete_restored_schema (id INTEGER)")
+        conn.execute(f"PRAGMA schema_version={original_generation}")
+    # In-place bytes replacement deliberately retains the target inode,
+    # unlike os.replace. All connections are closed before the overwrite.
+    isolated_db.write_bytes(donor.read_bytes())
+    assert isolated_db.stat().st_ino == original_inode
+    with sqlite3.connect(isolated_db) as conn:
+        assert conn.execute("PRAGMA schema_version").fetchone()[0] == original_generation
+    _open_and_close()
+    assert "model_run_history" in _tables(isolated_db)
+    assert "workspace_states" in _tables(isolated_db)
