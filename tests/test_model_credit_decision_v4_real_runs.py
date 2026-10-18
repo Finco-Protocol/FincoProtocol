@@ -52,7 +52,12 @@ def test_real_two_committed_runs_compare_exact_dates_only(cenv):
     assert first.history_id != second.history_id
     _, data = credit(cenv, record, first.history_id, second.history_id)
     out = data["credit_v4"]["period_comparison"]
-    assert out["available"] or "period" in out["reason"].lower()
+    # RC-7B Correction B: two real 6/6 Runs on the SAME committed axis have proven identical intervals (each period starts at the committed
+    # previous period end), so the valid historical comparison is preserved and nothing is reported NOT_COMPARABLE.
+    assert out["available"] and out["not_comparable_count"] == 0, out
+    columns = data["runs"][0]["timeline"]["columns"]
+    assert all(c["start"] is None or c["start"] < c["date"] for c in columns)
+    assert any(c["start"] for c in columns)
     if out["available"]:
         assert out["common_periods"] > 0
         assert all(row["date"].count("-") == 2 for row in out["rows"])

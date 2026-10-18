@@ -65,6 +65,7 @@ def _periods(view: Mapping) -> dict[str, Any]:
         return {"valid": False, "by_date": {}, "reason": "PERIOD_DIMENSION_INVALID_OR_UNBOUNDED", "missing": ["PERIOD_DIMENSION_INVALID"], "count": 0}
     dates: list[str] = []
     indexes: list[int] = []
+    starts: dict[str, str | None] = {}
     for col in columns:
         c = _as_mapping(col)
         d, i = _date(c.get("date")), c.get("index")
@@ -72,6 +73,8 @@ def _periods(view: Mapping) -> dict[str, Any]:
             return {"valid": False, "by_date": {}, "reason": "PERIOD_DATE_OR_INDEX_MISSING", "missing": ["PERIOD_DATE_OR_INDEX_MISSING"], "count": len(columns)}
         dates.append(d)
         indexes.append(i)
+        # The committed period start (the previous committed period end). Absent or unparsable is None: never inferred.
+        starts[d] = _date(c.get("start")) if c.get("start") is not None else None
     if dates != sorted(set(dates)) or len(set(indexes)) != len(indexes) or indexes != sorted(indexes):
         return {"valid": False, "by_date": {}, "reason": "PERIOD_DATE_OR_INDEX_COLLISION", "missing": ["PERIOD_DATE_OR_INDEX_COLLISION"], "count": len(columns)}
     matrix = {}
@@ -97,7 +100,7 @@ def _periods(view: Mapping) -> dict[str, Any]:
             missing.append(f"{d}:DEBT_SERVICE_UNAVAILABLE_OR_INVALID")
         elif debt > 0 and (row.get("dscr") is None or row.get("base_cfads") is None or row.get("closing") is None):
             missing.append(f"{d}:COVERAGE_OR_BALANCE_UNAVAILABLE")
-    return {"valid": True, "by_date": by_date, "reason": "", "missing": missing, "count": len(dates)}
+    return {"valid": True, "by_date": by_date, "starts": starts, "reason": "", "missing": missing, "count": len(dates)}
 
 
 def _risk(view: Mapping, per: Mapping[str, Any]) -> dict[str, Any]:
@@ -148,16 +151,33 @@ def build_credit_v4(views: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     elif len({str(v.get("operating_frequency") or "6/6") for v in views}) > 1:
         # RC-7B: identical end dates on a 3-month and a 6-month axis measure
         # different intervals; an end-date-only join would compare unlike flows.
-        comparison = {"available": False, "reason": "The selected Runs use different operating/debt frequencies; "
+        comparison = {"available": False, "state": "NOT_COMPARABLE", "reason": "The selected Runs use different operating/debt frequencies; "
                       "date joins across different interval lengths are unavailable.", "rows": []}
     elif not all(p["valid"] for p in parsed):
         comparison = {"available": False, "reason": "At least one Run lacks valid period dates/identity; index-based matching is prohibited.", "rows": []}
     else:
-        common = set(parsed[0]["by_date"])
+        same_end = set(parsed[0]["by_date"])
         for p in parsed[1:]:
-            common &= set(p["by_date"])
-        if not common:
-            comparison = {"available": False, "reason": "No identical committed period-end dates; comparisons across mismatched period axes are unavailable.", "rows": []}
+            same_end &= set(p["by_date"])
+        # Equal period-end dates are not proof of equal economic intervals (a quarterly COD stub or a different period start gives the
+        # same end date over a different interval). A date joins only when every Run's committed period start is known and equal.
+        common, not_comparable = set(), []
+        for d in sorted(same_end):
+            starts = [p["starts"].get(d) for p in parsed]
+            if any(x is None for x in starts):
+                not_comparable.append({"date": d, "reason": "PERIOD_START_NOT_COMMITTED"})
+            elif len(set(starts)) > 1:
+                not_comparable.append({"date": d, "reason": "PERIOD_INTERVAL_DIFFERS", "starts": starts})
+            else:
+                common.add(d)
+        if not same_end:
+            comparison = {"available": False, "state": "NOT_COMPARABLE",
+                          "reason": "No identical committed period-end dates; comparisons across mismatched period axes are unavailable.", "rows": []}
+        elif not common:
+            comparison = {"available": False, "state": "NOT_COMPARABLE", "not_comparable": not_comparable[:12],
+                          "reason": "The Runs share period-end dates but their committed period intervals are not proven identical "
+                                    "(different or uncommitted period starts); no start date is inferred, so the comparison is unavailable.",
+                          "rows": []}
         else:
             changed, missing, unchanged = [], [], 0
             for d in sorted(common):
@@ -183,7 +203,8 @@ def build_credit_v4(views: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                           "changed": len(changed), "unavailable": len(missing), "unchanged": unchanged,
                           "truncated": len(all_rows) > MAX_DETAIL, "common_periods": len(common),
                           "excluded_dates": [len(p["by_date"]) - len(common) for p in parsed],
-                          "basis": "Exact committed ISO period-end dates; signed differences against Run 1. "
+                          "not_comparable": not_comparable[:12], "not_comparable_count": len(not_comparable),
+                          "basis": "Exact committed ISO period-end dates with identical committed period starts; signed differences against Run 1. "
                                    "CHANGED is not a materiality verdict or evidence of causation. "
                                    "No position-based join, missing-as-zero, contractual interpretation or recalculation."}
     return {"schema": VERSION, "run_risks": risks, "period_comparison": comparison,

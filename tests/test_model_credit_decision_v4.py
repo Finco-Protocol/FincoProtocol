@@ -6,7 +6,7 @@ import pytest
 from app.v2.credit_v4_evidence import build_credit_v4
 
 
-def run(name, dscr=1.2, debt=20.0, dt=("2030-06-30", "2030-12-31"), credit="PASS"):
+def run(name, dscr=1.2, debt=20.0, dt=("2030-06-30", "2030-12-31"), credit="PASS", first_start="2029-12-31", starts="derive"):
     keys = {
         "dscr": [dscr, dscr], "debt_service": [debt, debt],
         "base_cfads": [50.0, 45.0], "closing": [90.0, 80.0],
@@ -17,7 +17,10 @@ def run(name, dscr=1.2, debt=20.0, dt=("2030-06-30", "2030-12-31"), credit="PASS
         "identity": {"history_id": name, "scenario": "P50", "state": "HISTORICAL", "integrity": credit},
         "timeline": {
             "available": True,
-            "columns": [{"index": i + 1, "date": d} for i, d in enumerate(dt)],
+            # Committed period start = the previous committed period end (RC-7B Correction B); ``starts=None`` models a Run that
+            # did not persist the previous period.
+            "columns": [{"index": i + 1, "date": d,
+                         "start": (None if starts is None else (first_start if i == 0 else dt[i - 1]))} for i, d in enumerate(dt)],
             "rows": [{"key": k, "cells": [{"v": v} for v in vals]} for k, vals in keys.items()],
         },
         "capacity": {"min_dscr": {"v": dscr}, "convergence": {"converged": True}},
@@ -39,7 +42,7 @@ def test_clean_observation_is_not_credit_pass():
 
 def test_date_join_does_not_match_by_period_index():
     r = run("a")
-    q = run("b", dt=("2030-12-31", "2031-06-30"))
+    q = run("b", dt=("2030-12-31", "2031-06-30"), first_start="2030-06-30")
     q["timeline"]["rows"][1]["cells"][0]["v"] = 25.0
     x = build_credit_v4([r, q])["period_comparison"]
     assert x["available"] and x["common_periods"] == 1
@@ -104,3 +107,53 @@ def test_three_authorised_runs_supported():
     x = build_credit_v4([run("a"), run("b", dscr=0.9), run("c", debt=21)])
     assert x["period_comparison"]["available"]
     assert len(x["run_risks"]) == 3
+
+
+def _comparison(a, b):
+    return build_credit_v4([a, b])["period_comparison"]
+
+
+def test_equal_period_end_with_a_different_committed_start_is_not_comparable():
+    """A quarterly COD stub and a full quarter can end on the same date over different intervals: the end date alone is no proof."""
+    full = run("full", dt=("2031-06-30", "2031-09-30"), first_start="2031-03-31")
+    stub = run("stub", dt=("2031-06-30", "2031-09-30"), first_start="2031-05-15")
+    x = _comparison(full, stub)
+    # 2031-06-30: starts differ (stub). 2031-09-30: both start at the committed previous end 2031-06-30 and join.
+    assert x["available"] and x["common_periods"] == 1 and x["not_comparable_count"] == 1
+    assert x["not_comparable"][0] == {"date": "2031-06-30", "reason": "PERIOD_INTERVAL_DIFFERS", "starts": ["2031-03-31", "2031-05-15"]}
+    assert all(r["date"] == "2031-09-30" for r in x["rows"])
+
+
+def test_all_shared_dates_with_differing_starts_return_not_comparable_without_inventing_a_start():
+    a = run("a", dt=("2031-06-30",), first_start="2031-03-31")
+    b = run("b", dt=("2031-06-30",), first_start="2031-05-15")
+    for key in ("dscr", "debt_service", "base_cfads", "closing", "bank_cfads", "dsra_balance", "distribution"):
+        pass
+    a["timeline"]["rows"] = [{"key": r["key"], "cells": r["cells"][:1]} for r in a["timeline"]["rows"]]
+    b["timeline"]["rows"] = [{"key": r["key"], "cells": r["cells"][:1]} for r in b["timeline"]["rows"]]
+    x = _comparison(a, b)
+    assert not x["available"] and x["state"] == "NOT_COMPARABLE" and x["rows"] == []
+    assert x["not_comparable"][0]["reason"] == "PERIOD_INTERVAL_DIFFERS"
+
+
+@pytest.mark.parametrize("missing_in", ["a", "b"])
+def test_an_uncommitted_period_start_is_not_comparable_never_assumed(missing_in):
+    a = run("a", starts=None if missing_in == "a" else "derive")
+    b = run("b", starts=None if missing_in == "b" else "derive")
+    x = _comparison(a, b)
+    assert not x["available"] and x["state"] == "NOT_COMPARABLE" and x["rows"] == []
+    assert {n["reason"] for n in x["not_comparable"]} == {"PERIOD_START_NOT_COMMITTED"}
+
+
+def test_identical_committed_intervals_still_compare_as_before_including_historical_six_month_runs():
+    a, b = run("a"), run("b")
+    b["timeline"]["rows"][1]["cells"][0]["v"] = 25.0
+    x = _comparison(a, b)
+    assert x["available"] and x["common_periods"] == 2 and x["not_comparable_count"] == 0 and x["changed"] >= 1
+
+
+def test_different_operating_frequency_is_state_not_comparable():
+    a, b = run("a"), run("b")
+    b["operating_frequency"] = "3/3"
+    x = _comparison(a, b)
+    assert not x["available"] and x["state"] == "NOT_COMPARABLE"

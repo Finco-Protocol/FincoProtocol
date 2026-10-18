@@ -37,6 +37,7 @@
   <p class="cd-note" data-testid="cd-v4-compare-coverage">{{ compare.common_periods }} identical period-end dates · {{ compare.changed }} changed cells ·
     {{ compare.unavailable }} unavailable cells · {{ compare.unchanged }} unchanged cells.
     Unmatched dates per selected Run: {{ compare.excluded_dates | join(', ') }}.
+    {% if compare.not_comparable_count %}{{ compare.not_comparable_count }} shared period-end date(s) NOT COMPARABLE (period start differs or is not committed); they are excluded, not inferred.{% endif %}
     {% if compare.truncated %}<strong>Showing the first 90 changed/unavailable cells; complete comparison is not rendered.</strong>{% endif %}
   </p>
   <div class="cd-scroll" tabindex="0" role="region" aria-label="Date-matched committed lender period differences">

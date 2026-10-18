@@ -401,7 +401,11 @@ def _timeline(inp: RunInput) -> dict[str, Any]:
     dates = _dates(entry)
     dist = {r.get("period"): r for r in _rows(_mapping(entry.distribution_schedule).get("periods"))}
     dsra = {r.get("period"): r for r in _rows(_mapping(entry.debt_schedule).get("periods"))}
-    columns = [{"index": p["period_index"], "date": dates.get(p["period_index"]) or _mapping(dist.get(p["period_index"])).get("date")}
+    # RC-7B Correction B: the committed axis is contiguous and half-open, so a period starts where the committed previous period ended.
+    # ``start`` is that committed end date; when the previous period is not persisted it is None (never inferred), and Credit V4 then
+    # cannot prove the interval and reports NOT_COMPARABLE.
+    columns = [{"index": p["period_index"], "date": dates.get(p["period_index"]) or _mapping(dist.get(p["period_index"])).get("date"),
+                "start": dates.get(p["period_index"] - 1)}
                for p in periods]
     rows = []
     for key, label, kind, link in _ROWS:
