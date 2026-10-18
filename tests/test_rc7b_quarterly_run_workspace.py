@@ -33,6 +33,12 @@ def _quarterly(pi):
     return dataclasses.replace(pi, info=QuarterlyProjectInfo(**values, operating_calendar_policy=quarterly_candidate_policy()))
 
 
+def _selection(pi=None):
+    """The selection a user saves for ``pi``: it records the EXACT structure it excludes."""
+    pi = pi or _solar()
+    return cfg.candidate_config_json(cfg.structure_of(pi.financing))
+
+
 # ── committed state is closed ────────────────────────────────────────────────
 
 def test_activation_is_committed_closed():
@@ -43,18 +49,19 @@ def test_activation_is_committed_closed():
 
 
 def test_strict_versioned_selection_contract():
-    raw = cfg.candidate_config_json()
+    raw = _selection()
     assert cfg.canonical_json(raw) == raw and cfg.frequency_label(raw) == "3/3"
     assert cfg.parse_config("") is None and cfg.parse_config(None) is None and cfg.frequency_label("") == "6/6"
     good = json.loads(raw)
     for bad in ({**good, "operating_months": 6}, {**good, "debt_service_months": 6},
                 {**good, "sponsor_funding_mode": "SHARE_CAPITAL_THEN_SHL"}, {**good, "reserve_support_mode": "CASH_DSRA"},
-                {**good, "authority": "x"}, {**good, "version": 2}, {k: v for k, v in good.items() if k != "authority"},
+                {**good, "authority": "x"}, {**good, "version": 1}, {**good, "version": 3}, {k: v for k, v in good.items() if k != "authority"},
+                {k: v for k, v in good.items() if k != "excluded_structure"},
                 {**good, "extra": 1}, {**good, "operating_calendar_policy": {**good["operating_calendar_policy"], "stub": "ROLL"}}):
         with pytest.raises(ValueError, match="QUARTERLY_"):
             cfg.parse_config(json.dumps(bad))
     with pytest.raises(ValueError, match="QUARTERLY_CONFIG_DUPLICATE_KEY"):
-        cfg.parse_config('{"version":1,"version":1}')
+        cfg.parse_config('{"version":2,"version":2}')
     with pytest.raises(ValueError, match="QUARTERLY_CONFIG_BOUNDED_JSON_REQUIRED"):
         cfg.parse_config("x" * (cfg.MAX_BYTES + 1))
 
@@ -68,7 +75,7 @@ def test_default_six_month_working_copy_is_the_same_object():
 
 def test_closed_gate_refuses_every_quarterly_application():
     # The typed Working Copy is read faithfully; finance production is refused.
-    applied = cfg.apply_config(_solar(), cfg.candidate_config_json(), "Solar")
+    applied = cfg.apply_config(_solar(), _selection(), "Solar")
     assert applied.info.operating_calendar_policy is not None
     from app.services.production_financial_authority import (
         CleanProductionRunUnavailable, classify_production_authority, run_clean_production,
@@ -86,38 +93,107 @@ def test_snapshot_carrying_a_selection_fails_closed_at_the_adapter(env):
     snapshot = dict(get_workspace_state(OWNER, record.project_id).draft_snapshot)
     assert cfg.SNAPSHOT_KEY not in snapshot  # every existing Working Copy is 6/6 by absence
     assert build_projectinputs_from_snapshot(snapshot).info.period_frequency.name == "SEMESTRIAL"
-    quarterly = build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: cfg.candidate_config_json()})
+    own = cfg.candidate_config_json(cfg.structure_of(build_projectinputs_from_snapshot(snapshot).financing))
+    quarterly = build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: own})
     assert quarterly.info.operating_calendar_policy is not None  # never silently read as 6/6
     from app.services.production_financial_authority import CleanProductionRunUnavailable, run_clean_production
     with pytest.raises(CleanProductionRunUnavailable, match="QUARTERLY_ADMISSION_CLOSED"):
         run_clean_production(quarterly)
     with pytest.raises(SnapshotInputError, match="QUARTERLY_CONFIG_KEYS_INVALID"):
-        build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: '{"version":1}'})
+        build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: '{"version":2}'})
 
 
 @pytest.mark.parametrize("project_type", ["Data Center", "Ev Charging", "Storage"])
 def test_open_gate_still_refuses_unsupported_technologies(monkeypatch, project_type):
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     with pytest.raises(ValueError, match="QUARTERLY_TECHNOLOGY_UNSUPPORTED"):
-        cfg.apply_config(_solar(), cfg.candidate_config_json(), project_type)
+        cfg.apply_config(_solar(), _selection(), project_type)
 
 
-def test_open_gate_binds_recorded_structure_and_refuses_existing_reserves(monkeypatch):
+def test_open_gate_excludes_exactly_the_recorded_structure_and_records_it(monkeypatch):
     from finco_core.inputs import DebtServiceReserveSupportMode, SponsorFundingMode
     from finco_core.inputs._models import QuarterlyProjectInfo
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
-    applied = cfg.apply_config(_solar(), cfg.candidate_config_json(), "Solar")
+    source = _solar()
+    # The reference Working Copy carries a real shareholder loan and 6 DSRA months.
+    assert source.financing.shl_amount_keur > 0 and source.financing.dsra_months == 6
+    applied = cfg.apply_config(source, _selection(source), "Solar")
     assert isinstance(applied.info, QuarterlyProjectInfo)
     assert applied.financing.sponsor_funding_mode is SponsorFundingMode.EQUITY_ONLY
     assert applied.financing.dsra_months == 0 and applied.financing.shl_amount_keur == 0.0
+    assert source.financing.shl_amount_keur > 0 and source.financing.dsra_months == 6   # the input object is never mutated
     evidence = cfg.run_evidence(applied)
     assert evidence["operating_frequency"] == "3/3" and evidence["period_months"] == 3
     assert evidence["sponsor_returns_status"] == "PENDING_D08_DISTRIBUTION_ELIGIBILITY"
-    assert evidence["financing_structure_binding"]["shareholder_loan"] == "EXCLUDED_BY_3_3_SELECTION"
-    reserved = dataclasses.replace(_solar(), financing=dataclasses.replace(
-        _solar().financing, dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA))
+    assert evidence["financing_structure_binding"]["binding"] == "EXACT_RECORDED_STRUCTURE_VERIFIED"
+    assert evidence["financing_structure_binding"]["shareholder_loan"] == "EXCLUDED_BY_RECORDED_3_3_SELECTION"
+    reserved = dataclasses.replace(source, financing=dataclasses.replace(
+        source.financing, dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA))
     with pytest.raises(ValueError, match="QUARTERLY_RESERVE_POLICY_PENDING_D09"):
-        cfg.apply_config(reserved, cfg.candidate_config_json(), "Solar")
+        cfg.apply_config(reserved, _selection(reserved), "Solar")
+    with_accounts = dataclasses.replace(source, capex=dataclasses.replace(source.capex, reserve_accounts_keur=100.0))
+    with pytest.raises(ValueError, match="QUARTERLY_RESERVE_POLICY_PENDING_D09"):
+        cfg.apply_config(with_accounts, _selection(with_accounts), "Solar")
+    accrual = dataclasses.replace(source, financing=dataclasses.replace(source.financing, shl_construction_day_count_fraction=0.5))
+    with pytest.raises(ValueError, match="QUARTERLY_SHL_UNSUPPORTED"):
+        cfg.apply_config(accrual, _selection(accrual), "Solar")
+
+
+def test_a_project_without_shl_or_reserves_is_applied_with_nothing_removed(monkeypatch):
+    from finco_core.inputs import SponsorFundingMode
+    monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    source = _solar()
+    clean = dataclasses.replace(source, financing=dataclasses.replace(
+        source.financing, sponsor_funding_mode=SponsorFundingMode.EQUITY_ONLY, shl_amount_keur=0.0,
+        clean_shl_principal_keur=0.0, dsra_months=0))
+    selection = _selection(clean)
+    assert json.loads(selection)["excluded_structure"] == {
+        "sponsor_funding_mode": "EQUITY_ONLY", "shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0, "dsra_months": 0}
+    assert cfg.apply_config(clean, selection, "Solar").financing == clean.financing   # nothing was removed
+
+
+@pytest.mark.parametrize("change", [
+    {"shl_amount_keur": 20000.0}, {"clean_shl_principal_keur": 1.0}, {"dsra_months": 12}, {"dsra_months": 0},
+    {"shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0},
+    {"sponsor_funding_mode": "EQUITY_ONLY"},
+])
+def test_a_structure_that_differs_from_the_recorded_one_is_refused_never_overwritten(monkeypatch, change):
+    from finco_core.inputs import SponsorFundingMode
+    monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    source = _solar()
+    selection = _selection(source)                       # consent recorded against the reference structure
+    change = {k: (SponsorFundingMode[v] if k == "sponsor_funding_mode" else v) for k, v in change.items()}
+    changed = dataclasses.replace(source, financing=dataclasses.replace(source.financing, **change))
+    with pytest.raises(ValueError, match="QUARTERLY_FINANCING_STRUCTURE_MISMATCH"):
+        cfg.apply_config(changed, selection, "Solar")
+
+
+@pytest.mark.parametrize("recorded", [
+    {"sponsor_funding_mode": "EQUITY_ONLY", "shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0, "dsra_months": 0},
+    {"sponsor_funding_mode": "SHARE_CAPITAL_THEN_SHL", "shl_amount_keur": 1.0, "clean_shl_principal_keur": 1.0, "dsra_months": 6},
+])
+def test_a_fabricated_or_imported_selection_cannot_name_a_structure_the_project_does_not_have(monkeypatch, recorded):
+    monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    with pytest.raises(ValueError, match="QUARTERLY_FINANCING_STRUCTURE_MISMATCH"):
+        cfg.apply_config(_solar(), cfg.candidate_config_json(recorded), "Solar")
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda e: {k: v for k, v in e.items() if k != "dsra_months"},
+    lambda e: {**e, "extra": 1},
+    lambda e: {**e, "sponsor_funding_mode": "SHL"},
+    lambda e: {**e, "shl_amount_keur": -1.0},
+    lambda e: {**e, "clean_shl_principal_keur": float("nan")},
+    lambda e: {**e, "shl_amount_keur": True},
+    lambda e: {**e, "dsra_months": 6.0},
+    lambda e: {**e, "dsra_months": -1},
+    lambda e: {**e, "dsra_months": "6"},
+    lambda e: [],
+])
+def test_excluded_structure_is_strictly_decoded(mutate):
+    good = json.loads(_selection())
+    with pytest.raises(ValueError, match="QUARTERLY_CONFIG_EXCLUDED_STRUCTURE_INVALID"):
+        cfg.parse_config(json.dumps({**good, "excluded_structure": mutate(good["excluded_structure"])}))
 
 
 # ── product surfaces while closed ────────────────────────────────────────────
@@ -136,18 +212,18 @@ def test_closed_endpoint_generic_field_and_writer_refuse_and_nothing_is_rendered
     assert response.status_code == 404 and response.json()["error"] == "QUARTERLY_ADMISSION_CLOSED"
     generic = env.client.post("/v2/workbook/update", data={
         "project": record.project_code, "sheet_id": "project_setup", "field_id": cfg.FIELD_ID,
-        "value": cfg.candidate_config_json(), **tokens(page.text)})
+        "value": _selection(), **tokens(page.text)})
     assert generic.status_code == 409 and "QUARTERLY_GENERIC_FIELD_WRITE_REFUSED" in generic.text
     # The security-critical typed contract writer is unchanged and never authorizes this field.
     with pytest.raises(ValueError, match="TYPED_CONTRACT_FIELD_NOT_AUTHORIZED"):
         save_contracts(owner=OWNER, project_id=record.project_id, expected_hash=tokens(page.text)["content_hash"],
-                       raw=cfg.candidate_config_json(), field_id=cfg.FIELD_ID)
+                       raw=_selection(), field_id=cfg.FIELD_ID)
     # Every canonical write path (single field or batch) refuses at validation.
     from app.workbook.update_service import NonEditableFieldError, WorkbookUpdateService
     with pytest.raises(NonEditableFieldError, match="QUARTERLY_ADMISSION_CLOSED"):
-        WorkbookUpdateService.validate_field_update(cfg.FIELD_ID, cfg.candidate_config_json())
+        WorkbookUpdateService.validate_field_update(cfg.FIELD_ID, _selection())
     with pytest.raises(NonEditableFieldError, match="QUARTERLY_ADMISSION_CLOSED"):
-        WorkbookUpdateService.apply_draft_update(ws=before, field_id=cfg.FIELD_ID, raw_value=cfg.candidate_config_json(),
+        WorkbookUpdateService.apply_draft_update(ws=before, field_id=cfg.FIELD_ID, raw_value=_selection(),
                                                  content_hash=tokens(page.text)["content_hash"],
                                                  workbook_version=tokens(page.text)["workbook_version"], project_record=record)
     assert get_workspace_state(OWNER, record.project_id) == before
@@ -196,7 +272,7 @@ def test_open_gate_validation_rejects_malformed_selection(monkeypatch):
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     bad = WorkbookUpdateService.validate_field_update(cfg.FIELD_ID, '{"version":1}')
     assert not bad.is_valid and "QUARTERLY_CONFIG_KEYS_INVALID" in bad.error
-    assert WorkbookUpdateService.validate_field_update(cfg.FIELD_ID, cfg.candidate_config_json()).is_valid
+    assert WorkbookUpdateService.validate_field_update(cfg.FIELD_ID, _selection()).is_valid
     assert WorkbookUpdateService.validate_field_update(cfg.FIELD_ID, "").is_valid  # 6/6
 
 
@@ -279,7 +355,8 @@ def test_credit_v4_refuses_end_date_joins_across_frequencies():
 
 
 @pytest.mark.parametrize("code", ["QUARTERLY_ADMISSION_CLOSED", "QUARTERLY_RESERVE_POLICY_PENDING_D09",
-                                  "QUARTERLY_INTRAPERIOD_PPA_EXPIRY_UNSUPPORTED", "QUARTERLY_SHL_UNSUPPORTED"])
+                                  "QUARTERLY_INTRAPERIOD_PPA_EXPIRY_UNSUPPORTED", "QUARTERLY_SHL_UNSUPPORTED",
+                                  "QUARTERLY_FINANCING_STRUCTURE_MISMATCH"])
 def test_quarterly_refusals_are_typed_in_the_run_failure_explanation(code):
     from app.v2.run_failure_explanation import explain_run_failure
     out = explain_run_failure(ValueError(f"PR8_CLEAN_ENGINE_FAIL_CLOSED: {code}: detail"), message="refused")

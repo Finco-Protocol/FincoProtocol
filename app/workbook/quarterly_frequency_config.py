@@ -7,6 +7,13 @@ matched quarterly calendar policy AND the explicit financing structure the
 candidate admits (EQUITY_ONLY sponsor funding, NONE reserve support), in the
 same way the two-Senior activation binds its structure. Nothing is inferred.
 
+An existing shareholder loan or DSRA is never removed silently. The saved
+selection records the EXACT structure it excludes (``excluded_structure``:
+funding mode, SHL amounts, DSRA months). The Run applies the selection only
+while the Working Copy still carries exactly that structure; any difference
+(a changed template, an import that names other amounts, a later edit) is a
+typed refusal, never an overwrite.
+
 ``ACTIVATION_ENABLED`` stays ``False`` until the full 3/3 execution path is
 independently financially reviewed and the owner has decided D-01..D-12: while
 it is False, no Working Copy can save a 3/3 selection and no product Run can
@@ -22,8 +29,11 @@ SNAPSHOT_KEY = "operating_frequency_config_json"
 ACTIVATION_ENABLED = False
 AUTHORITY = "RC7B_QUARTERLY_CANDIDATE_SCOPE_V1"
 SUPPORTED_PROJECT_TYPES = frozenset({"solar", "wind"})
+VERSION = 2
 KEYS = {"version", "operating_months", "debt_service_months", "operating_calendar_policy",
-        "sponsor_funding_mode", "reserve_support_mode", "authority"}
+        "sponsor_funding_mode", "reserve_support_mode", "authority", "excluded_structure"}
+STRUCTURE_KEYS = {"sponsor_funding_mode", "shl_amount_keur", "clean_shl_principal_keur", "dsra_months"}
+STRUCTURE_MODES = frozenset({"EQUITY_ONLY", "SHARE_CAPITAL_THEN_SHL"})
 MAX_BYTES = 4000
 
 
@@ -52,7 +62,7 @@ def parse_config(raw):
         raise QuarterlyFrequencyError("QUARTERLY_CONFIG_INVALID_JSON") from exc
     if not isinstance(config, dict) or set(config) != KEYS:
         raise QuarterlyFrequencyError("QUARTERLY_CONFIG_KEYS_INVALID")
-    if type(config["version"]) is not int or config["version"] != 1:
+    if type(config["version"]) is not int or config["version"] != VERSION:
         raise QuarterlyFrequencyError("QUARTERLY_CONFIG_VERSION_UNSUPPORTED")
     if (config["operating_months"], config["debt_service_months"]) != (3, 3) or any(
             type(config[k]) is not int for k in ("operating_months", "debt_service_months")):
@@ -65,16 +75,51 @@ def parse_config(raw):
     policy = OperatingCalendarPolicy.from_dict(config["operating_calendar_policy"])
     if (policy.operating_months, policy.debt_service_months) != (3, 3):
         raise QuarterlyFrequencyError("QUARTERLY_MATCHED_3_3_REQUIRED")
-    return config | {"operating_calendar_policy": policy}
+    excluded = _decode_structure(config["excluded_structure"])
+    return config | {"operating_calendar_policy": policy, "excluded_structure": excluded}
 
 
-def candidate_config_json() -> str:
-    """The one defined 3/3 selection, canonically serialized (not approval)."""
+def _decode_structure(value):
+    """Strict decode of the structure a selection records as excluded."""
+    if not isinstance(value, dict) or set(value) != STRUCTURE_KEYS:
+        raise QuarterlyFrequencyError("QUARTERLY_CONFIG_EXCLUDED_STRUCTURE_INVALID")
+    if value["sponsor_funding_mode"] not in STRUCTURE_MODES:
+        raise QuarterlyFrequencyError("QUARTERLY_CONFIG_EXCLUDED_STRUCTURE_INVALID: sponsor_funding_mode")
+    decoded = {"sponsor_funding_mode": value["sponsor_funding_mode"]}
+    for name in ("shl_amount_keur", "clean_shl_principal_keur"):
+        amount = value[name]
+        if type(amount) not in (int, float) or amount != amount or amount in (float("inf"), float("-inf")) or amount < 0:
+            raise QuarterlyFrequencyError(f"QUARTERLY_CONFIG_EXCLUDED_STRUCTURE_INVALID: {name}")
+        decoded[name] = float(amount)
+    months = value["dsra_months"]
+    if type(months) is not int or months < 0:
+        raise QuarterlyFrequencyError("QUARTERLY_CONFIG_EXCLUDED_STRUCTURE_INVALID: dsra_months")
+    decoded["dsra_months"] = months
+    return decoded
+
+
+def structure_of(financing) -> dict:
+    """The exact financing structure a 3/3 selection would exclude (read, never modified)."""
+    return {
+        "sponsor_funding_mode": financing.sponsor_funding_mode.name,
+        "shl_amount_keur": float(financing.shl_amount_keur or 0.0),
+        "clean_shl_principal_keur": float(financing.clean_shl_principal_keur or 0.0),
+        "dsra_months": int(financing.dsra_months or 0),
+    }
+
+
+def candidate_config_json(excluded_structure) -> str:
+    """The one defined 3/3 selection, canonically serialized (not approval).
+
+    ``excluded_structure`` is mandatory: the selection is explicit consent to
+    exclude exactly this structure, never a blanket instruction to remove one.
+    """
     from finco_core.engine.calendar_policy import quarterly_candidate_policy
     return canonical_json(json.dumps({
-        "version": 1, "operating_months": 3, "debt_service_months": 3,
+        "version": VERSION, "operating_months": 3, "debt_service_months": 3,
         "operating_calendar_policy": quarterly_candidate_policy().to_dict(),
         "sponsor_funding_mode": "EQUITY_ONLY", "reserve_support_mode": "NONE", "authority": AUTHORITY,
+        "excluded_structure": excluded_structure,
     }))
 
 
@@ -108,6 +153,9 @@ def apply_config(pi, raw, project_type: str):
     in the saved contract: EQUITY_ONLY sponsor funding (no shareholder loan) and
     NONE reserve support (no automatic DSRA). Explicit reserve authority already
     on the project (support mode, requirement or target) is refused, never erased.
+    The shareholder loan and DSRA months are excluded ONLY while the Working Copy
+    carries exactly the structure the selection recorded; any other structure is
+    refused with the recorded and the actual values, never overwritten.
     """
     config = parse_config(raw)
     if config is None:
@@ -127,9 +175,20 @@ def apply_config(pi, raw, project_type: str):
         raise QuarterlyFrequencyError(f"QUARTERLY_FACILITY_COMBINATION_UNSUPPORTED: {type(pi).__name__}")
     fin = pi.financing
     if (fin.dsra_support_mode is not DebtServiceReserveSupportMode.NONE
-            or fin.debt_service_reserve_requirement_keur or fin.dsra_target_policy is not None):
+            or fin.debt_service_reserve_requirement_keur or fin.dsra_target_policy is not None
+            or pi.capex.reserve_accounts_keur):
         raise QuarterlyFrequencyError(
             "QUARTERLY_RESERVE_POLICY_PENDING_D09: explicit reserve authority cannot be discarded")
+    if fin.shl_construction_day_count_fraction:
+        raise QuarterlyFrequencyError(
+            "QUARTERLY_SHL_UNSUPPORTED: a shareholder-loan construction accrual cannot be discarded")
+    recorded, actual = config["excluded_structure"], structure_of(fin)
+    if recorded != actual:
+        raise QuarterlyFrequencyError(
+            "QUARTERLY_FINANCING_STRUCTURE_MISMATCH: the saved 3/3 selection excludes "
+            f"{json.dumps(recorded, sort_keys=True)} but the Working Copy carries "
+            f"{json.dumps(actual, sort_keys=True)}; a shareholder loan or DSRA is never removed "
+            "silently. Re-select 3/3 to record the current structure explicitly.")
     values = {f.name: getattr(pi.info, f.name) for f in fields(pi.info)}
     values["period_frequency"] = PeriodFrequency.QUARTERLY
     info = QuarterlyProjectInfo(**values, operating_calendar_policy=config["operating_calendar_policy"])
@@ -151,10 +210,13 @@ def run_evidence(project_inputs) -> dict:
         "classification": "RC7B_QUARTERLY_CANDIDATE_RELEASE_CLOSED",
         "owner_decisions": "D-01..D-12 OPEN; D-06/D-07 deferred",
         "sponsor_returns_status": "PENDING_D08_DISTRIBUTION_ELIGIBILITY",
-        # Explicit, recorded consequence of the 3/3 selection (never silent):
-        # the Working Copy's SHL and automatic DSRA are not part of this Run.
+        # Explicit, recorded consequence of the 3/3 selection (never silent): the
+        # shareholder loan and DSRA months are absent from this Run ONLY because the
+        # saved selection recorded exactly that structure and it was verified equal.
         "financing_structure_binding": {
             "sponsor_funding_mode": "EQUITY_ONLY", "reserve_support_mode": "NONE",
-            "shareholder_loan": "EXCLUDED_BY_3_3_SELECTION", "automatic_dsra": "EXCLUDED_BY_3_3_SELECTION",
+            "binding": "EXACT_RECORDED_STRUCTURE_VERIFIED",
+            "shareholder_loan": "EXCLUDED_BY_RECORDED_3_3_SELECTION",
+            "automatic_dsra": "EXCLUDED_BY_RECORDED_3_3_SELECTION",
         },
     }

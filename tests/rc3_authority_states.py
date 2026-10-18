@@ -77,9 +77,6 @@ def authority_state(path: str, *, repo=None, ref: str = "HEAD") -> str:
         return INTEGRATED_RELEASE_CLOSED_CANDIDATE
     if ppa01_candidate_matches(path, repo=repo, ref=ref) and not release_closed_violations(repo=repo, ref=ref):
         return INTEGRATED_RELEASE_CLOSED_CANDIDATE
-    from tests.rc7b_quarterly_candidate_authority import frozen_scope_exempt as rc7b_exempt
-    if rc7b_exempt(path, repo=repo, ref=ref) and not release_closed_violations(repo=repo, ref=ref):
-        return INTEGRATED_RELEASE_CLOSED_CANDIDATE  # RC-7B: exact, release-closed, never released or activated
     return UNAUTHORIZED
 
 

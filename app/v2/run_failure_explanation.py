@@ -47,6 +47,13 @@ _RULES = (
     ("QUARTERLY_RESERVE_POLICY_PENDING_D09", "FAIL_CLOSED_REFUSAL", _DEBT,
      "The quarterly candidate has no approved reserve (DSRA/DSRF) policy; a reserve is refused rather than treated as zero.",
      "Remove the reserve configuration or use the released 6/6 frequency."),
+    ("QUARTERLY_FINANCING_STRUCTURE_MISMATCH", "FAIL_CLOSED_REFUSAL", _DEBT,
+     "The saved 3/3 selection recorded a shareholder-loan / DSRA structure that this Working Copy no longer carries. "
+     "A shareholder loan or DSRA is never removed silently, so no Run is produced.",
+     "Select 3/3 again to record the current structure explicitly, or use the released 6/6 frequency."),
+    ("QUARTERLY_SHL_UNSUPPORTED", "FAIL_CLOSED_REFUSAL", _DEBT,
+     "The quarterly candidate admits equity-only sponsor funding; a shareholder-loan construction accrual is refused rather than discarded.",
+     "Remove the shareholder-loan configuration or use the released 6/6 frequency."),
     ("QUARTERLY_INTRAPERIOD_PPA_EXPIRY_UNSUPPORTED", "FAIL_CLOSED_REFUSAL", _SETUP,
      "The PPA ends inside a quarter. The quarterly candidate never splits a quarter between PPA and merchant sales.",
      "Choose a COD on a quarter end, or use the released 6/6 frequency."),

@@ -233,7 +233,12 @@ def test_monthly_construction_idc_survives_quarterly_operation(env, monkeypatch,
         assert abs(first - funded) < Decimal("1e-6")
     assert c.period_end_dates[-1] + timedelta(days=1) == quarter.project_inputs.info.cod_date
     evidence = _latest(project).runtime_summary["financing_evidence"]
-    assert evidence["financing_structure_binding"]["automatic_dsra"] == "EXCLUDED_BY_3_3_SELECTION"
+    binding = evidence["financing_structure_binding"]
+    assert binding["binding"] == "EXACT_RECORDED_STRUCTURE_VERIFIED"
+    assert binding["automatic_dsra"] == "EXCLUDED_BY_RECORDED_3_3_SELECTION"
+    # The excluded structure is recorded in the persisted, versioned selection itself - not inferred.
+    recorded = cfg.parse_config(_ws(project).draft_snapshot.get(cfg.SNAPSHOT_KEY))["excluded_structure"]
+    assert recorded["shl_amount_keur"] > 0 and recorded["dsra_months"] == 6
 
 
 def test_closed_gate_blocks_the_real_run_of_a_saved_selection_and_reset_recovers(env, monkeypatch):
@@ -254,3 +259,33 @@ def test_closed_gate_blocks_the_real_run_of_a_saved_selection_and_reset_recovers
     assert _run(env, project).status_code == 200
     assert _state(project) is RuntimeAuthorityState.CURRENT
     assert "operating_frequency" not in _latest(project).runtime_summary["financing_evidence"]
+
+
+@pytest.mark.parametrize("recorded", [
+    {"sponsor_funding_mode": "EQUITY_ONLY", "shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0, "dsra_months": 0},
+    {"sponsor_funding_mode": "SHARE_CAPITAL_THEN_SHL", "shl_amount_keur": 1.0, "clean_shl_principal_keur": 1.0, "dsra_months": 3},
+])
+def test_a_selection_written_by_another_writer_cannot_make_the_real_run_discard_shl_or_dsra(env, monkeypatch, recorded):
+    """The canonical field pipeline (batch/import writers) accepts any WELL-FORMED selection. One that names a structure the
+    Working Copy does not carry must be refused by the real Run: no calculation, no committed Run, typed reason, page still renders."""
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.update_service import WorkbookUpdateService
+    monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    project = env.create("solar")
+    cod, months = TIMELINE["solar"]
+    _set(env, project, "project_setup.technical.construction_months", str(months))
+    _set(env, project, "project_setup.technical.cod_date", cod)
+    page = env.client.get("/v2/workbook", params={"project": project.project_code})
+    WorkbookUpdateService.apply_draft_update(
+        ws=get_workspace_state(OWNER, project.project_id), field_id=cfg.FIELD_ID,
+        raw_value=cfg.candidate_config_json(recorded), content_hash=tokens(page.text)["content_hash"],
+        workbook_version=WORKBOOK.version, project_record=project)
+    assert cfg.frequency_label(_ws(project).draft_snapshot.get(cfg.SNAPSHOT_KEY)) == "3/3"   # accepted as a well-formed selection
+    assert env.client.get("/v2/workbook", params={"project": project.project_code}).status_code == 200
+    response = _run(env, project)
+    assert "QUARTERLY_FINANCING_STRUCTURE_MISMATCH" in response.text
+    assert "UNCLASSIFIED_ENGINE_FAILURE" not in response.text
+    assert not _ws(project).last_runtime_snapshot_id
+    from app.persistence.run_history_repository import get_run_history
+    assert get_run_history(OWNER, project.project_id) == []

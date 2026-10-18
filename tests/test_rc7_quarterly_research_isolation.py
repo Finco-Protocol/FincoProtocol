@@ -71,9 +71,9 @@ def test_real_production_entry_rejects_typed_quarters_after_baseline_adapter_res
     with pytest.raises(CleanProductionRunUnavailable) as rejected:
         run_clean_production(pi, financing_policy=policy)
     message = str(rejected.value)
-    assert ("H1_UNSUPPORTED_PERIOD_FREQUENCY" in message if variant == "default"
-            else "build_tax_contract_from_project_inputs: unsupported period_frequency" in message
-            or "QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED" in message)
+    # Exact typed refusal per variant (no alternative text accepted).
+    assert ("H1_UNSUPPORTED_PERIOD_FREQUENCY" if variant == "default"
+            else "QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED") in message
 
 
 @pytest.mark.parametrize("field", ["period_frequency", "project.period_frequency", "project_setup.period_frequency"])

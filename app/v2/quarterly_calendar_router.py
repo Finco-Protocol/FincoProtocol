@@ -61,7 +61,7 @@ async def save_operating_frequency(request: Request, _: None = Depends(require_v
             if form["financing_structure"] != STRUCTURE_CONSENT:
                 raise ValueError("QUARTERLY_FINANCING_STRUCTURE_CONSENT_REQUIRED: 3/3 admits only "
                                  "EQUITY_ONLY sponsor funding with NONE reserve support (D-09/D-12)")
-            raw = config.candidate_config_json()
+            raw = None  # built below from the real Working Copy structure (never a constant)
         elif form["frequency"] == "6/6":
             if form["financing_structure"] != "":
                 raise ValueError("QUARTERLY_FORM_SCHEMA: 6/6 carries no structure binding")
@@ -73,6 +73,17 @@ async def save_operating_frequency(request: Request, _: None = Depends(require_v
         ws = get_workspace_state(owner, record.project_id)
         if ws is None:
             return JSONResponse({"error": "Workspace not found"}, status_code=404)
+        if raw is None:
+            # The selection records the EXACT structure it excludes, read from the
+            # Working Copy as it is now. The Run refuses any later difference.
+            from app.input_adapter import build_projectinputs_from_snapshot
+            snapshot = dict(ws.draft_snapshot)
+            snapshot[config.SNAPSHOT_KEY] = ""
+            working = build_projectinputs_from_snapshot(snapshot)
+            raw = config.candidate_config_json(config.structure_of(working.financing))
+            # Refuse at save time anything the Run would refuse (reserves, unsupported
+            # technology, instrument subtypes) instead of storing an unrunnable selection.
+            config.apply_config(working, raw, record.project_type)
         # The existing canonical field pipeline (validate -> version -> atomic CAS
         # persist) owns the write; this endpoint only adds the admission gate.
         WorkbookUpdateService.apply_draft_update(
