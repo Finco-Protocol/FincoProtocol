@@ -21,7 +21,10 @@ from app.workbook.registry import WORKBOOK
 
 router = APIRouter()
 MAX_REQUEST_BYTES = 4096
-_FORM_KEYS = {"project", "content_hash", "csrf_token", "workbook_version", "frequency"}
+_FORM_KEYS = {"project", "content_hash", "csrf_token", "workbook_version", "frequency", "financing_structure"}
+# The 3/3 candidate admits one financing structure; selecting it is explicit consent
+# to that structure (two-Senior activation precedent), never a silent side effect.
+STRUCTURE_CONSENT = "EQUITY_ONLY_NO_RESERVE"
 
 
 @router.post("/workbook/calendar/operating-frequency")
@@ -54,8 +57,13 @@ async def save_operating_frequency(request: Request, _: None = Depends(require_v
             raise ValueError("QUARTERLY_WORKBOOK_VERSION_MISMATCH")
         if form["frequency"] == "3/3":
             config.require_admitted(record.project_type)
+            if form["financing_structure"] != STRUCTURE_CONSENT:
+                raise ValueError("QUARTERLY_FINANCING_STRUCTURE_CONSENT_REQUIRED: 3/3 admits only "
+                                 "EQUITY_ONLY sponsor funding with NONE reserve support (D-09/D-12)")
             raw = config.candidate_config_json()
         elif form["frequency"] == "6/6":
+            if form["financing_structure"] != "":
+                raise ValueError("QUARTERLY_FORM_SCHEMA: 6/6 carries no structure binding")
             raw = ""
         else:
             raise ValueError("QUARTERLY_FREQUENCY_UNSUPPORTED: only matched 6/6 or 3/3 (D-06/D-07 deferred)")

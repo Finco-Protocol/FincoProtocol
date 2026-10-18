@@ -107,6 +107,7 @@ def test_open_gate_binds_recorded_structure_and_refuses_existing_reserves(monkey
     evidence = cfg.run_evidence(applied)
     assert evidence["operating_frequency"] == "3/3" and evidence["period_months"] == 3
     assert evidence["sponsor_returns_status"] == "PENDING_D08_DISTRIBUTION_ELIGIBILITY"
+    assert evidence["financing_structure_binding"]["shareholder_loan"] == "EXCLUDED_BY_3_3_SELECTION"
     reserved = dataclasses.replace(_solar(), financing=dataclasses.replace(
         _solar().financing, dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA))
     with pytest.raises(ValueError, match="QUARTERLY_RESERVE_POLICY_PENDING_D09"):
@@ -125,7 +126,7 @@ def test_closed_endpoint_generic_field_and_writer_refuse_and_nothing_is_rendered
     assert cfg.FIELD_ID not in page.text and cfg.SNAPSHOT_KEY not in page.text  # no selector exposed
     before = get_workspace_state(OWNER, record.project_id)
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
-        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", **tokens(page.text)})
+        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)})
     assert response.status_code == 404 and response.json()["error"] == "QUARTERLY_ADMISSION_CLOSED"
     generic = env.client.post("/v2/workbook/update", data={
         "project": record.project_code, "sheet_id": "project_setup", "field_id": cfg.FIELD_ID,
@@ -153,7 +154,7 @@ def test_open_gate_endpoint_refuses_non_renewable_projects(env, monkeypatch, kin
     record = env.create(kind)
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
-        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", **tokens(page.text)})
+        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)})
     assert response.status_code == 409 and "QUARTERLY_TECHNOLOGY_UNSUPPORTED" in response.json()["error"]
 
 
@@ -164,7 +165,7 @@ def test_open_gate_endpoint_refuses_mixed_or_unknown_frequencies(env, monkeypatc
     record = env.create("solar")
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
-        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": frequency, **tokens(page.text)})
+        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": frequency, "financing_structure": "", **tokens(page.text)})
     assert response.status_code == 409 and "QUARTERLY_FREQUENCY_UNSUPPORTED" in response.json()["error"]
 
 
@@ -177,17 +178,33 @@ def test_open_gate_validation_rejects_malformed_selection(monkeypatch):
     assert WorkbookUpdateService.validate_field_update(cfg.FIELD_ID, "").is_valid  # 6/6
 
 
+def test_open_gate_endpoint_requires_explicit_structure_consent(env, monkeypatch):
+    from app.auth import generate_csrf_token
+    from app.persistence.workspace_repository import get_workspace_state
+    monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    record = env.create("solar")
+    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    before = get_workspace_state(OWNER, record.project_id)
+    for consent in ("", "EQUITY_ONLY", "SHARE_CAPITAL_THEN_SHL"):
+        response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
+            "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3",
+            "financing_structure": consent, **tokens(page.text)})
+        assert response.status_code == 409
+        assert "QUARTERLY_FINANCING_STRUCTURE_CONSENT_REQUIRED" in response.json()["error"]
+    assert get_workspace_state(OWNER, record.project_id) == before
+
+
 def test_open_gate_endpoint_requires_csrf_and_cas(env, monkeypatch):
     from app.auth import generate_csrf_token
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     record = env.create("solar")
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     bad_csrf = env.client.post("/v2/workbook/calendar/operating-frequency", data={
-        "project": record.project_code, "csrf_token": "forged", "frequency": "3/3", **tokens(page.text)})
+        "project": record.project_code, "csrf_token": "forged", "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)})
     assert bad_csrf.status_code == 403
     stale = {**tokens(page.text), "content_hash": "0" * 64}
     bad_cas = env.client.post("/v2/workbook/calendar/operating-frequency", data={
-        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", **stale})
+        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **stale})
     assert bad_cas.status_code == 409
 
 
