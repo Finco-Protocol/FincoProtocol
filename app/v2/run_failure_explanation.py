@@ -39,6 +39,23 @@ _RULES = (
      "A facility maturity does not fall on an operating period end.", "Choose a maturity date that matches an operating period end."),
     ("F3_DRAW_OUTSIDE_CONSTRUCTION", "FAIL_CLOSED_REFUSAL", _DEBT, "A facility draw falls outside the construction period.", "Move the draw into construction."),
     ("F3_GRACE_EXCEEDS_MATURITY", "FAIL_CLOSED_REFUSAL", _DEBT, "No principal-eligible period remains before maturity.", "Shorten the grace period or extend the maturity."),
+    # RC-7B matched 3/3 candidate (release-closed): typed refusals, never "unclassified".
+    ("QUARTERLY_ADMISSION_CLOSED", "FAIL_CLOSED_REFUSAL", _SETUP,
+     "This Working Copy selects the matched 3/3 (quarterly) operating and debt frequency. It is a release-closed candidate pending "
+     "independent financial review and owner decisions, so no Run is produced.",
+     "Reset the operating/debt frequency to the released 6/6 default to Run the model."),
+    ("QUARTERLY_RESERVE_POLICY_PENDING_D09", "FAIL_CLOSED_REFUSAL", _DEBT,
+     "The quarterly candidate has no approved reserve (DSRA/DSRF) policy; a reserve is refused rather than treated as zero.",
+     "Remove the reserve configuration or use the released 6/6 frequency."),
+    ("QUARTERLY_INTRAPERIOD_PPA_EXPIRY_UNSUPPORTED", "FAIL_CLOSED_REFUSAL", _SETUP,
+     "The PPA ends inside a quarter. The quarterly candidate never splits a quarter between PPA and merchant sales.",
+     "Choose a COD on a quarter end, or use the released 6/6 frequency."),
+    ("QUARTERLY_COD_ROLL_WINDOW_PENDING_D01", "FAIL_CLOSED_REFUSAL", _SETUP,
+     "COD falls in the window where the released six-month model moves the operating start; the quarterly stub rule is not yet decided.",
+     "Move COD at least seven days away from 30 June / 31 December, or use the released 6/6 frequency."),
+    ("QUARTERLY_", "FAIL_CLOSED_REFUSAL", _SETUP,
+     "These inputs are outside the scope of the quarterly (3/3) candidate, which refuses them rather than approximating.",
+     "Use the released 6/6 frequency, or bring the inputs inside the documented 3/3 scope."),
     ("PR8_PROJECT_TYPE_NOT_CLASSIFIED", "INPUT_NOT_RUNNABLE", _SETUP,
      "The saved inputs could not be assembled into a runnable model.",
      "Review project setup (horizon, construction timing) and the senior debt tenor, then Run again."),
@@ -81,8 +98,8 @@ def explain_run_failure(exc: Optional[BaseException], *, message: str, ws: Any =
         return out
     for token, rule_kind, (section, tab), explanation, recovery in _RULES:
         if token in evidence:
-            out.update(classification=token, kind=rule_kind, kind_label=KIND_LABELS[rule_kind], explanation=explanation,
-                       section=section, tab=tab, recovery=recovery)
+            out.update(classification="QUARTERLY_SCOPE_REFUSAL" if token == "QUARTERLY_" else token, kind=rule_kind,
+                       kind_label=KIND_LABELS[rule_kind], explanation=explanation, section=section, tab=tab, recovery=recovery)
             break
     else:
         if "FAIL_CLOSED" in evidence:
