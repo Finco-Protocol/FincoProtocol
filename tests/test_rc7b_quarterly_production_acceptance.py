@@ -289,3 +289,35 @@ def test_a_selection_written_by_another_writer_cannot_make_the_real_run_discard_
     assert not _ws(project).last_runtime_snapshot_id
     from app.persistence.run_history_repository import get_run_history
     assert get_run_history(OWNER, project.project_id) == []
+
+
+def test_every_workbook_sheet_stays_renderable_with_an_unbound_3_3_selection_and_the_run_commits_nothing(env, monkeypatch):
+    """Correction B: the typed refusal belongs to the Run. A saved 3/3 selection whose recorded structure the Working Copy does not carry
+    must not break ANY page render (the throwing call sites were the full-page CAPEX/OPEX/Tax view-model materialisations), the Run
+    refuses with the typed code before any calculation, and neither the Last Run nor the Run history changes."""
+    from app.persistence.run_history_repository import get_run_history
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.v2.presentation_views import PRESENTATION_SHEETS
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.update_service import WorkbookUpdateService
+    monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    project = env.create("solar")
+    cod, months = TIMELINE["solar"]
+    _set(env, project, "project_setup.technical.construction_months", str(months))
+    _set(env, project, "project_setup.technical.cod_date", cod)
+    page = env.client.get("/v2/workbook", params={"project": project.project_code})
+    recorded = {"sponsor_funding_mode": "EQUITY_ONLY", "shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0, "dsra_months": 0}
+    WorkbookUpdateService.apply_draft_update(
+        ws=get_workspace_state(OWNER, project.project_id), field_id=cfg.FIELD_ID, raw_value=cfg.candidate_config_json(recorded),
+        content_hash=tokens(page.text)["content_hash"], workbook_version=WORKBOOK.version, project_record=project)
+    before = _ws(project)
+    draft_before = dict(before.draft_snapshot)
+    for sheet in sorted(PRESENTATION_SHEETS) + ["overview", "outputs"]:
+        response = env.client.get("/v2/workbook", params={"project": project.project_code, "sheet": sheet})
+        assert response.status_code == 200, sheet
+    response = _run(env, project)
+    assert "QUARTERLY_FINANCING_STRUCTURE_MISMATCH" in response.text
+    assert "Could not build project inputs" not in response.text
+    after = _ws(project)
+    assert not after.last_runtime_snapshot_id and get_run_history(OWNER, project.project_id) == []
+    assert dict(after.draft_snapshot) == draft_before                        # the saved selection and the Working Copy are untouched

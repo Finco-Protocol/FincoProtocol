@@ -247,6 +247,23 @@ _SENIOR_LOCK_NOTE = (
     "Explicit calibrated period schedule controls this assumption.")
 
 
+def _display_projectinputs(build, snapshot):
+    """Display-only materialisation that tolerates ONE typed refusal: an unbound 3/3 financing-structure selection.
+
+    RC-7B Correction B. ``apply_config`` refuses (QUARTERLY_FINANCING_STRUCTURE_MISMATCH) a saved 3/3 selection whose recorded
+    structure differs from the Working Copy, and the Run surfaces that refusal. A page that only *shows* the Working Copy must stay
+    renderable: it reads the typed inputs without the unbound selection. Nothing is written, no calculation runs, and every other
+    materialisation error still propagates unchanged."""
+    from app.input_adapter import SnapshotInputError, build_projectinputs_from_snapshot
+    try:
+        return build()
+    except SnapshotInputError as exc:
+        if not str(exc).startswith("QUARTERLY_FINANCING_STRUCTURE_MISMATCH"):
+            raise
+        from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY as _q_key
+        return build_projectinputs_from_snapshot({k: v for k, v in dict(snapshot).items() if k != _q_key})
+
+
 def _classify_senior_authority(pis):
     """R8 Correction A: classify (pricing_mode, dscr_mode) from the typed
     Senior capability of the materialised working copy.
@@ -744,7 +761,7 @@ def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "")
     from app.input_adapter import build_projectinputs_from_snapshot
 
     snapshot = pis.to_snapshot()
-    effective_pi = build_projectinputs_from_snapshot(snapshot)
+    effective_pi = _display_projectinputs(lambda: build_projectinputs_from_snapshot(snapshot), snapshot)
     project_ctx = build_project_context_for_record(
         project_code=project_record.project_code,
         project_name=project_record.project_name,
@@ -922,7 +939,7 @@ def _build_opex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "") 
     from app.workbook.service import WorkbookService
     from app.revenue_input_validation import RevenueInputError
     try:
-        effective_pi = WorkbookService.to_projectinputs(pis)
+        effective_pi = _display_projectinputs(lambda: WorkbookService.to_projectinputs(pis), pis.to_snapshot())
     except RevenueInputError:
         # Cross-field revenue validation (e.g. CONTRACT_ANNIVERSARY without a
         # date) must not break the OPEX display path — OPEX is independent of
@@ -1725,7 +1742,7 @@ def _build_tax_ctx(pis, ws, projection=None) -> dict:
     if any(f["value"] is None for f in raw_fields):
         from app.revenue_input_validation import RevenueInputError
         try:
-            effective_tax = pis.to_projectinputs().tax
+            effective_tax = _display_projectinputs(pis.to_projectinputs, pis.to_snapshot()).tax
         except RevenueInputError:
             _snap = dict(pis.to_snapshot())
             _snap.pop("rev_ppa_indexation_start_policy", None)
@@ -2993,6 +3010,15 @@ async def v2_workbook_run(
             # Cross-field contract violation — surface to user, do not log as error.
             _rev_err_msg = str(_build_exc)
             return _htmx_error(_rev_err_msg, ws) if is_htmx else _non_htmx_error(_rev_err_msg)
+        from app.input_adapter import SnapshotInputError
+        if isinstance(_build_exc, SnapshotInputError) and str(_build_exc).startswith("QUARTERLY_"):
+            # RC-7B Correction B: a typed, fail-closed quarterly refusal reached BEFORE any calculation or commit. It is a model
+            # refusal with a precise reason, not a system fault: surface the typed code and its explanation.
+            logging.getLogger(__name__).info("v2_workbook_run: typed quarterly refusal project=%s", project)
+            _q_msg = str(_build_exc)
+            from app.v2.run_failure_explanation import explain_run_failure
+            return (_htmx_error(_q_msg, ws, explain_run_failure(_build_exc, message=_q_msg, ws=ws, pis=pis_draft))
+                    if is_htmx else _non_htmx_error(_q_msg))
         logging.getLogger(__name__).exception(
             "v2_workbook_run: build_project_inputs failed project=%s user=%s",
             project, user.user_id,
