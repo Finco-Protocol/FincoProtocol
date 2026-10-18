@@ -73,6 +73,23 @@ def _build_period_engine(inputs: OperatingModelInput):
     from finco_core.engine.period_engine import PeriodAxisConvention as _PAC
 
     cal = inputs.calendar
+    policy = getattr(cal, "operating_calendar_policy", None)
+    if policy is not None:
+        from financial_engine.inputs import QuarterlyCalendarInput
+        if type(cal) is not QuarterlyCalendarInput:
+            raise ValueError("QUARTERLY_TYPED_CALENDAR_REQUIRED")
+        # RC-7B matched 3/3 candidate: the SAME canonical orchestration on an
+        # explicitly typed quarterly axis (no second engine, no interpolation).
+        return PeriodEngine(
+            financial_close=cal.financial_close,
+            construction_months=cal.construction_months,
+            horizon_years=cal.horizon_years,
+            ppa_years=cal.ppa_years,
+            frequency=_PF.QUARTERLY,
+            cod_date=cal.cod_date,
+            period_axis_convention=_PAC(cal.period_axis_convention.value),
+            operating_calendar_policy=policy,
+        )
     return PeriodEngine(
         financial_close=cal.financial_close,
         construction_months=cal.construction_months,
@@ -82,6 +99,25 @@ def _build_period_engine(inputs: OperatingModelInput):
         cod_date=cal.cod_date,
         period_axis_convention=_PAC(cal.period_axis_convention.value),
     )
+
+
+def _require_quarterly_clean_scope(inputs: OperatingModelInput) -> None:
+    """RC-7B: clean-contract inputs authored on six-month rows are refused on 3/3.
+
+    Defence in depth below the ProjectInputs scope boundary: a direct clean
+    caller can never have a semiannual vector silently read per quarter.
+    """
+    rev, tech, opex = inputs.revenue, inputs.technical, inputs.opex
+    if rev.co2_price_semiannual_eur_mwh or rev.first_merchant_operating_period_index is not None:
+        raise ValueError("QUARTERLY_LEGACY_PERIOD_VECTOR_UNSUPPORTED: six-month revenue vector on a 3/3 axis")
+    if getattr(rev, "multistream_config_json", "") or rev.merchant_prices_by_calendar_year_eur_mwh:
+        raise ValueError("QUARTERLY_REVENUE_CONTRACT_HANDOFF_REQUIRED: dated/multistream revenue on a 3/3 axis")
+    if rev.ppa_indexation_start_policy is not None or rev.ppa_indexation_start_date is not None:
+        raise ValueError("QUARTERLY_PPA_INDEXATION_HANDOFF_REQUIRED: dated PPA indexation on a 3/3 axis")
+    if getattr(tech, "bess_native_config_json", ""):
+        raise ValueError("QUARTERLY_TECHNOLOGY_UNSUPPORTED: native BESS on a 3/3 axis")
+    if opex.hierarchical_model is not None or opex.hierarchical_external_annual_series:
+        raise ValueError("QUARTERLY_HIERARCHICAL_OPEX_HANDOFF_REQUIRED: hierarchical OPEX on a 3/3 axis")
 
 
 def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tuple[float, ...] = ()):
@@ -116,6 +152,14 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         period_frequency=_PF.SEMESTRIAL,
         period_axis_convention=_PAC(cal.period_axis_convention.value),
     )
+    quarterly_policy = getattr(cal, "operating_calendar_policy", None)
+    if quarterly_policy is not None:
+        # RC-7B: the leaf proxy carries the same typed timeline as the axis.
+        from dataclasses import fields as _fields
+        from finco_core.inputs._models import QuarterlyProjectInfo
+        values = {f.name: getattr(info, f.name) for f in _fields(info)}
+        values["period_frequency"] = _PF.QUARTERLY
+        info = QuarterlyProjectInfo(**values, operating_calendar_policy=quarterly_policy)
 
     # Map yield scenario.
     yield_scenario = "P_50"
@@ -476,14 +520,17 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     # Step 2: Build period grid.
     from finco_core.engine.period_engine import PeriodMeta, validate_canonical_period_axis
     engine = _build_period_engine(inputs)
+    if engine.operating_calendar_policy is not None:
+        _require_quarterly_clean_scope(inputs)
     periods_meta: tuple[PeriodMeta, ...] = engine.periods()
     # Authoritative call: pass cod_date and period_convention so the validator
     # uses typed policy denominators, not the non-authoritative None fallback.
     validate_canonical_period_axis(
         periods_meta,
-        expected_operating_periods=inputs.calendar.horizon_years * 2,
+        expected_operating_periods=inputs.calendar.horizon_years * engine.periods_per_year,
         cod_date=engine.cod,
         period_convention=engine.period_axis_convention,
+        periods_per_year=engine.periods_per_year,
     )
     canonical_indices = tuple(p.index for p in periods_meta)
 
