@@ -276,3 +276,12 @@ def test_credit_v4_refuses_end_date_joins_across_frequencies():
     assert refused["available"] is False and "different operating/debt frequencies" in refused["reason"]
     same = build_credit_v4([semi, {**semi, "identity": {"history_id": "c"}}])["period_comparison"]
     assert same["available"] is True
+
+
+@pytest.mark.parametrize("code", ["QUARTERLY_ADMISSION_CLOSED", "QUARTERLY_RESERVE_POLICY_PENDING_D09",
+                                  "QUARTERLY_INTRAPERIOD_PPA_EXPIRY_UNSUPPORTED", "QUARTERLY_SHL_UNSUPPORTED"])
+def test_quarterly_refusals_are_typed_in_the_run_failure_explanation(code):
+    from app.v2.run_failure_explanation import explain_run_failure
+    out = explain_run_failure(ValueError(f"PR8_CLEAN_ENGINE_FAIL_CLOSED: {code}: detail"), message="refused")
+    assert out["kind"] == "FAIL_CLOSED_REFUSAL" and out["classification"] != "UNCLASSIFIED_ENGINE_FAILURE"
+    assert out["classification"] in (code, "QUARTERLY_SCOPE_REFUSAL")
