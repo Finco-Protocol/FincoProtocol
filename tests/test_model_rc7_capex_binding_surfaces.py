@@ -34,7 +34,7 @@ NO_ENGINE_RUN = {
 
 
 def _folding_files():
-    return sorted(str(p.relative_to(ROOT)) for p in (ROOT / "app").rglob("*.py") if CALL.search(p.read_text(encoding="utf-8")))
+    return sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "app").rglob("*.py") if CALL.search(p.read_text(encoding="utf-8")))
 
 
 def test_every_capex_folding_surface_is_classified():
