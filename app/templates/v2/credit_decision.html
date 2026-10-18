@@ -161,6 +161,9 @@
     {% else %}<p class="cd-note" data-testid="cd-compare-unavailable">{{ data.comparison.reason }}</p>{% endif %}
   </section>
 
+  {# RC-7: additive committed lender screening and date-exact historical comparisons. #}
+  {% include "v2/partials/_credit_decision_v4.html" %}
+
   <section class="cd-section" id="cd-findings" aria-labelledby="cd-f-h" data-testid="cd-findings">
     <h2 id="cd-f-h">Credit findings <small>deterministic · grounded in committed evidence</small></h2>
     <div class="cd-filters" role="group" aria-label="Filter findings by class" data-cd-filters>

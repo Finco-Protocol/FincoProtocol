@@ -34,7 +34,11 @@ from app.validation_status import get_validation_status
 
 # Import schema and adapter for custom inputs
 from app.input_schema import ProjectInputsSchema, RevenueInput, CapexInput, OpexInput, DebtInput
-from app.input_adapter import SnapshotInputError, build_projectinputs, build_projectinputs_from_snapshot
+from app.input_adapter import SnapshotInputError, build_projectinputs, build_projectinputs_from_snapshot as _unguarded_build_projectinputs_from_snapshot
+from app.capex_profiles.runtime import guard_snapshot_builder as _guard_capex_profile_surface
+# RC-7: these legacy routes cannot bind a monthly CAPEX construction profile; they fail closed instead of running semester economics.
+build_projectinputs_from_snapshot = _guard_capex_profile_surface(
+    _unguarded_build_projectinputs_from_snapshot, "the legacy run, compare, download and scenario routes")
 
 # Import auth
 from app.auth import (
@@ -5005,7 +5009,6 @@ async def scenario_fs_compare_endpoint(
     else:
         try:
             from app.persistence.repository import get_scenario
-            from app.input_adapter import build_projectinputs_from_snapshot
             from app.services.production_waterfall_seam import classify_or_fail
 
             records = []
@@ -5131,7 +5134,6 @@ def _resolve_sensitivity_project(user, project: str, scenario_id: str = "") -> A
     """
     if scenario_id:
         from app.persistence.repository import get_scenario
-        from app.input_adapter import build_projectinputs_from_snapshot
         rec = get_scenario(scenario_id, user.user_id)
         if rec is not None and rec.snapshot:
             return build_projectinputs_from_snapshot(dict(rec.snapshot)), (rec.scenario_name if rec else "Base")

@@ -728,10 +728,15 @@ def build_credit_decision(inputs: Sequence[RunInput], *, project_code: str,
         metrics.append(_cmp_metrics(inp, structure, capacity))
         findings += run_findings
     comparison = _comparison(views, metrics)
+    # RC-7 V4: observational evidence over already-authorised committed V3 views.
+    # No new data reads, input terms, period authority or financial calculation.
+    from app.v2.credit_v4_evidence import build_credit_v4
+    credit_v4 = build_credit_v4(views)
     counts = {c: sum(1 for f in findings if f["classification"] == c) for c in CLASSES}
     return {
         "schema": SCHEMA, "project_code": project_code, "runs": views, "comparison": comparison, "findings": findings,
         "finding_counts": counts, "working_proposal": dict(working_proposal) if working_proposal else None,
+        "credit_v4": credit_v4,
         "policy": {
             "failed_runs": "A failed or fail-closed Run is never committed, so it cannot be selected here. A committed Run whose Run Integrity "
                            "failed is labelled as a failure, never as a bankable scenario (WF-A F-8).",

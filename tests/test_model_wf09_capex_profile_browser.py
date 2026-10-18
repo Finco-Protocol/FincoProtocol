@@ -47,7 +47,7 @@ def test_planner_preview_in_chromium_changes_nothing(browser, app_server):
     try:
         page.goto(app_server["url"] + "/v2/workbook?project=" + project.project_code)
         link = page.get_by_test_id("capex-profile-link")
-        assert "preview only" in link.inner_text()
+        assert "preview, save to Working Copy" in link.inner_text()
         before = _state(project)
         page.goto(app_server["url"] + link.get_attribute("href"))
         assert page.get_by_test_id("preview-banner").is_visible() and "no Run is started" in page.get_by_test_id("preview-banner").inner_text()
@@ -92,5 +92,38 @@ def test_planner_mobile_layout_has_no_page_overflow(browser, app_server):
         assert overflow <= 1, overflow
         page.screenshot(path=str(SHOTS / "wf09-02-preview-390.png"), full_page=True)
         assert not page.browser_errors
+    finally:
+        ctx.close()
+
+
+def test_planner_save_and_reset_in_chromium(browser, app_server):
+    """RC-7: the real user journey in a real browser - choose a shape, Save to the Working Copy (dirty, never a Run), then remove it."""
+    from app.capex_profiles.config import SNAPSHOT_KEY
+    project = _new_seeded_browser_project("solar", f3_active=False)
+    ctx, page = _page(browser, app_server["url"], width=1440)
+    errors = []
+    page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    try:
+        before = _state(project)
+        page.goto(app_server["url"] + "/v2/capex/spending-profiles?project=" + project.project_code)
+        assert page.get_by_test_id("profile-status").get_attribute("data-saved") == "false"
+        key = page.locator('[data-testid="item-table"] tbody tr').first.get_attribute("data-item")
+        _fill(page, key, "BACK_LOADED")
+        page.get_by_test_id("profile-save").click()
+        page.get_by_test_id("profile-notice").wait_for()
+        assert "STALE" in page.get_by_test_id("profile-notice").inner_text()
+        status = page.get_by_test_id("profile-status")
+        assert status.get_attribute("data-saved") == "true" and status.get_attribute("data-bound") == "true"
+        assert page.locator(f'tr[data-item="{key}"] select').input_value() == "BACK_LOADED"          # the saved profile pre-fills the form
+        saved = _state(project)
+        assert SNAPSHOT_KEY in saved[0] and SNAPSHOT_KEY not in saved[1] and saved[2]                  # Working Copy only, dirty
+        assert saved[3:] == before[3:]                                                                  # no Run, no history, no sub-line change
+        page.screenshot(path=str(SHOTS / "wf09-03-saved-1440.png"), full_page=True)
+        page.get_by_test_id("profile-reset").click()
+        page.get_by_test_id("profile-notice").wait_for()
+        assert page.get_by_test_id("profile-status").get_attribute("data-saved") == "false"
+        after = _state(project)
+        assert SNAPSHOT_KEY not in after[0] and after[3:] == before[3:]
+        assert not errors, errors
     finally:
         ctx.close()
