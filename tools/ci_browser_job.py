@@ -114,8 +114,9 @@ WF09_MODULE = "tests/test_model_wf09_capex_profile_browser.py"
 WF09_NODES = (
     f"{WF09_MODULE}::test_planner_preview_in_chromium_changes_nothing",
     f"{WF09_MODULE}::test_planner_mobile_layout_has_no_page_overflow",
+    f"{WF09_MODULE}::test_planner_save_and_reset_in_chromium",
 )
-WF09_SCREENSHOTS = (("wf09-01-preview-1440.png", 1440), ("wf09-02-preview-390.png", 390))
+WF09_SCREENSHOTS = (("wf09-01-preview-1440.png", 1440), ("wf09-02-preview-390.png", 390), ("wf09-03-saved-1440.png", 1440))
 
 
 def validate_import(folder: Path, inventory: dict, process: dict) -> None:

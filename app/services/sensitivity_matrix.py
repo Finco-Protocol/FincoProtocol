@@ -168,8 +168,10 @@ def materialise_financing(basis: Basis, pi: Any, pis: Any) -> Any:
     from app.workbook.multisenior_config import SNAPSHOT_KEY as F3_KEY, apply_state
 
     assert_materialized_fee_authority(pi, pis.snapshot_origin.get(SNAPSHOT_KEY))
-    return apply_state(pi, pis.snapshot_origin.get(F3_KEY), basis.f3_scope,
-                       bankability_raw=pis.snapshot_origin.get(SNAPSHOT_KEY))
+    pi = apply_state(pi, pis.snapshot_origin.get(F3_KEY), basis.f3_scope,
+                     bankability_raw=pis.snapshot_origin.get(SNAPSHOT_KEY))
+    from app.capex_profiles.runtime import apply_snapshot_profiles
+    return apply_snapshot_profiles(pi, pis.snapshot_origin, project_id=basis.project_id, scenario_overrides=basis.scenario_overrides)
 
 
 def build_cell(basis: Basis, spec_a: DriverSpec, level_a: float, spec_b: DriverSpec, level_b: float,

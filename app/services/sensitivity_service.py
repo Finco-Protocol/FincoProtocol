@@ -171,8 +171,10 @@ def _resolve_sensitivity_project(user: Any, project: str, scenario_id: str = "")
     authoritative.
     """
     if scenario_id:
-        from app.input_adapter import build_projectinputs_from_snapshot
+        from app.input_adapter import build_projectinputs_from_snapshot as _build
+        from app.capex_profiles.runtime import guard_snapshot_builder
         from app.persistence.repository import get_scenario
+        build_projectinputs_from_snapshot = guard_snapshot_builder(_build, "the legacy sensitivity route")
 
         rec = get_scenario(scenario_id, user.user_id)
         if rec is not None and rec.snapshot:
