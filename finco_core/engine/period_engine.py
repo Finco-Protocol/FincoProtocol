@@ -19,6 +19,8 @@ from typing import Any, List, Sequence
 from dateutil.relativedelta import relativedelta
 import calendar
 
+from finco_core.engine.calendar_policy import OperatingCalendarPolicy
+
 
 class PeriodFrequency(Enum):
     """Frequency of periods within a year."""
@@ -66,6 +68,7 @@ class PeriodEngine:
         period_axis_convention: PeriodAxisConvention | str = (
             PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
         ),
+        operating_calendar_policy: OperatingCalendarPolicy | None = None,
     ) -> None:
         self.fc = financial_close
         self.construction_months = construction_months
@@ -83,9 +86,18 @@ class PeriodEngine:
                 f"{derived_cod.isoformat()}"
             )
         self._cod = cod_date or derived_cod
-        self._operating_start = self._last_semiannual_end_on_or_after_cod()
+        self._operating_calendar_policy: OperatingCalendarPolicy | None = None
+        if operating_calendar_policy is not None:
+            # RC-7B matched 3/3 candidate: explicit typed policy only. The
+            # released six-month path below is never entered with a policy.
+            self._operating_calendar_policy = self._require_quarterly_policy(
+                operating_calendar_policy
+            )
+            self._operating_start = self._cod
+        else:
+            self._operating_start = self._last_semiannual_end_on_or_after_cod()
         self._periods_per_year = self.freq.value
-        if self.freq != PeriodFrequency.SEMESTRIAL:
+        if self.freq != PeriodFrequency.SEMESTRIAL and self._operating_calendar_policy is None:
             raise ValueError(
                 "PERIOD_AXIS_FREQUENCY_UNSUPPORTED: canonical runtime axis currently "
                 "requires SEMESTRIAL frequency"
@@ -108,8 +120,49 @@ class PeriodEngine:
             expected_operating_periods=self._operating_period_count,
             cod_date=self._cod,
             period_convention=self.period_axis_convention,
+            periods_per_year=self._periods_per_year,
         )
         self._horizon_end = self._periods[-1].end_date
+
+    def _require_quarterly_policy(self, policy: object) -> OperatingCalendarPolicy:
+        """Fail closed unless frequency, policy and project dates admit matched 3/3."""
+        if type(policy) is not OperatingCalendarPolicy:
+            raise ValueError("QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED")
+        if self.freq != PeriodFrequency.QUARTERLY or policy.periods_per_year != 4:
+            raise ValueError(
+                "QUARTERLY_POLICY_FREQUENCY_MISMATCH: an operating calendar policy "
+                f"requires QUARTERLY frequency, got {self.freq!r}"
+            )
+        if self.period_axis_convention != PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS:
+            raise ValueError(
+                "QUARTERLY_PERIOD_AXIS_CONVENTION_UNSUPPORTED: the source-aligned "
+                "next-year denominator convention has no quarterly definition (D-02)"
+            )
+        # D-01 boundary: where the released six-month axis would roll the
+        # operating start to Jun 30 / Dec 31, the quarterly KEEP_ACTUAL_COD rule
+        # would end the construction columns on a different date. Refuse rather
+        # than let the operating frequency move construction dates.
+        boundary = date(self._cod.year, 6, 30) if self._cod.month <= 6 else date(self._cod.year, 12, 31)
+        if 0 < (boundary - self._cod).days < 7:
+            raise ValueError(
+                "QUARTERLY_COD_ROLL_WINDOW_PENDING_D01: COD "
+                f"{self._cod.isoformat()} is within the released six-month roll window "
+                f"before {boundary.isoformat()}; stub treatment awaits owner decision D-01"
+            )
+        return policy
+
+    @property
+    def operating_calendar_policy(self) -> OperatingCalendarPolicy | None:
+        """The explicit 3/3 policy, or None for the released six-month axis."""
+        return self._operating_calendar_policy
+
+    @property
+    def periods_per_year(self) -> int:
+        return self._periods_per_year
+
+    @property
+    def operating_start(self) -> date:
+        return self._operating_start
 
     @property
     def cod(self) -> date:
@@ -209,6 +262,8 @@ class PeriodEngine:
         return self._periods
 
     def _build_periods(self) -> tuple[PeriodMeta, ...]:
+        if self._operating_calendar_policy is not None:
+            return self._quarterly_candidate_periods()
         if self.period_axis_convention == PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN:
             return self._source_aligned_operating_boundary_periods()
         return self._cod_anchor_two_construction_column_periods()
@@ -285,8 +340,12 @@ class PeriodEngine:
 
         return tuple(periods)
 
-    def _cod_anchor_two_construction_column_periods(self) -> tuple[PeriodMeta, ...]:
-        """Generate meaningful six-month construction segments and operation."""
+    def _cod_anchor_construction_segments(self) -> List[PeriodMeta]:
+        """Meaningful six-month construction segments from FC to operating start.
+
+        Shared by the released six-month axis and the RC-7B quarterly candidate,
+        so construction reporting columns cannot diverge between frequencies.
+        """
         periods: List[PeriodMeta] = []
 
         construction_start = self.fc
@@ -317,6 +376,12 @@ class PeriodEngine:
             ))
             construction_index += 1
             construction_start = construction_end
+        return periods
+
+    def _cod_anchor_two_construction_column_periods(self) -> tuple[PeriodMeta, ...]:
+        """Generate meaningful six-month construction segments and operation."""
+        periods: List[PeriodMeta] = self._cod_anchor_construction_segments()
+        construction_index = len(periods)
 
         # === Operation periods ===
         current_date = self._last_semiannual_end_on_or_after_cod()
@@ -362,6 +427,51 @@ class PeriodEngine:
 
         return tuple(periods)
 
+    @staticmethod
+    def _next_quarter_end_after(d: date) -> date:
+        """Return the next Mar 31 / Jun 30 / Sep 30 / Dec 31 strictly after d."""
+        for month in (3, 6, 9, 12):
+            end = date(d.year, month, calendar.monthrange(d.year, month)[1])
+            if end > d:
+                return end
+        return date(d.year + 1, 3, 31)
+
+    def _quarterly_candidate_periods(self) -> tuple[PeriodMeta, ...]:
+        """RC-7B matched 3/3 candidate axis (policy-explicit, release-closed).
+
+        Construction columns: the released six-month segments, ending at actual
+        COD (identical to the six-month axis because the roll window is refused).
+        Operation (D-01..D-04 candidate values): KEEP_ACTUAL_COD, half-open
+        quarters, end-year 365/366 fraction, four rows per model year including
+        the initial stub, exactly ``4 * horizon_years`` operating rows.
+        """
+        periods: List[PeriodMeta] = self._cod_anchor_construction_segments()
+        period_index = len(periods)
+        current_date = self._operating_start
+        for operating_period_index in range(self._operating_period_count):
+            end = self._next_quarter_end_after(current_date)
+            days = self._days_between(current_date, end)
+            is_leap = calendar.isleap(end.year)
+            model_year = operating_period_index // 4 + 1
+            periods.append(PeriodMeta(
+                index=period_index,
+                start_date=current_date,
+                end_date=end,
+                year_index=model_year,
+                period_in_year=operating_period_index % 4 + 1,
+                is_construction=False,
+                is_operation=True,
+                is_ppa_active=current_date < self._ppa_end,
+                days_in_period=days,
+                day_fraction=days / (366.0 if is_leap else 365.0),
+                is_leap_year=is_leap,
+                operating_period_index=operating_period_index,
+                operating_year_index=model_year,
+            ))
+            period_index += 1
+            current_date = end
+        return tuple(periods)
+
     def operation_periods(self) -> tuple[PeriodMeta, ...]:
         """Returns only operation periods (excludes construction)."""
         return tuple(p for p in self.periods() if p.is_operation)
@@ -381,8 +491,13 @@ def validate_canonical_period_axis(
     expected_operating_periods: int | None = None,
     cod_date: "date | None" = None,
     period_convention: "PeriodAxisConvention | None" = None,
+    periods_per_year: int = 2,
 ) -> None:
     """Fail closed when a consumer receives a malformed financial axis.
+
+    ``periods_per_year`` (default 2, the released six-month axis) sets the
+    operating year / period-in-year counter cycle. 4 is accepted only for the
+    RC-7B matched quarterly candidate; any other value fails closed.
 
     Checks (in order):
       1.  Axis is non-empty.
@@ -433,6 +548,8 @@ def validate_canonical_period_axis(
     """
     import math as _math
 
+    if type(periods_per_year) is not int or periods_per_year not in (2, 4):
+        raise ValueError(f"PERIOD_AXIS_PERIODS_PER_YEAR_UNSUPPORTED: {periods_per_year!r}")
     if not periods:
         raise ValueError("PERIOD_AXIS_EMPTY")
     indices = tuple(p.index for p in periods)
@@ -592,8 +709,8 @@ def validate_canonical_period_axis(
                 f"PERIOD_AXIS_OPERATING_INDICES_INVALID: period_index={op.index} "
                 f"expected_op_idx={op_pos} actual={op.operating_period_index}"
             )
-        expected_year = op_pos // 2 + 1
-        expected_pip = op_pos % 2 + 1
+        expected_year = op_pos // periods_per_year + 1
+        expected_pip = op_pos % periods_per_year + 1
         if op.operating_year_index != expected_year:
             raise ValueError(
                 f"PERIOD_AXIS_OPERATING_YEAR_INDEX_INVALID: period_index={op.index} "
@@ -710,7 +827,7 @@ def map_period_vector(
 
 def hash_engine_for_cache(e: "PeriodEngine") -> tuple:
     """Deterministic hash for PeriodEngine inputs (for cache key)."""
-    return (
+    key = (
         e.fc,
         e.construction_months,
         e.horizon_years,
@@ -719,3 +836,7 @@ def hash_engine_for_cache(e: "PeriodEngine") -> tuple:
         e.cod,
         e.period_axis_convention.value,
     )
+    policy = getattr(e, "operating_calendar_policy", None)
+    if policy is not None:
+        key = key + (("operating_calendar_policy", policy.cache_key()),)
+    return key

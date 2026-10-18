@@ -25,6 +25,7 @@ from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 from finco_core.inputs.accounting import AccountingPolicyConfig
 
 if TYPE_CHECKING:
+    from finco_core.engine.calendar_policy import OperatingCalendarPolicy
     from finco_core.inputs.bess import BessParams
     from finco_core.opex._capability import HierarchicalOpexCapability
     from finco_core.inputs.construction_financing import ConstructionFinancingInput
@@ -254,6 +255,30 @@ class ProjectInfo:
     period_axis_convention: PeriodAxisConvention = (
         PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
     )
+
+
+@dataclass(frozen=True, kw_only=True)
+class QuarterlyProjectInfo(ProjectInfo):
+    """RC-7B matched 3/3 project timeline (subclass; plain ProjectInfo stays 6/6).
+
+    The released ``ProjectInfo`` shape, serialization and cache identity are
+    untouched for every existing project. A quarterly project is this explicit
+    subtype carrying a complete, versioned OperatingCalendarPolicy. Building one
+    is not owner approval and does not admit a Run (application gate is closed).
+    """
+
+    operating_calendar_policy: "OperatingCalendarPolicy"
+
+    def __post_init__(self) -> None:
+        from finco_core.engine.calendar_policy import OperatingCalendarPolicy
+        if self.period_frequency is not PeriodFrequency.QUARTERLY:
+            raise ValueError(
+                "QUARTERLY_PROJECT_INFO_FREQUENCY_MISMATCH: "
+                f"period_frequency={self.period_frequency!r}")
+        if type(self.operating_calendar_policy) is not OperatingCalendarPolicy:
+            raise ValueError("QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED")
+        if self.period_axis_convention is not PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS:
+            raise ValueError("QUARTERLY_PERIOD_AXIS_CONVENTION_UNSUPPORTED")
 
 
 @dataclass(frozen=True)
@@ -1827,6 +1852,15 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         # Developer Economics V1: absent and disabled are the same neutral None.
         _development_economics_cache_key(inputs.development_economics),
     )
+    # RC-7B: a quarterly timeline is a different economic calculation. Released
+    # six-month keys are unchanged (no suffix); quarterly keys carry frequency and
+    # the complete policy so a 3/3 result can never be served for a 6/6 request.
+    if isinstance(inputs.info, QuarterlyProjectInfo):
+        legacy_key = legacy_key + ((
+            "OPERATING_CALENDAR",
+            inputs.info.period_frequency.value,
+            inputs.info.operating_calendar_policy.cache_key(),
+        ),)
     from finco_core.inputs.junior_debt import JuniorProjectInputs
     if isinstance(inputs, JuniorProjectInputs):
         return legacy_key + ((inputs.financing_activation_authority,
