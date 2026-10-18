@@ -481,8 +481,6 @@ def build_canonical_last_run_institutional_workbook_export(
 
         # RC-7: freeze the SAME ws read as an immutable evidence package; the V2 reporting
         # sheets read only it, so a Working Copy edit can never reach them.
-        from dataclasses import replace
-
         from app.export.institutional_workbook import export_institutional_workbook_from_bundle
         from app.export.run_evidence import evidence_from_workspace
 
@@ -490,7 +488,6 @@ def build_canonical_last_run_institutional_workbook_export(
         evidence = evidence_from_workspace(
             ws, project_record, user_id, is_stale=freshness.is_stale, freshness_source=freshness.source,
             history_id=_history_id_for_snapshot(user_id, project_record.project_id, ws.last_runtime_snapshot_id))
-        bundle = replace(bundle, run_state=evidence.state)
         workbook_bytes = export_institutional_workbook_from_bundle(bundle, run_evidence=evidence)
         first_row = bundle.runtime_rows[0]
 
