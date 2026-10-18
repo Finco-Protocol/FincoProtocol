@@ -178,7 +178,7 @@ def test_production_period_engine_still_rejects_unsupported_frequency(frequency)
         PeriodEngine(date(2028, 1, 1), 12, 2, 1, frequency=frequency)
 
 
-def test_clean_calendar_frequency_bridge_is_a_documented_gap_not_quarterly_enablement():
+def test_clean_calendar_frequency_bridge_refuses_quarterly_production_admission():
     from app.project_factories import create_generic_solar_reference
     from finco_core.inputs import PeriodFrequency as InputFrequency
     from financial_engine.adapters.project_inputs import from_project_inputs
@@ -186,9 +186,10 @@ def test_clean_calendar_frequency_bridge_is_a_documented_gap_not_quarterly_enabl
     from financial_engine.orchestrator import _build_period_engine
     pi = create_generic_solar_reference()
     unapproved = replace(pi, info=replace(pi.info, period_frequency=InputFrequency.QUARTERLY))
-    adapted = from_project_inputs(unapproved)  # inspect only; do NOT execute this input
     assert 'period_frequency' not in {f.name for f in fields(CalendarInput)}
-    assert _build_period_engine(adapted).freq is PeriodFrequency.SEMESTRIAL
+    with pytest.raises(ValueError, match='CLEAN_CALENDAR_FREQUENCY_UNSUPPORTED'):
+        from_project_inputs(unapproved)
+    assert _build_period_engine(from_project_inputs(pi)).freq is PeriodFrequency.SEMESTRIAL
 
 
 @pytest.mark.parametrize('kind', ['solar', 'wind', 'data_center', 'ev_charging'])
