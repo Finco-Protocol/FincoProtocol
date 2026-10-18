@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _render():
     view = {
-        "identity": {"history_id": "committed-run-1", "scenario": "P50", "state": "HISTORICAL", "integrity": "PASS"},
+        "identity": {"history_id": "committed-1", "scenario": "P50", "state": "HISTORICAL", "integrity": "PASS"},
         "timeline": {
             "available": True,
             "columns": [{"index": 3, "date": "2030-06-30"}, {"index": 4, "date": "2030-12-31"}],
@@ -31,7 +31,7 @@ def _render():
                   "diagnostics": "/v2/workbook#diagnostics"},
     }
     other = dict(view)
-    other["identity"] = dict(view["identity"], history_id="committed-run-2", scenario="P90")
+    other["identity"] = dict(view["identity"], history_id="committed-2", scenario="P90")
     other["timeline"] = dict(view["timeline"], rows=[
         dict(row, cells=[{"v": float(cell["v"]) + .5} for cell in row["cells"]])
         for row in view["timeline"]["rows"]
@@ -50,7 +50,8 @@ def test_v4_template_shows_two_run_shortfalls_and_no_false_covenant():
     assert "PLCR" in html and "UNAVAILABLE" in html
     assert "not an approval" in html
     assert "Contractual covenant/default" in html
-    assert "committed-run-1" in html
+    # the template deliberately shows history_id[:12]; ids are kept <= 12 chars so both Run identities are visible in full
+    assert "committed-1" in html and "committed-2" in html
 
 
 @pytest.mark.parametrize("width", [390, 1440])
