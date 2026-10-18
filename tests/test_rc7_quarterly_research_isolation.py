@@ -62,15 +62,18 @@ def test_real_production_entry_rejects_typed_quarters_after_baseline_adapter_res
     if variant == "explicit_construction":
         pi = replace(pi, financing=replace(pi.financing, construction_financing=derive_construction_financing(pi)))
     pi = replace(pi, info=replace(pi.info, period_frequency=PeriodFrequency.QUARTERLY))
-    # Honest baseline limitation: this adapter does NOT reject or carry frequency.
-    clean = from_project_inputs(pi)
-    assert not hasattr(clean.calendar, "period_frequency")
+    # RC-7B: the baseline limitation (adapter silently dropping the frequency) is
+    # closed. A QUARTERLY request without an explicit typed policy now fails at
+    # the clean bridge itself, and the production entry still refuses it.
+    with pytest.raises(ValueError, match="QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED"):
+        from_project_inputs(pi)
     policy = GenericFinancingPolicy(apply_construction_financing=False, apply_cash_dsra=False) if variant == "no_auto_construction" else None
     with pytest.raises(CleanProductionRunUnavailable) as rejected:
         run_clean_production(pi, financing_policy=policy)
     message = str(rejected.value)
     assert ("H1_UNSUPPORTED_PERIOD_FREQUENCY" in message if variant == "default"
-            else "build_tax_contract_from_project_inputs: unsupported period_frequency" in message)
+            else "build_tax_contract_from_project_inputs: unsupported period_frequency" in message
+            or "QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED" in message)
 
 
 @pytest.mark.parametrize("field", ["period_frequency", "project.period_frequency", "project_setup.period_frequency"])
