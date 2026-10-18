@@ -136,7 +136,16 @@ def _root_cause(entry: Mapping, all_findings: list[Mapping], unavailable_reasons
     where = f"P{entry['period_index']} {entry['date'] or 'date unavailable'}" if entry["period_index"] is not None else "the whole run (aggregate)"
     refs = [{"source": v["source"], "value": v["value"]} for v in entry["components"].values()
             if isinstance(v, Mapping) and v.get("source") and v.get("basis") != "TEXT"][:12]
-    if residual is not None and (observed is not None or entry["period_index"] is None):
+    within = residual is not None and tol is not None and abs(residual) <= tol
+    if within:
+        # The identity closes inside its tolerance: the finding is a reported status, NOT an arithmetic mismatch. Saying "does not
+        # close" here would be false, so the measured fact is stated as it is.
+        items.append({"confidence": "PROVEN", "statement":
+                      f"The committed evidence reconciles within tolerance in {where}: observed {_fmt(observed)}, expected {_fmt(expected)}, "
+                      f"residual {_fmt(residual)} against tolerance {_fmt(tol)}. The {entry['status']} is a reported status ({entry['reason'] or 'see reason'}), "
+                      "not an arithmetic mismatch, and it does not prove a cause.",
+                      "evidence": refs})
+    elif residual is not None and (observed is not None or entry["period_index"] is None):
         items.append({"confidence": "PROVEN", "statement":
                       f"The committed evidence proves the reconciliation does not close in {where}: observed {_fmt(observed)}, expected {_fmt(expected)}, "
                       f"residual {_fmt(residual)} against tolerance {_fmt(tol)} ({entry['status']}). Stated identity: {entry['identity']}. "
@@ -150,7 +159,7 @@ def _root_cause(entry: Mapping, all_findings: list[Mapping], unavailable_reasons
                       f"{f['check_id']} is also {f['status']} ({'same period' if f['period_index'] == entry['period_index'] else 'related check'}; "
                       f"residual {_fmt(f['residual'])}). Connection is demonstrated by co-occurrence or by the registered check relation, not by causality.",
                       "evidence": [{"source": f["evidence_source"], "value": f["residual"]}]})
-    if residual is not None:
+    if residual is not None and not within:
         window = max(tol or 0.0, 0.011)
         for name, comp in entry["components"].items():
             v = comp.get("value") if isinstance(comp, Mapping) else None
@@ -238,6 +247,12 @@ def _bankability(ws: Any, report: Any, evidence: Any, facts: Facts, v1: Mapping)
     terms = evidence.terms
     ev = getattr(ws, "last_integrity_evidence", None) or {}
     debt_rows = [r for r in ((ev.get("senior_debt") or {}).get("periods") or []) if isinstance(r, Mapping)]
+    # A period index that occurs twice has no single DSCR / debt-service value: it is excluded and listed, never silently de-duplicated.
+    seen_idx, dup_idx = set(), set()
+    for r in debt_rows:
+        k = r.get("period_index")
+        (dup_idx.add(k) if k in seen_idx else seen_idx.add(k))
+    debt_rows = [r for r in debt_rows if r.get("period_index") not in dup_idx]
     by_id = {c.check_id: c for c in report.checks}
     state = evidence.freshness
     contractual = bool(terms.contractual)
@@ -329,6 +344,7 @@ def _bankability(ws: Any, report: Any, evidence: Any, facts: Facts, v1: Mapping)
     return {
         "state": state or "UNAVAILABLE", "identity": v1.get("identity"), "thresholds": thresholds,
         "missing_contractual_authorities": missing,
+        "duplicate_debt_periods_excluded": sorted(k for k in dup_idx if isinstance(k, int)),
         "dscr_periods": rows, "periods_at_risk": [at_risk[k] for k in sorted(at_risk)],
         "min_dscr_headroom": _min_headroom(rows),
         "llcr": {"measured_min": None if llcr is None else llcr.measured_value, "threshold": terms.min_llcr,
