@@ -112,6 +112,32 @@ from finco_core.inputs.development import (
 _SCHEMA_VERSION = "v3-6"
 
 
+def _quarterly_info_fields(info) -> dict:
+    """RC-7B: serialize the explicit quarterly calendar policy (subtype only)."""
+    from finco_core.inputs._models import QuarterlyProjectInfo
+    if isinstance(info, QuarterlyProjectInfo):
+        return {"operating_calendar_policy": info.operating_calendar_policy.to_dict()}
+    return {}
+
+
+def _quarterly_info_from_dict(info, info_d: dict):
+    """Strictly decode a present policy; its absence is the released 6/6 contract.
+
+    A stored QUARTERLY frequency WITHOUT a policy still loads as the plain
+    ProjectInfo (unchanged historical behaviour) and is refused by the clean
+    bridge before any calculation; it is never read as semiannual.
+    """
+    raw = info_d.get("operating_calendar_policy")
+    if raw is None:
+        return info
+    import dataclasses
+    from finco_core.engine.calendar_policy import OperatingCalendarPolicy
+    from finco_core.inputs._models import QuarterlyProjectInfo
+    policy = OperatingCalendarPolicy.from_dict(raw)
+    values = {f.name: getattr(info, f.name) for f in dataclasses.fields(info)}
+    return QuarterlyProjectInfo(**values, operating_calendar_policy=policy)
+
+
 # ── Serialization helpers ──────────────────────────────────────────────────────
 
 def _ser_date(d: date | None) -> str | None:
@@ -723,6 +749,9 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "use_shl_gross_accrued_for_pnl": info.use_shl_gross_accrued_for_pnl,
             "use_book_depreciation_for_pnl": info.use_book_depreciation_for_pnl,
             "period_axis_convention": info.period_axis_convention.value,
+            # RC-7B: emitted only for the explicit quarterly subtype, so every
+            # released six-month dict is byte-identical.
+            **_quarterly_info_fields(info),
         },
         "technical": {
             "capacity_mw": tech.capacity_mw,
@@ -1112,6 +1141,7 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
             )
         ),
     )
+    info = _quarterly_info_from_dict(info, info_d)
 
     technical = TechnicalParams(
         capacity_mw=tech_d["capacity_mw"],
