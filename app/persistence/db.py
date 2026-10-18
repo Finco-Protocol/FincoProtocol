@@ -6,6 +6,8 @@ Runtime calculations remain authoritative in the model layer.
 """
 
 import os
+import threading
+import uuid
 from contextlib import contextmanager
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
@@ -14,20 +16,116 @@ DB_PATH = os.getenv("FINCO_DB_PATH", os.path.join(DATA_DIR, "finco_runs.db"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
+# V8-A: process-local optimisation only. A fresh process always verifies/migrates
+# its database; a cached result can never attest to another process's progress.
+# Bump this contract when adding new DDL to _init_schema.
+_SCHEMA_CONTRACT_VERSION = "v8a-schema-1"
+_SCHEMA_GUARD_LOCK = threading.RLock()
+_SCHEMA_GUARD_SEEN = {}
+
+
+def _database_file_identity():
+    """Identify the *file*, not just its pathname; uncertain identities are never cached."""
+    if not DB_PATH or DB_PATH == ":memory:" or str(DB_PATH).startswith("file:"):
+        return None
+    try:
+        stat = os.stat(DB_PATH)
+        return (os.getpid(), os.path.realpath(DB_PATH), stat.st_dev, stat.st_ino)
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def _schema_state(conn):
+    """A durable per-incarnation marker plus SQLite's current DDL generation.
+
+    SQLite schema_version changes on external DDL, including another process's
+    migrations. The stored random incarnation catches delete/recreate at the
+    same pathname even when a filesystem recycles an inode. This is a cheap
+    read, not a substitute for process-first initialization.
+    """
+    import sqlite3
+
+    try:
+        row = conn.execute(
+            "SELECT incarnation, contract_version FROM _finco_schema_state WHERE singleton=1"
+        ).fetchone()
+        generation = conn.execute("PRAGMA schema_version").fetchone()[0]
+    except sqlite3.DatabaseError:
+        return None
+    if row is None or not row[0] or not row[1]:
+        return None
+    return (str(row[0]), str(row[1]), int(generation))
+
+
+def _ensure_schema_ready(conn):
+    """Run DDL once per process, database incarnation, and schema generation.
+
+    All first-time and upgrade work happens inside BEGIN IMMEDIATE, which
+    serialises cross-process migrations. No marker is published until the DDL
+    commits successfully. A new process still executes the idempotent
+    migrations at least once; it never trusts another process's local cache.
+    """
+    identity = _database_file_identity()
+    with _SCHEMA_GUARD_LOCK:
+        state = _schema_state(conn)
+        if (identity is not None and state is not None
+                and state[1] == _SCHEMA_CONTRACT_VERSION
+                and _SCHEMA_GUARD_SEEN.get(identity) == state):
+            return
+
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            _init_schema(conn, commit=False)
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS _finco_schema_state ("
+                "singleton INTEGER PRIMARY KEY CHECK (singleton=1), "
+                "incarnation TEXT NOT NULL, contract_version TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO _finco_schema_state "
+                "(singleton, incarnation, contract_version) VALUES (1, ?, ?)",
+                (uuid.uuid4().hex, _SCHEMA_CONTRACT_VERSION),
+            )
+            conn.execute(
+                "UPDATE _finco_schema_state SET contract_version=? WHERE singleton=1",
+                (_SCHEMA_CONTRACT_VERSION,),
+            )
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            if identity is not None:
+                _SCHEMA_GUARD_SEEN.pop(identity, None)
+            raise
+
+        current_identity = _database_file_identity()
+        current_state = _schema_state(conn)
+        if (identity is not None and identity == current_identity
+                and current_state is not None
+                and current_state[1] == _SCHEMA_CONTRACT_VERSION):
+            if len(_SCHEMA_GUARD_SEEN) >= 128:
+                _SCHEMA_GUARD_SEEN.clear()  # bounded across temporary test DBs
+            _SCHEMA_GUARD_SEEN[identity] = current_state
+
+
 def get_connection():
     """Return a fresh SQLite connection with schema ensured."""
     import sqlite3
 
     conn = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")
-    conn.execute("PRAGMA foreign_keys=ON")
-    _init_schema(conn)
-    return conn
+    try:
+        # Connection-local settings remain mandatory on EVERY new connection.
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA foreign_keys=ON")
+        _ensure_schema_ready(conn)
+        return conn
+    except BaseException:
+        conn.close()
+        raise
 
 
-def _init_schema(conn):
+def _init_schema(conn, *, commit=True):
     """Run schema creation on an open connection (idempotent)."""
     conn.execute(
         """
@@ -360,7 +458,8 @@ def _init_schema(conn):
         "CREATE INDEX IF NOT EXISTS idx_model_run_history_project"
         " ON model_run_history(user_id, project_id, ran_at DESC, history_id DESC)"
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def _ensure_column(conn, table_name: str, column_name: str, column_sql: str) -> None:
