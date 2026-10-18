@@ -1,0 +1,56 @@
+# RC-7B Matched 3/3 — Successor Governance Contract (recognition only, NOT approval)
+
+Status: **INTEGRATED_RELEASE_CLOSED_CANDIDATE — FINANCIAL_OWNER_APPROVAL_REQUIRED — NO MERGE.**
+Machine-checked by `tests/rc7b_quarterly_candidate_authority.py` (RC-3 C2 PPA-01 precedent).
+
+| Item | Value |
+|---|---|
+| Original authority / predecessor | main `5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d` (PR #313 merge; PR #319 ancestor) |
+| Reviewed RC-7B source head | `4b086b83e207249c807cc0521a14f78812ac8be3` |
+| Activation flag | `app/workbook/quarterly_frequency_config.ACTIVATION_ENABLED = False` (literal, AST-checked) |
+| Acceptance record | `docs/model_v2/RC7B_QUARTERLY_FINANCIAL_ACCEPTANCE.json` — **does not exist** |
+| Research reference | `tools/quarterly_research/` byte-identical to predecessor (validation only) |
+
+## Approved changed-file inventory (protected namespaces)
+
+| Path | Predecessor blob | Candidate blob |
+|---|---|---|
+| `financial_engine/adapters/project_inputs.py` | `14bd759a` | `d97ae939` |
+| `financial_engine/adapters/tax_inputs.py` | `0150eb1c` | `9e271f69` |
+| `financial_engine/financing/generic_product_policy.py` | `2894334e` | `59a2c1f8` |
+| `financial_engine/financing/project.py` | `30536cec` | `2e18a6e7` |
+| `financial_engine/financing/quarterly_scope.py` | new | `0bcf6605` |
+| `financial_engine/inputs.py` | `8ba4cd3e` | `6fb5913a` |
+| `financial_engine/orchestrator.py` | `be7ac31c` | `07aa1e18` |
+| `financial_engine/senior_debt/project_adapter.py` | `a73611a1` | `b2302be9` |
+| `finco_core/engine/calendar_policy.py` | new | `91f55f9b` |
+| `finco_core/engine/period_engine.py` | `7a44c10b` | `465c172d` |
+| `finco_core/inputs/_models.py` | `b896d3c0` | `a48139b9` |
+| `finco_core/inputs/serialization.py` | `31f70570` | `7e678450` |
+
+Full 40-character blobs are the literals in the module.
+
+## Separate states (never one boolean)
+
+`research_isolated` = True · `candidate_content_matches_exactly` = True · `candidate_is_financially_approved` = **False** ·
+`candidate_is_product_admitted` = **False** · `candidate_is_released` = **False**.
+
+## Independent financial evidence
+
+* `tests/rc7b_quarterly_oracle.py` — 60-digit Decimal reference from inputs; `tests/test_rc7b_quarterly_funding_statements.py` (42).
+* `tests/test_rc7b_quarterly_axis_production.py` — independent Fraction/calendar geometry (228).
+* `tests/test_rc7b_quarterly_production_acceptance.py` — real committed app Runs, Solar and Wind (5).
+* `docs/model_v2/RC7B_SEMIANNUAL_REGRESSION.json` — four verticals, 6/6 bit-identical to the predecessor (max difference 0).
+
+## Wiring (additive only)
+
+`finance_integrity_governance.unapproved_engine_changes` and `strictly_frozen_changes` gain one clause each recognising the exact candidate;
+`rc3_authority_states.authority_state` reports `INTEGRATED_RELEASE_CLOSED_CANDIDATE`. `tests/model_v2_governance.py`, every pin map,
+the M7 and PPA-01 literals and `approved_frozen_path` are unchanged. Negative controls: `tests/test_rc7b_quarterly_candidate_authority.py`.
+
+## Open governance work (keeps the PR red and Draft)
+
+Historical guards that assert HEAD still carries an older pinned blob for a path RC-7B changes (M7 orchestrator/adapter, F3 multi-Senior,
+F3.5 Junior, WF04, WF07, PPA-01 coexistence facts, RC-3 inventory, PR #313 research-isolation and RC-7A compatibility guards) still fail.
+Each must be reconciled to judge its blobs at its own checkpoint, as RC-3 C2 did for PPA-01, and that reconciliation needs independent
+governance review. It is deliberately not self-approved here.

@@ -85,10 +85,15 @@ def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
         released_engine_authority_matches,
     )
 
+    from rc7b_quarterly_candidate_authority import frozen_scope_exempt as rc7b_candidate_exempt
+
     changed = changed_paths_vs_main() if changed is None else changed
     return sorted(
         f for f in changed
         if f.startswith("financial_engine/")
+        # RC-7B: the exact twelve-blob matched 3/3 candidate (RELEASE-CLOSED, NOT approved, NOT released) is recognised
+        # only while the WHOLE candidate is exact; approved_frozen_path deliberately does NOT include it.
+        and not rc7b_candidate_exempt(f)
         and (
             not released_engine_authority_matches(f) if f in F3_2_4_FINANCING_AUTHORITIES or f in WF07_REVENUE_AUTHORITIES or f in F3_5_A_JUNIOR_AUTHORITIES
             else f not in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
@@ -102,6 +107,7 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
     from model_v2_governance import released_engine_authority_matches
     from ppa01_candidate_authority import frozen_scope_exempt as ppa01_candidate_exempt
     from radar_authority_governance import reviewed_radar_authority_matches
+    from rc7b_quarterly_candidate_authority import frozen_scope_exempt as rc7b_candidate_exempt
 
     changed = changed_paths_vs_main() if changed is None else changed
     # Exact-path, blob-pinned Developer Economics V1 authorities are the only
@@ -117,6 +123,8 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
         # RC-3 C2: the exact three-blob PPA-01 candidate (RELEASE-CLOSED, NOT approved, NOT released), recognised only while ALL three paths are
         # exactly the reviewed blobs. approved_frozen_path below deliberately does NOT include it: it is not a released exemption.
         and not ppa01_candidate_exempt(f, repo=_governance.REPO)   # same repo the released-authority check reads
+        # RC-7B: exact twelve-blob matched 3/3 candidate, recognised only while whole and release-closed (not an approval).
+        and not rc7b_candidate_exempt(f, repo=_governance.REPO)
     )
 
 
