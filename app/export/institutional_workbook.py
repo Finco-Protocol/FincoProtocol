@@ -14,7 +14,9 @@ import csv
 import os
 
 from openpyxl import Workbook
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 from app.export_metadata import build_export_metadata, metadata_rows
 from app.export.workbook_index import (
@@ -25,6 +27,7 @@ from app.export.runtime_summary import (
     PROJECT_FACTORIES,
     build_runtime_summary_rows,
 )
+from app.export.reporting_common import classify_metric, display_total, period_label
 from app.input_helpers import (
     build_capex_items_table,
     build_capex_summary_table,
@@ -90,6 +93,8 @@ class WorkbookExportBundle:
     project_id: str = "not_applicable"
     input_composite_hash: str = "not_applicable"
     engine_version: str = "not_applicable"
+    # RC-7: CURRENT / STALE / HISTORICAL context of the Run this workbook serializes.
+    run_state: str = "NOT_APPLICABLE"
 
 
 def _resolve_export_senior_debt_keur(bundle: WorkbookExportBundle) -> float:
@@ -220,12 +225,17 @@ def export_institutional_workbook_skeleton(project: str) -> bytes:
     return export_institutional_workbook_from_bundle(_build_export_bundle(project))
 
 
-def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle) -> bytes:
+def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle, run_evidence=None) -> bytes:
     """Pure serialization of an ALREADY-BUILT export bundle to workbook bytes.
 
     PR-8 single-calculation contract: this function performs ZERO financial
     calculations — callers that already hold a bundle (one authority
     execution) serialize from it without re-running any engine.
+
+    RC-7: when the frozen ``run_evidence`` of the SAME committed Run is supplied, the
+    run-bound reporting sheets (Report_Guide, Periods_Dates, Sources_Uses,
+    Construction_Funding, Debt_DSCR, Reserves, Tax_Bridge, Run_Integrity, Disclosures)
+    are appended.  They read only that evidence.
     """
     workbook = Workbook()
 
@@ -299,6 +309,11 @@ def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle) -> b
 
     for sheet in workbook.worksheets:
         _format_sheet(sheet)
+
+    if run_evidence is not None:
+        from app.export.institutional_reporting_v2 import write_reporting_v2_sheets
+
+        write_reporting_v2_sheets(workbook, run_evidence, inputs=bundle.project_inputs)
 
     # Presentation-only: highlight the navigation/landing and validation
     # tabs so reviewers can find them at a glance. No content/value change.
@@ -971,6 +986,13 @@ def _write_shl_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     )
 
 
+def _persisted_sum(periods, attr: str):
+    """Sum of persisted values; None (NOT_AVAILABLE) when nothing was persisted -- never a fabricated 0."""
+    values = [getattr(p, attr, None) for p in periods]
+    values = [v for v in values if v is not None]
+    return sum(values) if values else None
+
+
 def _statement_run_identity_rows(bundle: WorkbookExportBundle) -> list[tuple]:
     """Same-run identity rows bound onto every statement sheet.
 
@@ -1002,19 +1024,15 @@ def _write_tax_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Loss carryforward years", bundle.context.loss_carryforward_years, "template assumption", "Project context tax assumption.", K_EUR_FORMAT),
         ("ATAD EBITDA limit", getattr(tax, "atad_ebitda_limit", "NOT_AVAILABLE"), "template assumption", "Existing tax input.", RATIO_FORMAT),
         ("ATAD minimum interest kEUR", getattr(tax, "atad_min_interest_keur", "NOT_AVAILABLE"), "template assumption", "Existing tax input.", K_EUR_FORMAT),
-        ("Runtime total cash tax", sum(period.cash_tax_current_period_keur for period in periods), "runtime", "Existing assembled tax bridge.", K_EUR_FORMAT),
-        ("Runtime total CIT accrual", sum(period.cit_accrual_keur for period in periods), "runtime", "Existing assembled tax bridge.", K_EUR_FORMAT),
+        ("Runtime total cash tax", _persisted_sum(periods, "cash_tax_current_period_keur"), "runtime", "Existing assembled tax bridge. NOT_AVAILABLE when no tax-bridge periods were persisted (see Tax_Bridge).", K_EUR_FORMAT),
+        ("Runtime total CIT accrual", _persisted_sum(periods, "cit_accrual_keur"), "runtime", "Existing assembled tax bridge. NOT_AVAILABLE when no tax-bridge periods were persisted (see Tax_Bridge).", K_EUR_FORMAT),
         ("Known limitation", "R99/R102 remains governance-only, not accepted as runtime source", "review", "No runtime authority change in this branch."),
     ]
     rows.extend(_statement_run_identity_rows(bundle))
     next_row = _write_key_value_section(sheet, 6, "Tax summary", rows, include_format=True)
     # Clean runtime TaxBridgePeriod carries period_index (no calendar date);
     # label from the index rather than fabricating dates.
-    tax_labels = [
-        period.date.isoformat() if getattr(period, "date", None) is not None
-        else f"Period {period.period_index}"
-        for period in periods
-    ]
+    tax_labels = [_statement_period_label(period) for period in periods]
     _write_horizontal_metric_table(
         sheet,
         next_row,
@@ -1049,7 +1067,7 @@ def _write_pnl_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         sheet,
         identity_next + 1,
         "P&L period table",
-        [period.date.isoformat() for period in periods],
+        [_statement_period_label(period) for period in periods],
         [
             ("Revenue", [period.revenues_keur for period in periods], "runtime", "Offline assembled P&L."),
             ("OPEX", [period.operating_expenses_keur for period in periods], "runtime", "Offline assembled P&L."),
@@ -1083,7 +1101,7 @@ def _write_cash_flow_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         sheet,
         identity_next + 1,
         "Project finance cash waterfall",
-        [period.date.isoformat() for period in periods],
+        [_statement_period_label(period) for period in periods],
         [
             ("Revenue Cash", [period.revenue_cash_keur for period in periods], "runtime", "Offline assembled PF cash waterfall."),
             ("OPEX Cash", [period.opex_cash_keur for period in periods], "runtime", "Offline assembled PF cash waterfall."),
@@ -1119,7 +1137,7 @@ def _write_balance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         sheet,
         identity_next + 1,
         "Balance sheet period table",
-        [period.date.isoformat() for period in periods],
+        [_statement_period_label(period) for period in periods],
         [
             ("Gross Fixed Assets", [period.gross_fixed_assets_keur for period in periods], "runtime", "Offline assembled balance sheet."),
             ("Accumulated Depreciation", [period.accumulated_depreciation_keur for period in periods], "runtime", "Offline assembled balance sheet."),
@@ -1717,7 +1735,8 @@ def _write_metadata_block(sheet, bundle: WorkbookExportBundle, marker: str) -> N
     metadata = (
         ("Project", bundle.project_name),
         ("Export generated at", bundle.generated_at),
-        ("Evidence status", marker),
+        ("Evidence status", marker if getattr(bundle, "run_state", "NOT_APPLICABLE") == "NOT_APPLICABLE"
+         else f"{marker} | Run state: {bundle.run_state}"),
         ("Runtime boundary", f"{bundle.runtime_timestamp} | {_display_runtime_origin(bundle.runtime_origin)} | {bundle.runtime_snapshot_id}"),
         ("Provenance", f"{bundle.branch or _source_branch()} | {bundle.commit_sha} | {_display_template_origin(bundle.template_origin)} | {bundle.scenario_name}"),
     )
@@ -1745,7 +1764,9 @@ def _write_key_value_section(
     for offset, row in enumerate(rows, start=2):
         label, value, source, notes = row[:4]
         sheet.cell(row=start_row + offset, column=1, value=label)
-        value_cell = sheet.cell(row=start_row + offset, column=2, value=value)
+        # RC-7: unavailable evidence is stated, not left blank (a blank reads like zero).
+        value_cell = sheet.cell(row=start_row + offset, column=2,
+                                value="NOT_AVAILABLE" if value is None else value)
         sheet.cell(row=start_row + offset, column=3, value=source)
         sheet.cell(row=start_row + offset, column=4, value=notes)
         _fill_source_row(sheet, start_row + offset, source)
@@ -1813,20 +1834,26 @@ def _write_horizontal_metric_table(
     _style_section_title(sheet, start_row)
     headers = ["Metric"]
     headers.extend(period_labels)
-    headers.extend(["Total", "Source", "Notes"])
+    headers.extend(["Total (flows only)", "Source", "Notes"])
     for col_idx, header in enumerate(headers, start=1):
         sheet.cell(row=start_row + 1, column=col_idx, value=header)
         _style_header_cell(sheet.cell(row=start_row + 1, column=col_idx))
 
     for row_offset, (label, values, source, notes) in enumerate(rows, start=2):
         sheet.cell(row=start_row + row_offset, column=1, value=label)
-        total = 0.0
+        # RC-7: a period that was not persisted is shown as "n/a", never as 0, and is not
+        # counted in the Total.  Balances (stock) and ratios are not summed at all.
         for col_idx, value in enumerate(values, start=2):
-            cell = sheet.cell(row=start_row + row_offset, column=col_idx, value=value)
-            cell.number_format = MULTIPLE_FORMAT if number_format == MULTIPLE_FORMAT else number_format
-            total += float(value or 0.0)
+            cell = sheet.cell(row=start_row + row_offset, column=col_idx,
+                              value=value if value is not None else "n/a")
+            if value is not None:
+                cell.number_format = number_format
+        total, coverage = display_total(values, classify_metric(label))
         total_cell = sheet.cell(row=start_row + row_offset, column=2 + len(period_labels), value=total)
-        total_cell.number_format = number_format
+        if isinstance(total, (int, float)):
+            total_cell.number_format = number_format
+        if coverage:
+            total_cell.comment = Comment(coverage, "FINCO")
         sheet.cell(row=start_row + row_offset, column=3 + len(period_labels), value=source)
         sheet.cell(row=start_row + row_offset, column=4 + len(period_labels), value=notes)
         _fill_source_row(sheet, start_row + row_offset, source)
@@ -1881,6 +1908,11 @@ def _format_sheet(sheet) -> None:
     sheet.oddHeader.right.text = "Institutional Runtime Workbook"
     for letter, width in (("A", 28), ("B", 22), ("C", 18), ("D", 48), ("E", 16)):
         sheet.column_dimensions[letter].width = width
+    # Wide period schedules: keep period columns beyond E readable instead of default width.
+    for col in range(6, min(sheet.max_column, 200) + 1):
+        letter = get_column_letter(col)
+        if letter not in sheet.column_dimensions or not sheet.column_dimensions[letter].width:
+            sheet.column_dimensions[letter].width = 15
     for row in sheet.iter_rows():
         for cell in row:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
@@ -1894,6 +1926,13 @@ def _coerce_value(value: str, number_format: str) -> object:
         return float(value)
     except (TypeError, ValueError):
         return value
+
+
+def _statement_period_label(period: object) -> str:
+    """'P<index> | <persisted period-end date>'; no quarter/half-year naming is ever assumed."""
+    index = next((getattr(period, k) for k in ("period", "period_index")
+                  if getattr(period, k, None) is not None), None)
+    return period_label(index, getattr(period, "date", None))
 
 
 def _period_label(period: object) -> str:
