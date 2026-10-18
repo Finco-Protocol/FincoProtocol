@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from finco_core.inputs import ProjectInputs
 
-from finco_core.inputs._models import PeriodFrequency
+from finco_core.inputs._models import PeriodFrequency, TaxPeriodisationMode
 
 
 _POLICY_ID = "clean-project-tax-v1"
@@ -187,8 +187,20 @@ def build_tax_contract_from_project_inputs(
 
     # Periods per tax year from period frequency — fail-closed for unsupported values.
     freq = info.period_frequency
-    if freq == PeriodFrequency.SEMESTRIAL:
+    quarterly_policy = getattr(info, "operating_calendar_policy", None)
+    if freq == PeriodFrequency.SEMESTRIAL and quarterly_policy is None:
         periods_per_tax_year = 2
+    elif freq == PeriodFrequency.QUARTERLY and quarterly_policy is not None:
+        # RC-7B (D-11 candidate): the same calendar-year ledger, FIFO losses and
+        # TAX_YEAR_LAST_PERIOD cash tax with zero lag; four rows per tax year are
+        # metadata only. Annual limitations are refused, never divided by four.
+        periods_per_tax_year = quarterly_policy.periods_per_year
+        if (tax.atad_enabled or tax.thin_cap_enabled
+                or tax.interest_limitation_policy is not None
+                or getattr(tax, "tax_periodisation_mode", None) is not TaxPeriodisationMode.CALENDAR_TAX_YEAR):
+            raise ValueError(
+                "QUARTERLY_TAX_POLICY_UNSUPPORTED: the quarterly candidate admits only the "
+                "calendar-year ledger without ATAD, thin-cap or interest limitation (D-11)")
     else:
         raise ValueError(
             f"build_tax_contract_from_project_inputs: unsupported period_frequency "
