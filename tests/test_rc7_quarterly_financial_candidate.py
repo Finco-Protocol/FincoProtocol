@@ -12,11 +12,11 @@ from financial_engine.inputs import (
     TaxCalculationInput, TechnicalInput, YieldScenario,
 )
 from financial_engine.policies.tax import CashTaxTiming, TaxPolicy
-from financial_engine.quarterly import ACTIVATION_ENABLED, CLASSIFICATION
-from financial_engine.quarterly.calendar import (
+from tools.quarterly_research import ACTIVATION_ENABLED, CLASSIFICATION
+from tools.quarterly_research.calendar import (
     QuarterlyCandidateAxis, QuarterlyCandidateCalendar, RenewableTechnology,
 )
-from financial_engine.quarterly.runtime import (
+from tools.quarterly_research.runtime import (
     QuarterlyDebtStudy, build_operating_candidate, evaluate_quarterly_candidate,
 )
 from financial_engine.senior_debt.inputs import PeriodDscrTarget, SeniorDebtInputs
@@ -222,13 +222,13 @@ def test_impossible_gearing_with_no_balloon_does_not_return_candidate():
         evaluate_quarterly_candidate(replace(case, inputs=replace(case.inputs, senior_debt_inputs=data)))
 
 
-def test_existing_six_month_clean_input_contract_cannot_silently_request_quarterly():
-    from financial_engine.orchestrator import run_operating_model
+def test_research_entry_refuses_an_unmarked_clean_input_contract():
+    from tools.quarterly_research.calculation import run_operating_research
     case = study()
     candidate = case.inputs.operating
     unmarked = OperatingModelInput(**{f.name: getattr(candidate, f.name) for f in fields(OperatingModelInput)})
     with pytest.raises(ValueError, match="CANDIDATE_ENTRY_REQUIRED"):
-        run_operating_model(unmarked)
+        run_operating_research(unmarked)
 
 
 def test_candidate_policy_changes_fingerprint_and_keeps_released_run_namespace_distinct():
@@ -297,12 +297,12 @@ def test_intraperiod_ppa_and_hierarchical_opex_are_not_silently_accepted():
 
 
 @pytest.mark.parametrize("frequency", ["Quarterly", "unknown", None])
-def test_production_adapter_refuses_untyped_or_missing_frequency(frequency):
+def test_production_run_refuses_untyped_or_missing_frequency(frequency):
     from app.project_factories import create_generic_solar_reference
-    from financial_engine.adapters.project_inputs import from_project_inputs
+    from app.services.production_financial_authority import run_clean_production, CleanProductionRunUnavailable
     pi = create_generic_solar_reference()
-    with pytest.raises(ValueError, match="CLEAN_CALENDAR_FREQUENCY_UNSUPPORTED"):
-        from_project_inputs(replace(pi, info=replace(pi.info, period_frequency=frequency)))
+    with pytest.raises(CleanProductionRunUnavailable, match="UNSUPPORTED_PERIOD_FREQUENCY"):
+        run_clean_production(replace(pi, info=replace(pi.info, period_frequency=frequency)))
 
 
 def test_candidate_has_no_application_persistence_or_release_admission():
@@ -313,4 +313,4 @@ def test_candidate_has_no_application_persistence_or_release_admission():
         tree = ast.parse(path.read_text(encoding="utf-8-sig"))
         modules = [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
         modules += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
-        assert not any(m.startswith("financial_engine.quarterly") for m in modules), str(path)
+        assert not any(m.startswith("tools.quarterly_research") for m in modules), str(path)

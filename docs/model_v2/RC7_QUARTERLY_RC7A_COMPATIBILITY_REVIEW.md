@@ -1,5 +1,11 @@
 # RC-7 Quarterly / RC-7A Compatibility Review
 
+**Historical Correction B measurements, retained as evidence.** Correction C
+preserves these financial/compatibility results through isolated research and
+restores production blobs exactly to main. Read the Correction C report for
+current scope, governance and frequency-admission status; the additional
+candidate adapter rejection no longer exists.
+
 ## Provenance and controlled scope
 
 Verified main `78e4c0edcc1bdb5013df79f11b3ba7b9c2151013` contains merged #319.
@@ -123,9 +129,11 @@ a contractual covenant. This branch does not change the Credit projection.
 Institutional Reporting V2 consumes committed evidence. Its existence does not
 establish a quarterly statement/BS/returns bridge. No quarterly Last Run, CAS
 writer, export or comparison admission is added. Historical Runs are not rewritten.
-The candidate wrapper always refuses `require_complete_project_run()` and has no
-application imports; production ProjectInputs adaptation rejects non-semiannual
-frequency before it can be silently discarded.
+The research wrapper always refuses `require_complete_project_run()` and has no
+production consumers. Correction C restores baseline ProjectInputs adaptation,
+which can discard frequency at this low-level boundary. Existing construction,
+tax and Senior contracts still refuse complete non-semiannual production Runs;
+this is separately tested, not claimed to preserve the removed adapter guard.
 
 See `RC7_QUARTERLY_OWNER_DECISION_PACK.md` for all twelve OPEN decisions and
 `RC7_QUARTERLY_AUTHORITY_SUCCESSOR_PROPOSAL.md` for exact successor requirements.

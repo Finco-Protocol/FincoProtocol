@@ -4,6 +4,12 @@ Base: `05183b2a96c74fd4b3976903c593a61402cab7b3`.
 Every decision below is OPEN. Executable proposal parameters are NOT owner
 approval, financial release approval, or production activation.
 
+Correction C keeps every decision OPEN while moving the executable research to
+`tools/quarterly_research/`. Production financial/core/domain contents equal
+verified RC-7A main exactly; no new protected-content successor is needed merely
+to run isolated research. Future production quarterly integration still requires
+owner policy decisions and independent financial/governance authorization.
+
 Correction B: the decision-ready expansion against RC-7A main
 `78e4c0edcc1bdb5013df79f11b3ba7b9c2151013` is in
 [the owner decision pack](RC7_QUARTERLY_OWNER_DECISION_PACK.md). It supplies

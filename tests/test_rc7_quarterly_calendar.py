@@ -6,8 +6,8 @@ from fractions import Fraction
 import pytest
 from dateutil.relativedelta import relativedelta
 
-from financial_engine.quarterly import ACTIVATION_ENABLED
-from financial_engine.quarterly.calendar import (
+from tools.quarterly_research import ACTIVATION_ENABLED
+from tools.quarterly_research.calendar import (
     ConstructionReportingRule, DayRule, FractionRule, HorizonRule,
     QuarterlyCalendarPolicy, QuarterlyCandidateAxis, QuarterlyCandidateCalendar,
     StubRule, YearRule,

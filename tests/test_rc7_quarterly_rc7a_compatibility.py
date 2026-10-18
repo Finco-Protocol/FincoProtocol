@@ -9,9 +9,9 @@ import subprocess
 
 import pytest
 
-from financial_engine.quarterly import ACTIVATION_ENABLED
-from financial_engine.quarterly.calendar import QuarterlyCandidateAxis, RenewableTechnology
-from financial_engine.quarterly.runtime import (
+from tools.quarterly_research import ACTIVATION_ENABLED
+from tools.quarterly_research.calendar import QuarterlyCandidateAxis, RenewableTechnology
+from tools.quarterly_research.runtime import (
     QuarterlyDebtStudy, build_operating_candidate, evaluate_quarterly_candidate,
 )
 from test_rc7_quarterly_calendar import candidate_calendar
@@ -31,10 +31,11 @@ def test_review_inventory_is_not_release_authorization_and_matches_git_bytes():
     manifest = json.loads((ROOT / "docs/model_v2/RC7_QUARTERLY_CANDIDATE_BLOB_MANIFEST.json").read_text())
     assert manifest["release_approved"] is False
     assert manifest["activation_enabled"] is False and ACTIVATION_ENABLED is False
-    blobs = manifest["financial_core_candidate_git_blobs"]
-    assert len(blobs) == 5
+    assert manifest["research_only"] is True and manifest["not_a_project_run"] is True
+    blobs = manifest["research_git_blobs"]
+    assert len(blobs) == 4
     for path, expected in blobs.items():
-        assert _git("rev-parse", "HEAD:" + path) == expected
+        assert path.startswith("tools/quarterly_research/")
         assert _git("hash-object", "--path=" + path, path) == expected
     assert not (ROOT / "docs/rc3/QUARTERLY_FINANCIAL_ACCEPTANCE.json").exists()
 
@@ -56,17 +57,15 @@ def test_historical_authority_maps_remain_exactly_the_rc7a_maps():
     assert _authority_maps((ROOT / path).read_text(encoding="utf-8")) == original
 
 
-def test_historical_m7_and_ppa_bytes_are_preserved_except_explicit_quarter_successors():
+def test_all_historical_m7_and_ppa_bytes_are_preserved_without_successors():
     from tests.m7_rc3_candidate_successor import M7_RC3_CANDIDATE_AUTHORITIES
     from tests.ppa01_candidate_authority import PPA01_CANDIDATE_AUTHORITIES
-    successors = {"financial_engine/adapters/project_inputs.py", "financial_engine/orchestrator.py"}
     assert len(M7_RC3_CANDIDATE_AUTHORITIES) == 11 and len(PPA01_CANDIDATE_AUTHORITIES) == 3
     for path, blob in M7_RC3_CANDIDATE_AUTHORITIES.items():
         assert _git("rev-parse", BASE + ":" + path) == blob
-        if path not in successors:
-            assert _git("rev-parse", "HEAD:" + path) == blob
+        assert _git("hash-object", "--path=" + path, path) == blob
     for path, blob in PPA01_CANDIDATE_AUTHORITIES.items():
-        assert _git("rev-parse", BASE + ":" + path) == blob == _git("rev-parse", "HEAD:" + path)
+        assert _git("rev-parse", BASE + ":" + path) == blob == _git("hash-object", "--path=" + path, path)
 
 
 @pytest.mark.parametrize("kind", ["solar", "wind"])
@@ -174,7 +173,7 @@ def test_real_revenue_contracts_keep_six_month_physical_authority_and_are_refuse
         assert abs(D(str(streams["ppa"]["quantity_mwh"])) + D(str(streams["market"]["quantity_mwh"])) - gen) < D("1e-7")
         assert streams["cfd"]["quantity_mwh"] > 0
     from financial_engine.adapters.project_inputs import from_project_inputs
-    from financial_engine.quarterly.calendar import QuarterlyCandidateCalendar
+    from tools.quarterly_research.calendar import QuarterlyCandidateCalendar
     from test_rc7_quarterly_calendar import explicit_policy
     from dataclasses import fields
     from financial_engine.inputs import CalendarInput

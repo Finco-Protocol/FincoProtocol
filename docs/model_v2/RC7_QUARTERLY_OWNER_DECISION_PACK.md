@@ -2,6 +2,13 @@
 
 ## Status and evidence boundary
 
+**Correction C packaging update:** executable calendar/runtime/calculation is now
+isolated under `tools/quarterly_research/`. The protected adapter/orchestrator
+equal main; original five-blob contents are archived by source SHA in the updated
+manifest, not accepted production successors. Protected module references below
+identify FUTURE integration authorities, not files changed by Correction C.
+The research calculations and all twelve policy questions remain unchanged.
+
 All twelve decisions remain **OPEN**. Recommendations below are NOT financial
 approval. No human acceptance record, release authorization or activation is
 created by this document. D-06 and D-07 remain deferred.
@@ -11,9 +18,10 @@ Compatibility baseline: `78e4c0edcc1bdb5013df79f11b3ba7b9c2151013` (#319).
 Normal integration: `31cada62a9fe17474995acc7d03bab4296122b4c`, with those
 two commits as parents, in that order. No protected file changed in this sync.
 
-The five exact candidate blobs remain in
-`RC7_QUARTERLY_CANDIDATE_BLOB_MANIFEST.json`. They implement an isolated research
-operating/tax/single-Senior calculation, NOT a complete project finance Run.
+The original five protected blob identities remain archived in
+`RC7_QUARTERLY_CANDIDATE_BLOB_MANIFEST.json`, alongside the four current research
+module identities and two restored main blobs. The executable research remains
+an operating/tax/single-Senior calculation, NOT a complete project finance Run.
 The existing six-month PeriodEngine and financial equations are not replaced.
 Read this alongside `PERIOD_FREQUENCY_AUTHORITY_V1.md` and the dependency matrix.
 

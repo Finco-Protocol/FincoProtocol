@@ -11,8 +11,8 @@ from datetime import date
 from financial_engine.inputs import OperatingModelInput, SeniorDebtModelInput, TaxCalculationInput, TechnicalInput
 from financial_engine.policies.tax import CashTaxTiming, TaxBasisPeriodisation, TaxPolicy
 from financial_engine.results import ProjectModelResult
-from financial_engine.quarterly import CLASSIFICATION
-from financial_engine.quarterly.calendar import (
+from tools.quarterly_research import CLASSIFICATION
+from tools.quarterly_research.calendar import (
     QuarterlyCandidateAxis, QuarterlyCandidateCalendar, QuarterlyOperatingModelInput,
     RenewableTechnology,
 )
@@ -151,8 +151,8 @@ def evaluate_quarterly_candidate(study: QuarterlyDebtStudy) -> QuarterlyFinancia
     if type(study) is not QuarterlyDebtStudy:
         raise ValueError("QUARTERLY_TYPED_STUDY_REQUIRED")
     validate_debt_candidate(study.inputs)
-    from financial_engine.orchestrator import run_senior_debt_model
-    model = run_senior_debt_model(study.inputs)
+    from tools.quarterly_research.calculation import run_senior_research
+    model = run_senior_research(study.inputs)
     from financial_engine.financing.project import (
         G2A_SERVICE_BUDGET_ACCEPTANCE_TOLERANCE_KEUR, _senior_service_budget_excess,
     )

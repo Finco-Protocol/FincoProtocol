@@ -1,5 +1,12 @@
 # RC-7 Quarterly Operating and Senior Debt Candidate
 
+**Historical A/B implementation record. Correction C supersedes its production
+packaging, not its numerical evidence.** Current executable research lives only
+in `tools/quarterly_research/`; protected adapter/orchestrator bytes are restored
+exactly to RC-7A main and the three financial_engine/quarterly modules removed.
+See [Correction C isolation report](RC7_QUARTERLY_RESEARCH_ISOLATION_REPORT.md).
+No production adapter frequency guard is claimed after this restoration.
+
 ## Disposition and scope
 
 **Unreleased, incomplete project-finance candidate. NOT a production Run.**

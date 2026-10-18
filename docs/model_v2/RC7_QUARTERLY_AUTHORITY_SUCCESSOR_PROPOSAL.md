@@ -1,5 +1,12 @@
 # RC-7 Quarterly Financial Authority Successor Proposal
 
+**Historical Correction B proposal, superseded for the current research-only
+packaging by Correction C.** No successor described below is implemented or
+required to merge research-only content once the production tree equals main.
+This remains a dependency map for a separately authorized FUTURE production
+integration. No historical pin or guard is changed. Current isolation and the
+baseline adapter limitation are documented in the Correction C report.
+
 **PROPOSAL ONLY. NOT AN ACCEPTANCE RECORD OR AN ACTIVE GOVERNANCE EXCEPTION.**
 
 ## Verified authority conflict

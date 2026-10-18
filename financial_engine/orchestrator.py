@@ -73,15 +73,6 @@ def _build_period_engine(inputs: OperatingModelInput):
     from finco_core.engine.period_engine import PeriodAxisConvention as _PAC
 
     cal = inputs.calendar
-    from financial_engine.quarterly.calendar import (
-        QuarterlyCandidateAxis, QuarterlyCandidateCalendar, QuarterlyOperatingModelInput,
-    )
-    if isinstance(cal, QuarterlyCandidateCalendar):
-        if type(inputs) is not QuarterlyOperatingModelInput:
-            raise ValueError("QUARTERLY_CANDIDATE_ENTRY_REQUIRED")
-        from financial_engine.quarterly.runtime import validate_operating_candidate
-        validate_operating_candidate(inputs)
-        return QuarterlyCandidateAxis.build(cal)
     return PeriodEngine(
         financial_close=cal.financial_close,
         construction_months=cal.construction_months,
@@ -122,10 +113,7 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         construction_months=cal.construction_months,
         cod_date=_cod_date(cal),
         horizon_years=int(cal.horizon_years),
-        period_frequency=(
-            _PF.QUARTERLY
-            if _is_quarterly_candidate(inputs) else _PF.SEMESTRIAL
-        ),
+        period_frequency=_PF.SEMESTRIAL,
         period_axis_convention=_PAC(cal.period_axis_convention.value),
     )
 
@@ -266,16 +254,6 @@ def _cod_date(cal) -> date:
             f"{derived.isoformat()}"
         )
     return cal.cod_date or derived
-
-
-def _is_quarterly_candidate(inputs: OperatingModelInput) -> bool:
-    from financial_engine.quarterly.calendar import QuarterlyOperatingModelInput
-    return type(inputs) is QuarterlyOperatingModelInput
-
-
-def _financial_run_path(inputs: OperatingModelInput, released_path: str) -> str:
-    return (released_path + ".QUARTERLY_CANDIDATE_NOT_RELEASED"
-            if _is_quarterly_candidate(inputs) else released_path)
 
 
 def _strict_period_map(
@@ -501,15 +479,12 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     periods_meta: tuple[PeriodMeta, ...] = engine.periods()
     # Authoritative call: pass cod_date and period_convention so the validator
     # uses typed policy denominators, not the non-authoritative None fallback.
-    if _is_quarterly_candidate(inputs):
-        engine.validate()
-    else:
-        validate_canonical_period_axis(
-            periods_meta,
-            expected_operating_periods=inputs.calendar.horizon_years * 2,
-            cod_date=engine.cod,
-            period_convention=engine.period_axis_convention,
-        )
+    validate_canonical_period_axis(
+        periods_meta,
+        expected_operating_periods=inputs.calendar.horizon_years * 2,
+        cod_date=engine.cod,
+        period_convention=engine.period_axis_convention,
+    )
     canonical_indices = tuple(p.index for p in periods_meta)
 
     # Step 3–4: Production and revenue via finco_core leaves.
@@ -660,7 +635,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
 
     provenance = EngineProvenance(
         engine_version=ENGINE_VERSION,
-        run_path_id=_financial_run_path(inputs, RUN_PATH_ID),
+        run_path_id=RUN_PATH_ID,
         input_fingerprint=fingerprint,
         derivation_evidence=evidence,
     )
@@ -820,9 +795,6 @@ def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
                                    + other_fiscal_reintegration
         (disallowed_interest is NOT added back separately)
     """
-    if _is_quarterly_candidate(inputs.operating):
-        from financial_engine.quarterly.runtime import validate_tax_candidate
-        validate_tax_candidate(inputs.tax)
     from financial_engine.validation import validate_tax_calculation_input, has_errors
     from financial_engine.cfads import calculate_canonical_cfads
 
@@ -884,7 +856,7 @@ def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
     )
     provenance = EngineProvenance(
         engine_version=ENGINE_VERSION,
-        run_path_id=_financial_run_path(inputs.operating, TAX_CFADS_RUN_PATH_ID),
+        run_path_id=TAX_CFADS_RUN_PATH_ID,
         input_fingerprint=fingerprint,
         derivation_evidence=evidence,
     )
@@ -2645,9 +2617,6 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
 
     Non-converged results raise SeniorDebtNonConvergenceError.
     """
-    if _is_quarterly_candidate(inputs.operating):
-        from financial_engine.quarterly.runtime import validate_debt_candidate
-        validate_debt_candidate(inputs)
     if inputs.shareholder_loan is not None:
         return _run_senior_debt_model_with_shl(inputs)
 
@@ -2966,7 +2935,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     )
     provenance = EngineProvenance(
         engine_version=ENGINE_VERSION,
-        run_path_id=_financial_run_path(inputs.operating, SENIOR_DEBT_RUN_PATH_ID),
+        run_path_id=SENIOR_DEBT_RUN_PATH_ID,
         input_fingerprint=fingerprint,
         derivation_evidence=evidence,
     )
