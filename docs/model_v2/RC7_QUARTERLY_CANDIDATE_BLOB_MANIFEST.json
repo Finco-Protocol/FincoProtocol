@@ -1,0 +1,37 @@
+{
+  "schema": "finco.rc7.quarterly-isolated-research-review.v2",
+  "base_sha": "05183b2a96c74fd4b3976903c593a61402cab7b3",
+  "production_base_sha": "78e4c0edcc1bdb5013df79f11b3ba7b9c2151013",
+  "prior_candidate_head": "1288f95595935744fcfe05441d458fb3605f6681",
+  "classification": "RESEARCH_ONLY / RELEASE_CLOSED / NOT_A_PROJECT_RUN",
+  "research_only": true,
+  "not_a_project_run": true,
+  "release_approved": false,
+  "activation_enabled": false,
+  "independent_financial_content_review": "REQUIRED_NOT_OBTAINED",
+  "historical_authority_maps_modified": false,
+  "production_restored_git_blobs": {
+    "financial_engine/adapters/project_inputs.py": "14bd759a9958515a7796626f93c1bd2233d69150",
+    "financial_engine/orchestrator.py": "be7ac31c6c4fed43b5fd7ca49fe53bfd1cc54c03"
+  },
+  "research_git_blobs": {
+    "tools/quarterly_research/__init__.py": "ac6f458c3cce2034336a78fb77400447d01e0e5b",
+    "tools/quarterly_research/calendar.py": "1ba36e59590386023dc6f475fe383203a36b7dce",
+    "tools/quarterly_research/runtime.py": "28e3d73a316775181c0e34431d22dc6a6840b271",
+    "tools/quarterly_research/calculation.py": "d5f29025476dffd4ed36a86e24277a9c110bd401"
+  },
+  "archived_prior_protected_candidate_git_blobs": {
+    "financial_engine/adapters/project_inputs.py": "d54e35dac6b45b490c16bde8b49c158d83f56047",
+    "financial_engine/orchestrator.py": "fcffca1074dfd62143fa4c3d55240b4bb1a0b7ec",
+    "financial_engine/quarterly/__init__.py": "027b4fc206f4e3be564c89ca3e53dc95e720359c",
+    "financial_engine/quarterly/calendar.py": "1ba36e59590386023dc6f475fe383203a36b7dce",
+    "financial_engine/quarterly/runtime.py": "12848fd6787719d42e7588120c6ce72d717fee81"
+  },
+  "notes": [
+    "Review inventory only; never imported by runtime or governance and never a release authorization.",
+    "Original five protected candidate contents remain recoverable at prior_candidate_head, not in the production tree.",
+    "All D-01 through D-12 remain OPEN; mixed frequencies and complete project funding/statements/returns/Save/History/export remain blocked.",
+    "The baseline adapter frequency-erasure limitation is restored, not described as fixed. Complete production Runs are refused by existing construction/tax/Senior boundaries.",
+    "Research uses existing calculation primitives read-only, with no solver copy, monkeypatch, production import, writer or activation."
+  ]
+}
