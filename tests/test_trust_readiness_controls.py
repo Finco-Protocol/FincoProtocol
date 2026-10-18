@@ -286,6 +286,11 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
         expected = expected | {"app/v2/acquisition_router.py"}
     if current_m7_successor_valid():
         expected = expected | set(CSRF_PROPOSAL)
+    # WF-09: the read-only CAPEX spending-profile preview POST is admitted ONLY while its exact reviewed content and its
+    # CSRF/authentication/ownership structure hold (tests/wf09_csrf_successor.py); any edit or structural drift is rejected.
+    from tests.wf09_csrf_successor import ROUTER as WF09_ROUTER, current_wf09_successor_valid
+    if current_wf09_successor_valid():
+        expected = expected | {WF09_ROUTER}
     assert users == expected
     import ast
     tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))

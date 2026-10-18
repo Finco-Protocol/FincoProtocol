@@ -18,14 +18,14 @@ SELECTIONS = {
                  "tests/test_crypto_navigation_browser.py", "tests/test_ev_charging_browser.py",
                  "tests/test_yield_browser.py", "-k", "not test_api_b04_placeholders_not_links"],
     "import": ["tests/test_model_ai_import_browser_c.py", "tests/test_model_import_v2_browser.py",
-               "tests/test_model_import_excel_migration_browser.py"],
+               "tests/test_model_import_excel_migration_browser.py", "tests/test_model_wf09_capex_profile_browser.py"],
     "grid": ["tests/test_model_hybrid_inputs_grid_routes.py", "tests/test_model_hybrid_inputs_grid_browser.py"],
     "q4": ["tests/test_model_q4_browser.py"],
     "consolidation": ["tests/test_model_workspace_consolidation_browser.py"],
 }
 REQUIRED = {
     "protocol": ["artifacts/reference-driven-correction-a/*.png"],
-    "import": ["artifacts/model-ai-import/*.png", "artifacts/model-import-v2/*.png"],
+    "import": ["artifacts/model-ai-import/*.png", "artifacts/model-import-v2/*.png", "artifacts/wf09-capex-profiles/*.png"],
     "grid": ["artifacts/wf05/*.png", "artifacts/wf05/timings.json"],
     "q4": ["artifacts/model-q4-browser/*.png"],
     "consolidation": ["artifacts/workspace-consolidation/prb-*.png"],
@@ -109,10 +109,19 @@ IMPORT_V3_SCREENSHOTS = (
 )
 
 
+# WF-09 CAPEX Spending Profiles V1 (PR #311): its authenticated Chromium module is a mandatory part of the same `import` role.
+WF09_MODULE = "tests/test_model_wf09_capex_profile_browser.py"
+WF09_NODES = (
+    f"{WF09_MODULE}::test_planner_preview_in_chromium_changes_nothing",
+    f"{WF09_MODULE}::test_planner_mobile_layout_has_no_page_overflow",
+)
+WF09_SCREENSHOTS = (("wf09-01-preview-1440.png", 1440), ("wf09-02-preview-390.png", 390))
+
+
 def validate_import(folder: Path, inventory: dict, process: dict) -> None:
     """Fail closed unless ALL import suites ran: the original C nodes and every required V2 and V3 Chromium node/capture."""
     selected, outcomes = inventory.get("selected", []), inventory.get("outcomes", {})
-    for label, nodes in (("V2", IMPORT_V2_NODES), ("V3", IMPORT_V3_NODES)):
+    for label, nodes in (("V2", IMPORT_V2_NODES), ("V3", IMPORT_V3_NODES), ("WF-09", WF09_NODES)):
         for node in nodes:
             if node not in selected or node not in inventory.get("collected", []):
                 raise EvidenceError(f"Import {label} node not collected: {node}")
@@ -130,7 +139,7 @@ def validate_import(folder: Path, inventory: dict, process: dict) -> None:
     for case in ET.parse(junit).getroot().iter("testcase"):
         node = case.get("classname", "").replace(".", "/") + ".py::" + case.get("name", "")
         executed[node] = not list(case)                     # any failure/error/skip/xfail child makes it not a clean pass
-    for label, nodes in (("V2", IMPORT_V2_NODES), ("V3", IMPORT_V3_NODES)):
+    for label, nodes in (("V2", IMPORT_V2_NODES), ("V3", IMPORT_V3_NODES), ("WF-09", WF09_NODES)):
         for node in nodes:
             if executed.get(node) is not True:
                 raise EvidenceError(f"Import {label} JUnit lacks a clean pass for {node}")
@@ -141,6 +150,11 @@ def validate_import(folder: Path, inventory: dict, process: dict) -> None:
             if not shot.is_file():
                 raise EvidenceError(f"Missing Import {label} screenshot: {name}")
             _check_png(shot, width)
+    for name, width in WF09_SCREENSHOTS:
+        shot = folder / "wf09-capex-profiles" / name
+        if not shot.is_file():
+            raise EvidenceError(f"Missing WF-09 screenshot: {name}")
+        _check_png(shot, width)
 
 
 def validate_consolidation(folder: Path, inventory: dict, process: dict) -> None:
@@ -298,7 +312,7 @@ def main():
             proof["merge_integration"] = validate_browser_records(args.artifacts, args.merge_sha, merge_tree, args.merge_result, "merge-browser")
         write_json("artifacts/browser-proof.json", proof)
         return 0
-    for folder in ("artifacts/model-ai-import", "artifacts/model-import-v2", "artifacts/wf05", "artifacts/model-q4-browser"):
+    for folder in ("artifacts/model-ai-import", "artifacts/model-import-v2", "artifacts/wf09-capex-profiles", "artifacts/wf05", "artifacts/model-q4-browser"):
         Path(folder).mkdir(parents=True, exist_ok=True)
     if args.role == "protocol":
         os.environ["FINCO_VISUAL_CAPTURE"] = "1"
