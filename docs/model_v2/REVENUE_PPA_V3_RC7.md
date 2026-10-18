@@ -19,13 +19,13 @@ governance successor pin is created and none of the exact-blob guards is touched
 | Negative / NaN / Inf / mistyped numerics, duplicate contract id, over-allocated shares | REUSE | rejected at parse and by the Save route (422, nothing persisted) |
 | P50 vs P90 production basis, lender sizing on P90 | REUSE | `technical.yield_scenario`; `test_lender_case_sizes_debt_on_p90_*`; bank case refuses silent contract-price replacement (`REVENUE_V2_BANK_PRICE_OVERRIDE_UNSUPPORTED`) |
 | Tariff sensitivity under explicit contracts | REUSE (RC-5A) | refused, never a silent zero delta |
-| Physical-energy ledger (production vs contracted vs merchant vs unallocated vs CfD overlay vs non-energy) | **EXTEND (this PR)** | new pure module `domain/revenue/contract_energy_ledger.py`, persisted in Last Run as `revenue_energy_ledger` |
+| Physical-energy ledger (production vs contracted vs merchant vs unallocated vs CfD overlay vs non-energy) | **EXTEND (this PR)** | new pure module `app/workbook/revenue_energy_ledger.py`, persisted in Last Run as `revenue_energy_ledger` |
 | Capacity / Ancillary / REC contracts | CANDIDATE (release-closed, `ACTIVATION_ENABLED=False`) | typed units, eligibility, ownership and REC/legacy collision already enforced; guard kept |
 | Lagged settlement, FX, dispatch/utilisation, penalties, activation energy, price interpolation, invented indices | UNSUPPORTED | fail closed; no methodology exists |
 
 ## 2. What this PR adds
 
-* `domain/revenue/contract_energy_ledger.py`: read-only projection over the per-period contract evidence the Run already commits. It performs
+* `app/workbook/revenue_energy_ledger.py`: read-only projection over the per-period contract evidence the Run already commits. It performs
   **no** price, volume or settlement arithmetic. Physical classes (contracted, merchant, unallocated) are additive; CfD overlay volume is
   reported separately and never added to the physical total; non-energy products keep their own units.
 * The Run summary now carries `revenue_energy_ledger` (only for Runs with explicit contracts; legacy Runs and their history are untouched).
