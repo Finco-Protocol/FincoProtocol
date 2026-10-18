@@ -13,7 +13,7 @@ Four source histories were normally merged, in the requested order:
 | #314 Credit V4 | `ee5290c7ed8d567490a88d10e029e4633b84bd22` | Existing source fix preserves short IDs and asserts both committed identities. |
 | #315 Revenue/PPA | `675ad74b2dd8aed84791b07a36ee8df1ed15c2d5` | Existing source relocation to the app-layer read-only ledger retained. |
 | #316 Reporting V2 | `7bd63058ada7ca59f910b16ca947b6e5335ebc1a` | Existing source statement-label and failed-Run export corrections retained. |
-| #317 Monthly CAPEX | `cff3301b44621f1b6d93849b98c76fbbd6a0cf95` | One test-only portability correction after `0c69f5a1`: normalize relative paths with `as_posix()`. Assertions and inventories unchanged. |
+| #317 Monthly CAPEX | `4ba8c32d51725b5aaa4af3326ece636de4994a12` | Path portability correction `cff3301b` plus normal merge of isolated shared refresh fix `eccde424`; financial and CSRF content unchanged. |
 
 Local merge commits initially: `fd16deaf`, `1905467e`, `12ccf33a`,
 `b0cbafa1`. The source #317 test correction was normally merged as `735f85bd`.
@@ -122,3 +122,43 @@ green #317 head is not acceptance of its new test-only successor. Full Public
 Safety, normal process exit, uploaded evidence and all browser roles remain
 mandatory. CAPEX preview/Save exact-content CSRF successor still requires
 independent review. No financial, Junior, Revenue V3 or BESS activation is granted.
+
+## Shared browser correction after owner coordination confirmation
+
+The owner confirmed no other agent owns the shared correction. A two-file fix
+was isolated directly on the verified main as commit `eccde424`, then normally
+merged into source #317 and this integration. No extra PR, cherry-pick or history
+rewrite was used. The previous failure inventory above is retained as provenance,
+not a claim that the corrected exact HEAD has already failed.
+
+The original V7 contract deliberately preserves drafts and refuses obsolete
+forms. Project Setup nonetheless accepted typing while its replacement read was
+pending. In the independently traced failures the draft was kept behind the
+stale-form rejection and no Save was sent. Earlier CI also showed a 100-versus-150
+response symptom, whose full event sequence was not captured independently.
+The correction in
+`static/js/model_view_refresh.js` temporarily disables only Project Setup's
+interactive controls while its view is pending/error. A successful authorized
+refresh unlocks them. Pre-existing disabled controls are not unconditionally
+enabled, the explicit refresh action remains available, and the identity/CAS,
+dirty-draft and out-of-order response guards are untouched. Other editors retain
+their existing behavior.
+
+Deterministic held-response test before the correction: FAIL, because the old
+Capacity input remained enabled. After the correction:
+
+- New pending/failed-read/explicit-retry/real-Save tests and existing V7
+  pending-CAPEX/out-of-order/read-refresh tests: 6 passed on the integration
+  (63.06s) and separately 6 passed on clean main plus the isolated fix (68.63s).
+- Original `test_reference_driven_correction_a_23_capture_journey`, unchanged:
+  three independent disposable databases, 3/3 PASS (26.22s, 23.56s, 22.95s), rc0.
+- The new positive test proves exactly one Capacity Save, persisted 150 MW,
+  unchanged Last Run identity and history, and no mutation by pending or failed
+  presentation reads.
+- Node syntax, Python compilation and unchanged source-safety checks pass for
+  the two added/modified files. The prior full Git-byte safety scan covered all
+  2437 staged files; local Swagger CRLF conversion was its only checkout issue.
+
+The unchanged six-role mandatory CI still needs to validate the new exact HEAD;
+local browser results are not a replacement for it. Full Public Safety and the
+independent CAPEX CSRF successor review remain mandatory. NO MERGE / DEPLOY.
