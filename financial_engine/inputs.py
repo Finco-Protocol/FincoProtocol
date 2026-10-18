@@ -18,6 +18,7 @@ from finco_core.inputs._models import ShlConstructionInterestMethod
 from financial_engine.shl.construction import ShlConstructionPeriodInput
 
 if TYPE_CHECKING:
+    from finco_core.engine.calendar_policy import OperatingCalendarPolicy
     from financial_engine.policies.tax import TaxPolicy
     from finco_core.opex.hierarchical import OpexModelInput
 
@@ -43,6 +44,26 @@ class CalendarInput:
     period_axis_convention: PeriodAxisConvention = (
         PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
     )
+
+
+@dataclass(frozen=True, kw_only=True)
+class QuarterlyCalendarInput(CalendarInput):
+    """RC-7B matched 3/3 calendar: the plain CalendarInput is the released 6/6 contract.
+
+    A subclass (not a new field) keeps every released six-month clean input and
+    its fingerprint byte-identical, while the explicit policy enters the
+    fingerprint of every quarterly input. Not owner approval; admission is a
+    separate closed gate.
+    """
+
+    operating_calendar_policy: "OperatingCalendarPolicy"
+
+    def __post_init__(self) -> None:
+        from finco_core.engine.calendar_policy import OperatingCalendarPolicy
+        if type(self.operating_calendar_policy) is not OperatingCalendarPolicy:
+            raise ValueError("QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED")
+        if self.period_axis_convention is not PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS:
+            raise ValueError("QUARTERLY_PERIOD_AXIS_CONVENTION_UNSUPPORTED")
 
 
 @dataclass(frozen=True)

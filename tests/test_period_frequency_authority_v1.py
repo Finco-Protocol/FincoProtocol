@@ -184,11 +184,15 @@ def test_clean_calendar_frequency_bridge_is_a_documented_gap_not_quarterly_enabl
     from financial_engine.adapters.project_inputs import from_project_inputs
     from financial_engine.inputs import CalendarInput
     from financial_engine.orchestrator import _build_period_engine
+    # RC-7B closed the documented gap: the bridge no longer silently projects a
+    # QUARTERLY request onto the six-month axis. Without an explicit typed policy
+    # it fails closed; the released CalendarInput shape stays frequency-free.
     pi = create_generic_solar_reference()
     unapproved = replace(pi, info=replace(pi.info, period_frequency=InputFrequency.QUARTERLY))
-    adapted = from_project_inputs(unapproved)  # inspect only; do NOT execute this input
+    with pytest.raises(ValueError, match='QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED'):
+        from_project_inputs(unapproved)
     assert 'period_frequency' not in {f.name for f in fields(CalendarInput)}
-    assert _build_period_engine(adapted).freq is PeriodFrequency.SEMESTRIAL
+    assert _build_period_engine(from_project_inputs(pi)).freq is PeriodFrequency.SEMESTRIAL
 
 
 @pytest.mark.parametrize('kind', ['solar', 'wind', 'data_center', 'ev_charging'])
