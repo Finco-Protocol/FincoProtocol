@@ -291,6 +291,11 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
     from tests.wf09_csrf_successor import ROUTER as WF09_ROUTER, current_wf09_successor_valid
     if current_wf09_successor_valid():
         expected = expected | {WF09_ROUTER}
+    # RC-7B: one exact, release-closed frequency Save router; recognition is
+    # conditional on immutable source provenance, full structure and bytes.
+    from tests.rc7b_quarterly_csrf_successor import ROUTER as QUARTERLY_ROUTER, current_quarterly_csrf_successor_valid
+    if current_quarterly_csrf_successor_valid():
+        expected = expected | {QUARTERLY_ROUTER}
     assert users == expected
     import ast
     tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))

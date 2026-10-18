@@ -76,3 +76,25 @@ is refused before calculation. Invalid saved selections remain visible and
 renderable, while Run refuses without changing inputs or historical evidence.
 Monthly funding parity compares the original eligible 6/6 Run with its 3/3 Run,
 not a six-month comparator reconstructed from altered quarterly inputs.
+
+## Correction D: separate CSRF inventory successor proposal
+
+`tests/rc7b_quarterly_csrf_successor.py` recognizes only
+`app/v2/quarterly_calendar_router.py` at Git blob
+`7e3ea127918bfe9d9988a807a25f65b44bd4731c`, sourced from immutable
+`8048a74e7f568a40fbcaecf185621350c8251a85`. Full-module AST identity,
+source ancestry and literal closed activation are required as separate checks.
+The existing CSRF inventory includes this one router only while that exact
+contract holds. Changed bytes, auth/CSRF/owner/CAS/financing guards, routes,
+extra writes, missing provenance or opened activation invalidate recognition.
+
+This is an independently reviewable security inventory proposal, not a
+financial successor, financial approval, product admission or release. No live
+finance-integrity exemptions or historical pin-map changes are introduced.
+
+The RC-7A M7/PPA compatibility test retains its blocking current-byte checks.
+A separate positive test proves the original content at immutable research
+checkpoints and their ancestry. Historical proof does not approve new HEAD
+content. The 77 original failure nodes are preserved in the updated register;
+two security inventory mismatches have a scoped correction, while 75 financial
+and integration authority failures still require independent approval.

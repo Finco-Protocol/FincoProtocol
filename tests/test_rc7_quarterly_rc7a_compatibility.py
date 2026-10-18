@@ -58,6 +58,8 @@ def test_historical_authority_maps_remain_exactly_the_rc7a_maps():
 
 
 def test_all_historical_m7_and_ppa_bytes_are_preserved_without_successors():
+    # The current-byte assertions remain blocking until an independently
+    # accepted financial successor exists. Historical proof below is separate.
     from tests.m7_rc3_candidate_successor import M7_RC3_CANDIDATE_AUTHORITIES
     from tests.ppa01_candidate_authority import PPA01_CANDIDATE_AUTHORITIES
     assert len(M7_RC3_CANDIDATE_AUTHORITIES) == 11 and len(PPA01_CANDIDATE_AUTHORITIES) == 3
@@ -66,6 +68,18 @@ def test_all_historical_m7_and_ppa_bytes_are_preserved_without_successors():
         assert _git("hash-object", "--path=" + path, path) == blob
     for path, blob in PPA01_CANDIDATE_AUTHORITIES.items():
         assert _git("rev-parse", BASE + ":" + path) == blob == _git("hash-object", "--path=" + path, path)
+
+
+def test_m7_ppa_original_bytes_and_ancestry_at_the_immutable_research_checkpoint():
+    from tests.m7_rc3_candidate_successor import M7_RC3_CANDIDATE_AUTHORITIES
+    from tests.ppa01_candidate_authority import PPA01_CANDIDATE_AUTHORITIES
+    checkpoint = "5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d"
+    _git("merge-base", "--is-ancestor", BASE, checkpoint)
+    _git("merge-base", "--is-ancestor", checkpoint, "HEAD")
+    for inventory in (M7_RC3_CANDIDATE_AUTHORITIES, PPA01_CANDIDATE_AUTHORITIES):
+        for path, original in inventory.items():
+            assert _git("rev-parse", BASE + ":" + path) == original
+            assert _git("rev-parse", checkpoint + ":" + path) == original
 
 
 @pytest.mark.parametrize("kind", ["solar", "wind"])
