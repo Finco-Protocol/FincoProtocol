@@ -67,8 +67,9 @@ def test_default_six_month_working_copy_is_the_same_object():
 
 
 def test_closed_gate_refuses_every_quarterly_application():
-    with pytest.raises(ValueError, match="QUARTERLY_ADMISSION_CLOSED"):
-        cfg.apply_config(_solar(), cfg.candidate_config_json(), "Solar")
+    # The typed Working Copy is read faithfully; finance production is refused.
+    applied = cfg.apply_config(_solar(), cfg.candidate_config_json(), "Solar")
+    assert applied.info.operating_calendar_policy is not None
     from app.services.production_financial_authority import (
         CleanProductionRunUnavailable, classify_production_authority, run_clean_production,
     )
@@ -85,8 +86,13 @@ def test_snapshot_carrying_a_selection_fails_closed_at_the_adapter(env):
     snapshot = dict(get_workspace_state(OWNER, record.project_id).draft_snapshot)
     assert cfg.SNAPSHOT_KEY not in snapshot  # every existing Working Copy is 6/6 by absence
     assert build_projectinputs_from_snapshot(snapshot).info.period_frequency.name == "SEMESTRIAL"
-    with pytest.raises(SnapshotInputError, match="QUARTERLY_ADMISSION_CLOSED"):
-        build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: cfg.candidate_config_json()})
+    quarterly = build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: cfg.candidate_config_json()})
+    assert quarterly.info.operating_calendar_policy is not None  # never silently read as 6/6
+    from app.services.production_financial_authority import CleanProductionRunUnavailable, run_clean_production
+    with pytest.raises(CleanProductionRunUnavailable, match="QUARTERLY_ADMISSION_CLOSED"):
+        run_clean_production(quarterly)
+    with pytest.raises(SnapshotInputError, match="QUARTERLY_CONFIG_KEYS_INVALID"):
+        build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: '{"version":1}'})
 
 
 @pytest.mark.parametrize("project_type", ["Data Center", "Ev Charging", "Storage"])
@@ -167,6 +173,22 @@ def test_open_gate_endpoint_refuses_mixed_or_unknown_frequencies(env, monkeypatc
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
         "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": frequency, "financing_structure": "", **tokens(page.text)})
     assert response.status_code == 409 and "QUARTERLY_FREQUENCY_UNSUPPORTED" in response.json()["error"]
+
+
+def test_closed_gate_accepts_only_the_six_month_reset(env):
+    from app.auth import generate_csrf_token
+    record = env.create("solar")
+    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    reset = env.client.post("/v2/workbook/calendar/operating-frequency", data={
+        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "6/6",
+        "financing_structure": "", **tokens(page.text)}, follow_redirects=False)
+    assert reset.status_code == 303
+    for frequency in ("3/3", "3/6"):
+        page = env.client.get("/v2/workbook", params={"project": record.project_code})
+        refused = env.client.post("/v2/workbook/calendar/operating-frequency", data={
+            "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": frequency,
+            "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)})
+        assert refused.status_code == 404 and refused.json()["error"] == "QUARTERLY_ADMISSION_CLOSED"
 
 
 def test_open_gate_validation_rejects_malformed_selection(monkeypatch):

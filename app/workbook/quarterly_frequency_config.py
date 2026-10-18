@@ -112,7 +112,13 @@ def apply_config(pi, raw, project_type: str):
     config = parse_config(raw)
     if config is None:
         return pi
-    require_admitted(project_type)
+    # Display and evidence surfaces read the typed Working Copy faithfully. The
+    # admission gate is enforced where finance is produced (production
+    # classification refuses every quarterly Run while closed) and where the
+    # selection is written; technology scope is enforced here as well.
+    if str(project_type or "").strip().lower() not in SUPPORTED_PROJECT_TYPES:
+        raise QuarterlyFrequencyError(
+            f"QUARTERLY_TECHNOLOGY_UNSUPPORTED: project_type={project_type!r}; Solar and Wind only (D-12)")
     from finco_core.inputs import (
         DebtServiceReserveSupportMode, PeriodFrequency, ProjectInputs, SponsorFundingMode,
     )
