@@ -3135,6 +3135,18 @@ async def v2_workbook_run(
                 msg = str(exc)
                 return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
+    # RC-7: monthly CAPEX construction profile. Opt-in: identity (same object) when the Working Copy carries no profile document,
+    # so every default Run is byte-for-byte unchanged. A stored profile that cannot be bound fails closed - never approximated.
+    from app.capex_profiles.config import SNAPSHOT_KEY as capex_profile_key
+    if pis_draft.snapshot_origin.get(capex_profile_key):
+        from app.capex_profiles.runtime import CapexProfileBindingError, apply_profiles
+        try:
+            override = apply_profiles(override, pis_draft.snapshot_origin.get(capex_profile_key),
+                                      project_id=project_record.project_id, scenario_overrides=_scenario_overrides_for_fold)
+        except CapexProfileBindingError as exc:
+            msg = str(exc)
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
     # ── Step 11: run the engine ────────────────────────────────────────────── #
     from app.model_v2.investor_f4 import EVIDENCE_KEY as f4_evidence_key, parse_terms as parse_f4_terms
     from app.workbook.investor_agreement_service import effective_raw as f4_effective_raw
@@ -5346,6 +5358,9 @@ async def v2_scenario_sensitivity_run(
             f3_scope = "base" if not scenario_id or _scenario_rec.is_base_case else scenario_id
             pi_override = apply_state(pi_override, pis_sens.snapshot_origin.get(f3_key), f3_scope,
                 bankability_raw=pis_sens.snapshot_origin.get(SNAPSHOT_KEY))
+            from app.capex_profiles.runtime import apply_snapshot_profiles
+            pi_override = apply_snapshot_profiles(pi_override, pis_sens.snapshot_origin, project_id=project_record.project_id,
+                                                  scenario_overrides=_scenario_overrides_for_fold)
 
             # P0-A: do not run the engine inline. Queue the point; the whole grid executes as ONE
             # admitted, ordered task in the model executor (see below).
@@ -5667,6 +5682,9 @@ async def v2_workbook_goal_seek_run(
     try:
         override = apply_state(override, pis_draft.snapshot_origin.get(f3_key), scope_for_workspace(ws),
             bankability_raw=pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
+        from app.capex_profiles.runtime import apply_snapshot_profiles
+        override = apply_snapshot_profiles(override, pis_draft.snapshot_origin, project_id=project_record.project_id,
+                                           scenario_overrides=_scenario_overrides_for_fold)
     except ValueError as exc:
         return _render_goal_seek_results({"result": {"status": GoalSeekStatus.INVALID_REQUEST.value,
             "target_metric_label": metric.label, "message": str(exc)}, "apply": None, "request": request})
