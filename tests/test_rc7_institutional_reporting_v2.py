@@ -175,7 +175,8 @@ def test_existing_statement_sheets_total_only_flows(committed):
     bs = wb["Balance Sheet"]
     header = next(r for r in _rows(bs) if r[0] == "Metric")
     total_col = header.index("Total (flows only)")
-    assert header[1].startswith("P") and "|" in header[1]           # 'P<index> | <date>' period labels
+    assert header[1][:4].isdigit() and header[1][4] == "-"        # canonical ISO period date, unchanged for consumers
+    assert "Run state" not in str(bs["B3"].value)                 # existing sheets carry no volatile run state
     for label in ("Senior Debt Balance", "SHL Balance", "Net Fixed Assets", "Retained Earnings"):
         assert _find(bs, label)[total_col] == "n/a (balance)", label
 

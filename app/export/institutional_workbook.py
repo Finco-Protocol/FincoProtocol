@@ -93,8 +93,6 @@ class WorkbookExportBundle:
     project_id: str = "not_applicable"
     input_composite_hash: str = "not_applicable"
     engine_version: str = "not_applicable"
-    # RC-7: CURRENT / STALE / HISTORICAL context of the Run this workbook serializes.
-    run_state: str = "NOT_APPLICABLE"
 
 
 def _resolve_export_senior_debt_keur(bundle: WorkbookExportBundle) -> float:
@@ -1735,8 +1733,7 @@ def _write_metadata_block(sheet, bundle: WorkbookExportBundle, marker: str) -> N
     metadata = (
         ("Project", bundle.project_name),
         ("Export generated at", bundle.generated_at),
-        ("Evidence status", marker if getattr(bundle, "run_state", "NOT_APPLICABLE") == "NOT_APPLICABLE"
-         else f"{marker} | Run state: {bundle.run_state}"),
+        ("Evidence status", marker),
         ("Runtime boundary", f"{bundle.runtime_timestamp} | {_display_runtime_origin(bundle.runtime_origin)} | {bundle.runtime_snapshot_id}"),
         ("Provenance", f"{bundle.branch or _source_branch()} | {bundle.commit_sha} | {_display_template_origin(bundle.template_origin)} | {bundle.scenario_name}"),
     )
@@ -1841,13 +1838,11 @@ def _write_horizontal_metric_table(
 
     for row_offset, (label, values, source, notes) in enumerate(rows, start=2):
         sheet.cell(row=start_row + row_offset, column=1, value=label)
-        # RC-7: a period that was not persisted is shown as "n/a", never as 0, and is not
-        # counted in the Total.  Balances (stock) and ratios are not summed at all.
+        # RC-7: persisted period cells are untouched (an unpersisted period stays blank and is not
+        # counted in the Total); balances (stock) and ratios are not summed at all.
         for col_idx, value in enumerate(values, start=2):
-            cell = sheet.cell(row=start_row + row_offset, column=col_idx,
-                              value=value if value is not None else "n/a")
-            if value is not None:
-                cell.number_format = number_format
+            cell = sheet.cell(row=start_row + row_offset, column=col_idx, value=value)
+            cell.number_format = number_format
         total, coverage = display_total(values, classify_metric(label))
         total_cell = sheet.cell(row=start_row + row_offset, column=2 + len(period_labels), value=total)
         if isinstance(total, (int, float)):
@@ -1929,10 +1924,17 @@ def _coerce_value(value: str, number_format: str) -> object:
 
 
 def _statement_period_label(period: object) -> str:
-    """'P<index> | <persisted period-end date>'; no quarter/half-year naming is ever assumed."""
+    """Canonical persisted period-end date (ISO) -- the contract every existing consumer reads.
+
+    Descriptive 'P<index> | date' labels live only on the additive RC-7 reporting sheets.
+    A period without a persisted date is labelled by its index, never by a fabricated date.
+    """
+    end = getattr(period, "date", None)
+    if end is not None:
+        return end.isoformat()
     index = next((getattr(period, k) for k in ("period", "period_index")
                   if getattr(period, k, None) is not None), None)
-    return period_label(index, getattr(period, "date", None))
+    return f"Period {index}" if index is not None else "Period n/a"
 
 
 def _period_label(period: object) -> str:
