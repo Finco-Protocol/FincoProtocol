@@ -7,12 +7,10 @@ matched quarterly calendar policy AND the explicit financing structure the
 candidate admits (EQUITY_ONLY sponsor funding, NONE reserve support), in the
 same way the two-Senior activation binds its structure. Nothing is inferred.
 
-An existing shareholder loan or DSRA is never removed silently. The saved
-selection records the EXACT structure it excludes (``excluded_structure``:
-funding mode, SHL amounts, DSRA months). The Run applies the selection only
-while the Working Copy still carries exactly that structure; any difference
-(a changed template, an import that names other amounts, a later edit) is a
-typed refusal, never an overwrite.
+The existing ``excluded_structure`` wire key is retained for decoding saved
+selections, not as permission to exclude anything. Both the actual inputs and
+the recorded structure must already be equity-only, zero-SHL and zero-reserve.
+Frequency selection changes the calendar only, never financing amounts.
 
 ``ACTIVATION_ENABLED`` stays ``False`` until the full 3/3 execution path is
 independently financially reviewed and the owner has decided D-01..D-12: while
@@ -111,8 +109,8 @@ def structure_of(financing) -> dict:
 def candidate_config_json(excluded_structure) -> str:
     """The one defined 3/3 selection, canonically serialized (not approval).
 
-    ``excluded_structure`` is mandatory: the selection is explicit consent to
-    exclude exactly this structure, never a blanket instruction to remove one.
+    The historical wire key records structure, not consent to remove it.
+    Eligibility is checked against actual inputs by ``apply_config``.
     """
     from finco_core.engine.calendar_policy import quarterly_candidate_policy
     return canonical_json(json.dumps({
@@ -149,13 +147,8 @@ def require_admitted(project_type: str) -> None:
 def apply_config(pi, raw, project_type: str):
     """Return ``pi`` unchanged for 6/6; otherwise the explicit quarterly ProjectInputs.
 
-    The selection replaces the timeline subtype and binds the structure recorded
-    in the saved contract: EQUITY_ONLY sponsor funding (no shareholder loan) and
-    NONE reserve support (no automatic DSRA). Explicit reserve authority already
-    on the project (support mode, requirement or target) is refused, never erased.
-    The shareholder loan and DSRA months are excluded ONLY while the Working Copy
-    carries exactly the structure the selection recorded; any other structure is
-    refused with the recorded and the actual values, never overwritten.
+    Only the timeline subtype changes. Unsupported actual financing and legacy
+    exclusion records are refused; user consent never authorizes their removal.
     """
     config = parse_config(raw)
     if config is None:
@@ -174,27 +167,39 @@ def apply_config(pi, raw, project_type: str):
     if type(pi) is not ProjectInputs:
         raise QuarterlyFrequencyError(f"QUARTERLY_FACILITY_COMBINATION_UNSUPPORTED: {type(pi).__name__}")
     fin = pi.financing
+    if (fin.sponsor_funding_mode is not SponsorFundingMode.EQUITY_ONLY
+            or fin.shl_amount_keur or fin.clean_shl_principal_keur
+            or fin.shl_idc_keur or fin.shl_construction_day_count_fraction
+            or fin.shl_fcf_waterfall_cash_schedule_keur
+            or fin.shl_fcf_waterfall_minimum_cash_retained_keur):
+        raise QuarterlyFrequencyError(
+            "QUARTERLY_SHL_UNSUPPORTED: 3/3 requires existing EQUITY_ONLY funding "
+            "with zero SHL; frequency selection cannot change financing")
     if (fin.dsra_support_mode is not DebtServiceReserveSupportMode.NONE
             or fin.debt_service_reserve_requirement_keur or fin.dsra_target_policy is not None
+            or fin.dsra_months or fin.dsrf_commitment_keur or fin.dsrf_commitment_fee_rate_pa
             or pi.capex.reserve_accounts_keur):
         raise QuarterlyFrequencyError(
             "QUARTERLY_RESERVE_POLICY_PENDING_D09: explicit reserve authority cannot be discarded")
-    if fin.shl_construction_day_count_fraction:
+    if fin.junior_or_other_project_funding_keur:
         raise QuarterlyFrequencyError(
-            "QUARTERLY_SHL_UNSUPPORTED: a shareholder-loan construction accrual cannot be discarded")
+            "QUARTERLY_FACILITY_COMBINATION_UNSUPPORTED: junior/other funding is outside 3/3 scope")
     recorded, actual = config["excluded_structure"], structure_of(fin)
     if recorded != actual:
         raise QuarterlyFrequencyError(
-            "QUARTERLY_FINANCING_STRUCTURE_MISMATCH: the saved 3/3 selection excludes "
+            "QUARTERLY_FINANCING_STRUCTURE_MISMATCH: the saved 3/3 selection records "
             f"{json.dumps(recorded, sort_keys=True)} but the Working Copy carries "
             f"{json.dumps(actual, sort_keys=True)}; a shareholder loan or DSRA is never removed "
-            "silently. Re-select 3/3 to record the current structure explicitly.")
+            "by frequency selection. Use the financing workflow or reset to 6/6.")
     values = {f.name: getattr(pi.info, f.name) for f in fields(pi.info)}
     values["period_frequency"] = PeriodFrequency.QUARTERLY
     info = QuarterlyProjectInfo(**values, operating_calendar_policy=config["operating_calendar_policy"])
-    financing = replace(fin, sponsor_funding_mode=SponsorFundingMode.EQUITY_ONLY,
-                        shl_amount_keur=0.0, clean_shl_principal_keur=0.0, dsra_months=0)
-    return replace(pi, info=info, financing=financing)
+    quarterly = replace(pi, info=info)
+    # Reuse the canonical scope boundary before any calculation, including
+    # instrument, VAT, revenue, valuation and tax combinations.
+    from financial_engine.financing.quarterly_scope import require_supported_quarterly_project
+    require_supported_quarterly_project(quarterly)
+    return quarterly
 
 
 def run_evidence(project_inputs) -> dict:
@@ -210,13 +215,10 @@ def run_evidence(project_inputs) -> dict:
         "classification": "RC7B_QUARTERLY_CANDIDATE_RELEASE_CLOSED",
         "owner_decisions": "D-01..D-12 OPEN; D-06/D-07 deferred",
         "sponsor_returns_status": "PENDING_D08_DISTRIBUTION_ELIGIBILITY",
-        # Explicit, recorded consequence of the 3/3 selection (never silent): the
-        # shareholder loan and DSRA months are absent from this Run ONLY because the
-        # saved selection recorded exactly that structure and it was verified equal.
         "financing_structure_binding": {
             "sponsor_funding_mode": "EQUITY_ONLY", "reserve_support_mode": "NONE",
-            "binding": "EXACT_RECORDED_STRUCTURE_VERIFIED",
-            "shareholder_loan": "EXCLUDED_BY_RECORDED_3_3_SELECTION",
-            "automatic_dsra": "EXCLUDED_BY_RECORDED_3_3_SELECTION",
+            "binding": "ACTUAL_ELIGIBLE_STRUCTURE_UNCHANGED",
+            "shareholder_loan": "ABSENT_IN_WORKING_INPUTS",
+            "automatic_dsra": "ABSENT_IN_WORKING_INPUTS",
         },
     }

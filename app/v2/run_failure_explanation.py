@@ -50,9 +50,9 @@ _RULES = (
     ("QUARTERLY_FINANCING_STRUCTURE_MISMATCH", "FAIL_CLOSED_REFUSAL", _DEBT,
      "The saved 3/3 selection recorded a shareholder-loan / DSRA structure that this Working Copy no longer carries. "
      "A shareholder loan or DSRA is never removed silently, so no Run is produced.",
-     "Select 3/3 again to record the current structure explicitly, or use the released 6/6 frequency."),
+     "Review financing independently of frequency selection, or use the released 6/6 frequency."),
     ("QUARTERLY_SHL_UNSUPPORTED", "FAIL_CLOSED_REFUSAL", _DEBT,
-     "The quarterly candidate admits equity-only sponsor funding; a shareholder-loan construction accrual is refused rather than discarded.",
+     "The quarterly candidate requires existing equity-only sponsor funding with zero shareholder loans; financing is never discarded.",
      "Remove the shareholder-loan configuration or use the released 6/6 frequency."),
     ("QUARTERLY_INTRAPERIOD_PPA_EXPIRY_UNSUPPORTED", "FAIL_CLOSED_REFUSAL", _SETUP,
      "The PPA ends inside a quarter. The quarterly candidate never splits a quarter between PPA and merchant sales.",

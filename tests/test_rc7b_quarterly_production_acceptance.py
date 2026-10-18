@@ -29,6 +29,21 @@ from tests.test_model_rc7_capex_profile_run import (  # noqa: F401
 TIMELINE = {"solar": ("2031-03-31", 14), "wind": ("2031-09-30", 20)}
 
 
+def eligible_references(monkeypatch):
+    """Seed genuinely eligible synthetic projects for BOTH frequencies.
+
+    Only initial fixture factories differ. No adapter/Run/solver is mocked and
+    frequency selection must preserve this financing object unchanged.
+    Existing user projects cannot be made eligible by this test helper.
+    """
+    from app import project_factories
+    from tests.test_rc7b_quarterly_run_workspace import _eligible
+    for kind in TIMELINE:
+        name = "create_generic_" + kind + "_reference"
+        original = getattr(project_factories, name)
+        monkeypatch.setattr(project_factories, name, lambda factory=original: _eligible(factory()))
+
+
 def _set(env, project, field_id, value, sheet="project_setup"):
     page = env.client.get("/v2/workbook", params={"project": project.project_code})
     response = env.client.post("/v2/workbook/update", data={
@@ -77,6 +92,7 @@ def test_real_quarterly_project_finance_run_lifecycle(env, monkeypatch, kind):
     from app.persistence.run_history_repository import get_run_history
 
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)  # acceptance evidence only
+    eligible_references(monkeypatch)
     project = env.create(kind)
     cod, months = TIMELINE[kind]
     _set(env, project, "project_setup.technical.construction_months", str(months))
@@ -166,25 +182,6 @@ def test_real_quarterly_project_finance_run_lifecycle(env, monkeypatch, kind):
                 if h.history_id == semi_entry.history_id).to_dict() == semi_before
 
 
-def _released_six_month_run(quarterly_inputs):
-    """The SAME effective inputs (monthly construction input included) on the released 6/6 axis."""
-    import dataclasses
-    from finco_core.inputs import PeriodFrequency, ProjectInfo
-    from financial_engine.financial_statements import assemble_decision_complete_financial_statements
-    from financial_engine.financing.generic_product_policy import (
-        DEFAULT_GENERIC_FINANCING_POLICY, run_with_generic_financing_policy,
-    )
-    from financial_engine.shareholder_waterfall import run_project_shareholder_waterfall_model
-    info = quarterly_inputs.info
-    plain = ProjectInfo(**{f.name: getattr(info, f.name) for f in dataclasses.fields(ProjectInfo)}
-                        | {"period_frequency": PeriodFrequency.SEMESTRIAL})
-    semi_inputs = dataclasses.replace(quarterly_inputs, info=plain)
-    g2c, applied, _ = run_with_generic_financing_policy(
-        semi_inputs, lambda a: run_project_shareholder_waterfall_model(a, source_id="rc7b_like_for_like"),
-        DEFAULT_GENERIC_FINANCING_POLICY)
-    return g2c, applied, assemble_decision_complete_financial_statements(g2c, applied)
-
-
 @pytest.mark.parametrize("kind", ["solar", "wind"])
 def test_monthly_construction_idc_survives_quarterly_operation(env, monkeypatch, kind):
     """Monthly CAPEX profile + 3/3 committed Run: monthly draws, IDC, fees and COD funding equal
@@ -192,16 +189,22 @@ def test_monthly_construction_idc_survives_quarterly_operation(env, monkeypatch,
     from app.services import production_financial_authority as authority
 
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    eligible_references(monkeypatch)
     project = env.create(kind)
     cod, months = TIMELINE[kind]
     _set(env, project, "project_setup.technical.construction_months", str(months))
     _set(env, project, "project_setup.technical.cod_date", cod)
     _save(project, [_row(leaf.item_key, "FRONT_LOADED") for leaf in _base_leaves(project)])
-    _frequency(env, project, "3/3")
     captured = []
     real = authority.run_clean_production
     monkeypatch.setattr(authority, "run_clean_production",
                         lambda *a, **k: captured.append(real(*a, **k)) or captured[-1])
+    # Run the original, eligible 6/6 Working Copy FIRST. Never reconstruct a
+    # comparator from quarterly inputs that might already have lost funding.
+    assert _run(env, project).status_code == 200
+    assert len(captured) == 1
+    semi = captured.pop()
+    _frequency(env, project, "3/3")
     assert _run(env, project).status_code == 200
     assert len(captured) == 1
     quarter = captured[0]
@@ -209,14 +212,14 @@ def test_monthly_construction_idc_survives_quarterly_operation(env, monkeypatch,
     typed = quarter.project_inputs.financing.construction_financing
     assert typed is not None and len(typed.periods) == months  # monthly construction axis
     b = quarter.g2c_result.financing_result
-    semi_g2c, _, semi_statements = _released_six_month_run(quarter.project_inputs)
-    a = semi_g2c.financing_result
+    a = semi.g2c_result.financing_result
+    assert semi.project_inputs.financing == quarter.project_inputs.financing
     # Frequency never changes construction dates, draws, IDC, fees or Uses.
     assert a.construction_financing == b.construction_financing
     assert a.construction_funding == b.construction_funding
     assert a.project_uses == b.project_uses
     assert a.final_senior_commitment_keur == b.final_senior_commitment_keur
-    assert semi_statements.construction_funding_rows == quarter.financial_statements_result.construction_funding_rows
+    assert semi.financial_statements_result.construction_funding_rows == quarter.financial_statements_result.construction_funding_rows
     rate = Decimal(str(typed.senior_pricing.flat_all_in_rate))
     denominator = {"ACT_360": Decimal(360), "ACT_365": Decimal(365)}[typed.senior_pricing.day_count.value.upper()]
     c = b.construction_financing
@@ -234,16 +237,16 @@ def test_monthly_construction_idc_survives_quarterly_operation(env, monkeypatch,
     assert c.period_end_dates[-1] + timedelta(days=1) == quarter.project_inputs.info.cod_date
     evidence = _latest(project).runtime_summary["financing_evidence"]
     binding = evidence["financing_structure_binding"]
-    assert binding["binding"] == "EXACT_RECORDED_STRUCTURE_VERIFIED"
-    assert binding["automatic_dsra"] == "EXCLUDED_BY_RECORDED_3_3_SELECTION"
-    # The excluded structure is recorded in the persisted, versioned selection itself - not inferred.
+    assert binding["binding"] == "ACTUAL_ELIGIBLE_STRUCTURE_UNCHANGED"
+    assert binding["automatic_dsra"] == "ABSENT_IN_WORKING_INPUTS"
     recorded = cfg.parse_config(_ws(project).draft_snapshot.get(cfg.SNAPSHOT_KEY))["excluded_structure"]
-    assert recorded["shl_amount_keur"] > 0 and recorded["dsra_months"] == 6
+    assert recorded["shl_amount_keur"] == 0 and recorded["dsra_months"] == 0
 
 
 def test_closed_gate_blocks_the_real_run_of_a_saved_selection_and_reset_recovers(env, monkeypatch):
     """A selection saved while open is refused by the Run once the gate is closed; 6/6 reset recovers."""
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    eligible_references(monkeypatch)
     project = env.create("solar")
     cod, months = TIMELINE["solar"]
     _set(env, project, "project_setup.technical.construction_months", str(months))
@@ -262,6 +265,7 @@ def test_closed_gate_blocks_the_real_run_of_a_saved_selection_and_reset_recovers
 
 
 @pytest.mark.parametrize("recorded", [
+    None,  # the exact actual structure is still not authority to discard it
     {"sponsor_funding_mode": "EQUITY_ONLY", "shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0, "dsra_months": 0},
     {"sponsor_funding_mode": "SHARE_CAPITAL_THEN_SHL", "shl_amount_keur": 1.0, "clean_shl_principal_keur": 1.0, "dsra_months": 3},
 ])
@@ -277,6 +281,9 @@ def test_a_selection_written_by_another_writer_cannot_make_the_real_run_discard_
     _set(env, project, "project_setup.technical.construction_months", str(months))
     _set(env, project, "project_setup.technical.cod_date", cod)
     page = env.client.get("/v2/workbook", params={"project": project.project_code})
+    if recorded is None:
+        from app.input_adapter import build_projectinputs_from_snapshot
+        recorded = cfg.structure_of(build_projectinputs_from_snapshot(dict(_ws(project).draft_snapshot)).financing)
     WorkbookUpdateService.apply_draft_update(
         ws=get_workspace_state(OWNER, project.project_id), field_id=cfg.FIELD_ID,
         raw_value=cfg.candidate_config_json(recorded), content_hash=tokens(page.text)["content_hash"],
@@ -284,7 +291,7 @@ def test_a_selection_written_by_another_writer_cannot_make_the_real_run_discard_
     assert cfg.frequency_label(_ws(project).draft_snapshot.get(cfg.SNAPSHOT_KEY)) == "3/3"   # accepted as a well-formed selection
     assert env.client.get("/v2/workbook", params={"project": project.project_code}).status_code == 200
     response = _run(env, project)
-    assert "QUARTERLY_FINANCING_STRUCTURE_MISMATCH" in response.text
+    assert "QUARTERLY_SHL_UNSUPPORTED" in response.text
     assert "UNCLASSIFIED_ENGINE_FAILURE" not in response.text
     assert not _ws(project).last_runtime_snapshot_id
     from app.persistence.run_history_repository import get_run_history
@@ -305,6 +312,8 @@ def test_every_workbook_sheet_stays_renderable_with_an_unbound_3_3_selection_and
     cod, months = TIMELINE["solar"]
     _set(env, project, "project_setup.technical.construction_months", str(months))
     _set(env, project, "project_setup.technical.cod_date", cod)
+    assert _run(env, project).status_code == 200
+    historical = _latest(project).to_dict()
     page = env.client.get("/v2/workbook", params={"project": project.project_code})
     recorded = {"sponsor_funding_mode": "EQUITY_ONLY", "shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0, "dsra_months": 0}
     WorkbookUpdateService.apply_draft_update(
@@ -315,9 +324,55 @@ def test_every_workbook_sheet_stays_renderable_with_an_unbound_3_3_selection_and
     for sheet in sorted(PRESENTATION_SHEETS) + ["overview", "outputs"]:
         response = env.client.get("/v2/workbook", params={"project": project.project_code, "sheet": sheet})
         assert response.status_code == 200, sheet
+        assert "Invalid saved 3/3 selection" in response.text, sheet
+    from app.services import production_financial_authority as authority
+    calls = []
+    def forbidden(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("An ineligible selection reached financial calculation")
+    monkeypatch.setattr(authority, "run_clean_production", forbidden)
     response = _run(env, project)
-    assert "QUARTERLY_FINANCING_STRUCTURE_MISMATCH" in response.text
+    assert "QUARTERLY_SHL_UNSUPPORTED" in response.text
     assert "Could not build project inputs" not in response.text
     after = _ws(project)
-    assert not after.last_runtime_snapshot_id and get_run_history(OWNER, project.project_id) == []
+    assert calls == []
+    assert after.last_runtime_snapshot_id == before.last_runtime_snapshot_id
+    assert after.last_runtime_identity == before.last_runtime_identity
+    assert [h.to_dict() for h in get_run_history(OWNER, project.project_id)] == [historical]
     assert dict(after.draft_snapshot) == draft_before                        # the saved selection and the Working Copy are untouched
+
+
+def test_default_solar_cannot_consent_to_discard_actual_shl_or_dsra(env, monkeypatch):
+    from app.auth import generate_csrf_token
+    from app.input_adapter import build_projectinputs_from_snapshot
+    from app.persistence.run_history_repository import get_run_history
+    monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    project = env.create("solar")
+    assert _run(env, project).status_code == 200
+    before = _ws(project)
+    history = [h.to_dict() for h in get_run_history(OWNER, project.project_id)]
+    pi = build_projectinputs_from_snapshot(dict(before.draft_snapshot))
+    assert pi.financing.shl_amount_keur > 0 and pi.financing.dsra_months == 6
+    page = env.client.get("/v2/workbook", params={"project": project.project_code})
+    response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
+        "project": project.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3",
+        "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)}, follow_redirects=False)
+    assert response.status_code == 409 and "QUARTERLY_SHL_UNSUPPORTED" in response.text
+    assert _ws(project) == before
+    assert [h.to_dict() for h in get_run_history(OWNER, project.project_id)] == history
+
+
+def test_batch_cannot_bypass_financing_scope_and_rolls_back_atomically(env, monkeypatch):
+    from app.workbook.update_service import FieldValidationError, WorkbookUpdateService
+    from app.workbook.registry import WORKBOOK
+    monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
+    project = env.create("solar")
+    before = _ws(project)
+    from app.input_adapter import build_projectinputs_from_snapshot
+    pi = build_projectinputs_from_snapshot(dict(before.draft_snapshot))
+    with pytest.raises(FieldValidationError, match="QUARTERLY_SHL_UNSUPPORTED"):
+        WorkbookUpdateService.apply_batch_draft_update(
+            ws=before, updates=[(cfg.FIELD_ID, cfg.candidate_config_json(cfg.structure_of(pi.financing)))],
+            content_hash=_hash(project), workbook_version=WORKBOOK.version, project_record=project,
+            actor_user_id=OWNER, expected_scenario_id=before.active_scenario_id)
+    assert _ws(project) == before

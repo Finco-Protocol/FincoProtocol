@@ -248,20 +248,48 @@ _SENIOR_LOCK_NOTE = (
 
 
 def _display_projectinputs(build, snapshot):
-    """Display-only materialisation that tolerates ONE typed refusal: an unbound 3/3 financing-structure selection.
+    """Show unchanged inputs when a saved 3/3 selection is ineligible.
 
-    RC-7B Correction B. ``apply_config`` refuses (QUARTERLY_FINANCING_STRUCTURE_MISMATCH) a saved 3/3 selection whose recorded
-    structure differs from the Working Copy, and the Run surfaces that refusal. A page that only *shows* the Working Copy must stay
-    renderable: it reads the typed inputs without the unbound selection. Nothing is written, no calculation runs, and every other
-    materialisation error still propagates unchanged."""
+    This fallback is display-only: no write, calculation or Run uses it. The
+    banner reports the refusal; the canonical Run still raises the same error.
+    Malformed contracts and non-quarterly errors are not suppressed.
+    """
     from app.input_adapter import SnapshotInputError, build_projectinputs_from_snapshot
     try:
         return build()
     except SnapshotInputError as exc:
-        if not str(exc).startswith("QUARTERLY_FINANCING_STRUCTURE_MISMATCH"):
+        if not _quarterly_selection_refusal(snapshot, exc):
             raise
         from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY as _q_key
         return build_projectinputs_from_snapshot({k: v for k, v in dict(snapshot).items() if k != _q_key})
+
+
+def _quarterly_selection_refusal(snapshot, exc):
+    from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY, parse_config
+    if not snapshot.get(SNAPSHOT_KEY):
+        return False
+    parse_config(snapshot[SNAPSHOT_KEY])  # invalid JSON is not a scope refusal
+    code = str(exc).split(":", 1)[0]
+    return code.startswith("QUARTERLY_") and (code.endswith("_UNSUPPORTED") or code in {
+        "QUARTERLY_FINANCING_STRUCTURE_MISMATCH", "QUARTERLY_RESERVE_POLICY_PENDING_D09",
+        "QUARTERLY_REVENUE_CONTRACT_HANDOFF_REQUIRED", "QUARTERLY_HIERARCHICAL_OPEX_HANDOFF_REQUIRED",
+        "QUARTERLY_PPA_INDEXATION_HANDOFF_REQUIRED", "QUARTERLY_COD_ROLL_WINDOW_PENDING_D01",
+    })
+
+
+def _quarterly_selection_error(pis):
+    from app.input_adapter import SnapshotInputError
+    from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY
+    snapshot = pis.to_snapshot()
+    if not snapshot.get(SNAPSHOT_KEY):
+        return ""
+    try:
+        pis.to_projectinputs()
+    except SnapshotInputError as exc:
+        if not _quarterly_selection_refusal(snapshot, exc):
+            raise
+        return f"Invalid saved 3/3 selection. {exc} No inputs were changed; reset to 6/6 or review financing."
+    return ""
 
 
 def _classify_senior_authority(pis):
@@ -700,7 +728,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
         "last_run_iso": _last_run_iso(ws),
-        "field_error": field_error,
+        "field_error": field_error or _quarterly_selection_error(pis),
         "active_scenario_name": getattr(ws, "active_scenario_name", None) or "",
     }
 
@@ -2134,7 +2162,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             if ws.any_run_committed and getattr(ws, "last_runtime_identity", None) is not None
             else ""
         ),
-        "flash_error": flash_error,
+        "flash_error": flash_error or _quarterly_selection_error(pis),
         "field_error": "",
         "library_url": "/library",
         # WF-05 grid: CSRF token for the JSON validate/save routes (session-bound server check).

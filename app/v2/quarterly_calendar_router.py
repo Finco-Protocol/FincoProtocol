@@ -22,8 +22,8 @@ from app.workbook.registry import WORKBOOK
 router = APIRouter()
 MAX_REQUEST_BYTES = 4096
 _FORM_KEYS = {"project", "content_hash", "csrf_token", "workbook_version", "frequency", "financing_structure"}
-# The 3/3 candidate admits one financing structure; selecting it is explicit consent
-# to that structure (two-Senior activation precedent), never a silent side effect.
+# This acknowledgement cannot authorize a financing change. Actual Working Copy
+# eligibility is checked below before the frequency field can be persisted.
 STRUCTURE_CONSENT = "EQUITY_ONLY_NO_RESERVE"
 
 
@@ -74,8 +74,8 @@ async def save_operating_frequency(request: Request, _: None = Depends(require_v
         if ws is None:
             return JSONResponse({"error": "Workspace not found"}, status_code=404)
         if raw is None:
-            # The selection records the EXACT structure it excludes, read from the
-            # Working Copy as it is now. The Run refuses any later difference.
+            # Record actual structure, never remove it. Consent cannot make an
+            # unsupported Working Copy eligible; apply_config must refuse it.
             from app.input_adapter import build_projectinputs_from_snapshot
             snapshot = dict(ws.draft_snapshot)
             snapshot[config.SNAPSHOT_KEY] = ""

@@ -24,6 +24,18 @@ def _solar():
     return create_generic_solar_reference()
 
 
+def _eligible(pi):
+    """Explicit synthetic financial setup and boundary COD, before either frequency."""
+    from datetime import date
+    from dateutil.relativedelta import relativedelta
+    from finco_core.inputs import SponsorFundingMode
+    fc = date(2030, 1, 31)
+    cod = fc + relativedelta(months=pi.info.construction_months)
+    return dataclasses.replace(pi, info=dataclasses.replace(pi.info, financial_close=fc, cod_date=cod), financing=dataclasses.replace(
+        pi.financing, sponsor_funding_mode=SponsorFundingMode.EQUITY_ONLY,
+        shl_amount_keur=0.0, clean_shl_principal_keur=0.0, dsra_months=0))
+
+
 def _quarterly(pi):
     from finco_core.engine.calendar_policy import quarterly_candidate_policy
     from finco_core.inputs import PeriodFrequency
@@ -34,8 +46,8 @@ def _quarterly(pi):
 
 
 def _selection(pi=None):
-    """The selection a user saves for ``pi``: it records the EXACT structure it excludes."""
-    pi = pi or _solar()
+    """A recorded structure is evidence, never authority to change financing."""
+    pi = pi or _eligible(_solar())
     return cfg.candidate_config_json(cfg.structure_of(pi.financing))
 
 
@@ -75,7 +87,7 @@ def test_default_six_month_working_copy_is_the_same_object():
 
 def test_closed_gate_refuses_every_quarterly_application():
     # The typed Working Copy is read faithfully; finance production is refused.
-    applied = cfg.apply_config(_solar(), _selection(), "Solar")
+    applied = cfg.apply_config(_eligible(_solar()), _selection(), "Solar")
     assert applied.info.operating_calendar_policy is not None
     from app.services.production_financial_authority import (
         CleanProductionRunUnavailable, classify_production_authority, run_clean_production,
@@ -94,11 +106,8 @@ def test_snapshot_carrying_a_selection_fails_closed_at_the_adapter(env):
     assert cfg.SNAPSHOT_KEY not in snapshot  # every existing Working Copy is 6/6 by absence
     assert build_projectinputs_from_snapshot(snapshot).info.period_frequency.name == "SEMESTRIAL"
     own = cfg.candidate_config_json(cfg.structure_of(build_projectinputs_from_snapshot(snapshot).financing))
-    quarterly = build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: own})
-    assert quarterly.info.operating_calendar_policy is not None  # never silently read as 6/6
-    from app.services.production_financial_authority import CleanProductionRunUnavailable, run_clean_production
-    with pytest.raises(CleanProductionRunUnavailable, match="QUARTERLY_ADMISSION_CLOSED"):
-        run_clean_production(quarterly)
+    with pytest.raises(SnapshotInputError, match="QUARTERLY_SHL_UNSUPPORTED"):
+        build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: own})
     with pytest.raises(SnapshotInputError, match="QUARTERLY_CONFIG_KEYS_INVALID"):
         build_projectinputs_from_snapshot({**snapshot, cfg.SNAPSHOT_KEY: '{"version":2}'})
 
@@ -110,23 +119,16 @@ def test_open_gate_still_refuses_unsupported_technologies(monkeypatch, project_t
         cfg.apply_config(_solar(), _selection(), project_type)
 
 
-def test_open_gate_excludes_exactly_the_recorded_structure_and_records_it(monkeypatch):
+def test_open_gate_never_excludes_even_exactly_recorded_shl_or_reserves(monkeypatch):
     from finco_core.inputs import DebtServiceReserveSupportMode, SponsorFundingMode
-    from finco_core.inputs._models import QuarterlyProjectInfo
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     source = _solar()
     # The reference Working Copy carries a real shareholder loan and 6 DSRA months.
     assert source.financing.shl_amount_keur > 0 and source.financing.dsra_months == 6
-    applied = cfg.apply_config(source, _selection(source), "Solar")
-    assert isinstance(applied.info, QuarterlyProjectInfo)
-    assert applied.financing.sponsor_funding_mode is SponsorFundingMode.EQUITY_ONLY
-    assert applied.financing.dsra_months == 0 and applied.financing.shl_amount_keur == 0.0
+    with pytest.raises(cfg.QuarterlyFrequencyError, match="QUARTERLY_SHL_UNSUPPORTED"):
+        cfg.apply_config(source, _selection(source), "Solar")
     assert source.financing.shl_amount_keur > 0 and source.financing.dsra_months == 6   # the input object is never mutated
-    evidence = cfg.run_evidence(applied)
-    assert evidence["operating_frequency"] == "3/3" and evidence["period_months"] == 3
-    assert evidence["sponsor_returns_status"] == "PENDING_D08_DISTRIBUTION_ELIGIBILITY"
-    assert evidence["financing_structure_binding"]["binding"] == "EXACT_RECORDED_STRUCTURE_VERIFIED"
-    assert evidence["financing_structure_binding"]["shareholder_loan"] == "EXCLUDED_BY_RECORDED_3_3_SELECTION"
+    source = _eligible(source)
     reserved = dataclasses.replace(source, financing=dataclasses.replace(
         source.financing, dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA))
     with pytest.raises(ValueError, match="QUARTERLY_RESERVE_POLICY_PENDING_D09"):
@@ -143,39 +145,41 @@ def test_a_project_without_shl_or_reserves_is_applied_with_nothing_removed(monke
     from finco_core.inputs import SponsorFundingMode
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     source = _solar()
-    clean = dataclasses.replace(source, financing=dataclasses.replace(
-        source.financing, sponsor_funding_mode=SponsorFundingMode.EQUITY_ONLY, shl_amount_keur=0.0,
-        clean_shl_principal_keur=0.0, dsra_months=0))
+    clean = _eligible(source)
     selection = _selection(clean)
     assert json.loads(selection)["excluded_structure"] == {
         "sponsor_funding_mode": "EQUITY_ONLY", "shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0, "dsra_months": 0}
     assert cfg.apply_config(clean, selection, "Solar").financing == clean.financing   # nothing was removed
+    assert cfg.apply_config(clean, selection, "Solar").financing is clean.financing
+    evidence = cfg.run_evidence(cfg.apply_config(clean, selection, "Solar"))
+    assert evidence["financing_structure_binding"]["binding"] == "ACTUAL_ELIGIBLE_STRUCTURE_UNCHANGED"
+    assert evidence["financing_structure_binding"]["shareholder_loan"] == "ABSENT_IN_WORKING_INPUTS"
 
 
 @pytest.mark.parametrize("change", [
-    {"shl_amount_keur": 20000.0}, {"clean_shl_principal_keur": 1.0}, {"dsra_months": 12}, {"dsra_months": 0},
-    {"shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0},
-    {"sponsor_funding_mode": "EQUITY_ONLY"},
+    {"shl_amount_keur": 20000.0}, {"clean_shl_principal_keur": 1.0}, {"dsra_months": 12},
+    {"shl_idc_keur": 1.0}, {"dsrf_commitment_keur": 1.0}, {"dsrf_commitment_fee_rate_pa": .01},
+    {"junior_or_other_project_funding_keur": 1.0},
+    {"sponsor_funding_mode": "SHARE_CAPITAL_THEN_SHL"},
 ])
 def test_a_structure_that_differs_from_the_recorded_one_is_refused_never_overwritten(monkeypatch, change):
     from finco_core.inputs import SponsorFundingMode
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
-    source = _solar()
-    selection = _selection(source)                       # consent recorded against the reference structure
+    source = _eligible(_solar())
+    selection = _selection(source)
     change = {k: (SponsorFundingMode[v] if k == "sponsor_funding_mode" else v) for k, v in change.items()}
     changed = dataclasses.replace(source, financing=dataclasses.replace(source.financing, **change))
-    with pytest.raises(ValueError, match="QUARTERLY_FINANCING_STRUCTURE_MISMATCH"):
+    with pytest.raises(ValueError, match="QUARTERLY_(SHL_UNSUPPORTED|RESERVE_POLICY_PENDING_D09|FACILITY_COMBINATION_UNSUPPORTED)"):
         cfg.apply_config(changed, selection, "Solar")
 
 
 @pytest.mark.parametrize("recorded", [
-    {"sponsor_funding_mode": "EQUITY_ONLY", "shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0, "dsra_months": 0},
     {"sponsor_funding_mode": "SHARE_CAPITAL_THEN_SHL", "shl_amount_keur": 1.0, "clean_shl_principal_keur": 1.0, "dsra_months": 6},
 ])
 def test_a_fabricated_or_imported_selection_cannot_name_a_structure_the_project_does_not_have(monkeypatch, recorded):
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     with pytest.raises(ValueError, match="QUARTERLY_FINANCING_STRUCTURE_MISMATCH"):
-        cfg.apply_config(_solar(), cfg.candidate_config_json(recorded), "Solar")
+        cfg.apply_config(_eligible(_solar()), cfg.candidate_config_json(recorded), "Solar")
 
 
 @pytest.mark.parametrize("mutate", [
@@ -294,6 +298,8 @@ def test_open_gate_endpoint_requires_explicit_structure_consent(env, monkeypatch
 
 def test_open_gate_endpoint_requires_csrf_and_cas(env, monkeypatch):
     from app.auth import generate_csrf_token
+    from tests.test_rc7b_quarterly_production_acceptance import eligible_references
+    eligible_references(monkeypatch)
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     record = env.create("solar")
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
@@ -304,6 +310,7 @@ def test_open_gate_endpoint_requires_csrf_and_cas(env, monkeypatch):
     bad_cas = env.client.post("/v2/workbook/calendar/operating-frequency", data={
         "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **stale})
     assert bad_cas.status_code == 409
+    assert "QUARTERLY_SHL_UNSUPPORTED" not in bad_cas.text
 
 
 # ── labels, comparison and Credit V4 eligibility ─────────────────────────────
@@ -344,8 +351,8 @@ def test_run_compare_marks_cross_frequency_checks_not_comparable(monkeypatch):
 
 def test_credit_v4_refuses_end_date_joins_across_frequencies():
     from app.v2.credit_v4_evidence import build_credit_v4
-    timeline = {"available": True, "columns": [{"date": "2031-06-30", "index": 1}],
-                "rows": [{"key": k, "cells": [1.0]} for k in ("dscr", "debt_service", "base_cfads", "closing")]}
+    timeline = {"available": True, "columns": [{"start": "2030-12-31", "date": "2031-06-30", "index": 1}],
+                "rows": [{"key": k, "cells": [{"v": 1.0}]} for k in ("dscr", "debt_service", "base_cfads", "closing")]}
     semi = {"identity": {"history_id": "a"}, "timeline": timeline}
     quarter = {"identity": {"history_id": "b"}, "timeline": timeline, "operating_frequency": "3/3"}
     refused = build_credit_v4([semi, quarter])["period_comparison"]

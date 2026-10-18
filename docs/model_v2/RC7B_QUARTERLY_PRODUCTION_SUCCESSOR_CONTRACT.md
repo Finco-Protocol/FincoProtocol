@@ -11,7 +11,7 @@ Machine-checked by `tests/rc7b_quarterly_candidate_authority.py` (RC-3 C2 PPA-01
 | Acceptance record | `docs/model_v2/RC7B_QUARTERLY_FINANCIAL_ACCEPTANCE.json` — **does not exist** |
 | Research reference | `tools/quarterly_research/` byte-identical to predecessor (validation only) |
 
-## Approved changed-file inventory (protected namespaces)
+## Candidate changed-file inventory (protected namespaces; not financial approval)
 
 | Path | Predecessor blob | Candidate blob |
 |---|---|---|
@@ -42,15 +42,37 @@ Full 40-character blobs are the literals in the module.
 * `tests/test_rc7b_quarterly_production_acceptance.py` — real committed app Runs, Solar and Wind (5).
 * `docs/model_v2/RC7B_SEMIANNUAL_REGRESSION.json` — four verticals, 6/6 bit-identical to the predecessor (max difference 0).
 
-## Wiring (additive only)
+## Wiring (recognition proposal only)
 
-`finance_integrity_governance.unapproved_engine_changes` and `strictly_frozen_changes` gain one clause each recognising the exact candidate;
-`rc3_authority_states.authority_state` reports `INTEGRATED_RELEASE_CLOSED_CANDIDATE`. `tests/model_v2_governance.py`, every pin map,
-the M7 and PPA-01 literals and `approved_frozen_path` are unchanged. Negative controls: `tests/test_rc7b_quarterly_candidate_authority.py`.
+Correction A removed the unapproved RC-7B recognition clauses from
+`tests/finance_integrity_governance.py`. Neither `unapproved_engine_changes`
+nor `strictly_frozen_changes` currently exempts this candidate. The separate
+`tests/rc7b_quarterly_candidate_authority.py` can recognize exact bytes, but
+recognition is not financial approval and does not authorize frozen paths.
+`rc3_authority_states.authority_state` reports `INTEGRATED_RELEASE_CLOSED_CANDIDATE`;
+that state does not satisfy the independent financial acceptance requirement.
+`tests/model_v2_governance.py`, every historical pin map, the M7 and PPA-01
+literals and `approved_frozen_path` remain unchanged. Negative controls:
+`tests/test_rc7b_quarterly_candidate_authority.py`.
 
 ## Open governance work (keeps the PR red and Draft)
 
-Historical guards that assert HEAD still carries an older pinned blob for a path RC-7B changes (M7 orchestrator/adapter, F3 multi-Senior,
-F3.5 Junior, WF04, WF07, PPA-01 coexistence facts, RC-3 inventory, PR #313 research-isolation and RC-7A compatibility guards) still fail.
-Each must be reconciled to judge its blobs at its own checkpoint, as RC-3 C2 did for PPA-01, and that reconciliation needs independent
-governance review. It is deliberately not self-approved here.
+Historical provenance assertions and current released-authority requirements
+must be distinguished individually. A historical claim may be tested at its
+immutable checkpoint only when its original scope and ancestry prove that is
+the claim being made. Current HEAD pins and live integration scope guards
+remain blocking; they cannot all be converted to historical assertions.
+The #313 isolation assertion was reconciled in Correction B. The remaining
+financial and scope successor decisions require independent review and owner
+authorization; none is self-approved here.
+
+## Correction C: financial structure is preserved
+
+Matched 3/3 requires an already eligible Working Copy: EQUITY_ONLY, zero SHL
+and no reserve funding/support. The legacy `excluded_structure` JSON key is
+retained for decoding, not authority to discard anything. Selecting frequency
+changes only calendar inputs. Even an exactly recorded nonzero SHL or DSRA
+is refused before calculation. Invalid saved selections remain visible and
+renderable, while Run refuses without changing inputs or historical evidence.
+Monthly funding parity compares the original eligible 6/6 Run with its 3/3 Run,
+not a six-month comparator reconstructed from altered quarterly inputs.
