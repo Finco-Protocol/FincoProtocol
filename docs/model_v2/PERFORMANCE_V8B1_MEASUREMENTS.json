@@ -1,0 +1,130 @@
+{
+  "samples": 9,
+  "verticals": {
+    "solar": {
+      "median_seconds": {
+        "baseline": 1.865655380000021,
+        "candidate": 1.7784317190000252
+      },
+      "samples_seconds": {
+        "baseline": [
+          2.049652694999992,
+          1.7958201760000065,
+          1.8169669149999947,
+          1.7423455939999712,
+          1.865655380000021,
+          1.893759442999965,
+          1.9224284640000064,
+          1.8875782520000257,
+          1.8231807899999808
+        ],
+        "candidate": [
+          1.8667786709999916,
+          1.751742729,
+          1.7764665830000013,
+          1.6992238620000535,
+          1.6628208420000306,
+          1.8150448430000097,
+          1.8463844799999833,
+          1.7784317190000252,
+          1.7897190539999883
+        ]
+      },
+      "improvement_pct": 4.68,
+      "operation_counts": {
+        "baseline": {
+          "solve_senior_debt": 220,
+          "_solve_dscr": 220,
+          "_forward_roll": 4440,
+          "tax_callbacks": 3066,
+          "_backward_dscr_capacity": 1912,
+          "_schedules_converged": 2846,
+          "_compute_max_abs_diff": 1692,
+          "_finalise_authoritative": 322
+        },
+        "candidate": {
+          "solve_senior_debt": 220,
+          "_solve_dscr": 220,
+          "_forward_roll": 4440,
+          "tax_callbacks": 3066,
+          "_backward_dscr_capacity": 1912,
+          "_schedules_converged": 2846,
+          "_compute_max_abs_diff": 220,
+          "_finalise_authoritative": 322
+        }
+      },
+      "result_sha256": {
+        "baseline": [
+          "fb6d351712c1e384a24d4ee550be96f391b00e15c7199407dad137d5813b4c30"
+        ],
+        "candidate": [
+          "fb6d351712c1e384a24d4ee550be96f391b00e15c7199407dad137d5813b4c30"
+        ]
+      },
+      "bit_identical": true
+    },
+    "wind": {
+      "median_seconds": {
+        "baseline": 2.27306639599999,
+        "candidate": 2.2677681999999777
+      },
+      "samples_seconds": {
+        "baseline": [
+          2.3924769280000078,
+          2.1951209480000102,
+          2.355300846000034,
+          2.27306639599999,
+          2.306559173999972,
+          2.120984909000015,
+          2.21121242199996,
+          2.254992699000013,
+          2.362247402000037
+        ],
+        "candidate": [
+          2.2677681999999777,
+          2.2641004270000167,
+          2.1685050119999687,
+          2.372608838000019,
+          2.3161603560000117,
+          2.217923237999969,
+          2.3661388709999756,
+          2.327380771000037,
+          2.185418119000019
+        ]
+      },
+      "improvement_pct": 0.23,
+      "operation_counts": {
+        "baseline": {
+          "solve_senior_debt": 284,
+          "_solve_dscr": 284,
+          "_forward_roll": 5860,
+          "tax_callbacks": 3944,
+          "_backward_dscr_capacity": 2312,
+          "_schedules_converged": 3660,
+          "_compute_max_abs_diff": 2028,
+          "_finalise_authoritative": 436
+        },
+        "candidate": {
+          "solve_senior_debt": 284,
+          "_solve_dscr": 284,
+          "_forward_roll": 5860,
+          "tax_callbacks": 3944,
+          "_backward_dscr_capacity": 2312,
+          "_schedules_converged": 3660,
+          "_compute_max_abs_diff": 284,
+          "_finalise_authoritative": 436
+        }
+      },
+      "result_sha256": {
+        "baseline": [
+          "0f14d1c48d8e76209b6ee2a18973f38d30554d42465806185ed0b50b52c53567"
+        ],
+        "candidate": [
+          "0f14d1c48d8e76209b6ee2a18973f38d30554d42465806185ed0b50b52c53567"
+        ]
+      },
+      "bit_identical": true
+    }
+  },
+  "all_results_bit_identical": true
+}
