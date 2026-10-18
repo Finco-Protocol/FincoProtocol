@@ -29,8 +29,6 @@ STRUCTURE_CONSENT = "EQUITY_ONLY_NO_RESERVE"
 
 @router.post("/workbook/calendar/operating-frequency")
 async def save_operating_frequency(request: Request, _: None = Depends(require_v2_active)):
-    if not config.ACTIVATION_ENABLED:
-        return JSONResponse({"error": "QUARTERLY_ADMISSION_CLOSED"}, status_code=404)
     data = bytearray()
     async for chunk in request.stream():
         data.extend(chunk)
@@ -55,6 +53,9 @@ async def save_operating_frequency(request: Request, _: None = Depends(require_v
             return JSONResponse({"error": "QUARTERLY_READ_ONLY"}, status_code=403)
         if form["workbook_version"] != WORKBOOK.version:
             raise ValueError("QUARTERLY_WORKBOOK_VERSION_MISMATCH")
+        if form["frequency"] != "6/6" and not config.ACTIVATION_ENABLED:
+            # Closed: only the reset to the released 6/6 default is accepted.
+            return JSONResponse({"error": "QUARTERLY_ADMISSION_CLOSED"}, status_code=404)
         if form["frequency"] == "3/3":
             config.require_admitted(record.project_type)
             if form["financing_structure"] != STRUCTURE_CONSENT:
