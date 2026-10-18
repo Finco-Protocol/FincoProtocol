@@ -220,17 +220,20 @@ def test_same_inode_and_schema_cookie_replaced_database(isolated_db, tmp_path):
     original_inode = isolated_db.stat().st_ino
     with sqlite3.connect(isolated_db) as conn:
         original_generation = conn.execute("PRAGMA schema_version").fetchone()[0]
+    conn.close()
 
     donor = tmp_path / "restore-source.sqlite"
     with sqlite3.connect(donor) as conn:
         conn.execute("CREATE TABLE incomplete_restored_schema (id INTEGER)")
         conn.execute(f"PRAGMA schema_version={original_generation}")
+    conn.close()
     # In-place bytes replacement deliberately retains the target inode,
     # unlike os.replace. All connections are closed before the overwrite.
     isolated_db.write_bytes(donor.read_bytes())
     assert isolated_db.stat().st_ino == original_inode
     with sqlite3.connect(isolated_db) as conn:
         assert conn.execute("PRAGMA schema_version").fetchone()[0] == original_generation
+    conn.close()
     _open_and_close()
     assert "model_run_history" in _tables(isolated_db)
     assert "workspace_states" in _tables(isolated_db)
