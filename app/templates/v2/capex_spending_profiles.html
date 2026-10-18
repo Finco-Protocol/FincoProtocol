@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FINCO — CAPEX Spending Profiles (Preview)</title>
+  <title>FINCO — Monthly CAPEX Spending Profile</title>
   <style>
   :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#172535;background:#f6f8fb}
   body{margin:0}main{max-width:1400px;margin:0 auto;padding:20px;overflow-wrap:anywhere}a{color:#165b94}
@@ -20,18 +20,26 @@
   </style>
 </head>
 <body>
-<header><strong>FINCO MODEL · CAPEX SPENDING PROFILES (CANDIDATE PREVIEW)</strong><a href="/v2/workbook?project={{ project_code|urlencode }}#capex">Back to CAPEX</a></header>
+<header><strong>FINCO MODEL · MONTHLY CAPEX SPENDING PROFILE</strong><a href="/v2/workbook?project={{ project_code|urlencode }}#capex">Back to CAPEX</a></header>
 <main>
-  <h1>Monthly construction spending profile — preview</h1>
-  <p class="banner" data-testid="preview-banner">Planning preview only. Nothing is saved and no Run is started: the committed Run, its construction funding, IDC and Sources &amp; Uses are unchanged. The existing Run consumes a per-category, construction-period timing from the cost template; a monthly profile is not yet bound to it (see the WF-09 report).</p>
+  <h1>Monthly construction spending profile</h1>
+  {% if notice %}<p class="banner ok" role="status" data-testid="profile-notice">{{ notice }}</p>{% endif %}
+  <p class="banner" data-testid="profile-status" data-saved="{{ 'true' if binding.saved else 'false' }}" data-bound="{{ 'true' if binding.bound else 'false' }}">
+    {% if not binding.saved %}No monthly profile is saved: the Run uses the existing per-category construction timing.
+    {% elif binding.bound %}Saved profile ({{ binding.items }} item{{ '' if binding.items == 1 else 's' }}) in the Working Copy. The next Workbook V2 Run places those items on the monthly construction timeline; funding, draws, commitment fees, IDC and Total Uses are then recomputed by the canonical engine.
+    {% else %}A saved profile exists but cannot be applied: <code data-testid="binding-code">{{ binding.code }}</code>. The Run will refuse to execute until it is corrected or removed.{% endif %}
+  </p>
+  {% if not can_edit %}<p class="muted" data-testid="read-only-note">{% if not base_case %}A scenario is selected. Scenarios inherit the saved profile; switch to the Base case to edit it.{% else %}This project is read-only for you; the profile can be viewed but not saved.{% endif %}</p>{% endif %}
+  <p class="banner" data-testid="preview-banner">Preview only: the preview button saves nothing and no Run is started - the committed Run, its construction funding, IDC and Sources &amp; Uses are unchanged until you Save and Run.</p>
   <p class="muted">{{ project.project_name }} · construction duration {{ months }} months{% if timeline.available %} · dates from the project timeline ({{ timeline.source }}){% else %} · dates unavailable ({{ timeline.reason }}){% endif %}.</p>
-  {% if error %}<p role="alert" class="error" data-testid="profile-error">Request rejected: {{ error }}</p>{% endif %}
+  {% if error %}<p role="alert" class="error" data-testid="profile-error">Request rejected: {{ error }}{% if error_detail %} - {{ error_detail }}{% endif %}</p>{% endif %}
+  {% if saved_error %}<p role="alert" class="error" data-testid="saved-document-error">The stored profile document is invalid: {{ saved_error }}</p>{% endif %}
 
   <section class="panel">
     <h2>1. Choose a shape per CAPEX item</h2>
     <p class="muted">Eligible items are leaf CAPEX rows only (active sub-lines and category inputs), so a parent and its children are never both profiled. Contingency (C.13), C.17/C.18, IDC, fees, VAT costs and reserves are derived/financing items and are listed read-only below. Front/back-loaded are linear shapes you select; explicit percentages must be given for every month and sum to 100 %. Invalid input is rejected, never normalised.</p>
     <form method="post" action="/v2/capex/spending-profiles/preview">
-      <input type="hidden" name="project" value="{{ project_code }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="project" value="{{ project_code }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="content_hash" value="{{ content_hash }}">
       <div class="table-wrap"><table data-testid="item-table"><thead><tr><th>Item</th><th class="num">Amount kEUR</th><th>Shape</th><th>Explicit % per month (comma-separated)</th><th>Milestone month</th></tr></thead><tbody>
       {% for item in items %}{% set fr = form_rows.get(item.item_key, {}) %}
         <tr data-item="{{ item.item_key }}"><td><input type="hidden" name="key_{{ loop.index0 }}" value="{{ item.item_key }}"><strong>{{ item.item_key }}</strong> {{ item.label }}<div class="muted">{{ item.category_code }}</div></td>
@@ -42,6 +50,8 @@
       {% else %}<tr><td colspan="5">No eligible CAPEX items with a positive amount.</td></tr>{% endfor %}
       </tbody></table></div>
       <button type="submit" data-testid="preview-submit">Preview monthly allocation (no save)</button>
+      {% if can_edit %}<button type="submit" formaction="/v2/capex/spending-profiles/save" name="action" value="save" data-testid="profile-save">Save to Working Copy</button>
+      {% if binding.saved or saved_error %}<button type="submit" formaction="/v2/capex/spending-profiles/save" name="action" value="reset" data-testid="profile-reset">Remove saved profile</button>{% endif %}{% endif %}
     </form>
     {% if excluded %}<details><summary>Derived / financing items (not spending-profile eligible): {{ excluded|length }}</summary><ul>{% for e in excluded %}<li><code>{{ e.item_key }}</code> {{ e.label }} — {{ '%.3f'|format(e.amount_keur) }} kEUR</li>{% endfor %}</ul></details>{% endif %}
   </section>
@@ -64,6 +74,18 @@
       <td class="num">{{ plan.monthly_total_keur[k] }}</td><td class="num">{{ plan.monthly_cumulative_keur[k] }}</td><td class="num">{{ plan.monthly_remaining_keur[k] }}</td></tr>{% endfor %}
     </tbody></table></div>
     {% if plan.period_equivalent_total_keur %}<p class="muted" data-testid="period-equivalent">Equivalent on the existing construction periods (end-of-period payment convention; intra-period monthly timing is not represented there): {% for v in plan.period_equivalent_total_keur %}P{{ loop.index0 }} {{ plan.timeline.period_starts[loop.index0] }}–{{ plan.timeline.period_ends[loop.index0] }}: <strong>{{ v }}</strong>{% if not loop.last %} · {% endif %}{% endfor %} kEUR.</p>{% endif %}
+  </section>
+  {% endif %}
+  {% if last_run.available %}
+  <section class="panel" data-testid="last-run-reconciliation" data-freshness="{{ last_run.freshness }}" data-used-profile="{{ 'true' if last_run.used_profile else 'false' }}">
+    <h2>3. Last Run reconciliation</h2>
+    <p>Last Run status: <span class="pill {{ 'ok' if last_run.freshness == 'CURRENT' else 'bad' }}" data-testid="last-run-freshness">{{ last_run.freshness }}</span> · {{ 'executed with the saved monthly profile' if last_run.used_profile else 'executed with the existing per-category timing' }}.</p>
+    {% set su = last_run.sources_uses %}
+    <p>Hard CAPEX <strong data-testid="lr-hard-capex">{{ '%.3f'|format(su.get('base_project_capex_keur', 0)) }}</strong> · capitalised IDC <strong data-testid="lr-idc">{{ '%.3f'|format(su.get('capitalized_idc_keur', 0)) }}</strong> · commitment fee <strong>{{ '%.3f'|format(su.get('commitment_fee_keur', 0)) }}</strong> · structuring fee <strong>{{ '%.3f'|format(su.get('structuring_fee_keur', 0)) }}</strong> · initial DSRA funding <strong>{{ '%.3f'|format(su.get('initial_dsra_funding_keur', 0)) }}</strong> · total uses <strong data-testid="lr-total-uses">{{ '%.3f'|format(su.get('total_uses_keur', 0)) }}</strong> kEUR (sources {{ '%.3f'|format(su.get('total_sources_keur', 0)) }}).</p>
+    <div class="table-wrap"><table data-testid="lr-period-table"><thead><tr><th>Construction period</th><th class="num">Uses kEUR</th><th class="num">Sources kEUR</th><th class="num">Difference kEUR</th></tr></thead><tbody>
+    {% for p in last_run.periods %}<tr><td>{{ p.get('period') }}</td><td class="num">{{ '%.3f'|format(p.get('uses', 0)) }}</td><td class="num">{{ '%.3f'|format(p.get('sources', 0)) }}</td><td class="num">{{ '%.6f'|format(p.get('difference', 0)) }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    <p class="muted">Figures come from the committed Run evidence and are never recomputed here. A Run that did not use the saved profile is shown as such; run the model after saving to reconcile.</p>
   </section>
   {% endif %}
 </main>

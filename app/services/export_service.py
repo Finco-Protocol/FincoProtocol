@@ -430,6 +430,10 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
         elif project_inputs.revenue.ppa_base_tariff != revenue_evidence.get("effective_tariff_eur_mwh"):
             raise ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: effective tariff does not match Run evidence.")
     current_snapshot: dict[str, Any] = dict(ws.last_runtime_snapshot)
+    # RC-7: a Run executed with a monthly CAPEX construction profile cannot be re-materialised by this export (its sub-line basis is the
+    # persisted identity, the profile binder reads live rows). Refuse rather than export semester economics next to a monthly Run.
+    from app.capex_profiles.runtime import refuse_unbound_surface
+    refuse_unbound_surface(current_snapshot, "the Last Run export")
 
     _ri = getattr(ws, "last_runtime_identity", None)
     active_scenario_name = None
@@ -552,6 +556,10 @@ def _resolve_preview_working_path(project_record, user_id, ws) -> "ResolvedExpor
             project_inputs, current_snapshot[SNAPSHOT_KEY], scope_for_workspace(ws),
             bankability_raw=current_snapshot.get("bankability_config_json"),
         )
+
+    from app.capex_profiles.runtime import apply_snapshot_profiles
+    project_inputs = apply_snapshot_profiles(project_inputs, current_snapshot, project_id=project_record.project_id,
+                                             scenario_overrides=_sc_overrides)
 
     return ResolvedExportAuthority(
         project_inputs=project_inputs,
