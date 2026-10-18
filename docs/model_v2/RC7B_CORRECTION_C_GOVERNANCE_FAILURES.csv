@@ -1489,3 +1489,47 @@ Proves:
   - alerts_snapshot read-model for the presentation layer.
 
 Alerts are descriptive only — no BUY/SELL/ENTER/EXIT vocabulary.",A bounded integration successor requires accepted financial content and independent governance scope review; never a blanket exemption.,"Independent financial content acceptance, then governance/scope-owner authorization. NOT GRANTED.","Unrelated path, altered blob, missing refs, invalid ancestry, extra/missing files and activation/approval rejection remain unchanged. Current guard still rejects this unapproved candidate.","NONE. Assertion, financial pins and live guard unchanged."
+tests/test_opus_c1_product_truth.py::TestBehaviorUnchanged::test_frozen_namespaces_zero_diff_against_main[financial_engine],FAIL / BLOCKED,"assert changed == [], changed","tests\test_opus_c1_product_truth.py:426: in test_frozen_namespaces_zero_diff_against_main
+    assert changed == [], changed
+E   AssertionError: ['financial_engine/adapters/tax_inputs.py', 'financial_engine/financing/project.py', 'financial_engine/financing/quarterly_scope.py', 'financial_engine/inputs.py', 'financial_engine/senior_debt/project_adapter.py']
+E   assert ['financial_e...t_adapter.py'] == []
+E
+E     Left contains 5 more items, first extra item: 'financial_engine/adapters/tax_inputs.py'
+E     Use -v to get more diff",5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d,da31cd9b4e39b53fa58adfbd880051de8bfb9b2a,368e25cd61bb3d88db2c5883c037e4e9e8bda979,"{""immutable_predecessor_protected_blobs_not_a_release_map"": {""financial_engine/adapters/project_inputs.py"": ""14bd759a9958515a7796626f93c1bd2233d69150"", ""financial_engine/adapters/tax_inputs.py"": ""0150eb1cdb9e7c0968e1f8dcbf754266d0158f8a"", ""financial_engine/financing/generic_product_policy.py"": ""2894334e7241c4ac9f8967d4ce4ca6ce77a32fa0"", ""financial_engine/financing/project.py"": ""30536cec8779fdb6a490d82fd80bfce2c09e16fe"", ""financial_engine/financing/quarterly_scope.py"": null, ""financial_engine/inputs.py"": ""8ba4cd3e7de248e163ba727a59e3faa6757edd03"", ""financial_engine/orchestrator.py"": ""be7ac31c6c4fed43b5fd7ca49fe53bfd1cc54c03"", ""financial_engine/senior_debt/project_adapter.py"": ""a73611a117f0c04ecc7bd7350eac64456520f265"", ""finco_core/engine/calendar_policy.py"": null, ""finco_core/engine/period_engine.py"": ""7a44c10b003aee9e8d41de33490db1bb0bdcfd71"", ""finco_core/inputs/_models.py"": ""b896d3c071ee22c1c82c48f23d4c169e058c7a7b"", ""finco_core/inputs/serialization.py"": ""31f70570376b2f5b50ece583c54c1d9811e90a3c""}}",LIVE_INTEGRATION_SCOPE_GUARD,"Opus Correction Stream C1 — product truth + H-4A validation terminology.
+
+Proves the truth-correction contract without changing any behavior:
+
+  1. No generic misleading ""MODEL VALIDATION"" user-facing label remains where
+     it refers to the reference regression capability (H-4A rename to
+     ""Reference Regression Check"").
+  2. The check is described as pinned-reference regression protection — never
+     as independent validation of a user's model or Last Run.
+  3. Signed Run / Verify / token distinctions remain explicit.
+  4. Unsupported/live claims match the actual implementation (Signed Run
+     public verifier, B2.3 metering wiring) and H-4b Run Integrity Checks
+     are represented as SHIPPED via PR #144 — Product Truth reflects the
+     current H-4B state.
+  5. Zero behavior/math change: frozen namespaces have no diff against main
+     and the machine authority key stays ``MODEL_VALIDATION``.",A bounded integration successor requires accepted financial content and independent governance scope review; never a blanket exemption.,"Independent financial content acceptance, then governance/scope-owner authorization. NOT GRANTED.","Unrelated path, altered blob, missing refs, invalid ancestry, extra/missing files and activation/approval rejection remain unchanged. Current guard still rejects this unapproved candidate.","NONE. Assertion, financial pins and live guard unchanged."
+tests/test_opus_c1_product_truth.py::TestBehaviorUnchanged::test_frozen_namespaces_zero_diff_against_main[finco_core],FAIL / BLOCKED,"assert changed == [], changed","tests\test_opus_c1_product_truth.py:426: in test_frozen_namespaces_zero_diff_against_main
+    assert changed == [], changed
+E   AssertionError: ['finco_core/engine/calendar_policy.py', 'finco_core/engine/period_engine.py', 'finco_core/inputs/_models.py', 'finco_core/inputs/serialization.py']
+E   assert ['finco_core/...alization.py'] == []
+E
+E     Left contains 4 more items, first extra item: 'finco_core/engine/calendar_policy.py'
+E     Use -v to get more diff",5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d,da31cd9b4e39b53fa58adfbd880051de8bfb9b2a,368e25cd61bb3d88db2c5883c037e4e9e8bda979,"{""immutable_predecessor_protected_blobs_not_a_release_map"": {""financial_engine/adapters/project_inputs.py"": ""14bd759a9958515a7796626f93c1bd2233d69150"", ""financial_engine/adapters/tax_inputs.py"": ""0150eb1cdb9e7c0968e1f8dcbf754266d0158f8a"", ""financial_engine/financing/generic_product_policy.py"": ""2894334e7241c4ac9f8967d4ce4ca6ce77a32fa0"", ""financial_engine/financing/project.py"": ""30536cec8779fdb6a490d82fd80bfce2c09e16fe"", ""financial_engine/financing/quarterly_scope.py"": null, ""financial_engine/inputs.py"": ""8ba4cd3e7de248e163ba727a59e3faa6757edd03"", ""financial_engine/orchestrator.py"": ""be7ac31c6c4fed43b5fd7ca49fe53bfd1cc54c03"", ""financial_engine/senior_debt/project_adapter.py"": ""a73611a117f0c04ecc7bd7350eac64456520f265"", ""finco_core/engine/calendar_policy.py"": null, ""finco_core/engine/period_engine.py"": ""7a44c10b003aee9e8d41de33490db1bb0bdcfd71"", ""finco_core/inputs/_models.py"": ""b896d3c071ee22c1c82c48f23d4c169e058c7a7b"", ""finco_core/inputs/serialization.py"": ""31f70570376b2f5b50ece583c54c1d9811e90a3c""}}",LIVE_INTEGRATION_SCOPE_GUARD,"Opus Correction Stream C1 — product truth + H-4A validation terminology.
+
+Proves the truth-correction contract without changing any behavior:
+
+  1. No generic misleading ""MODEL VALIDATION"" user-facing label remains where
+     it refers to the reference regression capability (H-4A rename to
+     ""Reference Regression Check"").
+  2. The check is described as pinned-reference regression protection — never
+     as independent validation of a user's model or Last Run.
+  3. Signed Run / Verify / token distinctions remain explicit.
+  4. Unsupported/live claims match the actual implementation (Signed Run
+     public verifier, B2.3 metering wiring) and H-4b Run Integrity Checks
+     are represented as SHIPPED via PR #144 — Product Truth reflects the
+     current H-4B state.
+  5. Zero behavior/math change: frozen namespaces have no diff against main
+     and the machine authority key stays ``MODEL_VALIDATION``.",A bounded integration successor requires accepted financial content and independent governance scope review; never a blanket exemption.,"Independent financial content acceptance, then governance/scope-owner authorization. NOT GRANTED.","Unrelated path, altered blob, missing refs, invalid ancestry, extra/missing files and activation/approval rejection remain unchanged. Current guard still rejects this unapproved candidate.","NONE. Assertion, financial pins and live guard unchanged."
