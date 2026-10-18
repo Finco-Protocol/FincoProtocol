@@ -52,3 +52,23 @@ DSCR-binding cases with tax feedback the debt is identical and the interest vect
 consecutive DSCR/combined finalisation pairs share a debt, i.e. the gearing cap is the lower bound), so reuse would not even apply there. Reusing the DSCR result would change output bits, so it is not done. The characterisation
 test `test_o1_reuse_of_the_dscr_finalisation_is_not_bit_identical_so_it_is_not_implemented` records this. No warm-started finalisation and
 no seed change (V8-B2, Finance approval).
+
+## Governance status: BLOCKED pending independent exact-content authorization
+
+The behaviour is proven bit-identical, but the live frozen-path guards reject ANY diff on a protected path that is not an independently
+reviewed, pinned slice. The exact-head complete Public Safety run for `dde4e699` failed 11 tests, all of them this one cause (a protected diff
+of `financial_engine/senior_debt/solver.py`): `test_ci_acceptance::test_frozen_financial_namespaces_unmodified`,
+`test_m3_two_driver_sensitivity::test_no_engine_or_financial_authority_files_are_touched`, three in `test_m7_rc3_candidate_successor`, four in
+`test_ppa01_candidate_authority`, `test_radar_r4_tokenized_monitor_v2::test_no_frozen_financial_venue_or_collector_authority_changed` and
+`test_rc7_quarterly_research_isolation::test_protected_production_tree_and_historical_guards_are_exact_main`. All 84 of these tests pass on
+unmodified main. (Being on the Finance Integrity engine allow-list lets `unapproved_engine_changes` accept the path, but the
+exact-slice guards above do not.) No pin, allow-list, helper or test was changed to hide this; fabricating a successor approval is out of
+scope. These are current-authority assertions, not mis-anchored historical checks.
+
+Candidate for independent review (recognition only, grants nothing):
+
+| Path | main blob | candidate blob |
+|---|---|---|
+| `financial_engine/senior_debt/solver.py` | `6cf4a6cd9f149f271d4b61a60bb6b0aa70e4c9e0` | `a3939cee010b799479d5f489c5a5ddfa60f0405a` |
+
+The mechanism needed is an independent financial reviewer's exact-content successor for that single blob. Until then this PR stays Draft.
