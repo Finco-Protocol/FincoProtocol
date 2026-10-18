@@ -36,6 +36,28 @@ from financial_engine.senior_debt.policy import (
 )
 
 
+def _require_quarterly_senior_vectors(sculpting, rate_cfg) -> None:
+    """RC-7B: refuse every per-period Senior vector that is authored on the 6/6 grid.
+
+    A six-month vector has no quarterly meaning without explicit authority, so it
+    is refused instead of being stretched, split or day-weighted.
+    """
+    for name in ("target_dscr_schedule", "debt_service_availability_schedule",
+                 "explicit_debt_service_schedule", "explicit_principal_schedule",
+                 "available_senior_cfads_schedule"):
+        if getattr(sculpting, name, ()):
+            raise ValueError(
+                f"QUARTERLY_SENIOR_PERIOD_VECTOR_UNSUPPORTED: sculpting.{name} is authored "
+                "per six-month period and cannot be re-gridded to quarters")
+    from finco_core.inputs.senior_rate_schedule import SeniorRateMode
+    schedule = rate_cfg.rate_schedule
+    rates = tuple(schedule.explicit_all_in_rates or ())
+    if schedule.mode != SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE or not rates or len(set(rates)) != 1:
+        raise ValueError(
+            "QUARTERLY_SENIOR_RATE_VECTOR_REGRID_UNSUPPORTED: only a single uniform annual "
+            "all-in rate is admitted for the quarterly candidate")
+
+
 def build_senior_debt_contract_from_project_inputs(
     project_inputs: "ProjectInputs",
     operating_periods: "tuple[OperatingPeriodResult, ...]",
@@ -141,8 +163,14 @@ def build_senior_debt_contract_from_project_inputs(
     # Select operating-only periods; map to debt tenor (first N of those).
     op_only = [p for p in operating_periods if p.is_operation]
     frequency = project_inputs.info.period_frequency
-    if frequency == PeriodFrequency.SEMESTRIAL:
+    quarterly_policy = getattr(project_inputs.info, "operating_calendar_policy", None)
+    if frequency == PeriodFrequency.SEMESTRIAL and quarterly_policy is None:
         periods_per_year = 2
+    elif frequency == PeriodFrequency.QUARTERLY and quarterly_policy is not None:
+        # RC-7B matched 3/3 candidate (D-10: maturity = end of row tenor * 4).
+        # Debt service shares the quarterly operating axis; no mixed grid.
+        periods_per_year = quarterly_policy.periods_per_year
+        _require_quarterly_senior_vectors(sculpting, rate_cfg)
     else:
         raise ValueError(
             f"build_senior_debt_contract_from_project_inputs: unsupported period "
@@ -165,6 +193,11 @@ def build_senior_debt_contract_from_project_inputs(
     # --- Per-period rates ---
     if rate_cfg.rate_schedule.mode == SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE:
         explicit_rates = rate_cfg.rate_schedule.explicit_all_in_rates
+        if periods_per_year == 4:
+            # A uniform annual all-in rate is frequency independent; it is
+            # applied to every quarterly service row with the contractual ACT
+            # day count. Non-uniform vectors were refused above (never re-gridded).
+            explicit_rates = (explicit_rates[0],) * tenor_periods
         if len(explicit_rates) < tenor_periods:
             raise ValueError(
                 f"explicit_all_in_rates has {len(explicit_rates)} entries, "

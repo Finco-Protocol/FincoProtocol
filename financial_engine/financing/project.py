@@ -944,6 +944,13 @@ def run_project_financing_model(
     _u2_period_financing_income: "tuple | None" = None,
 ) -> ProjectFinancingResult:
     """Run the derived-SHL/Senior fixed point for an explicitly enabled project."""
+    from financial_engine.financing.quarterly_scope import (
+        is_quarterly_project, require_supported_quarterly_project,
+    )
+    if is_quarterly_project(project_inputs):
+        # RC-7B: refuse everything outside the matched 3/3 candidate structure
+        # before any calculation (D-05, D-09, D-11, D-12).
+        require_supported_quarterly_project(project_inputs)
     from finco_core.inputs.junior_debt import JuniorProjectInputs
     if isinstance(project_inputs, JuniorProjectInputs):
         from financial_engine.financing.junior_debt import run_junior_financing
