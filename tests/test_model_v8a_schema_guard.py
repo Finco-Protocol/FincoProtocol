@@ -188,3 +188,27 @@ def test_two_processes_concurrent_first_boot(isolated_db):
                 worker.join(timeout=5)
     assert all(worker.exitcode == 0 for worker in workers)
     assert "model_run_history" in _tables(isolated_db)
+
+
+def test_cached_connections_do_not_repeat_create_statements(isolated_db, monkeypatch):
+    """SQL trace verifies that steady-state connections skip schema DDL."""
+    original_connect = sqlite3.connect
+    traced = []
+
+    def recording_connect(*args, **kwargs):
+        conn = original_connect(*args, **kwargs)
+        conn.set_trace_callback(traced.append)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", recording_connect)
+    _open_and_close()
+    first = tuple(traced)
+    traced.clear()
+    _open_and_close()
+    second = tuple(traced)
+    assert any(statement.lstrip().upper().startswith("CREATE TABLE") for statement in first)
+    assert not any(
+        statement.lstrip().upper().startswith(("CREATE TABLE", "CREATE INDEX", "ALTER TABLE"))
+        for statement in second
+    )
+    assert len(second) < len(first), (len(first), len(second))
