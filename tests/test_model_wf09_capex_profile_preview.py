@@ -235,3 +235,19 @@ def test_capex_sheet_links_to_the_planner_without_other_change(env):
     project = env.create("solar")
     html = env.client.get("/v2/workbook", params={"project": project.project_code}).text
     assert 'data-testid="capex-profile-link"' in html and "preview only" in html
+
+
+def test_csrf_token_is_required_and_a_forged_or_missing_token_changes_nothing(env):
+    """The CSRF successor admits the preview POST only because the token is mandatory and checked before any work."""
+    project = env.create("solar")
+    before = evidence(project)
+    row = {"project": project.project_code, "key_0": "C.02.01", "shape_0": "UNIFORM"}
+    missing = env.client.post("/v2/capex/spending-profiles/preview", data=row)
+    assert missing.status_code == 422 and "plan-result" not in missing.text
+    forged = env.client.post("/v2/capex/spending-profiles/preview", data={**row, "csrf_token": "forged"})
+    assert forged.status_code == 403 and "CAPEX_PROFILE_CSRF_INVALID" in forged.text and "plan-result" not in forged.text
+    empty = env.client.post("/v2/capex/spending-profiles/preview", data={**row, "csrf_token": ""})
+    assert empty.status_code in (403, 422) and "plan-result" not in empty.text
+    ok = env.client.post("/v2/capex/spending-profiles/preview", data={**row, "csrf_token": generate_csrf_token()})
+    assert ok.status_code == 200 and "plan-result" in ok.text
+    assert evidence(project) == before

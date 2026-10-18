@@ -35,3 +35,16 @@ Timing changed only through `CapexItem.spending_profile` on the existing derivat
 3. A decision on the construction axis: monthly construction periods (needs the frequency architecture owned by Workstream A) or a documented monthly -> semester aggregation convention.
 4. End-to-end Save -> STALE -> Run -> CURRENT acceptance and goldens for the bound profile.
 5. Adding the WF-09 Chromium module to a mandatory CI role (not done here: shared CI selection).
+
+## CSRF inventory successor (exact-content proposal, not an approval)
+
+`tests/test_trust_readiness_controls.py::test_known_gap_state_changing_posts_have_no_csrf_token` pins the files that call
+`validate_csrf_token(`. The preview POST adds one consumer, `app/v2/capex_profile_router.py`. It is admitted only through
+`tests/wf09_csrf_successor.py`, following the M6/M7 principle: the router must be byte-identical to a literal reviewed blob pin
+and structurally prove the endpoint is safe - exactly one validator call site, in the one state-changing route; authentication and
+owner/project resolution (`_guard`) before the token is checked; a required `Form(...)` token checked before the form is read or a plan
+is built; a failed token answers 403; no other POST/PUT/PATCH/DELETE route; no writer, persistence or Run reference. The inventory test
+is otherwise unchanged and still rejects any other file. `tests/test_wf09_csrf_successor.py` proves the positive case and rejects 17
+drifts (each also fails on structure alone, except a byte-only change, which fails on the pin). Runtime tests prove missing, empty and
+forged tokens change nothing and that anonymous and foreign-owner requests are redirected. Independent review of this successor remains
+mandatory before merge; any later edit of the router requires a re-pin.
