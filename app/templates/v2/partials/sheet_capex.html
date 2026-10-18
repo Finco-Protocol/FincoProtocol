@@ -211,6 +211,8 @@
 <div id="v2-sheet-capex" data-sheet="capex"
      data-fc-grid="capex" data-fc-scroll-container data-cost-grid="capex">
 
+  <p class="v2-capex-profile-link"><a data-testid="capex-profile-link" href="/v2/capex/spending-profiles?project={{ project_code | urlencode }}">Monthly spending-profile planner (preview only — no save, no Run)</a></p>
+
   {# Authoritative tokens for the NEXT command: the client copies them into every
      content_hash / workbook_version input after each successful cost save. #}
   <span id="v2-cost-authority-capex" hidden data-content-hash="{{ content_hash }}"

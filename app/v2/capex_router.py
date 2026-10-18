@@ -491,3 +491,9 @@ async def capex_contingency_set(
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+# WF-09 CAPEX Spending Profiles V1 - READ-ONLY candidate planner (no writer, no Run). Same flag, same /v2/capex mount.
+from app.v2.capex_profile_router import profile_router as _capex_profile_router  # noqa: E402
+
+capex_router.include_router(_capex_profile_router)

@@ -1,0 +1,88 @@
+{# WF-11: additive OPEX-only view; no Save, DB write, financial engine or Run integration. #}
+<style>
+.v2-opex-profile-panel{max-width:100%;min-width:0;overflow-wrap:anywhere;margin:16px 0;padding:10px 12px;border:1px solid #d5dfe8;border-radius:10px}
+.v2-opex-profile-panel summary{cursor:pointer;font-weight:650}
+.v2-opex-profile-panel .v2-opex-profile-note{font-size:.88rem;color:#516579;line-height:1.45;margin:10px 0}
+.v2-opex-profile-panel .v2-opex-profile-scroll{width:100%;max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-x:contain}
+.v2-opex-profile-panel table{width:100%;min-width:550px;border-collapse:collapse;font-size:.82rem}
+.v2-opex-profile-panel th,.v2-opex-profile-panel td{padding:7px;border-bottom:1px solid #dce4ed;text-align:left;vertical-align:top;white-space:nowrap}
+.v2-opex-profile-panel h3{font-size:1rem;margin:18px 0 6px}
+.v2-opex-profile-panel .v2-opex-profile-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;margin:10px 0}
+.v2-opex-profile-panel label{display:grid;gap:4px;font-size:.85rem;min-width:0}
+.v2-opex-profile-panel input,.v2-opex-profile-panel select{max-width:100%;width:100%;min-width:0;box-sizing:border-box;font:inherit;padding:7px;border:1px solid #aab9c8;border-radius:5px}
+.v2-opex-profile-panel button{font:inherit;cursor:pointer;padding:7px 10px;max-width:100%;white-space:normal}
+.v2-opex-profile-panel [role=status]{font-size:.85rem;line-height:1.45}
+</style>
+<details class="v2-opex-profile-panel" data-testid="opex-profile-workspace">
+  <summary>Advanced OPEX profiles — annual schedule and candidate events</summary>
+  <p class="v2-opex-profile-note">The annual amounts below come from the effective Working Copy OPEX projection{% if ws_dirty %} (changed inputs — Run required){% endif %}. They are not a newly committed financial Run. This panel does not modify the financial engine.</p>
+  <details class="v2-opex-profile-annual" data-testid="opex-existing-annual" open>
+    <summary>Existing annual escalation — per line</summary>
+    <div class="v2-opex-profile-scroll" role="region" aria-label="Existing OPEX annual line values" tabindex="0">
+      <table><thead><tr><th>OPEX line</th><th>Y1 · kEUR</th><th>Inflation</th><th>Y2 · kEUR</th><th>Y3 · kEUR</th><th>Source</th></tr></thead>
+      <tbody>
+      {% for group in opex_vm.groups %}{% for line in group.lines if line.is_active %}
+      <tr data-testid="opex-profile-existing-line" data-line-code="{{ line.code }}" data-derived="{{ 'true' if line.is_derived or line.is_contingency else 'false' }}">
+        <th scope="row">{{ line.code }} · {{ line.name }}</th>
+        <td>{{ '%.2f'|format(line.year_values[0]) if line.year_values|length > 0 else '—' }}</td>
+        <td>{{ 'Derived, not editable' if line.is_derived or line.is_contingency else ('%.2f%%'|format(line.inflation_pct)) }}</td>
+        <td>{{ '%.2f'|format(line.year_values[1]) if line.year_values|length > 1 else '—' }}</td>
+        <td>{{ '%.2f'|format(line.year_values[2]) if line.year_values|length > 2 else '—' }}</td>
+        <td>{{ line.source }}</td>
+      </tr>
+      {% endfor %}{% endfor %}
+      </tbody></table>
+    </div>
+    <p class="v2-opex-profile-note">The displayed Y2/Y3 values are taken directly from the existing OPEX ViewModel and may include effective escalation or steps. The view does not independently classify a change as a step unless source evidence explicitly identifies one. Derived contingency and inactive rows are not independently editable.</p>
+  </details>
+  {% if not project_editable %}
+  <p data-testid="opex-profile-reference" class="v2-opex-profile-note">Protected Reference: current OPEX amounts can be inspected but event or seasonal candidates require a Working Copy. No financial changes can be made here.</p>
+  {% else %}
+  <div class="v2-opex-candidate" data-wf11-candidate data-max-year="{{ opex_vm.display_years }}" data-testid="opex-candidate-editor">
+    <h3>Major maintenance — candidate only</h3>
+    <p class="v2-opex-profile-note">Major maintenance is a separate event, not a permanent increase to annual base OPEX. No Save or Run integration exists. Amounts are in <strong>kEUR</strong>; accounting classification, potential double counting with the existing OPEX base and tax/CFADS treatment require financial approval.</p>
+    <form data-wf11-maintenance novalidate>
+      <div class="v2-opex-profile-fields">
+        <label>Event ID <input name="event_id" maxlength="64" required value="maint-1" pattern="[A-Za-z0-9_-]+"></label>
+        <label>Owning cost line <select name="owner_line" required>
+          <option value="">Choose line</option>
+          {% for group in opex_vm.groups %}{% for line in group.lines if line.is_active and not line.is_derived and not line.is_contingency and not line.is_read_only %}
+          <option value="{{ line.code }}">{{ line.code }} · {{ line.name }}</option>
+          {% endfor %}{% endfor %}
+        </select></label>
+        <label>Operating year <input name="year" type="number" required min="1" max="{{ opex_vm.display_years }}" step="1" value="1"></label>
+        <label>Amount (kEUR) <input name="amount" type="number" required min="0" max="1000000000000" step="any" value="0"></label>
+        <label>Recurrence <select name="recurrence"><option value="ONE_OFF">One-off</option><option value="EVERY_N_YEARS">Every N years (candidate)</option></select></label>
+        <label>Interval years <input name="interval" type="number" min="1" max="{{ opex_vm.display_years }}" step="1" value="2" disabled></label>
+        <label>Accounting treatment <select name="classification"><option value="UNRESOLVED">Unresolved — approval required</option><option value="OPEX_EXPENSE_PROPOSED">OPEX expense proposed — approval required</option><option value="CAPITAL_REPLACEMENT_REVIEW">Capital replacement — classification review</option></select></label>
+      </div>
+      <button type="submit">Add to unsaved candidate preview</button>
+    </form>
+    <p role="status" aria-live="polite" data-wf11-status>Candidate changes have no effect on saved inputs or Run.</p>
+    <div class="v2-opex-profile-scroll" role="region" aria-label="Unsaved maintenance candidate events" tabindex="0">
+      <table><thead><tr><th>Event</th><th>Line</th><th>Operating years</th><th>kEUR / event</th><th>Classification</th><th>Action</th></tr></thead><tbody data-wf11-event-rows><tr><td colspan="6">No events proposed.</td></tr></tbody></table>
+    </div>
+    <h3>Period/seasonal distribution — candidate only</h3>
+    <p class="v2-opex-profile-note">This is an illustrative <strong>full-year</strong> half-year split of an existing line's annual Working Copy value. H1/H2 are labels, not the canonical period axis. First/last stub days and precise period dates are <strong>not evaluated</strong>. Quarterly allocation is intentionally unavailable until the frequency contract is approved.</p>
+    <form data-wf11-seasonal novalidate>
+      <div class="v2-opex-profile-fields">
+        <label>OPEX line <select name="seasonal_line" required>
+          <option value="">Choose line</option>
+          {% for group in opex_vm.groups %}{% for line in group.lines if line.is_active and not line.is_derived and not line.is_contingency and not line.is_read_only %}
+          <option value="{{ line.code }}" data-years="{{ line.year_values|join(',') }}">{{ line.code }} · {{ line.name }}</option>
+          {% endfor %}{% endfor %}
+        </select></label>
+        <label>Operating year <input name="seasonal_year" type="number" min="1" max="{{ opex_vm.display_years }}" step="1" value="1" required></label>
+        <label>H1 weight % <input name="h1" type="number" min="0" max="100" step="any" value="50" required></label>
+        <label>H2 weight % <input name="h2" type="number" min="0" max="100" step="any" value="50" required></label>
+      </div>
+      <button type="submit">Preview unsaved half-year split</button>
+    </form>
+    <p role="status" aria-live="polite" data-wf11-seasonal-status>Waiting for a candidate split. No configuration is saved.</p>
+    <div class="v2-opex-profile-scroll" role="region" aria-label="Unsaved seasonal allocation" tabindex="0">
+      <table><thead><tr><th>Canonical annual view · kEUR</th><th>Candidate H1 · kEUR</th><th>Candidate H2 · kEUR</th><th>Total · kEUR</th></tr></thead><tbody data-wf11-seasonal-output><tr><td colspan="4">No candidate preview.</td></tr></tbody></table>
+    </div>
+  </div>
+  {% endif %}
+</details>
+<script src="/static/js/model_opex_profiles_v1.js" defer></script>
