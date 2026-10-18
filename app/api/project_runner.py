@@ -485,6 +485,9 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         provenance = clean_run.g2c_result.financing_result.project_model_result.provenance
         revenue_evidence = next(e for e in provenance.derivation_evidence if e.output_path == "operating_schedules.revenue_keur")
         payload["revenue_multistream_audit"] = [json.loads(note) for note in revenue_evidence.notes]
+        # RC-7 / C1: physical-energy ledger over the SAME committed evidence (classification only, no second revenue calculation).
+        from domain.revenue.contract_energy_ledger import build_contract_energy_ledger
+        payload["revenue_energy_ledger"] = build_contract_energy_ledger(payload["revenue_multistream_audit"])
     if getattr(demo.project_inputs.technical, "bess_native_config_json", ""):
         import json
         provenance = clean_run.g2c_result.financing_result.project_model_result.provenance
