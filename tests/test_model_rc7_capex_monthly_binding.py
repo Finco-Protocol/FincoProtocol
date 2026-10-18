@@ -322,3 +322,32 @@ def test_identities_hold_for_other_durations_and_technologies(projects, template
         _financing_costs(fp) - _financing_costs(fb), abs=1e-5)
     idc_b, idc_p = (sum(f.construction_financing.senior_idc_capitalized_uses_keur) for f in (fb, fp))
     assert idc_p != pytest.approx(idc_b, abs=1e-6)                           # the profile moves IDC; it is not ignored
+
+
+@pytest.mark.parametrize("name", ["base", "front", "back", "milestone"])
+def test_idc_equals_an_independent_recomputation_from_the_actual_monthly_draws(solar14, name):
+    """Accrual per month = opening drawn Senior balance x flat all-in rate x ACT/360 days of THAT month, recomputed from the draw vector."""
+    bound, f = solar14[name]
+    cfi = bound.construction
+    assert cfi.idc_balance_basis == "OPENING_DRAWN" and cfi.senior_pricing.day_count.value.upper() == "ACT_360"
+    rate = cfi.senior_pricing.flat_all_in_rate
+    c = f.construction_financing
+    opening = 0.0
+    for k, (start, end) in enumerate(zip(c.period_start_dates, c.period_end_dates)):
+        days = (end - start).days + 1
+        assert c.senior_idc_accrual_keur[k] == pytest.approx(opening * rate * days / 360.0, abs=1e-6), (name, k)
+        opening = c.cumulative_senior_keur[k]
+    assert opening == pytest.approx(f.final_senior_commitment_keur, abs=1e-5)
+
+
+@pytest.mark.parametrize("name", ["base", "front", "back", "milestone", "mixed"])
+def test_equity_first_funding_order_holds_on_the_monthly_axis(solar14, name):
+    """The canonical waterfall (equity and SHL layers first, Senior last) is unchanged: Senior is drawn only once every other layer is exhausted."""
+    f = solar14[name][1]
+    other_total = (f.share_capital_keur + f.share_premium_keur + f.other_equity_funding_before_shl_keur + f.additional_equity_keur
+                   + f.derived_shl_cash_principal_keur + f.junior_or_other_main_project_funding_keur)
+    other_cumulative = 0.0
+    for period in f.construction_funding.periods:
+        other_cumulative += period.total_sources_keur - period.senior_draw_keur
+        if period.senior_draw_keur > 1e-9:
+            assert other_cumulative == pytest.approx(other_total, abs=1e-5), (name, period.period_index)
