@@ -145,6 +145,11 @@ def build_credit_v4(views: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     risks = [_risk(v, p) for v, p in zip(views, parsed)]
     if len(parsed) == 1:
         comparison = {"available": False, "reason": "Select two or three committed Runs for date-exact comparison.", "rows": []}
+    elif len({str(v.get("operating_frequency") or "6/6") for v in views}) > 1:
+        # RC-7B: identical end dates on a 3-month and a 6-month axis measure
+        # different intervals; an end-date-only join would compare unlike flows.
+        comparison = {"available": False, "reason": "The selected Runs use different operating/debt frequencies; "
+                      "date joins across different interval lengths are unavailable.", "rows": []}
     elif not all(p["valid"] for p in parsed):
         comparison = {"available": False, "reason": "At least one Run lacks valid period dates/identity; index-based matching is prohibited.", "rows": []}
     else:

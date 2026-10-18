@@ -166,6 +166,17 @@ def classify_production_authority(project_inputs) -> AuthorityDecision:
             ),
         )
 
+    if getattr(getattr(project_inputs, "info", None), "operating_calendar_policy", None) is not None:
+        # RC-7B matched 3/3 candidate: release-closed until independent financial
+        # review and owner decisions D-01..D-12; product Runs are not admitted.
+        from app.workbook.quarterly_frequency_config import ACTIVATION_ENABLED as _quarterly_enabled
+        if not _quarterly_enabled:
+            return AuthorityDecision(
+                ProductionAuthorityClassification.BLOCKED_BY_TYPED_INPUT_GAP,
+                "QUARTERLY_ADMISSION_CLOSED",
+                "Matched 3/3 operating/debt frequency is a release-closed candidate pending "
+                "independent financial review and owner decisions D-01..D-12.",
+            )
     if getattr(getattr(project_inputs, "technical", None), "bess_enabled", False):
         from app.workbook.bess_config import ACTIVATION_ENABLED
         if not ACTIVATION_ENABLED or not getattr(project_inputs.technical, "bess_native_config_json", ""):
@@ -488,6 +499,8 @@ def run_clean_production(
         "cash_dsra_applied": policy_evidence.cash_dsra_applied,
         "initial_dsra_funding_keur": policy_evidence.initial_dsra_funding_keur,
     }
+    from app.workbook.quarterly_frequency_config import run_evidence as _calendar_evidence
+    metadata.update(_calendar_evidence(effective_inputs))  # empty for every 6/6 Run
     construction = getattr(g2c.financing_result, "construction_financing", None)
     if construction is not None:
         metadata.update(
