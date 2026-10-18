@@ -47,6 +47,22 @@ def _schema_generation(conn):
     return int(conn.execute("PRAGMA schema_version").fetchone()[0])
 
 
+def _schema_signature(conn):
+    """Current SQLite DDL inventory catches backup restore even if cookies match.
+
+    A read-only, single-catalog query replaces dozens of per-connection DDL
+    statements and table_info probes. Unlike mtime/ctime it is insensitive to
+    ordinary Run or Working Copy data writes.
+    """
+    return tuple(
+        (row[0], row[1], row[2])
+        for row in conn.execute(
+            "SELECT type, name, sql FROM sqlite_master "
+            "WHERE type IN ('table', 'index') ORDER BY type, name"
+        )
+    )
+
+
 def _ensure_schema_ready(conn):
     """Process-local schema check, with cross-process transactional DDL.
 
@@ -59,9 +75,12 @@ def _ensure_schema_ready(conn):
     identity = _database_file_identity()
     with _SCHEMA_GUARD_LOCK:
         generation = _schema_generation(conn)
+        # Inode reuse, in-place backup restoration and a copied database can
+        # preserve a schema cookie. Check the actual SQLite catalog as well.
+        signature = _schema_signature(conn)
         if (identity is not None
                 and _SCHEMA_GUARD_SEEN.get(identity)
-                == (_SCHEMA_CONTRACT_VERSION, generation)):
+                == (_SCHEMA_CONTRACT_VERSION, generation, signature)):
             return
         try:
             # BEGIN IMMEDIATE serialises first-boot DDL across processes.
@@ -81,7 +100,7 @@ def _ensure_schema_ready(conn):
             if len(_SCHEMA_GUARD_SEEN) >= 128:
                 _SCHEMA_GUARD_SEEN.clear()
             _SCHEMA_GUARD_SEEN[identity] = (
-                _SCHEMA_CONTRACT_VERSION, current_generation
+                _SCHEMA_CONTRACT_VERSION, current_generation, _schema_signature(conn)
             )
 
 
