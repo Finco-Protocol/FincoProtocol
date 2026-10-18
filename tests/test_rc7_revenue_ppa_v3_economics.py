@@ -217,7 +217,7 @@ def _audit(out, op):
 
 @pytest.mark.parametrize("kind", KINDS)
 def test_energy_ledger_separates_physical_overlay_and_unallocated_and_cross_checks_production(kind):
-    from domain.revenue.contract_energy_ledger import build_contract_energy_ledger, CONSERVED, UNALLOCATED, NOT_CONSERVED
+    from app.workbook.revenue_energy_ledger import build_contract_energy_ledger, CONSERVED, UNALLOCATED, NOT_CONSERVED
     pi = _pi(kind); op = _operating(pi)
     rows = [_row(op, "ppa", "ppa", share=.3, price=60), _merchant(op), _row(op, "cfd", "cfd", share=.2, price=75, reference_stream_id="market")]
     _, out = _decompose(pi, _payload(kind, rows), kind)
@@ -241,7 +241,7 @@ def test_energy_ledger_separates_physical_overlay_and_unallocated_and_cross_chec
 
 
 def test_energy_ledger_fails_closed_on_missing_or_invalid_evidence():
-    from domain.revenue.contract_energy_ledger import build_contract_energy_ledger, UNAVAILABLE
+    from app.workbook.revenue_energy_ledger import build_contract_energy_ledger, UNAVAILABLE
     for bad in (None, [], [{"streams": "x"}], [{"streams": [{"type": "ppa", "quantity_mwh": float("nan")}], "unallocated_generation_mwh": 0}],
                 [{"streams": [{"type": "ppa", "quantity_mwh": -1}], "unallocated_generation_mwh": 0}],
                 [{"streams": [], "unallocated_generation_mwh": None}]):
