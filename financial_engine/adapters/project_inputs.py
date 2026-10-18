@@ -82,6 +82,12 @@ def from_project_inputs(
     info = inputs.info
     tech = inputs.technical
     rev = inputs.revenue
+    from finco_core.inputs import PeriodFrequency
+    if info.period_frequency is not PeriodFrequency.SEMESTRIAL:
+        raise ValueError(
+            "CLEAN_CALENDAR_FREQUENCY_UNSUPPORTED: production adaptation requires "
+            "SEMESTRIAL; quarterly research requires the explicit RC-7 candidate contract"
+        )
 
     # PR-7: fail-closed yield scenario mapping. Every supported canonical
     # scenario must map explicitly; unknown strings (including P99-1y, which the

@@ -100,3 +100,22 @@ def test_released_period_engine_still_rejects_quarters():
     from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency
     with pytest.raises(ValueError, match="PERIOD_AXIS_FREQUENCY_UNSUPPORTED"):
         PeriodEngine(date(2027, 1, 1), 12, 2, 0, frequency=PeriodFrequency.QUARTERLY)
+
+
+def test_real_february_29_cod_is_derived_from_month_end_construction_anchor():
+    cal = QuarterlyCandidateCalendar(financial_close=date(2027, 1, 31),
+        construction_months=13, horizon_years=1, ppa_years=0,
+        cod_date=date(2028, 2, 29), policy=explicit_policy())
+    axis = QuarterlyCandidateAxis.build(cal)
+    assert axis.rows[1].start_date == date(2028, 2, 29)
+    assert axis.rows[1].end_date == date(2028, 3, 31)
+    assert axis.rows[1].days_in_period == 31
+    with pytest.raises(ValueError, match="COD_MISMATCH"):
+        replace(cal, cod_date=date(2028, 2, 28))
+
+
+def test_boolean_axis_counter_is_not_an_integer_identity():
+    axis = QuarterlyCandidateAxis.build(candidate_calendar())
+    row = replace(axis.rows[1], year_index=True)
+    with pytest.raises(ValueError, match="TYPED_COUNTER"):
+        replace(axis, rows=(axis.rows[0], row, *axis.rows[2:])).validate()

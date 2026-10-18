@@ -8,7 +8,7 @@ from enum import Enum
 
 from dateutil.relativedelta import relativedelta
 
-from financial_engine.inputs import CalendarInput
+from financial_engine.inputs import CalendarInput, OperatingModelInput, PeriodAxisConvention
 from finco_core.engine.axis_contract import CanonicalAxisContract
 from finco_core.engine.period_engine import PeriodFrequency, PeriodMeta, map_period_vector
 
@@ -81,6 +81,24 @@ _POLICY_ENUMS = {"stub": StubRule, "day_rule": DayRule, "fraction": FractionRule
                  "construction_reporting": ConstructionReportingRule}
 
 
+class RenewableTechnology(str, Enum):
+    SOLAR = "SOLAR"
+    WIND = "WIND"
+
+
+@dataclass(frozen=True, kw_only=True)
+class QuarterlyOperatingModelInput(OperatingModelInput):
+    """Research-only clean contract; no production ProjectInputs admission."""
+
+    technology: RenewableTechnology
+
+    def __post_init__(self):
+        if type(self.calendar) is not QuarterlyCandidateCalendar:
+            raise ValueError("QUARTERLY_TYPED_CALENDAR_REQUIRED")
+        if type(self.technology) is not RenewableTechnology:
+            raise ValueError("QUARTERLY_TECHNOLOGY_UNSUPPORTED")
+
+
 @dataclass(frozen=True, kw_only=True)
 class QuarterlyCandidateCalendar(CalendarInput):
     policy: QuarterlyCalendarPolicy
@@ -88,6 +106,8 @@ class QuarterlyCandidateCalendar(CalendarInput):
     def __post_init__(self):
         if type(self.policy) is not QuarterlyCalendarPolicy:
             raise ValueError("QUARTERLY_EXPLICIT_POLICY_REQUIRED")
+        if self.period_axis_convention is not PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS:
+            raise ValueError("QUARTERLY_LEGACY_CONVENTION_OVERRIDE_UNSUPPORTED")
         if type(self.financial_close) is not date or type(self.cod_date) is not date:
             raise ValueError("QUARTERLY_EXACT_PROJECT_DATES_REQUIRED")
         if type(self.construction_months) is not int or not 1 <= self.construction_months <= 1200:
@@ -149,6 +169,10 @@ class QuarterlyCandidateAxis:
         previous = cal.financial_close
         ppa_end = cal.cod_date + relativedelta(years=int(cal.ppa_years))
         for idx, p in enumerate(self.rows):
+            if type(p) is not PeriodMeta or any(type(getattr(p, name)) is not int for name in (
+                    "index", "year_index", "period_in_year", "days_in_period",
+                    "operating_period_index", "operating_year_index")):
+                raise ValueError("QUARTERLY_TYPED_COUNTER_REQUIRED")
             end = cal.cod_date if idx == 0 else next_quarter_end(previous)
             days = (end - previous).days
             leap = calendar.isleap(end.year)
