@@ -54,35 +54,54 @@ def _field_to_category() -> dict[str, str]:
 
 
 def catalogue(pis, project_id: str) -> tuple[tuple[CapexItemView, ...], tuple[CapexItemView, ...]]:
-    """(eligible items, excluded derived/financing items).  Parent roll-ups are never items, so nothing is counted twice."""
+    """(eligible leaf items, excluded derived/financing items) exactly as the Run folds them.
+
+    The Run folds user sub-lines with REPLACE semantics: a category that has active sub-lines is owned by those sub-lines (its base
+    amount is zeroed), otherwise by its base amount.  Eligible items are those LEAF rows only, so a parent and its children are never
+    both items and nothing is counted twice.  Item keys: ``base:<CapexStructure field>`` or the sub-line business code.
+    """
+    import dataclasses
+
+    from app.capex_profiles.runtime import BASE_PREFIX, leaves_for
+    from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
+    from app.workbook.service import WorkbookService
+
     cat_of = _field_to_category()
+    pi = WorkbookService.to_projectinputs(pis)
+    folded = apply_user_sub_lines_replacing_base(pi.capex, project_id=project_id, scenario_overrides=None)
+    if folded is not pi.capex:
+        pi = dataclasses.replace(pi, capex=folded)
+    subs = {s.business_code: s for s in get_active_sub_lines_for_project(project_id)}
+    labels = {}
+    for spec in WORKBOOK.all_fields():
+        if spec.field_id.startswith("capex."):
+            suffix = spec.field_id.rsplit(".", 1)[-1]
+            labels["ops_prep" if suffix == "ops_preparation" else suffix] = (spec.label, spec.field_id)
     eligible: list[CapexItemView] = []
+    for leaf in leaves_for(pi.capex, project_id):
+        if leaf.amount_keur <= 0:
+            continue
+        if leaf.item_key.startswith(BASE_PREFIX):
+            label = labels.get(leaf.category_field, (leaf.category_field, ""))[0]
+            eligible.append(CapexItemView(leaf.item_key, KIND_CATEGORY_BASE, label, cat_of.get(leaf.category_field, ""), leaf.amount_keur))
+        else:
+            sub = subs.get(leaf.item_key)
+            eligible.append(CapexItemView(leaf.item_key, KIND_SUB_LINE, sub.label if sub else leaf.item_key,
+                                          sub.parent_category_code if sub else "", leaf.amount_keur))
     excluded: list[CapexItemView] = []
     for spec in WORKBOOK.all_fields():
-        if not spec.field_id.startswith("capex."):
+        if not spec.field_id.startswith("capex.") or spec.field_id == "capex.summary.total":
             continue
         suffix = spec.field_id.rsplit(".", 1)[-1]
         field_name = "ops_prep" if suffix == "ops_preparation" else suffix
         if spec.kind != FieldKind.INPUT or not spec.editable:
-            if spec.field_id != "capex.summary.total":
-                value = pis.get(spec.field_id)
-                excluded.append(CapexItemView(spec.field_id, "DERIVED", spec.label, cat_of.get(field_name, ""),
-                                              float(value) if isinstance(value, (int, float)) else 0.0, False))
-            continue
-        value = pis.get(spec.field_id)
-        try:
-            amount = float(value) if value is not None else 0.0
-        except (TypeError, ValueError):
-            amount = 0.0
-        if amount > 0:
-            eligible.append(CapexItemView(spec.field_id, KIND_CATEGORY_BASE, spec.label, cat_of.get(field_name, ""), amount))
-    for sub in get_active_sub_lines_for_project(project_id):
-        if sub.parent_category_code in REJECTED_PARENT_CATEGORIES or sub.parent_category_code not in ALLOWED_PARENT_CATEGORIES:
+            value = pis.get(spec.field_id)
+            excluded.append(CapexItemView(spec.field_id, "DERIVED", spec.label, cat_of.get(field_name, ""),
+                                          float(value) if isinstance(value, (int, float)) else 0.0, False))
+    for sub in subs.values():
+        if sub.parent_category_code in REJECTED_PARENT_CATEGORIES or sub.parent_category_code not in ALLOWED_PARENT_CATEGORIES \
+                or CAPEX_CATEGORY_TO_FIELD.get(sub.parent_category_code) == "contingencies":
             excluded.append(CapexItemView(sub.business_code, "DERIVED", sub.label, sub.parent_category_code, sub.amount_keur, False))
-        elif CAPEX_CATEGORY_TO_FIELD.get(sub.parent_category_code) == "contingencies":
-            excluded.append(CapexItemView(sub.business_code, "DERIVED", sub.label, sub.parent_category_code, sub.amount_keur, False))
-        elif sub.amount_keur > 0:
-            eligible.append(CapexItemView(sub.business_code, KIND_SUB_LINE, sub.label, sub.parent_category_code, float(sub.amount_keur)))
     return tuple(eligible), tuple(excluded)
 
 

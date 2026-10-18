@@ -202,15 +202,24 @@ def test_csrf_authentication_and_ownership_are_enforced(env):
     assert evidence(project) == before and other is not None
 
 
-def test_there_is_no_canonical_save_route_for_profiles(env):
+def test_only_the_reviewed_save_route_exists_and_the_planner_package_holds_no_writer_or_sql(env):
+    """RC-7: Save exists, but only as the CSRF-protected, CAS-guarded POST; nothing can apply, commit or run from the planner."""
     project = env.create("solar")
     before = evidence(project)
-    for path in ("save", "apply", "commit", "run"):
+    for path in ("apply", "commit", "run"):
         r = env.client.post(f"/v2/capex/spending-profiles/{path}", data={"project": project.project_code, "csrf_token": generate_csrf_token()})
         assert r.status_code in (404, 405), path
-    assert evidence(project) == before
+    assert env.client.get("/v2/capex/spending-profiles/save", params={"project": project.project_code}).status_code == 405   # POST only
+    page = env.client.get("/v2/capex/spending-profiles", params={"project": project.project_code})
+    token = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
+    row = {"project": project.project_code, "content_hash": token, "key_0": "base:production_units", "shape_0": "UNIFORM", "action": "save"}
+    assert env.client.post("/v2/capex/spending-profiles/save", data=row).status_code == 422                                  # token missing
+    forged = env.client.post("/v2/capex/spending-profiles/save", data={**row, "csrf_token": "forged"})
+    assert forged.status_code == 403 and "CAPEX_PROFILE_CSRF_INVALID" in forged.text
+    assert evidence(project) == before                                                                                         # nothing written
     from pathlib import Path
-    for f in ("app/v2/capex_profile_router.py", "app/capex_profiles/plan.py", "app/capex_profiles/projection.py", "app/capex_profiles/contract.py"):
+    for f in ("app/v2/capex_profile_router.py", "app/capex_profiles/plan.py", "app/capex_profiles/projection.py", "app/capex_profiles/contract.py",
+              "app/capex_profiles/config.py", "app/capex_profiles/binding.py", "app/capex_profiles/runtime.py"):
         src = Path(f).read_text()
         for needle in (".execute(", "INSERT", "UPDATE ", "DELETE ", "apply_batch_draft_update", "run_project", "create_sub_line(", "update_sub_line(",
                        "schedule_json ="):
@@ -234,7 +243,7 @@ def test_preview_leaves_committed_runs_and_history_immutable(env):
 def test_capex_sheet_links_to_the_planner_without_other_change(env):
     project = env.create("solar")
     html = env.client.get("/v2/workbook", params={"project": project.project_code}).text
-    assert 'data-testid="capex-profile-link"' in html and "preview only" in html
+    assert 'data-testid="capex-profile-link"' in html and "preview, save to Working Copy" in html
 
 
 def test_csrf_token_is_required_and_a_forged_or_missing_token_changes_nothing(env):

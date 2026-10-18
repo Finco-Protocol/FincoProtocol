@@ -1,0 +1,76 @@
+{# RC-7 Institutional Credit V4: observational, committed-Run-only enhancement.
+   DO NOT use Working Copy terms or infer lender covenants or period dates. #}
+{% if data.credit_v4 is defined %}
+{% set v4 = data.credit_v4 %}
+<section class="cd-section" id="cd-v4-risk" data-testid="cd-v4-risk" aria-labelledby="cd-v4-h">
+  <h2 id="cd-v4-h">E · Lender risk evidence <small>observed committed Runs only — not an approval</small></h2>
+  <p class="cd-note">This screening compares persisted DSCR and period evidence. Numerical solver convergence cannot prove debt feasibility, and an observed 1.0x threshold is not a negotiated contractual covenant.</p>
+  <div class="cd-scroll" tabindex="0" role="region" aria-label="Committed Run risk quality">
+    <table class="cd-table" data-testid="cd-v4-run-risk"><thead><tr>
+      <th scope="col">Run</th><th scope="col">Screening</th><th scope="col">Run Integrity</th>
+      <th scope="col">Minimum DSCR</th><th scope="col">Debt periods</th><th scope="col">Missing/invalid</th>
+      <th scope="col">Observed shortfalls</th><th scope="col">Evidence</th>
+    </tr></thead><tbody>
+    {% for r in v4.run_risks %}
+    <tr data-testid="cd-v4-run-row"><th scope="row"><code>{{ r.history_id[:12] }}</code><br>
+      <small>{{ r.scenario }} · {{ r.state }}</small></th>
+      <td><strong data-testid="cd-v4-risk-status">{{ r.status | replace('_', ' ') }}</strong>
+        {% for reason in r.reasons %}<div><small>{{ reason | replace('_',' ') }}</small></div>{% endfor %}
+      </td><td>{{ r.integrity or 'UNAVAILABLE' }}</td><td class="cd-num">{{ r.min_dscr }}</td>
+      <td class="cd-num">{{ r.period_count }}</td><td class="cd-num">
+        {{ r.missing_count }}{% for why in r.missing_reasons %}<div><small>{{ why }}</small></div>{% endfor %}
+      </td>
+      <td>{% for d in r.bad_period_dates %}<span>{{ d }}{% if not loop.last %}, {% endif %}</span>{% else %}None identified; not a credit PASS{% endfor %}</td>
+      <td><a href="{{ r.links.statements }}">Statements</a> · <a href="{{ r.links.financing }}">Financing</a> ·
+      <a href="{{ r.links.diagnostics }}">Diagnostics</a></td></tr>
+    {% endfor %}
+    </tbody></table>
+  </div>
+  <p class="cd-note">An unavailable DSCR, missing period, failed/incomplete Run Integrity or shortfall triggers REVIEW REQUIRED. “No shortfall identified” is an observed screening outcome, <strong>not</strong> a lender approval, compliance finding or Default determination.</p>
+</section>
+<section class="cd-section" id="cd-v4-period-compare" data-testid="cd-v4-period-compare" aria-labelledby="cd-v4-period-h">
+  <h2 id="cd-v4-period-h">F · Historical lender period differences <small>exact committed dates, never ordinal period alignment</small></h2>
+  {% set compare = v4.period_comparison %}
+  {% if not compare.available %}
+  <p class="cd-note" data-testid="cd-v4-compare-unavailable">UNAVAILABLE — {{ compare.reason }}</p>
+  {% else %}
+  <p class="cd-note" data-testid="cd-v4-compare-coverage">{{ compare.common_periods }} identical period-end dates · {{ compare.changed }} changed cells ·
+    {{ compare.unavailable }} unavailable cells · {{ compare.unchanged }} unchanged cells.
+    Unmatched dates per selected Run: {{ compare.excluded_dates | join(', ') }}.
+    {% if compare.truncated %}<strong>Showing the first 90 changed/unavailable cells; complete comparison is not rendered.</strong>{% endif %}
+  </p>
+  <div class="cd-scroll" tabindex="0" role="region" aria-label="Date-matched committed lender period differences">
+    <table class="cd-table" data-testid="cd-v4-period-table">
+      <thead><tr><th scope="col">Period end</th><th scope="col">Metric</th><th scope="col">Evidence status</th>
+        {% for r in data.runs %}<th scope="col">{{ 'Reference' if loop.first else 'Run ' ~ loop.index }}<br><small>{{ r.identity.scenario }}</small></th>
+          {% if not loop.first %}<th scope="col">Δ vs Reference</th>{% endif %}
+        {% endfor %}
+      </tr></thead><tbody>
+      {% for row in compare.rows %}
+      <tr data-testid="cd-v4-period-row"><th scope="row">{{ row.date }}</th>
+        <td>{{ row.metric }} <small>({{ row.unit }})</small></td>
+        <td>{{ row.state }}{% if row.reason %}<small> — {{ row.reason }}</small>{% endif %}</td>
+        {% for amount in row['values'] %}
+          <td class="cd-num">{{ amount }}</td>
+          {% if not loop.first %}<td class="cd-num cd-delta">{{ row.deltas[loop.index0-1] }}</td>{% endif %}
+        {% endfor %}
+      </tr>
+      {% else %}<tr><td colspan="9">No changed or missing date-matched credit cells; unchanged values are not repeated here.</td></tr>
+      {% endfor %}
+      </tbody></table>
+  </div>
+  <p class="cd-note">{{ compare.basis }} All dates are sourced from the committed debt-period schedule. Differences use stored figures only and do not prove what caused them.</p>
+  {% endif %}
+</section>
+<section class="cd-section" id="cd-v4-authority" data-testid="cd-v4-authority" aria-labelledby="cd-v4-authority-h">
+  <h2 id="cd-v4-authority-h">G · Lender evidence not available <small>typed financial and contractual gaps</small></h2>
+  <div class="cd-scroll" tabindex="0" role="region" aria-label="Unavailable credit policy evidence">
+    <table class="cd-table"><thead><tr><th scope="col">Metric / policy</th><th scope="col">Status</th><th scope="col">Missing authority</th></tr></thead><tbody>
+    {% for row in v4.unavailable %}
+    <tr><th scope="row">{{ row.metric }}</th><td>UNAVAILABLE</td><td>{{ row.reason }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </div>
+  <p class="cd-note">Contractual covenants, covenant dates, events of default and reserve/funding coverage require source-proven lender documentation and separately approved financial definitions. Working Copy advice and sizing targets never imply contractual compliance.</p>
+</section>
+{% endif %}
