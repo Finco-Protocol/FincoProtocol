@@ -27,6 +27,7 @@ import atexit
 import logging
 import multiprocessing
 import os
+import sys
 import threading
 import time
 from collections import deque
@@ -39,6 +40,7 @@ LOG = logging.getLogger("finco.model_execution")
 ENV_CONCURRENCY = "FINCO_MODEL_EXECUTION_CONCURRENCY"
 ENV_MODE = "FINCO_MODEL_EXECUTION_MODE"          # process (default) | thread (dev/test fallback)
 ENV_TIMEOUT = "FINCO_MODEL_EXECUTION_TIMEOUT_SECONDS"
+ENV_PROFILE = "FINCO_MODEL_EXECUTION_PROFILE"  # opt-in; no DTO or Run identity changes
 
 DEFAULT_CONCURRENCY = 2
 MAX_CONCURRENCY = 8
@@ -149,19 +151,37 @@ class _WorkerFailure:
         self.reason_code, self.detail = reason_code, detail
 
 
-def _process_entry(fn: Callable[..., Any], args: tuple, kwargs: dict) -> Any:
-    """Runs in the worker. Converts any failure into a plain, always-picklable envelope."""
+class _ProfiledWorkerResult:
+    """Private transport envelope; never leaves the executor as a model result."""
+
+    __slots__ = ("value", "worker_started_ns", "worker_finished_ns")
+
+    def __init__(self, value: Any, worker_started_ns: int, worker_finished_ns: int) -> None:
+        self.value = value
+        self.worker_started_ns = worker_started_ns
+        self.worker_finished_ns = worker_finished_ns
+
+
+def _process_entry(fn: Callable[..., Any], args: tuple, kwargs: dict, profile: bool = False) -> Any:
+    """Convert failures into picklable envelopes; profile only when explicitly enabled."""
+    started_ns = time.monotonic_ns() if profile else 0
     try:
-        return fn(*args, **kwargs)
+        value = fn(*args, **kwargs)
+        return (_ProfiledWorkerResult(value, started_ns, time.monotonic_ns())
+                if profile else value)
     except Exception as exc:  # noqa: BLE001
         def _text(value: object) -> str | None:
             return None if value is None else str(value)[:500]
 
-        return _WorkerFailure(type(exc).__name__, _text(exc) or "", _text(getattr(exc, "reason_code", None)),
-                              _text(getattr(exc, "detail", None)))
+        failure = _WorkerFailure(type(exc).__name__, _text(exc) or "", _text(getattr(exc, "reason_code", None)),
+                                 _text(getattr(exc, "detail", None)))
+        return (_ProfiledWorkerResult(failure, started_ns, time.monotonic_ns())
+                if profile else failure)
 
 
 def _unwrap(value: Any) -> Any:
+    if isinstance(value, _ProfiledWorkerResult):
+        value = value.value
     if isinstance(value, _WorkerFailure):
         raise ModelWorkerError(value.error_type, value.message, value.reason_code, value.detail)
     return value
@@ -211,6 +231,14 @@ class ModelExecutor:
         self._active = 0
         self._counters = {"admitted": 0, "busy_rejected": 0, "completed": 0, "failed": 0, "timed_out": 0}
         self._durations: deque[float] = deque(maxlen=100)
+        self._profile_enabled = os.environ.get(ENV_PROFILE, "").strip().lower() in ("1", "true", "yes")
+        self._profile_samples: deque[dict] = deque(maxlen=100)
+        # CLOCK_MONOTONIC on Linux is shared by local worker processes; on
+        # other platforms avoid inferring intervals between process clocks.
+        self._shared_worker_clock = (
+            sys.platform.startswith("linux")
+            and "CLOCK_MONOTONIC" in time.get_clock_info("monotonic").implementation
+        )
         self._warm = False
         self._warmup_duration_s: float | None = None
         self._warm_workers: int = 0
@@ -227,16 +255,65 @@ class ModelExecutor:
             self._active += 1
             self._counters["admitted"] += 1
 
-    def _finish(self, started: float, future: Future) -> None:
+    def _finish(self, started: float, future: Future, *,
+                submitted_ns: int | None = None, dispatched_ns: int | None = None) -> None:
+        """Preserve admission-slot semantics and record bounded opt-in stage timings."""
+        received_ns = time.monotonic_ns() if submitted_ns is not None else None
         elapsed = time.monotonic() - started
-        failed = future.cancelled() or future.exception() is not None or isinstance(
-            future.result(), _WorkerFailure)
+        raw = None if future.cancelled() or future.exception() is not None else future.result()
+        payload = raw.value if isinstance(raw, _ProfiledWorkerResult) else raw
+        failed = (future.cancelled() or future.exception() is not None
+                  or isinstance(payload, _WorkerFailure))
+        sample = None
+        if submitted_ns is not None and received_ns is not None:
+            sample = {
+                "submission_to_result_ms": round((received_ns - submitted_ns) / 1e6, 3),
+                "dispatch_ms": (round((dispatched_ns - submitted_ns) / 1e6, 3)
+                                if dispatched_ns is not None else None),
+                "queue_wait_ms": None,
+                "worker_execution_ms": None,
+                "result_transfer_ms": None,
+                "worker_clock_comparable": False,
+                "failed": failed,
+            }
+            if isinstance(raw, _ProfiledWorkerResult):
+                sample["worker_execution_ms"] = round(
+                    (raw.worker_finished_ns - raw.worker_started_ns) / 1e6, 3
+                )
+                if self._shared_worker_clock and dispatched_ns is not None:
+                    # All three clocks are CLOCK_MONOTONIC in the same OS.
+                    # Clamp tiny scheduling overlaps when a worker starts
+                    # before pool.submit() has returned to the parent.
+                    sample["queue_wait_ms"] = round(
+                        max(0, raw.worker_started_ns - dispatched_ns) / 1e6, 3
+                    )
+                    sample["result_transfer_ms"] = round(
+                        max(0, received_ns - raw.worker_finished_ns) / 1e6, 3
+                    )
+                    sample["worker_clock_comparable"] = True
         with self._lock:
             self._active -= 1
             self._counters["failed" if failed else "completed"] += 1
             self._durations.append(elapsed)
+            if sample is not None:
+                self._profile_samples.append(sample)
         self._gate.release()  # ALWAYS released when the calculation actually ends
         LOG.info("model_execution %s duration_s=%.1f", "failed" if failed else "completed", elapsed)
+        if sample is not None:
+            LOG.info("model_execution_profile stages=%s", sample)
+
+    def profile_snapshot(self) -> dict:
+        """Private opt-in profiling evidence; no financial or request identifiers."""
+        with self._lock:
+            return {
+                "enabled": self._profile_enabled,
+                "worker_clock_comparable": self._shared_worker_clock,
+                "warmup_duration_s": self._warmup_duration_s,
+                "warm_workers": self._warm_workers,
+                "samples": list(self._profile_samples),
+                # HTTP response handling remains a separate route-level metric.
+                "http_response_overhead_measured": False,
+            }
 
     # ── startup prewarm (Runtime V2) ──────────────────────────────────────────────
     def warm_up(self) -> dict:
@@ -344,10 +421,15 @@ class ModelExecutor:
     def _submit(self, kind: str, fn: Callable[..., Any], args: tuple, kwargs: dict) -> Future:
         self._admit()
         started = time.monotonic()
+        profiling = self._profile_enabled and kind == "process" and self.config.mode == "process"
+        submitted_ns = time.monotonic_ns() if profiling else None
         try:
             pool = self._pool(kind)
             if pool is self._process_pool:
-                future = pool.submit(_process_entry, fn, args, kwargs)
+                if profiling:
+                    future = pool.submit(_process_entry, fn, args, kwargs, True)
+                else:
+                    future = pool.submit(_process_entry, fn, args, kwargs)
             else:
                 future = pool.submit(fn, *args, **kwargs)
         except BaseException:
@@ -356,7 +438,11 @@ class ModelExecutor:
                 self._counters["failed"] += 1
             self._gate.release()
             raise ModelExecutionFailed() from None
-        future.add_done_callback(lambda f, s=started: self._finish(s, f))
+        dispatched_ns = time.monotonic_ns() if profiling else None
+        future.add_done_callback(
+            lambda f, t=started, s=submitted_ns, d=dispatched_ns:
+                self._finish(t, f, submitted_ns=s, dispatched_ns=d)
+        )
         return future
 
     def _translate(self, exc: BaseException) -> BaseException:
