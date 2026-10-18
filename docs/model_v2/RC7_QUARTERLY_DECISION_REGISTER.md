@@ -4,6 +4,13 @@ Base: `05183b2a96c74fd4b3976903c593a61402cab7b3`.
 Every decision below is OPEN. Executable proposal parameters are NOT owner
 approval, financial release approval, or production activation.
 
+Correction B: the decision-ready expansion against RC-7A main
+`78e4c0edcc1bdb5013df79f11b3ba7b9c2151013` is in
+[the owner decision pack](RC7_QUARTERLY_OWNER_DECISION_PACK.md). It supplies
+released behavior, candidate proposal, consequences, numerical examples,
+recommendations, required approvals and affected modules for every D-01..D-12.
+All decisions below remain OPEN; no policy is accepted by adding that evidence.
+
 | WF-23 decision | Bounded candidate proposal / exact consequence | Release requirement |
 |---|---|---|
 | D-01 COD stub | KEEP_ACTUAL_COD, no seven-day roll; a one-day initial quarter is retained | Owner acceptance of stub policy |
