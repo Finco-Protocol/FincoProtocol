@@ -25,6 +25,18 @@
     return ticket.generation === now.generation && ticket.project === now.project && ticket.hash === now.hash;
   }
   function visible(view) { var panel=document.getElementById(view.panel); return panel && !panel.hidden; }
+  function syncSetupControls(view, node) {
+    if(view.name!=='project_setup')return;
+    var locked=node.dataset.modelViewState!=='loaded';
+    // Never accept an edit into the old scalar form while its authorized replacement is pending.
+    node.querySelectorAll('input:not([type="hidden"]),select,textarea,button:not([data-model-view-retry])').forEach(function(control){
+      if(locked && !control.disabled){
+        control.dataset.modelViewDisabled='true';control.disabled=true;
+      }else if(!locked && control.dataset.modelViewDisabled==='true'){
+        delete control.dataset.modelViewDisabled;control.disabled=false;
+      }
+    });
+  }
   function warning(view, node, text) {
     var previous=node.querySelector('[data-model-view-notice]'); if(previous)previous.remove();
     var notice=document.createElement('div');notice.dataset.modelViewNotice='';notice.setAttribute('role','status');
@@ -43,6 +55,7 @@
       var node=document.getElementById(view.id);if(!node)return;
       if(view.name==='run_history' && !node.querySelector('[data-testid="run-history-table"], [data-testid="run-history-empty"]'))return;
       view.active=null;view.node=node;node.dataset.modelViewState='pending';
+      syncSetupControls(view,node);
       warning(view,node,view.dirty ? 'This sheet changed while it had unsaved edits. Your draft is kept; reload before saving.' :
         'This view needs refreshing. Previous results are not current.');
     });
@@ -73,6 +86,7 @@
       view.node=node;view.dirty=false;
       if(!node.dataset.modelViewState)node.dataset.modelViewState='loaded';
     }
+    syncSetupControls(view,node);
     if(!visible(view) || view.dirty || view.active || writes || pendingWrites.size ||
        node.dataset.modelViewState!=='pending')return;
     var ticket=capture();view.active=ticket;node.setAttribute('aria-busy','true');
@@ -86,9 +100,11 @@
       fresh.removeAttribute('aria-busy');
       if(ok && current(ticket)){
         view.node=fresh;view.dirty=false;fresh.dataset.modelViewState='loaded';
+        syncSetupControls(view,fresh);
         document.dispatchEvent(new CustomEvent('model:view-loaded',{detail:{sheet:view.name}}));
       }else if(current(ticket)){
         fresh.dataset.modelViewState='error';warning(view,fresh,'This view could not refresh. Try again before editing or using results.');
+        syncSetupControls(view,fresh);
       }
     });
   }
@@ -140,6 +156,7 @@
         var node=document.getElementById(sourceView.id);
         if(node && node===sourceView.node){
           node.dataset.modelViewState='loaded';
+          syncSetupControls(sourceView,node);
           var notice=node.querySelector('[data-model-view-notice]');if(notice)notice.remove();
         }
       }
