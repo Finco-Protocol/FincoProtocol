@@ -227,7 +227,14 @@ _ps_bess = _section("bess", "Standalone Battery", _PS, order=2, fields=[
        scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
        editable=True, description="Versioned standalone hourly BESS assumptions; financial activation requires independent review.")
 ])
-_SHEET_PROJECT_SETUP = _sheet(_PS, "Project Setup", [_ps_identity, _ps_technical, _ps_bess], icon="⚙️", order=0)
+_ps_calendar = _section("calendar", "Operating & Debt Frequency", _PS, order=3, fields=[
+    _f("project_setup.calendar.operating_frequency", "Operating / debt-service frequency", "operating_frequency_config_json",
+       FieldType.TEXT, _PS, "calendar", kind=FieldKind.INPUT, persisted=True,
+       source_of_truth=SourceOfTruth.INPUT_SET, engine_path="info.operating_calendar_policy",
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True, description="Empty = released 6/6. RC-7B matched 3/3 is release-closed pending independent financial review.")
+])
+_SHEET_PROJECT_SETUP = _sheet(_PS, "Project Setup", [_ps_identity, _ps_technical, _ps_bess, _ps_calendar], icon="⚙️", order=0)
 
 
 # ---------------------------------------------------------------------------

@@ -89,6 +89,12 @@ def _identity(entry: Any) -> dict[str, Any]:
             "scenario_name": entry.active_scenario_name, "engine_version": entry.engine_version}
 
 
+def operating_frequency(entry: Any) -> str:
+    """The committed Run's own operating/debt frequency; absent evidence is the released 6/6."""
+    evidence = ((getattr(entry, "runtime_summary", None) or {}).get("financing_evidence") or {})
+    return str(evidence.get("operating_frequency") or "6/6")
+
+
 def qualifications(entry_a: Any, entry_b: Any) -> list[dict[str, str]]:
     """What limits the comparability of two committed Runs. Never changes a classification: it states the limit beside it."""
     out: list[dict[str, str]] = []
@@ -100,6 +106,10 @@ def qualifications(entry_a: Any, entry_b: Any) -> list[dict[str, str]]:
     elif ea != eb:
         out.append({"code": "ENGINE_VERSION_DIFFERS", "message": f"Run A was produced by engine {ea} and Run B by engine {eb}: differences may "
                     "come from the engine, not only from inputs."})
+    fa, fb = operating_frequency(entry_a), operating_frequency(entry_b)
+    if fa != fb:
+        out.append({"code": "OPERATING_FREQUENCY_DIFFERS", "message": f"Run A uses a {fa} and Run B a {fb} operating/debt "
+                    "calendar: period residuals are on different grids and are not compared."})
     sa, sb = getattr(entry_a, "last_runtime_scenario_id", None), getattr(entry_b, "last_runtime_scenario_id", None)
     if sa != sb:
         out.append({"code": "DIFFERENT_SCENARIO_CONTEXT", "message": "The two Runs belong to different scenario contexts: the comparison is "
@@ -126,9 +136,13 @@ def build_run_comparison(ws: Any, *, quality_for_entry: Optional[Callable[[Any],
     for entry in older:
         old_rows = evaluate_entry(entry, quality_for_entry)
         rows = []
+        cross_frequency = operating_frequency(entry) != operating_frequency(newest)
         for check_id in sorted(set(new_rows) | set(old_rows)):
             a, b = old_rows.get(check_id), new_rows.get(check_id)
             kind, delta, reason = classify(a, b)
+            if cross_frequency:
+                # Truthful unavailable: no index zip or residual delta across grids.
+                kind, delta, reason = "NOT_COMPARABLE", None, "OPERATING_FREQUENCY_DIFFERS"
             rows.append({"check_id": check_id, "family": (b or a or {}).get("family"), "classification": kind, "reason": reason,
                          "run_a": None if a is None else {"status": a["status"], "residual": a["residual"]},
                          "run_b": None if b is None else {"status": b["status"], "residual": b["residual"]},
@@ -145,4 +159,4 @@ def build_run_comparison(ws: Any, *, quality_for_entry: Optional[Callable[[Any],
                      "'resolved'. Historical evidence is never mutated; thresholds are not bound to historical Runs."}
 
 
-__all__ = ["build_run_comparison", "classify", "evaluate_entry", "qualifications"]
+__all__ = ["build_run_comparison", "classify", "evaluate_entry", "operating_frequency", "qualifications"]

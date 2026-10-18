@@ -253,6 +253,20 @@ class WorkbookUpdateService:
                 f"Field {field_id!r} is not persisted and cannot be stored in the draft."
             )
 
+        # --- RC-7B: release-closed operating/debt frequency selection ----
+        # Every write path (single field, batch) passes here: a non-empty 3/3
+        # selection is refused while the admission gate is closed, and any
+        # value must be the strict versioned contract (empty = released 6/6).
+        if field_id == "project_setup.calendar.operating_frequency" and (raw_value or "").strip():
+            from app.workbook import quarterly_frequency_config as _q
+            if not _q.ACTIVATION_ENABLED:
+                raise NonEditableFieldError("QUARTERLY_ADMISSION_CLOSED: matched 3/3 is release-closed")
+            try:
+                _q.parse_config(raw_value.strip())
+            except ValueError as exc:
+                return FieldValidationResult(field_id=field_id, raw_value=raw_value, typed_value=None,
+                                             spec=spec, error=str(exc), error_class=FieldErrorClass.INVALID)
+
         # --- 3. Type coercion -------------------------------------------
         stripped = raw_value.strip() if raw_value else ""
         if not stripped:

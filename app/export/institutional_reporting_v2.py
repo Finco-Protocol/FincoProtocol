@@ -271,6 +271,8 @@ def _metadata_sources(ev: RunEvidence):
     yield "debt_schedule", ev.debt_schedule
     yield "tax_schedule", ev.tax_schedule
     yield "runtime_summary", ev.runtime_summary
+    # RC-7B: a committed quarterly Run persists its calendar inside financing evidence.
+    yield "runtime_summary.financing_evidence", (ev.runtime_summary or {}).get("financing_evidence")
     yield "identity", ev.identity
 
 

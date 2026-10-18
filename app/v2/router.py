@@ -342,6 +342,8 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
         for fspec in sorted(section.fields, key=lambda f: f.order):
             if fspec.field_id == "project_setup.bess.configuration":
                 continue  # Native structured editor owns this payload and CSRF.
+            if fspec.field_id == "project_setup.calendar.operating_frequency":
+                continue  # RC-7B: no generic selector; the gated calendar endpoint owns it.
             if is_bess and (fspec.field_id.startswith("revenue.") or fspec.field_id in (
                 "project_setup.technical.p50_hours", "project_setup.technical.capacity_mw")):
                 continue
@@ -2455,6 +2457,9 @@ async def v2_workbook_update(
 
     if field_id == "project_setup.bess.configuration":
         return JSONResponse({"error": "Use the owner/CSRF/CAS protected Battery editor"}, status_code=409)
+    if field_id == "project_setup.calendar.operating_frequency":
+        return JSONResponse({"error": "QUARTERLY_GENERIC_FIELD_WRITE_REFUSED: use the gated operating-frequency endpoint"},
+                            status_code=409)
     if field_id == "debt.financing.instruments":
         from app.auth import validate_csrf_token
         from app.workbook.financing_csrf import extract_bound_token
@@ -5968,3 +5973,5 @@ from app.v2.bess_candidate_router import router as bess_candidate_router
 router.include_router(bess_candidate_router)
 from app.v2.bess_workspace_router import router as bess_workspace_router
 router.include_router(bess_workspace_router)
+from app.v2.quarterly_calendar_router import router as quarterly_calendar_router  # RC-7B, release-closed
+router.include_router(quarterly_calendar_router)

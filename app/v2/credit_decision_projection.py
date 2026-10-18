@@ -725,6 +725,10 @@ def build_credit_decision(inputs: Sequence[RunInput], *, project_code: str,
         run_findings += _credit_findings(inp, identity, structure, capacity, timeline, integrity, links, qm_by)
         views.append({"identity": identity, "integrity": integrity, "links": links, "structure": structure, "capacity": capacity,
                       "timeline": timeline, "findings": run_findings})
+        from app.v2.diagnostics_run_compare import operating_frequency as _operating_frequency
+        if _operating_frequency(inp.entry) != "6/6":
+            # RC-7B: only non-default calendars are annotated; 6/6 views are unchanged.
+            views[-1]["operating_frequency"] = _operating_frequency(inp.entry)
         metrics.append(_cmp_metrics(inp, structure, capacity))
         findings += run_findings
     comparison = _comparison(views, metrics)
