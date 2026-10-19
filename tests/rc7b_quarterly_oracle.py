@@ -55,11 +55,38 @@ class Row:
     ppa_active: bool
 
 
+def six_month_ends(cod: date, count: int) -> list[date]:
+    """End dates of the first ``count`` rows of the RELEASED six-month axis from ``cod`` (stub ends at the next Jun 30 / Dec 31), by month arithmetic."""
+    jun, dec_ = date(cod.year, 6, 30), date(cod.year, 12, 31)
+    first = jun if cod < jun else (dec_ if cod < dec_ else date(cod.year + 1, 6, 30))
+    ends = []
+    for k in range(count):
+        shifted = first + relativedelta(months=6 * k)
+        ends.append(date(shifted.year, shifted.month, pycal.monthrange(shifted.year, shifted.month)[1]))
+    return ends
+
+
+def date_authoritative(info) -> bool:
+    return info.operating_calendar_policy.version == "rc7c-quarterly-candidate-v2"
+
+
 def operating_rows(info, ppa_years: int) -> tuple[Row, ...]:
+    """v1: exactly four rows per horizon year, four rows per model year. v2: the economic end date, model years and slots are the
+    six-month project's dates (each quarter inherits the model year of the six-month row that contains it)."""
     cod = info.financial_close + relativedelta(months=info.construction_months)
     assert cod == info.cod_date
     ppa_end = cod + relativedelta(years=ppa_years)
     rows, start = [], cod
+    if date_authoritative(info):
+        six = six_month_ends(cod, 2 * info.horizon_years)
+        while start < six[-1]:
+            end = quarter_end_after(start)
+            days = (end - start).days
+            denom = 366 if pycal.isleap(end.year) else 365
+            parent = next(k for k, boundary in enumerate(six) if end <= boundary)
+            rows.append(Row(start, end, days, D(days) / D(denom), parent // 2 + 1, start < ppa_end))
+            start = end
+        return tuple(rows)
     for k in range(4 * info.horizon_years):
         end = quarter_end_after(start)
         days = (end - start).days
@@ -67,6 +94,16 @@ def operating_rows(info, ppa_years: int) -> tuple[Row, ...]:
         rows.append(Row(start, end, days, D(days) / D(denom), k // 4 + 1, start < ppa_end))
         start = end
     return tuple(rows)
+
+
+def maturity_row_count(info, rows, tenor_years: int) -> int:
+    """Number of Senior service rows. v1: tenor * 4. v2: every row that ends on or before the six-month project's maturity date."""
+    if not date_authoritative(info):
+        return tenor_years * 4
+    maturity = six_month_ends(rows[0].start, 2 * tenor_years)[-1]
+    count = sum(1 for r in rows if r.end <= maturity)
+    assert rows[count - 1].end == maturity
+    return count
 
 
 # ── operating economics (released definitions) ───────────────────────────────
@@ -227,7 +264,7 @@ def senior(pi, *, total_project_uses_keur, dep_items, financial_cost_life):
     """DSCR capacity / gearing minimum with tax-interest fixed points, solved in Decimal."""
     info, fin, taxp = pi.info, pi.financing, pi.tax
     rows = operating_rows(info, int(pi.revenue.ppa_term_years))
-    tenor_rows = fin.senior_tenor_years * 4
+    tenor_rows = maturity_row_count(info, rows, fin.senior_tenor_years)
     rate = dec(fin.senior_debt_interest_config.rate_schedule.explicit_all_in_rates[0])
     day_count = fin.senior_debt_interest_config.day_count.name
     fracs = [accrual_fraction(r.start, r.end, day_count) for r in rows[:tenor_rows]]

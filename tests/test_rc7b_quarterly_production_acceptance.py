@@ -129,7 +129,8 @@ def test_real_quarterly_project_finance_run_lifecycle(env, monkeypatch, kind):
     finance = clean.g2c_result.financing_result
     model = finance.project_model_result
     ops = [p for p in model.periods if p.is_operation]
-    assert len(ops) == 4 * pi.info.horizon_years
+    import rc7b_quarterly_oracle as oracle
+    assert len(ops) == len(oracle.operating_rows(pi.info, int(pi.revenue.ppa_term_years)))
     assert ops[0].period_start == date.fromisoformat(cod)
     assert all(p.period_end.month in (3, 6, 9, 12) for p in ops)
 

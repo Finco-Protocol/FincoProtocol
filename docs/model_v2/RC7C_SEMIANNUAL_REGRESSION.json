@@ -1,0 +1,60 @@
+{
+  "baseline_ref": "origin/main",
+  "baseline_sha": "bf0167a036a6e30d3225b901aeda1b353681171a",
+  "working_tree_head": "bf0167a036a6e30d3225b901aeda1b353681171a",
+  "verticals": {
+    "solar": {
+      "baseline_run_sha256": "fb6d351712c1e384a24d4ee550be96f391b00e15c7199407dad137d5813b4c30",
+      "candidate_run_sha256": "fb6d351712c1e384a24d4ee550be96f391b00e15c7199407dad137d5813b4c30",
+      "input_dict_sha256": "8dff30a51c8c96b24188d7ad9eee0ed233d32fbba6da90625ec918832a2f4d48",
+      "clean_fingerprint": "a14c463555b972bb227d40c5a2619b7d50b09ad227e4a732984598f3203bf820",
+      "identical": {
+        "run_tree": true,
+        "input_dict": true,
+        "cache_key": true,
+        "clean_fingerprint": true
+      },
+      "first_difference": null
+    },
+    "wind": {
+      "baseline_run_sha256": "0f14d1c48d8e76209b6ee2a18973f38d30554d42465806185ed0b50b52c53567",
+      "candidate_run_sha256": "0f14d1c48d8e76209b6ee2a18973f38d30554d42465806185ed0b50b52c53567",
+      "input_dict_sha256": "f548256a7a05624fe3c93b4f119088391f7232d95f15644fc5386f68880ade85",
+      "clean_fingerprint": "7c13915c99158e53cd17437ba4dbad8de9d875cf41130e00807647e4b43f9d1c",
+      "identical": {
+        "run_tree": true,
+        "input_dict": true,
+        "cache_key": true,
+        "clean_fingerprint": true
+      },
+      "first_difference": null
+    },
+    "data_center": {
+      "baseline_run_sha256": "2bb5db04f0b29ae1e97ba8268231bebe593c4dfb2cda3eee89bb151a46ab1907",
+      "candidate_run_sha256": "2bb5db04f0b29ae1e97ba8268231bebe593c4dfb2cda3eee89bb151a46ab1907",
+      "input_dict_sha256": "04f9f68668b40b3841f036f4d3ffaa9e245f3c64d7b444480c044d2d50075c76",
+      "clean_fingerprint": "3410cbb8af134c1807cc5bec4cf1b96283e16e0e74f3344ff65e7e23329e2aac",
+      "identical": {
+        "run_tree": true,
+        "input_dict": true,
+        "cache_key": true,
+        "clean_fingerprint": true
+      },
+      "first_difference": null
+    },
+    "ev_charging": {
+      "baseline_run_sha256": "a1f7bc12b11700c911fc2e669a5ea4c77705dd074420fd847091db199fe3ff43",
+      "candidate_run_sha256": "a1f7bc12b11700c911fc2e669a5ea4c77705dd074420fd847091db199fe3ff43",
+      "input_dict_sha256": "e0adaf03c03cbaa1200e3beac19cdc81e3ce6c1390c5b4aa06d3bc4356041b96",
+      "clean_fingerprint": "df8a07d95a23076888008a374c79865b5c3e050f04317476d2c95e3189e859c8",
+      "identical": {
+        "run_tree": true,
+        "input_dict": true,
+        "cache_key": true,
+        "clean_fingerprint": true
+      },
+      "first_difference": null
+    }
+  },
+  "maximum_financial_difference": "0 (bit-identical)"
+}
