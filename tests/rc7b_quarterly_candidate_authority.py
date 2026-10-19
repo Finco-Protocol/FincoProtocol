@@ -383,6 +383,13 @@ def gate_r_review_violations(record, evidence, *, repo=None, ref: str = "HEAD") 
     author = (pull.get("user") or {}).get("login") if isinstance(pull.get("user"), dict) else None
     if review.get("state") != "APPROVED":
         bad.append("the GitHub review is not an APPROVED review")
+    # A later decisive review by the same reviewer (CHANGES_REQUESTED, DISMISSED or a newer APPROVED on other content) supersedes this one.
+    later = [r for r in evidence["reviews"] if isinstance(r, dict) and isinstance(r.get("user"), dict) and isinstance(login, str)
+             and str(r["user"].get("login", "")).lower() == login.lower() and r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
+             and (not isinstance(r.get("id"), int) or isinstance(r.get("id"), bool) or not isinstance(review.get("id"), int) or r["id"] > review["id"])
+             and r is not review]
+    if later:
+        bad.append("SUPERSEDED_REVIEW: the reviewer submitted a later decisive review, or review ordering is unverifiable")
     if not isinstance(login, str) or login.lower() != reviewer.lower() or login.lower() != str(ref_review.get("reviewer_login")).lower():
         bad.append("the GitHub review was not written by the named independent reviewer")
     if not isinstance(author, str) or not author or login is None or login.lower() == author.lower():

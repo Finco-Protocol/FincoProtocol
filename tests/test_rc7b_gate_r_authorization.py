@@ -176,6 +176,12 @@ def test_record_defects_are_each_rejected(clone, mutate, expected):
     (lambda c: evidence(c, commit_id="g" * 40), "no commit"),
     (lambda c: evidence(c, commit_id="1" * 40), "STALE_REVIEW"),
     (lambda c: evidence(c, commit_id=rc7b.RC7B_PREDECESSOR), "STALE_REVIEW"),
+    (lambda c: {**evidence(c), "reviews": [*evidence(c)["reviews"], {"id": 4243, "state": "CHANGES_REQUESTED", "user": {"login": REVIEWER},
+                                                                   "author_association": "COLLABORATOR", "commit_id": c}]}, "SUPERSEDED_REVIEW"),
+    (lambda c: {**evidence(c), "reviews": [*evidence(c)["reviews"], {"id": 4243, "state": "DISMISSED", "user": {"login": REVIEWER},
+                                                                   "author_association": "COLLABORATOR", "commit_id": c}]}, "SUPERSEDED_REVIEW"),
+    (lambda c: {**evidence(c), "reviews": [*evidence(c)["reviews"], {"id": "x", "state": "CHANGES_REQUESTED", "user": {"login": REVIEWER},
+                                                                   "author_association": "COLLABORATOR", "commit_id": c}]}, "SUPERSEDED_REVIEW"),
 ])
 def test_review_evidence_defects_are_each_rejected(clone, make_evidence, expected):
     repo, head = clone
