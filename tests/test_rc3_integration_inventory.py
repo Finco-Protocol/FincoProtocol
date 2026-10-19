@@ -429,8 +429,22 @@ def facts():
     return collect()
 
 
+def _gate_r_adjusted(facts):
+    """RC-7B Gate R: while a complete, authentic Gate R is ACTIVE, the two shared M7 paths (orchestrator, project_inputs) may be exactly the
+    superseding quarterly candidate blob. They are then judged as the pinned M7 blob they replace, after proving they are the Gate R candidate blob.
+    Without an active Gate R, or for any other blob/value, the facts are returned unchanged and the original pins reject."""
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    if not gate_r_active():
+        return facts
+    adjusted = copy.deepcopy(facts)
+    for path in set(M7_PROTECTED_BLOBS) & set(RC7B_CANDIDATE_AUTHORITIES):
+        if adjusted["m7_blobs_at_head"].get(path) == RC7B_CANDIDATE_AUTHORITIES[path]:
+            adjusted["m7_blobs_at_head"][path] = M7_PROTECTED_BLOBS[path]
+    return adjusted
+
+
 def test_the_integrated_head_is_exactly_the_documented_union_of_the_five_sources(facts):
-    assert inventory_violations(facts) == []
+    assert inventory_violations(_gate_r_adjusted(facts)) == []
 
 
 def test_the_oracle_is_live_git_not_values_derived_from_the_current_tree(facts):
@@ -705,7 +719,7 @@ def test_the_merged_main_state_binds_head_to_the_pinned_candidate(facts):
     if facts["pr_merge_parents"] is not None:                                     # on main: a normal two-parent merge of PR #284
         assert tuple(facts["pr_merge_parents"]) == (BASE, INTEGRATION_HEAD)
     assert facts["post_merge_protected_delta"] == []
-    assert facts["m7_blobs_at_head"] == dict(M7_PROTECTED_BLOBS)
+    assert _gate_r_adjusted(facts)["m7_blobs_at_head"] == dict(M7_PROTECTED_BLOBS)
 
 
 @pytest.mark.parametrize("path", sorted(M7_PROTECTED_BLOBS))

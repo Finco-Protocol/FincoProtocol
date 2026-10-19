@@ -20,7 +20,14 @@ PATHS = {
 def test_only_exact_seven_paths_at_their_pinned_content_are_authorized():
     assert set(governance.F3_2_4_FINANCING_AUTHORITIES) == PATHS
     assert strictly_frozen_changes(list(PATHS)) == []
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, superseded_by_gate_r
     for path, blob in governance.F3_2_4_FINANCING_AUTHORITIES.items():
+        if superseded_by_gate_r(path, repo=governance.REPO):
+            # RC-7B: only under an ACTIVE Gate R (signed record + authentic independent review + exact twelve blobs) does a superseding candidate
+            # replace the historical pin. Release-closed candidate only: never the released pin, never an approved frozen path.
+            assert git(governance.REPO, 'rev-parse', f'HEAD:{path}') == RC7B_CANDIDATE_AUTHORITIES[path]
+            assert not governance.released_engine_authority_matches(path)
+            continue
         current_blob = governance.F3_5_A_JUNIOR_AUTHORITIES.get(path,
             governance.WF07_REVENUE_AUTHORITIES.get(path, governance.WF04_NUMERIC_PRECISION_AUTHORITIES.get(path, blob)))
         assert git(governance.REPO, 'rev-parse', f'HEAD:{path}') == current_blob

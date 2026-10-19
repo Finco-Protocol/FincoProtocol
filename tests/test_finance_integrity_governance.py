@@ -16,12 +16,16 @@ def test_approved_engine_paths_are_allowed():
     # M7 candidate (PR #284) are exactly the ones the released-authority guard still rejects: candidate presence is not release approval.
     candidate = sorted(p for p in APPROVED if p in M7_CANDIDATE)
     assert candidate == ["financial_engine/adapters/project_inputs.py", "financial_engine/orchestrator.py"]
-    assert unapproved_engine_changes(sorted(APPROVED)) == candidate
+    # RC-7B Gate R: paths superseded by the twelve-blob quarterly candidate are recognised ONLY while a complete, authentic Gate R is active; they are
+    # then a release-closed candidate (never released). With no Gate R this set is empty and every original expectation below applies unchanged.
+    from rc7b_quarterly_candidate_authority import superseded_by_gate_r
+    superseded = {p for p in APPROVED if superseded_by_gate_r(p)}
+    assert unapproved_engine_changes(sorted(APPROVED)) == sorted(set(candidate) - superseded)
     assert unapproved_engine_changes(sorted(set(APPROVED) - set(candidate))) == []
     for path in candidate:
         assert authority_state(path) == INTEGRATED_RELEASE_CLOSED_CANDIDATE
     for path in set(APPROVED) - set(candidate):
-        assert authority_state(path) != INTEGRATED_RELEASE_CLOSED_CANDIDATE
+        assert (authority_state(path) == INTEGRATED_RELEASE_CLOSED_CANDIDATE) == (path in superseded)
     assert release_closed_violations() == []
 
 
@@ -56,7 +60,10 @@ def test_stream_guard_exemption_covers_only_allow_listed_engine_files():
     from finance_integrity_governance import approved_frozen_path
 
     candidate = {p for p in APPROVED if p in M7_CANDIDATE}
-    assert all(approved_frozen_path(path) for path in set(APPROVED) - candidate)
+    from rc7b_quarterly_candidate_authority import superseded_by_gate_r
+    superseded = {p for p in APPROVED if superseded_by_gate_r(p)}          # empty unless a complete, authentic Gate R is active
+    assert all(approved_frozen_path(path) for path in set(APPROVED) - candidate - superseded)
+    assert not any(approved_frozen_path(path) for path in superseded)     # a Gate R candidate is never a released exemption
     # the release-closed M7 candidate is NOT a released exemption: stream guards must keep treating it as not-approved
     assert candidate and not any(approved_frozen_path(path) for path in candidate)
     assert all(authority_state(path) == INTEGRATED_RELEASE_CLOSED_CANDIDATE for path in candidate)

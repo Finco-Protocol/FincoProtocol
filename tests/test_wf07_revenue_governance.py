@@ -44,7 +44,16 @@ def test_exact_seven_content_pins_only():
         assert governance.released_engine_authority_matches(path, ref=CHECKPOINT)
         assert governance.WF07_REVENUE_AUTHORITIES[path] == blob
     # Current content: five paths are still exactly the released authority ...
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, superseded_by_gate_r
     for path in PATHS - M7_PATHS - PPA01_PATHS:
+        if superseded_by_gate_r(path, repo=governance.REPO):
+            # RC-7B: an ACTIVE Gate R (signed record + authentic independent review + exact twelve blobs) recognises the superseding candidate.
+            # It is a release-closed candidate only: never the released pin, never an approved frozen path.
+            assert git(governance.REPO, "rev-parse", "HEAD:" + path) == RC7B_CANDIDATE_AUTHORITIES[path]
+            assert authority_states.authority_state(path) == authority_states.INTEGRATED_RELEASE_CLOSED_CANDIDATE
+            assert not governance.released_engine_authority_matches(path)
+            assert not approved_frozen_path(path)
+            continue
         assert git(governance.REPO, "rev-parse", "HEAD:" + path) == _released_blob(path)
         assert authority_states.authority_state(path) == authority_states.HISTORICAL_RELEASED
         assert governance.released_engine_authority_matches(path)

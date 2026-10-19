@@ -53,7 +53,19 @@ def _bad(facts, fn, **changes):
 
 
 def test_the_integrated_content_is_exactly_the_eleven_reviewed_blobs(facts):
-    assert S.content_violations(facts) == []
+    observed = copy.deepcopy(facts)
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    if gate_r_active():
+        # RC-7B Gate R is ACTIVE (signed Financial Owner record + authentic independent review + exact twelve blobs): the superseding quarterly
+        # candidate may replace exactly the two shared M7 blobs and add the other ten listed paths. Each superseded path must be EXACTLY the
+        # RC-7B candidate blob; the remaining nine M7 blobs are still judged byte-for-byte against the reviewed M7 pins. Nothing else is exempt.
+        shared = sorted(p for p in S.M7_RC3_CANDIDATE_AUTHORITIES if p in RC7B_CANDIDATE_AUTHORITIES)
+        assert shared == ["financial_engine/adapters/project_inputs.py", "financial_engine/orchestrator.py"]
+        for path in shared:
+            assert observed["blobs"][path] == RC7B_CANDIDATE_AUTHORITIES[path]
+            observed["blobs"][path] = S.M7_RC3_CANDIDATE_AUTHORITIES[path]
+        observed["frozen_changes"] = [p for p in observed["frozen_changes"] if p not in RC7B_CANDIDATE_AUTHORITIES]
+    assert S.content_violations(observed) == []
     assert len(S.M7_RC3_CANDIDATE_AUTHORITIES) == 11
 
 

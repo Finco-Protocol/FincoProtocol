@@ -83,9 +83,23 @@ def _bad(facts, fn, **changes):
 
 
 # 1 ─ identity recognised, approval and release are NOT granted
+def _without_active_gate_r_slice(facts):
+    """RC-7B Gate R: while a complete, authentic Gate R is ACTIVE its exact twelve paths are a separate, already-recognised slice and are not
+    'unlisted' changes of the PPA-01 slice. Without an active Gate R the facts are returned unchanged (every unlisted change still rejects)."""
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    if not gate_r_active():
+        return facts, False
+    adjusted = copy.deepcopy(facts)
+    for key in ("protected_changes", "branch_protected_changes"):
+        if adjusted.get(key) is not None:
+            adjusted[key] = [p for p in adjusted[key] if p not in RC7B_CANDIDATE_AUTHORITIES]
+    return adjusted, True
+
+
 def test_exact_candidate_is_recognised_but_neither_approved_nor_released(facts):
-    assert P.content_violations(facts) == []
-    assert P.candidate_content_matches_exactly() is True
+    observed, gate_r = _without_active_gate_r_slice(facts)
+    assert P.content_violations(observed) == []
+    assert (P.content_violations(observed) == []) if gate_r else P.candidate_content_matches_exactly() is True
     assert facts["record"] is None
     assert P.candidate_is_financially_approved() is False
     assert P.candidate_is_released() is False
@@ -191,7 +205,17 @@ def test_m7_eleven_blobs_are_unchanged_and_coexist_without_cross_approval():
     assert not set(M7.M7_RC3_CANDIDATE_AUTHORITIES) & set(P.PPA01_CANDIDATE_AUTHORITIES)      # no path overlap: the M7 map was not extended
     facts = M7.collect()
     assert any(p in facts["frozen_changes"] for p in PATHS)                              # raw M7 facts DO see the PPA-01 slice ...
-    m7_only = dict(facts, frozen_changes=[p for p in facts["frozen_changes"] if p not in P.PPA01_CANDIDATE_AUTHORITIES])
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    superseded_blobs = dict(facts["blobs"])
+    superseded_slice = set(P.PPA01_CANDIDATE_AUTHORITIES)
+    if gate_r_active():
+        # RC-7B Gate R ACTIVE: the two shared M7 paths must be exactly the superseding candidate blob (then judged as the M7 pin they replace) and
+        # the twelve paths are a separate recognised slice. Nothing outside the twelve is exempted.
+        for path in set(M7.M7_RC3_CANDIDATE_AUTHORITIES) & set(RC7B_CANDIDATE_AUTHORITIES):
+            assert superseded_blobs[path] == RC7B_CANDIDATE_AUTHORITIES[path]
+            superseded_blobs[path] = M7.M7_RC3_CANDIDATE_AUTHORITIES[path]
+        superseded_slice |= set(RC7B_CANDIDATE_AUTHORITIES)
+    m7_only = dict(facts, blobs=superseded_blobs, frozen_changes=[p for p in facts["frozen_changes"] if p not in superseded_slice])
     assert M7.content_violations(m7_only) == []                                          # ... which is excluded only as its own exact slice
     assert M7.content_violations(facts) != []                                            # without the exclusion M7 rejects unlisted changes
     assert M7.current_acceptance_granted() is False and P.candidate_is_financially_approved() is False

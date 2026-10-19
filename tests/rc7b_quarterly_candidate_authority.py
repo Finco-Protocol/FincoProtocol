@@ -451,3 +451,17 @@ def gate_r_active(*, repo=None, ref: str = "HEAD", fetcher=None) -> bool:
         return result
     except Exception:                                # noqa: BLE001 - fail closed
         return False
+
+
+def superseded_by_gate_r(path: str, *, repo=None, ref: str = "HEAD", fetcher=None) -> bool:
+    """True only for one of the twelve paths while a complete, authentic Gate R is active.
+
+    Historical exact-content guards (F3 / WF04 / WF07 / M7 / PPA-01 / RC-3 inventory) keep asserting the original pin for every other path and for
+    every tree without an active Gate R. For a superseded path they instead assert the Gate R candidate blob AND that the path is only a
+    release-closed candidate (never released, never ``approved_frozen_path``). This is recognition of bytes, not financial approval."""
+    return path in RC7B_CANDIDATE_AUTHORITIES and gate_r_active(repo=repo, ref=ref, fetcher=fetcher)
+
+
+def current_expected_blob(path: str, historical_pin, *, repo=None, ref: str = "HEAD", fetcher=None):
+    """The blob a current-authority guard must see at ``path``: the Gate R candidate blob for a superseded path, otherwise the historical pin."""
+    return RC7B_CANDIDATE_AUTHORITIES[path] if superseded_by_gate_r(path, repo=repo, ref=ref, fetcher=fetcher) else historical_pin
