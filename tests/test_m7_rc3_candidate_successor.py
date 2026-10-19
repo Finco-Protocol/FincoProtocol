@@ -54,7 +54,8 @@ def _bad(facts, fn, **changes):
 
 def test_the_integrated_content_is_exactly_the_eleven_reviewed_blobs(facts):
     observed = copy.deepcopy(facts)
-    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
+    from rc7b_postmerge_successor import candidate_recognized as gate_r_active
     if gate_r_active():
         # RC-7B Gate R is ACTIVE (signed Financial Owner record + authentic independent review + exact twelve blobs): the superseding quarterly
         # candidate may replace exactly the two shared M7 blobs and add the other ten listed paths. Each superseded path must be EXACTLY the

@@ -78,7 +78,7 @@ def test_exact_candidate_manifest_is_not_a_release_and_mutations_fail():
             return False
         # RC-7B Gate R: the two shared paths (orchestrator, project_inputs) are judged against the superseding candidate blob ONLY while a complete,
         # authentic Gate R is active; every other path, and every tree without Gate R, keeps the manifest's own M7 blob.
-        from rc7b_quarterly_candidate_authority import current_expected_blob
+        from rc7b_postmerge_successor import current_expected_blob
         return all(subprocess.run(['git', '-c', 'core.autocrlf=false', 'hash-object', path], cwd=ROOT,
                    capture_output=True, text=True, check=True).stdout.strip() == current_expected_blob(path, blob, repo=ROOT)
                    for path, blob in candidate['protected_blobs'].items())
