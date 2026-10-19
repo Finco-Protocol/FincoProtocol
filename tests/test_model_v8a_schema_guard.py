@@ -237,3 +237,98 @@ def test_same_inode_and_schema_cookie_replaced_database(isolated_db, tmp_path):
     _open_and_close()
     assert "model_run_history" in _tables(isolated_db)
     assert "workspace_states" in _tables(isolated_db)
+
+
+# ---- V8-A Correction B: concurrent first boot must not fail at the WAL switch ---------------------------------------------------
+class _FakeRow(tuple):
+    pass
+
+
+class _ScriptedConnection:
+    """Minimal connection double: scripted ``journal_mode`` reads and switch outcomes."""
+
+    def __init__(self, modes, switch_errors=()):
+        import sqlite3
+        self.modes, self.switch_errors, self.statements = list(modes), list(switch_errors), []
+        self._sqlite3 = sqlite3
+
+    def execute(self, sql):
+        self.statements.append(sql)
+        outer = self
+
+        class _Cursor:
+            def fetchone(self_inner):
+                if sql == "PRAGMA journal_mode":
+                    return (outer.modes.pop(0) if len(outer.modes) > 1 else outer.modes[0],)
+                if sql == "PRAGMA journal_mode=WAL":
+                    if outer.switch_errors:
+                        raise outer._sqlite3.OperationalError(outer.switch_errors.pop(0))
+                    outer.modes = ["wal"]
+                    return ("wal",)
+                return None
+        return _Cursor()
+
+
+def test_wal_already_enabled_performs_no_write_switch():
+    from app.persistence import db
+    conn = _ScriptedConnection(["wal"])
+    db._ensure_wal(conn)
+    assert conn.statements == ["PRAGMA journal_mode"]
+
+
+def test_transient_lock_is_retried_then_succeeds_and_rereads_the_mode(monkeypatch):
+    from app.persistence import db
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    conn = _ScriptedConnection(["delete"], switch_errors=["database is locked", "database is locked"])
+    db._ensure_wal(conn)
+    assert conn.statements.count("PRAGMA journal_mode=WAL") == 3 and conn.modes == ["wal"]
+
+
+def test_another_connection_winning_the_switch_ends_the_retry_without_a_second_write(monkeypatch):
+    from app.persistence import db
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    conn = _ScriptedConnection(["delete", "wal"], switch_errors=["database is locked"])
+    db._ensure_wal(conn)
+    assert conn.statements == ["PRAGMA journal_mode", "PRAGMA journal_mode=WAL", "PRAGMA journal_mode"]
+
+
+def test_non_lock_errors_and_the_deadline_are_not_swallowed(monkeypatch):
+    import sqlite3
+    from app.persistence import db
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+        db._ensure_wal(_ScriptedConnection(["delete"], switch_errors=["disk I/O error"]))
+    ticks = iter([0.0, 0.0, 100.0, 100.0, 100.0])
+    monkeypatch.setattr("time.monotonic", lambda: next(ticks))
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        db._ensure_wal(_ScriptedConnection(["delete"], switch_errors=["database is locked"] * 5))
+
+
+def test_the_database_really_ends_in_wal_after_a_loaded_concurrent_first_boot(tmp_path, monkeypatch):
+    """Eight simultaneous first connections to a brand-new file, repeated: none may fail and the file must report WAL."""
+    import sqlite3
+    import threading
+    from app.persistence import db
+    failures, workers, rounds = [], 8, 25
+    for round_ in range(rounds):
+        path = str(tmp_path / f"boot-{round_}.db")
+        monkeypatch.setattr(db, "DB_PATH", path)
+        db._SCHEMA_GUARD_SEEN.clear()
+        gate = threading.Barrier(workers)
+
+        def boot():
+            gate.wait()
+            try:
+                db.get_connection().close()
+            except Exception as exc:                                    # noqa: BLE001 - the assertion below reports it
+                failures.append(repr(exc))
+
+        threads = [threading.Thread(target=boot) for _ in range(workers)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        probe = sqlite3.connect(path)
+        try:
+            assert probe.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+        finally:
+            probe.close()
+    assert failures == []

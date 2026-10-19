@@ -104,16 +104,63 @@ def _ensure_schema_ready(conn):
             )
 
 
+# Bounded, deadline-driven handling of the journal-mode switch (see _ensure_wal).
+_WAL_SWITCH_DEADLINE_S = 30.0
+_WAL_SWITCH_BACKOFF_S = (0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.25)
+
+
+def _ensure_wal(conn):
+    """Put the database into WAL mode without failing a concurrent first boot.
+
+    WAL is a persistent property of the database file, so only the FIRST connection ever needs to
+    switch it; every later connection merely reads it. ``PRAGMA journal_mode=WAL`` takes an
+    exclusive lock for the switch and SQLite can return SQLITE_BUSY at once, without consulting
+    the busy handler, when other connections of a simultaneous first boot hold locks. So:
+
+    1. read the mode (no write, no exclusive lock) and return when it is already WAL;
+    2. otherwise attempt the switch; on a genuinely transient ``database is locked`` re-read the mode
+       (another booting connection may have won the switch - then we are done) and retry with a short,
+       bounded backoff until a fixed deadline;
+    3. any other error, or the deadline, is re-raised unchanged. Nothing is swallowed and WAL stays
+       mandatory: the function only returns once the database reports ``wal``.
+    """
+    import sqlite3
+    import time
+
+    def mode():
+        row = conn.execute("PRAGMA journal_mode").fetchone()
+        return str(row[0]).lower() if row else ""
+
+    deadline = time.monotonic() + _WAL_SWITCH_DEADLINE_S
+    attempt = 0
+    while True:
+        if mode() == "wal":
+            return
+        try:
+            row = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+            if row and str(row[0]).lower() == "wal":
+                return
+            raise sqlite3.OperationalError(f"journal_mode switch to WAL refused (reported {row[0] if row else None!r})")
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                raise
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(_WAL_SWITCH_BACKOFF_S[min(attempt, len(_WAL_SWITCH_BACKOFF_S) - 1)])
+            attempt += 1
+
+
 def get_connection():
     """Return a fresh SQLite connection with schema ensured."""
     import sqlite3
 
     conn = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
     try:
-        # Connection-local settings remain mandatory on EVERY new connection.
+        # Connection-local settings remain mandatory on EVERY new connection. The busy timeout is set first so that
+        # every following statement - including the journal-mode read - already honours it.
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=30000")
+        _ensure_wal(conn)
         conn.execute("PRAGMA foreign_keys=ON")
         _ensure_schema_ready(conn)
         return conn
