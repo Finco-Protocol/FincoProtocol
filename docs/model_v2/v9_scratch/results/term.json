@@ -1,0 +1,994 @@
+{
+ "S16": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 8.035385690163821e-10,
+   "C": 8.025153874768876e-10,
+   "CBW": 8.024585440580267e-10,
+   "FULLnoD": 7.98252131062327e-10
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 8.035385690163821e-10,
+   "C": 8.025153874768876e-10,
+   "CBW": 8.024585440580267e-10,
+   "FULLnoD": 7.98252131062327e-10
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S50": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16-dsra12": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25-noCF": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16-gearbound": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25-codstub15": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16-dscr1.45": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25-dscr1.45": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "DC-dscr2.0": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25-gear0.90": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25-noDSRA": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16-leap": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 8.089386938081589e-10,
+   "C": 8.114398042380344e-10,
+   "CBW": 8.045617505558766e-10,
+   "FULLnoD": 8.024017006391659e-10
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 8.089386938081589e-10,
+   "C": 8.114398042380344e-10,
+   "CBW": 8.045617505558766e-10,
+   "FULLnoD": 8.024017006391659e-10
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "DC-leap": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "DC": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16-dsra0": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16-noCF": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16-codstub9": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16r": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16r-dscr3.0": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16r-tenor10": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16r-dsra12": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16r-dscr2.0": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16r-gear0.50": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16r-tenor12": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "S16r-taxloss": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 9.733047363624792e-07,
+   "C": 9.733056174354715e-07,
+   "CBW": 9.733051342664112e-07,
+   "FULLnoD": 9.733030594816228e-07
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 9.733047363624792e-07,
+   "C": 9.733056174354715e-07,
+   "CBW": 9.733051342664112e-07,
+   "FULLnoD": 9.733030594816228e-07
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25r-dscr2.0": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25r-gear0.50": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25r-dscr3.0": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 1.9798995140263287e-05,
+   "C": 1.9798988660113537e-05,
+   "CBW": 1.9798988660113537e-05,
+   "FULLnoD": 1.979898797799251e-05
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 1.9798995140263287e-05,
+   "C": 1.9798988660113537e-05,
+   "CBW": 1.9798988660113537e-05,
+   "FULLnoD": 1.979898797799251e-05
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25r-taxloss": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ },
+ "W25r-tenor10": {
+  ".g2c_result.return_summary.terminal.senior.balance_at_contractual_maturity_keur": {
+   "baseline": 3.4699496609391645e-09,
+   "C": 3.467448550509289e-09,
+   "CBW": 3.467675924184732e-09,
+   "FULLnoD": 3.466539055807516e-09
+  },
+  ".g2c_result.return_summary.terminal.senior.terminal_model_horizon_balance_keur": {
+   "baseline": 3.4699496609391645e-09,
+   "C": 3.467448550509289e-09,
+   "CBW": 3.467675924184732e-09,
+   "FULLnoD": 3.466539055807516e-09
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.unpaid_at_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.balance_at_contractual_maturity_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  },
+  ".g2c_result.return_summary.terminal.shareholder_loan.terminal_model_horizon_balance_keur": {
+   "baseline": 0.0,
+   "C": 0.0,
+   "CBW": 0.0,
+   "FULLnoD": 0.0
+  }
+ }
+}

@@ -1,0 +1,85 @@
+{
+ "DC": {
+  "A": {
+   "G2A solves": 12,
+   "IDC loops": 1,
+   "Senior model runs": 44,
+   "SHL-tax fixed points": 22,
+   "DSRA policy": 1,
+   "engine (WF)": 2,
+   "DSCR/gearing solves": 198,
+   "tax/CFADS evaluations": 682,
+   "Stage B2 strict": 1,
+   "Stage B2 provisional": 8
+  },
+  "B1": {
+   "IDC loops": 1,
+   "Senior model runs": 33,
+   "SHL-tax fixed points": 22,
+   "DSRA policy": 1,
+   "engine (WF)": 2,
+   "DSCR/gearing solves": 187,
+   "G2A solves": 12,
+   "tax/CFADS evaluations": 627,
+   "Stage B2 strict": 1,
+   "Stage B2 provisional": 8
+  },
+  "B": {
+   "Senior model runs": 21,
+   "SHL-tax fixed points": 14,
+   "DSRA policy": 1,
+   "engine (WF)": 2,
+   "DSCR/gearing solves": 71,
+   "IDC loops": 1,
+   "G2A solves": 8,
+   "tax/CFADS evaluations": 220,
+   "Stage B2 strict": 1,
+   "Stage B2 provisional": 4
+  },
+  "C": {
+   "Senior model runs": 18,
+   "SHL-tax fixed points": 12,
+   "engine (WF)": 2,
+   "DSCR/gearing solves": 102,
+   "G2A solves": 7,
+   "IDC loops": 1,
+   "tax/CFADS evaluations": 342,
+   "Stage B2 strict": 1,
+   "Stage B2 provisional": 4
+  },
+  "CBW": {
+   "Senior model runs": 18,
+   "SHL-tax fixed points": 12,
+   "engine (WF)": 2,
+   "DSCR/gearing solves": 59,
+   "G2A solves": 7,
+   "IDC loops": 1,
+   "tax/CFADS evaluations": 186,
+   "Stage B2 strict": 1,
+   "Stage B2 provisional": 4
+  },
+  "FULLnoD": {
+   "Senior model runs": 18,
+   "SHL-tax fixed points": 12,
+   "engine (WF)": 2,
+   "DSCR/gearing solves": 59,
+   "G2A solves": 7,
+   "IDC loops": 1,
+   "tax/CFADS evaluations": 186,
+   "Stage B2 strict": 1,
+   "Stage B2 provisional": 4
+  },
+  "D": {
+   "IDC loops": 1,
+   "Senior model runs": 24,
+   "SHL-tax fixed points": 22,
+   "DSRA policy": 1,
+   "engine (WF)": 2,
+   "DSCR/gearing solves": 178,
+   "G2A solves": 12,
+   "tax/CFADS evaluations": 552,
+   "Stage B2 strict": 1,
+   "Stage B2 provisional": 8
+  }
+ }
+}

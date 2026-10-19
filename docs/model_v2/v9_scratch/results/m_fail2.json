@@ -1,0 +1,616 @@
+{
+ "S16-dscr2.0": {
+  "baseline_s": 1.4154730879999988,
+  "baseline_exc": true,
+  "baseline_summary": {
+   "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+  },
+  "variants": {
+   "B1": {
+    "s": 0.9208789839999554,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 0,
+     "inject": 0,
+     "redecide": 2
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 53.682455361104 kEUR remains at maturity period_index=41",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "C": {
+    "s": 1.9701676489999045,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 53.682455361104 kEUR remains at maturity period_index=41",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "FULLnoD": {
+    "s": 1.518518359999689,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0,
+     "bg_steps": 3
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 53.682455361104 kEUR remains at maturity period_index=41",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "CBW": {
+    "s": 1.5241154749996895,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 53.682455361104 kEUR remains at maturity period_index=41",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   }
+  }
+ },
+ "W25-dsra12": {
+  "baseline_s": 3.2721699789999548,
+  "baseline_exc": true,
+  "baseline_summary": {
+   "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+  },
+  "variants": {
+   "B1": {
+    "s": 2.9178635170001144,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 0,
+     "inject": 0,
+     "redecide": 2
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9107.480343515943 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "C": {
+    "s": 6.284136688000217,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9107.480343515943 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "FULLnoD": {
+    "s": 4.894861965000018,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0,
+     "bg_steps": 3
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9107.480343515943 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "CBW": {
+    "s": 6.490088795999782,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9107.480343515943 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   }
+  }
+ },
+ "W25-dscr2.0": {
+  "baseline_s": 1.0191839809999692,
+  "baseline_exc": true,
+  "baseline_summary": {
+   "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+  },
+  "variants": {
+   "B1": {
+    "s": 1.8656574569999975,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 0,
+     "inject": 0,
+     "redecide": 2
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 116.850616899329 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "C": {
+    "s": 1.6075385260000985,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 116.850616899329 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "FULLnoD": {
+    "s": 1.1037989370001924,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0,
+     "bg_steps": 2
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 116.850616899329 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "CBW": {
+    "s": 1.2839985190003063,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 116.850616899329 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   }
+  }
+ },
+ "W25-dscr3.0": {
+  "baseline_s": 0.4333978920003574,
+  "baseline_exc": true,
+  "baseline_summary": {
+   "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+  },
+  "variants": {
+   "B1": {
+    "s": 0.4865815579996706,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 0,
+     "inject": 0,
+     "redecide": 2
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 233.335572238440 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "C": {
+    "s": 0.8662953259999995,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 233.335572238440 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "FULLnoD": {
+    "s": 0.6427092190001531,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0,
+     "bg_steps": 2
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 233.335572238440 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "CBW": {
+    "s": 0.597080797000217,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 233.335572238440 kEUR remains at maturity period_index=52",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   }
+  }
+ },
+ "S16-gear0.50": {
+  "baseline_s": 0.25720810000029815,
+  "baseline_exc": true,
+  "baseline_summary": {
+   "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+  },
+  "variants": {
+   "B1": {
+    "s": 0.4371378219998405,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 0,
+     "inject": 0,
+     "redecide": 3
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 2249.121884348217 kEUR remains at maturity period_index=41",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "C": {
+    "s": 0.29471985400004996,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 2249.121884348217 kEUR remains at maturity period_index=41",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "FULLnoD": {
+    "s": 0.4120136559999992,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 2249.121884348217 kEUR remains at maturity period_index=41",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   },
+   "CBW": {
+    "s": 0.29112689099974887,
+    "stats": {
+     "aa_steps": 0,
+     "aa_rejected": 0,
+     "d_hits": 0,
+     "d_miss": 0,
+     "joint_iters": 0,
+     "joint_fallback": 1,
+     "inject": 0
+    },
+    "floats": 0,
+    "identical": 0,
+    "max_abs": 0.0,
+    "max_abs_path": null,
+    "max_rel": 0.0,
+    "max_rel_path": null,
+    "categorical": [],
+    "n_categorical": 0,
+    "n_structural": 0,
+    "text_numeric": [],
+    "structural": [],
+    "diag": [],
+    "exc": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 2249.121884348217 kEUR remains at maturity period_index=41",
+    "summary": {
+     "exception": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    }
+   }
+  }
+ }
+}
