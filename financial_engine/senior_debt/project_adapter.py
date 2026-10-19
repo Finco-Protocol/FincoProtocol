@@ -167,7 +167,8 @@ def build_senior_debt_contract_from_project_inputs(
     if frequency == PeriodFrequency.SEMESTRIAL and quarterly_policy is None:
         periods_per_year = 2
     elif frequency == PeriodFrequency.QUARTERLY and quarterly_policy is not None:
-        # RC-7B matched 3/3 candidate (D-10: maturity = end of row tenor * 4).
+        # Matched 3/3 candidate. v1 (D-10): maturity = end of row tenor * 4. v2 (RC-7C): maturity is the DATE on which the equivalent
+        # six-month loan matures (end of six-month row tenor * 2), so a quarterly tenor never outlives its six-month equivalent.
         # Debt service shares the quarterly operating axis; no mixed grid.
         periods_per_year = quarterly_policy.periods_per_year
         _require_quarterly_senior_vectors(sculpting, rate_cfg)
@@ -179,6 +180,15 @@ def build_senior_debt_contract_from_project_inputs(
             f"end-to-end operating-period proof before enablement."
         )
     tenor_periods = fin.senior_tenor_years * periods_per_year
+    if quarterly_policy is not None and quarterly_policy.date_authoritative:
+        from finco_core.engine.period_engine import semiannual_row_ends
+        if not op_only:
+            raise ValueError("Not enough operating periods for tenor: no operating periods")
+        maturity_end = semiannual_row_ends(op_only[0].period_start, 2 * int(fin.senior_tenor_years))[-1]
+        tenor_periods = sum(1 for p in op_only if p.period_end <= maturity_end)
+        if not op_only[tenor_periods - 1].period_end == maturity_end:
+            raise ValueError(
+                f"QUARTERLY_MATURITY_DATE_NOT_ON_SERVICE_ROW: senior maturity {maturity_end.isoformat()} is not the end of an operating row")
 
     debt_periods = op_only[:tenor_periods]
     if len(debt_periods) < tenor_periods:

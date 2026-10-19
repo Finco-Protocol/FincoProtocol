@@ -19,18 +19,18 @@ def test_exact_wf04_paths_and_content_only():
     assert governance.WF04_NUMERIC_PRECISION_AUTHORITIES == APPROVED
     for path, blob in APPROVED.items():
         from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
-        from rc7b_postmerge_successor import superseded as superseded_by_gate_r
-        if superseded_by_gate_r(path, repo=governance.REPO):
-            # RC-7B: only under an ACTIVE Gate R (signed record + authentic independent review + exact twelve blobs) does a superseding candidate
+        from quarterly_candidate_recognition import candidate_blobs, superseded as candidate_superseded
+        if candidate_superseded(path, repo=governance.REPO):
+            # RC-7B: only while a release-closed quarterly candidate is recognised (release-closed candidate recognised: exact blobs, merge ancestry, closed flag) does a superseding candidate
             # replace the historical pin. Release-closed candidate only: never the released pin, never an approved frozen path.
-            assert git(governance.REPO, "rev-parse", "HEAD:" + path) == RC7B_CANDIDATE_AUTHORITIES[path]
+            assert git(governance.REPO, "rev-parse", "HEAD:" + path) == candidate_blobs(repo=governance.REPO)[path]
             assert not governance.released_engine_authority_matches(path)
             continue
         current_blob = governance.F3_5_A_JUNIOR_AUTHORITIES.get(path, blob)
         assert git(governance.REPO, "rev-parse", "HEAD:" + path) == current_blob
         assert governance.released_engine_authority_matches(path)
-    from rc7b_postmerge_successor import without_superseded as without_gate_r_superseded
-    assert without_gate_r_superseded(unapproved_engine_changes(list(APPROVED)), repo=governance.REPO) == []
+    from quarterly_candidate_recognition import without_superseded
+    assert without_superseded(unapproved_engine_changes(list(APPROVED)), repo=governance.REPO) == []
 
 
 @pytest.mark.parametrize("path", sorted(APPROVED))

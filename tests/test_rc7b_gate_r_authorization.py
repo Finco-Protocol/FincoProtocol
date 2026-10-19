@@ -87,7 +87,8 @@ def base_clone(tmp_path_factory):
     subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(clone)], check=True, capture_output=True)
     git(clone, "config", "user.name", "Synthetic")
     git(clone, "config", "user.email", "noreply@users.noreply.github.com")
-    head = git(ROOT, "rev-parse", "HEAD")
+    # Gate R is the pre-merge authorization of the RC-7B candidate: its mechanism is exercised on the RC-7B state (main after PR #326, immutable history).
+    head = git(ROOT, "rev-parse", "162a3d70ea0cf5b15024ecbe5f7dec33f447a48d^{commit}")
     # the clone has every commit reachable from the local HEAD (the working branch), including the predecessor and reviewed source head
     git(clone, "checkout", "-q", "-B", "base", head)
     return clone, head

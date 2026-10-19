@@ -170,7 +170,9 @@ def test_operating_schedules_match_independent_decimal_reference(kind):
     assert run(kind, "Q").g2c_result.financing_result.book_depreciable_asset_basis == basis
     book = oracle.depreciation(basis.components, dep.financial_cost_useful_life_years, pi.info.horizon_years, rows)
     engine_ops = model.periods[first:]
-    assert len(engine_ops) == len(rows) == 4 * pi.info.horizon_years
+    assert len(engine_ops) == len(rows)
+    if not oracle.date_authoritative(pi.info):
+        assert len(rows) == 4 * pi.info.horizon_years         # historical v1 geometry; v2 rows are fixed by the economic end date
     for p, r, o, dep_value, book_value in zip(engine_ops, rows, ops, debt.tax_dep, book):
         assert (p.period_start, p.period_end, p.days_in_period) == (r.start, r.end, r.days)
         assert abs(dec(p.production_mwh) - o["mwh"]) <= OPERATING_TOL * 1000
@@ -239,7 +241,7 @@ def test_maturity_is_a_quarterly_service_endpoint_and_debt_is_fully_repaid(kind)
     model, first = operating_slice(run(kind, "Q"))
     senior = model.senior_debt
     rows = oracle.operating_rows(pi.info, int(pi.revenue.ppa_term_years))
-    tenor_rows = pi.financing.senior_tenor_years * 4
+    tenor_rows = oracle.maturity_row_count(pi.info, rows, pi.financing.senior_tenor_years)
     assert len(senior.period_indices) == tenor_rows
     periods = {p.period_index: p for p in model.periods}
     assert periods[senior.period_indices[-1]].period_end == rows[tenor_rows - 1].end
@@ -266,7 +268,7 @@ def test_statements_are_complete_and_reconcile_on_quarterly_dates(kind):
     assert fs.unavailable_reasons == {}
     assert len(fs.balance_sheet_periods) == len(model.periods)
     checks = [p.balance_check_keur for p in fs.balance_sheet_periods if p.balance_check_keur is not None]
-    assert len(checks) >= 4 * build(kind, "Q").info.horizon_years
+    assert len(checks) >= len(oracle.operating_rows(build(kind, "Q").info, int(build(kind, "Q").revenue.ppa_term_years)))
     assert max(abs(x) for x in checks) <= STATEMENT_TOL  # Assets = Liabilities + Equity
     sources_uses = build_sources_and_uses(quarter.g2c_result.financing_result)
     assert sources_uses.difference_keur == 0.0

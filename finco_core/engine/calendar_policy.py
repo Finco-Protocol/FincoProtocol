@@ -1,4 +1,4 @@
-"""RC-7B typed operating/debt calendar policy for the matched 3/3 candidate.
+"""Typed operating/debt calendar policy for the matched 3/3 candidate (RC-7B v1, RC-7C v2).
 
 Every convention is an explicit, versioned enum value. Constructing a policy is
 NOT owner approval and does NOT admit quarterly Runs: product admission is a
@@ -9,6 +9,15 @@ defaults an unknown or partial policy to semiannual.
 Decision references (all OPEN, see docs/model_v2/RC7B_QUARTERLY_DECISION_MATRIX.md):
 D-01 stub, D-02 fractions, D-03 horizon, D-04 annual clock, D-10 maturity.
 D-06 (3/6) and D-07 (6/3) are refused here by construction.
+
+Two versioned candidate policies exist; neither is owner-approved and neither admits a product Run:
+
+* ``rc7b-quarterly-candidate-v1`` (historical): exactly four operating rows per horizon year, stub included. When COD falls in the
+  second quarter of a half-year the stub row is one quarter, so v1 ends one quarter AFTER the equivalent six-month project and shifts
+  every model-year boundary (degradation, indexation, depreciation, OPEX steps) and the Senior maturity by a quarter (D-03/D-04/D-10).
+* ``rc7c-quarterly-candidate-v2`` (current candidate): the economic calendar is DATE-authoritative. The horizon end, the model-year
+  boundaries and the Senior maturity are the dates the equivalent six-month project has; the frequency only subdivides the same
+  calendar into quarterly rows. The two rule sets can never be mixed.
 """
 from __future__ import annotations
 
@@ -16,6 +25,8 @@ from dataclasses import dataclass, fields
 from enum import Enum
 
 QUARTERLY_CANDIDATE_POLICY_VERSION = "rc7b-quarterly-candidate-v1"
+QUARTERLY_CANDIDATE_POLICY_VERSION_V2 = "rc7c-quarterly-candidate-v2"
+SUPPORTED_POLICY_VERSIONS = (QUARTERLY_CANDIDATE_POLICY_VERSION, QUARTERLY_CANDIDATE_POLICY_VERSION_V2)
 
 
 class StubRule(str, Enum):
@@ -34,13 +45,15 @@ class FractionRule(str, Enum):
 
 
 class YearRule(str, Enum):
-    """D-04: four sequential operating rows (stub included) form one model year."""
-    FOUR_OPERATING_PERIODS_INCLUDING_STUB = "FOUR_OPERATING_PERIODS_INCLUDING_STUB"
+    """D-04: how an operating row is assigned to a model year (degradation, indexation, depreciation, OPEX)."""
+    FOUR_OPERATING_PERIODS_INCLUDING_STUB = "FOUR_OPERATING_PERIODS_INCLUDING_STUB"          # v1: every four rows, stub counted as a row
+    SEMIANNUAL_MODEL_YEAR_ALIGNED = "SEMIANNUAL_MODEL_YEAR_ALIGNED"                           # v2: the model year of the containing six-month row
 
 
 class HorizonRule(str, Enum):
-    """D-03: exactly four operating rows per horizon year, stub included."""
-    FIXED_FOUR_PERIODS_PER_HORIZON_YEAR = "FIXED_FOUR_PERIODS_PER_HORIZON_YEAR"
+    """D-03: where the economic horizon ends."""
+    FIXED_FOUR_PERIODS_PER_HORIZON_YEAR = "FIXED_FOUR_PERIODS_PER_HORIZON_YEAR"              # v1: exactly four rows per horizon year
+    SEMIANNUAL_ECONOMIC_END_DATE_PRESERVED = "SEMIANNUAL_ECONOMIC_END_DATE_PRESERVED"       # v2: the end date of the equivalent six-month horizon
 
 
 class ConstructionReportingRule(str, Enum):
@@ -54,9 +67,24 @@ class ConstructionReportingRule(str, Enum):
 
 
 class MaturityRule(str, Enum):
-    """D-10: Senior maturity is the end date of operating row ``tenor_years * 4``."""
-    ROW_COUNT_SERVICE_ENDPOINT = "ROW_COUNT_SERVICE_ENDPOINT"
+    """D-10: where Senior debt matures."""
+    ROW_COUNT_SERVICE_ENDPOINT = "ROW_COUNT_SERVICE_ENDPOINT"                                # v1: the end date of operating row tenor_years * 4
+    SEMIANNUAL_MATURITY_DATE_PRESERVED = "SEMIANNUAL_MATURITY_DATE_PRESERVED"               # v2: the end date of six-month row tenor_years * 2
 
+
+# The three date-sensitive rules travel together: a policy is either the historical fixed-row set or the date-authoritative set.
+_RULESETS = {
+    QUARTERLY_CANDIDATE_POLICY_VERSION: {
+        "horizon": HorizonRule.FIXED_FOUR_PERIODS_PER_HORIZON_YEAR,
+        "model_year": YearRule.FOUR_OPERATING_PERIODS_INCLUDING_STUB,
+        "maturity": MaturityRule.ROW_COUNT_SERVICE_ENDPOINT,
+    },
+    QUARTERLY_CANDIDATE_POLICY_VERSION_V2: {
+        "horizon": HorizonRule.SEMIANNUAL_ECONOMIC_END_DATE_PRESERVED,
+        "model_year": YearRule.SEMIANNUAL_MODEL_YEAR_ALIGNED,
+        "maturity": MaturityRule.SEMIANNUAL_MATURITY_DATE_PRESERVED,
+    },
+}
 
 _POLICY_ENUMS = {
     "stub": StubRule,
@@ -85,7 +113,7 @@ class OperatingCalendarPolicy:
     maturity: MaturityRule
 
     def __post_init__(self) -> None:
-        if type(self.version) is not str or self.version != QUARTERLY_CANDIDATE_POLICY_VERSION:
+        if type(self.version) is not str or self.version not in SUPPORTED_POLICY_VERSIONS:
             raise ValueError(f"QUARTERLY_POLICY_VERSION_UNSUPPORTED: {self.version!r}")
         for name in ("operating_months", "debt_service_months"):
             value = getattr(self, name)
@@ -100,10 +128,19 @@ class OperatingCalendarPolicy:
         for name, enum in _POLICY_ENUMS.items():
             if type(getattr(self, name)) is not enum:
                 raise ValueError(f"QUARTERLY_EXPLICIT_POLICY_REQUIRED: {name}")
+        for name, required in _RULESETS[self.version].items():
+            if getattr(self, name) is not required:
+                raise ValueError(
+                    f"QUARTERLY_POLICY_RULESET_MISMATCH: {self.version} requires {name}={required.value}, got {getattr(self, name).value}")
 
     @property
     def periods_per_year(self) -> int:
         return 12 // self.operating_months
+
+    @property
+    def date_authoritative(self) -> bool:
+        """True for the v2 rule set: horizon, model years and maturity are dates, not row counts."""
+        return self.version == QUARTERLY_CANDIDATE_POLICY_VERSION_V2
 
     def to_dict(self) -> dict:
         return {
@@ -129,8 +166,8 @@ class OperatingCalendarPolicy:
         return tuple(sorted(self.to_dict().items()))
 
 
-def quarterly_candidate_policy() -> OperatingCalendarPolicy:
-    """The single defined candidate. Construction is explicit; it is not approval."""
+def quarterly_candidate_policy_v1() -> OperatingCalendarPolicy:
+    """Historical RC-7B candidate (fixed four rows per year). Kept decodable and testable; superseded by v2. Not approval."""
     return OperatingCalendarPolicy(
         version=QUARTERLY_CANDIDATE_POLICY_VERSION,
         operating_months=3,
@@ -143,3 +180,24 @@ def quarterly_candidate_policy() -> OperatingCalendarPolicy:
         construction_reporting=ConstructionReportingRule.RELEASED_SIX_MONTH_SEGMENTS_TO_ACTUAL_COD,
         maturity=MaturityRule.ROW_COUNT_SERVICE_ENDPOINT,
     )
+
+
+def quarterly_candidate_policy_v2() -> OperatingCalendarPolicy:
+    """RC-7C date-authoritative candidate: same economic calendar as 6/6, subdivided into quarters. Construction is explicit; not approval."""
+    return OperatingCalendarPolicy(
+        version=QUARTERLY_CANDIDATE_POLICY_VERSION_V2,
+        operating_months=3,
+        debt_service_months=3,
+        stub=StubRule.KEEP_ACTUAL_COD,
+        day_rule=DayRule.HALF_OPEN,
+        fraction=FractionRule.ACTUAL_END_YEAR,
+        model_year=YearRule.SEMIANNUAL_MODEL_YEAR_ALIGNED,
+        horizon=HorizonRule.SEMIANNUAL_ECONOMIC_END_DATE_PRESERVED,
+        construction_reporting=ConstructionReportingRule.RELEASED_SIX_MONTH_SEGMENTS_TO_ACTUAL_COD,
+        maturity=MaturityRule.SEMIANNUAL_MATURITY_DATE_PRESERVED,
+    )
+
+
+def quarterly_candidate_policy() -> OperatingCalendarPolicy:
+    """The current (v2) candidate. Construction is explicit; it is not approval."""
+    return quarterly_candidate_policy_v2()

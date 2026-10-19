@@ -18,11 +18,11 @@ def test_approved_engine_paths_are_allowed():
     assert candidate == ["financial_engine/adapters/project_inputs.py", "financial_engine/orchestrator.py"]
     # RC-7B Gate R: paths superseded by the twelve-blob quarterly candidate are recognised ONLY while a complete, authentic Gate R is active; they are
     # then a release-closed candidate (never released). With no Gate R this set is empty and every original expectation below applies unchanged.
-    from rc7b_postmerge_successor import superseded as superseded_by_gate_r
-    from rc7b_postmerge_successor import without_superseded as without_gate_r_superseded
-    superseded = {p for p in APPROVED if superseded_by_gate_r(p)}
-    assert without_gate_r_superseded(unapproved_engine_changes(sorted(APPROVED))) == sorted(set(candidate) - superseded)
-    assert without_gate_r_superseded(unapproved_engine_changes(sorted(set(APPROVED) - set(candidate)))) == []
+    from quarterly_candidate_recognition import superseded as candidate_superseded
+    from quarterly_candidate_recognition import without_superseded
+    superseded = {p for p in APPROVED if candidate_superseded(p)}
+    assert without_superseded(unapproved_engine_changes(sorted(APPROVED))) == sorted(set(candidate) - superseded)
+    assert without_superseded(unapproved_engine_changes(sorted(set(APPROVED) - set(candidate)))) == []
     for path in candidate:
         assert authority_state(path) == INTEGRATED_RELEASE_CLOSED_CANDIDATE
     for path in set(APPROVED) - set(candidate):
@@ -46,9 +46,9 @@ def test_core_and_radar_have_no_exception():
 
 
 def test_this_branch_stays_within_the_governance_contract():
-    from rc7b_postmerge_successor import without_superseded as without_gate_r_superseded
-    # RC-7B: paths superseded by an ACTIVE Gate R (release-closed candidate, never released) are removed from the result; with no Gate R it is identity.
-    assert without_gate_r_superseded(unapproved_engine_changes()) == []
+    from quarterly_candidate_recognition import without_superseded
+    # RC-7B: paths superseded by a recognised release-closed quarterly candidate (never released) are removed from the result; with none recognised it is identity.
+    assert without_superseded(unapproved_engine_changes()) == []
     assert strictly_frozen_changes() == []
 
 
@@ -63,8 +63,8 @@ def test_stream_guard_exemption_covers_only_allow_listed_engine_files():
     from finance_integrity_governance import approved_frozen_path
 
     candidate = {p for p in APPROVED if p in M7_CANDIDATE}
-    from rc7b_postmerge_successor import superseded as superseded_by_gate_r
-    superseded = {p for p in APPROVED if superseded_by_gate_r(p)}          # empty unless a complete, authentic Gate R is active
+    from quarterly_candidate_recognition import superseded as candidate_superseded
+    superseded = {p for p in APPROVED if candidate_superseded(p)}          # empty unless a complete, authentic Gate R is active
     assert all(approved_frozen_path(path) for path in set(APPROVED) - candidate - superseded)
     assert not any(approved_frozen_path(path) for path in superseded)     # a Gate R candidate is never a released exemption
     # the release-closed M7 candidate is NOT a released exemption: stream guards must keep treating it as not-approved

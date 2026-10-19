@@ -1,6 +1,6 @@
 # RC-7B Matched 3/3: Financial Policy Decision Matrix (D-01..D-12)
 
-Status: **ALL DECISIONS OPEN.** Recommendations below are not approvals. No owner
+Status: **ALL DECISIONS OPEN.** (RC-7B document; the RC-7C update of D-01..D-05/D-10 and D-03-b is in `RC7C_QUARTERLY_FINANCIAL_ACCEPTANCE.md`.) Recommendations below are not approvals. No owner
 acceptance, release authorization or production activation is created here.
 D-06 (3/6) and D-07 (6/3) remain deferred and are refused by the engine.
 
@@ -12,7 +12,7 @@ Sources reviewed at main `5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d`:
 **How implementation proceeds while decisions are open.** Every 3/3 convention is a
 named, versioned candidate value (`rc7b-quarterly-candidate-v1`) carried in the
 typed policy, the clean input fingerprint and the Run evidence. Product admission
-is closed (`QUARTERLY_ADMISSION_ENABLED = False`), so no user Run can execute a
+is closed (`ACTIVATION_ENABLED = False`), so no user Run can execute a
 candidate convention. Where a decision changes economics that cannot be isolated
 behind that gate, the combination is refused instead of being given a default.
 
@@ -42,12 +42,12 @@ behind that gate, the combination is refused instead of being given a default.
    `RC7B_QUARTERLY_PRODUCTION_SUCCESSOR_CONTRACT.md`.
 
 Until 1-4 are recorded by the owner, the integration PR stays Draft and
-`QUARTERLY_ADMISSION_ENABLED` stays `False`.
+`ACTIVATION_ENABLED` stays `False`. (PR #320 has since been merged as a release-closed candidate; that merge is not one of these decisions.)
 
 ## D-03 — independent review finding (UNRESOLVED Financial Owner decision)
 
 The independent review of PR #320 recorded that moving from 6/6 to 3/3 changes the **modeled economic horizon** in the reviewed Solar example, producing approximately **1.07% additional revenue** in the 3/3 run relative to the 6/6 run. The 6/6 behaviour itself is unchanged and bit-identical to `main`; the difference arises because the 3/3 candidate uses a fixed count of operating rows (D-03 candidate value) rather than an anniversary horizon.
 
 * This is **not** resolved by Gate R, by the independent content review, or by this correction. D-03 remains **OPEN**; Gate R's record decides no owner decision (D-06/D-07 DEFERRED, the rest `NOT_DECIDED_BY_THIS_RECORD`).
-* The economic horizon was **not modified**. The quarterly candidate must **not** be presented as economically equivalent to the semi-annual model until the Financial Owner approves the horizon and the related conventions (stub treatment, depreciation tail, terminal returns).
+* *Historical (PR #320 review time):* the economic horizon was **not modified** in RC-7B. RC-7C resolves the root cause technically with the date-authoritative candidate v2 (the horizon decision itself remains the owner's). The v1 quarterly candidate must **not** be presented as economically equivalent to the semi-annual model until the Financial Owner approves the horizon and the related conventions (stub treatment, depreciation tail, terminal returns).
 * **Before any quarterly activation, product admission or release** the Financial Owner must decide D-03 explicitly (accept the fixed-count horizon with the disclosed difference, or require the dated anniversary horizon with an explicit terminal stub), and the decision must be recorded in the separate financial acceptance record — never in the Gate R candidate-boundary record.

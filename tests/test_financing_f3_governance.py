@@ -45,15 +45,20 @@ RC7B_PATH = "finco_core/engine/period_engine.py"      # one of the twelve exact 
 
 def test_rc7b_candidate_path_never_acquires_f3_or_released_authority_but_is_recognised_only_as_the_exact_candidate():
     """period_engine.py is NOT F3-authorised and not an approved frozen path. The global frozen-scope guard may pass it only because the whole exact
-    RC-7B release-closed candidate is recognised by the separate post-merge successor (merge ancestry + twelve exact blobs + closed flag)."""
-    import rc7b_postmerge_successor as successor
+    release-closed quarterly candidate (RC-7B as merged, or RC-7C) is recognised by a separate successor (merge ancestry + exact blobs + closed flag)."""
+    import quarterly_candidate_recognition as recognition
+    import rc7b_postmerge_successor as rc7b_successor
+    import rc7c_candidate_successor as rc7c_successor
     assert RC7B_PATH not in APPROVED
     assert not governance.released_engine_authority_matches(RC7B_PATH)
     assert not approved_frozen_path(RC7B_PATH)
-    assert successor.postmerge_recognized(repo=governance.REPO)
+    state = recognition.recognized_state(repo=governance.REPO)
+    assert state in ("RC7B", "RC7C")
     assert strictly_frozen_changes([RC7B_PATH]) == []
-    assert successor.states(repo=governance.REPO)["financial_release"] is False
-    assert successor.states(repo=governance.REPO)["quarterly_activation"] is False
+    states = (rc7b_successor if state == "RC7B" else rc7c_successor).states(repo=governance.REPO)
+    assert states["financial_release"] is False
+    assert states["quarterly_activation"] is False
+    assert states["product_admission"] is False
 
 
 def _clone(tmp_path):

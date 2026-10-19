@@ -1,3 +1,6 @@
+> **Historical (retained evidence).** Gate R was the pre-merge authorization mechanism for PR #320. PR #320 was merged through GitHub as a normal merge
+> commit (`bf0167a0`); Gate R never became active and is not the current control. Current state: `docs/model_v2/RC7C_GOVERNANCE_STATUS.md` (see also `RC7B_POSTMERGE_GOVERNANCE_RECOVERY.md`).
+
 # RC-7B Gate R — authentication, revocation and review process
 
 Status: PROPOSAL (mechanism implemented and tested; **no authorization exists**). Nothing in this document is an approval. No owner key, registry entry,

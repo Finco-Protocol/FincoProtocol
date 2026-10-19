@@ -15,7 +15,8 @@ import pytest
 from dateutil.relativedelta import relativedelta
 
 from finco_core.engine.calendar_policy import (
-    QUARTERLY_CANDIDATE_POLICY_VERSION, OperatingCalendarPolicy, quarterly_candidate_policy,
+    QUARTERLY_CANDIDATE_POLICY_VERSION, QUARTERLY_CANDIDATE_POLICY_VERSION_V2, OperatingCalendarPolicy,
+    quarterly_candidate_policy, quarterly_candidate_policy_v1, quarterly_candidate_policy_v2,
 )
 from finco_core.engine.period_engine import (
     PeriodAxisConvention, PeriodEngine, PeriodFrequency, PeriodMeta,
@@ -27,8 +28,10 @@ S = PeriodFrequency.SEMESTRIAL
 
 
 def quarterly(fc, months, horizon=2, ppa=1, policy=None, **kw):
+    """The HISTORICAL RC-7B v1 geometry (exactly four rows per horizon year). The date-authoritative RC-7C v2 axis is proven in
+    tests/test_rc7c_quarterly_date_authority.py against its own independent oracle."""
     return PeriodEngine(fc, months, horizon, ppa, frequency=Q,
-                        operating_calendar_policy=policy or quarterly_candidate_policy(), **kw)
+                        operating_calendar_policy=policy or quarterly_candidate_policy_v1(), **kw)
 
 
 # ── independent oracle ────────────────────────────────────────────────────────
@@ -158,10 +161,11 @@ def test_unsupported_frequency_combinations_fail_closed():
 
 # ── typed, versioned policy contract ─────────────────────────────────────────
 
-def test_policy_round_trip_is_strict_and_complete():
-    policy = quarterly_candidate_policy()
+@pytest.mark.parametrize("policy,version", [(quarterly_candidate_policy_v1(), QUARTERLY_CANDIDATE_POLICY_VERSION),
+                                            (quarterly_candidate_policy_v2(), QUARTERLY_CANDIDATE_POLICY_VERSION_V2)])
+def test_policy_round_trip_is_strict_and_complete(policy, version):
     raw = policy.to_dict()
-    assert raw["version"] == QUARTERLY_CANDIDATE_POLICY_VERSION
+    assert raw["version"] == version
     assert OperatingCalendarPolicy.from_dict(raw) == policy
     assert policy.periods_per_year == 4
     for bad in ({k: v for k, v in raw.items() if k != "stub"}, {**raw, "extra": 1},
@@ -240,7 +244,9 @@ def test_cache_identity_keeps_six_month_key_and_separates_quarterly():
     q = quarterly(date(2030, 1, 1), 15, 2)
     assert hash_engine_for_cache(q)[:4] == hash_engine_for_cache(semi)[:4]
     assert hash_engine_for_cache(q) != hash_engine_for_cache(semi)
-    assert ("operating_calendar_policy", quarterly_candidate_policy().cache_key()) in hash_engine_for_cache(q)
+    assert ("operating_calendar_policy", q.operating_calendar_policy.cache_key()) in hash_engine_for_cache(q)
+    v2 = quarterly(date(2030, 1, 1), 15, 2, policy=quarterly_candidate_policy_v2())
+    assert hash_engine_for_cache(v2) != hash_engine_for_cache(q)             # the two rule sets never share a cache identity
 
 
 def test_period_meta_contract_is_unchanged():

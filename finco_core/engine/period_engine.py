@@ -54,6 +54,32 @@ class PeriodMeta:
     operating_year_index: int = 0
 
 
+def semiannual_boundary_after(d: date) -> date:
+    """The next Jun 30 / Dec 31 STRICTLY after ``d`` (the released six-month row boundary)."""
+    jun_30, dec_31 = date(d.year, 6, 30), date(d.year, 12, 31)
+    if d < jun_30:
+        return jun_30
+    if d < dec_31:
+        return dec_31
+    return date(d.year + 1, 6, 30)
+
+
+def semiannual_row_ends(start: date, rows: int) -> tuple[date, ...]:
+    """End dates of the first ``rows`` rows of the released six-month operating axis that starts at ``start``.
+
+    The first row (the stub) ends at the next Jun 30 / Dec 31 after ``start``; every following row is one more six-month step. This is the
+    DATE authority the date-authoritative quarterly policy (RC-7C v2) preserves for the economic horizon, model years and Senior maturity.
+    """
+    if type(rows) is not int or rows < 0:
+        raise ValueError("PERIOD_AXIS_SEMIANNUAL_ROWS_INVALID")
+    ends: list[date] = []
+    current = start
+    for _ in range(rows):
+        current = semiannual_boundary_after(current)
+        ends.append(current)
+    return tuple(ends)
+
+
 class PeriodEngine:
     """Generates period sequence from financial close to end of horizon."""
 
@@ -69,6 +95,7 @@ class PeriodEngine:
             PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
         ),
         operating_calendar_policy: OperatingCalendarPolicy | None = None,
+        economic_end_date: date | None = None,
     ) -> None:
         self.fc = financial_close
         self.construction_months = construction_months
@@ -106,7 +133,37 @@ class PeriodEngine:
             raise ValueError("PERIOD_AXIS_HORIZON_INVALID: horizon_years must be a positive integer")
         if ppa_years < 0:
             raise ValueError("PERIOD_AXIS_PPA_TERM_INVALID: ppa_years must be >= 0")
-        self._operating_period_count = int(horizon_years) * self._periods_per_year
+        self._economic_end_date = None
+        self._explicit_economic_end = economic_end_date
+        if economic_end_date is not None and not (
+                self._operating_calendar_policy is not None and self._operating_calendar_policy.date_authoritative):
+            raise ValueError(
+                "PERIOD_AXIS_ECONOMIC_END_DATE_REQUIRES_DATE_AUTHORITATIVE_POLICY: an explicit economic end date is defined "
+                "only for the date-authoritative quarterly candidate; the released six-month axis is unchanged")
+        if self._operating_calendar_policy is not None and self._operating_calendar_policy.date_authoritative:
+            # RC-7C v2 (D-03): the economic end date is the end of the equivalent six-month horizon; quarterly rows only subdivide it.
+            equivalent_end = semiannual_row_ends(self._operating_start, 2 * int(horizon_years))[-1]
+            if economic_end_date is None:
+                self._economic_end_date = equivalent_end
+            else:
+                # An explicit end date (for example a contractual anniversary of a NEW project) must lie inside the final model year, so every annual
+                # input array (degradation, indexation, depreciation, OPEX) keeps its length; the last row is then a properly dated stub.
+                if type(economic_end_date) is not date:
+                    raise ValueError("PERIOD_AXIS_ECONOMIC_END_DATE_INVALID: a datetime.date is required")
+                year_start = (semiannual_row_ends(self._operating_start, 2 * int(horizon_years) - 2)[-1]
+                              if int(horizon_years) > 1 else self._operating_start)
+                if not (year_start < economic_end_date <= equivalent_end):
+                    raise ValueError(
+                        "PERIOD_AXIS_ECONOMIC_END_DATE_OUTSIDE_FINAL_MODEL_YEAR: "
+                        f"{economic_end_date.isoformat()} is not in ({year_start.isoformat()}, {equivalent_end.isoformat()}]")
+                self._economic_end_date = economic_end_date
+            count, cursor = 0, self._operating_start
+            while cursor < self._economic_end_date:
+                cursor = min(self._next_quarter_end_after(cursor), self._economic_end_date)
+                count += 1
+            self._operating_period_count = count
+        else:
+            self._operating_period_count = int(horizon_years) * self._periods_per_year
         ppa_anchor = (
             self._operating_start
             if self.period_axis_convention
@@ -121,6 +178,8 @@ class PeriodEngine:
             cod_date=self._cod,
             period_convention=self.period_axis_convention,
             periods_per_year=self._periods_per_year,
+            year_alignment=self.year_alignment,
+            expected_economic_end=self._economic_end_date,
         )
         self._horizon_end = self._periods[-1].end_date
 
@@ -159,6 +218,30 @@ class PeriodEngine:
     @property
     def periods_per_year(self) -> int:
         return self._periods_per_year
+
+    @property
+    def operating_period_count(self) -> int:
+        """Number of operating rows. ``horizon_years * periods_per_year`` except under the date-authoritative quarterly policy."""
+        return self._operating_period_count
+
+    @property
+    def year_alignment(self) -> str:
+        """``FIXED_ROWS`` (released six-month axis, quarterly v1) or ``SEMIANNUAL_ALIGNED`` (quarterly v2)."""
+        policy = self._operating_calendar_policy
+        return "SEMIANNUAL_ALIGNED" if policy is not None and policy.date_authoritative else "FIXED_ROWS"
+
+    @property
+    def economic_end_date(self) -> date | None:
+        """The explicit economic end date under the date-authoritative policy; None where the horizon is a row count."""
+        return self._economic_end_date
+
+    def senior_maturity_end_date(self, tenor_years: int) -> date | None:
+        """Date-authoritative Senior maturity (end of six-month row ``2 * tenor_years``); None where maturity is a row count."""
+        if self._operating_calendar_policy is None or not self._operating_calendar_policy.date_authoritative:
+            return None
+        if type(tenor_years) is not int or tenor_years <= 0:
+            raise ValueError("PERIOD_AXIS_TENOR_INVALID: tenor_years must be a positive integer")
+        return semiannual_row_ends(self._operating_start, 2 * tenor_years)[-1]
 
     @property
     def operating_start(self) -> date:
@@ -437,28 +520,43 @@ class PeriodEngine:
         return date(d.year + 1, 3, 31)
 
     def _quarterly_candidate_periods(self) -> tuple[PeriodMeta, ...]:
-        """RC-7B matched 3/3 candidate axis (policy-explicit, release-closed).
+        """Matched 3/3 candidate axis (policy-explicit, release-closed).
 
         Construction columns: the released six-month segments, ending at actual
         COD (identical to the six-month axis because the roll window is refused).
-        Operation (D-01..D-04 candidate values): KEEP_ACTUAL_COD, half-open
-        quarters, end-year 365/366 fraction, four rows per model year including
-        the initial stub, exactly ``4 * horizon_years`` operating rows.
+        Operation: KEEP_ACTUAL_COD, half-open quarters, end-year 365/366 fraction.
+
+        v1 (rc7b): exactly ``4 * horizon_years`` operating rows and four rows per model year, stub included.
+        v2 (rc7c, date-authoritative): rows run to the economic end date of the equivalent six-month horizon and each
+        row carries the model year of the six-month row that contains it, so degradation, indexation, depreciation
+        and OPEX steps fall on the same dates as in the six-month project.
         """
         periods: List[PeriodMeta] = self._cod_anchor_construction_segments()
         period_index = len(periods)
         current_date = self._operating_start
+        semester_ends = (semiannual_row_ends(self._operating_start, 2 * int(self.horizon_years))
+                         if self.year_alignment == "SEMIANNUAL_ALIGNED" else ())
+        rows_in_year: dict[int, int] = {}
         for operating_period_index in range(self._operating_period_count):
             end = self._next_quarter_end_after(current_date)
+            if self._economic_end_date is not None and end > self._economic_end_date:
+                end = self._economic_end_date                    # explicit economic end date: the final row is a dated stub
             days = self._days_between(current_date, end)
             is_leap = calendar.isleap(end.year)
-            model_year = operating_period_index // 4 + 1
+            if semester_ends:
+                parent = next(k for k, boundary in enumerate(semester_ends) if end <= boundary)
+                model_year = parent // 2 + 1
+                rows_in_year[model_year] = rows_in_year.get(model_year, 0) + 1
+                period_in_year = rows_in_year[model_year]
+            else:
+                model_year = operating_period_index // 4 + 1
+                period_in_year = operating_period_index % 4 + 1
             periods.append(PeriodMeta(
                 index=period_index,
                 start_date=current_date,
                 end_date=end,
                 year_index=model_year,
-                period_in_year=operating_period_index % 4 + 1,
+                period_in_year=period_in_year,
                 is_construction=False,
                 is_operation=True,
                 is_ppa_active=current_date < self._ppa_end,
@@ -492,6 +590,8 @@ def validate_canonical_period_axis(
     cod_date: "date | None" = None,
     period_convention: "PeriodAxisConvention | None" = None,
     periods_per_year: int = 2,
+    year_alignment: str = "FIXED_ROWS",
+    expected_economic_end: "date | None" = None,
 ) -> None:
     """Fail closed when a consumer receives a malformed financial axis.
 
@@ -550,6 +650,10 @@ def validate_canonical_period_axis(
 
     if type(periods_per_year) is not int or periods_per_year not in (2, 4):
         raise ValueError(f"PERIOD_AXIS_PERIODS_PER_YEAR_UNSUPPORTED: {periods_per_year!r}")
+    if year_alignment not in ("FIXED_ROWS", "SEMIANNUAL_ALIGNED"):
+        raise ValueError(f"PERIOD_AXIS_YEAR_ALIGNMENT_UNSUPPORTED: {year_alignment!r}")
+    if year_alignment == "SEMIANNUAL_ALIGNED" and periods_per_year != 4:
+        raise ValueError("PERIOD_AXIS_YEAR_ALIGNMENT_UNSUPPORTED: semiannual alignment is defined for the quarterly candidate only")
     if not periods:
         raise ValueError("PERIOD_AXIS_EMPTY")
     indices = tuple(p.index for p in periods)
@@ -703,14 +807,36 @@ def validate_canonical_period_axis(
             )
 
     # 6. operating period counters coherent
+    aligned_clock: list[tuple[int, int]] = []
+    if year_alignment == "SEMIANNUAL_ALIGNED" and operating:
+        # Date-authoritative clock, recomputed here from the dates alone: a row's model year is the year of the six-month row that contains it.
+        boundaries: list[date] = []
+        cursor = operating[0].start_date
+        while not boundaries or boundaries[-1] < operating[-1].end_date:
+            cursor = semiannual_boundary_after(cursor)
+            boundaries.append(cursor)
+        seen: dict[int, int] = {}
+        for op in operating:
+            parent = next(k for k, boundary in enumerate(boundaries) if op.end_date <= boundary)
+            year = parent // 2 + 1
+            seen[year] = seen.get(year, 0) + 1
+            aligned_clock.append((year, seen[year]))
+        if expected_economic_end is not None and operating[-1].end_date != expected_economic_end:
+            raise ValueError(
+                "PERIOD_AXIS_ECONOMIC_END_DATE_MISMATCH: "
+                f"expected={expected_economic_end.isoformat()} actual={operating[-1].end_date.isoformat()}"
+            )
     for op_pos, op in enumerate(operating):
         if op.operating_period_index != op_pos:
             raise ValueError(
                 f"PERIOD_AXIS_OPERATING_INDICES_INVALID: period_index={op.index} "
                 f"expected_op_idx={op_pos} actual={op.operating_period_index}"
             )
-        expected_year = op_pos // periods_per_year + 1
-        expected_pip = op_pos % periods_per_year + 1
+        if aligned_clock:
+            expected_year, expected_pip = aligned_clock[op_pos]
+        else:
+            expected_year = op_pos // periods_per_year + 1
+            expected_pip = op_pos % periods_per_year + 1
         if op.operating_year_index != expected_year:
             raise ValueError(
                 f"PERIOD_AXIS_OPERATING_YEAR_INDEX_INVALID: period_index={op.index} "
@@ -839,4 +965,7 @@ def hash_engine_for_cache(e: "PeriodEngine") -> tuple:
     policy = getattr(e, "operating_calendar_policy", None)
     if policy is not None:
         key = key + (("operating_calendar_policy", policy.cache_key()),)
+        explicit_end = getattr(e, "_explicit_economic_end", None)
+        if explicit_end is not None:
+            key = key + (("economic_end_date", explicit_end.isoformat()),)
     return key

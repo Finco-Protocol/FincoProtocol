@@ -1,3 +1,5 @@
+> **Historical (retained evidence)** of the pre-merge state of PR #320 (since merged, `bf0167a0`). Current control: `docs/model_v2/RC7C_GOVERNANCE_STATUS.md`.
+
 # PR #320 — reconciliation of the 75 Public Safety governance failures
 
 Columns: audit track (A fixture / B lifecycle / C stream scope / D current authority), result in this repository (no Gate R), result in an isolated

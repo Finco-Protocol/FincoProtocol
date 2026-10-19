@@ -15,7 +15,7 @@ Two gates are distinguished because they need different decisions:
 |---|---|---|---|---|---|---|---|---|
 | D-01 COD stub | keep actual COD, half-open quarters; no roll window | rolls to Jun/Dec when COD < 7 days before | axis oracle `tests/rc7b_quarterly_oracle.py`, `test_rc7b_quarterly_axis_production.py` | supported outside the 6/6 roll window; roll window refused (`QUARTERLY_COD_ROLL_WINDOW_PENDING_D01`) | acknowledge as candidate | accept or replace | `finco_core/engine/calendar_policy.py`, `period_engine.py` | ____ |
 | D-02 Day counts | operating fraction days/end-year; debt interest keeps ACT/360 or ACT/365 | end-year (generic) or next-year (source-aligned) | oracle; funding/statements suite | source-aligned refused | acknowledge | accept or replace | same two files + `financial_engine/adapters/tax_inputs.py` | ____ |
-| D-03 Horizon | 4N rows including stub | 2N rows | axis oracle | anniversary horizon not implemented | acknowledge | accept or replace | `period_engine.py`, `financial_engine/inputs.py` | ____ |
+| D-03 Horizon | 4N rows including stub (v1; **superseded by the RC-7C date-authoritative v2**, see `RC7C_QUARTERLY_FINANCIAL_ACCEPTANCE.md`) | 2N rows | axis oracle | anniversary horizon not implemented | acknowledge | accept or replace | `period_engine.py`, `financial_engine/inputs.py` | ____ |
 | D-04 Annual clock | four rows advance the model year | two rows | axis + funding oracles | hierarchical OPEX / external annual series refused | acknowledge | accept or replace | `inputs.py`, `orchestrator.py`, `quarterly_scope.py` | ____ |
 | D-05 PPA dates | legacy formula only; expiry on a quarter boundary | legacy + PPA-01 + multistream | quarterly scope tests | multistream, dated indexation, per-period vectors refused | confirm refusal | confirm or fund a revenue-owned integration | `quarterly_scope.py` (refusals only) | ____ |
 | D-06 3/6 | none | n/a | refusal tests | refused (`QUARTERLY_MATCHED_3_3_REQUIRED`) | none (deferred) | separate decision | none | DEFERRED |
@@ -38,5 +38,6 @@ Two gates are distinguished because they need different decisions:
 | Governance owner authorizing the bounded integration successor | |
 | Date and signature | |
 
-Until this record is completed by those people, #320 stays Draft and red:
-**RC-7B BLOCKED - FINANCIAL OWNER / GOVERNANCE AUTHORITY REQUIRED.**
+PR #320 has since been merged as a release-closed candidate (`bf0167a0`; recognition of bytes only, see `RC7B_POSTMERGE_GOVERNANCE_RECOVERY.md`). That merge
+is not the Financial Owner decision recorded here: every decision above stays **OPEN**, quarterly activation stays closed, and the RC-7C update of D-01..D-05,
+D-10 and the new D-03-b is in `RC7C_QUARTERLY_FINANCIAL_ACCEPTANCE.md`.

@@ -527,10 +527,12 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     # uses typed policy denominators, not the non-authoritative None fallback.
     validate_canonical_period_axis(
         periods_meta,
-        expected_operating_periods=inputs.calendar.horizon_years * engine.periods_per_year,
+        expected_operating_periods=engine.operating_period_count,
         cod_date=engine.cod,
         period_convention=engine.period_axis_convention,
         periods_per_year=engine.periods_per_year,
+        year_alignment=engine.year_alignment,
+        expected_economic_end=engine.economic_end_date,
     )
     canonical_indices = tuple(p.index for p in periods_meta)
 
