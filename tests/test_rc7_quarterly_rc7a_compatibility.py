@@ -65,7 +65,7 @@ def test_all_historical_m7_and_ppa_bytes_are_preserved_without_successors():
     assert len(M7_RC3_CANDIDATE_AUTHORITIES) == 11 and len(PPA01_CANDIDATE_AUTHORITIES) == 3
     # RC-7B Gate R: the HISTORICAL bytes (at BASE) are always asserted unchanged. The CURRENT bytes of the two shared M7 paths are the superseding
     # candidate blob only while a complete, authentic Gate R is active; otherwise (and for every other path) they must still be the M7 pin.
-    from rc7b_quarterly_candidate_authority import current_expected_blob
+    from rc7b_postmerge_successor import current_expected_blob
     for path, blob in M7_RC3_CANDIDATE_AUTHORITIES.items():
         assert _git("rev-parse", BASE + ":" + path) == blob
         assert _git("hash-object", "--path=" + path, path) == current_expected_blob(path, blob, repo=ROOT)

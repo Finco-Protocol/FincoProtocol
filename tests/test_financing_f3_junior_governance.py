@@ -52,7 +52,8 @@ HISTORICAL_AUTHORITIES = historical_authorities()
 
 def test_only_fifteen_independently_accepted_blobs_are_released():
     assert governance.F3_5_A_JUNIOR_AUTHORITIES == APPROVED
-    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, superseded_by_gate_r
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
+    from rc7b_postmerge_successor import superseded as superseded_by_gate_r
     for path, blob in APPROVED.items():
         current = subprocess.run(["git", "rev-parse", f"HEAD:{path}"], cwd=REPO,
             capture_output=True, text=True, check=True).stdout.strip()
@@ -66,7 +67,7 @@ def test_only_fifteen_independently_accepted_blobs_are_released():
         assert current == blob, path
         assert governance.released_engine_authority_matches(path)
         assert approved_frozen_path(path)
-    from rc7b_quarterly_candidate_authority import without_gate_r_superseded
+    from rc7b_postmerge_successor import without_superseded as without_gate_r_superseded
     assert without_gate_r_superseded(unapproved_engine_changes(list(APPROVED)), repo=governance.REPO) == []
     assert strictly_frozen_changes(list(APPROVED)) == []
 

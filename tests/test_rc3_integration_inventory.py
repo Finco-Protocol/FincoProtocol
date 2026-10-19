@@ -433,7 +433,8 @@ def _gate_r_adjusted(facts):
     """RC-7B Gate R: while a complete, authentic Gate R is ACTIVE, the two shared M7 paths (orchestrator, project_inputs) may be exactly the
     superseding quarterly candidate blob. They are then judged as the pinned M7 blob they replace, after proving they are the Gate R candidate blob.
     Without an active Gate R, or for any other blob/value, the facts are returned unchanged and the original pins reject."""
-    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
+    from rc7b_postmerge_successor import candidate_recognized as gate_r_active
     if not gate_r_active():
         return facts
     adjusted = copy.deepcopy(facts)
