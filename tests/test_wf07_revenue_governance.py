@@ -1,4 +1,5 @@
 """An exact revenue authority blob is not a namespace or future-edit exemption."""
+import hashlib
 import subprocess
 
 import pytest
@@ -208,8 +209,12 @@ def test_m7_candidate_is_exact_content_release_closed_and_never_inherits_release
     git(repo, "config", "core.autocrlf", "false")
     git(repo, "config", "user.name", "Synthetic Reviewer")
     git(repo, "config", "user.email", "noreply@users.noreply.github.com")
-    candidate = subprocess.run(["git", "-C", str(governance.REPO), "show", "HEAD:" + path], check=True, capture_output=True).stdout
-    historical = subprocess.run(["git", "-C", str(governance.REPO), "show", CHECKPOINT + ":" + path], check=True, capture_output=True).stdout
+    # Known-good candidate = the literal M7 candidate blob object (immutable), not whatever the current integration HEAD carries; a later
+    # integration may legitimately supersede it. The live HEAD state is judged by test_exact_seven_content_pins_only.
+    candidate = subprocess.run(["git", "-C", str(governance.REPO), "cat-file", "blob", authority_states.M7_CANDIDATE[path]],
+                               check=True, capture_output=True).stdout
+    assert hashlib.sha1(b"blob %d\0" % len(candidate) + candidate).hexdigest() == authority_states.M7_CANDIDATE[path]
+    historical =subprocess.run(["git", "-C", str(governance.REPO), "show", CHECKPOINT + ":" + path], check=True, capture_output=True).stdout
     target = repo / path
     target.parent.mkdir(parents=True)
     # the synthetic repo has no release flags, so a candidate can only exist where the real flags are closed: judge content only

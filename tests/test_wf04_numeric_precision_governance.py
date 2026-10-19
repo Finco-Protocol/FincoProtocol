@@ -1,5 +1,6 @@
 """WF-04 approves two exact blobs, never an engine/core namespace exemption."""
 from pathlib import Path
+import hashlib
 import subprocess
 
 import pytest
@@ -31,8 +32,11 @@ def test_any_further_edit_loses_authorization(path, tmp_path, monkeypatch):
     git(repo, "config", "core.autocrlf", "false")
     git(repo, "config", "user.name", "Synthetic Reviewer")
     git(repo, "config", "user.email", "noreply@users.noreply.github.com")
-    original = subprocess.run(["git", "-C", str(governance.REPO), "show", "HEAD:" + path],
-        check=True, capture_output=True).stdout
+    # Known-good baseline = the exact pinned (released) blob object, not whatever the current integration HEAD carries; the live HEAD authority
+    # is judged separately by test_exact_wf04_paths_and_content_only.
+    pinned = governance.F3_5_A_JUNIOR_AUTHORITIES.get(path, APPROVED[path])
+    original = subprocess.run(["git", "-C", str(governance.REPO), "cat-file", "blob", pinned], check=True, capture_output=True).stdout
+    assert hashlib.sha1(b"blob %d\0" % len(original) + original).hexdigest() == pinned
     target = repo / path
     target.parent.mkdir(parents=True)
     target.write_bytes(original)

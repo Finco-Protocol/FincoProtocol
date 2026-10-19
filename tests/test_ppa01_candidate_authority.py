@@ -63,6 +63,17 @@ def facts():
     return P.collect()
 
 
+KNOWN_GOOD_MAIN = "5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d"       # immutable main after PR #313: carries exactly the PPA-01 candidate
+
+
+@pytest.fixture(scope="module")
+def known_good_facts():
+    assert subprocess.run(["git", "merge-base", "--is-ancestor", KNOWN_GOOD_MAIN, "HEAD"], cwd=ROOT).returncode == 0
+    good = P.collect(ref=KNOWN_GOOD_MAIN)
+    assert P.content_violations(good) == []                              # the baseline really IS the reviewed candidate
+    return good
+
+
 def _bad(facts, fn, **changes):
     mutated = copy.deepcopy(facts)
     mutated.update(changes)
@@ -194,8 +205,10 @@ def test_a_substituted_ppa01_slice_is_not_excluded_from_the_m7_facts():
 
 
 # 12 ─ approval and release stay BLOCKED without a complete independent record
-def test_release_is_blocked_without_a_complete_independent_record_and_each_defect_is_rejected(facts):
-    accepted = copy.deepcopy(facts)
+def test_release_is_blocked_without_a_complete_independent_record_and_each_defect_is_rejected(known_good_facts):
+    # KNOWN-GOOD baseline = immutable main after PR #313 (carries exactly the PPA-01 candidate), not today's moving integration HEAD; the live HEAD
+    # content is still judged by test_exact_candidate_is_recognised_but_neither_approved_nor_released.
+    accepted = copy.deepcopy(known_good_facts)
     accepted["record"] = copy.deepcopy(GOOD_RECORD)
     assert P.acceptance_violations(accepted) == []                                       # only a synthetic record in a synthetic fact set
     assert any("RELEASE_NOT_AUTHORIZED" in p for p in P.release_violations(accepted))    # approval alone never releases
@@ -277,10 +290,31 @@ def test_previously_frozen_surfaces_remain_rejected(path):
         assert fig.strictly_frozen_changes([path]) == [path]
 
 
+def test_the_anchor_lifecycle_switches_to_head_once_its_tip_has_landed(tmp_path, monkeypatch):
+    """Lifecycle of the historical anchor in an ISOLATED synthetic fixture: usable while the tip is pending, plain HEAD after it has landed.
+
+    This is the lifecycle claim only. It deliberately says nothing about whether the CURRENT repository has any financial change: that is a
+    separate fact judged by the authoritative current-integration gates, and it is no longer true "forever" once a new financial PR exists.
+    """
+    repo = _repo(tmp_path, {"README.md": "x", **{p: b"baseline " + p.encode() for p in PATHS}})
+    git(repo, "checkout", "-q", "-b", "rc")
+    _write_commit(repo, {"app/radar/feature.py": "ok"}, "benign stream work")
+    tip = git(repo, "rev-parse", "HEAD")
+    _write_commit(repo, _candidate_files(), "candidate after the historical tip")
+    monkeypatch.setattr(anchor, "REPO", repo)
+    monkeypatch.setattr(anchor, "STREAM_TIPS", (tip,))
+    assert anchor.anchored_head() == tip                                   # pending: the historical tip is not on origin/main yet
+    git(repo, "update-ref", "refs/remotes/origin/main", tip)               # the historical stream lands on main
+    assert anchor.anchored_head() == "HEAD"                                # landed: the original guards evaluate the full current HEAD again
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    assert anchor.anchored_head() == "HEAD"
+    monkeypatch.setattr(anchor, "STREAM_TIPS", ("0" * 40,))
+    assert anchor.anchored_head() == "HEAD"                                # unknown provenance fails closed
+
+
 def test_the_real_anchor_returns_to_head_after_integration_and_keeps_historical_proof():
-    tip = anchor.anchored_head()
-    assert tip == "HEAD"
-    assert anchor.changed_paths("finco_core", "domain", "financial_engine") == []
+    """Immutable historical proof for the REAL repository (independent of whatever the current integration changes)."""
+    assert anchor.anchored_head() == "HEAD"                                # every historical tip has landed on main
     historical_tip = anchor.PPA01_PRE_INTEGRATION_TIP
     assert subprocess.run(["git", "merge-base", "--is-ancestor", historical_tip, "HEAD"], cwd=ROOT).returncode == 0
     assert subprocess.run(["git", "merge-base", "--is-ancestor", historical_tip, "origin/main"], cwd=ROOT).returncode == 0
