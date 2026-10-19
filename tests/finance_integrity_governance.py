@@ -84,14 +84,16 @@ def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
         F3_2_4_FINANCING_AUTHORITIES, F3_5_A_JUNIOR_AUTHORITIES, WF07_REVENUE_AUTHORITIES, approved_by_active_model_v2_scope,
         released_engine_authority_matches,
     )
+    import model_v2_governance as _governance
     from rc7b_quarterly_candidate_authority import gate_r_scope_exempt
 
     changed = changed_paths_vs_main() if changed is None else changed
     return sorted(
         f for f in changed
         if f.startswith("financial_engine/")
-        # RC-7B Gate R: recognised (never approved/released) ONLY while a signed Gate R + authentic independent review + exact twelve blobs hold.
-        and not gate_r_scope_exempt(f)
+        # RC-7B Gate R: recognised (never approved/released) ONLY while a signed Gate R + authentic independent review + exact twelve blobs hold,
+        # judged in the SAME repository the released-authority check reads.
+        and not gate_r_scope_exempt(f, repo=_governance.REPO)
         and (
             not released_engine_authority_matches(f) if f in F3_2_4_FINANCING_AUTHORITIES or f in WF07_REVENUE_AUTHORITIES or f in F3_5_A_JUNIOR_AUTHORITIES
             else f not in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
