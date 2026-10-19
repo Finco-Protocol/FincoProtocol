@@ -1,6 +1,6 @@
 {
-  "_comment": "UNSIGNED TEMPLATE. Not a valid authorization: every null below must be filled by the named HUMANS and committed under the real name docs/model_v2/RC7B_GATE_R_AUTHORIZATION.json by the Financial Owner / independent reviewer, never by an agent. This template name is deliberately never read by any governance check.",
-  "schema": "finco.rc7b.gate-r-candidate-boundary-authorization.v1",
+  "_comment": "UNSIGNED TEMPLATE. Not a valid authorization. The Financial Owner authorizes by SIGNING, offline and with a key the implementation agent never holds: (1) fill the fields below; (2) run `python tests/rc7b_quarterly_candidate_authority.py owner-payload <this record> > payload.bin`; (3) `ssh-keygen -Y sign -n finco-rc7b-gate-r-owner-v1 -f <owner ed25519 key> payload.bin`; (4) paste the armoured signature into owner_attestation.signature and commit under the real name docs/model_v2/RC7B_GATE_R_AUTHORIZATION.json. A status of SIGNED, a login or a commit author is never authority; only a signature by a key pinned in docs/model_v2/RC7B_GATE_R_AUTHORITY_REGISTRY.json and currently registered on the owner's GitHub account is. This template name is never read by any governance check.",
+  "schema": "finco.rc7b.gate-r-candidate-boundary-authorization.v2",
   "record_type": "GATE_R_CANDIDATE_BOUNDARY_AUTHORIZATION",
   "status": "UNSIGNED_TEMPLATE",
   "scope": "CANDIDATE_BOUNDARY_ONLY",
@@ -12,7 +12,9 @@
     "role": null,
     "identity_reference": null,
     "confirmed_at_utc": null,
-    "statement": "I authorize ONLY the release-closed integration of the twelve listed blobs as an unreleased candidate boundary. This is not approval of D-01..D-12, not Gate P, not user activation of quarterly calculation and not a financial-policy change."
+    "statement": "I authorize ONLY the release-closed integration of the twelve listed blobs as an unreleased candidate boundary. This is not approval of D-01..D-12, not Gate P, not user activation of quarterly calculation and not a financial-policy change.",
+    "signing_key": null,
+    "signing_key_fingerprint": null
   },
   "independent_reviewer": {
     "name": null,
@@ -88,5 +90,19 @@
     "release": false,
     "merge_to_main": false
   },
-  "decision_reference": null
+  "decision_reference": null,
+  "owner_attestation": {
+    "namespace": "finco-rc7b-gate-r-owner-v1",
+    "attestation_id": null,
+    "signed_at_utc": null,
+    "expires_at_utc": null,
+    "signature": null,
+    "_comment": "attestation_id: random lowercase hex, 32-64 chars. Validity at most 90 days. The signature covers the whole record (except this signature) and the blob of every Gate R mechanism file."
+  },
+  "github_review": {
+    "pull_number": 320,
+    "review_id": null,
+    "reviewer_login": null,
+    "_comment": "The numeric id of the independent reviewer's APPROVED review, made at a commit BEFORE this record. Never a commit hash."
+  }
 }

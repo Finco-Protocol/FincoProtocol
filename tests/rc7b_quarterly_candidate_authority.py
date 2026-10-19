@@ -227,25 +227,42 @@ def frozen_scope_exempt(path: str, *, repo=None, ref: str = "HEAD") -> bool:
         repo=repo, ref=ref)
 
 
-# ═══════════════════════════ Gate R: candidate-boundary authorization (option A) ═══════════════════════════
+# ═══════════════════════════ Gate R: candidate-boundary authorization ═══════════════════════════
 #
 # Gate R is NOT a financial approval. It authorizes exactly one thing: carrying the twelve reviewed blobs above as a RELEASE-CLOSED integration
 # candidate. It never approves D-01..D-12, Gate P, activation of the quarterly Run, a financial-policy change, product admission, release or merge.
 #
-# It is INERT unless ALL of the following are verified, and every uncertainty (missing, unsigned, unverifiable, stale) means REJECT:
+# It is INERT unless ALL of the following are verified, and every uncertainty (missing, unsigned, unverifiable, stale, expired, revoked) means REJECT:
 #   1. the exact-content facts above hold (twelve blobs, ancestry, change scope, literal ``ACTIVATION_ENABLED = False``, historical files unchanged);
-#   2. a committed, SIGNED record ``GATE_R_RECORD`` names a human Financial Owner and a different human independent reviewer and repeats the exact
-#      blobs, the M7 supersession, DEFERRED D-06/D-07 and grants that are all ``False`` except the release-closed boundary itself;
-#   3. an authentic GitHub review (fetched from GitHub, not read from the repository) exists: state APPROVED, by the named reviewer, who is neither
-#      the PR author nor the Financial Owner nor a bot, with a repository-collaborator association, on a commit whose twelve blobs equal the accepted
-#      blobs and which is an ancestor of the evaluated ref (a review of other or older content is stale).
+#   2. a committed record ``GATE_R_RECORD`` repeats the exact blobs, the M7 supersession, DEFERRED D-06/D-07 and grants that are all ``False`` except
+#      the release-closed boundary itself, and carries an OWNER ATTESTATION: an OpenSSH ``ssh-ed25519`` signature, in the namespace
+#      ``GATE_R_OWNER_NAMESPACE``, over the canonical payload of the WHOLE record plus the blobs of every Gate R mechanism file. Text in the record
+#      (a "SIGNED" status, a login, a commit author) is never authority; only a valid signature by a key that is BOTH pinned for that login in the
+#      reviewed registry ``GATE_R_REGISTRY`` AND currently listed among the owner's GitHub SSH signing keys (removing the key revokes) is. The
+#      implementation agent holds no such private key and therefore cannot produce this attestation;
+#   3. an authentic GitHub review (fetched live from GitHub, never read from the repository, complete history) exists: state APPROVED, by the named
+#      reviewer, who is neither the PR author nor the Financial Owner nor a bot, with a repository-collaborator association, on a commit whose twelve
+#      blobs and mechanism-file blobs equal the evaluated ones (a review of other or older content is stale), with no later decisive review by that
+#      reviewer and no unresolved CHANGES_REQUESTED from any authorized reviewer.
+# The owner attestation is deliberately separate from the independent review, from financial-policy approval (D-01..D-12), from product admission and
+# from merge authorization. There is no process-lifetime result cache: immutable Git facts are memoised per commit; live GitHub evidence is cached for
+# at most ``GATE_R_EVIDENCE_TTL_SECONDS`` and can be bypassed with ``fresh=True`` at an approval or merge decision boundary.
 GATE_R_RECORD = "docs/model_v2/RC7B_GATE_R_AUTHORIZATION.json"
-GATE_R_SCHEMA = "finco.rc7b.gate-r-candidate-boundary-authorization.v1"
+GATE_R_REGISTRY = "docs/model_v2/RC7B_GATE_R_AUTHORITY_REGISTRY.json"
+GATE_R_REGISTRY_SCHEMA = "finco.rc7b.gate-r-authority-registry.v1"
+GATE_R_SCHEMA = "finco.rc7b.gate-r-candidate-boundary-authorization.v2"
 GATE_R_RECORD_TYPE = "GATE_R_CANDIDATE_BOUNDARY_AUTHORIZATION"
 GATE_R_SCOPE = "CANDIDATE_BOUNDARY_ONLY"
 GATE_R_REPOSITORY = "Finco-Protocol/FincoProtocol"
 GATE_R_PULL_NUMBER = 320
 GATE_R_ACCEPTED_RESULT = "ACCEPTED_CANDIDATE_CONTENT"
+GATE_R_OWNER_NAMESPACE = "finco-rc7b-gate-r-owner-v1"
+GATE_R_MAX_VALIDITY_DAYS = 90
+GATE_R_CLOCK_SKEW_SECONDS = 300
+GATE_R_EVIDENCE_TTL_SECONDS = 20
+GATE_R_PAGE_SIZE = 100
+GATE_R_MAX_REVIEW_PAGES = 30
+GATE_R_DECISIVE_STATES = ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
 GATE_R_GRANTS = {
     "release_closed_integration_of_listed_blobs": True,
     "financial_approval_of_d01_d12": False,
@@ -263,34 +280,90 @@ GATE_R_M7_SUPERSEDED = {
     "financial_engine/adapters/project_inputs.py": "14bd759a9958515a7796626f93c1bd2233d69150",
 }
 GATE_R_REVIEWER_ASSOCIATIONS = ("OWNER", "MEMBER", "COLLABORATOR")
-# The Gate R mechanism. An approval reviews THESE bytes together with the twelve blobs; a later change to any of them makes the review stale.
+# The Gate R mechanism. An independent review AND the owner attestation cover THESE bytes together with the twelve blobs; a later change to any of
+# them makes the review stale and the attestation invalid. Included: the validator and the owner-signature verifier, the guard wiring, the historical
+# stream-provenance mechanism, the Gate R tests, and the registry that pins who may act as Financial Owner.
 GATE_R_GOVERNANCE_FILES = (
     "tests/rc7b_quarterly_candidate_authority.py",
+    "tests/rc7b_owner_attestation.py",
     "tests/finance_integrity_governance.py",
     "tests/rc3_authority_states.py",
+    "tests/stream_scope_proof.py",
     "tests/test_rc7b_gate_r_authorization.py",
+    GATE_R_REGISTRY,
+    # Workflow permissions and the job that runs the guards: a change here can alter what token the validator sees or whether the guards run.
+    ".github/workflows/ci_public_job.yml",
+    ".github/workflows/public_safety_and_smoke.yml",
 )
 _GITHUB_LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+_ATTESTATION_ID = re.compile(r"^[0-9a-f]{32,64}$")
+_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
-def github_review_fetcher(pull_number: int = GATE_R_PULL_NUMBER):
-    """Read-only live fetch of the PR and its reviews from GitHub; ``None`` on ANY problem (=> approval unverifiable => rejected)."""
+class GateRFetchError(Exception):
+    """GitHub evidence could not be obtained. ``kind`` distinguishes rate limiting from missing authorization from malformed data; every kind rejects."""
+
+    def __init__(self, kind: str, detail: str = ""):
+        super().__init__(f"{kind}: {detail}" if detail else kind)
+        self.kind = kind
+
+
+def _http_get_json(path: str, *, timeout: int = 10):
+    """Read-only GitHub REST GET. Uses ``GITHUB_TOKEN``/``GH_TOKEN`` when present (never logged, never written). Raises GateRFetchError."""
     import os
+    import urllib.error
     import urllib.request
 
-    def get(path):
-        request = urllib.request.Request(f"https://api.github.com/repos/{GATE_R_REPOSITORY}/{path}",
-                                         headers={"Accept": "application/vnd.github+json", "User-Agent": "finco-gate-r-validator"})
-        token = os.environ.get("GITHUB_TOKEN")
-        if token:
-            request.add_header("Authorization", f"Bearer {token}")
-        with urllib.request.urlopen(request, timeout=10) as response:      # noqa: S310 - fixed https GitHub API host
-            return json.loads(response.read().decode("utf-8"))
-
+    request = urllib.request.Request(f"https://api.github.com/{path}", headers={
+        "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "finco-gate-r-validator"})
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
     try:
-        return {"pull": get(f"pulls/{pull_number}"), "reviews": get(f"pulls/{pull_number}/reviews?per_page=100")}
-    except Exception:                                                        # noqa: BLE001 - unverifiable evidence must never raise into approval
-        return None
+        with urllib.request.urlopen(request, timeout=timeout) as response:      # noqa: S310 - fixed https GitHub API host
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        remaining = exc.headers.get("X-RateLimit-Remaining") if exc.headers is not None else None
+        if exc.code == 429 or (exc.code == 403 and remaining == "0"):
+            raise GateRFetchError("RATE_LIMITED", f"HTTP {exc.code}") from None
+        kinds = {401: "UNAUTHORIZED", 403: "FORBIDDEN", 404: "NOT_FOUND"}
+        raise GateRFetchError(kinds.get(exc.code, "HTTP_ERROR"), f"HTTP {exc.code}") from None
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        raise GateRFetchError("NETWORK", type(exc).__name__) from None
+    except ValueError:
+        raise GateRFetchError("MALFORMED", "response is not JSON") from None
+
+
+def github_review_fetcher(pull_number: int = GATE_R_PULL_NUMBER, owner_login=None, *, http=None):
+    """Live, COMPLETE evidence: the pull request, every page of its reviews, and (if ``owner_login``) the owner's registered SSH signing keys.
+
+    Raises GateRFetchError on any problem, including an incomplete history (more pages than ``GATE_R_MAX_REVIEW_PAGES`` or an owner with a full
+    page of keys). A partial history is never returned, because a missing page could hide a later CHANGES_REQUESTED or DISMISSED review."""
+    get = http or _http_get_json
+    pull = get(f"repos/{GATE_R_REPOSITORY}/pulls/{pull_number}")
+    if not isinstance(pull, dict):
+        raise GateRFetchError("MALFORMED", "pull request")
+    reviews: list = []
+    for page in range(1, GATE_R_MAX_REVIEW_PAGES + 1):
+        batch = get(f"repos/{GATE_R_REPOSITORY}/pulls/{pull_number}/reviews?per_page={GATE_R_PAGE_SIZE}&page={page}")
+        if not isinstance(batch, list) or any(not isinstance(item, dict) for item in batch):
+            raise GateRFetchError("MALFORMED", f"reviews page {page}")
+        reviews.extend(batch)
+        if len(batch) < GATE_R_PAGE_SIZE:
+            break
+    else:
+        raise GateRFetchError("INCOMPLETE_PAGINATION", f"more than {GATE_R_MAX_REVIEW_PAGES} pages of reviews")
+    keys = None
+    if owner_login is not None:
+        if not isinstance(owner_login, str) or not _GITHUB_LOGIN.match(owner_login):
+            raise GateRFetchError("MALFORMED", "owner login")
+        listing = get(f"users/{owner_login}/ssh_signing_keys?per_page={GATE_R_PAGE_SIZE}")
+        if not isinstance(listing, list) or any(not isinstance(item, dict) for item in listing):
+            raise GateRFetchError("MALFORMED", "signing keys")
+        if len(listing) >= GATE_R_PAGE_SIZE:
+            raise GateRFetchError("INCOMPLETE_PAGINATION", "signing keys")
+        keys = [item["key"] for item in listing if isinstance(item.get("key"), str)]
+    return {"pull": pull, "reviews": reviews, "owner_signing_keys": keys}
 
 
 def _is_human_login(value) -> bool:
@@ -298,8 +371,56 @@ def _is_human_login(value) -> bool:
             and not value.lower().endswith("[bot]"))
 
 
-def gate_r_record_violations(record) -> list[str]:
-    """Structure and content of the signed record ONLY (no Git, no network)."""
+def _utc(value):
+    from datetime import datetime, timezone
+    if not isinstance(value, str) or not _UTC.match(value):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def owner_payload(record, mechanism_blobs) -> bytes:
+    """The exact bytes the Financial Owner signs: the WHOLE record (so any edit of any field breaks the signature) except the signature itself,
+    bound to the repository, pull request, namespace and the blob of every Gate R mechanism file (so changing the mechanism breaks it too)."""
+    import copy
+    unsigned = copy.deepcopy(record)
+    attestation = unsigned.get("owner_attestation") if isinstance(unsigned, dict) else None
+    if isinstance(attestation, dict):
+        attestation.pop("signature", None)
+    body = {"repository": GATE_R_REPOSITORY, "pull_number": GATE_R_PULL_NUMBER, "namespace": GATE_R_OWNER_NAMESPACE,
+            "mechanism_blobs": dict(mechanism_blobs), "record": unsigned}
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+
+
+_SIGNATURE_MEMO: dict = {}
+
+
+def _signature_problems(armoured, payload: bytes, key) -> list[str]:
+    """Pure function of its (immutable) inputs, so memoising it is safe and keeps the guards fast."""
+    import hashlib
+    try:
+        import rc7b_owner_attestation as attestation
+    except ImportError:                                           # imported as ``tests.rc7b_...``
+        from tests import rc7b_owner_attestation as attestation
+    memo_key = (hashlib.sha256(str(armoured).encode()).hexdigest(), hashlib.sha256(payload).hexdigest(), str(key))
+    if memo_key not in _SIGNATURE_MEMO:
+        _SIGNATURE_MEMO[memo_key] = attestation.verification_problems(armoured, payload, GATE_R_OWNER_NAMESPACE, key)
+    return list(_SIGNATURE_MEMO[memo_key])
+
+
+def _attestation():
+    try:
+        import rc7b_owner_attestation as module
+    except ImportError:
+        from tests import rc7b_owner_attestation as module
+    return module
+
+
+def gate_r_record_violations(record, *, registry=None, mechanism_blobs=None, now=None) -> list[str]:
+    """Structure, content and OWNER ATTESTATION of the record (no network). ``registry`` and ``mechanism_blobs`` come from the evaluated commit;
+    without them the attestation cannot be verified and the record is rejected."""
     if record is None:
         return ["GATE_R_APPROVAL_REQUIRED: no signed Gate R authorization record exists"]
     if not isinstance(record, dict):
@@ -336,12 +457,13 @@ def gate_r_record_violations(record) -> list[str]:
             bad.append(f"Gate R {label} is not a named human")
         if not _is_human_login(login):
             bad.append(f"Gate R {label}.identity_reference must be a human GitHub login")
-        if not (isinstance(who.get("confirmed_at_utc" if label == "financial_owner" else "reviewed_at_utc"), str)
-                and who.get("confirmed_at_utc" if label == "financial_owner" else "reviewed_at_utc").strip()):
+        stamp = who.get("confirmed_at_utc" if label == "financial_owner" else "reviewed_at_utc")
+        if not (isinstance(stamp, str) and stamp.strip()):
             bad.append(f"Gate R {label} carries no confirmation timestamp")
         if review_key and who.get(review_key) != GATE_R_ACCEPTED_RESULT:
             bad.append("Gate R independent review result is not ACCEPTED_CANDIDATE_CONTENT")
-    if people.get("financial_owner") and people.get("financial_owner") == people.get("independent_reviewer"):
+    if (isinstance(people.get("financial_owner"), str) and isinstance(people.get("independent_reviewer"), str)
+            and people["financial_owner"].lower() == people["independent_reviewer"].lower()):
         bad.append("the independent reviewer must not be the Financial Owner")
     if record.get("grants") != GATE_R_GRANTS:
         bad.append("Gate R grants must be exactly: release-closed integration true, every other grant false")
@@ -361,22 +483,109 @@ def gate_r_record_violations(record) -> list[str]:
             and isinstance(review.get("review_id"), int) and not isinstance(review.get("review_id"), bool)
             and _is_human_login(review.get("reviewer_login"))):
         bad.append("Gate R record does not reference one GitHub review (pull_number, review_id, reviewer_login)")
+    return bad + _owner_attestation_problems(record, registry, mechanism_blobs, now)
+
+
+def _owner_attestation_problems(record, registry, mechanism_blobs, now) -> list[str]:
+    """The Financial Owner's authorization. Everything here must hold; nothing is inferred from text the implementation agent could write."""
+    from datetime import datetime, timedelta, timezone
+    owner = record.get("financial_owner") if isinstance(record, dict) else None
+    attestation = record.get("owner_attestation") if isinstance(record, dict) else None
+    if not isinstance(owner, dict) or not isinstance(attestation, dict):
+        return ["OWNER_ATTESTATION_REQUIRED: the record carries no owner attestation (a SIGNED status is text, not a signature)"]
+    ssh = _attestation()
+    bad = []
+    key, login = owner.get("signing_key"), owner.get("identity_reference")
+    fingerprint = ssh.fingerprint(key)
+    if fingerprint is None:
+        bad.append("OWNER_KEY_INVALID: financial_owner.signing_key is not a strict ssh-ed25519 public key")
+    elif owner.get("signing_key_fingerprint") != fingerprint:
+        bad.append("OWNER_KEY_INVALID: the recorded fingerprint is not the fingerprint of the recorded key")
+    # who may act as Financial Owner is pinned in the reviewed registry, never by the record itself
+    owners = registry.get("financial_owners") if isinstance(registry, dict) and registry.get("schema") == GATE_R_REGISTRY_SCHEMA else None
+    if not isinstance(owners, list):
+        bad.append("OWNER_REGISTRY_UNAVAILABLE: no valid Financial Owner registry at the evaluated commit")
+    else:
+        entry = next((e for e in owners if isinstance(e, dict) and isinstance(e.get("login"), str) and isinstance(login, str)
+                      and e["login"].lower() == login.lower()), None)
+        if entry is None:
+            bad.append("OWNER_NOT_REGISTERED: the named Financial Owner is not in the reviewed Financial Owner registry")
+        elif fingerprint is None or fingerprint not in (entry.get("ssh_signing_key_fingerprints") or []):
+            bad.append("OWNER_KEY_NOT_REGISTERED: the signing key is not pinned for this Financial Owner in the reviewed registry")
+    if attestation.get("namespace") != GATE_R_OWNER_NAMESPACE:
+        bad.append("OWNER_ATTESTATION_INVALID: wrong namespace")
+    if not (isinstance(attestation.get("attestation_id"), str) and _ATTESTATION_ID.match(attestation["attestation_id"])):
+        bad.append("OWNER_ATTESTATION_INVALID: attestation_id must be a random 128-bit-or-longer lowercase hex string")
+    signed, expires = _utc(attestation.get("signed_at_utc")), _utc(attestation.get("expires_at_utc"))
+    current = now or datetime.now(timezone.utc)
+    if signed is None or expires is None:
+        bad.append("OWNER_ATTESTATION_INVALID: signed_at_utc and expires_at_utc must be UTC timestamps")
+    else:
+        if signed > current + timedelta(seconds=GATE_R_CLOCK_SKEW_SECONDS):
+            bad.append("OWNER_ATTESTATION_INVALID: signed in the future")
+        if expires <= signed or expires - signed > timedelta(days=GATE_R_MAX_VALIDITY_DAYS):
+            bad.append(f"OWNER_ATTESTATION_INVALID: validity must be positive and at most {GATE_R_MAX_VALIDITY_DAYS} days")
+        if current >= expires:
+            bad.append("OWNER_ATTESTATION_EXPIRED: the Financial Owner authorization has expired")
+    if not isinstance(mechanism_blobs, dict) or set(mechanism_blobs) != set(GATE_R_GOVERNANCE_FILES) or any(
+            not isinstance(v, str) for v in mechanism_blobs.values()):
+        bad.append("OWNER_ATTESTATION_UNVERIFIABLE: a Gate R mechanism file is missing at the evaluated commit")
+    elif fingerprint is not None:
+        bad += _signature_problems(attestation.get("signature"), owner_payload(record, mechanism_blobs), key)
     return bad
 
 
-def gate_r_review_violations(record, evidence, *, repo=None, ref: str = "HEAD") -> list[str]:
-    """Authenticity of the independent review against LIVE GitHub evidence. ``evidence`` None/malformed => rejected."""
+def _review_integrity_problems(reviews) -> list[str]:
+    """Review ordering must be establishable: unique integer ids, and submission times (if present) consistent with the id order."""
+    ids = [r.get("id") for r in reviews]
+    if any(not isinstance(i, int) or isinstance(i, bool) for i in ids) or len(set(ids)) != len(ids):
+        return ["REVIEW_ORDER_UNVERIFIABLE: review ids are missing, malformed or duplicated"]
+    stamps = [r.get("submitted_at") for r in sorted(reviews, key=lambda r: r["id"]) if r.get("submitted_at") is not None]
+    if any(not isinstance(s, str) for s in stamps) or stamps != sorted(stamps):
+        return ["REVIEW_ORDER_UNVERIFIABLE: review submission times are inconsistent with review ids"]
+    return []
+
+
+_BINDING_MEMO: dict = {}
+
+
+def _commit_binding_problems(root, head: str, commit: str) -> list[str]:
+    """Is the reviewed commit an ancestor of the evaluated one, with the twelve blobs and every mechanism file byte-identical? Immutable per SHA pair."""
+    key = (str(root), head, commit)
+    if key not in _BINDING_MEMO:
+        bad = []
+        if subprocess.run(["git", "merge-base", "--is-ancestor", commit, head], cwd=str(root), capture_output=True).returncode != 0:
+            bad.append("STALE_REVIEW: the reviewed commit is not an ancestor of the evaluated ref")
+        for path, pin in RC7B_CANDIDATE_AUTHORITIES.items():
+            if blob(path, repo=root, ref=commit) != pin:
+                bad.append(f"STALE_REVIEW: {path} at the reviewed commit is not the accepted blob")
+        # The review also covers the Gate R mechanism itself: validator, verifier, wiring, provenance proof, registry and tests must be
+        # byte-identical to what the reviewer saw.
+        for path in GATE_R_GOVERNANCE_FILES:
+            at_review, now = blob(path, repo=root, ref=commit), blob(path, repo=root, ref=head)
+            if at_review is None or at_review != now:
+                bad.append(f"STALE_REVIEW: governance file {path} differs from (or is absent at) the reviewed commit")
+        _BINDING_MEMO[key] = bad
+    return list(_BINDING_MEMO[key])
+
+
+def gate_r_review_violations(record, evidence, *, repo=None, ref: str = "HEAD", fetch_error=None) -> list[str]:
+    """Authenticity of the independent review and live owner-key evidence against COMPLETE GitHub data. Missing/partial/malformed => rejected."""
     root = repo or ROOT
     if not isinstance(record, dict) or not isinstance(record.get("github_review"), dict):
         return ["no GitHub review is referenced"]
-    if not isinstance(evidence, dict) or not isinstance(evidence.get("reviews"), list) or not isinstance(evidence.get("pull"), dict):
-        return ["REVIEW_EVIDENCE_UNVERIFIABLE: the GitHub review could not be fetched or is malformed"]
+    if (not isinstance(evidence, dict) or not isinstance(evidence.get("reviews"), list) or not isinstance(evidence.get("pull"), dict)
+            or any(not isinstance(r, dict) for r in evidence["reviews"])):
+        return [f"REVIEW_EVIDENCE_UNVERIFIABLE[{fetch_error or 'UNVERIFIABLE'}]: the GitHub review history could not be fetched completely or is malformed"]
+    head = _git(root, "rev-parse", ref) or ref
     ref_review = record["github_review"]
-    matches = [r for r in evidence["reviews"] if isinstance(r, dict) and r.get("id") == ref_review.get("review_id")]
+    bad = _review_integrity_problems(evidence["reviews"])
+    if bad:
+        return bad
+    matches = [r for r in evidence["reviews"] if r.get("id") == ref_review.get("review_id")]
     if len(matches) != 1:
-        return ["REVIEW_EVIDENCE_UNVERIFIABLE: the referenced GitHub review was not found"]
+        return ["REVIEW_EVIDENCE_UNVERIFIABLE[NOT_FOUND]: the referenced GitHub review was not found in the complete review history"]
     review, pull = matches[0], evidence["pull"]
-    bad = []
     login = (review.get("user") or {}).get("login") if isinstance(review.get("user"), dict) else None
     reviewer = record["independent_reviewer"]["identity_reference"]
     owner = record["financial_owner"]["identity_reference"]
@@ -384,12 +593,20 @@ def gate_r_review_violations(record, evidence, *, repo=None, ref: str = "HEAD") 
     if review.get("state") != "APPROVED":
         bad.append("the GitHub review is not an APPROVED review")
     # A later decisive review by the same reviewer (CHANGES_REQUESTED, DISMISSED or a newer APPROVED on other content) supersedes this one.
-    later = [r for r in evidence["reviews"] if isinstance(r, dict) and isinstance(r.get("user"), dict) and isinstance(login, str)
-             and str(r["user"].get("login", "")).lower() == login.lower() and r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
-             and (not isinstance(r.get("id"), int) or isinstance(r.get("id"), bool) or not isinstance(review.get("id"), int) or r["id"] > review["id"])
-             and r is not review]
+    later = [r for r in evidence["reviews"] if isinstance(r.get("user"), dict) and isinstance(login, str)
+             and str(r["user"].get("login", "")).lower() == login.lower() and r.get("state") in GATE_R_DECISIVE_STATES and r["id"] > review["id"]]
     if later:
-        bad.append("SUPERSEDED_REVIEW: the reviewer submitted a later decisive review, or review ordering is unverifiable")
+        bad.append("SUPERSEDED_REVIEW: the reviewer submitted a later decisive review")
+    # Any authorized reviewer's latest decisive review being CHANGES_REQUESTED blocks Gate R (fail closed). GitHub branch protection is separate
+    # and is neither read nor changed here.
+    latest: dict = {}
+    for r in sorted(evidence["reviews"], key=lambda r: r["id"]):
+        who = (r.get("user") or {}).get("login") if isinstance(r.get("user"), dict) else None
+        if isinstance(who, str) and r.get("state") in GATE_R_DECISIVE_STATES:
+            latest[who.lower()] = r
+    for who, r in latest.items():
+        if r.get("state") == "CHANGES_REQUESTED" and r.get("author_association") in GATE_R_REVIEWER_ASSOCIATIONS:
+            bad.append(f"UNRESOLVED_CHANGES_REQUESTED: {who} has an unresolved change request")
     if not isinstance(login, str) or login.lower() != reviewer.lower() or login.lower() != str(ref_review.get("reviewer_login")).lower():
         bad.append("the GitHub review was not written by the named independent reviewer")
     if not isinstance(author, str) or not author or login is None or login.lower() == author.lower():
@@ -400,64 +617,127 @@ def gate_r_review_violations(record, evidence, *, repo=None, ref: str = "HEAD") 
         bad.append("the reviewer has no OWNER/MEMBER/COLLABORATOR association with the repository")
     if pull.get("number") != GATE_R_PULL_NUMBER:
         bad.append("the evidence is not about the integration PR")
+    # The owner's signing key must STILL be registered on the owner's GitHub account: removing the key revokes the authorization.
+    keys = evidence.get("owner_signing_keys")
+    pub = _attestation().public_key_from_line(record["financial_owner"].get("signing_key"))
+    if not isinstance(keys, list) or pub is None or not any(_attestation().public_key_from_line(k) == pub for k in keys):
+        bad.append("OWNER_KEY_REVOKED_OR_UNVERIFIABLE: the owner's signing key is not currently registered on the owner's GitHub account")
     commit = review.get("commit_id")
     if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         return bad + ["the GitHub review names no commit"]
-    if subprocess.run(["git", "merge-base", "--is-ancestor", commit, ref], cwd=str(root), capture_output=True).returncode != 0:
-        bad.append("STALE_REVIEW: the reviewed commit is not an ancestor of the evaluated ref")
-    for path, pin in RC7B_CANDIDATE_AUTHORITIES.items():
-        if blob(path, repo=root, ref=commit) != pin:
-            bad.append(f"STALE_REVIEW: {path} at the reviewed commit is not the accepted blob")
-    # The review also covers the Gate R mechanism itself: validator and guard wiring must be byte-identical to what the reviewer saw.
-    for path in GATE_R_GOVERNANCE_FILES:
-        at_review, now = blob(path, repo=root, ref=commit), blob(path, repo=root, ref=ref)
-        if at_review is None or at_review != now:
-            bad.append(f"STALE_REVIEW: governance file {path} differs from (or is absent at) the reviewed commit")
-    return bad
+    return bad + _commit_binding_problems(root, head, commit)
 
 
-def gate_r_violations(*, repo=None, ref: str = "HEAD", fetcher=None) -> list[str]:
-    """Everything that must hold for Gate R. [] means the release-closed candidate boundary is authorized (nothing more)."""
-    facts = collect(repo=repo, ref=ref)
-    bad = content_violations(facts)
-    record_text = _git(repo or ROOT, "show", f"{ref}:{GATE_R_RECORD}")
+_STATIC_MEMO: dict = {}
+
+
+def _static_facts(root, head: str) -> dict:
+    """Everything derived from immutable Git objects of ONE commit. Content-addressed, so memoising per (repository, SHA) cannot go stale."""
+    key = (str(root), head)
+    if key not in _STATIC_MEMO:
+        record_text = _git(root, "show", f"{head}:{GATE_R_RECORD}")
+        try:
+            record = json.loads(record_text) if record_text is not None else None
+        except ValueError:
+            record = "malformed"
+        registry_text = _git(root, "show", f"{head}:{GATE_R_REGISTRY}")
+        try:
+            registry = json.loads(registry_text) if registry_text is not None else None
+        except ValueError:
+            registry = None
+        _STATIC_MEMO[key] = {"content": content_violations(collect(repo=root, ref=head)), "record": record, "registry": registry,
+                             "mechanism_blobs": {p: blob(p, repo=root, ref=head) for p in GATE_R_GOVERNANCE_FILES}}
+    return _STATIC_MEMO[key]
+
+
+_EVIDENCE_CACHE: dict = {}
+
+
+def _clock() -> float:
+    import time
+    return time.monotonic()
+
+
+def _fetch_evidence(fetcher, record, fresh: bool):
+    """(evidence, error_kind). Only a successful default-fetcher result is cached, and only for ``GATE_R_EVIDENCE_TTL_SECONDS``; failures never are."""
+    pull_number = record["github_review"]["pull_number"]
+    owner = record["financial_owner"]["identity_reference"]
+    use_cache = fetcher is None and not fresh
+    key = (pull_number, str(owner).lower())
+    if use_cache:
+        hit = _EVIDENCE_CACHE.get(key)
+        if hit is not None and 0 <= _clock() - hit[0] < GATE_R_EVIDENCE_TTL_SECONDS:
+            return hit[1], None
     try:
-        record = json.loads(record_text) if record_text is not None else None
-    except ValueError:
-        record = "malformed"
-    bad += gate_r_record_violations(record)
+        evidence = (fetcher or github_review_fetcher)(pull_number, owner)
+    except GateRFetchError as exc:
+        return None, exc.kind
+    except Exception:                                                        # noqa: BLE001 - unverifiable evidence must never raise into approval
+        return None, "UNVERIFIABLE"
+    if evidence is None:
+        return None, "UNVERIFIABLE"
+    if use_cache:
+        _EVIDENCE_CACHE[key] = (_clock(), evidence)
+    else:
+        _EVIDENCE_CACHE.pop(key, None)
+    return evidence, None
+
+
+def invalidate_gate_r_evidence() -> None:
+    _EVIDENCE_CACHE.clear()
+
+
+def gate_r_violations(*, repo=None, ref: str = "HEAD", fetcher=None, fresh: bool = False, now=None) -> list[str]:
+    """Everything that must hold for Gate R. [] means the release-closed candidate boundary is authorized (nothing more).
+
+    ``fresh=True`` bypasses the evidence cache and must be used at every approval or merge decision boundary."""
+    root = repo or ROOT
+    head = _git(root, "rev-parse", ref)
+    if head is None:
+        return ["GATE_R_REF_UNRESOLVABLE: the evaluated ref does not resolve"]
+    facts = _static_facts(root, head)
+    bad = list(facts["content"])
+    bad += gate_r_record_violations(facts["record"], registry=facts["registry"], mechanism_blobs=facts["mechanism_blobs"], now=now)
     if bad:
         return bad                                   # never touch the network for a record that is already invalid
-    evidence = (fetcher or github_review_fetcher)(record["github_review"]["pull_number"])
-    return gate_r_review_violations(record, evidence, repo=repo, ref=ref)
+    evidence, kind = _fetch_evidence(fetcher, facts["record"], fresh)
+    return gate_r_review_violations(facts["record"], evidence, repo=root, ref=head, fetch_error=kind)
 
 
 def gate_r_scope_exempt(path: str, *, repo=None, ref: str = "HEAD", fetcher=None) -> bool:
     """Frozen-scope recognition for the CURRENT-authority guards: one of the twelve exact paths, and only under an active Gate R (which itself
-    requires the whole exact candidate, a signed record and an authentic independent review). NOT an approval, NOT a release, NOT a pin: it is
-    never consulted by ``approved_frozen_path`` or ``released_engine_authority_matches``."""
+    requires the whole exact candidate, an authentic owner attestation and an authentic independent review). NOT an approval, NOT a release, NOT a pin:
+    it is never consulted by ``approved_frozen_path`` or ``released_engine_authority_matches``."""
     return path in RC7B_CANDIDATE_AUTHORITIES and gate_r_active(repo=repo, ref=ref, fetcher=fetcher)
 
 
-_GATE_R_CACHE: dict = {}
-
-
-def gate_r_active(*, repo=None, ref: str = "HEAD", fetcher=None) -> bool:
+def gate_r_active(*, repo=None, ref: str = "HEAD", fetcher=None, fresh: bool = False) -> bool:
     """True only when :func:`gate_r_violations` is empty. Fails closed on any error. Cheap when no record is committed (no network)."""
     try:
         root = repo or ROOT
         head = _git(root, "rev-parse", ref)
-        if head is None or _git(root, "cat-file", "-e", f"{ref}:{GATE_R_RECORD}") is None:
+        if head is None or _git(root, "cat-file", "-e", f"{head}:{GATE_R_RECORD}") is None:
             return False                                # no committed record: reject without any network access
-        key = (str(root), head)
-        if fetcher is None and key in _GATE_R_CACHE:
-            return _GATE_R_CACHE[key]
-        result = gate_r_violations(repo=repo, ref=ref, fetcher=fetcher) == []
-        if fetcher is None:
-            _GATE_R_CACHE[key] = result
-        return result
-    except Exception:                                # noqa: BLE001 - fail closed
+        return gate_r_violations(repo=repo, ref=head, fetcher=fetcher, fresh=fresh) == []
+    except Exception:                                    # noqa: BLE001 - fail closed
         return False
+
+
+def _main(argv) -> int:
+    """``python tests/rc7b_quarterly_candidate_authority.py owner-payload <record.json> [ref]`` writes the exact bytes the Financial Owner must sign
+    (``ssh-keygen -Y sign -n finco-rc7b-gate-r-owner-v1 -f <owner key> payload.bin``). It signs nothing and decides nothing."""
+    import sys
+    if len(argv) < 2 or argv[0] != "owner-payload":
+        sys.stderr.write("usage: owner-payload <record.json> [ref]\n")
+        return 2
+    record = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+    ref = argv[2] if len(argv) > 2 else "HEAD"
+    mechanism = {p: blob(p, ref=ref) for p in GATE_R_GOVERNANCE_FILES}
+    if any(v is None for v in mechanism.values()):
+        sys.stderr.write("a Gate R mechanism file is missing at the given ref\n")
+        return 1
+    sys.stdout.buffer.write(owner_payload(record, mechanism))
+    return 0
 
 
 def superseded_by_gate_r(path: str, *, repo=None, ref: str = "HEAD", fetcher=None) -> bool:
@@ -478,3 +758,8 @@ def without_gate_r_superseded(paths, *, repo=None, ref: str = "HEAD", fetcher=No
     """``paths`` minus those superseded by an ACTIVE Gate R (identity when Gate R is inactive). Used by the current-authority guards on the OUTPUT of
     ``unapproved_engine_changes`` so that function itself stays byte-identical to its historical checkpoint."""
     return [p for p in paths if not superseded_by_gate_r(p, repo=repo, ref=ref, fetcher=fetcher)]
+
+
+if __name__ == "__main__":
+    import sys
+    raise SystemExit(_main(sys.argv[1:]))

@@ -1,0 +1,5 @@
+{
+  "_comment": "Who may act as Financial Owner for Gate R, and which SSH signing keys are pinned for them. EMPTY BY DESIGN: with no entry no owner attestation can ever verify, so Gate R stays closed. A human must add an entry in a reviewed change BEFORE the independent review of the mechanism (this file is part of the reviewed mechanism and of the bytes the owner signs). Each fingerprint is the OpenSSH SHA256 fingerprint of an ssh-ed25519 key that ALSO has to be listed among the owner's GitHub SSH signing keys at validation time (removing it there revokes the authorization). The key must never exist in the implementation agent's environment. This registry authorizes nothing by itself.",
+  "schema": "finco.rc7b.gate-r-authority-registry.v1",
+  "financial_owners": []
+}

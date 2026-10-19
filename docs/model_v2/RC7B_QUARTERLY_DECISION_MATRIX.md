@@ -43,3 +43,11 @@ behind that gate, the combination is refused instead of being given a default.
 
 Until 1-4 are recorded by the owner, the integration PR stays Draft and
 `QUARTERLY_ADMISSION_ENABLED` stays `False`.
+
+## D-03 — independent review finding (UNRESOLVED Financial Owner decision)
+
+The independent review of PR #320 recorded that moving from 6/6 to 3/3 changes the **modeled economic horizon** in the reviewed Solar example, producing approximately **1.07% additional revenue** in the 3/3 run relative to the 6/6 run. The 6/6 behaviour itself is unchanged and bit-identical to `main`; the difference arises because the 3/3 candidate uses a fixed count of operating rows (D-03 candidate value) rather than an anniversary horizon.
+
+* This is **not** resolved by Gate R, by the independent content review, or by this correction. D-03 remains **OPEN**; Gate R's record decides no owner decision (D-06/D-07 DEFERRED, the rest `NOT_DECIDED_BY_THIS_RECORD`).
+* The economic horizon was **not modified**. The quarterly candidate must **not** be presented as economically equivalent to the semi-annual model until the Financial Owner approves the horizon and the related conventions (stub treatment, depreciation tail, terminal returns).
+* **Before any quarterly activation, product admission or release** the Financial Owner must decide D-03 explicitly (accept the fixed-count horizon with the disclosed difference, or require the dated anniversary horizon with an explicit terminal stub), and the decision must be recorded in the separate financial acceptance record — never in the Gate R candidate-boundary record.
