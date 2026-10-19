@@ -1,0 +1,31 @@
+{
+  "base": "5996453b8d5bbfaa48bc06922fc6963cf94d2f84",
+  "review_status": "UNREVIEWED_PROPOSAL_BYTES_ONLY",
+  "financial_owner_approved": false,
+  "precision_approved": false,
+  "failure_equivalence_proved": false,
+  "release_approved": false,
+  "production_activation": false,
+  "files": {
+    "financial_engine/financing/project.py": {
+      "predecessor": "2e18a6e7c8ddfd85929d9b1906f91dd8858d0044",
+      "candidate": "7ab02aaec03fafb6017af2ab9be9f2fec2186dc8"
+    },
+    "financial_engine/financing/v9_candidate.py": {
+      "predecessor": null,
+      "candidate": "90eabcc3d2b3a03a972f7ef3967e978aa23d70cd"
+    },
+    "financial_engine/financing/v9_numerics.py": {
+      "predecessor": null,
+      "candidate": "7d0941039357c68ef920aa0b898bd53fdec5758a"
+    },
+    "financial_engine/shareholder_waterfall/model.py": {
+      "predecessor": "e3473e1a2064c8310e41b434da2b0aff9d5753b8",
+      "candidate": "68ee6da5421d92f2624187e9dddfe614a72ec5f5"
+    },
+    "app/services/production_financial_authority.py": {
+      "predecessor": "173991ca8107169672bbf977fe2fad91af520e9c",
+      "candidate": "2ed1e96b89e36e4e91283e913b49af9aad911337"
+    }
+  }
+}
