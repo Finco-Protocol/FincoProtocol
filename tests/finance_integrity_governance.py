@@ -102,7 +102,7 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
     from model_v2_governance import released_engine_authority_matches
     from ppa01_candidate_authority import frozen_scope_exempt as ppa01_candidate_exempt
     from radar_authority_governance import reviewed_radar_authority_matches
-    from rc7b_postmerge_successor import scope_exempt as rc7b_candidate_exempt
+    from quarterly_candidate_recognition import scope_exempt as quarterly_candidate_exempt
 
     changed = changed_paths_vs_main() if changed is None else changed
     # Exact-path, blob-pinned Developer Economics V1 authorities are the only
@@ -118,7 +118,7 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
         # RC-3 C2: the exact three-blob PPA-01 candidate (RELEASE-CLOSED, NOT approved, NOT released), recognised only while ALL three paths are
         # exactly the reviewed blobs. approved_frozen_path below deliberately does NOT include it: it is not a released exemption.
         and not ppa01_candidate_exempt(f, repo=_governance.REPO)   # same repo the released-authority check reads
-        and not rc7b_candidate_exempt(f, repo=_governance.REPO)    # RC-7B: exact twelve blobs, merged post-merge successor or active Gate R only (never approved_frozen_path)
+        and not quarterly_candidate_exempt(f, repo=_governance.REPO)    # quarterly candidate (RC-7B merged blobs or RC-7C), recognised only as a whole and never via approved_frozen_path
     )
 
 

@@ -1,7 +1,7 @@
 {
   "baseline_ref": "origin/main",
-  "baseline_sha": "bf0167a036a6e30d3225b901aeda1b353681171a",
-  "working_tree_head": "bf0167a036a6e30d3225b901aeda1b353681171a",
+  "baseline_sha": "162a3d70ea0cf5b15024ecbe5f7dec33f447a48d",
+  "working_tree_head": "9e60eddad7586035a06f276b8f1174ba537f348d",
   "verticals": {
     "solar": {
       "baseline_run_sha256": "fb6d351712c1e384a24d4ee550be96f391b00e15c7199407dad137d5813b4c30",

@@ -7,10 +7,14 @@ import pytest
 
 import tests.rc7b_quarterly_candidate_authority as A
 
+# The RC-7B exact-content contract describes the RC-7B candidate as merged by PR #320 and carried by main after PR #326 (immutable history). A later,
+# separately scoped candidate (RC-7C) has its own contract in tests/rc7c_candidate_successor.py and is not judged against the RC-7B blobs.
+RC7B_STATE_REF = "162a3d70ea0cf5b15024ecbe5f7dec33f447a48d"
+
 
 @pytest.fixture(scope="module")
 def facts():
-    return A.collect()
+    return A.collect(ref=RC7B_STATE_REF)
 
 
 def test_inventory_is_exact_and_documents_predecessors():
@@ -23,7 +27,7 @@ def test_inventory_is_exact_and_documents_predecessors():
 
 def test_current_content_is_recognised_but_not_approved_admitted_or_released(facts):
     assert A.content_violations(facts) == []
-    state = A.states()
+    state = A.states(ref=RC7B_STATE_REF)
     assert state["research_isolated"] and state["candidate_content_matches_exactly"]
     assert not state["candidate_is_financially_approved"]
     assert not state["candidate_is_product_admitted"] and not state["candidate_is_released"]
@@ -76,7 +80,7 @@ def test_exemption_is_path_exact_and_never_a_released_authority():
     from finance_integrity_governance import approved_frozen_path
     from model_v2_governance import released_engine_authority_matches
     for path in A.RC7B_CANDIDATE_AUTHORITIES:
-        assert A.frozen_scope_exempt(path)
+        assert A.frozen_scope_exempt(path, ref=RC7B_STATE_REF)
         assert not released_engine_authority_matches(path)
         assert not approved_frozen_path(path) or path in ("financial_engine/inputs.py",)
     for path in ("financial_engine/tax/engine.py", "finco_core/tax/engine.py", "app/workbook/registry.py"):

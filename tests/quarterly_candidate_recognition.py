@@ -1,0 +1,65 @@
+"""Canonical current-state recognition of the release-closed quarterly candidate for the current-authority guards.
+
+One import point instead of per-guard wiring. It answers: "is the tree under test exactly one of the recognised release-closed quarterly candidates?"
+
+* ``rc7b_postmerge_successor`` - the twelve RC-7B blobs as merged by PR #320 (recognised only while NOTHING in the twelve changes; unchanged contract), or
+  (pre-merge, never active in this repository) a complete authentic Gate R;
+* ``rc7c_candidate_successor`` - eight unchanged RC-7B blobs + the four explicitly pinned RC-7C blobs (candidate policy ``rc7c-quarterly-candidate-v2``).
+
+Recognition grants bytes on a branch/main ONLY. It is not Financial Owner approval, not D-01..D-12 approval, not Gate P, not product admission, not
+activation and not a financial release; ``approved_frozen_path`` and ``released_engine_authority_matches`` never consult it. The historical pin maps
+(M7 / PPA-01 / WF-04 / WF-07 / F3) are never rewritten: a recognised path is judged against ``candidate_blobs()``, every other path against its pin.
+"""
+from __future__ import annotations
+
+try:
+    import rc7b_postmerge_successor as rc7b
+    import rc7c_candidate_successor as rc7c
+    import rc7b_quarterly_candidate_authority as authority
+except ModuleNotFoundError:          # imported as ``tests.quarterly_candidate_recognition``
+    from tests import rc7b_postmerge_successor as rc7b
+    from tests import rc7c_candidate_successor as rc7c
+    from tests import rc7b_quarterly_candidate_authority as authority
+
+CANDIDATE_PATHS = tuple(authority.RC7B_CANDIDATE_AUTHORITIES)           # the same twelve protected paths in every recognised state
+
+
+def recognized_state(*, repo=None, ref: str = "HEAD", fetcher=None) -> str | None:
+    """``"RC7B"`` (twelve RC-7B blobs), ``"RC7C"`` (eight RC-7B + four RC-7C blobs) or None. The two are mutually exclusive by blob identity."""
+    if rc7b.candidate_recognized(repo=repo, ref=ref, fetcher=fetcher):
+        return "RC7B"
+    if rc7c.rc7c_recognized(repo=repo, ref=ref):
+        return "RC7C"
+    return None
+
+
+def candidate_recognized(*, repo=None, ref: str = "HEAD", fetcher=None) -> bool:
+    return recognized_state(repo=repo, ref=ref, fetcher=fetcher) is not None
+
+
+def candidate_blobs(*, repo=None, ref: str = "HEAD", fetcher=None) -> dict:
+    """Pinned blobs of the recognised state ({} when nothing is recognised)."""
+    state = recognized_state(repo=repo, ref=ref, fetcher=fetcher)
+    if state == "RC7B":
+        return dict(authority.RC7B_CANDIDATE_AUTHORITIES)
+    if state == "RC7C":
+        return dict(rc7c.RC7C_CANDIDATE_AUTHORITIES)
+    return {}
+
+
+def scope_exempt(path: str, *, repo=None, ref: str = "HEAD", fetcher=None) -> bool:
+    """One of the twelve exact paths while the whole recognised candidate is present. Never consulted by ``approved_frozen_path``."""
+    return path in CANDIDATE_PATHS and candidate_recognized(repo=repo, ref=ref, fetcher=fetcher)
+
+
+superseded = scope_exempt            # same predicate; the guards that compare against historical pins read better with this name
+
+
+def current_expected_blob(path: str, historical_pin, *, repo=None, ref: str = "HEAD", fetcher=None):
+    """The recognised candidate blob for a recognised path, otherwise the historical pin (which is never rewritten)."""
+    blobs = candidate_blobs(repo=repo, ref=ref, fetcher=fetcher)
+    return blobs[path] if path in blobs else historical_pin
+
+
+def without_superseded(paths, *, repo=None, ref: str = "HEAD", fetcher=None) -> list[str]:
+    return [p for p in paths if not superseded(p, repo=repo, ref=ref, fetcher=fetcher)]

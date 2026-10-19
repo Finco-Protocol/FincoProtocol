@@ -45,12 +45,12 @@ def test_exact_seven_content_pins_only():
         assert governance.WF07_REVENUE_AUTHORITIES[path] == blob
     # Current content: five paths are still exactly the released authority ...
     from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
-    from rc7b_postmerge_successor import current_expected_blob, superseded as superseded_by_gate_r
+    from quarterly_candidate_recognition import candidate_blobs, current_expected_blob, superseded as candidate_superseded
     for path in PATHS - M7_PATHS - PPA01_PATHS:
-        if superseded_by_gate_r(path, repo=governance.REPO):
-            # RC-7B: an ACTIVE Gate R (signed record + authentic independent review + exact twelve blobs) recognises the superseding candidate.
+        if candidate_superseded(path, repo=governance.REPO):
+            # RC-7B: a recognised release-closed quarterly candidate (exact blobs, merge ancestry, closed flag) is the superseding candidate.
             # It is a release-closed candidate only: never the released pin, never an approved frozen path.
-            assert git(governance.REPO, "rev-parse", "HEAD:" + path) == RC7B_CANDIDATE_AUTHORITIES[path]
+            assert git(governance.REPO, "rev-parse", "HEAD:" + path) == candidate_blobs(repo=governance.REPO)[path]
             assert authority_states.authority_state(path) == authority_states.INTEGRATED_RELEASE_CLOSED_CANDIDATE
             assert not governance.released_engine_authority_matches(path)
             assert not approved_frozen_path(path)
@@ -74,10 +74,10 @@ def test_exact_seven_content_pins_only():
         assert not governance.released_engine_authority_matches(path)
         assert not approved_frozen_path(path)
     assert authority_states.release_closed_violations() == []
-    # the released-authority guard still rejects the candidate; a path superseded by an ACTIVE Gate R is recognised instead (never released)
-    from rc7b_postmerge_successor import without_superseded as without_gate_r_superseded
-    assert without_gate_r_superseded(unapproved_engine_changes(list(PATHS)), repo=governance.REPO) == sorted(
-        p for p in M7_PATHS if not superseded_by_gate_r(p, repo=governance.REPO))
+    # the released-authority guard still rejects the candidate; a path superseded by a recognised release-closed candidate is recognised instead (never released)
+    from quarterly_candidate_recognition import without_superseded
+    assert without_superseded(unapproved_engine_changes(list(PATHS)), repo=governance.REPO) == sorted(
+        p for p in M7_PATHS if not candidate_superseded(p, repo=governance.REPO))
     assert strictly_frozen_changes(list(PATHS)) == []
 
 

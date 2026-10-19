@@ -87,15 +87,16 @@ recommended choice. Status of every item: **OPEN** unless stated.
 ## 5. Activation-ready checklist (release stays CLOSED)
 
 - [ ] Financial Owner records D-01…D-05, D-08…D-12 and D-03-b in the separate financial-acceptance record (not the Gate R record).
-- [ ] RC-7C governance successor adopted (§6) and independent reviewer approval of the exact changed blobs.
-- [ ] Owner-only Gate R (or normal two-party review) completed under `RC7B_GATE_R_REVIEW_PROCESS.md`.
+- [x] RC-7C release-closed candidate recognition (bytes only, §6) is in place — not an approval.
+- [ ] Genuine Financial Owner authorization of the four RC-7C blobs, and independent review of those exact blobs (the PR #320 decision does not cover them).
 - [ ] Staging acceptance (§4) executed by the Financial Owner delegate.
 - [ ] Only then a separate PR flips `ACTIVATION_ENABLED` (not part of RC-7C).
 
-## 6. Governance collateral (honest status)
+## 6. Governance status (see `RC7C_GOVERNANCE_STATUS.md`, the canonical current-state document)
 
-RC-7C necessarily changes four **pinned** RC-7B blobs (`calendar_policy.py`, `period_engine.py`, `orchestrator.py`, `project_adapter.py`). The exact-content
-guards that pin those blobs (RC-7B candidate manifest, Gate R twelve-blob check, `approved_frozen_path`/`unapproved_engine_changes` checkpoints,
-financing/F3 governance) are historical, owner-controlled pins; they were **not** edited, weakened or bypassed in this PR. Results of the governance ring
-and the new red guards versus the main baseline are recorded in `RC7C_GOVERNANCE_STATUS.md`. A successor pin table for the changed blobs requires the same
-owner/independent-review process as RC-7B and is **an outstanding release blocker**, not something an implementation agent may self-approve.
+RC-7C changes four of the twelve RC-7B blobs. The PR #326 post-merge successor deliberately recognises only the original twelve and is **not** widened;
+a separate, explicitly scoped RC-7C candidate successor (`tests/rc7c_candidate_successor.py`) recognises eight unchanged RC-7B blobs + the four pinned
+RC-7C blobs, with the PR #320 merge ancestry, no other financial/core/domain change, the exact policy version and `ACTIVATION_ENABLED = False`.
+Recognition is bytes-only and release-closed. **It is not approval:** the Financial Owner decision that accompanied the merge of PR #320 does not cover the
+four RC-7C blobs, and none of D-01…D-12, D-03-b, Gate P, product admission or release is decided by it. The genuine outstanding authorization is the
+Financial Owner's decision on the four RC-7C blobs and on the open D-codes above, with independent review of those exact blobs.

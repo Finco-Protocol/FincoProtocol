@@ -1,3 +1,5 @@
+> **Historical (retained evidence)** of PR #326. It recognises only the twelve original RC-7B blobs and is unchanged. The RC-7C candidate has its own scoped successor; current state: `docs/model_v2/RC7C_GOVERNANCE_STATUS.md`.
+
 # RC-7B post-merge governance recovery (main green after PR #320)
 
 Starting main: `bf0167a036a6e30d3225b901aeda1b353681171a` — merge commit of PR #320, parents `5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d`

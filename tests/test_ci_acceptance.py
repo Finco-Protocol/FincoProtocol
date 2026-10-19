@@ -258,16 +258,26 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
             assert git("cat-file", "-t", actual) == "blob", f"Missing PPA-01 candidate blob: {path}"
             assert actual == pin, f"Unreviewed PPA-01 candidate content: {path}"
         return
-    # RC-7B Gate R: the twelve-blob quarterly candidate slice is recognised ONLY while a complete Gate R is active (signed Financial Owner record,
-    # authentic independent GitHub review of this exact content and mechanism, exact blobs, literal ACTIVATION_ENABLED=False). Recognition of bytes
-    # only: no financial approval, admission, release or merge. Without Gate R this slice falls through to the failure below, exactly as before.
+    # RC-7B: the twelve-blob quarterly candidate slice is recognised ONLY while the merged release-closed candidate is exactly present (PR #320 merge
+    # ancestry, exact blobs, literal ACTIVATION_ENABLED=False) or a complete Gate R is active. Recognition of bytes only: no financial approval,
+    # admission, release or merge. Otherwise this slice falls through to the failure below, exactly as before.
     from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
-    from rc7b_postmerge_successor import candidate_recognized as gate_r_active
-    if protected == set(RC7B_CANDIDATE_AUTHORITIES) and gate_r_active(repo=root, ref=head):
-        for path, pin in RC7B_CANDIDATE_AUTHORITIES.items():
+    from quarterly_candidate_recognition import candidate_blobs, candidate_recognized
+    if protected == set(RC7B_CANDIDATE_AUTHORITIES) and candidate_recognized(repo=root, ref=head):
+        for path, pin in candidate_blobs(repo=root, ref=head).items():
             actual = git("rev-parse", "--verify", f"{head}:{path}")
             assert git("cat-file", "-t", actual) == "blob", f"Missing RC-7B candidate blob: {path}"
             assert actual == pin, f"Unreviewed RC-7B candidate content: {path}"
+        return
+    # RC-7C: against a main that already carries the merged RC-7B candidate, the release-closed RC-7C candidate changes exactly four of the twelve
+    # blobs. Recognised only while the whole RC-7C contract holds (eight unchanged RC-7B blobs, four pinned RC-7C blobs, no other protected change,
+    # closed flag, merge ancestry). Bytes only: not financial approval, admission or release. Any other four-path diff falls through to the failure.
+    from rc7c_candidate_successor import RC7C_CANDIDATE_AUTHORITIES, RC7C_CHANGED_PATHS, rc7c_recognized
+    if protected == set(RC7C_CHANGED_PATHS) and rc7c_recognized(repo=root, ref=head):
+        for path in sorted(protected):
+            actual = git("rev-parse", "--verify", f"{head}:{path}")
+            assert git("cat-file", "-t", actual) == "blob", f"Missing RC-7C candidate blob: {path}"
+            assert actual == RC7C_CANDIDATE_AUTHORITIES[path], f"Unreviewed RC-7C candidate content: {path}"
         return
     assert protected == _F3_5_REVIEWED_PROTECTED_PATHS, f"Unapproved or incomplete protected diff: {sorted(protected)}"
     for path in sorted(protected):

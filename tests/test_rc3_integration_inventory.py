@@ -430,16 +430,16 @@ def facts():
 
 
 def _gate_r_adjusted(facts):
-    """RC-7B Gate R: while a complete, authentic Gate R is ACTIVE, the two shared M7 paths (orchestrator, project_inputs) may be exactly the
-    superseding quarterly candidate blob. They are then judged as the pinned M7 blob they replace, after proving they are the Gate R candidate blob.
-    Without an active Gate R, or for any other blob/value, the facts are returned unchanged and the original pins reject."""
+    """While a release-closed quarterly candidate is recognised (RC-7B as merged by PR #320, or RC-7C), the two shared M7 paths (orchestrator,
+    project_inputs) may be exactly that candidate's blob. They are then judged as the pinned M7 blob they replace, after proving they are the candidate blob.
+    Without a recognised candidate, or for any other blob/value, the facts are returned unchanged and the original pins reject."""
     from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
-    from rc7b_postmerge_successor import candidate_recognized as gate_r_active
-    if not gate_r_active():
+    from quarterly_candidate_recognition import candidate_blobs, candidate_recognized
+    if not candidate_recognized():
         return facts
     adjusted = copy.deepcopy(facts)
     for path in set(M7_PROTECTED_BLOBS) & set(RC7B_CANDIDATE_AUTHORITIES):
-        if adjusted["m7_blobs_at_head"].get(path) == RC7B_CANDIDATE_AUTHORITIES[path]:
+        if adjusted["m7_blobs_at_head"].get(path) == candidate_blobs()[path]:
             adjusted["m7_blobs_at_head"][path] = M7_PROTECTED_BLOBS[path]
     return adjusted
 

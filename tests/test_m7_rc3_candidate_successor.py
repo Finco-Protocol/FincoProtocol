@@ -55,15 +55,15 @@ def _bad(facts, fn, **changes):
 def test_the_integrated_content_is_exactly_the_eleven_reviewed_blobs(facts):
     observed = copy.deepcopy(facts)
     from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
-    from rc7b_postmerge_successor import candidate_recognized as gate_r_active
-    if gate_r_active():
-        # RC-7B Gate R is ACTIVE (signed Financial Owner record + authentic independent review + exact twelve blobs): the superseding quarterly
-        # candidate may replace exactly the two shared M7 blobs and add the other ten listed paths. Each superseded path must be EXACTLY the
-        # RC-7B candidate blob; the remaining nine M7 blobs are still judged byte-for-byte against the reviewed M7 pins. Nothing else is exempt.
+    from quarterly_candidate_recognition import candidate_blobs, candidate_recognized
+    if candidate_recognized():
+        # A release-closed quarterly candidate is recognised (the RC-7B candidate merged by PR #320, or the RC-7C candidate; exact blobs, merge
+        # ancestry, closed flag): it may replace exactly the two shared M7 blobs and add the other ten listed paths. Each superseded path must be
+        # EXACTLY the recognised candidate blob; the remaining nine M7 blobs are still judged byte-for-byte against the reviewed M7 pins.
         shared = sorted(p for p in S.M7_RC3_CANDIDATE_AUTHORITIES if p in RC7B_CANDIDATE_AUTHORITIES)
         assert shared == ["financial_engine/adapters/project_inputs.py", "financial_engine/orchestrator.py"]
         for path in shared:
-            assert observed["blobs"][path] == RC7B_CANDIDATE_AUTHORITIES[path]
+            assert observed["blobs"][path] == candidate_blobs()[path]
             observed["blobs"][path] = S.M7_RC3_CANDIDATE_AUTHORITIES[path]
         # the ten non-M7 quarterly paths and the separately recognised PPA-01 slice are not M7 changes; the two shared M7 paths stay listed
         separate = (set(RC7B_CANDIDATE_AUTHORITIES) - set(S.M7_RC3_CANDIDATE_AUTHORITIES)) | set(ppa01.PPA01_CANDIDATE_AUTHORITIES)

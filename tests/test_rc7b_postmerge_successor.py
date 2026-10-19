@@ -21,6 +21,8 @@ import rc7b_quarterly_candidate_authority as A
 
 ROOT = Path(__file__).resolve().parent.parent
 TWELVE = tuple(A.RC7B_CANDIDATE_AUTHORITIES)
+# The RC-7B successor describes the merged RC-7B candidate: main after PR #326 (immutable). Later candidates (RC-7C) are NOT recognised by it.
+RC7B_STATE_REF = "162a3d70ea0cf5b15024ecbe5f7dec33f447a48d"
 RC7C_PATHS = ("finco_core/engine/calendar_policy.py", "finco_core/engine/period_engine.py",
               "financial_engine/orchestrator.py", "financial_engine/senior_debt/project_adapter.py")
 
@@ -35,7 +37,7 @@ def base_clone(tmp_path_factory):
     subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(clone)], check=True, capture_output=True)
     git(clone, "config", "user.name", "Synthetic")
     git(clone, "config", "user.email", "noreply@users.noreply.github.com")
-    head = git(ROOT, "rev-parse", "HEAD")
+    head = git(ROOT, "rev-parse", f"{RC7B_STATE_REF}^{{commit}}")
     git(clone, "checkout", "-q", "-B", "base", head)
     return clone, head
 
@@ -71,8 +73,8 @@ def assert_rejected(repo, fragment=None):
 # ── the repository as it is ─────────────────────────────────────────────────────
 
 def test_real_repository_is_the_recognised_release_closed_candidate_and_nothing_more():
-    assert S.postmerge_violations() == []
-    states = S.states()
+    assert S.postmerge_violations(ref=RC7B_STATE_REF) == []
+    states = S.states(ref=RC7B_STATE_REF)
     assert states["historical_pr320_integration_verified"] is True
     assert states["exact_rc7b_content_verified"] is True
     assert states["release_closed_candidate_recognized"] is True
@@ -86,10 +88,10 @@ def test_real_repository_is_the_recognised_release_closed_candidate_and_nothing_
 def test_the_twelve_blobs_equal_the_merged_pr_320_blobs_and_are_never_released_authority():
     assert len(TWELVE) == 12
     for path, pin in A.RC7B_CANDIDATE_AUTHORITIES.items():
-        assert git(ROOT, "rev-parse", f"HEAD:{path}") == pin
+        assert git(ROOT, "rev-parse", f"{RC7B_STATE_REF}:{path}") == pin
         assert git(ROOT, "rev-parse", f"{S.RC7B_MERGE_COMMIT}:{path}") == pin
         assert git(ROOT, "rev-parse", f"{S.RC7B_MERGED_PR_HEAD}:{path}") == pin
-        assert S.scope_exempt(path)
+        assert S.scope_exempt(path, ref=RC7B_STATE_REF)
     import finance_integrity_governance as fig
     import model_v2_governance as governance
     for path in TWELVE:

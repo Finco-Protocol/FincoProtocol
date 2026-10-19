@@ -58,6 +58,6 @@ the largest difference of production / OPEX / book depreciation of v2 against 6/
 
 ## 6/6 bit-identical proof
 
-`python tools/rc7b_semiannual_regression.py --baseline origin/main` (baseline `bf0167a036a6e30d3225b901aeda1b353681171a`, live main after PR #320):
+`python tools/rc7b_semiannual_regression.py --baseline origin/main` (baseline `162a3d70ea0cf5b15024ecbe5f7dec33f447a48d`, live main after PRs #320 and #326):
 Solar, Wind, Data Center and EV Charging — run tree, input dictionary, cache key and clean input fingerprint all identical, **maximum financial
 difference 0 (bit-identical)**. Full output: `RC7C_SEMIANNUAL_REGRESSION.json` (the candidate run executed on the working tree of this branch).
