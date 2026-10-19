@@ -149,14 +149,14 @@ def test_ce_real_repo_guards_green_against_current_main():
     ):
         # PR #183 (Tokenized Relative Value V1): the reviewed core module is
         # an explicit allowed-path rule; everything else stays frozen.
-        changed = parallel_stream_frozen_changes(
-            frozen_path, main_ref="origin/main", head_ref=__import__("rc3_historical_anchor").anchored_head(), repo=str(REPO),
-            allowed={"finco_radar/venues/relative_value.py"})
+        from stream_scope_proof import verified_delta
+        # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+        changed = [p for p in verified_delta("test_parallel_stream_frozen_diff", frozen_path)
+                   if p != "finco_radar/venues/relative_value.py"]
         assert changed == [], (frozen_path, changed)
     # financial_engine/ may differ only in the explicitly approved modules (shared allow-list).
     import finance_integrity_governance as fig
-    from rc3_historical_anchor import changed_paths as _anchored
-    assert fig.unapproved_engine_changes(_anchored()) == []
+    assert fig.unapproved_engine_changes(verified_delta("test_parallel_stream_frozen_diff", "financial_engine")) == []
 
 
 def test_ce_no_frozen_production_namespace_modified_by_this_fix():

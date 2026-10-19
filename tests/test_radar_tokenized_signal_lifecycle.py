@@ -317,9 +317,11 @@ def test_read_path_has_no_provider_calls_no_write_and_no_notifications(store, mo
 def test_frozen_namespaces_and_parallel_r4_isolation():
     from finance_integrity_governance import strictly_frozen_changes
     from model_v2_governance import model_v2_frozen_violations
-    from rc3_historical_anchor import changed_paths as _anchored
-    assert strictly_frozen_changes(_anchored()) == []
-    assert model_v2_frozen_violations(_anchored()) == []
+    from stream_scope_proof import verified_delta
+    # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    delta = verified_delta("test_radar_tokenized_signal_lifecycle", ".")
+    assert strictly_frozen_changes(delta) == []
+    assert model_v2_frozen_violations(delta) == []
 
 
 def test_comparison_unit_policy_drift_never_proves_clearing(store):

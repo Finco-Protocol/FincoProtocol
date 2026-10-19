@@ -833,14 +833,12 @@ def test_revenue_and_engine_files_untouched():
     from pathlib import Path
 
     repo = Path(__file__).resolve().parents[1]
-    changed = subprocess.run(
-        ["git", "diff", "--name-only", "origin/epic/model-saas-v2", __import__("rc3_historical_anchor").anchored_head(), "--",
-         "domain/revenue", "financial_engine", "finco_core", "domain/analytics"],
-        capture_output=True, text=True, cwd=str(repo)).stdout.split()
+    from stream_scope_proof import verified_delta
+    # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    changed = verified_delta("test_model_v2_cost_templates", "domain/revenue", "financial_engine", "finco_core", "domain/analytics")
     # financial_engine modules on the shared approved allow-list are exempt; nothing else is.
     from finance_integrity_governance import approved_frozen_path
-    from rc3_historical_anchor import branch_side_only
-    changed = [p for p in branch_side_only(changed) if not approved_frozen_path(p)]
+    changed = [p for p in changed if not approved_frozen_path(p)]
     assert changed == [], changed
     # the new modules never import the engine or revenue contracts
     for module in ("app/services/cost_template/contracts.py",
