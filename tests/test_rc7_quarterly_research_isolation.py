@@ -13,15 +13,29 @@ from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# RC-7B Correction B (historical checkpoint, source-proven): this guard states PR #313's isolation claim - the research candidate changed
+# no production path. That claim is judged at the #313 merge commit against the #313 base, both immutable. Comparing the moving HEAD to the
+# #313 base made the claim fail for every later, separately governed change; CURRENT production authority is enforced by the live
+# frozen-namespace and financial-integrity guards, none of which this change relaxes.
+RESEARCH_BASE = "78e4c0edcc1bdb5013df79f11b3ba7b9c2151013"
+RESEARCH_MERGE = "5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d"
+PROTECTED_PATHS = ["financial_engine", "finco_core", "domain", "tests/model_v2_governance.py",
+                   "tests/finance_integrity_governance.py", "tests/m7_rc3_candidate_successor.py",
+                   "tests/ppa01_candidate_authority.py"]
+
+
 def test_protected_production_tree_and_historical_guards_are_exact_main():
-    paths = ["financial_engine", "finco_core", "domain", "tests/model_v2_governance.py",
-             "tests/finance_integrity_governance.py", "tests/m7_rc3_candidate_successor.py",
-             "tests/ppa01_candidate_authority.py"]
-    changed = subprocess.check_output(["git", "diff", "78e4c0edcc1bdb5013df79f11b3ba7b9c2151013",
-                                       "--name-only", "--", *paths], cwd=ROOT, text=True)
+    subprocess.check_call(["git", "merge-base", "--is-ancestor", RESEARCH_BASE, RESEARCH_MERGE], cwd=ROOT)
+    subprocess.check_call(["git", "merge-base", "--is-ancestor", RESEARCH_MERGE, "HEAD"], cwd=ROOT)
+    changed = subprocess.check_output(["git", "diff", RESEARCH_BASE, RESEARCH_MERGE,
+                                       "--name-only", "--", *PROTECTED_PATHS], cwd=ROOT, text=True)
     assert changed.strip() == ""
+    for research_only in ("financial_engine/quarterly/calendar.py", "financial_engine/quarterly/runtime.py"):
+        absent = subprocess.run(["git", "cat-file", "-e", f"{RESEARCH_MERGE}:{research_only}"], cwd=ROOT, capture_output=True)
+        assert absent.returncode != 0, research_only
     assert not (ROOT / "financial_engine/quarterly/calendar.py").exists()
     assert not (ROOT / "financial_engine/quarterly/runtime.py").exists()
+
 
 
 def test_no_production_source_imports_or_dynamically_names_research_package():
