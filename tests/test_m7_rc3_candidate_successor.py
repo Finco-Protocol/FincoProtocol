@@ -64,7 +64,10 @@ def test_the_integrated_content_is_exactly_the_eleven_reviewed_blobs(facts):
         for path in shared:
             assert observed["blobs"][path] == RC7B_CANDIDATE_AUTHORITIES[path]
             observed["blobs"][path] = S.M7_RC3_CANDIDATE_AUTHORITIES[path]
-        observed["frozen_changes"] = [p for p in observed["frozen_changes"] if p not in RC7B_CANDIDATE_AUTHORITIES]
+        # the ten non-M7 quarterly paths and the separately recognised PPA-01 slice are not M7 changes; the two shared M7 paths stay listed
+        separate = (set(RC7B_CANDIDATE_AUTHORITIES) - set(S.M7_RC3_CANDIDATE_AUTHORITIES)) | set(ppa01.PPA01_CANDIDATE_AUTHORITIES)
+        assert all(ppa01.blob(p) == pin for p, pin in ppa01.PPA01_CANDIDATE_AUTHORITIES.items())
+        observed["frozen_changes"] = [p for p in observed["frozen_changes"] if p not in separate]
     assert S.content_violations(observed) == []
     assert len(S.M7_RC3_CANDIDATE_AUTHORITIES) == 11
 

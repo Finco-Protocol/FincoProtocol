@@ -214,7 +214,7 @@ def test_m7_eleven_blobs_are_unchanged_and_coexist_without_cross_approval():
         for path in set(M7.M7_RC3_CANDIDATE_AUTHORITIES) & set(RC7B_CANDIDATE_AUTHORITIES):
             assert superseded_blobs[path] == RC7B_CANDIDATE_AUTHORITIES[path]
             superseded_blobs[path] = M7.M7_RC3_CANDIDATE_AUTHORITIES[path]
-        superseded_slice |= set(RC7B_CANDIDATE_AUTHORITIES)
+        superseded_slice |= set(RC7B_CANDIDATE_AUTHORITIES) - set(M7.M7_RC3_CANDIDATE_AUTHORITIES)    # the two shared paths stay M7 changes
     m7_only = dict(facts, blobs=superseded_blobs, frozen_changes=[p for p in facts["frozen_changes"] if p not in superseded_slice])
     assert M7.content_violations(m7_only) == []                                          # ... which is excluded only as its own exact slice
     assert M7.content_violations(facts) != []                                            # without the exclusion M7 rejects unlisted changes
