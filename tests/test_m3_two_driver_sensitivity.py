@@ -582,14 +582,15 @@ def reviewed_ci_workflow_candidate(path):
 
 def test_no_engine_or_financial_authority_files_are_touched():
     import subprocess
-    from rc3_historical_anchor import anchored_head
-    out = subprocess.run(["git", "diff", "--name-only", "origin/main..." + anchored_head()], capture_output=True, text=True).stdout
+    from stream_scope_proof import verified_delta
+    # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    out = "\n".join(verified_delta("test_m3_two_driver_sensitivity", "."))
     # On the RC-2 integration branch the only permitted financial-path deltas are the three reviewer-conditional,
     # release-closed Revenue V3 candidate blobs of PR #275 (exact path AND exact blob); everything else still fails.
     from model_v2_governance import REVENUE_V3_CANDIDATE_AUTHORITIES as v3
     def reviewed_v3(path):
         head = subprocess.run(["git", "rev-parse", "HEAD:" + path], capture_output=True, text=True).stdout.strip()
-        return v3.get(path) == head
+        return v3.get(path) == head       # (live blob check: negative controls below still exercise it)
     # M3's financial deny remains closed except for the exact reviewed Revenue V3 blobs.
     # RC-2 separately authorizes ONLY the two-line CI job change (proposed, not approved).
     reviewed_ci_workflow = reviewed_ci_workflow_candidate     # module-level, shared with the negative-control tests

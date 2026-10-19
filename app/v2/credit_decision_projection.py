@@ -401,7 +401,11 @@ def _timeline(inp: RunInput) -> dict[str, Any]:
     dates = _dates(entry)
     dist = {r.get("period"): r for r in _rows(_mapping(entry.distribution_schedule).get("periods"))}
     dsra = {r.get("period"): r for r in _rows(_mapping(entry.debt_schedule).get("periods"))}
-    columns = [{"index": p["period_index"], "date": dates.get(p["period_index"]) or _mapping(dist.get(p["period_index"])).get("date")}
+    # RC-7B Correction B: the committed axis is contiguous and half-open, so a period starts where the committed previous period ended.
+    # ``start`` is that committed end date; when the previous period is not persisted it is None (never inferred), and Credit V4 then
+    # cannot prove the interval and reports NOT_COMPARABLE.
+    columns = [{"index": p["period_index"], "date": dates.get(p["period_index"]) or _mapping(dist.get(p["period_index"])).get("date"),
+                "start": dates.get(p["period_index"] - 1)}
                for p in periods]
     rows = []
     for key, label, kind, link in _ROWS:
@@ -725,6 +729,10 @@ def build_credit_decision(inputs: Sequence[RunInput], *, project_code: str,
         run_findings += _credit_findings(inp, identity, structure, capacity, timeline, integrity, links, qm_by)
         views.append({"identity": identity, "integrity": integrity, "links": links, "structure": structure, "capacity": capacity,
                       "timeline": timeline, "findings": run_findings})
+        from app.v2.diagnostics_run_compare import operating_frequency as _operating_frequency
+        if _operating_frequency(inp.entry) != "6/6":
+            # RC-7B: only non-default calendars are annotated; 6/6 views are unchanged.
+            views[-1]["operating_frequency"] = _operating_frequency(inp.entry)
         metrics.append(_cmp_metrics(inp, structure, capacity))
         findings += run_findings
     comparison = _comparison(views, metrics)

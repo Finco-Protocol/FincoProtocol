@@ -20,6 +20,7 @@ from finco_core.inputs._models import ShlConstructionInterestMethod
 
 from financial_engine.inputs import (
     CalendarInput,
+    QuarterlyCalendarInput,
     CapitalisationGateEquityInput,
     CapexItemForDep,
     DebtSizingCaseInput,
@@ -99,7 +100,28 @@ def from_project_inputs(
             "P99-1y is not modelled by the clean engine and must fail closed."
         )
 
-    calendar = CalendarInput(
+    # RC-7B: the clean bridge transmits the operating frequency explicitly.
+    # Legacy absence and SEMESTRIAL are the released 6/6 contract; QUARTERLY is
+    # transmitted only with an explicit typed policy; anything else fails closed
+    # here instead of being silently projected onto the six-month axis.
+    frequency_name = getattr(getattr(info, "period_frequency", None), "name", "SEMESTRIAL")
+    quarterly_policy = getattr(info, "operating_calendar_policy", None)
+    if frequency_name == "QUARTERLY" and quarterly_policy is not None:
+        calendar_class, calendar_extra = QuarterlyCalendarInput, {
+            "operating_calendar_policy": quarterly_policy}
+    elif frequency_name == "SEMESTRIAL" and quarterly_policy is None:
+        calendar_class, calendar_extra = CalendarInput, {}
+    elif frequency_name == "QUARTERLY":
+        raise ValueError(
+            "QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED: a QUARTERLY project must carry "
+            "an explicit operating_calendar_policy; it is never read as semiannual")
+    else:
+        raise ValueError(
+            "PERIOD_FREQUENCY_UNSUPPORTED_AT_CLEAN_BRIDGE: "
+            f"period_frequency={frequency_name!r} policy={'present' if quarterly_policy else 'absent'}")
+
+    calendar = calendar_class(
+        **calendar_extra,
         financial_close=info.financial_close,
         construction_months=info.construction_months,
         horizon_years=info.horizon_years,

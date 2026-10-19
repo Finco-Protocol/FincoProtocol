@@ -77,7 +77,16 @@ def authority_state(path: str, *, repo=None, ref: str = "HEAD") -> str:
         return INTEGRATED_RELEASE_CLOSED_CANDIDATE
     if ppa01_candidate_matches(path, repo=repo, ref=ref) and not release_closed_violations(repo=repo, ref=ref):
         return INTEGRATED_RELEASE_CLOSED_CANDIDATE
+    if rc7b_gate_r_candidate_matches(path, repo=repo, ref=ref) and not release_closed_violations(repo=repo, ref=ref):
+        return INTEGRATED_RELEASE_CLOSED_CANDIDATE
     return UNAUTHORIZED
+
+
+def rc7b_gate_r_candidate_matches(path: str, *, repo=None, ref: str = "HEAD") -> bool:
+    """RC-7B (matched 3/3): one of the twelve exact blobs AND an active Gate R (signed record + authentic independent review + exact content).
+    Candidate state only - ``released_engine_authority_matches`` is never true for it and this is not an approval of D-01..D-12."""
+    from rc7b_quarterly_candidate_authority import gate_r_scope_exempt
+    return gate_r_scope_exempt(path, repo=repo, ref=ref)
 
 
 def ppa01_candidate_matches(path: str, *, repo=None, ref: str = "HEAD") -> bool:

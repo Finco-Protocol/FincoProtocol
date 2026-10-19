@@ -9,7 +9,9 @@ def _period_label(period) -> str:
     period_number = getattr(period, "period", None)
 
     if year_index is not None and period_in_year is not None:
-        return f"Y{int(year_index)}-H{int(period_in_year)}"
+        # RC-7B: a quarterly Run carries period_frequency_months=3 in its view.
+        prefix = "Q" if getattr(period, "period_frequency_months", 6) == 3 else "H"
+        return f"Y{int(year_index)}-{prefix}{int(period_in_year)}"
     if period_number is not None:
         return f"P{int(period_number)}"
     return "Selected period"
@@ -416,7 +418,11 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
     payload = {
         "project_type": project_type,
         "scenario": scenario,
-        "period_view": period_view,
+        # RC-7B: the native (non-annual) view of a quarterly Run is quarterly,
+        # never labelled semiannual; every 6/6 payload is unchanged.
+        "period_view": ("Quarterly" if period_view != "Annual" and getattr(getattr(
+            getattr(demo, "project_inputs", None), "info", None), "operating_calendar_policy", None) is not None
+            else period_view),
         "integration_status": getattr(demo, 'integration_status', 'full'),
         "integration_note": getattr(demo, 'integration_note', None),
         "messages": getattr(demo, 'messages', []),
@@ -555,6 +561,10 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         },
         "construction_funding": _fin_json(_asdict(_fund)),
     }
+    # RC-7B: the committed Run records its own operating calendar (quarterly only;
+    # every 6/6 evidence payload is unchanged and absence means 6/6).
+    from app.workbook.quarterly_frequency_config import run_evidence as _calendar_evidence
+    payload["financing_evidence"].update(_calendar_evidence(clean_run.project_inputs))
     from financial_engine.financing.multisenior import MultiSeniorFinancingResult
     from financial_engine.financing.junior_debt import JuniorFinancingResult
     if isinstance(_fin, JuniorFinancingResult):

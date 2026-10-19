@@ -187,10 +187,11 @@ class TestFrozen:
         # Branch-owned changes only (merge-base boundary). Exact released Model V2
         # engine authorities (pinned to their reviewed content) are exempt; every
         # other path in the namespace stays frozen.
-        from rc3_historical_anchor import changed_paths as changed_paths_vs_main
+        from stream_scope_proof import verified_delta
         from finance_integrity_governance import approved_frozen_path
-        changed = [p for p in changed_paths_vs_main()
-                   if p.startswith(namespace + "/") and not approved_frozen_path(p)]
+        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+        changed = [p for p in verified_delta("test_stock_token_oracle_rejection", namespace)
+                   if not approved_frozen_path(p)]
         assert changed == [], changed
 
 

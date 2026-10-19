@@ -28,6 +28,22 @@ def facts():
     return facts
 
 
+# Immutable main after PR #313: it carries exactly the integrated M7 candidate and the PPA-01 candidate. The validator-mutation tests below need a
+# KNOWN-GOOD fact set; building it from today's moving integration HEAD makes them fail before any mutation is tried. The LIVE HEAD content is
+# still judged by test_the_integrated_content_is_exactly_the_eleven_reviewed_blobs (unchanged, uses ``facts``).
+KNOWN_GOOD_MAIN = "5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d"
+
+
+@pytest.fixture(scope="module")
+def known_good_facts():
+    assert subprocess.run(["git", "merge-base", "--is-ancestor", KNOWN_GOOD_MAIN, "HEAD"], cwd=ROOT).returncode == 0
+    good = S.collect(KNOWN_GOOD_MAIN)
+    assert ppa01.candidate_content_matches_exactly(ref=KNOWN_GOOD_MAIN)
+    good["frozen_changes"] = [p for p in good["frozen_changes"] if p not in ppa01.PPA01_CANDIDATE_AUTHORITIES]
+    assert S.content_violations(good) == []                                  # the baseline really IS the reviewed candidate
+    return good
+
+
 def _bad(facts, fn, **changes):
     mutated = copy.deepcopy(facts)
     mutated.update(changes)
@@ -37,7 +53,22 @@ def _bad(facts, fn, **changes):
 
 
 def test_the_integrated_content_is_exactly_the_eleven_reviewed_blobs(facts):
-    assert S.content_violations(facts) == []
+    observed = copy.deepcopy(facts)
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    if gate_r_active():
+        # RC-7B Gate R is ACTIVE (signed Financial Owner record + authentic independent review + exact twelve blobs): the superseding quarterly
+        # candidate may replace exactly the two shared M7 blobs and add the other ten listed paths. Each superseded path must be EXACTLY the
+        # RC-7B candidate blob; the remaining nine M7 blobs are still judged byte-for-byte against the reviewed M7 pins. Nothing else is exempt.
+        shared = sorted(p for p in S.M7_RC3_CANDIDATE_AUTHORITIES if p in RC7B_CANDIDATE_AUTHORITIES)
+        assert shared == ["financial_engine/adapters/project_inputs.py", "financial_engine/orchestrator.py"]
+        for path in shared:
+            assert observed["blobs"][path] == RC7B_CANDIDATE_AUTHORITIES[path]
+            observed["blobs"][path] = S.M7_RC3_CANDIDATE_AUTHORITIES[path]
+        # the ten non-M7 quarterly paths and the separately recognised PPA-01 slice are not M7 changes; the two shared M7 paths stay listed
+        separate = (set(RC7B_CANDIDATE_AUTHORITIES) - set(S.M7_RC3_CANDIDATE_AUTHORITIES)) | set(ppa01.PPA01_CANDIDATE_AUTHORITIES)
+        assert all(ppa01.blob(p) == pin for p, pin in ppa01.PPA01_CANDIDATE_AUTHORITIES.items())
+        observed["frozen_changes"] = [p for p in observed["frozen_changes"] if p not in separate]
+    assert S.content_violations(observed) == []
     assert len(S.M7_RC3_CANDIDATE_AUTHORITIES) == 11
 
 
@@ -60,7 +91,8 @@ def test_every_blob_change_or_omission_is_rejected(facts, path):
     _bad(facts, S.content_violations, source_blobs={**facts["source_blobs"], path: "2" * 40})        # wrong source head content
 
 
-def test_extra_unlisted_and_partial_changes_are_rejected(facts):
+def test_extra_unlisted_and_partial_changes_are_rejected(known_good_facts):
+    facts = known_good_facts
     _bad(facts, S.content_violations, blobs={**facts["blobs"], "financial_engine/unreviewed.py": "3" * 40})
     for path in ("financial_engine/cfads.py", "finco_core/inputs/_models.py", "domain/revenue/plan.py", "financial_engine/tax/engine.py"):
         assert any(path in p for p in _bad(facts, S.content_violations, frozen_changes=[*facts["frozen_changes"], path]))
@@ -75,8 +107,8 @@ def test_missing_or_malformed_facts_never_authorise(facts):
         assert S.acceptance_violations({k: v for k, v in facts.items() if k != key}), key
 
 
-def test_a_complete_independent_record_is_required_and_each_defect_is_rejected(facts):
-    accepted = copy.deepcopy(facts)
+def test_a_complete_independent_record_is_required_and_each_defect_is_rejected(known_good_facts):
+    accepted = copy.deepcopy(known_good_facts)
     accepted["record"] = copy.deepcopy(GOOD_RECORD)
     assert S.acceptance_violations(accepted) == []                       # only a synthetic record in a synthetic fact set
     defects = {

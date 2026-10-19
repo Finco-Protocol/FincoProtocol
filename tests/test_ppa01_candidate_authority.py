@@ -63,6 +63,17 @@ def facts():
     return P.collect()
 
 
+KNOWN_GOOD_MAIN = "5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d"       # immutable main after PR #313: carries exactly the PPA-01 candidate
+
+
+@pytest.fixture(scope="module")
+def known_good_facts():
+    assert subprocess.run(["git", "merge-base", "--is-ancestor", KNOWN_GOOD_MAIN, "HEAD"], cwd=ROOT).returncode == 0
+    good = P.collect(ref=KNOWN_GOOD_MAIN)
+    assert P.content_violations(good) == []                              # the baseline really IS the reviewed candidate
+    return good
+
+
 def _bad(facts, fn, **changes):
     mutated = copy.deepcopy(facts)
     mutated.update(changes)
@@ -72,9 +83,23 @@ def _bad(facts, fn, **changes):
 
 
 # 1 ─ identity recognised, approval and release are NOT granted
+def _without_active_gate_r_slice(facts):
+    """RC-7B Gate R: while a complete, authentic Gate R is ACTIVE its exact twelve paths are a separate, already-recognised slice and are not
+    'unlisted' changes of the PPA-01 slice. Without an active Gate R the facts are returned unchanged (every unlisted change still rejects)."""
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    if not gate_r_active():
+        return facts, False
+    adjusted = copy.deepcopy(facts)
+    for key in ("protected_changes", "branch_protected_changes"):
+        if adjusted.get(key) is not None:
+            adjusted[key] = [p for p in adjusted[key] if p not in RC7B_CANDIDATE_AUTHORITIES]
+    return adjusted, True
+
+
 def test_exact_candidate_is_recognised_but_neither_approved_nor_released(facts):
-    assert P.content_violations(facts) == []
-    assert P.candidate_content_matches_exactly() is True
+    observed, gate_r = _without_active_gate_r_slice(facts)
+    assert P.content_violations(observed) == []
+    assert (P.content_violations(observed) == []) if gate_r else P.candidate_content_matches_exactly() is True
     assert facts["record"] is None
     assert P.candidate_is_financially_approved() is False
     assert P.candidate_is_released() is False
@@ -180,7 +205,17 @@ def test_m7_eleven_blobs_are_unchanged_and_coexist_without_cross_approval():
     assert not set(M7.M7_RC3_CANDIDATE_AUTHORITIES) & set(P.PPA01_CANDIDATE_AUTHORITIES)      # no path overlap: the M7 map was not extended
     facts = M7.collect()
     assert any(p in facts["frozen_changes"] for p in PATHS)                              # raw M7 facts DO see the PPA-01 slice ...
-    m7_only = dict(facts, frozen_changes=[p for p in facts["frozen_changes"] if p not in P.PPA01_CANDIDATE_AUTHORITIES])
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    superseded_blobs = dict(facts["blobs"])
+    superseded_slice = set(P.PPA01_CANDIDATE_AUTHORITIES)
+    if gate_r_active():
+        # RC-7B Gate R ACTIVE: the two shared M7 paths must be exactly the superseding candidate blob (then judged as the M7 pin they replace) and
+        # the twelve paths are a separate recognised slice. Nothing outside the twelve is exempted.
+        for path in set(M7.M7_RC3_CANDIDATE_AUTHORITIES) & set(RC7B_CANDIDATE_AUTHORITIES):
+            assert superseded_blobs[path] == RC7B_CANDIDATE_AUTHORITIES[path]
+            superseded_blobs[path] = M7.M7_RC3_CANDIDATE_AUTHORITIES[path]
+        superseded_slice |= set(RC7B_CANDIDATE_AUTHORITIES) - set(M7.M7_RC3_CANDIDATE_AUTHORITIES)    # the two shared paths stay M7 changes
+    m7_only = dict(facts, blobs=superseded_blobs, frozen_changes=[p for p in facts["frozen_changes"] if p not in superseded_slice])
     assert M7.content_violations(m7_only) == []                                          # ... which is excluded only as its own exact slice
     assert M7.content_violations(facts) != []                                            # without the exclusion M7 rejects unlisted changes
     assert M7.current_acceptance_granted() is False and P.candidate_is_financially_approved() is False
@@ -194,8 +229,10 @@ def test_a_substituted_ppa01_slice_is_not_excluded_from_the_m7_facts():
 
 
 # 12 ─ approval and release stay BLOCKED without a complete independent record
-def test_release_is_blocked_without_a_complete_independent_record_and_each_defect_is_rejected(facts):
-    accepted = copy.deepcopy(facts)
+def test_release_is_blocked_without_a_complete_independent_record_and_each_defect_is_rejected(known_good_facts):
+    # KNOWN-GOOD baseline = immutable main after PR #313 (carries exactly the PPA-01 candidate), not today's moving integration HEAD; the live HEAD
+    # content is still judged by test_exact_candidate_is_recognised_but_neither_approved_nor_released.
+    accepted = copy.deepcopy(known_good_facts)
     accepted["record"] = copy.deepcopy(GOOD_RECORD)
     assert P.acceptance_violations(accepted) == []                                       # only a synthetic record in a synthetic fact set
     assert any("RELEASE_NOT_AUTHORIZED" in p for p in P.release_violations(accepted))    # approval alone never releases
@@ -277,10 +314,31 @@ def test_previously_frozen_surfaces_remain_rejected(path):
         assert fig.strictly_frozen_changes([path]) == [path]
 
 
+def test_the_anchor_lifecycle_switches_to_head_once_its_tip_has_landed(tmp_path, monkeypatch):
+    """Lifecycle of the historical anchor in an ISOLATED synthetic fixture: usable while the tip is pending, plain HEAD after it has landed.
+
+    This is the lifecycle claim only. It deliberately says nothing about whether the CURRENT repository has any financial change: that is a
+    separate fact judged by the authoritative current-integration gates, and it is no longer true "forever" once a new financial PR exists.
+    """
+    repo = _repo(tmp_path, {"README.md": "x", **{p: b"baseline " + p.encode() for p in PATHS}})
+    git(repo, "checkout", "-q", "-b", "rc")
+    _write_commit(repo, {"app/radar/feature.py": "ok"}, "benign stream work")
+    tip = git(repo, "rev-parse", "HEAD")
+    _write_commit(repo, _candidate_files(), "candidate after the historical tip")
+    monkeypatch.setattr(anchor, "REPO", repo)
+    monkeypatch.setattr(anchor, "STREAM_TIPS", (tip,))
+    assert anchor.anchored_head() == tip                                   # pending: the historical tip is not on origin/main yet
+    git(repo, "update-ref", "refs/remotes/origin/main", tip)               # the historical stream lands on main
+    assert anchor.anchored_head() == "HEAD"                                # landed: the original guards evaluate the full current HEAD again
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    assert anchor.anchored_head() == "HEAD"
+    monkeypatch.setattr(anchor, "STREAM_TIPS", ("0" * 40,))
+    assert anchor.anchored_head() == "HEAD"                                # unknown provenance fails closed
+
+
 def test_the_real_anchor_returns_to_head_after_integration_and_keeps_historical_proof():
-    tip = anchor.anchored_head()
-    assert tip == "HEAD"
-    assert anchor.changed_paths("finco_core", "domain", "financial_engine") == []
+    """Immutable historical proof for the REAL repository (independent of whatever the current integration changes)."""
+    assert anchor.anchored_head() == "HEAD"                                # every historical tip has landed on main
     historical_tip = anchor.PPA01_PRE_INTEGRATION_TIP
     assert subprocess.run(["git", "merge-base", "--is-ancestor", historical_tip, "HEAD"], cwd=ROOT).returncode == 0
     assert subprocess.run(["git", "merge-base", "--is-ancestor", historical_tip, "origin/main"], cwd=ROOT).returncode == 0

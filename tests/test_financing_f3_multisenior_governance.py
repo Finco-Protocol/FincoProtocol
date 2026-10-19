@@ -1,5 +1,6 @@
 """Opt-in F3 authority has no blanket core/engine exemption."""
 from pathlib import Path
+import hashlib
 import subprocess
 
 import pytest
@@ -19,7 +20,14 @@ PATHS = {
 def test_only_exact_seven_paths_at_their_pinned_content_are_authorized():
     assert set(governance.F3_2_4_FINANCING_AUTHORITIES) == PATHS
     assert strictly_frozen_changes(list(PATHS)) == []
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, superseded_by_gate_r
     for path, blob in governance.F3_2_4_FINANCING_AUTHORITIES.items():
+        if superseded_by_gate_r(path, repo=governance.REPO):
+            # RC-7B: only under an ACTIVE Gate R (signed record + authentic independent review + exact twelve blobs) does a superseding candidate
+            # replace the historical pin. Release-closed candidate only: never the released pin, never an approved frozen path.
+            assert git(governance.REPO, 'rev-parse', f'HEAD:{path}') == RC7B_CANDIDATE_AUTHORITIES[path]
+            assert not governance.released_engine_authority_matches(path)
+            continue
         current_blob = governance.F3_5_A_JUNIOR_AUTHORITIES.get(path,
             governance.WF07_REVENUE_AUTHORITIES.get(path, governance.WF04_NUMERIC_PRECISION_AUTHORITIES.get(path, blob)))
         assert git(governance.REPO, 'rev-parse', f'HEAD:{path}') == current_blob
@@ -34,8 +42,12 @@ def test_any_edit_to_a_pinned_file_loses_approval(path, tmp_path, monkeypatch):
     git(repo, 'config', 'core.autocrlf', 'false')
     git(repo, 'config', 'user.name', 'Synthetic Reviewer')
     git(repo, 'config', 'user.email', 'noreply@users.noreply.github.com')
-    original = subprocess.run(['git', '-C', str(governance.REPO), 'show', f'HEAD:{path}'],
-        check=True, capture_output=True).stdout
+    # Known-good baseline = the exact released blob object pinned for this path (immutable), NOT whatever the current integration HEAD carries.
+    # A later integration candidate legitimately changes HEAD; the live HEAD authority is judged by test_only_exact_seven_paths_* above.
+    pinned = governance.F3_5_A_JUNIOR_AUTHORITIES.get(path, governance.WF07_REVENUE_AUTHORITIES.get(
+        path, governance.WF04_NUMERIC_PRECISION_AUTHORITIES.get(path, governance.F3_2_4_FINANCING_AUTHORITIES[path])))
+    original = subprocess.run(['git', '-C', str(governance.REPO), 'cat-file', 'blob', pinned], check=True, capture_output=True).stdout
+    assert hashlib.sha1(b'blob %d\0' % len(original) + original).hexdigest() == pinned        # the fixture IS the pinned object
     target = repo / path
     target.parent.mkdir(parents=True)
     target.write_bytes(original)

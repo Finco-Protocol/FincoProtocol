@@ -751,9 +751,9 @@ class TestFrozenNamespaces:
         # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
         # Opus Finance Integrity governance: allow-listed engine modules only.
         from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
-        from rc3_historical_anchor import changed_paths as changed_paths_vs_main
-        listed = [p for p in changed_paths_vs_main()
-                  if p.startswith(("financial_engine/", "finco_core/", "finco_radar/"))]
+        from stream_scope_proof import verified_delta
+        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+        listed = verified_delta("test_p3_run_certificate_v1", "financial_engine", "finco_core", "finco_radar")
         changed = unapproved_engine_changes(listed) + strictly_frozen_changes(listed)
         assert changed == [], (
             f"Frozen namespaces must have ZERO DIFF. Changed: {changed}"

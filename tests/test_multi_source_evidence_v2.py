@@ -527,16 +527,16 @@ def test_rlive_detail_shows_status_first_source_legs_panel():
 
 @pytest.mark.parametrize("path", ["financial_engine", "finco_core", "finco_yield"])
 def test_frozen_namespaces_have_zero_diff(path):
-    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--", path], cwd=ROOT,
-                         capture_output=True, text=True)
-    if out.returncode != 0:
-        pytest.skip("git unavailable")
+    # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance fails closed.
+    # Whether the current integration tree may change these paths is decided only by the central current gates.
+    from stream_scope_proof import verified_delta
+    delta = verified_delta("test_multi_source_evidence_v2", path)
     # Explicitly authorized Model V2 epic engine files are governed by the
     # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
     # protecting every other frozen path.
     from finance_integrity_governance import approved_frozen_path
     changed = [
-        p for p in out.stdout.splitlines()
+        p for p in delta
         if p.strip() and not approved_frozen_path(p.strip())
     ]
     assert changed == [], changed

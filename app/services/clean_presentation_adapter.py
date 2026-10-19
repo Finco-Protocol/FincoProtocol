@@ -345,6 +345,7 @@ def _valuation_summary_payload(g2c) -> dict:
 def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     """Adapt one CleanProductionRun into the legacy-shaped read-only view."""
     g2c = clean_run.g2c_result
+    _quarterly = getattr(getattr(clean_run.project_inputs, "info", None), "operating_calendar_policy", None) is not None
     model = g2c.financing_result.project_model_result
     op = model.operating_schedules
     tax = model.tax_and_cfads
@@ -433,7 +434,8 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
 
         date = getattr(mp, "period_end", None)
         year_index = date.year if date else None
-        period_in_year = (date.month + 5) // 6 if date else None
+        # RC-7B: label by the Run's own persisted frequency (6/6 unchanged).
+        period_in_year = ((date.month + 2) // 3 if _quarterly else (date.month + 5) // 6) if date else None
 
         distribution = (
             float(getattr(wp, "legal_equity_distribution_keur", 0.0) or 0.0)
@@ -517,6 +519,11 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
             )
         )
 
+    if _quarterly:
+        # Instance-only label metadata: the CleanPeriodView field set (and every
+        # serialized 6/6 view) is unchanged; labels read it via getattr.
+        for view in period_views:
+            view.period_frequency_months = 3
     dscr_values = [p.dscr for p in period_views if p.dscr is not None]
     target_dscr = getattr(clean_run.project_inputs.financing, "target_dscr", None)
 

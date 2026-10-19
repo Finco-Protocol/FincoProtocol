@@ -411,10 +411,10 @@ def test_product_truth_separates_code_capability_from_operational_availability()
 # ── frozen boundaries ────────────────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core", "finco_radar/venues"])
 def test_frozen_namespaces_zero_diff(namespace):
-    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--", namespace],
-                         cwd=ROOT, capture_output=True, text=True)
-    if out.returncode != 0:
-        pytest.skip("git unavailable")
+    # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py). Fails closed if provenance is unproven.
+    # Current-integration authority for the same paths is judged only by the central gates, not here.
+    from stream_scope_proof import verified_delta
+    delta = verified_delta("test_crypto_p0_product_reality_reset", namespace)
     # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
     # every other path in this namespace stays frozen.
     allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
@@ -425,7 +425,7 @@ def test_frozen_namespaces_zero_diff(namespace):
     # protecting every other frozen path.
     from finance_integrity_governance import approved_frozen_path
     changed = [
-        p for p in out.stdout.split()
+        p for p in delta
         if p not in allowed and not approved_frozen_path(p)
     ]
     assert changed == [], changed

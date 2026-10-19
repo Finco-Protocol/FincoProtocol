@@ -958,14 +958,9 @@ class TestFrozenAuthorities:
         "app/model_validation", "app/verified", "app/model_market_bridge",
     ])
     def test_zero_diff_vs_main(self, frozen):
-        import subprocess
-
-        out = subprocess.run(
-            ["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--", frozen],
-            cwd=REPO, capture_output=True, text=True,
-        )
-        if out.returncode != 0:
-            pytest.skip("git history unavailable in this checkout")
+        from stream_scope_proof import verified_delta
+        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+        delta = verified_delta("test_yield_alerts_core", frozen)
         # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
         # every other path in this namespace stays frozen.
         allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
@@ -976,7 +971,7 @@ class TestFrozenAuthorities:
         # protecting every other frozen path.
         from finance_integrity_governance import approved_frozen_path
         changed = [
-            p for p in out.stdout.split()
+            p for p in delta
             if p not in allowed and not approved_frozen_path(p)
         ]
         assert changed == [], changed

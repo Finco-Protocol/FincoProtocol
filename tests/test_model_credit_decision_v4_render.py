@@ -15,7 +15,7 @@ def _render():
         "identity": {"history_id": "committed-1", "scenario": "P50", "state": "HISTORICAL", "integrity": "PASS"},
         "timeline": {
             "available": True,
-            "columns": [{"index": 3, "date": "2030-06-30"}, {"index": 4, "date": "2030-12-31"}],
+            "columns": [{"index": 3, "date": "2030-06-30", "start": "2029-12-31"}, {"index": 4, "date": "2030-12-31", "start": "2030-06-30"}],
             "rows": [
                 {"key": k, "cells": [{"v": x}, {"v": x}]}
                 for k, x in (

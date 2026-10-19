@@ -1,0 +1,108 @@
+{
+  "_comment": "UNSIGNED TEMPLATE. Not a valid authorization. The Financial Owner authorizes by SIGNING, offline and with a key the implementation agent never holds: (1) fill the fields below; (2) run `python tests/rc7b_quarterly_candidate_authority.py owner-payload <this record> > payload.bin`; (3) `ssh-keygen -Y sign -n finco-rc7b-gate-r-owner-v1 -f <owner ed25519 key> payload.bin`; (4) paste the armoured signature into owner_attestation.signature and commit under the real name docs/model_v2/RC7B_GATE_R_AUTHORIZATION.json. A status of SIGNED, a login or a commit author is never authority; only a signature by a key pinned in docs/model_v2/RC7B_GATE_R_AUTHORITY_REGISTRY.json and currently registered on the owner's GitHub account is. This template name is never read by any governance check.",
+  "schema": "finco.rc7b.gate-r-candidate-boundary-authorization.v2",
+  "record_type": "GATE_R_CANDIDATE_BOUNDARY_AUTHORIZATION",
+  "status": "UNSIGNED_TEMPLATE",
+  "scope": "CANDIDATE_BOUNDARY_ONLY",
+  "predecessor_main": "5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d",
+  "reviewed_source_head": "4b086b83e207249c807cc0521a14f78812ac8be3",
+  "integration_pr": "https://github.com/Finco-Protocol/FincoProtocol/pull/320",
+  "financial_owner": {
+    "name": null,
+    "role": null,
+    "identity_reference": null,
+    "confirmed_at_utc": null,
+    "statement": "I authorize ONLY the release-closed integration of the twelve listed blobs as an unreleased candidate boundary. This is not approval of D-01..D-12, not Gate P, not user activation of quarterly calculation and not a financial-policy change.",
+    "signing_key": null,
+    "signing_key_fingerprint": null
+  },
+  "independent_reviewer": {
+    "name": null,
+    "role": null,
+    "identity_reference": null,
+    "reviewed_at_utc": null,
+    "review_scope": "Independent content review of all twelve blobs listed in accepted_blobs",
+    "review_result": null,
+    "review_reference": null
+  },
+  "accepted_blobs": {
+    "financial_engine/adapters/project_inputs.py": "d97ae939559cbd6e031414192fa23fc40be1110f",
+    "financial_engine/adapters/tax_inputs.py": "9e271f696b4dfa8dcfef44387b2b4b3c1842c63e",
+    "financial_engine/financing/generic_product_policy.py": "59a2c1f868b4c12718a22919c3114f3af5af5120",
+    "financial_engine/financing/project.py": "2e18a6e7c8ddfd85929d9b1906f91dd8858d0044",
+    "financial_engine/financing/quarterly_scope.py": "0bcf6605c84d8716dc07a111cdf911eb0a6bac60",
+    "financial_engine/inputs.py": "6fb5913a6cedec3b526b26fc4b55340a8a682361",
+    "financial_engine/orchestrator.py": "07aa1e18cc72a1422fcf7fc779dd72ee835c8096",
+    "financial_engine/senior_debt/project_adapter.py": "b2302be9d9760ab7a663ff873e95415a4bf18842",
+    "finco_core/engine/calendar_policy.py": "91f55f9b8356ae0b8b1ca635b28d008949a8146f",
+    "finco_core/engine/period_engine.py": "465c172d5d7176f294872fd2e9542315e3027db2",
+    "finco_core/inputs/_models.py": "a48139b9e2aed875d6f3a8358f2c53e9489983c7",
+    "finco_core/inputs/serialization.py": "7e678450304467fce435d6052e78af76171b03f7"
+  },
+  "predecessor_blobs": {
+    "financial_engine/adapters/project_inputs.py": "14bd759a9958515a7796626f93c1bd2233d69150",
+    "financial_engine/adapters/tax_inputs.py": "0150eb1cdb9e7c0968e1f8dcbf754266d0158f8a",
+    "financial_engine/financing/generic_product_policy.py": "2894334e7241c4ac9f8967d4ce4ca6ce77a32fa0",
+    "financial_engine/financing/project.py": "30536cec8779fdb6a490d82fd80bfce2c09e16fe",
+    "financial_engine/financing/quarterly_scope.py": null,
+    "financial_engine/inputs.py": "8ba4cd3e7de248e163ba727a59e3faa6757edd03",
+    "financial_engine/orchestrator.py": "be7ac31c6c4fed43b5fd7ca49fe53bfd1cc54c03",
+    "financial_engine/senior_debt/project_adapter.py": "a73611a117f0c04ecc7bd7350eac64456520f265",
+    "finco_core/engine/calendar_policy.py": null,
+    "finco_core/engine/period_engine.py": "7a44c10b003aee9e8d41de33490db1bb0bdcfd71",
+    "finco_core/inputs/_models.py": "b896d3c071ee22c1c82c48f23d4c169e058c7a7b",
+    "finco_core/inputs/serialization.py": "31f70570376b2f5b50ece583c54c1d9811e90a3c"
+  },
+  "supersedes_candidate_blobs": {
+    "_comment": "orchestrator.py and adapters/project_inputs.py are also two of the eleven M7 RC-3 release-closed candidate blobs on main (they equal the predecessor blobs above). This record must state the supersession explicitly; it does not approve M7.",
+    "financial_engine/orchestrator.py": "be7ac31c6c4fed43b5fd7ca49fe53bfd1cc54c03",
+    "financial_engine/adapters/project_inputs.py": "14bd759a9958515a7796626f93c1bd2233d69150",
+    "m7_supersession_acknowledged_by_reviewer": null
+  },
+  "conditions": {
+    "activation_enabled_literal": "app/workbook/quarterly_frequency_config.py: ACTIVATION_ENABLED = False (unchanged)",
+    "semiannual_6_6_bit_identical": "docs/model_v2/RC7B_SEMIANNUAL_REGRESSION.json (max difference 0) - independent reviewer to confirm by reproduction",
+    "historical_pin_maps_unchanged": true,
+    "no_other_protected_path_changed": true
+  },
+  "owner_decisions": {
+    "_comment": "This record decides NONE of D-01..D-12. D-06 and D-07 are explicitly DEFERRED by the Financial Owner. Fill in or leave as is; the separate full acceptance record (RC7B_QUARTERLY_FINANCIAL_ACCEPTANCE.json) is still required for D-decisions.",
+    "D-01": "NOT_DECIDED_BY_THIS_RECORD",
+    "D-02": "NOT_DECIDED_BY_THIS_RECORD",
+    "D-03": "NOT_DECIDED_BY_THIS_RECORD",
+    "D-04": "NOT_DECIDED_BY_THIS_RECORD",
+    "D-05": "NOT_DECIDED_BY_THIS_RECORD",
+    "D-06": "DEFERRED",
+    "D-07": "DEFERRED",
+    "D-08": "NOT_DECIDED_BY_THIS_RECORD",
+    "D-09": "NOT_DECIDED_BY_THIS_RECORD",
+    "D-10": "NOT_DECIDED_BY_THIS_RECORD",
+    "D-11": "NOT_DECIDED_BY_THIS_RECORD",
+    "D-12": "NOT_DECIDED_BY_THIS_RECORD"
+  },
+  "grants": {
+    "release_closed_integration_of_listed_blobs": true,
+    "financial_approval_of_d01_d12": false,
+    "gate_p": false,
+    "user_activation_of_quarterly_run": false,
+    "financial_policy_change": false,
+    "product_admission": false,
+    "release": false,
+    "merge_to_main": false
+  },
+  "decision_reference": null,
+  "owner_attestation": {
+    "namespace": "finco-rc7b-gate-r-owner-v1",
+    "attestation_id": null,
+    "signed_at_utc": null,
+    "expires_at_utc": null,
+    "signature": null,
+    "_comment": "attestation_id: random lowercase hex, 32-64 chars. Validity at most 90 days. The signature covers the whole record (except this signature) and the blob of every Gate R mechanism file."
+  },
+  "github_review": {
+    "pull_number": 320,
+    "review_id": null,
+    "reviewer_login": null,
+    "_comment": "The numeric id of the independent reviewer's APPROVED review, made at a commit BEFORE this record. Never a commit hash."
+  }
+}

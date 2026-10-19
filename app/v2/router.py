@@ -247,6 +247,51 @@ _SENIOR_LOCK_NOTE = (
     "Explicit calibrated period schedule controls this assumption.")
 
 
+def _display_projectinputs(build, snapshot):
+    """Show unchanged inputs when a saved 3/3 selection is ineligible.
+
+    This fallback is display-only: no write, calculation or Run uses it. The
+    banner reports the refusal; the canonical Run still raises the same error.
+    Malformed contracts and non-quarterly errors are not suppressed.
+    """
+    from app.input_adapter import SnapshotInputError, build_projectinputs_from_snapshot
+    try:
+        return build()
+    except SnapshotInputError as exc:
+        if not _quarterly_selection_refusal(snapshot, exc):
+            raise
+        from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY as _q_key
+        return build_projectinputs_from_snapshot({k: v for k, v in dict(snapshot).items() if k != _q_key})
+
+
+def _quarterly_selection_refusal(snapshot, exc):
+    from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY, parse_config
+    if not snapshot.get(SNAPSHOT_KEY):
+        return False
+    parse_config(snapshot[SNAPSHOT_KEY])  # invalid JSON is not a scope refusal
+    code = str(exc).split(":", 1)[0]
+    return code.startswith("QUARTERLY_") and (code.endswith("_UNSUPPORTED") or code in {
+        "QUARTERLY_FINANCING_STRUCTURE_MISMATCH", "QUARTERLY_RESERVE_POLICY_PENDING_D09",
+        "QUARTERLY_REVENUE_CONTRACT_HANDOFF_REQUIRED", "QUARTERLY_HIERARCHICAL_OPEX_HANDOFF_REQUIRED",
+        "QUARTERLY_PPA_INDEXATION_HANDOFF_REQUIRED", "QUARTERLY_COD_ROLL_WINDOW_PENDING_D01",
+    })
+
+
+def _quarterly_selection_error(pis):
+    from app.input_adapter import SnapshotInputError
+    from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY
+    snapshot = pis.to_snapshot()
+    if not snapshot.get(SNAPSHOT_KEY):
+        return ""
+    try:
+        pis.to_projectinputs()
+    except SnapshotInputError as exc:
+        if not _quarterly_selection_refusal(snapshot, exc):
+            raise
+        return f"Invalid saved 3/3 selection. {exc} No inputs were changed; reset to 6/6 or review financing."
+    return ""
+
+
 def _classify_senior_authority(pis):
     """R8 Correction A: classify (pricing_mode, dscr_mode) from the typed
     Senior capability of the materialised working copy.
@@ -342,6 +387,8 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
         for fspec in sorted(section.fields, key=lambda f: f.order):
             if fspec.field_id == "project_setup.bess.configuration":
                 continue  # Native structured editor owns this payload and CSRF.
+            if fspec.field_id == "project_setup.calendar.operating_frequency":
+                continue  # RC-7B: no generic selector; the gated calendar endpoint owns it.
             if is_bess and (fspec.field_id.startswith("revenue.") or fspec.field_id in (
                 "project_setup.technical.p50_hours", "project_setup.technical.capacity_mw")):
                 continue
@@ -681,7 +728,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
         "last_run_iso": _last_run_iso(ws),
-        "field_error": field_error,
+        "field_error": field_error or _quarterly_selection_error(pis),
         "active_scenario_name": getattr(ws, "active_scenario_name", None) or "",
     }
 
@@ -742,7 +789,7 @@ def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "")
     from app.input_adapter import build_projectinputs_from_snapshot
 
     snapshot = pis.to_snapshot()
-    effective_pi = build_projectinputs_from_snapshot(snapshot)
+    effective_pi = _display_projectinputs(lambda: build_projectinputs_from_snapshot(snapshot), snapshot)
     project_ctx = build_project_context_for_record(
         project_code=project_record.project_code,
         project_name=project_record.project_name,
@@ -920,7 +967,7 @@ def _build_opex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "") 
     from app.workbook.service import WorkbookService
     from app.revenue_input_validation import RevenueInputError
     try:
-        effective_pi = WorkbookService.to_projectinputs(pis)
+        effective_pi = _display_projectinputs(lambda: WorkbookService.to_projectinputs(pis), pis.to_snapshot())
     except RevenueInputError:
         # Cross-field revenue validation (e.g. CONTRACT_ANNIVERSARY without a
         # date) must not break the OPEX display path — OPEX is independent of
@@ -1723,7 +1770,7 @@ def _build_tax_ctx(pis, ws, projection=None) -> dict:
     if any(f["value"] is None for f in raw_fields):
         from app.revenue_input_validation import RevenueInputError
         try:
-            effective_tax = pis.to_projectinputs().tax
+            effective_tax = _display_projectinputs(pis.to_projectinputs, pis.to_snapshot()).tax
         except RevenueInputError:
             _snap = dict(pis.to_snapshot())
             _snap.pop("rev_ppa_indexation_start_policy", None)
@@ -2115,7 +2162,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             if ws.any_run_committed and getattr(ws, "last_runtime_identity", None) is not None
             else ""
         ),
-        "flash_error": flash_error,
+        "flash_error": flash_error or _quarterly_selection_error(pis),
         "field_error": "",
         "library_url": "/library",
         # WF-05 grid: CSRF token for the JSON validate/save routes (session-bound server check).
@@ -2455,6 +2502,9 @@ async def v2_workbook_update(
 
     if field_id == "project_setup.bess.configuration":
         return JSONResponse({"error": "Use the owner/CSRF/CAS protected Battery editor"}, status_code=409)
+    if field_id == "project_setup.calendar.operating_frequency":
+        return JSONResponse({"error": "QUARTERLY_GENERIC_FIELD_WRITE_REFUSED: use the gated operating-frequency endpoint"},
+                            status_code=409)
     if field_id == "debt.financing.instruments":
         from app.auth import validate_csrf_token
         from app.workbook.financing_csrf import extract_bound_token
@@ -2988,6 +3038,15 @@ async def v2_workbook_run(
             # Cross-field contract violation — surface to user, do not log as error.
             _rev_err_msg = str(_build_exc)
             return _htmx_error(_rev_err_msg, ws) if is_htmx else _non_htmx_error(_rev_err_msg)
+        from app.input_adapter import SnapshotInputError
+        if isinstance(_build_exc, SnapshotInputError) and str(_build_exc).startswith("QUARTERLY_"):
+            # RC-7B Correction B: a typed, fail-closed quarterly refusal reached BEFORE any calculation or commit. It is a model
+            # refusal with a precise reason, not a system fault: surface the typed code and its explanation.
+            logging.getLogger(__name__).info("v2_workbook_run: typed quarterly refusal project=%s", project)
+            _q_msg = str(_build_exc)
+            from app.v2.run_failure_explanation import explain_run_failure
+            return (_htmx_error(_q_msg, ws, explain_run_failure(_build_exc, message=_q_msg, ws=ws, pis=pis_draft))
+                    if is_htmx else _non_htmx_error(_q_msg))
         logging.getLogger(__name__).exception(
             "v2_workbook_run: build_project_inputs failed project=%s user=%s",
             project, user.user_id,
@@ -5968,3 +6027,5 @@ from app.v2.bess_candidate_router import router as bess_candidate_router
 router.include_router(bess_candidate_router)
 from app.v2.bess_workspace_router import router as bess_workspace_router
 router.include_router(bess_workspace_router)
+from app.v2.quarterly_calendar_router import router as quarterly_calendar_router  # RC-7B, release-closed
+router.include_router(quarterly_calendar_router)

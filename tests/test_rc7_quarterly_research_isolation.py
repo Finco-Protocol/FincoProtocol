@@ -13,15 +13,29 @@ from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# RC-7B Correction B (historical checkpoint, source-proven): this guard states PR #313's isolation claim - the research candidate changed
+# no production path. That claim is judged at the #313 merge commit against the #313 base, both immutable. Comparing the moving HEAD to the
+# #313 base made the claim fail for every later, separately governed change; CURRENT production authority is enforced by the live
+# frozen-namespace and financial-integrity guards, none of which this change relaxes.
+RESEARCH_BASE = "78e4c0edcc1bdb5013df79f11b3ba7b9c2151013"
+RESEARCH_MERGE = "5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d"
+PROTECTED_PATHS = ["financial_engine", "finco_core", "domain", "tests/model_v2_governance.py",
+                   "tests/finance_integrity_governance.py", "tests/m7_rc3_candidate_successor.py",
+                   "tests/ppa01_candidate_authority.py"]
+
+
 def test_protected_production_tree_and_historical_guards_are_exact_main():
-    paths = ["financial_engine", "finco_core", "domain", "tests/model_v2_governance.py",
-             "tests/finance_integrity_governance.py", "tests/m7_rc3_candidate_successor.py",
-             "tests/ppa01_candidate_authority.py"]
-    changed = subprocess.check_output(["git", "diff", "78e4c0edcc1bdb5013df79f11b3ba7b9c2151013",
-                                       "--name-only", "--", *paths], cwd=ROOT, text=True)
+    subprocess.check_call(["git", "merge-base", "--is-ancestor", RESEARCH_BASE, RESEARCH_MERGE], cwd=ROOT)
+    subprocess.check_call(["git", "merge-base", "--is-ancestor", RESEARCH_MERGE, "HEAD"], cwd=ROOT)
+    changed = subprocess.check_output(["git", "diff", RESEARCH_BASE, RESEARCH_MERGE,
+                                       "--name-only", "--", *PROTECTED_PATHS], cwd=ROOT, text=True)
     assert changed.strip() == ""
+    for research_only in ("financial_engine/quarterly/calendar.py", "financial_engine/quarterly/runtime.py"):
+        absent = subprocess.run(["git", "cat-file", "-e", f"{RESEARCH_MERGE}:{research_only}"], cwd=ROOT, capture_output=True)
+        assert absent.returncode != 0, research_only
     assert not (ROOT / "financial_engine/quarterly/calendar.py").exists()
     assert not (ROOT / "financial_engine/quarterly/runtime.py").exists()
+
 
 
 def test_no_production_source_imports_or_dynamically_names_research_package():
@@ -62,15 +76,18 @@ def test_real_production_entry_rejects_typed_quarters_after_baseline_adapter_res
     if variant == "explicit_construction":
         pi = replace(pi, financing=replace(pi.financing, construction_financing=derive_construction_financing(pi)))
     pi = replace(pi, info=replace(pi.info, period_frequency=PeriodFrequency.QUARTERLY))
-    # Honest baseline limitation: this adapter does NOT reject or carry frequency.
-    clean = from_project_inputs(pi)
-    assert not hasattr(clean.calendar, "period_frequency")
+    # RC-7B: the baseline limitation (adapter silently dropping the frequency) is
+    # closed. A QUARTERLY request without an explicit typed policy now fails at
+    # the clean bridge itself, and the production entry still refuses it.
+    with pytest.raises(ValueError, match="QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED"):
+        from_project_inputs(pi)
     policy = GenericFinancingPolicy(apply_construction_financing=False, apply_cash_dsra=False) if variant == "no_auto_construction" else None
     with pytest.raises(CleanProductionRunUnavailable) as rejected:
         run_clean_production(pi, financing_policy=policy)
     message = str(rejected.value)
-    assert ("H1_UNSUPPORTED_PERIOD_FREQUENCY" in message if variant == "default"
-            else "build_tax_contract_from_project_inputs: unsupported period_frequency" in message)
+    # Exact typed refusal per variant (no alternative text accepted).
+    assert ("H1_UNSUPPORTED_PERIOD_FREQUENCY" if variant == "default"
+            else "QUARTERLY_EXPLICIT_CALENDAR_POLICY_REQUIRED") in message
 
 
 @pytest.mark.parametrize("field", ["period_frequency", "project.period_frequency", "project_setup.period_frequency"])

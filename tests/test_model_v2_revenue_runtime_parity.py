@@ -1033,8 +1033,9 @@ class TestNoFrozenDiff:
         import sys
         sys.path.insert(0, "tests")
         import model_v2_governance as gov
-        from rc3_historical_anchor import changed_paths as _anchored
-        changed = _anchored()
+        from stream_scope_proof import verified_delta
+        # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+        changed = verified_delta("test_model_v2_revenue_runtime_parity", ".")
         assert gov.model_v2_frozen_violations(changed) == []
         # Engine files outside the shared approved allow-list must stay untouched.
         import finance_integrity_governance as fig

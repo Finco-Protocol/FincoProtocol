@@ -372,11 +372,10 @@ class TestFrozen:
     @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core",
                                            "finco_radar/venues"])
     def test_zero_diff(self, namespace):
-        out = subprocess.run(
-            ["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--", namespace],
-            cwd=REPO, capture_output=True, text=True)
-        if out.returncode != 0:
-            pytest.skip("git unavailable")
+        # HISTORICAL SOURCE PROOF: the RWA Integrity stream's own immutable source range (tests/stream_scope_proof.py, literal base/head/landing merge,
+        # provenance verified, fails closed). Whether the CURRENT tree's protected changes are authorized is answered only by the central current gates.
+        from stream_scope_proof import verified_delta
+        delta = verified_delta("test_rwa_integrity", namespace)
         # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
         # every other path in this namespace stays frozen.
         allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
@@ -387,7 +386,7 @@ class TestFrozen:
         # protecting every other frozen path.
         from finance_integrity_governance import approved_frozen_path
         changed = [
-            p for p in out.stdout.split()
+            p for p in delta
             if p not in allowed and not approved_frozen_path(p)
         ]
         assert changed == [], changed

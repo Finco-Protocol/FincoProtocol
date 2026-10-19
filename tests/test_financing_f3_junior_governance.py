@@ -52,13 +52,22 @@ HISTORICAL_AUTHORITIES = historical_authorities()
 
 def test_only_fifteen_independently_accepted_blobs_are_released():
     assert governance.F3_5_A_JUNIOR_AUTHORITIES == APPROVED
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, superseded_by_gate_r
     for path, blob in APPROVED.items():
         current = subprocess.run(["git", "rev-parse", f"HEAD:{path}"], cwd=REPO,
             capture_output=True, text=True, check=True).stdout.strip()
+        if superseded_by_gate_r(path, repo=governance.REPO):
+            # RC-7B: only under an ACTIVE Gate R (signed record + authentic independent review + exact twelve blobs) does a superseding candidate
+            # replace the historical pin. Release-closed candidate only: never the released pin, never an approved frozen path.
+            assert current == RC7B_CANDIDATE_AUTHORITIES[path], path
+            assert not governance.released_engine_authority_matches(path)
+            assert not approved_frozen_path(path)
+            continue
         assert current == blob, path
         assert governance.released_engine_authority_matches(path)
         assert approved_frozen_path(path)
-    assert unapproved_engine_changes(list(APPROVED)) == []
+    from rc7b_quarterly_candidate_authority import without_gate_r_superseded
+    assert without_gate_r_superseded(unapproved_engine_changes(list(APPROVED)), repo=governance.REPO) == []
     assert strictly_frozen_changes(list(APPROVED)) == []
 
 

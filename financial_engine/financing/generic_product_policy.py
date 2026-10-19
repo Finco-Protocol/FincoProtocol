@@ -128,12 +128,46 @@ def _is_untouched(pi: ProjectInputs) -> tuple[bool, bool]:
 def derive_construction_financing(pi: ProjectInputs) -> ConstructionFinancingInput:
     """Derive the typed construction-financing input from the project's own inputs."""
     info, fin = pi.info, pi.financing
-    if info.period_frequency != InputPeriodFrequency.SEMESTRIAL:
+    quarterly_policy = getattr(info, "operating_calendar_policy", None)
+    if info.period_frequency == InputPeriodFrequency.QUARTERLY and quarterly_policy is not None:
+        # RC-7B: construction timing never depends on the operating frequency.
+        # Prove the quarterly axis' construction columns equal the released
+        # six-month columns, then derive the construction input from them.
+        quarterly_engine = PeriodEngine(
+            financial_close=info.financial_close,
+            construction_months=info.construction_months,
+            horizon_years=info.horizon_years,
+            ppa_years=pi.revenue.ppa_term_years,
+            frequency=EnginePeriodFrequency.QUARTERLY,
+            cod_date=info.cod_date,
+            period_axis_convention=getattr(
+                info.period_axis_convention, "value", info.period_axis_convention),
+            operating_calendar_policy=quarterly_policy,
+        )
+        semester_engine = PeriodEngine(
+            financial_close=info.financial_close,
+            construction_months=info.construction_months,
+            horizon_years=info.horizon_years,
+            ppa_years=pi.revenue.ppa_term_years,
+            frequency=EnginePeriodFrequency.SEMESTRIAL,
+            cod_date=info.cod_date,
+            period_axis_convention=getattr(
+                info.period_axis_convention, "value", info.period_axis_convention),
+        )
+        quarterly_construction = [p for p in quarterly_engine.periods() if p.is_construction]
+        if quarterly_construction != [p for p in semester_engine.periods() if p.is_construction]:
+            raise GenericFinancingPolicyError(
+                "H1_QUARTERLY_CONSTRUCTION_AXIS_DIVERGENCE: construction columns differ "
+                "between the quarterly and six-month axes")
+        engine = quarterly_engine
+    elif info.period_frequency != InputPeriodFrequency.SEMESTRIAL or quarterly_policy is not None:
         raise GenericFinancingPolicyError(
             "H1_UNSUPPORTED_PERIOD_FREQUENCY: generic construction financing "
             f"supports SEMESTRIAL only, got {info.period_frequency!r}"
         )
-    engine = PeriodEngine(
+    else:
+        engine = None
+    engine = engine or PeriodEngine(
         financial_close=info.financial_close,
         construction_months=info.construction_months,
         horizon_years=info.horizon_years,
@@ -208,6 +242,13 @@ def apply_generic_financing_policy(
         from financial_engine.financing.multisenior import validate_project_boundary
         validate_project_boundary(pi)
         return pi, False, False
+    from financial_engine.financing.quarterly_scope import (
+        is_quarterly_project, require_supported_quarterly_project,
+    )
+    if is_quarterly_project(pi):
+        # D-09/D-12: the quarterly candidate admits no reserve and no SHL; a
+        # declared dsra_months is refused, never silently dropped.
+        require_supported_quarterly_project(pi)
     construction_free, dsra_free = _is_untouched(pi)
     fin = pi.financing
     construction_on = policy.apply_construction_financing and construction_free
