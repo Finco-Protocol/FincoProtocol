@@ -309,20 +309,15 @@ class TestFrozenAuthorities:
         "app/model_validation", "app/verified",
     ])
     def test_zero_diff_vs_main(self, frozen):
-        import subprocess
-
-        out = subprocess.run(
-            ["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__('rc3_historical_anchor').anchored_head())}..{__import__('rc3_historical_anchor').anchored_head()}", "--", frozen],
-            cwd=REPO, capture_output=True, text=True,
-        )
-        if out.returncode != 0:
-            pytest.skip("git history unavailable in this checkout")
+        from stream_scope_proof import verified_delta
+        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+        delta = verified_delta("test_staging_product_truth", frozen)
         # Explicitly authorized Model V2 epic engine files are governed by the
         # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
         # protecting every other frozen path.
         from finance_integrity_governance import approved_frozen_path
         changed = [
-            p for p in out.stdout.splitlines()
+            p for p in delta
             if p.strip() and not approved_frozen_path(p.strip())
         ]
         assert changed == [], changed

@@ -227,10 +227,9 @@ def test_market_data_authority_does_not_consult_access_authority():
 
 @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core", "finco_radar/venues"])
 def test_frozen_namespaces_zero_diff(namespace):
-    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--", namespace],
-                         cwd=ROOT, capture_output=True, text=True)
-    if out.returncode != 0:
-        pytest.skip("git unavailable")
+    from stream_scope_proof import verified_delta
+    # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    delta = verified_delta("test_tokenized_access_wiring", namespace)
     # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
     # every other path in this namespace stays frozen.
     allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
@@ -241,7 +240,7 @@ def test_frozen_namespaces_zero_diff(namespace):
     # protecting every other frozen path.
     from finance_integrity_governance import approved_frozen_path
     changed = [
-        p for p in out.stdout.split()
+        p for p in delta
         if p not in allowed and not approved_frozen_path(p)
     ]
     assert changed == [], changed

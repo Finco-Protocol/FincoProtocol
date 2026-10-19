@@ -226,15 +226,10 @@ def test_frozen_authority_namespaces_unchanged_from_canonical_base():
         "app/protocol/token_deployments.py",
         "finco_yield/access.py",
     )
-    probe = subprocess.run(
-        ["git", "diff", "--name-only", f"{_base_sha()}..{__import__('rc3_historical_anchor').anchored_head()}"],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-    )
-    if probe.returncode != 0:
-        return
-    changed = [line.strip() for line in probe.stdout.splitlines() if line.strip()]
+    # HISTORICAL source proof: the stream's immutable source range (tests/stream_scope_proof.py); unproven provenance fails closed.
+    # Whether the current integration tree may change these paths is decided only by the central current gates.
+    from stream_scope_proof import verified_delta
+    changed = verified_delta("test_crypto_roadmap_q4_q1", *frozen)
     # Explicitly authorized Model V2 epic engine files are governed by the
     # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
     # protecting every other frozen path.

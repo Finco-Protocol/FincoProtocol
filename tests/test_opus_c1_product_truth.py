@@ -421,8 +421,10 @@ class TestBehaviorUnchanged:
             # Only the shared, explicitly approved engine modules; finco_core and every other
             # frozen namespace get no exemption.
             allowed |= set(APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS)
-        from rc3_historical_anchor import anchored_head
-        changed = parallel_stream_frozen_changes(frozen_path, main_ref=sha, head_ref=anchored_head(), allowed=allowed)
+        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance fails closed.
+        # Whether the current integration tree may change these paths is decided only by the central current gates.
+        from stream_scope_proof import verified_delta
+        changed = [p for p in verified_delta("test_opus_c1_product_truth", frozen_path) if p not in allowed]
         assert changed == [], changed
 
     def test_branch_contains_current_origin_main(self):

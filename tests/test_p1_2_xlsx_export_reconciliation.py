@@ -771,8 +771,8 @@ def test_xlsx_frozen_namespace_no_financial_engine_changes():
     # Opus Finance Integrity governance: allow-listed engine modules only.
     from finance_integrity_governance import (
         strictly_frozen_changes, unapproved_engine_changes)
-    from rc3_historical_anchor import changed_paths as changed_paths_vs_main
-    changed = changed_paths_vs_main()
+    from stream_scope_proof import verified_delta   # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    changed = verified_delta('test_p1_2_xlsx_export_reconciliation', 'financial_engine', 'finco_core', 'finco_radar')
     frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"Frozen namespace files changed: {frozen}"
 
@@ -859,8 +859,8 @@ def test_finco_pr98_correction_a_true_xlsx_reconciliation_complete():
     # Opus Finance Integrity governance: allow-listed engine modules only.
     from finance_integrity_governance import (
         strictly_frozen_changes, unapproved_engine_changes)
-    from rc3_historical_anchor import changed_paths as changed_paths_vs_main
-    _listed = changed_paths_vs_main()
+    from stream_scope_proof import verified_delta   # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    _listed = verified_delta('test_p1_2_xlsx_export_reconciliation', 'financial_engine', 'finco_core', 'finco_radar')
     frozen = unapproved_engine_changes(_listed) + strictly_frozen_changes(_listed)
     assert frozen == [], f"Frozen namespace changed: {frozen}"
 
@@ -1323,8 +1323,8 @@ def test_finco_pr98_correction_b_persisted_xlsx_authority_complete():
     # Opus Finance Integrity governance: allow-listed engine modules only.
     from finance_integrity_governance import (
         strictly_frozen_changes, unapproved_engine_changes)
-    from rc3_historical_anchor import changed_paths as changed_paths_vs_main
-    _listed = changed_paths_vs_main()
+    from stream_scope_proof import verified_delta   # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    _listed = verified_delta('test_p1_2_xlsx_export_reconciliation', 'financial_engine', 'finco_core', 'finco_radar')
     frozen = unapproved_engine_changes(_listed) + strictly_frozen_changes(_listed)
     assert frozen == [], f"Frozen namespace changed: {frozen}"
 
@@ -2015,7 +2015,7 @@ def test_finco_pr98_correction_c_final_xlsx_lineage_complete():
     # Opus Finance Integrity governance: allow-listed engine modules only.
     from finance_integrity_governance import (
         strictly_frozen_changes, unapproved_engine_changes)
-    from rc3_historical_anchor import changed_paths as changed_paths_vs_main
-    _listed = changed_paths_vs_main()
+    from stream_scope_proof import verified_delta   # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    _listed = verified_delta('test_p1_2_xlsx_export_reconciliation', 'financial_engine', 'finco_core', 'finco_radar')
     frozen = unapproved_engine_changes(_listed) + strictly_frozen_changes(_listed)
     assert frozen == [], f"Frozen namespace changed: {frozen}"

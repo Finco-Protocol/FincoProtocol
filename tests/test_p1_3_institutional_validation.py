@@ -1688,8 +1688,8 @@ def test_p1_3_frozen_namespace():
     # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
     # Opus Finance Integrity governance: allow-listed engine modules only.
     from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
-    from rc3_historical_anchor import changed_paths as changed_paths_vs_main
-    changed = changed_paths_vs_main()
+    from stream_scope_proof import verified_delta   # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    changed = verified_delta('test_p1_3_institutional_validation', 'financial_engine', 'finco_core', 'finco_radar')
     frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"P1.3 must not touch frozen namespaces. Changed: {frozen}"
 
@@ -1914,7 +1914,7 @@ def test_finco_p1_3_institutional_validation_pack_complete():
     # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
     # Opus Finance Integrity governance: allow-listed engine modules only.
     from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
-    from rc3_historical_anchor import changed_paths as changed_paths_vs_main
-    changed = changed_paths_vs_main()
+    from stream_scope_proof import verified_delta   # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+    changed = verified_delta('test_p1_3_institutional_validation', 'financial_engine', 'finco_core', 'finco_radar')
     frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"Frozen namespace violated: {frozen}"

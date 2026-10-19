@@ -459,9 +459,9 @@ class TestFrozenAuthoritiesZeroDiff:
         # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
         # Opus Finance Integrity governance: allow-listed engine modules only.
         from finance_integrity_governance import unapproved_engine_changes
-        from rc3_historical_anchor import changed_paths as changed_paths_vs_main
-        changed = unapproved_engine_changes(
-            [f for f in changed_paths_vs_main() if f.startswith("financial_engine/")])
+        from stream_scope_proof import verified_delta
+        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+        changed = unapproved_engine_changes(verified_delta("test_public_product_truth_sync", "financial_engine"))
         assert changed == [], (
             f"unapproved financial_engine changes vs main: {changed}"
         )
@@ -469,10 +469,11 @@ class TestFrozenAuthoritiesZeroDiff:
     def test_finco_core_zero_diff(self):
         """finco_core/** must have zero diff vs main."""
         # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
-        from rc3_historical_anchor import changed_paths as changed_paths_vs_main
+        from stream_scope_proof import verified_delta
         from model_v2_governance import approved_by_active_model_v2_scope
-        changed = [f for f in changed_paths_vs_main()
-                   if f.startswith("finco_core/") and not approved_by_active_model_v2_scope(f)]
+        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
+        changed = [f for f in verified_delta("test_public_product_truth_sync", "finco_core")
+                   if not approved_by_active_model_v2_scope(f)]
         assert changed == [], (
             f"finco_core must have zero diff vs main; changed: {changed}"
         )
