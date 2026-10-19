@@ -83,7 +83,7 @@
   function ensure(view) {
     var node=document.getElementById(view.id);if(!node)return;
     if(node!==view.node){
-      view.node=node;view.dirty=false;
+      view.node=node;view.dirty=false;view.otherDirty=false;
       if(!node.dataset.modelViewState)node.dataset.modelViewState='loaded';
     }
     syncSetupControls(view,node);
@@ -116,8 +116,16 @@
     if(node.dataset.modelViewState==='loaded')return;
     event.preventDefault();event.stopImmediatePropagation();schedule();
   }
-  document.addEventListener('input',function(event){var view=viewOf(event.target);if(view && view.editable && event.isTrusted)view.dirty=true;});
-  document.addEventListener('change',function(event){var view=viewOf(event.target);if(view && view.editable && event.isTrusted)view.dirty=true;});
+  // An edit made outside the Construction timing component can never be covered by that component's own Save.
+  function markDirty(event){
+    var view=viewOf(event.target);
+    if(view && view.editable && event.isTrusted){
+      view.dirty=true;
+      if(!(event.target.closest && event.target.closest('[data-testid="construction-timing"]')))view.otherDirty=true;
+    }
+  }
+  document.addEventListener('input',markDirty);
+  document.addEventListener('change',markDirty);
   document.addEventListener('submit',block,true);
   document.addEventListener('htmx:confirm',function(event){
     var elt=(event.detail||{}).elt,view=elt && viewOf(elt);
@@ -129,7 +137,7 @@
     var retry=event.target.closest('[data-model-view-retry]');
     if(retry){
       var view=views.find(function(v){return v.name===retry.dataset.modelViewRetry;});
-      if(view){view.dirty=false;document.getElementById(view.id).dataset.modelViewState='pending';schedule();}
+      if(view){view.dirty=false;view.otherDirty=false;document.getElementById(view.id).dataset.modelViewState='pending';schedule();}
       return;
     }
     if(event.target.closest('button,input[type="submit"]') && !event.target.closest('[data-nav-tab]'))block(event);
@@ -155,6 +163,9 @@
       if(sourceView && sourceView.editable && detail.xhr.status===200 && generation===writeGeneration){
         var node=document.getElementById(sourceView.id);
         if(node && node===sourceView.node){
+          // The Investor agreement is one form saved as a whole: after a successful save its edits are persisted, not an unsaved draft that
+          // would keep the sheet permanently pending after the next Run. Row writers (cost grids) keep their remaining drafts untouched.
+          if(sourceView.name==='investor'){sourceView.dirty=false;sourceView.otherDirty=false;}
           node.dataset.modelViewState='loaded';
           syncSetupControls(sourceView,node);
           var notice=node.querySelector('[data-model-view-notice]');if(notice)notice.remove();
@@ -165,7 +176,11 @@
   });
   document.addEventListener('model:diagnostics-write-start',function(){writes++;invalidate();});
   document.addEventListener('model:diagnostics-write-end',function(){writes=Math.max(0,writes-1);schedule();});
-  document.addEventListener('ct:saved',function(){invalidate();schedule();});
+  document.addEventListener('ct:saved',function(){
+    // Construction timing persisted its own fields: drafts that exist ONLY in that component are saved; any other unsaved edit stays a draft.
+    views.forEach(function(view){if(view.name==='project_setup' && !view.otherDirty)view.dirty=false;});
+    invalidate();schedule();
+  });
   document.addEventListener('htmx:afterSettle',schedule);
   // Browser Back/Forward returns to the read-only Outputs projection through a freshly authorized read (it re-initializes the
   // statement tree, which restores its view/expansion/period/focus/scroll from history state).  Only the Outputs view and only on

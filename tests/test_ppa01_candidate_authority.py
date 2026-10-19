@@ -86,7 +86,8 @@ def _bad(facts, fn, **changes):
 def _without_active_gate_r_slice(facts):
     """RC-7B Gate R: while a complete, authentic Gate R is ACTIVE its exact twelve paths are a separate, already-recognised slice and are not
     'unlisted' changes of the PPA-01 slice. Without an active Gate R the facts are returned unchanged (every unlisted change still rejects)."""
-    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
+    from rc7b_postmerge_successor import candidate_recognized as gate_r_active
     if not gate_r_active():
         return facts, False
     adjusted = copy.deepcopy(facts)
@@ -205,7 +206,8 @@ def test_m7_eleven_blobs_are_unchanged_and_coexist_without_cross_approval():
     assert not set(M7.M7_RC3_CANDIDATE_AUTHORITIES) & set(P.PPA01_CANDIDATE_AUTHORITIES)      # no path overlap: the M7 map was not extended
     facts = M7.collect()
     assert any(p in facts["frozen_changes"] for p in PATHS)                              # raw M7 facts DO see the PPA-01 slice ...
-    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
+    from rc7b_postmerge_successor import candidate_recognized as gate_r_active
     superseded_blobs = dict(facts["blobs"])
     superseded_slice = set(P.PPA01_CANDIDATE_AUTHORITIES)
     if gate_r_active():

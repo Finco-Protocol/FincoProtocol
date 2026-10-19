@@ -20,7 +20,8 @@ PATHS = {
 def test_only_exact_seven_paths_at_their_pinned_content_are_authorized():
     assert set(governance.F3_2_4_FINANCING_AUTHORITIES) == PATHS
     assert strictly_frozen_changes(list(PATHS)) == []
-    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, superseded_by_gate_r
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
+    from rc7b_postmerge_successor import superseded as superseded_by_gate_r
     for path, blob in governance.F3_2_4_FINANCING_AUTHORITIES.items():
         if superseded_by_gate_r(path, repo=governance.REPO):
             # RC-7B: only under an ACTIVE Gate R (signed record + authentic independent review + exact twelve blobs) does a superseding candidate

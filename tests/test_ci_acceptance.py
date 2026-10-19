@@ -261,7 +261,8 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
     # RC-7B Gate R: the twelve-blob quarterly candidate slice is recognised ONLY while a complete Gate R is active (signed Financial Owner record,
     # authentic independent GitHub review of this exact content and mechanism, exact blobs, literal ACTIVATION_ENABLED=False). Recognition of bytes
     # only: no financial approval, admission, release or merge. Without Gate R this slice falls through to the failure below, exactly as before.
-    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES, gate_r_active
+    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
+    from rc7b_postmerge_successor import candidate_recognized as gate_r_active
     if protected == set(RC7B_CANDIDATE_AUTHORITIES) and gate_r_active(repo=root, ref=head):
         for path, pin in RC7B_CANDIDATE_AUTHORITIES.items():
             actual = git("rev-parse", "--verify", f"{head}:{path}")
