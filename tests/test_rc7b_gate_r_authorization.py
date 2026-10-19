@@ -53,7 +53,7 @@ def base_clone(tmp_path_factory):
     clone = tmp_path_factory.mktemp("gater") / "clone"
     subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(clone)], check=True, capture_output=True)
     git(clone, "config", "user.name", "Synthetic")
-    git(clone, "config", "user.email", "synthetic@example.invalid")
+    git(clone, "config", "user.email", "noreply@users.noreply.github.com")
     head = git(ROOT, "rev-parse", "HEAD")
     # the clone has every commit reachable from the local HEAD (the working branch), including the predecessor and reviewed source head
     git(clone, "checkout", "-q", "-B", "base", head)
