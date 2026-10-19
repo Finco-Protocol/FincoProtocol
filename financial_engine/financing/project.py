@@ -974,6 +974,38 @@ def run_project_financing_model(
         )
         return result
 
+    kwargs = dict(
+        source_id=source_id,
+        baseline_commit_sha=baseline_commit_sha,
+        convergence_tolerance_keur=convergence_tolerance_keur,
+        maximum_iterations=maximum_iterations,
+        _typed_shl_context=_typed_shl_context,
+        _u2_period_financing_income=_u2_period_financing_income,
+    )
+    try:
+        return _run_shl_senior_fixed_point(project_inputs, **kwargs, defer_capacity=True)
+    except ValueError as error:
+        # The capacity pass may reject an earlier SHL iterate than the funded
+        # pass. Re-decide that named financial failure in the original order,
+        # preserving the original residual in its evidence. Other errors escape.
+        if not str(error).startswith("SHL_MATURITY_RESIDUAL_FAILS_CLOSED:"):
+            raise
+    return _run_shl_senior_fixed_point(project_inputs, **kwargs, defer_capacity=False)
+
+
+def _run_shl_senior_fixed_point(
+    project_inputs: ProjectInputs,
+    *,
+    source_id: str,
+    baseline_commit_sha: str,
+    convergence_tolerance_keur: float,
+    maximum_iterations: int,
+    _typed_shl_context: _TypedConstructionShlContext | None,
+    _u2_period_financing_income: "tuple | None",
+    defer_capacity: bool,
+) -> ProjectFinancingResult:
+    """One canonical funded iteration path, with bounded legacy re-decision."""
+    fin = project_inputs.financing
     uses = _project_uses(project_inputs)
     gearing_capacity = uses.total_project_uses_keur * fin.gearing_ratio
 
@@ -1218,16 +1250,15 @@ def run_project_financing_model(
                     period_financing_income=_u2_period_financing_income,
                 ),
             )
-        capacity_result = run_senior_debt_model(capacity_model_input)
-        if capacity_result.senior_debt is None:
-            raise RuntimeError("G2A DSCR capacity result is unavailable")
-        authoritative_dscr_capacity = capacity_result.senior_debt.debt_size_keur
+        if not defer_capacity:
+            capacity_result = run_senior_debt_model(capacity_model_input)
+            if capacity_result.senior_debt is None:
+                raise RuntimeError("G2A DSCR capacity result is unavailable")
+            authoritative_dscr_capacity = capacity_result.senior_debt.debt_size_keur
         if fin.debt_sizing_mode == DebtSizingMode.GEARING_CAP:
             # M6: debt = eligible project cost x maximum gearing. DSCR capacity is
             # informational only; DSCR_SCULPTED repayment never resizes the debt.
             expected_final_senior = gearing_capacity
-        else:
-            expected_final_senior = min(authoritative_dscr_capacity, gearing_capacity)
 
         funded_inputs = replace(
             project_inputs,
@@ -1327,6 +1358,14 @@ def run_project_financing_model(
         candidate_shl = derived_shl
     else:
         raise RuntimeError("G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE")
+
+    if defer_capacity:
+        # Use the input of the actual accepted iteration, not derived_shl:
+        # convergence does not imply bit equality between those two principals.
+        capacity_result = run_senior_debt_model(capacity_model_input)
+        if capacity_result.senior_debt is None:
+            raise RuntimeError("G2A DSCR capacity result is unavailable")
+        authoritative_dscr_capacity = capacity_result.senior_debt.debt_size_keur
 
     assert model_result is not None and model_result.senior_debt is not None
 

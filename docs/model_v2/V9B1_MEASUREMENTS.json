@@ -1,0 +1,613 @@
+{
+  "samples_per_arm": 5,
+  "method": "cold processes; alternating AB/BA",
+  "profiled_timings_excluded": true,
+  "cases": {
+    "S50": {
+      "baseline": {
+        "median_s": 2.069622600043658,
+        "p95_nearest_rank_s": 2.331472899997607,
+        "raw": [
+          {
+            "status": "feasible",
+            "seconds": 2.069622600043658,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 117673984
+          },
+          {
+            "status": "feasible",
+            "seconds": 2.3000102000078186,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 118427648
+          },
+          {
+            "status": "feasible",
+            "seconds": 2.06155059998855,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 118726656
+          },
+          {
+            "status": "feasible",
+            "seconds": 2.331472899997607,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 117927936
+          },
+          {
+            "status": "feasible",
+            "seconds": 2.049765200004913,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 118726656
+          }
+        ]
+      },
+      "candidate": {
+        "median_s": 2.03712449996965,
+        "p95_nearest_rank_s": 2.1291674999520183,
+        "raw": [
+          {
+            "status": "feasible",
+            "seconds": 2.0332181999692693,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 112431104
+          },
+          {
+            "status": "feasible",
+            "seconds": 2.1291674999520183,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 112381952
+          },
+          {
+            "status": "feasible",
+            "seconds": 2.03712449996965,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 112508928
+          },
+          {
+            "status": "feasible",
+            "seconds": 1.8796906999778003,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 112398336
+          },
+          {
+            "status": "feasible",
+            "seconds": 2.055195100023411,
+            "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+            "leaves": 14975,
+            "counts": {},
+            "peak_working_set_bytes": 112287744
+          }
+        ]
+      },
+      "median_saving_pct": 1.5702428101298516,
+      "profiles": {
+        "baseline": {
+          "run_senior_debt_model": 69,
+          "_run_senior_debt_model_with_shl": 35,
+          "solve_senior_debt": 279,
+          "calculate_cfads_and_cash_tax": 1888,
+          "run_project_financing_model": 19,
+          "capacity_passes": 34,
+          "funded_senior_passes": 35,
+          "g2a_iterations": 34,
+          "canonical_fallbacks": 0
+        },
+        "candidate": {
+          "run_senior_debt_model": 52,
+          "_run_senior_debt_model_with_shl": 35,
+          "solve_senior_debt": 262,
+          "calculate_cfads_and_cash_tax": 1701,
+          "run_project_financing_model": 19,
+          "capacity_passes": 17,
+          "funded_senior_passes": 35,
+          "g2a_iterations": 34,
+          "canonical_fallbacks": 0
+        }
+      }
+    },
+    "S16": {
+      "baseline": {
+        "median_s": 18.000493600033224,
+        "p95_nearest_rank_s": 18.58629710000241,
+        "raw": [
+          {
+            "status": "feasible",
+            "seconds": 18.115309799963143,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 120856576
+          },
+          {
+            "status": "feasible",
+            "seconds": 17.870175899995957,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 120934400
+          },
+          {
+            "status": "feasible",
+            "seconds": 18.58629710000241,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 121540608
+          },
+          {
+            "status": "feasible",
+            "seconds": 17.691747599979863,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 122048512
+          },
+          {
+            "status": "feasible",
+            "seconds": 18.000493600033224,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 120578048
+          }
+        ]
+      },
+      "candidate": {
+        "median_s": 13.65417150000576,
+        "p95_nearest_rank_s": 14.34955570002785,
+        "raw": [
+          {
+            "status": "feasible",
+            "seconds": 13.467841500008944,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 120123392
+          },
+          {
+            "status": "feasible",
+            "seconds": 14.195582300017122,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 120107008
+          },
+          {
+            "status": "feasible",
+            "seconds": 13.65417150000576,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 120614912
+          },
+          {
+            "status": "feasible",
+            "seconds": 13.460222799971234,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 120799232
+          },
+          {
+            "status": "feasible",
+            "seconds": 14.34955570002785,
+            "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+            "leaves": 15045,
+            "counts": {},
+            "peak_working_set_bytes": 120995840
+          }
+        ]
+      },
+      "median_saving_pct": 24.14557176376231,
+      "profiles": {
+        "baseline": {
+          "run_senior_debt_model": 465,
+          "_run_senior_debt_model_with_shl": 408,
+          "solve_senior_debt": 2879,
+          "calculate_cfads_and_cash_tax": 17175,
+          "run_project_financing_model": 21,
+          "capacity_passes": 166,
+          "funded_senior_passes": 299,
+          "g2a_iterations": 166,
+          "canonical_fallbacks": 0
+        },
+        "candidate": {
+          "run_senior_debt_model": 318,
+          "_run_senior_debt_model_with_shl": 280,
+          "solve_senior_debt": 1978,
+          "calculate_cfads_and_cash_tax": 13143,
+          "run_project_financing_model": 21,
+          "capacity_passes": 19,
+          "funded_senior_passes": 299,
+          "g2a_iterations": 166,
+          "canonical_fallbacks": 0
+        }
+      }
+    },
+    "W25r-dscr2.0": {
+      "baseline": {
+        "median_s": 11.141221400001086,
+        "p95_nearest_rank_s": 11.322755600034725,
+        "raw": [
+          {
+            "status": "feasible",
+            "seconds": 11.23755690001417,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 134623232
+          },
+          {
+            "status": "feasible",
+            "seconds": 11.120039800007362,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 134705152
+          },
+          {
+            "status": "feasible",
+            "seconds": 11.141221400001086,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 134696960
+          },
+          {
+            "status": "feasible",
+            "seconds": 11.07434240001021,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 135196672
+          },
+          {
+            "status": "feasible",
+            "seconds": 11.322755600034725,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 135766016
+          }
+        ]
+      },
+      "candidate": {
+        "median_s": 7.27316179999616,
+        "p95_nearest_rank_s": 7.712821399967652,
+        "raw": [
+          {
+            "status": "feasible",
+            "seconds": 6.966403600003105,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 134615040
+          },
+          {
+            "status": "feasible",
+            "seconds": 7.091179600043688,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 134832128
+          },
+          {
+            "status": "feasible",
+            "seconds": 7.712821399967652,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 134549504
+          },
+          {
+            "status": "feasible",
+            "seconds": 7.27316179999616,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 133722112
+          },
+          {
+            "status": "feasible",
+            "seconds": 7.299995200010017,
+            "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+            "leaves": 18235,
+            "counts": {},
+            "peak_working_set_bytes": 133668864
+          }
+        ]
+      },
+      "median_saving_pct": 34.718451964382915,
+      "profiles": {
+        "baseline": {
+          "run_senior_debt_model": 264,
+          "_run_senior_debt_model_with_shl": 228,
+          "solve_senior_debt": 1632,
+          "calculate_cfads_and_cash_tax": 8854,
+          "run_project_financing_model": 13,
+          "capacity_passes": 121,
+          "funded_senior_passes": 143,
+          "g2a_iterations": 121,
+          "canonical_fallbacks": 0
+        },
+        "candidate": {
+          "run_senior_debt_model": 155,
+          "_run_senior_debt_model_with_shl": 131,
+          "solve_senior_debt": 941,
+          "calculate_cfads_and_cash_tax": 5836,
+          "run_project_financing_model": 13,
+          "capacity_passes": 12,
+          "funded_senior_passes": 143,
+          "g2a_iterations": 121,
+          "canonical_fallbacks": 0
+        }
+      }
+    },
+    "DC": {
+      "baseline": {
+        "median_s": 1.1150992999901064,
+        "p95_nearest_rank_s": 1.1692056999891065,
+        "raw": [
+          {
+            "status": "feasible",
+            "seconds": 1.1150992999901064,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 72593408
+          },
+          {
+            "status": "feasible",
+            "seconds": 0.9732063999981619,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 72519680
+          },
+          {
+            "status": "feasible",
+            "seconds": 1.1692056999891065,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 72155136
+          },
+          {
+            "status": "feasible",
+            "seconds": 0.9891433999873698,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 72433664
+          },
+          {
+            "status": "feasible",
+            "seconds": 1.1306412999983877,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 72589312
+          }
+        ]
+      },
+      "candidate": {
+        "median_s": 0.9520407000090927,
+        "p95_nearest_rank_s": 1.1223733999649994,
+        "raw": [
+          {
+            "status": "feasible",
+            "seconds": 0.924353800015524,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 70303744
+          },
+          {
+            "status": "feasible",
+            "seconds": 1.1223733999649994,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 70975488
+          },
+          {
+            "status": "feasible",
+            "seconds": 0.8830934999859892,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 71131136
+          },
+          {
+            "status": "feasible",
+            "seconds": 1.0732215999742039,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 70987776
+          },
+          {
+            "status": "feasible",
+            "seconds": 0.9520407000090927,
+            "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+            "leaves": 16816,
+            "counts": {},
+            "peak_working_set_bytes": 70897664
+          }
+        ]
+      },
+      "median_saving_pct": 14.622787403997151,
+      "profiles": {
+        "baseline": {
+          "run_senior_debt_model": 44,
+          "_run_senior_debt_model_with_shl": 22,
+          "solve_senior_debt": 198,
+          "calculate_cfads_and_cash_tax": 682,
+          "run_project_financing_model": 12,
+          "capacity_passes": 22,
+          "funded_senior_passes": 22,
+          "g2a_iterations": 22,
+          "canonical_fallbacks": 0
+        },
+        "candidate": {
+          "run_senior_debt_model": 33,
+          "_run_senior_debt_model_with_shl": 22,
+          "solve_senior_debt": 187,
+          "calculate_cfads_and_cash_tax": 627,
+          "run_project_financing_model": 12,
+          "capacity_passes": 11,
+          "funded_senior_passes": 22,
+          "g2a_iterations": 22,
+          "canonical_fallbacks": 0
+        }
+      }
+    },
+    "W25-dsra12": {
+      "baseline": {
+        "median_s": 3.480180400016252,
+        "p95_nearest_rank_s": 3.8325433999998495,
+        "raw": [
+          {
+            "status": "rejected",
+            "seconds": 2.5274357999442145,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 128335872
+          },
+          {
+            "status": "rejected",
+            "seconds": 3.480180400016252,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 127922176
+          },
+          {
+            "status": "rejected",
+            "seconds": 3.614880400011316,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 128241664
+          },
+          {
+            "status": "rejected",
+            "seconds": 2.9977665999904275,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 128270336
+          },
+          {
+            "status": "rejected",
+            "seconds": 3.8325433999998495,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 128028672
+          }
+        ]
+      },
+      "candidate": {
+        "median_s": 2.314079199975822,
+        "p95_nearest_rank_s": 2.9881716000381857,
+        "raw": [
+          {
+            "status": "rejected",
+            "seconds": 1.9853353000362404,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 118321152
+          },
+          {
+            "status": "rejected",
+            "seconds": 2.314079199975822,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 118239232
+          },
+          {
+            "status": "rejected",
+            "seconds": 2.308791999996174,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 118030336
+          },
+          {
+            "status": "rejected",
+            "seconds": 2.9881716000381857,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 117649408
+          },
+          {
+            "status": "rejected",
+            "seconds": 2.5422599999583326,
+            "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+            "leaves": 3,
+            "counts": {},
+            "peak_working_set_bytes": 118243328
+          }
+        ]
+      },
+      "median_saving_pct": 33.506918205590274,
+      "profiles": {
+        "baseline": {
+          "run_senior_debt_model": 46,
+          "_run_senior_debt_model_with_shl": 37,
+          "solve_senior_debt": 344,
+          "calculate_cfads_and_cash_tax": 1703,
+          "run_project_financing_model": 4,
+          "capacity_passes": 17,
+          "funded_senior_passes": 29,
+          "g2a_iterations": 16,
+          "canonical_fallbacks": 0
+        },
+        "candidate": {
+          "run_senior_debt_model": 36,
+          "_run_senior_debt_model_with_shl": 27,
+          "solve_senior_debt": 254,
+          "calculate_cfads_and_cash_tax": 1377,
+          "run_project_financing_model": 4,
+          "capacity_passes": 4,
+          "funded_senior_passes": 32,
+          "g2a_iterations": 17,
+          "canonical_fallbacks": 1
+        }
+      }
+    }
+  },
+  "baseline": "5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d",
+  "candidate_financial_blob": "61bd3e644b8e3159d1709c32b41aec12340c5e34",
+  "environment": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD",
+    "logical_cpus": 12,
+    "python": "3.12.10 (64-bit)"
+  },
+  "coverage": "Five performance workloads, 5 cold uncached samples per arm; separate instrumented profiles; not 5 samples for each of 49 equivalence cases.",
+  "memory_scope": "OS peak process working set, including imports and output flattening, not a Run-only delta.",
+  "statistical_limitations": "n=5: nearest-rank p95 is observed maximum. No CPU-affinity/frequency isolation; S50 median difference is within desktop scheduling noise."
+}
