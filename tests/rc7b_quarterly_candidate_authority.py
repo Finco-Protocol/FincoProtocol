@@ -465,3 +465,9 @@ def superseded_by_gate_r(path: str, *, repo=None, ref: str = "HEAD", fetcher=Non
 def current_expected_blob(path: str, historical_pin, *, repo=None, ref: str = "HEAD", fetcher=None):
     """The blob a current-authority guard must see at ``path``: the Gate R candidate blob for a superseded path, otherwise the historical pin."""
     return RC7B_CANDIDATE_AUTHORITIES[path] if superseded_by_gate_r(path, repo=repo, ref=ref, fetcher=fetcher) else historical_pin
+
+
+def without_gate_r_superseded(paths, *, repo=None, ref: str = "HEAD", fetcher=None) -> list[str]:
+    """``paths`` minus those superseded by an ACTIVE Gate R (identity when Gate R is inactive). Used by the current-authority guards on the OUTPUT of
+    ``unapproved_engine_changes`` so that function itself stays byte-identical to its historical checkpoint."""
+    return [p for p in paths if not superseded_by_gate_r(p, repo=repo, ref=ref, fetcher=fetcher)]

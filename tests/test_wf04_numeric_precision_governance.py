@@ -28,7 +28,8 @@ def test_exact_wf04_paths_and_content_only():
         current_blob = governance.F3_5_A_JUNIOR_AUTHORITIES.get(path, blob)
         assert git(governance.REPO, "rev-parse", "HEAD:" + path) == current_blob
         assert governance.released_engine_authority_matches(path)
-    assert unapproved_engine_changes(list(APPROVED)) == []
+    from rc7b_quarterly_candidate_authority import without_gate_r_superseded
+    assert without_gate_r_superseded(unapproved_engine_changes(list(APPROVED)), repo=governance.REPO) == []
 
 
 @pytest.mark.parametrize("path", sorted(APPROVED))

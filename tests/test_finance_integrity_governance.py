@@ -19,9 +19,10 @@ def test_approved_engine_paths_are_allowed():
     # RC-7B Gate R: paths superseded by the twelve-blob quarterly candidate are recognised ONLY while a complete, authentic Gate R is active; they are
     # then a release-closed candidate (never released). With no Gate R this set is empty and every original expectation below applies unchanged.
     from rc7b_quarterly_candidate_authority import superseded_by_gate_r
+    from rc7b_quarterly_candidate_authority import without_gate_r_superseded
     superseded = {p for p in APPROVED if superseded_by_gate_r(p)}
-    assert unapproved_engine_changes(sorted(APPROVED)) == sorted(set(candidate) - superseded)
-    assert unapproved_engine_changes(sorted(set(APPROVED) - set(candidate))) == []
+    assert without_gate_r_superseded(unapproved_engine_changes(sorted(APPROVED))) == sorted(set(candidate) - superseded)
+    assert without_gate_r_superseded(unapproved_engine_changes(sorted(set(APPROVED) - set(candidate)))) == []
     for path in candidate:
         assert authority_state(path) == INTEGRATED_RELEASE_CLOSED_CANDIDATE
     for path in set(APPROVED) - set(candidate):
@@ -45,7 +46,9 @@ def test_core_and_radar_have_no_exception():
 
 
 def test_this_branch_stays_within_the_governance_contract():
-    assert unapproved_engine_changes() == []
+    from rc7b_quarterly_candidate_authority import without_gate_r_superseded
+    # RC-7B: paths superseded by an ACTIVE Gate R (release-closed candidate, never released) are removed from the result; with no Gate R it is identity.
+    assert without_gate_r_superseded(unapproved_engine_changes()) == []
     assert strictly_frozen_changes() == []
 
 

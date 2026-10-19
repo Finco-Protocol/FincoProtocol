@@ -74,7 +74,9 @@ def test_exact_seven_content_pins_only():
         assert not approved_frozen_path(path)
     assert authority_states.release_closed_violations() == []
     # the released-authority guard still rejects the candidate; a path superseded by an ACTIVE Gate R is recognised instead (never released)
-    assert unapproved_engine_changes(list(PATHS)) == sorted(p for p in M7_PATHS if not superseded_by_gate_r(p, repo=governance.REPO))
+    from rc7b_quarterly_candidate_authority import without_gate_r_superseded
+    assert without_gate_r_superseded(unapproved_engine_changes(list(PATHS)), repo=governance.REPO) == sorted(
+        p for p in M7_PATHS if not superseded_by_gate_r(p, repo=governance.REPO))
     assert strictly_frozen_changes(list(PATHS)) == []
 
 

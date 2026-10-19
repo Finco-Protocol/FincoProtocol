@@ -66,7 +66,8 @@ def test_only_fifteen_independently_accepted_blobs_are_released():
         assert current == blob, path
         assert governance.released_engine_authority_matches(path)
         assert approved_frozen_path(path)
-    assert unapproved_engine_changes(list(APPROVED)) == []
+    from rc7b_quarterly_candidate_authority import without_gate_r_superseded
+    assert without_gate_r_superseded(unapproved_engine_changes(list(APPROVED)), repo=governance.REPO) == []
     assert strictly_frozen_changes(list(APPROVED)) == []
 
 
