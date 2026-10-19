@@ -49,6 +49,18 @@ STREAM_RANGES: dict[str, StreamRange] = {
     "test_tokenized_access_wiring": StreamRange("abb39ebfe19a25501280a35023b1e6c583ea15ce", "79758348efe8ae82edaadee7bbb3013d81a59c14", "e6db40d95afb77787df511b3e7f45eb6262cce8f"),
     "test_tokenized_markets_composition": StreamRange("4c0cb488642ff06319db9c99d63b4f4f100f2a23", "a6785ff34c0ef28e95b7d5ea7237a29a8cb1801d", "efa76c682455b6321346d52749e4a45a5159ed6e"),
     "test_yield_alerts_core": StreamRange("347812cca574a73c64bc71e29296204b3e144cfc", "b7919375a67d08620d0040ff5a65519169e41e96", "6760fb58331df54a2df44da3ea948fbdd15b8120"),
+    # Streams that landed on main only inside a larger integration merge: the range is the stream's OWN landing merge (second parent = its
+    # source head) inside that integration branch, found by descending from the main merge to the first commit that contains the stream's test.
+    "test_m3_two_driver_sensitivity": StreamRange("5058c6b4935168241d6923676cb32955cb903185", "0fa0ac5e268a37decbae6bc252487aba3e6e31c9", "2cd6e1545bb4fa90b130d5487bf931f2ad45e877"),
+    "test_model_v2_assumption_trace_references": StreamRange("3d2ab9c58838512f3ebc89e3f0369b289a214973", "ceb2046a5d755c067c90a4c2e95d3e475c4d8585", "fbef2191348aa137bcf1c56bb30a6c172f84180e"),
+    "test_model_v2_cost_templates": StreamRange("f6e9c5081a1eb1bc2c3d61b58e7ba524f142ca6d", "ff3aa0ec6078cbbef6050c3a333eb923e5b3a5d7", "3d2ab9c58838512f3ebc89e3f0369b289a214973"),
+    "test_model_v2_cost_templates_cd": StreamRange("f6e9c5081a1eb1bc2c3d61b58e7ba524f142ca6d", "ff3aa0ec6078cbbef6050c3a333eb923e5b3a5d7", "3d2ab9c58838512f3ebc89e3f0369b289a214973"),
+    "test_model_v2_revenue_runtime_parity": StreamRange("c0e254349f62fe6d5aeb5891766ffa8f920065e2", "f1a6df8600b8782d983db4fd237ff2c033062245", "e25c574f7db0fb281babe6804183de5e448ad21b"),
+    "test_parallel_stream_frozen_diff": StreamRange("f6e9c5081a1eb1bc2c3d61b58e7ba524f142ca6d", "ff3aa0ec6078cbbef6050c3a333eb923e5b3a5d7", "3d2ab9c58838512f3ebc89e3f0369b289a214973"),
+    "test_radar_r3_deepstate_composition": StreamRange("5058c6b4935168241d6923676cb32955cb903185", "6c704f4e799a9dc1a10eb4f10d4e6b9a14f0ea2f", "896b48eab6cd5df760a08d515a3f9ec5bb33561c"),
+    "test_radar_r4_tokenized_monitor_v2": StreamRange("6fc77de98bc0562fb51efdbf96e1803a29b5b148", "8378e5df30ec10b4de2b2f5330491837a7cd1ffb", "e2a6efff440c6bc6333caf89501f9a09af6e378a"),
+    "test_radar_tokenized_signal_lifecycle": StreamRange("6fc77de98bc0562fb51efdbf96e1803a29b5b148", "9f93dc843eed8f2f2cf7f11cf409fffd003ce70f", "d0e4408beaac21a1d9571026892c00d719668011"),
+    "test_tokenized_live_intelligence_v1": StreamRange("f026890448e13af9ef940f41a929d38329738ae5", "26176f47f260ed91dcdf36a56bbe2ff34adce526", "abb39ebfe19a25501280a35023b1e6c583ea15ce"),
 }
 
 UNVERIFIED = "PROVENANCE_UNVERIFIED"

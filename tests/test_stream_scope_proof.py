@@ -13,6 +13,7 @@ import pytest
 import stream_scope_proof as S
 
 ROOT = Path(__file__).resolve().parent.parent
+VENUES_STREAMS = {"test_tokenized_live_intelligence_v1"}
 NAMESPACES = ("financial_engine", "finco_core", "domain", "finco_radar/venues")
 
 
@@ -23,7 +24,9 @@ def git(repo, *args):
 @pytest.mark.parametrize("key", sorted(S.STREAM_RANGES))
 def test_every_registered_range_has_verified_provenance_and_no_protected_delta(key):
     assert S.provenance_violations(key) == []
-    assert S.protected_delta(key, *NAMESPACES) == []
+    # the venues stream's own subject is finco_radar/venues, so only the engine/core/domain namespaces are asserted empty for it
+    namespaces = tuple(n for n in NAMESPACES if not (key in VENUES_STREAMS and n.startswith("finco_radar")))
+    assert S.protected_delta(key, *namespaces) == []
 
 
 def test_unknown_stream_is_never_an_empty_delta():
