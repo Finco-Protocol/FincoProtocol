@@ -225,3 +225,229 @@ def frozen_scope_exempt(path: str, *, repo=None, ref: str = "HEAD") -> bool:
     content matches exactly (a modified, partial, substituted or activated candidate exempts nothing). NOT a release and not an approval."""
     return path in RC7B_CANDIDATE_AUTHORITIES and candidate_blobs_match(repo=repo, ref=ref) and candidate_content_matches_exactly(
         repo=repo, ref=ref)
+
+
+# ═══════════════════════════ Gate R: candidate-boundary authorization (option A) ═══════════════════════════
+#
+# Gate R is NOT a financial approval. It authorizes exactly one thing: carrying the twelve reviewed blobs above as a RELEASE-CLOSED integration
+# candidate. It never approves D-01..D-12, Gate P, activation of the quarterly Run, a financial-policy change, product admission, release or merge.
+#
+# It is INERT unless ALL of the following are verified, and every uncertainty (missing, unsigned, unverifiable, stale) means REJECT:
+#   1. the exact-content facts above hold (twelve blobs, ancestry, change scope, literal ``ACTIVATION_ENABLED = False``, historical files unchanged);
+#   2. a committed, SIGNED record ``GATE_R_RECORD`` names a human Financial Owner and a different human independent reviewer and repeats the exact
+#      blobs, the M7 supersession, DEFERRED D-06/D-07 and grants that are all ``False`` except the release-closed boundary itself;
+#   3. an authentic GitHub review (fetched from GitHub, not read from the repository) exists: state APPROVED, by the named reviewer, who is neither
+#      the PR author nor the Financial Owner nor a bot, with a repository-collaborator association, on a commit whose twelve blobs equal the accepted
+#      blobs and which is an ancestor of the evaluated ref (a review of other or older content is stale).
+GATE_R_RECORD = "docs/model_v2/RC7B_GATE_R_AUTHORIZATION.json"
+GATE_R_SCHEMA = "finco.rc7b.gate-r-candidate-boundary-authorization.v1"
+GATE_R_RECORD_TYPE = "GATE_R_CANDIDATE_BOUNDARY_AUTHORIZATION"
+GATE_R_SCOPE = "CANDIDATE_BOUNDARY_ONLY"
+GATE_R_REPOSITORY = "Finco-Protocol/FincoProtocol"
+GATE_R_PULL_NUMBER = 320
+GATE_R_ACCEPTED_RESULT = "ACCEPTED_CANDIDATE_CONTENT"
+GATE_R_GRANTS = {
+    "release_closed_integration_of_listed_blobs": True,
+    "financial_approval_of_d01_d12": False,
+    "gate_p": False,
+    "user_activation_of_quarterly_run": False,
+    "financial_policy_change": False,
+    "product_admission": False,
+    "release": False,
+    "merge_to_main": False,
+}
+GATE_R_ALLOWED_DECISION_VALUES = ("NOT_DECIDED_BY_THIS_RECORD", "DEFERRED")
+GATE_R_DEFERRED = ("D-06", "D-07")
+GATE_R_M7_SUPERSEDED = {
+    "financial_engine/orchestrator.py": "be7ac31c6c4fed43b5fd7ca49fe53bfd1cc54c03",
+    "financial_engine/adapters/project_inputs.py": "14bd759a9958515a7796626f93c1bd2233d69150",
+}
+GATE_R_REVIEWER_ASSOCIATIONS = ("OWNER", "MEMBER", "COLLABORATOR")
+# The Gate R mechanism. An approval reviews THESE bytes together with the twelve blobs; a later change to any of them makes the review stale.
+GATE_R_GOVERNANCE_FILES = (
+    "tests/rc7b_quarterly_candidate_authority.py",
+    "tests/finance_integrity_governance.py",
+    "tests/rc3_authority_states.py",
+    "tests/test_rc7b_gate_r_authorization.py",
+)
+_GITHUB_LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+
+
+def github_review_fetcher(pull_number: int = GATE_R_PULL_NUMBER):
+    """Read-only live fetch of the PR and its reviews from GitHub; ``None`` on ANY problem (=> approval unverifiable => rejected)."""
+    import os
+    import urllib.request
+
+    def get(path):
+        request = urllib.request.Request(f"https://api.github.com/repos/{GATE_R_REPOSITORY}/{path}",
+                                         headers={"Accept": "application/vnd.github+json", "User-Agent": "finco-gate-r-validator"})
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            request.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(request, timeout=10) as response:      # noqa: S310 - fixed https GitHub API host
+            return json.loads(response.read().decode("utf-8"))
+
+    try:
+        return {"pull": get(f"pulls/{pull_number}"), "reviews": get(f"pulls/{pull_number}/reviews?per_page=100")}
+    except Exception:                                                        # noqa: BLE001 - unverifiable evidence must never raise into approval
+        return None
+
+
+def _is_human_login(value) -> bool:
+    return (isinstance(value, str) and bool(_GITHUB_LOGIN.match(value)) and not NOT_INDEPENDENT.search(value)
+            and not value.lower().endswith("[bot]"))
+
+
+def gate_r_record_violations(record) -> list[str]:
+    """Structure and content of the signed record ONLY (no Git, no network)."""
+    if record is None:
+        return ["GATE_R_APPROVAL_REQUIRED: no signed Gate R authorization record exists"]
+    if not isinstance(record, dict):
+        return ["Gate R record is malformed"]
+    bad = []
+    if record.get("schema") != GATE_R_SCHEMA or record.get("record_type") != GATE_R_RECORD_TYPE:
+        bad.append("Gate R record has the wrong schema or record type")
+    if record.get("status") != "SIGNED":
+        bad.append("Gate R record is not SIGNED (an unsigned template authorizes nothing)")
+    if record.get("scope") != GATE_R_SCOPE:
+        bad.append("Gate R scope must be CANDIDATE_BOUNDARY_ONLY")
+    if record.get("predecessor_main") != RC7B_PREDECESSOR:
+        bad.append("Gate R record names a different predecessor main")
+    if record.get("reviewed_source_head") != RC7B_REVIEWED_SOURCE_HEAD:
+        bad.append("Gate R record names a different reviewed source head")
+    if record.get("accepted_blobs") != RC7B_CANDIDATE_AUTHORITIES:
+        bad.append("Gate R record does not repeat the exact twelve candidate blobs")
+    if record.get("predecessor_blobs") != RC7B_PREDECESSOR_BLOBS:
+        bad.append("Gate R record does not repeat the exact predecessor blobs")
+    supersession = record.get("supersedes_candidate_blobs")
+    if (not isinstance(supersession, dict)
+            or {k: v for k, v in supersession.items() if k in GATE_R_M7_SUPERSEDED} != GATE_R_M7_SUPERSEDED
+            or supersession.get("m7_supersession_acknowledged_by_reviewer") is not True):
+        bad.append("Gate R record does not explicitly acknowledge the supersession of the two shared M7 candidate blobs")
+    people = {}
+    for label, review_key in (("financial_owner", None), ("independent_reviewer", "review_result")):
+        who = record.get(label)
+        if not isinstance(who, dict):
+            bad.append(f"Gate R record has no {label}")
+            continue
+        login = who.get("identity_reference")
+        people[label] = login
+        if not (isinstance(who.get("name"), str) and who["name"].strip() and not NOT_INDEPENDENT.search(who["name"])):
+            bad.append(f"Gate R {label} is not a named human")
+        if not _is_human_login(login):
+            bad.append(f"Gate R {label}.identity_reference must be a human GitHub login")
+        if not (isinstance(who.get("confirmed_at_utc" if label == "financial_owner" else "reviewed_at_utc"), str)
+                and who.get("confirmed_at_utc" if label == "financial_owner" else "reviewed_at_utc").strip()):
+            bad.append(f"Gate R {label} carries no confirmation timestamp")
+        if review_key and who.get(review_key) != GATE_R_ACCEPTED_RESULT:
+            bad.append("Gate R independent review result is not ACCEPTED_CANDIDATE_CONTENT")
+    if people.get("financial_owner") and people.get("financial_owner") == people.get("independent_reviewer"):
+        bad.append("the independent reviewer must not be the Financial Owner")
+    if record.get("grants") != GATE_R_GRANTS:
+        bad.append("Gate R grants must be exactly: release-closed integration true, every other grant false")
+    decisions = record.get("owner_decisions")
+    if not isinstance(decisions, dict):
+        bad.append("Gate R record has no owner_decisions block")
+    else:
+        body = {k: v for k, v in decisions.items() if not k.startswith("_")}
+        if set(body) != set(REQUIRED_DECISIONS) or any(v not in GATE_R_ALLOWED_DECISION_VALUES for v in body.values()):
+            bad.append("Gate R decides no owner decision: every D-01..D-12 must be NOT_DECIDED_BY_THIS_RECORD or DEFERRED")
+        if any(body.get(d) != "DEFERRED" for d in GATE_R_DEFERRED):
+            bad.append("D-06 and D-07 must remain DEFERRED")
+    if not (isinstance(record.get("decision_reference"), str) and record["decision_reference"].strip()):
+        bad.append("Gate R record carries no decision reference")
+    review = record.get("github_review")
+    if not (isinstance(review, dict) and review.get("pull_number") == GATE_R_PULL_NUMBER
+            and isinstance(review.get("review_id"), int) and not isinstance(review.get("review_id"), bool)
+            and _is_human_login(review.get("reviewer_login"))):
+        bad.append("Gate R record does not reference one GitHub review (pull_number, review_id, reviewer_login)")
+    return bad
+
+
+def gate_r_review_violations(record, evidence, *, repo=None, ref: str = "HEAD") -> list[str]:
+    """Authenticity of the independent review against LIVE GitHub evidence. ``evidence`` None/malformed => rejected."""
+    root = repo or ROOT
+    if not isinstance(record, dict) or not isinstance(record.get("github_review"), dict):
+        return ["no GitHub review is referenced"]
+    if not isinstance(evidence, dict) or not isinstance(evidence.get("reviews"), list) or not isinstance(evidence.get("pull"), dict):
+        return ["REVIEW_EVIDENCE_UNVERIFIABLE: the GitHub review could not be fetched or is malformed"]
+    ref_review = record["github_review"]
+    matches = [r for r in evidence["reviews"] if isinstance(r, dict) and r.get("id") == ref_review.get("review_id")]
+    if len(matches) != 1:
+        return ["REVIEW_EVIDENCE_UNVERIFIABLE: the referenced GitHub review was not found"]
+    review, pull = matches[0], evidence["pull"]
+    bad = []
+    login = (review.get("user") or {}).get("login") if isinstance(review.get("user"), dict) else None
+    reviewer = record["independent_reviewer"]["identity_reference"]
+    owner = record["financial_owner"]["identity_reference"]
+    author = (pull.get("user") or {}).get("login") if isinstance(pull.get("user"), dict) else None
+    if review.get("state") != "APPROVED":
+        bad.append("the GitHub review is not an APPROVED review")
+    if not isinstance(login, str) or login.lower() != reviewer.lower() or login.lower() != str(ref_review.get("reviewer_login")).lower():
+        bad.append("the GitHub review was not written by the named independent reviewer")
+    if not isinstance(author, str) or not author or login is None or login.lower() == author.lower():
+        bad.append("the independent reviewer is the PR author or the author is unknown")
+    if isinstance(login, str) and login.lower() == str(owner).lower():
+        bad.append("the independent reviewer is the Financial Owner")
+    if review.get("author_association") not in GATE_R_REVIEWER_ASSOCIATIONS:
+        bad.append("the reviewer has no OWNER/MEMBER/COLLABORATOR association with the repository")
+    if pull.get("number") != GATE_R_PULL_NUMBER:
+        bad.append("the evidence is not about the integration PR")
+    commit = review.get("commit_id")
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        return bad + ["the GitHub review names no commit"]
+    if subprocess.run(["git", "merge-base", "--is-ancestor", commit, ref], cwd=str(root), capture_output=True).returncode != 0:
+        bad.append("STALE_REVIEW: the reviewed commit is not an ancestor of the evaluated ref")
+    for path, pin in RC7B_CANDIDATE_AUTHORITIES.items():
+        if blob(path, repo=root, ref=commit) != pin:
+            bad.append(f"STALE_REVIEW: {path} at the reviewed commit is not the accepted blob")
+    # The review also covers the Gate R mechanism itself: validator and guard wiring must be byte-identical to what the reviewer saw.
+    for path in GATE_R_GOVERNANCE_FILES:
+        at_review, now = blob(path, repo=root, ref=commit), blob(path, repo=root, ref=ref)
+        if at_review is None or at_review != now:
+            bad.append(f"STALE_REVIEW: governance file {path} differs from (or is absent at) the reviewed commit")
+    return bad
+
+
+def gate_r_violations(*, repo=None, ref: str = "HEAD", fetcher=None) -> list[str]:
+    """Everything that must hold for Gate R. [] means the release-closed candidate boundary is authorized (nothing more)."""
+    facts = collect(repo=repo, ref=ref)
+    bad = content_violations(facts)
+    record_text = _git(repo or ROOT, "show", f"{ref}:{GATE_R_RECORD}")
+    try:
+        record = json.loads(record_text) if record_text is not None else None
+    except ValueError:
+        record = "malformed"
+    bad += gate_r_record_violations(record)
+    if bad:
+        return bad                                   # never touch the network for a record that is already invalid
+    evidence = (fetcher or github_review_fetcher)(record["github_review"]["pull_number"])
+    return gate_r_review_violations(record, evidence, repo=repo, ref=ref)
+
+
+def gate_r_scope_exempt(path: str, *, repo=None, ref: str = "HEAD", fetcher=None) -> bool:
+    """Frozen-scope recognition for the CURRENT-authority guards: one of the twelve exact paths, and only under an active Gate R (which itself
+    requires the whole exact candidate, a signed record and an authentic independent review). NOT an approval, NOT a release, NOT a pin: it is
+    never consulted by ``approved_frozen_path`` or ``released_engine_authority_matches``."""
+    return path in RC7B_CANDIDATE_AUTHORITIES and gate_r_active(repo=repo, ref=ref, fetcher=fetcher)
+
+
+_GATE_R_CACHE: dict = {}
+
+
+def gate_r_active(*, repo=None, ref: str = "HEAD", fetcher=None) -> bool:
+    """True only when :func:`gate_r_violations` is empty. Fails closed on any error. Cheap when no record is committed (no network)."""
+    try:
+        root = repo or ROOT
+        head = _git(root, "rev-parse", ref)
+        if head is None or _git(root, "cat-file", "-e", f"{ref}:{GATE_R_RECORD}") is None:
+            return False                                # no committed record: reject without any network access
+        key = (str(root), head)
+        if fetcher is None and key in _GATE_R_CACHE:
+            return _GATE_R_CACHE[key]
+        result = gate_r_violations(repo=repo, ref=ref, fetcher=fetcher) == []
+        if fetcher is None:
+            _GATE_R_CACHE[key] = result
+        return result
+    except Exception:                                # noqa: BLE001 - fail closed
+        return False
