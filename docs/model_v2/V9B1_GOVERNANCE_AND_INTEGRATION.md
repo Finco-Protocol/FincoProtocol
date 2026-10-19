@@ -1,5 +1,7 @@
 # V9-B1 Protected-Content Review Request
 
+> HISTORICAL E7661945 PROPOSAL, SUPERSEDED BY CORRECTION A. Blob 61bd3e64 was not accepted; the corrected canonical-order blob is 5ef0d94c80af9e31ac389a571e9e2cfe762ed627. No optimized eligibility subset is enabled. See V9B1_CORRECTION_A_REPORT.md before interpreting the old deferral/fallback discussion below.
+
 Candidate development only. No Financial Owner approval, release successor, merge or deployment is recorded by this document.
 
 ## Exact Scope

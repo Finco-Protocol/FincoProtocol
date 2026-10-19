@@ -1,8 +1,10 @@
-"""B1 canonical-path comparisons and narrowly bounded error re-decision."""
+"""Correction A: every canonical intermediate capacity gate remains decisive."""
+import ast
 from dataclasses import replace
 import json
 from pathlib import Path
 from types import SimpleNamespace
+import subprocess
 
 import pytest
 
@@ -12,6 +14,7 @@ from financial_engine.financing.generic_product_policy import (
     DEFAULT_GENERIC_FINANCING_POLICY, apply_generic_financing_policy,
 )
 from financial_engine.senior_debt.policy import SeniorDebtSizingMode
+from financial_engine.senior_debt.models import SeniorDebtNonConvergenceError
 from tools.validate_v9b1 import flatten, run_case
 
 
@@ -44,7 +47,25 @@ def inner_inputs():
     return replace(inputs, financing=replace(inputs.financing, construction_financing=None))
 
 
-def test_capacity_runs_once_on_accepted_input_and_funded_iterations_unchanged(monkeypatch):
+def test_entire_inner_body_matches_immutable_capacity_first_baseline():
+    repo = Path(__file__).resolve().parents[1]
+    original = subprocess.check_output([
+        "git", "show", BASELINE["baseline"] + ":financial_engine/financing/project.py"], cwd=repo)
+    baseline = next(n for n in ast.parse(original).body
+                    if isinstance(n, ast.FunctionDef) and n.name == "run_project_financing_model")
+    current = next(n for n in ast.parse((repo / "financial_engine/financing/project.py").read_text()).body
+                   if isinstance(n, ast.FunctionDef) and n.name == "_run_shl_senior_fixed_point")
+
+    def numerical_body(function):
+        start = next(i for i, node in enumerate(function.body)
+                     if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == "uses" for target in node.targets))
+        return ast.dump(ast.Module(body=function.body[start:], type_ignores=[]), include_attributes=False)
+
+    assert numerical_body(current) == numerical_body(baseline)
+
+
+def test_every_capacity_gate_precedes_funded_iteration(monkeypatch):
     inputs = inner_inputs()
     original = project.run_senior_debt_model
     calls = []
@@ -54,48 +75,78 @@ def test_capacity_runs_once_on_accepted_input_and_funded_iterations_unchanged(mo
         return original(model_input)
 
     monkeypatch.setattr(project, "run_senior_debt_model", capture)
-    kwargs = dict(source_id="", baseline_commit_sha="", convergence_tolerance_keur=1e-7,
-                  maximum_iterations=50, _typed_shl_context=None, _u2_period_financing_income=None)
-    canonical = project._run_shl_senior_fixed_point(inputs, **kwargs, defer_capacity=False)
-    baseline_calls = calls[:]
-    calls.clear()
     candidate = project.run_project_financing_model(inputs)
-    assert flatten(candidate) == flatten(canonical)
     is_capacity = lambda mi: mi.senior_debt_policy.sizing_mode is SeniorDebtSizingMode.DSCR_SCULPTED
-    assert sum(map(is_capacity, calls)) == 1
-    assert sum(map(is_capacity, baseline_calls)) == canonical.fixed_point_iteration_count
-    assert [mi for mi in calls if not is_capacity(mi)] == [mi for mi in baseline_calls if not is_capacity(mi)]
-    assert calls[-1] == [mi for mi in baseline_calls if is_capacity(mi)][-1]
+    assert sum(map(is_capacity, calls)) == candidate.fixed_point_iteration_count
+    assert is_capacity(calls[0])
+    for index, model_input in enumerate(calls):
+        if is_capacity(model_input):
+            assert index + 1 < len(calls) and not is_capacity(calls[index + 1])
 
 
-def test_named_maturity_failure_redecides_once_without_masking_original_evidence(monkeypatch):
-    calls = []
+def test_synthetic_counterexample_old_deferral_succeeds_but_capacity_first_rejects(monkeypatch):
+    """Injected control-flow proof, NOT a genuine economic input counterexample."""
+    original = project.run_senior_debt_model
+    model_inputs = []
 
-    def reject(inputs, **kwargs):
-        calls.append(kwargs["defer_capacity"])
-        residual = "12.123456789012" if kwargs["defer_capacity"] else "13.123456789012"
-        raise ValueError(f"SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance {residual} kEUR")
+    def record(model_input):
+        model_inputs.append(model_input)
+        return original(model_input)
 
-    monkeypatch.setattr(project, "_run_shl_senior_fixed_point", reject)
-    with pytest.raises(ValueError, match="13.123456789012"):
+    with monkeypatch.context() as scope:
+        scope.setattr(project, "run_senior_debt_model", record)
+        normal = project.run_project_financing_model(inner_inputs())
+    is_capacity = lambda mi: mi.senior_debt_policy.sizing_mode is SeniorDebtSizingMode.DSCR_SCULPTED
+    capacities = [mi for mi in model_inputs if is_capacity(mi)]
+    funded = [mi for mi in model_inputs if not is_capacity(mi)]
+    assert len(capacities) >= 2 and capacities[0].shareholder_loan is None
+    assert capacities[-1].shareholder_loan is not None
+    events = []
+    failure = ValueError("SHL_MATURITY_RESIDUAL_FAILS_CLOSED: synthetic early capacity residual=11.25")
+
+    def injected(model_input):
+        events.append("capacity" if is_capacity(model_input) else "funded")
+        if is_capacity(model_input) and model_input.shareholder_loan is None:
+            raise failure
+        return original(model_input)
+
+    # A test-only old-order fixture executes the exact recorded funded inputs,
+    # skips intermediate capacities, then accepts the final capacity. The private
+    # review evidence additionally runs this injection on actual e7661945 source.
+    for model_input in funded:
+        funded_result = injected(model_input)
+    assert injected(capacities[-1]).senior_debt is not None
+    assert funded_result.senior_debt.debt_size_keur == normal.final_senior_commitment_keur
+    events.clear()
+    monkeypatch.setattr(project, "run_senior_debt_model", injected)
+    with pytest.raises(ValueError) as caught:
         project.run_project_financing_model(inner_inputs())
-    assert calls == [True, False]
+    assert caught.value is failure
+    assert events == ["capacity"]  # no funded work, retry or result publication
 
-
-@pytest.mark.parametrize("error", [ValueError("invalid input"), RuntimeError("programming defect"),
-                                  TypeError("bad type"), AssertionError("broken invariant")])
-def test_unrelated_errors_are_not_swallowed_or_retried(monkeypatch, error):
+@pytest.mark.parametrize("error", [
+    ValueError("SHL_MATURITY_RESIDUAL_FAILS_CLOSED: synthetic residual=11.25"),
+    SeniorDebtNonConvergenceError("MAX_ITERATIONS_REACHED: synthetic capacity"),
+    ValueError("SHL_LIMITATION_GROSS_INTEREST_MISMATCH: synthetic capacity"),
+    ValueError("G2C_FINAL_INTEREST_MERGED_SHL_MISMATCH: synthetic capacity"),
+    ValueError("BASE_BANK_AXIS_MISMATCH: synthetic capacity"),
+    ValueError("Input validation failed: synthetic capacity"),
+    OverflowError("synthetic numerical overflow"), RuntimeError("programming defect"),
+    TypeError("bad type"), AssertionError("broken invariant"),
+])
+def test_all_early_capacity_failures_escape_unchanged_before_funded_work(monkeypatch, error):
     calls = []
 
-    def reject(inputs, **kwargs):
-        calls.append(kwargs["defer_capacity"])
+    def reject(model_input):
+        calls.append(model_input)
         raise error
 
-    monkeypatch.setattr(project, "_run_shl_senior_fixed_point", reject)
+    monkeypatch.setattr(project, "run_senior_debt_model", reject)
     with pytest.raises(type(error)) as caught:
         project.run_project_financing_model(inner_inputs())
     assert caught.value is error
-    assert calls == [True]
+    assert len(calls) == 1
+    assert calls[0].senior_debt_policy.sizing_mode is SeniorDebtSizingMode.DSCR_SCULPTED
 
 
 def test_missing_capacity_evidence_still_refuses(monkeypatch):

@@ -2,6 +2,8 @@
 
 **Decision: PENDING. NOT APPROVED.**
 
+**Correction A supersedes the financial content submitted below.** Current protected candidate: `financial_engine/financing/project.py`, Git blob `5ef0d94c80af9e31ac389a571e9e2cfe762ed627`. General deferral and exception-triggered re-decision are removed. Every intermediate capacity runs in canonical order. No optimizing subset is enabled, and no old performance benefit is claimed. Independent review must assess the corrected source, not approve the unsafe `61bd3e64` blob by inheritance. The following original record is retained for provenance only; it grants no successor authority.
+
 The owner explicitly confirmed that OD-5 is not formally approved and authorized completion of local implementation, tests, measurements, a local commit and an independent review package. This is not publication, successor-pinning, merge or deployment approval.
 
 ## Content Submitted

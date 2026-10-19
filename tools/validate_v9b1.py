@@ -176,8 +176,8 @@ def run_case(name, *, profile=False):
             "run_project_financing_model", "_run_shl_senior_fixed_point"
         }:
             counts["g2a_iterations"] = counts.get("g2a_iterations", 0) + 1
-        if name == "_run_shl_senior_fixed_point" and not frame.f_locals["defer_capacity"]:
-            counts["canonical_fallbacks"] = counts.get("canonical_fallbacks", 0) + 1
+        if name == "_run_shl_senior_fixed_point":
+            counts["canonical_capacity_first_solves"] = counts.get("canonical_capacity_first_solves", 0) + 1
 
     started = time.perf_counter()
     if profile:

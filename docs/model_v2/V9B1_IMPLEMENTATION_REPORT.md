@@ -1,5 +1,7 @@
 # V9-B1 Implementation and Measured Acceptance
 
+> SUPERSEDED BY CORRECTION A. This report records unsafe HEAD e7661945, not current acceptance. General deferral is removed; its speedup claims do not apply to the corrected capacity-first candidate. See V9B1_CORRECTION_A_REPORT.md. OD-5 remains pending.
+
 **Disposition: V9-B1 IMPLEMENTED - FINANCIAL GOVERNANCE APPROVAL REQUIRED.**
 
 Local candidate only. No push, PR, governance release, self-approval, merge, deployment or activation. Exact final commit/tree are recorded in the review package's provenance.json to avoid a self-referential commit identifier in this report.
