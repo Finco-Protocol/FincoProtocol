@@ -93,7 +93,7 @@
             {% for row in section.rows %}
             <tr data-kpi-key="{{ row.key }}" data-changed="{{ '1' if row.changed else '0' }}">
               <th scope="row">{{ row.label }}</th>
-              {% for value in row.values %}
+              {% for value in row['values'] %}
               <td class="v3-rw-mono">{{ value }}</td>
               <td class="v3-rw-mono">{{ row.deltas[loop.index0] }}</td>
               {% endfor %}
@@ -124,7 +124,7 @@
             {% for row in periods.rows %}
             <tr data-period-end="{{ row.end }}" data-metric="{{ row.key }}">
               <td>{{ row.start }}</td><td>{{ row.end }}</td><th scope="row">{{ row.label }}</th>
-              {% for value in row.values %}<td class="v3-rw-mono">{{ value }}</td><td class="v3-rw-mono">{{ row.deltas[loop.index0] }}</td>{% endfor %}
+              {% for value in row['values'] %}<td class="v3-rw-mono">{{ value }}</td><td class="v3-rw-mono">{{ row.deltas[loop.index0] }}</td>{% endfor %}
             </tr>
             {% endfor %}
           </tbody>
