@@ -1,0 +1,1064 @@
+{
+  "baseline": "5996453b8d5bbfaa48bc06922fc6963cf94d2f84",
+  "measurement_stage": "pre-publication worktree; exact protected bytes below",
+  "platform": "Windows, Python 3.12.10, 12 logical CPUs",
+  "protected_git_blobs": {
+    "financial_engine/financing/project.py": "5d3e42863abddf0a75a05e6d7688aa76a6d41c50",
+    "financial_engine/financing/speculative.py": "9d85dad49bd1014fa7d864fab6bd29649d214cd7"
+  },
+  "verdict": "NO GO - not accepted for production enablement",
+  "matrix": {
+    "cases_per_width": 63,
+    "widths": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "comparisons": 252,
+    "different_input_or_output_fingerprints": 0,
+    "feasible_per_width": 44,
+    "canonical_rejections_per_width": 19,
+    "research_58_inventory_sha256": "3d76a72b68237752934d60a65dd7dbf43db30831610ab40cf2d2803c5a2023f3",
+    "baseline_evidence_sources": [
+      {
+        "sha256": "b82108f0b56afb16dea38133acc16bce9547f8955b85096b84a250a860d129e8",
+        "source_head": "5996453b8d5bbfaa48bc06922fc6963cf94d2f84"
+      },
+      {
+        "sha256": "d14daaf65a643d7acad1d50d89d8815f1667db465e8264ae605e9544c4458547",
+        "source_head": "5996453b8d5bbfaa48bc06922fc6963cf94d2f84"
+      },
+      {
+        "input_only": true,
+        "sha256": "7ceecf57ed15f67c6a2ce37427f7d81baca33253d7496ce86a8f6697a63f3a72",
+        "source_head": "5996453b8d5bbfaa48bc06922fc6963cf94d2f84"
+      }
+    ]
+  },
+  "local_pytest": {
+    "passed": 140,
+    "failed": 0,
+    "skipped": 0,
+    "normal_exit": 0
+  },
+  "evidence_sha256": {
+    "final-content.log": "49f4379f70b93bc7c7823e6d96cc4da3771e9a1a026a1232730cb6b57d2dc6a6",
+    "final-content.xml": "5e45e4182c552269fb4a46e512d16bb0e7df280a560e03bad9d014fc3f3bef17",
+    "matrix-final-content.json": "eae5bcf81df06ee3f3d907b2d3813a4681bb560f59bb1cd8719228dcf5c8f34b",
+    "paired-worker/summary.json": "cde2e7bd21bf5521af8c687e861aab39c91f704feafb545bf970856e14d9a889",
+    "paired-worker/engine-summary.json": "f5b1ad44b6c33c17ec1fba0cf2a9fab8ca0aa445f829a249f962a9e30aef1631"
+  },
+  "actual_application_worker": {
+    "samples": 5,
+    "source": "actual ModelExecutor spawn path and complete returned objects",
+    "p95_definition": "nearest rank; five samples give only a sample maximum, not a production tail",
+    "cases": {
+      "S50": {
+        "main": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 2.2402887999778613,
+              "p95": 2.353902700007893,
+              "raw": [
+                2.2402887999778613,
+                2.278035099967383,
+                2.1957687999820337,
+                2.353902700007893,
+                2.1032214000006206
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 2.125,
+              "p95": 2.265625,
+              "raw": [
+                2.125,
+                2.140625,
+                2.125,
+                2.265625,
+                2.03125
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 208601088
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 1.7894637000281364,
+              "p95": 1.8093260999885388,
+              "raw": [
+                1.7894637000281364,
+                1.8093260999885388,
+                1.8089414000278339,
+                1.74348549998831,
+                1.7645405000075698
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 1.765625,
+              "p95": 1.796875,
+              "raw": [
+                1.765625,
+                1.765625,
+                1.796875,
+                1.703125,
+                1.765625
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 271114240
+          }
+        },
+        "parallel3": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 4.620262200012803,
+              "p95": 4.860263999958988,
+              "raw": [
+                4.860263999958988,
+                4.671285999997053,
+                4.4849861999973655,
+                4.483347900037188,
+                4.620262200012803
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 6.515625,
+              "p95": 6.859375,
+              "raw": [
+                6.859375,
+                6.453125,
+                6.390625,
+                6.515625,
+                6.53125
+              ]
+            },
+            "max_process_count_including_caller": 5,
+            "sum_process_lifetime_peaks_upper_bound": 282554368
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 1.525831900013145,
+              "p95": 1.622527900035493,
+              "raw": [
+                1.5430443999939598,
+                1.622527900035493,
+                1.5022900000330992,
+                1.479883600026369,
+                1.525831900013145
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 3.125,
+              "p95": 3.28125,
+              "raw": [
+                3.15625,
+                3.28125,
+                3.125,
+                3.0,
+                3.0625
+              ]
+            },
+            "max_process_count_including_caller": 5,
+            "sum_process_lifetime_peaks_upper_bound": 344948736
+          }
+        }
+      },
+      "S16": {
+        "main": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 16.941428399994038,
+              "p95": 17.12986039998941,
+              "raw": [
+                17.12986039998941,
+                16.789598900009878,
+                16.96960469998885,
+                16.77737959998194,
+                16.941428399994038
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 16.703125,
+              "p95": 16.953125,
+              "raw": [
+                16.953125,
+                16.53125,
+                16.703125,
+                16.53125,
+                16.71875
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 212328448
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 16.891435899946373,
+              "p95": 17.217818400007673,
+              "raw": [
+                17.217818400007673,
+                16.51571750000585,
+                16.94093459995929,
+                16.891435899946373,
+                16.672275400022045
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 16.703125,
+              "p95": 16.875,
+              "raw": [
+                16.875,
+                16.375,
+                16.71875,
+                16.703125,
+                16.453125
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 275570688
+          }
+        },
+        "parallel3": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 13.021387799992226,
+              "p95": 13.120004800031893,
+              "raw": [
+                13.120004800031893,
+                12.804277499963064,
+                13.032108700019307,
+                13.021387799992226,
+                12.994499899970833
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 28.46875,
+              "p95": 28.765625,
+              "raw": [
+                28.484375,
+                28.125,
+                28.40625,
+                28.46875,
+                28.765625
+              ]
+            },
+            "max_process_count_including_caller": 5,
+            "sum_process_lifetime_peaks_upper_bound": 285446144
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 10.21892850002041,
+              "p95": 10.323847700026818,
+              "raw": [
+                10.243822199990973,
+                10.323847700026818,
+                10.022915399982594,
+                10.18958589999238,
+                10.21892850002041
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 25.421875,
+              "p95": 25.46875,
+              "raw": [
+                25.46875,
+                25.296875,
+                24.734375,
+                25.421875,
+                25.453125
+              ]
+            },
+            "max_process_count_including_caller": 5,
+            "sum_process_lifetime_peaks_upper_bound": 350740480
+          }
+        }
+      },
+      "W25": {
+        "main": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 5.882537900004536,
+              "p95": 6.024901900033001,
+              "raw": [
+                5.870956300001126,
+                6.006992500042543,
+                5.789475500001572,
+                5.882537900004536,
+                6.024901900033001
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 5.703125,
+              "p95": 5.890625,
+              "raw": [
+                5.6875,
+                5.890625,
+                5.703125,
+                5.6875,
+                5.859375
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 237924352
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 5.721969200007152,
+              "p95": 6.030624000006355,
+              "raw": [
+                5.721969200007152,
+                5.7293738999869674,
+                5.568358899967279,
+                6.030624000006355,
+                5.569192599970847
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 5.640625,
+              "p95": 5.890625,
+              "raw": [
+                5.6875,
+                5.640625,
+                5.515625,
+                5.890625,
+                5.5
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 301985792
+          }
+        },
+        "parallel3": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 7.130648799997289,
+              "p95": 7.214548299962189,
+              "raw": [
+                7.074204800010193,
+                7.214548299962189,
+                7.130648799997289,
+                7.145840399956796,
+                7.100628200045321
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 14.15625,
+              "p95": 14.265625,
+              "raw": [
+                14.078125,
+                14.15625,
+                14.140625,
+                14.21875,
+                14.265625
+              ]
+            },
+            "max_process_count_including_caller": 5,
+            "sum_process_lifetime_peaks_upper_bound": 286842880
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 4.387610699981451,
+              "p95": 4.680187699967064,
+              "raw": [
+                4.331521999964025,
+                4.680187699967064,
+                4.366866399999708,
+                4.387610699981451,
+                4.49938039999688
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 11.09375,
+              "p95": 11.8125,
+              "raw": [
+                11.046875,
+                11.8125,
+                10.953125,
+                11.09375,
+                11.265625
+              ]
+            },
+            "max_process_count_including_caller": 5,
+            "sum_process_lifetime_peaks_upper_bound": 351723520
+          }
+        }
+      },
+      "DC": {
+        "main": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 1.0398360000108369,
+              "p95": 1.056854500027839,
+              "raw": [
+                1.056854500027839,
+                1.0427578000235371,
+                1.034763199975714,
+                1.0341789000085555,
+                1.0398360000108369
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 0.984375,
+              "p95": 1.015625,
+              "raw": [
+                0.984375,
+                0.984375,
+                0.921875,
+                0.921875,
+                1.015625
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 162582528
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 0.7559025000082329,
+              "p95": 0.7679510000161827,
+              "raw": [
+                0.7520058999652974,
+                0.7679510000161827,
+                0.7480150000192225,
+                0.7577504999935627,
+                0.7559025000082329
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 0.75,
+              "p95": 0.796875,
+              "raw": [
+                0.75,
+                0.796875,
+                0.75,
+                0.75,
+                0.75
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 224919552
+          }
+        },
+        "parallel3": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 2.8733116000075825,
+              "p95": 3.049382900004275,
+              "raw": [
+                2.805117000010796,
+                3.049382900004275,
+                2.8733116000075825,
+                2.9586970999953337,
+                2.8681876999908127
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 3.59375,
+              "p95": 3.71875,
+              "raw": [
+                3.359375,
+                3.71875,
+                3.59375,
+                3.59375,
+                3.65625
+              ]
+            },
+            "max_process_count_including_caller": 4,
+            "sum_process_lifetime_peaks_upper_bound": 236560384
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 0.6802086999523453,
+              "p95": 0.6999719000305049,
+              "raw": [
+                0.6902389999595471,
+                0.6666998000000603,
+                0.6999719000305049,
+                0.6802086999523453,
+                0.6545362999895588
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 1.21875,
+              "p95": 1.234375,
+              "raw": [
+                1.171875,
+                1.21875,
+                1.21875,
+                1.234375,
+                1.109375
+              ]
+            },
+            "max_process_count_including_caller": 4,
+            "sum_process_lifetime_peaks_upper_bound": 298475520
+          }
+        }
+      },
+      "EV": {
+        "main": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 1.4499427999835461,
+              "p95": 1.8294379999861121,
+              "raw": [
+                1.4649771000258625,
+                1.4204750999924727,
+                1.8294379999861121,
+                1.4499427999835461,
+                1.4343112999922596
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 1.390625,
+              "p95": 1.75,
+              "raw": [
+                1.375,
+                1.390625,
+                1.75,
+                1.34375,
+                1.421875
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 180305920
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 1.1292813000036404,
+              "p95": 1.1401150999590755,
+              "raw": [
+                1.1376155999605544,
+                1.1242822000058368,
+                1.1401150999590755,
+                1.1281301999697462,
+                1.1292813000036404
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 1.109375,
+              "p95": 1.125,
+              "raw": [
+                1.109375,
+                1.109375,
+                1.125,
+                1.109375,
+                1.125
+              ]
+            },
+            "max_process_count_including_caller": 2,
+            "sum_process_lifetime_peaks_upper_bound": 242864128
+          }
+        },
+        "parallel3": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 3.2204717000131495,
+              "p95": 3.394168799975887,
+              "raw": [
+                3.1703688999987207,
+                3.394168799975887,
+                3.2204717000131495,
+                3.1823865000042133,
+                3.3829751000157557
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 4.109375,
+              "p95": 4.390625,
+              "raw": [
+                4.03125,
+                4.390625,
+                4.25,
+                4.03125,
+                4.109375
+              ]
+            },
+            "max_process_count_including_caller": 4,
+            "sum_process_lifetime_peaks_upper_bound": 238555136
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 1.0379601999884471,
+              "p95": 1.0825163999688812,
+              "raw": [
+                1.0195190000231378,
+                1.0286740000010468,
+                1.0459036999964155,
+                1.0825163999688812,
+                1.0379601999884471
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 1.78125,
+              "p95": 1.84375,
+              "raw": [
+                1.703125,
+                1.78125,
+                1.8125,
+                1.84375,
+                1.75
+              ]
+            },
+            "max_process_count_including_caller": 4,
+            "sum_process_lifetime_peaks_upper_bound": 299819008
+          }
+        }
+      },
+      "concurrent-S16-W25": {
+        "main": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 17.713660400011577,
+              "p95": 18.056685100018512,
+              "raw": [
+                17.269030799972825,
+                18.056685100018512,
+                17.50198449997697,
+                17.713660400011577,
+                17.809615000034682
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 23.765625,
+              "p95": 24.078125,
+              "raw": [
+                23.25,
+                23.984375,
+                23.4375,
+                23.765625,
+                24.078125
+              ]
+            },
+            "max_process_count_including_caller": 3,
+            "sum_process_lifetime_peaks_upper_bound": 414294016
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 17.154133900010493,
+              "p95": 17.8356172000058,
+              "raw": [
+                16.959452399984002,
+                17.154133900010493,
+                17.8356172000058,
+                17.315913799975533,
+                17.136893199989572
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 23.0625,
+              "p95": 23.625,
+              "raw": [
+                22.78125,
+                23.203125,
+                23.625,
+                23.0625,
+                22.84375
+              ]
+            },
+            "max_process_count_including_caller": 3,
+            "sum_process_lifetime_peaks_upper_bound": 505245696
+          }
+        },
+        "parallel3": {
+          "first_helper_cold": {
+            "wall_s": {
+              "median": 14.804952700040303,
+              "p95": 15.157085500017274,
+              "raw": [
+                14.286162700038403,
+                15.157085500017274,
+                14.804952700040303,
+                14.503590700041968,
+                15.04801349999616
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 45.890625,
+              "p95": 46.640625,
+              "raw": [
+                46.640625,
+                45.890625,
+                44.828125,
+                46.234375,
+                45.453125
+              ]
+            },
+            "max_process_count_including_caller": 9,
+            "sum_process_lifetime_peaks_upper_bound": 534757376
+          },
+          "same_owner_helper_warm": {
+            "wall_s": {
+              "median": 10.803446400037501,
+              "p95": 10.979498000000603,
+              "raw": [
+                10.642643700004555,
+                10.803446400037501,
+                10.979498000000603,
+                10.726264299999457,
+                10.809609899995849
+              ]
+            },
+            "aggregate_cpu_s": {
+              "median": 39.140625,
+              "p95": 39.875,
+              "raw": [
+                39.140625,
+                38.96875,
+                39.5625,
+                38.875,
+                39.875
+              ]
+            },
+            "max_process_count_including_caller": 9,
+            "sum_process_lifetime_peaks_upper_bound": 605548544
+          }
+        }
+      }
+    }
+  },
+  "direct_financial_authority": {
+    "samples": 5,
+    "cold_process_and_helpers": true,
+    "cases": {
+      "S50": {
+        "main": {
+          "wall_s": {
+            "median": 2.041717299958691,
+            "p95": 2.1875216000480577,
+            "raw": [
+              2.129501099989284,
+              2.041717299958691,
+              1.9194096999708563,
+              2.0024360999814235,
+              2.1875216000480577
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 1.953125,
+            "p95": 2.078125,
+            "raw": [
+              1.90625,
+              1.96875,
+              1.890625,
+              1.953125,
+              2.078125
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 1,
+          "process_peak_upper_bound": 121364480
+        },
+        "parallel3": {
+          "wall_s": {
+            "median": 4.406680800020695,
+            "p95": 4.662952699989546,
+            "raw": [
+              4.328086699999403,
+              4.349638499959838,
+              4.406680800020695,
+              4.552166400011629,
+              4.662952699989546
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 6.578125,
+            "p95": 6.84375,
+            "raw": [
+              6.21875,
+              6.578125,
+              6.578125,
+              6.625,
+              6.84375
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 4,
+          "process_peak_upper_bound": 198352896
+        }
+      },
+      "S16": {
+        "main": {
+          "wall_s": {
+            "median": 16.659206299984362,
+            "p95": 17.21189580002101,
+            "raw": [
+              17.21189580002101,
+              16.482375500025228,
+              16.659206299984362,
+              16.61513529997319,
+              16.969445499998983
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 16.40625,
+            "p95": 16.765625,
+            "raw": [
+              16.765625,
+              16.25,
+              16.375,
+              16.40625,
+              16.609375
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 1,
+          "process_peak_upper_bound": 125718528
+        },
+        "parallel3": {
+          "wall_s": {
+            "median": 12.872991399955936,
+            "p95": 13.053158800001256,
+            "raw": [
+              12.872991399955936,
+              12.617306300031487,
+              12.795251399977133,
+              13.053158800001256,
+              13.020856100018136
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 28.34375,
+            "p95": 29.15625,
+            "raw": [
+              28.34375,
+              28.328125,
+              28.28125,
+              29.15625,
+              28.390625
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 4,
+          "process_peak_upper_bound": 201420800
+        }
+      },
+      "W25": {
+        "main": {
+          "wall_s": {
+            "median": 5.706244200002402,
+            "p95": 5.9159898000070825,
+            "raw": [
+              5.842929499980528,
+              5.706244200002402,
+              5.681593699962832,
+              5.9159898000070825,
+              5.704334899957757
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 5.640625,
+            "p95": 5.75,
+            "raw": [
+              5.734375,
+              5.640625,
+              5.59375,
+              5.75,
+              5.609375
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 1,
+          "process_peak_upper_bound": 151871488
+        },
+        "parallel3": {
+          "wall_s": {
+            "median": 7.0439093000022694,
+            "p95": 7.952642099990044,
+            "raw": [
+              7.952642099990044,
+              7.0439093000022694,
+              7.052816800016444,
+              6.873571300006006,
+              6.774317200004589
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 14.34375,
+            "p95": 16.21875,
+            "raw": [
+              16.21875,
+              14.53125,
+              14.34375,
+              13.890625,
+              13.78125
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 4,
+          "process_peak_upper_bound": 203182080
+        }
+      },
+      "DC": {
+        "main": {
+          "wall_s": {
+            "median": 0.9893816999974661,
+            "p95": 1.0467627000180073,
+            "raw": [
+              1.025908299954608,
+              0.9893816999974661,
+              0.9600421999930404,
+              1.0467627000180073,
+              0.9226026999531314
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 0.9375,
+            "p95": 0.96875,
+            "raw": [
+              0.96875,
+              0.953125,
+              0.859375,
+              0.9375,
+              0.84375
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 1,
+          "process_peak_upper_bound": 74780672
+        },
+        "parallel3": {
+          "wall_s": {
+            "median": 2.7484938999987207,
+            "p95": 2.875718399998732,
+            "raw": [
+              2.719614100002218,
+              2.875718399998732,
+              2.7297896000090986,
+              2.7484938999987207,
+              2.7554855999769643
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 3.734375,
+            "p95": 3.84375,
+            "raw": [
+              3.5,
+              3.84375,
+              3.796875,
+              3.546875,
+              3.734375
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 3,
+          "process_peak_upper_bound": 152190976
+        }
+      },
+      "reference-ev_charging": {
+        "main": {
+          "wall_s": {
+            "median": 1.3576530999853276,
+            "p95": 1.3979932999936864,
+            "raw": [
+              1.3547790999873541,
+              1.3979932999936864,
+              1.3295112999621779,
+              1.3880292000249028,
+              1.3576530999853276
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 1.28125,
+            "p95": 1.328125,
+            "raw": [
+              1.28125,
+              1.328125,
+              1.21875,
+              1.328125,
+              1.28125
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 1,
+          "process_peak_upper_bound": 92954624
+        },
+        "parallel3": {
+          "wall_s": {
+            "median": 3.088374199985992,
+            "p95": 3.2542103999876417,
+            "raw": [
+              3.148784000019077,
+              3.0607969000120647,
+              3.088374199985992,
+              3.2542103999876417,
+              2.9335279000224546
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 4.21875,
+            "p95": 4.53125,
+            "raw": [
+              4.21875,
+              4.21875,
+              4.0625,
+              4.53125,
+              3.96875
+            ]
+          },
+          "status": "FEASIBLE",
+          "max_process_count": 3,
+          "process_peak_upper_bound": 153952256
+        }
+      },
+      "W25-dsra12": {
+        "main": {
+          "wall_s": {
+            "median": 2.2001695999642834,
+            "p95": 2.2070448999875225,
+            "raw": [
+              2.2070448999875225,
+              2.2001695999642834,
+              2.1428432000102475,
+              2.203351400035899,
+              2.1517966000246815
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 2.109375,
+            "p95": 2.171875,
+            "raw": [
+              2.171875,
+              2.09375,
+              2.109375,
+              2.125,
+              2.09375
+            ]
+          },
+          "status": "REJECTED",
+          "max_process_count": 1,
+          "process_peak_upper_bound": 135798784
+        },
+        "parallel3": {
+          "wall_s": {
+            "median": 3.8919190000160597,
+            "p95": 3.946521900012158,
+            "raw": [
+              3.946521900012158,
+              3.8919190000160597,
+              3.917743599973619,
+              3.874102199974004,
+              3.8660852999892086
+            ]
+          },
+          "aggregate_cpu_s": {
+            "median": 6.328125,
+            "p95": 6.4375,
+            "raw": [
+              6.4375,
+              6.234375,
+              6.328125,
+              6.359375,
+              6.203125
+            ]
+          },
+          "status": "REJECTED",
+          "max_process_count": 4,
+          "process_peak_upper_bound": 200695808
+        }
+      }
+    }
+  },
+  "linux_ci": "PENDING PUBLICATION - no Linux result claimed",
+  "deployed_linux_acceptance": "UNVERIFIED - no SSH or staging access",
+  "independent_exact_content_approval": false
+}
