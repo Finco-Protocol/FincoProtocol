@@ -167,9 +167,11 @@ def _unwrap(value: Any) -> Any:
     return value
 
 
-def _worker_init() -> None:
+def _worker_init(run_concurrency: int | None = None) -> None:
     """Warm the worker once: pay the import cost at pool start, not on the first request."""
     import app.api.project_runner  # noqa: F401
+    from financial_engine.financing.speculative import configure_run_owner
+    configure_run_owner(run_concurrency)
 
 
 def _worker_warmup_probe() -> dict:
@@ -196,7 +198,11 @@ def _worker_warmup_probe() -> dict:
     )
     from financial_engine.version import ENGINE_VERSION
 
-    return {"engine_version": ENGINE_VERSION, "warm": True, "pid": os.getpid()}
+    result = {"engine_version": ENGINE_VERSION, "warm": True, "pid": os.getpid()}
+    from financial_engine.financing import speculative
+    if os.environ.get("FINCO_G2A_WORKERS", "0") != "0":
+        result["g2a"] = speculative.prewarm_worker()
+    return result
 
 
 class ModelExecutor:
@@ -328,7 +334,8 @@ class ModelExecutor:
                 if self._process_pool is None:
                     self._process_pool = ProcessPoolExecutor(
                         max_workers=self.config.concurrency,
-                        mp_context=multiprocessing.get_context("spawn"), initializer=_worker_init)
+                        mp_context=multiprocessing.get_context("spawn"), initializer=_worker_init,
+                        initargs=(self.config.concurrency,))
                 return self._process_pool
             if self._thread_pool is None:
                 self._thread_pool = ThreadPoolExecutor(

@@ -22,8 +22,12 @@ def main():
     parser.add_argument("--workers", default="0,1,2,3")
     parser.add_argument("--cases")
     parser.add_argument("--research-inventory", type=Path)
+    parser.add_argument("--admission", choices=("adaptive", "primitive"), default="adaptive")
     args = parser.parse_args()
     from financial_engine.financing import speculative as sp
+    if args.admission == "primitive":
+        # Explicit numerical coverage only; never installed in application code.
+        sp.parallel_admitted = lambda session: session.workers > 0
 
     expected = {}
     sources = []
@@ -47,7 +51,8 @@ def main():
     report = {"head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
               "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"])),
               "platform": platform.platform(), "python": sys.version, "baseline_sources": sources,
-              "selected_cases": selected, "results": {}, "release_approval": False}
+              "selected_cases": selected, "results": {}, "release_approval": False,
+              "admission": args.admission}
     if args.research_inventory:
         data = args.research_inventory.read_bytes()
         names = json.loads(data)
@@ -67,15 +72,18 @@ def main():
 
     try:
         for workers in map(int, args.workers.split(",")):
+            sp.shutdown_helpers()
             os.environ["FINCO_G2A_WORKERS"] = str(workers)
             assert sp.configured_workers() == workers, "RESOURCE_BUDGET_REFUSES_REQUESTED_WIDTH"
+            if args.admission == "adaptive" and workers >= 2:
+                assert sp.prewarm_worker()["ready"], "PREWARM_FAILED"
             report["results"][str(workers)] = {}
             for name in selected:
                 started = time.perf_counter()
                 row = run_case(name, "canonical", False)
                 assert row["input_digest"] == expected[name]["input_digest"], name
                 assert row["digest"] == expected[name]["digest"], (name, workers, "DIFFERENT_BITS")
-                if workers:
+                if workers and args.admission == "primitive":
                     assert sp._POOL is not None and not sp._POOL.broken, "SPECULATIVE_POOL_FAILED"
                 report["results"][str(workers)][name] = {
                     key: value for key, value in row.items() if key != "evidence"}
