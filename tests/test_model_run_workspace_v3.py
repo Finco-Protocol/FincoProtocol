@@ -7,7 +7,7 @@ import pytest
 
 from app.v2 import run_workspace_v3_projection as v3
 from tests.test_model_decision_support_v1 import (  # noqa: F401
-    two_runs, _edit_p50, _history_ids, _run_once,
+    seeded_db, two_runs, _edit_p50, _history_ids, _run_once,
 )
 
 
@@ -177,5 +177,25 @@ def test_three_actual_committed_runs_and_reference_switch(two_runs):
 def test_authorization_and_readonly_method(two_runs):
     client, cookies, record, ids = two_runs
     url = "/v2/workbook/run-workspace-v3"
-    assert client.get(url, params={"project": record.project_code}).status_code == 401
+    from app.auth import COOKIE_NAME
+    # An invalid session suppresses automatic first-visit demo provisioning.
+    client.cookies.clear()
+    assert client.get(url, params={"project": record.project_code},
+                      headers={"Cookie": f"{COOKIE_NAME}=invalid"}).status_code == 401
+    # A newly provisioned demo is authenticated, but does not own this project.
+    assert client.get(url, params={"project": record.project_code}).status_code == 404
     assert client.post(url, params={"project": record.project_code}, cookies=cookies).status_code == 405
+
+
+def test_missing_period_evidence_renders_without_pagination(two_runs, monkeypatch):
+    client, cookies, record, ids = two_runs
+    monkeypatch.setattr("app.v2.run_workspace_v3_router.build_period_grid",
+                        lambda *args: {"available": False,
+                                       "reason": "PERIOD_EVIDENCE_UNAVAILABLE",
+                                       "rows": [], "excluded": [], "count": 0})
+    response = client.get("/v2/workbook/run-workspace-v3",
+                          params={"project": record.project_code, "run": ids}, cookies=cookies)
+    assert response.status_code == 200
+    assert 'data-testid="rw-period-limit"' in response.text
+    assert "PERIOD_EVIDENCE_UNAVAILABLE" in response.text
+    assert 'data-testid="rw-next-period-page"' not in response.text

@@ -13,7 +13,7 @@ from app.persistence.run_history_repository import get_run_history_entry
 from app.run_integrity import evidence_digest
 from app.v2 import run_workspace_v3_projection as projection
 from app.v2.run_workspace_v3_router import _history_side, _run_integrity_status
-from tests.test_model_decision_support_v1 import two_runs, _history_ids  # noqa: F401
+from tests.test_model_decision_support_v1 import seeded_db, two_runs, _history_ids  # noqa: F401
 
 URL = "/v2/workbook/run-workspace-v3"
 OWNER = "ds-user"

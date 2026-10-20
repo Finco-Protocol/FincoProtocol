@@ -87,10 +87,11 @@ def _run_integrity_status(side: dict) -> str:
     from app.run_integrity.contracts import EVIDENCE_SCHEMA
     from app.v2.credit_decision_projection import _integrity
 
-    evidence = side.get("integrity_evidence")
+    source = side.get("entry")
+    evidence = (getattr(source, "integrity_evidence", None)
+                if source is not None else side.get("integrity_evidence"))
     if not isinstance(evidence, dict) or evidence.get("schema") != EVIDENCE_SCHEMA:
         return "UNAVAILABLE"
-    source = side.get("entry")
     if source is None:
         # Only use the legacy canonical Last Run's OWN committed evidence.
         source = SimpleNamespace(integrity_evidence=evidence)
@@ -255,7 +256,7 @@ async def run_workspace_v3(request: Request, project: Optional[str] = None):
     reference_options = [options_by_id[rid] for rid in requested]
 
     next_url = None
-    if periods is not None and periods["next_offset"] is not None:
+    if periods is not None and periods.get("next_offset") is not None:
         args = [("project", record.project_code)] + [("run", rid) for rid in requested]
         args += [("reference", reference_id), ("offset", str(periods["next_offset"]))]
         if changed:
