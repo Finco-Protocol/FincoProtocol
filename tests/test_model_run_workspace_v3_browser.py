@@ -5,6 +5,8 @@ import pytest
 
 pytest.importorskip("playwright", reason="browser support not installed")
 
+from playwright.sync_api import expect  # noqa: E402
+
 from tests.test_rcux2_run_history_browser import (  # noqa: E402
     _no_document_overflow, _open_history, _two_runs,
 )
@@ -18,7 +20,7 @@ def test_run_workspace_three_slot_selector_and_return_navigation(live_server, br
     _open_history(t)
     t.page.locator('[data-testid="run-history-workspace-v3"]').click()
     t.page.locator('[data-testid="run-workspace-v3"]').wait_for()
-    assert t.page.locator('[data-testid^="rw-run-"]').count() == 3
+    assert t.page.locator('select[data-testid^="rw-run-"]').count() == 3
     assert t.page.locator('[data-testid="rw-reference"]').count() == 1
     assert t.page.locator('[data-testid="rw-run-identity"] .v3-rw-identity').count() == 2
     assert t.page.locator('[data-testid="rw-delta-basis"]').is_visible()
@@ -40,9 +42,10 @@ def test_selector_reference_tracks_three_slots_when_changed_or_cleared(live_serv
     t.save()
     t.run()
     _open_history(t)
-    history_ids = t.page.locator("[data-history-id]").evaluate_all(
+    history_ids = t.page.locator('[data-testid="run-history-table"] tr[data-history-id]').evaluate_all(
         "(rows) => rows.map(row => row.getAttribute('data-history-id'))")
     assert len(history_ids) == 3
+    assert len(set(history_ids)) == 3
     t.page.locator('[data-testid="run-history-workspace-v3"]').click()
     t.page.locator('[data-testid="run-workspace-v3"]').wait_for()
 
@@ -58,8 +61,7 @@ def test_selector_reference_tracks_three_slots_when_changed_or_cleared(live_serv
     assert ref.locator("option").count() == 3
     ref.select_option(history_ids[1])
     t.page.locator('[data-testid="rw-compare-submit"]').click()
-    t.page.locator('[data-testid="rw-run-identity"] .v3-rw-identity').first.wait_for()
-    assert t.page.locator('[data-testid="rw-run-identity"] .v3-rw-identity').count() == 3
+    expect(t.page.locator('[data-testid="rw-run-identity"] .v3-rw-identity')).to_have_count(3)
 
     # Removing the reference's own slot must not keep the now-invalid value.
     t.page.locator('[data-testid="rw-run-3"]').select_option("")
@@ -67,14 +69,13 @@ def test_selector_reference_tracks_three_slots_when_changed_or_cleared(live_serv
         history_ids[2], "last")
     assert t.page.locator('[data-testid="rw-reference"] option').count() == 2
     t.page.locator('[data-testid="rw-compare-submit"]').click()
-    assert t.page.locator('[data-testid="rw-run-identity"] .v3-rw-identity').count() == 2
+    expect(t.page.locator('[data-testid="rw-run-identity"] .v3-rw-identity')).to_have_count(2)
 
     # Switch both participating slots to two separate historical Runs.
     t.page.locator('[data-testid="rw-run-1"]').select_option(history_ids[2])
     t.page.locator('[data-testid="rw-run-2"]').select_option(history_ids[1])
     t.page.locator('[data-testid="rw-compare-submit"]').click()
-    assert t.page.locator('[data-testid="rw-run-identity"] .v3-rw-identity').count() == 2
-    assert all("HISTORICAL" in x for x in
-               t.page.locator(".v3-rw-identity .v3-rw-chip").all_inner_texts())
+    expect(t.page.locator('[data-testid="rw-run-identity"] .v3-rw-identity')).to_have_count(2)
+    expect(t.page.locator(".v3-rw-identity .v3-rw-chip")).to_have_text(["HISTORICAL", "HISTORICAL"])
     assert t.errors == [], t.errors
     t.close()
