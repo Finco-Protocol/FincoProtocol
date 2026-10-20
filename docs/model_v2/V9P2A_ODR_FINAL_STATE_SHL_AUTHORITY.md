@@ -4,6 +4,13 @@ Release-closed financial-authority candidate. **Not approved, not activated, not
 Base: `main` `5996453b8d5bbfaa48bc06922fc6963cf94d2f84` (RC-7C). Policy approval: Financial Owner
 decision OD-R (policy only — it does not approve these exact protected blobs).
 
+Correction B integration checkpoint: `96e5816478306e240a5872662eae449647921595` (main after #333).
+Its financial/core/domain content is identical to the original `5996453b` financial baseline above.
+The six financial candidate blobs and Correction A remain unchanged. The chained candidate proposal
+grants no current-guard exemption or release authority. See
+[Correction B classification and review handoff](V9P2A_ODR_GOVERNANCE_CORRECTION_B.md)
+for the current 25-failure comparison, immutable content manifest and outstanding owner decisions.
+
 ## 1. What changes and what does not
 
 The cash-sweep SHL maturity predicate `closing > convergence_tolerance_keur + 1e-9` at the contractual
