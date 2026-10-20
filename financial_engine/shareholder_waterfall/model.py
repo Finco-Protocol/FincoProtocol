@@ -39,6 +39,7 @@ from financial_engine.dsra.contracts import CashDsraPeriodResult
 from financial_engine.results import ProjectModelResult
 from financial_engine.shl.contracts import ShlRepaymentMode
 from financial_engine.shl.production import compute_shareholder_loan_schedules
+from financial_engine.shl.maturity_authority import ShlMaturityContext, current_attempt
 from financial_engine.shareholder_waterfall.contracts import (
     CovenantGatedWaterfallPeriod,
     CovenantGatedWaterfallResult,
@@ -766,12 +767,22 @@ def run_project_shareholder_waterfall_model(
                 shl_maturity_idx = shl_model_input.maturity_period_index
                 shl_repayment_mode = shl_model_input.repayment_mode
 
+                # OD-R: inside an OD-R evaluation the final waterfall SHL check is recorded
+                # for the evaluation owner (who alone knows if this evaluation is final);
+                # otherwise it is the canonical immediate fail-closed check.
+                _odr_attempt = current_attempt()
+                _odr_waterfall_context = (
+                    ShlMaturityContext.provisional_pass() if _odr_attempt is not None else None
+                )
                 gated_shl_schedule = compute_shareholder_loan_schedules(
                     model_result.periods,
                     shl_model_input,
                     gated_cash_all_periods,
                     diagnostics=None,
+                    maturity_context=_odr_waterfall_context,
                 )
+                if _odr_attempt is not None:
+                    _odr_attempt.record_final_waterfall(_odr_waterfall_context.ledger.first())
                 # SHL schedule axis must match the full canonical period axis (Rule 4).
                 expected_shl_axis: tuple[int, ...] = expected_full_axis
                 for label, values, target in (
