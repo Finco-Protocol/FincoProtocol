@@ -33,22 +33,42 @@ _EXTRA = tuple(
 CATALOG = tuple(_METRICS) + _EXTRA
 
 
+# Presentation safety bound, NOT a financial-model acceptance threshold.
+# Prevents thousands-digit or overflowing persisted values from being rendered
+# as plausible institutional figures; the actual Run evidence is unchanged.
+MAX_DISPLAY_ABS = 1e100
+
+
 def _finite(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    number = float(value)
-    return number if math.isfinite(number) else None
+    try:
+        number = float(value)
+    except (OverflowError, ValueError, TypeError):
+        return None
+    return number if math.isfinite(number) and abs(number) <= MAX_DISPLAY_ABS else None
 
 
 def _mapping(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _numeric_view(value: Any) -> dict:
+    """Sanitize numeric display inputs before the canonical KPI formatter.
+
+    Existing Decision Support _fetch() converts persisted integers via float
+    and may overflow on malformed huge JSON integers. This additive view
+    leaves original committed evidence untouched and makes it unavailable.
+    """
+    return {key: (_finite(item) if isinstance(item, (int, float)) else item)
+            for key, item in _mapping(value).items()}
+
+
 def _side_metrics(side: Mapping[str, Any]) -> dict[str, float | None]:
     result = run_metric_view(
-        _mapping(side.get("runtime_summary")),
-        _mapping(side.get("sponsor_schedule")).get("summary") or {},
-        _mapping(side.get("debt_schedule")).get("summary") or {},
+        _numeric_view(side.get("runtime_summary")),
+        _numeric_view(_mapping(side.get("sponsor_schedule")).get("summary")),
+        _numeric_view(_mapping(side.get("debt_schedule")).get("summary")),
     )
     for key, _label, _section, _kind in _EXTRA:
         # Extra fields use only their documented persisted catalog source.
@@ -174,7 +194,13 @@ def _period_evidence(side: Mapping[str, Any]) -> dict:
             distribution_schedule=_mapping(side.get("distribution_schedule")),
             sponsor_schedule=_mapping(side.get("sponsor_schedule")),
         )
-    return _periods(_timeline(RunInput(entry=entry)))
+    try:
+        return _periods(_timeline(RunInput(entry=entry)))
+    except (OverflowError, ValueError, TypeError, AttributeError, KeyError):
+        # A malformed historical debt schedule is not evidence of aligned
+        # periods. Keep the entire date comparison unavailable.
+        return {"valid": False, "by_date": {}, "starts": {},
+                "reason": "PERIOD_EVIDENCE_INVALID", "missing": [], "count": 0}
 
 
 # Whitelist of existing Statements V2 committed model-period rows. No
@@ -231,6 +257,8 @@ def _statement_rows(side: Mapping[str, Any]) -> dict[str, dict[str, float | None
     out: dict[str, dict[str, float | None]] = {}
     permitted = {(t, k) for t, k, _label in _STATEMENT_LINES}
     for table in tables:
+        if not isinstance(table, dict):
+            continue
         table_id = table.get("id")
         columns = table.get("columns")
         if table_id not in ("pnl", "cash_flow", "balance_sheet") or not isinstance(columns, list):
@@ -245,6 +273,8 @@ def _statement_rows(side: Mapping[str, Any]) -> dict[str, dict[str, float | None
             dates.append(end if valid else None)
         duplicates = {d for d in dates if d is not None and dates.count(d) > 1}
         for row in table.get("rows") or ():
+            if not isinstance(row, dict):
+                continue
             key = row.get("key")
             cells = row.get("cells")
             if (table_id, key) not in permitted or not isinstance(cells, list) or len(cells) != len(columns):
@@ -300,7 +330,7 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
             continue
         matched_intervals += 1
         for key, label, unit in METRICS:
-            values = [source["by_date"][end].get(key) for source in sources]
+            values = [_finite(source["by_date"][end].get(key)) for source in sources]
             unavailable = any(v is None for v in values)
             changed = any(
                 v is not None and values[reference] is not None
