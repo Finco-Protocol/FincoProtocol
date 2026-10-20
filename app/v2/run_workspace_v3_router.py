@@ -184,13 +184,23 @@ async def run_workspace_v3(request: Request, project: Optional[str] = None):
     for side in sides:
         evidence = side.get("integrity_evidence")
         try:
-            from app.v2.credit_decision_projection import _integrity, RunInput
+            from app.v2.credit_decision_projection import _integrity
             if side["entry"] is not None:
-                integrity = _integrity(RunInput(entry=side["entry"]))
-                side["integrity"] = integrity["status"]
+                # _integrity expects an actual committed Run entry exposing
+                # integrity_evidence, not the credit RunInput wrapper.
+                source = side["entry"]
+            elif isinstance(evidence, dict) and evidence:
+                # Legacy canonical Last Run: evaluate only the exact evidence
+                # persisted on that Last Run, never another history entry.
+                source = SimpleNamespace(integrity_evidence=evidence)
             else:
-                side["integrity"] = "UNAVAILABLE"   # no invented ledger evidence
+                source = None
+            verdict = _integrity(source)["status"] if source is not None else "UNAVAILABLE"
+            side["integrity"] = verdict if verdict in (
+                "PASS", "FAIL", "INCOMPLETE", "UNAVAILABLE"
+            ) else "UNAVAILABLE"
         except Exception:
+            # Malformed persisted evidence is not a synthetic PASS/FAIL.
             side["integrity"] = "UNAVAILABLE"
         side["evidence"] = ("RECORDED" if evidence else "PARTIAL / UNAVAILABLE")
         side["detail_url"] = (
