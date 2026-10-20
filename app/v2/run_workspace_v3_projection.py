@@ -150,7 +150,12 @@ def _frequency(side: Mapping[str, Any]) -> str:
             freq = calendar.get("operating_months")
             if freq in (3, 6):
                 return "3/3" if freq == 3 else "6/6"
-    return "UNKNOWN"
+    # Released default: absence of any quarterly selection means 6/6.
+    # A present but unknown policy must not silently fall back.
+    if any("operating_frequency" in obj or "operating_calendar_policy" in obj
+           for obj in (summary, identity)):
+        return "UNKNOWN"
+    return "6/6"
 
 
 def _period_evidence(side: Mapping[str, Any]) -> dict:
@@ -238,7 +243,7 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
     else:
         reason = ""
     return {
-        "available": bool(dates) and bool(rows),
+        "available": bool(dates) and (bool(rows) or not excluded),
         "reason": reason, "rows": rows[offset:offset + MAX_PERIOD_ROWS],
         "count": len(rows), "next_offset": offset + MAX_PERIOD_ROWS
         if offset + MAX_PERIOD_ROWS < len(rows) else None,
