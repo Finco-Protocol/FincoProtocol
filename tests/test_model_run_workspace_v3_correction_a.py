@@ -168,3 +168,21 @@ def test_invalid_statement_dates_and_giant_cells_never_become_financial_values(m
     assert rows["2035-06-30"]["statement:pnl:revenues_keur"] is None
     assert "2035-06" not in rows
     assert rows["2035-12-31"]["statement:pnl:revenues_keur"] == 500.0
+
+
+
+def test_huge_persisted_capex_lineage_is_unavailable_without_mutating_run():
+    base = {"capex_rows": [{"sub_line_id": "epc", "amount_keur": 10**600}],
+            "scenario_overrides": {"tariff_eur_mwh": float("inf")}}
+    other = {"capex_rows": [{"sub_line_id": "epc", "amount_keur": 1200.0}],
+             "scenario_overrides": {}}
+    original_large = base["capex_rows"][0]["amount_keur"]
+    sides = [
+        {"last_runtime_identity": base, "runtime_summary": {}, "composite_hash": "hash-A"},
+        {"last_runtime_identity": other, "runtime_summary": {}, "composite_hash": "hash-B"},
+    ]
+    result = projection.build_lineage(sides, 0)[0]
+    assert result["status"] == "DIFFERENT_EXPLAINED"
+    assert any(row.category == "capex" and row.value_a == "—" for row in result["rows"])
+    assert base["capex_rows"][0]["amount_keur"] == original_large
+    assert base["scenario_overrides"]["tariff_eur_mwh"] == float("inf")
