@@ -2567,6 +2567,17 @@
    ]
   }
  },
+ "correction_a": {
+  "combined_failure_controls": {
+   "any_failed_validation": "no Last Run, no Run History row, no memo entry (V2 Run route)",
+   "final_capacity_breach_plus_failed_idempotence": "PR9_OUTER_G2A_IDEMPOTENCE_FAILED (was SHL_MATURITY masked)",
+   "final_funded_breach_plus_failed_idempotence": "PR9_OUTER_G2A_IDEMPOTENCE_FAILED (was SHL_MATURITY masked)",
+   "fully_converged_final_capacity_funded_waterfall_breach": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED with od_r_final_check",
+   "provisional_breaches_plus_inner_non_convergence": "G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE",
+   "provisional_breaches_plus_outer_non_convergence": "PR9_OUTER_G2A_CONSTRUCTION_FIXED_POINT_DID_NOT_CONVERGE"
+  },
+  "outputs_and_error_text_identical_to_pre_correction_run": true
+ },
  "counts": {
   "FINAL_STATE_ECONOMICALLY_INFEASIBLE": 27,
   "NUMERICAL_DEGENERATE_REJECTION": 2,
@@ -2576,6 +2587,7 @@
  },
  "counts_match_research": true,
  "defects": [],
+ "engine_commit": "84e17358 (Correction A)",
  "expected_counts": {
   "FINAL_STATE_ECONOMICALLY_INFEASIBLE": 27,
   "NUMERICAL_DEGENERATE_REJECTION": 2,
@@ -2585,6 +2597,10 @@
  },
  "harness": "tools/v9p2a_odr_acceptance.py",
  "inputs": "synthetic app.project_factories variations only",
+ "local_test_summary_at_84e17358": {
+  "existing_suites_touching_changed_modules": "33 files: 1245 passed / 23 failed; 19 fail identically on unmodified main (environment); 4 are exact-content / frozen-path guards blocking the changed protected blobs",
+  "new_odr_tests": "39 passed"
+ },
  "per_case_verdicts_match_research": true,
  "pre_existing_disclosures": {
   "integrity_fail_equity_only_canonical_and_odr": [
@@ -2601,15 +2617,15 @@
    "X-S16-dscr2.0-cm9"
   ],
   "senior_label_outstanding_below_settlement_threshold_canonical": [
+   "G-S16-tenor13",
    "S16r-taxloss",
+   "W25r-dscr3.0",
    "X-S16-dscr1.8",
    "X-S16-dscr1.9",
-   "G-S16-tenor13",
-   "X-S16-tenor14",
-   "W25r-dscr3.0"
+   "X-S16-tenor14"
   ]
  },
- "schema": "finco.v9p2a.odr-acceptance.v1",
+ "schema": "finco.v9p2a.odr-acceptance.v2",
  "seed_check": {
   "feasible_output_digest_changes": {
    "gearing": 54,
