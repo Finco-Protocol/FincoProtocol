@@ -4525,6 +4525,37 @@ async def v2_run_history_detail(
         request=request, name="partials/run_history_detail.html", context=ctx)
 
 
+@router.get("/workbook/run-history/export")
+async def v2_run_history_export(
+    request: Request,
+    project: Optional[str] = None,
+    history_id: Optional[str] = None,
+):
+    """Institutional report (XLSX) for ONE committed historical Run.
+
+    Zero engine execution: the package is built from that Run History row's own persisted evidence only
+    (snapshot-bound, byte-reproducible), never from the Working Copy or a newer Last Run.  The project is
+    resolved through the caller's own access (owner / shared project); an unknown or foreign history id,
+    project or malformed stored row fails closed with the service's static message.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not project or not history_id:
+        return HTMLResponse(content="<p>Project and history_id required.</p>", status_code=400)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.services.export_service import _make_streaming_response
+    from app.services.v2_export_service import build_historical_run_workbook_export
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+    export = build_historical_run_workbook_export(
+        project_record=project_record, user_id=workspace_owner, history_id=history_id)
+    return _make_streaming_response(export)
+
+
 @router.get("/workbook/run-history/compare", response_class=HTMLResponse)
 async def v2_run_history_compare(
     request: Request,
@@ -6029,3 +6060,10 @@ from app.v2.bess_workspace_router import router as bess_workspace_router
 router.include_router(bess_workspace_router)
 from app.v2.quarterly_calendar_router import router as quarterly_calendar_router  # RC-7B, release-closed
 router.include_router(quarterly_calendar_router)
+
+from app.v2.portfolio_router import router as portfolio_router
+router.include_router(portfolio_router)
+
+# Run & Scenario Workspace V3: one read-only GET route, no Run writer or schema changes.
+from app.v2.run_workspace_v3_router import router as run_workspace_v3_router
+router.include_router(run_workspace_v3_router)
