@@ -6029,3 +6029,7 @@ from app.v2.bess_workspace_router import router as bess_workspace_router
 router.include_router(bess_workspace_router)
 from app.v2.quarterly_calendar_router import router as quarterly_calendar_router  # RC-7B, release-closed
 router.include_router(quarterly_calendar_router)
+
+# Run & Scenario Workspace V3: one read-only GET route, no Run writer or schema changes.
+from app.v2.run_workspace_v3_router import router as run_workspace_v3_router
+router.include_router(run_workspace_v3_router)
