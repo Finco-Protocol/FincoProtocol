@@ -29,6 +29,13 @@ from tools import v9p2a_odr_acceptance as acc
 CODE = "SHL_MATURITY_RESIDUAL_FAILS_CLOSED"
 INJECTED = ma.ShlMaturityShortfall(closing_keur=123.456789, period_index=41, tolerance_keur=1e-7)
 
+# Cheapest representatives of each matrix class with SHL, construction IDC and initial DSRA (the full
+# 112-case matrix in tools/v9p2a_odr_acceptance.py covers every case): previously feasible with one
+# superseded DSRA iteration; provisional-only admission; final-state infeasible.
+FEASIBLE = "reference-wind"
+ADMITTED = "X-W25-dscr2.5"
+INFEASIBLE = "S16-raw-infeasible"
+
 
 @pytest.fixture(scope="module")
 def entries():
@@ -46,13 +53,13 @@ def _reject(entries, name, mode):
 
 
 @pytest.fixture(scope="module")
-def s16_pair(entries):
-    return _run(entries, "S16", "canonical"), _run(entries, "S16", "odr")
+def feasible_pair(entries):
+    return _run(entries, FEASIBLE, "canonical"), _run(entries, FEASIBLE, "odr")
 
 
 @pytest.fixture(scope="module")
 def admitted(entries):
-    return _run(entries, "S16-dscr2.0", "odr")
+    return _run(entries, ADMITTED, "odr")
 
 
 @pytest.fixture(autouse=True)
@@ -153,8 +160,8 @@ def test_senior_model_refuses_a_context_without_shareholder_loan(entries):
 
 # ---------------------------------------------------------------------------- P6 representative
 
-def test_previously_feasible_output_is_bit_identical(s16_pair):
-    canonical, odr = s16_pair
+def test_previously_feasible_output_is_bit_identical(feasible_pair):
+    canonical, odr = feasible_pair
     assert acc.financial_leaves(canonical) == acc.financial_leaves(odr)
     meta = {k: v for k, v in odr.authority_metadata.items() if k.startswith("shl_maturity_")}
     assert meta["shl_maturity_authority"] == ma.SHL_MATURITY_POLICY_OD_R
@@ -166,7 +173,7 @@ def test_previously_feasible_output_is_bit_identical(s16_pair):
 
 
 def test_provisional_only_case_is_admitted_with_valid_final_state(entries, admitted):
-    _reject(entries, "S16-dscr2.0", "canonical")  # canonical: rejected on a provisional breach
+    _reject(entries, ADMITTED, "canonical")  # canonical: rejected on a provisional breach
     meta = admitted.authority_metadata
     assert meta["shl_maturity_provisional_violations"] > 0
     assert meta["shl_maturity_max_provisional_shortfall_keur"] > 0.0
@@ -195,8 +202,8 @@ def test_provisional_only_case_is_admitted_with_valid_final_state(entries, admit
 
 
 def test_final_state_infeasible_case_still_rejected_with_final_evidence(entries):
-    canonical = _reject(entries, "S16-dscr3.0", "canonical")
-    odr = _reject(entries, "S16-dscr3.0", "odr")
+    canonical = _reject(entries, INFEASIBLE, "canonical")
+    odr = _reject(entries, INFEASIBLE, "odr")
     assert canonical.reason_code == odr.reason_code == "PR8_CLEAN_ENGINE_FAIL_CLOSED"
     assert f"ValueError: {CODE}: closing balance " in odr.detail
     assert "od_r_final_check=CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY" in odr.detail
@@ -287,7 +294,7 @@ def _final_sites(admitted):
 
 def test_final_capacity_only_breach_rejects(entries, admitted, monkeypatch):
     injected = _inject_ledger(monkeypatch, {"CAPACITY"})
-    error = _reject(entries, "S16-dscr2.0", "odr")
+    error = _reject(entries, ADMITTED, "odr")
     assert injected and f"closing balance {INJECTED.closing_keur:.12f} kEUR" in error.detail
     assert "od_r_final_check=CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY" in error.detail
 
@@ -296,20 +303,20 @@ def test_final_funded_only_breach_rejects(entries, admitted, monkeypatch):
     funded_site = [s for s in _final_sites(admitted) if s != "CAPACITY"]
     assert funded_site in (["FUNDED"], ["STRICT"])
     _inject_ledger(monkeypatch, set(funded_site))
-    error = _reject(entries, "S16-dscr2.0", "odr")
+    error = _reject(entries, ADMITTED, "odr")
     assert f"od_r_final_check=CONSTRUCTION_RETURNED_G2A.FINAL_{funded_site[0]}" in error.detail
 
 
 def test_both_final_passes_breached_reject_with_capacity_first(entries, monkeypatch):
     _inject_ledger(monkeypatch, {"CAPACITY", "FUNDED", "STRICT"})
-    error = _reject(entries, "S16-dscr2.0", "odr")
+    error = _reject(entries, ADMITTED, "odr")
     assert "od_r_final_check=CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY" in error.detail
     assert "od_r_failed_final_checks=4" in error.detail
 
 
 def test_verification_g2a_breach_alone_rejects(entries, monkeypatch):
     injected = _inject_final(monkeypatch, {"CAPACITY"}, roles={"CONSTRUCTION_VERIFICATION_G2A"})
-    error = _reject(entries, "S16-dscr2.0", "odr")
+    error = _reject(entries, ADMITTED, "odr")
     assert injected == ["CONSTRUCTION_VERIFICATION_G2A"]
     assert "od_r_final_check=CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY" in error.detail
 
@@ -325,7 +332,7 @@ def test_breach_injected_only_into_superseded_g2a_stays_provisional(entries, mon
         return original(self, evidence, final=final, role=role)
 
     monkeypatch.setattr(ma.OdrAttempt, "absorb_g2a", absorb)
-    result = _run(entries, "S16-dscr2.0", "odr")
+    result = _run(entries, ADMITTED, "odr")
     assert seen and result.authority_metadata["shl_maturity_max_provisional_shortfall_keur"] >= INJECTED.closing_keur
 
 
@@ -339,7 +346,7 @@ def test_final_waterfall_breach_rejects_through_the_real_predicate(entries, monk
         return original(periods, shl_input, (0.0,) * len(cash), **kwargs)
 
     monkeypatch.setattr(waterfall, "compute_shareholder_loan_schedules", starved)
-    error = _reject(entries, "S16-dscr2.0", "odr")
+    error = _reject(entries, ADMITTED, "odr")
     # The DSRA seed run is outside any OD-R evaluation (canonical, failure swallowed as before);
     # every waterfall SHL check inside an OD-R evaluation carries a provisional context.
     assert calls[0] is None and calls[1:] and all(c is not None and c.provisional for c in calls[1:])
@@ -349,7 +356,7 @@ def test_final_waterfall_breach_rejects_through_the_real_predicate(entries, monk
     calls.clear()
     from financial_engine.shareholder_waterfall import run_project_shareholder_waterfall_model
     plain_inputs, _, _ = gpp.apply_generic_financing_policy(
-        entries["S16"][0](), gpp.DISABLED_GENERIC_FINANCING_POLICY)
+        entries[FEASIBLE][0](), gpp.DISABLED_GENERIC_FINANCING_POLICY)
     with pytest.raises(ValueError, match=CODE):
         run_project_shareholder_waterfall_model(plain_inputs)
     assert calls == [None]
@@ -392,7 +399,7 @@ def test_non_convergent_inner_g2a_keeps_numerical_rejection(entries, monkeypatch
         return original(*args, **kwargs)
 
     monkeypatch.setattr(project, "run_project_financing_model", inner)
-    error = _reject(entries, "S16-dscr2.0", "odr")
+    error = _reject(entries, ADMITTED, "odr")
     assert seen and capped and capped[0] > 0, "genuine provisional breaches must precede the failure"
     assert "RuntimeError: G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE" in error.detail
     assert CODE not in error.detail
@@ -418,7 +425,7 @@ def test_final_breach_with_failed_idempotence_keeps_the_idempotence_rejection(
     sites = {site} if site == "CAPACITY" else set(_final_sites(admitted)) - {"CAPACITY"}
     hits = _inject_ledger(monkeypatch, sites)
     stage_b2_calls = _fail_construction_idempotence(monkeypatch)
-    error = _reject(entries, "S16-dscr2.0", "odr")
+    error = _reject(entries, ADMITTED, "odr")
     assert hits and stage_b2_calls
     assert "RuntimeError: PR9_OUTER_G2A_IDEMPOTENCE_FAILED" in error.detail
     assert CODE not in error.detail and "od_r_final_check" not in error.detail
@@ -430,12 +437,12 @@ def test_failed_idempotence_alone_is_the_same_rejection_in_both_authorities(entr
     _fail_construction_idempotence(monkeypatch)
     for mode in ("canonical", "odr"):
         pfa._POLICY_RUN_CACHE.clear()
-        error = _reject(entries, "S16", mode)
+        error = _reject(entries, FEASIBLE, mode)
         assert "RuntimeError: PR9_OUTER_G2A_IDEMPOTENCE_FAILED" in error.detail
 
 
 def test_non_convergent_dsra_fixed_point_keeps_numerical_rejection(entries):
-    factory, vertical, _ = entries["S16"]
+    factory, vertical, _ = entries[FEASIBLE]
     for authority in ma.SHL_MATURITY_POLICIES:
         policy = gpp.GenericFinancingPolicy(dsra_max_iterations=1, shl_maturity_authority=authority)
         pfa._POLICY_RUN_CACHE.clear()
@@ -488,15 +495,15 @@ def test_strict_resolve_replaces_the_funded_pass_as_final():
 # ---------------------------------------------------------------------------- isolation / release-closed
 
 def test_repeated_runs_and_run_scope_isolation(entries, admitted):
-    again = _run(entries, "S16-dscr2.0", "odr")
+    again = _run(entries, ADMITTED, "odr")
     assert acc.flatten(again) == acc.flatten(admitted)
     assert ma.current_attempt() is None
     # A later canonical run of the same inputs is not affected by the OD-R evaluation.
-    _reject(entries, "S16-dscr2.0", "canonical")
+    _reject(entries, ADMITTED, "canonical")
 
 
 def test_policy_memo_never_shares_canonical_and_odr_results(entries):
-    factory, vertical, _ = entries["S16-dscr2.0"]
+    factory, vertical, _ = entries[ADMITTED]
     inputs = factory()
     odr_policy = acc.policy_for("odr", None)
     pfa.run_clean_production(inputs, project_type=vertical, financing_policy=odr_policy)
@@ -545,8 +552,8 @@ def test_no_product_path_can_select_the_odr_authority():
     assert inspect.signature(pfa.run_clean_production).parameters["financing_policy"].default is None
 
 
-def test_canonical_policy_evidence_type_and_fields_are_unchanged(s16_pair):
-    canonical, odr = s16_pair
+def test_canonical_policy_evidence_type_and_fields_are_unchanged(feasible_pair):
+    canonical, odr = feasible_pair
     assert [f.name for f in dc.fields(gpp.FinancingPolicyEvidence)] == [
         "authority", "construction_financing_applied", "cash_dsra_applied",
         "initial_dsra_funding_keur", "dsra_iterations", "dsra_residual_keur"]
