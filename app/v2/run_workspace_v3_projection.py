@@ -286,6 +286,7 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
         {"date": end, "reason": "PERIOD_NOT_PERSISTED_IN_EVERY_RUN"}
         for end in unmatched
     ]
+    matched_intervals = 0
     for end in sorted(dates):
         starts = [source["starts"].get(end) for source in sources]
         if any(start is None for start in starts):
@@ -297,6 +298,7 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
         if starts[0] >= end:
             excluded.append({"date": end, "reason": "PERIOD_INTERVAL_INVALID"})
             continue
+        matched_intervals += 1
         for key, label, unit in METRICS:
             values = [source["by_date"][end].get(key) for source in sources]
             unavailable = any(v is None for v in values)
@@ -348,12 +350,12 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
             })
     if not dates:
         reason = "PERIOD_END_DATES_DO_NOT_MATCH"
-    elif not rows and excluded:
+    elif not matched_intervals:
         reason = "PERIOD_INTERVALS_NOT_COMPARABLE"
     else:
         reason = ""
     return {
-        "available": bool(dates) and (bool(rows) or not excluded),
+        "available": matched_intervals > 0,
         "reason": reason, "rows": rows[offset:offset + MAX_PERIOD_ROWS],
         "count": len(rows), "next_offset": offset + MAX_PERIOD_ROWS
         if offset + MAX_PERIOD_ROWS < len(rows) else None,
