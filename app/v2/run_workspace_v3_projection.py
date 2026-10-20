@@ -103,6 +103,7 @@ def build_kpi_sections(sides: Sequence[Mapping[str, Any]], reference: int,
                 "values": [_fmt(kind, value) for value in values],
                 "deltas": deltas, "changed": changed,
                 "unavailable": unavailable, "source": "Committed Run",
+                "unit": "%" if kind == "pct" else "x" if kind == "x" else "kEUR",
             })
         if rows:
             sections.append({"key": section, "title": title, "rows": rows})
@@ -276,10 +277,15 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
     if any(not source["valid"] for source in sources):
         return {"available": False, "reason": "PERIOD_EVIDENCE_UNAVAILABLE",
                 "rows": [], "excluded": [], "count": 0}
+    all_dates = set().union(*(set(source["by_date"]) for source in sources))
     dates = set(sources[reference]["by_date"])
     for source in sources:
         dates &= set(source["by_date"])
-    rows, excluded = [], []
+    unmatched = sorted(all_dates - dates)
+    rows, excluded = [], [
+        {"date": end, "reason": "PERIOD_NOT_PERSISTED_IN_EVERY_RUN"}
+        for end in unmatched
+    ]
     for end in sorted(dates):
         starts = [source["starts"].get(end) for source in sources]
         if any(start is None for start in starts):
@@ -316,6 +322,7 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
                 "start": starts[0], "end": end, "key": key, "label": label,
                 "values": [render(v) for v in values], "deltas": delta,
                 "unavailable": unavailable, "changed": changed,
+                "unit": "x" if unit == "x" else "kEUR",
             })
         # The statement adapter returns committed cells on their own dated
         # columns. They join ONLY at this independently validated Credit V4
@@ -337,7 +344,7 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
                 "deltas": ["—" if i == reference or v is None or values[reference] is None
                            else f"{v - values[reference]:+,.2f}"
                            for i, v in enumerate(values)],
-                "unavailable": missing, "changed": moved,
+                "unavailable": missing, "changed": moved, "unit": "kEUR",
             })
     if not dates:
         reason = "PERIOD_END_DATES_DO_NOT_MATCH"
@@ -351,5 +358,6 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
         "count": len(rows), "next_offset": offset + MAX_PERIOD_ROWS
         if offset + MAX_PERIOD_ROWS < len(rows) else None,
         "excluded": excluded[:20], "excluded_count": len(excluded),
+        "unmatched_count": len(unmatched),
         "basis": "Credit V4 committed period intervals. Δ = Selected − Reference; no aggregation or causal attribution.",
     }
