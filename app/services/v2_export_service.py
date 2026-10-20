@@ -577,7 +577,7 @@ def build_historical_run_workbook_export(
 
         ws = get_workspace_state(user_id, project_record.project_id)
         freshness = _resolve_freshness(ws, user_id, project_record.project_id) if ws is not None else None
-        from app.export.institutional_reporting_v2 import build_run_evidence_workbook
+        from app.export.institutional_reporting_v3 import build_run_evidence_workbook_v3
         from app.export.run_evidence import evidence_from_history_entry
 
         evidence = evidence_from_history_entry(
@@ -586,7 +586,7 @@ def build_historical_run_workbook_export(
             last_run_is_stale=bool(freshness.is_stale) if freshness is not None else True,
             freshness_source=freshness.source if freshness is not None else "workspace_unavailable",
         )
-        workbook_bytes = build_run_evidence_workbook(evidence)
+        workbook_bytes = build_run_evidence_workbook_v3(evidence)
     except ValueError:
         return _fail(400, "Run history export failed.")
 

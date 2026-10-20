@@ -34,6 +34,10 @@
   <script src="/static/js/model_run_history_statements_nav.js"></script>
   {% endif %}
 
+  <p><a class="v2-rh-link" href="/v2/workbook/run-history/export?project={{ project_code | urlencode }}&history_id={{ entry.history_id | urlencode }}"
+     data-testid="run-detail-export-report" download>Download institutional report (XLSX) for this Run</a>
+     <span class="v2-rh-sub">Built from this Run's persisted evidence only; never from the Working Copy or a newer Run.</span></p>
+
   <div class="v2-rh-section-title">Key metrics (persisted)</div>
   <div class="v2-rh-scroll" role="region" tabindex="0" aria-label="Run history table"><table class="v2-rh-table" data-testid="run-detail-kpis">
     <thead><tr><th>Metric</th><th>Value</th></tr></thead>
