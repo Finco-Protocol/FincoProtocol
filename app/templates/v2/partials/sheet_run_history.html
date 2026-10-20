@@ -18,6 +18,12 @@
       Last Run · {% if last_run_state == 'STALE' %}STALE{% elif last_run_state == 'CURRENT' %}CURRENT{% else %}NOT RUN{% endif %}
       · {{ last_run_at or '—' }}
     </span>
+    {% if project_code %}
+    <button type="button" class="v2-rh-link"
+            hx-get="/v2/workbook/run-workspace-v3?project={{ project_code | urlencode }}"
+            hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
+            data-testid="run-history-workspace-v3">Compare 2–3 Runs →</button>
+    {% endif %}
     {% if project_code %}<a class="v2-rh-sub" href="/v2/credit-decision?project={{ project_code | urlencode }}" data-testid="run-history-credit-decision">Credit decision →</a>{% endif %}
   </div>
 
