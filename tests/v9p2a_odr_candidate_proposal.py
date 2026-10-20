@@ -31,13 +31,18 @@ PREDECESSOR_BLOBS = {
 # Exact candidate blobs proposed for review (filled from the committed candidate content).
 CANDIDATE_BLOBS: dict[str, str] = {
     "financial_engine/financing/generic_product_policy.py": "293d896ac474f47ea74a93ac5ac5d7a587f1446b",
-    "financial_engine/financing/project.py": "75b18d4a840ed328b6b005e0cefca4db8741e069",
+    "financial_engine/financing/project.py": "16ab1921b539ec3ed42d55554b1392ce781e6ce5",
     "financial_engine/orchestrator.py": "85c8008f2b4a656fd28eea1169689b19131576e4",
     "financial_engine/shareholder_waterfall/model.py": "6ab84043c0267832125a073a3a881e1e86ac0e3d",
-    "financial_engine/shl/maturity_authority.py": "be2e6d9bc946dddf1880e3a0b7b5f8b3414aeb1f",
+    "financial_engine/shl/maturity_authority.py": "8383eb2d735f310a09d9f080134a314efb276ba6",
     "financial_engine/shl/production.py": "9bb852c235a988bff994c4327b3b63dd6d77ae20",
 }
-CANDIDATE_SOURCE_COMMIT = "d7995f30"   # implementation commit carrying exactly these blobs
+CANDIDATE_SOURCE_COMMIT = "84e17358"   # Correction A commit carrying exactly these blobs
+# Superseded (stale) candidate blobs of d7995f30, before Correction A:
+SUPERSEDED_CANDIDATE_BLOBS = {
+    "financial_engine/financing/project.py": "75b18d4a840ed328b6b005e0cefca4db8741e069",
+    "financial_engine/shl/maturity_authority.py": "be2e6d9bc946dddf1880e3a0b7b5f8b3414aeb1f",
+}
 # Non-protected application change carried by the same candidate (provenance metadata only).
 APPLICATION_BLOBS = {
     "app/services/production_financial_authority.py": (

@@ -37,20 +37,22 @@ authority, the policy-run memo, or Run persistence.
   the converged Senior/SHL/tax state (handshake probe and final SHL schedule). It is not an input field, not part of the
   fingerprint; the SHL/tax fixed-point iterations already evaluate without the check (unchanged).
 * **G2A** (`run_project_financing_model`): only inside an OD-R evaluation, each capacity / funded / strict pass gets its own
-  provisional context. At the `break` of the converging iteration its passes become the *final passes* (strict replaces
-  funded). Authority follows the solver lifecycle (the convergence branch), never iteration numbers, amounts, proximity or
+  provisional context. At the `break` of the converging iteration its passes become the *candidate final passes* (strict
+  replaces funded); a top-level G2A reports them as final only after its post-convergence validations succeed. Authority follows the solver lifecycle (the convergence branch), never iteration numbers, amounts, proximity or
   cache hits.
-* **Construction IDC owner**: the seed G2A and every superseded outer-iteration G2A are absorbed as provisional; after outer
-  convergence and the unfunded invariant, the returned inner G2A's final passes are final; the verification G2A's final
-  passes are final; then the existing idempotence check runs.
+* **Construction IDC owner**: the seed G2A and every superseded outer-iteration G2A are absorbed as provisional. Only after
+  outer convergence, the unfunded invariant, the verification G2A, the idempotence check and the opening-SHL identity have
+  all succeeded are the returned inner G2A's and the verification G2A's final passes absorbed as final checks.
 * **Waterfall**: inside an OD-R evaluation the gated SHL schedule's check is recorded as the final check
   `WATERFALL.FINAL_SHL_SCHEDULE`; outside it is the canonical immediate check.
 * **Initial-DSRA owner** (`run_with_generic_financing_policy`): each engine evaluation is one `OdrAttempt`
   (context-local `ContextVar`, opened only here, nesting refused, reset in `finally`). A superseded evaluation is demoted to
   diagnostics; the returned evaluation must have zero failed final checks, otherwise the canonical error is raised.
-* **Exception precedence**: if any exception escapes an evaluation in which a final check had already failed, the maturity
-  error is raised (chained) — exactly what the canonical engine would have raised first. Otherwise the exception propagates
-  unchanged. Structural, numerical and all other exceptions are never converted into success.
+* **Exception precedence (Correction A)**: final authority exists only for an evaluation that completed every required
+  convergence, funding and idempotence validation and is the converged initial-DSRA evaluation. Any exception escaping an
+  evaluation therefore propagates unchanged and unchained; a breach recorded in a candidate final pass is never substituted
+  for it. Final breaches are enforced only by the DSRA owner on the returned evaluation, before the result is returned.
+  Structural, numerical and all other exceptions are never converted into success or into a maturity rejection.
 
 Absent an OD-R evaluation (every product Run, every thread or worker process without one) all of the above is the canonical
 path; a leaked context can only be absent, which is the stricter behaviour.
@@ -91,9 +93,31 @@ Integrity; bullet SHL is outside the cash-sweep predicate and unchanged.
 1. The 17 provisional-only cases change from `SHL_MATURITY_RESIDUAL_FAILS_CLOSED` (provisional estimate) to FEASIBLE.
 2. The 27 final-state rejections keep the code; the reported closing balance is now the final-state shortfall (previously the
    first provisional breach) and the message carries the OD-R suffix.
-3. A case whose only breaches are provisional and which then fails a numerical validation now reports that numerical error
-   (e.g. `G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE`) instead of the provisional maturity breach. Still rejected.
-   Not observed in the 112-case matrix; demonstrated only by the capped-iteration negative controls.
+3. A case that fails a convergence, funding or idempotence validation reports that validation error (e.g.
+   `G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE`, `PR9_OUTER_G2A_CONSTRUCTION_FIXED_POINT_DID_NOT_CONVERGE`,
+   `PR9_OUTER_G2A_IDEMPOTENCE_FAILED`) even if a provisional or candidate-final pass had breached the maturity predicate
+   (canonical reported the earlier maturity breach). Still rejected. Not observed in the 112-case matrix; demonstrated by
+   the combined-failure controls.
+
+## 5a. Correction A — convergence precedence (review finding on `99a42393`)
+
+Root cause: `odr_attempt()` replaced any exception escaping an evaluation with a breach already recorded at a final check,
+and the construction owner absorbed the returned / verification G2A passes as final *before* idempotence. A real
+`PR9_OUTER_G2A_IDEMPOTENCE_FAILED` was therefore reported as `SHL_MATURITY_RESIDUAL_FAILS_CLOSED` (reproduced through the
+production path on `99a42393`).
+
+Correction (no predicate, tolerance, equation, solver or terminal change): the exception conversion is removed; the
+construction owner absorbs its final passes only after its last validation; a top-level G2A only after its
+post-convergence validations; the DSRA owner enforces on the returned evaluation only.
+
+| Scenario | `99a42393` | Correction A |
+|---|---|---|
+| Final capacity breach + failed idempotence | `SHL_MATURITY…` (masked) | `PR9_OUTER_G2A_IDEMPOTENCE_FAILED` |
+| Final funded breach + failed idempotence | `SHL_MATURITY…` (masked) | `PR9_OUTER_G2A_IDEMPOTENCE_FAILED` |
+| Provisional breaches + inner non-convergence | non-convergence | non-convergence |
+| Provisional breaches + outer non-convergence | non-convergence | non-convergence |
+| Fully converged final capacity / funded / waterfall breach | `SHL_MATURITY…` + final evidence | unchanged |
+| Any failed validation | no commit | no commit, no Run History, no memo entry |
 4. No previously feasible case changes; no structural/numerical rejection text changes.
 
 ## 6. Disclosures (pre-existing, unchanged, not addressed here)
