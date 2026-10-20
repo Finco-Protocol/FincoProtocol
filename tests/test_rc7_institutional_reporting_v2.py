@@ -387,7 +387,9 @@ def test_equivalent_source_snapshots_produce_byte_identical_workbooks(two_runs):
     # building from an independently decoded copy of the same row is also identical
     ev = evidence_from_history_entry(entry_a, pr, last_run_snapshot_id=two_runs["snap_b"], last_run_is_stale=False,
                                      freshness_source="test")
-    assert R.build_run_evidence_workbook(ev) == first.bytes_data
+    from app.export import institutional_reporting_v3 as R3
+    assert R3.build_run_evidence_workbook_v3(ev) == first.bytes_data      # V3 package is the user-facing historical export
+    assert R.build_run_evidence_workbook(ev)                              # the V2 builder remains available and builds
     # a different Run is a different report
     entry_b = _latest(uid, pr)[0]
     assert entry_b.history_id != entry_a.history_id

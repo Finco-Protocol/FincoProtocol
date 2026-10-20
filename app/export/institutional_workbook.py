@@ -310,8 +310,13 @@ def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle, run_
 
     if run_evidence is not None:
         from app.export.institutional_reporting_v2 import write_reporting_v2_sheets
+        from app.export.institutional_reporting_v3 import last_run_sheet_names, write_reporting_v3_sheets
 
-        write_reporting_v2_sheets(workbook, run_evidence, inputs=bundle.project_inputs)
+        v2_names = write_reporting_v2_sheets(workbook, run_evidence, inputs=bundle.project_inputs,
+                                             sheet_names=last_run_sheet_names())
+        # Reporting V3: executive/lender front section, Evidence_Limits register and print polish over the SAME frozen evidence.
+
+        write_reporting_v3_sheets(workbook, run_evidence, v2_names=v2_names)
 
     # Presentation-only: highlight the navigation/landing and validation
     # tabs so reviewers can find them at a glance. No content/value change.

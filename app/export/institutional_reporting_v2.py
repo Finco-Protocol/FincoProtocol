@@ -883,13 +883,14 @@ def _write_returns(wb: Workbook, ev: RunEvidence) -> None:
 
 # ═══════════════════════════ public API ═══════════════════════════
 
-def write_reporting_v2_sheets(wb: Workbook, ev: RunEvidence, *, inputs=None) -> list[str]:
+def write_reporting_v2_sheets(wb: Workbook, ev: RunEvidence, *, inputs=None,
+                              sheet_names: Sequence[str] | None = None) -> list[str]:
     """Append the V2 sheets to the existing institutional workbook; returns the new sheet names.
 
     The Report_Guide is placed after Export_Metadata / Workbook_Index so it is the first thing a
     reviewer reads; statements and returns already exist in that workbook and are not duplicated.
     """
-    names = [SHEET_REPORT_GUIDE, *COMMON_SHEETS]
+    names = list(sheet_names) if sheet_names is not None else [SHEET_REPORT_GUIDE, *COMMON_SHEETS]
     _write_report_guide(wb, ev, names, index=2,
                         inputs_note="Existing sheets (Cover ... Validation Status) follow; they combine this Run's "
                                     "persisted results with the Last Run input snapshot.")
