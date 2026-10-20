@@ -1,0 +1,2727 @@
+{
+ "base_main": "5996453b8d5bbfaa48bc06922fc6963cf94d2f84",
+ "cases": {
+  "DC": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "3a23848bf6cda8db602572a72a2d323b12af1fd8b8209acacc9fc440aaf0e276",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "DC-dscr2.0": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "63bcb84d34087d15bc8dee7b6f0d04a629ae104f7c3abca86b2b8dd3ae148ec2",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "DC-leap": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "f1f0abbf4d9ce26eacdec2182a9c7feedc71e551661dc44b30d0920414ddd116",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "EQ-DSRA": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [],
+   "integrity": "FAIL",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "e0a0acb848b38bbe8551e8535b3b673e06ed02018eeac7bce034e8dc12f42ff3",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "EQ-nearzero": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [],
+   "integrity": "FAIL",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "c20db0120bdfc2e07bd1496e7e21f2088ea332f1512c50eb7597022fd9db358f",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "NOT_APPLICABLE",
+    0.0
+   ]
+  },
+  "EQ-zero": {
+   "canonical": "REJECTED",
+   "canonical_code": "Senior",
+   "canonical_reported_closing_keur": null,
+   "class": "NUMERICAL_DEGENERATE_REJECTION",
+   "odr": "REJECTED",
+   "odr_code": "Senior",
+   "odr_final_check": null,
+   "odr_final_state_closing_keur": null,
+   "same_error_text_as_canonical": true,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "G-S16-dscr1.5": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "fce9cbdc99b43250414c9bcdd17e218bfb0c004659876837523c395c820dfdae",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "G-S16-dscr2.02": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 103.196755341969,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 230.8317101910916,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "b3d00eb22364057a37cb3beeb2e44cb7b46e5b589e6db0fd7706256378a0d681",
+   "provisional_violations": 18,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    2.677324411592963e-05
+   ]
+  },
+  "G-S16-dscr2.04": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 151.690462660845,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 277.11516476315535,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "99573174971e8e6194d6c270e681455b3c5379cdc331ac2282f2ec496b627cee",
+   "provisional_violations": 18,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    2.473399803193388e-05
+   ]
+  },
+  "G-S16-dscr2.06": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 199.194788633678,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 322.4510979183853,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "816d8f67edc04f60837d0f4a85a50369833fc0c83daea1ad1f5d2146b7baf421",
+   "provisional_violations": 18,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    2.2840001321355885e-05
+   ]
+  },
+  "G-S16-dscr2.08": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 245.739685580208,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 366.8682844547237,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "62de2a5b01e14f4d6556caa2b3a700b7d7c0f0a2b7fa89544c122d20622e34e4",
+   "provisional_violations": 18,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    2.1080307874399296e-05
+   ]
+  },
+  "G-S16-gear0.55": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 471.065367000825,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 1358.494856320851,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "G-S16-tenor13": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "d184722c95c3c4ab02429dc00b646103b7d144d4322ac77fe69f6a1126d0963f",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    1.0518752446841972e-06
+   ]
+  },
+  "G-W25-dscr1.5": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "d9cc926250413079e309844d3aeb09586dc6b4289fa6138ef466fa4bdc0b7f7f",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "G-W25-gear0.55": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 2248.586419521819,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 6963.169116623871,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "G-W25-tenor13": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 572.505724899683,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 3539.294904393314,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "c09c7d33a13fd16c32411f4860c9c221c28ee7ef3ae7b5de35dbae2b2c86bce4",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    8.035385690163821e-10
+   ]
+  },
+  "S16-capex0.32-infeasible": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 277.681658345866,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 1712.285553673246,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16-codstub9": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "90c390228bbd5ac12ab7cbd4300397f869577244619e4948f7b44ec05531c481",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16-dscr1.45": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "0ad90f9e16ef32a78f09b0fbecf92a442d0fdcb3fb7c785ba42181c52d797338",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16-dscr2.0": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 53.682455361104,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 183.5707462722769,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "21353572ee31b6053b611842dd42f6b825f9ccdfe01f174f7f64d6f1465b4969",
+   "provisional_violations": 18,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    2.8969676463930227e-05
+   ]
+  },
+  "S16-dscr3.0": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 1439.990392864107,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 1411.175162869933,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16-dsra0": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "9cada57484c410b75ed928940cdb6a02bf1bf8f13e321fd761b674d8537451a0",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16-dsra12": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "4936707c2f537ab8528bc5317708791d3c870f97561a690c2be3ec4a89dd5c8b",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16-gear0": {
+   "canonical": "REJECTED",
+   "canonical_code": "Senior",
+   "canonical_reported_closing_keur": null,
+   "class": "NUMERICAL_DEGENERATE_REJECTION",
+   "odr": "REJECTED",
+   "odr_code": "Senior",
+   "odr_final_check": null,
+   "odr_final_state_closing_keur": null,
+   "same_error_text_as_canonical": true,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16-gear0.001": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 21502.04357814747,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 21502.89320256396,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16-gear0.50": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 2249.121884348217,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 3168.531852159965,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16-gearbound": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "34d8884200e1b2788a5b569e4900695b07fb6df63f365961e589ebc68aef36e7",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16-leap": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "e39dfc1d921943b99df73f2e074b680e85d5b270e93e32a4aad4370c1853c783",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    8.089386938081589e-10
+   ]
+  },
+  "S16-noCF": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "G2A.FINAL_CAPACITY",
+    "G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "2ba28c71b64746921cf847b17db55f28bbfc2564b5abc1462a58be09660146e0",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16-raw-infeasible": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 105049.2644489072,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 108037.86002866317,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16-shl-small": {
+   "canonical": "REJECTED",
+   "canonical_code": "G2A_FIXED_SOURCES_EXCEED_TOTAL_PROJECT_USES",
+   "canonical_reported_closing_keur": null,
+   "class": "STRUCTURAL_INPUT_REJECTION",
+   "odr": "REJECTED",
+   "odr_code": "G2A_FIXED_SOURCES_EXCEED_TOTAL_PROJECT_USES",
+   "odr_final_check": null,
+   "odr_final_state_closing_keur": null,
+   "same_error_text_as_canonical": true,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16-taxloss": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 7277.737193484598,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 8495.14807816661,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16-tenor10": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 453.834018357109,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 788.055557233905,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16r": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "5e00afe9c1ecb80518d78cd2b14177a0065fdffbe30f028e079198084e40ae97",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16r-dscr2.0": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "a14c67ffcd5bf4aaaa0bbaabdbc2c7458a5a86c2b946a499626514db5ca95aad",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16r-dscr3.0": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "d966025878c290ee796c66fdb993f4618b56dc40a1d644efcb9115b2c2f02f3b",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16r-dsra12": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "f666e2818042bb939f8b014161e5c7d6992fd350937ba40cd2af44feda0a5df6",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16r-gear0.001": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 9197.919962596776,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 9198.447821658954,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "S16r-gear0.50": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "9de4db9a894bdefb32c669e088fc618bc8c41f4074965ae19c18219b24ab0203",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16r-taxloss": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "b836849dcbea574dfd928be9300435d473fb849b3c730500c0782bf30cc0d2ab",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    9.733047363624792e-07
+   ]
+  },
+  "S16r-tenor10": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "fe482a956198f85bd5846897bcebc0e63ffa425d4fa999e08f5647800ca81ba0",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S16r-tenor12": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "c05ca0a7a2b611c5f8886c00640eb7f69aefbe2d8caae7ee64b62aad1c5c9829",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "S50": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "ead3c748118d112505ee598be6628a65c0ea2deeef118492fb7fa6fcb803c776",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "Solar-equity-only": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [],
+   "integrity": "FAIL",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "0bcd5ff149fe7fcf0277f1a390d1141e4630f30d1d0fe7cf716c825f223b80a1",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "6decd0047ebf42204b62d5cb979dd2a2a7b4f8154fb30cfb6fdb3583453957af",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25-codstub15": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "cada9d3203fafbe05c1ab4f15d7c433324f61a55d65a8423a447d85b134f7bb4",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25-dscr1.45": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "25175ffdc103f1a4c39ce96a47b39bee560ac7d9a4b9a75d22700db6a60df8bd",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25-dscr2.0": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 116.850616899329,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 116.85061689932945,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "08142b2ff5af3531dfb22d41c0f661662180c95cd4d063cec268a087bc8b45d1",
+   "provisional_violations": 2,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25-dscr3.0": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 233.33557223844,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 2780.647002185138,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "8f2ad5baff93807f664cccc734d28b008525268ba06c830263a4f0f2cb466251",
+   "provisional_violations": 22,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25-dscr9-infeasible": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 9348.700710332241,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 9542.012125414538,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "W25-dsra12": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 9107.480343515943,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 2378.909790621773,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "W25-gear0.50": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 10594.205603215176,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 19664.268747590122,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "W25-gear0.90": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "a983d1232a396294fc4645aa13cf1a2cb4e8c5dbe74478f592424adaf04bb2bf",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25-noCF": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "G2A.FINAL_CAPACITY",
+    "G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "7f844601d066865dca1dce4c7eccf0f30b672896696dbaf507169673082ef682",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25-noDSRA": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "ea7a601387ccf03432b0bbf332aa5384ce48a91eb9d804048b35314023bccab0",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25-taxloss": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 9576.48216981381,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 24388.64931367808,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "W25-tenor18": {
+   "canonical": "REJECTED",
+   "canonical_code": "explicit_all_in_rates",
+   "canonical_reported_closing_keur": null,
+   "class": "STRUCTURAL_INPUT_REJECTION",
+   "odr": "REJECTED",
+   "odr_code": "explicit_all_in_rates",
+   "odr_final_check": null,
+   "odr_final_state_closing_keur": null,
+   "same_error_text_as_canonical": true,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "W25r-dscr2.0": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "fab630f9d9b0cc97d2ed83f72e7ae8c800678dd7148a9b2bd56c926f389aa89b",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25r-dscr3.0": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "c17b6e9e836041e9e8c628dceadbf0c7c8df27cc1a28ef50c35e27885cf040f9",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    1.9798995140263287e-05
+   ]
+  },
+  "W25r-gear0.50": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "01290aae357fa11f1d15f303785acf034f9ab2552dae59c8e00986141726cb90",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25r-taxloss": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "6c16b455afe5344be10273fbe4cb592399b8d76ced1237170a22a5eac3f45993",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "W25r-tenor10": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "ec98de8c5e91159501b5d19a708ce273ccc274ed82b1cfa10dec8cdca623e79c",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    3.4699496609391645e-09
+   ]
+  },
+  "X-S16-dscr1.6": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "36f70238f6111d9937a6ae6cf71b461b0f8fa0d124c810d17e567e552f6eedfb",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-S16-dscr1.7": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "b2b2c62a1f151711fe3863ffa73d681076046224f8745bc2a1663e67570e4f96",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-S16-dscr1.8": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "d0a6dfd9849245ccd33361f478752e38c03836b78ba17ab63c410a1e161f9618",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    6.316392267535775e-05
+   ]
+  },
+  "X-S16-dscr1.9": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "031181de4a43ebdf124ef764d9c33184eb5f6d11f244ddee4fa712e8e9b3d670",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    4.281658922877796e-05
+   ]
+  },
+  "X-S16-dscr2.0-cm9": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 164.411698999015,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 269.8403015057411,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "5a69f773e4736c8ec331db446368ddbe777c7e6eb3e4cc02443c24a6b37f5bf3",
+   "provisional_violations": 16,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    1.1417684333991929e-05
+   ]
+  },
+  "X-S16-dscr2.0-dsra12": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 432.926285069167,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 129.130336669597,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-S16-dscr2.0-shlmat35": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 2633.274466447442,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 2716.433432741217,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-S16-dscr2.0-shlmat38": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 1129.316946451339,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 1221.065854190064,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-S16-dscr2.1": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 291.353909633506,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 3.193818626765,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-S16-dscr2.25": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 269.309232010763,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 309.179200064515,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-S16-dscr2.25-taxloss": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 8484.527120586527,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 9033.931293696123,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-S16-dscr2.5": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 740.608966918489,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 748.559035030264,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-S16-dscr2.75": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 1123.208930388369,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 1109.320570161884,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-S16-dsra3": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "94452a63146fcd1247a94b79618ecfff51f01dd386f7b1d05b6df62f886998e4",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-S16-dsra9": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "c963ef2a1f01b870ef4ee91b00f4bc5ebc91ef9e370b8e2dc1f409afcdc25bf6",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-S16-gear0.6": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "111655693a0800417464b98854012633adee6faa397012bcbe205bfc20583005",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-S16-gear0.7": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "ddde608caea52f4e120f577f3963b741eac48762075f2f432aa8af54e469bd7f",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-S16-shlmat35": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 90.908360156038,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 87.784567204797,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-S16-shlmat38": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "562758561aec8508cca23fc99b365fe9cb02d0ac81bcd56c29baa120e7129146",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    8.035385690163821e-10
+   ]
+  },
+  "X-S16-tenor12": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 26.229832860171,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 26.22983298369769,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "2ea15ff419805afb3498df56de0525c05fc819f51abfee23af96daddb799bca5",
+   "provisional_violations": 16,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-S16-tenor14": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "b67b4c0f285461413d5511342dcf26b13abe5dc9405095382533803fd484c501",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "OUTSTANDING_AT_MATURITY",
+    9.413137149749673e-07
+   ]
+  },
+  "X-S16-tenor16": {
+   "canonical": "REJECTED",
+   "canonical_code": "explicit_all_in_rates",
+   "canonical_reported_closing_keur": null,
+   "class": "STRUCTURAL_INPUT_REJECTION",
+   "odr": "REJECTED",
+   "odr_code": "explicit_all_in_rates",
+   "odr_final_check": null,
+   "odr_final_state_closing_keur": null,
+   "same_error_text_as_canonical": true,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-W25-dscr1.6": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 0.444597368491,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.4445973684905766,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "dc22d1c8f3f6bd01dd38deed45dc47d4d4215801e9a35dce6947337e356b0357",
+   "provisional_violations": 2,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-dscr1.8": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 87.490404097102,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 87.49040409710187,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "4811cf85e6887ba2c687f67060ae132297e305299dd1591af914315ba0f9ac0c",
+   "provisional_violations": 2,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-dscr2.0-cm15": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "8ac1870d04e18f36ccb9b088b7d4a65c10d8ea817bf1b0b29a7a23eddb52ae3e",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-dscr2.0-shlmat46": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 4671.314375884125,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 8689.422893145233,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-W25-dscr2.0-tenor15": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 116.850616899329,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 116.85061689932945,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "08142b2ff5af3531dfb22d41c0f661662180c95cd4d063cec268a087bc8b45d1",
+   "provisional_violations": 2,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-dscr2.25": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 859.582173002762,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 859.5821730027624,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "269d4392cb00d7cc41f880b6ac4afc1b40a51c721333fc014af8c45ff4fa44da",
+   "provisional_violations": 20,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-dscr2.5": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 1487.294402741921,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 1487.2944027419212,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "6035d8356eb719d2395a6e301f21bea69d11b19595d2428330f3acbe538dadf3",
+   "provisional_violations": 20,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-dscr2.75": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 2095.349979159932,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 2095.3499791599315,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "c9f46d9fdb99cf95c16ab6df9d962b161aa4bc75f177b0c5e8dd930c81a7fa9c",
+   "provisional_violations": 20,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-dsra3": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "e5b344162ff42c154d0bcb84d6a60215658bf7b6deac30f1010674324aea67a9",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-dsra9": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 4070.737844255509,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 4313.833338428627,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "ea0a0a5b093a280befc90978b47292eb449095e9f85469f75d7efdb9765d48fb",
+   "provisional_violations": 40,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-gear0.6": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "869d5c93b50a7f47067a491627ae4c65ec4ee0c353e0858436b93abe23361aaa",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-gear0.7": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "46d63d5c333276b6f86922151b49f635c06e913eb9aad4625541806bfa34ce7d",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-gear0.8": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "dfc0822bf5f412c00ba607bc54192856838df58dfc14a6dd015cbc6300ce265d",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-tenor10": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 4674.504239091097,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 12308.933924997578,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-W25-tenor12": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 4267.163463853009,
+   "class": "FINAL_STATE_ECONOMICALLY_INFEASIBLE",
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "odr_final_state_closing_keur": 6840.456946529657,
+   "same_error_text_as_canonical": false,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "X-W25-tenor14": {
+   "canonical": "REJECTED",
+   "canonical_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "canonical_reported_closing_keur": 4305.189283760244,
+   "class": "PROVISIONAL_ONLY_NOW_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 4305.189283760244,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "d9709097e0bb6de417d752803cf8cc2518c453314a40ff1bbaff807c80fc5b6d",
+   "provisional_violations": 20,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "X-W25-tenor16": {
+   "canonical": "REJECTED",
+   "canonical_code": "explicit_all_in_rates",
+   "canonical_reported_closing_keur": null,
+   "class": "STRUCTURAL_INPUT_REJECTION",
+   "odr": "REJECTED",
+   "odr_code": "explicit_all_in_rates",
+   "odr_final_check": null,
+   "odr_final_state_closing_keur": null,
+   "same_error_text_as_canonical": true,
+   "seed_zero_gearing_half_verdicts": [
+    "REJECTED",
+    "REJECTED",
+    "REJECTED"
+   ]
+  },
+  "boundary-S16r-1.4": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "b829d3e9460670d9204b4d936303fba235d30c100da0fa4d428968104bc7dbe6",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "boundary-S16r-1.6": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "840cace7a7a472e5c0f57d1a06bd97e99e268f7db69707930e706e3993755e0c",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "boundary-S16r-1.8": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "dd7e882b48a6487e9b31888e9ecf61c00a557f505ea206a2bb17d312c80b70a7",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "boundary-S16r-2.2": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_STRICT",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_STRICT",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "57651569e5522506b29c8d66021d841dcb78f8fd6899c955f16a5424c8dd550e",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    1.510045422037365e-09
+   ]
+  },
+  "quarterly-solar": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [],
+   "integrity": "N/A_QUARTERLY",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "dd6a74931034da1548d59c2751b1fbfb9de7e5230cc2fec6eed28ba8fea817f0",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "quarterly-wind": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [],
+   "integrity": "N/A_QUARTERLY",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "058e6380957e0c72534dda5598b6ea38c28253a3edd88bec56b7d9d751e78259",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "reference-data_center": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "567bb95ca2ad26279224cc2c59f17e8eca7fe3bcc969ed8fc1f5dcadcafac855",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "reference-ev_charging": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "c61f2a7b70a642a42253316ba2c89e1601e65175e4680be5f93777c08ff6d167",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "reference-solar": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "d2a1fcf0d777f01a3899848abbaf9b95282d53beb571eac9c828cabf2d124ab1",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  },
+  "reference-wind": {
+   "bit_identical_financial_and_integrity": true,
+   "canonical": "FEASIBLE",
+   "class": "PREVIOUSLY_FEASIBLE",
+   "final_checks": [
+    "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_CAPACITY",
+    "CONSTRUCTION_VERIFICATION_G2A.FINAL_FUNDED",
+    "WATERFALL.FINAL_SHL_SCHEDULE"
+   ],
+   "integrity": "PASS",
+   "max_provisional_shortfall_keur": 0.0,
+   "odr": "FEASIBLE",
+   "odr_financial_digest": "269a8239d1dc683630d5ae681638fe3714c7107fd147d1df6fcf2d792e0d596c",
+   "provisional_violations": 0,
+   "seed_zero_gearing_half_verdicts": [
+    "FEASIBLE",
+    "FEASIBLE",
+    "FEASIBLE"
+   ],
+   "senior_terminal": [
+    "REPAID",
+    0.0
+   ]
+  }
+ },
+ "counts": {
+  "FINAL_STATE_ECONOMICALLY_INFEASIBLE": 27,
+  "NUMERICAL_DEGENERATE_REJECTION": 2,
+  "PREVIOUSLY_FEASIBLE": 62,
+  "PROVISIONAL_ONLY_NOW_FEASIBLE": 17,
+  "STRUCTURAL_INPUT_REJECTION": 4
+ },
+ "counts_match_research": true,
+ "defects": [],
+ "expected_counts": {
+  "FINAL_STATE_ECONOMICALLY_INFEASIBLE": 27,
+  "NUMERICAL_DEGENERATE_REJECTION": 2,
+  "PREVIOUSLY_FEASIBLE": 62,
+  "PROVISIONAL_ONLY_NOW_FEASIBLE": 17,
+  "STRUCTURAL_INPUT_REJECTION": 4
+ },
+ "harness": "tools/v9p2a_odr_acceptance.py",
+ "inputs": "synthetic app.project_factories variations only",
+ "per_case_verdicts_match_research": true,
+ "pre_existing_disclosures": {
+  "integrity_fail_equity_only_canonical_and_odr": [
+   "EQ-DSRA",
+   "EQ-nearzero",
+   "Solar-equity-only"
+  ],
+  "senior_label_outstanding_below_settlement_threshold_admitted": [
+   "G-S16-dscr2.02",
+   "G-S16-dscr2.04",
+   "G-S16-dscr2.06",
+   "G-S16-dscr2.08",
+   "S16-dscr2.0",
+   "X-S16-dscr2.0-cm9"
+  ],
+  "senior_label_outstanding_below_settlement_threshold_canonical": [
+   "S16r-taxloss",
+   "X-S16-dscr1.8",
+   "X-S16-dscr1.9",
+   "G-S16-tenor13",
+   "X-S16-tenor14",
+   "W25r-dscr3.0"
+  ]
+ },
+ "schema": "finco.v9p2a.odr-acceptance.v1",
+ "seed_check": {
+  "feasible_output_digest_changes": {
+   "gearing": 54,
+   "half": 40
+  },
+  "method": "research-only env-gated seed probe applied to a scratch copy of this candidate; never committed",
+  "seeds": [
+   "zero (canonical)",
+   "gearing",
+   "0.5 x gearing"
+  ],
+  "verdict_differences": []
+ },
+ "supplementary_p8": {
+  "P8-S16-IL": {
+   "bit_identical": true,
+   "canonical": "FEASIBLE",
+   "integrity_odr": "PASS",
+   "odr": "FEASIBLE",
+   "odr_code": null,
+   "odr_final_check": null,
+   "provisional_violations": 0
+  },
+  "P8-S16-bullet": {
+   "bit_identical": true,
+   "canonical": "FEASIBLE",
+   "integrity_odr": "PASS",
+   "odr": "FEASIBLE",
+   "odr_code": null,
+   "odr_final_check": null,
+   "provisional_violations": 0
+  },
+  "P8-S16-dscr2.0-IL": {
+   "bit_identical": null,
+   "canonical": "REJECTED",
+   "integrity_odr": "PASS",
+   "odr": "FEASIBLE",
+   "odr_code": null,
+   "odr_final_check": null,
+   "provisional_violations": 18
+  },
+  "P8-S16-dscr2.0-bullet": {
+   "bit_identical": true,
+   "canonical": "FEASIBLE",
+   "integrity_odr": "PASS",
+   "odr": "FEASIBLE",
+   "odr_code": null,
+   "odr_final_check": null,
+   "provisional_violations": 0
+  },
+  "P8-S16-dscr3.0-IL": {
+   "bit_identical": null,
+   "canonical": "REJECTED",
+   "integrity_odr": null,
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "provisional_violations": null
+  },
+  "P8-S16-taxloss-IL": {
+   "bit_identical": null,
+   "canonical": "REJECTED",
+   "integrity_odr": null,
+   "odr": "REJECTED",
+   "odr_code": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "odr_final_check": "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY",
+   "provisional_violations": null
+  },
+  "P8-W25-IL": {
+   "bit_identical": true,
+   "canonical": "FEASIBLE",
+   "integrity_odr": "PASS",
+   "odr": "FEASIBLE",
+   "odr_code": null,
+   "odr_final_check": null,
+   "provisional_violations": 0
+  },
+  "P8-W25-bullet": {
+   "bit_identical": true,
+   "canonical": "FEASIBLE",
+   "integrity_odr": "PASS",
+   "odr": "FEASIBLE",
+   "odr_code": null,
+   "odr_final_check": null,
+   "provisional_violations": 0
+  },
+  "P8-W25-dscr2.0-IL": {
+   "bit_identical": null,
+   "canonical": "REJECTED",
+   "integrity_odr": "PASS",
+   "odr": "FEASIBLE",
+   "odr_code": null,
+   "odr_final_check": null,
+   "provisional_violations": 2
+  },
+  "P8-W25-dscr2.0-bullet": {
+   "bit_identical": true,
+   "canonical": "FEASIBLE",
+   "integrity_odr": "PASS",
+   "odr": "FEASIBLE",
+   "odr_code": null,
+   "odr_final_check": null,
+   "provisional_violations": 0
+  },
+  "P8-W25-dscr3.0-IL": {
+   "bit_identical": null,
+   "canonical": "REJECTED",
+   "integrity_odr": "PASS",
+   "odr": "FEASIBLE",
+   "odr_code": null,
+   "odr_final_check": null,
+   "provisional_violations": 22
+  }
+ }
+}
