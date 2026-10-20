@@ -6060,3 +6060,6 @@ from app.v2.bess_workspace_router import router as bess_workspace_router
 router.include_router(bess_workspace_router)
 from app.v2.quarterly_calendar_router import router as quarterly_calendar_router  # RC-7B, release-closed
 router.include_router(quarterly_calendar_router)
+
+from app.v2.portfolio_router import router as portfolio_router
+router.include_router(portfolio_router)
