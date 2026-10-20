@@ -78,6 +78,29 @@ def _last_side(ws, entry, *, freshness: str) -> dict:
     }
 
 
+def _run_integrity_status(side: dict) -> str:
+    """Existing credit Integrity evaluation on this Run's persisted evidence.
+
+    Foreign/malformed evidence is UNAVAILABLE; incomplete but valid-schema
+    evidence is evaluated as INCOMPLETE by the canonical check authority.
+    """
+    from app.run_integrity.contracts import EVIDENCE_SCHEMA
+    from app.v2.credit_decision_projection import _integrity
+
+    evidence = side.get("integrity_evidence")
+    if not isinstance(evidence, dict) or evidence.get("schema") != EVIDENCE_SCHEMA:
+        return "UNAVAILABLE"
+    source = side.get("entry")
+    if source is None:
+        # Only use the legacy canonical Last Run's OWN committed evidence.
+        source = SimpleNamespace(integrity_evidence=evidence)
+    try:
+        verdict = _integrity(source).get("status")
+    except Exception:
+        return "UNAVAILABLE"
+    return verdict if verdict in ("PASS", "FAIL", "INCOMPLETE") else "UNAVAILABLE"
+
+
 @router.get("/workbook/run-workspace-v3", response_class=HTMLResponse)
 async def run_workspace_v3(request: Request, project: Optional[str] = None):
     from app.persistence.projects_repository import resolve_accessible_project
@@ -188,25 +211,7 @@ async def run_workspace_v3(request: Request, project: Optional[str] = None):
 
     for side in sides:
         evidence = side.get("integrity_evidence")
-        try:
-            from app.v2.credit_decision_projection import _integrity
-            if side["entry"] is not None:
-                # _integrity expects an actual committed Run entry exposing
-                # integrity_evidence, not the credit RunInput wrapper.
-                source = side["entry"]
-            elif isinstance(evidence, dict) and evidence:
-                # Legacy canonical Last Run: evaluate only the exact evidence
-                # persisted on that Last Run, never another history entry.
-                source = SimpleNamespace(integrity_evidence=evidence)
-            else:
-                source = None
-            verdict = _integrity(source)["status"] if source is not None else "UNAVAILABLE"
-            side["integrity"] = verdict if verdict in (
-                "PASS", "FAIL", "INCOMPLETE", "UNAVAILABLE"
-            ) else "UNAVAILABLE"
-        except Exception:
-            # Malformed persisted evidence is not a synthetic PASS/FAIL.
-            side["integrity"] = "UNAVAILABLE"
+        side["integrity"] = _run_integrity_status(side)
         side["evidence"] = ("RECORDED" if evidence else "PARTIAL / UNAVAILABLE")
         side["detail_url"] = (
             "/v2/workbook/run-history/detail?" + urlencode(
