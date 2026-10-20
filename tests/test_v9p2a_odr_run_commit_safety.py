@@ -164,3 +164,44 @@ def test_odr_injected_final_failure_before_commit_appends_nothing(workbook, monk
     assert WorkbookService.get_runtime_result(ws) is None
     assert get_run_history(OWNER, workbook.record.project_id) == []
     assert not authority._POLICY_RUN_CACHE
+
+
+def test_odr_failed_idempotence_with_final_breach_commits_nothing(workbook, monkeypatch, caplog):
+    """Combined control 8: candidate final breach + failed construction idempotence.
+
+    The Run keeps the original idempotence rejection (final authority was never established),
+    and nothing is committed: no Last Run, no Run History row, no memoised result.
+    """
+    from app.persistence.run_history_repository import get_run_history
+    from app.workbook.service import WorkbookService
+    from finco_core.construction import stage_b2
+    _activate_odr_in_this_test(monkeypatch)
+    injected = ma.ShlMaturityShortfall(77.5, 41, 1e-7)
+    original_record = ma.G2aShlMaturityEvidence.record_iteration
+
+    def record(self, iteration, passes, *, final):
+        if final:
+            for site, ctx in passes:
+                if site == "CAPACITY":
+                    ctx.ledger.record(injected)
+        return original_record(self, iteration, passes, final=final)
+
+    original_b2 = stage_b2.run_stage_b2
+
+    def perturbed(config):
+        result = original_b2(config)
+        costs = dc.replace(result.capitalized_financing_costs,
+                           senior_idc_keur=result.capitalized_financing_costs.senior_idc_keur + 1.0)
+        return dc.replace(result, capitalized_financing_costs=costs)
+
+    monkeypatch.setattr(ma.G2aShlMaturityEvidence, "record_iteration", record)
+    monkeypatch.setattr(stage_b2, "run_stage_b2", perturbed)
+    response = workbook.run()
+    assert response.status_code == 200 and 'data-testid="banner-error"' in response.text
+    failures = [str(e) for e in _failures(caplog)]
+    assert any("PR9_OUTER_G2A_IDEMPOTENCE_FAILED" in f for f in failures), failures
+    assert not any("SHL_MATURITY_RESIDUAL_FAILS_CLOSED" in f for f in failures), failures
+    ws, _ = workbook.tokens()
+    assert WorkbookService.get_runtime_result(ws) is None
+    assert get_run_history(OWNER, workbook.record.project_id) == []
+    assert not authority._POLICY_RUN_CACHE

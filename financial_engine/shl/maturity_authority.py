@@ -17,7 +17,8 @@ authoritative only on the final converged financing state —
 
 and only once every existing convergence / idempotence validation has succeeded. Breaches in
 provisional G2A, construction-IDC or initial-DSRA fixed-point iterations are recorded as
-diagnostics.
+diagnostics. A failed validation always keeps its own error: final authority was never
+established for that evaluation.
 
 Authority is carried explicitly:
 
@@ -273,12 +274,13 @@ def current_attempt() -> OdrAttempt | None:
 
 @contextmanager
 def odr_attempt(attempt: OdrAttempt) -> Iterator[OdrAttempt]:
-    """Open one OD-R engine evaluation. Exceptions keep canonical precedence for final breaches.
+    """Open one OD-R engine evaluation.
 
-    A breach at a final check is recorded rather than raised because the owner may only learn
-    afterwards that the evaluation is the final one. If any exception then escapes the
-    evaluation, the canonical engine would already have raised the earlier final breach, so the
-    maturity error is raised (chained) instead; otherwise the exception propagates unchanged.
+    Final authority exists only for an evaluation that completed every required convergence,
+    funding and idempotence validation (and, at the policy owner, the initial-DSRA fixed point).
+    An evaluation that raised never established that authority, so any exception escaping it
+    propagates unchanged; recorded breaches are never substituted for it. Final breaches are
+    enforced only by the owner, on the returned evaluation, before the result is returned.
     """
     if not isinstance(attempt, OdrAttempt):
         raise TypeError("odr_attempt requires an OdrAttempt")
@@ -287,11 +289,6 @@ def odr_attempt(attempt: OdrAttempt) -> Iterator[OdrAttempt]:
     token = _ATTEMPT.set(attempt)
     try:
         yield attempt
-    except Exception as exc:
-        error = attempt.final_failure_error()
-        if error is None:
-            raise
-        raise error from exc
     finally:
         _ATTEMPT.reset(token)
 

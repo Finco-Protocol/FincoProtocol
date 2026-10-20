@@ -681,11 +681,6 @@ def _run_with_construction_idc(
         )
 
     assert inner_result is not None and stage_b2_prov is not None
-    if _odr_attempt is not None:
-        # Outer construction/IDC state converged: the returned inner G2A is final.
-        _odr_attempt.absorb_g2a(
-            _odr_inner_evidence, final=True, role="CONSTRUCTION_RETURNED_G2A",
-        )
 
     # Final idempotence verification: one full outer transition from converged state must
     # produce identical outputs (Section 14 — true outer transition idempotence).
@@ -724,10 +719,6 @@ def _run_with_construction_idc(
         _u2_period_financing_income=_u2_period_financing_income,
         _shl_maturity_evidence=_odr_verify_evidence,
     )
-    if _odr_attempt is not None:
-        _odr_attempt.absorb_g2a(
-            _odr_verify_evidence, final=True, role="CONSTRUCTION_VERIFICATION_G2A",
-        )
     _idempotence_residual = max(
         abs(_verify_result.final_senior_commitment_keur - inner_result.final_senior_commitment_keur),
         abs(_verify_result.derived_shl_cash_principal_keur - inner_result.derived_shl_cash_principal_keur),
@@ -946,6 +937,17 @@ def _run_with_construction_idc(
         orig_capex, construction_result,
         developer_uses=resolve_developer_project_uses(project_inputs),
     )
+
+    if _odr_attempt is not None:
+        # OD-R final authority is established only now: outer convergence, the unfunded
+        # invariant, the verification G2A, idempotence and the opening-SHL identity have
+        # all succeeded. Before this point any failure keeps its own (numerical) error.
+        _odr_attempt.absorb_g2a(
+            _odr_inner_evidence, final=True, role="CONSTRUCTION_RETURNED_G2A",
+        )
+        _odr_attempt.absorb_g2a(
+            _odr_verify_evidence, final=True, role="CONSTRUCTION_VERIFICATION_G2A",
+        )
 
     return ProjectFinancingResult(
         project_model_result=inner_result.project_model_result,
@@ -1419,9 +1421,6 @@ def run_project_financing_model(
         raise RuntimeError("G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE")
 
     assert model_result is not None and model_result.senior_debt is not None
-    if _odr_evidence is not None and _shl_maturity_evidence is None:
-        # No owner above classifies this invocation: its converged passes are final.
-        _odr_attempt.absorb_g2a(_odr_evidence, final=True, role="G2A")
 
     # Construction SHL schedule — see module-level comment for None/0.0/explicit-DCF semantics.
     # Fix 3 canonical (BLOCKER B): PIK now comes from canonical model result because the model
@@ -1582,6 +1581,10 @@ def run_project_financing_model(
                 else None
             ),
         )
+    if _odr_evidence is not None and _shl_maturity_evidence is None:
+        # No owner above classifies this invocation: once its post-convergence validations
+        # have succeeded, its converged passes are final.
+        _odr_attempt.absorb_g2a(_odr_evidence, final=True, role="G2A")
     return ProjectFinancingResult(
         project_model_result=model_result,
         project_uses=uses,

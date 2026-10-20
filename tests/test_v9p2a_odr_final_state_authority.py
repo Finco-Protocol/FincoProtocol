@@ -229,13 +229,64 @@ def _inject_final(monkeypatch, sites, roles=None):
     return injected
 
 
+def _inject_ledger(monkeypatch, sites):
+    """Record a breach in the real ledger of chosen passes of every converging G2A iteration.
+
+    Superseded (seed / outer-iteration) G2As are later demoted to diagnostics by their owner;
+    only the returned and verification G2As can carry it into a final check.
+    """
+    original = ma.G2aShlMaturityEvidence.record_iteration
+    hits = []
+
+    def record(self, iteration, passes, *, final):
+        if final:
+            for site, ctx in passes:
+                if site in sites:
+                    ctx.ledger.record(INJECTED)
+                    hits.append(site)
+        return original(self, iteration, passes, final=final)
+
+    monkeypatch.setattr(ma.G2aShlMaturityEvidence, "record_iteration", record)
+    return hits
+
+
+def _observe_provisional(monkeypatch):
+    """Capture every genuine breach the SHL kernel records under a provisional context."""
+    original = ma.ShlMaturityLedger.record
+    seen = []
+
+    def record(self, shortfall):
+        seen.append(shortfall)
+        return original(self, shortfall)
+
+    monkeypatch.setattr(ma.ShlMaturityLedger, "record", record)
+    return seen
+
+
+def _fail_construction_idempotence(monkeypatch):
+    """Perturb only the final strict Stage B2 so the existing idempotence validation fails."""
+    from finco_core.construction import stage_b2
+    original = stage_b2.run_stage_b2
+    calls = []
+
+    def perturbed(config):
+        result = original(config)
+        calls.append(1)
+        costs = dc.replace(result.capitalized_financing_costs,
+                           senior_idc_keur=result.capitalized_financing_costs.senior_idc_keur + 1.0)
+        return dc.replace(result, capitalized_financing_costs=costs)
+
+    monkeypatch.setattr(stage_b2, "run_stage_b2", perturbed)
+    return calls
+
+
 def _final_sites(admitted):
     return [c.rsplit(".FINAL_", 1)[1] for c in admitted.authority_metadata["shl_maturity_final_checks"]
             if c.startswith("CONSTRUCTION_RETURNED_G2A.")]
 
 
 def test_final_capacity_only_breach_rejects(entries, admitted, monkeypatch):
-    injected = _inject_final(monkeypatch, {"CAPACITY"})
+    injected = _inject_ledger(monkeypatch, {"CAPACITY"})
     error = _reject(entries, "S16-dscr2.0", "odr")
     assert injected and f"closing balance {INJECTED.closing_keur:.12f} kEUR" in error.detail
     assert "od_r_final_check=CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY" in error.detail
@@ -244,13 +295,13 @@ def test_final_capacity_only_breach_rejects(entries, admitted, monkeypatch):
 def test_final_funded_only_breach_rejects(entries, admitted, monkeypatch):
     funded_site = [s for s in _final_sites(admitted) if s != "CAPACITY"]
     assert funded_site in (["FUNDED"], ["STRICT"])
-    _inject_final(monkeypatch, set(funded_site))
+    _inject_ledger(monkeypatch, set(funded_site))
     error = _reject(entries, "S16-dscr2.0", "odr")
     assert f"od_r_final_check=CONSTRUCTION_RETURNED_G2A.FINAL_{funded_site[0]}" in error.detail
 
 
 def test_both_final_passes_breached_reject_with_capacity_first(entries, monkeypatch):
-    _inject_final(monkeypatch, {"CAPACITY", "FUNDED", "STRICT"})
+    _inject_ledger(monkeypatch, {"CAPACITY", "FUNDED", "STRICT"})
     error = _reject(entries, "S16-dscr2.0", "odr")
     assert "od_r_final_check=CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY" in error.detail
     assert "od_r_failed_final_checks=4" in error.detail
@@ -324,15 +375,63 @@ def _cap_iterations(monkeypatch, cap):
 
 
 def test_non_convergent_inner_g2a_keeps_numerical_rejection(entries, monkeypatch):
-    _cap_iterations(monkeypatch, 2)
+    """Combined control 3: provisional maturity breaches + inner G2A non-convergence.
+
+    Only inner G2A invocations made by the construction owner are capped, and only after the
+    kernel has recorded genuine provisional breaches, so the breaches precede the failure.
+    """
+    from financial_engine.financing import project
+    seen = _observe_provisional(monkeypatch)
+    original = project.run_project_financing_model
+    capped = []
+
+    def inner(*args, **kwargs):
+        if kwargs.get("_shl_maturity_evidence") is not None and seen:
+            kwargs["maximum_iterations"] = 2
+            capped.append(len(seen))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(project, "run_project_financing_model", inner)
     error = _reject(entries, "S16-dscr2.0", "odr")
-    assert "G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE" in error.detail and CODE not in error.detail
+    assert seen and capped and capped[0] > 0, "genuine provisional breaches must precede the failure"
+    assert "RuntimeError: G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE" in error.detail
+    assert CODE not in error.detail
 
 
 def test_non_convergent_construction_outer_loop_keeps_numerical_rejection(entries, monkeypatch):
+    """Combined control 4: provisional maturity breaches + construction outer non-convergence."""
+    seen = _observe_provisional(monkeypatch)
     _cap_iterations(monkeypatch, 4)
     error = _reject(entries, "W25-dscr2.0", "odr")
-    assert "DID_NOT_CONVERGE" in error.detail and CODE not in error.detail
+    assert seen, "the control must contain genuine provisional maturity breaches"
+    assert "PR9_OUTER_G2A_CONSTRUCTION_FIXED_POINT_DID_NOT_CONVERGE" in error.detail
+    assert CODE not in error.detail
+
+
+@pytest.mark.parametrize("site", ["CAPACITY", "FUNDED"])
+def test_final_breach_with_failed_idempotence_keeps_the_idempotence_rejection(
+        entries, admitted, monkeypatch, site):
+    """Combined controls 1-2: a breach in a candidate final pass never masks failed idempotence.
+
+    Final authority exists only after idempotence succeeds, so the original validation error stands.
+    """
+    sites = {site} if site == "CAPACITY" else set(_final_sites(admitted)) - {"CAPACITY"}
+    hits = _inject_ledger(monkeypatch, sites)
+    stage_b2_calls = _fail_construction_idempotence(monkeypatch)
+    error = _reject(entries, "S16-dscr2.0", "odr")
+    assert hits and stage_b2_calls
+    assert "RuntimeError: PR9_OUTER_G2A_IDEMPOTENCE_FAILED" in error.detail
+    assert CODE not in error.detail and "od_r_final_check" not in error.detail
+    assert not isinstance(error.__cause__, ValueError)
+    assert not pfa._POLICY_RUN_CACHE
+
+
+def test_failed_idempotence_alone_is_the_same_rejection_in_both_authorities(entries, monkeypatch):
+    _fail_construction_idempotence(monkeypatch)
+    for mode in ("canonical", "odr"):
+        pfa._POLICY_RUN_CACHE.clear()
+        error = _reject(entries, "S16", mode)
+        assert "RuntimeError: PR9_OUTER_G2A_IDEMPOTENCE_FAILED" in error.detail
 
 
 def test_non_convergent_dsra_fixed_point_keeps_numerical_rejection(entries):
@@ -344,21 +443,27 @@ def test_non_convergent_dsra_fixed_point_keeps_numerical_rejection(entries):
             pfa.run_clean_production(factory(), project_type=vertical, financing_policy=policy)
 
 
-def test_exception_after_a_final_breach_keeps_canonical_precedence():
+def test_an_exception_escaping_an_evaluation_is_never_reclassified():
+    """No final authority exists for an evaluation that raised: its own error always stands.
+
+    Even with a breach already recorded, the escaping exception (here an idempotence-style
+    validation failure) propagates unchanged and unchained; the breach is never surfaced.
+    """
     attempt = ma.OdrAttempt()
     evidence = ma.G2aShlMaturityEvidence()
     ctx = ma.ShlMaturityContext.provisional_pass()
     ctx.ledger.record(INJECTED)
     evidence.record_iteration(3, [("CAPACITY", ctx)], final=True)
-    with pytest.raises(ValueError, match=CODE) as info:
+    validation = RuntimeError("PR9_OUTER_G2A_IDEMPOTENCE_FAILED: residual=1.0 kEUR")
+    with pytest.raises(RuntimeError) as info:
         with ma.odr_attempt(attempt):
             attempt.absorb_g2a(evidence, final=True, role="G2A")
-            raise RuntimeError("downstream failure")
-    assert isinstance(info.value.__cause__, RuntimeError)
-    # No final breach: the original exception propagates unchanged.
+            raise validation
+    assert info.value is validation and info.value.__cause__ is None
     with pytest.raises(RuntimeError, match="downstream failure"):
         with ma.odr_attempt(ma.OdrAttempt()):
             raise RuntimeError("downstream failure")
+    assert ma.current_attempt() is None
 
 
 def test_final_authority_requires_a_converged_g2a():
