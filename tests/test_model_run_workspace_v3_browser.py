@@ -33,7 +33,12 @@ def test_run_workspace_three_slot_selector_and_return_navigation(live_server, br
 def test_selector_reference_tracks_three_slots_when_changed_or_cleared(live_server, browser):
     """Actual HTMX/Chromium: stale reference options never survive an edit."""
     t = _two_runs(live_server, browser, "rw-v3-correction-a")
-    t.run()  # Third genuinely committed observation in the isolated project.
+    # Change an actual input so the third committed Run has a distinct
+    # snapshot identity, not merely a repeat execution at the same inputs.
+    t.open()
+    t.dd("start").fill("2030-03-01")
+    t.save()
+    t.run()
     _open_history(t)
     history_ids = t.page.locator("[data-history-id]").evaluate_all(
         "(rows) => rows.map(row => row.getAttribute('data-history-id'))")
