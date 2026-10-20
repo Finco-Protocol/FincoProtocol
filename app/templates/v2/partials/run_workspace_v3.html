@@ -28,7 +28,7 @@
       {% endfor %}
       <label>Reference Run
         <select name="reference" aria-label="Choose reference Run" data-testid="rw-reference">
-          {% for option in options %}
+          {% for option in reference_options %}
           <option value="{{ option.id }}" {% if reference_id == option.id %}selected{% endif %}>{{ option.label }}</option>
           {% endfor %}
         </select>
@@ -41,6 +41,7 @@
     </div>
     <p class="v3-rw-hint">Select two or three distinct successful Runs of this project. Last Run and its identical historical entry are one observation.</p>
   </form>
+  <script src="/static/js/model_run_workspace_v3.js"></script>
   {% if sides | length < 2 %}
   <p class="v3-rw-empty" role="status" data-testid="rw-not-enough-runs">Select at least two distinct committed Runs. A scenario without its own committed Run has no comparable results.</p>
   {% else %}
