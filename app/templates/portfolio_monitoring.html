@@ -43,8 +43,15 @@
     </div>
   </section>
   <section aria-labelledby="pm-exposure"><h2 id="pm-exposure">Recorded CAPEX &amp; financing</h2>
-    <p class="pm-note">Initial funding, not current outstanding balances. Subtotals are separated by recorded funding dates; no currency conversion or revaluation.</p>
-    {% if p.excluded_count %}<p class="pm-warning">{{ p.excluded_count }} project(s) excluded from some or all monetary subtotals: missing comparable funding evidence or dates. Coverage is shown for each amount.</p>{% endif %}
+    <p class="pm-note">Historical project capital and initial financing across project dates, not current outstanding balances. No currency conversion, inflation adjustment or revaluation.</p>
+    {% if p.capital_excluded_count %}<p class="pm-warning">{{ p.capital_excluded_count }} project(s) excluded from historical capital totals: comparable financial evidence is unavailable. Coverage is shown for each amount.</p>{% endif %}
+    {% for group in p.capital_groups %}
+    <h3>Historical capital / {{ group.unit }}</h3>
+    <div class="pm-scroll" tabindex="0" role="region" aria-label="Historical capital totals"><table data-testid="portfolio-capital"><caption>{{ group.count }} project(s) with comparable financial evidence; {{ group.complete_dates }}/{{ group.count }} with complete funding dates</caption><thead><tr>{% for _, label, _ in p.money_columns %}<th scope="col">{{ label }}</th>{% endfor %}</tr></thead><tbody><tr>{% for key, _, _ in p.money_columns %}<td class="pm-number">{{ group.totals[key].display }}<small>{{ group.totals[key].coverage }}/{{ group.totals[key].projects }} evidence coverage</small></td>{% endfor %}</tr></tbody></table></div>
+    <details><summary>Historical exposure by technology and country</summary><div class="pm-composition">{% for key, title in [('technology','Technology'),('country','Country')] %}<table><caption>{{ title }} / {{ group.unit }}</caption><thead><tr><th scope="col">{{ title }}</th><th scope="col">CAPEX</th><th scope="col">Initial Senior</th></tr></thead><tbody>{% for item in group.concentration[key] %}<tr><th scope="row">{{ item.label|replace('_',' ')|title }}</th><td class="pm-number">{{ item.capex }}</td><td class="pm-number">{{ item.senior }}</td></tr>{% endfor %}</tbody></table>{% endfor %}</div></details>
+    {% endfor %}
+    <details><summary>Construction-date cohorts and date coverage</summary>
+    {% if p.excluded_count %}<p class="pm-warning">{{ p.excluded_count }} project(s) excluded from some or all date-specific subtotals. Undated amounts remain in validated historical capital totals above; no payment date is inferred.</p>{% endif %}
     {% for cohort in p.cohorts %}
     <div class="pm-cohort" data-testid="portfolio-cohort">
       <h3>{{ cohort.unit }} &middot; {{ cohort.start }} to {{ cohort.end }} <span>{{ cohort.count }} project(s)</span></h3>
@@ -55,6 +62,7 @@
       </div></details>
     </div>
     {% endfor %}
+    </details>
     <div class="pm-scroll" tabindex="0" role="region" aria-label="Project financing distribution"><table data-testid="portfolio-funding"><caption>Project funding distribution / kEUR where supported</caption>
       <thead><tr><th scope="col">Project</th>{% for _, label, _ in p.money_columns %}<th scope="col">{{ label }}</th>{% endfor %}<th scope="col">Actual gearing</th></tr></thead><tbody>{% for r in p.rows %}<tr><th scope="row"><a href="{{ r.project_url }}">{{ r.name }}</a></th>{% for key, _, _ in p.money_columns %}<td class="pm-number">{{ r.money[key].display }}</td>{% endfor %}<td class="pm-number">{{ r.gearing.display }}</td></tr>{% endfor %}</tbody>
     </table></div>

@@ -1,7 +1,7 @@
 """Read-only portfolio observations over one immutable committed Run per project.
 
 No portfolio return, covenant verdict, currency conversion or financial model
-is calculated. Monetary subtotals are separated by recorded funding window.
+is calculated. Historical capital and date-specific funding are separate views.
 """
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ def project_row(item: ProjectEvidence):
         "freshness": item.freshness, "integrity": NA, "issues": [],
         "history_id": None, "run_at": None, "engine": None, "workbook": None,
         "scenario": None, "snapshot": None, "hash": None, "cohort": None, "engine_state": "UNKNOWN",
-        "aggregate_keys": (),
+        "aggregate_keys": (), "capital_basis": None,
         "money": {key: _cell(None) for key, _, _ in MONEY},
         "metrics": {key: _cell(None, kind) for key, _, kind in PERFORMANCE},
         "gearing": _cell(None, "pct"),
@@ -169,6 +169,7 @@ def project_row(item: ProjectEvidence):
         su = finance["sources_uses"]
         for key, _, field in MONEY:
             row["money"][key] = _cell(su.get(field), source="financing_evidence.sources_uses." + field)
+        row["capital_basis"] = ("EUR", "kEUR", finance["schema_version"])
         window = _funding_window(finance)
         if window:
             row["cohort"] = ("EUR", "kEUR", *window)
@@ -178,9 +179,9 @@ def project_row(item: ProjectEvidence):
                 # F1 records these FC/COD amounts without a payment date. Do not
                 # infer COD from the final construction period or Working Copy.
                 row["aggregate_keys"] = ("capex",)
-                row["issues"].append("Undated FC/COD funding; financing excluded from subtotals")
+                row["issues"].append("FC/COD payment dates unavailable; included only in historical capital totals")
         else:
-            row["issues"].append("Funding dates unavailable; excluded from subtotals")
+            row["issues"].append("Funding dates unavailable; included only in historical capital totals")
     except (ValueError, TypeError, KeyError, OverflowError):
         row["issues"].append("Financing evidence unavailable or invalid")
     dscr = row["metrics"]["min_dscr"]["value"]
@@ -216,6 +217,28 @@ def _composition(rows, key):
              "share": count / len(rows) if rows else 0} for label, count in sorted(counts.items())]
 
 
+def _aggregate(members, population, *, dated):
+    def available(row, key):
+        return (not dated or key in row["aggregate_keys"]) and row["money"][key]["value"] is not None
+    totals = {}
+    for key, label, _ in MONEY:
+        values = [r["money"][key]["value"] for r in members if available(r, key)]
+        total = _sum(values) if values else None
+        totals[key] = {"label": label, "value": str(total) if total is not None else None,
+                       "display": f"{total:,.2f}" if total is not None else NA,
+                       "coverage": len(values), "projects": population}
+    concentration = {}
+    for dimension in ("technology", "country"):
+        concentration[dimension] = []
+        for label in sorted({r[dimension] for r in members}):
+            group = {"label": label}
+            for key in ("capex", "senior"):
+                values = [r["money"][key]["value"] for r in members if r[dimension] == label and available(r, key)]
+                group[key] = f"{_sum(values):,.2f}" if values else NA
+            concentration[dimension].append(group)
+    return {"totals": totals, "concentration": concentration}
+
+
 def build_portfolio(items, *, technology="", country="", project="", stage="", review="", sort="",
                     minimum="", maximum=""):
     all_rows = sorted((project_row(item) for item in items), key=lambda row: (row["name"].casefold(), row["code"]))
@@ -244,37 +267,25 @@ def build_portfolio(items, *, technology="", country="", project="", stage="", r
                 return (low is None or number >= low) and (high is None or number <= high)
             rows = [row for row in rows if within(row)]
         rows.sort(key=lambda row: (value(row) is None, -(value(row) or 0)))
-    groups = defaultdict(list)
+    groups, capital = defaultdict(list), defaultdict(list)
     for row in rows:
         if row["cohort"]:
             groups[row["cohort"]].append(row)
+        if row["capital_basis"]:
+            capital[row["capital_basis"]].append(row)
+    capital_groups = [{"currency": basis[0], "unit": basis[1], "scope": basis[2], "count": len(members),
+                       "complete_dates": sum(len(r["aggregate_keys"]) == len(MONEY) for r in members),
+                       **_aggregate(members, len(rows), dated=False)} for basis, members in sorted(capital.items())]
     cohorts = []
     for cohort, members in sorted(groups.items()):
-        totals = {}
-        for key, label, _ in MONEY:
-            values = [r["money"][key]["value"] for r in members
-                      if key in r["aggregate_keys"] and r["money"][key]["value"] is not None]
-            total = _sum(values) if values else None
-            totals[key] = {"label": label, "value": str(total) if total is not None else None,
-                           "display": f"{total:,.2f}" if total is not None else NA,
-                           "coverage": len(values), "projects": len(members)}
-        concentration = {}
-        for dimension in ("technology", "country"):
-            concentration[dimension] = []
-            for label in sorted({r[dimension] for r in members}):
-                selected = [r for r in members if r[dimension] == label]
-                group = {"label": label}
-                for key in ("capex", "senior"):
-                    values = [r["money"][key]["value"] for r in selected if key in r["aggregate_keys"]]
-                    group[key] = f"{_sum(values):,.2f}" if values else NA
-                concentration[dimension].append(group)
         cohorts.append({"currency": cohort[0], "unit": cohort[1], "start": cohort[2], "end": cohort[3],
-                        "count": len(members), "totals": totals, "concentration": concentration})
+                        "count": len(members), **_aggregate(members, len(members), dated=True)})
     return {"rows": rows, "total": len(rows), "all_count": len(all_rows),
             "with_run": sum(bool(r["history_id"]) for r in rows),
             "review_count": sum(bool(r["issues"]) for r in rows),
             "stale_count": sum(r["freshness"] == "STALE" for r in rows),
             "excluded_count": sum(len(r["aggregate_keys"]) != len(MONEY) for r in rows),
+            "capital_groups": capital_groups, "capital_excluded_count": sum(r["capital_basis"] is None for r in rows),
             "cohorts": cohorts, "technology_counts": _composition(rows, "technology"),
             "country_counts": _composition(rows, "country"),
             "options": {key: sorted({r[key] for r in all_rows}) for key in ("technology", "country", "stage")},

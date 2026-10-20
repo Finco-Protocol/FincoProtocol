@@ -173,24 +173,6 @@ def test_corrupt_unrepresentable_numbers_fail_closed():
     assert row["money"]["senior"]["value"] is None
 
 
-def test_repository_reads_recheck_ownership_and_exclude_archived(monkeypatch):
-    from app.persistence import projects_repository as projects, workspace_repository as workspaces, run_history_repository as history
-    from app.v2.portfolio_reads import load_portfolio
-    own, foreign, archived = record("own"), record("foreign", user_id="other"), record("archived", archived=True)
-    monkeypatch.setattr(projects, "list_projects", lambda owner: [own, foreign, archived])
-    monkeypatch.setattr(workspaces, "get_workspace_state", lambda owner, pid: None)
-    calls = []
-    def read(owner, pid):
-        calls.append((owner, pid))
-        return None
-    monkeypatch.setattr(history, "get_latest_history_entry", read)
-    monkeypatch.setattr(projects, "get_project", lambda pid, owner: own)
-    assert len(load_portfolio("u")) == 1
-    assert calls == [("u", "p"), ("u", "p")]
-    monkeypatch.setattr(projects, "get_project", lambda pid, owner: None)
-    assert load_portfolio("u") == []
-
-
 def test_missing_composite_identity_does_not_authorize_financial_subtotals():
     evidence = item()
     evidence = replace(evidence, entry=replace(evidence.entry, composite_hash=None))

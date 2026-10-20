@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from decimal import Decimal, InvalidOperation
 
 from app.v2.portfolio_projection import build_portfolio, SORT_KEYS
-from app.v2.portfolio_reads import load_portfolio
+from app.v2.portfolio_reads import load_portfolio, PortfolioReadError
 
 router = APIRouter()
 NO_STORE = {"Cache-Control": "private, no-store"}
@@ -33,6 +33,9 @@ def portfolio_page(request: Request):
             or filters["sort"] not in SORT_KEYS | {""}
             or filters["review"] not in {"", "review", "stale", "no_run", "low_dscr", "credit_missing"}):
         return HTMLResponse("Invalid portfolio filter.", status_code=422, headers=NO_STORE)
-    view = build_portfolio(load_portfolio(user.user_id), **filters)
+    try:
+        view = build_portfolio(load_portfolio(user.user_id), **filters)
+    except PortfolioReadError:
+        return HTMLResponse("Portfolio evidence temporarily unavailable. Refresh to try again.", status_code=503, headers=NO_STORE)
     return templates.TemplateResponse(request=request, name="portfolio_monitoring.html",
                                       context={"user": user, "portfolio": view}, headers=NO_STORE)
