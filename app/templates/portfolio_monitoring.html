@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Portfolio Monitoring | FINCO Model{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="/static/css/model_portfolio.css" />
+{% set p = portfolio %}
+<main class="pm" data-testid="portfolio-page">
+  <header class="pm-header">
+    <div><p class="pm-eyebrow">FINCO MODEL</p><h1>Portfolio Monitoring</h1></div>
+    <nav aria-label="Portfolio navigation"><a href="/library">Project Library</a><a href="/v2/compare-projects">Compare Projects</a></nav>
+  </header>
+  <div class="pm-summary" aria-label="Portfolio overview">
+    <div><span>Projects</span><strong>{{ p.total }}</strong><small>{{ p.all_count }} before filters</small></div>
+    <div><span>Committed results</span><strong>{{ p.with_run }}</strong><small>{{ p.total - p.with_run }} without readable results</small></div>
+    <div><span>Inputs changed</span><strong>{{ p.stale_count }}</strong><small>Recalculation may be needed</small></div>
+    <div><span>Analyst review</span><strong>{{ p.review_count }}</strong><small>Observed issues or missing evidence</small></div>
+  </div>
+  <form method="get" action="/v2/portfolio" class="pm-filters" aria-label="Portfolio filters">
+    {% for key, label in [('technology','Technology'),('country','Country'),('stage','Project status')] %}
+    <label>{{ label }}<select name="{{ key }}"><option value="">All</option>
+      {% for option in p.options[key] %}<option value="{{ option }}" {% if p.filters[key] == option %}selected{% endif %}>{{ option|replace('_',' ')|title }}</option>{% endfor %}
+    </select></label>
+    {% endfor %}
+    <label>Project<select name="project"><option value="">All projects</option>{% for option in p.project_options %}<option value="{{ option.code }}" {% if p.filters.project == option.code %}selected{% endif %}>{{ option.name }}</option>{% endfor %}</select></label>
+    <label>Review focus<select name="review">
+      {% for value, label in [('', 'All'), ('review','Review required'),('stale','Inputs changed'),('no_run','No readable Run'),('low_dscr','Observed DSCR below 1.00x'),('credit_missing','Missing credit evidence')] %}<option value="{{ value }}" {% if p.filters.review == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></label>
+    <label>Financial metric<select name="sort"><option value="">Project name</option>
+      {% for key, label, _ in p.money_columns + p.performance_columns %}<option value="{{ key }}" {% if p.filters.sort == key %}selected{% endif %}>{{ label }} (high to low)</option>{% endfor %}
+    </select></label>
+    <label>Minimum (IRR %, DSCR x, kEUR)<input type="number" step="any" name="minimum" value="{{ p.filters.minimum }}" /></label>
+    <label>Maximum (same units)<input type="number" step="any" name="maximum" value="{{ p.filters.maximum }}" /></label>
+    <button type="submit">Apply filters</button><a href="/v2/portfolio">Reset</a>
+  </form>
+
+  {% if not p.rows %}
+  <section class="pm-empty"><h2>{{ 'No matching projects' if p.all_count else 'No projects yet' }}</h2><a href="{{ '/v2/portfolio' if p.all_count else '/library' }}">{{ 'Reset filters' if p.all_count else 'Open Project Library' }}</a></section>
+  {% else %}
+  <section aria-labelledby="pm-composition"><h2 id="pm-composition">Portfolio composition</h2>
+    <div class="pm-composition">
+      {% for title, counts in [('Technology',p.technology_counts),('Country',p.country_counts)] %}
+      <div><h3>{{ title }}</h3>{% for item in counts %}<div class="pm-bar-row"><span>{{ item.label|replace('_',' ')|title }}</span><meter min="0" max="1" value="{{ item.share }}" aria-label="{{ item.label }} project share">{{ item.share }}</meter><strong>{{ item.count }}</strong></div>{% endfor %}</div>
+      {% endfor %}
+    </div>
+  </section>
+  <section aria-labelledby="pm-exposure"><h2 id="pm-exposure">Recorded CAPEX &amp; financing</h2>
+    <p class="pm-note">Initial funding, not current outstanding balances. Subtotals are separated by recorded funding dates; no currency conversion or revaluation.</p>
+    {% if p.excluded_count %}<p class="pm-warning">{{ p.excluded_count }} project(s) excluded from some or all monetary subtotals: missing comparable funding evidence or dates. Coverage is shown for each amount.</p>{% endif %}
+    {% for cohort in p.cohorts %}
+    <div class="pm-cohort" data-testid="portfolio-cohort">
+      <h3>{{ cohort.unit }} &middot; {{ cohort.start }} to {{ cohort.end }} <span>{{ cohort.count }} project(s)</span></h3>
+      <div class="pm-scroll" tabindex="0" role="region" aria-label="Funding subtotals"><table><caption>Comparable recorded funding window</caption><thead><tr>{% for key, label, _ in p.money_columns %}<th scope="col">{{ label }}</th>{% endfor %}</tr></thead>
+        <tbody><tr>{% for key, label, _ in p.money_columns %}<td class="pm-number">{{ cohort.totals[key].display }}<small>{{ cohort.totals[key].coverage }}/{{ cohort.totals[key].projects }} evidence coverage</small></td>{% endfor %}</tr></tbody></table></div>
+      <details><summary>Exposure by technology and country</summary><div class="pm-composition">
+        {% for key, title in [('technology','Technology'),('country','Country')] %}<table><caption>{{ title }} / {{ cohort.unit }}</caption><thead><tr><th scope="col">{{ title }}</th><th scope="col">CAPEX</th><th scope="col">Senior</th></tr></thead><tbody>{% for group in cohort.concentration[key] %}<tr><th scope="row">{{ group.label|replace('_',' ')|title }}</th><td class="pm-number">{{ group.capex }}</td><td class="pm-number">{{ group.senior }}</td></tr>{% endfor %}</tbody></table>{% endfor %}
+      </div></details>
+    </div>
+    {% endfor %}
+    <div class="pm-scroll" tabindex="0" role="region" aria-label="Project financing distribution"><table data-testid="portfolio-funding"><caption>Project funding distribution / kEUR where supported</caption>
+      <thead><tr><th scope="col">Project</th>{% for _, label, _ in p.money_columns %}<th scope="col">{{ label }}</th>{% endfor %}<th scope="col">Actual gearing</th></tr></thead><tbody>{% for r in p.rows %}<tr><th scope="row"><a href="{{ r.project_url }}">{{ r.name }}</a></th>{% for key, _, _ in p.money_columns %}<td class="pm-number">{{ r.money[key].display }}</td>{% endfor %}<td class="pm-number">{{ r.gearing.display }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  <section aria-labelledby="pm-performance"><h2 id="pm-performance">Project performance</h2>
+    <div class="pm-scroll" tabindex="0" role="region" aria-label="Project returns and credit metrics"><table data-testid="portfolio-performance"><caption>Individual committed results; no blended return or credit ratio</caption>
+      <thead><tr><th scope="col">Project</th><th scope="col">Technology / Country</th><th scope="col">Project status</th>{% for _, label, _ in p.performance_columns %}<th scope="col">{{ label }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for r in p.rows %}<tr><th scope="row"><a href="{{ r.project_url }}">{{ r.name }}</a></th><td>{{ r.technology|replace('_',' ')|title }}<small>{{ r.country }}</small></td><td>{{ r.stage|replace('_',' ')|title }}</td>{% for key, _, _ in p.performance_columns %}<td class="pm-number">{{ r.metrics[key].display }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  <section aria-labelledby="pm-review"><h2 id="pm-review">Results &amp; analyst review</h2>
+    <p class="pm-note">Observations are not covenant-compliance decisions. Project status and location are current project metadata; financial figures belong only to the linked Run.</p>
+    <div class="pm-scroll" tabindex="0" role="region" aria-label="Run freshness and evidence"><table data-testid="portfolio-review"><thead><tr><th scope="col">Project</th><th scope="col">Latest committed Run</th><th scope="col">Inputs</th><th scope="col">Financial checks</th><th scope="col">Review items</th><th scope="col">Evidence</th></tr></thead>
+      <tbody>{% for r in p.rows %}<tr data-project="{{ r.code }}"><th scope="row"><a href="{{ r.project_url }}">{{ r.name }}</a></th>
+        <td>{% if r.run_at %}<time datetime="{{ r.run_at }}">{{ r.run_at|replace('T',' ') }}</time><small>{{ r.scenario }}</small>{% else %}No readable committed Run{% endif %}</td>
+        <td><span class="pm-status {{ 'pm-status-warn' if r.freshness != 'CURRENT' else '' }}">{{ {'CURRENT':'Results match inputs','STALE':'Changes not calculated','NOT_RUN':'Not calculated','HISTORICAL':'Different selected Run','UNKNOWN':'Unverified'}.get(r.freshness,'Unverified') }}</span></td>
+        <td><span class="pm-status {{ 'pm-status-warn' if r.integrity != 'PASS' else '' }}">{{ r.integrity }}</span></td>
+        <td>{% if r.issues %}<ul>{% for issue in r.issues %}<li>{{ issue }}</li>{% endfor %}</ul>{% else %}No review items in completed checks{% endif %}</td>
+        <td>{% if r.run_url %}<a href="{{ r.run_url }}">Committed Run</a>{% if r.credit_url %}<small><a href="{{ r.credit_url }}">Credit Decision</a></small>{% endif %}<details><summary>Run details</summary><dl><dt>Engine</dt><dd>{{ r.engine or 'Not recorded' }}</dd><dt>Workbook</dt><dd>{{ r.workbook or 'Not recorded' }}</dd><dt>History ID</dt><dd>{{ r.history_id }}</dd><dt>Snapshot</dt><dd>{{ r.snapshot }}</dd><dt>Input hash</dt><dd>{{ r.hash or 'Not recorded' }}</dd></dl></details>{% else %}Unavailable{% endif %}</td>
+      </tr>{% endfor %}</tbody></table></div>
+  </section>
+  <section class="pm-compare"><h2>Detailed comparison</h2><a href="/v2/compare-projects">Open Compare Projects</a><small>Select up to five projects in the existing comparison workspace.</small></section>
+  {% endif %}
+</main>
+{% endblock %}
