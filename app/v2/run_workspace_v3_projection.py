@@ -176,6 +176,86 @@ def _period_evidence(side: Mapping[str, Any]) -> dict:
     return _periods(_timeline(RunInput(entry=entry)))
 
 
+# Whitelist of existing Statements V2 committed model-period rows. No
+# total/reaggregation logic is present. Stock variables remain point-in-time.
+_STATEMENT_LINES = (
+    ("pnl", "revenues_keur", "P&L · Revenue"),
+    ("pnl", "operating_expenses_keur", "P&L · OPEX"),
+    ("pnl", "depreciation_keur", "P&L · Depreciation"),
+    ("pnl", "ebit_keur", "P&L · EBIT"),
+    ("pnl", "net_income_keur", "P&L · Net income"),
+    ("cash_flow", "revenue_cash_keur", "Cash Flow · Revenue received"),
+    ("cash_flow", "opex_cash_keur", "Cash Flow · OPEX paid"),
+    ("cash_flow", "ebitda_cash_keur", "Cash Flow · EBITDA cash"),
+    ("cash_flow", "fcf_banks_keur", "Cash Flow · CFADS to Senior"),
+    ("cash_flow", "cash_tax_keur", "Cash Flow · Cash tax"),
+    ("cash_flow", "net_dividends_keur", "Cash Flow · Net dividends"),
+    ("balance_sheet", "senior_balance_keur", "Balance Sheet · Senior balance"),
+    ("balance_sheet", "dsra_balance_keur", "Balance Sheet · DSRA balance"),
+    ("balance_sheet", "cash_keur", "Balance Sheet · Cash"),
+    ("balance_sheet", "balance_check_keur", "Balance Sheet · Balance check"),
+)
+
+
+def _statement_rows(side: Mapping[str, Any]) -> dict[str, dict[str, float | None]]:
+    """Read existing Statements V2 model-period cells; never aggregate years.
+
+    The adapter uses only this Run's own immutable payloads. A column without
+    a valid committed date, a duplicate date or a malformed cell is excluded.
+    The caller separately proves the exact economic interval via Credit V4.
+    """
+    from types import SimpleNamespace
+    from app.v2.statement_presentation import statements_from_run
+    from app.v2.historical_statements import _run_result_view
+
+    entry = side.get("entry")
+    if entry is not None:
+        source = _run_result_view(entry)
+    else:
+        source = SimpleNamespace(
+            debt_schedule=_mapping(side.get("debt_schedule")),
+            tax_schedule=_mapping(side.get("tax_schedule")),
+            financial_statements=_mapping(side.get("financial_statements")),
+            runtime_summary=_mapping(side.get("runtime_summary")),
+            sponsor_schedule=_mapping(side.get("sponsor_schedule")),
+            distribution_schedule=_mapping(side.get("distribution_schedule")),
+            snapshot_id=side.get("snapshot_id"),
+            ran_at=side.get("ran_at"), origin=side.get("origin"),
+        )
+    try:
+        tables = statements_from_run(source, False)
+    except Exception:
+        # Missing/legacy or malformed statement evidence: no synthesized rows.
+        return {}
+    out: dict[str, dict[str, float | None]] = {}
+    permitted = {(t, k) for t, k, _label in _STATEMENT_LINES}
+    for table in tables:
+        table_id = table.get("id")
+        columns = table.get("columns")
+        if table_id not in ("pnl", "cash_flow", "balance_sheet") or not isinstance(columns, list):
+            continue
+        dates = []
+        for col in columns:
+            end = col.get("date") if isinstance(col, dict) else None
+            try:
+                valid = isinstance(end, str) and len(end) == 10 and date.fromisoformat(end).isoformat() == end
+            except ValueError:
+                valid = False
+            dates.append(end if valid else None)
+        duplicates = {d for d in dates if d is not None and dates.count(d) > 1}
+        for row in table.get("rows") or ():
+            key = row.get("key")
+            cells = row.get("cells")
+            if (table_id, key) not in permitted or not isinstance(cells, list) or len(cells) != len(columns):
+                continue
+            for idx, end in enumerate(dates):
+                if end is None or end in duplicates:
+                    continue
+                raw = cells[idx].get("v") if isinstance(cells[idx], dict) else None
+                out.setdefault(end, {})[f"statement:{table_id}:{key}"] = _finite(raw)
+    return out
+
+
 def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
                       changed_only: bool = False, unavailable_only: bool = False,
                       offset: int = 0) -> dict:
@@ -188,6 +268,7 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
     if offset < 0 or offset > 10000:
         raise ValueError("RUN_WORKSPACE_OFFSET_INVALID")
     sources = [_period_evidence(s) for s in sides]
+    statements = [_statement_rows(s) for s in sides]
     frequencies = {_frequency(s) for s in sides}
     if len(frequencies) != 1 or "UNKNOWN" in frequencies:
         return {"available": False, "reason": "PERIOD_FREQUENCY_MISMATCH_OR_UNAVAILABLE",
@@ -235,6 +316,28 @@ def build_period_grid(sides: Sequence[Mapping[str, Any]], reference: int,
                 "start": starts[0], "end": end, "key": key, "label": label,
                 "values": [render(v) for v in values], "deltas": delta,
                 "unavailable": unavailable, "changed": changed,
+            })
+        # The statement adapter returns committed cells on their own dated
+        # columns. They join ONLY at this independently validated Credit V4
+        # interval; they are never joined by their list position.
+        for table_id, key, label in _STATEMENT_LINES:
+            full_key = f"statement:{table_id}:{key}"
+            values = [table.get(end, {}).get(full_key) for table in statements]
+            if not any(v is not None for v in values):
+                continue
+            missing = any(v is None for v in values)
+            moved = any(v is not None and values[reference] is not None
+                        and v != values[reference]
+                        for i, v in enumerate(values) if i != reference)
+            if (changed_only and not moved) or (unavailable_only and not missing):
+                continue
+            rows.append({
+                "start": starts[0], "end": end, "key": full_key, "label": label,
+                "values": [UNAVAILABLE if v is None else f"{v:,.2f}" for v in values],
+                "deltas": ["—" if i == reference or v is None or values[reference] is None
+                           else f"{v - values[reference]:+,.2f}"
+                           for i, v in enumerate(values)],
+                "unavailable": missing, "changed": moved,
             })
     if not dates:
         reason = "PERIOD_END_DATES_DO_NOT_MATCH"
