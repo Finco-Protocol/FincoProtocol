@@ -130,6 +130,36 @@ def build_kpi_sections(sides: Sequence[Mapping[str, Any]], reference: int,
     return sections
 
 
+def _lineage_view(value: Any) -> dict:
+    """Presentation-only copy protects RC-5A's existing CAPEX/OPEX _fetch.
+
+    Malformed gigantic numeric inputs in a committed identity remain
+    unavailable. Never mutate, reconstruct or certify historical assumptions.
+    The unchanged persisted fingerprint still reports identity difference.
+    """
+    result = dict(_mapping(value))
+    for key in ("capex_rows", "opex_rows"):
+        raw = result.get(key)
+        if isinstance(raw, list):
+            rows = []
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                row = dict(item)
+                amount = row.get("amount_keur")
+                if isinstance(amount, (int, float)):
+                    row["amount_keur"] = _finite(amount)
+                rows.append(row)
+            result[key] = rows
+    overrides = result.get("scenario_overrides")
+    if isinstance(overrides, dict):
+        result["scenario_overrides"] = {
+            key: (_finite(val) if isinstance(val, (int, float)) else val)
+            for key, val in overrides.items()
+        }
+    return result
+
+
 def build_lineage(sides: Sequence[Mapping[str, Any]], reference: int) -> list[dict]:
     """Per-selected comparison; output movement is NEVER attributed to inputs."""
     base = sides[reference]
@@ -137,8 +167,8 @@ def build_lineage(sides: Sequence[Mapping[str, Any]], reference: int) -> list[di
     for i, selected in enumerate(sides):
         if i == reference:
             continue
-        a = _mapping(base.get("last_runtime_identity"))
-        b = _mapping(selected.get("last_runtime_identity"))
+        a = _lineage_view(base.get("last_runtime_identity"))
+        b = _lineage_view(selected.get("last_runtime_identity"))
         rows = build_assumption_diff(
             a, b, _mapping(base.get("runtime_summary")),
             _mapping(selected.get("runtime_summary")))
