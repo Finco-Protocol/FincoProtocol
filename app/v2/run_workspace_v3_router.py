@@ -107,7 +107,12 @@ async def run_workspace_v3(request: Request, project: Optional[str] = None):
         return _error(404, "No workspace state.")
 
     params = request.query_params
-    requested = [value.strip() for value in params.getlist("run") if value.strip()]
+    raw_slots = params.getlist("run")
+    # Exactly three UI slots at most, including empty slots. An empty slot
+    # does not become an invalid Run and does not change reference identity.
+    if len(raw_slots) > MAX_SELECT:
+        return _error(422, "RUN_WORKSPACE_SELECTION_INVALID")
+    requested = [value.strip() for value in raw_slots if value.strip()]
     if len(requested) > MAX_SELECT or any(len(value) > MAX_ID for value in requested):
         return _error(422, "RUN_WORKSPACE_SELECTION_INVALID")
     if len(set(requested)) != len(requested):
@@ -239,6 +244,11 @@ async def run_workspace_v3(request: Request, project: Optional[str] = None):
             "state": "HISTORICAL",
         })
 
+    # Reference choices are strictly the currently selected, authorized Runs,
+    # never the entire Run History candidate list.
+    options_by_id = {option["id"]: option for option in options}
+    reference_options = [options_by_id[rid] for rid in requested]
+
     next_url = None
     if periods is not None and periods["next_offset"] is not None:
         args = [("project", record.project_code)] + [("run", rid) for rid in requested]
@@ -253,7 +263,8 @@ async def run_workspace_v3(request: Request, project: Optional[str] = None):
         request=request, name="partials/run_workspace_v3.html",
         context={
             "project_code": record.project_code, "project_name": record.project_name,
-            "options": options, "selected": requested,
+            "options": options, "reference_options": reference_options,
+            "selected": requested,
             "slots": (requested + ["", "", ""])[:3],
             "reference_id": reference_id, "sides": sides, "reference": reference,
             "sections": sections, "lineage": lineage, "periods": periods,
