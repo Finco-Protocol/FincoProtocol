@@ -1,0 +1,167 @@
+{# V3: server-rendered, read-only, committed evidence only. Existing Run History HTMX swap target preserved. #}
+<div id="v2-sheet-run-history" class="v3-run-workspace" data-testid="run-workspace-v3">
+  <link rel="stylesheet" href="/static/css/model_run_workspace_v3.css">
+  <header class="v3-rw-head">
+    <div>
+      <h2>Run &amp; Scenario Workspace <span class="v3-rw-caption">V3</span></h2>
+      <p>{{ project_name }} · Immutable committed evidence · Read-only</p>
+    </div>
+    <button type="button" class="v2-rh-link"
+            hx-get="/v2/workbook/run-history?project={{ project_code | urlencode }}"
+            hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
+            data-testid="rw-back-history">← Run History</button>
+  </header>
+  <form class="v3-rw-picker" method="get" action="/v2/workbook/run-workspace-v3"
+        hx-get="/v2/workbook/run-workspace-v3"
+        hx-target="#v2-sheet-run-history" hx-swap="outerHTML" data-testid="rw-selector">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <div class="v3-rw-pickgrid">
+      {% for slot in slots %}
+      <label>Run {{ loop.index }}
+        <select name="run" aria-label="Select committed Run {{ loop.index }}" data-testid="rw-run-{{ loop.index }}">
+          <option value="">— {% if loop.index == 3 %}No third Run{% else %}Select Run{% endif %} —</option>
+          {% for option in options %}
+          <option value="{{ option.id }}" {% if slot == option.id %}selected{% endif %}>{{ option.label }} ({{ option.state }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endfor %}
+      <label>Reference Run
+        <select name="reference" aria-label="Choose reference Run" data-testid="rw-reference">
+          {% for option in reference_options %}
+          <option value="{{ option.id }}" {% if reference_id == option.id %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="v3-rw-toolbar">
+      <label><input name="changed" value="1" type="checkbox" {% if changed %}checked{% endif %}> Changed only</label>
+      <label><input name="unavailable" value="1" type="checkbox" {% if unavailable %}checked{% endif %}> Unavailable only</label>
+      <button type="submit" class="v3-rw-submit" data-testid="rw-compare-submit">Compare selected Runs</button>
+    </div>
+    <p class="v3-rw-hint">Select two or three distinct successful Runs of this project. Last Run and its identical historical entry are one observation.</p>
+  </form>
+  <script src="/static/js/model_run_workspace_v3.js"></script>
+  {% if sides | length < 2 %}
+  <p class="v3-rw-empty" role="status" data-testid="rw-not-enough-runs">Select at least two distinct committed Runs. A scenario without its own committed Run has no comparable results.</p>
+  {% else %}
+  <section aria-label="Run identities" data-testid="rw-run-identity" class="v3-rw-identities">
+    {% for side in sides %}
+    <article class="v3-rw-identity {% if loop.index0 == reference %}v3-rw-identity--reference{% endif %}">
+      <h3>{% if loop.index0 == reference %}Reference{% else %}Selected{% endif %} · Run {{ loop.index }}</h3>
+      <div><strong>{{ side.scenario }}</strong> <span class="v3-rw-chip">{{ side.state }}</span></div>
+      <dl>
+        <dt>Committed at</dt><dd>{{ side.ran_at or 'UNAVAILABLE' }}</dd>
+        <dt>Engine / Workbook</dt><dd>{{ side.engine_version }} / {{ side.workbook_version }}</dd>
+        <dt>Origin</dt><dd>{{ side.origin }}</dd>
+        <dt>Snapshot</dt><dd class="v3-rw-mono">{{ side.snapshot_id or 'UNAVAILABLE' }}</dd>
+        <dt>Integrity</dt><dd>{{ side.integrity }}</dd>
+        <dt>Evidence</dt><dd>{{ side.evidence }}</dd>
+      </dl>
+      <div class="v3-rw-links">
+        <a href="{{ side.detail_url }}" data-testid="rw-detail-{{ loop.index }}">Run detail</a>
+        <a href="{{ side.statements_url }}" data-testid="rw-statements-{{ loop.index }}">Statements</a>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+
+  <p class="v3-rw-note" data-testid="rw-delta-basis"><strong>Δ = Selected Run − Reference Run.</strong> IRR differences are percentage points (pp). Movements are observed, never causal attribution. Missing values are not zero.</p>
+
+  <nav class="v3-rw-nav" aria-label="Comparison sections">
+    <a href="#rw-financial">Financial KPIs</a>
+    <a href="#rw-periods">Period comparison</a>
+    <a href="#rw-assumptions">Changed assumptions</a>
+    <a href="/v2/credit-decision?project={{ project_code | urlencode }}">Credit Decision</a>
+    <a href="/v2/workbook?project={{ project_code | urlencode }}#diagnostics">Model Checks</a>
+    <a href="/v2/workbook?project={{ project_code | urlencode }}#trust">Trust</a>
+  </nav>
+
+  <section id="rw-financial" data-testid="rw-financial">
+    <h3>Financial KPI comparison</h3>
+    {% for section in sections %}
+    <div class="v3-rw-section" data-testid="rw-section-{{ section.key }}">
+      <h4>{{ section.title }}</h4>
+      <div class="v3-rw-scroll" role="region" tabindex="0" aria-label="{{ section.title }} KPI comparison">
+        <table class="v3-rw-table">
+          <thead><tr><th scope="col">Metric</th>
+            {% for side in sides %}
+            <th scope="col">Run {{ loop.index }}{% if loop.index0 == reference %} · Ref{% endif %}</th>
+            <th scope="col">Δ vs Ref</th>
+            {% endfor %}
+          </tr></thead>
+          <tbody>
+            {% for row in section.rows %}
+            <tr data-kpi-key="{{ row.key }}" data-changed="{{ '1' if row.changed else '0' }}">
+              <th scope="row">{{ row.label }}</th>
+              {% for value in row['values'] %}
+              <td class="v3-rw-mono">{{ value }}</td>
+              <td class="v3-rw-mono">{{ row.deltas[loop.index0] }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <p class="v3-rw-empty">No persisted KPI rows match the selected filters.</p>
+    {% endfor %}
+  </section>
+
+  <section id="rw-periods" data-testid="rw-periods">
+    <h3>Period-by-period comparison</h3>
+    <p class="v3-rw-hint">Exact committed period start and end dates only. Different frequencies or economic intervals are not aligned by row position. No aggregation of debt balances or ratios.</p>
+    {% if not periods or not periods.available %}
+      <p class="v3-rw-empty" role="status" data-testid="rw-period-limit">NOT COMPARABLE — {{ periods.reason if periods else 'PERIOD_EVIDENCE_UNAVAILABLE' }}</p>
+    {% else %}
+      <p class="v3-rw-caption">{{ periods.basis }} · {{ periods.count }} rows matched by filters{% if periods.excluded_count %} · {{ periods.excluded_count }} unmatched or incompatible intervals{% endif %}</p>
+      <div class="v3-rw-scroll" role="region" tabindex="0" aria-label="Financial period comparison">
+        <table class="v3-rw-table" data-testid="rw-period-grid">
+          <thead><tr><th scope="col">Start</th><th scope="col">End</th><th scope="col">Metric</th>
+            {% for side in sides %}<th scope="col">Run {{ loop.index }}</th><th scope="col">Δ vs Ref</th>{% endfor %}
+          </tr></thead>
+          <tbody>
+            {% for row in periods.rows %}
+            <tr data-period-end="{{ row.end }}" data-metric="{{ row.key }}">
+              <td>{{ row.start }}</td><td>{{ row.end }}</td><th scope="row">{{ row.label }}</th>
+              {% for value in row['values'] %}<td class="v3-rw-mono">{{ value }}</td><td class="v3-rw-mono">{{ row.deltas[loop.index0] }}</td>{% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if next_url %}
+      <button type="button" class="v3-rw-more" hx-get="{{ next_url }}" hx-target="#v2-sheet-run-history"
+              hx-swap="outerHTML" data-testid="rw-next-period-page">Next period page →</button>
+      {% endif %}
+    {% endif %}
+    {% if periods and periods.excluded %}
+    <details class="v3-rw-excluded"><summary>Excluded period evidence ({{ periods.excluded_count }})</summary>
+      <ul>{% for row in periods.excluded %}<li>{{ row.date }} · {{ row.reason }}</li>{% endfor %}</ul>
+    </details>
+    {% endif %}
+    <p class="v3-rw-note">Revenue, detailed P&amp;L, cash flow and balance-sheet period lines require independently validated, comparable committed statement intervals. Unsupported rows are not reconstructed from current inputs.</p>
+  </section>
+
+  <section id="rw-assumptions" data-testid="rw-assumptions">
+    <h3>Committed assumption differences</h3>
+    {% for item in lineage %}
+    <div class="v3-rw-section" data-testid="rw-lineage-{{ item.index }}">
+      <h4>Run {{ item.index + 1 }} vs Reference · {{ item.status }}</h4>
+      <p>{{ item.message }}</p>
+      {% if item.caveat %}<p class="v3-rw-hint">{{ item.caveat }}</p>{% endif %}
+      {% if item.rows %}
+      <div class="v3-rw-scroll" role="region" tabindex="0" aria-label="Persisted changed assumptions">
+      <table class="v3-rw-table"><thead><tr><th>Category</th><th>Persisted assumption</th><th>Reference</th><th>Selected</th></tr></thead>
+        <tbody>{% for row in item.rows %}<tr><td>{{ row.category }}</td><th scope="row">{{ row.name }}</th><td>{{ row.value_a }}</td><td>{{ row.value_b }}</td></tr>{% endfor %}</tbody>
+      </table>
+      </div>
+      {% endif %}
+      {% for limit in item.limitations %}<p class="v3-rw-hint">{{ limit.message }}</p>{% endfor %}
+      <p class="v3-rw-note">{{ item.causality }}</p>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+</div>
