@@ -595,3 +595,127 @@ def test_failed_run_followed_by_successful_run_carries_no_evidence(entries, monk
     _reject(entries, FEASIBLE)
     monkeypatch.undo()
     assert acc.flatten(_odr(entries, FEASIBLE)) == acc.flatten(feasible_pair[1])
+
+
+# ------------------------------------------------------------------------------------------------ Review Fix A
+
+def test_rfa_duplicate_final_role_with_distinct_tokens_is_contradictory(entries, monkeypatch):
+    """Two distinct proof tokens with otherwise valid passes under one required role are not two legitimate checks."""
+    def transform(self, evidence, final, role, state, original):
+        original(self, evidence, final=final, role=role, state=state)
+        if final and role == "CONSTRUCTION_RETURNED_G2A":
+            twin = ma.G2aShlMaturityEvidence()
+            twin.final_passes, twin.converged = list(evidence.final_passes), True
+            original(self, twin, final=True, role=role, state=state)
+
+    _wrap_absorb(monkeypatch, transform)
+    error = _reject(entries, FEASIBLE)
+    assert ma.FINAL_EVIDENCE_CONTRADICTORY in error and "CONSTRUCTION_RETURNED_G2A registered 2 times" in error
+
+
+def _edit_schedule(monkeypatch, edit):
+    """Alter the schedule a real waterfall check reports (vectors / indices), keeping the real kernel outcome."""
+    def transform(self, context, kwargs, original):
+        schedule, shl_input = edit(kwargs["schedule"], kwargs["shl_input"])
+        return original(self, context, **dict(kwargs, schedule=schedule, shl_input=shl_input))
+
+    _wrap_waterfall(monkeypatch, transform)
+
+
+_VECTORS = ("period_indices", "shl_closing_keur", "shl_gross_interest_keur", "shl_principal_keur")
+
+
+def _rows(schedule):
+    return [list(getattr(schedule, name)) for name in _VECTORS]
+
+
+def _with(schedule, vectors):
+    return dc.replace(schedule, **{name: tuple(values) for name, values in zip(_VECTORS, vectors)})
+
+
+def _signed_zero(schedule, shl_input):
+    idx, closing, gross, principal = _rows(schedule)
+    # the last checked operating period that holds an exact +0.0 closing balance (after full repayment)
+    k = max(i for i, (p, v) in enumerate(zip(idx, closing)) if v == 0.0 and p <= shl_input.maturity_period_index)
+    assert closing[k] == 0.0 and str(closing[k]) == "0.0"
+    closing[k] = -0.0
+    return _with(schedule, (idx, closing, gross, principal)), shl_input
+
+
+def _duplicate_index(schedule, shl_input):
+    idx, *values = _rows(schedule)
+    k = len(idx) // 2
+    idx[k] = idx[k - 1]
+    return _with(schedule, (idx, *values)), shl_input
+
+
+def _missing_row(schedule, shl_input):
+    vectors = _rows(schedule)
+    k = len(vectors[0]) // 2
+    return _with(schedule, [v[:k] + v[k + 1:] for v in vectors]), shl_input
+
+
+def _reordered_rows(schedule, shl_input):
+    vectors = _rows(schedule)
+    k = len(vectors[0]) // 2
+    for v in vectors:
+        v[k], v[k + 1] = v[k + 1], v[k]
+    return _with(schedule, vectors), shl_input
+
+
+def _truncated_vector(schedule, shl_input):
+    idx, closing, gross, principal = _rows(schedule)
+    return _with(schedule, (idx, closing[:-1], gross, principal)), shl_input
+
+
+def _mismatched_maturity(schedule, shl_input):
+    return schedule, dc.replace(shl_input, maturity_period_index=shl_input.maturity_period_index - 1)
+
+
+@pytest.mark.parametrize("edit", [_signed_zero, _duplicate_index, _missing_row, _reordered_rows, _truncated_vector,
+                                  _mismatched_maturity], ids=lambda f: f.__name__.strip("_"))
+def test_rfa_checked_schedule_identity_is_exact_and_complete(entries, monkeypatch, edit):
+    _edit_schedule(monkeypatch, edit)
+    error = _reject(entries, FEASIBLE)
+    assert (ma.FINAL_EVIDENCE_MISSING in error or ma.FINAL_EVIDENCE_CONTRADICTORY in error
+            or ma.FINAL_EVIDENCE_UNBOUND in error), error
+    assert CODE not in error
+
+
+def _returned_rows_edit(monkeypatch, edit):
+    def substitute(result):
+        return dc.replace(result, waterfall_periods=edit(tuple(result.waterfall_periods)))
+    _wrap_finalize(monkeypatch, substitute)
+
+
+def test_rfa_duplicate_returned_waterfall_row_fails_closed(entries, monkeypatch):
+    def edit(rows):
+        operating = [r for r in rows if r.shl_closing_balance_keur > 0.0]
+        return rows + (operating[len(operating) // 2],)
+    _returned_rows_edit(monkeypatch, edit)
+    error = _reject(entries, FEASIBLE)
+    assert ma.FINAL_EVIDENCE_MISSING in error or ma.FINAL_EVIDENCE_CONTRADICTORY in error
+
+
+def test_rfa_returned_signed_zero_differs_from_checked_positive_zero(entries, monkeypatch):
+    def edit(rows):
+        k = next(i for i, r in enumerate(rows) if not r.is_construction and r.shl_closing_balance_keur == 0.0
+                 and str(r.shl_closing_balance_keur) == "0.0")
+        return rows[:k] + (dc.replace(rows[k], shl_closing_balance_keur=-0.0),) + rows[k + 1:]
+    _returned_rows_edit(monkeypatch, edit)
+    error = _reject(entries, FEASIBLE)
+    assert ma.FINAL_EVIDENCE_MISSING in error or ma.FINAL_EVIDENCE_CONTRADICTORY in error
+
+
+def test_rfa_unchanged_valid_schedule_and_identical_repeat_still_accepted(entries, monkeypatch, feasible_pair):
+    _edit_schedule(monkeypatch, lambda schedule, shl_input: (schedule, shl_input))
+    assert acc.financial_leaves(_odr(entries, FEASIBLE)) == acc.financial_leaves(feasible_pair[1])
+
+
+def test_rfa_positive_shl_liability_without_final_schedule_is_unsupported(feasible_pair):
+    g2c = feasible_pair[1].g2c_result
+    fin = g2c.financing_result
+    assert fin.derived_shl_cash_principal_keur > 0.0
+    no_schedule = _with_financing(g2c, project_model_result=dc.replace(fin.project_model_result, shareholder_loan=None))
+    with pytest.raises(ma.OdrFinalizationError, match=ma.UNSUPPORTED_FINANCING):
+        ma.required_final_checks(no_schedule)

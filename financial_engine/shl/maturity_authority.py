@@ -333,6 +333,11 @@ def required_final_checks(result) -> OdrFinalRequirements:
     liability = _shl_liability(financing)
     if kind is ProjectFinancingResult:
         if getattr(financing.project_model_result, "shareholder_loan", None) is None:
+            if liability:
+                # An SHL liability whose final model carries no SHL schedule has no evaluable deferred G2A pass:
+                # structurally inconsistent, never inferred as inapplicable.
+                raise OdrFinalizationError(
+                    f"{UNSUPPORTED_FINANCING}: positive SHL liability without a final SHL schedule in the model")
             return OdrFinalRequirements((), liability, "no SHL schedule in the final model")
         roles = CONSTRUCTION_G2A_ROLES if financing.construction_financing is not None else TOP_LEVEL_G2A_ROLES
         return OdrFinalRequirements(roles, liability, "derived-SHL/Senior fixed point")
@@ -360,8 +365,14 @@ class _WaterfallRegistration:
     inputs: str                 # digest of the SHL model input and the gated cash vector actually used
     maturity_period_index: int
     repayment_mode: str
-    rows: tuple[tuple[int, float, float, float], ...]  # (period, closing, gross interest, principal) the check produced
+    rows: tuple[tuple[int, bytes, bytes, bytes], ...]  # (period, closing, gross, principal) as exact binary64, <= maturity
     shortfall: ShlMaturityShortfall | None
+
+
+def _bits(value) -> bytes:
+    """Exact IEEE-754 binary64 identity (+0.0 and -0.0 differ; no tolerance)."""
+    import struct
+    return struct.pack(">d", value)
 
 
 def _digest_of(*values) -> str:
@@ -436,11 +447,18 @@ class OdrAttempt:
         if financing is None or shl_input is None or cash is None or schedule is None:
             raise OdrFinalizationError(f"{FINAL_EVIDENCE_UNBOUND}: waterfall evidence must name state, inputs and schedule")
         self._register_token(context)
+        vectors = (tuple(schedule.period_indices), tuple(schedule.shl_closing_keur),
+                   tuple(schedule.shl_gross_interest_keur), tuple(schedule.shl_principal_keur))
+        indices = vectors[0]
+        if (len({len(vector) for vector in vectors}) != 1 or not indices
+                or any(type(index) is not int for index in indices)
+                or any(b <= a for a, b in zip(indices, indices[1:]))
+                or any(not isinstance(value, float) for vector in vectors[1:] for value in vector)):
+            raise OdrFinalizationError(
+                f"{FINAL_EVIDENCE_CONTRADICTORY}: waterfall SHL schedule vectors are misaligned, unordered or duplicated")
         rows = tuple(
-            (index, closing, gross, principal)
-            for index, closing, gross, principal in zip(
-                schedule.period_indices, schedule.shl_closing_keur, schedule.shl_gross_interest_keur,
-                schedule.shl_principal_keur)
+            (index, _bits(closing), _bits(gross), _bits(principal))
+            for index, closing, gross, principal in zip(*vectors)
             if index <= shl_input.maturity_period_index)
         self._waterfall.append(_WaterfallRegistration(
             self._registration_digest(financing), _digest_of(shl_input, tuple(cash)), shl_input.maturity_period_index,
@@ -487,6 +505,9 @@ class OdrAttempt:
             if not registrations:
                 missing += [f"{role}.FINAL_CAPACITY", f"{role}.FINAL_FUNDED_OR_STRICT"]
                 continue
+            if len(registrations) != 1:
+                # Exactly one authoritative final evaluation per role: separate tokens are not separate checks.
+                contradictory.append(f"{role} registered {len(registrations)} times for the returned state")
             for registration in registrations:
                 sites = [site for site, _ in registration.sites]
                 unknown = [site for site in sites if site != CAPACITY_SITE and site not in FUNDED_SITES]
@@ -499,12 +520,15 @@ class OdrAttempt:
                     (missing if not funded else contradictory).append(f"{role}.FINAL_FUNDED_OR_STRICT")
                 checks += [OdrFinalCheck(f"{role}.FINAL_{site}", shortfall) for site, shortfall in registration.sites]
 
-        returned_rows = self._returned_rows(result)
+        returned_rows, operating, returned_maturity, row_problem = self._returned_rows(result)
+        if row_problem and requirements.waterfall_required:
+            contradictory.append(row_problem)
         bound = [r for r in self._waterfall if r.state == state]
         for registration in self._waterfall:
             if registration.state != state and registration.shortfall is not None:
                 self.provisional_violations.append((f"SUPERSEDED.{WATERFALL_FINAL_CHECK}", registration.shortfall))
-        matching = [r for r in bound if returned_rows is not None and self._rows_match(r, returned_rows)]
+        matching = [r for r in bound if not row_problem
+                    and self._rows_match(r, returned_rows, operating, returned_maturity)]
         for registration in bound:
             if registration not in matching and registration.shortfall is not None:
                 self.provisional_violations.append((f"STALE.{WATERFALL_FINAL_CHECK}", registration.shortfall))
@@ -533,23 +557,40 @@ class OdrAttempt:
         return requirements
 
     @staticmethod
-    def _returned_rows(result) -> "dict[int, tuple[float, float, float]] | None":
-        """Operating SHL rows of the returned waterfall: (closing, gross interest, principal) per period index."""
+    def _returned_rows(result):
+        """Returned operating SHL rows as exact binary64 (closing, gross interest, principal) per period, the operating
+        period set and the returned contractual SHL maturity. Duplicated period rows are a defect, never collapsed."""
         periods = getattr(result, "waterfall_periods", None)
         model_periods = getattr(result.financing_result.project_model_result, "periods", None)
+        terminal = getattr(getattr(getattr(result, "return_summary", None), "terminal", None), "shareholder_loan", None)
+        maturity = getattr(terminal, "contractual_maturity_period_index", None)
         if periods is None or model_periods is None:
-            return None
-        operating = {p.period_index for p in model_periods if getattr(p, "is_operation", False)}
-        return {row.period_index: (row.shl_closing_balance_keur, row.shl_gross_interest_keur,
-                                   row.actual_shl_principal_paid_keur)
-                for row in periods if row.period_index in operating}
+            return {}, frozenset(), maturity, "returned result carries no waterfall periods"
+        operating = frozenset(p.period_index for p in model_periods if getattr(p, "is_operation", False))
+        rows: dict = {}
+        for row in periods:
+            # Construction rows carry their own (construction-period) numbering and may share an index with an
+            # operating period; only operating rows hold the SHL roll-forward that the final check validates.
+            if row.is_construction or row.period_index not in operating:
+                continue
+            if row.period_index in rows:
+                return {}, operating, maturity, f"returned waterfall duplicates SHL period {row.period_index}"
+            rows[row.period_index] = (_bits(row.shl_closing_balance_keur), _bits(row.shl_gross_interest_keur),
+                                      _bits(row.actual_shl_principal_paid_keur))
+        return rows, operating, maturity, None
 
     @staticmethod
-    def _rows_match(registration: _WaterfallRegistration, returned: dict) -> bool:
-        checked = {index: (closing, gross, principal) for index, closing, gross, principal in registration.rows
-                   if index in returned}
-        relevant = {index: values for index, values in returned.items() if index <= registration.maturity_period_index}
-        return bool(relevant) and checked == relevant
+    def _rows_match(registration: _WaterfallRegistration, returned: dict, operating: frozenset, maturity) -> bool:
+        """Complete, ordered, bit-exact correspondence of every operating period up to the returned contractual maturity."""
+        if maturity is None or registration.maturity_period_index != maturity or maturity not in operating:
+            return False
+        expected = sorted(index for index in operating if index <= maturity)
+        checked = [row for row in registration.rows if row[0] in operating]
+        if [row[0] for row in checked] != expected:
+            return False
+        if sorted(index for index in returned if index <= maturity) != expected:
+            return False
+        return all(returned[index] == (closing, gross, principal) for index, closing, gross, principal in checked)
 
     def first_final_failure(self) -> OdrFinalCheck | None:
         return next((c for c in self.final_checks if not c.passed), None)
