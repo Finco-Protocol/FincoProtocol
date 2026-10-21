@@ -1,0 +1,34 @@
+{
+ "categories": {
+  "load-sensitive-pass": 1,
+  "nonpass-approval-required": 18,
+  "standalone-failure": 2,
+  "standalone-pass": 466
+ },
+ "collected_modules_without_pass": [
+  "tests/test_api_v1_radar.py",
+  "tests/test_ci_v3_hosted_isolation.py",
+  "tests/test_crypto_p0_product_reality_reset.py",
+  "tests/test_f08_opex_mobile_ux.py",
+  "tests/test_golden_flow_correction_b.py",
+  "tests/test_model_credit_decision_v4_render.py",
+  "tests/test_model_rc6_opex_profiles_ui.py",
+  "tests/test_model_trust_pack_ux.py",
+  "tests/test_model_v2_governance.py",
+  "tests/test_multi_source_evidence_v2_correction_a.py",
+  "tests/test_p0a_model_execution.py",
+  "tests/test_p5_browser_acceptance.py",
+  "tests/test_quarterly_acceptance_statements.py",
+  "tests/test_rc7_institutional_reporting_v2.py",
+  "tests/test_rc7_revenue_ppa_v3_economics.py",
+  "tests/test_rc7b_gate_r_authorization.py",
+  "tests/test_rc7c_frequency_reconciliation.py",
+  "tests/test_trust_readiness_registry.py",
+  "tests/test_u2_2_returns_surface.py",
+  "tests/test_ux_c_strict_numbers.py"
+ ],
+ "modules": 487,
+ "observed_runtime_nonpass": 75,
+ "unmatched_nonpass": 0,
+ "unresolved_blocking_admission": 20
+}

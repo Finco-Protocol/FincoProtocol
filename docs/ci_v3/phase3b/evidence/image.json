@@ -1,0 +1,6 @@
+{"base_image": "docker.io/library/python@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70",
+ "python": "3.12.15",
+ "local_manifest_list_digest": "sha256:5ae1e357e475477c326b135879ebe235a851a71e2d0889be24d645a67bd56450",
+ "local_image_id": "sha256:5ae1e357e475477c326b135879ebe235a851a71e2d0889be24d645a67bd56450",
+ "registry_digest": null,
+ "note": "Built locally only; never pushed. A registry digest exists only after an authorized publication and must be re-recorded then. Mutable tags are never execution authority."}
