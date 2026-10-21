@@ -23,7 +23,8 @@ RUN mkdir -p /opt/ci-v3 \
     && python -m pip freeze --all > /opt/ci-v3/resolved-python.txt \
     && dpkg-query -W -f='${Package}=${Version}\n' | sort > /opt/ci-v3/resolved-system.txt \
     && python -VV > /opt/ci-v3/python-version.txt \
-    && { node --version; ssh-keygen -V 2>&1 | head -1 || true; } > /opt/ci-v3/tool-versions.txt 2>&1 \
+    && { node --version; ssh -V 2>&1; } > /opt/ci-v3/tool-versions.txt \
+    && cp /etc/os-release /opt/ci-v3/os-release.txt \
     && chmod -R a=rX /opt/ci-v3 \
     && rm -rf /build
 WORKDIR /subject

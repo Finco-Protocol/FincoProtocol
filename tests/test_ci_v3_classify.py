@@ -7,10 +7,11 @@ from tools.ci_v3_classify import MIN_TARGET_PASSES, classify, collect, decide, n
 from tools.ci_v3_schema import ContractError
 
 EXPECTED = 2
+SHA = "0" * 64
 
 
 def attempt(kind="first", label="a", **kw):
-    base = {"module": "tests/test_a.py", "tag": None, "exit_code": 0, "timed_out": False, "failures": 0, "errors": 0,
+    base = {"module": "tests/test_a.py", "module_sha256": SHA, "historical": False, "tag": None, "exit_code": 0, "timed_out": False, "failures": 0, "errors": 0,
             "skipped": 0, "tests": EXPECTED, "seconds": 1.0, "tail": "", "kind": kind, "label": label, "concurrency": 3 if kind == "target" else 4}
     return {**base, **kw}
 
@@ -50,28 +51,28 @@ def test_stable_pass_is_proposal_only_and_helpers_are_explicit():
     ([attempt(skipped=1), attempt("uncontended", skipped=2)], "inconsistent-verdicts"),
 ])
 def test_unclean_attempts_block(history, category):
-    mode, got, _ = decide(history, EXPECTED)
+    mode, got, _ = decide(history, EXPECTED, current_sha=SHA)
     assert (mode, got) == ("blocked", category)
 
 
 def test_reproduced_flaw_failed_under_load_then_one_uncontended_pass_stays_blocked():
     """Before the correction this exact history was 'load-sensitive-pass' / runner-private."""
-    mode, category, _ = decide([attempt(**FAIL), attempt("uncontended", label="rerun")], EXPECTED)
+    mode, category, _ = decide([attempt(**FAIL), attempt("uncontended", label="rerun")], EXPECTED, current_sha=SHA)
     assert (mode, category) == ("blocked", "load-sensitive-unproven")
 
 
 @pytest.mark.parametrize("reruns", [1, 2, 10, 100])
 def test_repeated_uncontended_reruns_never_unlock(reruns):
     history = [attempt(**FAIL)] + [attempt("uncontended", f"u{i}") for i in range(reruns)]
-    assert decide(history, EXPECTED)[:2] == ("blocked", "load-sensitive-unproven")
+    assert decide(history, EXPECTED, current_sha=SHA)[:2] == ("blocked", "load-sensitive-unproven")
 
 
 def test_only_equivalent_target_concurrency_unlocks_and_keeps_the_failure():
     history = [attempt(**FAIL)] + target_passes(MIN_TARGET_PASSES)
-    assert decide(history, EXPECTED)[:2] == ("runner-private", "target-concurrency-stability-validated")
-    assert decide([attempt(**FAIL)] + target_passes(MIN_TARGET_PASSES - 1), EXPECTED)[:2] == ("blocked", "load-sensitive-unproven")
+    assert decide(history, EXPECTED, current_sha=SHA)[:2] == ("runner-private", "target-concurrency-stability-validated")
+    assert decide([attempt(**FAIL)] + target_passes(MIN_TARGET_PASSES - 1), EXPECTED, current_sha=SHA)[:2] == ("blocked", "load-sensitive-unproven")
     wrong = [{**a, "concurrency": 1} for a in target_passes(MIN_TARGET_PASSES)]   # not three-way concurrency
-    assert decide([attempt(**FAIL)] + wrong, EXPECTED)[:2] == ("blocked", "load-sensitive-unproven")
+    assert decide([attempt(**FAIL)] + wrong, EXPECTED, current_sha=SHA)[:2] == ("blocked", "load-sensitive-unproven")
     proposal, _ = classify(prepared(), {"tests/test_a.py": history})
     record = proposal["modules"]["tests/test_a.py"]
     assert record["reviewed"] is False and any(a["exit_code"] == 1 for a in record["attempts"])
@@ -80,11 +81,11 @@ def test_only_equivalent_target_concurrency_unlocks_and_keeps_the_failure():
 @pytest.mark.parametrize("bad", [dict(FAIL), dict(timed_out=True, exit_code=None), dict(exit_code=137)])
 def test_any_target_failure_blocks_even_after_many_passes(bad):
     history = [attempt(**FAIL)] + target_passes(20) + [attempt("target", "tx", **bad)]
-    assert decide(history, EXPECTED)[0] == "blocked"
+    assert decide(history, EXPECTED, current_sha=SHA)[0] == "blocked"
 
 
 def test_failure_after_an_initial_pass_is_inconsistent_not_approved():
-    assert decide([attempt(), attempt("target", **FAIL)], EXPECTED)[:2] == ("blocked", "inconsistent-verdicts")
+    assert decide([attempt(), attempt("target", **FAIL)], EXPECTED, current_sha=SHA)[:2] == ("blocked", "inconsistent-verdicts")
 
 
 def test_missing_evidence_blocks_and_collection_skips_are_explicit():
@@ -124,10 +125,33 @@ def test_nonpass_proposal_uses_exact_original_identity_and_rejects_conflicts(tmp
     ids = ["tests/test_a.py::test_x", "tests/test_a.py::TestK::test_y[p]"]
     one = junit(tmp_path / "one.xml", [("tests.test_a", "test_x", "pytest.skip", "node is not available"),
                                        ("tests.test_a.TestK", "test_y[p]", "pytest.xfail", "known")])
-    proposal, unmatched = nonpass_proposal([one], ids)
+    proposal, unmatched = nonpass_proposal([one.read_bytes()], ids)
     assert proposal == {ids[0]: {"status": "skipped", "reason": "node is not available"}, ids[1]: {"status": "xfail", "reason": "known"}} and not unmatched
     changed = junit(tmp_path / "two.xml", [("tests.test_a", "test_x", "pytest.skip", "different reason")])
     with pytest.raises(ContractError, match="inconsistent nonpass"):
-        nonpass_proposal([one, changed], ids)
+        nonpass_proposal([one.read_bytes(), changed.read_bytes()], ids)
     foreign = junit(tmp_path / "three.xml", [("tests.test_a", "test_unknown", "pytest.skip", "x")])
-    assert nonpass_proposal([foreign], ids)[1][0]["name"] == "test_unknown"
+    assert nonpass_proposal([foreign.read_bytes()], ids)[1][0]["name"] == "test_unknown"
+
+
+def historical(**kw):
+    return attempt(historical=True, label="old", image_id="old", tree="old", **kw)
+
+
+def test_historical_failure_on_unchanged_module_still_counts_and_needs_target_stability():
+    old = historical(**FAIL)
+    assert decide([old, attempt("target", "t0")], EXPECTED, current_sha=SHA)[:2] == ("blocked", "load-sensitive-unproven")
+    assert decide([old] + target_passes(MIN_TARGET_PASSES), EXPECTED, current_sha=SHA)[:2] == ("runner-private", "target-concurrency-stability-validated")
+
+
+def test_source_change_supersedes_a_historical_failure_but_it_stays_recorded():
+    old = historical(**FAIL, module_sha256="1" * 64)
+    assert decide([old, attempt("target", "t0")], EXPECTED, current_sha=SHA)[:2] == ("runner-private", "stable-pass")
+    proposal, _ = classify({**prepared(), "isolation": {**prepared()["isolation"], "modules": {"tests/test_a.py": {"sha256": SHA}}}},
+                           {"tests/test_a.py": [old, attempt("target", "t0")]})
+    assert [a["historical"] for a in proposal["modules"]["tests/test_a.py"]["attempts"]] == [True, False]
+
+
+def test_historical_pass_never_supplies_positive_evidence():
+    assert decide([historical()], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
+    assert decide([historical(), historical(skipped=0)], EXPECTED, current_sha=SHA)[0] == "blocked"

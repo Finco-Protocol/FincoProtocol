@@ -6,6 +6,8 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 
 def _ws(**overrides):
     values = {
@@ -58,7 +60,22 @@ def _hashes(html: str) -> list[str]:
     return re.findall(r'name="content_hash"\s+value="([^"]+)"', html)
 
 
-def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds():
+@pytest.fixture
+def reference_runs_seeded():
+    """Explicit precondition: the system reference projects already hold their canonical last runs.
+
+    App startup seeds them (four model runs) on a fresh database and is a no-op afterwards. Without this the
+    test passed or failed depending on whether an earlier module had started the app against the same database,
+    and the startup seeding was counted as user Runs (5 instead of 1). Seeding here, before the Run counter
+    exists, keeps the ``calls == 1`` assertion exact and is idempotent in the full sequential suite.
+    """
+    from app.services.project_library_service import ensure_reference_canonical_last_runs, ensure_reference_models
+
+    ensure_reference_models()
+    ensure_reference_canonical_last_runs()
+
+
+def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(reference_runs_seeded):
     import main_web
     from app.api import project_runner
     from app.auth import COOKIE_NAME, create_session_token

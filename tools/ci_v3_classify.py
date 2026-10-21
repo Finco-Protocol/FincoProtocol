@@ -11,6 +11,7 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
+import tarfile
 import xml.etree.ElementTree as ET
 
 from tools.ci_v3_schema import ContractError, read_json, require, seal, write_json
@@ -27,9 +28,10 @@ def load_attempts(directory, expect=None):
     directory = Path(directory)
     meta = read_json(directory / "meta.json")
     require(meta["kind"] in ("first", "uncontended", "target"), "unknown attempt kind")
-    if expect:
+    if expect and not meta.get("historical"):
         require(meta["image_id"] == expect["image_id"] and meta["tree"] == expect["tree"], "attempt was not executed on the evidence image/source")
-    records = [json.loads(line) for f in sorted(directory.glob("lane-*/results.jsonl")) for line in f.read_text().splitlines()]
+    files = sorted(directory.glob("lane-*/results.jsonl")) or [directory / "results.jsonl"]   # raw lanes, or the packed form
+    records = [json.loads(line) for f in files if f.exists() for line in f.read_text().splitlines()]
     require(records, "empty attempt evidence: " + str(directory))
     return meta, records
 
@@ -44,7 +46,8 @@ def collect(runs, expect=None):
             require(key not in seen, "duplicate attempt evidence: " + "/".join(map(str, key)))
             seen.add(key)
             result.setdefault(item["module"], []).append({**item, "kind": meta["kind"], "label": meta["label"],
-                "concurrency": meta["concurrency"], "image_id": meta["image_id"], "tree": meta["tree"]})
+                "concurrency": meta["concurrency"], "image_id": meta["image_id"], "tree": meta["tree"],
+                "historical": bool(meta.get("historical"))})
     return result
 
 
@@ -61,10 +64,23 @@ def status(attempt, expected):
     return "pass-with-nonpass" if attempt["skipped"] else "pass"
 
 
-def decide(attempts, expected, min_target=MIN_TARGET_PASSES):
-    """Return (mode, category, reason) from ALL attempts."""
-    if not attempts:
-        return "blocked", "no-standalone-evidence", "module was not executed alone"
+def relevant(attempts, current_sha):
+    """Historical attempts count only while the module blob is unchanged, and only their failures count against it.
+    Superseded or historical-PASS attempts stay in the preserved record but never supply positive evidence."""
+    kept = []
+    for a in attempts:
+        if not a.get("historical"):
+            kept.append(a)
+        elif current_sha is not None and a.get("module_sha256") == current_sha and status(a, a["tests"]) not in ("pass", "pass-with-nonpass"):
+            kept.append(a)
+    return kept
+
+
+def decide(attempts, expected, min_target=MIN_TARGET_PASSES, current_sha=None):
+    """Return (mode, category, reason) from every relevant attempt."""
+    attempts = relevant(attempts, current_sha)
+    if not any(not a.get("historical") for a in attempts):
+        return "blocked", "no-standalone-evidence", "no attempt executed on the exact evidence image and source"
     verdicts = [status(a, expected) for a in attempts]
     for bad, category in (("timeout", "timeout"), ("capacity", "capacity-exhaustion"), ("coverage-mismatch", "coverage-mismatch")):
         if bad in verdicts:
@@ -90,12 +106,23 @@ def decide(attempts, expected, min_target=MIN_TARGET_PASSES):
         f"({sum(a['kind'] == 'uncontended' for a in attempts)} uncontended rerun(s) are not equivalent evidence)")
 
 
-def nonpass_proposal(junit_files, nodeids):
+def junit_blobs(directory):
+    """Raw JUnit bytes of one attempt directory (lane files or the packed junit.tar.xz), in a stable order."""
+    directory = Path(directory)
+    packed = directory / "junit.tar.xz"
+    if packed.exists():
+        with tarfile.open(packed) as tar:
+            return [tar.extractfile(m).read() for m in sorted(tar.getmembers(), key=lambda m: m.name) if m.isfile()]
+    return [f.read_bytes() for f in sorted(directory.glob("lane-*/*.xml"))]
+
+
+def nonpass_proposal(junit_documents, nodeids):
     """Observed standalone skip/xfail records keyed by exact original node id (proposal; owners approve)."""
     modules = {n.split("::", 1)[0] for n in nodeids}; known = set(nodeids)
     proposal, unmatched = {}, []
-    for file in sorted(junit_files):
-        for case in ET.parse(file).getroot().iter("testcase"):
+    for document in junit_documents:
+        require(b"<!DOCTYPE" not in document.upper() and b"<!ENTITY" not in document.upper(), "JUnit DTD/entity")
+        for case in ET.fromstring(document).iter("testcase"):
             node = case.find("skipped")
             if node is None:
                 continue
@@ -126,7 +153,7 @@ def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TAR
         elif name not in expected:
             mode, category, reason = "blocked", "not-collected-helper", "no collected nodes; helper or collection-skipped file"
         else:
-            mode, category, reason = decide(history, expected[name], min_target)
+            mode, category, reason = decide(history, expected[name], min_target, base.get("sha256"))
         record.update(mode=mode, category=category, reason=reason, rationale=reason, reviewed=False, attempts=history)
         modules[name] = record; summary[category] += 1
     proposal = seal({**{k: v for k, v in isolation.items() if k not in ("digest", "modules")},
@@ -147,7 +174,7 @@ def main(argv=None):
     expect = {"image_id": args.image_id, "tree": args.tree} if args.image_id else None
     try:
         proposal, summary = classify(prepared, collect(args.attempt, expect), skipped, args.min_target_passes)
-        junit = [f for d in args.attempt for f in Path(d).glob("lane-*/*.xml")]
+        junit = [blob for d in args.attempt if not (json.loads((Path(d) / "meta.json").read_text()).get("historical")) for blob in junit_blobs(d)]
         allowed, unmatched = nonpass_proposal(junit, [n["nodeid"] for n in prepared["inventory"]["nodes"]])
     except ContractError as exc:
         print("CI_V3_CLASSIFY_REJECTED: " + str(exc)); return 1

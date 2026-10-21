@@ -35,7 +35,8 @@ def run_module(source, module, out, timeout, tag=None):
         suite = suite if suite.tag == "testsuite" else suite.find("testsuite")
         counts = {k: int(suite.get(k, 0)) for k in counts}
     digest = hashlib.sha256(xml.read_bytes()).hexdigest() if xml.exists() else None
-    return {"module": module, "tag": tag, "junit_sha256": digest, "exit_code": code, "timed_out": timed_out, "seconds": round(time.perf_counter() - started, 2),
+    blob = hashlib.sha256((Path(source) / module).read_bytes()).hexdigest()
+    return {"module": module, "module_sha256": blob, "tag": tag, "junit_sha256": digest, "exit_code": code, "timed_out": timed_out, "seconds": round(time.perf_counter() - started, 2),
             **counts, "tail": tail if code != 0 else ""}
 
 
