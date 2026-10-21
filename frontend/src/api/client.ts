@@ -106,6 +106,33 @@ function isCanonicalVerdict(body: unknown): body is GridSaveSuccess | GridSaveFa
   return Boolean(body) && typeof body === "object" && "ok" in (body as Record<string, unknown>);
 }
 
+const CANONICAL_RUN_STATES = new Set(["NOT_RUN", "CURRENT", "STALE"]);
+
+/**
+ * A response counts as a confirmed canonical Save success ONLY when it carries
+ * every mandatory field of the grid/save contract.  A bare `{"ok": true}` (or
+ * any success-shaped body with missing/mistyped fields) is NOT sufficient
+ * evidence of persistence: the workbook identity must never be updated from an
+ * incomplete verdict, so such responses are treated as UNKNOWN.
+ */
+function isCanonicalSaveSuccess(body: unknown): body is GridSaveSuccess {
+  if (!body || typeof body !== "object") return false;
+  const b = body as Record<string, unknown>;
+  if (b.ok !== true || !Array.isArray(b.saved) || b.saved.length === 0) return false;
+  const savedOk = (b.saved as unknown[]).every((s) => {
+    if (!s || typeof s !== "object") return false;
+    const cell = s as Record<string, unknown>;
+    return typeof cell.field_id === "string" && cell.field_id.length > 0
+      && typeof cell.value === "string";
+  });
+  return savedOk
+    && typeof b.content_hash === "string" && b.content_hash.length > 0
+    && typeof b.workbook_version === "string" && b.workbook_version.length > 0
+    && typeof b.run_state === "string" && CANONICAL_RUN_STATES.has(b.run_state)
+    && b.model_executed === false
+    && (b.scenario_id === null || typeof b.scenario_id === "string");
+}
+
 /** One Save attempt through the canonical CAS authority.  Never retries on its
  *  own: a stale conflict (409) requires an explicit user reload, and an
  *  ambiguous transport requires explicit reconciliation. */
@@ -144,8 +171,19 @@ export async function saveGridCell(args: SaveInputArgs): Promise<SaveOutcome> {
   // Confirmed canonical verdicts: the grid/save contract answers every 4xx with
   // a JSON verdict and guarantees nothing was persisted on those paths.
   if (response.status < 500 && isCanonicalVerdict(body)) {
-    if ((body as GridSaveSuccess).ok === true && response.ok) {
-      return { kind: "saved", body: body as GridSaveSuccess };
+    if (response.ok) {
+      // Only a COMPLETE canonical success may update the workbook identity;
+      // anything success-shaped but incomplete is unverifiable.
+      if (isCanonicalSaveSuccess(body)) {
+        return { kind: "saved", body };
+      }
+      return {
+        kind: "unknown",
+        reason: "unverifiable_response",
+        message: "The Save result is UNKNOWN: the server answered success status but the response "
+          + "was not a readable canonical Save verdict. The server may have committed this Save. "
+          + "Your edit is kept below — reload to reconcile with the server before saving again.",
+      };
     }
     if ((body as GridSaveFailure).ok === false) {
       return { kind: "rejected", body: body as GridSaveFailure };

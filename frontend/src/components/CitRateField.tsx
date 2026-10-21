@@ -27,7 +27,7 @@ function verdictMessage(outcome: SaveRejection): string {
     if (failed && failed.message) return failed.message;
   }
   if (body.message) return body.message;
-  return `The server rejected the Save (${body.code}). Nothing was saved.`;
+  return `The server rejected the Save (${body.code || "REJECTED"}). Nothing was saved.`;
 }
 
 /**
@@ -55,6 +55,9 @@ export function CitRateField(props: CitRateFieldProps) {
   // Sequence + project guard: a late response (timeout, StrictMode refetch of a
   // newer identity, project switch) must never be applied over newer state.
   const requestSeqRef = useRef(0);
+  // Focus anchor: the disabled submit button would blur to <body> during
+  // flight, so focus moves to the locked (readOnly, focusable) input instead.
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const inputId = "rx-cit-rate-input";
   const statusId = "rx-cit-rate-status";
@@ -73,6 +76,7 @@ export function CitRateField(props: CitRateFieldProps) {
     const seq = ++requestSeqRef.current;
     const submittedProject = projectCode;
     setStatus("saving");
+    inputRef.current?.focus();
     setMessage("");
     const outcome = await saveGridCell({
       config: { project: projectCode, bootstrapUrl: "", saveUrl, legacyUrl: "" },
@@ -151,6 +155,7 @@ export function CitRateField(props: CitRateFieldProps) {
         </label>
         <div className="rx-field-row">
           <input
+            ref={inputRef}
             id={inputId}
             className="rx-input"
             type="text"
@@ -174,7 +179,7 @@ export function CitRateField(props: CitRateFieldProps) {
             data-field-id={field.field_id}
             data-locked={locked ? "true" : "false"}
           />
-          <button type="submit" className="rx-button" disabled={disabled} data-save-state={status}>
+          <button type="submit" id="rx-cit-rate-save" className="rx-button" disabled={disabled} data-save-state={status}>
             {status === "saving" ? "Saving…"
               : status === "unknown" ? "Reload to reconcile"
                 : conflict ? "Reload required" : "Save"}
