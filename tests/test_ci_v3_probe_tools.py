@@ -93,3 +93,13 @@ def test_junit_tamper_duplicates_or_removes_exactly_one_case(tmp_path, kind, exp
 def test_resource_sampler_parses_docker_memory_units():
     from tools.ci_v3_container_validate import ResourceSampler
     assert ResourceSampler.mib("512MiB") == 512 and ResourceSampler.mib("1.5GiB") == 1536 and round(ResourceSampler.mib("2048KiB"), 3) == 2
+
+
+def test_passwd_file_gives_the_numeric_host_user_an_entry_without_secrets(tmp_path):
+    from tools.ci_v3_container import docker_command, passwd_file
+    path = passwd_file(tmp_path / "passwd", 1001, 118)
+    assert path.read_text().splitlines() == ["root:x:0:0:root:/root:/usr/sbin/nologin", "ci:x:1001:118:ci:/tmp/home:/usr/sbin/nologin"]
+    assert passwd_file(tmp_path / "root", 0, 0).read_text().count("\n") == 1          # no duplicate uid 0
+    args = docker_command("example.invalid/image@sha256:" + "a" * 64, "ci-v3-" + "b" * 32, tmp_path / "p", tmp_path / "b", tmp_path / "e", "worker-0", passwd=path)
+    assert any(a.endswith("target=/etc/passwd,readonly") for a in args)
+    assert not any("/etc/passwd" in a for a in docker_command("example.invalid/image@sha256:" + "a" * 64, "ci-v3-" + "b" * 32, tmp_path / "p", tmp_path / "b", tmp_path / "e", "worker-0"))
