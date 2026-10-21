@@ -996,7 +996,22 @@ class TestGovernanceTreatment:
         assert gov.F3_5_A_JUNIOR_AUTHORITIES[path] == "e3473e1a2064c8310e41b434da2b0aff9d5753b8"
         blob = subprocess.run(["git", "rev-parse", f"HEAD:{path}"], cwd=REPO,
             capture_output=True, text=True, check=True).stdout.strip()
-        assert blob == gov.F3_5_A_JUNIOR_AUTHORITIES[path]
-        assert gov.released_engine_authority_matches(path)
-        assert gov.approved_by_active_model_v2_scope(path)
+        from quarterly_candidate_recognition import candidate_blobs, superseded
+        if superseded(path, repo=REPO):
+            # Only while the complete OD-R successor is recognised: HEAD carries the exact owner-accepted OD-R blob, which is a release-closed
+            # candidate - never the released F3.5 authority or the active Model V2 scope. The historical pin still holds at the RC-7C checkpoint.
+            from v9p2a_odr_successor import historical_subject
+            subject = historical_subject(repo=REPO)
+            assert subject != "HEAD"
+            assert blob == candidate_blobs(repo=REPO)[path] != gov.F3_5_A_JUNIOR_AUTHORITIES[path]
+            assert not gov.released_engine_authority_matches(path)
+            assert not gov.approved_by_active_model_v2_scope(path)
+            historical = subprocess.run(["git", "rev-parse", f"{subject}:{path}"], cwd=REPO,
+                capture_output=True, text=True, check=True).stdout.strip()
+            assert historical == gov.F3_5_A_JUNIOR_AUTHORITIES[path]
+            assert gov.approved_by_active_model_v2_scope(path, ref=subject)
+        else:
+            assert blob == gov.F3_5_A_JUNIOR_AUTHORITIES[path]
+            assert gov.released_engine_authority_matches(path)
+            assert gov.approved_by_active_model_v2_scope(path)
         # The Junior governance ring rejects altered content at this exact path.
