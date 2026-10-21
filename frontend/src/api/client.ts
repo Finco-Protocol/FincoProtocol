@@ -5,6 +5,12 @@
 // POST /v2/workbook/grid/save (C0 atomic batch writer with composite CAS and
 // CSRF).  This client never calls any other write endpoint and never runs the
 // model.
+//
+// Save outcomes are strictly classified (Correction A): the canonical server is
+// the ONLY persistence authority, and a lost or unreadable response is NOT
+// evidence that nothing was saved.  Ambiguous transports surface as
+// `unknown` outcomes that require explicit user reconciliation — never an
+// automatic retry.
 
 import type {
   BootstrapError,
@@ -77,10 +83,32 @@ export type SaveOutcome =
   | { kind: "stale"; body: GridSaveFailure }
   | { kind: "rejected"; body: GridSaveFailure }
   | { kind: "unauthorized"; body: GridSaveFailure }
-  | { kind: "error"; message: string };
+  /** The transaction result could not be confirmed.  The canonical server may
+   *  have committed.  Requires explicit user reconciliation; never retried
+   *  automatically. */
+  | { kind: "unknown"; reason: SaveOutcomeUnknownReason; message: string };
+
+export type SaveOutcomeUnknownReason =
+  /** The request never reached a definitive response (connection failure, drop
+   *  mid-response).  A commit may or may not have happened. */
+  | "no_definitive_response"
+  /** The server answered 2xx but the body was missing, malformed or not a
+   *  canonical Save verdict — persistence cannot be confirmed either way. */
+  | "unverifiable_response"
+  /** The server answered 5xx; an error after a possible commit cannot be
+   *  distinguished from an error before it. */
+  | "server_error";
+
+/** Confirmed canonical verdicts (success OR an explicit server refusal). */
+export type SaveVerdict = Extract<SaveOutcome, { kind: "saved" | "stale" | "rejected" | "unauthorized" }>;
+
+function isCanonicalVerdict(body: unknown): body is GridSaveSuccess | GridSaveFailure {
+  return Boolean(body) && typeof body === "object" && "ok" in (body as Record<string, unknown>);
+}
 
 /** One Save attempt through the canonical CAS authority.  Never retries on its
- *  own: a stale conflict (409) requires an explicit user reload. */
+ *  own: a stale conflict (409) requires an explicit user reload, and an
+ *  ambiguous transport requires explicit reconciliation. */
 export async function saveGridCell(args: SaveInputArgs): Promise<SaveOutcome> {
   let response: Response;
   try {
@@ -98,7 +126,13 @@ export async function saveGridCell(args: SaveInputArgs): Promise<SaveOutcome> {
       }),
     });
   } catch {
-    return { kind: "error", message: "The FINCO Model server is unreachable. Nothing was saved." };
+    return {
+      kind: "unknown",
+      reason: "no_definitive_response",
+      message: "The Save result is UNKNOWN: the connection failed before a definitive response. "
+        + "The server may have committed this Save. Your edit is kept below — reload to "
+        + "reconcile with the server before saving again.",
+    };
   }
   const body = await parseJson(response);
   if (response.status === 401) {
@@ -107,11 +141,39 @@ export async function saveGridCell(args: SaveInputArgs): Promise<SaveOutcome> {
   if (response.status === 409) {
     return { kind: "stale", body: (body as GridSaveFailure) || { ok: false, code: "STALE_CONTENT" } };
   }
-  if (response.ok && body && typeof body === "object" && (body as GridSaveSuccess).ok === true) {
-    return { kind: "saved", body: body as GridSaveSuccess };
+  // Confirmed canonical verdicts: the grid/save contract answers every 4xx with
+  // a JSON verdict and guarantees nothing was persisted on those paths.
+  if (response.status < 500 && isCanonicalVerdict(body)) {
+    if ((body as GridSaveSuccess).ok === true && response.ok) {
+      return { kind: "saved", body: body as GridSaveSuccess };
+    }
+    if ((body as GridSaveFailure).ok === false) {
+      return { kind: "rejected", body: body as GridSaveFailure };
+    }
   }
+  if (response.ok) {
+    return {
+      kind: "unknown",
+      reason: "unverifiable_response",
+      message: "The Save result is UNKNOWN: the server answered success status but the response "
+        + "was not a readable canonical Save verdict. The server may have committed this Save. "
+        + "Your edit is kept below — reload to reconcile with the server before saving again.",
+    };
+  }
+  if (response.status >= 500) {
+    return {
+      kind: "unknown",
+      reason: "server_error",
+      message: "The Save result is UNKNOWN: the server reported an error that could have occurred "
+        + "after committing. The server may have committed this Save. Your edit is kept below — "
+        + "reload to reconcile with the server before saving again.",
+    };
+  }
+  // 4xx without a canonical verdict: per the canonical route contract, no 4xx
+  // path persists anything, so this is a confirmed rejection with an
+  // unidentified reason.
   return {
     kind: "rejected",
-    body: (body as GridSaveFailure) || { ok: false, code: `HTTP_${response.status}` },
+    body: { ok: false, code: `HTTP_${response.status}` },
   };
 }

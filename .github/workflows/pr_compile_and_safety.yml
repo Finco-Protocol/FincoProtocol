@@ -56,6 +56,24 @@ jobs:
             python -m pytest -q tests/test_ci_optimization_v2.py --junitxml=artifacts/ci-v2-contract-results.xml
           fi
 
+      # UX-01/UX-01B Correction A (additive, same already-required fast gate):
+      # prove the checked-in React source typechecks, builds, and that the
+      # served static/react bundle corresponds EXACTLY to that source, then run
+      # the React contract/harvest guard tests.  Chromium acceptance stays in
+      # the existing browser role (tools/ci_browser_job.py "grid" selection).
+      - name: React PoC build, bundle identity and contract guards (when present)
+        run: |
+          if [ -f frontend/package.json ]; then
+            node --version
+            npm ci --no-audit --no-fund
+            npm run typecheck
+            npm run build
+            cp frontend/dist/finco-react.js frontend/dist/finco-react.css static/react/
+            git diff --exit-code -- static/react
+            python -m pytest -q tests/test_model_react_poc_v1.py tests/test_model_react_source_harvest_v1.py \
+              --junitxml=artifacts/react-poc-contract-results.xml
+          fi
+
       - name: Upload exact-head provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -64,3 +82,10 @@ jobs:
             artifacts/source.json
             artifacts/ci-v2-contract-results.xml
           if-no-files-found: error
+
+      - name: Upload React PoC contract evidence (when present)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: react-poc-contract-provenance
+          path: artifacts/react-poc-contract-results.xml
+          if-no-files-found: ignore

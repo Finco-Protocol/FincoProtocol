@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { saveGridCell, type SaveOutcome } from "../api/client";
 import type { FieldProjection, GridSaveSuccess, WorkbookIdentityProjection } from "../api/types";
 
-export type SaveStatus = "idle" | "saving" | "saved" | "conflict" | "rejected" | "error";
+export type SaveStatus = "idle" | "saving" | "saved" | "conflict" | "rejected" | "error" | "unknown";
 
 interface CitRateFieldProps {
   field: FieldProjection;
@@ -14,7 +14,10 @@ interface CitRateFieldProps {
   onSaved: (body: GridSaveSuccess) => void;
 }
 
-function failureMessage(outcome: Extract<SaveOutcome, { kind: "rejected" | "stale" | "unauthorized" }>): string {
+/** Confirmed failure verdicts (the canonical server explicitly refused). */
+type SaveRejection = Extract<SaveOutcome, { kind: "stale" | "rejected" | "unauthorized" }>;
+
+function verdictMessage(outcome: SaveRejection): string {
   const body = outcome.body;
   if (outcome.kind === "unauthorized") {
     return "Your session is not authorized for this action. Sign in again; nothing was saved.";
@@ -32,9 +35,15 @@ function failureMessage(outcome: Extract<SaveOutcome, { kind: "rejected" | "stal
  *
  * Server authority is never duplicated: the raw string is sent to the existing
  * canonical `POST /v2/workbook/grid/save`, which re-validates and applies it
- * atomically under composite CAS.  A failed Save keeps every typed character;
- * a stale conflict demands an explicit reload (no blind retry); success adopts
- * the server's new composite hash and canonical display value.
+ * atomically under composite CAS.  Correction A contract:
+ *   - a failed Save keeps every typed character;
+ *   - a stale conflict demands an explicit reload (no blind retry);
+ *   - an AMBIGUOUS transport outcome never claims success OR failure — the
+ *     server may have committed — and blocks further Saves until an explicit
+ *     reload reconciles with the server;
+ *   - the input is read-only while a Save is in flight, and a late response
+ *     never overwrites a newer draft or a different project context;
+ *   - success adopts the server's new composite hash and canonical value.
  */
 export function CitRateField(props: CitRateFieldProps) {
   const { field, workbook, csrfToken, saveUrl, projectCode, onSaved } = props;
@@ -42,11 +51,16 @@ export function CitRateField(props: CitRateFieldProps) {
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [message, setMessage] = useState<string>("");
   const [reloadRequired, setReloadRequired] = useState(false);
+  const [lockedByUnknown, setLockedByUnknown] = useState(false);
+  // Sequence + project guard: a late response (timeout, StrictMode refetch of a
+  // newer identity, project switch) must never be applied over newer state.
+  const requestSeqRef = useRef(0);
 
   const inputId = "rx-cit-rate-input";
   const statusId = "rx-cit-rate-status";
   const conflict = status === "conflict" || reloadRequired;
-  const disabled = !field.editable || status === "saving" || conflict;
+  const locked = status === "saving" || conflict || lockedByUnknown;
+  const disabled = !field.editable || locked;
 
   const describedBy = useMemo(
     () => (message ? statusId : undefined),
@@ -56,6 +70,8 @@ export function CitRateField(props: CitRateFieldProps) {
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
     if (disabled) return;
+    const seq = ++requestSeqRef.current;
+    const submittedProject = projectCode;
     setStatus("saving");
     setMessage("");
     const outcome = await saveGridCell({
@@ -67,6 +83,9 @@ export function CitRateField(props: CitRateFieldProps) {
       fieldId: field.field_id,
       rawValue: draft,
     });
+    // A newer request started, or the project context changed: this response is
+    // stale and must not touch the draft or the identity.
+    if (seq !== requestSeqRef.current || submittedProject !== projectCode) return;
     switch (outcome.kind) {
       case "saved": {
         const savedValue = outcome.body.saved.find((s) => s.field_id === field.field_id);
@@ -91,13 +110,20 @@ export function CitRateField(props: CitRateFieldProps) {
       case "rejected":
       case "unauthorized":
         setStatus(outcome.kind === "unauthorized" ? "error" : "rejected");
-        setMessage(failureMessage(outcome));
+        setMessage(verdictMessage(outcome));
         break;
-      case "error":
-        setStatus("error");
+      case "unknown":
+        // Never claim success; never claim nothing was saved.  Block further
+        // Saves until the user explicitly reloads and reconciles.
+        setStatus("unknown");
+        setLockedByUnknown(true);
         setMessage(outcome.message);
         break;
     }
+  }
+
+  function reconcileWithServer() {
+    window.location.reload();
   }
 
   if (!field.editable) {
@@ -132,19 +158,33 @@ export function CitRateField(props: CitRateFieldProps) {
             autoComplete="off"
             maxLength={64}
             value={draft}
+            // Locked (read-only, focus preserved) while a Save is in flight or
+            // while reconciliation is required — never silently editable across
+            // an unconfirmed transaction.
+            readOnly={locked}
+            aria-readonly={locked || undefined}
             onChange={(e) => {
               setDraft(e.target.value);
-              if (status === "saved" || status === "rejected") {
+              if (status === "saved" || status === "rejected" || status === "error") {
                 setStatus("idle");
                 setMessage("");
               }
             }}
             aria-describedby={describedBy}
             data-field-id={field.field_id}
+            data-locked={locked ? "true" : "false"}
           />
           <button type="submit" className="rx-button" disabled={disabled} data-save-state={status}>
-            {status === "saving" ? "Saving…" : conflict ? "Reload required" : "Save"}
+            {status === "saving" ? "Saving…"
+              : status === "unknown" ? "Reload to reconcile"
+                : conflict ? "Reload required" : "Save"}
           </button>
+          {lockedByUnknown && (
+            <button type="button" className="rx-button rx-button-secondary" onClick={reconcileWithServer}
+                    data-reconcile-button="true">
+              Reload now
+            </button>
+          )}
         </div>
         <p id={statusId} role="status" aria-live="polite" className={`rx-status rx-status-${status}`}>
           {message}
