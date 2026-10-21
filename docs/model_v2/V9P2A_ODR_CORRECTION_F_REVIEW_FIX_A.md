@@ -24,9 +24,28 @@ schedule and the legitimate identical repeat.
 Real-engine shape found while fixing: the returned waterfall legitimately contains construction row 4 and operating
 period 4 (different numbering domains). Duplicate detection is therefore scoped to operating rows, never collapsed.
 
-## 2. Numerical acceptance and tests
+## 2. Numerical acceptance and tests (fix commit `5751c9fb`)
 
-See the results section appended after the acceptance run.
+| Suite | Result |
+|---|---|
+| 112-case matrix + P8, canonical and OD-R | 62 / 17 / 27 / 4 / 2, zero defects; every case identical to Correction F `7f6a2e6d` (verdict, financial / Integrity / full-object digests, Integrity verdict, exact error text, OD-R metadata, final checks); no new admission or rejection |
+| Contract module (`test_v9p2a_odr_finalization_contract.py`) | 50 passed (incl. 14 Review Fix A controls) |
+| OD-R modules (contract, final-state authority, Run-to-commit safety, proposal) | 106 passed; 2 expected: the standalone Correction B proposal refuses the unapproved content (`content_matches_proposal() is False`) — not repinned |
+| 33 focused real-engine regression suites | failure set identical to Correction F: only the four exact-content guards beyond the unmodified-main baseline |
+| Governance ring | 27 failed / 535 passed / 10 skipped; failure set identical to Correction F (original 25 blocking nodes + 2 proposal refusals) — known unapproved-content blocks, no genuine regression |
+| Python compilation | OK |
+| Public source-safety scan | single finding in untouched `static/vendor/swagger-ui/swagger-ui-bundle.js` (Windows CRLF breaks its exempt SHA; fixed on main by `329cbc68`, not in this base) — pre-existing environment artefact |
+
+Protected blobs (Git SHA-1 / SHA-256 of blob content) at `5751c9fb`:
+
+| File | Git blob | SHA-256 |
+|---|---|---|
+| `financial_engine/shl/maturity_authority.py` | `fc8ae6e715aa47f81dd18b5d1b06ffb859cd357d` | `851ded9fd1d6166b5466ae619f5ffe2f89a80654452a28518028b6d197d110b9` |
+| `financial_engine/financing/generic_product_policy.py` | `b7df63cd5be886d5971213c03f9bfff046913ae1` | `41a94a1629703727bf32fe801b488e45fa5211f593453362a13a94a523648b53` |
+| `financial_engine/financing/project.py` | `3bc6c097b218d27be216cdd86133f2772a82ad70` | `27dff26bac3486240c02f678a089156c2f6872d98cb9e868234abeceb56acbad` |
+| `financial_engine/shareholder_waterfall/model.py` | `9520b09b135c7fe39d3d4fac6a0c2462b7c1c4ca` | `21014fb9b600a2c9d7f8e8fc65b99622bed2e751cf1a37a72f6e84bbf5e797c0` |
+
+Unchanged: `orchestrator.py` `85c8008f`, `shl/production.py` `9bb852c2`, app `production_financial_authority.py` `89083cd4`.
 
 ## 3. Unchanged
 
