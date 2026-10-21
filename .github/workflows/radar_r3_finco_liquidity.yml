@@ -244,7 +244,7 @@ jobs:
           PY
       - name: Upload R3 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: radar-r3-finco-liquidity-evidence
           path: |

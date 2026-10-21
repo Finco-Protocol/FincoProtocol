@@ -73,7 +73,7 @@ jobs:
           PY
       - name: Upload R1 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: radar-r1-canonical-asset-registry-evidence
           path: |

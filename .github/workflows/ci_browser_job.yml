@@ -72,14 +72,14 @@ jobs:
       # Maintain the accepted #248 reviewer-facing exact-head artifact alias.
       - name: Upload workspace consolidation screenshots
         if: always() && inputs.role == 'consolidation' && inputs.artifact-prefix == 'browser'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: model-workspace-consolidation-browser
           path: artifacts/workspace-consolidation/
           if-no-files-found: error
       - name: Upload role-specific evidence and timings
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ inputs.artifact-prefix }}-${{ inputs.role }}
           path: artifacts/
