@@ -68,8 +68,21 @@ jobs:
             npm ci --no-audit --no-fund
             npm run typecheck
             npm run build
-            cp frontend/dist/finco-react.js frontend/dist/finco-react.css static/react/
-            git diff --exit-code -- static/react
+            cp dist/finco-react.js dist/finco-react.css ../static/react/
+            git diff --exit-code -- ../static/react
+          fi
+        working-directory: frontend
+
+      - name: React PoC contract and harvest guard tests (when present)
+        run: |
+          if [ -f frontend/package.json ]; then
+            files=""
+            [ -f tests/test_model_react_poc_v1.py ] && files="$files tests/test_model_react_poc_v1.py"
+            [ -f tests/test_model_react_source_harvest_v1.py ] && files="$files tests/test_model_react_source_harvest_v1.py"
+            if [ -n "$files" ]; then
+              python -m pytest -q $files --junitxml=artifacts/react-poc-contract-results.xml
+            fi
+          fi
             python -m pytest -q tests/test_model_react_poc_v1.py tests/test_model_react_source_harvest_v1.py \
               --junitxml=artifacts/react-poc-contract-results.xml
           fi
