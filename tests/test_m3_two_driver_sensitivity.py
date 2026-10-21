@@ -542,7 +542,7 @@ def _checked_git(*args):
 
 
 def reviewed_ci_workflow_candidate(path):
-    """Exact-path, exact-blob recognition of the two reviewed CI workflow states (never a ``.github/`` exception).
+    """Exact-path, exact-blob recognition of the reviewed CI workflow states (never a ``.github/`` exception).
 
     RC-2 candidate: the historical two-line budget change over the RC-2 base. RC-5 successor: the pinned owner-authorised budget workflow, accepted only
     when the RC-3 reference is independently verified at its fixed blob, HEAD and the worktree are both the fixed RC-5 blob, and the existing RC-5
@@ -568,15 +568,18 @@ def reviewed_ci_workflow_candidate(path):
             and rc2_workflow_delta_valid(baseline.stdout, current_path.read_text(encoding="utf-8"))):
         return True
     from tests.test_rc3_integration_inventory import (
-        INTEGRATION_HEAD, RC3_CI_WORKFLOW_BLOB, RC5_CI_WORKFLOW_BLOB, rc5_workflow_successor_violations,
+        CI200_WORKFLOW_BLOB, INTEGRATION_HEAD, RC3_CI_WORKFLOW_BLOB, RC5_CI_WORKFLOW_BLOB,
+        current_workflow_chain_violations,
     )
     rc3 = subprocess.run(["git", "show", f"{INTEGRATION_HEAD}:{path}"], capture_output=True, text=True)
+    # RC-5 successor (historical) or CI-200M successor (current): exact RC-3 reference, exact pinned blob at HEAD and in the worktree, and the
+    # whole RC-3 -> RC-5 -> CI-200M chain verified by content (no other value, no ``.github/`` exception).
     return (
         rc3.returncode == 0
         and _checked_git("rev-parse", f"{INTEGRATION_HEAD}:{path}") == RC3_CI_WORKFLOW_BLOB
-        and _checked_git("rev-parse", f"HEAD:{path}") == RC5_CI_WORKFLOW_BLOB
-        and _checked_git("hash-object", path) == RC5_CI_WORKFLOW_BLOB
-        and not rc5_workflow_successor_violations(rc3.stdout, current_path.read_text(encoding="utf-8"))
+        and _checked_git("rev-parse", f"HEAD:{path}") in (RC5_CI_WORKFLOW_BLOB, CI200_WORKFLOW_BLOB)
+        and _checked_git("hash-object", path) == _checked_git("rev-parse", f"HEAD:{path}")
+        and not current_workflow_chain_violations(rc3.stdout, current_path.read_text(encoding="utf-8"))
     )
 
 
