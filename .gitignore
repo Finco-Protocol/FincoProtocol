@@ -77,3 +77,4 @@ tools/ui/node_modules/
 # static/react/finco-react.{js,css}.
 frontend/node_modules/
 frontend/dist/
+frontend/dist-transfer/
