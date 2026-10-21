@@ -19,11 +19,7 @@ SELECTIONS = {
                  "tests/test_yield_browser.py", "-k", "not test_api_b04_placeholders_not_links"],
     "import": ["tests/test_model_ai_import_browser_c.py", "tests/test_model_import_v2_browser.py",
                "tests/test_model_import_excel_migration_browser.py", "tests/test_model_wf09_capex_profile_browser.py"],
-    "grid": ["tests/test_model_hybrid_inputs_grid_routes.py", "tests/test_model_hybrid_inputs_grid_browser.py",
-             # UX-01 Correction A (additive): the React PoC Chromium acceptance rides
-             # the existing grid role — same server/browser fixtures, real canonical
-             # Save/CAS flows; no new role, no weakened or replaced selection.
-             "tests/test_model_react_poc_browser_acceptance.py"],
+    "grid": ["tests/test_model_hybrid_inputs_grid_routes.py", "tests/test_model_hybrid_inputs_grid_browser.py"],
     "q4": ["tests/test_model_q4_browser.py"],
     "consolidation": ["tests/test_model_workspace_consolidation_browser.py"],
 }
