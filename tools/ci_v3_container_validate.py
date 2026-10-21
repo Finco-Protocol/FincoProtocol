@@ -35,6 +35,8 @@ def make_subset(source_repo, modules, destination):
     git = ["git", "-C", str(destination), "-c", "user.name=ci", "-c", "user.email=ci@invalid"]
     existing = {p.stem for p in (destination / "tests").glob("test_*.py")}
     keep, pending = set(), list(modules)
+    for helper in (p for p in (destination / "tests").rglob("*.py") if not p.name.startswith("test_")):  # helpers import test modules too
+        pending += [f"tests/{n}.py" for n in set(re.findall(r"test_\w+", helper.read_text(encoding="utf-8", errors="replace"))) & existing]
     while pending:
         name = pending.pop()
         if name in keep:
