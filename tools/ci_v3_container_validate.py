@@ -23,30 +23,28 @@ from tools.ci_v3_real_contract import file_sha
 from tools.ci_v3_schema import canonical_bytes, read_json, require, seal, write_json
 
 RUN, ATTEMPT = 123, 2
+WORKFLOW = (Path(__file__).resolve().parents[1] / "docs/ci_v3/phase3b/ci_v3_shadow.yml").read_bytes()
 REVIEW = "BOUNDED LOCAL CONTAINER VALIDATION ONLY - not an owner isolation approval"
 
 
 def make_subset(source_repo, modules, destination):
-    """Commit a derived project containing only the named test modules plus every non-test helper."""
-    destination = Path(destination); destination.mkdir(parents=True)
-    archive_bytes = subprocess.check_output(["git", "-C", str(source_repo), "archive", "--format=tar", "HEAD"])
-    subprocess.run(["tar", "-x", "-C", str(destination)], input=archive_bytes, check=True)
+    """Commit a derived project (full Git history kept) containing only the named test modules,
+    every test module referenced by name from them, and every non-test helper."""
+    destination = Path(destination)
+    subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(source_repo), str(destination)], check=True)
+    git = ["git", "-C", str(destination), "-c", "user.name=ci", "-c", "user.email=ci@invalid"]
+    existing = {p.stem for p in (destination / "tests").glob("test_*.py")}
     keep, pending = set(), list(modules)
-    while pending:  # test modules import other test modules; keep the transitive closure (they become part of the subset)
+    while pending:
         name = pending.pop()
         if name in keep:
             continue
         keep.add(name)
-        text = (destination / name).read_text(encoding="utf-8")
-        for found in re.findall(r"(?:from|import)\s+tests\.(test_\w+)", text) + re.findall(r"from\s+tests\s+import\s+(test_\w+)", text):
-            if (destination / "tests" / (found + ".py")).is_file():
-                pending.append(f"tests/{found}.py")
+        for found in set(re.findall(r"test_\w+", (destination / name).read_text(encoding="utf-8"))) & existing:
+            pending.append(f"tests/{found}.py")
     for path in (destination / "tests").glob("test_*.py"):
         if path.relative_to(destination).as_posix() not in keep:
             path.unlink()
-    require({p.relative_to(destination).as_posix() for p in (destination / "tests").glob("test_*.py")} == keep, "subset module missing")
-    git = ["git", "-C", str(destination), "-c", "user.name=ci", "-c", "user.email=ci@invalid"]
-    subprocess.run(["git", "init", "-q", str(destination)], check=True)
     subprocess.run([*git, "add", "-A"], check=True); subprocess.run([*git, "commit", "-q", "-m", "bounded validation subset"], check=True)
     return destination
 
@@ -59,7 +57,7 @@ def build_api(root, payloads):
     api.data[prefix + "/actions/workflows/77"] = {"id": 77, "path": root["workflow_path"]}
     api.data[prefix + "/git/commits/" + root["source"]["head"]] = {"sha": root["source"]["head"], "tree": {"sha": root["source"]["tree"]}}
     api.data[prefix + "/git/commits/" + root["controller_head"]] = {"sha": root["controller_head"], "tree": {"sha": root["controller_tree"]}}
-    api.contents[(repo, root["workflow_head"], root["workflow_path"])] = b"name: local container validation fixture\n"
+    api.contents[(repo, root["workflow_head"], root["workflow_path"])] = WORKFLOW
     jobs, artifacts, anchors = [], [], {}
     for i, (name, path) in enumerate(payloads.items()):
         data = archive(path); api.payloads[10 + i] = data
@@ -89,7 +87,7 @@ def validate(project, image, work):
     root = {"schema": 3, "kind": "ci-v3-hosted-admission", "enabled": True, "review_reference": REVIEW,
         "owner_decisions": ["Financial", "Security", "CI"], "experiment_pairs": 1, "workers": 3, "run_id": RUN, "run_attempt": ATTEMPT,
         "repository": inventory["repository"], "source": inventory["source"], "controller_head": "a" * 40, "controller_tree": "b" * 40,
-        "workflow_head": "c" * 40, "workflow_path": ".github/workflows/ci_v3_shadow.yml", "workflow_sha256": sha(b"x"), "image": image,
+        "workflow_head": "c" * 40, "workflow_path": ".github/workflows/ci_v3_shadow.yml", "workflow_sha256": sha(WORKFLOW), "image": image,
         "pr_number": None, "merge_proof": {"mode": "main-head", "merge_sha": None, "merge_tree": None}, "controller_files_sha256": {},
         "bundle": {"repository": inventory["repository"], "revision": "e" * 40,
                    "files": {n: {"path": n + ".json", "sha256": sha(canonical_bytes(v))} for n, v in bundle.items()}}}
