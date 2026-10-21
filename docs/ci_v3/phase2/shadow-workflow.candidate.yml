@@ -1,0 +1,129 @@
+# INERT REVIEW PROPOSAL. This path is outside .github/workflows/.
+# Admission deliberately fails. No hosted execution is approved by this file.
+name: FINCO V3 shadow candidate (NON-AUTHORITATIVE)
+on:
+  workflow_dispatch:
+    inputs:
+      tested-head:
+        description: Exact independently approved immutable test commit
+        type: string
+        required: true
+      approval-bundle-sha256:
+        description: Independently accepted shadow-only admission bundle digest
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: ci-v3-shadow-candidate-${{ github.run_id }}
+  cancel-in-progress: false
+jobs:
+  authorization-review-required:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Closed until separate exact-content successor and hosted transport review
+        shell: bash
+        run: |
+          echo 'CANDIDATE ONLY. No accepted hosted admission/controller bundle exists.'
+          echo 'User-supplied inputs do not establish owner approval.'
+          exit 78
+
+  trusted-collection-plan:
+    needs: authorization-review-required
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Trusted bootstrap and complete collection contract
+        shell: bash
+        run: |
+          # Later exact-content proposal must bind an approved controller revision,
+          # source HEAD/tree and synthetic merge tree from independent event data,
+          # approved complete inventory/policy, environment and evaluator identity.
+          # Real collection must fail on every unknown/missing node before planning.
+          # Never execute a PR-supplied planner as its own admission authority.
+          echo 'Hosted immutable bootstrap/collection binding requires separate review.'
+          exit 78
+      - name: Preserve complete collection and partition evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shadow-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: shadow-plan/
+          if-no-files-found: error
+          retention-days: 14
+
+  pytest-worker:
+    needs: trusted-collection-plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: [worker-0, worker-1, worker-2]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: shadow-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: trusted-plan/
+      - name: Real worker controller contract (not a local full-suite command)
+        shell: bash
+        env:
+          SHADOW_WORKER: ${{ matrix.worker }}
+          SHADOW_RUN: ${{ github.run_id }}
+          SHADOW_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          # Use isolated runners, temp paths/databases and identical resolved deps.
+          # Observe actual process exit and bounded process-tree cleanup externally.
+          # Record adapter phases, native/V3 JUnit, process records and source proof.
+          # The local prototype refuses FINCO execution and caps workers at 120s.
+          # A separately approved hosted controller must bind the 4800s budget,
+          # 240s exit grace, run identity and immutable transport receipts.
+          echo 'Hosted controller budget/transport binding requires separate review.'
+          exit 78
+      - name: Upload original worker evidence even after failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shadow-${{ matrix.worker }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: shadow-worker/
+          if-no-files-found: error
+          retention-days: 14
+
+  independent-shadow-evidence:
+    if: always()
+    needs: [authorization-review-required, trusted-collection-plan, pytest-worker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Independent receipt/lineage and complete-node verification contract
+        shell: bash
+        env:
+          AUTH_RESULT: ${{ needs.authorization-review-required.result }}
+          COLLECTION_RESULT: ${{ needs.trusted-collection-plan.result }}
+          WORKER_RESULT: ${{ needs.pytest-worker.result }}
+        run: |
+          test "$AUTH_RESULT" = success
+          test "$COLLECTION_RESULT" = success
+          test "$WORKER_RESULT" = success
+          # Resolve job/attempt status and immutable artifact digests independently
+          # from GitHub Actions metadata before accepting transferred receipts.
+          # No mixed attempts, absent workers, changed environment or stale plans.
+          # Success is an advisory shadow comparison; NEVER merge acceptance.
+          echo 'External artifact-anchor binding requires separate exact review.'
+          exit 78
+      - name: Retain independent shadow proof or explicit rejection
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shadow-comparison-${{ github.run_id }}-${{ github.run_attempt }}
+          path: shadow-comparison/
+          if-no-files-found: error
+          retention-days: 14
