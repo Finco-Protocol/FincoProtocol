@@ -1,0 +1,19 @@
+{
+  "base": "5996453b8d5bbfaa48bc06922fc6963cf94d2f84",
+  "state": "EXACT_CONTENT_SUCCESSOR_PROPOSAL_NOT_RELEASED",
+  "financial_owner_approved": false,
+  "independent_content_accepted": false,
+  "release_approved": false,
+  "quarterly_activation": false,
+  "joint_solver_activation": false,
+  "protected_files": {
+    "financial_engine/financing/project.py": {
+      "predecessor": "2e18a6e7c8ddfd85929d9b1906f91dd8858d0044",
+      "candidate": "5d3e42863abddf0a75a05e6d7688aa76a6d41c50"
+    },
+    "financial_engine/financing/speculative.py": {
+      "predecessor": null,
+      "candidate": "9d85dad49bd1014fa7d864fab6bd29649d214cd7"
+    }
+  }
+}

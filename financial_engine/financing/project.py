@@ -35,6 +35,7 @@ from financial_engine.financing.stack import (
 )
 from financial_engine.adapters.project_inputs import from_project_inputs
 from financial_engine.orchestrator import run_operating_model, run_senior_debt_model
+from financial_engine.financing.speculative import begin_iteration, financing_execution_scope
 from financial_engine.shl.construction import (
     build_shl_construction_draw_schedule,
     compute_shl_construction_schedule,
@@ -933,6 +934,7 @@ def _run_with_construction_idc(
     )
 
 
+@financing_execution_scope
 def run_project_financing_model(
     project_inputs: ProjectInputs,
     *,
@@ -1225,7 +1227,54 @@ def run_project_financing_model(
                     period_financing_income=_u2_period_financing_income,
                 ),
             )
-        capacity_result = run_senior_debt_model(capacity_model_input)
+        def _funded_input():
+            funded_inputs = replace(
+                project_inputs,
+                financing=replace(fin, clean_shl_principal_keur=candidate_shl),
+            )
+            funded_model_input = build_senior_debt_model_input_from_project_inputs(
+                funded_inputs,
+                source_id=source_id,
+                baseline_commit_sha=baseline_commit_sha,
+            )
+            if _iter_draw_schedule is not None and funded_model_input.shareholder_loan is not None:
+                funded_model_input = replace(
+                    funded_model_input,
+                    shareholder_loan=replace(
+                        funded_model_input.shareholder_loan,
+                        construction_periods_override=_iter_draw_schedule,
+                        construction_period_end_dates_override=(
+                            tuple(row[1] for row in _typed_shl_context.period_dates)
+                            if _typed_shl_context is not None
+                            else None
+                        ),
+                        post_construction_principal_contribution_keur=(
+                            _iter_post_construction_principal
+                        ),
+                    ),
+                )
+            if _u2_period_financing_income and funded_model_input.tax is not None:
+                funded_model_input = replace(
+                    funded_model_input,
+                    tax=replace(
+                        funded_model_input.tax,
+                        period_financing_income=_u2_period_financing_income,
+                    ),
+                )
+            return funded_model_input
+
+        def _strict_input(funded_model_input):
+            return replace(funded_model_input, senior_debt_policy=replace(
+                funded_model_input.senior_debt_policy,
+                convergence_tolerance_keur=min(
+                    funded_model_input.senior_debt_policy.convergence_tolerance_keur,
+                    convergence_tolerance_keur),
+                convergence_relative_tolerance=0.0,
+            ))
+
+        _evaluation = begin_iteration(capacity_model_input, _funded_input,
+                                      _strict_input, run_senior_debt_model)
+        capacity_result = _evaluation.solve("capacity", capacity_model_input)
         if capacity_result.senior_debt is None:
             raise RuntimeError("G2A DSCR capacity result is unavailable")
         authoritative_dscr_capacity = capacity_result.senior_debt.debt_size_keur
@@ -1236,45 +1285,8 @@ def run_project_financing_model(
         else:
             expected_final_senior = min(authoritative_dscr_capacity, gearing_capacity)
 
-        funded_inputs = replace(
-            project_inputs,
-            financing=replace(fin, clean_shl_principal_keur=candidate_shl),
-        )
-        funded_model_input = build_senior_debt_model_input_from_project_inputs(
-            funded_inputs,
-            source_id=source_id,
-            baseline_commit_sha=baseline_commit_sha,
-        )
-        # The adapter now correctly maps gearing_basis_mode=TOTAL_PROJECT_USES to
-        # COMBINED_MINIMUM with the canonical eligible cost and maximum_gearing.
-        # No downstream patch is required here.
-        # Fix 3 canonical: inject construction_periods_override into funded model input.
-        if _iter_draw_schedule is not None and funded_model_input.shareholder_loan is not None:
-            funded_model_input = replace(
-                funded_model_input,
-                shareholder_loan=replace(
-                    funded_model_input.shareholder_loan,
-                    construction_periods_override=_iter_draw_schedule,
-                    construction_period_end_dates_override=(
-                        tuple(row[1] for row in _typed_shl_context.period_dates)
-                        if _typed_shl_context is not None
-                        else None
-                    ),
-                    post_construction_principal_contribution_keur=(
-                        _iter_post_construction_principal
-                    ),
-                ),
-            )
-        # U2 Phase L: inject cash-reserve financing income into funded tax input
-        if _u2_period_financing_income and funded_model_input.tax is not None:
-            funded_model_input = replace(
-                funded_model_input,
-                tax=replace(
-                    funded_model_input.tax,
-                    period_financing_income=_u2_period_financing_income,
-                ),
-            )
-        model_result = run_senior_debt_model(funded_model_input)
+        funded_model_input = _evaluation.funded()
+        model_result = _evaluation.solve("funded", funded_model_input)
         if (
             fin.debt_sizing_mode != DebtSizingMode.GEARING_CAP
             and _senior_service_budget_excess(model_result, funded_model_input)
@@ -1282,14 +1294,9 @@ def run_project_financing_model(
         ):
             # Re-solve only a premature numeric stop. Reuse the same kernel and
             # economic inputs; its accuracy must meet the existing G2A contract.
-            funded_model_input = replace(funded_model_input, senior_debt_policy=replace(
-                funded_model_input.senior_debt_policy,
-                convergence_tolerance_keur=min(
-                    funded_model_input.senior_debt_policy.convergence_tolerance_keur,
-                    convergence_tolerance_keur),
-                convergence_relative_tolerance=0.0,
-            ))
-            model_result = run_senior_debt_model(funded_model_input)
+            _evaluation.strict()
+            funded_model_input = _evaluation.strict_input(funded_model_input)
+            model_result = _evaluation.solve("strict", funded_model_input)
             if _senior_service_budget_excess(model_result, funded_model_input) > convergence_tolerance_keur:
                 raise RuntimeError("G2A_SENIOR_SERVICE_EXCEEDS_BANK_BUDGET")
         senior = model_result.senior_debt
