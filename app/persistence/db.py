@@ -6,6 +6,7 @@ Runtime calculations remain authoritative in the model layer.
 """
 
 import os
+import threading
 from contextlib import contextmanager
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
@@ -14,20 +15,161 @@ DB_PATH = os.getenv("FINCO_DB_PATH", os.path.join(DATA_DIR, "finco_runs.db"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
+# V8-A: schema checks are bypassed ONLY after this process has completed
+# the migrations on this same database file and observed its SQLite DDL version.
+# Bump this constant when changing _init_schema without changing its DDL.
+_SCHEMA_CONTRACT_VERSION = 1
+_SCHEMA_GUARD_LOCK = threading.RLock()
+_SCHEMA_GUARD_SEEN = {}
+
+
+def _database_file_identity():
+    """Use file identity, never pathname alone; fail closed when uncertain.
+
+    The optional birthtime distinguishes recycled inodes on filesystems which
+    expose it. SQLite's on-disk schema generation independently detects a new
+    empty database, a restored older database, and external DDL.
+    """
+    if not DB_PATH or DB_PATH == ":memory:" or str(DB_PATH).startswith("file:"):
+        return None
+    try:
+        stat = os.stat(DB_PATH)
+        return (
+            os.getpid(), os.path.realpath(DB_PATH), stat.st_dev, stat.st_ino,
+            getattr(stat, "st_birthtime_ns", None),
+        )
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def _schema_generation(conn):
+    """SQLite's durable schema cookie; changes on DDL in another process."""
+    return int(conn.execute("PRAGMA schema_version").fetchone()[0])
+
+
+def _schema_signature(conn):
+    """Current SQLite DDL inventory catches backup restore even if cookies match.
+
+    A read-only, single-catalog query replaces dozens of per-connection DDL
+    statements and table_info probes. Unlike mtime/ctime it is insensitive to
+    ordinary Run or Working Copy data writes.
+    """
+    return tuple(
+        (row[0], row[1], row[2])
+        for row in conn.execute(
+            "SELECT type, name, sql FROM sqlite_master "
+            "WHERE type IN ('table', 'index') ORDER BY type, name"
+        )
+    )
+
+
+def _ensure_schema_ready(conn):
+    """Process-local schema check, with cross-process transactional DDL.
+
+    Each process performs the full migration at least once per file identity;
+    the local cache holds only a successfully committed schema generation.
+    After an external schema change, the generation differs and the full
+    migration is repeated. Uncertain identities always migrate. No table,
+    tenant metadata, user_version, or backup format is added or modified.
+    """
+    identity = _database_file_identity()
+    with _SCHEMA_GUARD_LOCK:
+        generation = _schema_generation(conn)
+        # Inode reuse, in-place backup restoration and a copied database can
+        # preserve a schema cookie. Check the actual SQLite catalog as well.
+        signature = _schema_signature(conn)
+        if (identity is not None
+                and _SCHEMA_GUARD_SEEN.get(identity)
+                == (_SCHEMA_CONTRACT_VERSION, generation, signature)):
+            return
+        try:
+            # BEGIN IMMEDIATE serialises first-boot DDL across processes.
+            # _init_schema never commits inside this transaction.
+            conn.execute("BEGIN IMMEDIATE")
+            _init_schema(conn, commit=False)
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            if identity is not None:
+                _SCHEMA_GUARD_SEEN.pop(identity, None)
+            raise
+
+        current_identity = _database_file_identity()
+        if identity is not None and identity == current_identity:
+            current_generation = _schema_generation(conn)
+            if len(_SCHEMA_GUARD_SEEN) >= 128:
+                _SCHEMA_GUARD_SEEN.clear()
+            _SCHEMA_GUARD_SEEN[identity] = (
+                _SCHEMA_CONTRACT_VERSION, current_generation, _schema_signature(conn)
+            )
+
+
+# Bounded, deadline-driven handling of the journal-mode switch (see _ensure_wal).
+_WAL_SWITCH_DEADLINE_S = 30.0
+_WAL_SWITCH_BACKOFF_S = (0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.25)
+
+
+def _ensure_wal(conn):
+    """Put the database into WAL mode without failing a concurrent first boot.
+
+    WAL is a persistent property of the database file, so only the FIRST connection ever needs to
+    switch it; every later connection merely reads it. ``PRAGMA journal_mode=WAL`` takes an
+    exclusive lock for the switch and SQLite can return SQLITE_BUSY at once, without consulting
+    the busy handler, when other connections of a simultaneous first boot hold locks. So:
+
+    1. read the mode (no write, no exclusive lock) and return when it is already WAL;
+    2. otherwise attempt the switch; on a genuinely transient ``database is locked`` re-read the mode
+       (another booting connection may have won the switch - then we are done) and retry with a short,
+       bounded backoff until a fixed deadline;
+    3. any other error, or the deadline, is re-raised unchanged. Nothing is swallowed and WAL stays
+       mandatory: the function only returns once the database reports ``wal``.
+    """
+    import sqlite3
+    import time
+
+    def mode():
+        row = conn.execute("PRAGMA journal_mode").fetchone()
+        return str(row[0]).lower() if row else ""
+
+    deadline = time.monotonic() + _WAL_SWITCH_DEADLINE_S
+    attempt = 0
+    while True:
+        if mode() == "wal":
+            return
+        try:
+            row = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+            if row and str(row[0]).lower() == "wal":
+                return
+            raise sqlite3.OperationalError(f"journal_mode switch to WAL refused (reported {row[0] if row else None!r})")
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                raise
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(_WAL_SWITCH_BACKOFF_S[min(attempt, len(_WAL_SWITCH_BACKOFF_S) - 1)])
+            attempt += 1
+
+
 def get_connection():
     """Return a fresh SQLite connection with schema ensured."""
     import sqlite3
 
     conn = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")
-    conn.execute("PRAGMA foreign_keys=ON")
-    _init_schema(conn)
-    return conn
+    try:
+        # Connection-local settings remain mandatory on EVERY new connection. The busy timeout is set first so that
+        # every following statement - including the journal-mode read - already honours it.
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=30000")
+        _ensure_wal(conn)
+        conn.execute("PRAGMA foreign_keys=ON")
+        _ensure_schema_ready(conn)
+        return conn
+    except BaseException:
+        conn.close()
+        raise
 
 
-def _init_schema(conn):
+def _init_schema(conn, *, commit=True):
     """Run schema creation on an open connection (idempotent)."""
     conn.execute(
         """
@@ -360,7 +502,8 @@ def _init_schema(conn):
         "CREATE INDEX IF NOT EXISTS idx_model_run_history_project"
         " ON model_run_history(user_id, project_id, ran_at DESC, history_id DESC)"
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def _ensure_column(conn, table_name: str, column_name: str, column_sql: str) -> None:

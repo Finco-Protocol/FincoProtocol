@@ -265,7 +265,12 @@ def get_institutional_validation(user_id: str, project_id: str) -> Tuple[str, di
     accounting/debt/cash integrity of the Last Run. WC state is irrelevant.
     The machine authority key stays ``MODEL_VALIDATION`` for API stability.
     """
-    pr, ws = _load_workspace(user_id, project_id)
+    # Validation is reference-only: its result does not depend on mutable
+    # Working Copy state. Preserve tenant-scoped project access without the
+    # otherwise unused workspace query and its separate DB connection.
+    from app.persistence.projects_repository import get_project
+
+    pr = get_project(project_id, user_id)
     if pr is None:
         return STATE_UNAVAILABLE, {"reason": "PROJECT_NOT_FOUND"}
 
