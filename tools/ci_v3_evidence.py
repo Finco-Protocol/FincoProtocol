@@ -18,8 +18,8 @@ import tarfile
 from tools.ci_v3_classify import load_attempts
 from tools.ci_v3_schema import ContractError, check_seal, read_json, require, seal, write_json
 
-EVIDENCE_DIR = "docs/ci_v3/phase3b/evidence/"
-ALLOWED_FOLLOWUP = (EVIDENCE_DIR, "docs/ci_v3/phase3b/README.md")
+EVIDENCE_DIR = "docs/ci_v3/phase3c/evidence/"
+ALLOWED_FOLLOWUP = (EVIDENCE_DIR, "docs/ci_v3/phase3c/README.md", "docs/ci_v3/phase3b/README.md")
 HASHED_TOOLS = "tools/ci_v3_*.py"
 # Evidence executed on an EARLIER tree may be carried to a later tree only if the later tree differs by CI-V3-internal
 # additions and documentation. Files that run or describe the execution (probe, container, adapter, schema) never qualify.

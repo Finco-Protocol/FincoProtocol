@@ -31,13 +31,13 @@ def make_run(path, label, kind="target", tree=None, image="sha256:img", historic
 
 @pytest.fixture
 def world(tmp_path):
-    repo = tmp_path / "repo"; (repo / "tools").mkdir(parents=True); (repo / "docs/ci_v3/phase3b/evidence").mkdir(parents=True)
+    repo = tmp_path / "repo"; (repo / "tools").mkdir(parents=True); (repo / ev.EVIDENCE_DIR).mkdir(parents=True)
     (repo / "tools/ci_v3_x.py").write_text("X = 1\n"); (repo / "app.py").write_text("A = 1\n")
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     git(repo, "add", "-A"); git(repo, "commit", "-qm", "source")
     head = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     tree = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"], text=True).strip()
-    evidence = repo / "docs/ci_v3/phase3b/evidence"
+    evidence = repo / ev.EVIDENCE_DIR
     make_run(tmp_path / "run", "exact", tree=tree)
     ev.pack_attempt(tmp_path / "run", evidence / "attempts/exact")
     image_dir = tmp_path / "image"; image_dir.mkdir(); write_json(image_dir / "image.json", IMAGE)
