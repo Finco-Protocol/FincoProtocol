@@ -6067,3 +6067,7 @@ router.include_router(portfolio_router)
 # Run & Scenario Workspace V3: one read-only GET route, no Run writer or schema changes.
 from app.v2.run_workspace_v3_router import router as run_workspace_v3_router
 router.include_router(run_workspace_v3_router)
+
+# Isolated Credit V5 GET; no workbook, Run or existing V3/V4 route changes.
+from app.v2.credit_v5_router import router as credit_v5_router
+router.include_router(credit_v5_router)
