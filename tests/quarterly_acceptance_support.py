@@ -253,3 +253,47 @@ def senior_rate(pi) -> Decimal:
 
 def day_count_basis(pi) -> int:
     return 360 if pi.financing.senior_debt_interest_config.day_count.name == "ACT_360" else 365
+
+
+def xirr_independent(dates, flows, lo=-0.95, hi=10.0) -> float:
+    """ACT/365 XIRR by float bisection (fast; accurate to ~1e-13, far inside the 1e-7 return tolerance). Needs one sign change."""
+    t0 = dates[0]
+    years = [(x - t0).days / 365.0 for x in dates]
+    values = [float(f) for f in flows]
+
+    def npv(rate):
+        return sum(v / (1.0 + rate) ** y for v, y in zip(values, years))
+
+    f_lo = npv(lo)
+    assert f_lo * npv(hi) < 0, "XIRR bracket"
+    for _ in range(200):
+        mid = (lo + hi) / 2.0
+        f_mid = npv(mid)
+        if f_lo * f_mid <= 0:
+            hi = mid
+        else:
+            lo, f_lo = mid, f_mid
+    return (lo + hi) / 2.0
+
+
+def matrix_report() -> str:
+    """Markdown evidence table for the report (python tests/quarterly_acceptance_support.py)."""
+    lines = ["| Scenario | Group | COD | Rows 6/6 | Rows 3/3 | End | Binding | Senior 6/6 | Senior 3/3 (Δ%) | Min DSCR 3/3 | Sponsor XIRR 6/6 | 3/3 | Δ pp |",
+             "|---|---|---|---:|---:|---|---|---:|---:|---:|---:|---:|---:|"]
+    for scn in SCENARIOS:
+        pi, six = run(scn, "S")
+        _, quarterly = run(scn, "Q")
+        s_ops, q_ops = operating_periods(six), operating_periods(quarterly)
+        size_s = six.g2c_result.financing_result.final_senior_commitment_keur
+        size_q = quarterly.g2c_result.financing_result.final_senior_commitment_keur
+        dscr = min(x for x in model_of(quarterly).senior_debt.base_dscr if x is not None)
+        xs, xq = six.g2c_result.total_sponsor_xirr, quarterly.g2c_result.total_sponsor_xirr
+        lines.append(f"| {scn.id} | {scn.group} | {pi.info.cod_date} | {len(s_ops)} | {len(q_ops)} | {q_ops[-1].period_end} | "
+                     f"{model_of(quarterly).senior_debt.binding_constraint} | {size_s:,.1f} | {size_q:,.1f} ({(size_q / size_s - 1) * 100:+.2f}) | {dscr:.3f} | "
+                     f"{xs * 100:.2f}% | {xq * 100:.2f}% | {(xq - xs) * 100:+.2f} |")
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.stdout.write(matrix_report() + "\n")
