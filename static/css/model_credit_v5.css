@@ -1,0 +1,13 @@
+.cv5{letter-spacing:0}
+.cv5-form,.cv5-run{padding:16px 0;border-bottom:1px solid var(--fo-line,#d1d5db)}
+.cv5 h2{font-size:1.05rem;margin:12px 0 8px}
+.cv5 h3{font-size:.95rem}
+.cv5 h2,.cv5 p{overflow-wrap:anywhere}
+.cv5-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;margin:12px 0}
+.cv5-inputs label{display:flex;flex-direction:column;gap:4px;font-size:.85rem}
+.cv5-inputs input{width:100%;box-sizing:border-box;padding:6px;border:1px solid var(--fo-line,#9ca3af);border-radius:4px;color:inherit;background:var(--fo-surface,#fff)}
+.cv5 details{padding:12px 0;overflow-wrap:anywhere}
+.cv5 summary{cursor:pointer}
+.cv5 .cd-scroll{margin:8px 0}
+.cv5 dl{display:grid;grid-template-columns:minmax(100px,1fr) minmax(100px,1fr);gap:4px}
+.cv5 dd{margin:0;font-variant-numeric:tabular-nums}
