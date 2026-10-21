@@ -366,6 +366,7 @@ def _run_with_construction_idc(
     outer_tolerance_keur: float,
     outer_max_iterations: int,
     _u2_period_financing_income: "tuple | None" = None,
+    _v9_joint=None,
 ) -> "ProjectFinancingResult":
     """Outer G2A / construction IDC fixed point for construction_financing.enabled=True.
 
@@ -584,6 +585,11 @@ def _run_with_construction_idc(
         # unfunded_uses_keur is diagnostic; outer loop drives it to zero at convergence.
         stage_b2_prov = run_stage_b2_provisional(runtime_cfg)
         new_financing = stage_b2_prov.capitalized_financing_costs
+        _v9_plain = True
+        if _v9_joint is not None:
+            project_inputs, new_financing, _v9_plain = _v9_joint.propose(
+                new_financing, inner_result)
+            fin = project_inputs.financing
         _iteration_shl_context = _typed_construction_shl_context(
             construction=cf,
             financing=fin,
@@ -634,7 +640,9 @@ def _run_with_construction_idc(
         prev_uses = inner_result.project_uses.total_project_uses_keur
         prev_unfunded = stage_b2_prov.unfunded_uses_keur
 
-        if outer_residual <= outer_tolerance_keur:
+        _v9_ready = _v9_joint is None or _v9_joint.observe(
+            inner_result, outer_iteration)
+        if outer_residual <= outer_tolerance_keur and _v9_plain and _v9_ready:
             break
     else:
         raise RuntimeError(
@@ -906,6 +914,9 @@ def _run_with_construction_idc(
         orig_capex, construction_result,
         developer_uses=resolve_developer_project_uses(project_inputs),
     )
+
+    if _v9_joint is not None:
+        _v9_joint.final_inputs = project_inputs
 
     return ProjectFinancingResult(
         project_model_result=inner_result.project_model_result,

@@ -199,6 +199,7 @@ def run_project_shareholder_waterfall_model(
     *,
     source_id: str = "",
     baseline_commit_sha: str = "",
+    _v9_financing=None,
 ) -> CovenantGatedWaterfallResult:
     """Compute G2C covenant-gated shareholder waterfall from G2A financing results.
 
@@ -417,12 +418,16 @@ def run_project_shareholder_waterfall_model(
         nonlocal _last_financing_key, _last_financing
         if _last_financing is not None and fi_inputs == _last_financing_key:
             return _last_financing
-        result = run_project_financing_model(
-            project_inputs,
-            source_id=source_id,
-            baseline_commit_sha=baseline_commit_sha,
-            _u2_period_financing_income=fi_inputs if fi_inputs else None,
-        )
+        if _v9_financing is None:
+            result = run_project_financing_model(
+                project_inputs,
+                source_id=source_id,
+                baseline_commit_sha=baseline_commit_sha,
+                _u2_period_financing_income=fi_inputs if fi_inputs else None,
+            )
+        else:
+            result = _v9_financing.consume(
+                project_inputs, source_id, baseline_commit_sha, fi_inputs)
         _last_financing_key, _last_financing = fi_inputs, result
         return result
 

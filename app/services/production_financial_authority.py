@@ -485,6 +485,12 @@ def run_clean_production(
             detail=f"{type(exc).__name__}: {exc}",
         ) from exc
 
+    return _assemble_clean_run(
+        g2c, effective_inputs, project_inputs, scenario, decision, policy_evidence)
+
+
+def _assemble_clean_run(g2c, effective_inputs, project_inputs, scenario, decision, policy_evidence):
+    """Shared canonical maturity/statement/return assembly; not an admission grant."""
     _require_settled_senior_maturity(g2c, effective_inputs)
 
     metadata = decision.to_metadata() | {
