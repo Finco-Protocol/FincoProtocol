@@ -1,0 +1,306 @@
+{
+ "authority": "evidence-proposal-unreviewed",
+ "records": {
+  "tests/test_api_v1_radar.py::test_a02_invalid_uid_returns_400[]": {
+   "reason": "empty uid causes routing issue, tested elsewhere",
+   "status": "skipped"
+  },
+  "tests/test_ci_v3_hosted_isolation.py::test_no_windows_fallback_for_hosted_execution": {
+   "reason": "This negative verifies the non-Linux refusal",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_equal_timestamps_keep_a_stable_deterministic_order": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_chart_is_oldest_first_for_the_same_points": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_helper_does_not_mutate_points_or_input_array": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_order_is_independent_of_input_order_for_distinct_times[permutation0]": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_order_is_independent_of_input_order_for_distinct_times[permutation1]": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_order_is_independent_of_input_order_for_distinct_times[permutation2]": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_order_is_independent_of_input_order_for_distinct_times[permutation3]": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_order_is_independent_of_input_order_for_distinct_times[permutation4]": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_order_is_independent_of_input_order_for_distinct_times[permutation5]": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_order_uses_canonical_timestamps_with_observed_at_fallback_and_missing_last": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_crypto_p0_product_reality_reset.py::test_history_table_is_newest_first_for_deliberately_shuffled_points": {
+   "reason": "node is not available",
+   "status": "skipped"
+  },
+  "tests/test_f08_opex_mobile_ux.py::test_opex_1280px_desktop_no_overflow_columns_visible": {
+   "reason": "playwright not installed",
+   "status": "skipped"
+  },
+  "tests/test_f08_opex_mobile_ux.py::test_opex_390px_editable_row_reachable": {
+   "reason": "playwright not installed",
+   "status": "skipped"
+  },
+  "tests/test_f08_opex_mobile_ux.py::test_opex_390px_no_document_overflow": {
+   "reason": "playwright not installed",
+   "status": "skipped"
+  },
+  "tests/test_model_credit_decision_v4_render.py::test_v4_rendered_panel_chromium_no_horizontal_page_overflow[1440]": {
+   "reason": "could not import 'playwright.sync_api': No module named 'playwright'",
+   "status": "skipped"
+  },
+  "tests/test_model_credit_decision_v4_render.py::test_v4_rendered_panel_chromium_no_horizontal_page_overflow[390]": {
+   "reason": "could not import 'playwright.sync_api': No module named 'playwright'",
+   "status": "skipped"
+  },
+  "tests/test_model_rc6_opex_profiles_ui.py::test_wf11_candidate_browser_real_chromium[1440]": {
+   "reason": "could not import 'playwright.sync_api': No module named 'playwright'",
+   "status": "skipped"
+  },
+  "tests/test_model_rc6_opex_profiles_ui.py::test_wf11_candidate_browser_real_chromium[390]": {
+   "reason": "could not import 'playwright.sync_api': No module named 'playwright'",
+   "status": "skipped"
+  },
+  "tests/test_model_trust_pack_ux.py::TestTrustPackBrowserAcceptance::test_trust_pack_browser_acceptance": {
+   "reason": "could not import 'playwright': No module named 'playwright'",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_active_scope_contract_is_valid": {
+   "reason": "Model V2 epic scope marker absent (retired or not started)",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_branch_changes_are_within_declared_scope": {
+   "reason": "scope marker absent",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_current_phase_freeze_state": {
+   "reason": "Model V2 epic scope marker absent (retired or not started)",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_future_analytics_authorization": {
+   "reason": "Model V2 epic scope marker absent (retired or not started)",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_future_finco_core_authorization": {
+   "reason": "Model V2 epic scope marker absent (retired or not started)",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_future_revenue_authorization": {
+   "reason": "Model V2 epic scope marker absent (retired or not started)",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_g_future_files_require_explicit_scope_authorization": {
+   "reason": "Model V2 epic scope marker absent (retired or not started)",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_permanent_hard_deny_is_code_level_and_tamper_proof": {
+   "reason": "Model V2 epic scope marker absent (retired or not started)",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_scope_authorizes_only_the_reviewed_engine_files": {
+   "reason": "Model V2 epic scope marker absent (retired or not started)",
+   "status": "skipped"
+  },
+  "tests/test_model_v2_governance.py::test_scope_declares_and_reaches_its_base": {
+   "reason": "Model V2 epic scope marker absent (retired or not started)",
+   "status": "skipped"
+  },
+  "tests/test_multi_source_evidence_v2_correction_a.py::test_unreachable_route_resolves_to_unavailable_not_a_permanent_placeholder": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_multi_source_evidence_v2_correction_a.py::test_with_jev_off_the_source_legs_route_is_fetched_and_rendered": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_multi_source_evidence_v2_correction_a.py::test_zero_binding_oracle_leg_with_a_persisted_row_reads_not_reviewed": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_multi_source_evidence_v2_correction_a.py::test_zero_binding_presentation_is_clear_not_loading_and_has_no_fake_zero": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_asset_back_link[desktop]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_asset_back_link[mobile]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_asset_detail_loads[generic_solar_reference-desktop]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_asset_detail_loads[generic_solar_reference-mobile]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_asset_detail_loads[generic_wind_reference-desktop]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_asset_detail_loads[generic_wind_reference-mobile]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_asset_json_endpoint": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_asset_json_unauthenticated_returns_401": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_asset_not_found_returns_404": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_index_asset_cards_present[desktop]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_index_asset_cards_present[mobile]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_index_loads[desktop]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_index_loads[mobile]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_index_nav_link_active[desktop]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_index_nav_link_active[mobile]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_index_shows_pipeline_banner[desktop]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_p5_browser_acceptance.py::test_verified_index_shows_pipeline_banner[mobile]": {
+   "reason": "playwright not installed \u2014 browser acceptance tests skipped",
+   "status": "skipped"
+  },
+  "tests/test_quarterly_acceptance_statements.py::test_year_end_financial_close_should_balance[solar-yearend]": {
+   "reason": "Q-F-02: shared statements code leaves a constant opening imbalance for a 30/31 December financial close (identical under 6/6); reproduction for the shared-engine owner, outside this workstream",
+   "status": "xfail"
+  },
+  "tests/test_rc7_institutional_reporting_v2.py::test_workbook_opens_in_libreoffice": {
+   "reason": "LibreOffice not installed",
+   "status": "skipped"
+  },
+  "tests/test_rc7_revenue_ppa_v3_economics.py::test_negative_nonfinite_and_mistyped_numeric_inputs_are_rejected[volume_share-None]": {
+   "reason": "None share is the merchant-residual spelling, not valid for a PPA (covered by schema tests)",
+   "status": "skipped"
+  },
+  "tests/test_rc7b_gate_r_authorization.py::test_interoperates_with_real_openssh": {
+   "reason": "ssh-keygen not installed",
+   "status": "skipped"
+  },
+  "tests/test_rc7c_frequency_reconciliation.py::test_per_model_year_flows_that_do_not_depend_on_the_ppa_are_identical[book_depreciation_keur-solar/2031-03-31/cm12/tenor=8]": {
+   "reason": "Senior size differs (timing-driven sizing): depreciation follows the financing-cost basis, reconciled in the sizing test",
+   "status": "skipped"
+  },
+  "tests/test_trust_readiness_registry.py::test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code": {
+   "reason": "trust pack not part of this diff",
+   "status": "skipped"
+  },
+  "tests/test_u2_2_returns_surface.py::test_returns_browser_acceptance_no_run_current_and_stale": {
+   "reason": "could not import 'playwright.sync_api': No module named 'playwright'",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_accepts_only_unambiguous_amounts": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[,5]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[--5]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[1,2,3]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[1,234]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[1.2.3]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[1.234,56]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[12 5]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[12,]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[1e3x]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[410 420 430]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[410\\n420\\n430]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[4\\n10]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[\\u0661\\u0662\\u0663]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  },
+  "tests/test_ux_c_strict_numbers.py::test_the_browser_gate_rejects_malformed_and_ambiguous_input[abc]": {
+   "reason": "node unavailable",
+   "status": "skipped"
+  }
+ },
+ "unmatched": []
+}

@@ -1,0 +1,103 @@
+{
+  "collection_skips": 68,
+  "focused_tests": 132,
+  "historical_modules": 469,
+  "historical_nodes": 15440,
+  "predictions": {
+    "39510669730": {
+      "2": {
+        "aggregate_job_ms": 9000,
+        "critical_path_ms": 2889425,
+        "domain_counts_are_unreviewed_candidates": true,
+        "imbalance_fraction": 0.0,
+        "maximum_ms": 2768575,
+        "mean_ms": 2768575.0,
+        "per_worker_overhead_ms": 111850,
+        "plan_digest": "76597d391c94da145b945e7255a098d44680b354388ee4ce592f3781202deb59",
+        "prediction_only": true,
+        "runner_ms": 5870850,
+        "source_job_ms": 101000
+      },
+      "3": {
+        "aggregate_job_ms": 9000,
+        "critical_path_ms": 1966567,
+        "domain_counts_are_unreviewed_candidates": true,
+        "imbalance_fraction": 1.8059832229688766e-07,
+        "maximum_ms": 1845717,
+        "mean_ms": 1845716.6666666667,
+        "per_worker_overhead_ms": 111850,
+        "plan_digest": "b46f0ca302e964c5ef7c5e7386e5cf25da055320677753660afead2d13d35be2",
+        "prediction_only": true,
+        "runner_ms": 5982700,
+        "source_job_ms": 101000
+      },
+      "4": {
+        "aggregate_job_ms": 9000,
+        "critical_path_ms": 1505138,
+        "domain_counts_are_unreviewed_candidates": true,
+        "imbalance_fraction": 3.611966445937753e-07,
+        "maximum_ms": 1384288,
+        "mean_ms": 1384287.5,
+        "per_worker_overhead_ms": 111850,
+        "plan_digest": "90babfc574a3b2cc86b24b29c9f19f9fdbf4cbbadfd8de715d95f3be05419d07",
+        "prediction_only": true,
+        "runner_ms": 6094550,
+        "source_job_ms": 101000
+      }
+    },
+    "39547632809": {
+      "2": {
+        "aggregate_job_ms": 8000,
+        "critical_path_ms": 1758130,
+        "domain_counts_are_unreviewed_candidates": true,
+        "imbalance_fraction": 2.9835240855646816e-07,
+        "maximum_ms": 1675871,
+        "mean_ms": 1675870.5,
+        "per_worker_overhead_ms": 74259,
+        "plan_digest": "600dbc52d6276bb5c33f51d817b671870b6e800cca0a0fdc88b19f32e0bf90be",
+        "prediction_only": true,
+        "runner_ms": 3682259,
+        "source_job_ms": 174000
+      },
+      "3": {
+        "aggregate_job_ms": 8000,
+        "critical_path_ms": 1199506,
+        "domain_counts_are_unreviewed_candidates": true,
+        "imbalance_fraction": 0.0,
+        "maximum_ms": 1117247,
+        "mean_ms": 1117247.0,
+        "per_worker_overhead_ms": 74259,
+        "plan_digest": "2acf7a5080ffaf20b9148abf1fd3ed578c6935feed5ecff9c027aff18787bad0",
+        "prediction_only": true,
+        "runner_ms": 3756518,
+        "source_job_ms": 174000
+      },
+      "4": {
+        "aggregate_job_ms": 8000,
+        "critical_path_ms": 920195,
+        "domain_counts_are_unreviewed_candidates": true,
+        "imbalance_fraction": 8.950572254473599e-07,
+        "maximum_ms": 837936,
+        "mean_ms": 837935.25,
+        "per_worker_overhead_ms": 74259,
+        "plan_digest": "eeb99de4766edcaf688a53ef741b69d65235a9cd7570acdca4f4130e53493bb6",
+        "prediction_only": true,
+        "runner_ms": 3830777,
+        "source_job_ms": 174000
+      }
+    },
+    "39554954313": {}
+  },
+  "recommendation": "three-workers-shadow-candidate-only",
+  "repeat_files": 31,
+  "repeatability": true,
+  "test_module_counts": {
+    "tests.test_ci_acceptance": 3,
+    "tests.test_ci_optimization_v2": 37,
+    "tests.test_ci_v3_evidence_verify": 53,
+    "tests.test_ci_v3_partition_plan": 23,
+    "tests.test_rc5_ci_successor_governance": 16
+  },
+  "unresolved_modules": 394,
+  "unresolved_nodes": 11042
+}

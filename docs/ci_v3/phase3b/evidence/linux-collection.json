@@ -1,0 +1,39 @@
+{
+ "actual_collection_nodes": 17143,
+ "collection_skips": 68,
+ "executed_test_phases": 0,
+ "modules": 487,
+ "process": {
+  "cancelled": false,
+  "container_removed": true,
+  "containment": "docker-private-linux-posix-group-v1",
+  "elapsed_ms": 77198,
+  "image": "finco-ci-v3@sha256:5ae1e357e475477c326b135879ebe235a851a71e2d0889be24d645a67bd56450",
+  "interpreter_exit": {
+   "at_ms": 73262,
+   "finalizing": true
+  },
+  "normal_successful_exit": true,
+  "os_exit_code": 0,
+  "pytest_return": {
+   "adapter_import_ms": 31,
+   "code": 0,
+   "leaks": {
+    "children": [],
+    "threads": []
+   },
+   "pytest_import_ms": 612,
+   "pytest_returned_ms": 73261,
+   "pytest_started_ms": 776
+  },
+  "shutdown_ms": null,
+  "source_bytes_unchanged": true,
+  "startup_ms": null,
+  "timed_out": false,
+  "worker": null
+ },
+ "source": {
+  "head": "3a2f3ead5d5d1eddfcd0c670b56a8cf3c92d2ce8",
+  "tree": "2fe164cf764c56b84cc09e45369b887f1406269e"
+ }
+}
