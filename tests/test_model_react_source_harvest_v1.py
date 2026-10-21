@@ -125,14 +125,19 @@ def test_single_documented_source_adaptation_statementworkbook_reftype():
 
 
 def test_production_bundle_contains_no_demo_or_design_state():
+    """UX-02 evolution of the RC1 guard: the served bundle must still contain no
+    demo session/synthetic-provider state (the approved presentation CSS namespace
+    is now legitimately part of production and is policed in the RC5 module)."""
     bundle = BUNDLE.read_text(encoding="utf-8")
-    for marker in DEMO_MARKERS:
+    for marker in ("demoProjectFixtures", "demoSession", "demoAdapter",
+                   "TRANSFER_DEMO_STATEMENT", "SYNTHETIC_REFERENCE_PROJECTS"):
         assert marker not in bundle, f"production bundle must not contain {marker!r}"
 
 
-def test_production_module_graph_excludes_harvested_tree():
-    """Import-graph proof (stronger than bundle string markers): the production
-    TypeScript program must not include any file under src/finco or transfer."""
+def test_production_module_graph_excludes_demo_modules():
+    """UX-02 evolution of the RC1 guard: production may import APPROVED harvested
+    presentation modules; demo/synthetic modules and the transfer harness stay
+    forbidden (enforced in detail by tests/test_model_react_source_rc5_v1.py)."""
     import subprocess
 
     tsc = FRONTEND / "node_modules" / "typescript" / "bin" / "tsc"
@@ -143,9 +148,9 @@ def test_production_module_graph_excludes_harvested_tree():
         cwd=FRONTEND, capture_output=True, text=True, timeout=600)
     assert result.returncode == 0, result.stderr[-500:]
     listed = result.stdout.replace("\\", "/").splitlines()
-    harvested = [line for line in listed
-                 if re.search(r"frontend/(src/finco|transfer)/", line)]
-    assert harvested == [], harvested[:10]
+    forbidden = [line for line in listed
+                 if re.search(r"frontend/(src/finco/(_shared/demo|_workbook/synthetic|_results/(synthetic|runComparison))|transfer/)", line)]
+    assert forbidden == [], forbidden[:10]
 
 
 def test_production_dependency_surface_unchanged():

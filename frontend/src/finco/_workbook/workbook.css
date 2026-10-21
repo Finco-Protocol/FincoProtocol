@@ -8,7 +8,7 @@
 .fm-wb-tree a { display: flex; justify-content: space-between; align-items: center; gap: 5px; padding: 6px; color: var(--ink-soft); text-decoration: none; font-size: 10px; border-left: 2px solid transparent; }
 .fm-wb-tree a:hover { background: #e3eaf0; }
 .fm-wb-tree a[aria-current="page"] { color: var(--navy); background: #dde8f1; border-left-color: var(--navy); font-weight: 700; }
-.fm-wb-tree small { color: #677b8d; font-size: 8px; }
+.fm-wb-tree small { color: var(--muted); font-size: 8px; }
 .fm-wb-authority { padding: 0 10px; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .fm-wb-mobile-picker { display: none; }
 .fm-wb-status { display: flex; flex-wrap: wrap; gap: 7px 18px; padding: 9px 11px; background: #edf2f5; border: 1px solid var(--line); font-size: 9px; margin-bottom: 10px; }
@@ -41,7 +41,7 @@
 .fm-wb-input-table .fm-wb-dirty { background: #fff5df; box-shadow: inset 3px 0 #af8943; }
 .fm-wb-input-table .fm-wb-cell-error { background: #f9e8e6; }
 .fm-wb-input-table .fm-invalid-note { display: block; padding: 3px 7px; }
-.fm-wb-rownum { display: inline-block; width: 23px; color: #91a0ae; font: 9px 'DM Mono',monospace; }
+.fm-wb-rownum { display: inline-block; width: 23px; color: #526477; font: 9px 'DM Mono',monospace; }
 .fm-wb-unit { padding: 0 7px !important; color: var(--muted); font: 9px 'DM Mono',monospace; }
 .fm-wb-module { margin-bottom: 12px; }
 .fm-wb-module-body { padding: 11px; color: var(--ink-soft); font-size: 11px; line-height: 1.6; }

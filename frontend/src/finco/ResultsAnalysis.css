@@ -20,6 +20,7 @@
 }
 .fm-result-lineage strong { margin-top: 4px; color: var(--navy); font: 700 11px 'DM Mono',monospace; }
 .fm-result-lineage small { margin-top: 3px; color: var(--ink-soft); font-size: 9px; line-height: 1.45; }
+.fm-result-unavailable { color: var(--muted); font-style: italic; }
 @media (max-width: 580px) {
   .fm-result-lineage { grid-template-columns: minmax(0, 1fr); }
   .fm-result-lineage > div + div { border-top: 1px solid var(--line); border-left: 0; }

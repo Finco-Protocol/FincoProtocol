@@ -1,6 +1,5 @@
-import React, { useId } from "react";
-import { clearDemoSessionState } from "./demoSession";
-import { getDemoWorkingCopy, type DemoWorkingCopy } from "./demoWorkingCopies";
+import React, { useEffect, useId } from "react";
+import { fincoWorkingCopyBridge, type FincoWorkingCopySummary } from "./fincoProjectBridge";
 
 declare global {
   interface Window {
@@ -40,20 +39,21 @@ export function readProjectContext(): ProjectContext {
   const params = new URLSearchParams(window.location.search);
   const id = params.get("projectId") || "PRJ-0241";
   const mode = params.get("mode") === "reference" ? "reference" : "working-copy";
-  let copy: DemoWorkingCopy | undefined;
-  if (mode === "working-copy") {
+  let copy: FincoWorkingCopySummary | undefined;
+  const bridge = mode === "working-copy" ? fincoWorkingCopyBridge() : undefined;
+  if (bridge) {
     try {
-      copy = getDemoWorkingCopy(id);
+      copy = bridge.read(id);
     } catch {
       copy = undefined;
     }
   }
   return {
-    name: copy?.name || params.get("project") || "Adriatic Solar I",
+    name: copy?.name || params.get("project") || "FINCO Model project",
     id: copy?.id || id,
     technology: copy?.technology || params.get("technology") || "Solar PV",
     size: copy?.size || params.get("size") || "120 MWp",
-    region: copy?.region || params.get("region") || "Dalmatia, Croatia",
+    region: copy?.region || params.get("region") || "Region not set",
     mode,
     parentReferenceId: copy?.parentReferenceId ?? params.get("parentReferenceId"),
     parentReferenceName: copy?.parentReferenceName ?? null,
@@ -80,9 +80,30 @@ export function projectWorkspaceHref(
   return `${fincoBasePath()}ModelWorkspace?${params.toString()}#workbook`;
 }
 
-export function Shell({ children, crumb = "Project library" }: { children: React.ReactNode; crumb?: string }) {
+export function Shell({ children, crumb = "Project library", mainContentId = "fm-main-content", dataOrigin = "synthetic-demo" }: {
+  children: React.ReactNode;
+  crumb?: string;
+  mainContentId?: string;
+  dataOrigin?: "synthetic-demo" | "caller-provided" | "unavailable";
+}) {
+  const originLabel = dataOrigin === "synthetic-demo"
+    ? "SYNTHETIC DEMO DATA"
+    : dataOrigin === "caller-provided" ? "DATA ORIGIN UNVERIFIED" : "NO RESULTS DATA";
+  useEffect(() => {
+    const fragment = decodeURIComponent(window.location.hash.slice(1));
+    if (!fragment) return;
+    const targetId = fragment === "workbook" && new URLSearchParams(window.location.search).get("mode") === "reference"
+      ? "reference-mode-help"
+      : fragment;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId) ?? document.getElementById(mainContentId);
+      if (target instanceof HTMLElement) target.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mainContentId]);
   return (
     <div className="finco-root">
+      <a className="fm-skip-link" href={`#${mainContentId}`}>Skip to main content</a>
       <header className="fm-topbar">
         <div className="fm-brand">
           <div className="fm-mark">FM</div>
@@ -90,7 +111,7 @@ export function Shell({ children, crumb = "Project library" }: { children: React
           <div className="fm-brand-caption">Renewable project finance</div>
         </div>
         <div className="fm-top-right">
-          <span className="fm-demo-label">SYNTHETIC DEMO DATA</span>
+          <span className="fm-demo-label">{originLabel}</span>
           <span>EUR · IFRS</span>
           <div className="fm-avatar">AR</div>
         </div>
@@ -119,7 +140,7 @@ export function DemoContextStrip({ workingState }: { workingState: string }) {
   const facility = params.get("facility") || params.get("tranche") || "Senior A example";
   const reset = () => {
     if (!window.confirm("Clear this browser tab's local FINCO demo drafts and working-copy entries, then reload? Fixed Last Run values will remain unchanged.")) return;
-    clearDemoSessionState();
+    fincoWorkingCopyBridge()?.clear();
     window.location.reload();
   };
   return <section className="fm-context-strip" aria-label="Demo project and run context">
@@ -145,12 +166,13 @@ export function DemoContextStrip({ workingState }: { workingState: string }) {
 
 const navItems = [
   { label: "Inputs", number: "01", route: "ModelWorkspace", hash: "inputs" },
-  { label: "Financing", number: "02", route: "ModelWorkspace", hash: "financing" },
-  { label: "Results", number: "03", route: "ResultsAnalysis", hash: "results" },
-  { label: "Scenarios", number: "04", route: "ModelWorkspace", hash: "scenarios" },
-  { label: "Analysis", number: "05", route: "ResultsAnalysis", hash: "analysis" },
-  { label: "Model checks", number: "06", route: "ModelWorkspace", hash: "checks" },
-  { label: "Trust", number: "07", route: "ModelWorkspace", hash: "trust" },
+  { label: "Statements", number: "02", route: "ModelWorkspace", hash: "statements" },
+  { label: "Financing", number: "03", route: "ModelWorkspace", hash: "financing" },
+  { label: "Results", number: "04", route: "ResultsAnalysis", hash: "results" },
+  { label: "Scenarios", number: "05", route: "ModelWorkspace", hash: "scenarios" },
+  { label: "Analysis", number: "06", route: "ResultsAnalysis", hash: "analysis" },
+  { label: "Model checks", number: "07", route: "ModelWorkspace", hash: "checks" },
+  { label: "Trust", number: "08", route: "ModelWorkspace", hash: "trust" },
 ];
 export function ModelNav({ active = "Inputs", onSectionNavigate }: { active?: string; onSectionNavigate?: (id: string) => void }) {
   const search = window.location.search;
@@ -160,6 +182,15 @@ export function ModelNav({ active = "Inputs", onSectionNavigate }: { active?: st
       href={`${fincoBasePath()}${route}${search}#${hash}`}
       className={active === label ? "active" : ""}
       aria-current={active === label ? "page" : undefined}
+      onKeyDown={event => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        if (route === "ModelWorkspace" && onSectionNavigate) {
+          onSectionNavigate(hash);
+        } else {
+          navigateFinco(`${fincoBasePath()}${route}${window.location.search}#${hash}`);
+        }
+      }}
       onClick={event => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         if (route === "ModelWorkspace" && onSectionNavigate) {

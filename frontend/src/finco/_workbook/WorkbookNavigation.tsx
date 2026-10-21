@@ -1,4 +1,3 @@
-import React from "react";
 import { workbookHref, workbookModules } from "./catalog";
 import "./workbook.css";
 
@@ -19,6 +18,11 @@ export default function WorkbookNavigation({ active, onSelect }: { active: strin
       {Array.from(new Set(workbookModules.map(m => m.family))).map(family => <div key={family}>
         <h2>{family}</h2>
         {workbookModules.filter(m => m.family === family).map(m => <a key={m.id} href={workbookHref(m.id)} aria-current={active === m.id ? "page" : undefined}
+          onKeyDown={event => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            select(m.id);
+          }}
           onClick={event => {
             if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
             event.preventDefault();

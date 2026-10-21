@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { Status } from "../_shared/FincoShell";
+import { displayPeriodValue, SYNTHETIC_RUN_PERIODS } from "../_results/runComparisonFixtures";
 
 const scenarioRows = [
+  ["Scenario ID", "base", "downside", "upside", "Fixed identifiers"],
   ["Installed capacity", "100 MWp", "100 MWp", "100 MWp", "—"],
   ["Yield case", "P50", "P90", "P50 + 3%", "—"],
   ["PPA / merchant price", "€62.50/MWh", "−12% fixed case", "+8% fixed case", "Illustrative only"],
@@ -16,9 +18,9 @@ const scenarioRows = [
   ["LLCR", "Unavailable", "Unavailable", "Unavailable", "No calculation"],
 ];
 const runs = [
-  { id: "DEMO-FIXED-018", date: "18 Jun 2025 · synthetic", scenario: "Base case", irr: "12.46%", dscr: "1.25x", version: "Not connected", capex: "€104.8m" },
-  { id: "DEMO-FIXED-017", date: "16 Jun 2025 · synthetic", scenario: "Downside", irr: "9.18%", dscr: "1.08x", version: "Not connected", capex: "€104.8m" },
-  { id: "DEMO-FIXED-014", date: "12 Jun 2025 · synthetic", scenario: "P90", irr: "8.74%", dscr: "1.02x", version: "Not connected", capex: "€106.1m" },
+  { id: "DEMO-FIXED-018", date: "18 Jun 2025 · synthetic", scenarioId: "base", scenario: "Base case", irr: "12.46%", dscr: "1.25x", version: "Not connected", capex: "€104.8m" },
+  { id: "DEMO-FIXED-017", date: "16 Jun 2025 · synthetic", scenarioId: "downside", scenario: "Downside", irr: "9.18%", dscr: "1.08x", version: "Not connected", capex: "€104.8m" },
+  { id: "DEMO-FIXED-014", date: "12 Jun 2025 · synthetic", scenarioId: "downside", scenario: "P90", irr: "8.74%", dscr: "1.02x", version: "Not connected", capex: "€106.1m" },
 ];
 const sensitivity: Record<string, string[][]> = {
   "Energy yield": [["P90", "8.2%", "9.4%", "10.7%"], ["P50", "10.3%", "12.46%", "14.5%"], ["P50 + 3%", "11.1%", "13.6%", "15.8%"]],
@@ -48,11 +50,23 @@ const otherSensitivity: Record<string, Record<string, string[][]>> = {
 };
 
 export default function DecisionAnalysisWorkspace({ sheet }: { sheet: string }) {
-  const [selectedRuns, setSelectedRuns] = useState<string[]>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const requested = (params.get("runSet") || "").split(",").filter(id => runs.some(run => run.id === id)).slice(0, 3);
+  const readRunSet = () => {
+    const requested = (new URLSearchParams(window.location.search).get("runSet") || "").split(",").filter(id => runs.some(run => run.id === id)).slice(0, 3);
     return requested.length ? requested : ["DEMO-FIXED-018", "DEMO-FIXED-017"];
+  };
+  const readScenarioId = () => {
+    const requested = new URLSearchParams(window.location.search).get("scenario");
+    return ["base", "downside", "upside"].includes(requested || "") ? requested || "base" : "base";
+  };
+  const [selectedRuns, setSelectedRuns] = useState<string[]>(() => {
+    return readRunSet();
   });
+  const [selectedRunId, setSelectedRunId] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get("selectedRun");
+    const requestedSet = readRunSet();
+    return requested && requestedSet.includes(requested) ? requested : requestedSet[0] || "";
+  });
+  const [scenarioId, setScenarioId] = useState(readScenarioId);
   const [driver, setDriver] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("driver");
     return requested && Object.prototype.hasOwnProperty.call(sensitivity, requested) ? requested : "Energy yield";
@@ -69,15 +83,49 @@ export default function DecisionAnalysisWorkspace({ sheet }: { sheet: string }) 
   const isRunCompare = sheet === "run-compare";
   const isSensitivity = sheet === "sensitivity";
   const heading = isScenario ? "Scenario comparison workbook" : isRunCompare ? "Fixed Run comparison" : isSensitivity ? "Sensitivity analysis" : "Goal Seek · decision tool";
+  const selectedRun = runs.find(run => run.id === selectedRunId && selectedRuns.includes(run.id));
+  const latestFixedRun = runs[0];
+
+  React.useEffect(() => {
+    const syncFromHistory = () => {
+      const nextRuns = readRunSet();
+      const requestedRun = new URLSearchParams(window.location.search).get("selectedRun");
+      const nextRun = requestedRun && nextRuns.includes(requestedRun) ? requestedRun : nextRuns[0] || "";
+      setSelectedRuns(nextRuns);
+      setSelectedRunId(nextRun);
+      setScenarioId(readScenarioId());
+    };
+    window.addEventListener("popstate", syncFromHistory);
+    return () => window.removeEventListener("popstate", syncFromHistory);
+  }, []);
 
   function toggleRun(id: string) {
-    setSelectedRuns(current => {
-      const next = current.includes(id) ? current.filter(item => item !== id) : current.length < 3 ? [...current, id] : current;
-      const params = new URLSearchParams(window.location.search);
-      params.set("runSet", next.join(","));
-      window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
-      return next;
-    });
+    const next = selectedRuns.includes(id)
+      ? selectedRuns.filter(item => item !== id)
+      : selectedRuns.length < 3 ? [...selectedRuns, id] : selectedRuns;
+    const nextRun = selectedRuns.includes(selectedRunId) && !next.includes(selectedRunId) ? next[0] || "" : selectedRunId || next[0] || "";
+    const params = new URLSearchParams(window.location.search);
+    params.set("runSet", next.join(","));
+    if (nextRun) params.set("selectedRun", nextRun);
+    else params.delete("selectedRun");
+    window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+    setSelectedRuns(next);
+    setSelectedRunId(nextRun);
+  }
+
+  function chooseRun(id: string) {
+    if (!selectedRuns.includes(id)) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("selectedRun", id);
+    window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+    setSelectedRunId(id);
+  }
+
+  function chooseScenario(id: string) {
+    setScenarioId(id);
+    const params = new URLSearchParams(window.location.search);
+    params.set("scenario", id);
+    window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
   }
 
   function setDisplayContext(key: string, value: string, setter: (value: string) => void) {
@@ -93,25 +141,60 @@ export default function DecisionAnalysisWorkspace({ sheet }: { sheet: string }) 
 
     {isScenario && <section className="fm-wf-section">
       <div className="fm-wf-editor-head"><div><h3>Base, Downside & Upside</h3><p>Fixed scenario snapshots; assumption values do not recalculate outcomes.</p></div><Status tone="gray">DIFFERENCE COLUMN IS DESCRIPTIVE</Status></div>
+      <div className="fm-wf-controls">
+        <label className="fm-wf-field">Working Copy scenario context <span>Selection only · fixed output remains unchanged</span><select aria-label="Scenario comparison context" value={scenarioId} onChange={event => chooseScenario(event.target.value)}><option value="base">base · Base case</option><option value="downside">downside · Downside</option><option value="upside">upside · Upside</option></select></label>
+      </div>
+      <div className="fm-wf-comparison-context" data-testid="scenario-run-context">
+        <div><span>Working Copy</span><strong>Scenario ID · {scenarioId}</strong><small>Current draft/save status is not supplied to this fixed comparison.</small></div>
+        <div><span>Last Run · fixed reference</span><strong>{latestFixedRun.id}</strong><small>Synthetic snapshot label · {latestFixedRun.date}</small></div>
+        <div><span>Independent status</span><strong>SYNTHETIC · NOT RUN HERE</strong><small>Freshness not verified · engine not connected · integrity NOT EVALUATED.</small></div>
+      </div>
       <div className="fm-wf-scroll"><table className="fm-table fm-wf-table fm-wf-period-table">
         <thead><tr>{["Metric", "Base case", "Downside", "Upside", "Difference / status"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
         <tbody>{scenarioRows.map(row => <tr key={row[0]}><th scope="row">{row[0]}</th>{row.slice(1).map((value, index) => <td key={index}>{value}</td>)}</tr>)}</tbody>
       </table></div>
+      <div className="fm-wf-note" data-testid="scenario-period-availability" role="note">Scenario figures are fixed snapshot examples. Their period frequency, exact date coverage, and per-period metric rows were not supplied; no periods are aligned or inferred. See Run Compare for separate authored calendars.</div>
       <div className="fm-wf-note">PPA shares, costs and debt are fixed reference values. Scenario IRR, NPV and DSCR are authored examples; no deltas are calculated.</div>
     </section>}
 
     {isRunCompare && <section className="fm-wf-section">
       <div className="fm-wf-editor-head"><div><h3>Select up to three illustrative runs</h3><p>Selections change only the displayed fixed context and never mutate a Working Copy.</p></div><Status tone="gray">NO EXECUTION HISTORY</Status></div>
       <div className="fm-wf-run-picker">{runs.map(run => <label key={run.id}><input type="checkbox" checked={selectedRuns.includes(run.id)} onChange={() => toggleRun(run.id)} disabled={!selectedRuns.includes(run.id) && selectedRuns.length >= 3} /><span><strong>{run.id}</strong><small>{run.scenario} · {run.date}</small></span></label>)}</div>
+      <div className="fm-wf-comparison-context" data-testid="scenario-run-context">
+        <div><label htmlFor="selected-run-context">Selected historical reference</label><select id="selected-run-context" aria-label="Selected historical Run reference" value={selectedRun?.id || ""} onChange={event => chooseRun(event.target.value)} disabled={!selectedRuns.length}><option value="" disabled>Select a chosen reference</option>{runs.filter(run => selectedRuns.includes(run.id)).map(run => <option key={run.id} value={run.id}>{run.id}</option>)}</select><small>{selectedRun ? `Scenario ID · ${selectedRun.scenarioId} · synthetic snapshot label ${selectedRun.date}` : "No historical reference selected."}</small></div>
+        <div><span>Working Copy</span><strong>Scenario ID · {scenarioId}</strong><small>Input draft state is not attached to historical results; edits do not change them.</small></div>
+        <div><span>Last Run / provenance dimensions</span><strong>{selectedRun?.id || "Unavailable"}</strong><small>Origin: synthetic · freshness: unverified · engine: not connected · integrity: NOT EVALUATED.</small></div>
+      </div>
       <div className="fm-wf-scroll"><table className="fm-table fm-wf-table fm-wf-period-table">
         <thead><tr><th scope="col">Metric</th>{runs.filter(run => selectedRuns.includes(run.id)).map(run => <th scope="col" key={run.id}>{run.id}</th>)}</tr></thead>
         <tbody>{([
-          ["Scenario", run => run.scenario], ["Snapshot date", run => run.date], ["Engine version", run => run.version],
+          ["Scenario", run => run.scenario], ["Snapshot date", run => run.date], ["Model / engine version", run => run.version],
+          ["Period basis", run => SYNTHETIC_RUN_PERIODS[run.id]?.frequency || "Unavailable"],
           ["Equity IRR · fixed", run => run.irr], ["Minimum DSCR · fixed", run => run.dscr], ["CAPEX reference", run => run.capex],
-          ["Input snapshot", () => "Unavailable"], ["Period match", () => "NOT VERIFIED"],
+          ["Input snapshot", () => "Unavailable"], ["Period match", () => "NOT ALIGNED"],
         ] as [string, (run: typeof runs[number]) => string][]).map(([label, getter]) => <tr key={label}><th scope="row">{label}</th>{runs.filter(run => selectedRuns.includes(run.id)).map(run => <td key={run.id}>{getter(run)}</td>)}</tr>)}</tbody>
       </table></div>
-      <div className="fm-wf-note">Period-by-period DSCR/debt-service matching is unavailable. Period dates and input hashes are not verified; no alignment by array index is claimed.</div>
+      <div className="fm-wf-section" data-testid="run-period-comparison">
+        <div className="fm-wf-editor-head"><div><h3>Run-native period evidence</h3><p>Each fixed sample is shown on its own authored calendar. No cross-run row alignment is performed.</p></div><Status tone="gray">PERIODS NOT ALIGNED</Status></div>
+        {runs.filter(run => selectedRuns.includes(run.id)).map(run => {
+          const periodSet = SYNTHETIC_RUN_PERIODS[run.id];
+          return <section className="fm-wf-section" key={run.id} data-testid={`run-periods-${run.id}`}>
+            <div className="fm-wf-editor-head"><div><h4>{run.id} · {run.scenario} · {run.version}</h4><p>{periodSet?.frequency || "Period basis unavailable"} · {periodSet?.periods.length || 0} authored periods</p></div></div>
+            {periodSet ? <div className="fm-wf-scroll" role="region" aria-label={`${run.id} native periods, horizontally scrollable`} tabIndex={0}>
+              <table className="fm-table fm-wf-table">
+                <thead><tr><th scope="col">Exact period label</th><th scope="col">CFADS · fixed</th><th scope="col">Debt service · fixed</th><th scope="col">DSCR · fixed</th></tr></thead>
+                <tbody>{periodSet.periods.map(row => <tr key={row.period} data-period={row.period}>
+                  <th scope="row">{row.period}</th>
+                  <td>{displayPeriodValue(row.cfads)}</td>
+                  <td>{displayPeriodValue(row.debtService)}</td>
+                  <td>{displayPeriodValue(row.dscr)}</td>
+                </tr>)}</tbody>
+              </table>
+            </div> : <p role="status">Period table unavailable; no values are aligned or inferred.</p>}
+          </section>;
+        })}
+      </div>
+      <div className="fm-wf-note">Period dates, frequencies and input hashes are not verified. Values are fixed synthetic examples. Missing metrics remain unavailable, not zero; periods are never aligned by array index.</div>
     </section>}
 
     {isSensitivity && <section className="fm-wf-section">

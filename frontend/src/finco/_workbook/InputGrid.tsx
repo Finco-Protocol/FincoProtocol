@@ -98,9 +98,9 @@ export default function InputGrid({ values, committed, errors, onChange, onSave,
       <div><button type="button" className="fm-btn" disabled={readOnly || !undo.length || editing} onClick={undoBatch}>Undo staged edit</button> <button type="button" className="fm-btn" disabled={readOnly} aria-disabled={blocked || editing} onClick={onSave}>Save scalar batch</button> <button type="button" className="fm-btn fm-btn-primary" disabled={readOnly} aria-disabled={runBlocked || blocked || dirty || editing} onClick={onRun}>Run demo separately</button></div>
     </div>
     <div className="fm-wb-formula" aria-label="Cell address and display-only value bar"><strong>{address}</strong><span>fx · display only</span><output>{editing ? buffer : valueAt(cell.row, cell.col)}</output><small>{units[key as InputKey] || (key === "currency" ? "ISO" : key === "projectIRR" ? "%" : "—")} · {readOnly ? "Reference · read-only" : editable ? "Working-copy input" : "Fixed synthetic reference"} · {key === "projectIRR" ? "label only" : editable ? "no expression" : "no formula evaluation"}</small></div>
-    <div className="fm-wb-grid-help">Enter/F2 edit · Enter/Shift+Enter stage + down/up · Tab/Shift+Tab next/previous cell · Esc cancel · arrows select · Ctrl/Cmd+Z undo. Paste one value column from selected row, or TSV metric + value pairs. Locked cells reject edits.</div>
-    <div className="fm-wb-grid-scroll" role="region" tabIndex={-1} aria-label="Input grid scroll area">
-      <table role="grid" aria-label="Hybrid input grid" aria-readonly={readOnly || undefined} aria-rowcount={rows.length + 1} aria-colcount={4} className="fm-wb-input-table"
+     <div className="fm-wb-grid-help" id="fm-wb-grid-help">Enter/F2 edit · Enter/Shift+Enter stage + down/up · Tab/Shift+Tab next/previous cell · Esc cancel · arrows select · Ctrl/Cmd+Z undo. Paste one value column from selected row, or TSV metric + value pairs. Locked cells reject edits.</div>
+     <div className="fm-wb-grid-scroll" id="fm-wb-grid-scroll" role="region" tabIndex={0} aria-label="Input grid scroll area" aria-describedby="fm-wb-grid-help">
+       <table role="grid" tabIndex={0} aria-label="Hybrid input grid" aria-describedby="fm-wb-grid-help" aria-readonly={readOnly || undefined} aria-rowcount={rows.length + 1} aria-colcount={4} className="fm-wb-input-table"
         onKeyDown={keys} onPaste={event => {
           if (editing) return;
           event.preventDefault();
