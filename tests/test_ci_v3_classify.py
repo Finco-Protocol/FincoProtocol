@@ -12,7 +12,7 @@ SHA = "0" * 64
 
 def attempt(kind="first", label="a", **kw):
     base = {"module": "tests/test_a.py", "module_sha256": SHA, "historical": False, "tag": None, "exit_code": 0, "timed_out": False, "failures": 0, "errors": 0,
-            "skipped": 0, "tests": EXPECTED, "seconds": 1.0, "tail": "", "kind": kind, "label": label, "concurrency": 3 if kind == "target" else 4, "cpus": 1.33}
+            "skipped": 0, "tests": EXPECTED, "seconds": 1.0, "tail": "", "kind": kind, "label": label, "concurrency": 3 if kind == "target" else 4, "cpus": 1.33, "tree": "T"}
     return {**base, **kw}
 
 
@@ -222,3 +222,14 @@ def test_every_attempt_is_preserved_with_an_exclusion_reason():
     rows = proposal["modules"]["tests/test_a.py"]["attempts"]
     assert [(r["counts"], r["exclusion"]) for r in rows] == [(True, None), (False, "missing-module-sha256"),
                                                               (False, "stale-or-mismatched-module-sha256"), (False, "historical-evidence")]
+
+
+def test_ci_v3_self_tests_count_only_evidence_from_the_final_tree():
+    old = attempt("target", "old", tree="B")
+    new = attempt("target", "new", tree="T")
+    module = "tests/test_ci_v3_something.py"
+    assert decide([old], EXPECTED, current_sha=SHA, module=module, final_tree="T")[:2] == ("blocked", "no-standalone-evidence")
+    assert "ci-v3-self-test-needs-final-tree-evidence" in decide([old], EXPECTED, current_sha=SHA, module=module, final_tree="T")[2]
+    assert decide([old, new], EXPECTED, current_sha=SHA, module=module, final_tree="T")[:2] == ("runner-private", "stable-pass")
+    # a product test module may still carry evidence from the baseline tree
+    assert decide([old], EXPECTED, current_sha=SHA, module="tests/test_product.py", final_tree="T")[:2] == ("runner-private", "stable-pass")

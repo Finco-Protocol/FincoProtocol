@@ -69,7 +69,10 @@ def status(attempt, expected):
 SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
-def exclusion(attempt, current_sha):
+CI_V3_SELF_TESTS = "tests/test_ci_v3_"
+
+
+def exclusion(attempt, current_sha, module=None, final_tree=None):
     """Why an attempt cannot be counted, or None. Positive evidence needs the exact current module blob identity."""
     if attempt.get("historical"):
         if current_sha is not None and attempt.get("module_sha256") == current_sha and status(attempt, attempt["tests"]) not in ("pass", "pass-with-nonpass"):
@@ -77,6 +80,8 @@ def exclusion(attempt, current_sha):
         return "historical-evidence"
     if current_sha is None or not SHA256.fullmatch(current_sha):
         return "current-module-identity-unavailable"
+    if final_tree and module and module.startswith(CI_V3_SELF_TESTS) and attempt.get("tree") != final_tree:
+        return "ci-v3-self-test-needs-final-tree-evidence"     # these tests exercise tools that may have changed since
     recorded = attempt.get("module_sha256")
     if recorded is None:
         return "missing-module-sha256"
@@ -87,19 +92,19 @@ def exclusion(attempt, current_sha):
     return None
 
 
-def annotate(attempts, current_sha):
+def annotate(attempts, current_sha, module=None, final_tree=None):
     """Every attempt is preserved verbatim; the annotation says whether it counts and why not."""
-    return [{**a, "counts": (reason := exclusion(a, current_sha)) is None, "exclusion": reason} for a in attempts]
+    return [{**a, "counts": (reason := exclusion(a, current_sha, module, final_tree)) is None, "exclusion": reason} for a in attempts]
 
 
-def relevant(attempts, current_sha):
-    return [a for a in attempts if exclusion(a, current_sha) is None]
+def relevant(attempts, current_sha, module=None, final_tree=None):
+    return [a for a in attempts if exclusion(a, current_sha, module, final_tree) is None]
 
 
-def decide(attempts, expected, min_target=MIN_TARGET_PASSES, current_sha=None):
+def decide(attempts, expected, min_target=MIN_TARGET_PASSES, current_sha=None, module=None, final_tree=None):
     """Return (mode, category, reason) from every relevant attempt."""
-    reasons = sorted({r for a in attempts if (r := exclusion(a, current_sha)) and not a.get("historical")})
-    attempts = relevant(attempts, current_sha)
+    reasons = sorted({r for a in attempts if (r := exclusion(a, current_sha, module, final_tree)) and not a.get("historical")})
+    attempts = relevant(attempts, current_sha, module, final_tree)
     if not any(not a.get("historical") for a in attempts):
         why = f" ({', '.join(reasons)})" if reasons else ""
         return "blocked", "no-standalone-evidence", "no attempt with the exact current module identity on the evidence image and source" + why
@@ -167,7 +172,7 @@ def nonpass_proposal(junit_documents, nodeids):
     return proposal, unmatched
 
 
-def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TARGET_PASSES):
+def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TARGET_PASSES, final_tree=None):
     inventory, isolation = prepared["inventory"], prepared["isolation"]
     expected = Counter(n["module"] for n in inventory["nodes"])
     modules, summary = {}, Counter()
@@ -178,8 +183,8 @@ def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TAR
         elif name not in expected:
             mode, category, reason = "blocked", "not-collected-helper", "no collected nodes; helper or collection-skipped file"
         else:
-            mode, category, reason = decide(history, expected[name], min_target, base.get("sha256"))
-        record.update(mode=mode, category=category, reason=reason, rationale=reason, reviewed=False, attempts=annotate(history, base.get("sha256")))
+            mode, category, reason = decide(history, expected[name], min_target, base.get("sha256"), name, final_tree)
+        record.update(mode=mode, category=category, reason=reason, rationale=reason, reviewed=False, attempts=annotate(history, base.get("sha256"), name, final_tree))
         modules[name] = record; summary[category] += 1
     proposal = seal({**{k: v for k, v in isolation.items() if k not in ("digest", "modules")},
                      "modules": modules, "authority": "evidence-proposal-unreviewed"})
@@ -198,7 +203,7 @@ def main(argv=None):
     skipped = {r["nodeid"] for r in prepared["collection"]["skips"]}
     expect = {"image_id": args.image_id, "trees": args.tree} if args.image_id else None
     try:
-        proposal, summary = classify(prepared, collect(args.attempt, expect), skipped, args.min_target_passes)
+        proposal, summary = classify(prepared, collect(args.attempt, expect), skipped, args.min_target_passes, args.tree[-1] if args.tree else None)
         junit = [blob for d in args.attempt if not (json.loads((Path(d) / "meta.json").read_text()).get("historical")) for blob in junit_blobs(d)]
         allowed, unmatched = nonpass_proposal(junit, [n["nodeid"] for n in prepared["inventory"]["nodes"]])
     except ContractError as exc:

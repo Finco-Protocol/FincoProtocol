@@ -25,7 +25,7 @@ HASHED_TOOLS = "tools/ci_v3_*.py"
 # additions and documentation. Files that run or describe the execution (probe, container, adapter, schema) never qualify.
 CARRY_ADD_PREFIXES = ("tools/ci_v3_", "tests/test_ci_v3_", "docs/ci_v3/")
 CARRY_MODIFY = ("docs/ci_v3/", "tests/test_ci_v3_")
-CARRY_MODIFY_TOOLS = {f"tools/ci_v3_{name}.py" for name in ("classify", "evidence", "proposal", "nonpass", "environment", "calibrate", "container_validate")}
+CARRY_MODIFY_TOOLS = {f"tools/ci_v3_{name}.py" for name in ("classify", "evidence", "proposal", "nonpass", "environment", "calibrate", "container_validate", "real_child", "hosted_controller", "isolation")}
 
 
 def sha(data):
@@ -79,6 +79,24 @@ def carry_forward_changes(repo, from_tree, to_tree):
     return changes
 
 
+def modules_executed_at_tree(evidence, tree):
+    """Modules with a non-historical attempt executed at exactly this tree."""
+    found = set()
+    for directory in sorted((Path(evidence) / "attempts").iterdir()):
+        meta = read_json(directory / "meta.json")
+        if meta["tree"] == tree and not meta.get("historical"):
+            found |= {json.loads(l)["module"] for l in (directory / "results.jsonl").read_text().splitlines()}
+    return found
+
+
+def ci_v3_modules_required(carried, inventory_modules):
+    """CI V3 self-tests exercise the tools. If any CI V3 tool changed after an attempt's tree, every
+    tests/test_ci_v3_* module must have been executed at the final tree instead of being carried forward."""
+    if not any(path.startswith("tools/ci_v3_") for changes in carried.values() for _, path in changes):
+        return []
+    return sorted(m for m in inventory_modules if m.startswith("tests/test_ci_v3_"))
+
+
 def tool_hashes(repo):
     return {p.relative_to(repo).as_posix(): sha(p.read_bytes()) for p in sorted(Path(repo).glob(HASHED_TOOLS))}
 
@@ -101,12 +119,16 @@ def build(repo, evidence, image_dir, inventory_path, nodes_archive, extra):
             require(item["image_id"] == image["image_id"], "attempt not executed on the evidence image: " + item["label"])
             if item["tree"] != source["tree"]:
                 carried[item["tree"]] = carry_forward_changes(repo, item["tree"], source["tree"])
+    required = ci_v3_modules_required(carried, {n["nodeid"].split("::", 1)[0] for n in inventory["nodes"]})
+    missing = sorted(set(required) - modules_executed_at_tree(evidence, source["tree"]))
+    require(not missing, "CI V3 tools changed after earlier evidence; these self-tests must run at the final tree: " + ", ".join(missing[:5]))
     files = {name: sha((evidence / name).read_bytes()) for name in extra}
     return seal({"schema": 1, "kind": "ci-v3-evidence-manifest", "source": source, "image": image,
         "image_files_sha256": {p.name: sha(p.read_bytes()) for p in sorted(Path(image_dir).iterdir()) if p.is_file()},
         "inventory": {"digest": inventory["digest"], "nodes": len(ids), "node_ids_sha256": sha("\n".join(ids).encode()),
                       "node_ids_archive_sha256": sha(Path(nodes_archive).read_bytes()), "collection_skips": len(read_json(extra_path(evidence, extra, "collection-skips.json")))},
-        "controller_and_verifier_sha256": tool_hashes(repo), "attempts": attempts, "carried_forward_from": carried, "files_sha256": files,
+        "controller_and_verifier_sha256": tool_hashes(repo), "attempts": attempts, "carried_forward_from": carried,
+        "ci_v3_modules_required_at_final_tree": required, "files_sha256": files,
         "follow_up_policy": {"allowed_paths": list(ALLOWED_FOLLOWUP),
                              "meaning": "The published commit may differ from `source` only by these paths; test execution evidence is bound to `source`."}})
 
@@ -142,6 +164,8 @@ def verify(repo, evidence, manifest_path=None):
                         "carried-forward evidence no longer valid: " + recorded["label"])
         seen.append(recorded["label"])
     require(len(seen) == len(set(seen)), "duplicate attempt label")
+    missing = sorted(set(manifest["ci_v3_modules_required_at_final_tree"]) - modules_executed_at_tree(evidence, manifest["source"]["tree"]))
+    require(not missing, "required CI V3 self-test not executed at the final tree: " + ", ".join(missing[:5]))
     return {"verified": True, "attempts": seen, "published_head_differs_from_source_by": changed}
 
 

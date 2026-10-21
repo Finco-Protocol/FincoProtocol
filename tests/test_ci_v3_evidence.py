@@ -29,6 +29,13 @@ def make_run(path, label, kind="target", tree=None, image="sha256:img", historic
     (path / "lane-0" / "results.jsonl").write_text(json.dumps(row) + "\n")
 
 
+def write_nodes(path, ids):
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:xz") as tar:
+        data = "\n".join(ids).encode(); info = tarfile.TarInfo("node-ids.txt"); info.size = len(data); tar.addfile(info, io.BytesIO(data))
+    path.write_bytes(buffer.getvalue())
+
+
 @pytest.fixture
 def world(tmp_path):
     repo = tmp_path / "repo"; (repo / "tools").mkdir(parents=True); (repo / ev.EVIDENCE_DIR).mkdir(parents=True)
@@ -159,3 +166,34 @@ def test_manifest_records_and_reverifies_carried_forward_attempts(world):
     assert manifest["carried_forward_from"][base_tree] == [["A", "tools/ci_v3_newtool.py"]]
     commit_evidence(world)
     assert ev.verify(world["repo"], world["evidence"])["verified"]
+
+
+def test_changed_ci_v3_tool_requires_all_ci_v3_self_tests_at_the_final_tree(world):
+    base_tree = world["tree"]
+    make_run(world["tmp"] / "baseline", "baseline", tree=base_tree, module="tests/test_ci_v3_x.py")
+    ev.pack_attempt(world["tmp"] / "baseline", world["evidence"] / "attempts/baseline")
+    for p in (world["evidence"] / "attempts/exact").iterdir():
+        p.unlink()
+    (world["evidence"] / "attempts/exact").rmdir()
+    commit_file(world, "tools/ci_v3_real_child.py", "X = 1\n")        # an allowed CI-V3 addition that the self-tests exercise
+    head = subprocess.check_output(["git", "-C", str(world["repo"]), "rev-parse", "HEAD"], text=True).strip()
+    tree = subprocess.check_output(["git", "-C", str(world["repo"]), "rev-parse", "HEAD^{tree}"], text=True).strip()
+    inv = json.loads(world["inventory"].read_text())
+    inv["source"] = {"head": head, "tree": tree}; inv["nodes"] = [{"nodeid": "tests/test_ci_v3_x.py::t", "module": "tests/test_ci_v3_x.py"}]
+    world["inventory"].write_text(json.dumps(inv)); write_nodes(world["archive"], ["tests/test_ci_v3_x.py::t"])
+    with pytest.raises(ContractError, match="must run at the final tree"):
+        build(world)
+    make_run(world["tmp"] / "final", "final", tree=tree, module="tests/test_ci_v3_x.py")
+    ev.pack_attempt(world["tmp"] / "final", world["evidence"] / "attempts/final")
+    manifest = build(world)
+    assert manifest["ci_v3_modules_required_at_final_tree"] == ["tests/test_ci_v3_x.py"]
+    commit_evidence(world)
+    assert ev.verify(world["repo"], world["evidence"])["verified"]
+
+
+def test_no_product_test_imports_ci_v3_tools_which_is_the_premise_of_carry_forward():
+    import re
+    from pathlib import Path
+    offenders = [p.name for p in Path(__file__).parent.glob("*.py")
+                 if not p.name.startswith(("test_ci_v3_", "ci_v3_")) and re.search(r"(?:from|import)\s+tools\.ci_v3_", p.read_text(encoding="utf-8", errors="replace"))]
+    assert offenders == []
