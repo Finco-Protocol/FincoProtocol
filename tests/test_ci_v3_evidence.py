@@ -75,8 +75,8 @@ def test_dirty_or_wrong_source_is_rejected(world):
 
 
 def test_attempt_from_other_tree_or_image_is_rejected_unless_marked_historical(world):
-    make_run(world["tmp"] / "other", "other", tree="f" * 40); ev.pack_attempt(world["tmp"] / "other", world["evidence"] / "attempts/other")
-    with pytest.raises(ContractError, match="exact source and image"):
+    make_run(world["tmp"] / "other", "other", tree=world["tree"], image="sha256:other"); ev.pack_attempt(world["tmp"] / "other", world["evidence"] / "attempts/other")
+    with pytest.raises(ContractError, match="evidence image"):
         build(world)
     for p in (world["evidence"] / "attempts/other").iterdir():
         p.unlink()
@@ -121,3 +121,41 @@ def test_inventory_from_another_tree_is_rejected(world):
     inv = json.loads(world["inventory"].read_text()); inv["source"]["tree"] = "e" * 40; world["inventory"].write_text(json.dumps(inv))
     with pytest.raises(ContractError, match="different source tree"):
         build(world)
+
+
+def commit_file(w, path, text, message="change"):
+    target = w["repo"] / path
+    target.parent.mkdir(parents=True, exist_ok=True); target.write_text(text)
+    git(w["repo"], "add", path); git(w["repo"], "commit", "-qm", message)   # evidence files stay untracked, as in production
+    return subprocess.check_output(["git", "-C", str(w["repo"]), "rev-parse", "HEAD^{tree}"], text=True).strip()
+
+
+@pytest.mark.parametrize("path,text,ok", [("tools/ci_v3_newtool.py", "N = 1\n", True), ("tests/test_ci_v3_new.py", "def test_x(): pass\n", True),
+    ("docs/ci_v3/phase3c/README.md", "doc\n", True), ("tools/ci_v3_probe_run.py", "changed\n", False), ("app.py", "A = 9\n", False),
+    ("tests/test_other.py", "def test_y(): pass\n", False)])
+def test_carry_forward_allows_only_ci_v3_internal_additions_and_docs(world, path, text, ok):
+    (world["repo"] / "tools/ci_v3_probe_run.py").write_text("base\n"); git(world["repo"], "add", "tools/ci_v3_probe_run.py"); git(world["repo"], "commit", "-qm", "base")
+    base_tree = subprocess.check_output(["git", "-C", str(world["repo"]), "rev-parse", "HEAD^{tree}"], text=True).strip()
+    new_tree = commit_file(world, path, text)
+    if ok:
+        assert ev.carry_forward_changes(world["repo"], base_tree, new_tree)[0][1] == path
+    else:
+        with pytest.raises(ContractError, match="invalidates evidence"):
+            ev.carry_forward_changes(world["repo"], base_tree, new_tree)
+
+
+def test_manifest_records_and_reverifies_carried_forward_attempts(world):
+    base_tree = world["tree"]
+    make_run(world["tmp"] / "baseline", "baseline", tree=base_tree)
+    ev.pack_attempt(world["tmp"] / "baseline", world["evidence"] / "attempts/baseline")
+    for p in (world["evidence"] / "attempts/exact").iterdir():
+        p.unlink()
+    (world["evidence"] / "attempts/exact").rmdir()
+    commit_file(world, "tools/ci_v3_newtool.py", "N = 1\n")        # later tree: a CI-V3-internal addition
+    world["head"] = subprocess.check_output(["git", "-C", str(world["repo"]), "rev-parse", "HEAD"], text=True).strip()
+    tree = subprocess.check_output(["git", "-C", str(world["repo"]), "rev-parse", "HEAD^{tree}"], text=True).strip()
+    inv = json.loads(world["inventory"].read_text()); inv["source"] = {"head": world["head"], "tree": tree}; world["inventory"].write_text(json.dumps(inv))
+    manifest = build(world)
+    assert manifest["carried_forward_from"][base_tree] == [["A", "tools/ci_v3_newtool.py"]]
+    commit_evidence(world)
+    assert ev.verify(world["repo"], world["evidence"])["verified"]

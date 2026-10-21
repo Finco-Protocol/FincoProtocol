@@ -21,6 +21,11 @@ from tools.ci_v3_schema import ContractError, check_seal, read_json, require, se
 EVIDENCE_DIR = "docs/ci_v3/phase3b/evidence/"
 ALLOWED_FOLLOWUP = (EVIDENCE_DIR, "docs/ci_v3/phase3b/README.md")
 HASHED_TOOLS = "tools/ci_v3_*.py"
+# Evidence executed on an EARLIER tree may be carried to a later tree only if the later tree differs by CI-V3-internal
+# additions and documentation. Files that run or describe the execution (probe, container, adapter, schema) never qualify.
+CARRY_ADD_PREFIXES = ("tools/ci_v3_", "tests/test_ci_v3_", "docs/ci_v3/")
+CARRY_MODIFY = ("docs/ci_v3/", "tests/test_ci_v3_")
+CARRY_MODIFY_TOOLS = {f"tools/ci_v3_{name}.py" for name in ("classify", "evidence", "proposal", "nonpass", "environment", "calibrate", "container_validate")}
 
 
 def sha(data):
@@ -62,6 +67,18 @@ def attempt_record(directory):
             "junit_files": len(members), "junit_set_sha256": sha(json.dumps(sorted(members.items())).encode())}
 
 
+def carry_forward_changes(repo, from_tree, to_tree):
+    """Changed paths between two trees; raises unless every change keeps earlier execution evidence valid."""
+    rows = [l.split("\t") for l in git(repo, "diff-tree", "-r", "--name-status", "--no-renames", from_tree, to_tree).splitlines() if l]
+    changes = []
+    for status, path in rows:
+        added_ok = status == "A" and path.startswith(CARRY_ADD_PREFIXES)
+        modified_ok = status == "M" and (path.startswith(CARRY_MODIFY) or path in CARRY_MODIFY_TOOLS)
+        require(added_ok or modified_ok, f"change {status} {path} invalidates evidence executed on tree {from_tree[:12]}")
+        changes.append([status, path])
+    return changes
+
+
 def tool_hashes(repo):
     return {p.relative_to(repo).as_posix(): sha(p.read_bytes()) for p in sorted(Path(repo).glob(HASHED_TOOLS))}
 
@@ -78,15 +95,18 @@ def build(repo, evidence, image_dir, inventory_path, nodes_archive, extra):
         require(tar.extractfile("node-ids.txt").read().decode().splitlines() == ids, "node-id archive differs from the inventory")
     require(inventory["source"] == source, "inventory was collected from a different source tree")
     attempts = [attempt_record(p) for p in sorted((evidence / "attempts").iterdir())]
+    carried = {}
     for item in attempts:
         if not item["historical"]:
-            require(item["image_id"] == image["image_id"] and item["tree"] == source["tree"], "attempt not executed on the exact source and image: " + item["label"])
+            require(item["image_id"] == image["image_id"], "attempt not executed on the evidence image: " + item["label"])
+            if item["tree"] != source["tree"]:
+                carried[item["tree"]] = carry_forward_changes(repo, item["tree"], source["tree"])
     files = {name: sha((evidence / name).read_bytes()) for name in extra}
     return seal({"schema": 1, "kind": "ci-v3-evidence-manifest", "source": source, "image": image,
         "image_files_sha256": {p.name: sha(p.read_bytes()) for p in sorted(Path(image_dir).iterdir()) if p.is_file()},
         "inventory": {"digest": inventory["digest"], "nodes": len(ids), "node_ids_sha256": sha("\n".join(ids).encode()),
                       "node_ids_archive_sha256": sha(Path(nodes_archive).read_bytes()), "collection_skips": len(read_json(extra_path(evidence, extra, "collection-skips.json")))},
-        "controller_and_verifier_sha256": tool_hashes(repo), "attempts": attempts, "files_sha256": files,
+        "controller_and_verifier_sha256": tool_hashes(repo), "attempts": attempts, "carried_forward_from": carried, "files_sha256": files,
         "follow_up_policy": {"allowed_paths": list(ALLOWED_FOLLOWUP),
                              "meaning": "The published commit may differ from `source` only by these paths; test execution evidence is bound to `source`."}})
 
@@ -116,7 +136,10 @@ def verify(repo, evidence, manifest_path=None):
         actual = attempt_record(evidence / "attempts" / recorded["label"])
         require(actual == recorded, "attempt evidence changed: " + recorded["label"])
         if not recorded["historical"]:
-            require(recorded["tree"] == manifest["source"]["tree"] and recorded["image_id"] == manifest["image"]["image_id"], "non-historical attempt identity")
+            require(recorded["image_id"] == manifest["image"]["image_id"], "non-historical attempt image")
+            if recorded["tree"] != manifest["source"]["tree"]:
+                require(carry_forward_changes(repo, recorded["tree"], manifest["source"]["tree"]) == manifest["carried_forward_from"].get(recorded["tree"]),
+                        "carried-forward evidence no longer valid: " + recorded["label"])
         seen.append(recorded["label"])
     require(len(seen) == len(set(seen)), "duplicate attempt label")
     return {"verified": True, "attempts": seen, "published_head_differs_from_source_by": changed}

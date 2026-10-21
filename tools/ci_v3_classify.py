@@ -30,7 +30,7 @@ def load_attempts(directory, expect=None):
     meta = read_json(directory / "meta.json")
     require(meta["kind"] in ("first", "uncontended", "target"), "unknown attempt kind")
     if expect and not meta.get("historical"):
-        require(meta["image_id"] == expect["image_id"] and meta["tree"] == expect["tree"], "attempt was not executed on the evidence image/source")
+        require(meta["image_id"] == expect["image_id"] and meta["tree"] in expect["trees"], "attempt was not executed on the evidence image/source")
     files = sorted(directory.glob("lane-*/results.jsonl")) or [directory / "results.jsonl"]   # raw lanes, or the packed form
     records = [json.loads(line) for f in files if f.exists() for line in f.read_text().splitlines()]
     require(records, "empty attempt evidence: " + str(directory))
@@ -71,7 +71,9 @@ def relevant(attempts, current_sha):
     kept = []
     for a in attempts:
         if not a.get("historical"):
-            kept.append(a)
+            stale = current_sha is not None and a.get("module_sha256") not in (None, current_sha)
+            if not stale:   # an attempt on an older module blob is preserved in the record but never counts
+                kept.append(a)
         elif current_sha is not None and a.get("module_sha256") == current_sha and status(a, a["tests"]) not in ("pass", "pass-with-nonpass"):
             kept.append(a)
     return kept
@@ -170,12 +172,12 @@ def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TAR
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepared", required=True); parser.add_argument("--attempt", required=True, nargs="+", help="probe run directories")
-    parser.add_argument("--output", required=True); parser.add_argument("--image-id"); parser.add_argument("--tree")
+    parser.add_argument("--output", required=True); parser.add_argument("--image-id"); parser.add_argument("--tree", nargs="+", help="accepted executed trees (baseline plus targeted re-runs)")
     parser.add_argument("--min-target-passes", type=int, default=MIN_TARGET_PASSES)
     args = parser.parse_args(argv)
     prepared = {k: read_json(Path(args.prepared) / (k + ".json")) for k in ("inventory", "isolation", "collection")}
     skipped = {r["nodeid"] for r in prepared["collection"]["skips"]}
-    expect = {"image_id": args.image_id, "tree": args.tree} if args.image_id else None
+    expect = {"image_id": args.image_id, "trees": args.tree} if args.image_id else None
     try:
         proposal, summary = classify(prepared, collect(args.attempt, expect), skipped, args.min_target_passes)
         junit = [blob for d in args.attempt if not (json.loads((Path(d) / "meta.json").read_text()).get("historical")) for blob in junit_blobs(d)]

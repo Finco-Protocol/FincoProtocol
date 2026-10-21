@@ -106,10 +106,10 @@ def write_run(path, kind, label, module="tests/test_a.py", image_id="img", tree=
 def test_attempt_loader_preserves_every_attempt_and_binds_identity(tmp_path):
     write_run(tmp_path / "one", "first", "one", **FAIL)
     write_run(tmp_path / "two", "uncontended", "two")
-    loaded = collect([tmp_path / "one", tmp_path / "two"], {"image_id": "img", "tree": "tree"})
+    loaded = collect([tmp_path / "one", tmp_path / "two"], {"image_id": "img", "trees": ["tree"]})
     assert [a["label"] for a in loaded["tests/test_a.py"]] == ["one", "two"] and loaded["tests/test_a.py"][0]["exit_code"] == 1
     with pytest.raises(ContractError, match="not executed on the evidence"):
-        collect([tmp_path / "one"], {"image_id": "other", "tree": "tree"})
+        collect([tmp_path / "one"], {"image_id": "other", "trees": ["tree"]})
     write_run(tmp_path / "dup", "first", "one")
     with pytest.raises(ContractError, match="duplicate attempt"):
         collect([tmp_path / "one", tmp_path / "dup"])
@@ -162,3 +162,17 @@ def test_target_attempts_below_the_cpu_budget_do_not_count_and_the_constraint_is
     assert decide([attempt(**FAIL)] + starved, EXPECTED, current_sha=SHA)[:2] == ("blocked", "load-sensitive-unproven")
     mode, category, reason = decide([attempt(**FAIL, cpus=1.0)] + target_passes(MIN_TARGET_PASSES), EXPECTED, current_sha=SHA)
     assert (mode, category) == ("runner-private", "target-concurrency-stability-validated") and "failed at [1.0] CPU" in reason
+
+
+def test_exact_source_attempt_on_a_changed_module_blob_is_stale_and_never_counts():
+    old = attempt("target", "t0", module_sha256="1" * 64)
+    assert decide([old], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
+    assert decide([old, attempt("target", "t1")], EXPECTED, current_sha=SHA)[:2] == ("runner-private", "stable-pass")
+
+
+def test_baseline_and_targeted_trees_are_both_accepted_by_the_loader(tmp_path):
+    write_run(tmp_path / "base", "first", "base", tree="B"); write_run(tmp_path / "target", "target", "target", tree="T")
+    loaded = collect([tmp_path / "base", tmp_path / "target"], {"image_id": "img", "trees": ["B", "T"]})
+    assert {a["tree"] for a in loaded["tests/test_a.py"]} == {"B", "T"}
+    with pytest.raises(ContractError, match="not executed on the evidence"):
+        collect([tmp_path / "base"], {"image_id": "img", "trees": ["T"]})
