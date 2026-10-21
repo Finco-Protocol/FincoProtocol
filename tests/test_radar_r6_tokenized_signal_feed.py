@@ -1,7 +1,8 @@
 """R6: live R5 lifecycle reuse, no-gate-no-read, exact evidence and HTML/API parity."""
 from __future__ import annotations
 
-from datetime import timedelta
+from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.crypto_terminal import tokenized_signal_read as shared
 from app.crypto_terminal.tokenized_signal_lifecycle import (
-    CONTRACT_VERSION, LifecycleKind, MAX_FEED_EVENTS,
+    CONTRACT_VERSION, HISTORY_WINDOW, LifecycleKind, MAX_FEED_EVENTS,
     build_tokenized_signal_lifecycle,
 )
 from app.radar_ui import tokenized_router
@@ -50,6 +51,50 @@ def feed(env, *, max_events=30):
         "NVDA", gates=gates(True, True), registry=env.registry,
         store=env.store, as_of=NOW, max_events=max_events,
     )
+
+
+def _pin_r6_route_evidence(env, monkeypatch, as_of):
+    """Freeze only the two request clocks and the API's default read dependencies."""
+    from app.crypto_terminal import tokenized_read
+
+    class _FixtureDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc, "HTML route must request an aware UTC clock"
+            return as_of
+
+    assert as_of.tzinfo is not None and as_of.utcoffset() is not None
+    monkeypatch.setattr(tokenized_router, "datetime", _FixtureDatetime)
+    monkeypatch.setattr(crypto_router, "_request_as_of", lambda: as_of)
+    monkeypatch.setattr(tokenized_read, "registry", lambda: env.registry)
+    monkeypatch.setattr(tokenized_read, "store", lambda: env.store)
+
+
+def _entitled_r6_html_client(monkeypatch):
+    session = SimpleNamespace(user_id="r6-test", username="r6-test",
+                              login_at=None, session_type="user")
+    monkeypatch.setattr("app.auth.resolve_request_session", lambda request: session)
+    from app.radar_ui import tokenized_gating
+
+    async def entitled(_request):
+        return gates(True, True)
+
+    monkeypatch.setattr(tokenized_gating, "resolve_tokenized_gates", entitled)
+    app = FastAPI()
+    app.include_router(tokenized_router.router)
+    return TestClient(app, raise_server_exceptions=True)
+
+
+def _forbid_r6_read_side_effects(monkeypatch):
+    """Reuse R5's tested no-write/no-provider-call boundary for both routes."""
+    import urllib.request
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("R6_READ_SIDE_EFFECT_FORBIDDEN")
+
+    for method in ("append_observation", "append_many", "append_many_batched"):
+        monkeypatch.setattr(VenueMarketStore, method, forbidden)
+    monkeypatch.setattr(urllib.request, "urlopen", forbidden)
 
 
 def test_projection_reuses_original_events_ids_timestamps_and_digests(env):
@@ -250,32 +295,95 @@ def test_crypto_api_denied_before_even_entitlement_resolution(env, monkeypatch):
 
 
 def test_html_and_api_share_identical_event_ids_not_hidden_premium_fields(env, monkeypatch):
-    _append(env.store, _row(150, "100"), _row(80, "102"), _row(30, "100"))
-    session = SimpleNamespace(user_id="r6-test", username="r6-test",
-                              login_at=None, session_type="user")
-    monkeypatch.setattr("app.auth.resolve_request_session", lambda request: session)
+    rows = (_row(150, "100"), _row(80, "102"), _row(30, "100"))
+    _append(env.store, *rows)
+    expected = build_tokenized_signal_lifecycle(
+        "NVDA", registry=env.registry, store=env.store, as_of=NOW)
+    assert len(expected.events) == 2, "fixture must prove appeared and cleared events"
+    _pin_r6_route_evidence(env, monkeypatch, NOW)
+    before_count = env.store.count()
+    _forbid_r6_read_side_effects(monkeypatch)
 
-    from app.radar_ui import tokenized_gating
-    async def entitled(_request):
-        return gates(True, True)
-    monkeypatch.setattr(tokenized_gating, "resolve_tokenized_gates", entitled)
-
-    app = FastAPI()
-    app.include_router(tokenized_router.router)
-    html = TestClient(app, raise_server_exceptions=True).get(
-        "/radar/tokenized-markets/NVDA")
+    html = _entitled_r6_html_client(monkeypatch).get("/radar/tokenized-markets/NVDA")
     assert html.status_code == 200
     assert 'data-testid="tmd-signals-feed"' in html.text
     assert 'data-testid="tmd-signals-list"' in html.text
+    assert html.text.count('data-testid="tmd-signal-event"') == len(expected.events)
     assert "HISTORICAL" in html.text and "CURRENT" in html.text
+    assert 'data-testid="tmd-signals-locked"' not in html.text
 
-    client, _ = _api_client(env, monkeypatch)
+    client, access_calls = _api_client(env, monkeypatch)
     api = client.get("/api/v1/crypto/tokenized/NVDA/signals")
     assert api.status_code == 200
-    for event in api.json()["data"]["events"]:
+    assert {TokenizedResource.HISTORY, TokenizedResource.DISLOCATION} <= set(access_calls)
+    payload = api.json()
+    assert payload["as_of"] == NOW.isoformat()
+    assert payload["data"]["as_of"] == NOW.isoformat()
+    assert payload["state"] == payload["data"]["state"] == "AVAILABLE"
+    events = payload["data"]["events"]
+    originals = list(reversed(expected.events))
+    assert len(events) == len(originals) > 0
+    assert [event["event_id"] for event in events] == [event.event_id for event in originals]
+    assert [event["temporal_classification"] for event in events] == [
+        event.temporal_classification for event in originals]
+    assert {event["temporal_classification"] for event in events} == {"HISTORICAL", "CURRENT"}
+    observed_clocks = {row.ts for row in rows}
+    for event, original in zip(events, originals, strict=True):
+        assert event["source_observed_at"] == original.source_observed_at
+        assert event["source_observed_at"] in observed_clocks
+        assert event["prior_observation_digest"] == original.prior_observation_digest
+        assert event["current_observation_digest"] == original.current_observation_digest
+        assert event["identity"] == asdict(original.identity)
         assert event["event_id"] in html.text
+        assert event["source_observed_at"] in html.text
+        assert event["prior_observation_digest"] in html.text
         assert event["current_observation_digest"] in html.text
         assert event["identity"]["instrument_id"] in html.text
+        assert event["identity"]["contract_address"] in html.text
+    assert payload["data"]["notifications_enabled"] is False
+    assert payload["data"]["current_deepstate_signals"] == "UNAVAILABLE"
+    assert env.store.count() == before_count
+
+
+def test_html_and_api_expire_observed_events_without_fabricating_transitions(env, monkeypatch):
+    """Eight days after the exact same observations, R5/HTML/API are truthfully empty."""
+    rows = (_row(150, "100"), _row(80, "102"), _row(30, "100"))
+    _append(env.store, *rows)
+    assert HISTORY_WINDOW == timedelta(days=7)
+    current = build_tokenized_signal_lifecycle(
+        "NVDA", registry=env.registry, store=env.store, as_of=NOW)
+    assert current.events, "negative control requires real previously visible events"
+
+    expired_at = NOW + timedelta(days=8)
+    expired = build_tokenized_signal_lifecycle(
+        "NVDA", registry=env.registry, store=env.store, as_of=expired_at)
+    assert expired.events == ()
+    assert expired.source_observations_examined == 0
+
+    _pin_r6_route_evidence(env, monkeypatch, expired_at)
+    before_count = env.store.count()
+    _forbid_r6_read_side_effects(monkeypatch)
+    html = _entitled_r6_html_client(monkeypatch).get("/radar/tokenized-markets/NVDA")
+    assert html.status_code == 200
+    assert 'data-testid="tmd-signals-feed"' in html.text
+    assert 'data-testid="tmd-signals-empty"' in html.text
+    assert 'data-testid="tmd-signals-list"' not in html.text
+    assert 'data-testid="tmd-signal-event"' not in html.text
+    assert 'data-testid="tmd-signals-locked"' not in html.text
+
+    client, access_calls = _api_client(env, monkeypatch)
+    api = client.get("/api/v1/crypto/tokenized/NVDA/signals")
+    assert api.status_code == 200
+    assert {TokenizedResource.HISTORY, TokenizedResource.DISLOCATION} <= set(access_calls)
+    payload = api.json()
+    assert payload["as_of"] == expired_at.isoformat()
+    assert payload["state"] == payload["data"]["state"] == "NO_OBSERVED_EVENTS"
+    assert payload["data"]["as_of"] == expired_at.isoformat()
+    assert payload["data"]["events"] == []
+    assert payload["data"]["source_observations_examined"] == 0
+    assert payload["data"]["notifications_enabled"] is False
+    assert payload["data"]["current_deepstate_signals"] == "UNAVAILABLE"
+    assert env.store.count() == before_count
 
 
 def test_html_one_gate_denied_never_composes_protected_feed(env, monkeypatch):
