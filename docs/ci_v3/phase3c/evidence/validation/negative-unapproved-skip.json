@@ -1,0 +1,12 @@
+{
+ "container_removed": true,
+ "control": "unapproved-skip",
+ "pytest_codes": {
+  "worker-0": 0,
+  "worker-1": 0,
+  "worker-2": 0
+ },
+ "reason": "unexpected skip/xfail",
+ "rejected": true,
+ "workers_not_normal": []
+}

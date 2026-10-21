@@ -1,0 +1,12 @@
+{
+ "ceiling_s": 0.6,
+ "cold_start_s": 1.012,
+ "cpu_loop_5m_s": 0.32346,
+ "import_asyncio_ms": 385,
+ "meets_test_assumption": false,
+ "worker_cold_start_samples_s": [
+  1.29,
+  1.012,
+  0.984
+ ]
+}
