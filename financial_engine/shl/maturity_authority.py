@@ -520,7 +520,7 @@ class OdrAttempt:
                     (missing if not funded else contradictory).append(f"{role}.FINAL_FUNDED_OR_STRICT")
                 checks += [OdrFinalCheck(f"{role}.FINAL_{site}", shortfall) for site, shortfall in registration.sites]
 
-        returned_rows, operating, returned_maturity, row_problem = self._returned_rows(result)
+        returned_rows, operating, axis, returned_maturity, row_problem = self._returned_rows(result)
         if row_problem and requirements.waterfall_required:
             contradictory.append(row_problem)
         bound = [r for r in self._waterfall if r.state == state]
@@ -528,7 +528,7 @@ class OdrAttempt:
             if registration.state != state and registration.shortfall is not None:
                 self.provisional_violations.append((f"SUPERSEDED.{WATERFALL_FINAL_CHECK}", registration.shortfall))
         matching = [r for r in bound if not row_problem
-                    and self._rows_match(r, returned_rows, operating, returned_maturity)]
+                    and self._rows_match(r, returned_rows, operating, axis, returned_maturity)]
         for registration in bound:
             if registration not in matching and registration.shortfall is not None:
                 self.provisional_violations.append((f"STALE.{WATERFALL_FINAL_CHECK}", registration.shortfall))
@@ -558,39 +558,53 @@ class OdrAttempt:
 
     @staticmethod
     def _returned_rows(result):
-        """Returned operating SHL rows as exact binary64 (closing, gross interest, principal) per period, the operating
-        period set and the returned contractual SHL maturity. Duplicated period rows are a defect, never collapsed."""
+        """Returned operating SHL rows in their ORIGINAL order as (period, closing, gross, principal) exact binary64, plus the
+        operating period set, the model period axis (model order) and the returned contractual SHL maturity.
+
+        Construction rows carry their own construction numbering (they may share an index with an operating period) and are
+        excluded by their ``is_construction`` flag. Every non-construction row must be an operating model period: an extra,
+        off-axis or duplicated operating row is a defect, never filtered, collapsed or re-sorted."""
         periods = getattr(result, "waterfall_periods", None)
         model_periods = getattr(result.financing_result.project_model_result, "periods", None)
         terminal = getattr(getattr(getattr(result, "return_summary", None), "terminal", None), "shareholder_loan", None)
         maturity = getattr(terminal, "contractual_maturity_period_index", None)
         if periods is None or model_periods is None:
-            return {}, frozenset(), maturity, "returned result carries no waterfall periods"
+            return (), frozenset(), (), maturity, "returned result carries no waterfall periods"
+        axis = tuple(p.period_index for p in model_periods)
         operating = frozenset(p.period_index for p in model_periods if getattr(p, "is_operation", False))
-        rows: dict = {}
+        operating_order = tuple(index for index in axis if index in operating)
+        rows = []
         for row in periods:
-            # Construction rows carry their own (construction-period) numbering and may share an index with an
-            # operating period; only operating rows hold the SHL roll-forward that the final check validates.
-            if row.is_construction or row.period_index not in operating:
+            if row.is_construction:
                 continue
-            if row.period_index in rows:
-                return {}, operating, maturity, f"returned waterfall duplicates SHL period {row.period_index}"
-            rows[row.period_index] = (_bits(row.shl_closing_balance_keur), _bits(row.shl_gross_interest_keur),
-                                      _bits(row.actual_shl_principal_paid_keur))
-        return rows, operating, maturity, None
+            if row.period_index not in operating:
+                return (), operating, axis, maturity, (
+                    f"returned waterfall row {row.period_index} is not an operating model period")
+            rows.append((row.period_index, _bits(row.shl_closing_balance_keur), _bits(row.shl_gross_interest_keur),
+                         _bits(row.actual_shl_principal_paid_keur)))
+        order = tuple(row[0] for row in rows)
+        if len(set(order)) != len(order):
+            duplicated = next(index for index in order if order.count(index) > 1)
+            return (), operating, axis, maturity, f"returned waterfall duplicates SHL period {duplicated}"
+        if order != operating_order:
+            return (), operating, axis, maturity, "returned operating waterfall rows are missing, extra or out of model order"
+        return tuple(rows), operating, axis, maturity, None
 
     @staticmethod
-    def _rows_match(registration: _WaterfallRegistration, returned: dict, operating: frozenset, maturity) -> bool:
-        """Complete, ordered, bit-exact correspondence of every operating period up to the returned contractual maturity."""
+    def _rows_match(registration: _WaterfallRegistration, returned: tuple, operating: frozenset, axis: tuple,
+                    maturity) -> bool:
+        """The checked schedule covers exactly the model period axis up to the returned contractual SHL maturity (model
+        order, no off-axis period), and every returned operating row up to that maturity is bit-identical to it."""
         if maturity is None or registration.maturity_period_index != maturity or maturity not in operating:
             return False
-        expected = sorted(index for index in operating if index <= maturity)
-        checked = [row for row in registration.rows if row[0] in operating]
-        if [row[0] for row in checked] != expected:
+        scope = tuple(index for index in axis if index <= maturity)
+        if tuple(row[0] for row in registration.rows) != scope:
             return False
-        if sorted(index for index in returned if index <= maturity) != expected:
+        checked = {row[0]: row[1:] for row in registration.rows if row[0] in operating}
+        in_scope = tuple(row for row in returned if row[0] <= maturity)
+        if tuple(row[0] for row in in_scope) != tuple(index for index in scope if index in operating):
             return False
-        return all(returned[index] == (closing, gross, principal) for index, closing, gross, principal in checked)
+        return all(checked[row[0]] == row[1:] for row in in_scope)
 
     def first_final_failure(self) -> OdrFinalCheck | None:
         return next((c for c in self.final_checks if not c.passed), None)

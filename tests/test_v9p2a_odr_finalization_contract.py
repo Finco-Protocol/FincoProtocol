@@ -719,3 +719,79 @@ def test_rfa_positive_shl_liability_without_final_schedule_is_unsupported(feasib
     no_schedule = _with_financing(g2c, project_model_result=dc.replace(fin.project_model_result, shareholder_loan=None))
     with pytest.raises(ma.OdrFinalizationError, match=ma.UNSUPPORTED_FINANCING):
         ma.required_final_checks(no_schedule)
+
+
+# ------------------------------------------------------------------------------------------------ Final contract closure
+
+def _off_axis_checked_row(schedule, shl_input):
+    """An extra checked row whose period is not on the model axis (strictly increasing order preserved)."""
+    vectors = _rows(schedule)
+    assert vectors[0][0] > -1
+    return _with(schedule, [[-1] + vectors[0]] + [[0.0] + v for v in vectors[1:]]), shl_input
+
+
+def test_fcc_off_axis_checked_row_is_rejected(entries, monkeypatch):
+    _edit_schedule(monkeypatch, _off_axis_checked_row)
+    error = _reject(entries, FEASIBLE)
+    assert ma.FINAL_EVIDENCE_MISSING in error or ma.FINAL_EVIDENCE_CONTRADICTORY in error
+
+
+def _operating_positions(rows, result_periods):
+    operating = {p.period_index for p in result_periods if p.is_operation}
+    return [i for i, r in enumerate(rows) if not r.is_construction and r.period_index in operating]
+
+
+def test_fcc_off_axis_returned_operating_row_is_rejected(entries, monkeypatch):
+    def substitute(result):
+        rows = tuple(result.waterfall_periods)
+        k = _operating_positions(rows, result.financing_result.project_model_result.periods)[3]
+        extra = dc.replace(rows[k], period_index=-1)                  # non-construction row outside the model axis
+        return dc.replace(result, waterfall_periods=rows[:k] + (extra,) + rows[k:])
+    _wrap_finalize(monkeypatch, substitute)
+    error = _reject(entries, FEASIBLE)
+    assert ma.FINAL_EVIDENCE_CONTRADICTORY in error or ma.FINAL_EVIDENCE_MISSING in error
+
+
+def test_fcc_reordered_returned_operating_rows_are_rejected(entries, monkeypatch):
+    def substitute(result):
+        rows = list(result.waterfall_periods)
+        a, b = _operating_positions(rows, result.financing_result.project_model_result.periods)[5:7]
+        rows[a], rows[b] = rows[b], rows[a]
+        return dc.replace(result, waterfall_periods=tuple(rows))
+    _wrap_finalize(monkeypatch, substitute)
+    error = _reject(entries, FEASIBLE)
+    assert ma.FINAL_EVIDENCE_CONTRADICTORY in error or ma.FINAL_EVIDENCE_MISSING in error
+
+
+def test_fcc_source_functions_on_real_objects(feasible_pair, monkeypatch, entries):
+    """Smallest deterministic demonstration on the actual source functions with a real returned result."""
+    captured = {}
+    original = ma.OdrAttempt.finalize
+
+    def finalize(self, result):
+        captured["attempt"], captured["result"] = self, result
+        return original(self, result)
+
+    monkeypatch.setattr(ma.OdrAttempt, "finalize", finalize)
+    _odr(entries, FEASIBLE)
+    attempt, result = captured["attempt"], captured["result"]
+    registration = next(r for r in attempt._waterfall if r.state == ma.financial_state_digest(result.financing_result))
+    returned, operating, axis, maturity, problem = ma.OdrAttempt._returned_rows(result)
+    assert problem is None and ma.OdrAttempt._rows_match(registration, returned, operating, axis, maturity)
+    # G1: checked off-axis row
+    zero = ma._bits(0.0)
+    off_axis = dc.replace(registration, rows=((-1, zero, zero, zero),) + registration.rows)
+    assert not ma.OdrAttempt._rows_match(off_axis, returned, operating, axis, maturity)
+    # G2 / G3: returned off-axis row and reordered operating rows
+    rows = tuple(result.waterfall_periods)
+    positions = _operating_positions(rows, result.financing_result.project_model_result.periods)
+    extra = dc.replace(rows[positions[3]], period_index=-1)
+    with_extra = dc.replace(result, waterfall_periods=rows[:positions[3]] + (extra,) + rows[positions[3]:])
+    assert ma.OdrAttempt._returned_rows(with_extra)[4] == "returned waterfall row -1 is not an operating model period"
+    swapped = list(rows)
+    a, b = positions[5:7]
+    swapped[a], swapped[b] = swapped[b], swapped[a]
+    assert ma.OdrAttempt._returned_rows(dc.replace(result, waterfall_periods=tuple(swapped)))[4] == (
+        "returned operating waterfall rows are missing, extra or out of model order")
+    # construction row sharing an operating index (real shape) stays supported
+    assert any(r.is_construction for r in rows) and problem is None
