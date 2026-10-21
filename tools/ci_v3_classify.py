@@ -1,7 +1,10 @@
-"""Turn current collection and standalone-module evidence into a proposed (never self-approved) isolation policy.
+"""Turn current collection and standalone-module attempts into an UNREVIEWED isolation and nonpass proposal.
 
-A module is `runner-private` only when it passed alone in a fresh private no-network copy with exactly its
-collected node count and no skip. Anything else is `blocked` and stops admission; nothing is dropped."""
+Every attempt is preserved with its exact evidence. A module is proposed `runner-private` only when all of its
+attempts are clean and consistent. A module that ever failed, timed out, was killed for capacity, or returned an
+inconsistent verdict stays `blocked`; later uncontended PASSes never unlock it. The single exception is repeated
+PASSes at the equivalent target concurrency (identical image and source, N concurrent worker-sized containers),
+which still leaves the prior failure recorded and `reviewed` false. Nothing here is an owner approval."""
 from __future__ import annotations
 
 import argparse
@@ -12,20 +15,79 @@ import xml.etree.ElementTree as ET
 
 from tools.ci_v3_schema import ContractError, read_json, require, seal, write_json
 
+TARGET_WORKERS = 3
+MIN_TARGET_PASSES = 5
+CAPACITY_EXIT = {-9, 137}          # SIGKILL / OOM kill
+CAPACITY_MARKERS = ("MemoryError", "No space left on device", "Cannot allocate memory", "Too many open files")
+RESOLVED = ("stable-pass", "target-concurrency-stability-validated", "not-collected-helper", "collection-skipped")
 
-def load_probe(*directories, reruns=()):
-    results = {}
-    for directory in directories:
-        for line in (Path(directory) / "results.jsonl").read_text().splitlines():
-            item = json.loads(line)
-            require(item["module"] not in results, "duplicate standalone result: " + item["module"])
-            results[item["module"]] = item
-    for directory in reruns:  # uncontended re-execution evidence; the first attempt stays recorded
-        for line in (Path(directory) / "results.jsonl").read_text().splitlines():
-            item = json.loads(line)
-            require(item["module"] in results, "rerun of unknown module: " + item["module"])
-            results[item["module"]] = {**item, "first_attempt": results[item["module"]]}
-    return results
+
+def load_attempts(directory, expect=None):
+    """Read one probe run directory (meta.json + lane-*/results.jsonl). `expect` binds image id and source tree."""
+    directory = Path(directory)
+    meta = read_json(directory / "meta.json")
+    require(meta["kind"] in ("first", "uncontended", "target"), "unknown attempt kind")
+    if expect:
+        require(meta["image_id"] == expect["image_id"] and meta["tree"] == expect["tree"], "attempt was not executed on the evidence image/source")
+    records = [json.loads(line) for f in sorted(directory.glob("lane-*/results.jsonl")) for line in f.read_text().splitlines()]
+    require(records, "empty attempt evidence: " + str(directory))
+    return meta, records
+
+
+def collect(runs, expect=None):
+    """module -> list of attempt records, each carrying its run meta. Duplicate (run, module, tag) is rejected."""
+    result, seen = {}, set()
+    for directory in runs:
+        meta, records = load_attempts(directory, expect)
+        for item in records:
+            key = (meta["label"], item["module"], item.get("tag"))
+            require(key not in seen, "duplicate attempt evidence: " + "/".join(map(str, key)))
+            seen.add(key)
+            result.setdefault(item["module"], []).append({**item, "kind": meta["kind"], "label": meta["label"],
+                "concurrency": meta["concurrency"], "image_id": meta["image_id"], "tree": meta["tree"]})
+    return result
+
+
+def status(attempt, expected):
+    """Verdict of one attempt; the strictest reading wins."""
+    if attempt["timed_out"]:
+        return "timeout"
+    if attempt["exit_code"] in CAPACITY_EXIT or any(m in (attempt.get("tail") or "") for m in CAPACITY_MARKERS):
+        return "capacity"
+    if attempt["exit_code"] != 0 or attempt["failures"] or attempt["errors"]:
+        return "fail"
+    if attempt["tests"] != expected:
+        return "coverage-mismatch"
+    return "pass-with-nonpass" if attempt["skipped"] else "pass"
+
+
+def decide(attempts, expected, min_target=MIN_TARGET_PASSES):
+    """Return (mode, category, reason) from ALL attempts."""
+    if not attempts:
+        return "blocked", "no-standalone-evidence", "module was not executed alone"
+    verdicts = [status(a, expected) for a in attempts]
+    for bad, category in (("timeout", "timeout"), ("capacity", "capacity-exhaustion"), ("coverage-mismatch", "coverage-mismatch")):
+        if bad in verdicts:
+            return "blocked", category, f"{bad} in attempt(s) " + ", ".join(a["label"] for a, v in zip(attempts, verdicts) if v == bad)
+    passing = {"pass", "pass-with-nonpass"}
+    if all(v in passing for v in verdicts):
+        if len({a["skipped"] for a in attempts}) > 1:
+            return "blocked", "inconsistent-verdicts", "attempts disagree on the number of runtime skips/xfails"
+        if verdicts[0] == "pass-with-nonpass":
+            return "blocked", "nonpass-approval-required", f"{attempts[0]['skipped']} runtime skip/xfail record(s); owner must approve the exact nonpass policy"
+        return "runner-private", "stable-pass", f"{len(attempts)} consistent PASS attempt(s), {expected} nodes, no skips"
+    if all(v == "fail" for v in verdicts):
+        return "blocked", "standalone-failure", f"failed in all {len(attempts)} attempt(s)"
+    target = [(a, v) for a, v in zip(attempts, verdicts) if a["kind"] == "target" and a["concurrency"] == TARGET_WORKERS]
+    if any(v == "fail" for _, v in target):
+        return "blocked", "inconsistent-verdicts", "failed at the equivalent target concurrency"
+    passes = sum(1 for _, v in target if v in passing)
+    if passes >= min_target and all(a["skipped"] == 0 for a, _ in target):
+        return "runner-private", "target-concurrency-stability-validated", (
+            f"earlier failure retained; {passes} consecutive PASSes at {TARGET_WORKERS}-way concurrency; owner must review the prior failure")
+    return "blocked", "load-sensitive-unproven", (
+        f"failed once, later passes do not prove stability: {passes}/{min_target} target-concurrency PASSes "
+        f"({sum(a['kind'] == 'uncontended' for a in attempts)} uncontended rerun(s) are not equivalent evidence)")
 
 
 def nonpass_proposal(junit_files, nodeids):
@@ -38,80 +100,62 @@ def nonpass_proposal(junit_files, nodeids):
             if node is None:
                 continue
             parts = case.get("classname", "").split(".")
+            nodeid = None
             for cut in range(len(parts), 0, -1):
                 module = "/".join(parts[:cut]) + ".py"
                 if module in modules:
-                    nodeid = "::".join([module, *parts[cut:], case.get("name")])
-                    break
-            else:
-                nodeid = None
+                    nodeid = "::".join([module, *parts[cut:], case.get("name")]); break
             reason = node.get("message") or "no reason recorded"
+            record = {"status": "xfail" if node.get("type") == "pytest.xfail" else "skipped", "reason": reason}
             if nodeid in known:
-                proposal[nodeid] = {"status": "xfail" if node.get("type") == "pytest.xfail" else "skipped", "reason": reason}
+                require(proposal.get(nodeid, record) == record, "inconsistent nonpass observations for " + nodeid)
+                proposal[nodeid] = record
             else:
                 unmatched.append({"classname": case.get("classname"), "name": case.get("name"), "reason": reason})
     return proposal, unmatched
 
 
-def classify(prepared, probe, skipped_modules=frozenset()):
+def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TARGET_PASSES):
     inventory, isolation = prepared["inventory"], prepared["isolation"]
     expected = Counter(n["module"] for n in inventory["nodes"])
     modules, summary = {}, Counter()
     for name, base in isolation["modules"].items():
-        record = dict(base)
+        record = dict(base); history = attempts.get(name, [])
         if name in skipped_modules:
-            record.update(mode="blocked", category="collection-skipped",
-                          reason="whole module skipped at collection (missing optional runtime); covered only if the control skips it identically")
+            mode, category, reason = "blocked", "collection-skipped", "whole module skipped at collection (missing optional runtime); allowed only if the control skips it identically"
         elif name not in expected:
-            record.update(mode="blocked", category="not-collected-helper", reason="no collected nodes; helper or collection-skipped file")
+            mode, category, reason = "blocked", "not-collected-helper", "no collected nodes; helper or collection-skipped file"
         else:
-            result = probe.get(name)
-            if result is None:
-                record.update(mode="blocked", category="no-standalone-evidence", reason="module was not executed alone")
-            elif result["exit_code"] != 0 or result["timed_out"] or result["failures"] or result["errors"]:
-                record.update(mode="blocked", category="standalone-failure",
-                              reason=f"alone: exit={result['exit_code']} failures={result['failures']} errors={result['errors']} timed_out={result['timed_out']}")
-            elif result["skipped"] and result["tests"] == expected[name]:
-                record.update(mode="blocked", category="nonpass-approval-required",
-                              reason=f"passed alone with {result['skipped']} runtime skip/xfail record(s); owner must approve exact nonpass policy")
-            elif result["tests"] != expected[name]:
-                record.update(mode="blocked", category="coverage-mismatch",
-                              reason=f"alone: tests={result['tests']} skipped={result['skipped']} expected={expected[name]}")
-            else:
-                first = result.get("first_attempt")
-                record.update(mode="runner-private", category="load-sensitive-pass" if first else "standalone-pass",
-                              reason=f"passed alone in a fresh private no-network copy: {result['tests']} nodes in {result['seconds']}s"
-                                     + (f"; first attempt under 4-way load failed (exit {first['exit_code']})" if first else ""))
-        record["rationale"] = record["reason"]
-        record["reviewed"] = False  # owner review is the only approval
-        record["standalone"] = probe.get(name)
-        modules[name] = record
-        summary[record["category"]] += 1
+            mode, category, reason = decide(history, expected[name], min_target)
+        record.update(mode=mode, category=category, reason=reason, rationale=reason, reviewed=False, attempts=history)
+        modules[name] = record; summary[category] += 1
     proposal = seal({**{k: v for k, v in isolation.items() if k not in ("digest", "modules")},
                      "modules": modules, "authority": "evidence-proposal-unreviewed"})
-    return proposal, {"modules": len(modules), "categories": dict(summary),
-                      "unresolved_blocking_admission": sum(c for k, c in summary.items() if k not in ("standalone-pass", "load-sensitive-pass", "not-collected-helper", "collection-skipped")),
-                      "collected_modules_without_pass": sorted(n for n, r in modules.items() if n in expected and r["mode"] != "runner-private")}
+    unresolved = sorted(n for n, r in modules.items() if r["category"] not in RESOLVED)
+    return proposal, {"modules": len(modules), "categories": dict(summary), "unresolved_blocking_admission": len(unresolved),
+                      "unresolved_modules": unresolved}
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--prepared", required=True); parser.add_argument("--probe", required=True, nargs="+"); parser.add_argument("--rerun", nargs="*", default=[]); parser.add_argument("--output", required=True)
+    parser.add_argument("--prepared", required=True); parser.add_argument("--attempt", required=True, nargs="+", help="probe run directories")
+    parser.add_argument("--output", required=True); parser.add_argument("--image-id"); parser.add_argument("--tree")
+    parser.add_argument("--min-target-passes", type=int, default=MIN_TARGET_PASSES)
     args = parser.parse_args(argv)
     prepared = {k: read_json(Path(args.prepared) / (k + ".json")) for k in ("inventory", "isolation", "collection")}
     skipped = {r["nodeid"] for r in prepared["collection"]["skips"]}
+    expect = {"image_id": args.image_id, "tree": args.tree} if args.image_id else None
     try:
-        proposal, summary = classify(prepared, load_probe(*args.probe, reruns=args.rerun), skipped)
+        proposal, summary = classify(prepared, collect(args.attempt, expect), skipped, args.min_target_passes)
+        junit = [f for d in args.attempt for f in Path(d).glob("lane-*/*.xml")]
+        allowed, unmatched = nonpass_proposal(junit, [n["nodeid"] for n in prepared["inventory"]["nodes"]])
     except ContractError as exc:
         print("CI_V3_CLASSIFY_REJECTED: " + str(exc)); return 1
     out = Path(args.output); out.mkdir(parents=True, exist_ok=False)
-    junit = [f for d in args.probe for f in Path(d).glob("*.xml")]
-    allowed, unmatched = nonpass_proposal(junit, [n["nodeid"] for n in prepared["inventory"]["nodes"]])
-    write_json(out / "allowed-nonpass-proposal.json", {"authority": "evidence-proposal-unreviewed", "records": allowed, "unmatched": unmatched})
-    summary["collection_skipped_modules"] = sorted(skipped)
-    summary["observed_runtime_nonpass"] = len(allowed); summary["unmatched_nonpass"] = len(unmatched)
+    summary.update(collection_skipped_modules=sorted(skipped), observed_runtime_nonpass=len(allowed), unmatched_nonpass=len(unmatched))
     write_json(out / "isolation-proposal.json", proposal); write_json(out / "summary.json", summary)
-    print(json.dumps({k: v for k, v in summary.items() if k != "collected_modules_without_pass"})); return 0
+    write_json(out / "allowed-nonpass-proposal.json", {"authority": "evidence-proposal-unreviewed", "records": allowed, "unmatched": unmatched})
+    print(json.dumps({k: v for k, v in summary.items() if k not in ("unresolved_modules", "collection_skipped_modules")})); return 0
 
 
 if __name__ == "__main__":

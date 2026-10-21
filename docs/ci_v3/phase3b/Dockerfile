@@ -6,7 +6,8 @@ FROM ${BASE_IMAGE}
 USER root
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1 PYTHONDONTWRITEBYTECODE=1 \
     OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
-RUN apt-get update && apt-get install -y --no-install-recommends git libgomp1 \
+# nodejs and openssh-client are present on the hosted control runner; tests skip without them (coverage loss).
+RUN apt-get update && apt-get install -y --no-install-recommends git libgomp1 nodejs openssh-client \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY requirements.txt requirements-ci-tests.txt constraints.txt ./
@@ -22,6 +23,7 @@ RUN mkdir -p /opt/ci-v3 \
     && python -m pip freeze --all > /opt/ci-v3/resolved-python.txt \
     && dpkg-query -W -f='${Package}=${Version}\n' | sort > /opt/ci-v3/resolved-system.txt \
     && python -VV > /opt/ci-v3/python-version.txt \
+    && { node --version; ssh-keygen -V 2>&1 | head -1 || true; } > /opt/ci-v3/tool-versions.txt 2>&1 \
     && chmod -R a=rX /opt/ci-v3 \
     && rm -rf /build
 WORKDIR /subject

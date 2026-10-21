@@ -4,6 +4,7 @@ Empirical independence evidence only: a module that passes alone has no dependen
 modules. It is not an approval of shared-fixture isolation and never changes a test outcome."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -14,11 +15,11 @@ import time
 import xml.etree.ElementTree as ET
 
 
-def run_module(source, module, out, timeout):
+def run_module(source, module, out, timeout, tag=None):
     work = Path("/tmp/work"); shutil.rmtree(work, ignore_errors=True)
     shutil.copytree(source, work, symlinks=True)
     tmp = Path("/tmp/pt"); shutil.rmtree(tmp, ignore_errors=True); tmp.mkdir()
-    xml = out / (module.replace("/", "__") + ".xml")
+    xml = out / (module.replace("/", "__") + (f"__{tag}" if tag else "") + ".xml")
     env = {**os.environ, "TMPDIR": str(tmp), "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
     started = time.perf_counter(); timed_out = False
     try:
@@ -33,15 +34,17 @@ def run_module(source, module, out, timeout):
         suite = ET.parse(xml).getroot()
         suite = suite if suite.tag == "testsuite" else suite.find("testsuite")
         counts = {k: int(suite.get(k, 0)) for k in counts}
-    return {"module": module, "exit_code": code, "timed_out": timed_out, "seconds": round(time.perf_counter() - started, 2),
+    digest = hashlib.sha256(xml.read_bytes()).hexdigest() if xml.exists() else None
+    return {"module": module, "tag": tag, "junit_sha256": digest, "exit_code": code, "timed_out": timed_out, "seconds": round(time.perf_counter() - started, 2),
             **counts, "tail": tail if code != 0 else ""}
 
 
 def main():
     source, modules_file, out, timeout = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), int(sys.argv[4])
     out.mkdir(parents=True, exist_ok=True)
-    for module in json.loads(modules_file.read_text()):
-        result = run_module(source, module, out, timeout)
+    for entry in json.loads(modules_file.read_text()):  # a name, or {"module": name, "tag": repeat-label}
+        module, tag = (entry, None) if isinstance(entry, str) else (entry["module"], entry.get("tag"))
+        result = run_module(source, module, out, timeout, tag)
         with (out / "results.jsonl").open("a") as handle:
             handle.write(json.dumps(result) + "\n")
     return 0
