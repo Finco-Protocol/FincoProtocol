@@ -86,7 +86,8 @@ def main(argv=None):
     mine_skips = {s["nodeid"]: s["reason"] for s in collection["skips"]}
     coverage = {"control_cases": len(executed) + len(ctl_collection), "shadow_nodes_plus_collection_skips": len(nodes) + len(collection["skips"]),
                 "control_only_nodes": sorted(executed - set(nodes))[:20], "shadow_only_nodes": sorted(set(nodes) - executed)[:20],
-                "collection_skips_identical": ctl_skips == mine_skips}
+                "collection_skip_modules_identical": set(ctl_skips) == set(mine_skips), "collection_skip_modules": len(mine_skips),
+                "collection_skip_reason_note": "the control JUnit records collection-level skips only as 'collection skipped'; module identities are compared, reasons come from the shadow adapter"}
     policy = seal({"schema": 1, "kind": "ci-v3-nonpass-policy-proposal", "authority": "proposal-not-approved", "approved": False,
         "control": {"reference": args.control_ref, "results_xml_sha256": digest, "runtime_nonpass": len(runtime), "collection_skips": len(ctl_collection)},
         "source": inventory["source"], "inventory_digest": inventory["digest"], "coverage_equivalence": coverage,
