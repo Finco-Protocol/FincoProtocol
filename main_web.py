@@ -383,6 +383,12 @@ app.include_router(_v2_import_router, prefix="/v2")
 from app.v2.grid_router import router as _v2_grid_router
 app.include_router(_v2_grid_router, prefix="/v2")
 
+# UX-01 Full-React PoC — isolated, feature-flagged (FINCO_MODEL_REACT_V1, default OFF).
+# Read-only surface + same-origin static assets; ALL persistence stays on the existing
+# canonical /v2/workbook/grid/* routes.  Flag OFF leaves every legacy route untouched.
+from app.v2.react_poc_router import router as _v2_react_poc_router
+app.include_router(_v2_react_poc_router, prefix="/v2")
+
 # Workflow C: reject over-size or unbounded uploads BEFORE multipart parsing.
 # UploadFile may spool the incoming body before the route executes, so an
 # endpoint-only read limit would not provide an actual request-body bound.

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FINCO Model React — dev host</title>
+  <!-- Dev-only host. Production serving is app/templates/v2/react_poc.html via FastAPI. -->
+  <link rel="stylesheet" href="/static/tokens.css" />
+</head>
+<body>
+  <div id="finco-react-root"
+       data-project=""
+       data-bootstrap-url="/v2/model-react/bootstrap"
+       data-save-url="/v2/workbook/grid/save"
+       data-validate-url="/v2/workbook/grid/validate"
+       data-legacy-url="/v2/workbook"
+       data-asset-version="dev">
+    <p class="rx-boot-loading">Dev host — run FastAPI locally and open /v2/model-react/&lt;project&gt; instead, or point data attributes at a running server.</p>
+  </div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
