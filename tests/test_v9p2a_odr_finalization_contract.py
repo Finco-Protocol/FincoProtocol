@@ -1,15 +1,25 @@
-"""V9-P2a / OD-R Correction E - final financial evidence contract (real engine evaluations + targeted fault injection).
+"""V9-P2a / OD-R Corrections E+F - final financial evidence contract (real engine evaluations + targeted fault injection).
 
-Invariant under test: an OD-R result is returned only after every final check REQUIRED by the returned financing state has been
-performed on that exact state and passed. Applicability comes from the returned state (SHL liability, financing structure),
-never from the presence of evidence. Missing, duplicate, contradictory, unbound, stale (other-state) or repeated evidence fails
-closed; economic breaches keep ``SHL_MATURITY_RESIDUAL_FAILS_CLOSED``; upstream numerical/convergence errors keep precedence.
+Invariant: an OD-R result is returned only after every final check REQUIRED by the returned financing state was performed
+on exactly that state and passed.
 
-Injected faults only remove, duplicate or misbind the real per-pass evidence of real evaluations (decision-path controls).
-The canonical (deployed default) path never consults this contract and is shown unchanged under the same injections.
+* Identity (P1-01): evidence binds to ``financial_state_digest`` - a deterministic SHA-256 of every financing-result field
+  and the financing-dependent final model schedules (exact float bits) - recomputed at finalization. Python identity is
+  neither required nor sufficient.
+* G2A sites (P1-02): fixed roles; per required role exactly one CAPACITY and one FUNDED-or-STRICT; unknown sites / roles,
+  extra or contradictory passes fail closed.
+* Waterfall provenance (P1-03): each check carries its proof token (the evaluated maturity context), the exact inputs and
+  the schedule it produced; the returned waterfall rows must equal a checked schedule; identical repeats are legitimate,
+  re-registration of one proof, re-evaluation with different inputs and stale schedules are not.
+* Financing authority (P1-04): exact-type table (ProjectFinancingResult deferred G2A; Junior delegated canonical;
+  multi-senior without SHL); unknown types, subclasses and U2 post-evaluation attachments fail closed.
+
+Injected faults only remove, duplicate, alter or misbind the real evidence / returned state of real evaluations.
+The canonical (deployed default) path never consults this contract.
 """
 from __future__ import annotations
 
+import copy
 import dataclasses as dc
 import threading
 
@@ -63,6 +73,40 @@ def _wrap_absorb(monkeypatch, transform):
     return log
 
 
+def _wrap_waterfall(monkeypatch, transform):
+    """``transform(self, context, kwargs, original)`` around the real waterfall registration."""
+    original = ma.OdrAttempt.record_final_waterfall
+    log = []
+
+    def record(self, context, **kwargs):
+        log.append(context)
+        return transform(self, context, kwargs, original)
+
+    monkeypatch.setattr(ma.OdrAttempt, "record_final_waterfall", record)
+    return log
+
+
+def _suppress_waterfall(monkeypatch):
+    monkeypatch.setattr(ma.OdrAttempt, "record_final_waterfall", lambda self, context, **kwargs: None)
+
+
+def _wrap_finalize(monkeypatch, substitute):
+    """Replace the returned result handed to the real ``finalize`` (state-binding controls)."""
+    original = ma.OdrAttempt.finalize
+    seen = []
+
+    def finalize(self, result):
+        seen.append(self)
+        return original(self, substitute(result))
+
+    monkeypatch.setattr(ma.OdrAttempt, "finalize", finalize)
+    return seen
+
+
+def _with_financing(result, **changes):
+    return dc.replace(result, financing_result=dc.replace(result.financing_result, **changes))
+
+
 @pytest.fixture(scope="module")
 def feasible_pair(entries):
     pfa._POLICY_RUN_CACHE.clear()
@@ -88,42 +132,90 @@ def test_feasible_state_has_shl_liability_and_complete_bound_evidence(feasible_p
     assert meta["shl_maturity_superseded_dsra_attempts"] == 1
 
 
+def test_state_digest_is_deterministic_exact_and_content_based(feasible_pair):
+    canonical, odr = feasible_pair
+    fin = odr.g2c_result.financing_result
+    digest = ma.financial_state_digest(fin)
+    assert digest == ma.financial_state_digest(copy.deepcopy(fin))          # different objects, identical content
+    assert digest == ma.financial_state_digest(canonical.g2c_result.financing_result)
+    bumped = fin.derived_shl_cash_principal_keur + 1e-9                     # smallest economically visible change
+    assert ma.financial_state_digest(dc.replace(fin, derived_shl_cash_principal_keur=bumped)) != digest
+    with pytest.raises(ma.OdrFinalizationError, match=ma.FINAL_EVIDENCE_UNBOUND):
+        ma.financial_state_digest(object())
+
+
 def test_applicability_is_derived_from_the_final_state_not_from_evidence(feasible_pair):
     _, odr = feasible_pair
     g2c = odr.g2c_result
     fin = g2c.financing_result
     model = fin.project_model_result
     base = ma.required_final_checks(g2c)
-    assert base == ma.OdrFinalRequirements(ma.CONSTRUCTION_G2A_ROLES, True, "derived-SHL/Senior fixed point")
-
-    def with_financing(**changes):
-        return dc.replace(g2c, financing_result=dc.replace(fin, **changes))
-
+    assert (base.g2a_roles, base.waterfall_required, base.authority) == (ma.CONSTRUCTION_G2A_ROLES, True, "G2A_DEFERRED")
     zero_schedule = dc.replace(model.shareholder_loan, **{
         name: tuple(0.0 for _ in getattr(model.shareholder_loan, name))
         for name in ("shl_drawdown_keur", "shl_opening_keur", "shl_closing_keur")})
-    no_shl_model = dc.replace(model, shareholder_loan=None)
-    # very small positive principal is still a liability
-    assert ma.required_final_checks(with_financing(derived_shl_cash_principal_keur=1e-12)).waterfall_required
-    # zero principal but a positive SHL balance in the final schedule is still a liability
-    assert ma.required_final_checks(with_financing(derived_shl_cash_principal_keur=0.0)).waterfall_required
-    # genuinely no liability: zero principal and an all-zero schedule
-    none = ma.required_final_checks(with_financing(
-        derived_shl_cash_principal_keur=0.0, project_model_result=dc.replace(model, shareholder_loan=zero_schedule)))
+    assert ma.required_final_checks(_with_financing(g2c, derived_shl_cash_principal_keur=1e-12)).waterfall_required
+    assert ma.required_final_checks(_with_financing(g2c, derived_shl_cash_principal_keur=0.0)).waterfall_required
+    none = ma.required_final_checks(_with_financing(
+        g2c, derived_shl_cash_principal_keur=0.0, project_model_result=dc.replace(model, shareholder_loan=zero_schedule)))
     assert none.waterfall_required is False and none.g2a_roles == ma.CONSTRUCTION_G2A_ROLES
-    # no SHL schedule in the final model: no deferred SHL pass exists
-    absent = ma.required_final_checks(with_financing(derived_shl_cash_principal_keur=0.0, project_model_result=no_shl_model))
-    assert absent == ma.OdrFinalRequirements((), False, "no SHL schedule in the final model")
-    # top-level G2A when construction financing is absent
-    assert ma.required_final_checks(with_financing(construction_financing=None)).g2a_roles == ma.TOP_LEVEL_G2A_ROLES
-    # junior / multi-senior subclasses enforce canonically on every evaluation: no deferred G2A role
+    absent = ma.required_final_checks(_with_financing(
+        g2c, derived_shl_cash_principal_keur=0.0, project_model_result=dc.replace(model, shareholder_loan=None)))
+    assert (absent.g2a_roles, absent.waterfall_required) == ((), False)
+    assert ma.required_final_checks(_with_financing(g2c, construction_financing=None)).g2a_roles == ma.TOP_LEVEL_G2A_ROLES
+
+
+def _retyped(financing, cls):
+    probe = object.__new__(cls)
+    for field in dc.fields(financing):
+        object.__setattr__(probe, field.name, getattr(financing, field.name))
+    for field in dc.fields(cls):
+        if not hasattr(probe, field.name):
+            object.__setattr__(probe, field.name, None)
+    return probe
+
+
+def test_p1_04_exact_type_authority_table(feasible_pair):
+    from financial_engine.financing.contracts import ProjectFinancingResult
     from financial_engine.financing.junior_debt import JuniorFinancingResult
-    junior = type("Probe", (JuniorFinancingResult,), {})
-    probe = object.__new__(junior)
-    for field in dc.fields(fin):
-        object.__setattr__(probe, field.name, getattr(fin, field.name))
-    requirements = ma.required_final_checks(dc.replace(g2c, financing_result=probe))
-    assert requirements.g2a_roles == () and requirements.waterfall_required
+    from financial_engine.financing.multisenior import MultiSeniorFinancingResult
+    g2c = feasible_pair[1].g2c_result
+    fin = g2c.financing_result
+    junior = ma.required_final_checks(dc.replace(g2c, financing_result=_retyped(fin, JuniorFinancingResult)))
+    assert (junior.authority, junior.g2a_roles, junior.waterfall_required) == ("DELEGATED_CANONICAL", (), True)
+    for subclass_of in (ProjectFinancingResult, JuniorFinancingResult):
+        probe = type("UnreviewedSubtype", (subclass_of,), {})
+        with pytest.raises(ma.OdrFinalizationError, match=ma.UNSUPPORTED_FINANCING):
+            ma.required_final_checks(dc.replace(g2c, financing_result=_retyped(fin, probe)))
+    with pytest.raises(ma.OdrFinalizationError, match=ma.UNSUPPORTED_FINANCING):     # multi-senior has no SHL facility
+        ma.required_final_checks(dc.replace(g2c, financing_result=_retyped(fin, MultiSeniorFinancingResult)))
+    no_shl = dc.replace(fin, derived_shl_cash_principal_keur=0.0,
+                        project_model_result=dc.replace(fin.project_model_result, shareholder_loan=None))
+    multi = ma.required_final_checks(dc.replace(g2c, financing_result=_retyped(no_shl, MultiSeniorFinancingResult)))
+    assert (multi.authority, multi.waterfall_required) == ("NO_SHL_FACILITY", False)
+
+
+def test_p1_04_junior_is_delegated_canonical_on_the_real_engine(monkeypatch):
+    from financial_engine import orchestrator
+    from tests.test_financing_f3_junior_contract import case
+    pi, _ = case("solar")
+    contexts = []
+    original = orchestrator.run_senior_debt_model
+
+    def spy(model_input, **kwargs):
+        contexts.append(kwargs.get("shl_maturity_context"))
+        return original(model_input, **kwargs)
+
+    # Junior imports the orchestrator entry at call time; the G2A owner keeps its own module reference, so this spy sees
+    # exactly the Junior path's Senior/SHL/tax evaluations.
+    monkeypatch.setattr(orchestrator, "run_senior_debt_model", spy)
+    canonical = pfa.run_clean_production(pi)
+    pfa._POLICY_RUN_CACHE.clear()
+    contexts.clear()
+    odr = pfa.run_clean_production(pi, financing_policy=acc.policy_for("odr", None))
+    assert contexts and all(context is None for context in contexts)       # canonical immediate check inside Junior
+    assert acc.financial_leaves(canonical) == acc.financial_leaves(odr)
+    assert ma.required_final_checks(odr.g2c_result).authority == "DELEGATED_CANONICAL"
 
 
 def test_equity_only_state_is_not_applicable_by_its_own_financing(entries):
@@ -132,151 +224,282 @@ def test_equity_only_state_is_not_applicable_by_its_own_financing(entries):
     assert result.policy_evidence.shl_maturity.final_waterfall_check == "NOT_APPLICABLE_NO_SHL"
 
 
-# ------------------------------------------------------------------------------------------------ missing evidence
+# ------------------------------------------------------------------------------------------------ P1-01 state identity
 
-def test_missing_final_waterfall_check_with_shl_liability_fails_closed(entries, monkeypatch, feasible_pair):
-    """Correction D reproduction: suppressing the real waterfall registration was previously accepted as NOT_APPLICABLE."""
-    monkeypatch.setattr(ma.OdrAttempt, "record_final_waterfall", lambda self, shortfall, *, state=None: None)
+@pytest.mark.parametrize("change", [
+    {"share_premium_keur": 1.0},                       # different financing object sharing one ProjectModelResult
+    {"derived_shl_cash_principal_keur": 0.5},          # same model object, changed SHL principal
+])
+def test_p1_01_other_financing_sharing_the_model_cannot_use_the_evidence(entries, monkeypatch, change):
+    def substitute(result):
+        fin = result.financing_result
+        changes = {k: getattr(fin, k) + v for k, v in change.items()}
+        return _with_financing(result, **changes)
+
+    _wrap_finalize(monkeypatch, substitute)
     error = _reject(entries, FEASIBLE)
-    assert f"OdrFinalizationError: {ma.FINAL_EVIDENCE_MISSING}: {ma.WATERFALL_FINAL_CHECK}" in error
-    assert "shl_liability=True" in error and CODE not in error
-    # canonical path never consults the contract: unchanged under the same injection
-    pfa._POLICY_RUN_CACHE.clear()
-    assert acc.financial_leaves(acc.run_case(FEASIBLE, "canonical", entries)) == acc.financial_leaves(feasible_pair[0])
+    assert f"{ma.FINAL_EVIDENCE_MISSING}: CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY" in error
+    assert ma.WATERFALL_FINAL_CHECK in error
+
+
+@pytest.mark.parametrize("label", ["cash_reserve_interest_schedule", "financing_income_vector"])
+def test_p1_01_changed_cash_reserve_or_financing_income_schedule_is_rejected(entries, monkeypatch, label):
+    @dc.dataclass(frozen=True)
+    class Schedule:                                    # stand-in carrying a per-period financing-income vector
+        financing_income_keur: tuple
+
+    _wrap_finalize(monkeypatch, lambda result: _with_financing(
+        result, cash_reserve_interest_schedules=Schedule((0.0, 1.0 if label == "financing_income_vector" else 0.5))))
+    assert ma.UNSUPPORTED_FINANCING in _reject(entries, FEASIBLE)
+
+
+def test_p1_01_mutation_after_registration_is_detected(entries, monkeypatch):
+    def substitute(result):
+        fin = result.financing_result
+        object.__setattr__(fin, "share_premium_keur", fin.share_premium_keur + 1.0)   # bypass frozen dataclass
+        return result
+
+    _wrap_finalize(monkeypatch, substitute)
+    assert f"{ma.FINAL_EVIDENCE_MISSING}: CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY" in _reject(entries, FEASIBLE)
+
+
+def test_p1_01_semantically_identical_reuse_is_accepted(entries, monkeypatch, feasible_pair):
+    _wrap_finalize(monkeypatch, copy.deepcopy)         # every object differs, the financial content is identical
+    result = _odr(entries, FEASIBLE)
+    assert acc.financial_leaves(result) == acc.financial_leaves(feasible_pair[1])
+
+
+def test_p1_01_other_attempt_superseded_and_provisional_evidence_never_authorise(entries, monkeypatch, feasible_pair):
+    attempts = _wrap_finalize(monkeypatch, lambda result: result)
+    returned = _odr(entries, FEASIBLE).g2c_result
+    monkeypatch.undo()
+    # evidence of another attempt / another Run
+    with pytest.raises(ma.OdrFinalizationError, match=ma.FINAL_EVIDENCE_MISSING):
+        ma.OdrAttempt().finalize(returned)
+    # the same attempt's evidence after it was superseded (non-final DSRA iteration)
+    stale = attempts[-1]
+    stale._finalized = False
+    stale.demote("DSRA_ITER_SUPERSEDED")
+    with pytest.raises(ma.OdrFinalizationError, match=ma.FINAL_EVIDENCE_MISSING):
+        stale.finalize(returned)
+    # provisional (non-final) G2A evidence of the returned state
+    attempt = ma.OdrAttempt()
+    evidence = ma.G2aShlMaturityEvidence()
+    evidence.record_iteration(1, [("CAPACITY", ma.ShlMaturityContext.provisional_pass()),
+                                  ("FUNDED", ma.ShlMaturityContext.provisional_pass())], final=True)
+    attempt.absorb_g2a(evidence, final=False, role="CONSTRUCTION_RETURNED_G2A", state=returned.financing_result)
+    with pytest.raises(ma.OdrFinalizationError, match=ma.FINAL_EVIDENCE_MISSING):
+        attempt.finalize(returned)
+
+
+# ------------------------------------------------------------------------------------------------ P1-02 strict G2A sites
+
+def _transform_sites(edit, role="CONSTRUCTION_RETURNED_G2A"):
+    def transform(self, evidence, final, role_, state, original):
+        if final and role_ == role:
+            evidence.final_passes = edit(list(evidence.final_passes))
+        return original(self, evidence, final=final, role=role_, state=state)
+    return transform
+
+
+@pytest.mark.parametrize("edit,expected", [
+    (lambda passes: passes + [("BOGUS", None)], "unknown site(s) ['BOGUS']"),
+    (lambda passes: passes + [("CAPACITY", None)], "CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY"),
+    (lambda passes: passes + [("STRICT", None)], "CONSTRUCTION_RETURNED_G2A.FINAL_FUNDED_OR_STRICT"),
+])
+def test_p1_02_unknown_extra_or_duplicate_sites_are_contradictory(entries, monkeypatch, edit, expected):
+    _wrap_absorb(monkeypatch, _transform_sites(edit))
+    error = _reject(entries, FEASIBLE)
+    assert ma.FINAL_EVIDENCE_CONTRADICTORY in error and expected in error
+
+
+@pytest.mark.parametrize("site,label", [("CAPACITY", "FINAL_CAPACITY"), ("FUNDED", "FINAL_FUNDED_OR_STRICT")])
+def test_p1_02_missing_mandatory_site_fails_closed(entries, monkeypatch, site, label):
+    _wrap_absorb(monkeypatch, _transform_sites(
+        lambda passes: [(s, v) for s, v in passes if s != site and not (site == "FUNDED" and s == "STRICT")]))
+    assert f"{ma.FINAL_EVIDENCE_MISSING}: CONSTRUCTION_RETURNED_G2A.{label}" in _reject(entries, FEASIBLE)
 
 
 @pytest.mark.parametrize("dropped", ma.CONSTRUCTION_G2A_ROLES)
-def test_missing_returned_or_verification_g2a_fails_closed(entries, monkeypatch, dropped):
+def test_p1_02_missing_returned_or_verification_g2a_fails_closed(entries, monkeypatch, dropped):
     def transform(self, evidence, final, role, state, original):
         if final and role == dropped:
             return None
         return original(self, evidence, final=final, role=role, state=state)
 
-    log = _wrap_absorb(monkeypatch, transform)
-    error = _reject(entries, FEASIBLE)
-    assert (dropped, True) in log
-    assert f"{ma.FINAL_EVIDENCE_MISSING}: {dropped}.FINAL_CAPACITY, {dropped}.FINAL_FUNDED_OR_STRICT" in error
+    _wrap_absorb(monkeypatch, transform)
+    assert f"{ma.FINAL_EVIDENCE_MISSING}: {dropped}.FINAL_CAPACITY, {dropped}.FINAL_FUNDED_OR_STRICT" in _reject(
+        entries, FEASIBLE)
 
 
-@pytest.mark.parametrize("site,label", [("CAPACITY", "FINAL_CAPACITY"), ("FUNDED", "FINAL_FUNDED_OR_STRICT")])
-def test_missing_final_capacity_or_funded_pass_fails_closed(entries, monkeypatch, site, label):
+def test_p1_02_unexpected_role_for_the_returned_structure_is_contradictory(entries, monkeypatch):
     def transform(self, evidence, final, role, state, original):
+        original(self, evidence, final=final, role=role, state=state)
         if final and role == "CONSTRUCTION_RETURNED_G2A":
-            evidence.final_passes = [(s, v) for s, v in evidence.final_passes
-                                     if s != site and not (site == "FUNDED" and s == "STRICT")]
-        return original(self, evidence, final=final, role=role, state=state)
+            twin = ma.G2aShlMaturityEvidence()       # a separate proof token, top-level role on a construction state
+            twin.final_passes, twin.converged = list(evidence.final_passes), True
+            original(self, twin, final=True, role="G2A", state=state)
 
     _wrap_absorb(monkeypatch, transform)
-    error = _reject(entries, FEASIBLE)
-    assert f"{ma.FINAL_EVIDENCE_MISSING}: CONSTRUCTION_RETURNED_G2A.{label}" in error
+    assert "G2A evaluated SHL passes for a state that requires none" in _reject(entries, FEASIBLE)
 
 
-def test_missing_top_level_g2a_evidence_fails_closed(entries, monkeypatch):
+def test_p1_02_unknown_role_and_reregistered_proof_are_refused():
+    attempt = ma.OdrAttempt()
+    evidence = ma.G2aShlMaturityEvidence()
+    evidence.record_iteration(1, [], final=True)
+    with pytest.raises(ma.OdrFinalizationError, match=ma.FINAL_EVIDENCE_UNKNOWN):
+        attempt.absorb_g2a(evidence, final=True, role="G2A_EXTRA", state=object())
+    with pytest.raises(ma.OdrFinalizationError, match=ma.FINAL_EVIDENCE_UNBOUND):
+        attempt.absorb_g2a(evidence, final=True, role="G2A")
+
+
+def test_p1_02_top_level_g2a_evidence_is_required(entries, monkeypatch):
     result = _odr(entries, NO_CONSTRUCTION)
     assert result.g2c_result.financing_result.construction_financing is None
     assert "G2A.FINAL_CAPACITY" in result.authority_metadata["shl_maturity_final_checks"]
     pfa._POLICY_RUN_CACHE.clear()
-
-    def transform(self, evidence, final, role, state, original):
-        if final and role == "G2A":
-            return None
-        return original(self, evidence, final=final, role=role, state=state)
-
-    _wrap_absorb(monkeypatch, transform)
+    _wrap_absorb(monkeypatch, lambda self, evidence, final, role, state, original:
+                 None if final and role == "G2A" else original(self, evidence, final=final, role=role, state=state))
     assert f"{ma.FINAL_EVIDENCE_MISSING}: G2A.FINAL_CAPACITY" in _reject(entries, NO_CONSTRUCTION)
 
 
-# ------------------------------------------------------------------------------------------------ stale / duplicate / contradictory
+# ------------------------------------------------------------------------------------------------ P1-03 waterfall provenance
 
-def test_duplicate_registration_for_one_state_fails_closed(entries, monkeypatch):
-    def transform(self, evidence, final, role, state, original):
-        original(self, evidence, final=final, role=role, state=state)
-        if final and role == "CONSTRUCTION_RETURNED_G2A":
-            original(self, evidence, final=final, role=role, state=state)
-
-    _wrap_absorb(monkeypatch, transform)
-    assert f"{ma.FINAL_EVIDENCE_DUPLICATE}: CONSTRUCTION_RETURNED_G2A" in _reject(entries, FEASIBLE)
-
-
-def test_evidence_bound_to_another_state_cannot_satisfy_finalization(entries, monkeypatch):
-    foreign = object()
-
-    def transform(self, evidence, final, role, state, original):
-        if final and role == "CONSTRUCTION_RETURNED_G2A":
-            evidence.final_passes = [(s, BREACH) for s, _ in evidence.final_passes]
-            return original(self, evidence, final=final, role=role, state=foreign)
-        return original(self, evidence, final=final, role=role, state=state)
-
-    _wrap_absorb(monkeypatch, transform)
+def test_p1_03_missing_final_waterfall_check_with_shl_liability_fails_closed(entries, monkeypatch, feasible_pair):
+    _suppress_waterfall(monkeypatch)
     error = _reject(entries, FEASIBLE)
-    # the stale breach is a diagnostic of another state; the returned state lacks its own evidence
-    assert f"{ma.FINAL_EVIDENCE_MISSING}: CONSTRUCTION_RETURNED_G2A.FINAL_CAPACITY" in error and CODE not in error
+    assert f"OdrFinalizationError: {ma.FINAL_EVIDENCE_MISSING}: {ma.WATERFALL_FINAL_CHECK}" in error
+    assert "shl_liability=True" in error and CODE not in error
+    pfa._POLICY_RUN_CACHE.clear()
+    assert acc.financial_leaves(acc.run_case(FEASIBLE, "canonical", entries)) == acc.financial_leaves(feasible_pair[0])
 
 
-def test_waterfall_check_of_another_state_cannot_satisfy_finalization(entries, monkeypatch):
-    original = ma.OdrAttempt.record_final_waterfall
-    monkeypatch.setattr(ma.OdrAttempt, "record_final_waterfall",
-                        lambda self, shortfall, *, state=None: original(self, shortfall, state=object()))
-    assert f"{ma.FINAL_EVIDENCE_MISSING}: {ma.WATERFALL_FINAL_CHECK}" in _reject(entries, FEASIBLE)
+def test_p1_03_reregistering_one_proof_is_a_duplicate(entries, monkeypatch):
+    def transform(self, context, kwargs, original):
+        original(self, context, **kwargs)
+        original(self, context, **kwargs)
+
+    _wrap_waterfall(monkeypatch, transform)
+    assert f"{ma.FINAL_EVIDENCE_DUPLICATE}: one evaluation registered twice" in _reject(entries, FEASIBLE)
 
 
-def test_waterfall_evidence_for_a_state_without_liability_is_contradictory(entries, monkeypatch):
-    original = ma.OdrAttempt.finalize
-
-    def finalize(self, result):
-        self.record_final_waterfall(None, state=result.financing_result.project_model_result)
-        return original(self, result)
-
-    monkeypatch.setattr(ma.OdrAttempt, "finalize", finalize)
-    assert f"{ma.FINAL_EVIDENCE_CONTRADICTORY}: {ma.WATERFALL_FINAL_CHECK}" in _reject(entries, NO_SHL)
+def _replay(context):
+    """A separate evaluation token with the identical recorded outcome (legitimate repeated calculation)."""
+    twin = ma.ShlMaturityContext.provisional_pass()
+    for shortfall in context.ledger.shortfalls:
+        twin.ledger.record(shortfall)
+    return twin
 
 
-def test_finalization_is_single_and_evidence_must_be_bound():
+def test_p1_03_legitimate_identical_repeat_is_accepted(entries, monkeypatch, feasible_pair):
+    def transform(self, context, kwargs, original):
+        original(self, context, **kwargs)
+        original(self, _replay(context), **kwargs)
+
+    _wrap_waterfall(monkeypatch, transform)
+    assert acc.financial_leaves(_odr(entries, FEASIBLE)) == acc.financial_leaves(feasible_pair[1])
+
+
+def test_p1_03_repeat_with_changed_inputs_for_the_same_schedule_is_contradictory(entries, monkeypatch):
+    def transform(self, context, kwargs, original):
+        original(self, context, **kwargs)
+        changed = dict(kwargs, cash=tuple(value * 1.01 for value in kwargs["cash"]))
+        original(self, _replay(context), **changed)
+
+    _wrap_waterfall(monkeypatch, transform)
+    assert "evaluated with different inputs for one returned schedule" in _reject(entries, FEASIBLE)
+
+
+def test_p1_03_check_of_a_different_schedule_is_stale(entries, monkeypatch):
+    def transform(self, context, kwargs, original):
+        schedule = kwargs["schedule"]
+        closing = list(schedule.shl_closing_keur)
+        closing[len(closing) // 3] += 1e-6
+        original(self, context, **dict(kwargs, schedule=dc.replace(schedule, shl_closing_keur=tuple(closing))))
+
+    _wrap_waterfall(monkeypatch, transform)
+    assert "no check evaluated the returned SHL schedule" in _reject(entries, FEASIBLE)
+
+
+def test_p1_03_check_of_another_financing_state_cannot_satisfy(entries, monkeypatch):
+    def transform(self, context, kwargs, original):
+        other = dc.replace(kwargs["financing"], share_premium_keur=kwargs["financing"].share_premium_keur + 1.0)
+        original(self, context, **dict(kwargs, financing=other))
+
+    _wrap_waterfall(monkeypatch, transform)
+    error = _reject(entries, FEASIBLE)
+    assert f"{ma.FINAL_EVIDENCE_MISSING}: {ma.WATERFALL_FINAL_CHECK}" in error and "no check evaluated" not in error
+
+
+def test_p1_03_waterfall_evidence_needs_its_evaluation_context():
     attempt = ma.OdrAttempt()
     with pytest.raises(ma.OdrFinalizationError, match=ma.FINAL_EVIDENCE_UNBOUND):
         attempt.record_final_waterfall(None)
-    evidence = ma.G2aShlMaturityEvidence()
-    evidence.record_iteration(1, [], final=True)
     with pytest.raises(ma.OdrFinalizationError, match=ma.FINAL_EVIDENCE_UNBOUND):
-        attempt.absorb_g2a(evidence, final=True, role="G2A")
-    attempt._finalized = True
-    with pytest.raises(ma.OdrFinalizationError, match=ma.FINALIZATION_REPEATED):
-        attempt.record_final_waterfall(None, state=object())
-    with pytest.raises(ma.OdrFinalizationError, match=ma.FINALIZATION_REPEATED):
-        attempt.finalize(object())
+        attempt.record_final_waterfall(ma.ShlMaturityContext.provisional_pass())
+
+
+def test_waterfall_evidence_for_a_state_without_liability_is_contradictory(entries, monkeypatch, feasible_pair):
+    feasible = feasible_pair[1]
+    original = ma.OdrAttempt.finalize
+
+    def finalize(self, result):
+        # a real waterfall registration made for this returned state, which has no SHL liability
+        fin = result.financing_result
+        schedule = feasible.g2c_result.financing_result.project_model_result.shareholder_loan
+
+        @dc.dataclass(frozen=True)
+        class ShlInput:
+            maturity_period_index: int = 41
+            repayment_mode: str = "CASH_SWEEP"
+
+        self.record_final_waterfall(ma.ShlMaturityContext.provisional_pass(), financing=fin, shl_input=ShlInput(),
+                                    cash=(0.0,), schedule=schedule)
+        return original(self, result)
+
+    monkeypatch.setattr(ma.OdrAttempt, "finalize", finalize)
+    assert f"{ma.WATERFALL_FINAL_CHECK} recorded for a state without SHL liability" in _reject(entries, NO_SHL)
 
 
 def test_superseded_dsra_evaluation_evidence_stays_diagnostic(entries, monkeypatch):
-    original = ma.OdrAttempt.record_final_waterfall
     first: list = []
 
-    def record(self, shortfall, *, state=None):
+    def transform(self, context, kwargs, original):
         if not first:                       # the first OD-R evaluation is the superseded DSRA iteration
             first.append(self)
-            return original(self, BREACH, state=state)
-        return original(self, shortfall, state=state)
+            context.ledger.record(BREACH)
+        return original(self, context, **kwargs)
 
-    monkeypatch.setattr(ma.OdrAttempt, "record_final_waterfall", record)
-    result = _odr(entries, FEASIBLE)
-    evidence = result.policy_evidence.shl_maturity if hasattr(result, "policy_evidence") else None
-    meta = result.authority_metadata
+    _wrap_waterfall(monkeypatch, transform)
+    meta = _odr(entries, FEASIBLE).authority_metadata
     assert meta["shl_maturity_superseded_dsra_attempts"] == 1
     assert meta["shl_maturity_max_provisional_shortfall_keur"] >= BREACH.closing_keur
-    assert evidence is None or evidence.final_waterfall_check == "PASSED"
+    assert meta["shl_maturity_final_waterfall_check"] == "PASSED"
+
+
+def test_finalization_is_single():
+    attempt = ma.OdrAttempt()
+    attempt._finalized = True
+    with pytest.raises(ma.OdrFinalizationError, match=ma.FINALIZATION_REPEATED):
+        attempt.record_final_waterfall(ma.ShlMaturityContext.provisional_pass(), financing=1, shl_input=1, cash=(),
+                                       schedule=1)
+    with pytest.raises(ma.OdrFinalizationError, match=ma.FINALIZATION_REPEATED):
+        attempt.finalize(object())
 
 
 # ------------------------------------------------------------------------------------------------ precedence
 
 def test_economic_breach_takes_precedence_over_missing_evidence(entries, monkeypatch):
-    def transform(self, evidence, final, role, state, original):
-        if final and role == "CONSTRUCTION_VERIFICATION_G2A":
-            return None
-        return original(self, evidence, final=final, role=role, state=state)
+    _wrap_absorb(monkeypatch, lambda self, evidence, final, role, state, original: None
+                 if final and role == "CONSTRUCTION_VERIFICATION_G2A"
+                 else original(self, evidence, final=final, role=role, state=state))
 
-    _wrap_absorb(monkeypatch, transform)
-    original = ma.OdrAttempt.record_final_waterfall
-    monkeypatch.setattr(ma.OdrAttempt, "record_final_waterfall",
-                        lambda self, shortfall, *, state=None: original(self, BREACH, state=state))
+    def transform(self, context, kwargs, original):
+        context.ledger.record(BREACH)
+        return original(self, context, **kwargs)
+
+    _wrap_waterfall(monkeypatch, transform)
     error = _reject(entries, FEASIBLE)
     assert f"ValueError: {CODE}" in error and f"od_r_final_check={ma.WATERFALL_FINAL_CHECK}" in error
 
@@ -292,7 +515,7 @@ def test_upstream_idempotence_failure_keeps_precedence_over_missing_evidence(ent
         return dc.replace(result, capitalized_financing_costs=costs)
 
     monkeypatch.setattr(stage_b2, "run_stage_b2", perturbed)
-    monkeypatch.setattr(ma.OdrAttempt, "record_final_waterfall", lambda self, shortfall, *, state=None: None)
+    _suppress_waterfall(monkeypatch)
     error = _reject(entries, FEASIBLE)
     assert "RuntimeError: PR9_OUTER_G2A_IDEMPOTENCE_FAILED" in error and ma.FINAL_EVIDENCE_MISSING not in error
 
@@ -306,7 +529,7 @@ def test_upstream_inner_non_convergence_keeps_precedence(entries, monkeypatch):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(waterfall, "run_project_financing_model", capped)
-    monkeypatch.setattr(ma.OdrAttempt, "record_final_waterfall", lambda self, shortfall, *, state=None: None)
+    _suppress_waterfall(monkeypatch)
     error = _reject(entries, FEASIBLE)
     assert "DID_NOT_CONVERGE" in error and ma.FINAL_EVIDENCE_MISSING not in error
 
@@ -332,17 +555,18 @@ def _cash_reserve_inputs():
             dividend_wht_rate=pi.tax.wht_sponsor_dividends, opening_uc_authority=OpeningUCAuthority.CAUSALLY_DERIVED_ZERO))
 
 
-def test_cash_reserve_final_financing_without_its_own_waterfall_check_fails_closed():
-    """P0 (no injection): with cash-reserve interest + distribution accounting the waterfall returns the final U2 re-run
-    financing, whose SHL waterfall schedule is never evaluated (only earlier U2 states were). The approved 32b9478f candidate
-    accepted this from stale checks of other states; the contract rejects it. Canonical behaviour is unchanged."""
+def test_p0_cash_reserve_u2_financing_is_unsupported_under_odr_and_canonical_unchanged():
+    """The approved 32b9478f candidate accepted this real configuration from stale checks of earlier U2 states. The
+    returned financing carries post-evaluation cash-reserve schedules and its own waterfall check was never evaluated:
+    OD-R now refuses it explicitly; the canonical (deployed) result is unchanged."""
     pi = _cash_reserve_inputs()
     canonical = pfa.run_clean_production(pi, project_type="Wind")
     assert canonical.g2c_result.financing_result.derived_shl_cash_principal_keur > 11_000.0
+    assert canonical.g2c_result.financing_result.cash_reserve_interest_schedules is not None
     pfa._POLICY_RUN_CACHE.clear()
     with pytest.raises(pfa.CleanProductionRunUnavailable) as info:
         pfa.run_clean_production(pi, project_type="Wind", financing_policy=acc.policy_for("odr", None))
-    assert f"{ma.FINAL_EVIDENCE_MISSING}: {ma.WATERFALL_FINAL_CHECK}" in info.value.detail
+    assert ma.UNSUPPORTED_FINANCING in info.value.detail and "U2 cash-reserve" in info.value.detail
 
 
 # ------------------------------------------------------------------------------------------------ isolation
@@ -363,13 +587,11 @@ def test_concurrent_odr_evaluations_are_isolated(entries, feasible_pair):
         thread.join()
     assert not errors, errors
     assert acc.financial_leaves(results[FEASIBLE]) == acc.financial_leaves(feasible_pair[1])
-    assert results[FEASIBLE].authority_metadata["shl_maturity_final_waterfall_check"] == "PASSED"
     assert results[NO_SHL].policy_evidence.shl_maturity.final_waterfall_check == "NOT_APPLICABLE_NO_SHL"
 
 
 def test_failed_run_followed_by_successful_run_carries_no_evidence(entries, monkeypatch, feasible_pair):
-    monkeypatch.setattr(ma.OdrAttempt, "record_final_waterfall", lambda self, shortfall, *, state=None: None)
+    _suppress_waterfall(monkeypatch)
     _reject(entries, FEASIBLE)
     monkeypatch.undo()
-    again = _odr(entries, FEASIBLE)
-    assert acc.flatten(again) == acc.flatten(feasible_pair[1])
+    assert acc.flatten(_odr(entries, FEASIBLE)) == acc.flatten(feasible_pair[1])

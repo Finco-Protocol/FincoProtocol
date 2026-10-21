@@ -364,10 +364,33 @@ def test_final_waterfall_breach_rejects_through_the_real_predicate(entries, monk
 
 def test_waterfall_breach_in_superseded_dsra_attempt_is_provisional():
     attempt = ma.OdrAttempt()
-    attempt.record_final_waterfall(INJECTED, state=object())
+    context = ma.ShlMaturityContext.provisional_pass()
+    context.ledger.record(INJECTED)
+    attempt.record_final_waterfall(context, financing=_FinancingState(), shl_input=_ShlInput(), cash=(0.0,),
+                                   schedule=_Schedule())
     attempt.demote("DSRA_ITER1")
     assert attempt.first_final_failure() is None
     assert attempt.provisional_violations == [(f"DSRA_ITER1.{ma.WATERFALL_FINAL_CHECK}", INJECTED)]
+
+
+@dc.dataclass(frozen=True)
+class _FinancingState:          # minimal typed financing state for contract unit tests (identity by content)
+    project_model_result: object = None
+    derived_shl_cash_principal_keur: float = 1.0
+
+
+@dc.dataclass(frozen=True)
+class _ShlInput:
+    maturity_period_index: int = 41
+    repayment_mode: str = "CASH_SWEEP"
+
+
+@dc.dataclass(frozen=True)
+class _Schedule:
+    period_indices: tuple = (41,)
+    shl_closing_keur: tuple = (INJECTED.closing_keur,)
+    shl_gross_interest_keur: tuple = (0.0,)
+    shl_principal_keur: tuple = (0.0,)
 
 
 def _cap_iterations(monkeypatch, cap):
@@ -464,7 +487,7 @@ def test_an_exception_escaping_an_evaluation_is_never_reclassified():
     validation = RuntimeError("PR9_OUTER_G2A_IDEMPOTENCE_FAILED: residual=1.0 kEUR")
     with pytest.raises(RuntimeError) as info:
         with ma.odr_attempt(attempt):
-            attempt.absorb_g2a(evidence, final=True, role="G2A", state=object())
+            attempt.absorb_g2a(evidence, final=True, role="G2A", state=_FinancingState())
             raise validation
     assert info.value is validation and info.value.__cause__ is None
     with pytest.raises(RuntimeError, match="downstream failure"):

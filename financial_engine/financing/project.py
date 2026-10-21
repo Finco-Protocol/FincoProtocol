@@ -938,21 +938,7 @@ def _run_with_construction_idc(
         developer_uses=resolve_developer_project_uses(project_inputs),
     )
 
-    if _odr_attempt is not None:
-        # OD-R final authority is established only now: outer convergence, the unfunded
-        # invariant, the verification G2A, idempotence and the opening-SHL identity have
-        # all succeeded. Before this point any failure keeps its own (numerical) error.
-        # Both are bound to the financing state this owner returns (its final model result).
-        _odr_attempt.absorb_g2a(
-            _odr_inner_evidence, final=True, role="CONSTRUCTION_RETURNED_G2A",
-            state=inner_result.project_model_result,
-        )
-        _odr_attempt.absorb_g2a(
-            _odr_verify_evidence, final=True, role="CONSTRUCTION_VERIFICATION_G2A",
-            state=inner_result.project_model_result,
-        )
-
-    return ProjectFinancingResult(
+    _odr_returned = ProjectFinancingResult(
         project_model_result=inner_result.project_model_result,
         project_uses=inner_result.project_uses,
         dscr_debt_capacity_keur=inner_result.dscr_debt_capacity_keur,
@@ -976,6 +962,18 @@ def _run_with_construction_idc(
         book_depreciable_asset_basis=construction_basis,
         shareholder_loan_model_input=inner_result.shareholder_loan_model_input,
     )
+    if _odr_attempt is not None:
+        # OD-R final authority is established only now: outer convergence, the unfunded
+        # invariant, the verification G2A, idempotence and the opening-SHL identity have
+        # all succeeded. Before this point any failure keeps its own (numerical) error.
+        # Both are bound to the exact financing state this owner returns.
+        _odr_attempt.absorb_g2a(
+            _odr_inner_evidence, final=True, role="CONSTRUCTION_RETURNED_G2A", state=_odr_returned,
+        )
+        _odr_attempt.absorb_g2a(
+            _odr_verify_evidence, final=True, role="CONSTRUCTION_VERIFICATION_G2A", state=_odr_returned,
+        )
+    return _odr_returned
 
 
 def run_project_financing_model(
@@ -1584,11 +1582,7 @@ def run_project_financing_model(
                 else None
             ),
         )
-    if _odr_evidence is not None and _shl_maturity_evidence is None:
-        # No owner above classifies this invocation: once its post-convergence validations
-        # have succeeded, its converged passes are final.
-        _odr_attempt.absorb_g2a(_odr_evidence, final=True, role="G2A", state=model_result)
-    return ProjectFinancingResult(
+    _odr_returned = ProjectFinancingResult(
         project_model_result=model_result,
         project_uses=uses,
         dscr_debt_capacity_keur=authoritative_dscr_capacity,
@@ -1614,3 +1608,8 @@ def run_project_financing_model(
             developer_uses=_developer_uses(project_inputs),
         ),
     )
+    if _odr_evidence is not None and _shl_maturity_evidence is None:
+        # No owner above classifies this invocation: once its post-convergence validations
+        # have succeeded, its converged passes are final - bound to the exact financing state returned.
+        _odr_attempt.absorb_g2a(_odr_evidence, final=True, role="G2A", state=_odr_returned)
+    return _odr_returned
