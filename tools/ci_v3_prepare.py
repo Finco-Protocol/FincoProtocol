@@ -6,12 +6,13 @@ from collections import Counter
 from pathlib import Path
 import subprocess
 
+from tools.ci_v3_container import image_ref, observe_container
 from tools.ci_v3_isolation import assess
 from tools.ci_v3_process_observer import observe
 from tools.ci_v3_schema import ContractError, read_json, require, seal, write_json
 
 
-def prepare(project, output):
+def prepare(project, output, image=None):
     project, output = Path(project).resolve(), Path(output).resolve()
     require(not output.is_relative_to(project) and not project.is_relative_to(output), "proposal must be outside source")
     require(not output.exists(), "preserve previous proposal evidence")
@@ -21,8 +22,14 @@ def prepare(project, output):
     require(not git('status','--porcelain','--untracked-files=all'), "proposal requires clean committed source")
     source={'head':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}')}
     output.mkdir(parents=True)
-    observed=observe({'mode':'discover','project':str(project),'worker':None,'context':{'source':source}},output/'collection-process',120)
-    report=read_json(output/'collection-process/adapter.json')
+    if image is None:
+        observed=observe({'mode':'discover','project':str(project),'worker':None,'context':{'source':source}},output/'collection-process',120)
+        report=read_json(output/'collection-process/adapter.json')
+    else:
+        # Linux evidence: collection runs in the immutable image as a private non-root, no-network container.
+        context={'run_id':'0','attempt':1,'repository':'Finco-Protocol/FincoProtocol','source':source}
+        child,observed=observe_container({'mode':'discover','context':context,'worker':None},output/'collection-container',project,image_ref(image),900)
+        report=read_json(child/'adapter.json')
     require(observed['normal_successful_exit'] and not report['phases'] and not report['unauthorized_deselection'], "actual collect-only failed")
     collection=report['collection']
     require(collection['complete'] and not collection['errors'], "incomplete collection proposal")
@@ -57,9 +64,10 @@ def prepare(project, output):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--project',required=True);parser.add_argument('--output',required=True)
+    parser.add_argument('--image',help='immutable registry@sha256 image; collects inside a private container')
     args=parser.parse_args()
     try:
-        count=prepare(args.project,args.output)
+        count=prepare(args.project,args.output,args.image)
     except (ContractError,OSError,KeyError,ValueError,subprocess.SubprocessError) as exc:
         print('CI_V3_PREPARATION_REJECTED: '+str(exc));return 1
     print(f'ACTUAL_COLLECTION_ONLY={count}; EXECUTION_ADMISSION=false');return 0

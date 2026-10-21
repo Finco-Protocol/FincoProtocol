@@ -1,0 +1,49 @@
+{
+ "allocated_nodes": {
+  "worker-0": 132,
+  "worker-1": 136,
+  "worker-2": 129
+ },
+ "allocation": {
+  "worker-0": [
+   "tests/test_data_center_a3_1.py",
+   "tests/test_financing_f3_junior_runtime.py",
+   "tests/test_ppa01_price_rounding.py"
+  ],
+  "worker-1": [
+   "tests/test_m7_bess_physics.py",
+   "tests/test_model_v2_persistence.py",
+   "tests/test_p0c_secure_runtime.py"
+  ],
+  "worker-2": [
+   "tests/test_demo_history_retention.py",
+   "tests/test_protocol_api_beta.py",
+   "tests/test_rc7b_quarterly_candidate_authority.py"
+  ]
+ },
+ "authoritative_acceptance": false,
+ "coverage_valid": true,
+ "image": "finco-ci-v3@sha256:5ae1e357e475477c326b135879ebe235a851a71e2d0889be24d645a67bd56450",
+ "modules": 9,
+ "nodes": 397,
+ "provenance_authenticated": false,
+ "provenance_mode": "mock-service",
+ "scope": "BOUNDED SUBSET - NOT COMPLETE FINCO COVERAGE",
+ "seconds": {
+  "collect": 19.1,
+  "per_worker": {
+   "worker-0": 40.2,
+   "worker-1": 43.59,
+   "worker-2": 40.83
+  },
+  "plan": 15.55,
+  "total": 78.7,
+  "verify": 0.45,
+  "workers_wall": 43.6
+ },
+ "source": {
+  "head": "8bd7dd2f51965baf4785547df677d9f1c8543006",
+  "tree": "946a9c824da09a0d5a62628bf62b55a8731cc4cd"
+ },
+ "unique_nodes_verified": 397
+}

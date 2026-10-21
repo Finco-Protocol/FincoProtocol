@@ -1,0 +1,6088 @@
+{
+ "authority": "evidence-proposal-unreviewed",
+ "modules": {
+  "tests/test_a2_public_verify.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 62 nodes in 18.36s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 18.36,
+   "sha256": "10119b81fca8e4e2734a77a0780ba5f00643bedc498faf4f3b302542a2100b30",
+   "tests": 62
+  },
+  "tests/test_api_v1_1_institutional.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 31 nodes in 25.14s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 25.14,
+   "sha256": "ca4a6807ded0453705194c632ea35dd0a268710636635cb45d1751aaced135c1",
+   "tests": 31
+  },
+  "tests/test_api_v1_execution_simulation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 101 nodes in 6.06s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state",
+    "native-threads"
+   ],
+   "seconds": 6.06,
+   "sha256": "8878040ff08ab9c3c225fdd7d746e891e439127a8303620371ade19f5818890d",
+   "tests": 101
+  },
+  "tests/test_api_v1_model_reference_preview.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 120 nodes in 6.62s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 6.62,
+   "sha256": "a1e56c96b095ba976100938443a440e722b67ffd7388c44b63f308584b600c48",
+   "tests": 120
+  },
+  "tests/test_api_v1_model_reference_run.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 103 nodes in 55.03s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 55.03,
+   "sha256": "4b843b74504bb18994f1453116ce9f910501cf5c394481431f250ccce88e3911",
+   "tests": 103
+  },
+  "tests/test_api_v1_model_references.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 183 nodes in 6.69s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 6.69,
+   "sha256": "d68c8e11da3f9c30b3f75db4ff207f42163ec50226c749002b74c3a0743bb81a",
+   "tests": 183
+  },
+  "tests/test_api_v1_radar.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 6.03,
+   "sha256": "de8a2d1c15aa6d6835d7c0a1c27ff5a45ced1fb2a0b4ffaaa9da179e1e66cdd4",
+   "tests": 89
+  },
+  "tests/test_b2_1_verified_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 2.82s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.82,
+   "sha256": "755c3745c20671a777febbcc3e41eca9eadc98697f8fb8a307fe39f9238c94d4",
+   "tests": 15
+  },
+  "tests/test_b2_2_token_entitlement.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 4.11s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 4.11,
+   "sha256": "be9c81686e8392b0479f83617a877856746762cdedf2b56a33d1f23b3ce0e6b1",
+   "tests": 19
+  },
+  "tests/test_b2_3_usage_metering.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 31 nodes in 2.95s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.95,
+   "sha256": "0e0ab50d9b44d7020b4e66d599190b1ad8c5ee29d457e2870ed5db33c654b0e9",
+   "tests": 31
+  },
+  "tests/test_capex_numbering_contingency.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 43 nodes in 13.38s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 13.38,
+   "sha256": "46dcc178adfd0e1da070ba280ebd1a5bacd44553cae79bce338f9082877c20a7",
+   "tests": 43
+  },
+  "tests/test_capital_stack_junior_proposal_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 1 nodes in 8.24s",
+   "risk_leads": [],
+   "seconds": 8.24,
+   "sha256": "221ff5d4806154e0fceab59e7a61557a7dd038ccedaf43feb8956faf6de383c5",
+   "tests": 1
+  },
+  "tests/test_capital_stack_projection_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 5.08s",
+   "risk_leads": [
+    "filesystem"
+   ],
+   "seconds": 5.08,
+   "sha256": "600411216a6b94051a49811701a185bd0ca84fe9e55db313cdca247e38aaf567",
+   "tests": 10
+  },
+  "tests/test_cb_authority_saas_regression.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 26 nodes in 8.39s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 8.39,
+   "sha256": "a8cfdf4d5cbe79accdd0a77fb678e2344d124619e9dcb24f4f08352cb34ae021",
+   "tests": 26
+  },
+  "tests/test_chrome_cleanup.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 18 nodes in 7.9s",
+   "risk_leads": [
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 7.9,
+   "sha256": "43a6fb5da88740b702f3d75e5132cef5d74343e96e39e0778dccb07f91effcfa",
+   "tests": 18
+  },
+  "tests/test_ci_acceptance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 96 nodes in 10.7s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 10.7,
+   "sha256": "fb31036ade7a7f8e3f09f3a5a23fb3c15debf392061ad2d7808c5160accec560",
+   "tests": 96
+  },
+  "tests/test_ci_optimization_v2.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 37 nodes in 3.3s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.3,
+   "sha256": "5fda611b04f731965169cdb1d6cf256287d05749a1366fc2bdd5ce27fd65e357",
+   "tests": 37
+  },
+  "tests/test_ci_process_lifecycle.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 37.25s",
+   "risk_leads": [
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 37.25,
+   "sha256": "6eda2c1631ec023a21a9257b03dd2cec809dc135ddd8de95dbedac454e869f52",
+   "tests": 6
+  },
+  "tests/test_ci_pytest_progress.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 48.92s",
+   "risk_leads": [
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 48.92,
+   "sha256": "4c1f4fbe610cdd111ee66a3496baf2baa1efd7603aa14dacb58fa41dfd455216",
+   "tests": 15
+  },
+  "tests/test_ci_v3_container_observer.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 2.53s",
+   "risk_leads": [],
+   "seconds": 2.53,
+   "sha256": "03ee711151f9bff71dbcdc1a7a2d434e5e8f9c2986b39f5ac886fd78a4d457a4",
+   "tests": 10
+  },
+  "tests/test_ci_v3_evidence_verify.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 53 nodes in 2.63s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 2.63,
+   "sha256": "ce509a23e72fea52cf49e8dbe0018a23efabb883451dbd343ce53297fb4553ee",
+   "tests": 53
+  },
+  "tests/test_ci_v3_hosted_http.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 2.6s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "network-or-ports"
+   ],
+   "seconds": 2.6,
+   "sha256": "c51f7f55532fcdf9eca0e9d5a1557324069b3e282bf7febfc7bb6236c4213993",
+   "tests": 12
+  },
+  "tests/test_ci_v3_hosted_isolation.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "database",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 1.65,
+   "sha256": "d7cddb2fa994fc5d775a6565945ce8dd4a4e8c8d1048c020171a46b6d9baefcb",
+   "tests": 20
+  },
+  "tests/test_ci_v3_hosted_protocol.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 41 nodes in 8.52s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 8.52,
+   "sha256": "1f76dbd5ff9cd3b5a0dbf84b8d42fb863db4647c4d327dc73867159018bcb69a",
+   "tests": 41
+  },
+  "tests/test_ci_v3_observed_trust.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 17 nodes in 7.49s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 7.49,
+   "sha256": "bcf66aa838a543bf00f700ca3e1aa8ccd10ffe60069a78777f17306fbcc0fea1",
+   "tests": 17
+  },
+  "tests/test_ci_v3_partition_plan.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 2.13s",
+   "risk_leads": [],
+   "seconds": 2.13,
+   "sha256": "e7aa4ba9e51a6b17e93a9e256588e9682b847a15e9d175667c2937e0613875c6",
+   "tests": 23
+  },
+  "tests/test_ci_v3_posix_process.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 28.12s",
+   "risk_leads": [
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 28.12,
+   "sha256": "cfb76d3e7a47b7aef3963588db2f32f7984175bb3b3f2818d1d5184f1ff5737a",
+   "tests": 9
+  },
+  "tests/test_ci_v3_prepare.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 5.22s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 5.22,
+   "sha256": "66b97daf18f0a58e4432afafbac9143e1d64821936c3ea3152e9b2fe00900408",
+   "tests": 3
+  },
+  "tests/test_ci_v3_real_adapter.py": {
+   "category": "load-sensitive-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 63.85s; first attempt under 4-way load failed (exit 1)",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 63.85,
+   "sha256": "410484117d4f154818958b08825197c4caabf8567a21b029cceb01f8de063564",
+   "tests": 23
+  },
+  "tests/test_correction_a_required_gates.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 31 nodes in 59.39s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 59.39,
+   "sha256": "bbfbfa65091c3db84383ae2707b94bb92535ae2c180e468ae1d4ab2a01ebcaf3",
+   "tests": 31
+  },
+  "tests/test_correction_b_home_claims.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 7.07s",
+   "risk_leads": [
+    "environment"
+   ],
+   "seconds": 7.07,
+   "sha256": "05fe40c33142c53dad64d4310021dcb62bddfe00a1a26afaa62dc63bc9b9c837",
+   "tests": 6
+  },
+  "tests/test_cost_batch_save_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 24 nodes in 41.57s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 41.57,
+   "sha256": "ef82d865e5614ab3f31817f085b1340d85d121f9ce031b37f2b8aa4e2b5f152b",
+   "tests": 24
+  },
+  "tests/test_cost_grid_reconciliation_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 25 nodes in 36.95s",
+   "risk_leads": [],
+   "seconds": 36.95,
+   "sha256": "55b257346e552f43805a4ab17c645926e93caa31f619cf94ce222c6921080f58",
+   "tests": 25
+  },
+  "tests/test_cost_opex_b13_authority_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 80.53s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 80.53,
+   "sha256": "0f0395dea49fac09190b2e7c30924106f8386bc6c5b3251bcb4ed0c75370706f",
+   "tests": 12
+  },
+  "tests/test_cost_staging_extraction.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 1.55s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.55,
+   "sha256": "f5d3b58dd9fd82f76b817a86523c949053bc6a93d2a54cf37810bbb7cf383c3a",
+   "tests": 3
+  },
+  "tests/test_cost_workspace_consistency_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 29 nodes in 143.78s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 143.78,
+   "sha256": "f600837391caed56066a71593571b8bf6cee8a5a60010536edd16d27adee1d0d",
+   "tests": 29
+  },
+  "tests/test_cost_workspace_parity_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 40 nodes in 184.75s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 184.75,
+   "sha256": "7894434ad99715a4e54fd1a35672935c1ecea882505d3485d6aefdef68f309b8",
+   "tests": 40
+  },
+  "tests/test_credit_v5.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 36 nodes in 2.94s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 2.94,
+   "sha256": "a5c55949183edffc0c93125d0dbc98a0091786bf6738acaee36e23065bb630e4",
+   "tests": 36
+  },
+  "tests/test_credit_v5_committed.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 42.95s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 42.95,
+   "sha256": "f90f865089ae28aa48abf97c9ab16076627723d4c9645756da1299ffe3bcafc0",
+   "tests": 13
+  },
+  "tests/test_crypto_access_integration_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 30 nodes in 2.08s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.08,
+   "sha256": "d66f9b424f4436cd140a7e1dcbcec876f6562ea5a4152c7f21d3fd95b09be9a6",
+   "tests": 30
+  },
+  "tests/test_crypto_access_presentation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 27 nodes in 2.71s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 2.71,
+   "sha256": "71d2c8ca61c66b1fbce30940f9b65cd3ccd9df8d18bf8483475ccdcf041b3ed2",
+   "tests": 27
+  },
+  "tests/test_crypto_p0_product_reality_reset.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 11 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 32.42,
+   "sha256": "10044819ef3d3cf7be6d99307b76bae5cc30cbdb69916f66b1b0af026ce5fe3a",
+   "tests": 45
+  },
+  "tests/test_crypto_productization_final.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 7.82s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 7.82,
+   "sha256": "06ca15a12ef14649635a6d321a45cc8cd925db877ba24dd363324179e5e48711",
+   "tests": 13
+  },
+  "tests/test_crypto_roadmap_q4_q1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 7.16s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 7.16,
+   "sha256": "f6cb2be12e2cf0bc206565a36e6c9b0ed0cad3376622a429657e6a339c2d4fb1",
+   "tests": 13
+  },
+  "tests/test_crypto_utility_v0_entitlement_core.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 40 nodes in 1.74s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.74,
+   "sha256": "d07e4bae0a7c9ff09339101e7d5a51d0eb92be98cba4f32ee4466484bd4032ea",
+   "tests": 40
+  },
+  "tests/test_crypto_utility_v0_integration.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 5 nodes in 7.99s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 7.99,
+   "sha256": "d881a98aeb652567ae9b602889a7de54084926ffc6c724cead45db460fe8b9dd",
+   "tests": 5
+  },
+  "tests/test_crypto_utility_v1_integration.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 2.87s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 2.87,
+   "sha256": "4489bb417a89fb15a13d7a16c9457f6b937b8b1d3c308e3723bbb441316276f4",
+   "tests": 13
+  },
+  "tests/test_crypto_ux_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 47 nodes in 5.14s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 5.14,
+   "sha256": "449db6c90d70f0248e8b743da0c7fa859ddbe69646b659870412e0178a7043ac",
+   "tests": 47
+  },
+  "tests/test_data_center_a3_1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 17 nodes in 7.4s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 7.4,
+   "sha256": "b3de159355149f4efd775415145e84535264d40dada025a051d830da7ffd9b69",
+   "tests": 17
+  },
+  "tests/test_data_center_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 23.32s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 23.32,
+   "sha256": "38c1160e3f934780c383aea38e58f19fd34b0e07dfc49d480cff9c81b2b64cf3",
+   "tests": 16
+  },
+  "tests/test_data_center_export_acceptance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 4 nodes in 6.65s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "module-global-state"
+   ],
+   "seconds": 6.65,
+   "sha256": "a75805a670fd8f299139cec1d549ad8a6f22847ab41e5af2e2b1a602c0e69f15",
+   "tests": 4
+  },
+  "tests/test_data_center_reference.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 35 nodes in 15.49s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 15.49,
+   "sha256": "de6a19ba1633403b6c9271096fc52e360305615006363c85180bbb9269474e1a",
+   "tests": 35
+  },
+  "tests/test_data_center_vertical_integrity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 30 nodes in 14.3s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 14.3,
+   "sha256": "6086b6696fa0384622ef0252cb968dbbf1e799a311006c4f636d39eb377643d1",
+   "tests": 30
+  },
+  "tests/test_demo_history_retention.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 57 nodes in 4.4s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state",
+    "native-threads"
+   ],
+   "seconds": 4.4,
+   "sha256": "c5b393c699432fe20f21e196ae6a1069fe2e71b7ac836a9d8737e184360af4c6",
+   "tests": 57
+  },
+  "tests/test_developer_decision_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 28 nodes in 19.13s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 19.13,
+   "sha256": "cd82c48a61b8cd9745460c2f678a2821fdca83e9030c6eed08fe167debf7fe81",
+   "tests": 28
+  },
+  "tests/test_developer_economics_persistence_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 62 nodes in 105.48s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 105.48,
+   "sha256": "ffd1fdc7d562c3b36e79ba0151879863931f73541023269150ccd02f1f374180",
+   "tests": 62
+  },
+  "tests/test_developer_economics_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 95 nodes in 57.91s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state",
+    "native-threads"
+   ],
+   "seconds": 57.91,
+   "sha256": "800c60292af93138bd2d2934da0b053b5d90bdb981f2d75b5eee864446420963",
+   "tests": 95
+  },
+  "tests/test_ev_charging_a5_run.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 13.47s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 13.47,
+   "sha256": "0b8f7d19e23137c5f19f66fe30439e4df05059c8539519e08fd1c18a23f62de8",
+   "tests": 6
+  },
+  "tests/test_ev_charging_acceptance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 17.98s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 17.98,
+   "sha256": "d27aa5754e6623f819b62e5598c215fb1eb3ef4d470cd96c53a8955b8b5dfe42",
+   "tests": 7
+  },
+  "tests/test_ev_charging_catalogue_seed.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 2.43s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.43,
+   "sha256": "d3a634557b37e6e0728cbe952303f2bcc25eeeed351325e655ff6322c5d75ad0",
+   "tests": 10
+  },
+  "tests/test_ev_charging_driver_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 9.6s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 9.6,
+   "sha256": "b1f850667c1e604b73c337420f6ab4b93a27e4fadd42b717b8b603e6d4721552",
+   "tests": 12
+  },
+  "tests/test_ev_charging_efficiency_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 20.11s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 20.11,
+   "sha256": "b7773725c48c67f0130a7ae3fa9d186efa7d3a0dbc3621f0ecfdf42803ff1dfd",
+   "tests": 13
+  },
+  "tests/test_ev_charging_range_parity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 11.06s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 11.06,
+   "sha256": "2440b7bb0ab212c39822e53930c4785d09b4ec8fa60de1ceea2da5a5b538a42a",
+   "tests": 13
+  },
+  "tests/test_ev_charging_reference.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 8.29s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 8.29,
+   "sha256": "3782a622d73d7cff7105ba3793df3ec9a257791bb6ce13714d0b79674cd243b0",
+   "tests": 23
+  },
+  "tests/test_f04_signing_secret_fail_closed.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 5.22s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 5.22,
+   "sha256": "096cc44150b718a26acacf29b647ebaecc5b44d6bae6bc4dea2f8ac7d1d61131",
+   "tests": 15
+  },
+  "tests/test_f05_shared_session_contract.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 26 nodes in 23.72s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 23.72,
+   "sha256": "b7f0abe9fefa9881b4950bbfb61170b0eaf60ec661db86bfffba020635b31a3e",
+   "tests": 26
+  },
+  "tests/test_f06_opex_display_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 4.45s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 4.45,
+   "sha256": "459495a5999fc16c6e4687b8ea1542f24fa44650f24c5cd4a76e5ee3e8de3bcb",
+   "tests": 12
+  },
+  "tests/test_f07_export_lineage.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 10.83s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 10.83,
+   "sha256": "c148222ce7096f24f14de7fb4ae6fb4e1ed0a61ac91cff3e18d6330956208e77",
+   "tests": 7
+  },
+  "tests/test_f07b_canonical_export_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 40 nodes in 13.26s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 13.26,
+   "sha256": "205043b7f685aa34f55577f1731cde11943bc3c173c06b72415d19894f46b375",
+   "tests": 40
+  },
+  "tests/test_f08_opex_mobile_ux.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 3 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.72,
+   "sha256": "8263ca049f2d2bd5b1364c0973946245458fa68d4ec4c936c9445878dbce986a",
+   "tests": 7
+  },
+  "tests/test_f0_developer_uses_integrity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 29 nodes in 33.35s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 33.35,
+   "sha256": "9e80600dc87e4d2f368b2a71c1dc9bb01b94ac0ca62d233d096f469c073ad508",
+   "tests": 29
+  },
+  "tests/test_f0_senior_maturity_integrity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 42 nodes in 78.18s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 78.18,
+   "sha256": "8c2ad9c724e15f52629bdc7a3e4f8c03bf3eec960531c833aabd9ce4938b70f4",
+   "tests": 42
+  },
+  "tests/test_f39_four_vertical_acceptance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 31 nodes in 348.95s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 348.95,
+   "sha256": "9101bdde17e1e1d3629b5dd1ebeba4df190d45378990e7b612fdbeb25e571fbd",
+   "tests": 31
+  },
+  "tests/test_f39_numerical_validation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 2.07s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.07,
+   "sha256": "73e416dcab18f0ab829010e09efce70d937ab81fdcd93b1bf8e3280d2f58554d",
+   "tests": 16
+  },
+  "tests/test_finance_integrity_governance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 3.17s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 3.17,
+   "sha256": "8c9661128b591b784b699171815e6448da4c7886e4a3455e21e8eef95c748766",
+   "tests": 7
+  },
+  "tests/test_financing_f1_sources_uses.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 28 nodes in 43.77s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 43.77,
+   "sha256": "74601ed92224ef058f1e169022fe6f0c2f2d958e2ee6181a38794ba63ecb7ee6",
+   "tests": 28
+  },
+  "tests/test_financing_f35b_csrf.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 20.69s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 20.69,
+   "sha256": "9c69d2f8ca53561b37ca0c70d3da9aca8b078b7284a7eba92d2056dafdc0e93d",
+   "tests": 10
+  },
+  "tests/test_financing_f35b_numerical.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 4.03s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 4.03,
+   "sha256": "129122692d6d2960c86183ac49fcd2454cf54a330900155bb20840d83271bb88",
+   "tests": 10
+  },
+  "tests/test_financing_f35b_release_closed.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 36.33s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 36.33,
+   "sha256": "0b91c026c7208d8f07d4e92c2c0d2fb28786ad5dc0b8fa1d171bfc486e99db14",
+   "tests": 10
+  },
+  "tests/test_financing_f37_instrument_su.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 58 nodes in 163.45s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 163.45,
+   "sha256": "73a1e3b8d4eca7c2a8e24c15f8f03278140754948ee804146fddff3b7d48984c",
+   "tests": 58
+  },
+  "tests/test_financing_f38_trace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 33 nodes in 102.54s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 102.54,
+   "sha256": "51969fd1bcdcba6318c37db94faaabadde1c6a0d735f7933867baa7688e3912a",
+   "tests": 33
+  },
+  "tests/test_financing_f3_canonical_contract.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 131 nodes in 2.44s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.44,
+   "sha256": "3b96733759fc9146d0250c76a59d95adc24728a946f8e023fea0c909561b2c10",
+   "tests": 131
+  },
+  "tests/test_financing_f3_canonical_legacy.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 58 nodes in 42.86s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 42.86,
+   "sha256": "5bf98dcd3036cb7b3c5d53f6b3d3e95c03f12e38c9a622841163e9051b3191da",
+   "tests": 58
+  },
+  "tests/test_financing_f3_contract_candidate.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 52 nodes in 2.31s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 2.31,
+   "sha256": "eae072342160ff9f1a3fcf2bb765cf2b70db24bed896463584f36f600800fef1",
+   "tests": 52
+  },
+  "tests/test_financing_f3_governance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 4.84s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 4.84,
+   "sha256": "1805dc4d95005fb529163072d6980ba613233d55605cfbfa6ce15b8d151f51c0",
+   "tests": 12
+  },
+  "tests/test_financing_f3_junior_contract.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 17 nodes in 3.04s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 3.04,
+   "sha256": "8ea5d03dd4a7841600743d2527e3a0e46c9407a5b91b944442f999835abb0ab9",
+   "tests": 17
+  },
+  "tests/test_financing_f3_junior_governance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 46 nodes in 7.31s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 7.31,
+   "sha256": "f29d5f69903dcd8e9c155ba7c3945c553b21db8cd2fcc2213a6a15c17b398db5",
+   "tests": 46
+  },
+  "tests/test_financing_f3_junior_runtime.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 38 nodes in 4.65s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 4.65,
+   "sha256": "3374bd83ffa07cd93f8128149a7b0bd382c0f1e129cbbae598ff652aac7e56f0",
+   "tests": 38
+  },
+  "tests/test_financing_f3_junior_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 43.29s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 43.29,
+   "sha256": "3e3a4457db3ff332e720237b6ae75b2c16ffc283a1b88bf22f6c22923dd465a5",
+   "tests": 7
+  },
+  "tests/test_financing_f3_multisenior.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 32 nodes in 3.68s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 3.68,
+   "sha256": "fbbbf3e9a8d5ac947a05a6ff7d2603f2b85131b48003a4aaccc0c75fbf32a651",
+   "tests": 32
+  },
+  "tests/test_financing_f3_multisenior_governance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 3.7s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.7,
+   "sha256": "bf960b92dfbab72dcaa0b8d37f0ccbb87e638d20f9c740ea997f48bdb0726838",
+   "tests": 15
+  },
+  "tests/test_financing_f3_reference_compatibility.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 54 nodes in 12.82s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 12.82,
+   "sha256": "b629461ef3cfa4ad1057e9f53f06ae52fd238406881dfe293103cb23f029d9bd",
+   "tests": 54
+  },
+  "tests/test_finco_token_activation_readiness.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 85 nodes in 3.54s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.54,
+   "sha256": "aa902a5666ecc871fb95f2ffc1ed1b13ad317cf4c51a8bac0e72686a2cfe7e88",
+   "tests": 85
+  },
+  "tests/test_gf_f03_compare_freshness.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 8.93s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 8.93,
+   "sha256": "1681490502a829c7dbf720499c90fa5a85a0f3dc635da03dcfb9878582c8f005",
+   "tests": 6
+  },
+  "tests/test_gf_f05_scenario_freshness.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 3.9s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 3.9,
+   "sha256": "f559dfecb061ac37b57daf9bd0612499350baa63ad28b3f1efd3f1196082fa3a",
+   "tests": 9
+  },
+  "tests/test_goal_seek_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 44 nodes in 243.62s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state",
+    "native-threads"
+   ],
+   "seconds": 243.62,
+   "sha256": "2a3f7d25e4ff39861bdb21e679f0f1f50b02d012543491f1c16b9f6713af4f3a",
+   "tests": 44
+  },
+  "tests/test_golden_flow_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 1 nodes in 26.76s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 26.76,
+   "sha256": "e1069783baa27a88bdb76bc6c7c25d5fdd96b68f2e2ab603ca35008594808e79",
+   "tests": 1
+  },
+  "tests/test_golden_flow_correction_b.py": {
+   "category": "standalone-failure",
+   "mode": "blocked",
+   "reason": "alone: exit=1 failures=1 errors=0 timed_out=False",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 24.25,
+   "sha256": "90652395c7e66dfb3553972d4a3358314dfe374332bcc421991a218c94ce58f2",
+   "tests": 3
+  },
+  "tests/test_h1_generic_financing_policy.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 34 nodes in 26.83s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 26.83,
+   "sha256": "c3e3d6b5525d8f03123f38adc1a8482dfd34d47d7fe1d1de72005260132031f3",
+   "tests": 34
+  },
+  "tests/test_h2_dscr_sculpting_feasibility.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 5.02s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 5.02,
+   "sha256": "4358fd1ca360e4c6362f36e7cf222f6df35b6a1a8b25b46357ec9cb971de97b1",
+   "tests": 19
+  },
+  "tests/test_h3_sponsor_return_semantics.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 10.69s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 10.69,
+   "sha256": "731ab06fd1fe00a4af8dbc0648f2bd5af91c5bc88a40652bbd6d5f4ad9d7d7c6",
+   "tests": 12
+  },
+  "tests/test_h4b_run_integrity_checks.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 36 nodes in 17.72s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 17.72,
+   "sha256": "33ccffec31278c72cd60c04ec5bcafb9c6680e6798d0fbf6dd31cd0a561ecdda",
+   "tests": 36
+  },
+  "tests/test_investor_f4_candidate.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 43 nodes in 11.06s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 11.06,
+   "sha256": "a1f27cab3d9e25c1fbe4b5d70304751d9d22132567113ddf2780ce946d6b0570",
+   "tests": 43
+  },
+  "tests/test_investor_f4_p1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 41 nodes in 16.63s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 16.63,
+   "sha256": "1f25445ac2d2b9f98c8b6c3456f81a3c9c54238d1d5c7ef13b8cd394c84ee324",
+   "tests": 41
+  },
+  "tests/test_investor_f4_p2_candidate.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 35 nodes in 2.82s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.82,
+   "sha256": "7f22e215bbe9dbf0b233664ee8f99c4471d8abd9a82619f5fe02b58f1d2ea74e",
+   "tests": 35
+  },
+  "tests/test_investor_f4_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 40.19s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "native-threads"
+   ],
+   "seconds": 40.19,
+   "sha256": "dc888dc29dff3ce29c0707ca0762e0b7e367276d460af2ec667524f7e3c1ab62",
+   "tests": 14
+  },
+  "tests/test_jev_radar_intelligence.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 113 nodes in 9.7s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 9.7,
+   "sha256": "92b6161657d41c3b542f3f1bf126e00b098e5d0ddf6d5aaf93106f80407ee7f8",
+   "tests": 113
+  },
+  "tests/test_jev_shadow_universe_security.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 91 nodes in 10.98s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 10.98,
+   "sha256": "b89c98611e7919bb8b2828b99d52d9726203710d58ac1e05c5ab82184a35626e",
+   "tests": 91
+  },
+  "tests/test_m2_signed_run_public_trust.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 70 nodes in 21.57s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 21.57,
+   "sha256": "013eef249c9db8d7fd010e3137ac125cdb2857a29b8faff0965e3f6c81038e6f",
+   "tests": 70
+  },
+  "tests/test_m3_two_driver_sensitivity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 41 nodes in 342.91s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 342.91,
+   "sha256": "fa7eda1566891dc2d3addad4a0519f090db78613dfd6b543b07848fab00abb97",
+   "tests": 41
+  },
+  "tests/test_m6_exact_content_successor.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 6.03s",
+   "risk_leads": [],
+   "seconds": 6.03,
+   "sha256": "1e1fdf12a2b72745bc58bd9e4a2b7d0f41f7d3ceb5fe167e9e2238b812b8daba",
+   "tests": 10
+  },
+  "tests/test_m6_gearing_full_tenor_sculpting.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 38 nodes in 4.06s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 4.06,
+   "sha256": "e0eced00614ab196dab9aaac665c773eb6974f086cccd74b0936eb5b1898ffa1",
+   "tests": 38
+  },
+  "tests/test_m6_institutional_acquisition_candidate.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 3.79s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 3.79,
+   "sha256": "c20e26533f71f6213cf89ca64732ccdea506b86a7269155eb4e34e44890d276c",
+   "tests": 23
+  },
+  "tests/test_m6_production_orchestration.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 40.85s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 40.85,
+   "sha256": "52d03c18b91ddf8760ac5569d94623fc63879d5e4dda7cdf317d0df3b724aeb1",
+   "tests": 12
+  },
+  "tests/test_m6_projectinputs_authority_bridge.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 18 nodes in 2.53s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 2.53,
+   "sha256": "f27c019d71d0a557cd08c7dfdb05e228c64bf02061fc4ebd9e00f4902082ee54",
+   "tests": 18
+  },
+  "tests/test_m7_bess_boundaries.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 3.53s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.53,
+   "sha256": "5e3398d0bff2ebbc7226123603e1882aa9630df2efa84cbc6e47ba23da906564",
+   "tests": 8
+  },
+  "tests/test_m7_bess_candidate_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 5.6s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 5.6,
+   "sha256": "0b5480c69c43ef2ed8eae7bb943be9c30edc87d0333927025b40a58ea95dee31",
+   "tests": 14
+  },
+  "tests/test_m7_bess_canonical_finance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 7.85s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 7.85,
+   "sha256": "118e19c3cbdf4bbf3071210fbbb2643aa132f03955c1bcf069c2d99178b56777",
+   "tests": 9
+  },
+  "tests/test_m7_bess_financial_boundary.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 8.56s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 8.56,
+   "sha256": "c6ae05fa734bd5fc38fa928e02a5128b91e536591ffa4937d241229d7bf27a6d",
+   "tests": 7
+  },
+  "tests/test_m7_bess_physics.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 40 nodes in 4.82s",
+   "risk_leads": [],
+   "seconds": 4.82,
+   "sha256": "e46c99ac0df7618d61ed54a10dc6c34983e0ea4365a6a39c5bcda6e65267b983",
+   "tests": 40
+  },
+  "tests/test_m7_bess_successor_proposal.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 77 nodes in 15.84s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 15.84,
+   "sha256": "06a3f2b3bfd0c727553e4693443607db727323b9ba8b5b39dffca1dd7cb738e6",
+   "tests": 77
+  },
+  "tests/test_m7_bess_workflow.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 19.25s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 19.25,
+   "sha256": "8ec7f49a5de5c32278f9fd417c4e7bfe851f57ea03843ca4aa0c38efebfc3aa0",
+   "tests": 12
+  },
+  "tests/test_m7_rc3_candidate_successor.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 3.97s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.97,
+   "sha256": "858351d5e962f7c58596a58c16073f9619d87ac7cc93d460df27d0c8cd5cfe13",
+   "tests": 19
+  },
+  "tests/test_mcp_v1_institutional.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 28 nodes in 3.92s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 3.92,
+   "sha256": "4d37d90ece8f9221cdd0bc3c20e5fa26d7d56722d0523a3d2c63831486b63129",
+   "tests": 28
+  },
+  "tests/test_model_ai_import_atomic_batch_c0.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 3.6s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 3.6,
+   "sha256": "45047d43cdf98aabbf6f06ec77f03b05855e462c459da540dc46f6c38e2fb5ea",
+   "tests": 12
+  },
+  "tests/test_model_ai_import_f3_integration.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 49.81s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 49.81,
+   "sha256": "fec436ac0cf1dd4ec36f8a2ba029701457747889899c4abde3be647adc06c531",
+   "tests": 14
+  },
+  "tests/test_model_ai_import_intake_c.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 2.44s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.44,
+   "sha256": "aff400676b1d566f1e5c6d875726c59d7cda535044d3555d910ff7f68158402c",
+   "tests": 15
+  },
+  "tests/test_model_credit_decision_v3.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 32 nodes in 3.0s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.0,
+   "sha256": "3b5b5be0ec5f853aa72fe023980f703b75af4e9d175f9c62317ce287e043eb64",
+   "tests": 32
+  },
+  "tests/test_model_credit_decision_v3_real_runs.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 44.44s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 44.44,
+   "sha256": "7c5f68fb215fe97026c94866cd120e8c02e70750a33fbb991a17a31346164fca",
+   "tests": 14
+  },
+  "tests/test_model_credit_decision_v3_scenarios.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 76.33s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 76.33,
+   "sha256": "4cddfe7e1d1de3fde88322cae35fb8f4753db2f5343fd97c7c47f56a7f52a155",
+   "tests": 8
+  },
+  "tests/test_model_credit_decision_v4.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 1.49s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 1.49,
+   "sha256": "42ce3bb93c59e875b2ef06a4c03b8df306090fef3f0076a85d3e7f13f276c6f6",
+   "tests": 22
+  },
+  "tests/test_model_credit_decision_v4_real_runs.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 4 nodes in 26.7s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 26.7,
+   "sha256": "abde2ef075b8d93da83af5262ec602917189487914d0a43bb66c16a6ee130e6b",
+   "tests": 4
+  },
+  "tests/test_model_credit_decision_v4_render.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 2 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.75,
+   "sha256": "284012c00031a813ce30a5e26f3c764f8cee3fab815c32f1a74a55876bc2aacc",
+   "tests": 3
+  },
+  "tests/test_model_decision_support_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 28 nodes in 127.37s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 127.37,
+   "sha256": "3a51996edbdf1de04145350062df399037f3329cba25adde9340a6f285033422",
+   "tests": 28
+  },
+  "tests/test_model_decision_workspace_v2.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 35 nodes in 51.52s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 51.52,
+   "sha256": "09dbb8a30693c802baedc1f599b5c3f10b589ed8e92a6c22a67d50d7e5889e73",
+   "tests": 35
+  },
+  "tests/test_model_diagnostics_correctness_v3.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 4.49s",
+   "risk_leads": [
+    "filesystem"
+   ],
+   "seconds": 4.49,
+   "sha256": "a7d4dc410d9f463337be327dc87df6c2a8ff59d20855e7e2e0f86d1ae676d1ef",
+   "tests": 15
+  },
+  "tests/test_model_diagnostics_display.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 22.81s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 22.81,
+   "sha256": "a023bc2b965d097fa6f1209459aa88e34c1a0b89ddf3290008fafb9f5bbb2941",
+   "tests": 10
+  },
+  "tests/test_model_diagnostics_routes.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 33.41s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 33.41,
+   "sha256": "bf901dff8a904f81b26cdfee61e621ed74a29cc0e6f330be552a2bde5ccbff74",
+   "tests": 6
+  },
+  "tests/test_model_diagnostics_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 51 nodes in 25.4s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 25.4,
+   "sha256": "c4b52147f329d37dce4b8cea9f639f8af1a0b577b1e19b152245eef5e52a9921",
+   "tests": 51
+  },
+  "tests/test_model_diagnostics_v2.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 49 nodes in 2.4s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.4,
+   "sha256": "6f9b5ada51dfaa083ec5d03e952c80b73ba288545d5839b51276b51610121d2d",
+   "tests": 49
+  },
+  "tests/test_model_diagnostics_v2_real_runs.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 90.48s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 90.48,
+   "sha256": "f3b28fdbb052fd67aa902d281f4c8a02fc01cc2d27eab6599a966c4385648f92",
+   "tests": 20
+  },
+  "tests/test_model_financing_bankability.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 36 nodes in 28.14s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 28.14,
+   "sha256": "8d41e1fb99d395d62c835b48b149fede31677e241c509989e800691c53e758a0",
+   "tests": 36
+  },
+  "tests/test_model_financing_f2.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 33 nodes in 444.06s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 444.06,
+   "sha256": "e10c3e2ab1d5082fe8b9482046529b88f4c43657402d5cdb9e07ac76dcb93506",
+   "tests": 33
+  },
+  "tests/test_model_financing_f3_evidence_tool.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 1 nodes in 20.28s",
+   "risk_leads": [],
+   "seconds": 20.28,
+   "sha256": "491fec38bb939409a5e010e5f05bf7a506406b4111ac61b4d47655bf0d7a5955",
+   "tests": 1
+  },
+  "tests/test_model_financing_f3_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 39 nodes in 73.13s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 73.13,
+   "sha256": "37b6754d70875cbc88cfd26180c5c9870d1fe5ac9cafc67f19e970e702ad1be5",
+   "tests": 39
+  },
+  "tests/test_model_footer_cleanup.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 7.67s",
+   "risk_leads": [
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 7.67,
+   "sha256": "f47e72203b49fc83027d2bac453ec61b3fa710b62ab5170bfcc86982531ed1a7",
+   "tests": 14
+  },
+  "tests/test_model_hybrid_inputs_grid_f3_negative.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 4 nodes in 16.94s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 16.94,
+   "sha256": "0b92b0a3d7943d847b964a2a1aee64bd56eab1fd32837db40a62b68a6d0fa79b",
+   "tests": 4
+  },
+  "tests/test_model_hybrid_inputs_grid_routes.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 14.9s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 14.9,
+   "sha256": "d3ddddcbcf573a0fa8fc0f7614e9c0fbf6e50e32c277107616d0d6eeaef047c5",
+   "tests": 13
+  },
+  "tests/test_model_import_excel_migration_benchmark.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 30.32s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 30.32,
+   "sha256": "d13f618601fd24189215d8ce38416b205d1cd543cc31c1cb1864d804742ebce7",
+   "tests": 6
+  },
+  "tests/test_model_import_excel_migration_inspect.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 28 nodes in 4.59s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 4.59,
+   "sha256": "fca77cb7c7458716394c94f1bb320dad4d5c39d4ca7457cd82513de1496df1b4",
+   "tests": 28
+  },
+  "tests/test_model_import_excel_migration_journey.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 15.04s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 15.04,
+   "sha256": "8af55da6fc20fdeb1daf7fc2c18a329818641d6a1204e47fba571c54b6e62964",
+   "tests": 3
+  },
+  "tests/test_model_import_excel_migration_reconcile.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 48 nodes in 2.19s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.19,
+   "sha256": "812947b5fb129a8686c3d6027431deb626b7cd0d3c11858e8be945845f2c4d81",
+   "tests": 48
+  },
+  "tests/test_model_import_excel_migration_security.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 44.19s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "network-or-ports"
+   ],
+   "seconds": 44.19,
+   "sha256": "df9b8aacf3d5131c15602aaf735237541f3df77b570b813c7c658dbe35b9b6dc",
+   "tests": 22
+  },
+  "tests/test_model_import_excel_migration_ux_v4.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 1.57s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.57,
+   "sha256": "9750a6b781272451fd039a53603aeba6a446bdd06eea84ae66d6ca78999c7fea",
+   "tests": 7
+  },
+  "tests/test_model_import_v2_mapping.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 62 nodes in 2.31s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 2.31,
+   "sha256": "7cab2a454c14c6e9efa1f6069e4893a983bedf720a94b67c9641e7614c4f8bbf",
+   "tests": 62
+  },
+  "tests/test_model_import_v2_provenance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 17 nodes in 10.16s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 10.16,
+   "sha256": "eeb98bd0618cddb974095141a1c818db6a1171b5838a957f443ca5a6fb9f4879",
+   "tests": 17
+  },
+  "tests/test_model_import_v2_review_security.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 17 nodes in 17.04s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 17.04,
+   "sha256": "216991b41cbe640c4093ce52114a66b5c309faad7076b35d21f22842798d6a18",
+   "tests": 17
+  },
+  "tests/test_model_insight_q3.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 24 nodes in 22.63s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 22.63,
+   "sha256": "88d6589745cd7d85fec044bbf861865d138cb1da792b9b5ba3b9bb3548034ea3",
+   "tests": 24
+  },
+  "tests/test_model_insight_q3_route.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 45.35s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 45.35,
+   "sha256": "4369988748943670a84b35db387cde36a8c1e44814174c9c36aa3eaed92084ed",
+   "tests": 14
+  },
+  "tests/test_model_insight_q3_scenario_identity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 54.51s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 54.51,
+   "sha256": "0c0e79c0acf733eb9d641c6c9cca54a92cd9b0957c10f8ed8eb305e672e9fe73",
+   "tests": 15
+  },
+  "tests/test_model_insight_q3_scenario_reads.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 13.04s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 13.04,
+   "sha256": "2b7e5075e082356ddc62cfba7c3a45a886bfd22d9bef26e6e8f89c405b5e702f",
+   "tests": 13
+  },
+  "tests/test_model_market_bridge.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 45 nodes in 5.44s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 5.44,
+   "sha256": "a1ca2a13403eed91f06947825ee34984783ba79fbc001931a7d93bf6445f2387",
+   "tests": 45
+  },
+  "tests/test_model_outputs_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 44 nodes in 93.85s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 93.85,
+   "sha256": "5d8a4bc4cd4f9c51a72a9874bdeac790b1c49a66fcaf73f4cbf1f788abb21abe",
+   "tests": 44
+  },
+  "tests/test_model_project_timeline_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 14.7s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 14.7,
+   "sha256": "85b2e0f078a6fdfd356f3329141d77eded2adbcdf869bcfe5fb6376758bcc62f",
+   "tests": 10
+  },
+  "tests/test_model_q4_whatif.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 48.3s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 48.3,
+   "sha256": "b5828be8a6a107e9f369aee3b9b95de2663bbb0979d49bc720dc9cf98631ece5",
+   "tests": 20
+  },
+  "tests/test_model_quality_q1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 108 nodes in 42.51s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 42.51,
+   "sha256": "fadcb9468da1a310a0e143a7a8a2ac83e4fdb7c1e866189e0af26153c44e72ab",
+   "tests": 108
+  },
+  "tests/test_model_rc6_opex_profiles_ui.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 2 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.62,
+   "sha256": "339e59ba656cd03f432144a44e510e8d29d7777703d831e2e2fe294d5ed5d76b",
+   "tests": 4
+  },
+  "tests/test_model_rc6_opex_profiles_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 1.51s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.51,
+   "sha256": "7ade9fafa494ec19188dcf86fd8aa3458223c3333484cd15fccb5b8875857c56",
+   "tests": 19
+  },
+  "tests/test_model_rc7_capex_binding_surfaces.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 5 nodes in 2.76s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.76,
+   "sha256": "f365de2defa9c2ab0150d10cfb648a831c0d75a813a3e5b99d0b8e8fd74e5269",
+   "tests": 5
+  },
+  "tests/test_model_rc7_capex_monthly_binding.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 35 nodes in 331.42s",
+   "risk_leads": [
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 331.42,
+   "sha256": "703f8e5ab1a1bad976f845eca438f513b2a20be283c6f4c8f874cd31deecd6f8",
+   "tests": 35
+  },
+  "tests/test_model_rc7_capex_profile_run.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 42.83s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 42.83,
+   "sha256": "28e18658ed2d35df31fdf43ff04dff8269ffca97733a55f93be4169182c22b5c",
+   "tests": 7
+  },
+  "tests/test_model_run_intelligence_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 43.81s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 43.81,
+   "sha256": "52bed63ab1a0ebeb74683626df83b22be973bf5ba027ae9430888d520721a73e",
+   "tests": 22
+  },
+  "tests/test_model_run_workspace_v3.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 39.59s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 39.59,
+   "sha256": "0b9aacbef93cdc1546e14340e9f2a9a3382d4512ae543aab59952292e310a414",
+   "tests": 12
+  },
+  "tests/test_model_run_workspace_v3_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 34.33s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 34.33,
+   "sha256": "5a84fac941cf42400e8c07ab99451eaa156116a6ac0a7ca6b323ac88e11d4d23",
+   "tests": 16
+  },
+  "tests/test_model_scenario_switch_coherence.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 4 nodes in 4.01s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 4.01,
+   "sha256": "fff7037c6bdeaa261ccf5bc1f562379b0f46e60c1b88624d96c3d355f20690d5",
+   "tests": 4
+  },
+  "tests/test_model_smart_panel_q2_register_mapping.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 11.84s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 11.84,
+   "sha256": "9eaffb964705b72cea81df8a49d148542c8c814e2c2c7a7164acf3dac28a1ee3",
+   "tests": 9
+  },
+  "tests/test_model_smart_panel_q2_v2.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 3.32s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 3.32,
+   "sha256": "e0e5782f551312e510792723864cfda832ab7922754a9c6bcd57d979e029aa3f",
+   "tests": 8
+  },
+  "tests/test_model_trust_pack.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 13.27s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 13.27,
+   "sha256": "6e7a8246cdc17dc9d85014510f5e7e019859861ccaf67b4c6a431087247c577c",
+   "tests": 23
+  },
+  "tests/test_model_trust_pack_ux.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "module-global-state",
+    "native-threads",
+    "network-or-ports"
+   ],
+   "seconds": 57.34,
+   "sha256": "938f13a050ec76fb79d0aae5ebfe4855409699064d22f3f0f26a86ec106b6023",
+   "tests": 31
+  },
+  "tests/test_model_ux_sponsor_transparency.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 4.54s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 4.54,
+   "sha256": "c44bcc2c91e7b2f63b2cd6d33c1ccdac7e4b152dad5ab24910c566708fdf06cf",
+   "tests": 14
+  },
+  "tests/test_model_v2_assumption_register.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 2.29s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.29,
+   "sha256": "c92e11b8c4e5d44569dd084577ebaa594e65c67f7f605e38752b9a47b14d3a97",
+   "tests": 16
+  },
+  "tests/test_model_v2_assumption_trace_references.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 15.05s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 15.05,
+   "sha256": "b0845318229af94b13624349faf176e9c76af74247877ba82c73a1d0f9cc3514",
+   "tests": 9
+  },
+  "tests/test_model_v2_calculation_trace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 8.7s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 8.7,
+   "sha256": "656ae27916848d368d82fc3098eb3c097f89c7110152ab6e22a1d36baa4855b8",
+   "tests": 12
+  },
+  "tests/test_model_v2_canonical_analytics.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 28.23s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 28.23,
+   "sha256": "de52cad83bf150fba90e40338ca387c25d2090004116c6d53e94f3fc2b82559e",
+   "tests": 19
+  },
+  "tests/test_model_v2_composition_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 89 nodes in 3.1s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.1,
+   "sha256": "c3cc30a09aab03ce12191cf1ed5dce5414af77d83f1c38839475ad7f3e1c2494",
+   "tests": 89
+  },
+  "tests/test_model_v2_cost_templates.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 26 nodes in 2.86s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 2.86,
+   "sha256": "9c2223ee5cb5a4563001a71c96ff45cdb9a131b1bd9c10eb164ac6036199637c",
+   "tests": 26
+  },
+  "tests/test_model_v2_cost_templates_cb.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 17 nodes in 3.21s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 3.21,
+   "sha256": "c65daadd0f09fd1d6430e0fab862d5d7b4975bc2868537d214a982ff545de4a5",
+   "tests": 17
+  },
+  "tests/test_model_v2_cost_templates_cc.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 21 nodes in 2.69s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 2.69,
+   "sha256": "73935c1236e7e470046089da2aaf3986b87e310c2b43bb14a141e37e9710b619",
+   "tests": 21
+  },
+  "tests/test_model_v2_cost_templates_cd.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 3.13s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.13,
+   "sha256": "0d51114c48c8b5ee4ffa9abd345803e8c14fba1a2902c46ad2ba53c94bd5761e",
+   "tests": 22
+  },
+  "tests/test_model_v2_cost_templates_ce.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 2.63s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 2.63,
+   "sha256": "d8487c5f797af489b5442ffa8607fd5bbef15b03ca238ca7c4252eae76d6244a",
+   "tests": 13
+  },
+  "tests/test_model_v2_cost_templates_cf.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 2.28s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 2.28,
+   "sha256": "e6de09142ce899126b51740fd89ac59204b462da2e1d9cf21df6792f72404147",
+   "tests": 6
+  },
+  "tests/test_model_v2_cost_templates_cg.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 2.43s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.43,
+   "sha256": "db9bdd51ebfdced4cbd258538c80b34556038749686ef3ff4bebfcecfb43e73a",
+   "tests": 8
+  },
+  "tests/test_model_v2_foundation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 4 nodes in 5.48s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 5.48,
+   "sha256": "5055b94378ea6b9816b47c4e8a7013a4c1ef630dd8c2e321d844e0354fd9d12a",
+   "tests": 4
+  },
+  "tests/test_model_v2_governance.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 10 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 1.81,
+   "sha256": "ba37d7c59fba6eef95e6fb75b5e40cfa2b41056aa27140e53046ad00416aba29",
+   "tests": 12
+  },
+  "tests/test_model_v2_metadata.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 9.62s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 9.62,
+   "sha256": "e43301ed9273f43e9655d0d1078415d35b62bd80722318ed2d018fe319d3bb5d",
+   "tests": 15
+  },
+  "tests/test_model_v2_persistence.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 68 nodes in 3.42s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 3.42,
+   "sha256": "d250252488021e76ba43b268287f4b54d9de576bc95fcd1cbf38c5c11a5fdc50",
+   "tests": 68
+  },
+  "tests/test_model_v2_released_engine_authorities.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 1.59s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.59,
+   "sha256": "921ac9fdb32c998e73688cfaa9649ab0ec856f8805a1b39e1db48f4dfe0ec616",
+   "tests": 8
+  },
+  "tests/test_model_v2_revenue_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 1.94s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 1.94,
+   "sha256": "1919333b7947690806f820d03c5725d5a255f876d6a08f2bd033888eaf9fdc3c",
+   "tests": 19
+  },
+  "tests/test_model_v2_revenue_correction_b.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 18 nodes in 2.1s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 2.1,
+   "sha256": "b83f32e649e8f86688da4c7c671d3491ed1c0722a2c284c8e7bc7c06b6f28d5a",
+   "tests": 18
+  },
+  "tests/test_model_v2_revenue_correction_c.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 11 nodes in 2.33s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 2.33,
+   "sha256": "7abc992a6cc6682436d0c81e115e73b7bbca767ef467e337454c692396a152b2",
+   "tests": 11
+  },
+  "tests/test_model_v2_revenue_plan.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 30 nodes in 2.39s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.39,
+   "sha256": "d17f664255d1e544973aa89ecb39f0cf19def04ab4f3ec7fe27b36b98d5b8ae9",
+   "tests": 30
+  },
+  "tests/test_model_v2_revenue_runtime_parity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 55 nodes in 33.52s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 33.52,
+   "sha256": "706d67295c8dfa07d28c53c64e4a2272ef7ab425b68655f9d02b4ff779143710",
+   "tests": 55
+  },
+  "tests/test_model_v2_run_binding.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 34 nodes in 4.95s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 4.95,
+   "sha256": "4c788b35c53036b20568e676bcff3aff21fc21fe5fc52fdef8a8fb88039ceca2",
+   "tests": 34
+  },
+  "tests/test_model_v2_run_history.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 4.33s",
+   "risk_leads": [
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 4.33,
+   "sha256": "9257bd881513becd3b8df958b145735e97719892555d7d2b4609d3df9c447fa4",
+   "tests": 23
+  },
+  "tests/test_model_v2_runtime_composition.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 25 nodes in 3.11s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.11,
+   "sha256": "38959900ef0e379587187d06a94eeeae2bc5cdb786e468402b6b3a52438c67b5",
+   "tests": 25
+  },
+  "tests/test_model_v2_ux_assumption_presentation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 12.36s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 12.36,
+   "sha256": "84316b7cf74bce11857a2edaef55631210455419f015316dfa4251318ca603ec",
+   "tests": 23
+  },
+  "tests/test_model_v2_ux_home.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 11.87s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 11.87,
+   "sha256": "5d246035f7e9895898fe4931f5fffb05a43656d6a5701d15e4fa7dd1d2b7bae8",
+   "tests": 15
+  },
+  "tests/test_model_v2_ux_shell.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 21 nodes in 22.13s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 22.13,
+   "sha256": "da420ba9e6e139764c00a1a23e82c6a538de04acb84c28f5cf05ce0dec54d22c",
+   "tests": 21
+  },
+  "tests/test_model_v2_ux_smart_panel.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 2.82s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 2.82,
+   "sha256": "3cbd02871c7d524c57affed295dc13a4c5d2cfdf4214d5eb90c84f0cac9b013f",
+   "tests": 22
+  },
+  "tests/test_model_v7_diagnostics_routes.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 43.55s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 43.55,
+   "sha256": "8722685a723cb814aafc4ca9aa2b6c5bc93c618ac68261c4bac9a091f2eba9fb",
+   "tests": 6
+  },
+  "tests/test_model_v7_performance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 4 nodes in 2.43s",
+   "risk_leads": [
+    "network-or-ports"
+   ],
+   "seconds": 2.43,
+   "sha256": "6a6e7cf4a7f508579423634f239fdf42dd93672c5f93ade2cd54de0444b4cd58",
+   "tests": 4
+  },
+  "tests/test_model_v7_presentation_views.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 4 nodes in 25.81s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 25.81,
+   "sha256": "4161192b5b0867b87daab2a9e8b7207fcd6132b7b78b99c5967676289d1c19c6",
+   "tests": 4
+  },
+  "tests/test_model_wf09_capex_funding_binding.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 115.58s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 115.58,
+   "sha256": "dab860cd8e256abc04ce527fc48b19c1e7ddc63d65a5e0ede5b8eabd38dd40a2",
+   "tests": 6
+  },
+  "tests/test_model_wf09_capex_profile_contract.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 114 nodes in 2.04s",
+   "risk_leads": [
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.04,
+   "sha256": "a98f316a0878116a3106f433868ad2faea862eb449006e4e2c5c1f67f6607cc8",
+   "tests": 114
+  },
+  "tests/test_model_wf09_capex_profile_preview.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 19.96s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 19.96,
+   "sha256": "447c509f7a0f1b0c8a7e5ca30936f36f8fba655e85f012947380826dde349836",
+   "tests": 15
+  },
+  "tests/test_model_workspace_consolidation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 65 nodes in 14.77s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 14.77,
+   "sha256": "849aa9c299d1f318498b460226a8f609372c03ff317fc3ef1ffff0c670f198a0",
+   "tests": 65
+  },
+  "tests/test_model_workspace_productivity_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 98 nodes in 5.81s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 5.81,
+   "sha256": "69499dc8ab527c3dcf43600ead53f8189d58ad24732ef232f916a2fe68a3ea9b",
+   "tests": 98
+  },
+  "tests/test_model_workspace_typed_error_transport.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 39 nodes in 17.2s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 17.2,
+   "sha256": "f06760e5f093e44a759f4fad332ee35a3d89cdf96d270ec110d8de23a5dd1aef",
+   "tests": 39
+  },
+  "tests/test_multi_source_evidence_v2.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 65 nodes in 3.71s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.71,
+   "sha256": "c3af4642d6737a209ed02fb222a63d20406a054ed60a599bbeab1ed4b78ec325",
+   "tests": 65
+  },
+  "tests/test_multi_source_evidence_v2_correction_a.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 4 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.52,
+   "sha256": "886bf837ba18089174120ef2c406f69dd20d5f2b0eb7bc418d79a84da1b5c08a",
+   "tests": 44
+  },
+  "tests/test_numerical_validation_v1_synthetic.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 5 nodes in 2.37s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.37,
+   "sha256": "fbfb2eb7c2a5e584ed0102cbb4e8bd718eea2c07969826bc138a96ab2e9c85a7",
+   "tests": 5
+  },
+  "tests/test_opus_a1_public_truth.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 3.39s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.39,
+   "sha256": "47f027391aa45716ed2789a531d97d19c27277999f47dfe853d11a859e0c187f",
+   "tests": 20
+  },
+  "tests/test_opus_c1_product_truth.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 30 nodes in 15.92s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 15.92,
+   "sha256": "56ea9160cc77700bd1385ebf20963010c9e03cd5e4a6973f0eabf556fbd91c1b",
+   "tests": 30
+  },
+  "tests/test_opus_h7_public_acquisition.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 3.15s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 3.15,
+   "sha256": "2de98b33ea30f40fe34f694d9a2c3516f63adad25e1fd3ee1994dc5909c93794",
+   "tests": 9
+  },
+  "tests/test_opus_m7_collector_health.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 2.16s",
+   "risk_leads": [
+    "database"
+   ],
+   "seconds": 2.16,
+   "sha256": "e8670a0945e27c44728ec29c6f7e52dc82017da019e6dd930a3bc60a3b2718ef",
+   "tests": 10
+  },
+  "tests/test_opus_m9_governance_history.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 2.42s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.42,
+   "sha256": "9f4eb2c9ed8799cd36e367b986f4a860b478599dd12c88c8a3e3d12044ba3ea6",
+   "tests": 10
+  },
+  "tests/test_oracle_sequencer_authority_continuity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 42 nodes in 3.75s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 3.75,
+   "sha256": "13073de5769e1eb0d4ea73f403d9df01c8ceee01e533c8ee82dc3521ea33b213",
+   "tests": 42
+  },
+  "tests/test_oracle_sequencer_authority_semantics.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 49 nodes in 3.73s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.73,
+   "sha256": "070d482216ad4811097221e25e443403815e28a01f5d5af36bf6656dbecc200a",
+   "tests": 49
+  },
+  "tests/test_p0_4_capability_contract.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 25 nodes in 2.44s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 2.44,
+   "sha256": "dafdce7204c17f3006488d67ccb2d1f7a6d8b05584700999a958913211585068",
+   "tests": 25
+  },
+  "tests/test_p0_cross_system_isolation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 14.68s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 14.68,
+   "sha256": "886b549ae9504e608b249984a0e3b521e2cdf047109c9be7e02202226c74ef1a",
+   "tests": 7
+  },
+  "tests/test_p0a_model_execution.py": {
+   "category": "standalone-failure",
+   "mode": "blocked",
+   "reason": "alone: exit=1 failures=1 errors=0 timed_out=False",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 49.31,
+   "sha256": "e219edba521fd8ee325487da2a1583f45e350e2419b449824a070551f45ea190",
+   "tests": 37
+  },
+  "tests/test_p0b3_numerical_reconciliation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 49 nodes in 2.22s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.22,
+   "sha256": "999e596145c1966474bf60057341d87909b3aebdb4d77b934248cde0acd76552",
+   "tests": 49
+  },
+  "tests/test_p0b_radar_reliability.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 10.25s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 10.25,
+   "sha256": "c75a43a80e445bb89d0dc3976a771e9ae3184e6a7ab5adc32187d621519e233e",
+   "tests": 19
+  },
+  "tests/test_p0c_secure_runtime.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 28 nodes in 11.66s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 11.66,
+   "sha256": "dd8a5c45bef1fac46359b1fa90a24a19dc2b9e5ad003c08b72e99e0394b91878",
+   "tests": 28
+  },
+  "tests/test_p1_1_institutional_trust_pack.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 21 nodes in 2.26s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.26,
+   "sha256": "7159752e16025b69cd006855a8e0a42a2df0b83832d4b4dc036ac87db4903c4c",
+   "tests": 21
+  },
+  "tests/test_p1_2_xlsx_export_reconciliation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 56 nodes in 116.72s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 116.72,
+   "sha256": "2b03506eedf579b015d6646bbafebb2eafcc05df31659ad3c7e63607ec3a0a04",
+   "tests": 56
+  },
+  "tests/test_p1_3_institutional_validation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 50 nodes in 55.33s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 55.33,
+   "sha256": "11d61cf9dfb02767515cb534c2c0d65de5f7c11c7321b1ca6de99d749fe627a9",
+   "tests": 50
+  },
+  "tests/test_p1_4_ev_reconciliation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 31.41s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 31.41,
+   "sha256": "c45e9c1ec7fd145085c17069789fc37971bf8fe56c044d524f7b3b431fad9dc8",
+   "tests": 14
+  },
+  "tests/test_p1_bridge_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 8.2s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 8.2,
+   "sha256": "2d9d6e772daf8f6e86d4b91ff8abf3c90bf3b2933ef99156c580f120a671f965",
+   "tests": 9
+  },
+  "tests/test_p1_dc_custom_baseline.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 11 nodes in 3.52s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 3.52,
+   "sha256": "27fad50bd90559b1535a7f41b08c9db0745abda39615f4da0af0d55f3f5fccdd",
+   "tests": 11
+  },
+  "tests/test_p1_dc_sensitivity_semantics.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 18 nodes in 10.03s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 10.03,
+   "sha256": "06abd0cc35b18245cd1061e43f61b6ec1886786d49c2f14de21c1976ed99a87c",
+   "tests": 18
+  },
+  "tests/test_p1_institutional_trust_pack_master.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 7.27s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 7.27,
+   "sha256": "327e5451d89a6ce58fa5f3c980c97916cc5ce8d20c092cf38e266559d1d6570d",
+   "tests": 8
+  },
+  "tests/test_p1_release_truth.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 1.69s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.69,
+   "sha256": "643787a96cc33fe63636532436ab82e4242e6243f1b67fa3f3ea0a6856f92705",
+   "tests": 14
+  },
+  "tests/test_p1_xlsx_statement_binding.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 16.17s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 16.17,
+   "sha256": "f2e7cc55e7ea976f9db297349de3e8895f11b3cd385182dd9d8d7f6b5f4963e0",
+   "tests": 10
+  },
+  "tests/test_p3_route_integration.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 26.25s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 26.25,
+   "sha256": "dc82b5af7d39dcfeecbbc4a1cab7639192e26d0d09b7371c911d6b2514ec8ae2",
+   "tests": 7
+  },
+  "tests/test_p3_run_certificate_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 40 nodes in 43.76s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 43.76,
+   "sha256": "0eab669deef836c1bf814032975f5dba159512789c67a142259a29d002fbfc80",
+   "tests": 40
+  },
+  "tests/test_p4_token_utility.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 58 nodes in 24.71s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "network-or-ports"
+   ],
+   "seconds": 24.71,
+   "sha256": "04b425202144cf25dec65d9d0f312a52d907c2e81aa183149f8e469d8ee42c06",
+   "tests": 58
+  },
+  "tests/test_p5_browser_acceptance.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 17 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 1.65,
+   "sha256": "8c2f5c599c5595eb17ef4c3979ee4bf7519c35a3fcf668c9df0b6dbbc0e523f3",
+   "tests": 17
+  },
+  "tests/test_p5_verified_assets.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 38 nodes in 2.98s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 2.98,
+   "sha256": "c9858cbe1ad6ba464693fda15494c603155e4512a0133ea3674a6abfaa7590a4",
+   "tests": 38
+  },
+  "tests/test_p6_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 25 nodes in 291.77s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 291.77,
+   "sha256": "110d02986887b9bca31854f73149ef7cc8fc66be554485729b34b205956379f3",
+   "tests": 25
+  },
+  "tests/test_p6_correction_b.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 37 nodes in 23.65s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 23.65,
+   "sha256": "728f6fe3f609f86f803377f13094459dbdc6c83516201e3658584bc7381e0572",
+   "tests": 37
+  },
+  "tests/test_p6_correction_c.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 24 nodes in 21.07s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 21.07,
+   "sha256": "99fd55d151525fd2acfe5f8b64245da7afb7aaf7c50dd31166f791931353bd9b",
+   "tests": 24
+  },
+  "tests/test_p6_correction_d.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 21.42s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "network-or-ports"
+   ],
+   "seconds": 21.42,
+   "sha256": "1143bda843d0f2e6914b58463b42c1fcddeb06cf7825222e0680532d99488165",
+   "tests": 9
+  },
+  "tests/test_p6_demo_isolation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 3.23s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 3.23,
+   "sha256": "f88bed4a746bfec6dc6cd4a89e4cbe19c92d835bc6f04679c38dce7ae2dbc4d2",
+   "tests": 12
+  },
+  "tests/test_parallel_stream_frozen_diff.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 3.49s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.49,
+   "sha256": "df5f01937d41c4c92a0438236e8af785a8f967bb01f5a830120cabf3b86e9f79",
+   "tests": 13
+  },
+  "tests/test_perf_model_runtime_equivalence.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 17 nodes in 24.99s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 24.99,
+   "sha256": "435378a078c9d015baff8daec91e29abb4bd17df57c129313018c446d87096a5",
+   "tests": 17
+  },
+  "tests/test_perf_model_runtime_v2.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 33 nodes in 260.18s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 260.18,
+   "sha256": "f8b74cb98a53a116674387de96b03af07d3ca38ab76dc114393d03f5597c7c52",
+   "tests": 33
+  },
+  "tests/test_period_frequency_authority_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 56 nodes in 31.2s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 31.2,
+   "sha256": "e6a3d8014385f232f7e8e8415dbdb61d56eee066d43dc8fe1f8c3714f430c4d3",
+   "tests": 56
+  },
+  "tests/test_portfolio_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 1.96s",
+   "risk_leads": [],
+   "seconds": 1.96,
+   "sha256": "2c0c3219eb4694815171333d64ae8834f817214d749bcefae47dc8998ac16bd4",
+   "tests": 6
+  },
+  "tests/test_portfolio_monitoring.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 33 nodes in 2.37s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 2.37,
+   "sha256": "cb7fe189803f99c16c2cb12b92174bd311f0b1963b8e5a2abd73d5e5826b9850",
+   "tests": 33
+  },
+  "tests/test_portfolio_monitoring_real_runs.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 41.64s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 41.64,
+   "sha256": "a0a7008ac3ca2e6dac9bc0bb5ac8f079660b2c532cfe484500a5099a3e5935a9",
+   "tests": 13
+  },
+  "tests/test_post_pr65_corrections.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 32 nodes in 2.2s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.2,
+   "sha256": "4ecc81780d4cc6ea9e4e67712b0119858a9e9ddd9a69f46b79c4d29343839329",
+   "tests": 32
+  },
+  "tests/test_post_run_request_context.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 29 nodes in 49.96s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "native-threads"
+   ],
+   "seconds": 49.96,
+   "sha256": "c063bb608fb6479264c18b14074b7c7e07d93c561ad4ebe11015e7f723eb9dbe",
+   "tests": 29
+  },
+  "tests/test_ppa01_candidate_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 38 nodes in 5.31s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 5.31,
+   "sha256": "1b0faf4e6170c7775eb5bf8f040d6bb945e6c312ca16b56c44b927a001758342",
+   "tests": 38
+  },
+  "tests/test_ppa01_contractual_timing.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 55 nodes in 36.11s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 36.11,
+   "sha256": "60f7100d102834441fc2d8a17d90a20ae42e5bc22b121548709b79fc11461a7a",
+   "tests": 55
+  },
+  "tests/test_ppa01_contractual_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 5 nodes in 71.01s",
+   "risk_leads": [
+    "database"
+   ],
+   "seconds": 71.01,
+   "sha256": "28668782ed8e2b1b0321709d1f190d1dcf555d7484da501122481da7a4abec18",
+   "tests": 5
+  },
+  "tests/test_ppa01_index_series_revenue.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 93 nodes in 4.34s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 4.34,
+   "sha256": "b2711b821ab34cbd3036888f47194c89b8972f3b96ac2458689bc82c4de94445",
+   "tests": 93
+  },
+  "tests/test_ppa01_post_merge_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 16.55s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 16.55,
+   "sha256": "494d652e4bee25f5f0f56cd5ac824d161032d9984c62106f08b2627b98fa53fe",
+   "tests": 14
+  },
+  "tests/test_ppa01_price_rounding.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 77 nodes in 4.68s",
+   "risk_leads": [],
+   "seconds": 4.68,
+   "sha256": "d3613e150bc9e1b52f26cd06909def87bc0cd0b53e52382882eef9f5b31f5d5a",
+   "tests": 77
+  },
+  "tests/test_ppa01_rounding_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 2 nodes in 52.04s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 52.04,
+   "sha256": "be0efdce16065e1d10f0e2465c6f1e8078ae13aff7050cbf244572046358a2da",
+   "tests": 2
+  },
+  "tests/test_ppa01_save_scenario_run_chain.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 137.18s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 137.18,
+   "sha256": "dae3bfe3f8e15052055928c8655c34a7c0bcdb627ae56c3482866cc0dbd9eca1",
+   "tests": 16
+  },
+  "tests/test_pr161_contingency_identity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 46.11s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 46.11,
+   "sha256": "90b223703561f684f5eb1532caefa810a51bfad190d7c28509851a9878991700",
+   "tests": 15
+  },
+  "tests/test_pr75_featured_fail_closed.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 1 nodes in 1.52s",
+   "risk_leads": [
+    "filesystem"
+   ],
+   "seconds": 1.52,
+   "sha256": "99e39f10c7f4fb59ae97cd35eb2b830f5bbe71a36ec781244ea0fc2c545e9214",
+   "tests": 1
+  },
+  "tests/test_pr91_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 42 nodes in 35.54s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 35.54,
+   "sha256": "336218c1d66b63a7839bef01e2d4dcd200e505926d0e3dc808c3047f1cfcbde6",
+   "tests": 42
+  },
+  "tests/test_product_capability_consistency.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 3.1s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.1,
+   "sha256": "83712a8de806c004eafc18efd6385045637fbc3a6bf6f02b85ead30fabc21f34",
+   "tests": 20
+  },
+  "tests/test_protocol_api_beta.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 51 nodes in 4.89s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 4.89,
+   "sha256": "8b0102ca717bc8c2307aad49f4191554843f902807efdf505f677cbe1c8f925f",
+   "tests": 51
+  },
+  "tests/test_protocol_docs.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 3.55s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.55,
+   "sha256": "6bea626c57394beb09b958f6bc9a178cb435a2a71da737057f0dc2f25a61b959",
+   "tests": 14
+  },
+  "tests/test_protocol_docs_aliases.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 7.78s",
+   "risk_leads": [],
+   "seconds": 7.78,
+   "sha256": "7954499ad09b9204b0eb69dbf8a04e2c739ea75c8c01179a5980c25049c5e440",
+   "tests": 7
+  },
+  "tests/test_protocol_roadmap.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 2.5s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.5,
+   "sha256": "fea06e2c52c90419eb454e061e2a15a3a1a7c25efd2ae9567028efbbdfe82cfe",
+   "tests": 7
+  },
+  "tests/test_protocol_verification.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 26 nodes in 17.0s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 17.0,
+   "sha256": "bdd56ac1e75ced521d68e11feb390e68cef215d7c9682cd5c10f583ba60c8805",
+   "tests": 26
+  },
+  "tests/test_public_engine_smoke.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 2 nodes in 16.43s",
+   "risk_leads": [],
+   "seconds": 16.43,
+   "sha256": "b722f94cfddf74142858b69a13efc0deaac9d3e67eebde4b8dabcd6e35291141",
+   "tests": 2
+  },
+  "tests/test_public_generic_detail_catalog.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 19.44s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 19.44,
+   "sha256": "3faf42d5460c21430cdff77125944ac9c01257f09a48b6ee50a14431aed038c3",
+   "tests": 16
+  },
+  "tests/test_public_product_truth_sync.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 47 nodes in 10.39s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 10.39,
+   "sha256": "0113b2ad83de4879222e5b5e52e35960aa1eb0ccd8ed9d708565778245148881",
+   "tests": 47
+  },
+  "tests/test_public_reference_models.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 3.33s",
+   "risk_leads": [
+    "database"
+   ],
+   "seconds": 3.33,
+   "sha256": "c3fb13234c345342021d34c151573f88324ab18f3ff579fa854cc86835d4ef37",
+   "tests": 3
+  },
+  "tests/test_public_surface_hygiene.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 27.43s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 27.43,
+   "sha256": "9f6ca599b1f8738c046c8c607a093097c1893ba289782cf1fb866e60caecb3c1",
+   "tests": 9
+  },
+  "tests/test_public_ui_smoke.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 1 nodes in 2.43s",
+   "risk_leads": [],
+   "seconds": 2.43,
+   "sha256": "36ab6b05ef275edb5da8164c3695a596eb20809c29efcdce0d8b11b4a2597ddc",
+   "tests": 1
+  },
+  "tests/test_qa_create_project_country_capacity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 33.89s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 33.89,
+   "sha256": "070a7f3eab3168944c221c44c1731db5db744c5baf164c63b98e01bcad826ab1",
+   "tests": 15
+  },
+  "tests/test_quarterly_acceptance_calendar.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 349 nodes in 58.71s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 58.71,
+   "sha256": "de0dc7143b50966fef703a8f2a151897937dd7e50e315bf5a26f4de769e68191",
+   "tests": 349
+  },
+  "tests/test_quarterly_acceptance_financing.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 261 nodes in 38.84s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 38.84,
+   "sha256": "572cbf29703e819c5a1c18fd56f180aac9311c47379c03e85dcb15a677b979a8",
+   "tests": 261
+  },
+  "tests/test_quarterly_acceptance_frequency_switch.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 203 nodes in 111.31s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 111.31,
+   "sha256": "af0a29962d81e9eae93fd82e3d51971c1727aea8987327523a76a6afdea828fb",
+   "tests": 203
+  },
+  "tests/test_quarterly_acceptance_negative_controls.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 134 nodes in 26.84s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 26.84,
+   "sha256": "8eda8545f85f711c14fa4b75ed34f4d674d9d6d890e8cb8635a6885218fca730",
+   "tests": 134
+  },
+  "tests/test_quarterly_acceptance_operating.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 233 nodes in 56.62s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 56.62,
+   "sha256": "0ebf333f34218f2675fcec53851da765547037ab0c1d6bbcd518ac4116a61878",
+   "tests": 233
+  },
+  "tests/test_quarterly_acceptance_statements.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 59.18,
+   "sha256": "cdf9f53407e15f556cc1660fa9652c15b148ce6699e7a1167672316f4b0004e8",
+   "tests": 262
+  },
+  "tests/test_r_live_candidate_review.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 1.53s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "network-or-ports"
+   ],
+   "seconds": 1.53,
+   "sha256": "4263de4b0528f12db187437250095ae36e730113137e511bd9643fe634d64571",
+   "tests": 3
+  },
+  "tests/test_r_live_collector_batch.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 1.76s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 1.76,
+   "sha256": "d16b84069215ce49c6d0133d8ccbeeebe6547db6266a62e4a5dc46ff162b5a8f",
+   "tests": 12
+  },
+  "tests/test_r_live_collector_ops.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 1.7s",
+   "risk_leads": [
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.7,
+   "sha256": "978337e222ad9849c434cedec7c76cd9498cda9ee6b3277d99d87b4f4da6a245",
+   "tests": 7
+  },
+  "tests/test_r_live_current_batch.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 28 nodes in 4.22s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 4.22,
+   "sha256": "45fabfc47fa29181200753997c84fb4151fd3c8154adaaaeb8d4c79bd3e3c975",
+   "tests": 28
+  },
+  "tests/test_r_live_freshness_ranges.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 1.93s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 1.93,
+   "sha256": "617048a8bdcbb4adbbebab242dbf5ab3684a00497eeee4d8fb06a266a38be8af",
+   "tests": 8
+  },
+  "tests/test_r_live_landing_batch.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 3.05s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.05,
+   "sha256": "53810fc4cb5c69872253822cc0b7d79a1533a959db5d01a420e5a9033af7fd54",
+   "tests": 3
+  },
+  "tests/test_r_live_last_canonical_price.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 2.14s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.14,
+   "sha256": "9319acbc4e3ef1036ca28507c0bf66d9edb247c7698f0106b613986762dc63ab",
+   "tests": 8
+  },
+  "tests/test_r_live_onchain.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 27 nodes in 3.23s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.23,
+   "sha256": "ad437d6ccc239a5ed51f70d17a822cf60817fcd9d499da840289ecbcd97657a6",
+   "tests": 27
+  },
+  "tests/test_r_live_registry_continuity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 33 nodes in 3.51s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 3.51,
+   "sha256": "33596a5317ff8fb311103ce0812ab2ae9d4702807e338d13b0d0e0edda843b17",
+   "tests": 33
+  },
+  "tests/test_r_live_snapshot_ux.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 32 nodes in 7.56s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 7.56,
+   "sha256": "e57b60666506a5e22560e51f051b55ba2883a8c33487ce7ffb41d6903a1523f8",
+   "tests": 32
+  },
+  "tests/test_r_live_v2_multi_asset.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 2.74s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment"
+   ],
+   "seconds": 2.74,
+   "sha256": "f6421c253d03beff36246bdda2642073282c51abc254629d4542c310a67f6fd6",
+   "tests": 23
+  },
+  "tests/test_radar_authority_governance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 1.62s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 1.62,
+   "sha256": "583ede7338860e4b800cd94766441faed225f4a65ddd619e237fb04b50217809",
+   "tests": 16
+  },
+  "tests/test_radar_b1_2_cross_chain_identity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 3.65s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 3.65,
+   "sha256": "593747a89187f3d788cc040c105f5d3e332367360837f4b5d15d08c41229ac9d",
+   "tests": 13
+  },
+  "tests/test_radar_b1_3_intelligence.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 3.34s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 3.34,
+   "sha256": "fd23bb8c0cd3256558fde7fcdc22d510004ea2f67904536ada0dddbf4046a7ae",
+   "tests": 15
+  },
+  "tests/test_radar_b1_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 25 nodes in 2.34s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.34,
+   "sha256": "29bd39db5519a6d13a6b24049dc7d35622a86d2508d9964db679f645b260b7a9",
+   "tests": 25
+  },
+  "tests/test_radar_ci_scope_gate.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 3.6s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.6,
+   "sha256": "423c48012abd91d9a68a4cdd32c54bde565b72d5a508450192647321233b520c",
+   "tests": 7
+  },
+  "tests/test_radar_crypto_overview.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 3.11s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.11,
+   "sha256": "95b3d0a4cd94c149312f1a00f97d1de2023ced07dd972202da030d6ad4c29298",
+   "tests": 8
+  },
+  "tests/test_radar_crypto_surface_coherence.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 46 nodes in 13.04s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 13.04,
+   "sha256": "41c7831b19768d96b536b1f45a0972481ef261211651af9d37619ea233345728",
+   "tests": 46
+  },
+  "tests/test_radar_deepstate_nvda_market.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 70 nodes in 2.86s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 2.86,
+   "sha256": "a5015ee056fca382c45c7527463ff3ce40e07438e3a9c942abf688a5b5a8a105",
+   "tests": 70
+  },
+  "tests/test_radar_derivatives.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 3.16s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.16,
+   "sha256": "cd4fae060ea970dd455f9bf25d131c84eb527ec046a27de46f63d4253aafb7bd",
+   "tests": 7
+  },
+  "tests/test_radar_e1_equity_fundamentals.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 106 nodes in 2.46s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 2.46,
+   "sha256": "d2b8060d0ccca5f3451f6356586f6d24e986ffddae1c8ef48b63adfa61514bb1",
+   "tests": 106
+  },
+  "tests/test_radar_e2_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 52 nodes in 8.8s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 8.8,
+   "sha256": "c555f76ed613b38b41f2b62c50ea5aa5945e7702c913991792ff790ec2666974",
+   "tests": 52
+  },
+  "tests/test_radar_e2_correction_b.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 37 nodes in 9.36s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 9.36,
+   "sha256": "4c7fa0a75a9d0671f96f3c78c3ac07d8493418a8762002442cdf84c3158a045d",
+   "tests": 37
+  },
+  "tests/test_radar_e2_correction_c.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 7.63s",
+   "risk_leads": [
+    "database",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 7.63,
+   "sha256": "707f41ad57b07dbef219153e12e15275ebe6de155dfd5eaf9aea789e17c3407b",
+   "tests": 20
+  },
+  "tests/test_radar_e2_equity_enrichment.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 45 nodes in 3.01s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.01,
+   "sha256": "7fceeccd08b675205af27c9af73198eef4df01163d2fa6aaa04b68c362211769",
+   "tests": 45
+  },
+  "tests/test_radar_e3_company_terminal.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 131 nodes in 11.52s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 11.52,
+   "sha256": "dbff5bf0ce73cd5fa0fa7b7296b54f8fcca537d0f207d94e5d320126d2a8dc01",
+   "tests": 131
+  },
+  "tests/test_radar_e4_execution_simulator.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 46 nodes in 8.76s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 8.76,
+   "sha256": "9d84731a7c776b2775b8837cd3d7e061b4cb126683b43de021b86c41b82fd3de",
+   "tests": 46
+  },
+  "tests/test_radar_economy_foundation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 1.48s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 1.48,
+   "sha256": "6aedf11ae439ea7f13e27aed902faed14baabc6ebf9c2bec1266112f7c9e19d3",
+   "tests": 7
+  },
+  "tests/test_radar_economy_ui.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 3.23s",
+   "risk_leads": [
+    "filesystem"
+   ],
+   "seconds": 3.23,
+   "sha256": "379f8205546791bdd82e56dd9004d2a383cc6b0b21b506c928e0ed059a41c86c",
+   "tests": 6
+  },
+  "tests/test_radar_fast_fresh_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 27 nodes in 5.45s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 5.45,
+   "sha256": "23b2f2377c4025e6e2d9617156e008d165a22b8f97b7fe8b5283bafbdb300cef",
+   "tests": 27
+  },
+  "tests/test_radar_market_read.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 11 nodes in 3.34s",
+   "risk_leads": [
+    "native-threads"
+   ],
+   "seconds": 3.34,
+   "sha256": "718d59382131ff27fe437176324ab24c63dc5508dd3669996bcaf147fe54bde7",
+   "tests": 11
+  },
+  "tests/test_radar_n03_asgi_offload.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 2 nodes in 8.55s",
+   "risk_leads": [
+    "environment",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 8.55,
+   "sha256": "5ba9d12e5a397a880e120b62009c2d30996e4627a6f7d48d0b3292e8f919dc44",
+   "tests": 2
+  },
+  "tests/test_radar_p2_integration.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 7.79s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 7.79,
+   "sha256": "1d24181fb44ecfbd2bd3b9383bbec0e8a00659adc2e3da54ba9dbdcfc1785935",
+   "tests": 7
+  },
+  "tests/test_radar_p2_tokenization_premium.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 61 nodes in 2.92s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.92,
+   "sha256": "288e252fa9bcf5e68b0da6b7c4f294a614fc98113ab128322bf83429f403f367",
+   "tests": 61
+  },
+  "tests/test_radar_p2_v1_ui.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 43 nodes in 8.57s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 8.57,
+   "sha256": "87cda195a8234c554dd997526267292cf83fe3ca1297df515387b89bb0eff4b2",
+   "tests": 43
+  },
+  "tests/test_radar_p3_settlement_quote_context.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 44 nodes in 4.61s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 4.61,
+   "sha256": "d8d0b84f0fb371b03c7a91bd33e60e33501e3fd9989541f9a529145bf17c6abc",
+   "tests": 44
+  },
+  "tests/test_radar_post_r12_runtime.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 60 nodes in 6.96s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "native-threads"
+   ],
+   "seconds": 6.96,
+   "sha256": "15f32407bb8f3824c6c915d894e2bfe267ba519efea2e9a66ab59f6cb59053eb",
+   "tests": 60
+  },
+  "tests/test_radar_product_ux_correction.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 4.38s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 4.38,
+   "sha256": "7f8815cf297823f17a8250f61bae975bef5891e855fe352a39075c26ac0f0cf8",
+   "tests": 22
+  },
+  "tests/test_radar_provider_attribution_ui.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 97 nodes in 5.77s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 5.77,
+   "sha256": "b62b84f80a0338e7040129c6b91caa7c145db2a6677ba64f3ae8ad805dfb0099",
+   "tests": 97
+  },
+  "tests/test_radar_r0_correction_b.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 44 nodes in 2.11s",
+   "risk_leads": [
+    "network-or-ports"
+   ],
+   "seconds": 2.11,
+   "sha256": "de643aeb6ddc367d3bd183440f4239bf03ffc6315eaba739cae435cd6034255e",
+   "tests": 44
+  },
+  "tests/test_radar_r0_exact_input_binding.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 1.71s",
+   "risk_leads": [
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 1.71,
+   "sha256": "a78674639ffb9a7fef241589da8e26de31dd89232d90ee23c9c1cd6211808fa2",
+   "tests": 14
+  },
+  "tests/test_radar_r0_quotes.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 1.65s",
+   "risk_leads": [
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 1.65,
+   "sha256": "9a8f8f1200831e748cbf17db8058101d64276a1bb7b3ea04bb9ead262b55586d",
+   "tests": 12
+  },
+  "tests/test_radar_r10_model_radar.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 219 nodes in 5.08s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 5.08,
+   "sha256": "4f88533161757c03d71317caa3efc7c0acb56d6805242aabc31fc72045cb3e3a",
+   "tests": 219
+  },
+  "tests/test_radar_r11_verification.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 186 nodes in 8.5s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 8.5,
+   "sha256": "2272b2332ed10c64f71cda613acaa4fe298747adffb36b5a2b94ac77bf424578",
+   "tests": 186
+  },
+  "tests/test_radar_r12_digital_twin.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 55 nodes in 6.23s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 6.23,
+   "sha256": "24a077ed83c83918caed826fc094c0d8839911369cdff71a8484ac737021c250",
+   "tests": 55
+  },
+  "tests/test_radar_r13a_product_refinement.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 132 nodes in 3.35s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 3.35,
+   "sha256": "7728925af1dbc7b0d7dd2400c6e224cfb226d87f00a933c36544ef14c5d3b7c2",
+   "tests": 132
+  },
+  "tests/test_radar_r14_rlive_history_contract.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 2.06s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.06,
+   "sha256": "c94507bc56f3067cbc5c0480b8d6336c732bdfa4564dc911a59fe2240438eedb",
+   "tests": 20
+  },
+  "tests/test_radar_r14_rlive_public_routes.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 25 nodes in 8.74s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 8.74,
+   "sha256": "3a195e5f2225d669d3daf4648eead116c5f1bf0d5bda042856fd371654ee443a",
+   "tests": 25
+  },
+  "tests/test_radar_r14_rlive_shell.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 27 nodes in 8.08s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 8.08,
+   "sha256": "836ba17b3436858467dd2cb354e58a45febc046606c465d76c5ca91307e4e469",
+   "tests": 27
+  },
+  "tests/test_radar_r1_registry.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 28 nodes in 2.32s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 2.32,
+   "sha256": "77ffb4d8654bda28074d9cbf58da60a55cbb0d03f861b7a6b1e15442c07aac6b",
+   "tests": 28
+  },
+  "tests/test_radar_r2_gap.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 95 nodes in 2.33s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.33,
+   "sha256": "f8d853a3c1e3c9a3d06a828ac0b2be315825eee66467c37a71443ea299399bd8",
+   "tests": 95
+  },
+  "tests/test_radar_r3_deepstate_composition.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 38 nodes in 3.95s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 3.95,
+   "sha256": "8f12450a9410062163b0e660c4aa2bd33e54d50981b70aa3661dd5d34561de06",
+   "tests": 38
+  },
+  "tests/test_radar_r3_liquidity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 78 nodes in 2.26s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.26,
+   "sha256": "15112dd5e46cb060227e9917f70193f1b49a52d633f71ecf38f7d76afeb50c6e",
+   "tests": 78
+  },
+  "tests/test_radar_r4_reference_state.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 52 nodes in 1.8s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 1.8,
+   "sha256": "7e312cd60df793e3bbdbfac306fc715c85efa1fa65b0ffe127034fd33cc9b9e7",
+   "tests": 52
+  },
+  "tests/test_radar_r4_tokenized_monitor_v2.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 5.68s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 5.68,
+   "sha256": "3b2562a6f2da5d9c25d6d7b282ef8fc8f29548782f76f550e6ca7bc02c3b617c",
+   "tests": 9
+  },
+  "tests/test_radar_r5_signals_history.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 38 nodes in 2.15s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.15,
+   "sha256": "e8046fa9a1ed050fced300e12a7a869994205f5e971c07ddc3bf8550d058cdc3",
+   "tests": 38
+  },
+  "tests/test_radar_r6_terminal.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 68 nodes in 3.63s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.63,
+   "sha256": "d6c292bd80bb570293b4cc84ae76095e62ada78d49834157431c53441291de96",
+   "tests": 68
+  },
+  "tests/test_radar_r6_tokenized_signal_feed.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 21 nodes in 4.35s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 4.35,
+   "sha256": "2e112275c4897e42b60d6b192d56eec96a28107c49504c3f9dacd05f5890fb7c",
+   "tests": 21
+  },
+  "tests/test_radar_r7_cross_market.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 81 nodes in 2.0s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.0,
+   "sha256": "62d6606cb547ba50d627252012f5f9ac11012fac40e7e2b82e729cc75391d1a9",
+   "tests": 81
+  },
+  "tests/test_radar_r8_execution_simulator.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 75 nodes in 2.2s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.2,
+   "sha256": "122c6a4b7c662161ae4d9ce0de2cb18285c595784e8bd4b4e5a7d1b47cf36421",
+   "tests": 75
+  },
+  "tests/test_radar_r9_asset_graph.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 96 nodes in 2.35s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.35,
+   "sha256": "1744ed8d3278062a4c9c7029be7e7b9f73e0679e8152c6c7356714892269c212",
+   "tests": 96
+  },
+  "tests/test_radar_revamp_presentation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 1 nodes in 3.17s",
+   "risk_leads": [],
+   "seconds": 3.17,
+   "sha256": "e5451f2c7bf870497dcaf02a23f84d5ed6e06c78a42d5e74a4c9077c46fb61f6",
+   "tests": 1
+  },
+  "tests/test_radar_robinhood_multi_asset.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 87 nodes in 3.92s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 3.92,
+   "sha256": "9034cccd682b0a2a5921eb054d96a83fac4494ecdd6b1dc908c078a5a42472c2",
+   "tests": 87
+  },
+  "tests/test_radar_runtime_reliability.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 24 nodes in 5.52s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 5.52,
+   "sha256": "bf3398ef432171a976d22c4cdabceb958abe426aefcd7264507fbe76379d844c",
+   "tests": 24
+  },
+  "tests/test_radar_rwa.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 3.09s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.09,
+   "sha256": "ec5998f78d9ed1b71b45aa537025196713a20867d19e11f36c66326c8aac4179",
+   "tests": 8
+  },
+  "tests/test_radar_rwa_bnb.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 3.17s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 3.17,
+   "sha256": "4e2e542769ffbcf7252d0a8682010ca764eb408adf39f411bdf02199dc1e780a",
+   "tests": 12
+  },
+  "tests/test_radar_stablecoins.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 3.34s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 3.34,
+   "sha256": "1197923f2901029ffba226e81bf008333a03e4caaf4cdebf6fc2bac149081247",
+   "tests": 7
+  },
+  "tests/test_radar_terminal_ux_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 17 nodes in 3.77s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.77,
+   "sha256": "47fee6b24ffb11a822eb7a463ac4045cc525783e4260bdbea24b7d6c8135ea86",
+   "tests": 17
+  },
+  "tests/test_radar_tokenized_signal_lifecycle.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 3.58s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 3.58,
+   "sha256": "75f14e411cff0580df3f16c2a76437f81362636f745704c4cacd81e86b90a964",
+   "tests": 23
+  },
+  "tests/test_radar_v1_closeout_audit.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 3.87s",
+   "risk_leads": [
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.87,
+   "sha256": "a2e679ad90d3ea110803f93489d6aa99a18f4bf42149f80fe905417a97b58179",
+   "tests": 14
+  },
+  "tests/test_radar_v1_closeout_regression.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 2.18s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.18,
+   "sha256": "19ba80a280b674bbc3899bb48f54b924d74ff4215587df312b9abb79316f4a6a",
+   "tests": 22
+  },
+  "tests/test_rc2_integration_acceptance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 17 nodes in 153.66s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 153.66,
+   "sha256": "3573e837c2c1d011a6c6020d0feb233f2d0e70aa0501827e4fa8487de050c424",
+   "tests": 17
+  },
+  "tests/test_rc2_integration_manifest.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 49 nodes in 39.33s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 39.33,
+   "sha256": "793e3dbe2feb3a207423ab3c116744c4f4aca343874dbc08d5e10fc27750804e",
+   "tests": 49
+  },
+  "tests/test_rc3_diagnostics_manifest.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 21 nodes in 9.56s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 9.56,
+   "sha256": "8c1afb104300118cf5179891f08032e738dd0434e844d175882ef9f21ef2db79",
+   "tests": 21
+  },
+  "tests/test_rc3_integration_inventory.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 90 nodes in 10.58s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 10.58,
+   "sha256": "f4068260eaf0ac5705e2e2a1df1c3384a639e4a5a972670056c400d919f7a0e3",
+   "tests": 90
+  },
+  "tests/test_rc3_post_merge_authority_states.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 4.17s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 4.17,
+   "sha256": "edc0abf3d852502673561223d1f479eb370afb6b2c87a4d6dbd414e57cbcccdc",
+   "tests": 19
+  },
+  "tests/test_rc3_r5_successor.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 4.67s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 4.67,
+   "sha256": "a82a8f5ff3b1ef854b3374038c28f3c3598ee3e7cf81727fd9cefffd8599a2f6",
+   "tests": 19
+  },
+  "tests/test_rc4_ppa_financial_acceptance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 2 nodes in 12.88s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 12.88,
+   "sha256": "7448aa20ad350857fa73736a0921f194bcc12e482ab57defe225997451f3ecd5",
+   "tests": 2
+  },
+  "tests/test_rc5_ci_successor_governance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 2.76s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.76,
+   "sha256": "881c3964729d83df43e20be413d814c42a75451c9b86446118c7fdc0c6be71fc",
+   "tests": 16
+  },
+  "tests/test_rc5_run_compare_sensitivity_integrity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 105.01s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 105.01,
+   "sha256": "9d0afb233097ec92af73d3501dd471655df2eb60b5ec2a81f674ab02b1d50a9c",
+   "tests": 16
+  },
+  "tests/test_rc5_s7_effective_input_evidence.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 28 nodes in 55.92s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 55.92,
+   "sha256": "5d46a059a66334a52465587c7191a447486af6ead88c11f238dea106cc126ea4",
+   "tests": 28
+  },
+  "tests/test_rc5_s7_historical_compare.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 28.68s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 28.68,
+   "sha256": "de786bea520c066e45f7cfc2a71fc892849a9b726b604fc4ad91865e513eeac2",
+   "tests": 20
+  },
+  "tests/test_rc5_scenario_effective_input_safety.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 35 nodes in 116.49s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 116.49,
+   "sha256": "c26b55f28165afe26d83ffbca9d959cf6f44aa896054ff2da57fa94fa9ee5d47",
+   "tests": 35
+  },
+  "tests/test_rc5_workflow_presentation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 3.93s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 3.93,
+   "sha256": "ca9a31e46b74b60f823446d29c75024e9e6fe8736ea90305e51bab5863e7b286",
+   "tests": 6
+  },
+  "tests/test_rc7_institutional_reporting_v2.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 141.51,
+   "sha256": "36885243762c2eb328b89722bcbebf42ebac11a033dc38580d8f851324696dd9",
+   "tests": 75
+  },
+  "tests/test_rc7_quarterly_calendar.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 30 nodes in 1.93s",
+   "risk_leads": [],
+   "seconds": 1.93,
+   "sha256": "cc459dd89b3987a3c9837c0a5ff3e7fd76f22d9802d2cee3f29514d6c851cb3d",
+   "tests": 30
+  },
+  "tests/test_rc7_quarterly_financial_candidate.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 45 nodes in 7.23s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 7.23,
+   "sha256": "0463f32deb302c2f9031177032ad1a5b226ef5ba86ed9b7a6319d72d6c415af5",
+   "tests": 45
+  },
+  "tests/test_rc7_quarterly_rc7a_compatibility.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 41.64s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 41.64,
+   "sha256": "5adb201567c001ce03bb54b861eb31802eb158acb5ca70e07f0a85329a39a2ec",
+   "tests": 10
+  },
+  "tests/test_rc7_quarterly_research_isolation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 25 nodes in 41.13s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 41.13,
+   "sha256": "98c5a3d67f40007b7cbbb05cc63b4af67a372c48fb8e4d17ac114a936822c4ac",
+   "tests": 25
+  },
+  "tests/test_rc7_revenue_ppa_v3_economics.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 35.42,
+   "sha256": "f686ff0292685fe5d94d4a47016763e6158b850b375ee9186f93b85c7aebf9b3",
+   "tests": 39
+  },
+  "tests/test_rc7_revenue_ppa_v3_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 4 nodes in 48.1s",
+   "risk_leads": [],
+   "seconds": 48.1,
+   "sha256": "e69736134d3e88380ff2cdaba8cd1e7cb94a55e56582efe337c21249bddaf9e2",
+   "tests": 4
+  },
+  "tests/test_rc7a_cross_stream_acceptance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 1 nodes in 32.03s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 32.03,
+   "sha256": "507cbdedba3cd1616a0b8114e2e046522f00aab3ea503c0c3b6e85fda8ab459c",
+   "tests": 1
+  },
+  "tests/test_rc7a_reporting_capex_profile_consistency.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 1 nodes in 29.81s",
+   "risk_leads": [],
+   "seconds": 29.81,
+   "sha256": "3c01a2965ff15862e2228d71656da760bf428bf4b62e1ec3aecb3de8ee0b5a89",
+   "tests": 1
+  },
+  "tests/test_rc7b_gate_r_authorization.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 66.84,
+   "sha256": "880466105e0c967396b828aaaa964fe962bdb66392d336721a8c2198f563355e",
+   "tests": 150
+  },
+  "tests/test_rc7b_postmerge_successor.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 46 nodes in 31.07s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 31.07,
+   "sha256": "62b4fd747ab3f65f827bb8915da123e29bc444dbff4447faca4a5f5ac4369429",
+   "tests": 46
+  },
+  "tests/test_rc7b_quarterly_axis_production.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 229 nodes in 2.32s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 2.32,
+   "sha256": "d5d8bc86efaeb6ac01513b04aa03461f1e5a8c67d9f86b089b8abfd6c2ad7c73",
+   "tests": 229
+  },
+  "tests/test_rc7b_quarterly_candidate_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 21 nodes in 6.49s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 6.49,
+   "sha256": "f10e8dafc16b1359a33c5a5d6273a5425dea293c8e8d404bffcbe27c4e09c5fc",
+   "tests": 21
+  },
+  "tests/test_rc7b_quarterly_csrf_successor.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 21 nodes in 9.87s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 9.87,
+   "sha256": "cc2fc23ac09964e18f26626a6f25f0c611a50749f500a6f9d09a55f2a7e74dfc",
+   "tests": 21
+  },
+  "tests/test_rc7b_quarterly_funding_statements.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 42 nodes in 46.92s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 46.92,
+   "sha256": "accf616988e8d7180cfbcdf28b43e3e82d1b0e81733cbcc33a68501c92e89aff",
+   "tests": 42
+  },
+  "tests/test_rc7b_quarterly_production_acceptance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 11 nodes in 99.94s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 99.94,
+   "sha256": "06ac08a3ab1a7f4f2289a444522cd4581d8068e6a7e9d5ed35d104e7aedca02c",
+   "tests": 11
+  },
+  "tests/test_rc7b_quarterly_run_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 48 nodes in 14.19s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 14.19,
+   "sha256": "ca68f62f4846b9a325830fb5250b067ed9ab056c4ee4d027ba085c6a0c3349c8",
+   "tests": 48
+  },
+  "tests/test_rc7c_candidate_successor.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 52 nodes in 43.82s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 43.82,
+   "sha256": "1ad68e6da8c189404ed7790ee020ced00af4f0aaaa7f8838ba6be0a256396b86",
+   "tests": 52
+  },
+  "tests/test_rc7c_frequency_reconciliation.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 95.2,
+   "sha256": "ba5cb35bea62d4f7a4918c8b5a268e59f869365b5b2d813ac669b592797b3543",
+   "tests": 294
+  },
+  "tests/test_rc7c_quarterly_date_authority.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 1268 nodes in 6.49s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 6.49,
+   "sha256": "00456cbfd6211baed02ca82fa2cc1b2da4921c0e0d24c97bbb5e03b42d16adbe",
+   "tests": 1268
+  },
+  "tests/test_rc7c_quarterly_run_acceptance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 19.99s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 19.99,
+   "sha256": "0095b108ac002b40dedabaa75d51ef20770e26f890ea5c523a21fafce9410b62",
+   "tests": 3
+  },
+  "tests/test_rc_institutional_workspaces_integration.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 2 nodes in 24.4s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 24.4,
+   "sha256": "71f6899326be5b9e23c87d5e90073b027b677c3556058353068f10a7d40c4b48",
+   "tests": 2
+  },
+  "tests/test_rc_reporting_v3.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 54 nodes in 131.38s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 131.38,
+   "sha256": "43bc631e870eed63e599553ffd7bdc41f779351b546ac216da8664b7f1bc6466",
+   "tests": 54
+  },
+  "tests/test_rcux2_display_labels.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 1.51s",
+   "risk_leads": [],
+   "seconds": 1.51,
+   "sha256": "6a781d364c78cf4ca8c9e1e056f59b46fda4ad5234459b3058b38b681b0c014c",
+   "tests": 3
+  },
+  "tests/test_rcux2_import_counters.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 2 nodes in 2.79s",
+   "risk_leads": [
+    "filesystem"
+   ],
+   "seconds": 2.79,
+   "sha256": "d1913b7a350ddfbe02daf08ff23435579305fc403dd1d810b48804b1bd790469",
+   "tests": 2
+  },
+  "tests/test_rcux2_navigation_safety.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 19.75s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 19.75,
+   "sha256": "c726cdd6e42cb72d079c72ab2af679f26cf665d3c2f4c4cf6e54bee380763b9f",
+   "tests": 3
+  },
+  "tests/test_reference_canonical_last_run.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 45 nodes in 43.32s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 43.32,
+   "sha256": "29ce56be8d058b38d0deaf52af5ae5896ad39fd7d02802e0ed5ff173cfdc43d3",
+   "tests": 45
+  },
+  "tests/test_reference_seed_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 11 nodes in 36.18s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 36.18,
+   "sha256": "7e5a93b25a9f8a9678c35b70f606744f5c718a6809ad8166c2a5237bada6b0ee",
+   "tests": 11
+  },
+  "tests/test_reference_seed_service.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 4.43s",
+   "risk_leads": [
+    "database"
+   ],
+   "seconds": 4.43,
+   "sha256": "f7f2756a1ea83f4123ca6087ad2abdc8b48a6a48ef08252f6a1307fef9ecaeb8",
+   "tests": 6
+  },
+  "tests/test_revenue_structured_editor_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 3.93s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.93,
+   "sha256": "1a0f5bdd794f4d9acbf534bf3c71c739b6bc887def467a804a92ccc7807515bf",
+   "tests": 6
+  },
+  "tests/test_revenue_v2_advanced_curves.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 30 nodes in 90.27s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 90.27,
+   "sha256": "bc219bf0c89d5ec3cfcfd9f90eac80672ebe3862f2a2a8772fac3eaeb2b363de",
+   "tests": 30
+  },
+  "tests/test_revenue_v2_advanced_route.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 31.86s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 31.86,
+   "sha256": "1f645a2cfb78122a164ba5df0e76559c3734fb99b4ac8d0b0f96b67a5b014e1b",
+   "tests": 8
+  },
+  "tests/test_revenue_v3_products.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 32 nodes in 3.35s",
+   "risk_leads": [],
+   "seconds": 3.35,
+   "sha256": "43b4d08fbc215f88e6b5bee555ed8c54c66584f50c11930dbfb2e747231bbc8d",
+   "tests": 32
+  },
+  "tests/test_revenue_v3_runtime.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 4 nodes in 16.01s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 16.01,
+   "sha256": "96f23f53a396c18ae9466205516518f3334cd3af10e232d81af9777ec1c379c0",
+   "tests": 4
+  },
+  "tests/test_revenue_v3_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 46.06s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 46.06,
+   "sha256": "c22b07fc0760b512e32ae840fc3721af9850dced72952b624f89a54985009b35",
+   "tests": 3
+  },
+  "tests/test_rwa_basis_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 2.8s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.8,
+   "sha256": "681b3b4e36a863149aeea241aa824bb708863b019e836953a0750785684a9a7e",
+   "tests": 23
+  },
+  "tests/test_rwa_integrity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 41 nodes in 1.97s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.97,
+   "sha256": "c7c113055cc98abf0b967124083e48281e2d059db8f23e7dd7ca1400673fadc6",
+   "tests": 41
+  },
+  "tests/test_rwa_integrity_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 18 nodes in 1.93s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.93,
+   "sha256": "e58e2c145bce464b3315f17f447bf672c190d40da2ba177a7733da5e7fa940ae",
+   "tests": 18
+  },
+  "tests/test_rwa_integrity_correction_b.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 5.87s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "network-or-ports"
+   ],
+   "seconds": 5.87,
+   "sha256": "0dec4d506ead709994d7556aeacba6388f2b973b13ffaa16369be587ed955acf",
+   "tests": 20
+  },
+  "tests/test_saas_overview_decision_dashboard.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 2 nodes in 7.64s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 7.64,
+   "sha256": "a1bacc6e79ed543863cf0c6a7539e9a3c2f7c17c3a62cae9c3a771ce4bfdd5f5",
+   "tests": 2
+  },
+  "tests/test_saas_revamp_entry.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 29.34s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 29.34,
+   "sha256": "cbf2451ed445e3ad0e028b70341266d0f8e8e01c471298a19bc55113eeab4355",
+   "tests": 13
+  },
+  "tests/test_sc34_ci_outputs_role.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 3.59s",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.59,
+   "sha256": "db94c612c9fe88c69d50ba68937d9f7b3f63a34c8effa40cdfd2cf2990f4bfc3",
+   "tests": 13
+  },
+  "tests/test_sc34_effective_revenue_inputs.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 30 nodes in 10.5s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 10.5,
+   "sha256": "0b9e9685c63ee5a156e0103534961447cb2e20ec3ed7411f05bd6aa0c4f376a5",
+   "tests": 30
+  },
+  "tests/test_sc34_historical_production_wiring.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 23 nodes in 73.48s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 73.48,
+   "sha256": "af2827cb782282d017a5dbfccdcee152d36ca9483a38a83ecdb91776f39bc6b4",
+   "tests": 23
+  },
+  "tests/test_sc34_model_home_engine_identity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 2 nodes in 1.79s",
+   "risk_leads": [],
+   "seconds": 1.79,
+   "sha256": "f9021c924ba466f91f8e6bc32acc4852d52cbc497ff4ddc684e4483a0e58cf7d",
+   "tests": 2
+  },
+  "tests/test_sc34_project_identity.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 22.07s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 22.07,
+   "sha256": "63025ad81b0a4c28233ff330e3ca94ed1a0d67b4eab556f3f8b0c5834159c816",
+   "tests": 12
+  },
+  "tests/test_sc34_run_failure_explanation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 5 nodes in 16.25s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 16.25,
+   "sha256": "191bef5954b67fe8a541a9f76e909c729627e0c00673bb54f739bad6a78212b4",
+   "tests": 5
+  },
+  "tests/test_sc34_run_status_dimensions.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 23.34s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 23.34,
+   "sha256": "e83e3cf5f3b40666b52da7754ba2c777a5b8a4288fa39b5c7cb2f239352d79a2",
+   "tests": 22
+  },
+  "tests/test_sc34_statements_drilldown.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 56.75s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 56.75,
+   "sha256": "09203a0d7d1a9a156b449db74ab347371cac0103a22bc77fb2641e954b36f674",
+   "tests": 19
+  },
+  "tests/test_scenario_tariff_authority_v2.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 14 nodes in 70.77s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 70.77,
+   "sha256": "757b73c648a885f3ae844c80615ed93f2ec39105c677fbe387fc9040ac0843ef",
+   "tests": 14
+  },
+  "tests/test_signed_run_certificate.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 24 nodes in 29.49s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 29.49,
+   "sha256": "ed7d7a77e6dbb73c34be5e9dce967481425ba3bd7afdc59b65b8d7f56c35de4b",
+   "tests": 24
+  },
+  "tests/test_staging_acceptance_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 26 nodes in 118.35s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "native-threads"
+   ],
+   "seconds": 118.35,
+   "sha256": "c5269800dfba05bc045326ce57680986bf972d0e138e5562230723d801d3fa1a",
+   "tests": 26
+  },
+  "tests/test_staging_preflight.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 54 nodes in 2.42s",
+   "risk_leads": [
+    "database",
+    "environment",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 2.42,
+   "sha256": "88eb0e566ad6817f915e7d61d0e24ce5c2ccb4a4eb50ac90d98401a370536950",
+   "tests": 54
+  },
+  "tests/test_staging_product_truth.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 37 nodes in 2.07s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.07,
+   "sha256": "f3164f238d2f9423b74332df855076253fba68f92dc28feb844fa76f3a1c65a2",
+   "tests": 37
+  },
+  "tests/test_stock_token_oracle_candidates.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 2 nodes in 1.36s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.36,
+   "sha256": "7beca5b50c124e339313dd479458b4fd82b9c89a2e12d846c5e55dc49b645a0d",
+   "tests": 2
+  },
+  "tests/test_stock_token_oracle_rejection.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 27 nodes in 2.08s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.08,
+   "sha256": "9365795c5735e482c3b72563ed97387a6b42e283f9f2af7a13bfbc2cb4eaf2a3",
+   "tests": 27
+  },
+  "tests/test_storage_working_copy_contract.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 34 nodes in 50.65s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 50.65,
+   "sha256": "447088afdd6daec16da9101156030cc6e1776904ca469ba480b1667994ed23d1",
+   "tests": 34
+  },
+  "tests/test_stream_scope_proof.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 38 nodes in 3.96s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 3.96,
+   "sha256": "5e540dc80bf4a7a636ad437fd4781d5e6640cf38509520435d1f55c9547dfda4",
+   "tests": 38
+  },
+  "tests/test_suite_lifecycle_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 6.33s",
+   "risk_leads": [],
+   "seconds": 6.33,
+   "sha256": "15c93768c08463fe96e3f6920302a7790d51bd1931e71b8e84eb7be9839b0dfd",
+   "tests": 3
+  },
+  "tests/test_tokenized_access_wiring.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 12.84s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 12.84,
+   "sha256": "a335602cbcfb82ee7a6c4fbf0c64042b0d48641c4e13fd15c81f38db16430986",
+   "tests": 19
+  },
+  "tests/test_tokenized_composition_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 46 nodes in 9.89s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem"
+   ],
+   "seconds": 9.89,
+   "sha256": "e9536093523c0c082ac988bcecc3d934ef489baadf7fb8930ba7617fc5c82334",
+   "tests": 46
+  },
+  "tests/test_tokenized_composition_correction_c.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 3.34s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 3.34,
+   "sha256": "a4cee72cc1855781ebd10503788d8cdac4cdc4686f0f9bb99196e48796c1d1e1",
+   "tests": 6
+  },
+  "tests/test_tokenized_exact_identity_resolution.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 3.74s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 3.74,
+   "sha256": "96db87cc70f1c05bb713dbeefbd049d9145b1afb8a89119ca53ca687cc2efc04",
+   "tests": 19
+  },
+  "tests/test_tokenized_live_intelligence_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 44 nodes in 5.72s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 5.72,
+   "sha256": "e095c004d37c09c949b162028716e4723327126d76a353997d1f7f45132cc1d9",
+   "tests": 44
+  },
+  "tests/test_tokenized_market_evidence_clocks.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 2.85s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 2.85,
+   "sha256": "cb442da46865b4e9b792dc5fe0abd2dcf029141727c73a55b593bc8146f05cc5",
+   "tests": 9
+  },
+  "tests/test_tokenized_markets_composition.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 6.35s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 6.35,
+   "sha256": "45f31f0b5f30552a2ad6e401b73fd7d6f61e8752504c55d3c4a056a0af0a0f63",
+   "tests": 20
+  },
+  "tests/test_tokenized_relative_value.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 36 nodes in 1.89s",
+   "risk_leads": [
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.89,
+   "sha256": "9afc42b5fd24e2e4e74892bceb828bfe28f26a3b8d1727c6e076a83419cde8bd",
+   "tests": 36
+  },
+  "tests/test_trust_readiness_claims.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 11.96s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 11.96,
+   "sha256": "ddf223f40b094ce4975caf2e8bd4d52442cd00c1fcda58c1d98d19d8d298ad37",
+   "tests": 22
+  },
+  "tests/test_trust_readiness_controls.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 18 nodes in 10.16s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 10.16,
+   "sha256": "b8395d762175e33422c108707b9214d4d1e03299a7c03b6b92a51436a671f724",
+   "tests": 18
+  },
+  "tests/test_trust_readiness_registry.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 137.65,
+   "sha256": "3c46829fbbb759453de2a3234cc060a8be1962f10d88a0482963d4ac48045945",
+   "tests": 148
+  },
+  "tests/test_trust_readiness_routes.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 15 nodes in 9.03s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 9.03,
+   "sha256": "8c64bd69c533ef08b693023ee4a120828fadb5ab18f72003ee42994dc206b255",
+   "tests": 15
+  },
+  "tests/test_u2_1_v2_export.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 42 nodes in 42.44s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 42.44,
+   "sha256": "2b34601d427bc389f0d061cf23fc22e4e0d54a64bea6d639830dc3bad9d4140a",
+   "tests": 42
+  },
+  "tests/test_u2_2_returns_surface.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 1 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 29.68,
+   "sha256": "3dcc156f7557b1557b76a7de2a593fa68f6e07b2ddd472536dcd23b3e231fc0a",
+   "tests": 34
+  },
+  "tests/test_unified_crypto_terminal_ca.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 13 nodes in 6.35s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "native-threads"
+   ],
+   "seconds": 6.35,
+   "sha256": "c5da2773cbd51aee5a78544d22e43257de3b77f438c58e7330099c4572e3c882",
+   "tests": 13
+  },
+  "tests/test_unified_crypto_terminal_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 45 nodes in 12.33s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 12.33,
+   "sha256": "b4e96dc9bb3eaccd5a576a8aff117e61eef2edeeb9485d410640b70ef632b5a0",
+   "tests": 45
+  },
+  "tests/test_ux_a_result_coherence.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 11 nodes in 40.91s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 40.91,
+   "sha256": "6d0761a1957b048722a37381d9c20edae3d2d3840aabc515ddd915a358e92c03",
+   "tests": 11
+  },
+  "tests/test_ux_b_error_copy.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 4.19s",
+   "risk_leads": [
+    "filesystem"
+   ],
+   "seconds": 4.19,
+   "sha256": "80c43f479d8d5acc6142f283e960ac3102a1ed7c3799f87c1ce92918d099ffb2",
+   "tests": 9
+  },
+  "tests/test_ux_c_strict_numbers.py": {
+   "category": "nonpass-approval-required",
+   "mode": "blocked",
+   "reason": "passed alone with 16 runtime skip/xfail record(s); owner must approve exact nonpass policy",
+   "risk_leads": [
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 1.91,
+   "sha256": "8a4a600dfb06b6a63d176ef54f71e139f5c511c5264f483f6ef0c6b4ec4a78ab",
+   "tests": 37
+  },
+  "tests/test_v2_scenario_overrides.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 38 nodes in 7.01s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem"
+   ],
+   "seconds": 7.01,
+   "sha256": "d0607cdf97e66f82001f3e12f1566d5782c622802fab568ac44b15674603fdcb",
+   "tests": 38
+  },
+  "tests/test_venue_registry_observations.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 49 nodes in 3.71s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.71,
+   "sha256": "ee4d75a49ea4cd0b5c33e223a11c3b819da39399657fe297eb383961646472ef",
+   "tests": 49
+  },
+  "tests/test_verified_public_surface_cleanup.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 11 nodes in 16.49s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 16.49,
+   "sha256": "e6dc8dc67050037154a4f519a900511d64aafcbcae09304eceb311dd5c65f7a3",
+   "tests": 11
+  },
+  "tests/test_verify_stock_token_oracles_behavior.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 60 nodes in 2.19s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 2.19,
+   "sha256": "57f35ad8326a7b97eed0223fd353daeccf5b6c73a26a6522006cdbc26d959bf1",
+   "tests": 60
+  },
+  "tests/test_wf04_f0b_numeric_precision.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 32 nodes in 401.48s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 401.48,
+   "sha256": "496306b6a3630cf84eea14b8874488086b4d467470888ccdc482f4c61d41ef2b",
+   "tests": 32
+  },
+  "tests/test_wf04_numeric_precision_governance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 9 nodes in 2.8s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.8,
+   "sha256": "23dc80b20d46413d5437a20c73cc800a40d23dc185767c9bcbd18067c241d932",
+   "tests": 9
+  },
+  "tests/test_wf05_wf07_integration.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 8 nodes in 33.4s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 33.4,
+   "sha256": "0d38f3acbaeb386510a42fbeeec328da28df11a7768fafc709e421c7bd1ca0f7",
+   "tests": 8
+  },
+  "tests/test_wf07_investor_workflow_states.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 6 nodes in 1.74s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 1.74,
+   "sha256": "f54678fea63deade63bdf9c0b6c0fde3a66d1ab89994109b52e202c313215701",
+   "tests": 6
+  },
+  "tests/test_wf07_library_classification.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 3 nodes in 25.97s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 25.97,
+   "sha256": "e2724d43aba64a129681aa401f696cc3498349c122b3de2877e048328bd4ba78",
+   "tests": 3
+  },
+  "tests/test_wf07_new_project_reliability.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 5 nodes in 27.55s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 27.55,
+   "sha256": "42c3a9e0f966392b681c40b42a4da8e73e357a31b737d4b41e6d5fbe658fee37",
+   "tests": 5
+  },
+  "tests/test_wf07_revenue_csrf.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 17.05s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 17.05,
+   "sha256": "3e6b3322b89bb9e70bc6464559f3a6e5520f8c506093471f08285bd760bd260e",
+   "tests": 7
+  },
+  "tests/test_wf07_revenue_governance.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 24 nodes in 5.52s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 5.52,
+   "sha256": "217e74ef0f2bfb2aee63b09a835c60539796f6ee661ac82ebf0eab314f032383",
+   "tests": 24
+  },
+  "tests/test_wf07_revenue_multistream.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 54 nodes in 3.8s",
+   "risk_leads": [
+    "auth-or-tenant"
+   ],
+   "seconds": 3.8,
+   "sha256": "9ba996bf46b4008478bb2c82add3fec63fee181058fe0008135bbc31d53dbdbf",
+   "tests": 54
+  },
+  "tests/test_wf07_revenue_workspace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 10 nodes in 57.61s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 57.61,
+   "sha256": "a0129b647f50e995903ec0bc69269d773d3ca741e860a886f76f7df1d335f729",
+   "tests": 10
+  },
+  "tests/test_wf09_csrf_successor.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 31 nodes in 5.58s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 5.58,
+   "sha256": "c8c2a980273593e28ef30673dfae33e2338bfe9376ee8d3b10ddeb168bf38455",
+   "tests": 31
+  },
+  "tests/test_wfa_credit_validation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 22 nodes in 166.9s",
+   "risk_leads": [],
+   "seconds": 166.9,
+   "sha256": "be7f550b07d89540a35b5ab87bcd45f464a984a3fe6bf8d75f72dc24262b6aba",
+   "tests": 22
+  },
+  "tests/test_wfa_impact_validation.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 29 nodes in 267.52s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 267.52,
+   "sha256": "b46e2d28afd1cdca2b41072e2cd9752c50929f6c1998d5a94908d6d35baa7b9d",
+   "tests": 29
+  },
+  "tests/test_workflow_c_statements_analytics_trace.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 36 nodes in 61.46s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 61.46,
+   "sha256": "611077bba2e2f92fa3dfbce564776d400b39fc2a9e16164ab22998cbead9000b",
+   "tests": 36
+  },
+  "tests/test_yield_alerts_core.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 49 nodes in 2.91s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 2.91,
+   "sha256": "1f3b83d1e81365db8e31b9274b8c03c42815536fbca72d1fd0dbb6783ea32f92",
+   "tests": 49
+  },
+  "tests/test_yield_gating_v0.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 20 nodes in 9.7s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem"
+   ],
+   "seconds": 9.7,
+   "sha256": "d8fa49e77d61453518ba34e2e571a53eb1718aa4cd6284dff0aced1a49483831",
+   "tests": 20
+  },
+  "tests/test_yield_intel_correction_a.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 16 nodes in 3.4s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state",
+    "native-threads",
+    "network-or-ports"
+   ],
+   "seconds": 3.4,
+   "sha256": "cea06c7a12e22c621e3cd3d4cdbd5985a54acbafd9eb33967c1ca1ca08355070",
+   "tests": 16
+  },
+  "tests/test_yield_intel_correction_b.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 5 nodes in 1.66s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state"
+   ],
+   "seconds": 1.66,
+   "sha256": "f3a188be21d699c160dd4f080051e62e99308580b311690a55aa34970f5db6e3",
+   "tests": 5
+  },
+  "tests/test_yield_intel_correction_c.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 7 nodes in 1.75s",
+   "risk_leads": [],
+   "seconds": 1.75,
+   "sha256": "3b002c274a6c803f8de9591bf8c19429d18257e65c413992f6f55b7cd82c3d25",
+   "tests": 7
+  },
+  "tests/test_yield_intelligence_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 66 nodes in 31.0s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state"
+   ],
+   "seconds": 31.0,
+   "sha256": "66123123f1e15aa8d7bbb659130d4db2343f64ebfbd673f19f6b2bb7a34327c1",
+   "tests": 66
+  },
+  "tests/test_yield_live_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 106 nodes in 28.88s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 28.88,
+   "sha256": "193d70393fe4aa31e8eeaab7655400f43dce242375f7ef5d721793e12516698a",
+   "tests": 106
+  },
+  "tests/test_yield_market_intel_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 19 nodes in 3.4s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.4,
+   "sha256": "f1abe9aae4954cb40b34ae98d89f7e70c7c8c5cd202b0d22f43f5aae6b41b5c5",
+   "tests": 19
+  },
+  "tests/test_yield_monitoring_automation_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 51 nodes in 3.44s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "environment",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.44,
+   "sha256": "d6c2eba83040825f274e9fe6e20452d76bf4cdac142dd71ece39b33a03ca9f27",
+   "tests": 51
+  },
+  "tests/test_yield_staging_phase1_contract.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 29 nodes in 2.53s",
+   "risk_leads": [
+    "database",
+    "filesystem",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 2.53,
+   "sha256": "afaa3aac66351e32eba592df9c878fcb05e399151327ccd8b73e53f4ee335a70",
+   "tests": 29
+  },
+  "tests/test_yield_staging_qa.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 41 nodes in 4.62s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database",
+    "module-global-state"
+   ],
+   "seconds": 4.62,
+   "sha256": "d2b259890a7f3aec65d90c2399c8c0fc893bb836bdfacd5030ec5711a5bbc19d",
+   "tests": 41
+  },
+  "tests/test_yield_v1.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 26 nodes in 3.38s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "module-global-state",
+    "network-or-ports"
+   ],
+   "seconds": 3.38,
+   "sha256": "568655611e6166d168260361633917f91efe876305c1de538ca18287fa2cd4f7",
+   "tests": 26
+  },
+  "tests/test_yield_watchlist.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 31 nodes in 3.99s",
+   "risk_leads": [
+    "auth-or-tenant",
+    "database"
+   ],
+   "seconds": 3.99,
+   "sha256": "75a5e966286c97101f6fc584c142dab59ff72d52abc1f11361b1b5c8299d8571",
+   "tests": 31
+  },
+  "tests/test_yield_y0.py": {
+   "category": "standalone-pass",
+   "mode": "runner-private",
+   "reason": "passed alone in a fresh private no-network copy: 12 nodes in 2.73s",
+   "risk_leads": [
+    "module-global-state"
+   ],
+   "seconds": 2.73,
+   "sha256": "a6b87cae02e052eca1f6ad46cdeb7b7145c3f1d66b7b76fc0b93533ea7654be0",
+   "tests": 12
+  }
+ },
+ "profile": "docker-no-network-private-workspace-v1",
+ "source": {
+  "head": "3a2f3ead5d5d1eddfcd0c670b56a8cf3c92d2ce8",
+  "tree": "2fe164cf764c56b84cc09e45369b887f1406269e"
+ }
+}
