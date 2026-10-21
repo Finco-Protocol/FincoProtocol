@@ -6,6 +6,8 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 
 def _ws(**overrides):
     values = {
@@ -58,7 +60,25 @@ def _hashes(html: str) -> list[str]:
     return re.findall(r'name="content_hash"\s+value="([^"]+)"', html)
 
 
-def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds():
+@pytest.fixture
+def reference_runs_seeded(tmp_path, monkeypatch):
+    """Explicit, isolated precondition: the system reference projects hold their canonical last runs.
+
+    App startup seeds them (four model runs) when the database is fresh and is a no-op afterwards. Without this
+    fixture the test passed or failed depending on whether an earlier module had started the app against the same
+    shared database, and the startup seeding was counted as user Runs (5 instead of 1). The fixture points the
+    persistence layer at a private database, seeds there BEFORE the Run counter exists, and restores the shared path,
+    so the test neither depends on nor writes the shared database. ``calls == 1`` and every other assertion are unchanged.
+    """
+    from app.persistence import db
+    from app.services.project_library_service import ensure_reference_canonical_last_runs, ensure_reference_models
+
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "golden-flow.db"))
+    ensure_reference_models()
+    ensure_reference_canonical_last_runs()
+
+
+def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(reference_runs_seeded):
     import main_web
     from app.api import project_runner
     from app.auth import COOKIE_NAME, create_session_token
