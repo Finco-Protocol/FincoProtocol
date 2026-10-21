@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -30,7 +31,16 @@ def make_subset(source_repo, modules, destination):
     destination = Path(destination); destination.mkdir(parents=True)
     archive_bytes = subprocess.check_output(["git", "-C", str(source_repo), "archive", "--format=tar", "HEAD"])
     subprocess.run(["tar", "-x", "-C", str(destination)], input=archive_bytes, check=True)
-    keep = set(modules)
+    keep, pending = set(), list(modules)
+    while pending:  # test modules import other test modules; keep the transitive closure (they become part of the subset)
+        name = pending.pop()
+        if name in keep:
+            continue
+        keep.add(name)
+        text = (destination / name).read_text(encoding="utf-8")
+        for found in re.findall(r"(?:from|import)\s+tests\.(test_\w+)", text) + re.findall(r"from\s+tests\s+import\s+(test_\w+)", text):
+            if (destination / "tests" / (found + ".py")).is_file():
+                pending.append(f"tests/{found}.py")
     for path in (destination / "tests").glob("test_*.py"):
         if path.relative_to(destination).as_posix() not in keep:
             path.unlink()
