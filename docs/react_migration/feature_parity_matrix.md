@@ -9,7 +9,21 @@ complete never counts as production functionality**):
 - **P** — Functional parity tested against the legacy acceptance reference.
 - **F** — Financial/output authority verified (values provably from persisted
   canonical evidence; no browser calculation).
-- **S** — Staging accepted (requires the UX-00 staging baseline, currently PENDING).
+- 
+## UX-02 update (React Core Integration V1 — this branch)
+
+| Area | UX-02 state |
+|---|---|
+| Statements (six destinations) | **R+B+F** — `StatementWorkbook` renders the canonical persisted P&L / Balance Sheet / Cash Flow / CFADS / Debt (incl. F3 facility schedules) / Sponsor Returns via `GET /v2/model-react/statements`; parity with the legacy outputs state is test-pinned; charts stay null until a canonical chart projection is consumed |
+| Results | **R+B(PARTIAL)** — `ResultsAnalysisView` renders canonical metrics/distributions with named sources; charts and scenario rows stay unavailable (no canonical projection consumed yet) |
+| Scalar inputs | **R+B(PARTIAL)** — `CanonicalInputGrid` over the canonical grid projection; Save via the existing C0 batch writer with full Correction-A safeguards; registry coverage = the projection's editable scalar rows |
+| CAPEX/OPEX line items | Read-only navigation (C6); canonical cost-line writer adapter still future work |
+| Project Library | **R+B(PARTIAL)** — canonical projects/references, open, paged; search filters the loaded page locally; clone via canonical route |
+| Workspace shell | **R+B** — `FincoShell` + `ModelNav` with canonical status (freshness/integrity/engine/scenario); `ModelWorkspace` internals remain visual-only |
+| Run control | Unchanged — deferred; the Run affordance links to the legacy workbook |
+| Gated modules (Financing/Scenarios/Analysis/Checks/Trust) | Explicit gate cards; design presence is not availability |
+
+**S** — Staging accepted (requires the UX-00 staging baseline, currently PENDING).
 
 | Legacy workflow | Canonical authority | React component | Integration state | Test evidence |
 |---|---|---|---|---|
