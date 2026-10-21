@@ -1,0 +1,149 @@
+"""Trusted Linux host observer. Test containers never receive Actions credentials."""
+from __future__ import annotations
+
+import os
+import hashlib
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tarfile
+import time
+import uuid
+
+from tools.ci_v3_schema import read_json, require, write_json
+
+
+def image_ref(value):
+    require(isinstance(value, str) and re.fullmatch(r"[a-z0-9][a-z0-9./_-]+@sha256:[0-9a-f]{64}", value), "image must be an immutable registry digest")
+    return value
+
+
+def subject_bytes(root, names):
+    """Read data only after subject execution; never execute subject-modified Git config."""
+    root = Path(root).resolve()
+    result = {}
+    for name in names:
+        path = root / name
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
+            return None
+        result[name] = (hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mode & 0o111)
+    return result
+
+
+def docker_command(image, name, project, bootstrap, evidence, worker, context=None):
+    image_ref(image)
+    require(re.fullmatch(r"ci-v3-[0-9a-f]{32}", name), "unsafe container identity")
+    args = ["docker", "run", "--rm", "--name", name, "--init", "--network=none", "--read-only",
+        "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=512", "--memory=6g",
+        "--user", f"{os.getuid()}:{os.getgid()}" if sys.platform == "linux" else "1001:1001",
+        "--tmpfs", "/tmp:rw,nosuid,nodev,size=2g", "--workdir", "/subject"]
+    for source, target, readonly in ((project, "/subject", False), (bootstrap, "/bootstrap", True), (evidence, "/evidence", False)):
+        require("," not in str(source), "unsupported mount path")
+        args += ["--mount", f"type=bind,source={Path(source).resolve()},target={target}" + (",readonly" if readonly else "")]
+    env = {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp/home",
+        "TMPDIR": "/evidence/tmp", "TMP": "/evidence/tmp", "TEMP": "/evidence/tmp",
+        "CI_V3_WORKER_TMPDIR": "/evidence/tmp", "CI_V3_WORKER_ID": worker or "discover",
+        "GIT_CONFIG_NOSYSTEM": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1", "NUMEXPR_NUM_THREADS": "1"}
+    if context is not None:
+        env.update(CI="true", GITHUB_ACTIONS="true", GITHUB_EVENT_NAME="workflow_dispatch",
+            GITHUB_RUN_ID=str(context["run_id"]), GITHUB_RUN_ATTEMPT=str(context["attempt"]),
+            GITHUB_REPOSITORY=context["repository"], GITHUB_SHA=context["source"]["head"], GITHUB_WORKSPACE="/subject",
+            FINCO_CI_TESTED_SHA=context["source"]["head"], FINCO_CI_TESTED_TREE=context["source"]["tree"])
+    for key, value in env.items():
+        args += ["--env", key + "=" + value]
+    return args + [image, "python", "-I", "/bootstrap/tools/ci_v3_real_child.py", "/evidence/request.json"]
+
+
+def observe_container(request, directory, project, image, timeout_s):
+    require(sys.platform == "linux", "hosted test execution requires Linux; no insecure fallback")
+    require(type(timeout_s) is int and 1 <= timeout_s <= 5400, "hosted timeout out of bounds")
+    directory = Path(directory).resolve(); directory.mkdir(parents=True, exist_ok=False)
+    evidence = directory / "child"; evidence.mkdir(); (evidence / "tmp").mkdir()
+    bootstrap = directory / "bootstrap"; bootstrap.mkdir()
+    shutil.copytree(Path(__file__).resolve().parent, bootstrap / "tools", ignore=shutil.ignore_patterns("__pycache__"))
+    # Fresh tracked source plus its public history, without ignored host databases.
+    sandbox = directory / "source"; sandbox.mkdir()
+    archive = subprocess.check_output(["git", "-C", str(project), "archive", "--format=tar", "HEAD"])
+    import io
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        tracked = []
+        for member in tar:
+            require(member.isdir() or member.isfile(), "non-regular source archive member")
+            require(not Path(member.name).is_absolute() and ".." not in Path(member.name).parts, "unsafe source archive")
+            if member.isfile():
+                tracked.append(member.name)
+        tar.extractall(sandbox, filter="data")
+    gitdir = Path(subprocess.check_output(["git", "-C", str(project), "rev-parse", "--absolute-git-dir"], text=True).strip())
+    require((gitdir / "objects").is_dir() and not (gitdir / "commondir").exists(), "hosted source must be standalone checkout")
+    shutil.copytree(gitdir, sandbox / ".git")
+    # No host credentials or custom Git helper/config is made available to tests.
+    (sandbox / ".git/config").write_text('[core]\nrepositoryformatversion = 0\nbare = false\nfilemode = true\n', encoding="ascii")
+    identities = [".git/HEAD", ".git/packed-refs"]
+    head = (sandbox / ".git/HEAD").read_text().strip()
+    if head.startswith("ref: "):
+        identities.append(".git/" + head[5:])
+    identities = [p for p in identities if (sandbox / p).is_file()]
+    before_bytes = subject_bytes(sandbox, tracked + identities)
+    require(before_bytes is not None, "invalid private source copy")
+    before_python = {p.relative_to(sandbox).as_posix() for p in sandbox.rglob("*.py")}
+    child_request = {**request, "project": "/subject", "hosted": True}
+    write_json(evidence / "request.json", child_request)
+    (evidence / "release").write_text("host container isolation established\n", encoding="ascii")
+    name = "ci-v3-" + uuid.uuid4().hex
+    command = docker_command(image, name, sandbox, bootstrap, evidence, request.get("worker"), request["context"])
+    timed_out = False; cancelled = False; started = time.perf_counter()
+    process = None; cleanup_ok = False
+    try:
+        with (evidence / "process.log").open("wb") as log:
+            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                process.wait(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+    except BaseException:
+        cancelled = True
+        raise
+    finally:
+        # Docker CLI process-group death alone does not terminate its container.
+        cleanup_error = None
+        try:
+            subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            cleanup_error = type(exc).__name__
+        finally:
+            if process is not None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=10)
+        try:
+            inspect = subprocess.run(["docker", "container", "inspect", name], capture_output=True, timeout=30)
+            cleanup_ok = inspect.returncode != 0 and any(term in inspect.stderr.lower() for term in
+                                                        (b"no such object", b"no such container"))
+        except (OSError, subprocess.SubprocessError) as exc:
+            cleanup_error = type(exc).__name__
+        try:
+            source_unchanged = subject_bytes(sandbox, tracked + identities) == before_bytes
+            source_unchanged = source_unchanged and {p.relative_to(sandbox).as_posix() for p in sandbox.rglob("*.py")} == before_python
+        except OSError:
+            source_unchanged = False
+        write_json(directory / "host-finalization.json", {"container": name, "image": image,
+            "cancelled": cancelled, "timed_out": timed_out, "container_removed": cleanup_ok,
+            "source_bytes_unchanged": source_unchanged,
+            "cleanup_error": cleanup_error, "os_exit_code": process.returncode if process else None})
+    elapsed = round((time.perf_counter() - started) * 1000)
+    returned = read_json(evidence / "pytest-return.json") if (evidence / "pytest-return.json").exists() else None
+    final = read_json(evidence / "interpreter-exit.json") if (evidence / "interpreter-exit.json").exists() else None
+    normal = (process.returncode == 0 and not timed_out and not cancelled and cleanup_ok and source_unchanged and returned is not None
+              and returned["code"] == 0 and not any(returned["leaks"].values()) and final is not None and final.get("finalizing") is True)
+    return evidence, {"worker": request.get("worker"), "os_exit_code": process.returncode, "timed_out": timed_out,
+        "normal_successful_exit": normal, "elapsed_ms": elapsed, "pytest_return": returned, "interpreter_exit": final,
+        "temporary_directory": str(evidence / "tmp"), "startup_ms": None, "shutdown_ms": None,
+        "containment": "docker-private-linux-posix-group-v1", "container_removed": cleanup_ok, "image": image,
+        "source_bytes_unchanged": source_unchanged,
+        "cancelled": cancelled}

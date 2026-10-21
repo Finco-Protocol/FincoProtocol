@@ -1,0 +1,177 @@
+{
+  "active_workflows_preserved": {
+    ".github/workflows/ci_browser_job.yml": {
+      "git_blob": "48d3da013bb98f8d9430f47104b002dd7c34d340",
+      "sha256": "8940ac05a8c652ff26578c13a11ac2f20280ac45be0bb517b7be1b89e6b0ee7d"
+    },
+    ".github/workflows/ci_public_job.yml": {
+      "git_blob": "f843237cae125867b8978fb2cc38665dcf0c64d8",
+      "sha256": "5a5c08d0879699e3d03c49a18fc6958b1ed784af3e8ddf9269ee2da53634b21b"
+    },
+    ".github/workflows/crypto_utility_v1_integration.yml": {
+      "git_blob": "bf8626150e9f60ccb8f307d0ba325b3e28b9fa76",
+      "sha256": "f55e9037593a57bb44d5af6b0d36bbc44badee065a385606d05c0801b86278a5"
+    },
+    ".github/workflows/dependency_security_audit.yml": {
+      "git_blob": "4f688edde9a90984a978930c6e92e0f2b806ef8c",
+      "sha256": "e58919083e31505c6e660ce5d4ce21f66f126ac002afb5997f7f8e535b8e9b2e"
+    },
+    ".github/workflows/governance_history.yml": {
+      "git_blob": "af6940fed21366a929e5545add02ebbf9d915b28",
+      "sha256": "92ce3788eaed113b3012e48cf060be9014da84d267a3849cdd2f3f38cbd34702"
+    },
+    ".github/workflows/model_ai_import_c0_gate.yml": {
+      "git_blob": "8d6e18e79a2773b9444779b9978cf93ef6cfa433",
+      "sha256": "816ab6275392b442641be96095327ba8783eaa13e04dbd1c86ca520459b15ec2"
+    },
+    ".github/workflows/model_financing_f3_evidence.yml": {
+      "git_blob": "20213e9fc5143cf9a2a8415bf8acb238d92d2873",
+      "sha256": "be886d9d502cda3d9066cf3b711d956c1551d6bd63dc3d07efd77ca56ac3e3ac"
+    },
+    ".github/workflows/model_q4_gate.yml": {
+      "git_blob": "d113aea9ed3db010a24eeeae4ca18a787e916615",
+      "sha256": "227c66b1cf40f7d9fccb3a51b5b17e31d59c2142ca915cbfbff6e46bcaf1758e"
+    },
+    ".github/workflows/pr_compile_and_safety.yml": {
+      "git_blob": "37795bbe214582458ac785245dca930b1f3f03e0",
+      "sha256": "17c0e7bb7941630294a985178238b12ad40c64f7257188a8e9d7b4bd16591938"
+    },
+    ".github/workflows/production_boot_smoke.yml": {
+      "git_blob": "fc61e7e61e4cc9f14f17b30a185717695632ee87",
+      "sha256": "ebdcef1ae4ad26f0a32cd11705ac0842a19fc353a68eee6a6efc6324154ba42c"
+    },
+    ".github/workflows/protocol_ui_browser.yml": {
+      "git_blob": "0e2414dc796c73075825a44ba743794375b476f4",
+      "sha256": "a5e51626a1cdfca1f7d77d1507188951feb038dd0f252ce2b1dc136b14f202c6"
+    },
+    ".github/workflows/protocol_verification.yml": {
+      "git_blob": "60655766df8c8b103e37272a384f9362b72e9943",
+      "sha256": "f94ac2cf67d76c96cd09503685f739c2d868b6f8189c64f19b8802365b6b9a13"
+    },
+    ".github/workflows/public_safety_and_smoke.yml": {
+      "git_blob": "88b3c1ab8b27936ffd2f78aee7ed9cc54f45a83d",
+      "sha256": "ed18874639ec546f1e47a599eabe7a5f98cfa5b762b585a566f262ede6f2e5cd"
+    },
+    ".github/workflows/radar_post_r12_p2_v1_ui.yml": {
+      "git_blob": "cf7018244137acfe977be9ebb1c1623b70ee6fb8",
+      "sha256": "2f9c9213114a7864fe3f6a1db2d96e81d69a0ae31b2e8d09c6c420de21f012fb"
+    },
+    ".github/workflows/radar_post_r12_p3_settlement_quote_context.yml": {
+      "git_blob": "3cf2d3e12f1c470068983e212ae65659fc0521d4",
+      "sha256": "0da4e27c0659ce124526b2277f89e8d4046b053fe3965d3424854753997b68a3"
+    },
+    ".github/workflows/radar_post_r12_runtime.yml": {
+      "git_blob": "2a63cb23d02356eb289e5af683ccea3d06511c55",
+      "sha256": "b8b36b296ad34d136e9a58d36a0ae83f02743fc81083671a674d62c43a7425b4"
+    },
+    ".github/workflows/radar_post_r12_runtime_reliability.yml": {
+      "git_blob": "7b79e834801ff986be729012fd4268f62314b943",
+      "sha256": "e197374d9267d667b098ac1338edec20df66bccd6ff2af832d07d355b7ea333c"
+    },
+    ".github/workflows/radar_r0_live_quote.yml": {
+      "git_blob": "314bc4604a3672d2f600afe8021e3a3efbce3e19",
+      "sha256": "34c77e00f9155412be07e3ee67db7e42adb1f2e0357562bbb47989a8b082f946"
+    },
+    ".github/workflows/radar_r10_model_radar.yml": {
+      "git_blob": "a1f0a3f2235f3d0e67b93b0424333363680b77e3",
+      "sha256": "8cb31c1f03b36c179e35df6ef84bc3df5e7a2321a3baa0f9e3811ca6366089ce"
+    },
+    ".github/workflows/radar_r11_verification.yml": {
+      "git_blob": "62cc9b2ac8168d9a99fc508ba615db8175c81613",
+      "sha256": "2e115f45fd71bc027e9e119f4b13de9c108287271a31934f95771ea0c3d19e47"
+    },
+    ".github/workflows/radar_r12_digital_twin.yml": {
+      "git_blob": "02143c029790865831bd51129d776ae1aebe0ca6",
+      "sha256": "e14507fb0e2acaf41948c5a2787bf04febe6b4459437820c7a527f783ab769ac"
+    },
+    ".github/workflows/radar_r1_asset_registry.yml": {
+      "git_blob": "5e396de9809e2e8326b90117feaab1262dd33797",
+      "sha256": "911eb567369d63d15638ea5b431dcba2b624f7fc0cf4497016ff2db75f8c7533"
+    },
+    ".github/workflows/radar_r2_gap.yml": {
+      "git_blob": "1450128f776d53d1dc847ce0132da0cc548a98a9",
+      "sha256": "bd499412c8bb105c48d5f2bf8f7e37c0a689de30a4f47f664c2818f8723e5188"
+    },
+    ".github/workflows/radar_r3_finco_liquidity.yml": {
+      "git_blob": "4c8176eb677e771c0dd58105d57f0c33dd9c94fa",
+      "sha256": "e37392d67486c7b90469535e523a189ba2456a5f9eeaed73d9e3e62e1862d535"
+    },
+    ".github/workflows/radar_r4_reference_state.yml": {
+      "git_blob": "fbeeb82dd523374b0788bd63abaa5c102d476f6d",
+      "sha256": "8c36ea99194f6eb6f922796957f9fb3034caf267ea9fcb2a999efce410a47876"
+    },
+    ".github/workflows/radar_r5_signals_history.yml": {
+      "git_blob": "bd6701781ee1444e7476698417c91b53ba4a91e2",
+      "sha256": "6dc2adc9e7d81d0be681583a49f7ef3145fa4cc76eb22fa3cdb081f9ede2a40e"
+    },
+    ".github/workflows/radar_r6_terminal.yml": {
+      "git_blob": "0f68218b95c3a933d47643ec89b15806eed378b9",
+      "sha256": "89af628960d5775f74ef6d26bf720c837ac25e0f27b99ecf8d82f23bb78d7bd1"
+    },
+    ".github/workflows/radar_r7_cross_market.yml": {
+      "git_blob": "ae8e93101df01fd46ed925b06804be4376550ca4",
+      "sha256": "cfb8bb7b36a8763310e8d61970d15a72f7a06b9622c90f0a0632ee13cced88e4"
+    },
+    ".github/workflows/radar_r8_execution_simulator.yml": {
+      "git_blob": "b424ed39b1e5802472751f6b16597ac0643649f6",
+      "sha256": "5143a28d9a2a44b606bdffc280f148a224931b558ff3e2ba0d96fa677d7e7187"
+    },
+    ".github/workflows/radar_r9_asset_graph.yml": {
+      "git_blob": "b8ef6ef3d2df4269eb089878548bbc36d96f5afd",
+      "sha256": "c8dd60c618c354a4b053e088662f3df6e292fb2ab95485df877e21786cf5ca56"
+    }
+  },
+  "authorization": {
+    "financial_acceptance": false,
+    "hosted_execution": false,
+    "merge": false,
+    "owner_approval": false,
+    "workflow_deployment": false
+  },
+  "candidate_workflow_sha256": "cb3f72d53c07d0dad96789c805f8f09d12a74e4a65836990868b108f6611fcdb",
+  "canonical_phase3_content_sha256": {
+    "docs/ci_v3/phase2/shadow-workflow.candidate.yml": "cb3f72d53c07d0dad96789c805f8f09d12a74e4a65836990868b108f6611fcdb",
+    "docs/ci_v3/phase3a/Dockerfile": "1f60f2e45d27f12497da74930f79167d4165d797794e5c718efb2087ac0d2c56",
+    "docs/ci_v3/phase3a/ISOLATION_AND_PERFORMANCE.md": "6e8925896ae1d2b253b1bfef8e5db346ced430467a33cdf0d5131d725c47d084",
+    "docs/ci_v3/phase3a/OWNER_INPUTS_AND_GOVERNANCE.md": "1c20b538aa2fbb895af0337f671a2f208ff721e2766a8a6a6500997ac83c9d8f",
+    "docs/ci_v3/phase3a/README.md": "808c987543706e6805297a280b008cf785b77fe10f36b3e6488f2b6a75242ebf",
+    "docs/ci_v3/phase3a/admission-root.closed.json": "8e5738e370f4b9a78a82bd234c0dd5426aabe043b21de2cc4fe3763ab1d833b7",
+    "tests/ci_v3_hosted_fixtures.py": "05923babc5726324f6f9dea7b63c50969dfb97b017dab07ba5ee2db70fa29236",
+    "tests/test_ci_v3_container_observer.py": "03ee711151f9bff71dbcdc1a7a2d434e5e8f9c2986b39f5ac886fd78a4d457a4",
+    "tests/test_ci_v3_hosted_http.py": "c51f7f55532fcdf9eca0e9d5a1557324069b3e282bf7febfc7bb6236c4213993",
+    "tests/test_ci_v3_hosted_isolation.py": "d7cddb2fa994fc5d775a6565945ce8dd4a4e8c8d1048c020171a46b6d9baefcb",
+    "tests/test_ci_v3_hosted_protocol.py": "1f76dbd5ff9cd3b5a0dbf84b8d42fb863db4647c4d327dc73867159018bcb69a",
+    "tests/test_ci_v3_posix_process.py": "cfb76d3e7a47b7aef3963588db2f32f7984175bb3b3f2818d1d5184f1ff5737a",
+    "tests/test_ci_v3_prepare.py": "66b97daf18f0a58e4432afafbac9143e1d64821936c3ea3152e9b2fe00900408",
+    "tools/ci_v3_container.py": "7fbb408ca857886c86099bc24613f05c5260b83ba9378c3aaeaf2f1dbd664e7d",
+    "tools/ci_v3_hosted_controller.py": "e4ac63f4f8df34439ad7be261831d1873a3efb5c2a053a97bc73a655d9bd6b03",
+    "tools/ci_v3_hosted_transport.py": "1c55da2e563ba345380697754a7c2b2ae3eb638a6c2cd4ab0fb604531d9f3d87",
+    "tools/ci_v3_isolation.py": "0f85e42b22ae2748c773af2c4f79f5745e42dff91481f1f897c24441ed0eb58f",
+    "tools/ci_v3_prepare.py": "3f3f80830aafc6125c16ab6e9638dadc3eb2e80984dd97fd8353e4d66b9ea641",
+    "tools/ci_v3_process_observer.py": "1191b82caa17e8dd26369e20f54d76b13cfc1a77bbfd793ee5e47dd244e392fd",
+    "tools/ci_v3_real_child.py": "551a65b2983b8a233abea108769735b43e6d505019a9b7fa738f9f3695487356",
+    "tools/ci_v3_real_contract.py": "4b81873b6822a4e04efa082db8bf806a8960f7c172760300e42f6f86c03306c3"
+  },
+  "future_bounded_delta": [
+    "one exact standalone .github/workflows/ci_v3_shadow.yml after approval",
+    "additive exact-content shadow admission guard and mutation negatives",
+    "independently enumerate any selected required-policy integration"
+  ],
+  "kind": "unapproved-ci-v3-shadow-only-successor",
+  "main": {
+    "head": "82fb309cede335303e3632fc4dfb0e2ad7f9263b",
+    "tree": "ba73c4844612692055450fbc038be89c2d993396"
+  },
+  "normal_main_merge": "9f2cb8b7fa7d080a88e7c913945d7e079cb86d57",
+  "phase2_predecessor": "c4aa82c305a70505011d096759235d8b6b836543",
+  "remaining_prerequisites": [
+    "independently protected owner root/environment",
+    "approved immutable image/dependency evidence",
+    "complete reviewed Linux/image inventory and runtime nonpass policy",
+    "module/shared-fixture/order isolation decisions",
+    "exact workflow deployment decision",
+    "comparable control environment and one-pair budget"
+  ],
+  "schema": 3,
+  "warning": "Proposal identity only; preserves RC3/RC5/CI200 and all existing mandatory sequential authority."
+}
