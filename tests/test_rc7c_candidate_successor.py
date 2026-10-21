@@ -19,11 +19,15 @@ import quarterly_candidate_recognition as R
 import rc7b_postmerge_successor as B
 import rc7b_quarterly_candidate_authority as A
 import rc7c_candidate_successor as C
+import v9p2a_odr_successor as O
 
 ROOT = Path(__file__).resolve().parent.parent
 TWELVE = tuple(A.RC7B_CANDIDATE_AUTHORITIES)
 FOUR = C.RC7C_CHANGED_PATHS
 EIGHT = C.RC7C_UNCHANGED_RC7B_PATHS
+# Historical subject: the RC-7C contract is judged on RC-7C bytes - HEAD itself, or, only while HEAD is the complete recognised OD-R successor,
+# its immutable RC-7C integration checkpoint. Any other HEAD stays the subject and fails exactly as before.
+SUBJECT = O.historical_subject()
 
 
 def git(repo, *args, check=True):
@@ -36,7 +40,7 @@ def base_clone(tmp_path_factory):
     subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(clone)], check=True, capture_output=True)
     git(clone, "config", "user.name", "Synthetic")
     git(clone, "config", "user.email", "noreply@users.noreply.github.com")
-    head = git(ROOT, "rev-parse", "HEAD")
+    head = git(ROOT, "rev-parse", f"{SUBJECT}^{{commit}}")
     git(clone, "checkout", "-q", "-B", "base", head)
     return clone, head
 
@@ -84,29 +88,33 @@ def test_contract_constants_are_exact():
 
 
 def test_real_repository_is_the_recognised_rc7c_candidate_and_nothing_more():
-    assert C.rc7c_violations() == []
-    assert R.recognized_state() == "RC7C"
-    states = C.states()
+    assert C.rc7c_violations(ref=SUBJECT) == []
+    assert R.recognized_state(ref=SUBJECT) == "RC7C"
+    states = C.states(ref=SUBJECT)
     assert states["exact_rc7c_content_verified"] is True and states["release_closed_candidate_recognized"] is True
     assert states["historical_pr320_integration_verified"] is True
     for denied in ("financial_owner_approval_of_rc7c_blobs", "d01_d12_financial_policy_approval", "gate_p", "product_admission",
                    "quarterly_activation", "financial_release"):
         assert states[denied] is False, denied
     assert A.gate_r_active() is False                                 # the pre-merge mechanism is not made globally active
-    assert B.postmerge_recognized() is False                          # the RC-7B successor is NOT widened: the RC-7C tree is not "RC-7B"
+    assert B.postmerge_recognized(ref=SUBJECT) is False                          # the RC-7B successor is NOT widened: the RC-7C tree is not "RC-7B"
+    if SUBJECT != "HEAD":
+        # HEAD is the OD-R successor: neither historical validator recognises it as its own state; only the separate OD-R contract does
+        assert C.rc7c_violations() != [] and not C.rc7c_recognized() and B.postmerge_recognized() is False
+        assert O.odr_violations() == [] and R.recognized_state() == "ODR"
 
 
 def test_four_blobs_are_the_pinned_rc7c_blobs_and_eight_are_the_merged_rc7b_blobs():
     for path in FOUR:
-        assert git(ROOT, "rev-parse", f"HEAD:{path}") == C.RC7C_CHANGED_BLOBS[path]
+        assert git(ROOT, "rev-parse", f"{SUBJECT}:{path}") == C.RC7C_CHANGED_BLOBS[path]
         assert git(ROOT, "rev-parse", f"{B.RC7B_MERGE_COMMIT}:{path}") == A.RC7B_CANDIDATE_AUTHORITIES[path]      # immutable RC-7B predecessor content
     for path in EIGHT:
-        assert git(ROOT, "rev-parse", f"HEAD:{path}") == A.RC7B_CANDIDATE_AUTHORITIES[path] == git(ROOT, "rev-parse", f"{B.RC7B_MERGE_COMMIT}:{path}")
+        assert git(ROOT, "rev-parse", f"{SUBJECT}:{path}") == A.RC7B_CANDIDATE_AUTHORITIES[path] == git(ROOT, "rev-parse", f"{B.RC7B_MERGE_COMMIT}:{path}")
 
 
 def test_no_protected_file_changed_beyond_the_four_since_the_pr_320_merge_and_pr_326_base():
     for base in (B.RC7B_MERGE_COMMIT, C.RC7C_BASE_MAIN):
-        changed = git(ROOT, "diff", "--name-only", "--no-renames", base, "HEAD", "--", *A.PROTECTED_PREFIXES).splitlines()
+        changed = git(ROOT, "diff", "--name-only", "--no-renames", base, SUBJECT, "--", *A.PROTECTED_PREFIXES).splitlines()
         assert sorted(changed) == sorted(FOUR), (base, changed)
 
 

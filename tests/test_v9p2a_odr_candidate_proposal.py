@@ -16,8 +16,10 @@ def test_proposal_names_exactly_the_changed_protected_paths():
     assert set(proposal.CANDIDATE_BLOBS) == set(proposal.PREDECESSOR_BLOBS)
     for path, before in proposal.PREDECESSOR_BLOBS.items():
         assert proposal.blob(path, proposal.PREDECESSOR_MAIN) == before
-    assert proposal.content_matches_proposal()
-    assert proposal.candidate_violations() == []
+    # Historical evidence: the Correction B proposal described the content of its own checkpoint, judged there (the current HEAD carries the
+    # later, separately owner-accepted OD-R content recognised by ``v9p2a_odr_successor``, never by this proposal).
+    assert proposal.content_matches_proposal(proposal.CANDIDATE_CHECKPOINT)
+    assert proposal.candidate_violations(proposal.CANDIDATE_CHECKPOINT) == []
 
 
 def test_proposal_grants_no_approval_and_is_not_wired_into_any_guard():
@@ -66,13 +68,18 @@ def test_historical_quarterly_state_and_candidate_recognition_are_not_approval()
 
     assert recognized_state(ref=proposal.PREDECESSOR_MAIN) == "RC7C"
     assert recognized_state(ref=proposal.INTEGRATION_MAIN) == "RC7C"
-    assert recognized_state() is None  # existing current-authority guards stay blocking
-    assert proposal.states()["chained_candidate_recognized"] is True
+    # the proposal's own content never became a recognised current-authority state
+    assert recognized_state(ref=proposal.CANDIDATE_CHECKPOINT) is None
+    assert proposal.states(proposal.CANDIDATE_CHECKPOINT)["chained_candidate_recognized"] is True
+    # the current HEAD is not the proposal content and the proposal does not recognise it
+    assert not proposal.content_matches_proposal()
+    assert proposal.states()["chained_candidate_recognized"] is False
     for path in proposal.CANDIDATE_BLOBS:
         assert not released_engine_authority_matches(path)
-    for name in ("protected_content_approved", "independent_financial_review",
-                 "wired_into_current_authority_guards", "product_activation", "financial_release"):
-        assert proposal.states()[name] is False
+    for ref in (proposal.CANDIDATE_CHECKPOINT, "HEAD"):
+        for name in ("protected_content_approved", "independent_financial_review",
+                     "wired_into_current_authority_guards", "product_activation", "financial_release"):
+            assert proposal.states(ref)[name] is False
 
 
 @pytest.mark.parametrize("path", tuple(proposal.CANDIDATE_BLOBS))
