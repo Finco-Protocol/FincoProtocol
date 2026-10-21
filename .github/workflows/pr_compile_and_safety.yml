@@ -83,9 +83,6 @@ jobs:
               python -m pytest -q $files --junitxml=artifacts/react-poc-contract-results.xml
             fi
           fi
-            python -m pytest -q tests/test_model_react_poc_v1.py tests/test_model_react_source_harvest_v1.py \
-              --junitxml=artifacts/react-poc-contract-results.xml
-          fi
 
       - name: Upload exact-head provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
