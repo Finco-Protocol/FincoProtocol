@@ -8,7 +8,8 @@ import pytest
 
 from tests import test_m3_two_driver_sensitivity as m3
 from tests.test_rc3_integration_inventory import (
-    INTEGRATION_HEAD, RC3_CI_WORKFLOW_BLOB, RC5_CI_WORKFLOW_BLOB, rc5_workflow_successor_violations,
+    CI200_WORKFLOW_BLOB, INTEGRATION_HEAD, RC3_CI_WORKFLOW_BLOB, RC5_CI_WORKFLOW_BLOB, ci200_workflow_successor_violations,
+    current_workflow_chain_violations, git_blob_sha, rc5_reference_text, rc5_workflow_successor_violations,
 )
 
 WORKFLOW = ".github/workflows/ci_public_job.yml"
@@ -20,6 +21,11 @@ def _rc3_text():
 
 
 def _head_text():
+    """The HISTORICAL RC-5 workflow, derived from the pinned RC-3 reference by the fixed RC-5 edits (not read from the current worktree)."""
+    return rc5_reference_text(_rc3_text())
+
+
+def _current_text():
     return (ROOT / WORKFLOW).read_text(encoding="utf-8")
 
 
@@ -33,8 +39,12 @@ def test_the_pinned_successor_is_recognised_and_only_at_its_exact_path():
 def test_the_historical_rc3_reference_and_the_rc5_pin_are_independently_fixed():
     blob = lambda ref: subprocess.run(["git", "rev-parse", f"{ref}:{WORKFLOW}"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()  # noqa: E731
     assert blob(INTEGRATION_HEAD) == RC3_CI_WORKFLOW_BLOB == "036a5aef7cf9738b8bf7bf2f6294f24a998a928c"
-    assert blob("HEAD") == RC5_CI_WORKFLOW_BLOB == "0fa7e2bec303bb94053fe7799186e666dd1e06a9"
+    assert RC5_CI_WORKFLOW_BLOB == "0fa7e2bec303bb94053fe7799186e666dd1e06a9"
+    assert git_blob_sha(_head_text()) == RC5_CI_WORKFLOW_BLOB                       # the historical RC-5 state is content-pinned
     assert rc5_workflow_successor_violations(_rc3_text(), _head_text()) == []
+    assert blob("HEAD") in (RC5_CI_WORKFLOW_BLOB, CI200_WORKFLOW_BLOB)               # HEAD is RC-5 or its exact CI-200M successor
+    assert CI200_WORKFLOW_BLOB == "f843237cae125867b8978fb2cc38665dcf0c64d8"
+    assert current_workflow_chain_violations(_rc3_text(), _current_text()) == []
 
 
 @pytest.mark.parametrize("label, mutate", [
@@ -74,8 +84,17 @@ def test_missing_or_wrong_blob_evidence_is_rejected(monkeypatch):
     assert m3.reviewed_ci_workflow_candidate(WORKFLOW) is False
 
 
-def test_the_authorised_budgets_are_unchanged():
+def test_the_authorised_rc5_budgets_are_unchanged_in_the_historical_state():
     text = _head_text()
     for needle in ("timeout-minutes: 130", "FINCO_CI_PYTEST_BUDGET_S: '6000'", "FINCO_CI_EXIT_GRACE_S: '240'", "FINCO_CI_STALL_S: '300'",
                    "FULL, UNSHARDED, EXACT HEAD"):
         assert needle in text, needle
+
+
+def test_the_current_ci200_budgets_and_their_fit():
+    text = _current_text()
+    assert ci200_workflow_successor_violations(_head_text(), text) == []
+    for needle in ("timeout-minutes: 220", "FINCO_CI_PYTEST_BUDGET_S: '12000'", "FINCO_CI_EXIT_GRACE_S: '240'", "FINCO_CI_STALL_S: '300'",
+                   "FULL, UNSHARDED, EXACT HEAD"):
+        assert needle in text, needle
+    assert 12000 + 240 + 15 * 60 <= 220 * 60

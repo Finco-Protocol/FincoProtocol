@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Covenant Headroom - FINCO{% endblock %}
+{% macro value(v) %}{% if v is none %}Unavailable{% elif v is number %}{{ "%.4f" | format(v) }}{% else %}{{ v }}{% endif %}{% endmacro %}
+{% block body %}
+<link rel="stylesheet" href="/static/css/model_credit_decision.css?v={{ asset_version }}" />
+<link rel="stylesheet" href="/static/css/model_credit_v5.css?v={{ asset_version }}" />
+<main class="cd-page cv5" data-testid="credit-v5">
+  <header class="cd-head"><div><h1>Covenant Headroom</h1><p>{{ project_name }}</p></div>
+    <nav class="cd-links" aria-label="Credit navigation"><a href="/v2/credit-decision?project={{ project_code | urlencode }}">Credit Decision</a>
+    <a href="/v2/workbook?project={{ project_code | urlencode }}#run-history">Run History</a></nav></header>
+  <form method="get" class="cv5-form">
+    <input type="hidden" name="project" value="{{ project_code }}" />
+    <h2>Committed Runs</h2>
+    <div class="cd-scroll" tabindex="0"><table class="cd-table"><thead><tr><th>Select</th><th>Date</th><th>Scenario</th><th>Run</th></tr></thead>
+    <tbody>{% for row in history %}<tr><td><input type="checkbox" name="run" value="{{ row.history_id }}" {% if row.history_id in requested %}checked{% endif %} aria-label="Run {{ row.history_id }}" /></td>
+    <td>{{ row.ran_at }}</td><td>{{ row.active_scenario_name or "Unavailable" }}</td><td>{{ row.history_id }}</td></tr>{% else %}<tr><td colspan="4">No committed Run available</td></tr>{% endfor %}</tbody></table></div>
+    <h2>Proposed Lender Thresholds</h2>
+    {% set labels = {'min_dscr': 'Minimum Senior DSCR (x)', 'min_llcr': 'Minimum LLCR (x)', 'max_gearing': 'Maximum Senior Gearing (fraction)', 'min_equity_keur': 'Minimum Initial Equity (kEUR)', 'max_balloon_keur': 'Maximum Senior Balloon (kEUR)'} %}
+    <div class="cv5-inputs">{% for c in constraints %}<label>{{ labels[c.metric] }}
+      <input type="number" step="any" min="0" name="{{ c.metric }}" value="{{ c.threshold if c.threshold is not none else '' }}" {% if c.metric == 'max_gearing' %}max="1"{% endif %} /></label>{% endfor %}</div>
+    <button class="cd-btn" type="submit">Evaluate</button>
+  </form>
+  {% if data %}
+  <p class="cd-policy">Hypothetical lender analysis. Not contractual compliance or loan approval.</p>
+  {% for run in data.runs %}<section class="cv5-run" aria-label="Run {{ run.history_id }}">
+    <h2>Run {{ run.history_id }}</h2><p>Historical results &middot; {{ run.ran_at }} &middot; Financial checks: {{ run.integrity }}</p>
+    <a href="/v2/workbook/run-history/detail?project={{ project_code | urlencode }}&amp;history_id={{ run.history_id | urlencode }}">Run Details</a>
+    {% if run.integrity != 'PASS' %}<p role="alert">Review required: financial checks are not proven to pass.</p>{% endif %}
+    <div class="cd-scroll" tabindex="0"><table class="cd-table"><thead><tr><th>Constraint</th><th>Proposed Threshold</th><th>Headroom</th><th>Unit</th><th>Worst Period</th><th>First Breach</th><th>Breaches Observed</th><th>Evaluation</th></tr></thead><tbody>
+      {% for c in run.constraints %}<tr><th>{{ c.metric | replace('_', ' ') | title }}</th><td class="cd-num">{{ value(c.threshold) }}</td><td class="cd-num">{{ value(c.minimum_headroom) }}</td><td>{{ c.unit }}</td>
+      <td>{{ c.worst_period or 'Not dated' }}</td><td>{{ c.first_breach or '-' }}</td><td class="cd-num">{{ value(c.breach_count) }}</td><td>{{ c.state | replace('_', ' ') }}{% if c.reason %}<span class="cd-why">{{ c.reason | replace('_', ' ') | lower }}</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+    <details><summary>Period Headroom and Audit Details</summary>
+    {% for c in run.constraints %}<h3>{{ c.metric | replace('_', ' ') | title }}</h3><div class="cd-scroll" tabindex="0"><table class="cd-table"><thead><tr><th>Period Start</th><th>Period End</th><th>Calculated Value</th><th>Headroom</th><th>Relative Headroom</th><th>State</th></tr></thead>
+      <tbody>{% for p in c.observations %}<tr><td>{{ p.start or '-' }}</td><td>{{ p.end or '-' }}</td><td class="cd-num">{{ value(p.value) }}</td><td class="cd-num">{{ value(p.absolute) }}</td><td class="cd-num">{% if p.relative is not none %}{{ value(p.relative * 100) }}%{% else %}Unavailable{% endif %}</td><td>{{ p.state }}</td></tr>{% endfor %}</tbody></table></div>{% endfor %}
+      <p>Snapshot: {{ run.snapshot_id }} &middot; Input identity: {{ run.composite_hash }} &middot; Engine: {{ run.engine_version }}</p>
+      <p>Financial periods: {{ run.frequency }} &middot; Historical results are not asserted current against Working Copy.</p>
+      <dl>{% for key, val in run.sizing_evidence %}<dt>{{ key | replace('_', ' ') | title }}</dt><dd>{{ value(val) }}</dd>{% endfor %}</dl>
+      <p>Persisted sizing evidence only. A different debt amount requires a new financing solve.</p>
+    </details>
+  </section>{% endfor %}
+  {% if data.comparisons %}<section class="cv5-run"><h2>Changes Against Run 1</h2><div class="cd-scroll" tabindex="0"><table class="cd-table"><thead><tr><th>Run</th><th>Minimum DSCR Change</th><th>Senior Change (kEUR)</th><th>Debt Service Change (kEUR)</th><th>Equity Change (kEUR)</th><th>Comparison</th></tr></thead>
+    <tbody>{% for c in data.comparisons %}<tr><td>{{ c.history_id }}</td><td class="cd-num">{{ value(c.delta_min_dscr) }}</td><td class="cd-num">{{ value(c.delta_senior_keur) }}</td><td class="cd-num">{{ value(c.delta_service_keur) }}</td><td class="cd-num">{{ value(c.delta_equity_keur) }}</td><td>{{ c.state }}<span class="cd-why">{{ c.reason | replace('_', ' ') | lower }}</span></td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+  {% endif %}
+</main>
+{% endblock %}
