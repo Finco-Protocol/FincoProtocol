@@ -220,10 +220,16 @@ def test_save_race_input_locked_in_flight_and_single_mutation(browser, react_ena
         context.route(SAVE_PATTERN, intercept)
         input_field = page.locator(CIT_INPUT)
         input_field.fill("21.5")
+        input_field.focus()
         page.locator("button[type='submit']").click()
         page.wait_for_selector("[data-save-state='saving']")
         assert input_field.get_attribute("readonly") is not None, "input must lock during flight"
-        assert input_field.is_enabled() or True  # readOnly keeps focus/keyboard, not disabled
+        # readOnly (not disabled): focus and keyboard access are preserved on the
+        # locked input itself for the whole flight (the disabled submit button
+        # would otherwise blur focus to <body>).
+        focused = page.evaluate("() => document.activeElement && document.activeElement.id")
+        assert focused == "rx-cit-rate-input", \
+            f"focus must stay on the locked input during flight (got {focused!r})"
         assert page.locator("button[type='submit']").is_disabled()
         page.keyboard.type("999")  # typing during flight must not change the draft
         assert input_field.input_value() == "21.5", "locked draft must not change mid-flight"
@@ -254,6 +260,17 @@ def test_ambiguous_save_outcomes_never_claim_success_or_failure(browser, react_e
              "may have committed"),
             ("2xx with empty body", lambda route: route.fulfill(
                 status=200, content_type="application/json", body=""),
+             "may have committed"),
+            # Success-shaped but INCOMPLETE verdicts must never be applied as
+            # confirmed saves: a bare {"ok": true} and a verdict missing the
+            # mandatory identity fields are both UNKNOWN.
+            ("2xx with bare ok:true", lambda route: route.fulfill(
+                status=200, content_type="application/json", body='{"ok": true}'),
+             "may have committed"),
+            ("2xx success missing content_hash", lambda route: route.fulfill(
+                status=200, content_type="application/json",
+                body='{"ok": true, "saved": [{"field_id": "tax.assumptions.cit_rate_pct", "value": "23.75"}],'
+                     ' "workbook_version": "x", "run_state": "STALE", "model_executed": false, "scenario_id": null}'),
              "may have committed"),
         ]
         for name, handler, fragment in scenarios:
