@@ -11,6 +11,7 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
+import re
 import tarfile
 import xml.etree.ElementTree as ET
 
@@ -65,25 +66,43 @@ def status(attempt, expected):
     return "pass-with-nonpass" if attempt["skipped"] else "pass"
 
 
+SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def exclusion(attempt, current_sha):
+    """Why an attempt cannot be counted, or None. Positive evidence needs the exact current module blob identity."""
+    if attempt.get("historical"):
+        if current_sha is not None and attempt.get("module_sha256") == current_sha and status(attempt, attempt["tests"]) not in ("pass", "pass-with-nonpass"):
+            return None            # a historical FAILURE on an unchanged module still counts against it
+        return "historical-evidence"
+    if current_sha is None or not SHA256.fullmatch(current_sha):
+        return "current-module-identity-unavailable"
+    recorded = attempt.get("module_sha256")
+    if recorded is None:
+        return "missing-module-sha256"
+    if not isinstance(recorded, str) or not SHA256.fullmatch(recorded):
+        return "malformed-module-sha256"
+    if recorded != current_sha:
+        return "stale-or-mismatched-module-sha256"
+    return None
+
+
+def annotate(attempts, current_sha):
+    """Every attempt is preserved verbatim; the annotation says whether it counts and why not."""
+    return [{**a, "counts": (reason := exclusion(a, current_sha)) is None, "exclusion": reason} for a in attempts]
+
+
 def relevant(attempts, current_sha):
-    """Historical attempts count only while the module blob is unchanged, and only their failures count against it.
-    Superseded or historical-PASS attempts stay in the preserved record but never supply positive evidence."""
-    kept = []
-    for a in attempts:
-        if not a.get("historical"):
-            stale = current_sha is not None and a.get("module_sha256") not in (None, current_sha)
-            if not stale:   # an attempt on an older module blob is preserved in the record but never counts
-                kept.append(a)
-        elif current_sha is not None and a.get("module_sha256") == current_sha and status(a, a["tests"]) not in ("pass", "pass-with-nonpass"):
-            kept.append(a)
-    return kept
+    return [a for a in attempts if exclusion(a, current_sha) is None]
 
 
 def decide(attempts, expected, min_target=MIN_TARGET_PASSES, current_sha=None):
     """Return (mode, category, reason) from every relevant attempt."""
+    reasons = sorted({r for a in attempts if (r := exclusion(a, current_sha)) and not a.get("historical")})
     attempts = relevant(attempts, current_sha)
     if not any(not a.get("historical") for a in attempts):
-        return "blocked", "no-standalone-evidence", "no attempt executed on the exact evidence image and source"
+        why = f" ({', '.join(reasons)})" if reasons else ""
+        return "blocked", "no-standalone-evidence", "no attempt with the exact current module identity on the evidence image and source" + why
     verdicts = [status(a, expected) for a in attempts]
     for bad, category in (("timeout", "timeout"), ("capacity", "capacity-exhaustion"), ("coverage-mismatch", "coverage-mismatch")):
         if bad in verdicts:
@@ -160,7 +179,7 @@ def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TAR
             mode, category, reason = "blocked", "not-collected-helper", "no collected nodes; helper or collection-skipped file"
         else:
             mode, category, reason = decide(history, expected[name], min_target, base.get("sha256"))
-        record.update(mode=mode, category=category, reason=reason, rationale=reason, reviewed=False, attempts=history)
+        record.update(mode=mode, category=category, reason=reason, rationale=reason, reviewed=False, attempts=annotate(history, base.get("sha256")))
         modules[name] = record; summary[category] += 1
     proposal = seal({**{k: v for k, v in isolation.items() if k not in ("digest", "modules")},
                      "modules": modules, "authority": "evidence-proposal-unreviewed"})

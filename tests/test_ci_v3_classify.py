@@ -176,3 +176,49 @@ def test_baseline_and_targeted_trees_are_both_accepted_by_the_loader(tmp_path):
     assert {a["tree"] for a in loaded["tests/test_a.py"]} == {"B", "T"}
     with pytest.raises(ContractError, match="not executed on the evidence"):
         collect([tmp_path / "base"], {"image_id": "img", "trees": ["T"]})
+
+
+OTHER_MODULE_SHA = "a" * 64
+
+
+@pytest.mark.parametrize("override,reason", [
+    ({"module_sha256": None}, "missing-module-sha256"),
+    ({"module_sha256": "1" * 64}, "stale-or-mismatched-module-sha256"),            # an older blob of the same module
+    ({"module_sha256": OTHER_MODULE_SHA}, "stale-or-mismatched-module-sha256"),    # another module's blob
+    ({"module_sha256": "A" * 64}, "malformed-module-sha256"),                       # not lower-case hex
+    ({"module_sha256": "abc"}, "malformed-module-sha256"),
+    ({"module_sha256": 12345}, "malformed-module-sha256"),
+])
+def test_exact_source_attempt_without_the_current_module_identity_never_supplies_positive_evidence(override, reason):
+    bad = attempt("target", "t0", **override)
+    assert decide([bad], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
+    assert reason in decide([bad], EXPECTED, current_sha=SHA)[2]
+    assert decide([bad for _ in range(MIN_TARGET_PASSES + 3)], EXPECTED, current_sha=SHA)[0] == "blocked"      # volume does not help
+    # stability after a real failure cannot be assembled from unidentified or stale passes either
+    unproven = [attempt(**FAIL)] + [attempt("target", f"t{i}", **override) for i in range(MIN_TARGET_PASSES)]
+    assert decide(unproven, EXPECTED, current_sha=SHA)[0] == "blocked"
+
+
+def test_missing_key_entirely_is_treated_like_none():
+    bare = {k: v for k, v in attempt("target", "t0").items() if k != "module_sha256"}
+    assert decide([bare], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
+
+
+@pytest.mark.parametrize("current", [None, "", "short", "G" * 64])
+def test_unavailable_or_malformed_current_identity_blocks_every_attempt(current):
+    assert decide([attempt("target", "t0")], EXPECTED, current_sha=current)[:2] == ("blocked", "no-standalone-evidence")
+
+
+def test_one_identified_attempt_still_counts_next_to_unidentified_ones():
+    mixed = [attempt("target", "t0", module_sha256=None), attempt("target", "t1")]
+    assert decide(mixed, EXPECTED, current_sha=SHA)[:2] == ("runner-private", "stable-pass")
+
+
+def test_every_attempt_is_preserved_with_an_exclusion_reason():
+    attempts = [attempt("target", "ok"), attempt("target", "none", module_sha256=None), attempt("target", "old", module_sha256="1" * 64),
+                historical(**FAIL, module_sha256="2" * 64)]
+    proposal, _ = classify({**prepared(), "isolation": {**prepared()["isolation"], "modules": {"tests/test_a.py": {"sha256": SHA}}}}, {"tests/test_a.py": attempts})
+    assert len(proposal["modules"]["tests/test_a.py"]["attempts"]) == 4
+    rows = proposal["modules"]["tests/test_a.py"]["attempts"]
+    assert [(r["counts"], r["exclusion"]) for r in rows] == [(True, None), (False, "missing-module-sha256"),
+                                                              (False, "stale-or-mismatched-module-sha256"), (False, "historical-evidence")]
