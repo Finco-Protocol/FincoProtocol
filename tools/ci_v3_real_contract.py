@@ -10,6 +10,8 @@ from pathlib import Path
 import platform
 import subprocess
 import sys
+import io
+import tarfile
 
 from tools.ci_v3_schema import canonical_bytes, digest, require
 
@@ -45,11 +47,19 @@ def git_source(project):
     require(Path(git("rev-parse", "--show-toplevel")).resolve() == Path(project).resolve(), "project is not Git root")
     require(not git("status", "--porcelain", "--untracked-files=all"), "tested source is dirty")
     paths = subprocess.check_output(["git", "-C", str(project), "ls-files", "-z"]).decode("utf-8").split("\0")
-    for name in filter(None, paths):
-        actual = Path(project) / name
-        require(not actual.is_symlink() and actual.is_file(), "non-regular tested source")
-        canonical = subprocess.check_output(["git", "-C", str(project), "show", "HEAD:" + name])
-        require(actual.read_bytes() == canonical, "tested working bytes differ from exact Git source")
+    # One Git process rather than one per file; retain exact-byte verification.
+    archive = subprocess.check_output(["git", "-C", str(project), "archive", "--format=tar", "HEAD"])
+    seen = set()
+    with tarfile.open(fileobj=io.BytesIO(archive)) as members:
+        for member in members:
+            if member.isdir():
+                continue
+            require(member.isfile(), "non-regular tested source")
+            actual = Path(project) / member.name
+            require(not actual.is_symlink() and actual.is_file(), "non-regular tested source")
+            require(actual.read_bytes() == members.extractfile(member).read(), "tested working bytes differ from exact Git source")
+            seen.add(member.name)
+    require(seen == set(filter(None, paths)), "Git archive omits tracked source; export-ignore unsupported")
     return {"head": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}")}
 
 

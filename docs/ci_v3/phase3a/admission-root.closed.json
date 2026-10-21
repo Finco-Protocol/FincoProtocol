@@ -1,0 +1,7 @@
+{
+  "schema": 3,
+  "kind": "ci-v3-hosted-admission",
+  "enabled": false,
+  "authoritative_acceptance": false,
+  "reason": "No Financial/Security/CI exact-content deployment, inventory, isolation or image admission has been issued. Protected environment pins must come from independent owners."
+}

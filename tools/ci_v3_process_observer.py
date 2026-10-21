@@ -13,6 +13,19 @@ import time
 from tools.ci_v3_schema import read_json, require, write_json
 
 
+def posix_group_members(group):
+    """Linux kernel observations, including subprocess.Popen children (not just multiprocessing)."""
+    members = []
+    for entry in Path('/proc').glob('[0-9]*/stat'):
+        try:
+            fields = entry.read_text().rsplit(')', 1)[1].split()
+            if int(fields[2]) == group and fields[0] != 'Z' and int(entry.parent.name) != group:
+                members.append(int(entry.parent.name))
+        except (OSError, ValueError, IndexError):
+            continue
+    return sorted(members)
+
+
 class WindowsJob:
     """Anonymous kill-on-close job. Child waits for a parent release before imports."""
     def __init__(self, process):
@@ -63,6 +76,8 @@ def observe(request, directory, timeout_s):
     started = time.perf_counter()
     timed_out = False
     job = None
+    survivors = []
+    cleanup_complete = True
     with (directory / "process.log").open("wb") as log:
         process = subprocess.Popen([sys.executable, "-I", str(child), str(directory / "request.json")],
             cwd=request["project"], env=env, stdout=log, stderr=subprocess.STDOUT,
@@ -94,20 +109,27 @@ def observe(request, directory, timeout_s):
             if job:
                 job.close()
             elif os.name != "nt":
+                survivors = posix_group_members(process.pid)
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
+                deadline = time.monotonic() + 3
+                while posix_group_members(process.pid) and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                cleanup_complete = not posix_group_members(process.pid)
     elapsed = round((time.perf_counter() - started) * 1000)
     returned = read_json(directory / "pytest-return.json") if (directory / "pytest-return.json").exists() else None
     final = read_json(directory / "interpreter-exit.json") if (directory / "interpreter-exit.json").exists() else None
     bootstrap = read_json(directory / "bootstrap-start.json") if (directory / "bootstrap-start.json").exists() else None
     startup = round(bootstrap["perf_ns"] / 1_000_000 - started * 1000) if bootstrap else None
     normal = (process.returncode == 0 and not timed_out and returned is not None and returned["code"] == 0
-              and not any(returned["leaks"].values()) and final is not None and final.get("finalizing") is True)
+              and not any(returned["leaks"].values()) and final is not None and final.get("finalizing") is True
+              and not survivors and cleanup_complete)
     return {"worker": request.get("worker"), "os_exit_code": process.returncode, "timed_out": timed_out,
             "normal_successful_exit": normal, "elapsed_ms": elapsed, "pytest_return": returned,
             "interpreter_exit": final, "temporary_directory": str(directory / "tmp"),
             "startup_ms": startup,
+            "surviving_descendants_at_parent_exit": survivors, "descendant_cleanup_complete": cleanup_complete,
             "shutdown_ms": max(0, elapsed - startup - returned["pytest_returned_ms"]) if returned and startup is not None else None,
             "containment": "windows-job-kill-on-close" if os.name == "nt" else "posix-process-group"}

@@ -19,6 +19,9 @@ def main():
     from tools.ci_v3_schema import read_json, write_json
     write_json(directory / "bootstrap-start.json", {"perf_ns": round(clock * 1_000_000_000)})
     request = read_json(request_path)
+    if request.get("hosted"):
+        import os
+        Path(os.environ["HOME"]).mkdir(parents=True, exist_ok=True)
     # Parent must establish process-tree containment before allowing test imports.
     deadline = time.monotonic() + 30
     while not (directory / "release").exists():
@@ -42,6 +45,9 @@ def main():
             "--junitxml", str(directory / "native.xml")]
     if request["mode"] == "discover":
         args.append("--collect-only")
+    if request.get("hosted"):
+        # The approved image includes this explicitly; no ambient plugin autoload.
+        args += ["-p", "pytest_asyncio.plugin"]
     args.append("tests")
     started = round((time.perf_counter() - clock) * 1000)
     code = int(pytest.main(args, plugins=[adapter]))
