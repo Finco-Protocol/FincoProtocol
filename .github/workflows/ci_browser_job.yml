@@ -22,7 +22,7 @@ jobs:
     continue-on-error: false # targeted F3 must report its own failure, never an apparent pass
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.tested-sha }}
           fetch-depth: 0
@@ -57,7 +57,7 @@ jobs:
         run: python -m tools.ci_browser_job '${{ inputs.role }}' --expected '${{ inputs.tested-sha }}'
       - name: Check out immutable F3 equivalence base
         if: inputs.role == 'f3'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: 2e199bc3fb8e7a5971e26d1a1a48e9875a63045d
           path: f3-base
