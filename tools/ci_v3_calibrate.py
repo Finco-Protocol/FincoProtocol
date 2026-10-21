@@ -33,7 +33,7 @@ def cpu_loop_s(iterations=5_000_000):
     start = time.perf_counter(); total = 0
     for i in range(iterations):
         total += i
-    return round(time.perf_counter() - start, 3)
+    return round(time.perf_counter() - start, 6)   # microsecond resolution: a fast host must not round to zero
 
 
 def import_asyncio_ms():

@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 from tools.ci_v3_schema import ContractError, read_json, require, seal, write_json
 
 TARGET_WORKERS = 3
+MIN_TARGET_CPUS = 1.33   # 4 vCPU shared by three worker-sized containers; a hosted worker has its own runner, so this is conservative
 MIN_TARGET_PASSES = 5
 CAPACITY_EXIT = {-9, 137}          # SIGKILL / OOM kill
 CAPACITY_MARKERS = ("MemoryError", "No space left on device", "Cannot allocate memory", "Too many open files")
@@ -46,7 +47,7 @@ def collect(runs, expect=None):
             require(key not in seen, "duplicate attempt evidence: " + "/".join(map(str, key)))
             seen.add(key)
             result.setdefault(item["module"], []).append({**item, "kind": meta["kind"], "label": meta["label"],
-                "concurrency": meta["concurrency"], "image_id": meta["image_id"], "tree": meta["tree"],
+                "concurrency": meta["concurrency"], "cpus": float(meta.get("cpus_per_container") or 0), "image_id": meta["image_id"], "tree": meta["tree"],
                 "historical": bool(meta.get("historical"))})
     return result
 
@@ -94,13 +95,16 @@ def decide(attempts, expected, min_target=MIN_TARGET_PASSES, current_sha=None):
         return "runner-private", "stable-pass", f"{len(attempts)} consistent PASS attempt(s), {expected} nodes, no skips"
     if all(v == "fail" for v in verdicts):
         return "blocked", "standalone-failure", f"failed in all {len(attempts)} attempt(s)"
-    target = [(a, v) for a, v in zip(attempts, verdicts) if a["kind"] == "target" and a["concurrency"] == TARGET_WORKERS]
+    target = [(a, v) for a, v in zip(attempts, verdicts)
+              if a["kind"] == "target" and a["concurrency"] == TARGET_WORKERS and a.get("cpus", MIN_TARGET_CPUS) >= MIN_TARGET_CPUS]
     if any(v == "fail" for _, v in target):
         return "blocked", "inconsistent-verdicts", "failed at the equivalent target concurrency"
     passes = sum(1 for _, v in target if v in passing)
     if passes >= min_target and all(a["skipped"] == 0 for a, _ in target):
+        starved = sorted({a["cpus"] for a, v in zip(attempts, verdicts) if v == "fail" and a.get("cpus")})
+        constraint = f"; resource constraint: failed at {starved} CPU, validated at >= {MIN_TARGET_CPUS} CPU per worker" if starved else ""
         return "runner-private", "target-concurrency-stability-validated", (
-            f"earlier failure retained; {passes} consecutive PASSes at {TARGET_WORKERS}-way concurrency; owner must review the prior failure")
+            f"earlier failure retained; {passes} consecutive PASSes at {TARGET_WORKERS}-way concurrency{constraint}; owner must review the prior failure")
     return "blocked", "load-sensitive-unproven", (
         f"failed once, later passes do not prove stability: {passes}/{min_target} target-concurrency PASSes "
         f"({sum(a['kind'] == 'uncontended' for a in attempts)} uncontended rerun(s) are not equivalent evidence)")

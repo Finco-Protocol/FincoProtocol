@@ -12,7 +12,7 @@ SHA = "0" * 64
 
 def attempt(kind="first", label="a", **kw):
     base = {"module": "tests/test_a.py", "module_sha256": SHA, "historical": False, "tag": None, "exit_code": 0, "timed_out": False, "failures": 0, "errors": 0,
-            "skipped": 0, "tests": EXPECTED, "seconds": 1.0, "tail": "", "kind": kind, "label": label, "concurrency": 3 if kind == "target" else 4}
+            "skipped": 0, "tests": EXPECTED, "seconds": 1.0, "tail": "", "kind": kind, "label": label, "concurrency": 3 if kind == "target" else 4, "cpus": 1.33}
     return {**base, **kw}
 
 
@@ -155,3 +155,10 @@ def test_source_change_supersedes_a_historical_failure_but_it_stays_recorded():
 def test_historical_pass_never_supplies_positive_evidence():
     assert decide([historical()], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
     assert decide([historical(), historical(skipped=0)], EXPECTED, current_sha=SHA)[0] == "blocked"
+
+
+def test_target_attempts_below_the_cpu_budget_do_not_count_and_the_constraint_is_reported():
+    starved = [{**a, "cpus": 1.0} for a in target_passes(MIN_TARGET_PASSES)]
+    assert decide([attempt(**FAIL)] + starved, EXPECTED, current_sha=SHA)[:2] == ("blocked", "load-sensitive-unproven")
+    mode, category, reason = decide([attempt(**FAIL, cpus=1.0)] + target_passes(MIN_TARGET_PASSES), EXPECTED, current_sha=SHA)
+    assert (mode, category) == ("runner-private", "target-concurrency-stability-validated") and "failed at [1.0] CPU" in reason

@@ -9,9 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 from tests.ci_v3_hosted_fixtures import FixtureAPI, archive
@@ -26,6 +28,7 @@ WORKFLOW = (Path(__file__).resolve().parents[1] / "docs/ci_v3/phase3b/ci_v3_shad
 REVIEW = "BOUNDED LOCAL CONTAINER VALIDATION ONLY - not an owner isolation approval"
 
 
+INVENTORY_MUTATIONS = ("unauthorized-node", "missing-node")
 NEGATIVE = {
     "failure": ("tests/test_zz_ci_v3_negative_failure.py", "def test_failure_must_stay_a_failure():\n    assert 1 + 1 == 3\n"),
     "unapproved-skip": ("tests/test_zz_ci_v3_negative_skip.py", "import pytest\n\n\ndef test_unapproved_skip():\n    pytest.skip('unapproved runtime skip')\n"),
@@ -73,12 +76,75 @@ def build_api(root, payloads):
     return api, anchors
 
 
-def validate(project, image, work):
+
+class ResourceSampler:
+    """Polls `docker stats` for running containers while workers execute; reports peaks, never gates anything."""
+
+    def __init__(self, interval=2.0):
+        self.interval, self.peaks, self._stop = interval, {}, threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    @staticmethod
+    def mib(text):
+        number, unit = re.match(r"([\d.]+)\s*([KMGT]?i?B)", text).groups()
+        return float(number) * {"B": 1 / 1048576, "KiB": 1 / 1024, "MiB": 1, "GiB": 1024, "TiB": 1048576}[unit]
+
+    def _run(self):
+        while not self._stop.is_set():
+            out = subprocess.run(["docker", "stats", "--no-stream", "--format", "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}"],
+                                 capture_output=True, text=True, timeout=30).stdout
+            for line in out.splitlines():
+                name, cpu, memory = line.split("|")
+                if name.startswith("ci-v3-"):
+                    peak = self.peaks.setdefault(name, {"peak_mem_mib": 0.0, "peak_cpu_pct": 0.0, "samples": 0})
+                    peak["peak_mem_mib"] = max(peak["peak_mem_mib"], self.mib(memory.split("/")[0].strip()))
+                    peak["peak_cpu_pct"] = max(peak["peak_cpu_pct"], float(cpu.strip("%")))
+                    peak["samples"] += 1
+            self._stop.wait(self.interval)
+
+    def __enter__(self):
+        self._thread.start(); return self
+
+    def __exit__(self, *exc):
+        self._stop.set(); self._thread.join(timeout=35)
+        return False
+
+    def report(self):
+        return [{**v, "peak_mem_mib": round(v["peak_mem_mib"], 1)} for _, v in sorted(self.peaks.items())]
+
+
+def reseal(document, **changes):
+    return seal({**{k: v for k, v in document.items() if k != "digest"}, **changes})
+
+
+def mutate_inventory(inventory, policy, weights, kind):
+    """Approved-inventory mutations: `unauthorized-node` (collection finds a node the owners never approved) and
+    `missing-node` (the owners require a node that collection no longer finds)."""
+    nodes = list(inventory["nodes"])
+    if kind == "unauthorized-node":
+        nodes = nodes[:-1]
+    elif kind == "missing-node":
+        nodes = nodes + [{**nodes[-1], "nodeid": nodes[-1]["module"] + "::test_phantom_required_node"}]
+    inventory = reseal(inventory, nodes=nodes)
+    return inventory, reseal(policy, inventory_digest=inventory["digest"]), reseal(weights, inventory_digest=inventory["digest"])
+
+
+def tamper_worker_junit(received, kind):
+    """Edit one worker's original native JUnit after the host receipt anchored it."""
+    path = Path(received) / "worker-0/child/native.xml"
+    text = path.read_text(encoding="utf-8")
+    case = re.search(r"<testcase .*?(?:/>|</testcase>)", text, re.S).group(0)
+    path.write_text(text.replace(case, case + case if kind == "duplicate-junit-node" else "", 1), encoding="utf-8")
+
+
+def validate(project, image, work, inventory_mutation=None, tamper=()):
     project, work = Path(project).resolve(), Path(work).resolve()
     marks = {"start": time.perf_counter()}
     require(prepare(project, work / "prep", image) > 0, "no collection")
     prep = work / "prep"; marks["collect"] = time.perf_counter()
     inventory, policy, weights = (read_json(prep / (n + ".json")) for n in ("inventory", "policy", "weights"))
+    if inventory_mutation:
+        inventory, policy, weights = mutate_inventory(inventory, policy, weights, inventory_mutation)
     environment = read_json(prep / "collection-container/child/adapter.json")["environment"]
     isolation = seal({"schema": 3, "kind": "ci-v3-isolation-policy", "source": inventory["source"],
         "profile": "docker-no-network-private-workspace-v1", "fixture_tree_reviewed": True, "review_reference": REVIEW,
@@ -101,7 +167,7 @@ def validate(project, image, work):
         started = time.perf_counter()
         run_worker(root, root_sha, bundle, project, received / "plan", name, payloads / name, RUN, ATTEMPT)
         return name, round(time.perf_counter() - started, 2)
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ResourceSampler() as sampler, ThreadPoolExecutor(max_workers=3) as pool:
         durations = dict(pool.map(worker, [n for n in STAGES if n != "plan"]))
     marks["workers"] = time.perf_counter()
     api, anchors = build_api(root, {n: payloads / n for n in STAGES})
@@ -109,6 +175,19 @@ def validate(project, image, work):
     proof = aggregate(root, root_sha, bundle, project, work / "received", work / "verified", RUN, ATTEMPT, transport)
     marks["verify"] = time.perf_counter()
     plan = read_json(payloads / "plan/plan.json")
+    observed = {w: read_json(payloads / w / "receipt.json")["observation"] for w in durations}
+    per_worker = {w: {"container_ms": o["elapsed_ms"], "pytest_ms": o["pytest_return"]["pytest_returned_ms"] - o["pytest_return"]["pytest_started_ms"],
+                      "startup_and_shutdown_overhead_ms": o["elapsed_ms"] - (o["pytest_return"]["pytest_returned_ms"] - o["pytest_return"]["pytest_started_ms"])}
+                  for w, o in observed.items()}
+    tampered = {}
+    for kind in tamper:
+        copy = work / ("received-tamper-" + kind); shutil.copytree(work / "received", copy)
+        tamper_worker_junit(copy, kind)
+        try:
+            aggregate(root, root_sha, bundle, project, copy, work / ("verified-tamper-" + kind), RUN, ATTEMPT, transport)
+            tampered[kind] = {"rejected": False}
+        except ContractError as exc:
+            tampered[kind] = {"rejected": True, "reason": str(exc)}
     allocation = {w: sorted(m for m, o in plan["module_workers"].items() if o == w) for w in durations}
     summary = {"scope": "BOUNDED SUBSET - NOT COMPLETE FINCO COVERAGE", "source": inventory["source"], "image": image,
         "nodes": len(inventory["nodes"]), "modules": len(inventory["modules"]), "allocation": allocation,
@@ -118,17 +197,18 @@ def validate(project, image, work):
         "unique_nodes_verified": proof["execution"]["phase1_proof"]["unique_nodes"],
         "seconds": {"collect": round(marks["collect"] - marks["start"], 2), "plan": round(marks["plan"] - marks["collect"], 2),
                     "workers_wall": round(marks["workers"] - marks["plan"], 2), "per_worker": durations,
-                    "verify": round(marks["verify"] - marks["workers"], 2), "total": round(marks["verify"] - marks["start"], 2)}}
+                    "verify": round(marks["verify"] - marks["workers"], 2), "total": round(marks["verify"] - marks["start"], 2)},
+        "per_worker": per_worker, "container_resources": sampler.report(), "tamper_controls": tampered}
     write_json(work / "validation-summary.json", summary)
     return summary
 
 
 def negative_control(source, image, work, modules, kind):
-    """Real containers must REJECT a deliberately failing / unapproved-skip test; returns the observed rejection."""
+    """Real containers must REJECT a failing / unapproved-skip test or an inventory that does not match collection."""
     work = Path(work); work.mkdir(parents=True, exist_ok=False)
-    project = make_subset(source, modules, work / "subset", NEGATIVE[kind])
+    project = make_subset(source, modules, work / "subset", NEGATIVE.get(kind))
     try:
-        validate(project, image, work / "run")
+        validate(project, image, work / "run", inventory_mutation=kind if kind in INVENTORY_MUTATIONS else None)
     except ContractError as exc:
         receipts = {w: read_json(p)["observation"] for w in ("worker-0", "worker-1", "worker-2")
                     if (p := work / "run/payloads" / w / "receipt.json").exists()}
@@ -144,13 +224,13 @@ def negative_control(source, image, work, modules, kind):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True); parser.add_argument("--image", required=True); parser.add_argument("--work", required=True)
-    parser.add_argument("--module", action="append", required=True); parser.add_argument("--negative", choices=sorted(NEGATIVE))
+    parser.add_argument("--module", action="append", required=True); parser.add_argument("--negative", choices=sorted([*NEGATIVE, *INVENTORY_MUTATIONS])); parser.add_argument("--tamper", action="append", default=[], choices=["duplicate-junit-node", "missing-junit-node"])
     args = parser.parse_args(argv)
     if args.negative:
         print(json.dumps(negative_control(args.source, args.image, args.work, args.module, args.negative), indent=1)); return 0
     work = Path(args.work); work.mkdir(parents=True, exist_ok=False)
     project = make_subset(args.source, args.module, work / "subset")
-    print(json.dumps(validate(project, args.image, work / "run"), indent=1)); return 0
+    print(json.dumps(validate(project, args.image, work / "run", tamper=args.tamper), indent=1)); return 0
 
 
 if __name__ == "__main__":
