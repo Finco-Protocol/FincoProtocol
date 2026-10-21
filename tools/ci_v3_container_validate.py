@@ -19,14 +19,20 @@ from tools.ci_v3_hosted_controller import STAGES, aggregate, context, run_plan, 
 from tools.ci_v3_hosted_transport import receive, sha
 from tools.ci_v3_prepare import prepare
 from tools.ci_v3_real_contract import file_sha
-from tools.ci_v3_schema import canonical_bytes, read_json, require, seal, write_json
+from tools.ci_v3_schema import ContractError, canonical_bytes, read_json, require, seal, write_json
 
 RUN, ATTEMPT = 123, 2
 WORKFLOW = (Path(__file__).resolve().parents[1] / "docs/ci_v3/phase3b/ci_v3_shadow.yml").read_bytes()
 REVIEW = "BOUNDED LOCAL CONTAINER VALIDATION ONLY - not an owner isolation approval"
 
 
-def make_subset(source_repo, modules, destination):
+NEGATIVE = {
+    "failure": ("tests/test_zz_ci_v3_negative_failure.py", "def test_failure_must_stay_a_failure():\n    assert 1 + 1 == 3\n"),
+    "unapproved-skip": ("tests/test_zz_ci_v3_negative_skip.py", "import pytest\n\n\ndef test_unapproved_skip():\n    pytest.skip('unapproved runtime skip')\n"),
+}
+
+
+def make_subset(source_repo, modules, destination, inject=None):
     """Commit a derived project (full Git history, every file kept) whose tests/conftest.py ignores all
     other test modules at collection. Files stay present so imports and repository-citation tests resolve."""
     destination = Path(destination)
@@ -34,6 +40,9 @@ def make_subset(source_repo, modules, destination):
     git = ["git", "-C", str(destination), "-c", "user.name=ci", "-c", "user.email=ci@invalid"]
     existing = {p.relative_to(destination).as_posix() for p in (destination / "tests").glob("test_*.py")}
     require(set(modules) <= existing, "subset module missing")
+    if inject:   # synthetic negative-control test, present only in the derived subset commit
+        name, body = inject
+        (destination / name).write_text(body, encoding="utf-8"); existing.add(name); modules = [*modules, name]
     ignored = sorted(existing - set(modules))
     conftest = destination / "tests/conftest.py"
     conftest.write_text(conftest.read_text(encoding="utf-8") + "\n\n# bounded validation subset only\ncollect_ignore = [p.split('/', 1)[1] for p in " + repr(ignored) + "]\n", encoding="utf-8")
@@ -114,11 +123,31 @@ def validate(project, image, work):
     return summary
 
 
+def negative_control(source, image, work, modules, kind):
+    """Real containers must REJECT a deliberately failing / unapproved-skip test; returns the observed rejection."""
+    work = Path(work); work.mkdir(parents=True, exist_ok=False)
+    project = make_subset(source, modules, work / "subset", NEGATIVE[kind])
+    try:
+        validate(project, image, work / "run")
+    except ContractError as exc:
+        receipts = {w: read_json(p)["observation"] for w in ("worker-0", "worker-1", "worker-2")
+                    if (p := work / "run/payloads" / w / "receipt.json").exists()}
+        failed = sorted(w for w, o in receipts.items() if not o["normal_successful_exit"])
+        result = {"control": kind, "rejected": True, "reason": str(exc), "workers_not_normal": failed,
+                  "container_removed": all(o["container_removed"] for o in receipts.values()),
+                  "pytest_codes": {w: (o["pytest_return"] or {}).get("code") for w, o in receipts.items()}}
+        write_json(work / "negative-control.json", result)
+        return result
+    raise ContractError("negative control was ACCEPTED: " + kind)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True); parser.add_argument("--image", required=True); parser.add_argument("--work", required=True)
-    parser.add_argument("--module", action="append", required=True)
+    parser.add_argument("--module", action="append", required=True); parser.add_argument("--negative", choices=sorted(NEGATIVE))
     args = parser.parse_args(argv)
+    if args.negative:
+        print(json.dumps(negative_control(args.source, args.image, args.work, args.module, args.negative), indent=1)); return 0
     work = Path(args.work); work.mkdir(parents=True, exist_ok=False)
     project = make_subset(args.source, args.module, work / "subset")
     print(json.dumps(validate(project, args.image, work / "run"), indent=1)); return 0
