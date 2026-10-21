@@ -9,7 +9,6 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import json
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -28,25 +27,16 @@ REVIEW = "BOUNDED LOCAL CONTAINER VALIDATION ONLY - not an owner isolation appro
 
 
 def make_subset(source_repo, modules, destination):
-    """Commit a derived project (full Git history kept) containing only the named test modules,
-    every test module referenced by name from them, and every non-test helper."""
+    """Commit a derived project (full Git history, every file kept) whose tests/conftest.py ignores all
+    other test modules at collection. Files stay present so imports and repository-citation tests resolve."""
     destination = Path(destination)
     subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(source_repo), str(destination)], check=True)
     git = ["git", "-C", str(destination), "-c", "user.name=ci", "-c", "user.email=ci@invalid"]
-    existing = {p.stem for p in (destination / "tests").glob("test_*.py")}
-    keep, pending = set(), list(modules)
-    for helper in (p for p in (destination / "tests").rglob("*.py") if not p.name.startswith("test_")):  # helpers import test modules too
-        pending += [f"tests/{n}.py" for n in set(re.findall(r"test_\w+", helper.read_text(encoding="utf-8", errors="replace"))) & existing]
-    while pending:
-        name = pending.pop()
-        if name in keep:
-            continue
-        keep.add(name)
-        for found in set(re.findall(r"test_\w+", (destination / name).read_text(encoding="utf-8"))) & existing:
-            pending.append(f"tests/{found}.py")
-    for path in (destination / "tests").glob("test_*.py"):
-        if path.relative_to(destination).as_posix() not in keep:
-            path.unlink()
+    existing = {p.relative_to(destination).as_posix() for p in (destination / "tests").glob("test_*.py")}
+    require(set(modules) <= existing, "subset module missing")
+    ignored = sorted(existing - set(modules))
+    conftest = destination / "tests/conftest.py"
+    conftest.write_text(conftest.read_text(encoding="utf-8") + "\n\n# bounded validation subset only\ncollect_ignore = [p.split('/', 1)[1] for p in " + repr(ignored) + "]\n", encoding="utf-8")
     subprocess.run([*git, "add", "-A"], check=True); subprocess.run([*git, "commit", "-q", "-m", "bounded validation subset"], check=True)
     return destination
 
