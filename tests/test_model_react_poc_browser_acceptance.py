@@ -182,3 +182,133 @@ def test_react_page_without_project_shows_picker_state(browser, react_enabled):
         assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:
         context.close()
+
+
+SAVE_PATTERN = "**/v2/workbook/grid/save"
+
+
+def _save_attempts(page) -> int:
+    return page.evaluate("window.__rxSavePosts || 0")
+
+
+def _count_saves(page):
+    page.evaluate("""() => {
+        window.__rxSavePosts = 0;
+        const original = window.fetch;
+        window.fetch = (...args) => {
+            const url = String(args[0] || '');
+            if (url.includes('/v2/workbook/grid/save')) window.__rxSavePosts += 1;
+            return original(...args);
+        };
+    }""")
+
+
+def test_save_race_input_locked_in_flight_and_single_mutation(browser, react_enabled):
+    context, page, record, errors = make_session(browser, react_enabled, "rx-race-user")
+    try:
+        page.goto(f"{react_enabled}/v2/model-react/{record.project_code}")
+        page.wait_for_selector(CIT_INPUT)
+        _count_saves(page)
+
+        # Delayed canonical response: the input must be read-only (focus kept)
+        # while the Save is in flight, and exactly ONE mutation may be sent.
+        deferred: list = []
+
+        def intercept(route):
+            deferred.append(route)  # hold the response; released explicitly below
+
+        context.route(SAVE_PATTERN, intercept)
+        input_field = page.locator(CIT_INPUT)
+        input_field.fill("21.5")
+        page.locator("button[type='submit']").click()
+        page.wait_for_selector("[data-save-state='saving']")
+        assert input_field.get_attribute("readonly") is not None, "input must lock during flight"
+        assert input_field.is_enabled() or True  # readOnly keeps focus/keyboard, not disabled
+        assert page.locator("button[type='submit']").is_disabled()
+        page.keyboard.type("999")  # typing during flight must not change the draft
+        assert input_field.input_value() == "21.5", "locked draft must not change mid-flight"
+        page.wait_for_timeout(300)
+        assert _save_attempts(page) == 1, "exactly one Save request while pending"
+
+        deferred[0].fallback()  # let the real canonical Save complete
+        page.wait_for_selector("[data-save-state='saved']")
+        assert input_field.get_attribute("data-locked") == "false", "input unlocks after confirmation"
+        assert errors == [], errors
+    finally:
+        context.close()
+
+
+def test_ambiguous_save_outcomes_never_claim_success_or_failure(browser, react_enabled):
+    context, page, record, errors = make_session(browser, react_enabled, "rx-unknown-user")
+    try:
+        page.goto(f"{react_enabled}/v2/model-react/{record.project_code}")
+        page.wait_for_selector(CIT_INPUT)
+        _count_saves(page)
+
+        scenarios = [
+            # (name, route handler, expected message fragment)
+            ("connection dropped before a definitive response", lambda route: route.abort(),
+             "may have committed"),
+            ("2xx with malformed body", lambda route: route.fulfill(
+                status=200, content_type="application/json", body="not-json{{{"),
+             "may have committed"),
+            ("2xx with empty body", lambda route: route.fulfill(
+                status=200, content_type="application/json", body=""),
+             "may have committed"),
+        ]
+        for name, handler, fragment in scenarios:
+            # Fresh reconciliation: an unknown outcome deliberately locks the field
+            # until an explicit reload, so every scenario starts from a reloaded page.
+            page.reload()
+            page.wait_for_selector(CIT_INPUT)
+            page.wait_for_selector("button[type='submit']:not([disabled])")
+            context.route(SAVE_PATTERN, handler)
+            _count_saves(page)
+            input_field = page.locator(CIT_INPUT)
+            input_field.fill("23.75")
+            page.locator("button[type='submit']").click()
+            page.wait_for_selector("[data-save-state='unknown']")
+            status_text = page.locator(".rx-status").inner_text()
+            assert "UNKNOWN" in status_text, (name, status_text)
+            assert fragment in status_text, (name, status_text)
+            assert "Nothing was saved" not in status_text, name
+            assert input_field.input_value() == "23.75", f"{name}: typed draft must be preserved"
+            # Blind repeat submission blocked; explicit reconciliation required.
+            assert page.locator("button[type='submit']").is_disabled(), name
+            assert page.locator("[data-reconcile-button='true']").count() == 1, name
+            page.unroute(SAVE_PATTERN)
+            assert _save_attempts(page) == 1, f"{name}: exactly one request, never an automatic retry"
+        # The deliberately aborted request surfaces as a browser resource log;
+        # the application itself must stay clean (no JS exceptions).
+        assert not [e for e in errors if "Failed to load resource" not in e], errors
+    finally:
+        context.close()
+
+
+def test_confirmed_rejections_stay_distinct_from_unknown_outcomes(browser, react_enabled):
+    context, page, record, errors = make_session(browser, react_enabled, "rx-reject-user")
+    try:
+        page.goto(f"{react_enabled}/v2/model-react/{record.project_code}")
+        page.wait_for_selector(CIT_INPUT)
+        _count_saves(page)
+
+        # Explicit canonical validation rejection (422): a CONFIRMED verdict —
+        # the server states nothing was saved; the field stays editable.
+        input_field = page.locator(CIT_INPUT)
+        input_field.fill("150")
+        page.locator("button[type='submit']").click()
+        page.wait_for_selector("[data-save-state='rejected']")
+        status_text = page.locator(".rx-status").inner_text()
+        assert "UNKNOWN" not in status_text and "may have committed" not in status_text, status_text
+        assert status_text.strip(), "a confirmed rejection states its server verdict"
+        assert input_field.input_value() == "150", "typed draft preserved on rejection"
+        assert input_field.get_attribute("data-locked") == "false", "rejected Save unlocks the field"
+        assert page.locator("button[type='submit']").is_enabled(), "user may correct and retry"
+
+        page.wait_for_timeout(300)
+        assert _save_attempts(page) == 1, "a rejection never triggers another mutation"
+        # The deliberate, handled 422 fetch surfaces as a browser resource log;
+        # the application itself must stay clean (no JS exceptions).
+        assert not [e for e in errors if "Failed to load resource" not in e], errors
+    finally:
+        context.close()

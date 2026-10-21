@@ -66,6 +66,20 @@ Docs: this directory (`docs/react_migration/`).
 - STALE is shown as a badge plus an explicit banner.
 - Stale CAS conflict (409) → explicit "Reload required" state; no blind retry;
   the typed value is preserved on every failed Save.
+- **Correction A (P0 — ambiguous Save):** a transport outcome that cannot be
+  confirmed (connection failure/drop, 2xx with missing/malformed body, 5xx) is a
+  typed `SAVE_OUTCOME_UNKNOWN`: it never claims success, never claims nothing
+  was saved, keeps the typed draft, blocks blind repeat submission and requires
+  an explicit reload to reconcile with the server (which may have committed).
+  Confirmed canonical verdicts (401/403/409/422 with JSON verdicts — all
+  no-write paths of the canonical route) stay distinct from unknown outcomes.
+  The canonical server remains the only persistence authority; a displayed
+  value is never treated as proof of persistence.
+- **Correction A (P1 — in-flight race):** the input is `readOnly` while a Save
+  is in flight (focus preserved); a stale late response is dropped via a
+  request-sequence + project guard and can never overwrite a newer draft.
+- **Correction A (P2 — canonical naming):** the bootstrap reports
+  `ProjectRecord.project_name` (code only as fallback); pinned by a name≠code test.
 - **Run button deliberately deferred**: the canonical `POST /workbook/run`
   answers HTMX fragments (200 + `X-Finco-Run-Outcome`) or 303 redirects. A thin
   read-only JSON outcome adapter (or form-post + redirect-follow + bootstrap

@@ -171,7 +171,9 @@ async def react_poc_bootstrap(request: Request, project: str):
             "ok": True,
             "react_poc": {"version": REACT_ASSET_VERSION},
             "project": {"code": record.project_code,
-                        "name": getattr(record, "name", None) or record.project_code,
+                        # Canonical display name (ProjectRecord.project_name); the
+                        # code is only the fallback, never a fabricated name.
+                        "name": getattr(record, "project_name", None) or record.project_code,
                         "project_type": getattr(record, "project_type", None) or "",
                         "protected_reference": is_protected_reference(record)},
             "workbook": {"version": WORKBOOK.version,

@@ -158,6 +158,15 @@ def test_bundle_contains_no_runtime_cdn_dependency():
     assert urls == allowed, f"unexpected non-same-origin URLs in bundle: {sorted(urls - allowed)}"
 
 
+def test_bootstrap_reports_canonical_project_name_distinct_from_code(env, monkeypatch):
+    flag_on(monkeypatch)
+    record = env.create(name="Alpha Wind Portfolio 7")
+    assert record.project_name != record.project_code, "fixture must produce a name/code divergence"
+    payload = bootstrap(env, record.project_code)
+    assert payload["project"]["name"] == record.project_name
+    assert payload["project"]["code"] == record.project_code
+
+
 def test_bootstrap_identity_matches_the_legacy_workbook_identity(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
