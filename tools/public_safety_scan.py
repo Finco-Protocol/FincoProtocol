@@ -125,14 +125,37 @@ _APPROVED_PUBLIC_COUNTRY_LITERALS = (
 )
 
 
+# Digest targets pre-decoded to raw bytes: comparing sha256().digest() is
+# equivalent to comparing hexdigest() and skips hex-encoding every window hash.
+_HASH_TARGETS = {
+    length: frozenset(bytes.fromhex(digest) for digest in digests)
+    for length, digests in HASH_GROUPS.items()
+}
+
+# sha256 is a pure function of the window bytes, so identical windows hash once.
+# The cap bounds memo memory on large low-repetition files; past the cap windows
+# hash directly (the original behaviour), so detection results never change.
+_WINDOW_MEMO_LIMIT = 1 << 19
+
+
 def _contains_hashed_term(data: bytes) -> bool:
     low = data.lower()
-    for length, digests in HASH_GROUPS.items():
-        if len(low) < length:
+    n = len(low)
+    sha256 = hashlib.sha256
+    memo: dict[bytes, bytes] = {}
+    memo_get = memo.get
+    view = memoryview(low)
+    for length, targets in _HASH_TARGETS.items():
+        if n < length:
             continue
-        target = set(digests)
-        for i in range(0, len(low) - length + 1):
-            if hashlib.sha256(low[i:i+length]).hexdigest() in target:
+        for i in range(n - length + 1):
+            window = view[i:i + length]
+            digest = memo_get(window)
+            if digest is None:
+                digest = sha256(window).digest()
+                if len(memo) < _WINDOW_MEMO_LIMIT:
+                    memo[bytes(window)] = digest
+            if digest in targets:
                 return True
     return False
 

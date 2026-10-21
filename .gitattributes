@@ -1,1 +1,11 @@
 finco_radar/venues/data/venue_registry_seed.json -text
+
+# The scanner (tools/public_safety_scan.py) pins these vendor assets by exact
+# SHA-256 of the committed blob. Pin -text so working-copy bytes match the blob
+# on every platform (core.autocrlf would otherwise swap the bundle's two LF
+# line endings for CRLF on Windows checkouts and fail the closed hash check).
+# Any real content change still fails the scan: a one-byte difference invalidates
+# the exemption exactly as before.
+static/vendor/swagger-ui/swagger-ui-bundle.js -text
+static/vendor/swagger-ui/swagger-ui.css -text
+static/vendor/swagger-ui/favicon-32x32.png -text
