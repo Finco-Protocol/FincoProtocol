@@ -1,4 +1,6 @@
 """Standalone-evidence classification never approves, drops or relaxes a module."""
+import json
+
 import pytest
 
 from tools.ci_v3_classify import classify, load_probe
@@ -23,7 +25,7 @@ def test_pass_is_proposal_only_and_helpers_are_explicit():
 
 
 @pytest.mark.parametrize("change,category", [({"exit_code": 1, "failures": 1}, "standalone-failure"), ({"timed_out": True, "exit_code": None}, "standalone-failure"),
-    ({"skipped": 1}, "coverage-mismatch"), ({"tests": 1}, "coverage-mismatch")])
+    ({"skipped": 1}, "nonpass-approval-required"), ({"tests": 1}, "coverage-mismatch")])
 def test_non_clean_standalone_blocks(change, category):
     proposal, summary = classify(prepared(), {"tests/test_a.py": result("tests/test_a.py", **change), "tests/test_b.py": result("tests/test_b.py", tests=1)})
     assert proposal["modules"]["tests/test_a.py"]["category"] == category and summary["unresolved_blocking_admission"] == 1
@@ -35,3 +37,13 @@ def test_missing_evidence_blocks_and_duplicates_reject(tmp_path):
     (tmp_path / "results.jsonl").write_text('{"module": "m"}\n{"module": "m"}\n')
     with pytest.raises(ContractError):
         load_probe(tmp_path)
+
+
+def test_uncontended_rerun_supersedes_but_keeps_first_attempt(tmp_path):
+    (tmp_path / "results.jsonl").write_text(json.dumps(result("tests/test_a.py")) + "\n")
+    (tmp_path / "r").mkdir(); (tmp_path / "r/results.jsonl").write_text(json.dumps(result("tests/test_a.py")) + "\n")
+    probe = load_probe(tmp_path, reruns=[tmp_path / "r"])
+    assert probe["tests/test_a.py"]["first_attempt"]["module"] == "tests/test_a.py"
+    bad = {"tests/test_a.py": {**result("tests/test_a.py"), "first_attempt": result("tests/test_a.py", exit_code=1)}, "tests/test_b.py": result("tests/test_b.py", tests=1)}
+    proposal, _ = classify(prepared(), bad)
+    assert proposal["modules"]["tests/test_a.py"]["category"] == "load-sensitive-pass"
