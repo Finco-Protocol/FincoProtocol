@@ -942,11 +942,14 @@ def _run_with_construction_idc(
         # OD-R final authority is established only now: outer convergence, the unfunded
         # invariant, the verification G2A, idempotence and the opening-SHL identity have
         # all succeeded. Before this point any failure keeps its own (numerical) error.
+        # Both are bound to the financing state this owner returns (its final model result).
         _odr_attempt.absorb_g2a(
             _odr_inner_evidence, final=True, role="CONSTRUCTION_RETURNED_G2A",
+            state=inner_result.project_model_result,
         )
         _odr_attempt.absorb_g2a(
             _odr_verify_evidence, final=True, role="CONSTRUCTION_VERIFICATION_G2A",
+            state=inner_result.project_model_result,
         )
 
     return ProjectFinancingResult(
@@ -1584,7 +1587,7 @@ def run_project_financing_model(
     if _odr_evidence is not None and _shl_maturity_evidence is None:
         # No owner above classifies this invocation: once its post-convergence validations
         # have succeeded, its converged passes are final.
-        _odr_attempt.absorb_g2a(_odr_evidence, final=True, role="G2A")
+        _odr_attempt.absorb_g2a(_odr_evidence, final=True, role="G2A", state=model_result)
     return ProjectFinancingResult(
         project_model_result=model_result,
         project_uses=uses,

@@ -782,7 +782,9 @@ def run_project_shareholder_waterfall_model(
                     maturity_context=_odr_waterfall_context,
                 )
                 if _odr_attempt is not None:
-                    _odr_attempt.record_final_waterfall(_odr_waterfall_context.ledger.first())
+                    _odr_attempt.record_final_waterfall(
+                        _odr_waterfall_context.ledger.first(), state=model_result,
+                    )
                 # SHL schedule axis must match the full canonical period axis (Rule 4).
                 expected_shl_axis: tuple[int, ...] = expected_full_axis
                 for label, values, target in (

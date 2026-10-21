@@ -156,6 +156,17 @@ class G2aShlMaturityEvidence:
 
 
 WATERFALL_FINAL_CHECK = "WATERFALL.FINAL_SHL_SCHEDULE"
+FINAL_EVIDENCE_MISSING = "ODR_FINAL_EVIDENCE_MISSING"
+FINAL_EVIDENCE_DUPLICATE = "ODR_FINAL_EVIDENCE_DUPLICATE"
+FINAL_EVIDENCE_CONTRADICTORY = "ODR_FINAL_EVIDENCE_CONTRADICTORY"
+FINAL_EVIDENCE_UNBOUND = "ODR_FINAL_EVIDENCE_UNBOUND"
+FINALIZATION_REPEATED = "ODR_FINALIZATION_REPEATED"
+CONSTRUCTION_G2A_ROLES = ("CONSTRUCTION_RETURNED_G2A", "CONSTRUCTION_VERIFICATION_G2A")
+TOP_LEVEL_G2A_ROLES = ("G2A",)
+
+
+class OdrFinalizationError(RuntimeError):
+    """The returned evaluation lacks complete, unambiguous final evidence: never an accepted result."""
 
 
 @dataclass(frozen=True)
@@ -168,14 +179,78 @@ class OdrFinalCheck:
         return self.shortfall is None
 
 
+@dataclass(frozen=True)
+class OdrFinalRequirements:
+    """Which final checks the RETURNED financial state requires, derived from that state alone (never from evidence)."""
+
+    g2a_roles: tuple[str, ...]
+    waterfall_required: bool
+    reason: str
+
+
+def required_final_checks(result) -> OdrFinalRequirements:
+    """Applicability from the actual final financing state.
+
+    * SHL liability exists when the final financing derives a positive SHL cash principal or the final SHL schedule
+      carries any positive drawdown / opening / closing balance (a very small positive amount is still a liability).
+    * Deferred G2A final passes exist only for the canonical derived-SHL/Senior fixed point (exact
+      ``ProjectFinancingResult``) whose final model evaluated an SHL schedule: construction-IDC results need the returned
+      and the verification G2A, other results the top-level G2A. Junior / multi-senior financing never defers: its SHL
+      maturity check is the canonical immediate check on every evaluation.
+    """
+    from financial_engine.financing.contracts import ProjectFinancingResult
+
+    financing = result.financing_result
+    model = financing.project_model_result
+    schedule = getattr(model, "shareholder_loan", None)
+    balances = () if schedule is None else (
+        tuple(schedule.shl_drawdown_keur) + tuple(schedule.shl_opening_keur) + tuple(schedule.shl_closing_keur))
+    liability = financing.derived_shl_cash_principal_keur > 0.0 or any(value > 0.0 for value in balances)
+    if type(financing) is not ProjectFinancingResult:
+        return OdrFinalRequirements((), liability, f"{type(financing).__name__}: canonical immediate SHL check")
+    if schedule is None:
+        return OdrFinalRequirements((), liability, "no SHL schedule in the final model")
+    roles = CONSTRUCTION_G2A_ROLES if financing.construction_financing is not None else TOP_LEVEL_G2A_ROLES
+    return OdrFinalRequirements(roles, liability, "derived-SHL/Senior fixed point")
+
+
+class _BoundEvidence:
+    """Final evidence registered against exactly one evaluated financing state (identity of its final model result)."""
+
+    __slots__ = ("state", "g2a", "waterfall")
+
+    def __init__(self, state) -> None:
+        self.state = state                      # strong reference: the identity cannot be recycled during the attempt
+        self.g2a: dict[str, list[tuple[str, ShlMaturityShortfall | None]]] = {}
+        self.waterfall: list[ShlMaturityShortfall | None] = []
+
+
 class OdrAttempt:
-    """Maturity evidence of ONE complete engine evaluation under OD-R."""
+    """Maturity evidence of ONE complete engine evaluation under OD-R.
+
+    Final checks are bound to the evaluated financing state they validate. ``finalize`` accepts only the checks bound to
+    the state actually returned; checks bound to any other state (superseded U2 / G2A evaluations) are diagnostics.
+    """
 
     def __init__(self) -> None:
         self.provisional_violations: list[tuple[str, ShlMaturityShortfall]] = []
         self.final_checks: list[OdrFinalCheck] = []
+        self._bound: list[_BoundEvidence] = []
+        self._finalized = False
 
-    def absorb_g2a(self, evidence: G2aShlMaturityEvidence, *, final: bool, role: str) -> None:
+    def _evidence_for(self, state) -> _BoundEvidence:
+        if state is None:
+            raise OdrFinalizationError(f"{FINAL_EVIDENCE_UNBOUND}: final evidence must name its evaluated state")
+        if self._finalized:
+            raise OdrFinalizationError(f"{FINALIZATION_REPEATED}: evidence after finalization")
+        for entry in self._bound:
+            if entry.state is state:
+                return entry
+        entry = _BoundEvidence(state)
+        self._bound.append(entry)
+        return entry
+
+    def absorb_g2a(self, evidence: G2aShlMaturityEvidence, *, final: bool, role: str, state=None) -> None:
         if not isinstance(evidence, G2aShlMaturityEvidence):
             raise TypeError("OdrAttempt absorbs G2aShlMaturityEvidence only")
         for site, iteration, shortfall in evidence.provisional_passes:
@@ -184,27 +259,97 @@ class OdrAttempt:
         if final:
             if not evidence.converged:
                 # Final authority exists only for a G2A that converged and recorded its passes.
-                # (A converged G2A without any SHL evaluation has no final pass to check.)
                 raise RuntimeError(f"OD_R_FINAL_G2A_EVIDENCE_INCOMPLETE: {role}")
-            for site, shortfall in evidence.final_passes:
-                self.final_checks.append(OdrFinalCheck(f"{role}.FINAL_{site}", shortfall))
+            entry = self._evidence_for(state)
+            if role in entry.g2a:
+                raise OdrFinalizationError(f"{FINAL_EVIDENCE_DUPLICATE}: {role} registered twice for one state")
+            entry.g2a[role] = list(evidence.final_passes)
         else:
             for site, shortfall in evidence.final_passes:
                 if shortfall is not None:
                     self.provisional_violations.append((f"{role}.CONVERGED.{site}", shortfall))
 
-    def record_final_waterfall(self, shortfall: ShlMaturityShortfall | None) -> None:
-        """The final waterfall SHL schedule's check (contractual SHL schedule of this evaluation)."""
+    def record_final_waterfall(self, shortfall: ShlMaturityShortfall | None, *, state=None) -> None:
+        """The waterfall SHL schedule check computed for the financing state ``state`` (its final model result)."""
         if shortfall is not None and not isinstance(shortfall, ShlMaturityShortfall):
             raise TypeError("record_final_waterfall takes ShlMaturityShortfall or None")
-        self.final_checks.append(OdrFinalCheck(WATERFALL_FINAL_CHECK, shortfall))
+        self._evidence_for(state).waterfall.append(shortfall)
 
     def demote(self, role: str) -> None:
         """This whole evaluation was superseded (non-final DSRA iteration): all of it is provisional."""
-        for check in self.final_checks:
-            if check.shortfall is not None:
-                self.provisional_violations.append((f"{role}.{check.name}", check.shortfall))
+        for entry in self._bound:
+            for g2a_role, passes in entry.g2a.items():
+                for site, shortfall in passes:
+                    if shortfall is not None:
+                        self.provisional_violations.append((f"{role}.{g2a_role}.FINAL_{site}", shortfall))
+            for shortfall in entry.waterfall:
+                if shortfall is not None:
+                    self.provisional_violations.append((f"{role}.{WATERFALL_FINAL_CHECK}", shortfall))
+        self._bound = []
         self.final_checks = []
+
+    def finalize(self, result) -> OdrFinalRequirements:
+        """Decide the returned evaluation exactly once, before it can be returned.
+
+        Economic breaches at required final checks raise the canonical maturity error; otherwise missing, contradictory
+        or unbound final evidence raises ``OdrFinalizationError``. Absence of evidence never establishes inapplicability.
+        """
+        if self._finalized:
+            raise OdrFinalizationError(f"{FINALIZATION_REPEATED}: an evaluation is finalized once")
+        self._finalized = True
+        requirements = required_final_checks(result)
+        state = result.financing_result.project_model_result
+        returned = None
+        for entry in self._bound:
+            if entry.state is state:
+                returned = entry
+                continue
+            # Evidence of another (superseded) financing evaluation within this attempt is diagnostic only.
+            for g2a_role, passes in entry.g2a.items():
+                for site, shortfall in passes:
+                    if shortfall is not None:
+                        self.provisional_violations.append((f"SUPERSEDED.{g2a_role}.FINAL_{site}", shortfall))
+            for shortfall in entry.waterfall:
+                if shortfall is not None:
+                    self.provisional_violations.append((f"SUPERSEDED.{WATERFALL_FINAL_CHECK}", shortfall))
+        returned = returned or _BoundEvidence(state)
+        checks: list[OdrFinalCheck] = []
+        missing: list[str] = []
+        # A registered G2A that evaluated SHL passes for a state that needs none contradicts the final state; a converged
+        # G2A without any SHL pass (no SHL in its model) is consistent with an inapplicable check.
+        contradictory = sorted(role for role, passes in returned.g2a.items()
+                               if passes and role not in requirements.g2a_roles)
+        for role in requirements.g2a_roles:
+            passes = returned.g2a.get(role)
+            if passes is None:
+                missing.append(f"{role}.FINAL_CAPACITY")
+                missing.append(f"{role}.FINAL_FUNDED_OR_STRICT")
+                continue
+            sites = [site for site, _ in passes]
+            if sites.count("CAPACITY") != 1:
+                (missing if "CAPACITY" not in sites else contradictory).append(f"{role}.FINAL_CAPACITY")
+            funded = [site for site in sites if site in ("FUNDED", "STRICT")]
+            if len(funded) != 1:
+                (missing if not funded else contradictory).append(f"{role}.FINAL_FUNDED_OR_STRICT")
+            checks += [OdrFinalCheck(f"{role}.FINAL_{site}", shortfall) for site, shortfall in passes]
+        if requirements.waterfall_required:
+            if not returned.waterfall:
+                missing.append(WATERFALL_FINAL_CHECK)
+            # Repeated evaluations of the same returned state must all pass; any breach is decisive.
+            checks += [OdrFinalCheck(WATERFALL_FINAL_CHECK, shortfall) for shortfall in returned.waterfall]
+        elif returned.waterfall:
+            contradictory.append(f"{WATERFALL_FINAL_CHECK} recorded for a state without SHL liability")
+        self.final_checks = checks
+        error = self.final_failure_error()
+        if error is not None:
+            raise error
+        if contradictory:
+            raise OdrFinalizationError(f"{FINAL_EVIDENCE_CONTRADICTORY}: {', '.join(contradictory)}")
+        if missing:
+            raise OdrFinalizationError(
+                f"{FINAL_EVIDENCE_MISSING}: {', '.join(missing)} (required by the returned state: {requirements.reason}; "
+                f"shl_liability={requirements.waterfall_required})")
+        return requirements
 
     def first_final_failure(self) -> OdrFinalCheck | None:
         return next((c for c in self.final_checks if not c.passed), None)
@@ -245,13 +390,11 @@ class OdrMaturityEvidence:
         }
 
 
-def summarize(final: OdrAttempt, superseded: "list[OdrAttempt]") -> OdrMaturityEvidence:
-    if final.first_final_failure() is not None:
-        raise RuntimeError("OD_R_EVIDENCE_REQUESTED_FOR_REJECTED_STATE")
-    waterfall = (
-        "PASSED" if any(c.name == WATERFALL_FINAL_CHECK for c in final.final_checks)
-        else "NOT_APPLICABLE_NO_SHL"
-    )
+def summarize(final: OdrAttempt, superseded: "list[OdrAttempt]",
+              requirements: OdrFinalRequirements) -> OdrMaturityEvidence:
+    """Evidence of a FINALIZED, accepted evaluation. The waterfall label follows the established applicability."""
+    if not final._finalized or final.first_final_failure() is not None:
+        raise RuntimeError("OD_R_EVIDENCE_REQUESTED_FOR_UNFINALIZED_OR_REJECTED_STATE")
     provisional = [s for a in superseded for _, s in a.provisional_violations]
     provisional += [s for _, s in final.provisional_violations]
     return OdrMaturityEvidence(
@@ -259,7 +402,7 @@ def summarize(final: OdrAttempt, superseded: "list[OdrAttempt]") -> OdrMaturityE
         provisional_violation_count=len(provisional),
         max_provisional_shortfall_keur=max((s.closing_keur for s in provisional), default=0.0),
         final_checks_performed=tuple(c.name for c in final.final_checks),
-        final_waterfall_check=waterfall,
+        final_waterfall_check="PASSED" if requirements.waterfall_required else "NOT_APPLICABLE_NO_SHL",
         superseded_attempts=len(superseded),
     )
 
@@ -297,6 +440,7 @@ __all__ = [
     "SHL_MATURITY_ERROR_CODE", "SHL_MATURITY_POLICY_CANONICAL", "SHL_MATURITY_POLICY_OD_R",
     "SHL_MATURITY_POLICIES", "ShlMaturityAuthority", "ShlMaturityShortfall",
     "ShlMaturityLedger", "ShlMaturityContext", "shl_maturity_residual_error",
-    "G2aShlMaturityEvidence", "WATERFALL_FINAL_CHECK", "OdrFinalCheck", "OdrAttempt", "OdrMaturityEvidence",
+    "G2aShlMaturityEvidence", "WATERFALL_FINAL_CHECK", "OdrFinalCheck", "OdrFinalRequirements",
+    "OdrFinalizationError", "required_final_checks", "OdrAttempt", "OdrMaturityEvidence",
     "summarize", "current_attempt", "odr_attempt",
 ]

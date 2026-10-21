@@ -333,21 +333,20 @@ def run_with_generic_financing_policy(
         with odr_attempt(attempt):
             return run(applied_inputs), attempt
 
-    def accept(attempt, evidence: FinancingPolicyEvidence):
-        """Final authority: reject before returning, then attach the decision path."""
+    def accept(result, attempt, evidence: FinancingPolicyEvidence):
+        """Final authority: finalize the returned evaluation (complete, bound, passing final evidence for the
+        checks its actual final state requires) before returning, then attach the decision path."""
         if not odr:
             return evidence
-        error = attempt.final_failure_error()
-        if error is not None:
-            raise error
+        requirements = attempt.finalize(result)
         return OdrFinancingPolicyEvidence(
-            *dc.astuple(evidence), shl_maturity=_summarize_odr(attempt, superseded),
+            *dc.astuple(evidence), shl_maturity=_summarize_odr(attempt, superseded, requirements),
         )
 
     applied, construction_on, dsra_on = apply_generic_financing_policy(pi, policy)
     if not dsra_on:
         result, attempt = evaluate(applied)
-        return result, applied, accept(attempt, FinancingPolicyEvidence(
+        return result, applied, accept(result, attempt, FinancingPolicyEvidence(
             POLICY_AUTHORITY, construction_on, False, 0.0, 0, 0.0))
 
     multiplier = int(pi.financing.dsra_months) * _PERIODS_PER_YEAR / 12.0
@@ -365,7 +364,7 @@ def run_with_generic_financing_policy(
         target = _peak_forward_debt_service_keur(result) * multiplier
         residual = abs(target - funding)
         if residual <= policy.dsra_tolerance_keur:
-            return result, applied, accept(attempt, FinancingPolicyEvidence(
+            return result, applied, accept(result, attempt, FinancingPolicyEvidence(
                 POLICY_AUTHORITY, construction_on, True, funding, iteration, residual))
         if attempt is not None:
             # Superseded by the next DSRA iteration: its final checks become diagnostics.

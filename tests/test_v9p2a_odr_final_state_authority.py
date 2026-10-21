@@ -225,12 +225,12 @@ def _inject_final(monkeypatch, sites, roles=None):
     original = ma.OdrAttempt.absorb_g2a
     injected = []
 
-    def absorb(self, evidence, *, final, role):
+    def absorb(self, evidence, *, final, role, **bound):
         if final and (roles is None or role in roles):
             evidence.final_passes = [
                 (site, INJECTED if site in sites else shortfall) for site, shortfall in evidence.final_passes]
             injected.append(role)
-        return original(self, evidence, final=final, role=role)
+        return original(self, evidence, final=final, role=role, **bound)
 
     monkeypatch.setattr(ma.OdrAttempt, "absorb_g2a", absorb)
     return injected
@@ -325,11 +325,11 @@ def test_breach_injected_only_into_superseded_g2a_stays_provisional(entries, mon
     original = ma.OdrAttempt.absorb_g2a
     seen = []
 
-    def absorb(self, evidence, *, final, role):
+    def absorb(self, evidence, *, final, role, **bound):
         if not final:
             evidence.final_passes = [(site, INJECTED) for site, _ in evidence.final_passes]
             seen.append(role)
-        return original(self, evidence, final=final, role=role)
+        return original(self, evidence, final=final, role=role, **bound)
 
     monkeypatch.setattr(ma.OdrAttempt, "absorb_g2a", absorb)
     result = _run(entries, ADMITTED, "odr")
@@ -364,7 +364,7 @@ def test_final_waterfall_breach_rejects_through_the_real_predicate(entries, monk
 
 def test_waterfall_breach_in_superseded_dsra_attempt_is_provisional():
     attempt = ma.OdrAttempt()
-    attempt.record_final_waterfall(INJECTED)
+    attempt.record_final_waterfall(INJECTED, state=object())
     attempt.demote("DSRA_ITER1")
     assert attempt.first_final_failure() is None
     assert attempt.provisional_violations == [(f"DSRA_ITER1.{ma.WATERFALL_FINAL_CHECK}", INJECTED)]
@@ -464,7 +464,7 @@ def test_an_exception_escaping_an_evaluation_is_never_reclassified():
     validation = RuntimeError("PR9_OUTER_G2A_IDEMPOTENCE_FAILED: residual=1.0 kEUR")
     with pytest.raises(RuntimeError) as info:
         with ma.odr_attempt(attempt):
-            attempt.absorb_g2a(evidence, final=True, role="G2A")
+            attempt.absorb_g2a(evidence, final=True, role="G2A", state=object())
             raise validation
     assert info.value is validation and info.value.__cause__ is None
     with pytest.raises(RuntimeError, match="downstream failure"):
@@ -476,10 +476,10 @@ def test_an_exception_escaping_an_evaluation_is_never_reclassified():
 def test_final_authority_requires_a_converged_g2a():
     with pytest.raises(RuntimeError, match="OD_R_FINAL_G2A_EVIDENCE_INCOMPLETE"):
         ma.OdrAttempt().absorb_g2a(ma.G2aShlMaturityEvidence(), final=True, role="G2A")
-    with pytest.raises(RuntimeError, match="OD_R_EVIDENCE_REQUESTED_FOR_REJECTED_STATE"):
+    with pytest.raises(RuntimeError, match="OD_R_EVIDENCE_REQUESTED_FOR_UNFINALIZED_OR_REJECTED_STATE"):
         attempt = ma.OdrAttempt()
         attempt.final_checks.append(ma.OdrFinalCheck("G2A.FINAL_CAPACITY", INJECTED))
-        ma.summarize(attempt, [])
+        ma.summarize(attempt, [], ma.OdrFinalRequirements(("G2A",), True, "unit"))
 
 
 def test_strict_resolve_replaces_the_funded_pass_as_final():
