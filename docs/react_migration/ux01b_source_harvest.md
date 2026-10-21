@@ -10,7 +10,7 @@ branch — never `main`.
 |---|---|
 | Package | `finco-react-transfer-rc1.zip` (owner-supplied, Replit "GoldenNiceConsultant" project) |
 | SHA-256 | `3b205723dea75383238036e99a7f65a6ee7f7826b15c0ea9a5794356893e159d` |
-| Integrity | `unzip -t` clean; 69 files; **no** `node_modules`, no compiled bundles, no screenshots, no git metadata, no secrets |
+| Integrity | `unzip -t` clean; **69 actual file members** (`unzip -Z1`: 69 entries, none of them directory entries); no `node_modules`, no compiled bundles, no screenshots, no git metadata, no secrets. The often-quoted "70 members" is an artifact of `unzip -l` column output: one long filename (the 123 KB browser-smoke script) wraps onto a second line, inflating the data-line count by one. 37 of the 69 files are code under `src/components/mockups/finco-model/`, harvested 1:1 into `frontend/src/finco/` |
 | Origin revision | workspace `26ade41` (`main`), per the package's own completion report |
 | Docs preserved verbatim | `docs/react_migration/replit_source/` (report, harvest manifest, integration readiness, component handoff, coverage, browser acceptance, transfer progress + the `_workbook` sub-docs) |
 | Runtime dependencies of the FINCO subtree | **`react` only** (18× imports); every hook used is React-18 compatible (`useState/useEffect/useMemo/useRef/useCallback/useId`) |

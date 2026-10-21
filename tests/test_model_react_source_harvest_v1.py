@@ -128,6 +128,25 @@ def test_production_bundle_contains_no_demo_or_design_state():
         assert marker not in bundle, f"production bundle must not contain {marker!r}"
 
 
+def test_production_module_graph_excludes_harvested_tree():
+    """Import-graph proof (stronger than bundle string markers): the production
+    TypeScript program must not include any file under src/finco or transfer."""
+    import shutil
+    import subprocess
+
+    npx = shutil.which("npx")
+    if not (FRONTEND / "node_modules").is_dir() or npx is None:
+        pytest.skip("frontend toolchain not installed in this environment")
+    result = subprocess.run(
+        [npx, "tsc", "-p", "tsconfig.json", "--noEmit", "--listFiles"],
+        cwd=FRONTEND, capture_output=True, text=True, timeout=600)
+    assert result.returncode == 0, result.stderr[-500:]
+    listed = result.stdout.replace("\\", "/").splitlines()
+    harvested = [line for line in listed
+                 if re.search(r"frontend/(src/finco|transfer)/", line)]
+    assert harvested == [], harvested[:10]
+
+
 def test_production_dependency_surface_unchanged():
     import json
 
