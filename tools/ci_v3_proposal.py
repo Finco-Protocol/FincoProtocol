@@ -33,7 +33,7 @@ def reassess(previous_modules, classification_modules):
     return rows
 
 
-def owner_decisions(summary, nonpass, equivalence, calibration, image):
+def owner_decisions(summary, nonpass, equivalence, calibration, image, threads=()):
     decisions = []
     if nonpass["allowed_nonpass"]:
         decisions.append({"owner": "Financial+CI", "decision": f"approve or reject the exact {len(nonpass['allowed_nonpass'])} runtime skip/xfail records "
@@ -52,12 +52,16 @@ def owner_decisions(summary, nonpass, equivalence, calibration, image):
                           "tests/test_p0a_model_execution.py needs worker cold start <= 0.6 s", "blocking": True})
     if image.get("registry_digest") is None:
         decisions.append({"owner": "Security+CI", "decision": "authorize publication of the execution image and record its registry digest", "blocking": True})
+    if threads:
+        decisions.append({"owner": "Security+CI", "decision": "decide whether to approve these exact daemon threads left alive by application startup ("
+                          + ", ".join(t["name"] for t in threads) + "); without an approved isolation.allowed_daemon_threads entry (reason + approval_reference) "
+                          "every worker that boots the application is rejected by the leak gate", "blocking": True})
     decisions.append({"owner": "Financial", "decision": "acknowledge the disclosed modification of tests/test_golden_flow_correction_b.py "
                       "(isolated precondition fixture; assertions pinned by tests/test_golden_flow_correction_b_guard.py)", "blocking": False})
     return decisions
 
 
-def build(prepared, classification, nonpass, image, environment_equivalence, calibration, previous, image_files):
+def build(prepared, classification, nonpass, image, environment_equivalence, calibration, previous, image_files, threads=()):
     inventory, isolation = prepared["inventory"], classification["proposal"]
     ids = sorted(n["nodeid"] for n in inventory["nodes"])
     require(len(ids) == len(set(ids)), "duplicate node identities")
@@ -76,6 +80,8 @@ def build(prepared, classification, nonpass, image, environment_equivalence, cal
         blockers.append("image not published")
     if calibration is None or not calibration.get("meets_test_assumption"):
         blockers.append("hosted-runner calibration absent or failing")
+    if threads:
+        blockers.append("daemon thread policy not approved")
     blockers += ["no owner has reviewed isolation", "nonpass policy not approved"]
     return bundle, seal({"schema": 1, "kind": "ci-v3-admission-proposal", "authority": "proposal-not-approved", "admission_ready": False,
         "source": inventory["source"], "inventory": {"digest": inventory["digest"], "nodes": len(ids), "node_ids_sha256": sha("\n".join(ids).encode()),
@@ -86,14 +92,16 @@ def build(prepared, classification, nonpass, image, environment_equivalence, cal
                     "coverage_equivalence": nonpass["coverage_equivalence"]},
         "environment_equivalence_digest": environment_equivalence["digest"], "calibration": calibration,
         "previous_unresolved_reassessment": reassess(previous, isolation["modules"]) if previous else [],
-        "owner_decisions": owner_decisions(summary, nonpass, environment_equivalence, calibration, image), "admission_blockers": blockers})
+        "daemon_thread_proposal": {"authority": "proposal-not-approved", "observed_after_pytest_returned": list(threads),
+                                   "active_policy_field": "isolation.allowed_daemon_threads = {name: {reason, approval_reference}}; default empty"},
+        "owner_decisions": owner_decisions(summary, nonpass, environment_equivalence, calibration, image, threads), "admission_blockers": blockers})
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("prepared", "classification", "nonpass-policy", "image-dir", "environment-equivalence", "output"):
         parser.add_argument("--" + name, required=True)
-    parser.add_argument("--calibration"); parser.add_argument("--previous", help="previous module-classification.json")
+    parser.add_argument("--calibration"); parser.add_argument("--observed-threads", help="JSON list of {name, daemon} from a rejected worker's pytest-return.json"); parser.add_argument("--previous", help="previous module-classification.json")
     args = parser.parse_args(argv)
     p, c, i = Path(args.prepared), Path(args.classification), Path(args.image_dir)
     try:
@@ -104,7 +112,8 @@ def main(argv=None):
         calibration = read_json(args.calibration) if args.calibration else None
         bundle, proposal = build(prepared, classification, read_json(args.nonpass_policy), read_json(i / "image.json"),
                                  read_json(args.environment_equivalence), calibration, previous,
-                                 {f.name: sha(f.read_bytes()) for f in sorted(i.iterdir()) if f.is_file()})
+                                 {f.name: sha(f.read_bytes()) for f in sorted(i.iterdir()) if f.is_file()},
+                                 [t for t in json.loads(Path(args.observed_threads).read_text()) if t["daemon"]] if args.observed_threads else ())
     except (ContractError, OSError, KeyError) as exc:
         print("CI_V3_PROPOSAL_REJECTED: " + str(exc)); return 1
     out = Path(args.output); out.mkdir(parents=True, exist_ok=False)

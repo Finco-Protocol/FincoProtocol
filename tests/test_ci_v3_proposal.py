@@ -57,3 +57,13 @@ def test_owner_decisions_include_calibration_and_publication_until_provided():
     prepared, classification, nonpass, image, equivalence = world()
     texts = " ".join(d["decision"] for d in owner_decisions(classification["summary"], nonpass, equivalence, None, image))
     assert "calibrate" in texts and "publication" in texts and "golden_flow" in texts
+
+
+def test_observed_daemon_threads_become_a_blocking_owner_decision_and_stay_unapproved():
+    threads = [{"name": "demo-cleanup", "daemon": True}, {"name": "finco-r-live-snapshot-warmer", "daemon": True}]
+    bundle, proposal = build(*world(), None, None, {}, threads)
+    assert "daemon thread policy not approved" in proposal["admission_blockers"]
+    assert proposal["daemon_thread_proposal"]["observed_after_pytest_returned"] == threads
+    assert "allowed_daemon_threads" not in bundle["isolation"]                 # nothing is enabled by the proposal
+    decision = next(d for d in proposal["owner_decisions"] if "daemon threads" in d["decision"])
+    assert decision["blocking"] and "demo-cleanup" in decision["decision"]
