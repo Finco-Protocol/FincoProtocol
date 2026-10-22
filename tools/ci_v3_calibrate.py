@@ -1,9 +1,10 @@
 """Hardware/start-up calibration. Reads no secrets and runs no test.
 
-`tests/test_p0a_model_execution.py` assumes a cold process-pool worker starts well inside its fixed sleeps
-(2.2 s budget around a 1.5 s calculation, so cold start must stay below 0.7 s). That assumption holds on the hosted
-control runner and not on slower hosts. The cold-start ceiling here is derived from those fixed test sleeps, not
-tuned; a host above it must not be used for a three-worker shadow worker."""
+The original request-relative P0A test left 0.7 s for cold readiness around a 1.5 s workload.
+The cancellation regression now acknowledges actual worker entry before its unchanged 0.4/1.8 s waits.
+Phase 3D retains the separate 0.6 s target-runner readiness requirement: passing the corrected regression
+does not waive this calibration or establish hosted environment equivalence. Local samples are not target
+runner authorization, and a median does not prove tail stability under target load."""
 from __future__ import annotations
 
 import argparse
@@ -13,7 +14,7 @@ import subprocess
 import sys
 import time
 
-COLD_START_CEILING_S = 0.6   # test budget 0.7 s minus margin; derived from tests/test_p0a_model_execution.py sleeps
+COLD_START_CEILING_S = 0.6   # retained pilot readiness contract; no change to the owner admission threshold
 
 _WORKER_PROBE = r"""
 import asyncio, json, sys, time
