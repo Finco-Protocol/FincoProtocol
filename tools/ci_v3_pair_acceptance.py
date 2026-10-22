@@ -16,7 +16,7 @@ from tools.ci_v3_hosted_controller import (STAGES, aggregate, context, load_bund
 from tools.ci_v3_hosted_transport import GitHub, receive, receive_mandatory_control, receive_browser_proof, timestamp
 from tools.ci_v3_phase_compare import compare, control_report
 from tools.ci_v3_real_contract import file_sha
-from tools.ci_v3_schema import ContractError, digest, read_json, require, seal, write_json
+from tools.ci_v3_schema import ContractError, digest, read_json, require, seal, skip_counter, write_json
 
 
 def validate_authorization(value):
@@ -180,6 +180,8 @@ def authenticate_pair(api, auth, auth_path, project, output):
     from tools.ci_v3_phase_compare import phase_map, native_cases
     require(mandatory_report['source']==s['source'] and phase_map(mandatory_report)==phase_map(reports[0]),
             'mandatory/control phase or nonpass equivalence differs')
+    require(skip_counter(mandatory_report['collection']['skips']) == skip_counter(reports[0]['collection']['skips']),
+            'mandatory/control collection skips differ')
     mandatory_native = (output/'mandatory-baseline/public-verification-results/results.xml').read_bytes()
     require(native_cases(mandatory_native,mandatory_report)==native_cases(native[0],reports[0]),
             'mandatory/control native JUnit differs')

@@ -86,3 +86,47 @@ def test_deployed_sequential_uploader_keeps_independent_stable_context(data,tmp_
     metadata['jobs'][-1]['conclusion']='failure'
     with pytest.raises(ContractError):receive_mandatory_control(api,data['root']['repository'],data['root']['source'],
                                     data['auth']['mandatory_sequential_baseline'],tmp_path/'bad-baseline')
+
+
+@pytest.mark.parametrize('change',['identity','reason'])
+def test_mandatory_collection_skip_substitution_rejected(data,tmp_path,monkeypatch,change):
+    # Authenticated fixture transport remains real. Alter only mandatory skip
+    # evidence at the comparison boundary; regenerate its native case/process
+    # hash and original mandatory proof so those independent checks still pass.
+    import os
+    import xml.etree.ElementTree as ET
+    from tools.ci_v3_schema import read_json,write_json
+    from tools.ci_v3_real_contract import file_sha
+    from tools.ci_v3_phase_compare import control_report,native_cases
+    from tools.ci_single_gate import verify_control
+    original_receive=pair.receive_mandatory_control
+    def receive(*args,**kwargs):
+        result=original_receive(*args,**kwargs)
+        directory=args[-1]; folder=directory/'public-verification-results'
+        inventory=read_json(folder/'inventory.json')
+        skips=inventory['collection_skip_records']
+        assert skips  # real tiny synthetic project has a collection skip
+        record=dict(skips[0])
+        if change=='identity':record['nodeid']='tests/test_changed_collection.py'
+        else:record['reason']='changed mandatory-only collection reason'
+        skips[0]=record
+        inventory['collection_skips']=skips
+        write_json(folder/'inventory.json',inventory)
+        xml=ET.parse(folder/'results.xml')
+        case=next(c for c in xml.getroot().iter('testcase') if not c.get('classname'))
+        if change=='identity':case.set('name',record['nodeid'].removesuffix('.py').replace('/','.'))
+        case.find('skipped').set('message',record['reason'])
+        xml.write(folder/'results.xml',encoding='utf-8')
+        native_cases((folder/'results.xml').read_bytes(),control_report(inventory))
+        process=read_json(folder/'process.json');process['junit_sha256']=file_sha(folder/'results.xml')
+        write_json(folder/'process.json',process)
+        old=os.getcwd()
+        try:
+            os.chdir(data['project'])
+            proof=verify_control(directory.resolve(),data['root']['source']['head'],'success','success')
+        finally:os.chdir(old)
+        write_json(directory/'public-shadow-proof/public-single-proof.json',proof)
+        return result
+    monkeypatch.setattr(pair,'receive_mandatory_control',receive)
+    with pytest.raises(ContractError,match='mandatory/control collection skips differ'):
+        pair.authenticate_pair(data['api'],data['auth'],data['auth_path'],data['project'],tmp_path/'rejected')
