@@ -154,12 +154,20 @@ def validate(project, image, work, inventory_mutation=None, tamper=(), allowed_t
                                             "approval_reference": REVIEW} for n in allowed_threads}} if allowed_threads else {})})
     bundle = {"inventory": inventory, "policy": policy, "weights": weights, "environment": environment, "isolation": isolation}
     root = {"schema": 3, "kind": "ci-v3-hosted-admission", "enabled": True, "review_reference": REVIEW,
+        "execution_mode": "shadow", "target_calibration": {"ceiling_s": .6, "statistic": "maximum", "samples": 3},
         "owner_decisions": ["Financial", "Security", "CI"], "experiment_pairs": 1, "workers": 3, "run_id": RUN, "run_attempt": ATTEMPT,
         "repository": inventory["repository"], "source": inventory["source"], "controller_head": "a" * 40, "controller_tree": "b" * 40,
         "workflow_head": "c" * 40, "workflow_path": ".github/workflows/ci_v3_shadow.yml", "workflow_sha256": sha(WORKFLOW), "image": image,
         "pr_number": None, "merge_proof": {"mode": "main-head", "merge_sha": None, "merge_tree": None}, "controller_files_sha256": {},
         "bundle": {"repository": inventory["repository"], "revision": "e" * 40,
                    "files": {n: {"path": n + ".json", "sha256": sha(canonical_bytes(v))} for n, v in bundle.items()}}}
+    root['nonpass_owner_decisions']={'source':inventory['source'],'records':{
+        node:{'record':record,'Financial':'SYNTHETIC LOCAL VALIDATION ONLY','CI':'SYNTHETIC LOCAL VALIDATION ONLY'}
+        for node,record in policy['allowed_nonpass'].items()}}
+    root['budget_authorization']={'approved': True, 'review_reference': REVIEW, 'source':inventory['source'],
+        'control_run_id':RUN+1,'control_attempt':ATTEMPT,'shadow_run_id':RUN,'shadow_attempt':ATTEMPT,
+        'shadow_max_minutes':350,'control_max_minutes':230,'pair_max_minutes':590,
+        'ancillary_accounting':'separately-authorized','ancillary_max_minutes':0,'ancillary_review_reference':REVIEW}
     root_sha = sha(canonical_bytes(root)); payloads = work / "payloads"
     run_plan(root, root_sha, bundle, project, payloads / "plan", RUN, ATTEMPT); marks["plan"] = time.perf_counter()
     api, anchors = build_api(root, {"plan": payloads / "plan"})

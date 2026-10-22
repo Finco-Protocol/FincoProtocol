@@ -102,7 +102,7 @@ def copy_tracked_source(project, sandbox):
 
 def observe_container(request, directory, project, image, timeout_s, local_review=False):
     require(sys.platform == "linux", "hosted test execution requires Linux; no insecure fallback")
-    require(type(timeout_s) is int and 1 <= timeout_s <= 5400, "hosted timeout out of bounds")
+    require(type(timeout_s) is int and 1 <= timeout_s <= (12600 if request.get("worker") == "control" else 5400), "hosted timeout out of bounds")
     if local_review:
         require(request["context"].get("run_id") == "0", "local image review cannot use a hosted run")
         require(re.fullmatch(r"sha256:[0-9a-f]{64}", image or ""), "local review requires image config ID")
