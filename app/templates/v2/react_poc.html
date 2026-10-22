@@ -1,0 +1,35 @@
+{# UX-01 Full-React PoC host page.
+
+   Isolated, feature-flagged (FINCO_MODEL_REACT_V1).  Loads ONLY same-origin assets
+   (/static/react/**, /static/tokens.css) — no CDN runtime dependency.  The React
+   bundle reads project/config from the #root data attributes; no inline script or
+   inline JSON, so no value crosses an HTML boundary.  The legacy Jinja2/HTMX
+   workbook at legacy_url stays fully authoritative and is linked back to. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Model — React Preview (UX-01 PoC)</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/react/finco-react.css?v={{ asset_version }}">
+</head>
+<body>
+  <div id="finco-react-root"
+       data-project="{{ project_code }}"
+       data-bootstrap-url="/v2/model-react/bootstrap"
+       data-save-url="/v2/workbook/grid/save"
+       data-validate-url="/v2/workbook/grid/validate"
+       data-legacy-url="{{ legacy_url }}"
+       data-asset-version="{{ asset_version }}">
+    <noscript>
+      <p role="alert" class="rx-fallback-note">The FINCO Model React preview requires JavaScript.
+        The classic FINCO Model interface remains available:
+        <a href="{{ legacy_url }}">open the legacy workbook</a>.</p>
+    </noscript>
+    <p class="rx-boot-loading" role="status">Loading the FINCO Model React preview…</p>
+  </div>
+  <script src="/static/react/finco-react.js?v={{ asset_version }}" defer></script>
+</body>
+</html>

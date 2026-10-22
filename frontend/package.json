@@ -1,0 +1,26 @@
+{
+  "name": "finco-model-react",
+  "private": true,
+  "version": "0.1.0",
+  "description": "FINCO Model full-React frontend (UX-01 PoC). Presentation only — every financial calculation, validation, Save and Run stays server-authoritative behind the existing canonical /v2 routes.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && tsc -p tsconfig.finco.json --noEmit && vite build",
+    "build:transfer": "vite build --config transfer/vite.transfer.config.ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.finco.json --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "typescript": "5.5.4",
+    "vite": "5.4.11"
+  }
+}
