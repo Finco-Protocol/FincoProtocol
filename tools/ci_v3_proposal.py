@@ -61,7 +61,7 @@ def owner_decisions(summary, nonpass, equivalence, calibration, image, threads=(
     return decisions
 
 
-def build(prepared, classification, nonpass, image, environment_equivalence, calibration, previous, image_files, threads=(), historical=()):
+def build(prepared, classification, nonpass, image, environment_equivalence, calibration, previous, image_files, threads=(), historical=(), phase_comparison=None):
     inventory, isolation = prepared["inventory"], classification["proposal"]
     ids = sorted(n["nodeid"] for n in inventory["nodes"])
     require(len(ids) == len(set(ids)), "duplicate node identities")
@@ -88,12 +88,23 @@ def build(prepared, classification, nonpass, image, environment_equivalence, cal
     if threads:
         blockers.append("daemon thread policy not approved")
     blockers += ["no owner has reviewed isolation", "nonpass policy not approved"]
+    if phase_comparison is None:
+        blockers.append("same-source original-node/phase comparison absent")
+    else:
+        from tools.ci_v3_schema import check_seal
+        check_seal(phase_comparison, "ci-v3-phase-comparison")
+        require(phase_comparison["source"] == inventory["source"], "stale phase comparison source")
+        if not all(phase_comparison.get(k) is True for k in ("phase_equivalent", "process_cleanup_valid", "native_junit_valid")):
+            blockers.append("same-source phase/process/native-JUnit comparison failed")
+        if phase_comparison.get("provenance_authenticated") is not True:
+            blockers.append("phase comparison service provenance not independently authenticated")
     return bundle, seal({"schema": 1, "kind": "ci-v3-admission-proposal", "authority": "proposal-not-approved", "admission_ready": False,
         "source": inventory["source"], "inventory": {"digest": inventory["digest"], "nodes": len(ids), "node_ids_sha256": sha("\n".join(ids).encode()),
                                                        "modules": len(inventory["modules"]), "collection_skips": len(prepared["collection"]["skips"])},
         "evidence_scope": {"current_source": inventory["source"], "historical": list(historical),
                            "statement": "Historical executions are independently verifiable against their own source but were not run on the current source; "
                                         "they are not equivalence evidence for it, even for modules whose test file is unchanged."},
+        "phase_comparison": phase_comparison,
         "bundle_sha256": files, "image": {**image, "files_sha256": image_files},
         "classification": {"categories": summary["categories"], "unresolved_modules": summary["unresolved_modules"]},
         "nonpass": {"proposed": len(nonpass["allowed_nonpass"]), "digest": nonpass["digest"], "control": nonpass["control"],
@@ -110,6 +121,7 @@ def main(argv=None):
     for name in ("prepared", "classification", "nonpass-policy", "image-dir", "environment-equivalence", "output"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--calibration"); parser.add_argument("--repo", default="."); parser.add_argument("--historical-manifest", action="append", default=[]); parser.add_argument("--observed-threads", help="JSON list of {name, daemon} from a rejected worker's pytest-return.json"); parser.add_argument("--previous", help="previous module-classification.json")
+    parser.add_argument("--phase-comparison", help="sealed comparison; local byte integrity alone never authenticates service provenance")
     args = parser.parse_args(argv)
     p, c, i = Path(args.prepared), Path(args.classification), Path(args.image_dir)
     try:
@@ -128,7 +140,8 @@ def main(argv=None):
         bundle, proposal = build(prepared, classification, read_json(args.nonpass_policy), read_json(i / "image.json"),
                                  read_json(args.environment_equivalence), calibration, previous,
                                  {f.name: sha(f.read_bytes()) for f in sorted(i.iterdir()) if f.is_file()},
-                                 [t for t in json.loads(Path(args.observed_threads).read_text()) if t["daemon"]] if args.observed_threads else (), historical)
+                                 [t for t in json.loads(Path(args.observed_threads).read_text()) if t["daemon"]] if args.observed_threads else (), historical,
+                                 read_json(args.phase_comparison) if args.phase_comparison else None)
     except (ContractError, OSError, KeyError) as exc:
         print("CI_V3_PROPOSAL_REJECTED: " + str(exc)); return 1
     out = Path(args.output); out.mkdir(parents=True, exist_ok=False)

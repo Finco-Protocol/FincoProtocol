@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from tools.ci_acceptance import partition_modules
+from tools.ci_v3_real_contract import environment_record, phase_record, report_reason
 
 
 def pytest_addoption(parser):
@@ -26,6 +27,7 @@ def pytest_configure(config):
         "collected": [], "selected": [], "deselected": [],
         "collection_skips": [], "collection_errors": [], "outcomes": {},
         "shard": config.getoption("ci_shard"),
+        "phase_schema": 1, "phases": [], "environment": environment_record(), "collection_skip_records": [],
     }
 
 
@@ -57,10 +59,14 @@ class Reports:
     def pytest_collectreport(self, report):
         if report.skipped:
             self.evidence["collection_skips"].append([report.nodeid, str(report.longrepr)])
+            self.evidence["collection_skip_records"].append({"nodeid": report.nodeid, "reason": report_reason(report)})
         elif report.failed:
             self.evidence["collection_errors"].append([report.nodeid, str(report.longrepr)])
 
     def pytest_runtest_logreport(self, report):
+        # Observation only: retain every phase, including passing setup/teardown.
+        # Never infer phases later from duration/progress summaries.
+        self.evidence["phases"].append(phase_record(report))
         if report.when == "call" or report.failed or report.skipped:
             status = report.outcome
             reason = ""
@@ -75,6 +81,8 @@ class Reports:
 
 
 def pytest_sessionstart(session):
+    from tools.ci_v3_pytest_config import loaded_plugins
+    session.config._finco_evidence["pytest_plugins"] = loaded_plugins(session.config)
     session.config.pluginmanager.register(Reports(session.config._finco_evidence), "finco-ci-reports")
 
 
