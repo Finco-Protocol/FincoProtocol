@@ -1,4 +1,4 @@
-"""Characterize lifecycle gaps without changing product behavior or allowing leaks.
+"""Retain original lifecycle characterization nodes as the owned fix is integrated.
 
 Owned test threads are always joined by the test. These passing characterizations
 are evidence for a separate correction proposal, not shutdown-safety approval.
@@ -63,21 +63,20 @@ def test_repeated_start_stop_needs_external_join_and_releases_each_lease(monkeyp
 
 
 def test_demo_startup_body_creates_another_unowned_thread_each_time(monkeypatch):
-    # Execute the unchanged function body with a recording thread factory, not
-    # main_web import/startup and not its sleeping/deleting background target.
-    path = Path(__file__).resolve().parents[1] / 'main_web.py'
-    tree = ast.parse(path.read_text())
-    node = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == '_schedule_demo_cleanup')
-    node.decorator_list = []
-    recorded = []
-    class Thread:
-        def __init__(self, **kwargs): self.kwargs = kwargs; recorded.append(self)
-        def start(self): self.started = True
-    auth = ModuleType('app.auth'); auth.DEMO_TTL_HOURS = 24
-    monkeypatch.setitem(sys.modules, 'app.auth', auth)
-    monkeypatch.setattr(threading, 'Thread', Thread)
-    namespace = {}
-    exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), 'exec'), namespace)
-    asyncio.run(namespace['_schedule_demo_cleanup']()); asyncio.run(namespace['_schedule_demo_cleanup']())
-    assert len(recorded) == 2 and all(t.started for t in recorded)
-    assert all(t.kwargs['name'] == 'demo-cleanup' and t.kwargs['daemon'] for t in recorded)
+    # Original node retained: the corrected hook now owns one actual service.
+    from types import SimpleNamespace
+    tree = ast.parse((Path(__file__).resolve().parents[1] / 'main_web.py').read_text())
+    nodes = [n for n in tree.body if isinstance(n, ast.AsyncFunctionDef)
+             and n.name in ('_schedule_demo_cleanup', '_stop_demo_cleanup')]
+    for node in nodes: node.decorator_list = []
+    namespace = {'app': SimpleNamespace(state=SimpleNamespace())}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), 'main_web.py', 'exec'), namespace)
+    try:
+        asyncio.run(namespace['_schedule_demo_cleanup']())
+        service = namespace['app'].state.demo_cleanup_service
+        asyncio.run(namespace['_schedule_demo_cleanup']())
+        assert namespace['app'].state.demo_cleanup_service is service
+        assert service._thread.is_alive() and service._thread.name == 'demo-cleanup'
+    finally:
+        asyncio.run(namespace['_stop_demo_cleanup']())
+    assert not service._thread.is_alive()

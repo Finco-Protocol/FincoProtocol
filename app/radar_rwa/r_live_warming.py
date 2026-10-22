@@ -43,6 +43,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app.background_lifecycle import ShutdownIncomplete
+
 WARMING_SCHEMA_VERSION = "finco-r-live-warming-v1"
 
 DEFAULT_INTERVAL_SECONDS = 60
@@ -69,7 +71,7 @@ def warming_enabled() -> bool:
 
 
 def warm_snapshot_once(rpc_url: str, *, store_path: str | None = None,
-                       now: datetime | None = None) -> dict:
+                       now: datetime | None = None, lease_holder: str | None = None) -> dict:
     """Run ONE canonical batch and atomically persist the snapshot.
 
     Failure semantics: a whole-batch acquisition failure records a systemic
@@ -78,7 +80,7 @@ def warm_snapshot_once(rpc_url: str, *, store_path: str | None = None,
     the caller — returns a typed summary dict.
     """
     from app.radar_rwa.collector_health import CollectorHealthStore
-    from app.radar_rwa.r_live_snapshot_store import RLiveSnapshotStore
+    from app.radar_rwa.r_live_snapshot_store import RLiveSnapshotStore, LeaseOwnershipLost
     from app.radar_rwa.r_live_service import collect_r_live_batch
 
     started = datetime.now(timezone.utc)
@@ -100,7 +102,10 @@ def warm_snapshot_once(rpc_url: str, *, store_path: str | None = None,
     unavailable = sum(1 for _, state, _ in rows if state == "UNAVAILABLE")
     try:
         with RLiveSnapshotStore(path=store_path) as store:
-            written = store.write_batch(rows, collected_at=now or started)
+            written = store.write_batch(rows, collected_at=now or started, lease_holder=lease_holder)
+    except LeaseOwnershipLost:
+        return {"state": "LEASE_OWNERSHIP_LOST", "written": 0, "available": available,
+                "stale": stale, "unavailable": unavailable}
     except Exception:
         with CollectorHealthStore(path=store_path) as health:
             health.record_systemic_failure("SNAPSHOT_STORE_UNAVAILABLE", now=now)
@@ -226,7 +231,10 @@ class _SnapshotLease:
                 )
                 self._conn.execute("COMMIT")
             except sqlite3.Error:
-                pass
+                # A failed release cannot be reported as successful shutdown.
+                if self._conn.in_transaction:
+                    self._conn.execute("ROLLBACK")
+                raise
 
 
 class RLiveSnapshotWarmer:
@@ -255,6 +263,10 @@ class RLiveSnapshotWarmer:
         self._thread: threading.Thread | None = None
         self.last_summary: dict | None = None
         self._lease: _SnapshotLease | None = None
+        self._lifecycle_lock = threading.Lock()
+        self._heartbeat: threading.Thread | None = None
+        self._failure: BaseException | None = None
+        self._cleanup_thread: threading.Thread | None = None
 
     def _lease_or_none(self) -> "_SnapshotLease":
         if self._lease is None:
@@ -271,8 +283,15 @@ class RLiveSnapshotWarmer:
         """
         lease = self._lease_or_none()
         while not stop.wait(self.heartbeat_period):
-            if not lease.acquire_or_renew(ttl_seconds=self.lease_ttl):
-                return  # lost ownership (should not happen while admitted)
+            try:
+                if lease.acquire_or_renew(ttl_seconds=self.lease_ttl):
+                    continue
+                failure = ShutdownIncomplete("snapshot heartbeat lost lease ownership")
+            except Exception as exc:
+                failure = exc
+            self._failure = failure
+            self._stop.set()  # no further cycles; in-flight publication is fenced in SQLite
+            return
 
     def run_cycle(self, *, rpc_url: str | None = None) -> dict | None:
         """One non-overlapping, lease-guarded warming cycle.
@@ -285,6 +304,8 @@ class RLiveSnapshotWarmer:
         if not self._cycle_lock.acquire(blocking=False):
             return None  # no overlapping batch refreshes in this process
         try:
+            if self._stop.is_set():
+                return None  # stop prevents admission of another acquisition
             lease = self._lease_or_none()
             if not lease.acquire_or_renew(ttl_seconds=self.lease_ttl):
                 return None  # foreign holder owns the lease: never double-collect
@@ -292,50 +313,132 @@ class RLiveSnapshotWarmer:
             heartbeat = threading.Thread(
                 target=self._renew_until, args=(heartbeat_stop,), daemon=True,
                 name="finco-r-live-lease-heartbeat")
+            self._heartbeat = heartbeat
             heartbeat.start()
             try:
                 rpc = rpc_url or os.getenv("ROBINHOOD_RPC_URL")
                 if not rpc:
                     summary = {"state": "RPC_NOT_CONFIGURED", "written": 0}
                 else:
-                    summary = warm_snapshot_once(rpc, store_path=self.store_path)
+                    summary = warm_snapshot_once(rpc, store_path=self.store_path, lease_holder=getattr(lease, "_holder", None))
+                    if summary.get("state") == "LEASE_OWNERSHIP_LOST":
+                        raise ShutdownIncomplete("snapshot acquisition lost publication authority")
                 self.last_summary = summary
                 return summary
             finally:
                 heartbeat_stop.set()
                 heartbeat.join(timeout=5)
+                if heartbeat.is_alive():
+                    raise ShutdownIncomplete("snapshot lease heartbeat is still active")
         finally:
             self._cycle_lock.release()
+
+    def _close_resources_if_idle(self) -> None:
+        heartbeat = self._heartbeat
+        if heartbeat is not None and heartbeat.is_alive():
+            raise ShutdownIncomplete("snapshot lease heartbeat still owns resources")
+        if self._lease is not None:
+            self._lease.release()
+            self._lease.close()
+            self._lease = None
 
     def _loop(self) -> None:
         try:
             while not self._stop.is_set():
-                self.run_cycle()  # None when a foreign worker owns the lease
+                self.run_cycle()
                 self._stop.wait(self.interval)
+        except BaseException as exc:
+            self._failure = exc
         finally:
-            if self._lease is not None:
-                self._lease.release()
-                self._lease.close()
-                self._lease = None
+            try:
+                with self._cycle_lock:
+                    self._close_resources_if_idle()
+            except BaseException as exc:
+                self._failure = exc
 
     def start(self) -> bool:
-        if self._thread is not None and self._thread.is_alive():
-            return False
-        self._stop.clear()
-        self._thread = threading.Thread(
-            target=self._loop, daemon=True, name="finco-r-live-snapshot-warmer")
-        self._thread.start()
-        return True
+        with self._lifecycle_lock:
+            if self._thread is not None and self._thread.is_alive():
+                if self._stop.is_set():
+                    raise ShutdownIncomplete("snapshot warmer is still stopping")
+                return False
+            if self._failure is not None or (self._cleanup_thread is not None and self._cleanup_thread.is_alive()):
+                raise ShutdownIncomplete("snapshot warmer requires completed resource cleanup")
+            self._stop.clear()
+            self._thread = threading.Thread(
+                target=self._loop, daemon=True, name="finco-r-live-snapshot-warmer")
+            try:
+                self._thread.start()
+            except BaseException:
+                self._thread = None
+                raise
+            return True
 
     def stop(self) -> None:
+        """Request cooperative stop only; use shutdown() to prove completion."""
         self._stop.set()
+
+    def _finish_resource_cleanup(self) -> None:
+        try:
+            with self._cycle_lock:
+                self._close_resources_if_idle()
+        except BaseException as exc:
+            self._failure = exc
+
+    def shutdown(self, timeout: float = 30.0) -> None:
+        """Bound all waiting, including SQLite cleanup and concurrent shutdown.
+
+        An owned cleanup thread may finish a previously admitted database release
+        after a failed deadline. Success requires it joined; ownership is retained
+        on every failure and no connection is closed under a live acquisition.
+        """
+        if timeout < 0:
+            raise ValueError("negative shutdown deadline")
+        deadline = time.monotonic() + timeout
+        if not self._lifecycle_lock.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise ShutdownIncomplete("snapshot lifecycle lock deadline")
+        try:
+            self.stop()
+            thread = self._thread
+            if thread is not None:
+                if thread is threading.current_thread():
+                    raise ShutdownIncomplete("snapshot warmer cannot join itself")
+                thread.join(max(0, deadline - time.monotonic()))
+                if thread.is_alive():
+                    raise ShutdownIncomplete("snapshot acquisition is still active")
+            heartbeat = self._heartbeat
+            if heartbeat is not None:
+                heartbeat.join(max(0, deadline - time.monotonic()))
+                if heartbeat.is_alive():
+                    raise ShutdownIncomplete("snapshot heartbeat is still active")
+            cycle_idle = self._cycle_lock.acquire(blocking=False)
+            if cycle_idle:
+                self._cycle_lock.release()
+            # A direct run_cycle may own admission before it creates its lease.
+            # Lease absence therefore cannot prove that no writer is in flight.
+            needs_cleanup = self._lease is not None or not cycle_idle
+            if needs_cleanup and (self._cleanup_thread is None or not self._cleanup_thread.is_alive()):
+                self._cleanup_thread = threading.Thread(target=self._finish_resource_cleanup,
+                    name="finco-r-live-resource-cleanup", daemon=True)
+                self._cleanup_thread.start()
+            if self._cleanup_thread is not None:
+                self._cleanup_thread.join(max(0, deadline - time.monotonic()))
+                if self._cleanup_thread.is_alive():
+                    raise ShutdownIncomplete("snapshot resource cleanup deadline")
+            if self._lease is not None:
+                raise ShutdownIncomplete("snapshot lease cleanup incomplete")
+            if self._failure is not None:
+                raise ShutdownIncomplete("snapshot warmer failed before clean shutdown") from self._failure
+        finally:
+            self._lifecycle_lock.release()
 
 
 _WARMER: RLiveSnapshotWarmer | None = None
 _WARMER_LOCK = threading.Lock()
+_WARMER_OWNER: object | None = None
 
 
-def start_background_warmer() -> bool:
+def start_background_warmer(*, owner: object | None = None) -> bool:
     """Start the process-local warmer thread (idempotent).
 
     The SQLite lease guarantees that, across all Uvicorn workers on the
@@ -343,14 +446,35 @@ def start_background_warmer() -> bool:
     entirely when ``FINCO_RLIVE_WARMING_ENABLED=0`` (e.g. the dedicated
     systemd collector owns warming in that deployment).
     """
-    global _WARMER
+    global _WARMER, _WARMER_OWNER
     if not warming_enabled():
         return False
     with _WARMER_LOCK:
+        if _WARMER is not None and _WARMER_OWNER is not owner:
+            raise ShutdownIncomplete("snapshot warmer belongs to another lifespan")
         if _WARMER is None:
             _WARMER = RLiveSnapshotWarmer()
-        started = _WARMER.start()
-    return started
+            _WARMER_OWNER = owner
+        return _WARMER.start()
+
+
+def stop_background_warmer(*, owner: object, timeout: float = 30.0) -> bool:
+    """Stop only this owner's instance. Failed shutdown retains its ownership."""
+    global _WARMER, _WARMER_OWNER
+    if timeout < 0:
+        raise ValueError("negative shutdown deadline")
+    deadline = time.monotonic() + timeout
+    if not _WARMER_LOCK.acquire(timeout=max(0, deadline - time.monotonic())):
+        raise ShutdownIncomplete("snapshot owner lock deadline")
+    try:
+        if _WARMER is None or _WARMER_OWNER is not owner:
+            return False
+        _WARMER.shutdown(max(0, deadline - time.monotonic()))
+        _WARMER = None
+        _WARMER_OWNER = None
+        return True
+    finally:
+        _WARMER_LOCK.release()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -389,7 +513,7 @@ def main(argv: list[str] | None = None) -> int:
             while True:
                 time.sleep(_interval_seconds())
         except KeyboardInterrupt:
-            warmer.stop()
+            warmer.shutdown()
         return 0
     parser.print_usage(_sys.stderr)
     return 2
