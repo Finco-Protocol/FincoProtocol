@@ -1,0 +1,34 @@
+{
+  "Financial": {
+    "approved": true,
+    "reference": "conversation:2026-10-22:PR346:Correction-D:section-1"
+  },
+  "approval_origin": {
+    "github_signed_attestation": false,
+    "kind": "explicit-conversation-statement",
+    "reference": "conversation:2026-10-22:PR346:Correction-D:section-1",
+    "request_sha256": "e49043bc8e976becc2bbdae2291a1e33f35189f25b596bed3aa013a2aaefd0a4"
+  },
+  "blobs": {
+    "app/radar_rwa/r_live_snapshot_store.py": "4179c296c803f42040b2811dc70ef55a1cdfa1d0",
+    "app/radar_rwa/r_live_warming.py": "563c1a256886f7b26af21ac63e121216f908c840"
+  },
+  "corrected_protected_source": {
+    "head": "a385e67fb71acebe00b2fe6f2f23c3f248614a86",
+    "tree": "82f7f27d70285afcdab598c4e72f2770d808c2ec"
+  },
+  "hosted_shadow_authorized": false,
+  "image_publication_authorized": false,
+  "kind": "r-live-lifecycle-exact-content-approval",
+  "merge_authorized": false,
+  "original_reviewed_source": {
+    "head": "a0d243c7d9c88d16990da9115e00ed00e3ad8160",
+    "tree": "864382c8ac955c72ee6ccad15ee86be373de8edd"
+  },
+  "phase4_activation_authorized": false,
+  "repository": "Finco-Protocol/FincoProtocol",
+  "runtime_activation_authorized": false,
+  "schema": 1,
+  "scope": "PR346-exact-content-governance-and-CI-closure-only",
+  "workflow_deployment_authorized": false
+}
