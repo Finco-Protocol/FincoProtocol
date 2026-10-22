@@ -38,9 +38,11 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 from app.background_lifecycle import ShutdownIncomplete
@@ -71,7 +73,8 @@ def warming_enabled() -> bool:
 
 
 def warm_snapshot_once(rpc_url: str, *, store_path: str | None = None,
-                       now: datetime | None = None, lease_holder: str | None = None) -> dict:
+                       now: datetime | None = None, lease_holder: str | None = None,
+                       lease_authority: _SnapshotLease | None = None) -> dict:
     """Run ONE canonical batch and atomically persist the snapshot.
 
     Failure semantics: a whole-batch acquisition failure records a systemic
@@ -101,8 +104,11 @@ def warm_snapshot_once(rpc_url: str, *, store_path: str | None = None,
     stale = sum(1 for _, state, _ in rows if state == "STALE")
     unavailable = sum(1 for _, state, _ in rows if state == "UNAVAILABLE")
     try:
-        with RLiveSnapshotStore(path=store_path) as store:
-            written = store.write_batch(rows, collected_at=now or started, lease_holder=lease_holder)
+        with (lease_authority.publication_guard() if lease_authority is not None else nullcontext()):
+            if lease_authority is not None and (not lease_holder or lease_holder != lease_authority._holder):
+                raise LeaseOwnershipLost("missing or mismatched warming epoch")
+            with RLiveSnapshotStore(path=store_path) as store:
+                written = store.write_batch(rows, collected_at=now or started, lease_holder=lease_holder)
     except LeaseOwnershipLost:
         return {"state": "LEASE_OWNERSHIP_LOST", "written": 0, "available": available,
                 "stale": stale, "unavailable": unavailable}
@@ -128,30 +134,21 @@ def warm_snapshot_once(rpc_url: str, *, store_path: str | None = None,
 
 
 class _SnapshotLease:
-    """Cross-process single-holder lease stored in the snapshot database.
+    """One ownership epoch. Lost authority can never be resurrected.
 
-    Exactly ONE warming loop per host holds the lease; the holder renews it
-    each cycle.  Other processes/threads skip their cycles while the lease
-    is valid.  A crashed holder's lease simply expires and may be taken
-    over.
-
-    Holder identity is STABLE for the lifetime of this instance (created
-    once in ``__init__`` as pid + a random discriminator — never the PID
-    alone): ``acquire_or_renew`` from the SAME instance RENEWS the expiry
-    instead of fighting its own lease, so the warming cadence equals the
-    interval regardless of the lease TTL.
+    Acquisition and renewal serialize with publication through the existing
+    process guard and SQLite BEGIN IMMEDIATE. A new instance is required after
+    loss/release; the warmer closes the old instance only after work is joined.
     """
 
-    def __init__(self, path: str | None) -> None:
+    def __init__(self, path: str | None, *, clock=None) -> None:
         import uuid
         from app.radar_rwa.r_live_snapshot_store import _db_path
         self.path = _db_path(path)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(
-            self.path if self.path == ":memory:" else self.path, timeout=10,
-            check_same_thread=False)  # serialized by _LEASE_SINGLETON_GUARD
-        self._conn.isolation_level = None  # manual transactions (BEGIN IMMEDIATE)
+        self._conn = sqlite3.connect(self.path, timeout=10, check_same_thread=False)
+        self._conn.isolation_level = None
         self._conn.execute("PRAGMA busy_timeout=10000")
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS r_live_warming_lease ("
@@ -159,70 +156,98 @@ class _SnapshotLease:
             "holder TEXT NOT NULL, expires_at TEXT NOT NULL, "
             "schema_version TEXT NOT NULL)"
         )
-        # Stable per-instance identity: process id + random discriminator.
-        self._holder = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        self._holder = f"{os.getpid()}-{uuid.uuid4().hex}"
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._acquired = False
+        self._lost = False
 
     def close(self) -> None:
-        self._conn.close()
+        with _LEASE_SINGLETON_GUARD:
+            self._lost = True
+            self._conn.close()
 
     @staticmethod
     def _parse(ts: str) -> datetime:
         return datetime.fromisoformat(ts)
 
-    def acquire_or_renew(self, *, ttl_seconds: int, now: datetime | None = None) -> bool:
-        """Acquire the lease, or RENEW it when this instance already holds it.
-
-        - no valid lease            → acquire (also covers expired foreign
-                                      leases: takeover);
-        - valid lease, same holder  → renew the expiry (never self-reject);
-        - valid lease, other holder → deny.
-        """
-        current = now or datetime.now(timezone.utc)
-        expiry = (current + timedelta(seconds=ttl_seconds)).isoformat()
+    def _change(self, *, renewal: bool, ttl_seconds: int,
+                now: datetime | None = None) -> bool:
+        if ttl_seconds <= 0:
+            raise ValueError("lease TTL must be positive")
         with _LEASE_SINGLETON_GUARD:
+            if self._lost or renewal != self._acquired:
+                return False
             try:
                 self._conn.execute("BEGIN IMMEDIATE")
+                # Production time is sampled AFTER both locks, including any
+                # SQLite writer wait. Explicit time is a deterministic test seam.
+                current = now if now is not None else self._clock()
+                row = self._conn.execute(
+                    "SELECT holder, expires_at FROM r_live_warming_lease WHERE singleton=1"
+                ).fetchone()
                 try:
-                    row = self._conn.execute(
-                        "SELECT holder, expires_at FROM r_live_warming_lease "
-                        "WHERE singleton=1"
-                    ).fetchone()
-                    if row is not None and row[0] == self._holder:
-                        # Same instance: RENEW — never reject our own lease.
-                        self._conn.execute(
-                            "UPDATE r_live_warming_lease SET expires_at=?, "
-                            "schema_version=? WHERE singleton=1 AND holder=?",
-                            (expiry, WARMING_SCHEMA_VERSION, self._holder),
-                        )
-                        self._conn.execute("COMMIT")
-                        return True
-                    if row is not None:
-                        try:
-                            held_expiry = self._parse(row[1])
-                        except ValueError:
-                            held_expiry = None
-                        if held_expiry is not None and held_expiry > current:
-                            self._conn.execute("ROLLBACK")
-                            return False  # a live foreign holder owns the lease
-                    # No lease, or an expired/invalid foreign lease → take over.
+                    live = row is not None and self._parse(row[1]) > current
+                except (TypeError, ValueError):
+                    live = False
+                expiry = (current + timedelta(seconds=ttl_seconds)).isoformat()
+                if renewal:
+                    if not live or row[0] != self._holder:
+                        self._lost = True
+                        self._conn.execute("ROLLBACK")
+                        return False
+                    self._conn.execute(
+                        "UPDATE r_live_warming_lease SET expires_at=?, schema_version=? "
+                        "WHERE singleton=1 AND holder=?",
+                        (expiry, WARMING_SCHEMA_VERSION, self._holder))
+                else:
+                    if live:
+                        self._conn.execute("ROLLBACK")
+                        return False
                     self._conn.execute(
                         "INSERT INTO r_live_warming_lease "
                         "(singleton,holder,expires_at,schema_version) VALUES (1,?,?,?) "
                         "ON CONFLICT(singleton) DO UPDATE SET holder=excluded.holder, "
-                        "expires_at=excluded.expires_at, "
-                        "schema_version=excluded.schema_version",
-                        (self._holder, expiry, WARMING_SCHEMA_VERSION),
-                    )
-                except Exception:
-                    self._conn.execute("ROLLBACK")
-                    raise
+                        "expires_at=excluded.expires_at, schema_version=excluded.schema_version",
+                        (self._holder, expiry, WARMING_SCHEMA_VERSION))
                 self._conn.execute("COMMIT")
+                self._acquired = True
                 return True
-            except sqlite3.Error:
+            except BaseException as exc:
+                self._lost = True
+                if self._conn.in_transaction:
+                    self._conn.execute("ROLLBACK")
+                if not isinstance(exc, sqlite3.Error):
+                    raise
                 return False
+
+    def acquire(self, *, ttl_seconds: int, now: datetime | None = None) -> bool:
+        """Initial acquisition only; never replace an already acquired epoch."""
+        return self._change(renewal=False, ttl_seconds=ttl_seconds, now=now)
+
+    def renew(self, *, ttl_seconds: int, now: datetime | None = None) -> bool:
+        """Renew only an existing live exact epoch; any loss is permanent."""
+        return self._change(renewal=True, ttl_seconds=ttl_seconds, now=now)
+
+    def acquire_or_renew(self, *, ttl_seconds: int, now: datetime | None = None) -> bool:
+        """Compatibility dispatcher; an expired acquired epoch NEVER reacquires."""
+        return self._change(renewal=self._acquired, ttl_seconds=ttl_seconds, now=now)
+
+    @contextmanager
+    def publication_guard(self):
+        """Serialize local invalidation with the store's SQLite publication fence."""
+        from app.radar_rwa.r_live_snapshot_store import LeaseOwnershipLost
+        with _LEASE_SINGLETON_GUARD:
+            if not self._acquired or self._lost:
+                raise LeaseOwnershipLost("warming ownership epoch permanently invalid")
+            try:
+                yield
+            except BaseException:
+                self._lost = True
+                raise
 
     def release(self) -> None:
         with _LEASE_SINGLETON_GUARD:
+            self._lost = True
             try:
                 self._conn.execute("BEGIN IMMEDIATE")
                 self._conn.execute(
@@ -240,12 +265,12 @@ class _SnapshotLease:
 class RLiveSnapshotWarmer:
     """The single warming loop. Start via :func:`start_background_warmer`.
 
-    Lease ownership spans the ENTIRE acquisition cycle: the loop renews the
+    Lease authority is renewed throughout the acquisition cycle: the loop renews the
     cross-process lease before each cycle AND a bounded heartbeat renews it
-    while ``collect_r_live_batch`` is running, so a slow/degraded batch can
-    never outlive the TTL and let a second worker start an overlapping
-    canonical batch.  A genuinely dead owner still recovers: its lease
-    simply expires and a foreign worker takes over.
+    while ``collect_r_live_batch`` is running, so a slow/degraded batch
+    normally retains its authority. A missed TTL permanently
+    fences the old epoch from publication. Expiry permits foreign takeover; a
+    paused old process may still finish RPC work, but cannot publish stale work.
     """
 
     def __init__(self, *, store_path: str | None = None,
@@ -284,7 +309,7 @@ class RLiveSnapshotWarmer:
         lease = self._lease_or_none()
         while not stop.wait(self.heartbeat_period):
             try:
-                if lease.acquire_or_renew(ttl_seconds=self.lease_ttl):
+                if lease.renew(ttl_seconds=self.lease_ttl):
                     continue
                 failure = ShutdownIncomplete("snapshot heartbeat lost lease ownership")
             except Exception as exc:
@@ -308,6 +333,10 @@ class RLiveSnapshotWarmer:
                 return None  # stop prevents admission of another acquisition
             lease = self._lease_or_none()
             if not lease.acquire_or_renew(ttl_seconds=self.lease_ttl):
+                if lease._lost:
+                    self._failure = ShutdownIncomplete("snapshot cycle lost lease authority")
+                    self._stop.set()
+                    raise self._failure
                 return None  # foreign holder owns the lease: never double-collect
             heartbeat_stop = threading.Event()
             heartbeat = threading.Thread(
@@ -320,16 +349,23 @@ class RLiveSnapshotWarmer:
                 if not rpc:
                     summary = {"state": "RPC_NOT_CONFIGURED", "written": 0}
                 else:
-                    summary = warm_snapshot_once(rpc, store_path=self.store_path, lease_holder=getattr(lease, "_holder", None))
+                    summary = warm_snapshot_once(rpc, store_path=self.store_path,
+                        lease_holder=lease._holder, lease_authority=lease)
                     if summary.get("state") == "LEASE_OWNERSHIP_LOST":
                         raise ShutdownIncomplete("snapshot acquisition lost publication authority")
-                self.last_summary = summary
-                return summary
+                if self._failure is not None:
+                    raise ShutdownIncomplete("snapshot heartbeat failed during acquisition") from self._failure
             finally:
                 heartbeat_stop.set()
                 heartbeat.join(timeout=5)
                 if heartbeat.is_alive():
-                    raise ShutdownIncomplete("snapshot lease heartbeat is still active")
+                    self._failure = ShutdownIncomplete("snapshot lease heartbeat is still active")
+                    self._stop.set()
+                    raise self._failure
+                if self._failure is not None and sys.exception() is None:
+                    raise ShutdownIncomplete("snapshot heartbeat failed during acquisition") from self._failure
+            self.last_summary = summary
+            return summary
         finally:
             self._cycle_lock.release()
 

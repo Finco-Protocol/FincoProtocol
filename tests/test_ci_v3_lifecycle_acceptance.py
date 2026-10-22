@@ -194,7 +194,12 @@ def test_expired_or_foreign_lease_cannot_publish_snapshot(tmp_path):
                 db.execute('UPDATE r_live_warming_lease SET expires_at=?',((datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat(),))
             with pytest.raises(LeaseOwnershipLost):store.write_batch(rows,lease_holder=lease._holder)
             assert store._read()==[]
-            assert lease.acquire_or_renew(ttl_seconds=30)
+            old_epoch=lease._holder
+            assert not lease.acquire_or_renew(ttl_seconds=30)
+            lease.release(); lease.close()
+            lease=warming._SnapshotLease(path)
+            assert lease.acquire(ttl_seconds=30)
+            assert lease._holder != old_epoch
             assert store.write_batch(rows,lease_holder=lease._holder)==1
             assert len(store._read())==1
     finally:lease.release();lease.close()

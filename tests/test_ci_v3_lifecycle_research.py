@@ -14,8 +14,9 @@ from app.radar_rwa import r_live_warming as warming
 
 
 class Lease:
-    def __init__(self): self.released = self.closed = 0
+    def __init__(self): self.released = self.closed = 0; self._holder = "mock-epoch"
     def acquire_or_renew(self, **kwargs): return True
+    def renew(self, **kwargs): return True
     def release(self): self.released += 1
     def close(self): self.closed += 1
 
