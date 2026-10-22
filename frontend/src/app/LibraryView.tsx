@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ProjectLibrary } from "../finco/ProjectLibrary";
 import type { LibraryProjectViewModel } from "../finco/_shared/viewModels";
-import { createWorkingCopy, fetchLibrary } from "./api";
+import { createWorkingCopy, fetchLibrary, isCloneUnknown } from "./api";
 import type { LibraryPayload } from "./types";
 
 function toViewModel(project: LibraryPayload["projects"][number]): LibraryProjectViewModel {
@@ -9,6 +9,7 @@ function toViewModel(project: LibraryPayload["projects"][number]): LibraryProjec
   return {
     name: project.name,
     id: project.code,
+    projectId: project.project_id,
     technology: project.project_type || project.template_source || "FINCO Model",
     size: "",
     region: "",
@@ -33,6 +34,7 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
   const [search] = useState("");
   const [page, setPage] = useState(1);
   const [cloneError, setCloneError] = useState("");
+  const [cloneUnknown, setCloneUnknown] = useState(false);
 
   const load = useCallback(async () => {
     const result = await fetchLibrary(search, page);
@@ -65,12 +67,19 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
 
   async function clone(project: LibraryProjectViewModel) {
     setCloneError("");
+    setCloneUnknown(false);
     const result = await createWorkingCopy({
       cloneUrlTemplate: library!.clone_url,
       csrfToken: library!.csrf_token,
-      sourceProjectId: project.id,
+      sourceProjectId: project.projectId || project.id,
       requestedName: `${project.name} (copy)`,
     });
+    if (isCloneUnknown(result)) {
+      // The canonical clone answers success with a redirect AFTER creating
+      // the copy: an ambiguous outcome must be reconciled, never retried.
+      setCloneUnknown(true);
+      return;
+    }
     if (result.ok) {
       setPage(1);
       await load();
@@ -91,6 +100,15 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
         </nav>
       </header>
       {cloneError && <p className="rx-status rx-status-error" role="alert">{cloneError}</p>}
+      {cloneUnknown && (
+        <p className="rx-status rx-status-conflict" role="alert" data-clone-unknown="true">
+          The creation result is UNKNOWN — the server may have created the Working Copy.
+          <button type="button" className="rx-button rx-button-secondary"
+                  data-reconcile-button="true" onClick={() => { setCloneUnknown(false); void load(); }}>
+            Reload the Library to reconcile
+          </button>
+        </p>
+      )}
       <ProjectLibrary
         sampleProjects={[...workingProjects, ...referenceProjects]}
         onNavigate={(href) => {

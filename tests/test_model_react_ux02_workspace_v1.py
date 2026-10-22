@@ -277,3 +277,54 @@ def test_protected_reference_inputs_are_read_only(env):
         assert all(row["editable"] is False for row in rows), "protected references expose no editable row"
     finally:
         os.environ.pop("FINCO_MODEL_REACT_V1", None)
+
+
+def test_statements_integrity_reflects_the_canonical_verdict(env):
+    import os
+    os.environ["FINCO_MODEL_REACT_V1"] = "1"
+    try:
+        record = env.create()
+        # NOT_RUN: no integrity evaluation exists yet
+        not_run = env.client.get("/v2/model-react/statements", params={"project": record.project_code}).json()
+        assert not_run["status"]["integrity"] == "not evaluated"
+        assert not_run["integrity"] is None, "NOT_RUN has no integrity evidence at all"
+        # after a real canonical Run: the committed verdict flows through
+        _run_canonical(env, record.project_code)
+        payload = env.client.get("/v2/model-react/statements", params={"project": record.project_code}).json()
+        evaluated = payload["status"]["integrity"]
+        assert evaluated in ("PASS", "FAIL", "INCOMPLETE"), evaluated
+        assert evaluated == payload["integrity"]["status"],             "the React status must show the same canonical verdict as the integrity authority"
+        dimensions = payload["status_dimensions"]
+        assert dimensions["integrity"] == evaluated
+        # freshness and integrity remain independent facts
+        assert payload["freshness"]["state"] in ("CURRENT", "STALE")
+    finally:
+        os.environ.pop("FINCO_MODEL_REACT_V1", None)
+
+
+def test_statements_status_distinguishes_current_from_stale(env):
+    import os
+    os.environ["FINCO_MODEL_REACT_V1"] = "1"
+    try:
+        record = env.create()
+        _run_canonical(env, record.project_code)
+        current = env.client.get("/v2/model-react/statements", params={"project": record.project_code}).json()
+        assert current["status"]["freshness"] == "current"
+        assert current["state"] == "CURRENT"
+        # a Save makes the Working Copy newer than the persisted Run: STALE
+        legacy = env.client.get("/v2/workbook", params={"project": record.project_code})
+        tokens = {k: re.search(f'name="{k}" value="([^"]*)"', legacy.text).group(1)
+                  for k in ("content_hash", "workbook_version")}
+        csrf = re.search(r'data-csrf="([^"]+)"', legacy.text).group(1)
+        saved = env.client.post("/v2/workbook/grid/save", json={
+            "project": record.project_code, "csrf_token": csrf,
+            "cells": [{"field_id": CIT, "value": "24.0"}],
+            "workbook_version": tokens["workbook_version"], "content_hash": tokens["content_hash"],
+            "scenario_id": None})
+        assert saved.status_code == 200, saved.text[:300]
+        stale = env.client.get("/v2/model-react/statements", params={"project": record.project_code}).json()
+        assert stale["state"] == "STALE" and stale["status"]["freshness"] == "stale"
+        assert stale["snapshot"] is not None, "the prior persisted Run remains displayed"
+        assert stale["banner"], "STALE must be communicated explicitly"
+    finally:
+        os.environ.pop("FINCO_MODEL_REACT_V1", None)

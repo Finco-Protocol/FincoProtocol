@@ -35,7 +35,10 @@ export type StatementRunStatus = {
   label: string;
   runId: string;
   freshness: "unknown" | "current" | "stale" | "not run";
-  integrity: "not evaluated";
+  /** The caller's canonical Run Integrity verdict when evaluated ("PASS"/"FAIL"/
+   *  "INCOMPLETE"), "UNAVAILABLE" when evidence exists but cannot be read, and
+   *  "not evaluated" only when there is genuinely no integrity evaluation. */
+  integrity: "not evaluated" | "UNAVAILABLE" | "PASS" | "FAIL" | "INCOMPLETE";
   engineVersion: string | null;
   /** Defaults to the current demo only for existing callers; integrations should identify caller-provided data. */
   dataOrigin?: "synthetic-demo" | "caller-provided" | "unavailable";

@@ -94,6 +94,7 @@ async def react_workspace_library(request: Request, search: str = "", page: int 
     def project_entry(record, protected: bool) -> dict[str, Any]:
         entry: dict[str, Any] = {
             "code": record.project_code,
+            "project_id": record.project_id,
             "name": getattr(record, "project_name", None) or record.project_code,
             "project_type": getattr(record, "project_type", None) or "",
             "template_source": getattr(record, "template_source", None) or "",
@@ -372,11 +373,18 @@ async def react_workspace_statements(request: Request, project: str):
             "sheets": [pl, balance, cashflow, cfads, debt_sheet, sponsor],
             "debtRowsByFacility": debt_facilities.get("by_facility") or {},
         }
+        # Run Integrity is the Run's own committed verdict: PASS/FAIL/INCOMPLETE when
+        # the canonical integrity authority evaluated it, UNAVAILABLE when evidence
+        # exists but cannot be read, "not evaluated" only when nothing was evaluated.
+        if integrity_state == "AVAILABLE" and isinstance(outputs.get("integrity"), Mapping):
+            integrity_value = str(outputs["integrity"].get("status") or "UNAVAILABLE")
+        else:
+            integrity_value = "UNAVAILABLE" if state != "NOT_RUN" else "not evaluated"
         status = {
             "label": "Last Run",
             "runId": (identity.get("snapshot_id") or "")[:12] or "Not supplied",
             "freshness": state.lower() if state in ("CURRENT", "STALE") else "not run",
-            "integrity": "not evaluated",
+            "integrity": integrity_value,
             "engineVersion": (identity.get("engine_version") or None) if isinstance(identity, Mapping) else None,
             "dataOrigin": "caller-provided",
         }

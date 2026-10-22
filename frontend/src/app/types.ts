@@ -71,6 +71,7 @@ export interface WorkspacePayload {
 
 export interface LibraryProject {
   code: string;
+  project_id: string;
   name: string;
   project_type: string;
   template_source: string;

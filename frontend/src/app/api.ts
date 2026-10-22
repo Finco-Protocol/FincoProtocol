@@ -70,8 +70,37 @@ export interface CreateWorkingCopyArgs {
   requestedName: string;
 }
 
-/** Working-copy creation through the EXISTING canonical library clone route. */
-export async function createWorkingCopy(args: CreateWorkingCopyArgs): Promise<{ ok: true; projectCode: string } | { ok: false; message: string }> {
+export type CreateWorkingCopyResult =
+  | { ok: true; projectCode: string }
+  /** The canonical route explicitly refused (4xx with a JSON error) - nothing
+   *  was created; the user may adjust and retry. */
+  | { ok: false; message: string }
+  /** The transport outcome could not be confirmed: the canonical route answers
+   *  success with a redirect AFTER creating the copy, so a lost response does
+   *  NOT prove that no Working Copy exists.  The caller must reconcile (reload
+   *  the Library) and never blind-retry, which could create duplicates. */
+  | { kind: "unknown"; message: string };
+
+export function isCloneUnknown(
+  result: CreateWorkingCopyResult,
+): result is Extract<CreateWorkingCopyResult, { kind: "unknown" }> {
+  return "kind" in result;
+}
+
+function projectCodeFromRedirectedUrl(url: string): string | null {
+  try {
+    return new URL(url).searchParams.get("project");
+  } catch {
+    return null;
+  }
+}
+
+/** Working-copy creation through the EXISTING canonical `/library/clone/{id}`
+ *  route (303 redirect to the new project's workbook on success, 400 JSON on a
+ *  refusal, 5xx page on server failure).  Correction-A semantics apply: an
+ *  ambiguous transport outcome is classified `unknown` and never retried
+ *  automatically, because a retry could create a duplicate Working Copy. */
+export async function createWorkingCopy(args: CreateWorkingCopyArgs): Promise<CreateWorkingCopyResult> {
   const url = args.cloneUrlTemplate.replace("{source_project_id}", encodeURIComponent(args.sourceProjectId));
   const body = new URLSearchParams({ csrf_token: args.csrfToken });
   if (args.requestedName.trim()) body.set("requested_name", args.requestedName.trim());
@@ -84,21 +113,43 @@ export async function createWorkingCopy(args: CreateWorkingCopyArgs): Promise<{ 
       body: body.toString(),
     });
   } catch {
-    return { ok: false, message: "The FINCO Model server is unreachable. The working copy was not created." };
+    return {
+      kind: "unknown",
+      message: "The creation result is UNKNOWN: the connection failed before a definitive response. "
+        + "The server may have created the Working Copy. Reload the Project Library to reconcile "
+        + "before trying again - an immediate retry could create a duplicate.",
+    };
   }
-  let payload: { project_code?: string; error?: string } | null = null;
+  if (response.ok) {
+    // Success contract: 303 redirect to the new project's workbook (followed
+    // automatically); the new project code travels in the final URL.
+    const code = projectCodeFromRedirectedUrl(response.url);
+    if (code) return { ok: true, projectCode: code };
+    return {
+      kind: "unknown",
+      message: "The creation result is UNKNOWN: the server accepted the request but the new "
+        + "project code could not be read from the response. Reload the Project Library to "
+        + "reconcile before trying again - an immediate retry could create a duplicate.",
+    };
+  }
+  if (response.status === 401) {
+    return { ok: false, message: "Your session is not authorized. Sign in again; nothing was created." };
+  }
+  let payload: { error?: string } | null = null;
   try {
-    payload = (await response.clone().json()) as { project_code?: string; error?: string };
+    payload = (await response.json()) as { error?: string };
   } catch {
     payload = null;
   }
-  if (response.ok && payload && payload.project_code) {
-    return { ok: true, projectCode: payload.project_code };
+  if (payload && payload.error) {
+    return { ok: false, message: payload.error };
   }
-  if (response.status === 401) return { ok: false, message: "Your session is not authorized. Sign in again." };
-  if (response.status === 403) return { ok: false, message: "Working-copy creation was denied for this project." };
-  return {
-    ok: false,
-    message: (payload && payload.error) || `Working-copy creation failed (HTTP ${response.status}).`,
-  };
+  if (response.status >= 500) {
+    return {
+      ok: false,
+      message: `Working-copy creation failed on the server (HTTP ${response.status}). `
+        + "Check the Project Library before retrying so a partially created copy is not duplicated.",
+    };
+  }
+  return { ok: false, message: `Working-copy creation failed (HTTP ${response.status}).` };
 }

@@ -134,7 +134,7 @@ export function toResultsRunStatus(payload: StatementsPayload): ResultsRunStatus
     runState: state === "NOT_RUN" ? "not-run"
       : state === "STALE" ? "stale"
         : state === "UNAVAILABLE" ? "unavailable"
-          : "stale",
+          : "current",
     runId: v(payload.status.runId),
     freshness: state === "CURRENT" ? "current"
       : state === "STALE" ? "stale"

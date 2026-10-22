@@ -336,3 +336,87 @@ def test_in_flight_lock_and_back_forward(browser, react_enabled):
         assert errors == [], errors
     finally:
         context.close()
+
+
+def test_clone_creation_ambiguous_outcome(browser, react_enabled):
+    """An ambiguous clone transport is UNKNOWN: never 'nothing was created',
+    exactly one request, and reconciliation required instead of blind retry."""
+    context, page, record, errors = make_session(browser, react_enabled, "ux02-clone-user")
+    try:
+        page.goto(f"{react_enabled}/v2/model-react/")
+        page.wait_for_selector("[data-library-view='true']")
+        assert page.get_by_text(record.project_name).count() >= 1, "the seeded reference must be listed"
+        clone_pattern = "**/library/clone/*"
+        context.route(clone_pattern, lambda route: route.abort())
+        count_clones = """() => {
+            window.__rxClonePosts = 0;
+            const original = window.fetch;
+            window.fetch = (...args) => {
+                if (String(args[0] || '').includes('/library/clone/')) window.__rxClonePosts += 1;
+                return original(...args);
+            };
+        }"""
+        page.evaluate(count_clones)
+        page.locator(".fm-library-copy-action").first.click()
+        page.wait_for_selector("[data-clone-unknown='true']", timeout=15000)
+        message = page.locator("[data-clone-unknown='true']").inner_text()
+        assert "UNKNOWN" in message and "may have created" in message, message
+        assert page.evaluate("window.__rxClonePosts") == 1, "exactly one creation request"
+        page.unroute(clone_pattern)
+        assert not [e for e in errors if "Failed to load resource" not in e], errors
+    finally:
+        context.close()
+
+
+def test_clone_creation_canonical_success(browser, react_enabled):
+    """A real canonical creation reconciles: the new Working Copy appears in the
+    canonical library list, is not a protected reference, and is openable."""
+    context, page, record, errors = make_session(browser, react_enabled, "ux02-clone-real")
+    try:
+        page.goto(f"{react_enabled}/v2/model-react/")
+        page.wait_for_selector("[data-library-view='true']")
+        page.locator(".fm-library-copy-action").first.click()
+        import time
+        copy_listed = False
+        library = None
+        for _ in range(20):
+            library = context.request.get(f"{react_enabled}/v2/model-react/library").json()
+            if any("(copy)" in (p["name"] or "") for p in library["projects"]):
+                copy_listed = True
+                break
+            time.sleep(1)
+        assert copy_listed and library is not None, (
+            f"the new working copy must appear in the canonical list: "
+            f"{[p['code'] for p in (library or {}).get('projects', [])]}")
+        copy_entry = next(p for p in library["projects"] if "(copy)" in (p["name"] or ""))
+        assert copy_entry["protected_reference"] is False
+        assert errors == [], errors
+    finally:
+        context.close()
+
+def test_results_distinguish_current_from_stale(browser, react_enabled):
+    """P0 regression: the Results presentation must distinguish CURRENT (persisted
+    Last Run) from STALE (prior persisted Run) instead of calling CURRENT stale."""
+    context, page, record, errors = make_session(browser, react_enabled, "ux02-current-user")
+    try:
+        url = f"{react_enabled}/v2/model-react/{record.project_code}"
+        page.goto(url)
+        page.wait_for_selector("[data-workspace-status='true']")
+        run_via_canonical_path(context, react_enabled, record.project_code)
+        page.reload(wait_until="domcontentloaded")
+        page.locator(".fm-nav a", has_text="Results").first.click()
+        page.wait_for_selector("[data-results-view='true']")
+        current_state = page.locator("[data-results-view]").get_attribute("data-results-state")
+        assert current_state in ("CURRENT", "STALE")
+        body = page.locator("[data-results-view]").inner_text()
+        if current_state == "CURRENT":
+            assert "CURRENT" in body and "prior persisted Run" not in body,                 "CURRENT must not be presented as stale"
+        else:
+            assert "STALE" in body and "prior persisted Run" in body
+        # integrity tag shows the canonical verdict (evaluated), not a placeholder
+        ws = context.request.get(f"{react_enabled}/v2/model-react/workspace?project={record.project_code}").json()
+        if ws["integrity"] and ws["integrity"]["status"] != "UNAVAILABLE":
+            assert f"Integrity: {ws['integrity']['status']}" in body or ws["integrity"]["status"] in body
+        assert errors == [], errors
+    finally:
+        context.close()

@@ -76,7 +76,8 @@ function runStateLabel(status: ResultsRunStatus) {
   switch (status.runState) {
     case "fixed-demo": return "FIXED DEMO OUTPUT · NOT A LIVE RUN";
     case "not-run": return "NOT RUN";
-    case "stale": return "STALE · prior output";
+    case "current": return "CURRENT · persisted Last Run";
+    case "stale": return "STALE · prior persisted Run";
     case "unavailable": return "UNAVAILABLE";
   }
 }

@@ -102,7 +102,7 @@ export type ResultsPresentationSnapshot = {
 
 export type ResultsRunStatus = {
   dataOrigin: ResultsDataOrigin;
-  runState: "fixed-demo" | "not-run" | "stale" | "unavailable";
+  runState: "fixed-demo" | "not-run" | "current" | "stale" | "unavailable";
   runId: ResultsDisplayValue;
   freshness: "current" | "stale" | "unknown" | "not-run";
   engineCurrency: ResultsDisplayValue;
