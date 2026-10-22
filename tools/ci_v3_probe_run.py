@@ -12,6 +12,7 @@ from pathlib import Path
 import signal
 import shutil
 import re
+import os
 import subprocess
 import sys
 import time
@@ -34,6 +35,8 @@ def lanes(entries, count, weights):
 
 def run(args):
     require(args.kind in KINDS and args.lanes >= 1 and args.repeat >= 1, "bad probe parameters")
+    require(sys.platform == "linux" and os.getuid() != 0, "probes require a non-root Linux host user")
+    uid, gid = os.getuid(), os.getgid()
     local_image = getattr(args, "local_image_id", None)
     if local_image:
         require(not args.image and re.fullmatch(r"sha256:[0-9a-f]{64}", local_image)
@@ -70,10 +73,11 @@ def run(args):
     assignment = lanes(entries, args.lanes, weights)
     write_json(out / "meta.json", {"kind": args.kind, "label": args.label, "image": execution_image, "image_id": args.image_id,
         "local_image_review": bool(local_image), "registry_digest": None if local_image else args.image.rsplit("@", 1)[1],
+        "uid": uid, "gid": gid,
         "tree": args.tree, "head": args.head, "concurrency": args.lanes, "cpus_per_container": args.cpus, "memory": args.memory,
         "repeat": args.repeat, "timeout_s": args.timeout, "boot_files_sha256": boot_hashes})
-    passwd = passwd_file(out / "passwd", 1001, 1001)   # probe containers always run as uid 1001
-    names, procs, started = [], [], time.perf_counter()
+    passwd = passwd_file(out / "passwd", uid, gid)
+    names, procs, logs, started = [], [], [], time.perf_counter()
     def cleanup(*_):
         for name in names:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=60)
@@ -86,7 +90,7 @@ def run(args):
             write_json(lane_dir / "lane.json", lane); (lane_dir / "lane.json").chmod(0o644)
             name = "ci-v3-probe-" + uuid.uuid4().hex; names.append(name)
             command = ["docker", "run", "--name", name, "--init", "--network=none", "--read-only", "--cap-drop=ALL",
-                "--security-opt=no-new-privileges", "--pids-limit=512", f"--memory={args.memory}", f"--cpus={args.cpus}", "--user", "1001:1001",
+                "--security-opt=no-new-privileges", "--pids-limit=512", f"--memory={args.memory}", f"--cpus={args.cpus}", "--user", f"{uid}:{gid}",
                 "--tmpfs", "/tmp:rw,nosuid,nodev,exec,size=3g", "-e", "HOME=/tmp/home", "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "CI=true",
                 "-e", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", "-e", "OMP_NUM_THREADS=1", "-e", "MKL_NUM_THREADS=1", "-e", "OPENBLAS_NUM_THREADS=1",
                 "-e", "NUMEXPR_NUM_THREADS=1",
@@ -96,11 +100,15 @@ def run(args):
                 "--mount", f"type=bind,source={lane_dir / 'lane.json'},target=/lane.json,readonly",
                 "--mount", f"type=bind,source={lane_dir},target=/out", *(["--pull=never"] if local_image else []), execution_image,
                 "python", "-I", "/boot/ci_v3_solo_probe.py", "/src", "/lane.json", "/out", str(args.timeout)]
-            procs.append(subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True))
+            log = (lane_dir / "container.log").open("wb"); logs.append(log)
+            procs.append(subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True))
         codes = [p.wait() for p in procs]
     finally:
-        cleanup()
-        gone = all(subprocess.run(["docker", "container", "inspect", n], capture_output=True).returncode != 0 for n in names)
+        try:
+            cleanup()
+            gone = all(subprocess.run(["docker", "container", "inspect", n], capture_output=True).returncode != 0 for n in names)
+        finally:
+            for log in logs: log.close()
     write_json(out / "run.json", {"container_exit_codes": codes, "containers_removed": gone, "wall_s": round(time.perf_counter() - started, 1)})
     require(gone, "probe containers were not removed")
     return codes
