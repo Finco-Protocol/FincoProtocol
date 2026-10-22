@@ -52,10 +52,21 @@ def test_rc7b_candidate_path_never_acquires_f3_or_released_authority_but_is_reco
     assert RC7B_PATH not in APPROVED
     assert not governance.released_engine_authority_matches(RC7B_PATH)
     assert not approved_frozen_path(RC7B_PATH)
+    import v9p2a_odr_successor as odr_successor
     state = recognition.recognized_state(repo=governance.REPO)
-    assert state in ("RC7B", "RC7C")
+    assert state in ("RC7B", "RC7C", "ODR")
     assert strictly_frozen_changes([RC7B_PATH]) == []
-    states = (rc7b_successor if state == "RC7B" else rc7c_successor).states(repo=governance.REPO)
+    if state == "ODR":
+        # the OD-R successor carries period_engine.py as its unchanged RC-7C blob; RC-7C itself stays judged at its immutable checkpoint
+        assert recognition.candidate_blobs(repo=governance.REPO)[RC7B_PATH] == rc7c_successor.RC7C_CANDIDATE_AUTHORITIES[RC7B_PATH]
+        subject = odr_successor.historical_subject(repo=governance.REPO)
+        assert recognition.recognized_state(repo=governance.REPO, ref=subject) == "RC7C"
+        odr_states = odr_successor.states(repo=governance.REPO)
+        for denied in ("financial_release", "product_activation", "merge_authorized", "od_r_default_policy"):
+            assert odr_states[denied] is False, denied
+        states = rc7c_successor.states(repo=governance.REPO, ref=subject)
+    else:
+        states = (rc7b_successor if state == "RC7B" else rc7c_successor).states(repo=governance.REPO)
     assert states["financial_release"] is False
     assert states["quarterly_activation"] is False
     assert states["product_admission"] is False

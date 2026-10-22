@@ -499,6 +499,11 @@ def run_clean_production(
         "cash_dsra_applied": policy_evidence.cash_dsra_applied,
         "initial_dsra_funding_keur": policy_evidence.initial_dsra_funding_keur,
     }
+    # V9-P2a / OD-R (release-closed candidate): only a run under the OD-R policy carries
+    # OD-R evidence; canonical metadata is unchanged.
+    odr_evidence = getattr(policy_evidence, "shl_maturity", None)
+    if odr_evidence is not None:
+        metadata.update(odr_evidence.to_metadata())
     from app.workbook.quarterly_frequency_config import run_evidence as _calendar_evidence
     metadata.update(_calendar_evidence(effective_inputs))  # empty for every 6/6 Run
     construction = getattr(g2c.financing_result, "construction_financing", None)
