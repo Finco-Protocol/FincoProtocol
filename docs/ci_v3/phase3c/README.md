@@ -176,7 +176,7 @@ The infrastructure side (collection, planning, containers, evidence verification
 
 PR #332 changed 7 production source files (`financial_engine/financing/generic_product_policy.py`, `financial_engine/financing/project.py`, `financial_engine/orchestrator.py`,
 `financial_engine/shareholder_waterfall/model.py`, `financial_engine/shl/production.py`, new `financial_engine/shl/maturity_authority.py`, `app/services/production_financial_authority.py`),
-15 test modules (8 changed, 7 new) and governance documents. It was merged into this branch with a normal merge (parents `fccbad4c` and `2112d7c0`); the PR still changes only `docs/ci_v3/**`, `tools/ci_v3_*` and `tests/test_ci_v3_*`,
+15 test files (8 changed, 7 added: 5 test modules and 2 helpers) and governance documents. It was merged into this branch with a normal merge (parents `fccbad4c` and `2112d7c0`); the PR still changes only `docs/ci_v3/**`, `tools/ci_v3_*` and `tests/test_ci_v3_*`,
 the seven protected production blobs are byte-identical to main and `.github/` is unchanged.
 
 ### Historical evidence is preserved, not rewritten or widened
