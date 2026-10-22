@@ -1,5 +1,10 @@
 # CI V3 Phase 3C: resolve remaining isolation blockers
 
+> **Evidence status after merging PR #332 (V9-P2a OD-R, main `2112d7c0`).** Sections 1 to 11 below describe the study executed at
+> commit `cd46e45d` / tree `dbeacff5` (manifest digest `fdc9b6c717df07fb`). That evidence is now **historical**: it remains independently verifiable
+> against its exact executed source and its files are unchanged, but it does **not** describe the synchronized tree, which also contains financial, application and governance changes.
+> What is newly verified for the synchronized tree, and what is only historical, is in section 12.
+
 Dormant infrastructure only. Nothing here activates a workflow, publishes an image, starts a hosted shadow run, approves a module,
 a nonpass record, an environment difference or a daemon thread, or changes the mandatory sequential Public Safety workflow.
 Starting point: main `c3a2f5b6` (Phase 3A and 3B merged). All execution evidence is in `evidence/`; its manifest is
@@ -166,6 +171,54 @@ Admission blockers: 15 unresolved modules, environment not proven equivalent, im
 Technically close but **not ready for authorization**: (1) the daemon-thread policy and the exact nonpass policy must be approved and written into the owner bundle (inventory, policy, isolation, weights, environment), (2) the image must be published and its digest pinned,
 (3) calibration of `p0a` on the target runner class must pass, (4) the 15 unresolved modules must be resolved or explicitly accepted, (5) the protected environment, root pin, workflow content approval and the experiment budget (350 shadow / about 590 pair runner-minutes) are still absent.
 The infrastructure side (collection, planning, containers, evidence verification, negative controls, proposal assembly) is exercised end to end locally.
+
+## 12. Synchronization with main (PR #332) and evidence integrity
+
+PR #332 changed 7 production source files (`financial_engine/financing/generic_product_policy.py`, `financial_engine/financing/project.py`, `financial_engine/orchestrator.py`,
+`financial_engine/shareholder_waterfall/model.py`, `financial_engine/shl/production.py`, new `financial_engine/shl/maturity_authority.py`, `app/services/production_financial_authority.py`),
+15 test modules (8 changed, 7 new) and governance documents. It was merged into this branch with a normal merge (parents `fccbad4c` and `2112d7c0`); the PR still changes only `docs/ci_v3/**`, `tools/ci_v3_*` and `tests/test_ci_v3_*`,
+the seven protected production blobs are byte-identical to main and `.github/` is unchanged.
+
+### Historical evidence is preserved, not rewritten or widened
+- `evidence/` (executed source `cd46e45d5885173e8a71df9ebed5767688705001`, tree `dbeacff54004680ddb8e2829aa69bc84b50c9129`) is untouched. `python -m tools.ci_v3_evidence verify --repo . --evidence docs/ci_v3/phase3c/evidence --historical`
+  verifies it against that exact source (it must be an ancestor of HEAD; tool hashes are read from that commit, not from HEAD) and reports `applies_to_published_head: false`.
+  The default (strict) mode refuses it, because the published tree differs from the executed one outside permitted evidence paths.
+- Differences between the historical source and the synchronized tree, by class: application-source: 1, ci-v3-internal: 6, financial-source: 6, general-tests: 15, other-docs: 10, other-tools: 1. None of the product classes is permitted to inherit evidence: the allow-lists
+  (`ALLOWED_FOLLOWUP`, carry-forward additions/modifications) were **not** widened and a guard test asserts they contain no financial, application, workflow or general-test path.
+- A current manifest records each historical manifest it refers to with `applies_to_this_source` and the unreviewed change classes; the admission proposal carries the same `evidence_scope`.
+
+### Newly verified for the synchronized tree (`evidence-sync-2112d7c0/`, executed source `f0a187930dfe0575ac1271bb46aef615849daf75`, tree `f32034a1063ebead03c4cbf316fb1673cda975a4`)
+- Collection in the image: 17,438 nodes in 502 modules (historical 497 module records; 179 nodes added, 0 removed; 5 new and 10 changed test modules, listed in `inventory-diff-vs-historical.json`), 68 collection skips.
+- Executed freshly on this source at three-way concurrency: **147 modules / 5,067 nodes** = every new or changed module, every module whose text references one of the 7 changed production modules (105, a heuristic and not a proof of dependency closure), all CI V3 self-tests, the earlier blockers and the tree-scanning guards; plus 5 repeats of `real_adapter`, `p0a` and a heavy module.
+  Everything passed except `test_p0a_model_execution.py` (hardware dependent, unchanged finding). The 5 new V9-P2a modules and the 7 changed modules pass.
+- Nonpass: 43 records observed on the fresh runs, all identical to the sequential control for this exact tree (run 39678405601, tree `c3355eb8`, 17,433 cases, 0 failures, 111 skipped = 68 collection + 43 runtime). 0 changed, 0 coverage losses. Still a proposal.
+- Container validation on the synchronized source: 24 modules / 2,872 nodes (including three new V9-P2a modules), three workers 1268/803/801 nodes, `coverage_valid=true`, 2,872 nodes verified, JUnit tamper rejected. Not complete coverage; the subset is derived from published commit `f0a18793`.
+- Container-level negative controls (failing test, unapproved skip, unauthorized node, missing node, unapproved daemon thread) were run on the historical source; the code they exercise is unchanged since (only `ci_v3_evidence`, `ci_v3_classify` and `ci_v3_proposal` changed), so they remain **historically supported, not re-run**.
+  The evidence-integrity negative controls for this correction are unit tests (`tests/test_ci_v3_evidence.py`, `test_ci_v3_classify.py`, `test_ci_v3_proposal.py`).
+
+### Classification for the synchronized tree
+- historical-only-needs-current-execution: 354
+- nonpass-approval-required: 14
+- stable-pass: 132
+- standalone-failure: 1
+- target-concurrency-stability-validated: 1
+
+`historical-only-needs-current-execution` means the module has evidence only on an earlier source. An unchanged test file hash is explicitly **not** treated as equivalence while production source changed, so those modules stay blocked until they are executed on the current source.
+The earlier full 495-module study was not repeated (about 67 minutes locally); full-source equivalence for the synchronized tree is a future admission prerequisite, not a claim made here.
+
+### Admission remains closed (`admission_ready: false`)
+- 369 unresolved modules
+- environment not proven equivalent
+- image not published
+- hosted-runner calibration absent or failing
+- 354 modules have only earlier-source (historical) evidence
+- earlier execution evidence does not apply to the current source
+- daemon thread policy not approved
+- no owner has reviewed isolation
+- nonpass policy not approved
+
+Unchanged separate prerequisites: the 15 isolation blockers from the historical study (14 modules need the exact nonpass policy approved, `p0a` needs hosted calibration), the exact nonpass approval, the daemon-thread owner decision, the environment differences (the hosted runner image also differs between controls: `20261018.339.1` earlier, `20261012.601` for the #332 control), image publication and hosted calibration.
+CI V3 is inactive: no workflow is added or changed and no hosted shadow run, image publication or merge happened.
 
 ## Reproduce
 
