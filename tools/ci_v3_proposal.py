@@ -49,7 +49,7 @@ def owner_decisions(summary, nonpass, equivalence, calibration, image, threads=(
         decisions.append({"owner": "Security+CI", "decision": "accept or remove each environment difference: " + ", ".join(equivalence["unaccepted_differences"]), "blocking": True})
     if calibration is None or not calibration.get("meets_test_assumption"):
         decisions.append({"owner": "CI", "decision": "run tools/ci_v3_calibrate.py inside the approved image on the target hosted runner class; "
-                          "tests/test_p0a_model_execution.py needs worker cold start <= 0.6 s", "blocking": True})
+                          "pilot readiness separately requires worker cold start <= 0.6 s; passing the workload-start-anchored P0A test is not calibration approval", "blocking": True})
     if image.get("registry_digest") is None:
         decisions.append({"owner": "Security+CI", "decision": "authorize publication of the execution image and record its registry digest", "blocking": True})
     if threads:

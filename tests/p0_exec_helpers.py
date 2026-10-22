@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import time
+import asyncio
 
 
 def spin(seconds: float) -> int:
@@ -12,6 +13,24 @@ def spin(seconds: float) -> int:
     while time.perf_counter() < deadline:
         n += 1
     return os.getpid()
+
+
+def spin_when_started(seconds: float, started) -> int:
+    """Acknowledge actual spawned-worker entry, then run the SAME workload."""
+    try:
+        started.send(os.getpid())
+    finally:
+        started.close()
+    return spin(seconds)
+
+
+async def wait_for_worker_start(started, timeout: float = 10.0) -> int:
+    """Bounded test setup; missing/invalid readiness fails, never skips."""
+    if not await asyncio.to_thread(started.poll, timeout):
+        raise AssertionError("spawned worker did not acknowledge workload start")
+    pid = started.recv()
+    assert type(pid) is int and pid > 0 and pid != os.getpid(), "invalid spawned-worker acknowledgement"
+    return pid
 
 
 def add(a: int, b: int) -> int:
