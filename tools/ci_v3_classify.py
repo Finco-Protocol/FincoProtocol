@@ -38,11 +38,15 @@ def load_attempts(directory, expect=None):
     return meta, records
 
 
-def collect(runs, expect=None):
-    """module -> list of attempt records, each carrying its run meta. Duplicate (run, module, tag) is rejected."""
+def collect(runs, expect=None, historical=()):
+    """module -> list of attempt records, each carrying its run meta. Duplicate (run, module, tag) is rejected.
+    Directories in `historical` were executed on a different source: they are loaded verbatim, forced historical and not
+    bound to the current identity, so they can never supply positive evidence for the current source."""
     result, seen = {}, set()
-    for directory in runs:
-        meta, records = load_attempts(directory, expect)
+    for directory, forced in [(d, False) for d in runs] + [(d, True) for d in historical]:
+        meta, records = load_attempts(directory, None if forced else expect)
+        if forced:
+            meta = {**meta, "historical": True}
         for item in records:
             key = (meta["label"], item["module"], item.get("tag"))
             require(key not in seen, "duplicate attempt evidence: " + "/".join(map(str, key)))
@@ -104,8 +108,14 @@ def relevant(attempts, current_sha, module=None, final_tree=None):
 def decide(attempts, expected, min_target=MIN_TARGET_PASSES, current_sha=None, module=None, final_tree=None):
     """Return (mode, category, reason) from every relevant attempt."""
     reasons = sorted({r for a in attempts if (r := exclusion(a, current_sha, module, final_tree)) and not a.get("historical")})
+    earlier = [a for a in attempts if a.get("historical")]
     attempts = relevant(attempts, current_sha, module, final_tree)
     if not any(not a.get("historical") for a in attempts):
+        if earlier and not reasons:
+            trees = sorted({str(a.get("tree"))[:12] for a in earlier})
+            return "blocked", "historical-only-needs-current-execution", (
+                "only earlier-source evidence exists (tree " + ", ".join(trees) + "); an unchanged test file does not prove equivalence "
+                "when production source changed, so the module must be executed on the current source")
         why = f" ({', '.join(reasons)})" if reasons else ""
         return "blocked", "no-standalone-evidence", "no attempt with the exact current module identity on the evidence image and source" + why
     verdicts = [status(a, expected) for a in attempts]
@@ -197,13 +207,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepared", required=True); parser.add_argument("--attempt", required=True, nargs="+", help="probe run directories")
     parser.add_argument("--output", required=True); parser.add_argument("--image-id"); parser.add_argument("--tree", nargs="+", help="accepted executed trees (baseline plus targeted re-runs)")
+    parser.add_argument("--historical-evidence", nargs="*", default=[], help="packed attempt directories executed on a different source (never positive evidence)")
     parser.add_argument("--min-target-passes", type=int, default=MIN_TARGET_PASSES)
     args = parser.parse_args(argv)
     prepared = {k: read_json(Path(args.prepared) / (k + ".json")) for k in ("inventory", "isolation", "collection")}
     skipped = {r["nodeid"] for r in prepared["collection"]["skips"]}
     expect = {"image_id": args.image_id, "trees": args.tree} if args.image_id else None
     try:
-        proposal, summary = classify(prepared, collect(args.attempt, expect), skipped, args.min_target_passes, args.tree[-1] if args.tree else None)
+        proposal, summary = classify(prepared, collect(args.attempt, expect, args.historical_evidence), skipped, args.min_target_passes, args.tree[-1] if args.tree else None)
         junit = [blob for d in args.attempt if not (json.loads((Path(d) / "meta.json").read_text()).get("historical")) for blob in junit_blobs(d)]
         allowed, unmatched = nonpass_proposal(junit, [n["nodeid"] for n in prepared["inventory"]["nodes"]])
     except ContractError as exc:

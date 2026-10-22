@@ -197,3 +197,82 @@ def test_no_product_test_imports_ci_v3_tools_which_is_the_premise_of_carry_forwa
     offenders = [p.name for p in Path(__file__).parent.glob("*.py")
                  if not p.name.startswith(("test_ci_v3_", "ci_v3_")) and re.search(r"(?:from|import)\s+tools\.ci_v3_", p.read_text(encoding="utf-8", errors="replace"))]
     assert offenders == []
+
+
+# ── Phase 3C correction A: historical evidence must not silently inherit across unreviewed source changes ──────────────
+def test_allow_lists_never_cover_financial_application_or_general_test_paths():
+    forbidden = ("financial_engine", "finco_core", "app/", "app", "domain", "finco_protocol", "tests/", "tests", ".github", "tools/", "tools", "")
+    for name in ("ALLOWED_FOLLOWUP", "CARRY_ADD_PREFIXES", "CARRY_MODIFY", "ALLOWED_README"):
+        for prefix in getattr(ev, name):
+            assert prefix not in forbidden and not prefix.startswith(("financial_engine", "finco_core", "app/", "domain/", ".github")), (name, prefix)
+    assert all(p.startswith("tools/ci_v3_") for p in ev.CARRY_MODIFY_TOOLS) and ev.CARRY_MODIFY == ("docs/ci_v3/", "tests/test_ci_v3_")
+
+
+@pytest.mark.parametrize("status,path", [("M", "financial_engine/orchestrator.py"), ("A", "financial_engine/shl/maturity_authority.py"),
+    ("M", "finco_core/revenue/generation.py"), ("M", "app/services/production_financial_authority.py"), ("M", "tests/test_finance_integrity_governance.py"),
+    ("A", "tests/test_v9p2a_odr_successor.py"), ("M", ".github/workflows/public_safety_and_smoke.yml"), ("M", "requirements.txt"),
+    ("M", "tools/ci_pytest_runner.py"), ("M", "tools/ci_v3_probe_run.py")])
+def test_unreviewed_product_or_execution_changes_cannot_inherit_earlier_evidence(world, status, path):
+    base_tree = world["tree"]
+    (world["repo"] / "tools/ci_v3_probe_run.py").parent.mkdir(parents=True, exist_ok=True)
+    (world["repo"] / "tools/ci_v3_probe_run.py").write_text("base\n"); git(world["repo"], "add", "tools/ci_v3_probe_run.py"); git(world["repo"], "commit", "-qm", "base")
+    base = subprocess.check_output(["git", "-C", str(world["repo"]), "rev-parse", "HEAD^{tree}"], text=True).strip()
+    new_tree = commit_file(world, path, "changed\n")
+    with pytest.raises(ContractError, match="invalidates evidence"):
+        ev.carry_forward_changes(world["repo"], base, new_tree)
+    assert base != base_tree
+
+
+def test_change_classes_describe_a_difference_without_granting_anything():
+    assert ev.change_class("financial_engine/orchestrator.py") == "financial-source" and ev.change_class("finco_core/x.py") == "financial-source"
+    assert ev.change_class("app/services/a.py") == "application-source" and ev.change_class("main_web.py") == "application-source"
+    assert ev.change_class("tests/test_x.py") == "general-tests" and ev.change_class(".github/workflows/a.yml") == "workflow"
+    assert ev.change_class("tests/test_ci_v3_x.py") == "ci-v3-internal" and ev.change_class("docs/model_v2/a.md") == "other-docs"
+
+
+def test_historical_evidence_stays_verifiable_but_never_applies_after_a_financial_change(world):
+    manifest = build(world); commit_evidence(world)
+    assert ev.verify(world["repo"], world["evidence"])["applies_to_published_head"] is True
+    commit_file(world, "financial_engine/orchestrator.py", "X = 1\n")                       # an upstream merge touches production source
+    with pytest.raises(ContractError, match="outside evidence paths"):
+        ev.verify(world["repo"], world["evidence"])                                          # strict mode refuses
+    result = ev.verify(world["repo"], world["evidence"], historical=True)                    # but the old study is still verifiable as history
+    assert result["verified"] and result["mode"] == "historical" and result["applies_to_published_head"] is False
+    assert result["unreviewed_change_classes"] == {"financial-source": 1}
+    assert manifest["source"]["head"] != subprocess.check_output(["git", "-C", str(world["repo"]), "rev-parse", "HEAD"], text=True).strip()
+
+
+def test_historical_mode_still_detects_tampering_and_requires_an_ancestor(world):
+    build(world); commit_evidence(world)
+    commit_file(world, "financial_engine/orchestrator.py", "X = 1\n")
+    (world["evidence"] / "collection-skips.json").write_text("[1]\n")
+    with pytest.raises(ContractError, match="evidence file changed"):
+        ev.verify(world["repo"], world["evidence"], historical=True)
+    (world["evidence"] / "collection-skips.json").write_text("[]\n")
+    unrelated = subprocess.check_output(["git", "-C", str(world["repo"]), "commit-tree", world["tree"], "-m", "unrelated root"], text=True,
+                                        env={**__import__("os").environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}).strip()
+    with pytest.raises(ContractError, match="not an ancestor"):
+        ev.verify(world["repo"], world["evidence"], historical=True, published=unrelated)
+
+
+def test_current_manifest_records_that_earlier_evidence_does_not_apply_to_the_new_source(world):
+    old = build(world); commit_evidence(world)
+    commit_file(world, "financial_engine/orchestrator.py", "X = 1\n")
+    head = subprocess.check_output(["git", "-C", str(world["repo"]), "rev-parse", "HEAD"], text=True).strip()
+    tree = subprocess.check_output(["git", "-C", str(world["repo"]), "rev-parse", "HEAD^{tree}"], text=True).strip()
+    inv = json.loads(world["inventory"].read_text()); inv["source"] = {"head": head, "tree": tree}; world["inventory"].write_text(json.dumps(inv))
+    current = world["repo"] / "docs/ci_v3/phase3d/current-evidence"
+    make_run(world["tmp"] / "fresh", "fresh", tree=tree); ev.pack_attempt(world["tmp"] / "fresh", current / "attempts/fresh")
+    write_json(current / "collection-skips.json", [])
+    manifest = ev.build(world["repo"], current, world["image_dir"], world["inventory"], world["archive"], ["collection-skips.json"],
+                        [world["evidence"] / "manifest.json"])
+    historical = manifest["historical_evidence"][0]
+    assert manifest["evidence_dir"] == "docs/ci_v3/phase3d/current-evidence/"
+    assert historical["manifest_digest"] == old["digest"] and historical["source"] == old["source"]
+    assert historical["applies_to_this_source"] is False and historical["unreviewed_change_classes"] == {"financial-source": 1}
+
+
+@pytest.mark.parametrize("bad", ["docs/ci_v3/phase3b/", "docs/ci_v3/phase3c/", "financial_engine/evidence/", "docs/ci_v3/phase3c/evidence/../../", "docs/ci_v3/phase3c/not-it/"])
+def test_evidence_directory_is_restricted_to_ci_v3_evidence_folders(world, bad):
+    with pytest.raises(ContractError, match="unsupported evidence directory"):
+        ev.allowed_followup({"evidence_dir": bad})

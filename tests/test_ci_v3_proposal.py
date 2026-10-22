@@ -67,3 +67,17 @@ def test_observed_daemon_threads_become_a_blocking_owner_decision_and_stay_unapp
     assert "allowed_daemon_threads" not in bundle["isolation"]                 # nothing is enabled by the proposal
     decision = next(d for d in proposal["owner_decisions"] if "daemon threads" in d["decision"])
     assert decision["blocking"] and "demo-cleanup" in decision["decision"]
+
+
+def test_proposal_separates_historical_execution_from_evidence_for_the_current_source():
+    prepared, classification, nonpass, image, equivalence = world()
+    classification["summary"] = {"categories": {"historical-only-needs-current-execution": 480, "stable-pass": 1}, "unresolved_blocking_admission": 480,
+                                 "unresolved_modules": ["tests/test_a.py"]}
+    historical = [{"manifest_digest": "d" * 64, "source": {"head": "old", "tree": "oldtree"}, "applies_to_this_source": False,
+                   "unreviewed_change_classes": {"financial-source": 7}, "unreviewed_changed_paths": 40}]
+    _, proposal = build(prepared, classification, nonpass, image, equivalence, None, None, {}, (), historical)
+    scope = proposal["evidence_scope"]
+    assert scope["current_source"] == {"head": "h", "tree": "t"} and scope["historical"] == historical
+    assert "not equivalence evidence" in scope["statement"] and proposal["admission_ready"] is False
+    assert "480 modules have only earlier-source (historical) evidence" in proposal["admission_blockers"]
+    assert "earlier execution evidence does not apply to the current source" in proposal["admission_blockers"]

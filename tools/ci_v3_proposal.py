@@ -61,7 +61,7 @@ def owner_decisions(summary, nonpass, equivalence, calibration, image, threads=(
     return decisions
 
 
-def build(prepared, classification, nonpass, image, environment_equivalence, calibration, previous, image_files, threads=()):
+def build(prepared, classification, nonpass, image, environment_equivalence, calibration, previous, image_files, threads=(), historical=()):
     inventory, isolation = prepared["inventory"], classification["proposal"]
     ids = sorted(n["nodeid"] for n in inventory["nodes"])
     require(len(ids) == len(set(ids)), "duplicate node identities")
@@ -80,12 +80,20 @@ def build(prepared, classification, nonpass, image, environment_equivalence, cal
         blockers.append("image not published")
     if calibration is None or not calibration.get("meets_test_assumption"):
         blockers.append("hosted-runner calibration absent or failing")
+    earlier = summary["categories"].get("historical-only-needs-current-execution", 0)
+    if earlier:
+        blockers.append(f"{earlier} modules have only earlier-source (historical) evidence")
+    if any(not h["applies_to_this_source"] for h in historical):
+        blockers.append("earlier execution evidence does not apply to the current source")
     if threads:
         blockers.append("daemon thread policy not approved")
     blockers += ["no owner has reviewed isolation", "nonpass policy not approved"]
     return bundle, seal({"schema": 1, "kind": "ci-v3-admission-proposal", "authority": "proposal-not-approved", "admission_ready": False,
         "source": inventory["source"], "inventory": {"digest": inventory["digest"], "nodes": len(ids), "node_ids_sha256": sha("\n".join(ids).encode()),
                                                        "modules": len(inventory["modules"]), "collection_skips": len(prepared["collection"]["skips"])},
+        "evidence_scope": {"current_source": inventory["source"], "historical": list(historical),
+                           "statement": "Historical executions are independently verifiable against their own source but were not run on the current source; "
+                                        "they are not equivalence evidence for it, even for modules whose test file is unchanged."},
         "bundle_sha256": files, "image": {**image, "files_sha256": image_files},
         "classification": {"categories": summary["categories"], "unresolved_modules": summary["unresolved_modules"]},
         "nonpass": {"proposed": len(nonpass["allowed_nonpass"]), "digest": nonpass["digest"], "control": nonpass["control"],
@@ -101,7 +109,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("prepared", "classification", "nonpass-policy", "image-dir", "environment-equivalence", "output"):
         parser.add_argument("--" + name, required=True)
-    parser.add_argument("--calibration"); parser.add_argument("--observed-threads", help="JSON list of {name, daemon} from a rejected worker's pytest-return.json"); parser.add_argument("--previous", help="previous module-classification.json")
+    parser.add_argument("--calibration"); parser.add_argument("--repo", default="."); parser.add_argument("--historical-manifest", action="append", default=[]); parser.add_argument("--observed-threads", help="JSON list of {name, daemon} from a rejected worker's pytest-return.json"); parser.add_argument("--previous", help="previous module-classification.json")
     args = parser.parse_args(argv)
     p, c, i = Path(args.prepared), Path(args.classification), Path(args.image_dir)
     try:
@@ -110,10 +118,17 @@ def main(argv=None):
         classification = {"proposal": read_json(c / "isolation-proposal.json"), "summary": read_json(c / "summary.json")}
         previous = read_json(args.previous)["modules"] if args.previous else None
         calibration = read_json(args.calibration) if args.calibration else None
+        from tools.ci_v3_evidence import applicability
+        head = prepared["inventory"]["source"]["head"]
+        historical = []
+        for manifest_file in args.historical_manifest:
+            old = read_json(manifest_file); info = applicability(args.repo, old, head)
+            historical.append({"manifest_digest": old["digest"], "source": old["source"], "applies_to_this_source": info["applies_to_published_head"],
+                               "unreviewed_change_classes": info["unreviewed_change_classes"], "unreviewed_changed_paths": len(info["unreviewed_changes"])})
         bundle, proposal = build(prepared, classification, read_json(args.nonpass_policy), read_json(i / "image.json"),
                                  read_json(args.environment_equivalence), calibration, previous,
                                  {f.name: sha(f.read_bytes()) for f in sorted(i.iterdir()) if f.is_file()},
-                                 [t for t in json.loads(Path(args.observed_threads).read_text()) if t["daemon"]] if args.observed_threads else ())
+                                 [t for t in json.loads(Path(args.observed_threads).read_text()) if t["daemon"]] if args.observed_threads else (), historical)
     except (ContractError, OSError, KeyError) as exc:
         print("CI_V3_PROPOSAL_REJECTED: " + str(exc)); return 1
     out = Path(args.output); out.mkdir(parents=True, exist_ok=False)

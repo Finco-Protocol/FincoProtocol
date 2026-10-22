@@ -153,7 +153,7 @@ def test_source_change_supersedes_a_historical_failure_but_it_stays_recorded():
 
 
 def test_historical_pass_never_supplies_positive_evidence():
-    assert decide([historical()], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
+    assert decide([historical()], EXPECTED, current_sha=SHA)[:2] == ("blocked", "historical-only-needs-current-execution")
     assert decide([historical(), historical(skipped=0)], EXPECTED, current_sha=SHA)[0] == "blocked"
 
 
@@ -233,3 +233,38 @@ def test_ci_v3_self_tests_count_only_evidence_from_the_final_tree():
     assert decide([old, new], EXPECTED, current_sha=SHA, module=module, final_tree="T")[:2] == ("runner-private", "stable-pass")
     # a product test module may still carry evidence from the baseline tree
     assert decide([old], EXPECTED, current_sha=SHA, module="tests/test_product.py", final_tree="T")[:2] == ("runner-private", "stable-pass")
+
+
+def historical_run(path, label="old-study", **kw):
+    write_run(path, "first", label, tree="OLD", image_id="old-image", module="tests/test_a.py", **kw)
+    meta = json.loads((path / "meta.json").read_text()); meta["historical"] = False      # even if mislabelled, the loader forces it
+    (path / "meta.json").write_text(json.dumps(meta))
+
+
+def test_earlier_source_pass_is_never_current_evidence_even_when_the_test_file_is_unchanged(tmp_path):
+    for i in range(10):                                                                  # ten earlier-source passes do not matter
+        historical_run(tmp_path / f"h{i}", f"old-{i}", module_sha256=SHA)
+    history = collect([], {"image_id": "img", "trees": ["NEW"]}, [tmp_path / f"h{i}" for i in range(10)])["tests/test_a.py"]
+    assert all(a["historical"] for a in history)
+    mode, category, reason = decide(history, EXPECTED, current_sha=SHA)
+    assert (mode, category) == ("blocked", "historical-only-needs-current-execution") and "must be executed on the current source" in reason
+
+
+def test_a_fresh_current_source_attempt_resolves_what_history_cannot(tmp_path):
+    historical_run(tmp_path / "h", module_sha256=SHA)
+    history = collect([], None, [tmp_path / "h"])["tests/test_a.py"] + [attempt("target", "fresh")]
+    assert decide(history, EXPECTED, current_sha=SHA)[:2] == ("runner-private", "stable-pass")
+
+
+def test_earlier_source_failure_on_an_unchanged_module_still_counts_against_it(tmp_path):
+    historical_run(tmp_path / "h", module_sha256=SHA, **FAIL)
+    history = collect([], None, [tmp_path / "h"])["tests/test_a.py"]
+    assert decide(history + [attempt("target", "fresh")], EXPECTED, current_sha=SHA)[:2] == ("blocked", "load-sensitive-unproven")
+
+
+def test_historical_directories_are_not_bound_to_the_current_identity_but_current_ones_are(tmp_path):
+    historical_run(tmp_path / "h", module_sha256=SHA)
+    write_run(tmp_path / "cur", "target", "cur", tree="OLD", image_id="img")
+    with pytest.raises(ContractError, match="not executed on the evidence"):
+        collect([tmp_path / "cur"], {"image_id": "img", "trees": ["NEW"]}, [tmp_path / "h"])
+    assert collect([], {"image_id": "img", "trees": ["NEW"]}, [tmp_path / "h"])
