@@ -40,8 +40,14 @@ def compare(install_log, job_log, freeze, system_list, python_version, tool_vers
     ctl, img = control_packages(install_log), image_packages(freeze)
     diffs = {k: [ctl.get(k), img.get(k)] for k in sorted(set(ctl) | set(img)) if k not in IGNORED and ctl.get(k) != img.get(k)}
     ctl_python = (re.search(r"/Python/(\d+\.\d+\.\d+)/", install_log) or [None, None])[1]
-    runner = (re.search(r"Image: (\S+)\s+Version: (\S+)", job_log.replace("\n", " ")) or [None, None, None])
-    img_python = python_version.split()[0]
+    lines = [re.sub(r"^\ufeff?\d{4}-\d\d-\d\dT[\d:.]+Z\s*", "", line).strip() for line in job_log.splitlines()]   # strip Actions timestamps
+    runner = (None, None, None)
+    for index, line in enumerate(lines):
+        match = re.fullmatch(r"Image:\s*(\S+)", line)
+        if match and index + 1 < len(lines) and (version := re.fullmatch(r"Version:\s*(\S+)", lines[index + 1])):
+            runner = (None, match.group(1), version.group(1)); break
+    found = re.search(r"Python (\d+\.\d+\.\d+)", python_version)
+    img_python = found.group(1) if found else None
     libc = next((l.split("=", 1)[1] for l in system_list.splitlines() if l.startswith("libc6=")), None)
     pretty = re.search(r'PRETTY_NAME="([^"]+)"', os_release)
     items = [

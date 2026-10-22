@@ -60,3 +60,21 @@ def test_control_reader_exact_ids_collection_skips_and_duplicates(tmp_path):
 def test_node_id_prefers_longest_module_prefix():
     assert node_id("tests.test_m.TestK", "t", {"tests/test_m.py"}) == "tests/test_m.py::TestK::t"
     assert node_id("other.x", "t", {"tests/test_m.py"}) is None
+
+
+def test_cli_compares_collection_skip_modules_by_identity_not_by_junit_text(tmp_path):
+    import json
+    from tools.ci_v3_nonpass import main
+    from tools.ci_v3_schema import seal, write_json
+    inventory = seal({"nodes": [{"nodeid": "tests/test_m.py::test_a", "module": "tests/test_m.py"}], "source": {"head": "h", "tree": "t"}})
+    write_json(tmp_path / "inventory.json", inventory)
+    write_json(tmp_path / "collection.json", {"skips": [{"nodeid": "tests/test_b.py", "reason": "Skipped: playwright not installed in this workflow"}]})
+    write_json(tmp_path / "observed.json", {"records": {}})
+    xml = tmp_path / "r.xml"
+    xml.write_text('<testsuites><testsuite><testcase classname="tests.test_m" name="test_a"/>'
+                   '<testcase classname="" name="tests.test_b"><skipped message="collection skipped"/></testcase></testsuite></testsuites>')
+    out = tmp_path / "policy.json"
+    assert main(["--observed", str(tmp_path / "observed.json"), "--control-xml", str(xml), "--control-ref", "run", "--inventory", str(tmp_path / "inventory.json"),
+                 "--collection", str(tmp_path / "collection.json"), "--output", str(out)]) == 0
+    result = json.loads(out.read_text())
+    assert result["coverage_equivalence"]["collection_skip_modules_identical"] is True and result["approved"] is False

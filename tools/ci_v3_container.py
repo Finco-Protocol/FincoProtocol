@@ -33,14 +33,27 @@ def subject_bytes(root, names):
     return result
 
 
-def docker_command(image, name, project, bootstrap, evidence, worker, context=None):
+def passwd_file(path, uid, gid):
+    """Read-only /etc/passwd with the numeric host user (OpenSSH and other tools refuse a uid that has no entry,
+    which the hosted control runner always has). Contains no credentials."""
+    entries = ["root:x:0:0:root:/root:/usr/sbin/nologin"]
+    if uid != 0:
+        entries.append(f"ci:x:{int(uid)}:{int(gid)}:ci:/tmp/home:/usr/sbin/nologin")
+    Path(path).write_text("\n".join(entries) + "\n", encoding="ascii")
+    return Path(path)
+
+
+def docker_command(image, name, project, bootstrap, evidence, worker, context=None, passwd=None):
     image_ref(image)
     require(re.fullmatch(r"ci-v3-[0-9a-f]{32}", name), "unsafe container identity")
     args = ["docker", "run", "--rm", "--name", name, "--init", "--network=none", "--read-only",
         "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=512", "--memory=6g",
         "--user", f"{os.getuid()}:{os.getgid()}" if sys.platform == "linux" else "1001:1001",
         "--tmpfs", "/tmp:rw,nosuid,nodev,size=2g", "--workdir", "/subject"]
-    for source, target, readonly in ((project, "/subject", False), (bootstrap, "/bootstrap", True), (evidence, "/evidence", False)):
+    mounts = [(project, "/subject", False), (bootstrap, "/bootstrap", True), (evidence, "/evidence", False)]
+    if passwd is not None:
+        mounts.append((passwd, "/etc/passwd", True))
+    for source, target, readonly in mounts:
         require("," not in str(source), "unsupported mount path")
         args += ["--mount", f"type=bind,source={Path(source).resolve()},target={target}" + (",readonly" if readonly else "")]
     env = {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp/home",
@@ -94,7 +107,9 @@ def observe_container(request, directory, project, image, timeout_s):
     write_json(evidence / "request.json", child_request)
     (evidence / "release").write_text("host container isolation established\n", encoding="ascii")
     name = "ci-v3-" + uuid.uuid4().hex
-    command = docker_command(image, name, sandbox, bootstrap, evidence, request.get("worker"), request["context"])
+    uid, gid = (os.getuid(), os.getgid()) if sys.platform == "linux" else (1001, 1001)
+    command = docker_command(image, name, sandbox, bootstrap, evidence, request.get("worker"), request["context"],
+                             passwd_file(directory / "passwd", uid, gid))
     timed_out = False; cancelled = False; started = time.perf_counter()
     process = None; cleanup_ok = False
     try:

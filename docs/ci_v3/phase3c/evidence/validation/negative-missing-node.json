@@ -1,0 +1,8 @@
+{
+ "container_removed": true,
+ "control": "missing-node",
+ "pytest_codes": {},
+ "reason": "inventory nodes not canonical",
+ "rejected": true,
+ "workers_not_normal": []
+}

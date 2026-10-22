@@ -14,7 +14,7 @@ import sys
 import time
 import uuid
 
-from tools.ci_v3_container import image_ref
+from tools.ci_v3_container import image_ref, passwd_file
 from tools.ci_v3_schema import require, write_json
 
 KINDS = ("first", "uncontended", "target")
@@ -39,6 +39,7 @@ def run(args):
     write_json(out / "meta.json", {"kind": args.kind, "label": args.label, "image": args.image, "image_id": args.image_id,
         "tree": args.tree, "head": args.head, "concurrency": args.lanes, "cpus_per_container": args.cpus, "memory": args.memory,
         "repeat": args.repeat, "timeout_s": args.timeout, "boot_files_sha256": args.boot_sha})
+    passwd = passwd_file(out / "passwd", 1001, 1001)   # probe containers always run as uid 1001
     names, procs, started = [], [], time.perf_counter()
     def cleanup(*_):
         for name in names:
@@ -58,6 +59,7 @@ def run(args):
                 "-e", "NUMEXPR_NUM_THREADS=1",
                 "--mount", f"type=bind,source={Path(args.source).resolve()},target=/src,readonly",
                 "--mount", f"type=bind,source={Path(args.boot).resolve()},target=/boot,readonly",
+                "--mount", f"type=bind,source={passwd},target=/etc/passwd,readonly",
                 "--mount", f"type=bind,source={lane_dir / 'lane.json'},target=/lane.json,readonly",
                 "--mount", f"type=bind,source={lane_dir},target=/out", args.image,
                 "python", "-I", "/boot/ci_v3_solo_probe.py", "/src", "/lane.json", "/out", str(args.timeout)]

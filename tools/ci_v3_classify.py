@@ -11,6 +11,7 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
+import re
 import tarfile
 import xml.etree.ElementTree as ET
 
@@ -30,18 +31,22 @@ def load_attempts(directory, expect=None):
     meta = read_json(directory / "meta.json")
     require(meta["kind"] in ("first", "uncontended", "target"), "unknown attempt kind")
     if expect and not meta.get("historical"):
-        require(meta["image_id"] == expect["image_id"] and meta["tree"] == expect["tree"], "attempt was not executed on the evidence image/source")
+        require(meta["image_id"] == expect["image_id"] and meta["tree"] in expect["trees"], "attempt was not executed on the evidence image/source")
     files = sorted(directory.glob("lane-*/results.jsonl")) or [directory / "results.jsonl"]   # raw lanes, or the packed form
     records = [json.loads(line) for f in files if f.exists() for line in f.read_text().splitlines()]
     require(records, "empty attempt evidence: " + str(directory))
     return meta, records
 
 
-def collect(runs, expect=None):
-    """module -> list of attempt records, each carrying its run meta. Duplicate (run, module, tag) is rejected."""
+def collect(runs, expect=None, historical=()):
+    """module -> list of attempt records, each carrying its run meta. Duplicate (run, module, tag) is rejected.
+    Directories in `historical` were executed on a different source: they are loaded verbatim, forced historical and not
+    bound to the current identity, so they can never supply positive evidence for the current source."""
     result, seen = {}, set()
-    for directory in runs:
-        meta, records = load_attempts(directory, expect)
+    for directory, forced in [(d, False) for d in runs] + [(d, True) for d in historical]:
+        meta, records = load_attempts(directory, None if forced else expect)
+        if forced:
+            meta = {**meta, "historical": True}
         for item in records:
             key = (meta["label"], item["module"], item.get("tag"))
             require(key not in seen, "duplicate attempt evidence: " + "/".join(map(str, key)))
@@ -65,23 +70,54 @@ def status(attempt, expected):
     return "pass-with-nonpass" if attempt["skipped"] else "pass"
 
 
-def relevant(attempts, current_sha):
-    """Historical attempts count only while the module blob is unchanged, and only their failures count against it.
-    Superseded or historical-PASS attempts stay in the preserved record but never supply positive evidence."""
-    kept = []
-    for a in attempts:
-        if not a.get("historical"):
-            kept.append(a)
-        elif current_sha is not None and a.get("module_sha256") == current_sha and status(a, a["tests"]) not in ("pass", "pass-with-nonpass"):
-            kept.append(a)
-    return kept
+SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
-def decide(attempts, expected, min_target=MIN_TARGET_PASSES, current_sha=None):
+CI_V3_SELF_TESTS = "tests/test_ci_v3_"
+
+
+def exclusion(attempt, current_sha, module=None, final_tree=None):
+    """Why an attempt cannot be counted, or None. Positive evidence needs the exact current module blob identity."""
+    if attempt.get("historical"):
+        if current_sha is not None and attempt.get("module_sha256") == current_sha and status(attempt, attempt["tests"]) not in ("pass", "pass-with-nonpass"):
+            return None            # a historical FAILURE on an unchanged module still counts against it
+        return "historical-evidence"
+    if current_sha is None or not SHA256.fullmatch(current_sha):
+        return "current-module-identity-unavailable"
+    if final_tree and module and module.startswith(CI_V3_SELF_TESTS) and attempt.get("tree") != final_tree:
+        return "ci-v3-self-test-needs-final-tree-evidence"     # these tests exercise tools that may have changed since
+    recorded = attempt.get("module_sha256")
+    if recorded is None:
+        return "missing-module-sha256"
+    if not isinstance(recorded, str) or not SHA256.fullmatch(recorded):
+        return "malformed-module-sha256"
+    if recorded != current_sha:
+        return "stale-or-mismatched-module-sha256"
+    return None
+
+
+def annotate(attempts, current_sha, module=None, final_tree=None):
+    """Every attempt is preserved verbatim; the annotation says whether it counts and why not."""
+    return [{**a, "counts": (reason := exclusion(a, current_sha, module, final_tree)) is None, "exclusion": reason} for a in attempts]
+
+
+def relevant(attempts, current_sha, module=None, final_tree=None):
+    return [a for a in attempts if exclusion(a, current_sha, module, final_tree) is None]
+
+
+def decide(attempts, expected, min_target=MIN_TARGET_PASSES, current_sha=None, module=None, final_tree=None):
     """Return (mode, category, reason) from every relevant attempt."""
-    attempts = relevant(attempts, current_sha)
+    reasons = sorted({r for a in attempts if (r := exclusion(a, current_sha, module, final_tree)) and not a.get("historical")})
+    earlier = [a for a in attempts if a.get("historical")]
+    attempts = relevant(attempts, current_sha, module, final_tree)
     if not any(not a.get("historical") for a in attempts):
-        return "blocked", "no-standalone-evidence", "no attempt executed on the exact evidence image and source"
+        if earlier and not reasons:
+            trees = sorted({str(a.get("tree"))[:12] for a in earlier})
+            return "blocked", "historical-only-needs-current-execution", (
+                "only earlier-source evidence exists (tree " + ", ".join(trees) + "); an unchanged test file does not prove equivalence "
+                "when production source changed, so the module must be executed on the current source")
+        why = f" ({', '.join(reasons)})" if reasons else ""
+        return "blocked", "no-standalone-evidence", "no attempt with the exact current module identity on the evidence image and source" + why
     verdicts = [status(a, expected) for a in attempts]
     for bad, category in (("timeout", "timeout"), ("capacity", "capacity-exhaustion"), ("coverage-mismatch", "coverage-mismatch")):
         if bad in verdicts:
@@ -146,7 +182,7 @@ def nonpass_proposal(junit_documents, nodeids):
     return proposal, unmatched
 
 
-def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TARGET_PASSES):
+def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TARGET_PASSES, final_tree=None):
     inventory, isolation = prepared["inventory"], prepared["isolation"]
     expected = Counter(n["module"] for n in inventory["nodes"])
     modules, summary = {}, Counter()
@@ -157,8 +193,8 @@ def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TAR
         elif name not in expected:
             mode, category, reason = "blocked", "not-collected-helper", "no collected nodes; helper or collection-skipped file"
         else:
-            mode, category, reason = decide(history, expected[name], min_target, base.get("sha256"))
-        record.update(mode=mode, category=category, reason=reason, rationale=reason, reviewed=False, attempts=history)
+            mode, category, reason = decide(history, expected[name], min_target, base.get("sha256"), name, final_tree)
+        record.update(mode=mode, category=category, reason=reason, rationale=reason, reviewed=False, attempts=annotate(history, base.get("sha256"), name, final_tree))
         modules[name] = record; summary[category] += 1
     proposal = seal({**{k: v for k, v in isolation.items() if k not in ("digest", "modules")},
                      "modules": modules, "authority": "evidence-proposal-unreviewed"})
@@ -170,14 +206,15 @@ def classify(prepared, attempts, skipped_modules=frozenset(), min_target=MIN_TAR
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepared", required=True); parser.add_argument("--attempt", required=True, nargs="+", help="probe run directories")
-    parser.add_argument("--output", required=True); parser.add_argument("--image-id"); parser.add_argument("--tree")
+    parser.add_argument("--output", required=True); parser.add_argument("--image-id"); parser.add_argument("--tree", nargs="+", help="accepted executed trees (baseline plus targeted re-runs)")
+    parser.add_argument("--historical-evidence", nargs="*", default=[], help="packed attempt directories executed on a different source (never positive evidence)")
     parser.add_argument("--min-target-passes", type=int, default=MIN_TARGET_PASSES)
     args = parser.parse_args(argv)
     prepared = {k: read_json(Path(args.prepared) / (k + ".json")) for k in ("inventory", "isolation", "collection")}
     skipped = {r["nodeid"] for r in prepared["collection"]["skips"]}
-    expect = {"image_id": args.image_id, "tree": args.tree} if args.image_id else None
+    expect = {"image_id": args.image_id, "trees": args.tree} if args.image_id else None
     try:
-        proposal, summary = classify(prepared, collect(args.attempt, expect), skipped, args.min_target_passes)
+        proposal, summary = classify(prepared, collect(args.attempt, expect, args.historical_evidence), skipped, args.min_target_passes, args.tree[-1] if args.tree else None)
         junit = [blob for d in args.attempt if not (json.loads((Path(d) / "meta.json").read_text()).get("historical")) for blob in junit_blobs(d)]
         allowed, unmatched = nonpass_proposal(junit, [n["nodeid"] for n in prepared["inventory"]["nodes"]])
     except ContractError as exc:

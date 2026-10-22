@@ -1,5 +1,7 @@
 # CI V3 Phase 3B — Linux inventory, isolation, image and hosted-pilot readiness
 
+> **Superseded for current evidence by Phase 3C** (`docs/ci_v3/phase3c/README.md`). The figures and evidence below describe Phase 3B at the time and are historical; where they conflict with Phase 3C (for example the 20 unresolved modules, the `node`/`ssh-keygen` skips and the golden-flow state), Phase 3C is current.
+
 Depends on PR #340 (Phase 3A, head `e6ee8cc9`). Nothing here activates a workflow, publishes an image, runs a hosted
 shadow, or alters the mandatory sequential Public Safety workflow. All evidence is under `evidence/` and was produced
 locally in Docker on Linux (4 vCPU Firecracker VM, shared by up to four containers); local timings are NOT hosted

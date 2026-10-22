@@ -1,0 +1,11 @@
+{
+ "base_image": "docker.io/library/python@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70",
+ "build": "docker build with a build-only CA secret on a TLS-inspecting network; the secret is never in a layer",
+ "dockerfile_sha256": "76a2921eef2a41457d7aca8949c78c55ed8a8f517998cdf141fe0a6112d510cb",
+ "image_id": "sha256:0e447614cf691313002c6203ffb74ba65526e5defe86097cb978d8891862251a",
+ "local_manifest_list_digest": "sha256:0e447614cf691313002c6203ffb74ba65526e5defe86097cb978d8891862251a",
+ "note": "Built locally, never pushed. A registry digest exists only after an authorized publication and must be re-recorded then. Mutable tags are never execution authority. A rebuild from the same inputs yields the same resolved package lists but not the same bytes/digest.",
+ "python": "3.12.15",
+ "reference_used_for_execution": "finco-ci-v3@sha256:0e447614cf691313002c6203ffb74ba65526e5defe86097cb978d8891862251a",
+ "registry_digest": null
+}

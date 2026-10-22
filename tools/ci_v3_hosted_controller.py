@@ -159,14 +159,19 @@ def read_plan(directory, root, root_sha, bundle, project, run_id, attempt, execu
     return plan, ctx, value
 
 
+def worker_request(ctx, worker, bundle, modules):
+    """The worker request comes from the approved bundle only; the allowlist is never supplied by the worker."""
+    return {"mode": "worker", "context": ctx, "worker": worker, "inventory": bundle["inventory"], "owned_modules": modules,
+            "allowed_daemon_threads": bundle["isolation"].get("allowed_daemon_threads", {})}
+
+
 def run_worker(root, root_sha, bundle, project, plan_directory, worker, output, run_id, attempt):
     require(worker in STAGES and worker != "plan", "unexpected worker")
     require(git_source(project) == root["source"], "wrong worker checkout")
     plan, ctx, _ = read_plan(plan_directory, root, root_sha, bundle, project, run_id, attempt)
     modules = sorted(m for m, owner in plan["module_workers"].items() if owner == worker)
     output = Path(output); output.mkdir(parents=True, exist_ok=False)
-    child, observed = observe_container({"mode": "worker", "context": ctx, "worker": worker,
-        "inventory": bundle["inventory"], "owned_modules": modules}, output / "execution", project, root["image"], 4800)
+    child, observed = observe_container(worker_request(ctx, worker, bundle, modules), output / "execution", project, root["image"], 4800)
     observed = bridge_worker(child, observed, ctx)
     shutil.move(str(child), output / "child"); shutil.rmtree(output / "execution")
     require(git_source(project) == root["source"], "worker source changed")

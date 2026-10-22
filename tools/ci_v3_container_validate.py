@@ -137,7 +137,7 @@ def tamper_worker_junit(received, kind):
     path.write_text(text.replace(case, case + case if kind == "duplicate-junit-node" else "", 1), encoding="utf-8")
 
 
-def validate(project, image, work, inventory_mutation=None, tamper=()):
+def validate(project, image, work, inventory_mutation=None, tamper=(), allowed_threads=()):
     project, work = Path(project).resolve(), Path(work).resolve()
     marks = {"start": time.perf_counter()}
     require(prepare(project, work / "prep", image) > 0, "no collection")
@@ -149,7 +149,9 @@ def validate(project, image, work, inventory_mutation=None, tamper=()):
     isolation = seal({"schema": 3, "kind": "ci-v3-isolation-policy", "source": inventory["source"],
         "profile": "docker-no-network-private-workspace-v1", "fixture_tree_reviewed": True, "review_reference": REVIEW,
         "modules": {m: {"sha256": file_sha(project / m), "reviewed": True, "rationale": "bounded subset; standalone-pass evidence", "mode": "runner-private"}
-                    for m in inventory["modules"]}})
+                    for m in inventory["modules"]},
+        **({"allowed_daemon_threads": {n: {"reason": "bounded validation fixture: daemon thread started by application startup",
+                                            "approval_reference": REVIEW} for n in allowed_threads}} if allowed_threads else {})})
     bundle = {"inventory": inventory, "policy": policy, "weights": weights, "environment": environment, "isolation": isolation}
     root = {"schema": 3, "kind": "ci-v3-hosted-admission", "enabled": True, "review_reference": REVIEW,
         "owner_decisions": ["Financial", "Security", "CI"], "experiment_pairs": 1, "workers": 3, "run_id": RUN, "run_attempt": ATTEMPT,
@@ -224,13 +226,13 @@ def negative_control(source, image, work, modules, kind):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True); parser.add_argument("--image", required=True); parser.add_argument("--work", required=True)
-    parser.add_argument("--module", action="append", required=True); parser.add_argument("--negative", choices=sorted([*NEGATIVE, *INVENTORY_MUTATIONS])); parser.add_argument("--tamper", action="append", default=[], choices=["duplicate-junit-node", "missing-junit-node"])
+    parser.add_argument("--module", action="append", required=True); parser.add_argument("--negative", choices=sorted([*NEGATIVE, *INVENTORY_MUTATIONS, "daemon-thread-leak"])); parser.add_argument("--allow-daemon-thread", action="append", default=[]); parser.add_argument("--tamper", action="append", default=[], choices=["duplicate-junit-node", "missing-junit-node"])
     args = parser.parse_args(argv)
     if args.negative:
         print(json.dumps(negative_control(args.source, args.image, args.work, args.module, args.negative), indent=1)); return 0
     work = Path(args.work); work.mkdir(parents=True, exist_ok=False)
     project = make_subset(args.source, args.module, work / "subset")
-    print(json.dumps(validate(project, args.image, work / "run", tamper=args.tamper), indent=1)); return 0
+    print(json.dumps(validate(project, args.image, work / "run", tamper=args.tamper, allowed_threads=args.allow_daemon_thread), indent=1)); return 0
 
 
 if __name__ == "__main__":
