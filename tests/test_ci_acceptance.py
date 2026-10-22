@@ -279,6 +279,16 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
             assert git("cat-file", "-t", actual) == "blob", f"Missing RC-7C candidate blob: {path}"
             assert actual == RC7C_CANDIDATE_AUTHORITIES[path], f"Unreviewed RC-7C candidate content: {path}"
         return
+    # V9-P2a OD-R: against a main that carries RC-7C, the release-closed OD-R successor changes exactly six protected paths (four blobs under the
+    # Financial Owner's exact-content decision, two carried). Recognised only while the whole OD-R contract holds (RC-7C checkpoints, exact blobs,
+    # no other protected change, pinned hub, closed flags). Bytes only: not merge authorisation, activation or release. Any other diff falls through.
+    from v9p2a_odr_successor import ODR_AUTHORITIES, odr_recognized
+    if protected == set(ODR_AUTHORITIES) and odr_recognized(repo=root, ref=head):
+        for path in sorted(protected):
+            actual = git("rev-parse", "--verify", f"{head}:{path}")
+            assert git("cat-file", "-t", actual) == "blob", f"Missing OD-R successor blob: {path}"
+            assert actual == ODR_AUTHORITIES[path], f"Unreviewed OD-R content: {path}"
+        return
     assert protected == _F3_5_REVIEWED_PROTECTED_PATHS, f"Unapproved or incomplete protected diff: {sorted(protected)}"
     for path in sorted(protected):
         actual = git("rev-parse", "--verify", f"{head}:{path}")

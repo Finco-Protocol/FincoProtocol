@@ -415,19 +415,34 @@ def compute_shareholder_loan_schedules(
     *,
     diagnostics: "object",
     enforce_maturity_residual: bool = True,
+    maturity_context: "ShlMaturityContext | None" = None,
 ) -> "ShareholderLoanSchedules":
     """Build immutable SHL audit vectors from backend-authoritative cash.
 
     ONE_CANONICAL_SHL_CALCULATION_KERNEL: this adapter delegates construction
     arithmetic to ``compute_shl_period`` and operating sweep arithmetic to
     ``compute_shl_waterfall_period``. It does not duplicate the SHL formula.
+
+    ``maturity_context`` (OD-R): ``None`` or AUTHORITATIVE keeps the canonical
+    fail-closed maturity residual check. PROVISIONAL records the breach of the
+    same predicate in the context ledger instead of raising; every value and
+    every other check is unchanged.
     """
+    from financial_engine.shl.maturity_authority import (
+        ShlMaturityContext,
+        ShlMaturityShortfall,
+        shl_maturity_residual_error,
+    )
     from financial_engine.inputs import ShareholderLoanModelInput
     from financial_engine.results import ShareholderLoanSchedules
 
     if not isinstance(shl_input, ShareholderLoanModelInput):
         raise ValueError(
             "compute_shareholder_loan_schedules: shl_input must be ShareholderLoanModelInput"
+        )
+    if maturity_context is not None and not isinstance(maturity_context, ShlMaturityContext):
+        raise ValueError(
+            "compute_shareholder_loan_schedules: maturity_context must be ShlMaturityContext"
         )
     if len(periods) != len(cash_available_for_shl_before_reserves_keur):
         raise ValueError(
@@ -728,11 +743,15 @@ def compute_shareholder_loan_schedules(
                 shl_input.convergence_tolerance_keur + 1e-9
             )
         ):
-            raise ValueError(
-                "SHL_MATURITY_RESIDUAL_FAILS_CLOSED: "
-                f"closing balance {closing:.12f} kEUR remains at maturity "
-                f"period_index={p.period_index}"
+            shortfall = ShlMaturityShortfall(
+                closing_keur=closing,
+                period_index=p.period_index,
+                tolerance_keur=shl_input.convergence_tolerance_keur,
             )
+            if maturity_context is not None and maturity_context.provisional:
+                maturity_context.ledger.record(shortfall)
+            else:
+                raise shl_maturity_residual_error(shortfall)
 
         opening_values.append(opening)
         drawdown_values.append(drawdown)
