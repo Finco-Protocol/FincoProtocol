@@ -103,3 +103,28 @@ def test_passwd_file_gives_the_numeric_host_user_an_entry_without_secrets(tmp_pa
     args = docker_command("example.invalid/image@sha256:" + "a" * 64, "ci-v3-" + "b" * 32, tmp_path / "p", tmp_path / "b", tmp_path / "e", "worker-0", passwd=path)
     assert any(a.endswith("target=/etc/passwd,readonly") for a in args)
     assert not any("/etc/passwd" in a for a in docker_command("example.invalid/image@sha256:" + "a" * 64, "ci-v3-" + "b" * 32, tmp_path / "p", tmp_path / "b", tmp_path / "e", "worker-0"))
+
+
+def test_probe_source_omits_ignored_state_and_host_git_configuration(tmp_path):
+    from tools.ci_v3_container import copy_tracked_source
+    source = repo_with_tests(tmp_path)
+    (source / '.git/info/exclude').write_text('private.db\n')
+    (source / 'private.db').write_text('ignored host state must not enter a fresh probe')
+    subprocess.run(['git', '-C', str(source), 'config', 'credential.helper', 'fixture-helper'], check=True)
+    destination = tmp_path / 'private-source'
+    paths = copy_tracked_source(source, destination)
+    assert 'tests/test_keep.py' in paths and (destination / 'tests/test_keep.py').is_file()
+    assert not (destination / 'private.db').exists()
+    assert 'credential' not in (destination / '.git/config').read_text()
+    assert subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD']) == subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'])
+
+
+def test_local_image_review_cannot_become_registry_or_hosted_authority(tmp_path):
+    from tools.ci_v3_container import docker_command, image_ref, observe_container
+    image = 'sha256:' + 'a' * 64
+    with pytest.raises(ContractError): image_ref(image)
+    args = docker_command(image, 'ci-v3-' + 'b' * 32, tmp_path/'p', tmp_path/'b', tmp_path/'e', None, local_review=True)
+    assert '--pull=never' in args and image in args
+    with pytest.raises(ContractError, match='hosted run'):
+        observe_container({'context': {'run_id': '123'}}, tmp_path/'out', tmp_path, image, 10, local_review=True)
+    assert not (tmp_path/'out').exists()

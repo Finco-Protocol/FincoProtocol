@@ -56,9 +56,8 @@ def main():
             "--junitxml", str(directory / "native.xml")]
     if request["mode"] == "discover":
         args.append("--collect-only")
-    if request.get("hosted"):
-        # The approved image includes this explicitly; no ambient plugin autoload.
-        args += ["-p", "pytest_asyncio.plugin"]
+    from tools.ci_v3_pytest_config import plugin_args
+    args += plugin_args()  # no ambient autoload or missing-plugin fallback
     args.append("tests")
     started = round((time.perf_counter() - clock) * 1000)
     code = int(pytest.main(args, plugins=[adapter]))

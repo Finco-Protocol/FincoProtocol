@@ -12,7 +12,7 @@ from tools.ci_v3_process_observer import observe
 from tools.ci_v3_schema import ContractError, read_json, require, seal, write_json
 
 
-def prepare(project, output, image=None):
+def prepare(project, output, image=None, measurements=(), local_image_id=None):
     project, output = Path(project).resolve(), Path(output).resolve()
     require(not output.is_relative_to(project) and not project.is_relative_to(output), "proposal must be outside source")
     require(not output.exists(), "preserve previous proposal evidence")
@@ -22,13 +22,15 @@ def prepare(project, output, image=None):
     require(not git('status','--porcelain','--untracked-files=all'), "proposal requires clean committed source")
     source={'head':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}')}
     output.mkdir(parents=True)
-    if image is None:
+    require(not (image and local_image_id), "choose registry image or explicit local image review")
+    if image is None and local_image_id is None:
         observed=observe({'mode':'discover','project':str(project),'worker':None,'context':{'source':source}},output/'collection-process',120)
         report=read_json(output/'collection-process/adapter.json')
     else:
         # Linux evidence: collection runs in the immutable image as a private non-root, no-network container.
         context={'run_id':'0','attempt':1,'repository':'Finco-Protocol/FincoProtocol','source':source}
-        child,observed=observe_container({'mode':'discover','context':context,'worker':None},output/'collection-container',project,image_ref(image),900)
+        child,observed=observe_container({'mode':'discover','context':context,'worker':None},output/'collection-container',project,
+                                        local_image_id or image_ref(image),900,local_review=local_image_id is not None)
         report=read_json(child/'adapter.json')
     require(observed['normal_successful_exit'] and not report['phases'] and not report['unauthorized_deselection'], "actual collect-only failed")
     collection=report['collection']
@@ -46,9 +48,9 @@ def prepare(project, output, image=None):
     policy=seal({'schema':1,'kind':'ci-v3-policy','authority':'offline-prototype','inventory_digest':inventory['digest'],
         'new_nodes':'fail-closed','selective_execution':False,'module_overlaps':{},'allowed_nonpass':{}})
     counts=Counter(n.split('::',1)[0] for n in nodes)
-    weights=seal({'schema':1,'kind':'ci-v3-weights','source':source,'inventory_digest':inventory['digest'],
-        'measurement':'EXPLICIT NODE-COUNT PROXY ONLY; integer slots are not measured milliseconds. Owner must review runtime weights.',
-        'modules_ms':dict(sorted(counts.items()))})
+    from tools.ci_v3_runtime_weights import build_weights
+    from tools.ci_v3_schema import digest
+    weights=build_weights(inventory, digest(report['environment']), measurements)
     isolation=seal({'schema':3,'kind':'ci-v3-isolation-policy','source':source,
         'profile':'docker-no-network-private-workspace-v1','fixture_tree_reviewed':False,'review_reference':None,
         'modules':{m:{**risk['modules'].get(m,{}),'reviewed':False,'mode':'blocked','rationale':None} for m in modules}})
@@ -65,9 +67,11 @@ def prepare(project, output, image=None):
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--project',required=True);parser.add_argument('--output',required=True)
     parser.add_argument('--image',help='immutable registry@sha256 image; collects inside a private container')
+    parser.add_argument('--local-image-id', help='local review only: immutable sha256 config ID; never hosted admission')
+    parser.add_argument('--measurements', nargs='*', default=[], help='sealed exact-source/environment duration documents')
     args=parser.parse_args()
     try:
-        count=prepare(args.project,args.output,args.image)
+        count=prepare(args.project,args.output,args.image,[read_json(p) for p in args.measurements],args.local_image_id)
     except (ContractError,OSError,KeyError,ValueError,subprocess.SubprocessError) as exc:
         print('CI_V3_PREPARATION_REJECTED: '+str(exc));return 1
     print(f'ACTUAL_COLLECTION_ONLY={count}; EXECUTION_ADMISSION=false');return 0

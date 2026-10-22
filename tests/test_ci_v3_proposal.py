@@ -81,3 +81,9 @@ def test_proposal_separates_historical_execution_from_evidence_for_the_current_s
     assert "not equivalence evidence" in scope["statement"] and proposal["admission_ready"] is False
     assert "480 modules have only earlier-source (historical) evidence" in proposal["admission_blockers"]
     assert "earlier execution evidence does not apply to the current source" in proposal["admission_blockers"]
+
+
+def test_missing_full_control_phase_evidence_is_an_explicit_blocker():
+    _, proposal = build(*world(), None, None, {})
+    assert 'same-source original-node/phase comparison absent' in proposal['admission_blockers']
+    assert proposal['admission_ready'] is False

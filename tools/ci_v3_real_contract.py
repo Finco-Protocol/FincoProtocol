@@ -41,6 +41,21 @@ def environment_record():
             "pytest_plugin_autoload": os.environ.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "")}
 
 
+def report_reason(report):
+    value = report.longrepr
+    return str(value[2]) if isinstance(value, tuple) and len(value) == 3 else str(value or "")
+
+
+def phase_record(report):
+    """Lossless outcome fields shared by observational control and shadow hooks."""
+    value = report.longrepr
+    reason = report_reason(report)
+    return {"nodeid": report.nodeid, "when": report.when, "outcome": report.outcome,
+            "reason": reason if not report.passed else "",
+            "wasxfail": str(report.wasxfail) if hasattr(report, "wasxfail") else None,
+            "duration_ms": round(report.duration * 1000), "longrepr": str(value or "")}
+
+
 def git_source(project):
     def git(*args):
         return subprocess.check_output(["git", "-C", str(project), *args], text=True).strip()
@@ -100,7 +115,7 @@ def file_sha(path):
 
 def producer_identity():
     root = Path(__file__).resolve().parents[1]
-    names = ["ci_v3_real_contract.py", "ci_v3_pytest_adapter.py", "ci_v3_real_child.py",
+    names = ["ci_v3_real_contract.py", "ci_v3_pytest_adapter.py", "ci_v3_real_child.py", "ci_v3_pytest_config.py",
              "ci_v3_process_observer.py", "ci_v3_shadow_local.py", "ci_v3_observed_verify.py",
              "ci_v3_evidence_verify.py", "ci_v3_schema.py", "ci_v3_partition_plan.py"]
     return {"evaluator": REAL_EVALUATOR, "files_sha256": {"tools/" + n: file_sha(root / "tools" / n) for n in names}}

@@ -80,17 +80,11 @@ def validate_isolation(root, inventory, isolation):
 def constrained_plan(root, inventory, policy, weights, isolation):
     require(policy["module_overlaps"] == {}, "hosted overlap execution is not admitted")
     groups = validate_isolation(root, inventory, isolation)
-    original = plan_partitions(inventory, policy, weights, workers=3)
+    original = plan_partitions(inventory, policy, weights, workers=3, groups=groups)
     owners = dict(original["module_workers"])
-    # Preserve Phase 1 LPT for the baseline, then conservatively co-locate reviewed
-    # ordering/session groups. No node is omitted to improve predicted balance.
-    for group, modules in sorted(groups.items()):
-        owner = owners[min(modules)]
-        for module in modules:
-            owners[module] = owner
     require(set(owners.values()) == {"worker-0", "worker-1", "worker-2"}, "isolation leaves an empty worker; review sequential bottleneck")
     plan = seal({**{k: v for k, v in original.items() if k != "digest"},
-        "module_workers": owners, "algorithm": "phase1-lpt-plus-approved-colocation-v1",
+        "module_workers": owners, "algorithm": "approved-group-duration-lpt-v2",
         "isolation_digest": isolation["digest"]})
     validate_plan(plan, inventory, policy)
     return plan

@@ -53,6 +53,8 @@ def load_bundle(api, root):
         bundle[name] = decode(data)
     validate_inventory(bundle["inventory"]); validate_policy(bundle["policy"], bundle["inventory"])
     check_seal(bundle["weights"], "ci-v3-weights")
+    if "environment_digest" in bundle["weights"]:
+        require(bundle["weights"]["environment_digest"] == digest(bundle["environment"]), "stale weight environment")
     require(bundle["inventory"]["source"] == root["source"] and bundle["inventory"]["repository"] == root["repository"], "stale source inventory")
     require(bundle["isolation"].get("digest") == digest({k: v for k, v in bundle["isolation"].items() if k != "digest"}), "isolation digest mismatch")
     return bundle
