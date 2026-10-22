@@ -23,11 +23,7 @@ def reviewed_radar_authority_matches(
     """Require exact path + exact blob; fail closed on bad refs/git errors."""
     pinned = REVIEWED_RADAR_AUTHORITY_BLOBS.get(path)
     if pinned is None:
-        # PR #346: separately approved two-blob lifecycle successor. Historical
-        # Radar pins above are immutable; this is never a namespace grant.
-        from r_live_lifecycle_content_authority import reviewed_lifecycle_content_matches
-        return reviewed_lifecycle_content_matches(
-            path, repo=repo if repo is not None else REPO, ref=ref)
+        return False
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--verify", f"{ref}:{path}"],

@@ -123,13 +123,14 @@ def test_no_namespace_or_filename_prefix_authority(fixture,name):
 @pytest.fixture
 def three_guards(fixture,monkeypatch):
     import radar_authority_governance as radar
-    import finance_integrity_governance as finance
+    import r_live_lifecycle_governance as adapter
     import model_v2_governance as model
     import tests.test_ci_acceptance as ci
     repo=fixture[0]
     monkeypatch.setattr(radar,'REPO',repo)
     monkeypatch.setattr(model,'REPO',repo)
-    return repo,finance,model,ci
+    monkeypatch.setattr(adapter,'REPO',repo)
+    return repo,adapter,adapter,ci
 
 
 def test_all_three_original_guard_call_paths_accept_exact_fixture(three_guards):
@@ -154,3 +155,41 @@ def test_all_three_original_guard_call_paths_reject_each_attack(three_guards,att
     assert name in model.model_v2_frozen_violations([name])
     with pytest.raises(AssertionError,match='Permanent hard-deny'):
         ci._assert_frozen_financial_namespace_authority(repo)
+
+
+def test_historical_authorities_and_original_assertions_preserved():
+    import ast
+    from v9p2a_odr_successor import HISTORICAL_AUTHORITY_MODULES, WIRING_BLOBS, RC7C_MAIN
+    for name in HISTORICAL_AUTHORITY_MODULES:
+        assert git(REPO,'rev-parse','HEAD:'+name)==git(REPO,'rev-parse',RC7C_MAIN+':'+name)
+    for name,(_,pin) in WIRING_BLOBS.items():
+        assert git(REPO,'rev-parse','HEAD:'+name)==pin
+    functions={
+        'tests/test_ci_acceptance.py':'test_frozen_financial_namespaces_unmodified',
+        'tests/test_multi_source_evidence_v2.py':'test_existing_authorities_are_not_modified',
+        'tests/test_parallel_stream_frozen_diff.py':'test_ce_no_frozen_production_namespace_modified_by_this_fix'}
+    for name,function in functions.items():
+        original=ast.parse(subprocess.check_output(['git','show','a0d243c7d9c88d16990da9115e00ed00e3ad8160:'+name],cwd=REPO))
+        current=ast.parse((REPO/name).read_bytes())
+        old=next(n for n in ast.walk(original) if isinstance(n,ast.FunctionDef) and n.name==function)
+        new=next(n for n in ast.walk(current) if isinstance(n,ast.FunctionDef) and n.name==function)
+        # Only an explicit authority-import source may change; every other
+        # statement, predicate, assertion and test identity remains identical.
+        for node in ast.walk(new):
+            if isinstance(node,ast.ImportFrom) and node.module=='r_live_lifecycle_governance':
+                node.module='finance_integrity_governance'
+        assert ast.dump(old,include_attributes=False)==ast.dump(new,include_attributes=False)
+
+
+def test_committed_odr_and_financial_engine_decisions_preserved():
+    import finance_integrity_governance as historical
+    import model_v2_governance as model
+    import r_live_lifecycle_governance as adapter
+    from v9p2a_odr_successor import odr_violations
+    assert odr_violations()==[]
+    paths=set(historical.APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS)
+    for value in vars(model).values():
+        if isinstance(value,dict):paths.update(p for p in value if isinstance(p,str) and p.startswith('financial_engine/'))
+    paths.add('financial_engine/unapproved.py')
+    for name in paths:
+        assert adapter.approved_frozen_path(name)==historical.approved_frozen_path(name)

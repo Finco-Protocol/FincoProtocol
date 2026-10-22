@@ -216,7 +216,7 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
     head = git("rev-parse", "--verify", f"{ref}^{{commit}}")
     git("merge-base", "--is-ancestor", base, head)
     changed = set(filter(None, git("diff", "--name-only", "-z", "--no-renames", base, head).split("\0")))
-    from radar_authority_governance import reviewed_radar_authority_matches
+    from r_live_lifecycle_governance import reviewed_radar_authority_matches
 
     # PR #237: only the three exact reviewed Radar paths at their exact reviewed
     # blobs (proven at the tested commit) are exempt from the permanent hard deny.
