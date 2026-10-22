@@ -539,7 +539,13 @@ def main(argv: list[str] | None = None) -> int:
         print(_json.dumps({"state": "RPC_NOT_CONFIGURED", "written": 0}))
         return 1
     if args.once:
-        summary = warm_snapshot_once(rpc_url)
+        warmer = RLiveSnapshotWarmer()
+        try:
+            summary = warmer.run_cycle(rpc_url=rpc_url)
+        finally:
+            warmer.shutdown()
+        if summary is None:
+            summary = {"state": "LEASE_NOT_ACQUIRED", "written": 0}
         print(_json.dumps(summary, sort_keys=True))
         return 0 if summary.get("state") == "OK" else 1
     if args.loop:
