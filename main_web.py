@@ -288,6 +288,23 @@ async def _prewarm_model_workers():
              _time.monotonic() - started), flush=True)
 
 
+@app.on_event("shutdown")
+async def _stop_native_v10_shadow():
+    """V10 dormant shadow: stop the executor-owned observer with the application lifespan.
+
+    No-op unless shadow mode (FINCO_NATIVE_V10_SHADOW) created an observer. An incomplete shutdown
+    raises ShadowShutdownIncomplete (visible; the executor stays shadow-disabled, canonical service
+    is unaffected). The process pool itself keeps its existing lifecycle.
+    """
+    import asyncio
+
+    from app.runtime.model_execution import peek_model_executor
+
+    executor = peek_model_executor()
+    if executor is not None and executor.native_shadow_observer() is not None:
+        await asyncio.to_thread(executor.shutdown_native_shadow)
+
+
 @app.on_event("startup")
 async def _schedule_demo_cleanup():
     """Schedule recurring demo TTL cleanup in a daemon thread (P6.5).

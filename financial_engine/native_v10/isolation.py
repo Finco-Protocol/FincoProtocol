@@ -36,13 +36,15 @@ class WorkerLimits:
 
 @dataclass
 class CandidateEvidence:
-    status: str                     # OK | CANDIDATE_EXCEPTION | CANDIDATE_CRASH | CANDIDATE_TIMEOUT
+    # OK | CANDIDATE_EXCEPTION | CANDIDATE_CRASH | CANDIDATE_TIMEOUT | CANDIDATE_CANCELLED
+    status: str
     verdict: str | None = None
     digests: dict = field(default_factory=dict)
     error: str | None = None
     native: dict = field(default_factory=dict)
     exitcode: int | None = None
     wall_seconds: float = 0.0
+    reaped: bool = True             # False only if the worker process survived kill + bounded join
 
 
 def _limit(limits: WorkerLimits) -> None:
@@ -68,33 +70,66 @@ def _worker_main(conn, bootstrap: str | None, task: str, payload: dict, limits: 
         conn.close()
 
 
+_POLL_SLICE_SECONDS = 0.05
+_REAP_SECONDS = 10.0
+
+
 def run_in_worker(task: str, payload: dict, *, bootstrap: str | None = None,
-                  limits: WorkerLimits = WorkerLimits()) -> CandidateEvidence:
-    """Run ``task(**payload)`` in a fresh spawned worker; return evidence, never raise."""
+                  limits: WorkerLimits = WorkerLimits(), cancel=None, on_process=None) -> CandidateEvidence:
+    """Run ``task(**payload)`` in a fresh spawned worker; return evidence, never raise.
+
+    ``cancel`` (a ``threading.Event``) stops the wait cooperatively: the worker is killed and the
+    evidence is CANDIDATE_CANCELLED. ``on_process(proc_or_None)`` lets the owner see the live worker
+    (called with the process after start and with ``None`` once it is reaped). On every exit path the
+    worker is killed if still alive and joined within a bound; ``reaped=False`` reports a survivor.
+    """
     parent, child = CTX.Pipe(duplex=False)
     proc = CTX.Process(target=_worker_main, args=(child, bootstrap, task, payload, limits), daemon=True)
     started = time.perf_counter()
-    proc.start()
-    child.close()
-    result = None
-    if parent.poll(limits.timeout_seconds):
-        try:
-            result = parent.recv()
-        except (EOFError, OSError):
-            result = None
-    wall = time.perf_counter() - started
-    if proc.is_alive():
-        proc.kill()
-    proc.join(10)
+    result, cancelled = None, False
+    try:
+        proc.start()
+        if on_process is not None:
+            on_process(proc)
+        child.close()
+        deadline = time.monotonic() + limits.timeout_seconds
+        while True:
+            if cancel is not None and cancel.is_set():
+                cancelled = True
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if parent.poll(min(_POLL_SLICE_SECONDS, remaining)):
+                try:
+                    result = parent.recv()
+                except (EOFError, OSError):
+                    result = None
+                break
+    finally:
+        wall = time.perf_counter() - started
+        parent.close()
+        if proc.pid is not None:
+            if proc.is_alive():
+                proc.kill()
+            proc.join(_REAP_SECONDS)
+        reaped = not proc.is_alive()
+        if on_process is not None and reaped:
+            on_process(None)
+    if cancelled:
+        return CandidateEvidence(status="CANDIDATE_CANCELLED", exitcode=proc.exitcode, wall_seconds=wall, reaped=reaped)
     if result is None:
         status = "CANDIDATE_TIMEOUT" if wall >= limits.timeout_seconds else "CANDIDATE_CRASH"
-        return CandidateEvidence(status=status, exitcode=proc.exitcode, wall_seconds=wall)
+        return CandidateEvidence(status=status, exitcode=proc.exitcode, wall_seconds=wall, reaped=reaped)
     kind, body = result
     if kind != "OK":
-        return CandidateEvidence(status=kind, error=body, exitcode=proc.exitcode, wall_seconds=wall)
+        return CandidateEvidence(status=kind, error=body, exitcode=proc.exitcode, wall_seconds=wall, reaped=reaped)
+    if not isinstance(body, dict):
+        return CandidateEvidence(status="CANDIDATE_EXCEPTION", error=f"CANDIDATE_RESULT_NOT_EVIDENCE: {type(body).__name__}",
+                                 exitcode=proc.exitcode, wall_seconds=wall, reaped=reaped)
     return CandidateEvidence(status="OK", verdict=body.get("verdict"), digests=body.get("digests", {}),
                              error=body.get("error"), native=body.get("native", {}), exitcode=proc.exitcode,
-                             wall_seconds=wall)
+                             wall_seconds=wall, reaped=reaped)
 
 
 def compare(canonical: dict, candidate: CandidateEvidence) -> dict:
