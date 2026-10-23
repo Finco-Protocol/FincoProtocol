@@ -1,3 +1,5 @@
+> Historical #344/#345 checkpoint. The final integration implements the reviewed technical correction in the same integration PR; owner approval and hosted/activation gates remain pending. See [final integration](../final/INTEGRATION.md).
+
 # Final technical closure — admission stays closed
 
 Merged starting point: main `c398bc600955a59a7bd8665c9cc39e37a290e922`, whose

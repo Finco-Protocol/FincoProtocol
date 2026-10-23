@@ -63,6 +63,10 @@ def _utc_iso(now: datetime | None = None) -> str:
     return value.astimezone(timezone.utc).isoformat()
 
 
+class LeaseOwnershipLost(RuntimeError):
+    """A warming batch may not publish under an expired or foreign lease."""
+
+
 class RLiveSnapshotStore:
     """Durable latest-observation projection (one row per approved asset)."""
 
@@ -94,6 +98,7 @@ class RLiveSnapshotStore:
         rows: Iterable[tuple[str, str, dict]],
         *,
         collected_at: datetime | None = None,
+        lease_holder: str | None = None,
     ) -> int:
         """Atomically upsert one batch of acquisition rows.
 
@@ -106,6 +111,19 @@ class RLiveSnapshotStore:
         stamp = _utc_iso(collected_at)
         written = 0
         with self._conn:  # one transaction: readers see a complete batch
+            if lease_holder is not None:
+                # Serialize fencing and publication with lease takeover. The
+                # writer lock is held until the entire canonical batch commits.
+                self._conn.execute("BEGIN IMMEDIATE")
+                row = self._conn.execute(
+                    "SELECT holder, expires_at FROM r_live_warming_lease WHERE singleton=1"
+                ).fetchone()
+                try:
+                    valid = row is not None and row[0] == lease_holder and datetime.fromisoformat(row[1]) > datetime.now(timezone.utc)
+                except (TypeError, ValueError):
+                    valid = False
+                if not valid:
+                    raise LeaseOwnershipLost("warming lease expired or replaced before publication")
             for canonical_id, state, data in rows:
                 if state not in _STOREABLE_STATES:
                     continue

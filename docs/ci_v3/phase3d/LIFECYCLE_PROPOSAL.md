@@ -1,3 +1,5 @@
+> Historical #344/#345 checkpoint. The final integration implements the reviewed technical correction in the same integration PR; owner approval and hosted/activation gates remain pending. See [final integration](../final/INTEGRATION.md).
+
 # Separate product lifecycle correction proposal — not implemented or approved
 
 `main_web._schedule_demo_cleanup` creates an unowned daemon on every startup, initially sleeping 300 seconds and later deleting expired demo data. There is no stop event/join. Repeated TestClient/application lifespans can accumulate same-named survivors and residual writes.

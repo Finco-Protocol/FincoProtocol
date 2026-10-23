@@ -17,8 +17,9 @@ from pathlib import Path
 
 import pytest
 
+from r_live_lifecycle_governance import model_v2_frozen_violations
+
 from model_v2_governance import (
-    model_v2_frozen_violations,
     parallel_stream_frozen_changes,
 )
 
