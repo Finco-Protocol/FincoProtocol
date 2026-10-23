@@ -561,7 +561,7 @@ def test_shadow_does_not_replace_unsharded_gate_or_merge_coverage():
     router, _ = _workflow("ci_v3_required_job.yml")
     assert router["jobs"]["sequential"]["uses"].endswith("ci_public_job.yml")
     assert router["jobs"]["sequential"]["with"]["mode"] == "control"
-    assert "tools.ci_v3_mandatory verify" in "\n".join(s.get("run", "") for s in router["jobs"]["aggregate"]["steps"])
+    assert "tools.ci_v3_production verify --independent" in "\n".join(s.get("run", "") for s in router["jobs"]["aggregate"]["steps"])
     assert {"merge-sha", "pr-number", "tested-sha"} <= set(control["with"])
     gate = jobs["mandatory-evidence"]
     assert gate["if"] == "always()" and set(gate["needs"]) == {"source-safety", "safety-and-smoke"}

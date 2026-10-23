@@ -43,8 +43,8 @@ def passwd_file(path, uid, gid):
     return Path(path)
 
 
-def docker_command(image, name, project, bootstrap, evidence, worker, context=None, passwd=None, local_review=False):
-    if local_review:
+def docker_command(image, name, project, bootstrap, evidence, worker, context=None, passwd=None, local_review=False, built_image=False):
+    if local_review or built_image:
         require(re.fullmatch(r"sha256:[0-9a-f]{64}", image or ""), "local review requires immutable image config ID")
     else:
         image_ref(image)
@@ -72,7 +72,8 @@ def docker_command(image, name, project, bootstrap, evidence, worker, context=No
             FINCO_CI_TESTED_SHA=context["source"]["head"], FINCO_CI_TESTED_TREE=context["source"]["tree"])
     for key, value in env.items():
         args += ["--env", key + "=" + value]
-    return args + (["--pull=never"] if local_review else []) + [image, "python", "-I", "/bootstrap/tools/ci_v3_real_child.py", "/evidence/request.json"]
+    entry = 'ci_v3_built_image_child.py' if built_image else 'ci_v3_real_child.py'
+    return args + (["--pull=never"] if local_review or built_image else []) + [image, "python", "-I", "/bootstrap/tools/" + entry, "/evidence/request.json"]
 
 
 def copy_tracked_source(project, sandbox):
@@ -101,9 +102,16 @@ def copy_tracked_source(project, sandbox):
     return tracked + identities
 
 
-def observe_container(request, directory, project, image, timeout_s, local_review=False):
+def observe_container(request, directory, project, image, timeout_s, local_review=False, built_image=False):
     require(sys.platform == "linux", "hosted test execution requires Linux; no insecure fallback")
     require(type(timeout_s) is int and 1 <= timeout_s <= (12600 if request.get("worker") == "control" else 5400), "hosted timeout out of bounds")
+    require(not (local_review and built_image), 'choose local review or run-built artifact image')
+    if built_image:
+        require(re.fullmatch(r'sha256:[0-9a-f]{64}', image or ''), 'run-built image config identity missing')
+        require(str(request['context']['run_id']).isdecimal() and int(request['context']['run_id']) > 0,
+                'run-built image requires real run binding')
+        actual = subprocess.check_output(['docker','image','inspect',image,'--format','{{.Id}}'],text=True).strip()
+        require(actual == image, 'run-built immutable image differs')
     if local_review:
         require(request["context"].get("run_id") == "0", "local image review cannot use a hosted run")
         require(re.fullmatch(r"sha256:[0-9a-f]{64}", image or ""), "local review requires image config ID")
@@ -124,7 +132,7 @@ def observe_container(request, directory, project, image, timeout_s, local_revie
     name = "ci-v3-" + uuid.uuid4().hex
     uid, gid = (os.getuid(), os.getgid()) if sys.platform == "linux" else (1001, 1001)
     command = docker_command(image, name, sandbox, bootstrap, evidence, request.get("worker"), request["context"],
-                             passwd_file(directory / "passwd", uid, gid), local_review=local_review)
+                             passwd_file(directory / "passwd", uid, gid), local_review=local_review, built_image=built_image)
     timed_out = False; cancelled = False; started = time.perf_counter()
     process = None; cleanup_ok = False
     try:
@@ -171,10 +179,14 @@ def observe_container(request, directory, project, image, timeout_s, local_revie
     final = read_json(evidence / "interpreter-exit.json") if (evidence / "interpreter-exit.json").exists() else None
     normal = (process.returncode == 0 and not timed_out and not cancelled and cleanup_ok and source_unchanged and returned is not None
               and returned["code"] == 0 and not any(returned["leaks"].values()) and final is not None and final.get("finalizing") is True)
+    descendant = read_json(evidence/'descendant-cleanup.json') if (evidence/'descendant-cleanup.json').exists() else None
+    if built_image:
+        normal = normal and descendant is not None and descendant.get('cleanup_verified') is True
     return evidence, {"worker": request.get("worker"), "os_exit_code": process.returncode, "timed_out": timed_out,
         "normal_successful_exit": normal, "elapsed_ms": elapsed, "pytest_return": returned, "interpreter_exit": final,
         "temporary_directory": str(evidence / "tmp"), "startup_ms": None, "shutdown_ms": None,
         "containment": "docker-private-linux-posix-group-v1", "container_removed": cleanup_ok, "image": image,
         "source_bytes_unchanged": source_unchanged,
         "cancelled": cancelled, "local_image_review": local_review,
-        "registry_digest": None if local_review else image.rsplit("@", 1)[1]}
+        "built_image": built_image, "descendant_cleanup": descendant,
+        "registry_digest": None if local_review or built_image else image.rsplit("@", 1)[1]}
