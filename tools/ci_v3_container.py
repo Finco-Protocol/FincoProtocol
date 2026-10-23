@@ -49,6 +49,7 @@ def docker_command(image, name, project, bootstrap, evidence, worker, context=No
     else:
         image_ref(image)
     require(re.fullmatch(r"ci-v3-[0-9a-f]{32}", name), "unsafe container identity")
+    require(sys.platform != 'linux' or os.getuid() != 0, "test containers require a non-root host identity")
     args = ["docker", "run", "--rm", "--name", name, "--init", "--network=none", "--read-only",
         "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=512", "--memory=6g",
         "--user", f"{os.getuid()}:{os.getgid()}" if sys.platform == "linux" else "1001:1001",

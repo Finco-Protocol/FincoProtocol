@@ -36,7 +36,7 @@ def _static_capture():
   try:limits[n]=Path('/sys/fs/cgroup',n).read_text().strip()
   except OSError as exc:limits[n]={'unavailable':type(exc).__name__}
  tools={}
- for name,args in {'git':['--version'],'node':['--version'],'ssh':['-V'],'ldd':['--version']}.items():
+ for name,args in {'git':['--version'],'node':['--version'],'ssh':['-V'],'ldd':['--version'],'gcc':['--version'],'ld':['--version'],'as':['--version']}.items():
   p=shutil.which(name);tools[name]={'path':p,'binary_sha256':sha(Path(p).resolve()) if p else None,'version':command([p,*args]) if p else None}
  result={'schema':1,'kind':'ci-v3-runtime-fingerprint','python':sys.version,'python_executable':str(Path(sys.executable).resolve()),'python_binary_sha256':sha(Path(sys.executable).resolve()),
   'os_release':Path('/etc/os-release').read_text() if Path('/etc/os-release').exists() else None,'kernel':platform.release(),'libc':platform.libc_ver(),'machine':platform.machine(),

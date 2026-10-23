@@ -1,7 +1,7 @@
-"""Dormant mandatory-mode selector: sequential default, explicit rollback, exact authority.
+"""Protected mandatory-mode selector: sequential default, explicit rollback, exact authority.
 
-Nothing calls this from an active workflow. An activation deployment must wire
-this selector and preserve the stable mandatory contexts. A rejected or missing
+The active router preserves stable mandatory contexts and stays sequential
+unless independently approved source-specific admission is complete. A rejected or missing
 activation chooses sequential before execution. Failure AFTER parallel selection
 is a mandatory failure, never an automatic second full-suite execution.
 """
@@ -26,6 +26,12 @@ def select_mode(root, proof, *, source, workflow_sha256, controller, root_sha256
             'required activation/protected-source reviews absent')
     require(root.get('source')==source and root.get('controller')==controller
             and root.get('mandatory_workflow_sha256')==workflow_sha256, 'activation source/controller/workflow mismatch')
+    if root.get('admission_mode') == 'direct-production-v1':
+        require(root.get('workflow_governance_approved') is True and root.get('required_contexts_preserved') is True
+                and root.get('browser_acceptance_preserved') is True, 'direct workflow governance incomplete')
+        from tools.ci_v3_direct import validate_profile
+        return validate_profile(root,proof,source)
+    require(root.get('admission_mode','accepted-pair')=='accepted-pair','unsupported activation profile')
     check_seal(proof,'ci-v3-pair-acceptance')
     require(proof.get('digest')==root.get('accepted_pair_digest') and proof.get('source')==source,
             'accepted hosted evidence substituted/stale')

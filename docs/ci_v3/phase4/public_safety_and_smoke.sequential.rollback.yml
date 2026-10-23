@@ -1,0 +1,92 @@
+name: Public Safety and Model Smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Only supersede prior commits on the SAME PR in this workflow.
+concurrency:
+  group: public-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  source-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Attest exact source
+        run: python -m tools.ci_acceptance attest --expected '${{ github.event.pull_request.head.sha || github.sha }}' --output artifacts/source.json
+      - name: Public repository safety scan
+        run: python -m tools.ci_acceptance run --expected '${{ github.event.pull_request.head.sha || github.sha }}' --label scan --output artifacts/scan.json -- python tools/public_safety_scan.py
+      - name: Compile tested source
+        run: python -m tools.ci_acceptance run --expected '${{ github.event.pull_request.head.sha || github.sha }}' --label compile --output artifacts/compile.json -- python -m compileall -q .
+      - name: Upload mandatory safety evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-source-safety
+          path: artifacts/
+          if-no-files-found: error
+
+  # Exactly one full unsharded Public Safety pytest invocation on the exact PR HEAD.
+  # The synthetic merge must be proven byte-identical before any dependency installation.
+  # Different trees FAIL CLOSED and require normal main synchronization.
+  safety-and-smoke:
+    uses: ./.github/workflows/ci_public_job.yml
+    with:
+      mode: control
+      tested-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      merge-sha: ${{ github.event_name == 'pull_request' && github.sha || '' }}
+      pr-number: ${{ github.event.pull_request.number || '' }}
+
+  # Preserve the stable mandatory-evidence job context; no shadow shard or second full-suite run.
+  mandatory-evidence:
+    if: always()
+    needs: [source-safety, safety-and-smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: public-*
+          path: evidence
+      - name: Verify single full control, source safety, JUnit and normal exit
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          MERGE_SHA: ${{ github.event_name == 'pull_request' && github.sha || '' }}
+          SOURCE_RESULT: ${{ needs.source-safety.result }}
+          CONTROL_RESULT: ${{ needs.safety-and-smoke.result }}
+        run: |
+          python -m tools.ci_single_gate --expected "$HEAD_SHA" \
+            --artifacts evidence --source-result "$SOURCE_RESULT" --control-result "$CONTROL_RESULT" \
+            --merge-sha "$MERGE_SHA" --output artifacts/public-single-proof.json
+      - name: Upload mandatory aggregate proof (historical artifact alias)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-shadow-proof
+          path: artifacts/
+          if-no-files-found: error

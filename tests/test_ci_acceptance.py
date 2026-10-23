@@ -546,19 +546,22 @@ def _workflow(name):
 
 
 def test_shadow_does_not_replace_unsharded_gate_or_merge_coverage():
-    """CI V2 contract (supersedes the #247 shard/duplicate-merge-run structure).
+    """Retained full sequential control and independently verified protected route.
 
-    The behavioural requirements are unchanged and are asserted directly: the Public Safety suite is ONE
-    complete, unsharded, undeselected pytest on the exact HEAD; the synthetic merge is proven to have an
-    identical Git tree BEFORE any dependency installation (a mismatch fails closed instead of silently
-    testing different code); the mandatory aggregate verifies the artifacts independently of job badges.
+    Sequential remains ONE unsharded, undeselected invocation. The activated
+    alternative preserves complete original coverage and independently verifies
+    all workers; neither route may rerun a selected failure into success.
     """
     public, public_text = _workflow("public_safety_and_smoke.yml")
     reusable, reusable_text = _workflow("ci_public_job.yml")
     jobs = public["jobs"]
     assert set(jobs) == {"source-safety", "safety-and-smoke", "mandatory-evidence"}      # seven-job budget, no shards
     control = jobs["safety-and-smoke"]
-    assert control["uses"].endswith("ci_public_job.yml") and control["with"]["mode"] == "control"
+    assert control["uses"].endswith("ci_v3_required_job.yml") and control["with"]["mode"] == "control"
+    router, _ = _workflow("ci_v3_required_job.yml")
+    assert router["jobs"]["sequential"]["uses"].endswith("ci_public_job.yml")
+    assert router["jobs"]["sequential"]["with"]["mode"] == "control"
+    assert "tools.ci_v3_mandatory verify" in "\n".join(s.get("run", "") for s in router["jobs"]["aggregate"]["steps"])
     assert {"merge-sha", "pr-number", "tested-sha"} <= set(control["with"])
     gate = jobs["mandatory-evidence"]
     assert gate["if"] == "always()" and set(gate["needs"]) == {"source-safety", "safety-and-smoke"}
