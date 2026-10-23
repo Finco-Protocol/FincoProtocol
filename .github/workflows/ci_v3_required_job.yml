@@ -77,6 +77,10 @@ jobs:
       merge-sha: ${{ inputs.merge-sha }}
       pr-number: ${{ inputs.pr-number }}
   plan:
+    outputs:
+      worker_0_nodes: ${{ steps.distribution.outputs.worker_0_nodes }}
+      worker_1_nodes: ${{ steps.distribution.outputs.worker_1_nodes }}
+      worker_2_nodes: ${{ steps.distribution.outputs.worker_2_nodes }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -109,6 +113,19 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: python -m tools.ci_v3_production plan --output plan --image "$(cat image-id.txt)"
+    - name: Expose exact current-source node ownership
+      id: distribution
+      run: |
+        python - <<'PYCODE'
+        import json, os
+        from pathlib import Path
+        data = json.loads(Path('plan/plan.json').read_text())
+        owners = data['plan']['module_workers']
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            for index in range(3):
+                count = sum(owners[node['module']] == f'worker-{index}' for node in data['inventory']['nodes'])
+                print(f'worker_{index}_nodes={count}', file=stream)
+        PYCODE
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: ${{ always() }}
       with:
@@ -152,7 +169,7 @@ jobs:
       with:
         name: ci-v3-runtime
         path: .
-    - name: Execute original nodes owned by worker 0
+    - name: 'Execute original nodes owned by worker 0: ${{ needs.plan.outputs.worker_0_nodes }} nodes'
       run: python -m tools.ci_v3_production worker --worker 0 --output worker-0
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: ${{ always() }}
@@ -190,7 +207,7 @@ jobs:
       with:
         name: ci-v3-runtime
         path: .
-    - name: Execute original nodes owned by worker 1
+    - name: 'Execute original nodes owned by worker 1: ${{ needs.plan.outputs.worker_1_nodes }} nodes'
       run: python -m tools.ci_v3_production worker --worker 1 --output worker-1
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: ${{ always() }}
@@ -228,7 +245,7 @@ jobs:
       with:
         name: ci-v3-runtime
         path: .
-    - name: Execute original nodes owned by worker 2
+    - name: 'Execute original nodes owned by worker 2: ${{ needs.plan.outputs.worker_2_nodes }} nodes'
       run: python -m tools.ci_v3_production worker --worker 2 --output worker-2
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: ${{ always() }}

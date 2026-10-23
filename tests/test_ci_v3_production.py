@@ -82,3 +82,19 @@ def test_partial_or_changed_execution_never_turns_green(evidence,attack):
  write_json(p,r)
  with pytest.raises((ContractError,ValueError)):
   prod.verify_data(plan,workers)
+
+
+def test_spawn_infrastructure_is_joined_before_independent_orphan_check(tmp_path):
+ script=tmp_path/'spawn_check.py'
+ script.write_text('''import multiprocessing,time,json
+from tools.ci_v3_built_image_child import finalize_multiprocessing
+if __name__=='__main__':
+ p=multiprocessing.get_context('spawn').Process(target=time.sleep,args=(.01,))
+ p.start();p.join(5)
+ assert p.exitcode==0
+ result=finalize_multiprocessing()
+ assert result['tracker_pid_before'] is not None
+ assert result['verified'] and result['tracker_pid_after'] is None
+ print(json.dumps(result))
+''')
+ subprocess.run([__import__('sys').executable,str(script)],check=True,env={**os.environ,'PYTHONPATH':str(ROOT)},capture_output=True,text=True,timeout=20)

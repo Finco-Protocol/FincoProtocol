@@ -127,6 +127,8 @@ def observe_container(request, directory, project, image, timeout_s, local_revie
     require(before_bytes is not None, "invalid private source copy")
     before_python = {p.relative_to(sandbox).as_posix() for p in sandbox.rglob("*.py")}
     child_request = {**request, "project": "/subject", "hosted": True}
+    if built_image:
+        child_request['finalize_owned_multiprocessing'] = True
     write_json(evidence / "request.json", child_request)
     (evidence / "release").write_text("host container isolation established\n", encoding="ascii")
     name = "ci-v3-" + uuid.uuid4().hex
