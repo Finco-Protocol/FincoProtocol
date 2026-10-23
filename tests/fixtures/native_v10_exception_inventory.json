@@ -1,0 +1,1147 @@
+{
+ "categories": {
+  "A": "canonical code executes before/instead of the kernel (unchanged path)",
+  "B": "unsupported profile -> decline -> canonical replay",
+  "D": "dynamic/implicit contract closed by authentication / exact-type admission / checked arithmetic",
+  "P": "exact canonical predicate mirrored in admission/kernel -> decline -> canonical replays and raises",
+  "S": "static computation executed by admission with the canonical code itself (raise -> decline -> replay)",
+  "U": "unreachable from the admitted call site by construction"
+ },
+ "counts": {
+  "STAGE1": {
+   "A": 72,
+   "B": 9,
+   "P": 1,
+   "U": 1
+  },
+  "STAGE2_EXPERIMENTAL": {
+   "P": 15,
+   "S": 23,
+   "U": 1
+  }
+ },
+ "dynamic_contracts": [
+  {
+   "category_corrected": "D",
+   "category_review": "C",
+   "closure": "Exact canonical code object (structural fingerprint vs approved source), canonical globals, factory-shared closure cells with exact-type contents; anything else declines CALLBACK_NOT_ADMITTED/CALLBACK_CELL_INVALID before any kernel call.",
+   "evidence": "results/counterexamples.json V10-02 (spoof: decline, same RuntimeError at call 3), V10-02b (forged cell: decline)",
+   "id": "C-CALLBACK-CODE"
+  },
+  {
+   "category_corrected": "D",
+   "category_review": "C",
+   "closure": "Region identity re-checked on every admission (Authentication.still_intact); admission executes the static canonical computations itself on every admission (not once); determinism lemma: authenticated pure code + immutable inputs => a static exception occurs at the first event, so admission sees it and declines.",
+   "evidence": "results/counterexamples.json V10-03 (helper fault: decline CANONICAL_REGION_REPLACED, same raise at call 2)",
+   "id": "C-OPENING-REPEAT"
+  },
+  {
+   "category_corrected": "D",
+   "category_review": "C",
+   "closure": "Exact int admission within +-2**53 (INT_NOT_REPRESENTABLE decline), year+lcf and payment+lag representability checked in Python and checked int64 add/sub/mul in C (DECLINE).",
+   "evidence": "results/counterexamples.json V10-01 (INT_MAX lcf, 2**32 lag bit-equal; 2**53+1, 2**62, 2**63 decline); fuzz_tax.json",
+   "id": "C-INT-RANGE"
+  }
+ ],
+ "schema": "finco.v10.exception_authority.inventory.v1",
+ "sites": [
+  {
+   "basis": "C only accepts dscr_sculpted (and unit service scale); unsupported finalisation/roll methods return None and replay canonical Python. Direct DSCR kernel builds a literal dscr_sculpted plan. [corrected candidate: profile predicate checked in dispatch admission; decline -> canonical]",
+   "category": "B",
+   "category_at_review": "B",
+   "path": "financial_engine/senior_debt/solver.py",
+   "raise": "raise ValueError(f\"Unknown repayment_method_str: {method!r}\")",
+   "region": "STAGE1",
+   "scope": "module._forward_roll_numeric"
+  },
+  {
+   "basis": "C only accepts dscr_sculpted (and unit service scale); unsupported finalisation/roll methods return None and replay canonical Python. Direct DSCR kernel builds a literal dscr_sculpted plan. [corrected candidate: profile predicate checked in dispatch admission; decline -> canonical]",
+   "category": "B",
+   "category_at_review": "B",
+   "path": "financial_engine/senior_debt/solver.py",
+   "raise": "raise ValueError(f\"Unknown repayment_method_str: {repayment_method_str!r}\")",
+   "region": "STAGE1",
+   "scope": "module._forward_roll"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/solver.py",
+   "raise": "raise ValueError(f\"Unsupported sizing_mode: {mode!r}\")",
+   "region": "STAGE1",
+   "scope": "module.solve_senior_debt"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/interest.py",
+   "raise": "raise ValueError(\n            f\"period_end {period_end} is before period_start {period_start}\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.period_day_fraction"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/interest.py",
+   "raise": "raise ValueError(f\"Unsupported day-count convention: {convention!r}\")",
+   "region": "STAGE1",
+   "scope": "module.period_day_fraction"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/interest.py",
+   "raise": "raise ValueError(\n                f\"Period {idx} has no applicable interest rate: \"\n                \"no explicit period_rate and no policy.annual_fixed_rate\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.build_rate_map"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n                f\"QUARTERLY_SENIOR_PERIOD_VECTOR_UNSUPPORTED: sculpting.{name} is authored \"\n                \"per six-month period and cannot be re-gridded to quarters\")",
+   "region": "STAGE1",
+   "scope": "module._require_quarterly_senior_vectors"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n            \"QUARTERLY_SENIOR_RATE_VECTOR_REGRID_UNSUPPORTED: only a single uniform annual \"\n            \"all-in rate is admitted for the quarterly candidate\")",
+   "region": "STAGE1",
+   "scope": "module._require_quarterly_senior_vectors"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n                f\"build_senior_debt_contract_from_project_inputs: unsupported \"\n                f\"gearing_basis_mode={gearing_basis!r}. \"\n                f\"Only TOTAL_PROJECT_USES and None are supported.\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n                \"GEARING_CAP_REQUIRES_TOTAL_PROJECT_USES: \"\n                \"DebtSizingMode.GEARING_CAP requires \"\n                \"gearing_basis_mode=TOTAL_PROJECT_USES\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n            f\"build_senior_debt_contract_from_project_inputs: unsupported \"\n            f\"debt_sizing_mode={raw_mode!r}. \"\n            \"Only FLAT_DSCR_SCULPTED and GEARING_CAP are supported via the \"\n            \"clean solver path.\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n                \"GEARING_CAP_REPAYMENT_METHOD_REQUIRES_GEARING_CAP: \"\n                \"DSCR_SCULPTED gearing-cap repayment requires GEARING_CAP sizing\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n            \"GEARING_CAP_REPAYMENT_METHOD_INVALID: \"\n            f\"unsupported project repayment policy {project_repayment!r}\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n            f\"build_senior_debt_contract_from_project_inputs: unsupported day-count \"\n            f\"convention {finco_dc!r}. Only ACT_360 and ACT_365 are supported. \"\n            f\"FIXED_SEMIANNUAL and EXPLICIT_FRACTIONS are not yet supported.\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n            f\"build_senior_debt_contract_from_project_inputs: unsupported period \"\n            f\"frequency {frequency!r}. Only SEMESTRIAL (2 periods/year) is supported \"\n            f\"by the clean senior-debt source contract. ANNUAL and QUARTERLY require \"\n            f\"end-to-end operating-period proof before enablement.\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\"Not enough operating periods for tenor: no operating periods\")",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n                f\"QUARTERLY_MATURITY_DATE_NOT_ON_SERVICE_ROW: senior maturity {maturity_end.isoformat()} is not the end of an operating row\")",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n            f\"Not enough operating periods for tenor: need {tenor_periods}, \"\n            f\"got {len(debt_periods)}\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n                f\"explicit_all_in_rates has {len(explicit_rates)} entries, \"\n                f\"need {tenor_periods}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n            f\"build_senior_debt_contract_from_project_inputs: unsupported \"\n            f\"rate mode {rate_cfg.rate_schedule.mode!r}. \"\n            f\"Only EXPLICIT_ALL_IN_SCHEDULE is supported.\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n                f\"target_dscr_schedule has {len(sculpting.target_dscr_schedule)} entries, \"\n                f\"need {tenor_periods}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n                f\"debt_service_availability_schedule has \"\n                f\"{len(sculpting.debt_service_availability_schedule)} entries, \"\n                f\"need {tenor_periods}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/senior_debt/project_adapter.py",
+   "raise": "raise ValueError(\n                \"GEARING_BASIS_ELIGIBLE_COST_ZERO: \"\n                f\"gearing_basis_mode={gearing_basis!r} but computed Total Project Uses \"\n                f\"is {eligible_cost}. Cannot apply gearing cap with zero eligible basis.\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.build_senior_debt_contract_from_project_inputs"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/tax/engine.py",
+   "raise": "raise ValueError(\n                f\"calculate_tax: PeriodFinancingIncomeInput period_index=\"\n                f\"{fi.period_index} has unknown authority={_auth!r}. \"\n                f\"Valid: {sorted(_KNOWN_AUTHORITIES)}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module._build_financing_income_map"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/tax/engine.py",
+   "raise": "raise ValueError(\n                f\"calculate_tax: UNRESOLVED authority on period_index=\"\n                f\"{fi.period_index} with nonzero financing_income_keur=\"\n                f\"{fi.financing_income_keur}. UNRESOLVED must fail closed (0.0).\"\n            )",
+   "region": "STAGE1",
+   "scope": "module._build_financing_income_map"
+  },
+  {
+   "basis": "dispatch._build_plan evaluates the identical length predicate on the exact vectors the kernel consumes and declines (NUMERIC_TAX_VECTOR_AXIS_MISMATCH); canonical replays and raises. Kernel validate_plan re-checks every length/capacity before dereference (INVALID_PLAN). ASan: 24 malformed-plan cases rejected, 0 reports.",
+   "category": "P",
+   "category_at_review": "C",
+   "path": "financial_engine/tax/engine.py",
+   "raise": "raise ValueError(\"NUMERIC_TAX_VECTOR_AXIS_MISMATCH\")",
+   "region": "STAGE1",
+   "scope": "module._evaluate_numeric_tax_vectors_uncached"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/tax/engine.py",
+   "raise": "raise ValueError(\"SOLVER_TAX_PLAN_UNSUPPORTED_PERIODISATION\")",
+   "region": "STAGE1",
+   "scope": "module.SolverTaxPlan.__init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/tax/engine.py",
+   "raise": "raise ValueError(\"SOLVER_TAX_PLAN_UNAVAILABLE\")",
+   "region": "STAGE1",
+   "scope": "module.SolverTaxPlan.__init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/tax/loss_ledger.py",
+   "raise": "raise ValueError(\n                f\"TAX_OPENING_LOSS_FUTURE_VINTAGE: opening vintage with \"\n                f\"origin_tax_year={v.origin_tax_year} is later than the first modelled \"\n                f\"tax year {first_tax_year}. A future-origin vintage cannot shelter \"\n                f\"income in years before it was generated.\"\n            )",
+   "region": "STAGE1",
+   "scope": "module._opening_states_from_inputs"
+  },
+  {
+   "basis": "Full typed tax/CFADS is not ported; unsupported/fallback plans and MODEL_YEAR_PAIRING are declined by extraction and run canonically. These conservative extra sites are outside the supported lean scalar path. [corrected candidate: profile predicate checked in dispatch admission; decline -> canonical]",
+   "category": "B",
+   "category_at_review": "B",
+   "path": "financial_engine/tax/loss_ledger.py",
+   "raise": "raise ValueError(\"loss_use_allowed must match tax_year_indices length\")",
+   "region": "STAGE1",
+   "scope": "module.run_annual_fifo_ledger"
+  },
+  {
+   "basis": "Only caller on the admitted path (_evaluate_numeric_tax_vectors_uncached) appends exactly one loss_use_allowed entry per k in range(n_years) with n_years = len(plan.year_keys) (no break/continue) or passes None; the predicate is false by construction. Kernel derives the gate per year from the same n_years geometry.",
+   "category": "U",
+   "category_at_review": "C",
+   "path": "financial_engine/tax/loss_ledger.py",
+   "raise": "raise ValueError(\"loss_use_allowed must match tax_year_indices length\")",
+   "region": "STAGE1",
+   "scope": "module.taxable_income_after_lcf_series"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/tax/tax_year.py",
+   "raise": "raise ValueError(\n                \"SHL_DEDUCTIBLE_INTEREST_OUT_OF_RANGE: deductible SHL interest \"\n                f\"{override} must be in [0, gross={gross}]\"\n            )",
+   "region": "STAGE1",
+   "scope": "module._resolve_shl_tax_eligible_interest"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/tax/tax_year.py",
+   "raise": "raise ArithmeticError(\"SHL_DEDUCTIBLE_DISALLOWED_IDENTITY_BROKEN\")",
+   "region": "STAGE1",
+   "scope": "module._resolve_shl_tax_eligible_interest"
+  },
+  {
+   "basis": "Full typed tax/CFADS is not ported; unsupported/fallback plans and MODEL_YEAR_PAIRING are declined by extraction and run canonically. These conservative extra sites are outside the supported lean scalar path. [corrected candidate: profile predicate checked in dispatch admission; decline -> canonical]",
+   "category": "B",
+   "category_at_review": "B",
+   "path": "financial_engine/tax/tax_year.py",
+   "raise": "raise ValueError(\n                \"MODEL_YEAR_PAIRING_REQUIRES_SEMI_ANNUAL_PERIODS: \"\n                f\"period_index={idx}; period_in_year={period_in_year!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module._build_model_year_pairing_bases"
+  },
+  {
+   "basis": "Full typed tax/CFADS is not ported; unsupported/fallback plans and MODEL_YEAR_PAIRING are declined by extraction and run canonically. These conservative extra sites are outside the supported lean scalar path. [corrected candidate: profile predicate checked in dispatch admission; decline -> canonical]",
+   "category": "B",
+   "category_at_review": "B",
+   "path": "financial_engine/tax/tax_year.py",
+   "raise": "raise ValueError(\n                \"MODEL_YEAR_PAIRING_REQUIRES_JUNE_DECEMBER_PERIOD_ENDS: \"\n                f\"period_index={idx}; period_end={period_end!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module._build_model_year_pairing_bases"
+  },
+  {
+   "basis": "Full typed tax/CFADS is not ported; unsupported/fallback plans and MODEL_YEAR_PAIRING are declined by extraction and run canonically. These conservative extra sites are outside the supported lean scalar path. [corrected candidate: profile predicate checked in dispatch admission; decline -> canonical]",
+   "category": "B",
+   "category_at_review": "B",
+   "path": "financial_engine/cfads.py",
+   "raise": "raise ValueError(\n            f\"calculate_canonical_cfads: period count mismatch \u2014 \"\n            f\"{len(periods)} operating periods vs {len(period_results)} tax results\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.calculate_canonical_cfads"
+  },
+  {
+   "basis": "Full typed tax/CFADS is not ported; unsupported/fallback plans and MODEL_YEAR_PAIRING are declined by extraction and run canonically. These conservative extra sites are outside the supported lean scalar path. [corrected candidate: profile predicate checked in dispatch admission; decline -> canonical]",
+   "category": "B",
+   "category_at_review": "B",
+   "path": "financial_engine/cfads.py",
+   "raise": "raise ValueError(\"calculate_canonical_cfads: duplicate period indices in periods\")",
+   "region": "STAGE1",
+   "scope": "module.calculate_canonical_cfads"
+  },
+  {
+   "basis": "Full typed tax/CFADS is not ported; unsupported/fallback plans and MODEL_YEAR_PAIRING are declined by extraction and run canonically. These conservative extra sites are outside the supported lean scalar path. [corrected candidate: profile predicate checked in dispatch admission; decline -> canonical]",
+   "category": "B",
+   "category_at_review": "B",
+   "path": "financial_engine/cfads.py",
+   "raise": "raise ValueError(\"calculate_canonical_cfads: duplicate period indices in period_results\")",
+   "region": "STAGE1",
+   "scope": "module.calculate_canonical_cfads"
+  },
+  {
+   "basis": "Full typed tax/CFADS is not ported; unsupported/fallback plans and MODEL_YEAR_PAIRING are declined by extraction and run canonically. These conservative extra sites are outside the supported lean scalar path. [corrected candidate: profile predicate checked in dispatch admission; decline -> canonical]",
+   "category": "B",
+   "category_at_review": "B",
+   "path": "financial_engine/cfads.py",
+   "raise": "raise ValueError(\n            f\"calculate_canonical_cfads: period index mismatch \u2014 \"\n            f\"periods={p_indices[:5]}\u2026 tax={t_indices[:5]}\u2026\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.calculate_canonical_cfads"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\"CapitalisationGatePolicy.enabled must be exact bool\")",
+   "region": "STAGE1",
+   "scope": "module.CapitalisationGatePolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"CapitalisationGatePolicy.subtotal_is_reincluded_in_denominator \"\n                \"must be exact bool\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.CapitalisationGatePolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\"CapitalisationGatePolicy.threshold must be a real number\")",
+   "region": "STAGE1",
+   "scope": "module.CapitalisationGatePolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                \"CapitalisationGatePolicy.threshold must be finite and non-negative\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.CapitalisationGatePolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\"InterestLimitationPolicy.enabled must be exact bool\")",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"InterestLimitationPolicy.capitalisation_gate_policy must be \"\n                \"CapitalisationGatePolicy\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"InterestLimitationPolicy.combination_mode must be \"\n                \"InterestLimitationCombinationMode\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"InterestLimitationPolicy.carryforward_mode must be \"\n                \"InterestLimitationCarryforwardMode\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(f\"InterestLimitationPolicy.{name} must be a real number\")",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(f\"InterestLimitationPolicy.{name} must be finite\")",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\"absolute_interest_limit_keur must be non-negative\")",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\"ebitda_interest_limit_pct must be in [0, 1]\")",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\"additional_non_deductible_share must be in [0, 1]\")",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise NotImplementedError(\n                \"INTEREST_LIMITATION_CARRY_FORWARD_NOT_IMPLEMENTED: the typed mode \"\n                \"exists so restricted interest is never silently discarded, but the \"\n                \"carryforward ledger is not implemented.\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.InterestLimitationPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                    f\"TaxPolicy.{name} must be exact bool, got {type(val).__name__!r}: {val!r}\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                f\"TaxPolicy.cash_tax_timing must be CashTaxTiming, got {type(self.cash_tax_timing)!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"TaxPolicy.shl_interest_deductibility must be ShlInterestDeductibilityMode, \"\n                f\"got {type(self.shl_interest_deductibility)!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"TaxPolicy.tax_basis_periodisation must be TaxBasisPeriodisation, \"\n                f\"got {type(self.tax_basis_periodisation)!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"TaxPolicy.loss_utilisation_gate must be TaxLossUtilisationGate, \"\n                f\"got {type(self.loss_utilisation_gate)!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"TaxPolicy.interest_limitation_policy must be InterestLimitationPolicy or None\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"TaxPolicy.atad_ebitda_limit must not be bool\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                f\"TaxPolicy.atad_ebitda_limit must be numbers.Real, got {type(self.atad_ebitda_limit)!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                f\"TaxPolicy.atad_ebitda_limit must be finite, got {self.atad_ebitda_limit!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"TaxPolicy.atad_de_minimis_threshold_keur_annual must not be bool\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                \"TaxPolicy.atad_de_minimis_threshold_keur_annual must be numbers.Real, \"\n                f\"got {type(self.atad_de_minimis_threshold_keur_annual)!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                \"TaxPolicy.atad_de_minimis_threshold_keur_annual must be finite, \"\n                f\"got {self.atad_de_minimis_threshold_keur_annual!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                    \"TaxPolicy.shl_interest_deductible_pct must not be bool\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                    \"TaxPolicy.shl_interest_deductible_pct must be numbers.Real, \"\n                    f\"got {type(pct)!r}\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                    f\"TaxPolicy.shl_interest_deductible_pct must be finite, got {pct!r}\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                    f\"TaxPolicy.shl_interest_deductible_pct must be \u2265 0, got {pct!r}\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                    f\"TaxPolicy.shl_interest_deductible_pct must be \u2264 1, got {pct!r}\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\"TaxPolicy.corporate_rate must not be bool\")",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise TypeError(\n                f\"TaxPolicy.corporate_rate must be numbers.Real, got {type(self.corporate_rate)!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                f\"TaxPolicy.corporate_rate must be finite, got {self.corporate_rate!r}\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                    \"TaxPolicy: shl_interest_deductible_pct is required for \"\n                    \"CUSTOM_DEDUCTIBLE_PERCENTAGE\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                        f\"TaxPolicy: shl_interest_deductible_pct must be absent or {expected} \"\n                        f\"for {mode.value}, got {pct!r}\"\n                    )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.__post_init__"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise NotImplementedError(\n                \"SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED: \"\n                \"thin_cap_enabled=True is recorded as source metadata but the thin-cap \"\n                \"formula is not implemented in the production runtime. \"\n                \"Only the ATAD path (thin_cap_enabled=False, atad_enabled=True) is \"\n                \"currently executable for SUBJECT_TO_LIMITATIONS. \"\n                \"Do not implement the thin-cap formula without a dedicated proof stage.\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.require_stl_mechanism_ready"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise NotImplementedError(\n                \"SHL_LIMITATION_MECHANISM_MISSING: \"\n                \"shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires a supported \"\n                \"limitation mechanism. Set atad_enabled=True for the ATAD execution path, \"\n                \"or thin_cap_enabled=True to record source metadata (runtime-blocked).\"\n            )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.require_stl_mechanism_ready"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                    \"shl_interest_deductible_pct is required for CUSTOM_DEDUCTIBLE_PERCENTAGE\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.shl_tax_deductible_fraction"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                    f\"shl_interest_deductible_pct must be in [0, 1], got {pct!r}\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.shl_tax_deductible_fraction"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise ValueError(\n                    \"DYNAMIC_INTEREST_LIMITATION_PERIOD_INPUT_REQUIRED: a typed dynamic \"\n                    \"policy cannot be reduced to one constant deductible fraction\"\n                )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.shl_tax_deductible_fraction"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/policies/tax.py",
+   "raise": "raise NotImplementedError(\n            f\"REFERENCE_WIND_SHL_TAX_POLICY_UNHANDLED_MODE: unrecognised ShlInterestDeductibilityMode {mode!r}\"\n        )",
+   "region": "STAGE1",
+   "scope": "module.TaxPolicy.shl_tax_deductible_fraction"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/orchestrator.py",
+   "raise": "raise ValueError(\n                    \"SHL_LIMITATION_GROSS_INTEREST_MISMATCH: \"\n                    f\"period_index={idx}; limitation={limitation_gross}; gross={gross_shl}\"\n                )",
+   "region": "STAGE1",
+   "scope": "module._merge_financing_tax_input"
+  },
+  {
+   "basis": "Canonical typed input/adapter/policy/context construction is retained before entry to C; the candidate does not port this constructor/helper.",
+   "category": "A",
+   "category_at_review": "A",
+   "path": "financial_engine/orchestrator.py",
+   "raise": "raise ValueError(\n            f\"UNKNOWN_BANK_TAX_PERIODISATION_MODE: {tax_periodisation_mode_override!r}\"\n        )",
+   "region": "STAGE1",
+   "scope": "module._merge_financing_tax_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_ShlOperatingChain.__init__"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_ShlOperatingChain.__init__"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_ShlOperatingChain.__init__"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_ShlOperatingChain.evaluate"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_ShlOperatingChain.evaluate"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(f\"{name} must be a float, not bool: {value!r}\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_check_finite"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(f\"{name} must be numeric, got {type(value).__name__}\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_check_finite"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(f\"{name} must be finite, got {value!r}\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_check_finite"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"compute_shareholder_loan_schedules: at least one period is required\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise shl_maturity_residual_error(shortfall)",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shareholder_loan_schedules"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"initial_principal_keur must be > 0.0\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"annual_fixed_rate must be >= 0.0\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"construction_day_count_fraction must be >= 0.0\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"repayment_mode must be BULLET or CASH_SWEEP\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"maximum_iterations must be > 0\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"convergence_tolerance_keur must be >= 0.0\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"convergence_relative_tolerance must be >= 0.0\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"repayment_start_period_index must be >= 0\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Cash-independent: executed by Stage 2 admission through the canonical function itself (all-zero cash template, enforce=False) and cached per Run by object identity; any raise -> decline TEMPLATE_RAISES -> canonical replays.",
+   "category": "S",
+   "category_at_review": "",
+   "path": "financial_engine/shl/production.py",
+   "raise": "raise ValueError(\"maturity_period_index must be >= repayment_start_period_index\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_validate_shareholder_loan_input"
+  },
+  {
+   "basis": "Not on the admitted path (PERIOD_AXIS_ACTUAL_YEAR uses the period axis day fraction; other conventions decline).",
+   "category": "U",
+   "category_at_review": "",
+   "path": "financial_engine/shl/waterfall.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shl_dcf_actual_365_inclusive"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/waterfall.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shl_waterfall_period"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/waterfall.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shl_waterfall_period"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/waterfall.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shl_waterfall_period"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/waterfall.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shl_waterfall_period"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/waterfall.py",
+   "raise": "raise ValueError(",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "compute_shl_waterfall_period"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/waterfall.py",
+   "raise": "raise ValueError(f\"{name} must be a float, not bool: {value!r}\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_check_finite"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/waterfall.py",
+   "raise": "raise ValueError(f\"{name} must be numeric, got {type(value).__name__}\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_check_finite"
+  },
+  {
+   "basis": "Cash-dependent predicate (finite / sign / dcf>0 / maturity residual) mirrored exactly in fk2_shl_schedule -> FK2_DECLINE -> canonical replays and raises. Fuzz: 20,000 cases, every decline coincided with a canonical raise, 0 native-OK-canonical-raise.",
+   "category": "P",
+   "category_at_review": "",
+   "path": "financial_engine/shl/waterfall.py",
+   "raise": "raise ValueError(f\"{name} must be finite, got {value!r}\")",
+   "region": "STAGE2_EXPERIMENTAL",
+   "scope": "_check_finite"
+  }
+ ]
+}

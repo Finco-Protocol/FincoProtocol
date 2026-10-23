@@ -24,8 +24,10 @@ def fixture(tmp_path,monkeypatch):
     git(repo,'add','.');git(repo,'commit','-m','synthetic original review')
     original={'head':git(repo,'rev-parse','HEAD'),'tree':git(repo,'rev-parse','HEAD^{tree}')}
     git(repo,'update-ref','refs/remotes/origin/main','HEAD')
-    for name in authority.APPROVED_LIFECYCLE_BLOBS:
-        dest=repo/name;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes((REPO/name).read_bytes())
+    for name,pin in authority.APPROVED_LIFECYCLE_BLOBS.items():
+        # the exact approved PR #346 bytes, content-addressed by the pin (HEAD may carry a recognised successor blob)
+        dest=repo/name;dest.parent.mkdir(parents=True,exist_ok=True)
+        dest.write_bytes(subprocess.check_output(['git','cat-file','blob',pin],cwd=REPO))
     git(repo,'add','.');git(repo,'commit','-m','synthetic corrected source')
     corrected={'head':git(repo,'rev-parse','HEAD'),'tree':git(repo,'rev-parse','HEAD^{tree}')}
     monkeypatch.setattr(authority,'ORIGINAL_REVIEWED_SOURCE',original)
@@ -44,9 +46,12 @@ def test_committed_exact_approved_pair_and_reference():
     assert authority.APPROVED_LIFECYCLE_BLOBS=={
         'app/radar_rwa/r_live_snapshot_store.py':'4179c296c803f42040b2811dc70ef55a1cdfa1d0',
         'app/radar_rwa/r_live_warming.py':'563c1a256886f7b26af21ac63e121216f908c840'}
+    from r_live_lifecycle_py310_successor import historical_subject
+    # HEAD itself, or - only while HEAD is the recognised R-LIVE 3.10 successor (#348) - its immutable PR #346 checkpoint
+    subject=historical_subject()
     for name,pin in authority.APPROVED_LIFECYCLE_BLOBS.items():
-        assert git(REPO,'rev-parse','HEAD:'+name)==pin
-        assert authority.reviewed_lifecycle_content_matches(name,repo=REPO)
+        assert git(REPO,'rev-parse',subject+':'+name)==pin
+        assert authority.reviewed_lifecycle_content_matches(name,repo=REPO,ref=subject)
     assert authority.ORIGINAL_REVIEWED_SOURCE['head']!=authority.CORRECTED_PROTECTED_SOURCE['head']
     assert git(REPO,'rev-parse',authority.CORRECTED_PROTECTED_SOURCE['head']+'^{tree}')==authority.CORRECTED_PROTECTED_SOURCE['tree']
     assert not authority.APPROVAL_ORIGIN['github_signed_attestation']
@@ -160,10 +165,13 @@ def test_all_three_original_guard_call_paths_reject_each_attack(three_guards,att
 def test_historical_authorities_and_original_assertions_preserved():
     import ast
     from v9p2a_odr_successor import HISTORICAL_AUTHORITY_MODULES, WIRING_BLOBS, RC7C_MAIN
+    from v10_native_shadow_successor import historical_subject
+    # HEAD itself, or - only while HEAD is the recognised V10 successor - its immutable OD-R checkpoint (never relabelled)
+    subject=historical_subject()
     for name in HISTORICAL_AUTHORITY_MODULES:
-        assert git(REPO,'rev-parse','HEAD:'+name)==git(REPO,'rev-parse',RC7C_MAIN+':'+name)
+        assert git(REPO,'rev-parse',subject+':'+name)==git(REPO,'rev-parse',RC7C_MAIN+':'+name)
     for name,(_,pin) in WIRING_BLOBS.items():
-        assert git(REPO,'rev-parse','HEAD:'+name)==pin
+        assert git(REPO,'rev-parse',subject+':'+name)==pin
     functions={
         'tests/test_ci_acceptance.py':'test_frozen_financial_namespaces_unmodified',
         'tests/test_multi_source_evidence_v2.py':'test_existing_authorities_are_not_modified',
@@ -186,7 +194,8 @@ def test_committed_odr_and_financial_engine_decisions_preserved():
     import model_v2_governance as model
     import r_live_lifecycle_governance as adapter
     from v9p2a_odr_successor import odr_violations
-    assert odr_violations()==[]
+    from v10_native_shadow_successor import historical_subject
+    assert odr_violations(ref=historical_subject())==[]
     paths=set(historical.APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS)
     for value in vars(model).values():
         if isinstance(value,dict):paths.update(p for p in value if isinstance(p,str) and p.startswith('financial_engine/'))

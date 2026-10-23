@@ -408,6 +408,16 @@ def _shl_operating_accrual_start(period: object) -> date:
     return period.period_start
 
 
+def _native_v10_stage2():
+    """V10 Stage 2 EXPERIMENTAL research hook (default disabled; Run-local config only)."""
+    from financial_engine.native_v10.config import current_config
+    cfg = current_config()
+    if cfg.mode == "off" or not cfg.stage2_experimental:
+        return None
+    from financial_engine.native_v10 import stage2
+    return stage2
+
+
 def compute_shareholder_loan_schedules(
     periods: Sequence["OperatingPeriodResult"],
     shl_input: "ShareholderLoanModelInput",
@@ -428,6 +438,14 @@ def compute_shareholder_loan_schedules(
     same predicate in the context ledger instead of raising; every value and
     every other check is unchanged.
     """
+    _v10 = _native_v10_stage2()
+    if _v10 is not None:
+        _served = _v10.shl_schedules(
+            periods, shl_input, cash_available_for_shl_before_reserves_keur,
+            diagnostics=diagnostics, enforce_maturity_residual=enforce_maturity_residual,
+            maturity_context=maturity_context)
+        if _served is not None:
+            return _served
     from financial_engine.shl.maturity_authority import (
         ShlMaturityContext,
         ShlMaturityShortfall,

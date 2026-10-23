@@ -78,3 +78,7 @@ tools/ui/node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/dist-transfer/
+
+# V10 native candidate: compiled artifacts are built reproducibly outside the runtime, never committed
+financial_engine/native_v10/*.so
+financial_engine/native_v10/build/
