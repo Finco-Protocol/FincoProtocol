@@ -53,7 +53,7 @@ jobs:
 
         paths=[''financial_engine'',''finco_core'',''domain'',''app'',''main_web.py'',''requirements.txt'',''requirements-ci-tests.txt'',''constraints.txt'']
 
-        compatible=subprocess.run([''git'',''diff'',''--quiet'',''e87f16c889661f3bdee09d8c5454d6dc6ba9587e'',''HEAD'',''--'',*paths]).returncode
+        compatible=subprocess.run([''git'',''diff'',''--quiet'',''e96561a220fc6adeb85587eb01d61745a922ab41'',''HEAD'',''--'',*paths]).returncode
         == 0
 
         trusted=trusted and compatible

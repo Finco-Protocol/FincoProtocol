@@ -17,11 +17,9 @@ from tools.ci_v3_real_contract import outcome
 from tools.ci_v3_hosted_transport import GitHub,extract_archive
 
 REPO='Finco-Protocol/FincoProtocol'
-BASE_HEAD='e87f16c889661f3bdee09d8c5454d6dc6ba9587e'
-BASE_RUN=39949317833
-BASE_ARCHIVES={'public-verification-results':(12506472111,'347451cc576d1998023940c34eca3baf330bd68701f70c5b07c47f8dc6979b87'),
- 'public-shadow-proof':(12506925856,'619f13d26f36e96290fc137921b5fa946b49f324b9d554dd0de61bec701b2714'),
- 'public-source-safety':(12499976175,'1fea8e5d8d744f82f23258bbfcafe9242e1079922e7234f49bdd90c12e0edfdd')}
+BASE_HEAD='e96561a220fc6adeb85587eb01d61745a922ab41'
+BASE_RUN=39971606511
+BASE_ARCHIVES={'public-verification-results': (12516255156, '6a00783ef7639f4a3cd60e89118265eb0870ffe6a0d0df753afa84bc8aba5faf'), 'public-shadow-proof': (12515687491, 'af888a778831b20bd4330ef0b74632b34dbba20af0ad245be22513deea591583'), 'public-source-safety': (12509561813, '2e08315411661bebc18c3efd4e89de54c214c03a1252b7427715050810a4f7af')}
 
 def git(*a):return subprocess.check_output(['git',*a],text=True).strip()
 def context():
