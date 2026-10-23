@@ -1,0 +1,89 @@
+{
+ "admission_condition": "closed",
+ "digest": "ecf3bb5ff0db077424fdf3a9789704564a664cf4784b8ded179f906fbe5148df",
+ "fully_equivalent": false,
+ "items": [
+  {
+   "accepted_by_owner": false,
+   "control": "3.12.15",
+   "item": "python-version",
+   "note": "",
+   "shadow": "3.12.15",
+   "status": "equal"
+  },
+  {
+   "accepted_by_owner": false,
+   "control": "76 installed",
+   "item": "python-packages-direct-and-transitive",
+   "note": "identical versions for this snapshot; constraints.txt pins only direct requirements, so transitive drift remains possible",
+   "shadow": "76 frozen",
+   "status": "equal"
+  },
+  {
+   "accepted_by_owner": false,
+   "control": "numpy/scipy/pandas wheels (bundled BLAS) by version above",
+   "item": "native-numerical-libraries",
+   "note": "bundled OpenBLAS inside wheels; not separately hashed",
+   "shadow": "same wheels by version above",
+   "status": "equal"
+  },
+  {
+   "accepted_by_owner": false,
+   "control": "unset (workflow defines none)",
+   "item": "native-thread-variables",
+   "note": "owners must reconcile; the mandatory workflow is deliberately not edited",
+   "shadow": "OMP/MKL/OPENBLAS/NUMEXPR_NUM_THREADS=1",
+   "status": "different"
+  },
+  {
+   "accepted_by_owner": false,
+   "control": "ubuntu-24.04 20261018.339.1",
+   "item": "operating-system",
+   "note": "hosted Ubuntu 24.04 runner vs Debian-based image",
+   "shadow": "Debian GNU/Linux 12 (bookworm)",
+   "status": "different"
+  },
+  {
+   "accepted_by_owner": false,
+   "control": "Ubuntu 24.04 glibc (not recorded in artifacts)",
+   "item": "libc",
+   "note": "",
+   "shadow": "2.36-9+deb12u14",
+   "status": "unproven"
+  },
+  {
+   "accepted_by_owner": false,
+   "control": "preinstalled on runner image (versions not recorded in artifacts)",
+   "item": "optional-tools-node-ssh",
+   "note": "presence matters (tests skip without them); versions unproven",
+   "shadow": "v18.20.4; OpenSSH_9.2p1 Debian-2+deb12u10, OpenSSL 3.0.22 25 Aug 2026",
+   "status": "unproven"
+  },
+  {
+   "accepted_by_owner": false,
+   "control": "autoload on; -p tools.ci_pytest_inventory -p tools.ci_pytest_progress via tools/ci_pytest_runner.py",
+   "item": "pytest-plugin-config",
+   "note": "different by design; equivalence of node ids and outcomes is checked by the coverage/nonpass comparison, not assumed",
+   "shadow": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1; -p pytest_asyncio.plugin via the CI V3 adapter",
+   "status": "different"
+  },
+  {
+   "accepted_by_owner": false,
+   "control": "hosted 4 vCPU runner (unmeasured here)",
+   "item": "cpu-and-start-up-speed",
+   "note": "tests/test_p0a_model_execution.py needs worker cold start <= 0.7 s; tools/ci_v3_calibrate.py gates this",
+   "shadow": "see calibration evidence",
+   "status": "unproven"
+  }
+ ],
+ "kind": "ci-v3-environment-equivalence",
+ "schema": 1,
+ "unaccepted_differences": [
+  "native-thread-variables",
+  "operating-system",
+  "libc",
+  "optional-tools-node-ssh",
+  "pytest-plugin-config",
+  "cpu-and-start-up-speed"
+ ]
+}

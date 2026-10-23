@@ -557,7 +557,7 @@ def test_existing_authorities_are_not_modified():
                          capture_output=True, text=True)
     if out.returncode != 0:
         pytest.skip("git unavailable")
-    from finance_integrity_governance import approved_frozen_path
+    from r_live_lifecycle_governance import approved_frozen_path
     unauthorized = [
         path for path in out.stdout.splitlines()
         if path.strip() and not approved_frozen_path(path.strip())

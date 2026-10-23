@@ -5,6 +5,7 @@ import ast
 import asyncio
 import copy
 import json
+import multiprocessing
 import os
 import socket
 import threading
@@ -188,14 +189,22 @@ def test_client_disconnect_never_leaks_capacity_and_discards_the_result():
     executor = make(1, "process")
 
     async def go():
-        task = asyncio.create_task(executor.run_process(helpers.spin, 1.5))
-        await asyncio.sleep(0.4)
-        task.cancel()                                  # the client went away
-        with pytest.raises(asyncio.CancelledError):
-            await task
-        assert executor.stats()["active"] == 1         # the calculation was NOT interrupted mid-engine
-        await asyncio.sleep(1.8)
-        return executor.stats()
+        reader, writer = multiprocessing.get_context("spawn").Pipe(duplex=False)
+        try:
+            task = asyncio.create_task(executor.run_process(helpers.spin_when_started, 1.5, writer))
+            # Readiness is bounded setup, not part of the cancellation window.
+            # A cold spawn/import must not masquerade as time spent calculating.
+            await helpers.wait_for_worker_start(reader)
+            await asyncio.sleep(0.4)
+            task.cancel()                                  # the client went away
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert executor.stats()["active"] == 1         # the calculation was NOT interrupted mid-engine
+            await asyncio.sleep(1.8)
+            return executor.stats()
+        finally:
+            reader.close()
+            writer.close()
 
     stats = asyncio.run(go())
     assert stats["active"] == 0                        # released when the calculation actually ended

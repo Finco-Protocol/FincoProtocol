@@ -11,7 +11,7 @@ from tools.ci_v3_schema import (
 )
 
 
-def plan_partitions(inventory, policy, weights, workers=3):
+def plan_partitions(inventory, policy, weights, workers=3, groups=None):
     validate_inventory(inventory)
     validate_policy(policy, inventory)
     check_seal(weights, "ci-v3-weights")
@@ -26,15 +26,27 @@ def plan_partitions(inventory, policy, weights, workers=3):
     names = ["worker-%d" % i for i in range(workers)]
     loads = dict.fromkeys(names, 0)
     assigned = {}
-    # Integer milliseconds remove floating-point accumulation/tie ambiguity.
-    for module in sorted(measured, key=lambda m: (-measured[m], m)):
+    # Groups arrive from independently reviewed isolation decisions at the hosted
+    # boundary. Never move modules after scheduling: schedule indivisible units.
+    units, grouped = [], set()
+    require(groups is None or isinstance(groups, dict), "invalid colocation groups")
+    for group, members in sorted((groups or {}).items()):
+        require(isinstance(group, str) and group and isinstance(members, list) and members
+                and all(isinstance(m, str) for m in members), "invalid colocation group")
+        require(len(members) == len(set(members)) and set(members) <= set(measured)
+                and not grouped.intersection(members), "overlapping/missing/foreign group modules")
+        grouped.update(members); units.append(tuple(sorted(members)))
+    units += [(m,) for m in measured if m not in grouped]
+    # Integer milliseconds, lexical unit membership and worker index fix ties.
+    for unit in sorted(units, key=lambda u: (-sum(measured[m] for m in u), u)):
         slot = min(names, key=lambda w: (loads[w], names.index(w)))
-        assigned[module] = slot
-        loads[slot] += measured[module]
+        for module in unit:
+            assigned[module] = slot
+        loads[slot] += sum(measured[m] for m in unit)
     plan = seal({"schema": SCHEMA, "kind": "ci-v3-plan", "authority": "offline-prototype",
                  "source": inventory["source"], "inventory_digest": inventory["digest"],
                  "policy_digest": policy["digest"], "weights_digest": weights["digest"],
-                 "algorithm": "whole-module-lpt-integer-ms/path/worker-index-v1",
+                 "algorithm": "whole-module-group-lpt-integer-ms/path/worker-index-v2",
                  "worker_count": workers, "module_workers": assigned})
     validate_plan(plan, inventory, policy)
     return plan

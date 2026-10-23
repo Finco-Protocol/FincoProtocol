@@ -117,6 +117,7 @@ def run_shadow(project, inventory, policy, weights, output, timeout_s=20):
     plan = plan_partitions(inventory, policy, weights, 3)
     output.mkdir(parents=True)
     env = environment_record(); env["pytest_plugin_autoload"] = "1"
+    env["runtime_fingerprint"]["pytest_plugin_autoload"] = "1"
     context = {"repository": inventory["repository"], "pr_number": None, "workflow": "local-ci-v3-observed",
         "run_id": "local-" + uuid.uuid4().hex, "attempt": 1, "mode": "recorded", "evaluator": EVALUATOR,
         "source": before_source, "environment_digest": digest(env), "inventory_digest": inventory["digest"],

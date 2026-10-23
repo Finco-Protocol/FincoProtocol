@@ -1,0 +1,8 @@
+{
+ "container_removed": true,
+ "control": "unauthorized-node",
+ "pytest_codes": {},
+ "reason": "fresh collection inventory mismatch; new/removed tests require reconciliation",
+ "rejected": true,
+ "workers_not_normal": []
+}

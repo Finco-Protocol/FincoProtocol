@@ -12,6 +12,17 @@ TRUSTED_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TRUSTED_ROOT))
 
 
+def classify_threads(live, allowed):
+    """Split live non-main threads into unapproved leaks and owner-approved daemon threads.
+
+    Only a DAEMON thread whose exact name appears in the approved isolation policy is tolerated; anything else
+    (non-daemon, unlisted, or any thread when the allowlist is empty) stays a leak."""
+    unapproved, approved = [], []
+    for name, daemon in live:
+        (approved if daemon and name in allowed else unapproved).append(name)
+    return unapproved, approved
+
+
 def main():
     request_path = Path(sys.argv[1]).resolve()
     directory = request_path.parent
@@ -33,6 +44,18 @@ def main():
         write_json(directory / "interpreter-exit.json", {"finalizing": True,
             "at_ms": round((time.perf_counter() - clock) * 1000)})
     atexit.register(finalizing)
+    if request.get("target_calibration") is not None:
+        from tools.ci_v3_calibrate import worker_cold_start_s, verdict
+        contract = request["target_calibration"]
+        if contract.get("ceiling_s") != .6 or contract.get("statistic") != "maximum":
+            raise ValueError("unapproved calibration contract")
+        median, samples = worker_cold_start_s(request["project"], repeats=contract["samples"])
+        calibration = {"context": request["context"], "samples_s": samples,
+                       "median_s": median, "acceptance_statistic": "maximum",
+                       **verdict(max(samples))}
+        write_json(directory / "calibration.json", calibration)
+        if not calibration["meets_test_assumption"]:
+            return 124  # no full test execution on a failed target calibration
     before = time.perf_counter()
     import pytest
     pytest_import_ms = round((time.perf_counter() - before) * 1000)
@@ -45,18 +68,19 @@ def main():
             "--junitxml", str(directory / "native.xml")]
     if request["mode"] == "discover":
         args.append("--collect-only")
-    if request.get("hosted"):
-        # The approved image includes this explicitly; no ambient plugin autoload.
-        args += ["-p", "pytest_asyncio.plugin"]
+    from tools.ci_v3_pytest_config import plugin_args
+    args += plugin_args()  # no ambient autoload or missing-plugin fallback
     args.append("tests")
     started = round((time.perf_counter() - clock) * 1000)
     code = int(pytest.main(args, plugins=[adapter]))
     import multiprocessing
     import threading
-    leaks = {"threads": [t.name for t in threading.enumerate() if t is not threading.main_thread() and t.is_alive()],
-             "children": [p.pid for p in multiprocessing.active_children() if p.is_alive()]}
+    live = [(t.name, t.daemon) for t in threading.enumerate() if t is not threading.main_thread() and t.is_alive()]
+    unapproved, approved = classify_threads(live, request.get("allowed_daemon_threads") or {})
+    leaks = {"threads": unapproved, "children": [p.pid for p in multiprocessing.active_children() if p.is_alive()]}
     write_json(directory / "pytest-return.json", {"code": code, "pytest_started_ms": started,
         "pytest_returned_ms": round((time.perf_counter() - clock) * 1000), "leaks": leaks,
+        "threads_observed": [{"name": n, "daemon": d} for n, d in live], "threads_approved_daemon": approved,
         "pytest_import_ms": pytest_import_ms, "adapter_import_ms": adapter_import_ms})
     return code
 

@@ -35,10 +35,33 @@ def check_envelope(value, kind):
 def environment_record():
     packages = sorted({(d.metadata["Name"].lower().replace("_", "-"), d.version)
                        for d in importlib.metadata.distributions() if d.metadata["Name"]})
-    return {"python": sys.version, "executable": str(Path(sys.executable).resolve()),
+    from tools.ci_v3_runtime_fingerprint import capture
+    fingerprint = capture()
+    # Software identity is independent of incidental runner CPU addresses/limits.
+    # Full host observations remain in adapter/control reports and pair review.
+    for key in ("cpu", "cpu_count", "affinity", "cgroup_limits", "kernel"):
+        fingerprint.pop(key, None)
+    return {"runtime_fingerprint": fingerprint, "python": sys.version, "executable": str(Path(sys.executable).resolve()),
             "platform": sys.platform, "machine": platform.machine(), "packages": packages,
             "native_thread_environment": {k: os.environ.get(k) for k in THREAD_ENV},
             "pytest_plugin_autoload": os.environ.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "")}
+
+
+def report_reason(report):
+    value = report.longrepr
+    return str(value[2]) if isinstance(value, tuple) and len(value) == 3 else str(value or "")
+
+
+def phase_record(report):
+    """Lossless outcome fields shared by observational control and shadow hooks."""
+    value = report.longrepr
+    # The expected-failure reason is pytest's declared policy reason. Keep the
+    # original traceback separately; it can contain PID/address/temp-path noise.
+    reason = str(report.wasxfail) if hasattr(report, "wasxfail") else report_reason(report)
+    return {"nodeid": report.nodeid, "when": report.when, "outcome": report.outcome,
+            "reason": reason if not report.passed else "",
+            "wasxfail": str(report.wasxfail) if hasattr(report, "wasxfail") else None,
+            "duration_ms": round(report.duration * 1000), "longrepr": str(value or "")}
 
 
 def git_source(project):
@@ -100,7 +123,8 @@ def file_sha(path):
 
 def producer_identity():
     root = Path(__file__).resolve().parents[1]
-    names = ["ci_v3_real_contract.py", "ci_v3_pytest_adapter.py", "ci_v3_real_child.py",
+    names = ["ci_v3_real_contract.py", "ci_v3_pytest_adapter.py", "ci_v3_real_child.py", "ci_v3_pytest_config.py",
              "ci_v3_process_observer.py", "ci_v3_shadow_local.py", "ci_v3_observed_verify.py",
-             "ci_v3_evidence_verify.py", "ci_v3_schema.py", "ci_v3_partition_plan.py"]
+             "ci_v3_evidence_verify.py", "ci_v3_schema.py", "ci_v3_partition_plan.py",
+             "ci_v3_runtime_fingerprint.py"]
     return {"evaluator": REAL_EVALUATOR, "files_sha256": {"tools/" + n: file_sha(root / "tools" / n) for n in names}}

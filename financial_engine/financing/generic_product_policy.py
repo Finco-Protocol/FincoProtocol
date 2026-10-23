@@ -44,6 +44,15 @@ from finco_core.inputs.construction_financing import (
     ConstructionStructuringFeeInput,
 )
 from finco_core.inputs.senior_rate_schedule import SeniorRateMode
+from financial_engine.shl.maturity_authority import (
+    SHL_MATURITY_POLICIES,
+    SHL_MATURITY_POLICY_CANONICAL,
+    SHL_MATURITY_POLICY_OD_R,
+    OdrAttempt,
+    OdrMaturityEvidence,
+    odr_attempt,
+    summarize as _summarize_odr,
+)
 
 POLICY_AUTHORITY = "GENERIC_PRODUCT_FINANCING_POLICY_H1_V1"
 _PERIODS_PER_YEAR = 2  # the clean senior-debt contract supports SEMESTRIAL only
@@ -61,6 +70,17 @@ class GenericFinancingPolicy:
     apply_cash_dsra: bool = True
     dsra_tolerance_keur: float = 1e-6
     dsra_max_iterations: int = 25
+    # RELEASE-CLOSED (V9-P2a / OD-R): which SHL maturity authority the run applies. The default
+    # is the deployed canonical interpretation; no product request, scenario or environment
+    # setting constructs a policy, so OD-R is reachable only where code passes it explicitly.
+    shl_maturity_authority: str = SHL_MATURITY_POLICY_CANONICAL
+
+    def __post_init__(self) -> None:
+        if self.shl_maturity_authority not in SHL_MATURITY_POLICIES:
+            raise GenericFinancingPolicyError(
+                "H1_UNKNOWN_SHL_MATURITY_AUTHORITY: "
+                f"{self.shl_maturity_authority!r} is not one of {SHL_MATURITY_POLICIES}"
+            )
 
 
 DEFAULT_GENERIC_FINANCING_POLICY = GenericFinancingPolicy()
@@ -77,6 +97,16 @@ class FinancingPolicyEvidence:
     initial_dsra_funding_keur: float
     dsra_iterations: int
     dsra_residual_keur: float
+
+
+@dataclass(frozen=True)
+class OdrFinancingPolicyEvidence(FinancingPolicyEvidence):
+    """Evidence of a run under the OD-R final-state SHL maturity authority (candidate only).
+
+    A separate type so canonical evidence is unchanged field-for-field.
+    """
+
+    shl_maturity: OdrMaturityEvidence | None = None
 
 
 @dataclass(frozen=True)
@@ -285,12 +315,39 @@ def run_with_generic_financing_policy(
 
     The initial DSRA funding is the peak forward debt service over ``dsra_months``,
     a fixed point because the reserve is itself a Project Use that moves the debt.
+
+    OD-R (``policy.shl_maturity_authority``, release-closed): each engine evaluation
+    runs as one OD-R attempt. An evaluation superseded by a further DSRA iteration is
+    provisional; the evaluation that is returned must pass every final SHL maturity
+    check (returned and verification G2A passes, final waterfall SHL schedule) before
+    it is returned, otherwise the canonical maturity error is raised with the
+    final-state shortfall. The seed run keeps its canonical behaviour unchanged.
     """
+    odr = policy.shl_maturity_authority == SHL_MATURITY_POLICY_OD_R
+    superseded: list[OdrAttempt] = []
+
+    def evaluate(applied_inputs):
+        if not odr:
+            return run(applied_inputs), None
+        attempt = OdrAttempt()
+        with odr_attempt(attempt):
+            return run(applied_inputs), attempt
+
+    def accept(result, attempt, evidence: FinancingPolicyEvidence):
+        """Final authority: finalize the returned evaluation (complete, bound, passing final evidence for the
+        checks its actual final state requires) before returning, then attach the decision path."""
+        if not odr:
+            return evidence
+        requirements = attempt.finalize(result)
+        return OdrFinancingPolicyEvidence(
+            *dc.astuple(evidence), shl_maturity=_summarize_odr(attempt, superseded, requirements),
+        )
+
     applied, construction_on, dsra_on = apply_generic_financing_policy(pi, policy)
     if not dsra_on:
-        result = run(applied)
-        return result, applied, FinancingPolicyEvidence(
-            POLICY_AUTHORITY, construction_on, False, 0.0, 0, 0.0)
+        result, attempt = evaluate(applied)
+        return result, applied, accept(result, attempt, FinancingPolicyEvidence(
+            POLICY_AUTHORITY, construction_on, False, 0.0, 0, 0.0))
 
     multiplier = int(pi.financing.dsra_months) * _PERIODS_PER_YEAR / 12.0
     # Seed only (never the authority): the peak debt service of the plain run is within
@@ -303,12 +360,16 @@ def run_with_generic_financing_policy(
     residual = float("inf")
     for iteration in range(1, policy.dsra_max_iterations + 1):
         applied, _, _ = apply_generic_financing_policy(pi, policy, initial_dsra_keur=funding)
-        result = run(applied)
+        result, attempt = evaluate(applied)
         target = _peak_forward_debt_service_keur(result) * multiplier
         residual = abs(target - funding)
         if residual <= policy.dsra_tolerance_keur:
-            return result, applied, FinancingPolicyEvidence(
-                POLICY_AUTHORITY, construction_on, True, funding, iteration, residual)
+            return result, applied, accept(result, attempt, FinancingPolicyEvidence(
+                POLICY_AUTHORITY, construction_on, True, funding, iteration, residual))
+        if attempt is not None:
+            # Superseded by the next DSRA iteration: its final checks become diagnostics.
+            attempt.demote(f"DSRA_ITER{iteration}")
+            superseded.append(attempt)
         funding = target
     raise GenericFinancingPolicyError(
         "H1_DSRA_INITIAL_FUNDING_NOT_CONVERGED: residual "
@@ -358,7 +419,8 @@ def build_sources_and_uses(financing_result) -> SourcesAndUses:
 __all__ = [
     "POLICY_AUTHORITY", "GenericFinancingPolicy", "GenericFinancingPolicyError",
     "DEFAULT_GENERIC_FINANCING_POLICY", "DISABLED_GENERIC_FINANCING_POLICY",
-    "FinancingPolicyEvidence", "SourcesAndUses", "derive_construction_financing",
+    "FinancingPolicyEvidence", "OdrFinancingPolicyEvidence", "SourcesAndUses",
+    "derive_construction_financing",
     "apply_generic_financing_policy", "run_with_generic_financing_policy",
     "build_sources_and_uses",
 ]

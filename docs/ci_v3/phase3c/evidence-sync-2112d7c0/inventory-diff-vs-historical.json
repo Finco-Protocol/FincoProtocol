@@ -1,0 +1,24 @@
+{
+ "new": [
+  "tests/test_v9p2a_odr_candidate_proposal.py",
+  "tests/test_v9p2a_odr_final_state_authority.py",
+  "tests/test_v9p2a_odr_finalization_contract.py",
+  "tests/test_v9p2a_odr_run_commit_safety.py",
+  "tests/test_v9p2a_odr_successor.py"
+ ],
+ "changed": [
+  "tests/test_ci_acceptance.py",
+  "tests/test_ci_v3_classify.py",
+  "tests/test_ci_v3_evidence.py",
+  "tests/test_ci_v3_proposal.py",
+  "tests/test_developer_economics_v1.py",
+  "tests/test_finance_integrity_governance.py",
+  "tests/test_financing_f3_governance.py",
+  "tests/test_m7_rc3_candidate_successor.py",
+  "tests/test_ppa01_candidate_authority.py",
+  "tests/test_rc7c_candidate_successor.py"
+ ],
+ "gone": [],
+ "nodes_added": 179,
+ "nodes_removed": 0
+}

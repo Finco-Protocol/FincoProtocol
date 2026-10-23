@@ -1982,6 +1982,7 @@ def _run_senior_debt_model_with_shl(
     inputs: SeniorDebtModelInput,
     *,
     _test_only_initial_shl_interest_guess: "dict[int, float] | None" = None,
+    shl_maturity_context: "object | None" = None,
 ) -> "ProjectModelResult":
     """Phase B5: Senior debt + SHL + tax fixed-point integration.
 
@@ -1994,6 +1995,12 @@ def _run_senior_debt_model_with_shl(
         - NOT accessible through run_senior_debt_model()
       It exists solely to allow the test suite to prove that different starting
       seeds converge to the same fixed-point result.
+
+    shl_maturity_context:
+      OD-R authority of the SHL maturity residual check on the converged schedule
+      (``ShlMaturityContext``). ``None`` = canonical fail-closed. It is passed only
+      to the final handshake / final SHL schedules (the fixed-point iterations
+      already evaluate without the check) and changes no value.
     """
     from financial_engine.cfads import calculate_canonical_cfads
     from financial_engine.inputs import TaxCfadsModelInput, TaxCalculationInput, PeriodInterestInput
@@ -2421,6 +2428,7 @@ def _run_senior_debt_model_with_shl(
         shl_input,
         final_post_senior_cash.cash_available_for_shl_before_reserves_keur,
         diagnostics=handshake_probe_diag,
+        maturity_context=shl_maturity_context,
     )
 
     # Bank tax input ALSO derives from the FINAL CONTRACT (TASK 3, step I).
@@ -2571,6 +2579,7 @@ def _run_senior_debt_model_with_shl(
         shl_input,
         final_post_senior_cash.cash_available_for_shl_before_reserves_keur,
         diagnostics=authoritative_diag,
+        maturity_context=shl_maturity_context,
     )
     debt_sizing_schedules = _build_debt_sizing_schedules_from_bank(
         bank_phase2a_result=bank_phase2a_result,
@@ -2640,7 +2649,11 @@ def _run_senior_debt_model_with_shl(
     )
 
 
-def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
+def run_senior_debt_model(
+    inputs: SeniorDebtModelInput,
+    *,
+    shl_maturity_context: "object | None" = None,
+) -> ProjectModelResult:
     """Phase 2C orchestrator: operating core + tax + canonical CFADS + senior debt.
 
     Two distinct economic cases flow through this orchestrator:
@@ -2665,9 +2678,16 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
       9.  Attach Phase 2C provenance.
 
     Non-converged results raise SeniorDebtNonConvergenceError.
+
+    ``shl_maturity_context`` (OD-R) is supplied only by a G2A fixed-point owner;
+    it is not an input, not part of the fingerprint and changes no value.
     """
     if inputs.shareholder_loan is not None:
-        return _run_senior_debt_model_with_shl(inputs)
+        return _run_senior_debt_model_with_shl(
+            inputs, shl_maturity_context=shl_maturity_context,
+        )
+    if shl_maturity_context is not None:
+        raise ValueError("shl_maturity_context requires a shareholder-loan model input")
 
     from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
     from financial_engine.tax.engine import calculate_cfads_and_cash_tax, calculate_tax

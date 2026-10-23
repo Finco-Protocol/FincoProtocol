@@ -14,6 +14,14 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 
+# This file is also run with python -I from a read-only standalone bootstrap.
+# Resolve only the trusted adjacent configuration, never the subject's tools.
+if __package__:
+    from .ci_v3_pytest_config import plugin_args
+else:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from ci_v3_pytest_config import plugin_args
+
 
 def run_module(source, module, out, timeout, tag=None):
     work = Path("/tmp/work"); shutil.rmtree(work, ignore_errors=True)
@@ -24,7 +32,7 @@ def run_module(source, module, out, timeout, tag=None):
     started = time.perf_counter(); timed_out = False
     try:
         proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "--tb=short", "-p", "no:cacheprovider",
-            "-p", "pytest_asyncio.plugin", "--basetemp", str(tmp / "b"), "--junitxml", str(xml), module],
+            *plugin_args(), "--basetemp", str(tmp / "b"), "--junitxml", str(xml), module],
             cwd=work, env=env, capture_output=True, timeout=timeout)
         code, tail = proc.returncode, proc.stdout.decode("utf-8", "replace")[-1500:]
     except subprocess.TimeoutExpired as exc:

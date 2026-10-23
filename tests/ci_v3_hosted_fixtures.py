@@ -47,6 +47,7 @@ def real_bundle(directory):
     project = directory / 'project'
     inventory, policy, weights = create_project(project)
     env = environment_record(); env['pytest_plugin_autoload'] = '1'
+    env['runtime_fingerprint']['pytest_plugin_autoload'] = '1'
     isolation = seal({'schema':3,'kind':'ci-v3-isolation-policy','source':inventory['source'],
         'profile':'docker-no-network-private-workspace-v1','fixture_tree_reviewed':True,
         'review_reference':'synthetic fixture only, not FINCO approval',
@@ -55,6 +56,7 @@ def real_bundle(directory):
     bundle = {'inventory':inventory,'policy':policy,'weights':weights,'environment':env,'isolation':isolation}
     workflow = b'name: transport fixture only\n'
     root = {'schema':3,'kind':'ci-v3-hosted-admission','enabled':True,'review_reference':'TEST FIXTURE ONLY',
+        'execution_mode':'shadow','target_calibration':{'ceiling_s':.6,'statistic':'maximum','samples':3},
         'owner_decisions':['Financial','Security','CI'],'experiment_pairs':1,'workers':3,'run_id':123,'run_attempt':2,'repository':inventory['repository'],
         'source':inventory['source'],'controller_head':'a'*40,'controller_tree':'b'*40,'workflow_head':'c'*40,
         'workflow_path':'.github/workflows/ci_v3_shadow.yml','workflow_sha256':sha(workflow),
@@ -62,6 +64,13 @@ def real_bundle(directory):
         'merge_proof':{'mode':'main-head','merge_sha':None,'merge_tree':None},'controller_files_sha256':{},
         'bundle':{'repository':inventory['repository'],'revision':'e'*40,
                   'files':{n:{'path':n+'.json','sha256':sha(canonical_bytes(v))} for n,v in bundle.items()}}}
+    root['nonpass_owner_decisions']={'source':inventory['source'],'records':{
+        node:{'record':record,'Financial':'SYNTHETIC LOCAL VALIDATION ONLY','CI':'SYNTHETIC LOCAL VALIDATION ONLY'}
+        for node,record in policy['allowed_nonpass'].items()}}
+    root['budget_authorization']={'approved':True,'review_reference':'SYNTHETIC ONLY','source':inventory['source'],
+        'control_run_id':122,'control_attempt':1,'shadow_run_id':123,'shadow_attempt':2,
+        'shadow_max_minutes':350,'control_max_minutes':230,'pair_max_minutes':590,
+        'ancillary_accounting':'separately-authorized','ancillary_max_minutes':315,'ancillary_review_reference':'SYNTHETIC ONLY'}
     root_sha=sha(canonical_bytes(root));plan=constrained_plan(project,inventory,policy,weights,isolation)
     ctx=context(root,bundle,plan,123,2);paths={}
     def execute(name):

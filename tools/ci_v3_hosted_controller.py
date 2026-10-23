@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -25,6 +26,11 @@ STAGES = {"plan": "ci-v3-plan", **{f"worker-{i}": f"ci-v3-worker-{i}" for i in r
 BUNDLE_FILES = {"inventory", "policy", "weights", "isolation", "environment"}
 
 
+def stage_names(root):
+    prefix = "safety-and-smoke / " if root.get("execution_authority") == "mandatory" else ""
+    return {k: prefix+v for k,v in STAGES.items()}
+
+
 def decode(data):
     return json.loads(data, object_pairs_hook=_pairs, parse_constant=_invalid_constant)
 
@@ -38,10 +44,31 @@ def load_root(path, expected_sha):
     require(root.get("enabled") is True, "hosted admission is closed; separate exact-content owner/deployment approval required")
     require(root.get("review_reference") and root.get("owner_decisions") == ["Financial", "Security", "CI"], "missing independent owner decision references")
     require(re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", root["repository"]), "repository identity")
-    require(root["workflow_path"] == ".github/workflows/ci_v3_shadow.yml", "shadow-only workflow path")
+    mandatory = root.get("execution_authority") == "mandatory"
+    expected_path = ".github/workflows/public_safety_and_smoke.yml" if mandatory else ".github/workflows/ci_v3_shadow.yml"
+    require(root["workflow_path"] == expected_path, "unauthorized workflow path")
     image_ref(root["image"])
     require(set(root["bundle"]["files"]) == BUNDLE_FILES, "incomplete approved bundle")
     require(root.get("experiment_pairs") == 1 and root.get("workers") == 3, "one-pair/three-worker admission only")
+    calibration = root.get("target_calibration", {})
+    require(calibration.get("ceiling_s") == 0.6 and calibration.get("statistic") == "maximum"
+            and type(calibration.get("samples")) is int and 3 <= calibration["samples"] <= 30,
+            "missing exact target calibration contract")
+    require(root.get("execution_mode") in ("control", "shadow"), "missing control/shadow mode")
+    if mandatory:
+        from tools.ci_v3_mandatory import activation_check
+        require(root["execution_mode"] == "shadow" and activation_check(root)["mode"] == "parallel", "mandatory activation closed")
+        budget = root.get("production_budget_authorization", {})
+        require(budget.get("approved") is True and budget.get("review_reference")
+                and budget.get("run_id") == root["run_id"] and budget.get("attempt") == root["run_attempt"]
+                and budget.get("source") == root["source"] and budget.get("maximum_minutes") == 375
+                and budget.get("ancillary_accounting") == "separately-authorized"
+                and type(budget.get("ancillary_max_minutes")) is int and budget["ancillary_max_minutes"] >= 75
+                and budget.get("ancillary_review_reference"),
+                "exact mandatory allocation unapproved")
+    else:
+        from tools.ci_v3_admission_budget import validate_spending
+        validate_spending(root)
     return root
 
 
@@ -52,9 +79,18 @@ def load_bundle(api, root):
         require(sha(data) == item["sha256"], "approved bundle substitution: " + name)
         bundle[name] = decode(data)
     validate_inventory(bundle["inventory"]); validate_policy(bundle["policy"], bundle["inventory"])
+    from tools.ci_v3_admission_budget import validate_nonpass_decisions
+    validate_nonpass_decisions(bundle["policy"],root.get("nonpass_owner_decisions",{}),root["source"])
+    require(bundle["isolation"].get("allowed_daemon_threads",{}) == {}, "final admission forbids name-only survivor permissions")
     check_seal(bundle["weights"], "ci-v3-weights")
+    if "environment_digest" in bundle["weights"]:
+        require(bundle["weights"]["environment_digest"] == digest(bundle["environment"]), "stale weight environment")
     require(bundle["inventory"]["source"] == root["source"] and bundle["inventory"]["repository"] == root["repository"], "stale source inventory")
     require(bundle["isolation"].get("digest") == digest({k: v for k, v in bundle["isolation"].items() if k != "digest"}), "isolation digest mismatch")
+    if root.get("execution_authority") == "mandatory":
+        decisions=root["accepted_pair_proof"]["accepted_decisions"]
+        for name,decision in (("policy","nonpass"),("isolation","isolation"),("environment","environment")):
+            require(digest(bundle[name])==decisions[decision]["sha256"], "mandatory approved bundle changed: "+name)
     return bundle
 
 
@@ -115,6 +151,8 @@ def validate_receipt(directory, stage, root_sha, ctx, root, execution_profile="d
                 and observed.get("source_bytes_unchanged") is True, "unproved container isolation/cleanup/source")
     else:
         require(value.get("synthetic_only") is True, "non-container evidence is limited to explicit synthetic fixtures")
+    if stage != "plan" and execution_profile == "docker-private-linux-posix-group-v1":
+        validate_calibration(Path(directory) / "child", root, ctx, observed)
     verify_files(Path(directory) / "child", observed["artifact_sha256"], set(ARTIFACTS) if stage != "plan" else set(ARTIFACTS) - {"results.xml", "execution.json"})
     return value
 
@@ -159,15 +197,38 @@ def read_plan(directory, root, root_sha, bundle, project, run_id, attempt, execu
     return plan, ctx, value
 
 
+def worker_request(ctx, worker, bundle, modules):
+    """The worker request comes from the approved bundle only; the allowlist is never supplied by the worker."""
+    return {"mode": "worker", "context": ctx, "worker": worker, "inventory": bundle["inventory"], "owned_modules": modules,
+            "allowed_daemon_threads": bundle["isolation"].get("allowed_daemon_threads", {})}
+
+
+def validate_calibration(directory, root, ctx, observed):
+    path = Path(directory) / "calibration.json"
+    require(file_sha(path) == observed.get("calibration_sha256"), "target calibration bytes missing/substituted")
+    value = read_json(path)
+    samples = value.get("samples_s", [])
+    contract = root["target_calibration"]
+    require(value.get("context") == ctx and len(samples) == contract["samples"]
+            and all(type(x) in (int, float) and math.isfinite(x) and 0 < x <= .6 for x in samples)
+            and value.get("ceiling_s") == .6 and value.get("acceptance_statistic") == "maximum"
+            and value.get("meets_test_assumption") is True, "target readiness calibration failed/stale")
+    return value
+
+
 def run_worker(root, root_sha, bundle, project, plan_directory, worker, output, run_id, attempt):
+    require(root.get("execution_mode") == "shadow", "control authorization cannot run shadow workers")
     require(worker in STAGES and worker != "plan", "unexpected worker")
     require(git_source(project) == root["source"], "wrong worker checkout")
     plan, ctx, _ = read_plan(plan_directory, root, root_sha, bundle, project, run_id, attempt)
     modules = sorted(m for m, owner in plan["module_workers"].items() if owner == worker)
     output = Path(output); output.mkdir(parents=True, exist_ok=False)
-    child, observed = observe_container({"mode": "worker", "context": ctx, "worker": worker,
-        "inventory": bundle["inventory"], "owned_modules": modules}, output / "execution", project, root["image"], 4800)
+    request = worker_request(ctx, worker, bundle, modules)
+    request["target_calibration"] = root["target_calibration"]
+    child, observed = observe_container(request, output / "execution", project, root["image"], 4800)
     observed = bridge_worker(child, observed, ctx)
+    observed["calibration_sha256"] = file_sha(child / "calibration.json")
+    validate_calibration(child, root, ctx, observed)
     shutil.move(str(child), output / "child"); shutil.rmtree(output / "execution")
     require(git_source(project) == root["source"], "worker source changed")
     receipt(output, worker, root_sha, ctx, observed, root)
@@ -175,8 +236,30 @@ def run_worker(root, root_sha, bundle, project, plan_directory, worker, output, 
     return ctx
 
 
+def run_control(root, root_sha, bundle, project, output, run_id, attempt):
+    """One full unsharded advisory control in the same contained runtime."""
+    require(root.get("execution_mode") == "control", "shadow authorization cannot run full control")
+    require(git_source(project) == root["source"], "wrong control checkout")
+    plan = make_plan(project, bundle)
+    ctx = context(root, bundle, plan, run_id, attempt)
+    output = Path(output); output.mkdir(parents=True, exist_ok=False)
+    request = worker_request(ctx, "control", bundle, sorted(bundle["inventory"]["modules"]))
+    request["target_calibration"] = root["target_calibration"]
+    child, observed = observe_container(request, output / "execution", project, root["image"], 12600)
+    observed = bridge_worker(child, observed, ctx)
+    observed["calibration_sha256"] = file_sha(child / "calibration.json")
+    validate_calibration(child, root, ctx, observed)
+    shutil.move(str(child), output / "child"); shutil.rmtree(output / "execution")
+    require(git_source(project) == root["source"], "control source changed")
+    write_json(output / "plan.json", plan)
+    observed["plan_sha256"] = file_sha(output / "plan.json")
+    receipt(output, "control", root_sha, ctx, observed, root)
+    require(observed["normal_successful_exit"] and not observed["adapter_errors"], "control failed")
+    return ctx
+
+
 def aggregate(root, root_sha, bundle, project, received, output, run_id, attempt, transport,
-              execution_profile="docker-private-linux-posix-group-v1"):
+              execution_profile="docker-private-linux-posix-group-v1", service_api=None):
     """Independent full-node verification; never recompute planner selections from totals."""
     require(set(transport["receipts"]) == set(STAGES), "incomplete independently authenticated worker set")
     require(execution_profile == "docker-private-linux-posix-group-v1" or transport["provenance_authenticated"] is False,
@@ -206,6 +289,12 @@ def aggregate(root, root_sha, bundle, project, received, output, run_id, attempt
         "transport": transport, "execution": checked,
         "execution_profile": execution_profile,
         "warning": "Advisory only. No mandatory, financial, security or merge acceptance."}
+    if root.get("execution_authority") == "mandatory":
+        from tools.ci_v3_mandatory import verify_current_phases
+        phase = verify_current_phases({**root, "_root_sha256":root_sha},bundle,project,received,output/"accepted-control-comparison",service_api or GitHub())
+        proof["mandatory_execution_valid"] = phase["phase_equivalent"]
+        proof["mandatory_phase_comparison"] = phase
+        proof["warning"] = "Requires exact protected Financial/Security/CI activation authority and independent required-gate verification."
     write_json(output / "shadow-proof.json", proof)
     return proof
 
@@ -241,10 +330,10 @@ def prune_failed_workspace(output):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=("admit", "plan", "worker", "aggregate", "outputs", "pull-image"))
+    parser.add_argument("stage", choices=("admit", "plan", "worker", "aggregate", "outputs", "pull-image", "control"))
     parser.add_argument("--root", required=True); parser.add_argument("--root-sha256", required=True)
     parser.add_argument("--project"); parser.add_argument("--output", required=True)
-    parser.add_argument("--worker", choices=("worker-0", "worker-1", "worker-2"))
+    parser.add_argument("--worker", choices=("worker-0", "worker-1", "worker-2", "control"))
     args = parser.parse_args(argv)
     output = Path(args.output).resolve()
     try:
@@ -254,9 +343,10 @@ def main(argv=None):
         bundle = load_bundle(api, root)
         if args.stage == "admit":
             require(os.environ.get("CI_V3_REQUESTED_HEAD") == root["source"]["head"], "input is not approved tested source")
+            require(os.environ.get("CI_V3_REQUESTED_MODE") == root["execution_mode"], "mode lacks exact run authorization")
             write_outputs({"tested_sha": root["source"]["head"], "controller_sha": root["controller_head"],
                 "root_sha256": args.root_sha256, "root_b64": base64.b64encode(Path(args.root).read_bytes()).decode(),
-                "image": root["image"]})
+                "image": root["image"], "execution_mode": root["execution_mode"]})
             write_json(output / "admission.json", {"root_sha256": args.root_sha256, "admitted": True,
                 "run_id": run_id, "attempt": attempt, "authoritative_acceptance": False})
         elif args.stage == "pull-image":
@@ -265,19 +355,22 @@ def main(argv=None):
         elif args.stage == "outputs":
             stage = args.worker or "plan"
             jobs = api.listing(f"/repos/{root['repository']}/actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs")
-            jobs = [j for j in jobs if j["name"] == STAGES[stage] and j["run_attempt"] == attempt]
+            expected_job = "ci-v3-control" if stage == "control" else stage_names(root)[stage]
+            jobs = [j for j in jobs if j["name"] == expected_job and j["run_attempt"] == attempt]
             require(len(jobs) == 1, "ambiguous current host job")
             write_outputs({"receipt_sha256": file_sha(output / "receipt.json"), "job_id": jobs[0]["id"]})
+        elif args.stage == "control":
+            run_control(root, args.root_sha256, bundle, Path(args.project), output, run_id, attempt)
         elif args.stage == "plan":
             run_plan(root, args.root_sha256, bundle, Path(args.project), output, run_id, attempt)
         else:
-            expected = {"plan": STAGES["plan"]} if args.stage == "worker" else STAGES
+            expected = {"plan": stage_names(root)["plan"]} if args.stage == "worker" else stage_names(root)
             received = output.parent / (output.name + "-received")
             transport = receive(api, root, run_id, attempt, anchors_from_env(expected), received, expected)
             if args.stage == "worker":
                 run_worker(root, args.root_sha256, bundle, Path(args.project), received / "plan", args.worker, output, run_id, attempt)
             else:
-                aggregate(root, args.root_sha256, bundle, Path(args.project), received, output, run_id, attempt, transport)
+                aggregate(root, args.root_sha256, bundle, Path(args.project), received, output, run_id, attempt, transport, service_api=api)
         print("CI_V3_STAGE_COMPLETE; AUTHORITATIVE_ACCEPTANCE=false")
         return 0
     except (ContractError, OSError, KeyError, TypeError, ValueError, subprocess.SubprocessError) as exc:

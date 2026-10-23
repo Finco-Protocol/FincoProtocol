@@ -2,14 +2,14 @@
 from tools.ci_v3_environment import compare, control_packages, image_packages
 
 INSTALL = "Requirement already satisfied: pip in /opt/hostedtoolcache/Python/3.12.15/x64/lib\nSuccessfully installed numpy-1.26.4 python-docx-1.2.0 pip-26.2.2\n"
-JOB = "Image: ubuntu-24.04\nVersion: 20261018.339.1\n"
+JOB = "\ufeff2026-10-21T19:35:39.6998181Z Image: ubuntu-24.04\n2026-10-21T19:35:39.6998838Z Version: 20261018.339.1\n"
 FREEZE = "numpy==1.26.4\npython-docx==1.2.0\npip==25.0.1\n"
 SYSTEM = "libc6=2.36-9\n"
 OSREL = 'PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"\n'
 
 
 def run(freeze=FREEZE, accepted=()):
-    return compare(INSTALL, JOB, freeze, SYSTEM, "3.12.15 (main)", "v18.20.4\nOpenSSH_9.2", OSREL, accepted)
+    return compare(INSTALL, JOB, freeze, SYSTEM, "Python 3.12.15 (main, Oct 21 2026, 01:08:07) [GCC 12.2.0]\n", "v18.20.4\nOpenSSH_9.2", OSREL, accepted)
 
 
 def by_name(result):
@@ -38,3 +38,10 @@ def test_admission_stays_closed_until_every_difference_is_accepted():
 def test_python_and_os_are_read_from_control_artifacts():
     items = by_name(run())
     assert items["python-version"]["status"] == "equal" and items["operating-system"]["control"] == "ubuntu-24.04 20261018.339.1"
+
+
+def test_python_version_is_the_number_not_the_word_and_a_different_version_is_reported():
+    from tools.ci_v3_environment import compare as cmp
+    result = cmp(INSTALL, JOB, FREEZE, SYSTEM, "Python 3.12.16 (main)\n", "v18", OSREL)
+    item = {i["item"]: i for i in result["items"]}["python-version"]
+    assert item["shadow"] == "3.12.16" and item["status"] == "different"

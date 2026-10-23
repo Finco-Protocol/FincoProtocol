@@ -1,0 +1,42 @@
+[
+ {
+  "label": "original-fresh-1",
+  "output": "=========================== short test summary info ============================|FAILED tests/test_golden_flow_correction_b.py::test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds - assert 5 == 1|1 failed, 2 passed in 18.97s| shared_db_files=finco_runs.db"
+ },
+ {
+  "label": "original-fresh-2",
+  "output": "=========================== short test summary info ============================|FAILED tests/test_golden_flow_correction_b.py::test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds - assert 5 == 1|1 failed, 2 passed in 18.78s| shared_db_files=finco_runs.db"
+ },
+ {
+  "label": "original-fresh-3",
+  "output": "=========================== short test summary info ============================|FAILED tests/test_golden_flow_correction_b.py::test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds - assert 5 == 1|1 failed, 2 passed in 18.62s| shared_db_files=finco_runs.db"
+ },
+ {
+  "label": "isolated-fixture-fresh-1",
+  "output": "...                                                                      [100%]|3 passed in 25.10s|"
+ },
+ {
+  "label": "isolated-fixture-fresh-2",
+  "output": "...                                                                      [100%]|3 passed in 25.27s|"
+ },
+ {
+  "label": "isolated-fixture-fresh-3",
+  "output": "...                                                                      [100%]|3 passed in 24.86s|"
+ },
+ {
+  "label": "isolated-fixture-repeated-twice-same-copy",
+  "output": "...                                                                      [100%]|3 passed in 25.40s|"
+ },
+ {
+  "label": "ring-golden-first",
+  "output": "........................................................................ [ 81%]|..................................................                       [100%]|266 passed in 37.92s| shared_db_files=finco_runs.db"
+ },
+ {
+  "label": "ring-golden-last",
+  "output": "........................................................................ [ 81%]|..................................................                       [100%]|266 passed in 37.80s| shared_db_files=finco_runs.db"
+ },
+ {
+  "label": "original-in-ring-golden-last",
+  "output": "=========================== short test summary info ============================|FAILED tests/test_golden_flow_correction_b.py::test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds - assert 5 == 1|1 failed, 265 passed in 30.45s| shared_db_files=finco_runs.db"
+ }
+]

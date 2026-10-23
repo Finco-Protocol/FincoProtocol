@@ -66,7 +66,16 @@ def test_stream_guard_exemption_covers_only_allow_listed_engine_files():
     from quarterly_candidate_recognition import superseded as candidate_superseded
     superseded = {p for p in APPROVED if candidate_superseded(p)}          # empty unless a complete, authentic Gate R is active
     assert all(approved_frozen_path(path) for path in set(APPROVED) - candidate - superseded)
-    assert not any(approved_frozen_path(path) for path in superseded)     # a Gate R candidate is never a released exemption
+    # a recognised candidate is never a released exemption. The single exception is exact and pre-existing: under the OD-R successor,
+    # financial_engine/shl/production.py is on the path-only Finance Integrity allow-list (P0 / Runtime V4, no content pin), so
+    # approved_frozen_path was already True for it before OD-R and does not consult recognition at all.
+    from quarterly_candidate_recognition import recognized_state
+    import model_v2_governance as _governance
+    path_only = {"financial_engine/shl/production.py"} if recognized_state() == "ODR" else set()
+    for path in path_only:
+        assert path in APPROVED and not any(path in pins for pins in (
+            _governance.F3_2_4_FINANCING_AUTHORITIES, _governance.WF07_REVENUE_AUTHORITIES, _governance.F3_5_A_JUNIOR_AUTHORITIES))
+    assert {path for path in superseded if approved_frozen_path(path)} == path_only
     # the release-closed M7 candidate is NOT a released exemption: stream guards must keep treating it as not-approved
     assert candidate and not any(approved_frozen_path(path) for path in candidate)
     assert all(authority_state(path) == INTEGRATED_RELEASE_CLOSED_CANDIDATE for path in candidate)

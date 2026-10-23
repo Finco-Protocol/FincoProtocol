@@ -33,14 +33,30 @@ def subject_bytes(root, names):
     return result
 
 
-def docker_command(image, name, project, bootstrap, evidence, worker, context=None):
-    image_ref(image)
+def passwd_file(path, uid, gid):
+    """Read-only /etc/passwd with the numeric host user (OpenSSH and other tools refuse a uid that has no entry,
+    which the hosted control runner always has). Contains no credentials."""
+    entries = ["root:x:0:0:root:/root:/usr/sbin/nologin"]
+    if uid != 0:
+        entries.append(f"ci:x:{int(uid)}:{int(gid)}:ci:/tmp/home:/usr/sbin/nologin")
+    Path(path).write_text("\n".join(entries) + "\n", encoding="ascii")
+    return Path(path)
+
+
+def docker_command(image, name, project, bootstrap, evidence, worker, context=None, passwd=None, local_review=False):
+    if local_review:
+        require(re.fullmatch(r"sha256:[0-9a-f]{64}", image or ""), "local review requires immutable image config ID")
+    else:
+        image_ref(image)
     require(re.fullmatch(r"ci-v3-[0-9a-f]{32}", name), "unsafe container identity")
     args = ["docker", "run", "--rm", "--name", name, "--init", "--network=none", "--read-only",
         "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=512", "--memory=6g",
         "--user", f"{os.getuid()}:{os.getgid()}" if sys.platform == "linux" else "1001:1001",
         "--tmpfs", "/tmp:rw,nosuid,nodev,size=2g", "--workdir", "/subject"]
-    for source, target, readonly in ((project, "/subject", False), (bootstrap, "/bootstrap", True), (evidence, "/evidence", False)):
+    mounts = [(project, "/subject", False), (bootstrap, "/bootstrap", True), (evidence, "/evidence", False)]
+    if passwd is not None:
+        mounts.append((passwd, "/etc/passwd", True))
+    for source, target, readonly in mounts:
         require("," not in str(source), "unsupported mount path")
         args += ["--mount", f"type=bind,source={Path(source).resolve()},target={target}" + (",readonly" if readonly else "")]
     env = {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp/home",
@@ -55,18 +71,12 @@ def docker_command(image, name, project, bootstrap, evidence, worker, context=No
             FINCO_CI_TESTED_SHA=context["source"]["head"], FINCO_CI_TESTED_TREE=context["source"]["tree"])
     for key, value in env.items():
         args += ["--env", key + "=" + value]
-    return args + [image, "python", "-I", "/bootstrap/tools/ci_v3_real_child.py", "/evidence/request.json"]
+    return args + (["--pull=never"] if local_review else []) + [image, "python", "-I", "/bootstrap/tools/ci_v3_real_child.py", "/evidence/request.json"]
 
 
-def observe_container(request, directory, project, image, timeout_s):
-    require(sys.platform == "linux", "hosted test execution requires Linux; no insecure fallback")
-    require(type(timeout_s) is int and 1 <= timeout_s <= 5400, "hosted timeout out of bounds")
-    directory = Path(directory).resolve(); directory.mkdir(parents=True, exist_ok=False)
-    evidence = directory / "child"; evidence.mkdir(); (evidence / "tmp").mkdir()
-    bootstrap = directory / "bootstrap"; bootstrap.mkdir()
-    shutil.copytree(Path(__file__).resolve().parent, bootstrap / "tools", ignore=shutil.ignore_patterns("__pycache__"))
-    # Fresh tracked source plus its public history, without ignored host databases.
-    sandbox = directory / "source"; sandbox.mkdir()
+def copy_tracked_source(project, sandbox):
+    """Fresh tracked bytes/history; never copy ignored host databases or credentials."""
+    sandbox = Path(sandbox); sandbox.mkdir()
     archive = subprocess.check_output(["git", "-C", str(project), "archive", "--format=tar", "HEAD"])
     import io
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
@@ -87,14 +97,33 @@ def observe_container(request, directory, project, image, timeout_s):
     if head.startswith("ref: "):
         identities.append(".git/" + head[5:])
     identities = [p for p in identities if (sandbox / p).is_file()]
-    before_bytes = subject_bytes(sandbox, tracked + identities)
+    return tracked + identities
+
+
+def observe_container(request, directory, project, image, timeout_s, local_review=False):
+    require(sys.platform == "linux", "hosted test execution requires Linux; no insecure fallback")
+    require(type(timeout_s) is int and 1 <= timeout_s <= (12600 if request.get("worker") == "control" else 5400), "hosted timeout out of bounds")
+    if local_review:
+        require(request["context"].get("run_id") == "0", "local image review cannot use a hosted run")
+        require(re.fullmatch(r"sha256:[0-9a-f]{64}", image or ""), "local review requires image config ID")
+        actual = subprocess.check_output(["docker", "image", "inspect", image, "--format", "{{.Id}}"], text=True).strip()
+        require(actual == image, "local immutable image identity mismatch")
+    directory = Path(directory).resolve(); directory.mkdir(parents=True, exist_ok=False)
+    evidence = directory / "child"; evidence.mkdir(); (evidence / "tmp").mkdir()
+    bootstrap = directory / "bootstrap"; bootstrap.mkdir()
+    shutil.copytree(Path(__file__).resolve().parent, bootstrap / "tools", ignore=shutil.ignore_patterns("__pycache__"))
+    sandbox = directory / "source"
+    tracked = copy_tracked_source(project, sandbox)
+    before_bytes = subject_bytes(sandbox, tracked)
     require(before_bytes is not None, "invalid private source copy")
     before_python = {p.relative_to(sandbox).as_posix() for p in sandbox.rglob("*.py")}
     child_request = {**request, "project": "/subject", "hosted": True}
     write_json(evidence / "request.json", child_request)
     (evidence / "release").write_text("host container isolation established\n", encoding="ascii")
     name = "ci-v3-" + uuid.uuid4().hex
-    command = docker_command(image, name, sandbox, bootstrap, evidence, request.get("worker"), request["context"])
+    uid, gid = (os.getuid(), os.getgid()) if sys.platform == "linux" else (1001, 1001)
+    command = docker_command(image, name, sandbox, bootstrap, evidence, request.get("worker"), request["context"],
+                             passwd_file(directory / "passwd", uid, gid), local_review=local_review)
     timed_out = False; cancelled = False; started = time.perf_counter()
     process = None; cleanup_ok = False
     try:
@@ -128,7 +157,7 @@ def observe_container(request, directory, project, image, timeout_s):
         except (OSError, subprocess.SubprocessError) as exc:
             cleanup_error = type(exc).__name__
         try:
-            source_unchanged = subject_bytes(sandbox, tracked + identities) == before_bytes
+            source_unchanged = subject_bytes(sandbox, tracked) == before_bytes
             source_unchanged = source_unchanged and {p.relative_to(sandbox).as_posix() for p in sandbox.rglob("*.py")} == before_python
         except OSError:
             source_unchanged = False
@@ -146,4 +175,5 @@ def observe_container(request, directory, project, image, timeout_s):
         "temporary_directory": str(evidence / "tmp"), "startup_ms": None, "shutdown_ms": None,
         "containment": "docker-private-linux-posix-group-v1", "container_removed": cleanup_ok, "image": image,
         "source_bytes_unchanged": source_unchanged,
-        "cancelled": cancelled}
+        "cancelled": cancelled, "local_image_review": local_review,
+        "registry_digest": None if local_review else image.rsplit("@", 1)[1]}
