@@ -362,7 +362,7 @@ class RLiveSnapshotWarmer:
                     self._failure = ShutdownIncomplete("snapshot lease heartbeat is still active")
                     self._stop.set()
                     raise self._failure
-                if self._failure is not None and sys.exception() is None:
+                if self._failure is not None and sys.exc_info()[1] is None:   # == sys.exception() (3.11+), 3.10-safe
                     raise ShutdownIncomplete("snapshot heartbeat failed during acquisition") from self._failure
             self.last_summary = summary
             return summary

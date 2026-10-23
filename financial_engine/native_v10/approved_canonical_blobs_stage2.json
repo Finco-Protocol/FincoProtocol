@@ -1,0 +1,14 @@
+{
+ "blobs": {
+  "financial_engine/native_v10/kernel_v10_stage2.c": "29cb3e3874ccd3e10cbc482c10c8f83f08158584",
+  "financial_engine/native_v10/provenance.py": "769f0e645b4267be05aadefb09a22f7763f3199c",
+  "financial_engine/native_v10/stage2.py": "90121690f598a9eaf6944dc038e386c80bfaef9c",
+  "financial_engine/run_scope.py": "018242000ea73f95b18284a2987f437401cdb6c6",
+  "financial_engine/shl/engine.py": "48c3956739fcd972dd7347f167a959f8b65ce53a",
+  "financial_engine/shl/maturity_authority.py": "b5fc2715cf4fb769878eb0534c95eb150479328f",
+  "financial_engine/shl/production.py": "fb563770bc87a0a8403e21e5f571ebec39840f18",
+  "financial_engine/shl/waterfall.py": "11595ce0ce2795738b27a565fc15243e5f1c051c"
+ },
+ "python_optimize": 0,
+ "schema": "finco.native_v10.approved_blobs.v1"
+}

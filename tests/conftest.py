@@ -26,6 +26,9 @@ import pytest
 
 _LIFECYCLE_PROBLEMS: list[str] = []
 
+# V10 native candidate: one session-scoped, provenance-checked artifact install (see the module docstring)
+from tests.native_v10_support import native_artifacts  # noqa: E402,F401
+
 
 @pytest.fixture(scope="module", autouse=True)
 def _suite_model_executor_lifecycle(request):
@@ -67,7 +70,9 @@ def pytest_sessionfinish(session, exitstatus):
         _LIFECYCLE_PROBLEMS.append(
             "child processes still alive at session end: "
             + ", ".join(f"pid={p.pid} name={p.name}" for p in children))
-    model_threads = [t for t in threading.enumerate() if t.name.startswith("finco-model") and t.is_alive()]
+    # V10 shadow observer threads are owned by the executor and joined by its shutdown: none may survive
+    model_threads = [t for t in threading.enumerate()
+                     if t.name.startswith(("finco-model", "finco-native-shadow")) and t.is_alive()]
     if model_threads:
         _LIFECYCLE_PROBLEMS.append(
             "finco-model executor threads still alive at session end:\n"
