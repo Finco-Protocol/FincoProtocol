@@ -214,7 +214,7 @@ def test_original_evidence_reuse_requires_identical_tree_and_real_ancestry(data,
     project=tmp_path/'source'
     subprocess.run(['git','clone','--quiet','--local',str(data['project']),str(project)],check=True)
     tree=data['root']['source']['tree'];old=deepcopy(data['root']['source'])
-    command=['git','-C',str(project),'-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit-tree',tree]
+    command=['git','-C',str(project),'-c','user.name=Synthetic','-c','user.email=synthetic','commit-tree',tree]
     if ancestor:command+=['-p',old['head']]
     head=subprocess.check_output(command,input='SYNTHETIC identical-tree source binding\n',text=True).strip()
     subprocess.run(['git','-C',str(project),'checkout','--quiet','--detach',head],check=True)
