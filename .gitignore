@@ -71,3 +71,7 @@ tools/_offline_keys.json
 
 # FINCO UI build tooling
 tools/ui/node_modules/
+
+# V10 native candidate: compiled artifacts are built reproducibly outside the runtime, never committed
+financial_engine/native_v10/*.so
+financial_engine/native_v10/build/

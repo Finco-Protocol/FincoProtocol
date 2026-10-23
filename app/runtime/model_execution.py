@@ -167,6 +167,18 @@ def _unwrap(value: Any) -> Any:
     return value
 
 
+def _native_shadow_observe(fn, args, kwargs, *, value=None, error=None) -> None:
+    """V10 dormant authoritative shadow (default OFF; see app.runtime.native_shadow). Never raises,
+    never alters ``value``; OFF costs one environment lookup."""
+    if os.environ.get("FINCO_NATIVE_V10_SHADOW") is None:
+        return
+    try:
+        from app.runtime import native_shadow
+        native_shadow.observe(fn, args, kwargs, value=value, error=error)
+    except Exception:  # noqa: BLE001
+        LOG.warning("native_v10 shadow hook failed")
+
+
 def _worker_init() -> None:
     """Warm the worker once: pay the import cost at pool start, not on the first request."""
     import app.api.project_runner  # noqa: F401
@@ -368,7 +380,15 @@ class ModelExecutor:
     # ── public API ────────────────────────────────────────────────────────────────────
     async def run_process(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Picklable pure call in a worker process (falls back to a thread in thread mode)."""
-        return await self._await(self._submit("process", fn, args, kwargs))
+        try:
+            value = await self._await(self._submit("process", fn, args, kwargs))
+        except (ModelExecutionBusy, ModelExecutionTimeout, ModelExecutionFailed, asyncio.CancelledError):
+            raise                                   # not a calculation outcome: never shadowed
+        except Exception as exc:
+            _native_shadow_observe(fn, args, kwargs, error=exc)
+            raise
+        _native_shadow_observe(fn, args, kwargs, value=value)
+        return value
 
     async def run_thread(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Closure-bound legacy call in a bounded thread behind the same admission gate."""

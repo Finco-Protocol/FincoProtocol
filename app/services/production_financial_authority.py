@@ -281,9 +281,16 @@ def _memoised_policy_run(effective_inputs, policy, compute):
             (_orch, "run_project_model"),
         )
     )
-    key = hashlib.sha256(
-        (repr(effective_inputs) + "|" + repr(policy) + "|" + repr(engine_identity)).encode("utf-8")
-    ).hexdigest()
+    material = repr(effective_inputs) + "|" + repr(policy) + "|" + repr(engine_identity)
+    # V10 native candidate (research, default off): a Run-local native configuration is part of the
+    # key, so a canonical (off / shadow-authority) Run can never be served a candidate-computed
+    # result and vice versa. With the configuration off the key is byte-for-byte unchanged.
+    from financial_engine.native_v10.config import current_config as _native_config
+
+    _native = _native_config()
+    if _native.mode != "off":
+        material += "|native_v10:" + repr(_native)
+    key = hashlib.sha256(material.encode("utf-8")).hexdigest()
     hit = _POLICY_RUN_CACHE.get(key)
     if hit is not None:
         return hit
