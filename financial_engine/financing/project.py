@@ -45,6 +45,11 @@ from finco_core.inputs._models import (
     SponsorFundingTimingPolicy,
 )
 from financial_engine.shl.day_count import compute_shl_dcf
+from financial_engine.shl.maturity_authority import (
+    G2aShlMaturityEvidence,
+    ShlMaturityContext,
+    current_attempt,
+)
 
 
 # Dimensionless comparison tolerance for typed-date DCF authority. Financial
@@ -54,6 +59,13 @@ SHL_DCF_AUTHORITY_TOLERANCE = 1e-9
 # Existing committed financial-evidence precision (Run Integrity). This is a
 # refinement trigger, not a relaxation of the G2A minimum-size handshake.
 G2A_SERVICE_BUDGET_ACCEPTANCE_TOLERANCE_KEUR = 1e-6
+
+
+def _odr_pass_context(model_input, evidence: "G2aShlMaturityEvidence | None"):
+    """OD-R: a provisional SHL maturity context for one G2A pass, else None (canonical)."""
+    if evidence is None or model_input.shareholder_loan is None:
+        return None
+    return ShlMaturityContext.provisional_pass()
 
 
 def _senior_service_budget_excess(model_result, model_input) -> float:
@@ -382,6 +394,11 @@ def _run_with_construction_idc(
       7. After convergence: one final verification iteration confirms idempotence.
 
     On convergence: builds ConstructionFinancingResult and returns full ProjectFinancingResult.
+
+    OD-R (only inside an open OD-R evaluation): the seed and every superseded outer
+    iteration's inner G2A are provisional. After outer convergence and the unfunded
+    invariant, the returned inner G2A's converged passes are final, and so are the
+    idempotence-verification G2A's converged passes.
     """
     from finco_core.construction.stage_b2 import (
         apply_capitalized_financing_costs,
@@ -540,6 +557,8 @@ def _run_with_construction_idc(
         ),
         provisional=True,
     )
+    _odr_attempt = current_attempt()
+    _odr_inner_evidence = G2aShlMaturityEvidence() if _odr_attempt is not None else None
     inner_result = run_project_financing_model(
         _seed_inputs,
         source_id=source_id,
@@ -550,6 +569,7 @@ def _run_with_construction_idc(
             _seed_shl_context if _seed_shl_context.accrual_enabled else None
         ),
         _u2_period_financing_income=_u2_period_financing_income,
+        _shl_maturity_evidence=_odr_inner_evidence,
     )
 
     # Neutral seed: inner_result from step 1 is used directly as the starting state.
@@ -599,6 +619,8 @@ def _run_with_construction_idc(
         # Temporarily clear construction_financing to avoid re-entering this function.
         inner_fin = replace(working_inputs.financing, construction_financing=None)
         inner_inputs = replace(working_inputs, financing=inner_fin)
+        _odr_superseded = _odr_inner_evidence
+        _odr_inner_evidence = G2aShlMaturityEvidence() if _odr_attempt is not None else None
         inner_result = run_project_financing_model(
             inner_inputs,
             source_id=source_id,
@@ -611,7 +633,14 @@ def _run_with_construction_idc(
                 else None
             ),
             _u2_period_financing_income=_u2_period_financing_income,
+            _shl_maturity_evidence=_odr_inner_evidence,
         )
+        if _odr_attempt is not None:
+            # The previous inner G2A (seed or earlier outer iteration) is superseded.
+            _odr_attempt.absorb_g2a(
+                _odr_superseded, final=False,
+                role=f"CONSTRUCTION_OUTER{outer_iteration - 1}_G2A",
+            )
 
         # Check outer convergence across all material state components.
         # unfunded_uses_keur is included: convergence requires funded Sources == Uses.
@@ -677,6 +706,7 @@ def _run_with_construction_idc(
         canonical_allocations=_verify_b2.canonical_allocations,
         provisional=False,
     )
+    _odr_verify_evidence = G2aShlMaturityEvidence() if _odr_attempt is not None else None
     _verify_result = run_project_financing_model(
         _verify_inputs,
         source_id=source_id,
@@ -687,6 +717,7 @@ def _run_with_construction_idc(
             _verify_shl_context if _verify_shl_context.accrual_enabled else None
         ),
         _u2_period_financing_income=_u2_period_financing_income,
+        _shl_maturity_evidence=_odr_verify_evidence,
     )
     _idempotence_residual = max(
         abs(_verify_result.final_senior_commitment_keur - inner_result.final_senior_commitment_keur),
@@ -907,7 +938,7 @@ def _run_with_construction_idc(
         developer_uses=resolve_developer_project_uses(project_inputs),
     )
 
-    return ProjectFinancingResult(
+    _odr_returned = ProjectFinancingResult(
         project_model_result=inner_result.project_model_result,
         project_uses=inner_result.project_uses,
         dscr_debt_capacity_keur=inner_result.dscr_debt_capacity_keur,
@@ -931,6 +962,18 @@ def _run_with_construction_idc(
         book_depreciable_asset_basis=construction_basis,
         shareholder_loan_model_input=inner_result.shareholder_loan_model_input,
     )
+    if _odr_attempt is not None:
+        # OD-R final authority is established only now: outer convergence, the unfunded
+        # invariant, the verification G2A, idempotence and the opening-SHL identity have
+        # all succeeded. Before this point any failure keeps its own (numerical) error.
+        # Both are bound to the exact financing state this owner returns.
+        _odr_attempt.absorb_g2a(
+            _odr_inner_evidence, final=True, role="CONSTRUCTION_RETURNED_G2A", state=_odr_returned,
+        )
+        _odr_attempt.absorb_g2a(
+            _odr_verify_evidence, final=True, role="CONSTRUCTION_VERIFICATION_G2A", state=_odr_returned,
+        )
+    return _odr_returned
 
 
 def run_project_financing_model(
@@ -942,8 +985,21 @@ def run_project_financing_model(
     maximum_iterations: int = 50,
     _typed_shl_context: _TypedConstructionShlContext | None = None,
     _u2_period_financing_income: "tuple | None" = None,
+    _shl_maturity_evidence: G2aShlMaturityEvidence | None = None,
 ) -> ProjectFinancingResult:
-    """Run the derived-SHL/Senior fixed point for an explicitly enabled project."""
+    """Run the derived-SHL/Senior fixed point for an explicitly enabled project.
+
+    OD-R: inside an open OD-R evaluation every capacity / funded / strict pass is
+    evaluated with a provisional SHL maturity context and its breaches are
+    recorded; the passes of the converging iteration are the final passes. The
+    owner that passes ``_shl_maturity_evidence`` (construction IDC) classifies
+    them; otherwise this invocation is final and reports them to the evaluation.
+    Without an OD-R evaluation the canonical fail-closed behaviour is unchanged.
+    """
+    if _shl_maturity_evidence is not None and not isinstance(
+        _shl_maturity_evidence, G2aShlMaturityEvidence
+    ):
+        raise TypeError("_shl_maturity_evidence must be G2aShlMaturityEvidence")
     from financial_engine.financing.quarterly_scope import (
         is_quarterly_project, require_supported_quarterly_project,
     )
@@ -971,6 +1027,9 @@ def run_project_financing_model(
     # When construction_financing is None or enabled=False this block is never entered.
     _construction_result: ConstructionFinancingResult | None = None
     if fin.construction_financing is not None and fin.construction_financing.enabled:
+        if _shl_maturity_evidence is not None:
+            # The construction owner classifies its own inner G2A invocations.
+            raise ValueError("OD_R_EVIDENCE_NOT_ACCEPTED_BY_CONSTRUCTION_OWNER")
         result = _run_with_construction_idc(
             project_inputs=project_inputs,
             source_id=source_id,
@@ -1062,6 +1121,12 @@ def run_project_financing_model(
     authoritative_dscr_capacity = 0.0
     maximum_difference = float("inf")
     derived_shl = candidate_shl
+    _odr_attempt = current_attempt()
+    _odr_evidence = (
+        _shl_maturity_evidence
+        if _shl_maturity_evidence is not None
+        else (G2aShlMaturityEvidence() if _odr_attempt is not None else None)
+    )
     additional_equity = 0.0  # derived residual; overwritten each iteration by reconcile_financing_stack
     for iteration in range(1, maximum_iterations + 1):
         # The capacity pass is a DSCR-ONLY capacity calculation (no gearing basis).
@@ -1225,7 +1290,13 @@ def run_project_financing_model(
                     period_financing_income=_u2_period_financing_income,
                 ),
             )
-        capacity_result = run_senior_debt_model(capacity_model_input)
+        _odr_passes: list = []
+        _pass_ctx = _odr_pass_context(capacity_model_input, _odr_evidence)
+        if _pass_ctx is not None:
+            _odr_passes.append(("CAPACITY", _pass_ctx))
+        capacity_result = run_senior_debt_model(
+            capacity_model_input, shl_maturity_context=_pass_ctx,
+        )
         if capacity_result.senior_debt is None:
             raise RuntimeError("G2A DSCR capacity result is unavailable")
         authoritative_dscr_capacity = capacity_result.senior_debt.debt_size_keur
@@ -1274,7 +1345,12 @@ def run_project_financing_model(
                     period_financing_income=_u2_period_financing_income,
                 ),
             )
-        model_result = run_senior_debt_model(funded_model_input)
+        _pass_ctx = _odr_pass_context(funded_model_input, _odr_evidence)
+        if _pass_ctx is not None:
+            _odr_passes.append(("FUNDED", _pass_ctx))
+        model_result = run_senior_debt_model(
+            funded_model_input, shl_maturity_context=_pass_ctx,
+        )
         if (
             fin.debt_sizing_mode != DebtSizingMode.GEARING_CAP
             and _senior_service_budget_excess(model_result, funded_model_input)
@@ -1289,7 +1365,12 @@ def run_project_financing_model(
                     convergence_tolerance_keur),
                 convergence_relative_tolerance=0.0,
             ))
-            model_result = run_senior_debt_model(funded_model_input)
+            _pass_ctx = _odr_pass_context(funded_model_input, _odr_evidence)
+            if _pass_ctx is not None:
+                _odr_passes.append(("STRICT", _pass_ctx))
+            model_result = run_senior_debt_model(
+                funded_model_input, shl_maturity_context=_pass_ctx,
+            )
             if _senior_service_budget_excess(model_result, funded_model_input) > convergence_tolerance_keur:
                 raise RuntimeError("G2A_SENIOR_SERVICE_EXCEEDS_BANK_BUDGET")
         senior = model_result.senior_debt
@@ -1330,7 +1411,12 @@ def run_project_financing_model(
         )
         maximum_difference = abs(derived_shl - candidate_shl)
         if maximum_difference <= convergence_tolerance_keur:
+            if _odr_evidence is not None:
+                # The converging iteration's passes are the returned financing state.
+                _odr_evidence.record_iteration(iteration, _odr_passes, final=True)
             break
+        if _odr_evidence is not None:
+            _odr_evidence.record_iteration(iteration, _odr_passes, final=False)
         candidate_shl = derived_shl
     else:
         raise RuntimeError("G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE")
@@ -1496,7 +1582,7 @@ def run_project_financing_model(
                 else None
             ),
         )
-    return ProjectFinancingResult(
+    _odr_returned = ProjectFinancingResult(
         project_model_result=model_result,
         project_uses=uses,
         dscr_debt_capacity_keur=authoritative_dscr_capacity,
@@ -1522,3 +1608,8 @@ def run_project_financing_model(
             developer_uses=_developer_uses(project_inputs),
         ),
     )
+    if _odr_evidence is not None and _shl_maturity_evidence is None:
+        # No owner above classifies this invocation: once its post-convergence validations
+        # have succeeded, its converged passes are final - bound to the exact financing state returned.
+        _odr_attempt.absorb_g2a(_odr_evidence, final=True, role="G2A", state=_odr_returned)
+    return _odr_returned

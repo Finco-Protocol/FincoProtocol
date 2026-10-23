@@ -87,13 +87,15 @@ def _without_active_gate_r_slice(facts):
     """While a release-closed quarterly candidate is recognised (RC-7B as merged, or RC-7C) its twelve protected paths are a separate, already-recognised
     slice and are not 'unlisted' changes of the PPA-01 slice. With none recognised the facts are returned unchanged (every unlisted change still rejects)."""
     from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
-    from quarterly_candidate_recognition import candidate_recognized
+    from quarterly_candidate_recognition import candidate_blobs, candidate_recognized
     if not candidate_recognized():
         return facts, False
+    recognised_slice = set(candidate_blobs())          # the twelve, plus the two new OD-R paths only under the complete OD-R successor
+    assert set(RC7B_CANDIDATE_AUTHORITIES) <= recognised_slice
     adjusted = copy.deepcopy(facts)
     for key in ("protected_changes", "branch_protected_changes"):
         if adjusted.get(key) is not None:
-            adjusted[key] = [p for p in adjusted[key] if p not in RC7B_CANDIDATE_AUTHORITIES]
+            adjusted[key] = [p for p in adjusted[key] if p not in recognised_slice]
     return adjusted, True
 
 
@@ -213,10 +215,12 @@ def test_m7_eleven_blobs_are_unchanged_and_coexist_without_cross_approval():
     if candidate_recognized():
         # A recognised release-closed quarterly candidate (RC-7B merged, or RC-7C): the two shared M7 paths must be exactly the superseding candidate
         # blob (then judged as the M7 pin they replace) and the twelve paths are a separate recognised slice. Nothing outside the twelve is exempted.
+        # OD-R adds no M7 path: the shared paths are still exactly the two RC-7B ones
+        assert set(M7.M7_RC3_CANDIDATE_AUTHORITIES) & set(candidate_blobs()) == set(M7.M7_RC3_CANDIDATE_AUTHORITIES) & set(RC7B_CANDIDATE_AUTHORITIES)
         for path in set(M7.M7_RC3_CANDIDATE_AUTHORITIES) & set(RC7B_CANDIDATE_AUTHORITIES):
             assert superseded_blobs[path] == candidate_blobs()[path]
             superseded_blobs[path] = M7.M7_RC3_CANDIDATE_AUTHORITIES[path]
-        superseded_slice |= set(RC7B_CANDIDATE_AUTHORITIES) - set(M7.M7_RC3_CANDIDATE_AUTHORITIES)    # the two shared paths stay M7 changes
+        superseded_slice |= set(candidate_blobs()) - set(M7.M7_RC3_CANDIDATE_AUTHORITIES)    # the two shared paths stay M7 changes
     m7_only = dict(facts, blobs=superseded_blobs, frozen_changes=[p for p in facts["frozen_changes"] if p not in superseded_slice])
     assert M7.content_violations(m7_only) == []                                          # ... which is excluded only as its own exact slice
     assert M7.content_violations(facts) != []                                            # without the exclusion M7 rejects unlisted changes

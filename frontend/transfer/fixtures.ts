@@ -83,4 +83,23 @@ export const TRANSFER_DEMO_RUN_STATUS: StatementRunStatus = {
   freshness: "unknown",
   integrity: "not evaluated",
   engineVersion: null,
+  dataOrigin: "synthetic-demo",
+};
+
+export const TRANSFER_CALLER_STATEMENT_STATUS: StatementRunStatus = {
+  label: "Caller-supplied snapshot",
+  runId: "UNVERIFIED-SUPPLIED-ID",
+  freshness: "unknown",
+  integrity: "not evaluated",
+  engineVersion: null,
+  dataOrigin: "caller-provided",
+};
+
+export const TRANSFER_EMPTY_STATEMENT_STATUS: StatementRunStatus = {
+  label: "No statement snapshot",
+  runId: "UNAVAILABLE",
+  freshness: "not run",
+  integrity: "not evaluated",
+  engineVersion: null,
+  dataOrigin: "unavailable",
 };

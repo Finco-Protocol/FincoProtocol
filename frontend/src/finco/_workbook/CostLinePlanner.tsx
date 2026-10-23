@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDemoSessionState } from "../_shared/demoSession";
 import { preferredScrollBehavior } from "../_shared/motion";
+import { readProjectContext } from "../_shared/FincoShell";
+import SourceAuthorityDrawer from "../_shared/SourceAuthorityDrawer";
+import { workbookHref } from "./catalog";
 import { isEditablePeriodCell, pastePeriodRectangle, periodCellError, periodHeaders, periodRows, type PeriodRow } from "./periodGrid";
 import "./period-grid.css";
 
@@ -39,6 +42,8 @@ const colLabel = (col: number) => {
 };
 
 export default function CostLinePlanner({ sheet, values, committed, operationPeriod, onOperationPeriodChange, onChange, onSave, onEditing, onPendingError, readOnly = false }: CostLinePlannerProps) {
+  const project = readProjectContext();
+  const scenarioId = new URLSearchParams(window.location.search).get("scenario") || "base";
   const [view, setView] = useState<"quarterly" | "semiannual">(operationPeriod === "6M" ? "semiannual" : "quarterly");
   const [horizon, setHorizon] = useState<"sample" | "60" | "80" | "120">(() => {
     const requested = new URLSearchParams(window.location.search).get("opexHorizon");
@@ -107,6 +112,8 @@ export default function CostLinePlanner({ sheet, values, committed, operationPer
   }, [lockedView, validationRows, values]);
   const firstError = errors[0];
   const address = `${colLabel(selected.col)}${selected.row + 1}`;
+  const selectedLine = rows[selected.row];
+  const authorityState = readOnly ? "reference" : dirty ? "draft" : locallySaved ? "saved" : "draft";
   const displayValue = (rowIndex: number, colIndex: number) => {
     const raw = sourceValues[rowIndex]?.[colIndex] ?? rows[rowIndex]?.values[colIndex] ?? "";
     if (!raw || raw === "—" || raw === "Not linked") return raw;
@@ -374,6 +381,17 @@ export default function CostLinePlanner({ sheet, values, committed, operationPer
       <span className="fm-period-source">{lockedView || rows[selected.row]?.kind === "fixed" ? "Fixed synthetic reference · no lineage" : "Working-copy input · local demo only"}</span>
       {lockedView && <span className="fm-period-lock">Fixed view</span>}
     </div>
+    <SourceAuthorityDrawer
+      project={project}
+      scenarioId={scenarioId}
+      selection={`${sheet.toUpperCase()} · ${selectedLine?.label || "cost line"} · ${headers[selected.col] || "period"}`}
+      valueLabel={`${displayValue(selected.row, selected.col)} ${selectedLine?.unit || ""}`.trim()}
+      state={authorityState}
+      sourceLabel="Synthetic period-grid example"
+      relatedHref={workbookHref("pl")}
+      relatedLabel="Open fixed P&L workbook sheet →"
+      note={`${sheet.toUpperCase()} values are local illustrative inputs. The related statement link is contextual navigation only; no row-to-result calculation lineage is asserted.`}
+    />
     <div className="fm-period-scroll" ref={scrollRef} role="region" aria-label={`${sheet.toUpperCase()} period spreadsheet`} tabIndex={-1}>
       <table className="fm-period-table">
         <thead><tr><th scope="col" className="fm-period-metric-head">Line item <span>EUR m</span></th>{headers.map((header, col) =>

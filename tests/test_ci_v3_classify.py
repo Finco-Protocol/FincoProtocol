@@ -12,7 +12,7 @@ SHA = "0" * 64
 
 def attempt(kind="first", label="a", **kw):
     base = {"module": "tests/test_a.py", "module_sha256": SHA, "historical": False, "tag": None, "exit_code": 0, "timed_out": False, "failures": 0, "errors": 0,
-            "skipped": 0, "tests": EXPECTED, "seconds": 1.0, "tail": "", "kind": kind, "label": label, "concurrency": 3 if kind == "target" else 4, "cpus": 1.33}
+            "skipped": 0, "tests": EXPECTED, "seconds": 1.0, "tail": "", "kind": kind, "label": label, "concurrency": 3 if kind == "target" else 4, "cpus": 1.33, "tree": "T"}
     return {**base, **kw}
 
 
@@ -106,10 +106,10 @@ def write_run(path, kind, label, module="tests/test_a.py", image_id="img", tree=
 def test_attempt_loader_preserves_every_attempt_and_binds_identity(tmp_path):
     write_run(tmp_path / "one", "first", "one", **FAIL)
     write_run(tmp_path / "two", "uncontended", "two")
-    loaded = collect([tmp_path / "one", tmp_path / "two"], {"image_id": "img", "tree": "tree"})
+    loaded = collect([tmp_path / "one", tmp_path / "two"], {"image_id": "img", "trees": ["tree"]})
     assert [a["label"] for a in loaded["tests/test_a.py"]] == ["one", "two"] and loaded["tests/test_a.py"][0]["exit_code"] == 1
     with pytest.raises(ContractError, match="not executed on the evidence"):
-        collect([tmp_path / "one"], {"image_id": "other", "tree": "tree"})
+        collect([tmp_path / "one"], {"image_id": "other", "trees": ["tree"]})
     write_run(tmp_path / "dup", "first", "one")
     with pytest.raises(ContractError, match="duplicate attempt"):
         collect([tmp_path / "one", tmp_path / "dup"])
@@ -153,7 +153,7 @@ def test_source_change_supersedes_a_historical_failure_but_it_stays_recorded():
 
 
 def test_historical_pass_never_supplies_positive_evidence():
-    assert decide([historical()], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
+    assert decide([historical()], EXPECTED, current_sha=SHA)[:2] == ("blocked", "historical-only-needs-current-execution")
     assert decide([historical(), historical(skipped=0)], EXPECTED, current_sha=SHA)[0] == "blocked"
 
 
@@ -162,3 +162,109 @@ def test_target_attempts_below_the_cpu_budget_do_not_count_and_the_constraint_is
     assert decide([attempt(**FAIL)] + starved, EXPECTED, current_sha=SHA)[:2] == ("blocked", "load-sensitive-unproven")
     mode, category, reason = decide([attempt(**FAIL, cpus=1.0)] + target_passes(MIN_TARGET_PASSES), EXPECTED, current_sha=SHA)
     assert (mode, category) == ("runner-private", "target-concurrency-stability-validated") and "failed at [1.0] CPU" in reason
+
+
+def test_exact_source_attempt_on_a_changed_module_blob_is_stale_and_never_counts():
+    old = attempt("target", "t0", module_sha256="1" * 64)
+    assert decide([old], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
+    assert decide([old, attempt("target", "t1")], EXPECTED, current_sha=SHA)[:2] == ("runner-private", "stable-pass")
+
+
+def test_baseline_and_targeted_trees_are_both_accepted_by_the_loader(tmp_path):
+    write_run(tmp_path / "base", "first", "base", tree="B"); write_run(tmp_path / "target", "target", "target", tree="T")
+    loaded = collect([tmp_path / "base", tmp_path / "target"], {"image_id": "img", "trees": ["B", "T"]})
+    assert {a["tree"] for a in loaded["tests/test_a.py"]} == {"B", "T"}
+    with pytest.raises(ContractError, match="not executed on the evidence"):
+        collect([tmp_path / "base"], {"image_id": "img", "trees": ["T"]})
+
+
+OTHER_MODULE_SHA = "a" * 64
+
+
+@pytest.mark.parametrize("override,reason", [
+    ({"module_sha256": None}, "missing-module-sha256"),
+    ({"module_sha256": "1" * 64}, "stale-or-mismatched-module-sha256"),            # an older blob of the same module
+    ({"module_sha256": OTHER_MODULE_SHA}, "stale-or-mismatched-module-sha256"),    # another module's blob
+    ({"module_sha256": "A" * 64}, "malformed-module-sha256"),                       # not lower-case hex
+    ({"module_sha256": "abc"}, "malformed-module-sha256"),
+    ({"module_sha256": 12345}, "malformed-module-sha256"),
+])
+def test_exact_source_attempt_without_the_current_module_identity_never_supplies_positive_evidence(override, reason):
+    bad = attempt("target", "t0", **override)
+    assert decide([bad], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
+    assert reason in decide([bad], EXPECTED, current_sha=SHA)[2]
+    assert decide([bad for _ in range(MIN_TARGET_PASSES + 3)], EXPECTED, current_sha=SHA)[0] == "blocked"      # volume does not help
+    # stability after a real failure cannot be assembled from unidentified or stale passes either
+    unproven = [attempt(**FAIL)] + [attempt("target", f"t{i}", **override) for i in range(MIN_TARGET_PASSES)]
+    assert decide(unproven, EXPECTED, current_sha=SHA)[0] == "blocked"
+
+
+def test_missing_key_entirely_is_treated_like_none():
+    bare = {k: v for k, v in attempt("target", "t0").items() if k != "module_sha256"}
+    assert decide([bare], EXPECTED, current_sha=SHA)[:2] == ("blocked", "no-standalone-evidence")
+
+
+@pytest.mark.parametrize("current", [None, "", "short", "G" * 64])
+def test_unavailable_or_malformed_current_identity_blocks_every_attempt(current):
+    assert decide([attempt("target", "t0")], EXPECTED, current_sha=current)[:2] == ("blocked", "no-standalone-evidence")
+
+
+def test_one_identified_attempt_still_counts_next_to_unidentified_ones():
+    mixed = [attempt("target", "t0", module_sha256=None), attempt("target", "t1")]
+    assert decide(mixed, EXPECTED, current_sha=SHA)[:2] == ("runner-private", "stable-pass")
+
+
+def test_every_attempt_is_preserved_with_an_exclusion_reason():
+    attempts = [attempt("target", "ok"), attempt("target", "none", module_sha256=None), attempt("target", "old", module_sha256="1" * 64),
+                historical(**FAIL, module_sha256="2" * 64)]
+    proposal, _ = classify({**prepared(), "isolation": {**prepared()["isolation"], "modules": {"tests/test_a.py": {"sha256": SHA}}}}, {"tests/test_a.py": attempts})
+    assert len(proposal["modules"]["tests/test_a.py"]["attempts"]) == 4
+    rows = proposal["modules"]["tests/test_a.py"]["attempts"]
+    assert [(r["counts"], r["exclusion"]) for r in rows] == [(True, None), (False, "missing-module-sha256"),
+                                                              (False, "stale-or-mismatched-module-sha256"), (False, "historical-evidence")]
+
+
+def test_ci_v3_self_tests_count_only_evidence_from_the_final_tree():
+    old = attempt("target", "old", tree="B")
+    new = attempt("target", "new", tree="T")
+    module = "tests/test_ci_v3_something.py"
+    assert decide([old], EXPECTED, current_sha=SHA, module=module, final_tree="T")[:2] == ("blocked", "no-standalone-evidence")
+    assert "ci-v3-self-test-needs-final-tree-evidence" in decide([old], EXPECTED, current_sha=SHA, module=module, final_tree="T")[2]
+    assert decide([old, new], EXPECTED, current_sha=SHA, module=module, final_tree="T")[:2] == ("runner-private", "stable-pass")
+    # a product test module may still carry evidence from the baseline tree
+    assert decide([old], EXPECTED, current_sha=SHA, module="tests/test_product.py", final_tree="T")[:2] == ("runner-private", "stable-pass")
+
+
+def historical_run(path, label="old-study", **kw):
+    write_run(path, "first", label, tree="OLD", image_id="old-image", module="tests/test_a.py", **kw)
+    meta = json.loads((path / "meta.json").read_text()); meta["historical"] = False      # even if mislabelled, the loader forces it
+    (path / "meta.json").write_text(json.dumps(meta))
+
+
+def test_earlier_source_pass_is_never_current_evidence_even_when_the_test_file_is_unchanged(tmp_path):
+    for i in range(10):                                                                  # ten earlier-source passes do not matter
+        historical_run(tmp_path / f"h{i}", f"old-{i}", module_sha256=SHA)
+    history = collect([], {"image_id": "img", "trees": ["NEW"]}, [tmp_path / f"h{i}" for i in range(10)])["tests/test_a.py"]
+    assert all(a["historical"] for a in history)
+    mode, category, reason = decide(history, EXPECTED, current_sha=SHA)
+    assert (mode, category) == ("blocked", "historical-only-needs-current-execution") and "must be executed on the current source" in reason
+
+
+def test_a_fresh_current_source_attempt_resolves_what_history_cannot(tmp_path):
+    historical_run(tmp_path / "h", module_sha256=SHA)
+    history = collect([], None, [tmp_path / "h"])["tests/test_a.py"] + [attempt("target", "fresh")]
+    assert decide(history, EXPECTED, current_sha=SHA)[:2] == ("runner-private", "stable-pass")
+
+
+def test_earlier_source_failure_on_an_unchanged_module_still_counts_against_it(tmp_path):
+    historical_run(tmp_path / "h", module_sha256=SHA, **FAIL)
+    history = collect([], None, [tmp_path / "h"])["tests/test_a.py"]
+    assert decide(history + [attempt("target", "fresh")], EXPECTED, current_sha=SHA)[:2] == ("blocked", "load-sensitive-unproven")
+
+
+def test_historical_directories_are_not_bound_to_the_current_identity_but_current_ones_are(tmp_path):
+    historical_run(tmp_path / "h", module_sha256=SHA)
+    write_run(tmp_path / "cur", "target", "cur", tree="OLD", image_id="img")
+    with pytest.raises(ContractError, match="not executed on the evidence"):
+        collect([tmp_path / "cur"], {"image_id": "img", "trees": ["NEW"]}, [tmp_path / "h"])
+    assert collect([], {"image_id": "img", "trees": ["NEW"]}, [tmp_path / "h"])

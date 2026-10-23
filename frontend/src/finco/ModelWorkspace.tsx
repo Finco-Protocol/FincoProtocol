@@ -120,7 +120,16 @@ export function ModelWorkspace() {
       syncedHash.current = window.location.hash;
       jumpUntil.current = performance.now() + 250;
       setSection(id);
-      if (window.location.hash) requestAnimationFrame(() => focusSection(id));
+      const params = new URLSearchParams(window.location.search);
+      const focusId = id === "workbook" && referenceMode
+        ? "reference-mode-help"
+        : id === "workbook" && readSheet() === "input-grid" && !params.has("returnStatement")
+          ? "wb-cell-0-0"
+          : id;
+      if (window.location.hash) requestAnimationFrame(() => {
+        if (focusId === "wb-cell-0-0") document.getElementById(focusId)?.focus({ preventScroll: true });
+        else focusSection(focusId);
+      });
     };
     syncSection();
     window.addEventListener("hashchange", syncSection);
@@ -150,6 +159,11 @@ export function ModelWorkspace() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => { window.removeEventListener("scroll", onScroll); cancelAnimationFrame(frame); };
   }, [legacyView]);
+  useEffect(() => {
+    if (!traceReturnHref) return;
+    const frame = requestAnimationFrame(() => document.querySelector<HTMLAnchorElement>(".fm-trace-return a")?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [traceReturnHref]);
   function jumpTo(id: string) {
     jumpUntil.current = performance.now() + 250;
     if (id === "scenarios") {
@@ -226,6 +240,11 @@ export function ModelWorkspace() {
     target.searchParams.set("freshness", "CURRENT_DEMO_SNAPSHOT");
     navigateFinco(`${target.pathname}${target.search}${target.hash}`);
   }
+  function activateRunKey(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.repeat || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    run();
+  }
   function createWorkingCopyFromReference() {
     try {
       const copy = createDemoWorkingCopy({
@@ -263,26 +282,34 @@ export function ModelWorkspace() {
     });
   }
   return <Shell crumb={`${project.name} · ${project.technology} · Model workspace`}>
-    <main className="fm-shell">
+    <main id="fm-main-content" tabIndex={-1} className="fm-shell">
       <DemoBanner copy={referenceMode
         ? invalidCopy
           ? "This local demo copy is unavailable in the current browser-tab session. Return to Project Library and create a new working copy; no reference or server data can be edited."
           : "Reference sample · inspection only. Inputs, inline editors, Save and Run are disabled. Create a local working copy to experiment; all values and outputs remain synthetic."
         : "Project drafts are isolated by demo project identity in this browser tab. Fixed Results remain shared synthetic examples and never recalculate from edits."} />
       <DemoContextStrip workingState={scalarDirty || costDirty || moduleDraftDirty ? "UNSAVED" : anyDemoSaveAck ? "DEMO SAVED" : "WORKING COPY · NOT SAVED"} />
-      {referenceMode && <div id="reference-mode-help" className="fm-reference-banner" role="status">
+      {referenceMode && <div id="reference-mode-help" tabIndex={-1} className="fm-reference-banner" role="status">
         <div><strong>{invalidCopy ? "Demo working copy unavailable" : "REFERENCE · READ ONLY"}</strong>
           <span>{invalidCopy ? "This browser-tab session no longer contains that demo copy. Reference samples were not changed." : `${project.name} is an inspect-only synthetic reference. No edits, Save, or Run are allowed.`}</span></div>
         {invalidCopy
           ? <a className="fm-btn" href={`${fincoBasePath()}ProjectLibrary`}>Return to Project Library</a>
-          : <button type="button" className="fm-btn fm-btn-primary" onClick={createWorkingCopyFromReference}>Create working copy</button>}
+          : <button type="button" className="fm-btn fm-btn-primary" onKeyDown={event => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            createWorkingCopyFromReference();
+          }} onClick={createWorkingCopyFromReference}>Create working copy</button>}
       </div>}
       {/bess|storage/i.test(project.technology) && <div className="fm-warning-summary" role="note">
         <strong>Storage / BESS preview-only gate.</strong> Project context is visible for design review; dispatch, degradation, storage revenue allocation and technology-specific calculations are unavailable.
       </div>}
       {traceReturnHref && <div className="fm-info-note fm-trace-return" role="note">
         <div><strong>Source trace opened this workbook section.</strong> The link is navigational only; no numerical input dependency is asserted.</div>
-        <a href={traceReturnHref} onClick={event => {
+        <a href={traceReturnHref} onKeyDown={event => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          navigateFinco(traceReturnHref);
+        }} onClick={event => {
           if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
           event.preventDefault();
           const liveHref = traceReturnUrl(new URLSearchParams(window.location.search));
@@ -299,7 +326,7 @@ export function ModelWorkspace() {
         <div className="fm-toolbar">
           <span className="fm-split-label">{referenceMode ? "REFERENCE · READ ONLY" : scalarDirty || costDirty ? "UNSAVED · staged demo" : saved ? "Acknowledged · browser session only" : "Demo draft · browser session only"}</span>
           <button className="fm-btn" onClick={save} disabled={referenceMode} aria-disabled={referenceMode || blocked || cellEditing} aria-describedby={referenceMode ? "reference-mode-help" : blocked ? "validation-summary" : undefined} type="button">{referenceMode ? "Save disabled · Reference" : saved ? "Demo acknowledged ✓" : "Save demo"}</button>
-          <button className="fm-btn fm-btn-primary" onClick={run} disabled={referenceMode} aria-disabled={referenceMode || runBlocked} aria-describedby={referenceMode ? "reference-mode-help" : blocked ? "validation-summary" : undefined} type="button">{referenceMode ? "Run disabled · Reference" : <>Run demo <span style={{ marginLeft: 5, fontSize: 9, opacity: .75 }}>FIXED RESULTS</span></>}</button>
+          <button className="fm-btn fm-btn-primary" onKeyDown={activateRunKey} onClick={run} disabled={referenceMode} aria-disabled={referenceMode || runBlocked} aria-describedby={referenceMode ? "reference-mode-help" : blocked ? "validation-summary" : undefined} type="button">{referenceMode ? "Run disabled · Reference" : <>Run demo <span style={{ marginLeft: 5, fontSize: 9, opacity: .75 }}>FIXED RESULTS</span></>}</button>
         </div>
       </div>
       <div className="fm-workspace-nav">
@@ -330,7 +357,7 @@ export function ModelWorkspace() {
       }}><option value="3M">Quarterly (3M)</option><option value="6M">Semiannual (6M)</option></select></label><span>VIEW-ONLY sample periods · no aggregation or math · policy activation unverified</span></div>
       <div id="workbook" tabIndex={-1} className="fm-wb-layout">
       <WorkbookNavigation active={sheet} onSelect={chooseSheet} />
-      <fieldset className="fm-reference-fieldset" disabled={referenceMode} aria-describedby={referenceMode ? "reference-mode-help" : undefined}>
+      <fieldset className="fm-reference-fieldset" disabled={referenceMode && sheet !== "input-grid"} aria-describedby={referenceMode ? "reference-mode-help" : undefined}>
       <legend className="fm-sr-only">{referenceMode ? "Read-only synthetic reference workbook" : "Synthetic working-copy workbook"}</legend>
       <div className="fm-reference-content">
       {sheet === "input-grid" ? <InputGrid values={values} committed={committed} errors={errors} blocked={blocked} dirty={scalarDirty} runBlocked={runBlocked} readOnly={referenceMode} onEditing={setCellEditing}
@@ -461,7 +488,7 @@ export function ModelWorkspace() {
               <div className="fm-tiny-stat"><span>Input state</span><strong>{saved ? "Acknowledged · view only" : "Demo draft"}</strong></div>
               <div className="fm-divider" />
               <button type="button" className="fm-btn" aria-disabled={blocked || cellEditing} style={{ width: "100%" }} onClick={save}>{saved ? "Demo acknowledged · session only" : "Save demo"}</button>
-              <button type="button" onClick={run} aria-disabled={runBlocked} className="fm-btn fm-btn-primary" style={{ width: "100%", marginTop: 7 }}>View demo results →</button>
+              <button type="button" onKeyDown={activateRunKey} onClick={run} aria-disabled={runBlocked} className="fm-btn fm-btn-primary" style={{ width: "100%", marginTop: 7 }}>View demo results →</button>
               <div style={{ marginTop: 9, color: "var(--muted)", fontSize: 9, lineHeight: 1.5 }}>Run model is a visual affordance only. It opens predetermined synthetic results; no formulas execute.</div>
             </div>
           </Panel>

@@ -1,0 +1,105 @@
+{
+ "allocated_nodes": {
+  "worker-0": 1268,
+  "worker-1": 803,
+  "worker-2": 801
+ },
+ "allocation": {
+  "worker-0": [
+   "tests/test_rc7c_quarterly_date_authority.py"
+  ],
+  "worker-1": [
+   "tests/test_api_v1_model_references.py",
+   "tests/test_data_center_a3_1.py",
+   "tests/test_developer_economics_v1.py",
+   "tests/test_financing_f35b_numerical.py",
+   "tests/test_golden_flow_correction_b.py",
+   "tests/test_m6_exact_content_successor.py",
+   "tests/test_m7_bess_physics.py",
+   "tests/test_model_rc7_capex_monthly_binding.py",
+   "tests/test_model_v2_persistence.py",
+   "tests/test_radar_r10_model_radar.py",
+   "tests/test_rc3_integration_inventory.py",
+   "tests/test_v9p2a_odr_final_state_authority.py"
+  ],
+  "worker-2": [
+   "tests/test_finance_integrity_governance.py",
+   "tests/test_financing_f3_junior_runtime.py",
+   "tests/test_model_v2_run_binding.py",
+   "tests/test_p0c_secure_runtime.py",
+   "tests/test_ppa01_price_rounding.py",
+   "tests/test_protocol_api_beta.py",
+   "tests/test_quarterly_acceptance_frequency_switch.py",
+   "tests/test_radar_e3_company_terminal.py",
+   "tests/test_radar_r11_verification.py",
+   "tests/test_v9p2a_odr_run_commit_safety.py",
+   "tests/test_v9p2a_odr_successor.py"
+  ]
+ },
+ "authoritative_acceptance": false,
+ "container_resources": [
+  {
+   "peak_cpu_pct": 103.75,
+   "peak_mem_mib": 254.1,
+   "samples": 113
+  },
+  {
+   "peak_cpu_pct": 100.75,
+   "peak_mem_mib": 101.0,
+   "samples": 3
+  },
+  {
+   "peak_cpu_pct": 103.65,
+   "peak_mem_mib": 285.1,
+   "samples": 47
+  }
+ ],
+ "coverage_valid": true,
+ "derived_from_published_commit": "f0a187930dfe0575ac1271bb46aef615849daf75",
+ "image": "finco-ci-v3@sha256:0e447614cf691313002c6203ffb74ba65526e5defe86097cb978d8891862251a",
+ "modules": 24,
+ "nodes": 2872,
+ "per_worker": {
+  "worker-0": {
+   "container_ms": 15680,
+   "pytest_ms": 13547,
+   "startup_and_shutdown_overhead_ms": 2133
+  },
+  "worker-1": {
+   "container_ms": 393623,
+   "pytest_ms": 391010,
+   "startup_and_shutdown_overhead_ms": 2613
+  },
+  "worker-2": {
+   "container_ms": 190256,
+   "pytest_ms": 187867,
+   "startup_and_shutdown_overhead_ms": 2389
+  }
+ },
+ "provenance_authenticated": false,
+ "provenance_mode": "mock-service",
+ "scope": "BOUNDED SUBSET - NOT COMPLETE FINCO COVERAGE",
+ "seconds": {
+  "collect": 17.29,
+  "per_worker": {
+   "worker-0": 29.87,
+   "worker-1": 407.38,
+   "worker-2": 204.39
+  },
+  "plan": 14.81,
+  "total": 441.02,
+  "verify": 1.51,
+  "workers_wall": 407.41
+ },
+ "source": {
+  "head": "55b1fad08ac339ba76969fcf43fea19115a6199e",
+  "tree": "6a1f28deb5b30ad3da4bef39beaead3d9f23e85f"
+ },
+ "tamper_controls": {
+  "duplicate-junit-node": {
+   "reason": "artifact differs from independently pinned parent observation: native.xml",
+   "rejected": true
+  }
+ },
+ "unique_nodes_verified": 2872
+}

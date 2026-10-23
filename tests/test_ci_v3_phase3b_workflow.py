@@ -1,5 +1,6 @@
-"""The deployable shadow workflow bytes stay inactive, additive, bounded and advisory-only."""
+"""Advisory deployment stays exact, additive, bounded and closed to unapproved execution."""
 from pathlib import Path
+import json
 import re
 
 import pytest
@@ -15,7 +16,13 @@ def flow():
 
 
 def test_not_active_and_existing_public_workflow_untouched():
-    assert not (ROOT / ".github/workflows/ci_v3_shadow.yml").exists()
+    deployed = ROOT / ".github/workflows/ci_v3_shadow.yml"
+    assert deployed.read_bytes() == CANDIDATE.read_bytes()
+    admission = json.loads((ROOT / "docs/ci_v3/phase3a/admission-root.closed.json").read_text())
+    activation = json.loads((ROOT / "docs/ci_v3/phase4/activation.closed.json").read_text())
+    assert admission["enabled"] is False and admission["authoritative_acceptance"] is False
+    assert activation["enabled"] is False and activation["rollback"] is True
+    assert not (ROOT / ".github/workflows/ci_v3_required_job.yml").exists()
     public = (ROOT / ".github/workflows/public_safety_and_smoke.yml").read_text(encoding="utf-8")
     assert "ci_v3" not in public and "tools.ci_v3" not in public
 
@@ -23,15 +30,18 @@ def test_not_active_and_existing_public_workflow_untouched():
 def test_manual_dispatch_only_protected_admission_three_parallel_workers(flow):
     assert list(flow["on"]) == ["workflow_dispatch"]
     jobs = flow["jobs"]
-    assert set(jobs) == {"admission", "plan", "worker-0", "worker-1", "worker-2", "aggregate"}
+    assert set(jobs) == {"admission", "plan", "worker-0", "worker-1", "worker-2", "aggregate", "control"}
     assert jobs["admission"]["environment"] == "ci-v3-shadow-admission" and "needs" not in jobs["admission"]
     for i in range(3):
         assert jobs[f"worker-{i}"]["needs"] == ["admission", "plan"]   # siblings never depend on each other
-    assert jobs["aggregate"]["if"] == "always()" and set(jobs["aggregate"]["needs"]) == set(jobs) - {"aggregate"}
+    assert "always()" in jobs["aggregate"]["if"] and "shadow" in jobs["aggregate"]["if"]
+    assert set(jobs["aggregate"]["needs"]) == set(jobs) - {"aggregate", "control"}
+    assert jobs["control"]["needs"] == ["admission"] and "control" in jobs["control"]["if"]
+    assert "execution_mode" in flow["on"]["workflow_dispatch"]["inputs"]
 
 
 def test_budget_ceiling_and_least_privilege(flow):
-    assert sum(int(j["timeout-minutes"]) for j in flow["jobs"].values()) == 350   # owner-proposed ceiling
+    assert sum(int(j["timeout-minutes"]) for name,j in flow["jobs"].items() if name != "control") == 350   # owner-proposed ceiling
     assert all(j["permissions"] == {"contents": "read", "actions": "read"} for j in flow["jobs"].values())
     assert flow["concurrency"]["cancel-in-progress"] == "false"
 

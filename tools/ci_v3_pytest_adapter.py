@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from tools.ci_v3_real_contract import environment_record, envelope, outcome
+from tools.ci_v3_real_contract import environment_record, envelope, outcome, phase_record
 from tools.ci_v3_schema import digest, read_json, reconcile_collection, write_json
 
 
@@ -34,6 +34,11 @@ class Adapter:
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_sessionstart(self, session):
+        from tools.ci_v3_pytest_config import PLUGINS, loaded_plugins, all_plugin_registrations
+        self.plugins = loaded_plugins(session.config)
+        self.plugin_registrations = all_plugin_registrations(session.config)
+        if self.plugins != list(PLUGINS):
+            raise pytest.UsageError("CI V3 required async plugins are not registered")
         self.collection_started_at = time.perf_counter()
 
     def pytest_collectreport(self, report):
@@ -79,10 +84,7 @@ class Adapter:
                 "skips": sorted(self.skips, key=lambda x: (x["nodeid"], x["reason"]))}
 
     def phase(self, report):
-        return {"nodeid": report.nodeid, "when": report.when, "outcome": report.outcome,
-                "reason": reason(report) if not report.passed else "",
-                "wasxfail": str(report.wasxfail) if hasattr(report, "wasxfail") else None,
-                "duration_ms": round(report.duration * 1000), "longrepr": str(report.longrepr or "")}
+        return phase_record(report)
 
     @pytest.hookimpl(hookwrapper=True, trylast=True)
     def pytest_runtest_makereport(self, item, call):
@@ -101,12 +103,15 @@ class Adapter:
 
     @pytest.hookimpl(trylast=True)
     def pytest_sessionfinish(self, session, exitstatus):
+        from tools.ci_v3_pytest_config import all_plugin_registrations
+        self.plugin_registrations = all_plugin_registrations(session.config)
         value = envelope("ci-v3-pytest-report", mode=self.request["mode"],
             worker=self.request.get("worker"), context=self.request["context"], collection=self.collection(),
             selected=self.selected, deselected=sorted(self.deselected), phases=self.phases,
             unauthorized_deselection=self.selection_errors, raw_collection=self.raw_collection,
-            pytest_exitstatus=int(session.exitstatus), environment=self.environment,
+            pytest_exitstatus=int(session.exitstatus), environment=self.environment, pytest_plugins=self.plugins, plugin_registrations=self.plugin_registrations,
             environment_digest=digest(self.environment),
+            runtime_host=__import__("tools.ci_v3_runtime_fingerprint", fromlist=["capture"]).capture(),
             telemetry={"collection_finished_ms": self.collection_finished_ms,
                        "collection_duration_ms": self.collection_duration_ms,
                        "session_finish_ms": round((time.perf_counter() - self.started) * 1000)})

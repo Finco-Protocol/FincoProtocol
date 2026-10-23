@@ -1,6 +1,8 @@
 export type LibraryProjectViewModel = {
   name: string;
   id: string;
+  /** Canonical project_id (clone source identity); carried by production callers. */
+  projectId?: string;
   technology: string;
   size: string;
   region: string;

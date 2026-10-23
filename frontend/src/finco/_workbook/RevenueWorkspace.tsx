@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Field, Status } from "../_shared/FincoShell";
+import { Field, readProjectContext, Status } from "../_shared/FincoShell";
 import { useDemoSessionState } from "../_shared/demoSession";
+import SourceAuthorityDrawer from "../_shared/SourceAuthorityDrawer";
 import { workbookHref } from "./catalog";
 
 type ContractId = "PPA-A" | "PPA-B" | "PPA-C";
@@ -50,8 +51,13 @@ const validDate = (value: string) => {
 };
 
 export default function RevenueWorkspace({ onDraftDirty, onSelectContract }: { onDraftDirty: (id: string, dirty: boolean) => void; onSelectContract: (id: ContractId) => void }) {
+  const project = readProjectContext();
+  const scenarioId = new URLSearchParams(window.location.search).get("scenario") || "base";
   const [drafts, setDrafts] = useDemoSessionState<ContractMap>("ppa-contract-drafts", initialContracts);
   const [saved, setSaved] = useDemoSessionState<ContractMap>("ppa-contract-saved", initialContracts);
+  const [acknowledgedContracts, setAcknowledgedContracts] = useDemoSessionState<Record<ContractId, boolean>>("ppa-save-acknowledgements", {
+    "PPA-A": false, "PPA-B": false, "PPA-C": false,
+  });
   const [active, setActive] = useState<ContractId>(() => {
     const requested = new URLSearchParams(window.location.search).get("contract") as ContractId | null;
     return requested && contractIds.includes(requested) ? requested : "PPA-A";
@@ -79,11 +85,15 @@ export default function RevenueWorkspace({ onDraftDirty, onSelectContract }: { o
   }, [current]);
   function update<K extends keyof Contract>(key: K, value: Contract[K]) {
     setDrafts(old => ({ ...old, [active]: { ...old[active], [key]: value } }));
+    setAcknowledgedContracts(old => ({ ...old, [active]: false }));
     setNotice("");
   }
   function selectContract(id: ContractId) {
     setActive(id);
     setNotice("");
+    const params = new URLSearchParams(window.location.search);
+    params.set("contract", id);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
     onSelectContract(id);
   }
   function updateStep(index: number, key: keyof Step, value: string) {
@@ -96,6 +106,7 @@ export default function RevenueWorkspace({ onDraftDirty, onSelectContract }: { o
       return;
     }
     setSaved(old => ({ ...old, [active]: { ...current, steps: current.steps.map(step => ({ ...step })) } }));
+    setAcknowledgedContracts(old => ({ ...old, [active]: true }));
     setNotice(`${active} acknowledged in this page only. No model run, revenue allocation or result update occurred.`);
   }
   return <div className="fm-wf" aria-label="Synthetic multi-contract PPA editor">
@@ -150,6 +161,17 @@ export default function RevenueWorkspace({ onDraftDirty, onSelectContract }: { o
       <Field label="Contract status" value="Illustrative · unsigned" calculated />
       <Field label="Availability notes" value={current.availabilityNote} onChange={value => update("availabilityNote", value)} />
     </div>
+    <SourceAuthorityDrawer
+      project={project}
+      scenarioId={scenarioId}
+      selection={`${active} · ${current.type} contract`}
+      valueLabel={`${current.tariff} €/MWh · ${current.allocation}% allocation label`}
+      state={project.mode === "reference" ? "reference" : selectedDirty ? "draft" : acknowledgedContracts[active] ? "saved" : "draft"}
+      sourceLabel="Synthetic PPA register example"
+      relatedHref={workbookHref("pl")}
+      relatedLabel="Open fixed P&L statement example →"
+      note="Contract and tariff values are local illustrations. The statement link is contextual navigation only; no revenue allocation, price curve, or calculation lineage is asserted."
+    />
     <div className="fm-wf-actions">
       <span className="fm-wf-muted">Save affects {active} only · no backend · no Run</span>
       <button type="button" className="fm-btn fm-btn-primary" disabled={Boolean(Object.keys(errors).length)} onClick={save}>Save {active} demo</button>

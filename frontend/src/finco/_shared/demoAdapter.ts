@@ -5,6 +5,8 @@
  */
 export type DemoFreshness = "CURRENT" | "STALE" | "UNKNOWN";
 export type DemoIntegrity = "NOT_EVALUATED";
+export type DemoEngineCurrency = "CURRENT" | "STALE" | "UNKNOWN";
+export type DemoRunSelection = "NONE" | "LAST" | "HISTORICAL";
 
 export type DemoStatementValue =
   | { availability: "available"; value: number; unit: string }
@@ -18,6 +20,7 @@ export type DemoLastRun = {
 };
 
 export type DemoAdapterState = {
+  projectId: string;
   fieldId: string;
   scenarioId: string;
   editable: boolean;
@@ -26,6 +29,8 @@ export type DemoAdapterState = {
   revision: string;
   latestRequestId: number;
   lastRun: DemoLastRun | null;
+  runSelection: DemoRunSelection;
+  engineCurrency: DemoEngineCurrency;
   freshness: DemoFreshness;
   integrity: DemoIntegrity;
   saveState: "CLEAN" | "UNSAVED" | "DEMO_SAVED" | "VALIDATION_ERROR" | "CONFLICT" | "READ_ONLY" | "AUTH_REJECTED" | "CONTEXT_MISMATCH" | "STALE_RESPONSE" | "TRANSPORT_ERROR";
@@ -33,6 +38,7 @@ export type DemoAdapterState = {
 };
 
 export type DemoSaveRequest = {
+  projectId: string;
   fieldId: string;
   scenarioId: string;
   value: string;
@@ -41,7 +47,7 @@ export type DemoSaveRequest = {
 };
 
 export type DemoSaveResponse =
-  | { status: "saved"; revision: string; scenarioId?: string }
+  | { status: "saved"; revision: string; projectId?: string; scenarioId?: string }
   | { status: "invalid"; message: string }
   | { status: "unprocessable_entity"; message: string }
   | { status: "conflict"; currentRevision: string }
@@ -60,6 +66,7 @@ export function beginDemoSave(state: DemoAdapterState): {
   return {
     state: { ...state, latestRequestId: requestId, saveState: "UNSAVED" },
     request: {
+      projectId: state.projectId,
       fieldId: state.fieldId,
       scenarioId: state.scenarioId,
       value: state.draftValue,
@@ -86,12 +93,14 @@ export function applyDemoSaveResponse(
     };
   }
 
-  if (request.scenarioId !== current.scenarioId ||
+  if (request.projectId !== current.projectId ||
+      (response.status === "saved" && response.projectId !== undefined && response.projectId !== current.projectId) ||
+      request.scenarioId !== current.scenarioId ||
       (response.status === "saved" && response.scenarioId !== undefined && response.scenarioId !== current.scenarioId)) {
     return {
       ...current,
       saveState: "CONTEXT_MISMATCH",
-      message: "Demo response context did not match the selected scenario; no value was acknowledged.",
+      message: "Demo response context did not match the selected project or scenario; no value was acknowledged.",
     };
   }
 
@@ -116,6 +125,7 @@ export function applyDemoSaveResponse(
     };
   }
 
+  const newerDraftRemains = current.draftValue !== request.value;
   return {
     ...current,
     committedValue: request.value,
@@ -125,8 +135,10 @@ export function applyDemoSaveResponse(
         ? "CURRENT"
         : "STALE"
       : "UNKNOWN",
-    saveState: "DEMO_SAVED",
-    message: "Demo transport acknowledged Save only. No Run was invoked.",
+    saveState: newerDraftRemains ? "UNSAVED" : "DEMO_SAVED",
+    message: newerDraftRemains
+      ? "The submitted draft was acknowledged; a newer typed value remains unsaved. No Run was invoked."
+      : "Demo transport acknowledged Save only. No Run was invoked.",
   };
 }
 
@@ -151,7 +163,8 @@ export async function saveDemoField(
   }
 }
 
-export function formatDemoStatementValue(value: DemoStatementValue): string {
+export function formatDemoStatementValue(value: DemoStatementValue | null | undefined): string {
+  if (value == null) return "— (missing)";
   if (value.availability === "unavailable") return `— (${value.reason})`;
   return `${value.value} ${value.unit}`.trim();
 }

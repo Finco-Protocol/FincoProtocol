@@ -7,6 +7,13 @@ import {
   resolveFincoRoute,
 } from "../src/finco-transfer/routes.ts";
 import { TRANSFER_DEMO_RUN_STATUS, TRANSFER_DEMO_STATEMENT } from "../src/finco-transfer/fixtures.ts";
+import {
+  TRANSFER_CALLER_RESULTS_STATUS,
+  TRANSFER_DEMO_RESULTS,
+  TRANSFER_DEMO_RESULTS_STATUS,
+  TRANSFER_EMPTY_RESULTS_STATUS,
+  TRANSFER_PARTIAL_RESULTS,
+} from "../src/finco-transfer/resultsFixtures.ts";
 
 const basePath = "/finco-transfer/";
 globalThis.window = { location: { origin: "https://finco.test" } };
@@ -59,4 +66,15 @@ test("external statement provider keeps zero distinct and labels fixed synthetic
   assert.equal(TRANSFER_DEMO_RUN_STATUS.freshness, "unknown");
   assert.equal(TRANSFER_DEMO_RUN_STATUS.integrity, "not evaluated");
   assert.equal(TRANSFER_DEMO_RUN_STATUS.engineVersion, null);
+  assert.equal(TRANSFER_DEMO_RUN_STATUS.dataOrigin, "synthetic-demo");
+});
+
+test("transfer results fixture is independent from the Canvas provider and supports empty/partial caller states", () => {
+  assert.equal(TRANSFER_DEMO_RESULTS.kpis[0].value.text, "7.82%");
+  assert.equal(TRANSFER_DEMO_RESULTS.summaryRows.length, 8);
+  assert.equal(TRANSFER_DEMO_RESULTS_STATUS.dataOrigin, "synthetic-demo");
+  assert.equal(TRANSFER_EMPTY_RESULTS_STATUS.runState, "not-run");
+  assert.equal(TRANSFER_CALLER_RESULTS_STATUS.freshness, "stale");
+  assert.equal(TRANSFER_PARTIAL_RESULTS.kpis[0].value.text, "0.00%");
+  assert.equal(TRANSFER_PARTIAL_RESULTS.kpis[1].value.kind, "unavailable");
 });

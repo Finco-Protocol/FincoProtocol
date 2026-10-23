@@ -1,41 +1,43 @@
 import React, { useMemo, useState } from "react";
 import "./_group.css";
 import { DemoBanner, navigateFinco, projectWorkspaceHref, Shell, Status } from "./_shared/FincoShell";
-import {
-  createDemoWorkingCopy,
-  createLocalDemoProject,
-  listDemoWorkingCopies,
-  type DemoWorkingCopy,
-} from "./_shared/demoWorkingCopies";
-import { SYNTHETIC_REFERENCE_PROJECTS } from "./_shared/demoProjectFixtures";
+import { fincoWorkingCopyBridge } from "./_shared/fincoProjectBridge";
 import type { LibraryProjectViewModel } from "./_shared/viewModels";
 
 export type ProjectLibraryProps = {
   sampleProjects?: readonly LibraryProjectViewModel[];
   onNavigate?: (href: string) => void;
+  /** Caller-owned working-copy creation (production: canonical library clone). */
+  onCreateWorkingCopy?: (project: LibraryProjectViewModel) => void | Promise<void>;
 };
+
+type SessionCopy = import("./_shared/fincoProjectBridge").FincoWorkingCopySummary;
 
 function readCopies() {
   try {
-    return { copies: listDemoWorkingCopies(), error: "" };
+    return { copies: fincoWorkingCopyBridge()?.list() ?? [], error: "" };
   } catch (error) {
-    return { copies: [] as DemoWorkingCopy[], error: error instanceof Error ? error.message : "The local demo session could not be read." };
+    return { copies: [] as SessionCopy[], error: error instanceof Error ? error.message : "The local session could not be read." };
   }
 }
 
-function toLibraryProject(copy: DemoWorkingCopy): LibraryProjectViewModel {
+function toLibraryProject(copy: SessionCopy): LibraryProjectViewModel {
   return {
     ...copy,
     stage: copy.kind === "reference-copy" ? "Working copy" : "New demo project",
     tone: copy.kind === "reference-copy" ? "green" : "gray",
     updated: "This browser tab",
-    sourceKind: copy.kind,
+    sponsor: copy.parentReferenceName || "",
+    sourceKind: (copy.kind === "new-demo-project" ? "new-demo-project" : "reference-copy"),
   };
 }
 
 export function ProjectLibrary({
-  sampleProjects = SYNTHETIC_REFERENCE_PROJECTS,
+  // UX-02 quarantine: callers own the project list (canonical library in
+  // production; the transfer harness passes its own synthetic fixtures).
+  sampleProjects = [],
   onNavigate = navigateFinco,
+  onCreateWorkingCopy,
 }: ProjectLibraryProps = {}) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState("All stages");
@@ -54,8 +56,14 @@ export function ProjectLibrary({
 
   function createDemo() {
     if (created) return;
+    const bridge = fincoWorkingCopyBridge();
+    if (!bridge?.createBlank) {
+      setCopyState(current => ({ ...current,
+        error: "Local demo projects are not available in this environment." }));
+      return;
+    }
     try {
-      createLocalDemoProject({
+      bridge.createBlank({
         name: "New solar project",
         technology: "Solar PV",
         size: "—",
@@ -77,8 +85,24 @@ export function ProjectLibrary({
     onNavigate(projectWorkspaceHref(project, { mode: "reference" }));
   }
   function createWorkingCopy(project: LibraryProjectViewModel) {
+    // UX-02: callers own working-copy creation.  Production passes
+    // onCreateWorkingCopy (canonical library clone); the demo harness keeps
+    // the local-session bridge.  Without either, creation stays unavailable.
+    if (onCreateWorkingCopy) {
+      void Promise.resolve(onCreateWorkingCopy(project)).catch((error: unknown) => setCopyState(current => ({
+        ...current,
+        error: error instanceof Error ? error.message : "The working copy could not be created.",
+      })));
+      return;
+    }
+    const bridge = fincoWorkingCopyBridge();
+    if (!bridge) {
+      setCopyState(current => ({ ...current,
+        error: "Working-copy creation is not available in this environment." }));
+      return;
+    }
     try {
-      const copy = createDemoWorkingCopy(project);
+      const copy = bridge.create(project);
       onNavigate(projectWorkspaceHref(copy, {
         mode: "working-copy",
         parentReferenceId: project.id,
@@ -96,8 +120,13 @@ export function ProjectLibrary({
       parentReferenceId: project.parentReferenceId ?? undefined,
     }));
   }
+  function activateLibraryAction(event: React.KeyboardEvent<HTMLButtonElement>, action: () => void) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    action();
+  }
   return <Shell crumb="Project library">
-    <main className="fm-shell">
+      <main id="fm-main-content" tabIndex={-1} className="fm-shell">
       <DemoBanner copy={`${sampleProjects.length} fictional reference projects · References are read-only. Demo copies live only in this browser-tab session, survive reload here, and are cleared by Reset local demo session or closing the tab. Nothing is stored on a server.`} />
       <div className="fm-shell-header">
         <div><div className="fm-eyebrow">Portfolio / renewable energy</div><h1 className="fm-title">Project library</h1><div className="fm-subtitle">Review and open project finance models across the portfolio.</div></div>
@@ -137,7 +166,7 @@ export function ProjectLibrary({
           <table className="fm-table">
             <thead><tr><th>Project / reference</th><th>Technology</th><th>Capacity</th><th>Region</th><th>Stage</th><th>Sponsor</th><th>Updated</th><th>Actions</th></tr></thead>
             <tbody>{filtered.map((p) => <tr key={p.id}>
-              <td><strong className="fm-project-name">{p.name}</strong><div className="fm-hint fm-mono" style={{ marginTop: 3 }}>{p.id}</div>
+              <td><strong id={`fm-project-name-${p.id}`} className="fm-project-name">{p.name}</strong><div className="fm-hint fm-mono" style={{ marginTop: 3 }}>{p.id}</div>
                 {p.parentReferenceName && <div className="fm-hint" style={{ marginTop: 3 }}>Parent reference: {p.parentReferenceName} · {p.parentReferenceId}</div>}
                 {p.sourceKind !== "reference" && <div className="fm-hint" style={{ marginTop: 3 }}>Demo only · not persisted</div>}
               </td>
@@ -152,12 +181,12 @@ export function ProjectLibrary({
                 <div className="fm-library-actions">
                  {p.sourceKind === "reference"
                     ? <>
-                      <button type="button" className="fm-small-link" aria-label={`Open reference ${p.name}`} onClick={() => openReference(p)}>Open reference →</button>
-                      <button type="button" className="fm-small-link fm-library-copy-action" aria-label={`Create working copy from ${p.name}`} onClick={() => createWorkingCopy(p)}>Create working copy</button>
+                       <button type="button" className="fm-small-link" aria-label={`Open reference ${p.name}`} onKeyDown={event => activateLibraryAction(event, () => openReference(p))} onClick={() => openReference(p)}>Open reference →</button>
+                       <button type="button" className="fm-small-link fm-library-copy-action" onKeyDown={event => activateLibraryAction(event, () => createWorkingCopy(p))} onClick={() => createWorkingCopy(p)}>Create working copy</button>
                     </>
                     : <>
-                      <button type="button" className="fm-small-link" aria-label={`Open working copy ${p.name}`} onClick={() => openCopy(p)}>Open working copy →</button>
-                       {p.parentReferenceId && <button type="button" className="fm-small-link" aria-label={`Open parent reference ${p.parentReferenceName}`} onClick={() => openReference(sampleProjects.find(seed => seed.id === p.parentReferenceId) ?? p)}>Open reference</button>}
+                       <button type="button" className="fm-small-link" aria-label={`Open working copy ${p.name}`} onKeyDown={event => activateLibraryAction(event, () => openCopy(p))} onClick={() => openCopy(p)}>Open working copy →</button>
+                         {p.parentReferenceId && <button type="button" className="fm-small-link" aria-label={`Open reference ${p.parentReferenceName} (parent)`} onKeyDown={event => activateLibraryAction(event, () => openReference(sampleProjects.find(seed => seed.id === p.parentReferenceId) ?? p))} onClick={() => openReference(sampleProjects.find(seed => seed.id === p.parentReferenceId) ?? p)}>Open reference</button>}
                     </>}
                 </div>
               </td>

@@ -32,6 +32,14 @@ export default function ScenarioGovernanceWorkspace({ sheet, onDraftDirty }: { s
   const dirty = JSON.stringify(current) !== JSON.stringify(saved[selected]);
   const anyDirty = scenarioIds.some(id => JSON.stringify(drafts[id]) !== JSON.stringify(saved[id]));
   useEffect(() => { onDraftDirty("scenarios", anyDirty); }, [anyDirty, onDraftDirty]);
+  useEffect(() => {
+    const syncFromHistory = () => {
+      const requested = new URLSearchParams(window.location.search).get("scenario") as ScenarioId | null;
+      if (requested && scenarioIds.includes(requested)) setSelected(requested);
+    };
+    window.addEventListener("popstate", syncFromHistory);
+    return () => window.removeEventListener("popstate", syncFromHistory);
+  }, []);
   function update<K extends keyof Scenario>(key: K, value: Scenario[K]) {
     setDrafts(old => ({ ...old, [selected]: { ...old[selected], [key]: value } }));
     setNotice("");
@@ -41,7 +49,7 @@ export default function ScenarioGovernanceWorkspace({ sheet, onDraftDirty }: { s
     setNotice("");
     const params = new URLSearchParams(window.location.search);
     params.set("scenario", id);
-    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+    window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
   }
   function save() {
     const numeric = [Number(current.powerDelta), Number(current.seniorMargin), Number(current.dscr)];
@@ -60,14 +68,14 @@ export default function ScenarioGovernanceWorkspace({ sheet, onDraftDirty }: { s
     <div className="fm-wf-notice" role="note"><strong>SYNTHETIC DEMO · no engine connection</strong><span>Scenario drafts and run records are local illustrative UI only. They do not create or recalculate model outputs.</span></div>
     {scenarioView && <>
       <div className="fm-wf-toolbar"><strong>Scenario register</strong><span className="fm-wf-muted">Independent local assumption sets · fixed result identity DEMO-FIXED-018</span><Status tone="amber">OUTPUTS NOT SCENARIO-DRIVEN</Status></div>
-      <div className="fm-wf-scroll"><table className="fm-table fm-wf-table"><thead><tr><th scope="col">Scenario</th><th scope="col">Power-price delta</th><th scope="col">Yield case</th><th scope="col">Senior margin</th><th scope="col">DSCR assumption</th><th scope="col">State</th></tr></thead><tbody>{scenarioIds.map(id => {
+      <div className="fm-wf-scroll"><table className="fm-table fm-wf-table"><thead><tr><th scope="col">Scenario ID</th><th scope="col">Scenario</th><th scope="col">Power-price delta</th><th scope="col">Yield case</th><th scope="col">Senior margin</th><th scope="col">DSCR assumption</th><th scope="col">State</th></tr></thead><tbody>{scenarioIds.map(id => {
         const scenario = drafts[id];
         return <tr key={id} className={selected === id ? "fm-wf-row-active" : ""}>
-          <th scope="row"><button type="button" className="fm-wf-row-button" aria-pressed={selected === id} onClick={() => selectScenario(id)}>{scenario.name}</button></th>
+          <td className="fm-mono">{scenario.id}</td><th scope="row"><button type="button" className="fm-wf-row-button" aria-pressed={selected === id} onClick={() => selectScenario(id)}>{scenario.name}</button></th>
           <td>{scenario.powerDelta}%</td><td>{scenario.yieldCase}</td><td>{scenario.seniorMargin}%</td><td>{scenario.dscr}x</td><td>{saved[id].state}</td>
         </tr>;
       })}</tbody></table></div>
-      <div className="fm-wf-editor-head"><div><h3>{current.name} assumptions</h3><p>Each scenario has independent local drafts. Inputs are labels/examples, not a model engine.</p></div><span className={dirty ? "fm-wf-dirty" : "fm-wf-muted"}>{dirty ? "WORKING COPY · UNSAVED" : "LOCAL SAVE · NOT RUN"}</span></div>
+      <div className="fm-wf-editor-head"><div><h3>{current.name} assumptions</h3><p>Scenario ID: <code>{current.id}</code> · each record has independent local drafts; outputs are not linked to these inputs.</p></div><span className={dirty ? "fm-wf-dirty" : "fm-wf-muted"}>{dirty ? "WORKING COPY · UNSAVED" : "LOCAL SAVE · NOT RUN"}</span></div>
       <div className="fm-wf-grid fm-wf-fields">
         <label className="fm-wf-field">Scenario name <span>Local label</span><input aria-label="Scenario name" value={current.name} onChange={event => update("name",event.target.value)} /></label>
         <label className="fm-wf-field">Power-price delta <span>Synthetic assumption</span><div className="fm-wf-unit-input"><input aria-label="Scenario power price delta" value={current.powerDelta} onChange={event => update("powerDelta",event.target.value)} /><i>%</i></div></label>

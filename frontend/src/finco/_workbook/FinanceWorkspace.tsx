@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Field, Status } from "../_shared/FincoShell";
+import { Field, readProjectContext, Status } from "../_shared/FincoShell";
 import { useDemoSessionState } from "../_shared/demoSession";
+import SourceAuthorityDrawer from "../_shared/SourceAuthorityDrawer";
 import { workbookHref } from "./catalog";
 
 type FacilityId = "Senior Debt A" | "Senior Debt B" | "Junior / Mezzanine" | "Shareholder Loan (SHL)" | "Sponsor Equity";
@@ -26,8 +27,13 @@ const validDate = (value: string) => {
 };
 
 export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelectFacility }: { sheet: string; onOpen: (id: string) => void; onDraftDirty: (id: string, dirty: boolean) => void; onSelectFacility: (id: FacilityId) => void }) {
+  const project = readProjectContext();
+  const scenarioId = new URLSearchParams(window.location.search).get("scenario") || "base";
   const [drafts, setDrafts] = useDemoSessionState<FacilityMap>("facility-drafts", initialFacilities);
   const [saved, setSaved] = useDemoSessionState<FacilityMap>("facility-saved", initialFacilities);
+  const [savedFacilities, setSavedFacilities] = useDemoSessionState<Record<FacilityId, boolean>>("facility-save-acknowledgements", {
+    "Senior Debt A": false, "Senior Debt B": false, "Junior / Mezzanine": false, "Shareholder Loan (SHL)": false, "Sponsor Equity": false,
+  });
   const [active, setActive] = useState<FacilityId>(() => {
     const requested = new URLSearchParams(window.location.search).get("facility") as FacilityId | null;
     return requested && facilityIds.includes(requested) ? requested : "Senior Debt A";
@@ -37,6 +43,11 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
   const dirty = JSON.stringify(current) !== JSON.stringify(saved[active]);
   const anyDirty = facilityIds.some(id => JSON.stringify(drafts[id]) !== JSON.stringify(saved[id]));
   useEffect(() => { onDraftDirty("finance", anyDirty); }, [anyDirty, onDraftDirty]);
+  function updateContextParam(key: string, value: string) {
+    const params = new URLSearchParams(window.location.search);
+    params.set(key, value);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+  }
   const isEquity = active === "Sponsor Equity";
   const errors = useMemo(() => {
     const found: string[] = [];
@@ -49,16 +60,19 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
   }, [current, isEquity]);
   function update<K extends keyof Facility>(key: K, value: Facility[K]) {
     setDrafts(old => ({ ...old, [active]: { ...old[active], [key]: value } }));
+    setSavedFacilities(old => ({ ...old, [active]: false }));
     setNotice("");
   }
   function selectFacility(id: FacilityId) {
     setActive(id);
     setNotice("");
+    updateContextParam("facility", id);
     onSelectFacility(id);
   }
   function save() {
     if (errors.length) { setNotice("Facility Save blocked by input validation. No values were acknowledged."); return; }
     setSaved(old => ({ ...old, [active]: { ...current } }));
+    setSavedFacilities(old => ({ ...old, [active]: true }));
     setNotice(`${active} acknowledged locally. No sizing, sculpting or model Run occurred.`);
   }
   const showFacility = sheet === "senior-debt" || sheet === "investor";
@@ -115,6 +129,17 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
         <Field label="Availability / authority" value={current.availability} calculated />
       </div>
       <div className="fm-wf-note"><strong>Unavailable:</strong> debt sizing, DSCR sculpting, cash-sweep waterfalls, covenant tests, lender bankability and intercreditor enforcement. No formula is executed.</div>
+      <SourceAuthorityDrawer
+        project={project}
+        scenarioId={scenarioId}
+        selection={`${active} · ${current.instrument}`}
+        valueLabel={`${current.commitment} ${current.currency} m`}
+        state={project.mode === "reference" ? "reference" : dirty ? "draft" : savedFacilities[active] ? "saved" : "draft"}
+        sourceLabel="Synthetic facility register example"
+        relatedHref={workbookHref("debt")}
+        relatedLabel="Open fixed Debt statement example →"
+        note="Facility terms are local display assumptions. The statement link is contextual navigation only; it does not establish facility-level calculation lineage."
+      />
       <div className="fm-wf-actions"><span className="fm-wf-muted">Save facility draft only · no Run</span><button type="button" className="fm-btn fm-btn-primary" disabled={Boolean(errors.length)} onClick={save}>Save {active} demo</button></div>
       {notice && <div className="fm-info-note" role="status">{notice}</div>}
       {errors.length > 0 && <ul className="fm-wf-errors" role="alert">{errors.map(error => <li key={error}>{error}</li>)}</ul>}

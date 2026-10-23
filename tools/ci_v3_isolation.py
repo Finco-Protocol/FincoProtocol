@@ -46,10 +46,21 @@ def assess(root):
     return {"schema": 3, "kind": "ci-v3-isolation-candidate", "modules": result, "authoritative_acceptance": False}
 
 
+def validate_allowed_daemon_threads(value):
+    """Owner-approved background threads that may remain alive when pytest returns. Default empty = none.
+    Every entry needs an exact name, a reason and the reference of the actual owner approval."""
+    require(isinstance(value, dict), "allowed_daemon_threads must be an object")
+    for name, entry in value.items():
+        require(isinstance(name, str) and name and isinstance(entry, dict) and set(entry) == {"reason", "approval_reference"}
+                and all(isinstance(entry[k], str) and entry[k].strip() for k in entry), "unapproved daemon thread entry: " + str(name))
+    return value
+
+
 def validate_isolation(root, inventory, isolation):
     require(isolation.get("profile") == "docker-no-network-private-workspace-v1", "unsupported isolation configuration")
     require(isolation.get("source") == inventory["source"], "stale isolation source")
     modules = isolation.get("modules", {})
+    validate_allowed_daemon_threads(isolation.get("allowed_daemon_threads", {}))
     require(set(modules) == set(inventory["modules"]), "missing/foreign module isolation decisions")
     require(isolation.get("fixture_tree_reviewed") is True and isolation.get("review_reference"),
             "unreviewed shared fixtures/imports/order")
@@ -69,17 +80,11 @@ def validate_isolation(root, inventory, isolation):
 def constrained_plan(root, inventory, policy, weights, isolation):
     require(policy["module_overlaps"] == {}, "hosted overlap execution is not admitted")
     groups = validate_isolation(root, inventory, isolation)
-    original = plan_partitions(inventory, policy, weights, workers=3)
+    original = plan_partitions(inventory, policy, weights, workers=3, groups=groups)
     owners = dict(original["module_workers"])
-    # Preserve Phase 1 LPT for the baseline, then conservatively co-locate reviewed
-    # ordering/session groups. No node is omitted to improve predicted balance.
-    for group, modules in sorted(groups.items()):
-        owner = owners[min(modules)]
-        for module in modules:
-            owners[module] = owner
     require(set(owners.values()) == {"worker-0", "worker-1", "worker-2"}, "isolation leaves an empty worker; review sequential bottleneck")
     plan = seal({**{k: v for k, v in original.items() if k != "digest"},
-        "module_workers": owners, "algorithm": "phase1-lpt-plus-approved-colocation-v1",
+        "module_workers": owners, "algorithm": "approved-group-duration-lpt-v2",
         "isolation_digest": isolation["digest"]})
     validate_plan(plan, inventory, policy)
     return plan

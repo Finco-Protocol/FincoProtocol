@@ -1,6 +1,4 @@
-# DEPLOYABLE CANDIDATE - exact bytes for .github/workflows/ci_v3_shadow.yml. Kept OUTSIDE active workflows until
-# Financial, Security and CI owners approve this exact content and the protected admission root is provisioned.
-# Manual dispatch only; advisory evidence only; never a merge, financial or release acceptance.
+# INACTIVE candidate; exact owner approval and protected admission required before deployment.
 name: FINCO V3 SHADOW ONLY - advisory three-worker evidence
 'on':
   workflow_dispatch:
@@ -8,6 +6,14 @@ name: FINCO V3 SHADOW ONLY - advisory three-worker evidence
       tested_head:
         description: Exact owner-approved tested commit (input is not authority)
         type: string
+        required: true
+      execution_mode:
+        description: Exact owner-authorized side of the single pair
+        type: choice
+        options:
+        - shadow
+        - control
+        default: shadow
         required: true
 permissions:
   contents: read
@@ -31,6 +37,7 @@ jobs:
       CI_V3_ROOT_B64: ${{ vars.CI_V3_ROOT_B64 }}
       CI_V3_ROOT_SHA256: ${{ vars.CI_V3_ROOT_SHA256 }}
       CI_V3_REQUESTED_HEAD: ${{ inputs.tested_head }}
+      CI_V3_REQUESTED_MODE: ${{ inputs.execution_mode }}
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -42,17 +49,23 @@ jobs:
       with:
         python-version: '3.12'
     - name: Materialize independently pinned owner root
-      run: |-
-        python - <<'PY'
+      run: 'python - <<''PY''
+
         import base64, os
+
         from pathlib import Path
-        value = os.environ.get('CI_V3_ROOT_B64', '')
-        data = base64.b64decode(value, validate=True) if value else Path('docs/ci_v3/phase3a/admission-root.closed.json').read_bytes()
-        Path(os.environ['RUNNER_TEMP'], 'ci-v3-root.json').write_bytes(data)
-        PY
+
+        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
+
+        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
+
+        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
+
+        PY'
     - name: Verify service identity, immutable controller and owner bundle
       id: admit
-      run: python -m tools.ci_v3_hosted_controller admit --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/admission"
+      run: python -m tools.ci_v3_hosted_controller admit --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/admission"
     name: ci-v3-admission
     environment: ci-v3-shadow-admission
     outputs:
@@ -61,6 +74,7 @@ jobs:
       root_sha256: ${{ steps.admit.outputs.root_sha256 }}
       root_b64: ${{ steps.admit.outputs.root_b64 }}
       image: ${{ steps.admit.outputs.image }}
+      execution_mode: ${{ steps.admit.outputs.execution_mode }}
   plan:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -86,14 +100,19 @@ jobs:
       with:
         python-version: '3.12'
     - name: Materialize independently pinned owner root
-      run: |-
-        python - <<'PY'
+      run: 'python - <<''PY''
+
         import base64, os
+
         from pathlib import Path
-        value = os.environ.get('CI_V3_ROOT_B64', '')
-        data = base64.b64decode(value, validate=True) if value else Path('docs/ci_v3/phase3a/admission-root.closed.json').read_bytes()
-        Path(os.environ['RUNNER_TEMP'], 'ci-v3-root.json').write_bytes(data)
-        PY
+
+        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
+
+        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
+
+        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
+
+        PY'
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         ref: ${{ needs.admission.outputs.tested_sha }}
@@ -101,14 +120,15 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --output
-        "$RUNNER_TEMP/image-state"
+      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
+        "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/image-state"
     - name: Actual full collection, reconciliation and conservative partition
-      run: python -m tools.ci_v3_hosted_controller plan --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --project ../subject
-        --output "$RUNNER_TEMP/payload-plan"
+      run: python -m tools.ci_v3_hosted_controller plan --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --project ../subject --output "$RUNNER_TEMP/payload-plan"
     - name: Retain independent host receipt anchor
       id: receipt
-      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/payload-plan"
+      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/payload-plan"
     - name: Upload original evidence with immutable service digest
       id: upload
       if: always()
@@ -126,6 +146,7 @@ jobs:
       artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
       receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
       job_id: ${{ steps.receipt.outputs.job_id }}
+    if: ${{ needs.admission.outputs.execution_mode == 'shadow' }}
   worker-0:
     runs-on: ubuntu-24.04
     timeout-minutes: 100
@@ -152,14 +173,19 @@ jobs:
       with:
         python-version: '3.12'
     - name: Materialize independently pinned owner root
-      run: |-
-        python - <<'PY'
+      run: 'python - <<''PY''
+
         import base64, os
+
         from pathlib import Path
-        value = os.environ.get('CI_V3_ROOT_B64', '')
-        data = base64.b64decode(value, validate=True) if value else Path('docs/ci_v3/phase3a/admission-root.closed.json').read_bytes()
-        Path(os.environ['RUNNER_TEMP'], 'ci-v3-root.json').write_bytes(data)
-        PY
+
+        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
+
+        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
+
+        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
+
+        PY'
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         ref: ${{ needs.admission.outputs.tested_sha }}
@@ -167,15 +193,15 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --output
-        "$RUNNER_TEMP/image-state"
+      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
+        "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/image-state"
     - name: Real full-module worker in private no-network container
-      run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --project ../subject
-        --worker worker-0 --output "$RUNNER_TEMP/payload-worker-0"
+      run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --project ../subject --worker worker-0 --output "$RUNNER_TEMP/payload-worker-0"
     - name: Retain independent host receipt anchor
       id: receipt
-      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/payload-worker-0"
-        --worker worker-0
+      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/payload-worker-0" --worker worker-0
     - name: Upload original evidence with immutable service digest
       id: upload
       if: always()
@@ -194,6 +220,7 @@ jobs:
       artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
       receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
       job_id: ${{ steps.receipt.outputs.job_id }}
+    if: ${{ needs.admission.outputs.execution_mode == 'shadow' }}
   worker-1:
     runs-on: ubuntu-24.04
     timeout-minutes: 100
@@ -220,14 +247,19 @@ jobs:
       with:
         python-version: '3.12'
     - name: Materialize independently pinned owner root
-      run: |-
-        python - <<'PY'
+      run: 'python - <<''PY''
+
         import base64, os
+
         from pathlib import Path
-        value = os.environ.get('CI_V3_ROOT_B64', '')
-        data = base64.b64decode(value, validate=True) if value else Path('docs/ci_v3/phase3a/admission-root.closed.json').read_bytes()
-        Path(os.environ['RUNNER_TEMP'], 'ci-v3-root.json').write_bytes(data)
-        PY
+
+        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
+
+        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
+
+        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
+
+        PY'
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         ref: ${{ needs.admission.outputs.tested_sha }}
@@ -235,15 +267,15 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --output
-        "$RUNNER_TEMP/image-state"
+      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
+        "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/image-state"
     - name: Real full-module worker in private no-network container
-      run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --project ../subject
-        --worker worker-1 --output "$RUNNER_TEMP/payload-worker-1"
+      run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --project ../subject --worker worker-1 --output "$RUNNER_TEMP/payload-worker-1"
     - name: Retain independent host receipt anchor
       id: receipt
-      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/payload-worker-1"
-        --worker worker-1
+      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/payload-worker-1" --worker worker-1
     - name: Upload original evidence with immutable service digest
       id: upload
       if: always()
@@ -262,6 +294,7 @@ jobs:
       artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
       receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
       job_id: ${{ steps.receipt.outputs.job_id }}
+    if: ${{ needs.admission.outputs.execution_mode == 'shadow' }}
   worker-2:
     runs-on: ubuntu-24.04
     timeout-minutes: 100
@@ -288,14 +321,19 @@ jobs:
       with:
         python-version: '3.12'
     - name: Materialize independently pinned owner root
-      run: |-
-        python - <<'PY'
+      run: 'python - <<''PY''
+
         import base64, os
+
         from pathlib import Path
-        value = os.environ.get('CI_V3_ROOT_B64', '')
-        data = base64.b64decode(value, validate=True) if value else Path('docs/ci_v3/phase3a/admission-root.closed.json').read_bytes()
-        Path(os.environ['RUNNER_TEMP'], 'ci-v3-root.json').write_bytes(data)
-        PY
+
+        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
+
+        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
+
+        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
+
+        PY'
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         ref: ${{ needs.admission.outputs.tested_sha }}
@@ -303,15 +341,15 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --output
-        "$RUNNER_TEMP/image-state"
+      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
+        "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/image-state"
     - name: Real full-module worker in private no-network container
-      run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --project ../subject
-        --worker worker-2 --output "$RUNNER_TEMP/payload-worker-2"
+      run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --project ../subject --worker worker-2 --output "$RUNNER_TEMP/payload-worker-2"
     - name: Retain independent host receipt anchor
       id: receipt
-      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/payload-worker-2"
-        --worker worker-2
+      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/payload-worker-2" --worker worker-2
     - name: Upload original evidence with immutable service digest
       id: upload
       if: always()
@@ -330,6 +368,7 @@ jobs:
       artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
       receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
       job_id: ${{ steps.receipt.outputs.job_id }}
+    if: ${{ needs.admission.outputs.execution_mode == 'shadow' }}
   aggregate:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -344,8 +383,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       CI_V3_ROOT_B64: ${{ needs.admission.outputs.root_b64 }}
       CI_V3_ROOT_SHA256: ${{ needs.admission.outputs.root_sha256 }}
-      CI_V3_HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }},"worker-0":${{ toJSON(needs.worker-0.outputs) }},"worker-1":${{ toJSON(needs.worker-1.outputs)
-        }},"worker-2":${{ toJSON(needs.worker-2.outputs) }}}'
+      CI_V3_HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }},"worker-0":${{ toJSON(needs.worker-0.outputs)
+        }},"worker-1":${{ toJSON(needs.worker-1.outputs) }},"worker-2":${{ toJSON(needs.worker-2.outputs) }}}'
       ADMISSION_RESULT: ${{ needs.admission.result }}
     steps:
     - name: Require independent admission even on failure path
@@ -361,14 +400,19 @@ jobs:
       with:
         python-version: '3.12'
     - name: Materialize independently pinned owner root
-      run: |-
-        python - <<'PY'
+      run: 'python - <<''PY''
+
         import base64, os
+
         from pathlib import Path
-        value = os.environ.get('CI_V3_ROOT_B64', '')
-        data = base64.b64decode(value, validate=True) if value else Path('docs/ci_v3/phase3a/admission-root.closed.json').read_bytes()
-        Path(os.environ['RUNNER_TEMP'], 'ci-v3-root.json').write_bytes(data)
-        PY
+
+        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
+
+        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
+
+        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
+
+        PY'
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         ref: ${{ needs.admission.outputs.tested_sha }}
@@ -376,21 +420,93 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Authenticate transfers and verify every original node and process
-      run: python -m tools.ci_v3_hosted_controller aggregate --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256" --project
-        ../subject --output "$RUNNER_TEMP/shadow-proof"
+      run: python -m tools.ci_v3_hosted_controller aggregate --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
+        "$CI_V3_ROOT_SHA256" --project ../subject --output "$RUNNER_TEMP/shadow-proof"
     - name: Retain advisory proof or explicit rejection
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       with:
-        name: ci-v3-advisory-${{ github.run_id }}-${{ github.run_attempt }}
+        name: finco-v3-advisory-${{ github.run_id }}-${{ github.run_attempt }}
         path: ${{ runner.temp }}/shadow-proof/
         if-no-files-found: error
         retention-days: 14
     name: ci-v3-advisory-evidence
-    if: always()
+    if: ${{ always() && needs.admission.outputs.execution_mode == 'shadow' }}
     needs:
     - admission
     - plan
     - worker-0
     - worker-1
     - worker-2
+  control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 220
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        working-directory: controller
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CI_V3_ROOT_B64: ${{ needs.admission.outputs.root_b64 }}
+      CI_V3_ROOT_SHA256: ${{ needs.admission.outputs.root_sha256 }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ needs.admission.outputs.controller_sha }}
+        path: controller
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - name: Materialize independently pinned owner root
+      run: 'python - <<''PY''
+
+        import base64, os
+
+        from pathlib import Path
+
+        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
+
+        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
+
+        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
+
+        PY'
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ needs.admission.outputs.tested_sha }}
+        path: subject
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Pull only admitted immutable execution image
+      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
+        "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/image-state"
+    - name: Real full-module worker in private no-network container
+      run: python -m tools.ci_v3_hosted_controller control --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --project ../subject --output "$RUNNER_TEMP/payload-control"
+    - name: Retain independent host receipt anchor
+      id: receipt
+      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/payload-control" --worker control
+    - name: Upload original evidence with immutable service digest
+      id: upload
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: ci-v3-control-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/payload-control/
+        if-no-files-found: error
+        retention-days: 14
+    name: ci-v3-control
+    needs:
+    - admission
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
+      job_id: ${{ steps.receipt.outputs.job_id }}
+    if: ${{ needs.admission.outputs.execution_mode == 'control' }}

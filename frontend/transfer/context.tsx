@@ -13,7 +13,7 @@ export type FincoTransferContextValue = {
   scenarioId: string;
   contractId: string;
   facilityId: string;
-  statementSnapshot: StatementWorkbookSnapshot;
+  statementSnapshot: StatementWorkbookSnapshot | null;
   statementStatus: StatementRunStatus;
   navigate: (href: string) => void;
 };

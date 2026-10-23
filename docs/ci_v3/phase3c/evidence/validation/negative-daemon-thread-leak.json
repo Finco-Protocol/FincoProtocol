@@ -1,0 +1,14 @@
+{
+ "container_removed": true,
+ "control": "daemon-thread-leak",
+ "pytest_codes": {
+  "worker-0": 0,
+  "worker-1": 0,
+  "worker-2": 0
+ },
+ "reason": "worker failed; retain failure evidence",
+ "rejected": true,
+ "workers_not_normal": [
+  "worker-2"
+ ]
+}

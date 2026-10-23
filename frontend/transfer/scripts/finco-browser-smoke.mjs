@@ -6,10 +6,16 @@ import path from "node:path";
 
 const base = (process.env.FINCO_PREVIEW_BASE || "http://127.0.0.1:8081/__mockup/preview/finco-model").replace(/\/$/, "");
 const chromePath = process.env.CHROMIUM_PATH || "/repl/tools/bin/chromium";
-const evidenceDir = path.resolve("test-evidence");
+const evidenceDir = path.resolve(process.env.FINCO_EVIDENCE_DIR || "test-evidence");
+const evidenceLabel = process.env.FINCO_EVIDENCE_LABEL || "iteration-16";
+const caseFilter = (process.env.FINCO_CASE_FILTER || "")
+  .split("|")
+  .map((item) => item.trim())
+  .filter(Boolean);
 const cases = [];
 const performanceEvidence = [];
 const accessibilityEvidence = [];
+const clipboardEvidence = [];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -51,11 +57,11 @@ class BrowserPage {
     this.ws = new WebSocket(target.webSocketDebuggerUrl);
     this.ws.addEventListener("message", (event) => {
       const message = JSON.parse(event.data);
-      const recordBrowserMessage = (text) => {
+      const recordBrowserMessage = (text, sourceUrl = "") => {
         if (/WebSocket connection to .*\/__mockup\/\?token=.*failed: Page entered Back-Forward Cache\./.test(text)) {
           this.previewLifecycleNotes.push("Vite preview HMR WebSocket closed when Chromium placed the page in Back-Forward Cache; transient token redacted.");
         } else {
-          this.consoleErrors.push(text);
+          this.consoleErrors.push(sourceUrl ? `${text} [${sourceUrl}]` : text);
         }
       };
       if (message.method === "Runtime.exceptionThrown") {
@@ -63,7 +69,7 @@ class BrowserPage {
       } else if (message.method === "Runtime.consoleAPICalled" && message.params.type === "error") {
         recordBrowserMessage(message.params.args.map((arg) => arg.value || arg.description || "").join(" "));
       } else if (message.method === "Log.entryAdded" && message.params.entry.level === "error") {
-        recordBrowserMessage(message.params.entry.text);
+        recordBrowserMessage(message.params.entry.text, message.params.entry.url);
       }
       if (message.id && this.pending.has(message.id)) {
         const promise = this.pending.get(message.id);
@@ -109,12 +115,12 @@ class BrowserPage {
     return result.result?.value;
   }
 
-  async viewport(width, height = 900) {
+  async viewport(width, height = 900, mobile = false) {
     await this.send("Emulation.setDeviceMetricsOverride", {
       width,
       height,
       deviceScaleFactor: 1,
-      mobile: false,
+      mobile,
     });
     await sleep(120);
   }
@@ -209,12 +215,20 @@ class BrowserPage {
       F2: ["F2", 113],
       z: ["KeyZ", 90],
       a: ["KeyA", 65],
+      v: ["KeyV", 86],
+      Space: [" ", 32],
       Home: ["Home", 36],
     }[key];
     if (!keyInfo) throw new Error(`Unsupported test key: ${key}`);
     const [code, windowsVirtualKeyCode] = keyInfo;
     const modifiers = (options.ctrl ? 2 : 0) | (options.meta ? 4 : 0) | (options.shift ? 8 : 0);
-    const params = { key, code, windowsVirtualKeyCode, modifiers };
+    const params = {
+      key: key === "Space" ? " " : key,
+      code,
+      windowsVirtualKeyCode,
+      nativeVirtualKeyCode: windowsVirtualKeyCode,
+      modifiers
+    };
     await this.send("Input.dispatchKeyEvent", { type: "keyDown", ...params });
     await this.send("Input.dispatchKeyEvent", { type: "keyUp", ...params });
     await sleep(80);
@@ -270,7 +284,7 @@ class BrowserPage {
   async screenshot(name) {
     await mkdir(evidenceDir, { recursive: true });
     const result = await this.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
-    const filename = path.join(evidenceDir, name);
+    const filename = path.join(evidenceDir, `${evidenceLabel}-${path.basename(name)}`);
     await writeFile(filename, Buffer.from(result.data, "base64"));
     return filename;
   }
@@ -287,14 +301,48 @@ class BrowserPage {
 }
 
 async function check(name, fn) {
+  if (caseFilter.length && !caseFilter.some((filter) => name.includes(filter))) return;
   try {
     const detail = await fn();
+    if (detail && typeof detail === "object" && detail.status === "PARTIAL") {
+      cases.push({ name, status: "PARTIAL", detail: detail.detail || "A known limitation remains." });
+      console.warn(`PARTIAL ${name} — ${detail.detail || "A known limitation remains."}`);
+      return;
+    }
+    if (detail && typeof detail === "object" && detail.status === "UNTESTED") {
+      cases.push({ name, status: "UNTESTED", detail: detail.detail || "Required tooling was not available." });
+      console.log(`UNTESTED ${name} — ${detail.detail || "Required tooling was not available."}`);
+      return;
+    }
     cases.push({ name, status: "PASS", detail: detail ?? "" });
     console.log(`PASS ${name}${detail ? ` — ${detail}` : ""}`);
   } catch (error) {
     cases.push({ name, status: "FAIL", detail: error.message });
     console.error(`FAIL ${name} — ${error.message}`);
   }
+}
+
+async function tabUntil(page, predicate, { reverse = false, limit = 100 } = {}) {
+  let active = null;
+  for (let count = 0; count < limit; count += 1) {
+    active = await page.evaluate(`(() => {
+      const e = document.activeElement;
+      return {
+        tag: e?.tagName || "",
+        id: e?.id || "",
+        aria: e?.getAttribute?.("aria-label") || "",
+        ariaDisabled: e?.getAttribute?.("aria-disabled") || "",
+        text: (e?.innerText || e?.textContent || "").replace(/\\s+/g, " ").trim(),
+        href: e?.getAttribute?.("href") || "",
+        className: String(e?.className || ""),
+        disabled: Boolean(e?.disabled),
+        visible: Boolean(e?.getClientRects?.().length)
+      };
+    })()`);
+    if (predicate(active)) return active;
+    await page.press("Tab", { shift: reverse });
+  }
+  throw new Error(`Could not reach a keyboard target within ${limit} Tab presses; last focus: ${JSON.stringify(active)}`);
 }
 
 const page = new BrowserPage();
@@ -319,20 +367,49 @@ try {
     return "One React root mounted the three existing exported pages in turn; route switching stayed in-page and no Canvas shape was added.";
   });
 
-  await check("I16 separately routed full React entry reuses Library, Workspace and provider-fed Results", async () => {
-    const transferRoot = `${new URL(base).origin}/__mockup/finco-transfer/`;
+  await check("I17 served transfer build: assets, direct routes, reload, responsive journeys", async () => {
+    const transferRoot = (process.env.FINCO_TRANSFER_BASE || `${new URL(base).origin}/__mockup/finco-transfer/`).replace(/\/?$/, "/");
+    const indexResponse = await fetch(transferRoot);
+    assert.equal(indexResponse.status, 200, `Transfer index returned HTTP ${indexResponse.status}`);
+    assert.match(indexResponse.headers.get("content-type") || "", /text\/html/i, "Transfer index has an HTML MIME type");
+    const indexHtml = await indexResponse.text();
+    const assetPaths = [...indexHtml.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(match => match[1]);
+    assert.ok(assetPaths.some(asset => asset.endsWith(".js")) && assetPaths.some(asset => asset.endsWith(".css")), `Expected built JS and CSS asset references, got ${JSON.stringify(assetPaths)}`);
+    for (const assetPath of assetPaths) {
+      const assetResponse = await fetch(new URL(assetPath, transferRoot));
+      assert.equal(assetResponse.status, 200, `Built asset ${assetPath} returned HTTP ${assetResponse.status}`);
+      const expectedMime = assetPath.endsWith(".css") ? /text\/css/i : /(?:javascript|ecmascript)/i;
+      assert.match(assetResponse.headers.get("content-type") || "", expectedMime, `Built asset ${assetPath} has an unexpected MIME type`);
+      if (assetPath.endsWith(".js")) {
+        const javascript = await assetResponse.text();
+        assert.doesNotMatch(javascript, /SYNTHETIC_STATEMENT_SNAPSHOT|balance-check/, "Transfer build imported the Canvas-only statement fixture");
+      }
+    }
+    const directWorkbookUrl = new URL("projects/PRJ-0241/workbook?mode=reference", transferRoot);
+    const directRouteResponse = await fetch(directWorkbookUrl);
+    assert.equal(directRouteResponse.status, 200, `Deep-link fallback returned HTTP ${directRouteResponse.status}`);
+    assert.match(directRouteResponse.headers.get("content-type") || "", /text\/html/i, "Deep-link fallback did not return the SPA HTML shell");
     await page.viewport(1440);
+    await page.goto(directWorkbookUrl.href);
+    await page.waitFor(`Boolean(document.querySelector('[data-testid="finco-transfer-app"][data-route="workspace"]'))`);
+    await page.waitFor(`document.body.innerText.includes("REFERENCE · READ ONLY")`);
+    assert.match(await page.evaluate("document.body.innerText"), /Adriatic Solar I/);
+    await page.evaluate("location.reload()");
+    await page.waitFor(`Boolean(document.querySelector('[data-testid="finco-transfer-app"][data-route="workspace"]'))`);
+    await page.waitFor(`document.body.innerText.includes("REFERENCE · READ ONLY")`);
     await page.goto(transferRoot);
+    await page.viewport(1440);
     await page.evaluate("sessionStorage.clear()");
     await page.goto(transferRoot);
     await page.waitFor(`Boolean(document.querySelector('[data-testid="finco-transfer-app"][data-route="library"]'))`);
     assert.match(await page.evaluate("document.querySelector('h1')?.innerText || ''"), /Project library/i);
     await page.screenshot("i16-transfer-library-1440.png");
-    for (const width of [900, 390]) {
+    for (const width of [900, 390, 320]) {
       await page.viewport(width);
       const layout = await page.dimensions();
       assert.ok(layout.document <= width, `Transfer Library overflows document at ${width}px: ${JSON.stringify(layout)}`);
       if (width === 900) await page.screenshot("i16-transfer-library-900.png");
+      if (width === 320) await page.screenshot("i18-transfer-library-320.png");
     }
     await page.viewport(1440);
     await page.clickAria("Open reference Adriatic Solar I");
@@ -352,12 +429,13 @@ try {
     await page.waitFor("document.body.innerText.includes('DEMO SAVED')");
     const savedValue = await page.evaluate("document.getElementById('wb-cell-0-0')?.innerText.trim()");
     assert.equal(savedValue, "121");
-    for (const width of [1440, 900, 390]) {
+    for (const width of [1440, 900, 390, 320]) {
       await page.viewport(width);
       const layout = await page.dimensions();
       assert.ok(layout.document <= width, `Transfer Workspace overflows document at ${width}px: ${JSON.stringify(layout)}`);
       if (width === 900) await page.screenshot("i16-transfer-workspace-900.png");
       if (width === 390) await page.screenshot("i16-transfer-workspace-390.png");
+      if (width === 320) await page.screenshot("i18-transfer-workspace-320.png");
     }
     await page.viewport(1440);
     await page.clickText("Results", ".fm-nav a");
@@ -365,28 +443,110 @@ try {
     assert.match(await page.evaluate("location.pathname"), /\/projects\/DEMO-WC-[^/]+\/results$/);
     await page.waitFor(`document.body.innerText.includes("Revenue · transfer fixture")`);
     assert.ok(await page.evaluate(`Boolean(document.querySelector('[data-testid="finco-transfer-app"]'))`));
-    for (const width of [1440, 900, 390]) {
+    for (const width of [1440, 900, 390, 320]) {
       await page.viewport(width);
       const resultsLayout = await page.dimensions();
       assert.ok(resultsLayout.document <= width, `Transfer Results overflows document at ${width}px: ${JSON.stringify(resultsLayout)}`);
       if (width === 1440) await page.screenshot("i16-transfer-results-1440.png");
       if (width === 900) await page.screenshot("i16-transfer-results-900.png");
       if (width === 390) await page.screenshot("i16-transfer-results-390.png");
+      if (width === 320) await page.screenshot("i18-transfer-results-320.png");
     }
     await page.evaluate("history.back()");
     await page.waitFor(`document.querySelector('[data-testid="finco-transfer-app"]')?.dataset.route === 'workspace'`);
     assert.match(await page.evaluate("location.pathname"), /\/projects\/DEMO-WC-[^/]+\/workbook$/);
     await page.evaluate("history.forward()");
     await page.waitFor(`document.querySelector('[data-testid="finco-transfer-app"]')?.dataset.route === 'results'`);
+    const normalResultsUrl = await page.evaluate("location.href");
+    const emptyStatementUrl = new URL(normalResultsUrl);
+    emptyStatementUrl.searchParams.set("qaStatement", "empty");
+    await page.goto(emptyStatementUrl.href);
+    await page.waitFor(`Boolean(document.querySelector(".fm-sw-unavailable[role=\\"status\\"]"))`);
+    const emptyStatementState = await page.evaluate(`(() => ({
+      notice: document.querySelector(".fm-sw-unavailable")?.innerText || "",
+      tabs: document.querySelectorAll(".fm-sw-tabs [role=tab]").length,
+      statementTable: Boolean(document.querySelector(".fm-sw-table")),
+      leakedTransferRow: document.body.innerText.includes("Revenue · transfer fixture")
+    }))()`);
+    assert.match(emptyStatementState.notice, /No statement snapshot was supplied/i);
+    assert.equal(emptyStatementState.tabs, 0, "Unavailable snapshot must not show fixture sheet tabs");
+    assert.equal(emptyStatementState.statementTable, false, "Unavailable snapshot must not render a synthetic table");
+    assert.equal(emptyStatementState.leakedTransferRow, false, "Unavailable snapshot fell back to the transfer fixture");
+    await page.goto(normalResultsUrl);
+    await page.waitFor(`document.querySelector('[data-testid="finco-transfer-app"]')?.dataset.route === 'results'`);
+    const partialResultsUrl = new URL(normalResultsUrl);
+    partialResultsUrl.searchParams.set("qaResults", "partial");
+    partialResultsUrl.searchParams.set("qaStatement", "caller");
+    await page.goto(partialResultsUrl.href);
+    await page.waitFor(`document.body.innerText.includes("0.00%") && document.body.innerText.includes("STALE · prior output")`);
+    const partialResults = await page.evaluate(`(() => ({
+      text: document.body.innerText,
+      syntheticKpiLeak: document.body.innerText.includes("7.82%") || document.body.innerText.includes("12.46%"),
+      missingCells: [...document.querySelectorAll(".fm-result-unavailable")].map(node => node.innerText),
+      statementDemoTag: document.body.innerText.includes("FIXED SYNTHETIC EXAMPLE"),
+      callerStatementTag: document.body.innerText.includes("CALLER-PROVIDED · ORIGIN UNVERIFIED")
+    }))()`);
+    assert.equal(partialResults.syntheticKpiLeak, false, "Partial caller data fell back to fixed demo KPI values");
+    assert.match(partialResults.text, /0\.00%/);
+    assert.match(partialResults.text, /Integrity:\s*NOT\s+EVALUATED/i);
+    assert.match(partialResults.text, /Chart data unavailable/i);
+    assert.equal(partialResults.statementDemoTag, false, "Caller-provided statement data still showed the synthetic source label");
+    assert.equal(partialResults.callerStatementTag, true, "Caller-provided statement source state was not shown");
+    await page.viewport(390);
+    const partialMobile = await page.dimensions();
+    assert.ok(partialMobile.document <= 390, `Partial Results overflows the document at 390px: ${JSON.stringify(partialMobile)}`);
+    await page.screenshot("i21-results-partial-390.png");
+
+    const emptyResultsUrl = new URL(normalResultsUrl);
+    emptyResultsUrl.searchParams.set("qaResults", "empty");
+    emptyResultsUrl.searchParams.set("qaStatement", "empty");
+    await page.goto(emptyResultsUrl.href);
+    await page.waitFor(`document.body.innerText.includes("No result data is available.")`);
+    const emptyResults = await page.evaluate(`(() => ({
+      text: document.body.innerText,
+      fixtureKpiLeak: document.body.innerText.includes("7.82%") || document.body.innerText.includes("12.46%"),
+      chartCount: document.querySelectorAll("svg.fm-chart").length,
+      unavailableCharts: [...document.querySelectorAll('[role="status"]')].filter(node => /Chart data unavailable/.test(node.innerText)).length,
+      statementTable: Boolean(document.querySelector(".fm-sw-table"))
+    }))()`);
+    assert.equal(emptyResults.fixtureKpiLeak, false, "Empty result state leaked Canvas/transfer demo outputs");
+    assert.equal(emptyResults.chartCount, 0, "Empty result state rendered a chart without supplied data");
+    assert.equal(emptyResults.unavailableCharts, 3, "Each absent chart should disclose that no data was supplied");
+    assert.equal(emptyResults.statementTable, false, "Empty statement state rendered a statement fixture");
+    assert.match(emptyResults.text, /Output state:\s*NOT RUN/i);
+    await page.viewport(390);
+    const emptyMobile = await page.dimensions();
+    assert.ok(emptyMobile.document <= 390, `Empty Results overflows the document at 390px: ${JSON.stringify(emptyMobile)}`);
+    await page.screenshot("i21-results-empty-390.png");
+
+    for (const context of [
+      { id: "DEMO-WC-A", name: "Synthetic Solar Copy A", technology: "Solar PV", scenario: "base" },
+      { id: "DEMO-WC-B", name: "Synthetic Wind Copy B", technology: "Onshore wind", scenario: "upside" },
+    ]) {
+      const contextUrl = new URL(`projects/${context.id}/results`, transferRoot);
+      contextUrl.searchParams.set("project", context.name);
+      contextUrl.searchParams.set("technology", context.technology);
+      contextUrl.searchParams.set("mode", "working-copy");
+      contextUrl.searchParams.set("scenario", context.scenario);
+      await page.goto(contextUrl.href);
+      await page.waitFor(`document.querySelector('[data-testid="finco-transfer-app"]')?.dataset.route === 'results'`);
+      const contextState = await page.evaluate(`(() => ({
+        text: document.body.innerText,
+        project: document.querySelector(".fm-title")?.parentElement?.innerText || ""
+      }))()`);
+      assert.ok(contextState.text.includes(context.name), `Selected project identity ${context.name} was lost`);
+      assert.ok(contextState.text.includes("7.82%") && contextState.text.includes("12.46%"), "Shared fixed output fixture changed with project/scenario selection");
+      assert.ok(contextState.text.includes("FIXED DEMO OUTPUT · NOT A LIVE RUN"), "Fixed demo results were misrepresented as a live Run");
+    }
     await page.goto(`${transferRoot}unknown-route`);
     await page.waitFor(`document.querySelector('[data-testid="finco-transfer-app"]')?.dataset.route === 'not-found'`);
     assert.match(await page.evaluate("document.body.innerText"), /FINCO demo route unavailable/i);
     await page.evaluate("sessionStorage.clear()");
     await page.goto("ProjectLibrary");
-    return `Standalone route proof: Library→Reference→Working Copy→Save→Results; provider-fed statement rendered; Back/Forward restored route; no document overflow at 1440/900/390 on each of Library, Workspace and Results.`;
+    return `Served transfer build ${transferRoot}: index/deep-link fallback and JS/CSS MIME verified; Reference→Working Copy→Save→Results and Back/Forward passed; explicit null statement prop rendered unavailable without fixture fallback; no document overflow at 1440/900/390/320 on Library, Workspace and Results.`;
   });
 
-  await check("three existing FINCO preview routes render", async () => {
+  await check("three existing FINCO preview routes render with named navigation landmarks", async () => {
     await page.viewport(1440);
     const pages = [
       ["ProjectLibrary", /Project library/i, ".fm-table"],
@@ -398,13 +558,15 @@ try {
       const title = await page.evaluate("document.querySelector('h1')?.innerText || ''");
       assert.match(title, expected);
       assert.ok(await page.evaluate(`Boolean(document.querySelector(${JSON.stringify(marker)}))`), `${route} content marker missing`);
+      const navigationNames = await page.evaluate(`([...document.querySelectorAll('nav[aria-label]')].map(nav => nav.getAttribute('aria-label')?.trim()).filter(Boolean))`);
+      assert.ok(navigationNames.length > 0, `${route} has no named navigation landmark`);
     }
-    return "Project Library, Model Workspace and Results & Analysis loaded in Chromium";
+    return "Project Library, Model Workspace and Results & Analysis rendered with at least one named navigation landmark each";
   });
 
   await check("all three preview layouts avoid document-level horizontal overflow", async () => {
     const routes = ["ProjectLibrary", "ModelWorkspace", "ResultsAnalysis"];
-    const widths = [1440, 900, 390];
+    const widths = [1440, 900, 390, 320];
     for (const route of routes) {
       await page.goto(route);
       for (const width of widths) {
@@ -414,9 +576,12 @@ try {
         if (route === "ProjectLibrary" && width === 1440) await page.screenshot("i16-library-1440.png");
         if (route === "ModelWorkspace" && width === 900) await page.screenshot("i16-workspace-900.png");
         if (route === "ResultsAnalysis" && width === 390) await page.screenshot("i16-results-390.png");
+        if (route === "ProjectLibrary" && width === 320) await page.screenshot("i18-library-320.png");
+        if (route === "ModelWorkspace" && width === 320) await page.screenshot("i18-workspace-320.png");
+        if (route === "ResultsAnalysis" && width === 320) await page.screenshot("i18-results-320.png");
       }
     }
-    return "9 route/width checks at 1440, 900 and 390px; saved 3 representative screenshots";
+    return "12 route/width checks at 1440, 900, 390 and 320px; saved representative I17 and I18 screenshots";
   });
 
   await check("I13-A reference inspection, isolated working-copy lifecycle and reset", async () => {
@@ -458,14 +623,17 @@ try {
     await page.waitFor("Boolean(document.querySelector('.fm-table'))");
     await page.clickAria("Open reference Adriatic Solar I");
     await page.waitFor("new URLSearchParams(location.search).get('mode') === 'reference'");
+    await page.waitFor("document.body.innerText.includes('REFERENCE · READ ONLY') && document.getElementById('wb-cell-0-0')?.innerText.trim() === '120'");
     assert.equal(await page.evaluate("document.getElementById('wb-cell-0-0')?.innerText.trim()"), "120", "Reference value changed after editing the copy");
     await page.goto("ProjectLibrary");
-    await page.clickAria("Create working copy from Adriatic Solar I");
+    await page.clickExpression(`(() => [...document.querySelectorAll("tr")].find(row => row.innerText.includes("Adriatic Solar I"))?.querySelector(".fm-library-copy-action"))()`);
     await page.waitFor("new URLSearchParams(location.search).get('mode') === 'working-copy' && new URLSearchParams(location.search).get('projectId').endsWith('-02')");
+    await page.waitFor(`document.querySelector('.fm-shell-header h1')?.innerText.includes('Working copy (2)')`);
     assert.match(await page.evaluate("document.querySelector('.fm-shell-header h1')?.innerText || ''"), /Working copy \(2\)/);
     await page.goto("ProjectLibrary");
     await page.clickAria("Open working copy Adriatic Solar I — Working copy (2)");
     await page.waitFor("new URLSearchParams(location.search).get('projectId').endsWith('-02')");
+    await page.waitFor("Boolean(document.querySelector('.fm-wb-layout')) && document.getElementById('wb-cell-0-0')?.innerText.trim() === '120'");
     assert.equal(await page.evaluate("document.getElementById('wb-cell-0-0')?.innerText.trim()"), "120", "New duplicate inherited another copy's draft instead of its Reference baseline");
     await page.clickId("wb-cell-0-0");
     await page.press("F2");
@@ -476,7 +644,7 @@ try {
     await page.goto("ProjectLibrary");
     const firstCopyButton = `Open working copy Adriatic Solar I — Working copy`;
     await page.clickAria(firstCopyButton);
-    await page.waitFor(`new URLSearchParams(location.search).get('projectId') === ${JSON.stringify(first.id)}`);
+    await page.waitFor(`new URLSearchParams(location.search).get('projectId') === ${JSON.stringify(first.id)} && document.getElementById('wb-cell-0-0')?.innerText.trim() === '121'`);
     assert.equal(await page.evaluate("document.getElementById('wb-cell-0-0')?.innerText.trim()"), "121", "Reopened copy did not restore its local Save");
 
     await page.evaluate("window.confirm = () => true");
@@ -487,9 +655,12 @@ try {
     return "Read-only Reference blocked edits/Save/Run; two uniquely named copies created; one copy's Save remained isolated, survived reload, reopened correctly, and reset removed the session registry.";
   });
 
-  await check("I15-W4 two-copy isolation across all PPA and facility drafts", async () => {
+  await check("I17-W3 two-copy isolation across PPA, facilities, scenarios and period drafts", async () => {
     await page.viewport(1440);
+    await page.goto("ProjectLibrary");
     await page.evaluate("sessionStorage.clear()");
+    await page.goto("ProjectLibrary?iteration=17-fixture-reset");
+    await page.waitFor("Boolean(document.querySelector('.fm-table')) && document.querySelectorAll('button[aria-label^=\"Open working copy\"]').length === 0");
     const referenceUrl = sheet => `ModelWorkspace?projectId=PRJ-0241&mode=reference&sheet=${sheet}`;
     const copyUrl = (projectId, sheet) => `ModelWorkspace?projectId=${projectId}&mode=working-copy&sheet=${sheet}`;
     const visitRecord = async (projectId, mode, sheet, id, marker) => {
@@ -553,6 +724,29 @@ try {
     const readPeriodCell = async () => (await periodCell())?.value || "";
     const ppaIds = ["PPA-A", "PPA-B", "PPA-C"];
     const facilityIds = ["Senior Debt A", "Senior Debt B", "Junior / Mezzanine", "Shareholder Loan (SHL)", "Sponsor Equity"];
+    const scenarios = [
+      { id: "base", name: "Base case" },
+      { id: "downside", name: "Downside" },
+      { id: "upside", name: "Upside" },
+    ];
+    const chooseScenario = async id => {
+      const scenario = scenarios.find(item => item.id === id);
+      assert.ok(scenario, `Unknown demo scenario ${id}`);
+      await page.clickText(scenario.name, "button.fm-wf-row-button", true);
+      await page.waitFor(`(() => [...document.querySelectorAll("button.fm-wf-row-button")].some(button => button.getAttribute("aria-pressed") === "true" && button.innerText.trim() === ${JSON.stringify(scenario.name)}))()`);
+    };
+    const scenarioValue = async id => {
+      await chooseScenario(id);
+      return await page.evaluate(`document.querySelector('[aria-label="Scenario power price delta"]')?.value || ""`);
+    };
+    const saveScenarioValue = async (id, value) => {
+      const scenario = scenarios.find(item => item.id === id);
+      await chooseScenario(id);
+      await page.typeIntoAria("Scenario power price delta", value);
+      await page.clickText(`Save ${scenario.name} demo`, ".fm-wf-actions button", true);
+      await page.waitFor("document.body.innerText.includes('Fixed results were not recalculated')");
+      return await page.evaluate(`document.querySelector('[aria-label="Scenario power price delta"]')?.value || ""`);
+    };
     const saveRecord = async (label, value) => {
       await replaceFirstField(value);
       await page.clickText(`Save ${label} demo`, ".fm-wf-actions button");
@@ -571,17 +765,64 @@ try {
       referenceFacilityValues[id] = await firstFieldValue();
     }
     await visitReferenceSheet("scenarios", "scenario-drafts", '[aria-label="Synthetic scenario editor"]');
-    const referenceScenario = await page.evaluate('document.querySelector("[aria-label=\\"Scenario power price delta\\"]")?.value || ""');
+    const referenceScenarios = {};
+    for (const { id } of scenarios) {
+      const scenarioQuery = id === "base" ? "" : `&scenario=${id}`;
+      await page.goto(`${referenceUrl("scenarios")}${scenarioQuery}`);
+      await page.waitFor(`Boolean(document.querySelector('[aria-label="Synthetic scenario editor"]'))`);
+      await page.waitFor(`new URLSearchParams(location.search).get('scenario') === ${JSON.stringify(id)} || (${JSON.stringify(id)} === "base" && !new URLSearchParams(location.search).has('scenario'))`);
+      referenceScenarios[id] = await page.evaluate(`document.querySelector('[aria-label="Scenario power price delta"]')?.value || ""`);
+    }
     await visitReferenceSheet("capex", "cost-line-draft", ".fm-period-scroll");
     const referenceCapex = await firstReferencePeriodValue();
     await visitReferenceSheet("opex", "cost-line-draft", ".fm-period-scroll");
     const referenceOpex = await firstReferencePeriodValue();
-    assert.ok(Object.values(referencePpaValues).every(Boolean) && Object.values(referenceFacilityValues).every(Boolean) && referenceScenario !== "" && referenceCapex && referenceOpex);
+    assert.ok(Object.values(referencePpaValues).every(Boolean) && Object.values(referenceFacilityValues).every(Boolean) && Object.values(referenceScenarios).every(value => value !== "") && referenceCapex && referenceOpex);
 
-    await page.goto(referenceUrl("input-grid"));
+    await page.goto("ProjectLibrary");
+    await page.clickAria("Open reference Adriatic Solar I");
+    await page.waitFor("new URLSearchParams(location.search).get('mode') === 'reference'");
+    await page.waitFor("Boolean(document.querySelector('.fm-wb-layout')) && document.body.innerText.includes('REFERENCE · READ ONLY')");
     await page.clickText("Create working copy", "button");
-    await page.waitFor("new URLSearchParams(location.search).get('mode') === 'working-copy' && new URLSearchParams(location.search).get('projectId').startsWith('DEMO-WC-')");
-    await page.waitFor("Boolean(document.getElementById('wb-cell-0-0'))");
+    try {
+      await page.waitFor("new URLSearchParams(location.search).get('mode') === 'working-copy' && new URLSearchParams(location.search).get('projectId')?.startsWith('DEMO-WC-')");
+    } catch (error) {
+      const state = await page.evaluate(`(() => ({
+        href:location.href,
+        heading:document.querySelector("h1")?.innerText || "",
+        notice:document.querySelector('[role="alert"]')?.innerText || "",
+        actions:[...document.querySelectorAll("button")].filter(button => /working copy/i.test(button.innerText)).map(button => ({text:button.innerText, disabled:button.disabled, visible:Boolean(button.getClientRects().length)})),
+        copyIds:Array.from({length:sessionStorage.length},(_,index)=>sessionStorage.key(index)).filter(key=>key?.includes("working-copy"))
+      }))()`);
+      throw new Error(`${error.message}; post-create browser state=${JSON.stringify(state)}`);
+    }
+    await page.waitFor("Boolean(document.querySelector('.fm-wb-layout')) && /Working copy/i.test(document.querySelector('.fm-shell-header h1')?.innerText || '')");
+    try {
+      await page.waitFor("Boolean(document.getElementById('wb-cell-0-0')) && !document.getElementById('wb-cell-0-0').disabled");
+    } catch (error) {
+      const state = await page.evaluate(`(() => ({
+        href:location.href,
+        heading:document.querySelector("h1")?.innerText || "",
+        activeSheet:document.querySelector(".fm-wb-tree [aria-current='page']")?.innerText || "",
+        workbookText:document.querySelector(".fm-wb-layout")?.innerText.slice(0,240) || "",
+        cell:document.getElementById("wb-cell-0-0") ? {
+          disabled:document.getElementById("wb-cell-0-0").disabled,
+          text:document.getElementById("wb-cell-0-0").innerText
+        } : null,
+        alert:document.querySelector('[role="alert"]')?.innerText || "",
+        sessionKeys:Array.from({length:sessionStorage.length},(_,index)=>sessionStorage.key(index))
+      }))()`);
+      throw new Error(`${error.message}; working-copy route state=${JSON.stringify(state)}`);
+    }
+    const copyCellState = await page.evaluate(`(() => {
+      const cell = document.getElementById("wb-cell-0-0");
+      const context = new URLSearchParams(location.search);
+      return { url:location.href, mode:context.get("mode"), projectId:context.get("projectId"),
+        sheet:context.get("sheet"), readOnly:document.querySelector(".fm-reference-fieldset")?.disabled,
+        cell:cell ? {disabled:cell.disabled,ariaDisabled:cell.getAttribute("aria-disabled"),rects:cell.getClientRects().length,text:cell.innerText} : null,
+        registryKeys:Array.from({length:sessionStorage.length},(_,index)=>sessionStorage.key(index)).filter(key => key?.includes("working-copy") || key?.includes("working-copies")) };
+    })()`);
+    assert.ok(copyCellState.cell && !copyCellState.cell.disabled, `New working copy did not expose an editable first cell: ${JSON.stringify(copyCellState)}`);
     const copyA = await page.evaluate("new URLSearchParams(location.search).get('projectId')");
     await page.clickId("wb-cell-0-0");
     await page.press("F2");
@@ -609,23 +850,28 @@ try {
       copyAFacilityValues[id] = await saveRecord(id, `Copy A ${id}`);
     }
     await visitCopySheet(copyA, "scenarios", '[aria-label="Synthetic scenario editor"]');
-    await page.typeIntoAria("Scenario power price delta", "-7");
-    await page.clickText("Save Base case demo", ".fm-wf-actions button");
-    await page.waitFor("document.body.innerText.includes('Fixed results were not recalculated')");
-    const copyAScenario = await page.evaluate(`document.querySelector('[aria-label="Scenario power price delta"]')?.value || ""`);
+    const copyAScenarios = {
+      base: await saveScenarioValue("base", "-7"),
+      downside: await saveScenarioValue("downside", "-17"),
+      upside: await saveScenarioValue("upside", "3"),
+    };
     await visitCopySheet(copyA, "capex", ".fm-period-scroll");
     const copyACapex = await editAndSavePeriod(String(Number(referenceCapex.value) + 0.1));
     await visitCopySheet(copyA, "opex", ".fm-period-scroll");
     const copyAOpex = await editAndSavePeriod(String(Number(referenceOpex.value) + 0.1));
 
     await page.goto("ProjectLibrary");
-    await page.clickAria("Create working copy from Adriatic Solar I");
+    await page.clickExpression(`(() => [...document.querySelectorAll("tr")].find(row => row.innerText.includes("Adriatic Solar I"))?.querySelector(".fm-library-copy-action"))()`);
     await page.waitFor("new URLSearchParams(location.search).get('mode') === 'working-copy' && new URLSearchParams(location.search).get('projectId').endsWith('-02')");
+    await page.waitFor("Boolean(document.getElementById('wb-cell-0-0')) && !document.getElementById('wb-cell-0-0').disabled");
     const copyB = await page.evaluate("new URLSearchParams(location.search).get('projectId')");
     assert.notEqual(copyA, copyB);
+    await page.waitFor("document.getElementById('wb-cell-0-0')?.innerText.trim() === '120'");
     await page.clickId("wb-cell-0-0");
     await page.press("F2");
+    await page.waitFor("Boolean(document.querySelector('.fm-wb-grid-scroll input'))");
     await page.replaceFocusedText("124");
+    await page.waitFor("document.querySelector('.fm-wb-grid-scroll input')?.value === '124'");
     await page.press("Enter");
     await page.waitFor("document.getElementById('wb-cell-0-0')?.innerText.trim() === '124'");
     await page.waitFor("document.body.innerText.includes('UNSAVED')");
@@ -651,9 +897,15 @@ try {
       await saveRecord(id, `Copy B ${id}`);
     }
     await visitCopySheet(copyB, "scenarios", '[aria-label="Synthetic scenario editor"]');
-    assert.equal(await page.evaluate(`document.querySelector('[aria-label="Scenario power price delta"]')?.value || ""`), referenceScenario, "Copy B inherited Copy A's scenario draft");
-    await page.typeIntoAria("Scenario power price delta", "12");
-    await page.clickText("Save Base case demo", ".fm-wf-actions button");
+    for (const { id } of scenarios) {
+      assert.equal(await scenarioValue(id), referenceScenarios[id], `Copy B inherited Copy A's ${id} scenario instead of the reference fixture`);
+    }
+    const copyBScenarios = {
+      base: await saveScenarioValue("base", "12"),
+      downside: await saveScenarioValue("downside", "-24"),
+      upside: await saveScenarioValue("upside", "16"),
+    };
+    for (const { id } of scenarios) assert.notEqual(copyBScenarios[id], copyAScenarios[id], `Copies share the ${id} scenario value`);
     await visitCopySheet(copyB, "capex", ".fm-period-scroll");
     assert.equal(await readPeriodCell(), referenceCapex.value, "Copy B inherited Copy A's CAPEX period draft");
     const copyBCapex = await editAndSavePeriod(String(Number(referenceCapex.value) + 0.2));
@@ -666,6 +918,7 @@ try {
     await page.waitFor("Boolean(document.querySelector('.fm-table'))");
     await page.clickAria("Open working copy Adriatic Solar I — Working copy");
     await page.waitFor(`new URLSearchParams(location.search).get('projectId') === ${JSON.stringify(copyA)}`);
+    await page.waitFor(`Boolean(document.querySelector('.fm-wb-tree a[href*="sheet=input-grid"]'))`);
     await page.clickNavHref("sheet=input-grid");
     await page.waitFor("Boolean(document.getElementById('wb-cell-0-0'))");
     assert.equal(await page.evaluate("document.getElementById('wb-cell-0-0')?.innerText.trim()"), "121");
@@ -680,7 +933,7 @@ try {
       assert.equal(await firstFieldValue(), copyAFacilityValues[id], `Copy B changed Copy A's ${id} record`);
     }
     await visitCopySheet(copyA, "scenarios", '[aria-label="Synthetic scenario editor"]');
-    assert.equal(await page.evaluate(`document.querySelector('[aria-label="Scenario power price delta"]')?.value || ""`), copyAScenario);
+    for (const { id } of scenarios) assert.equal(await scenarioValue(id), copyAScenarios[id], `Copy B or same-tab reload changed Copy A's ${id} scenario`);
     await visitCopySheet(copyA, "capex", ".fm-period-scroll");
     assert.ok(Math.abs(Number(await readPeriodCell()) - Number(copyACapex.nextValue)) < 1e-8);
     await visitCopySheet(copyA, "opex", ".fm-period-scroll");
@@ -688,7 +941,7 @@ try {
 
     await page.evaluate("sessionStorage.clear()");
     await page.goto("ProjectLibrary");
-    return `Two independent session-only copies (A=${copyA}, B=${copyB}); Reference stayed the baseline. Browser checked separate scalar, PPA-A/B/C, Senior A/B, Junior, SHL, Equity, Base scenario, CAPEX and OPEX drafts across copy switching; Copy A values survived same-tab reload. Fixed financial outputs remained shared synthetic references.`;
+    return `Two independent session-only copies (A=${copyA}, B=${copyB}); Reference stayed the baseline. Browser checked scalar, PPA-A/B/C, Senior A/B, Junior, SHL, Equity, Base/Downside/Upside scenario, CAPEX and OPEX drafts across copy switching; Copy A values survived same-tab reload. Fixed financial outputs remained shared synthetic references.`;
   });
 
   await check("I15-W5 390px Reference → Working Copy → mobile workbook → statement trace", async () => {
@@ -831,6 +1084,611 @@ try {
     assert.equal(focusRestored, true, "Esc did not return focus to the edited grid cell");
     accessibilityEvidence.push({ method: "DOM accessible-name/landmark scan plus real keyboard edit/cancel focus test; not a WCAG or screen-reader audit", routes: routeChecks, focusRestored });
     return `Accessible-name and landmark scan on three live routes (${routeChecks.map(item => `${item.route}:${item.controls}`).join(", ")} visible controls); real F2→Esc returned focus to the grid cell. Full screen-reader/WCAG audit remains untested.`;
+  });
+
+  await check("I18-W2 keyboard-only skip, Reference, Working Copy, workbook and trace return", async () => {
+    await page.viewport(1440);
+    await page.goto("ProjectLibrary");
+    await page.press("Tab");
+    const firstTab = await page.evaluate(`({
+      text:document.activeElement?.innerText?.trim() || "",
+      href:document.activeElement?.getAttribute("href") || ""
+    })`);
+    assert.match(firstTab.text, /Skip to main content/i, "Skip link is not first in the keyboard order");
+    await page.press("Enter");
+    await page.waitFor("document.activeElement?.id === 'fm-main-content'");
+
+    await page.goto("ProjectLibrary");
+    const referenceAction = await tabUntil(page, item => item.aria === "Open reference North Ridge Wind");
+    assert.equal(referenceAction.tag, "BUTTON", `Expected the reference action to be a keyboard button, got ${JSON.stringify(referenceAction)}`);
+    assert.equal(referenceAction.disabled, false, `Reference action is disabled: ${JSON.stringify(referenceAction)}`);
+    assert.equal(referenceAction.visible, true, `Reference action is not visible: ${JSON.stringify(referenceAction)}`);
+    await page.evaluate(`(() => {
+      window.__fincoKeyboardProbe = [];
+      for (const type of ["keydown", "keyup", "click"]) {
+        document.activeElement?.addEventListener(type, event => window.__fincoKeyboardProbe.push({
+          type, key:event.key || "", trusted:event.isTrusted, detail:event.detail
+        }), { once:type === "click" });
+      }
+    })()`);
+    await page.press("Enter");
+    await sleep(500);
+    const referenceUrl = await page.evaluate("location.href");
+    const keyboardProbe = await page.evaluate("window.__fincoKeyboardProbe || []");
+    assert.match(referenceUrl, /ModelWorkspace/, `Keyboard Enter on the focused Reference action did not navigate; focus was ${JSON.stringify(referenceAction)}; events=${JSON.stringify(keyboardProbe)}; URL=${referenceUrl}`);
+    assert.equal(new URL(referenceUrl).searchParams.get("mode"), "reference", `Reference button did not preserve read-only mode: ${referenceUrl}`);
+    await page.waitFor("document.activeElement?.id === 'reference-mode-help'");
+    await tabUntil(page, item => item.tag === "BUTTON" && item.text === "Create working copy");
+    await page.press("Enter");
+    await page.waitFor("new URLSearchParams(location.search).get('mode') === 'working-copy' && new URLSearchParams(location.search).get('projectId').startsWith('DEMO-WC-')");
+    await page.waitFor("document.activeElement?.id === 'wb-cell-0-0'");
+
+    await tabUntil(page, item => item.id === "wb-cell-0-0");
+    await page.press("F2");
+    assert.equal(await page.evaluate("Boolean(document.querySelector('.fm-wb-grid-scroll input'))"), true, "Keyboard F2 did not open the selected working-copy cell");
+    await page.press("Escape");
+    await page.waitFor("document.activeElement?.id === 'wb-cell-0-0'");
+    await tabUntil(page, item => item.href.includes("sheet=revenue"), { reverse: true, limit: 140 });
+    await page.press("Enter");
+    await page.waitFor("new URLSearchParams(location.search).get('sheet') === 'revenue' && Boolean(document.querySelector('.fm-wb-module'))");
+    assert.match(await page.evaluate("document.querySelector('.fm-wb-module')?.innerText || ''"), /PPA-A/i);
+
+    await tabUntil(page, item => item.href.includes("sheet=senior-debt"), { limit: 140 });
+    await page.press("Enter");
+    await page.waitFor("new URLSearchParams(location.search).get('sheet') === 'senior-debt' && Boolean(document.querySelector('.fm-wb-module'))");
+    const runGate = await page.evaluate(`(() => ({
+      route: location.href,
+      controls: [...document.querySelectorAll("button")].filter(button => /Run demo|View demo results/.test(button.innerText || ""))
+        .map(button => ({ text: button.innerText.trim(), disabled: button.disabled, ariaDisabled: button.getAttribute("aria-disabled") })),
+      validation: document.querySelector("#validation-summary")?.innerText || "",
+      draft: [...document.querySelectorAll(".fm-wb-status, .fm-context-strip, .fm-info-note")].map(node => node.innerText.trim()).filter(Boolean).slice(0, 6),
+      errors: [...document.querySelectorAll("[aria-invalid=true]")].map(node => node.getAttribute("aria-label") || node.id)
+    }))()`);
+    assert.ok(runGate.controls.some(control => control.ariaDisabled !== "true"), `No unblocked demo Run control is available: ${JSON.stringify(runGate)}`);
+    await tabUntil(page, item => item.tag === "BUTTON" && !item.disabled && item.ariaDisabled !== "true" && /Run demo|View demo results/.test(item.text), { limit: 160 });
+    await page.press("Enter");
+    try {
+      await page.waitFor("location.pathname.includes('ResultsAnalysis') && Boolean(document.querySelector('.fm-sw-region'))");
+    } catch (error) {
+      const afterRun = await page.evaluate(`(() => ({
+        route: location.href,
+        active: { tag: document.activeElement?.tagName, text: document.activeElement?.innerText?.trim() || "", id: document.activeElement?.id || "" },
+        controls: [...document.querySelectorAll("button")].filter(button => /Run demo|View demo results/.test(button.innerText || ""))
+          .map(button => ({ text: button.innerText.trim(), disabled: button.disabled, ariaDisabled: button.getAttribute("aria-disabled") })),
+        validation: document.querySelector("#validation-summary")?.innerText || "",
+        statuses: [...document.querySelectorAll(".fm-wb-status, .fm-context-strip, .fm-info-note, [role=alert]")].map(node => node.innerText.trim()).filter(Boolean).slice(0, 8)
+      }))()`);
+      throw new Error(`${error.message}; after Run=${JSON.stringify(afterRun)}`);
+    }
+    await page.waitFor("document.activeElement?.id === 'results'");
+    const traceTargetInfo = await page.evaluate(`(() => {
+      const target = document.querySelector('[aria-label="Trace source for Project IRR"]');
+      const focusable = [...document.querySelectorAll("a[href],button,input,select,textarea,[tabindex]")]
+        .filter(element => element.tabIndex >= 0 && element.getClientRects().length);
+      return {
+        route: location.href,
+        targetExists: Boolean(target),
+        targetTabIndex: target?.tabIndex ?? null,
+        targetDisabled: target?.disabled ?? null,
+        targetIndex: target ? focusable.indexOf(target) : -1,
+        focusableCount: focusable.length,
+        active: document.activeElement?.id || document.activeElement?.tagName || ""
+      };
+    })()`);
+    assert.equal(traceTargetInfo.targetExists, true, `Project IRR trace control is missing after keyboard Run: ${JSON.stringify(traceTargetInfo)}`);
+    try {
+      await tabUntil(page, item => item.aria === "Trace source for Project IRR");
+    } catch (error) {
+      throw new Error(`${error.message}; trace target detail=${JSON.stringify(traceTargetInfo)}`);
+    }
+    await page.press("Enter");
+    await page.waitFor("Boolean(document.querySelector('a.fm-sw-trace-open'))");
+    await tabUntil(page, item => item.className.includes("fm-sw-trace-open"));
+    await page.press("Enter");
+    await page.waitFor("location.pathname.includes('ModelWorkspace') && new URLSearchParams(location.search).has('returnStatement')");
+    await page.waitFor("Boolean(document.querySelector('.fm-trace-return a'))");
+    await page.waitFor("document.activeElement === document.querySelector('.fm-trace-return a')");
+    const traceReturnFocus = await page.evaluate(`(() => {
+      const link = document.querySelector(".fm-trace-return a");
+      return {
+        focused:document.activeElement === link,
+        href:link?.href || "",
+        text:link?.innerText.trim() || "",
+        tabIndex:link?.tabIndex ?? -1,
+        visible:Boolean(link?.getClientRects().length)
+      };
+    })()`);
+    assert.equal(traceReturnFocus.focused, true, `Trace navigation did not move keyboard focus to its return action: ${JSON.stringify(traceReturnFocus)}`);
+    assert.equal(traceReturnFocus.tabIndex, 0, `Trace return action is not in the normal keyboard order: ${JSON.stringify(traceReturnFocus)}`);
+    await page.press("Enter");
+    try {
+      await page.waitFor("location.pathname.includes('ResultsAnalysis') && new URLSearchParams(location.search).get('returnTrace') === '1'");
+    } catch (error) {
+      const returnAttempt = await page.evaluate(`(() => ({
+        route: location.href,
+        active: { tag: document.activeElement?.tagName, id: document.activeElement?.id || "", text: document.activeElement?.innerText?.trim() || "" },
+        returnLink: document.querySelector(".fm-trace-return a")?.href || "",
+        hasReturnStatement: new URLSearchParams(location.search).has("returnStatement"),
+        errors: [...document.querySelectorAll("[role=alert]")].map(node => node.innerText.trim())
+      }))()`);
+      throw new Error(`${error.message}; after keyboard trace return=${JSON.stringify(returnAttempt)}`);
+    }
+    await page.waitFor("document.activeElement?.dataset.statementRow === 'sponsor-irr' && document.activeElement?.dataset.statementCol === '0'");
+
+    await page.viewport(390, 844, true);
+    await page.goto("ResultsAnalysis");
+    await tabUntil(page, item => item.aria === "Trace source for Project IRR", { limit: 160 });
+    await page.press("Enter");
+    await page.waitFor("Boolean(document.querySelector('a.fm-sw-trace-open'))");
+    await tabUntil(page, item => item.className.includes("fm-sw-trace-open"), { limit: 160 });
+    await page.press("Enter");
+    await page.waitFor("location.pathname.includes('ModelWorkspace') && new URLSearchParams(location.search).has('returnStatement')");
+    await page.waitFor("document.activeElement === document.querySelector('.fm-trace-return a')");
+    await page.press("Enter");
+    try {
+      await page.waitFor("location.pathname.includes('ResultsAnalysis') && new URLSearchParams(location.search).get('returnTrace') === '1'");
+    } catch (error) {
+      const mobileReturnAttempt = await page.evaluate(`(() => ({
+        route: location.href,
+        active: { tag: document.activeElement?.tagName, id: document.activeElement?.id || "", text: document.activeElement?.innerText?.trim() || "" },
+        returnLink: document.querySelector(".fm-trace-return a")?.href || "",
+        hasReturnStatement: new URLSearchParams(location.search).has("returnStatement"),
+        errors: [...document.querySelectorAll("[role=alert]")].map(node => node.innerText.trim())
+      }))()`);
+      throw new Error(`${error.message}; mobile after keyboard trace return=${JSON.stringify(mobileReturnAttempt)}`);
+    }
+    await page.waitFor("document.activeElement?.dataset.statementRow === 'sponsor-irr' && document.activeElement?.dataset.statementCol === '0'");
+    const mobileDimensions = await page.dimensions();
+    assert.ok(mobileDimensions.document <= mobileDimensions.viewport, `Mobile trace-return caused document overflow: ${JSON.stringify(mobileDimensions)}`);
+    return "Keyboard-only desktop and 390px routes used Tab/Enter from Library through Reference, local copy, F2/Esc cell, PPA, Senior debt, P&L and trace return; the statement grid exposes one roving Tab stop and focus returns to its selected cell; skip-link focus reached main.";
+  });
+
+  await check("I21 axe-core scan of the three existing FINCO frames", async () => {
+    const axeSource = await readFile(new URL("../node_modules/axe-core/axe.min.js", import.meta.url), "utf8");
+    const encodedAxe = Buffer.from(axeSource).toString("base64");
+    const routeStates = [
+      ["Project Library", "ProjectLibrary", 1440],
+      ["Model Workspace · protected Reference", "ModelWorkspace?projectId=PRJ-0241&mode=reference", 1440],
+      ["Results & Analysis", "ResultsAnalysis", 1440],
+    ];
+    const reports = [];
+    for (const [label, route, width] of routeStates) {
+      await page.viewport(width);
+      await page.goto(route);
+      const injected = await page.evaluate(`(() => {
+        if (!window.axe) {
+          const script = document.createElement("script");
+          script.textContent = atob(${JSON.stringify(encodedAxe)});
+          document.head.appendChild(script);
+        }
+        return Boolean(window.axe);
+      })()`);
+      assert.equal(injected, true, `Could not inject axe-core on ${label}`);
+      const report = await page.evaluate(`window.axe.run(document, {
+        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] }
+      }).then(result => ({
+        engine: result.testEngine.version,
+        passes: result.passes.length,
+        incomplete: result.incomplete.length,
+        violations: result.violations.map(item => ({
+          id: item.id,
+          impact: item.impact,
+          help: item.help,
+          targets: item.nodes.map(node => ({ target: node.target, summary: node.failureSummary }))
+        }))
+      }))`);
+      const scrollRegion = label.startsWith("Model Workspace")
+        ? await page.evaluate(`(() => {
+            const element = document.querySelector(".fm-wb-grid-scroll");
+            element?.focus();
+            return {
+              tabIndex: element?.tabIndex ?? null,
+              attribute: element?.getAttribute("tabindex"),
+              focused: document.activeElement === element,
+              clientHeight: element?.clientHeight ?? null,
+              scrollHeight: element?.scrollHeight ?? null,
+              parentFieldsetDisabled: element?.closest("fieldset")?.disabled ?? null,
+              keyboardTargets: [...(element?.querySelectorAll("button,input,a,[tabindex]") || [])]
+                .filter(target => target.tabIndex >= 0)
+                .slice(0, 5)
+                .map(target => ({ tag: target.tagName, tabIndex: target.tabIndex, disabled: target.disabled, id: target.id, text: target.innerText?.trim() || "" }))
+            };
+          })()`)
+        : undefined;
+      const keyboardAccess = scrollRegion ? await (async () => {
+        const before = await page.evaluate("document.querySelector('.fm-wb-grid-scroll')?.scrollTop ?? -1");
+        await page.press("ArrowDown");
+        const after = await page.evaluate("document.querySelector('.fm-wb-grid-scroll')?.scrollTop ?? -1");
+        await page.press("Tab");
+        const nextFocus = await page.evaluate(`(() => {
+          const region = document.querySelector(".fm-wb-grid-scroll");
+          const active = document.activeElement;
+          return { insideGrid: Boolean(region?.contains(active)), tag: active?.tagName || "", id: active?.id || "" };
+        })()`);
+        return { arrowScrolled: after > before, before, after, nextFocus };
+      })() : undefined;
+      reports.push({ state: label, ...report, ...(scrollRegion ? { scrollRegion, keyboardAccess } : {}) });
+      accessibilityEvidence.push({ suite: "axe-core", state: label, ...report, ...(scrollRegion ? { scrollRegion, keyboardAccess } : {}) });
+    }
+    const severe = reports.flatMap((report) => report.violations
+      .filter((violation) => violation.impact === "critical" || violation.impact === "serious")
+      .map((violation) => ({ state: report.state, ...violation })));
+    const knownScrollableFinding = severe.filter((finding) => finding.id === "scrollable-region-focusable");
+    const otherSevere = severe.filter((finding) => finding.id !== "scrollable-region-focusable");
+    assert.equal(otherSevere.length, 0, `Serious/critical axe findings: ${JSON.stringify(otherSevere)}`);
+    const gridProof = reports.find((report) => report.state.startsWith("Model Workspace"))?.scrollRegion;
+      const keyboardProof = Boolean(gridProof?.tabIndex === 0 && gridProof.focused &&
+        gridProof.parentFieldsetDisabled === false &&
+        gridProof.keyboardTargets.some(target => target.tag === "TABLE" && target.tabIndex === 0) &&
+        gridProof.keyboardTargets.some(target => target.tag === "BUTTON" && target.id === "wb-cell-0-0" && !target.disabled) &&
+        reports.find(report => report.state.startsWith("Model Workspace"))?.keyboardAccess?.arrowScrolled &&
+        reports.find(report => report.state.startsWith("Model Workspace"))?.keyboardAccess?.nextFocus?.insideGrid);
+      assert.equal(knownScrollableFinding.length, 0, `Scrollable grid axe finding remains: ${JSON.stringify(knownScrollableFinding)}`);
+      assert.equal(severe.length, 0, `Serious/critical axe findings: ${JSON.stringify(severe)}`);
+      assert.equal(keyboardProof, true, `Scrollable Input Grid keyboard access not verified: ${JSON.stringify(gridProof)}`);
+      return `axe-core ${reports[0]?.engine}; 3 existing frames scanned (wcag2a/aa + wcag21a/aa). Serious/critical=${severe.length}; Input Grid ArrowDown scroll and Tab focus stayed in the grid. Reports=${JSON.stringify(reports.map(({ state, passes, incomplete, violations, keyboardAccess }) => ({ state, passes, incomplete, violations, ...(keyboardAccess ? { keyboardAccess } : {}) })))}`;
+  });
+
+  await check("I22 credit observation selection, debt statement navigation and context return", async () => {
+    await page.viewport(1440);
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy&sheet=credit-decision&facility=Senior%20Debt%20A&scenario=downside");
+    await page.chooseSelect("Credit facility", "Senior Debt B");
+    await page.chooseSelect("Credit period basis", "Model-period snapshots");
+    await page.chooseSelect("Credit reporting period", "2027 Q4");
+    await page.clickId("credit-metric-service");
+    const selected = await page.evaluate(`(() => ({
+      facility: document.querySelector('[aria-label="Credit facility"]')?.value,
+      basis: document.querySelector('[aria-label="Credit period basis"]')?.value,
+      period: document.querySelector('[aria-label="Credit reporting period"]')?.value,
+      metric: document.querySelector('[data-testid="credit-evidence-panel"] h3')?.innerText || "",
+      value: document.querySelector('.fm-credit-evidence-value strong')?.innerText || "",
+      run: document.querySelector('.fm-credit-evidence-meta')?.innerText || "",
+      href: document.querySelector('.fm-credit-evidence-links a:last-child')?.getAttribute('href') || ""
+    }))()`);
+    assert.equal(selected.facility, "Senior Debt B");
+    assert.equal(selected.basis, "model");
+    assert.equal(selected.period, "2027 Q4");
+    assert.match(selected.metric, /debt service/i);
+    assert.equal(selected.value, "(2.3)");
+    assert.match(selected.run, /DEMO-FIXED-018/);
+    assert.match(selected.run, /NOT EVALUATED/);
+    assert.match(selected.href, /statement=debt/);
+    await page.clickText("Open fixed Statements & Debt example");
+    await page.waitFor("location.pathname.includes('ResultsAnalysis') && new URLSearchParams(location.search).get('statement') === 'debt'");
+    await page.evaluate("history.back()");
+    await page.waitFor("location.pathname.includes('ModelWorkspace') && new URLSearchParams(location.search).get('sheet') === 'credit-decision'");
+    const restored = await page.evaluate(`(() => ({
+      facility: document.querySelector('[aria-label="Credit facility"]')?.value,
+      basis: document.querySelector('[aria-label="Credit period basis"]')?.value,
+      period: document.querySelector('[aria-label="Credit reporting period"]')?.value,
+      metric: document.querySelector('[data-testid="credit-evidence-panel"] h3')?.innerText || "",
+      value: document.querySelector('.fm-credit-evidence-value strong')?.innerText || "",
+      scenario: new URLSearchParams(location.search).get('scenario')
+    }))()`);
+    assert.deepEqual(restored, {
+      facility: selected.facility,
+      basis: selected.basis,
+      period: selected.period,
+      metric: selected.metric,
+      value: selected.value,
+      scenario: "downside"
+    });
+    return `Senior Debt B · 2027 Q4 · fixed debt-service sample ${selected.value} opened the debt statement; Back restored facility, period basis, period, selected metric and downside scenario. Snapshot stays DEMO-FIXED-018; integrity NOT EVALUATED.`;
+  });
+
+  await check("I22 scenario identity, fixed Run selection and Back/Forward restoration", async () => {
+    await page.viewport(1440);
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy&sheet=compare&scenario=base");
+    await page.chooseSelect("Scenario comparison context", "downside · Downside");
+    let state = await page.evaluate(`(() => ({
+      scenario: new URLSearchParams(location.search).get("scenario"),
+      context: document.querySelector('[data-testid="scenario-run-context"]')?.innerText || "",
+      outputs: [...document.querySelectorAll(".fm-wf-section .fm-table tbody tr")].map(row => row.innerText).filter(Boolean).slice(0,3)
+    }))()`);
+    assert.equal(state.scenario, "downside");
+    assert.match(state.context, /Last Run.*DEMO-FIXED-018/s);
+    assert.match(state.context, /Freshness not verified.*integrity NOT EVALUATED/s);
+    await page.evaluate("history.back()");
+    await page.waitFor("new URLSearchParams(location.search).get('scenario') === 'base'");
+    await page.waitFor("document.querySelector('[data-testid=\"scenario-run-context\"]')?.innerText.includes('Scenario ID · base')");
+
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy&sheet=run-compare&scenario=upside");
+    const beforeIds = await page.evaluate(`[...document.querySelectorAll('.fm-wf-run-picker input[type="checkbox"]:checked')].length`);
+    await page.clickText("DEMO-FIXED-014", ".fm-wf-run-picker label");
+    await page.chooseSelect("Selected historical Run reference", "DEMO-FIXED-014");
+    state = await page.evaluate(`(() => ({
+      selectedCount: [...document.querySelectorAll('.fm-wf-run-picker input[type="checkbox"]:checked')].length,
+      run: document.querySelector('#selected-run-context')?.value || "",
+      context: document.querySelector('[data-testid="scenario-run-context"]')?.innerText || "",
+      scenario: new URLSearchParams(location.search).get('scenario')
+    }))()`);
+    assert.equal(beforeIds, 2);
+    assert.equal(state.selectedCount, 3);
+    assert.equal(state.run, "DEMO-FIXED-014");
+    assert.match(state.context, /Scenario ID · downside/);
+    assert.match(state.context, /freshness: unverified.*integrity: NOT EVALUATED/s);
+    await page.evaluate("history.back()");
+    await page.waitFor("document.querySelector('#selected-run-context')?.value !== 'DEMO-FIXED-014'");
+    return `Scenario context Back restored base; Run Compare allowed three fixed references, selected DEMO-FIXED-014, showed synthetic timestamp and independent status dimensions; browser Back restored prior selected Run. No Run was executed.`;
+  });
+
+  await check("I22 Results scenario context and fixed Last Run remain separate", async () => {
+    await page.viewport(1440);
+    await page.goto("ResultsAnalysis?projectId=PRJ-0241&scenario=base");
+    await page.waitFor("Boolean(document.querySelector('[data-testid=\"results-working-copy-run-context\"]'))");
+    await page.clickText("Scenario comparison");
+    await page.waitFor("Boolean(document.querySelector('[data-testid=\"results-scenario-downside\"]'))");
+    const before = await page.evaluate(`({
+      kpis: [...document.querySelectorAll('.fm-kpi-value')].map(node => node.innerText.trim()),
+      run: document.querySelector('.fm-result-lineage > div:nth-child(2)')?.innerText || ""
+    })`);
+    assert.match(before.run, /LAST RUN · FIXED SYNTHETIC REFERENCE.*NOT A LIVE RUN/s);
+    await page.clickText("Downside", ".fm-scenario-select");
+    const selected = await page.evaluate(`({
+      scenario: document.querySelector('[data-testid="results-scenario-context"]')?.innerText || "",
+      kpis: [...document.querySelectorAll('.fm-kpi-value')].map(node => node.innerText.trim()),
+      run: document.querySelector('.fm-result-lineage > div:nth-child(2)')?.innerText || ""
+    })`);
+    assert.match(selected.scenario, /Scenario ID · downside/);
+    assert.deepEqual(selected.kpis, before.kpis, "Scenario selection must not mutate fixed KPI values");
+    assert.equal(selected.run, before.run, "Scenario selection must not mutate the Last Run reference");
+    await page.evaluate("history.back()");
+    await page.waitFor("new URLSearchParams(location.search).get('scenario') === 'base'");
+    await page.waitFor("document.querySelector('[data-testid=\"results-scenario-context\"]')?.innerText.includes('Scenario ID · base')");
+    return "Results scenario selection updated the visible context, left all fixed KPIs and Last Run identity unchanged, and browser Back restored the prior scenario.";
+  });
+
+  await check("I22 source authority drawer covers PPA, period cost and facility selection", async () => {
+    await page.viewport(1440);
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy&sheet=revenue&scenario=downside");
+    await page.waitFor("[...document.querySelectorAll('[data-testid=\"source-authority-drawer\"] summary')].some(node => node.getClientRects().length)");
+    await page.clickText("PPA-B", "button");
+    await page.clickText("PPA-B", "summary");
+    const readVisibleDrawer = () => page.evaluate(`(() => [...document.querySelectorAll('[data-testid="source-authority-drawer"]')].filter(node => node.getClientRects().length).at(-1)?.innerText || "")()`);
+    let drawer = await readVisibleDrawer();
+    assert.match(drawer, /Adriatic Solar I.*downside/s);
+    assert.match(drawer, /PPA-B.*Indexed contract/);
+    assert.match(drawer, /Synthetic PPA register example/);
+    assert.match(drawer, /navigation association only/i);
+
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy&sheet=capex&scenario=downside");
+    await page.waitFor("[...document.querySelectorAll('[data-testid=\"source-authority-drawer\"] summary')].some(node => node.getClientRects().length)");
+    await page.clickText("CAPEX", "summary");
+    drawer = await readVisibleDrawer();
+    assert.match(drawer, /CAPEX/);
+    assert.match(drawer, /Synthetic period-grid example/);
+
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy&sheet=opex&scenario=downside");
+    await page.waitFor("[...document.querySelectorAll('[data-testid=\"source-authority-drawer\"] summary')].some(node => node.getClientRects().length)");
+    await page.clickText("OPEX", "summary");
+    drawer = await readVisibleDrawer();
+    assert.match(drawer, /OPEX/);
+    assert.match(drawer, /Synthetic period-grid example/);
+
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy&sheet=senior-debt&scenario=downside");
+    await page.clickText("Junior / Mezzanine", ".fm-wf-row-button");
+    await page.clickText("Junior / Mezzanine", "summary");
+    drawer = await readVisibleDrawer();
+    assert.match(drawer, /Junior \/ Mezzanine/);
+    assert.match(drawer, /Synthetic facility register example/);
+    assert.match(drawer, /NOT.*calculation lineage|navigation association only/i);
+
+    const widths = [];
+    for (const width of [390, 320]) {
+      await page.viewport(width);
+      widths.push(await page.dimensions());
+      assert.ok(widths.at(-1).document <= width + 1, `Authority drawer caused page overflow at ${width}px: ${JSON.stringify(widths.at(-1))}`);
+      const visible = await page.evaluate(`[...document.querySelectorAll('[data-testid="source-authority-drawer"] summary')].some(node => node.getClientRects().length)`);
+      assert.equal(visible, true);
+    }
+    return `Drawer showed project/scenario and selected PPA-B, CAPEX/OPEX line and Junior/Mezzanine with synthetic source and navigation-only caveat; visible at 390/320px without document overflow. Widths=${JSON.stringify(widths)}.`;
+  });
+
+  await check("I23 transfer demo product-state selector keeps draft and Last Run identities separate", async () => {
+    const transferRoot = (process.env.FINCO_TRANSFER_BASE || `${new URL(base).origin}/__mockup/finco-transfer/`).replace(/\/?$/, "/");
+    await page.viewport(1440);
+    await page.goto(new URL("projects/PRJ-0241/results?mode=working-copy", transferRoot).href);
+    await page.waitFor(`document.querySelector('[data-testid="finco-transfer-app"]')?.dataset.route === 'results'`);
+    await page.waitFor("Boolean(document.querySelector('[data-testid=\"transfer-demo-state\"]'))");
+    let state = await page.evaluate(`(() => ({
+      selected: document.querySelector('[data-testid="transfer-demo-state"]')?.value,
+      context: document.querySelector('[data-testid="results-working-copy-run-context"]')?.innerText || "",
+      status: document.querySelector('.fm-wb-status[aria-label="Independent result status dimensions"]')?.innerText || ""
+    }))()`);
+    assert.equal(state.selected, "last-run-current");
+    assert.match(state.context, /DEMO-CURRENT-023|DEMO-FIXED/);
+    assert.match(state.status, /Financial freshness:\s*CURRENT/);
+    assert.match(state.status, /Integrity:\s*NOT EVALUATED/);
+    assert.match(state.status, /Engine:/);
+
+    await page.chooseSelect("Transfer demo product state", "Working Copy · NOT RUN");
+    await page.waitFor("document.body.innerText.includes('No result data is available.')");
+    state = await page.evaluate(`(() => ({
+      selected: document.querySelector('[data-testid="transfer-demo-state"]')?.value,
+      text: document.body.innerText,
+      kpis: [...document.querySelectorAll(".fm-kpi-value")].map(node => node.innerText.trim()),
+      charts: document.querySelectorAll("svg.fm-chart").length
+    }))()`);
+    assert.equal(state.selected, "working-copy-not-run");
+    assert.ok(state.kpis.length > 0 && state.kpis.every(value => value === "Unavailable"), "NOT RUN state must show unavailable placeholders, not fixed KPI figures");
+    assert.equal(state.charts, 0, "NOT RUN state must not show synthetic charts");
+    assert.match(state.text, /No result data is available/i);
+    await page.screenshot("i23-transfer-not-run-1440.png");
+
+    await page.chooseSelect("Transfer demo product state", "Edited Working Copy · illustrative STALE");
+    state = await page.evaluate(`(() => ({
+      context: document.querySelector('[data-testid="results-working-copy-run-context"]')?.innerText || "",
+      output: [...document.querySelectorAll(".fm-kpi-value")].map(node => node.innerText.trim()),
+      status: document.body.innerText
+    }))()`);
+    assert.match(state.context, /Working Copy scenario · Scenario ID · downside/);
+    assert.match(state.context, /Last Run scenario · base/);
+    assert.match(state.context, /scenarios differ/);
+    assert.match(state.context, /DEMO-LAST-022/);
+    assert.ok(state.output.length > 0, "Stale state should retain the fixed prior Last Run display");
+    assert.match(state.status, /STALE · prior output/i);
+    const frozen = [...state.output];
+
+    await page.chooseSelect("Transfer demo product state", "Failed demo attempt · prior Last Run retained");
+    state = await page.evaluate(`(() => ({
+      context: document.querySelector('[data-testid="results-working-copy-run-context"]')?.innerText || "",
+      attempt: document.querySelector('[data-testid="results-run-attempt"]')?.innerText || "",
+      output: [...document.querySelectorAll(".fm-kpi-value")].map(node => node.innerText.trim())
+    }))()`);
+    assert.match(state.attempt, /prior fixed Last Run is retained/i);
+    assert.deepEqual(state.output, frozen, "Failed demo attempt must not replace the prior fixed values");
+
+    await page.chooseSelect("Transfer demo product state", "Unknown / unavailable");
+    state = await page.evaluate(`(() => ({
+      selected: document.querySelector('[data-testid="transfer-demo-state"]')?.value,
+      text: document.body.innerText,
+      kpis: [...document.querySelectorAll(".fm-kpi-value")].map(node => node.innerText.trim()),
+      charts: document.querySelectorAll("svg.fm-chart").length
+    }))()`);
+    assert.equal(state.selected, "unavailable");
+    assert.ok(state.kpis.length > 0 && state.kpis.every(value => value === "Unavailable"));
+    assert.equal(state.charts, 0);
+    assert.match(state.text, /No result data is available/i);
+
+    await page.chooseSelect("Transfer demo product state", "Run Compare · mismatched periods");
+    state = await page.evaluate(`(() => ({
+      selected: document.querySelector('[data-testid="transfer-demo-state"]')?.value,
+      kpis: [...document.querySelectorAll(".fm-kpi-value")].map(node => node.innerText.trim()),
+      text: document.body.innerText,
+      charts: document.querySelectorAll("svg.fm-chart").length
+    }))()`);
+    assert.equal(state.selected, "period-mismatch");
+    assert.ok(state.kpis.includes("0.00%") && state.kpis.includes("Unavailable"));
+    assert.equal(state.charts, 0);
+    assert.match(state.text, /No common period basis supplied/);
+
+    const referenceUrl = new URL("projects/PRJ-0241/workbook?mode=reference", transferRoot);
+    await page.goto(referenceUrl.href);
+    await page.waitFor("document.body.innerText.includes('REFERENCE · READ ONLY')");
+    state = await page.evaluate(`(() => ({
+      selected: document.querySelector('[data-testid="transfer-demo-state"]')?.value,
+      saveDisabled: [...document.querySelectorAll("button")].some(button => /Save disabled · Reference/.test(button.innerText) && button.disabled),
+      mode: new URLSearchParams(location.search).get("mode")
+    }))()`);
+    assert.equal(state.selected, "protected-reference");
+    assert.equal(state.saveDisabled, true);
+    assert.equal(state.mode, "reference");
+    for (const width of [900, 390, 320]) {
+      await page.viewport(width);
+      const layout = await page.dimensions();
+      assert.ok(layout.document <= width + 1, `Product state selector/reference page overflows at ${width}px: ${JSON.stringify(layout)}`);
+      if (width === 390) await page.screenshot("i23-transfer-reference-390.png");
+    }
+    return "Transfer-only selector exercised NOT RUN, fixed CURRENT, STALE, failed-attempt-retains-Last-Run, unavailable and protected Reference. Draft/Last Run scenario IDs stayed distinct; unavailable had no KPI/chart fallback; Reference Save remained disabled. Checked 1440/900/390/320.";
+  });
+
+  await check("I23 Run Compare preserves native period calendars and unavailable values", async () => {
+    await page.viewport(1440);
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy&sheet=run-compare&runSet=DEMO-FIXED-018%2CDEMO-FIXED-017%2CDEMO-FIXED-014");
+    await page.waitFor("document.querySelectorAll('[data-testid^=\"run-periods-\"]').length === 3");
+    const comparison = await page.evaluate(`(() => ({
+      note: document.querySelector('[data-testid="run-period-comparison"]')?.innerText || "",
+      schedules: [...document.querySelectorAll('[data-testid^="run-periods-"]')].map(section => ({
+        id: section.dataset.testid,
+        text: section.innerText,
+        periods: [...section.querySelectorAll("tbody tr")].map(row => row.querySelector("th")?.innerText || "")
+      })),
+      unavailable: [...document.querySelectorAll('[data-testid^="run-periods-"] td')].filter(cell => /Unavailable/.test(cell.innerText)).length
+    }))()`);
+    assert.equal(comparison.schedules.length, 3);
+    assert.match(comparison.note, /No cross-run row alignment/);
+    assert.match(comparison.schedules[0].text, /Annual/);
+    assert.match(comparison.schedules[1].text, /Quarterly · 3M/);
+    assert.match(comparison.schedules[2].text, /Semiannual · 6M/);
+    assert.notDeepEqual(comparison.schedules[0].periods, comparison.schedules[1].periods);
+    assert.ok(comparison.unavailable >= 3, "Missing metrics must display as unavailable, not zero");
+    assert.match(comparison.note, /NOT ALIGNED/);
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy&sheet=compare");
+    await page.waitFor("Boolean(document.querySelector('[data-testid=\"scenario-period-availability\"]'))");
+    const scenarioAvailability = await page.evaluate(`document.querySelector('[data-testid="scenario-period-availability"]')?.innerText || ""`);
+    assert.match(scenarioAvailability, /frequency, exact date coverage.*were not supplied/i);
+    assert.match(scenarioAvailability, /no periods are aligned or inferred/i);
+    await page.viewport(390);
+    const mobile = await page.dimensions();
+    assert.ok(mobile.document <= 390 + 1, `Run Compare overflowed at 390px: ${JSON.stringify(mobile)}`);
+    await page.screenshot("i23-run-period-mismatch-390.png");
+    return "Loaded three fixed Run references through the existing deterministic runSet route state; inspected native annual/quarterly/semiannual calendars, exact labels, NOT ALIGNED and unavailable metrics. Scenario Compare explicitly discloses missing period basis. Mobile width checked at 390px.";
+  });
+
+  await check("I18-W3 Firefox and WebKit browser engines", async () => ({
+    status: "UNTESTED",
+    detail: "Only /repl/tools/bin/chromium is installed. Firefox, WebKit and Playwright are unavailable; no heavyweight browser runtime was installed."
+  }));
+
+  await check("I18-W4 real browser clipboard and all-or-nothing grid paste", async () => {
+    await page.viewport(1440);
+    await page.evaluate("sessionStorage.clear()");
+    await page.goto("ModelWorkspace?projectId=PRJ-0241&mode=working-copy");
+    const origin = new URL(base).origin;
+    let writeResult;
+    try {
+      await page.clickId("wb-cell-0-0");
+      await page.send("Browser.grantPermissions", {
+        origin,
+        permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
+      });
+      writeResult = await page.evaluate("navigator.clipboard.writeText('131\\n2026-01-15').then(() => ({ok:true}), error => ({ok:false,error:`${error.name}: ${error.message}`}))");
+    } catch (error) {
+      clipboardEvidence.push({ status: "UNTESTED", reason: error.message, method: "Attempted Chromium Clipboard API permissions and read/write" });
+      return {
+        status: "UNTESTED",
+        detail: `Chromium clipboard permission/API was unavailable: ${error.message}. Deterministic synthetic paste-event tests remain separate; host OS clipboard is untested.`
+      };
+    }
+    if (!writeResult?.ok) {
+      const reason = writeResult?.error || "Clipboard write returned no success";
+      clipboardEvidence.push({ status: "UNTESTED", reason, method: "Attempted Chromium Clipboard API permissions and read/write" });
+      return { status: "UNTESTED", detail: `Chromium clipboard API unavailable: ${reason}. Deterministic synthetic paste-event tests remain separate; host OS clipboard is untested.` };
+    }
+    const readText = await page.evaluate("navigator.clipboard.readText()");
+    assert.equal(readText, "131\n2026-01-15", "Browser clipboard read did not match the staged rectangle");
+    const baseline = await page.evaluate(`({
+      capacity:document.getElementById("wb-cell-0-0")?.innerText.trim(),
+      start:document.getElementById("wb-cell-1-0")?.innerText.trim()
+    })`);
+    await page.press("v", { ctrl: true });
+    await page.waitFor("document.getElementById('wb-cell-0-0')?.innerText.trim() === '131' && document.getElementById('wb-cell-1-0')?.innerText.trim() === '2026-01-15'");
+    await page.press("z", { ctrl: true });
+    await page.waitFor(`document.getElementById('wb-cell-0-0')?.innerText.trim() === ${JSON.stringify(baseline.capacity)} && document.getElementById('wb-cell-1-0')?.innerText.trim() === ${JSON.stringify(baseline.start)}`);
+
+    const invalidWrite = await page.evaluate("navigator.clipboard.writeText('122\\nnot-a-date').then(() => ({ok:true}), error => ({ok:false,error:`${error.name}: ${error.message}`}))");
+    assert.equal(invalidWrite?.ok, true, invalidWrite?.error || "Invalid clipboard write returned no success");
+    await page.clickId("wb-cell-0-0");
+    await page.press("v", { ctrl: true });
+    await page.waitFor("Boolean(document.querySelector('[role=status]'))");
+    const afterReject = await page.evaluate(`({
+      capacity:document.getElementById("wb-cell-0-0")?.innerText.trim(),
+      start:document.getElementById("wb-cell-1-0")?.innerText.trim()
+    })`);
+    assert.deepEqual(afterReject, baseline, "Rejected browser clipboard range partially changed the draft");
+    clipboardEvidence.push({ status: "PASS", method: "Headless Chromium Clipboard API permission + Ctrl+V; host OS clipboard not exposed", validRange: true, invalidRangeAtomic: true, undo: true, baseline });
+    return "Headless Chromium's browser clipboard API accepted a valid two-cell TSV; Ctrl+Z restored its original draft; invalid date TSV left both cells unchanged. Host OS clipboard remains untested.";
+  });
+
+  await check("I18-W5 mobile-emulated 320px library, workbook picker and results", async () => {
+    for (const route of ["ProjectLibrary", "ModelWorkspace", "ResultsAnalysis"]) {
+      await page.viewport(320, 844, true);
+      await page.goto(route);
+      const layout = await page.dimensions();
+      assert.ok(layout.document <= 321, `${route} mobile emulation overflows at 320px: ${JSON.stringify(layout)}`);
+      if (route === "ProjectLibrary") await page.screenshot("i18-mobile-library-320.png");
+      if (route === "ModelWorkspace") await page.screenshot("i18-mobile-workspace-320.png");
+      if (route === "ResultsAnalysis") await page.screenshot("i18-mobile-results-320.png");
+    }
+    await page.viewport(320, 844, true);
+    await page.goto("ModelWorkspace?sheet=input-grid");
+    const mobilePicker = await page.evaluate(`(() => {
+      const picker = document.querySelector(".fm-wb-mobile-picker select");
+      return { visible:Boolean(picker && getComputedStyle(picker).display !== "none" && picker.getClientRects().length), label:picker?.getAttribute("aria-label") || "" };
+    })()`);
+    assert.equal(mobilePicker.visible, true, "Mobile workbook selector is not visible");
+    assert.equal(mobilePicker.label, "Workbook sheet", "Mobile workbook selector is missing its accessible name");
+    return "Actual Chromium mobile emulation exercised all three screens at 320px with no page overflow; the workbook-sheet picker remained visible and named. This is not physical-device Safari testing.";
   });
 
   await check("Library search, technology filter, add-local-demo and project identity", async () => {
@@ -1327,6 +2185,7 @@ try {
     const unique = [...new Map(links.map((link) => [link.href, link])).values()];
     let reached = 0;
     for (const link of unique) {
+      await page.goto("ModelWorkspace");
       await page.clickExpression(`(() => [...document.querySelectorAll(".fm-wb-tree a")].find(a => (a.getAttribute("href") || "") === ${JSON.stringify(link.href)}))()`);
       await page.waitFor("Boolean(document.querySelector('h1'))");
       const heading = await page.evaluate("document.querySelector('h1')?.innerText || ''");
@@ -1730,7 +2589,7 @@ try {
     assert.equal(extraCell, true, "Period 61 should be visibly locked in a >60Q stress view");
 
     const widths = [];
-    for (const width of [1440, 900, 390]) {
+    for (const width of [1440, 900, 390, 320]) {
       await page.viewport(width);
       layout = await page.evaluate(`(() => {
         const scroller = document.querySelector(".fm-period-scroll");
@@ -1842,7 +2701,7 @@ try {
     const reducedBehavior = await page.evaluate("window.__fincoScrollBehavior || ''");
     assert.equal(reducedBehavior, "auto", "Reduced-motion preference should avoid smooth scrolling");
     await page.send("Emulation.setEmulatedMedia", { features: [] });
-    return `120Q table kept overflow inside the grid at 1440/900/390; 60Q remained editable and >60Q tail locked; focus/label/header ARIA and reduced-motion scroll=auto passed; render trials ms ${JSON.stringify(renderTrials)}; wheel ms ${JSON.stringify(scrollTrialsMs)}; focus ms ${JSON.stringify(focusTrialsMs)}; 390px sticky vertical header ${layout.verticalScrollable ? "tested" : "no internal vertical overflow to exercise"}.`;
+    return `120Q table kept overflow inside the grid at 1440/900/390/320; 60Q remained editable and >60Q tail locked; focus/label/header ARIA and reduced-motion scroll=auto passed; render trials ms ${JSON.stringify(renderTrials)}; wheel ms ${JSON.stringify(scrollTrialsMs)}; focus ms ${JSON.stringify(focusTrialsMs)}; 390px sticky vertical header ${layout.verticalScrollable ? "tested" : "no internal vertical overflow to exercise"}.`;
   });
 
   await check("no uncaught browser errors during exercised journeys", async () => {
@@ -1859,28 +2718,42 @@ try {
 const summary = {
   checks: cases.length,
   passed: cases.filter((item) => item.status === "PASS").length,
+  partial: cases.filter((item) => item.status === "PARTIAL").length,
   failed: cases.filter((item) => item.status === "FAIL").length,
+  untested: cases.filter((item) => item.status === "UNTESTED").length,
   cases,
   performanceEvidence,
   accessibilityEvidence,
+  clipboardEvidence,
   previewLifecycleNotes: page.previewLifecycleNotes,
   screenshots: [
-    "test-evidence/i16-library-1440.png",
-    "test-evidence/i16-workspace-900.png",
-    "test-evidence/i16-results-390.png",
-    "test-evidence/i16-opex-120q-390.png",
-    "test-evidence/i16-reference-copy-390.png",
-    "test-evidence/i16-mobile-statement-390.png",
-    "test-evidence/i16-transfer-library-1440.png",
-    "test-evidence/i16-transfer-library-900.png",
-    "test-evidence/i16-transfer-workspace-900.png",
-    "test-evidence/i16-transfer-workspace-390.png",
-    "test-evidence/i16-transfer-results-1440.png",
-    "test-evidence/i16-transfer-results-900.png",
-    "test-evidence/i16-transfer-results-390.png",
-  ],
+    "i16-library-1440.png",
+    "i16-workspace-900.png",
+    "i16-results-390.png",
+    "i16-opex-120q-390.png",
+    "i16-reference-copy-390.png",
+    "i16-mobile-statement-390.png",
+    "i16-transfer-library-1440.png",
+    "i16-transfer-library-900.png",
+    "i16-transfer-workspace-900.png",
+    "i16-transfer-workspace-390.png",
+    "i16-transfer-results-1440.png",
+    "i16-transfer-results-900.png",
+    "i16-transfer-results-390.png",
+    "i18-library-320.png",
+    "i18-workspace-320.png",
+    "i18-results-320.png",
+    "i18-mobile-library-320.png",
+    "i18-mobile-workspace-320.png",
+    "i18-mobile-results-320.png",
+    "i18-transfer-library-320.png",
+    "i18-transfer-workspace-320.png",
+    "i18-transfer-results-320.png",
+    "i21-results-partial-390.png",
+    "i21-results-empty-390.png",
+  ].map(name => `${path.relative(process.cwd(), evidenceDir).replace(/\\/g, "/")}/${evidenceLabel}-${path.basename(name)}`),
 };
 await mkdir(evidenceDir, { recursive: true });
-await writeFile(path.join(evidenceDir, "iteration-16-browser-results.json"), `${JSON.stringify(summary, null, 2)}\n`);
-console.log(`\nBrowser acceptance: ${summary.passed}/${summary.checks} passed; ${summary.failed} failed.`);
+await writeFile(path.join(evidenceDir, `${evidenceLabel}-browser-results.json`), `${JSON.stringify(summary, null, 2)}\n`);
+console.log(`\nBrowser acceptance: ${summary.passed}/${summary.checks} passed; ${summary.partial} partial; ${summary.failed} failed; ${summary.untested} untested.`);
 if (summary.failed) process.exitCode = 1;
