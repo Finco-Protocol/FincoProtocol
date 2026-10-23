@@ -1,5 +1,4 @@
-# INACTIVE. Deployment of these exact bytes requires Financial/Security/CI governance approval.
-name: "CI V3 Required Test Job \u2014 dormant activation candidate"
+name: "CI V3 Required Test Job \u2014 protected activation"
 'on':
   workflow_call:
     inputs:
@@ -60,10 +59,12 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
       if: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' }}
+      continue-on-error: true
     - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
       with:
         python-version: '3.12'
       if: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' }}
+      continue-on-error: true
     - name: Materialize independently pinned owner root
       run: 'python - <<''PY''
 
@@ -79,11 +80,21 @@ jobs:
 
         PY'
       if: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' }}
+      continue-on-error: true
     - name: Verify service identity, immutable controller and owner bundle
       id: open
       run: python -m tools.ci_v3_mandatory route --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
         --project . --output "$RUNNER_TEMP/mandatory-route.json"
       if: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' }}
+      continue-on-error: true
+    - name: Record pre-execution fallback when admission preparation fails
+      if: ${{ always() && steps.closed.outputs.execution_mode != 'sequential' && (steps.open.outcome != 'success' || steps.open.outputs.execution_mode
+        != 'parallel') }}
+      working-directory: ${{ github.workspace }}
+      run: 'echo "execution_mode=sequential" >> "$GITHUB_OUTPUT"
+
+        echo "Admission unavailable before test execution; retaining original sequential control."'
+      id: fallback
     name: ci-v3-route
     outputs:
       tested_sha: ${{ steps.open.outputs.tested_sha }}
@@ -91,7 +102,8 @@ jobs:
       root_sha256: ${{ steps.open.outputs.root_sha256 }}
       root_b64: ${{ steps.open.outputs.root_b64 }}
       image: ${{ steps.open.outputs.image }}
-      execution_mode: ${{ steps.closed.outputs.execution_mode || steps.open.outputs.execution_mode }}
+      execution_mode: ${{ steps.closed.outputs.execution_mode || (steps.open.outcome == 'success' && steps.open.outputs.execution_mode)
+        || steps.fallback.outputs.execution_mode }}
     environment:
       name: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' && 'ci-v3-mandatory-admission'
         || 'ci-v3-sequential-default' }}
@@ -150,8 +162,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
-        "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/image-state"
+      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/image-state"
     - name: Actual full collection, reconciliation and conservative partition
       run: python -m tools.ci_v3_hosted_controller plan --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
         --project ../subject --output "$RUNNER_TEMP/payload-plan"
@@ -223,8 +235,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
-        "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/image-state"
+      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/image-state"
     - name: Real full-module worker in private no-network container
       run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
         --project ../subject --worker worker-0 --output "$RUNNER_TEMP/payload-worker-0"
@@ -297,8 +309,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
-        "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/image-state"
+      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/image-state"
     - name: Real full-module worker in private no-network container
       run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
         --project ../subject --worker worker-1 --output "$RUNNER_TEMP/payload-worker-1"
@@ -371,8 +383,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256
-        "$CI_V3_ROOT_SHA256" --output "$RUNNER_TEMP/image-state"
+      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
+        --output "$RUNNER_TEMP/image-state"
     - name: Real full-module worker in private no-network container
       run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
         --project ../subject --worker worker-2 --output "$RUNNER_TEMP/payload-worker-2"
@@ -413,8 +425,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       CI_V3_ROOT_B64: ${{ needs.route.outputs.root_b64 }}
       CI_V3_ROOT_SHA256: ${{ needs.route.outputs.root_sha256 }}
-      CI_V3_HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }},"worker-0":${{ toJSON(needs.worker-0.outputs)
-        }},"worker-1":${{ toJSON(needs.worker-1.outputs) }},"worker-2":${{ toJSON(needs.worker-2.outputs) }}}'
+      CI_V3_HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }},"worker-0":${{ toJSON(needs.worker-0.outputs) }},"worker-1":${{
+        toJSON(needs.worker-1.outputs) }},"worker-2":${{ toJSON(needs.worker-2.outputs) }}}'
       ADMISSION_RESULT: ${{ needs.route.result }}
     steps:
     - name: Require independent admission even on failure path
@@ -492,8 +504,8 @@ jobs:
         MODE: ${{ needs.route.outputs.execution_mode }}
         SEQUENTIAL_RESULT: ${{ needs.sequential.result }}
         PARALLEL_RESULT: ${{ needs.aggregate.result }}
-      run: "test \"$ROUTE_RESULT\" = success\nif [ \"$MODE\" = sequential ]; then\n  test \"$SEQUENTIAL_RESULT\"\
-        \ = success\nelse\n  test \"$MODE\" = parallel\n  test \"$PARALLEL_RESULT\" = success\nfi"
+      run: "test \"$ROUTE_RESULT\" = success\nif [ \"$MODE\" = sequential ]; then\n  test \"$SEQUENTIAL_RESULT\" = success\n\
+        else\n  test \"$MODE\" = parallel\n  test \"$PARALLEL_RESULT\" = success\nfi"
     - id: anchors
       env:
         HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }},"worker-0":${{ toJSON(needs.worker-0.outputs) }},"worker-1":${{

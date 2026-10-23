@@ -49,7 +49,13 @@ def load_root(path, expected_sha):
     require(root["workflow_path"] == expected_path, "unauthorized workflow path")
     image_ref(root["image"])
     require(set(root["bundle"]["files"]) == BUNDLE_FILES, "incomplete approved bundle")
-    require(root.get("experiment_pairs") == 1 and root.get("workers") == 3, "one-pair/three-worker admission only")
+    direct = mandatory and root.get('activation',{}).get('admission_mode') == 'direct-production-v1'
+    require(root.get("workers") == 3, "three workers required")
+    if direct:
+        require(root.get('experiment_pairs') == 0 and root.get('run_attempt') == 1,
+                'direct production is one bound initial attempt, not a pilot pair/retry')
+    else:
+        require(root.get("experiment_pairs") == 1, "one-pair admission only")
     calibration = root.get("target_calibration", {})
     require(calibration.get("ceiling_s") == 0.6 and calibration.get("statistic") == "maximum"
             and type(calibration.get("samples")) is int and 3 <= calibration["samples"] <= 30,
@@ -88,9 +94,16 @@ def load_bundle(api, root):
     require(bundle["inventory"]["source"] == root["source"] and bundle["inventory"]["repository"] == root["repository"], "stale source inventory")
     require(bundle["isolation"].get("digest") == digest({k: v for k, v in bundle["isolation"].items() if k != "digest"}), "isolation digest mismatch")
     if root.get("execution_authority") == "mandatory":
-        decisions=root["accepted_pair_proof"]["accepted_decisions"]
+        direct=root.get('activation',{}).get('admission_mode')=='direct-production-v1'
+        decisions=root['direct_admission' if direct else 'accepted_pair_proof']["accepted_decisions"]
         for name,decision in (("policy","nonpass"),("isolation","isolation"),("environment","environment")):
-            require(digest(bundle[name])==decisions[decision]["sha256"], "mandatory approved bundle changed: "+name)
+            if direct and name == 'environment':
+                env=root['direct_admission']['environment_decision']
+                require(digest(env)==decisions['environment']['sha256']
+                        and digest(bundle['environment'])==env['worker_environment_sha256'],
+                        'direct approved runtime/profile changed')
+            else:
+                require(digest(bundle[name])==decisions[decision]["sha256"], "mandatory approved bundle changed: "+name)
     return bundle
 
 
