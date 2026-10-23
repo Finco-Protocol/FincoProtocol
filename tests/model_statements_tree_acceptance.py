@@ -297,18 +297,42 @@ def main() -> int:
                 # keyboard only: Tab/arrows expand, Enter on a line link follows to the current Working Copy, Back returns to the same view
                 hp.wait_for_function("() => document.getElementById('v2-run-statements').dataset.stReady === '1'")
                 htree = hp.locator('#v2-run-statements table[data-st-tree="pnl"][data-st-basis="annual"]')
-                htree.locator('tr[data-st-key="ebit_keur"]').focus()
-                hp.keyboard.press("ArrowRight")
+                # Correction B (#352): the historical panel is re-rendered by HTMX
+                # swaps; a swap between focus() and the arrow walk detaches the
+                # active row so the remaining keystrokes land nowhere. Replay the
+                # documented keyboard path (bounded) instead of racing the swap.
+                # Every functional assertion below is unchanged.
+                def _keyboard_walk_to_opex_line():
+                    htree.locator('tr[data-st-key="ebit_keur"]').focus()
+                    hp.keyboard.press("ArrowRight")
+                    if htree.locator('tr[data-st-key="ebit_keur"]').get_attribute("aria-expanded") != "true":
+                        return None
+                    hp.keyboard.press("ArrowDown")
+                    hp.keyboard.press("ArrowDown")
+                    return hp.evaluate("() => document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.stKey : null")
+                _walk_deadline = time.time() + 30
+                on_opex = _keyboard_walk_to_opex_line()
+                while on_opex != "operating_expenses_keur" and time.time() < _walk_deadline:
+                    hp.wait_for_timeout(250)
+                    on_opex = _keyboard_walk_to_opex_line()
                 keyboard_expanded = htree.locator('tr[data-st-key="ebit_keur"]').get_attribute("aria-expanded") == "true"
-                hp.keyboard.press("ArrowDown")
-                hp.keyboard.press("ArrowDown")
-                on_opex = hp.evaluate("() => document.activeElement.dataset.stKey")
                 hp.keyboard.press("Tab")                      # to the line's link (its chevron is absent on a leaf)
                 hp.keyboard.press("Enter")
                 hp.wait_for_function("() => location.hash === '#opex' && document.getElementById('tab-opex').getAttribute('aria-selected') === 'true'")
                 hp.go_back()
-                hp.wait_for_function("() => location.hash === '#run-history' && document.getElementById('tab-run-history').getAttribute('aria-selected') === 'true'")
-                hp.wait_for_function("(id) => { const r = document.getElementById('v2-run-statements'); return !!r && r.dataset.stReady === '1' && r.dataset.historyId === id; }", arg=chosen)
+                # Correction B: hash restoration and the HTMX panel swap race — a
+                # sequential wait chain can be satisfied by the outgoing panel
+                # before the swap lands. Require the fully restored historical
+                # view (same conditions as the check below) to hold across two
+                # consecutive animation frames: one atomic observation point.
+                hp.wait_for_function(
+                    "(id) => new Promise(resolve => {"
+                    "  const restored = () => location.hash === '#run-history'"
+                    "    && document.getElementById('tab-run-history').getAttribute('aria-selected') === 'true'"
+                    "    && (() => { const r = document.getElementById('v2-run-statements'); return !!r && r.dataset.stReady === '1' && r.dataset.historyId === id; })();"
+                    "  if (!restored()) { resolve(false); return; }"
+                    "  requestAnimationFrame(() => requestAnimationFrame(() => resolve(restored())));"
+                    "})", arg=chosen)
                 same_dom = (hp.locator("#v2-run-statements").count() == 1 and hp.get_attribute("#v2-run-statements", "data-history-id") == chosen
                             and hp.locator('#v2-run-statements table[data-st-tree="pnl"][data-st-basis="annual"] tr[data-st-key="ebit_keur"]').get_attribute("aria-expanded") == "true")
                 check("keyboard-only expansion and drill-down, then Back to the same historical view", keyboard_expanded and on_opex == "operating_expenses_keur" and same_dom,
