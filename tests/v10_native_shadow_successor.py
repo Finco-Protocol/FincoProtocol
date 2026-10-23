@@ -83,8 +83,8 @@ WIRING_BLOBS = {
 }
 PROTECTED_PREFIXES = ("financial_engine/", "finco_core/", "domain/")
 APPROVAL_PATH = "docs/model_v10/v10-native-shadow-content-approval.json"
-OWNER_APPROVAL_REFERENCE = None            # set only from an explicit Financial Owner exact-content decision
-OWNER_APPROVAL_SHA256 = None
+OWNER_APPROVAL_REFERENCE = "conversation:2026-10-23:PR347:Financial-Owner-Exact-Content-Approval:Decision-A"   # explicit Financial Owner exact-content decision (packet sha256 81e653c0)
+OWNER_APPROVAL_SHA256 = "0eaa1d17cbb4201ef6fa94963b45f37e7530efb5925e4b906e4c081e1c79e5a5"
 NATIVE_DEFAULTS = ('mode: str = "off"', "stage2_experimental: bool = False")
 VALIDATED_TARGETS_SOURCE = ('("Linux", "x86_64", "cpython", (3, 13))', '("Linux", "x86_64", "cpython", (3, 12))')
 

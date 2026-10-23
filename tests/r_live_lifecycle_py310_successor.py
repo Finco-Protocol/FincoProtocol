@@ -43,8 +43,8 @@ HISTORICAL = ("tests/r_live_lifecycle_content_authority.py", "docs/ci_v3/final/r
 # Guard adapter: (checkpoint blob, exact reviewed successor blob)
 WIRING_BLOBS = {"tests/r_live_lifecycle_governance.py": ("fc22ca6d34cc6de63a634503e339691ae0179744", "3ea649e983b2c634328ef24a312d49e06f408171")}
 APPROVAL_PATH = "docs/ci_v3/final/r-live-lifecycle-py310-content-approval.json"
-OWNER_APPROVAL_REFERENCE = None            # set only from an explicit Financial Owner exact-content decision
-OWNER_APPROVAL_SHA256 = None
+OWNER_APPROVAL_REFERENCE = "conversation:2026-10-23:PR347:Financial-Owner-Exact-Content-Approval:Decision-B"   # explicit Financial Owner exact-content decision (packet sha256 81e653c0)
+OWNER_APPROVAL_SHA256 = "9a3d55ac1866381a67ecd394ed98377ea19c48f01a493f61c661778ccac17f64"
 
 _CACHE: dict = {}
 
