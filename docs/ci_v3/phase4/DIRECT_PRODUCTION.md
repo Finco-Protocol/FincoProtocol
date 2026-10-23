@@ -150,6 +150,17 @@ verify the resulting manifest digest. No mutable tag or local config ID is
 admissible as a hosted image. Package-registry write credentials are not
 provided by the current GitHub integration.
 
+After integrating merged PR #347, the V10 native test fixtures also require the
+exact approved Ubuntu GCC 13.3 toolchain and reproducible native artifacts.
+The earlier Debian runtime image has no GCC installed and is historical
+preparation, not admitted for this new source. A missing or different compiler
+can turn original native executions into skips;
+that is an outcome mismatch and must block production admission. Preserve the
+approved V10 manifests and Financial blobs; provide a reviewed compatible image
+rather than changing tests, manifests or native default-OFF configuration.
+Runtime fingerprints retain GCC, assembler and linker versions/binary hashes
+alongside Python, dependencies, native libraries and existing runtime tools.
+
 Keep non-root numeric runtime UID, no network, read-only root filesystem,
 dropped capabilities, no-new-privileges, 512 PIDs, 6 GiB, private source/evidence
 and read-only trusted bootstrap; no Actions token or Docker socket in tests.
