@@ -70,7 +70,7 @@ def test_missing_weight_rejected():
         plan_partitions(d["inventory"], d["policy"], reseal(weights))
 
 
-@pytest.mark.parametrize("count", [0, 1, 5, True, 13, 2.0, "5", None])
+@pytest.mark.parametrize("count", [0, 1, 5, True, 13, 2.0, pytest.param("5", id="string-five"), None])
 def test_unsupported_worker_count_rejected(count):
     d = bundle()
     # Preserve the original [5] identity while testing its newly supported contract.
