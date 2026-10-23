@@ -206,9 +206,28 @@ def generate_csrf_token() -> str:
     return _get_csrf_serializer().dumps(raw)
 
 
+def _is_canonical_urlsafe_b64(token: str) -> bool:
+    """True when every dot-separated segment of the token is the canonical
+    base64url encoding of its decoded bytes.  itsdangerous accepts noncanonical
+    aliases (a final character with unused trailing bits decodes to the same
+    bytes), which would let a textual mutation of a valid token be accepted as
+    itself; CSRF validation requires the exact canonical rendering."""
+    import base64 as _base64
+    for segment in token.split("."):
+        try:
+            decoded = _base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4))
+        except Exception:
+            return False
+        if _base64.urlsafe_b64encode(decoded).rstrip(b"=") != segment.encode("ascii"):
+            return False
+    return True
+
+
 def validate_csrf_token(token: str) -> bool:
     """Validate a CSRF token. Returns True if valid and not tampered."""
     if not token:
+        return False
+    if not _is_canonical_urlsafe_b64(token):
         return False
     try:
         raw = _get_csrf_serializer().loads(token, max_age=86400)

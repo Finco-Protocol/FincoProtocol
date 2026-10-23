@@ -214,7 +214,14 @@ def test_forged_or_missing_csrf_is_rejected(env, monkeypatch):
     record = env.create()
     legacy = env.client.get("/v2/workbook", params={"project": record.project_code})
     tokens = grid_tokens(legacy.text)
-    for forged in ("", "forged-token", tokens["csrf_token"][:-1] + "x"):
+    # Every forged case is guaranteed to differ from the original token: flipping
+    # the first character always changes the decoded payload (the historical
+    # `[:-1] + "x"` mutation could alias to the original through noncanonical
+    # base64url trailing bits — see the canonical-encoding unit tests below).
+    original = tokens["csrf_token"]
+    first_char_flipped = ("x" if original[0] != "x" else "y") + original[1:]
+    assert first_char_flipped != original
+    for forged in ("", "forged-token", first_char_flipped):
         body = dict(project=record.project_code, csrf_token=forged,
                     content_hash=tokens["content_hash"], workbook_version=tokens["workbook_version"],
                     scenario_id=None, cells=[{"field_id": CIT, "value": "22.5"}])
@@ -411,3 +418,47 @@ def test_not_run_project_reports_no_run_and_no_statements(env, monkeypatch):
     assert payload["outputs"]["pnl"] is None
     assert payload["outputs"]["identity"] is None
     assert payload["outputs"]["integrity"]["status"] == "UNAVAILABLE"
+
+
+# ───────────────────────── CSRF canonical-encoding hardening ────────────────
+# itsdangerous accepts noncanonical base64url renderings (a final character with
+# unused trailing bits decodes to the same bytes), so a textual mutation of a
+# valid token could be accepted as itself.  The CSRF validator now requires the
+# exact canonical encoding; these tests pin that behaviour deterministically.
+
+def test_canonical_csrf_token_is_accepted_and_first_char_mutation_rejected():
+    from app.auth import generate_csrf_token, validate_csrf_token
+    for _ in range(50):
+        token = generate_csrf_token()
+        assert validate_csrf_token(token)
+        flipped = ("x" if token[0] != "x" else "y") + token[1:]
+        assert flipped != token and not validate_csrf_token(flipped)
+        assert not validate_csrf_token("")
+        assert not validate_csrf_token("not-a-token")
+
+
+def test_noncanonical_base64url_alias_is_rejected():
+    import base64
+    from app.auth import generate_csrf_token, validate_csrf_token
+    alias_alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    alias = None
+    for _ in range(400):                     # ~6% of tokens admit an alias; bounded search
+        token = generate_csrf_token()
+        segments = token.split(".")
+        last = segments[-1]
+        decoded = base64.urlsafe_b64decode(last + "=" * (-len(last) % 4))
+        for ch in alias_alphabet:
+            candidate = last[:-1] + ch
+            if candidate == last:
+                continue
+            recoded = base64.urlsafe_b64decode(candidate + "=" * (-len(candidate) % 4))
+            if recoded == decoded and candidate != last:
+                alias = ".".join(segments[:-1] + [candidate])
+                break
+        if alias:
+            break
+    if alias is None:                        # no alias admits for these tokens; nothing to pin
+        pytest.skip("no base64url alias candidate among generated tokens")
+    assert alias != token
+    assert base64.urlsafe_b64decode(alias.split(".")[-1] + "=" * (-len(alias.split(".")[-1]) % 4)) == decoded
+    assert not validate_csrf_token(alias), "a noncanonical textual alias must not validate"
