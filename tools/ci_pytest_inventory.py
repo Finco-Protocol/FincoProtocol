@@ -81,9 +81,12 @@ class Reports:
 
 
 def pytest_sessionstart(session):
-    from tools.ci_v3_pytest_config import loaded_plugins
+    from tools.ci_v3_pytest_config import loaded_plugins, all_plugin_registrations
     session.config._finco_evidence["pytest_plugins"] = loaded_plugins(session.config)
     session.config.pluginmanager.register(Reports(session.config._finco_evidence), "finco-ci-reports")
+    session.config._finco_evidence["plugin_registrations"] = all_plugin_registrations(session.config)
+    from tools.ci_v3_runtime_fingerprint import capture
+    session.config._finco_evidence["runtime_host"] = capture()
 
 
 @pytest.hookimpl(trylast=True)
@@ -91,6 +94,8 @@ def pytest_sessionfinish(session, exitstatus):
     output = session.config.getoption("ci_inventory")
     if output:
         evidence = session.config._finco_evidence
+        from tools.ci_v3_pytest_config import all_plugin_registrations
+        evidence["plugin_registrations"] = all_plugin_registrations(session.config)
         evidence["pytest_exit"] = int(session.exitstatus)
         evidence["collection_skips"].sort()
         evidence["deselected"].sort()

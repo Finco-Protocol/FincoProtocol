@@ -317,25 +317,24 @@ async def _schedule_demo_cleanup():
     Runs once at startup (deferred 5 min) then repeats every FINCO_DEMO_TTL_HOURS
     hours so long-lived staging processes clean up without operator intervention.
     """
-    import threading
-    import time as _time
-
     from app.auth import DEMO_TTL_HOURS
+    from app.background_lifecycle import RecurringService
+    from app.demo_cleanup import cleanup_expired_demo_data
 
-    def _run():
-        _time.sleep(300)  # defer 5 min so startup I/O settles
-        while True:
-            try:
-                from app.demo_cleanup import cleanup_expired_demo_data
-                cleanup_expired_demo_data()
-            except Exception:
-                import logging
-                logging.getLogger(__name__).exception("Demo TTL cleanup failed")
-            # Sleep for the full TTL period before next sweep
-            _time.sleep(max(3600, DEMO_TTL_HOURS * 3600))
+    service = getattr(app.state, "demo_cleanup_service", None)
+    if service is None:
+        service = RecurringService(cleanup_expired_demo_data, name="demo-cleanup",
+                                   initial_delay=300,
+                                   interval=max(3600, DEMO_TTL_HOURS * 3600))
+        app.state.demo_cleanup_service = service
+    service.start()
 
-    t = threading.Thread(target=_run, daemon=True, name="demo-cleanup")
-    t.start()
+
+async def _stop_demo_cleanup():
+    import asyncio
+    service = getattr(app.state, "demo_cleanup_service", None)
+    if service is not None:
+        await asyncio.to_thread(service.shutdown)
 
 
 @app.on_event("startup")
@@ -350,13 +349,46 @@ async def _start_r_live_snapshot_warmer():
     with FINCO_RLIVE_WARMING_ENABLED=0 (e.g. when the dedicated systemd
     collector owns warming). The web read path never calls this module.
     """
+    from app.background_lifecycle import ShutdownIncomplete
     try:
         from app.radar_rwa.r_live_warming import start_background_warmer
-        if start_background_warmer():
+        owner = getattr(app.state, "snapshot_warmer_owner", None)
+        if owner is None:
+            owner = object()
+            app.state.snapshot_warmer_owner = owner
+        if start_background_warmer(owner=owner):
             print("startup r_live_snapshot_warmer started", flush=True)
+    except ShutdownIncomplete as startup_error:
+        # Starlette does not run shutdown hooks after failed startup. Roll back
+        # only the demo service owned by this application before propagating.
+        try:
+            await _stop_demo_cleanup()
+        except Exception as rollback_error:
+            raise ExceptionGroup("background startup and rollback failed", [startup_error, rollback_error])
+        raise
     except Exception:
         import logging
         logging.getLogger(__name__).exception("Failed to start R-LIVE snapshot warmer")
+
+
+async def _stop_r_live_snapshot_warmer():
+    import asyncio
+    from app.radar_rwa.r_live_warming import stop_background_warmer
+    owner = getattr(app.state, "snapshot_warmer_owner", None)
+    if owner is not None:
+        await asyncio.to_thread(stop_background_warmer, owner=owner)
+
+
+@app.on_event("shutdown")
+async def _shutdown_background_services():
+    errors = []
+    for stop in (_stop_demo_cleanup, _stop_r_live_snapshot_warmer):
+        try:
+            await stop()
+        except Exception as exc:
+            errors.append(exc)
+    if errors:
+        raise ExceptionGroup("application background shutdown incomplete", errors)
 
 
 # -- Template setup -----------------------------------------------------------

@@ -32,7 +32,8 @@ def control_report(value):
         "errors": value["collection_errors"], "nodes": value["collected"],
         "skips": value["collection_skip_records"]},
         "selected": value["selected"], "deselected": value["deselected"], "phases": value["phases"],
-        "pytest_exitstatus": value["pytest_exit"], "environment": value["environment"], "pytest_plugins": value.get("pytest_plugins")}
+        "pytest_exitstatus": value["pytest_exit"], "environment": value["environment"], "pytest_plugins": value.get("pytest_plugins"), "plugin_registrations": value.get("plugin_registrations"),
+        "runtime_host": value.get("runtime_host")}
 
 
 def phase_map(report):

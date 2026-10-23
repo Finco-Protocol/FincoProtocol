@@ -23,15 +23,18 @@ def test_not_active_and_existing_public_workflow_untouched():
 def test_manual_dispatch_only_protected_admission_three_parallel_workers(flow):
     assert list(flow["on"]) == ["workflow_dispatch"]
     jobs = flow["jobs"]
-    assert set(jobs) == {"admission", "plan", "worker-0", "worker-1", "worker-2", "aggregate"}
+    assert set(jobs) == {"admission", "plan", "worker-0", "worker-1", "worker-2", "aggregate", "control"}
     assert jobs["admission"]["environment"] == "ci-v3-shadow-admission" and "needs" not in jobs["admission"]
     for i in range(3):
         assert jobs[f"worker-{i}"]["needs"] == ["admission", "plan"]   # siblings never depend on each other
-    assert jobs["aggregate"]["if"] == "always()" and set(jobs["aggregate"]["needs"]) == set(jobs) - {"aggregate"}
+    assert "always()" in jobs["aggregate"]["if"] and "shadow" in jobs["aggregate"]["if"]
+    assert set(jobs["aggregate"]["needs"]) == set(jobs) - {"aggregate", "control"}
+    assert jobs["control"]["needs"] == ["admission"] and "control" in jobs["control"]["if"]
+    assert "execution_mode" in flow["on"]["workflow_dispatch"]["inputs"]
 
 
 def test_budget_ceiling_and_least_privilege(flow):
-    assert sum(int(j["timeout-minutes"]) for j in flow["jobs"].values()) == 350   # owner-proposed ceiling
+    assert sum(int(j["timeout-minutes"]) for name,j in flow["jobs"].items() if name != "control") == 350   # owner-proposed ceiling
     assert all(j["permissions"] == {"contents": "read", "actions": "read"} for j in flow["jobs"].values())
     assert flow["concurrency"]["cancel-in-progress"] == "false"
 
