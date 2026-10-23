@@ -585,6 +585,22 @@ def _forward_roll(
 _AUTHENTIC_FORWARD_ROLL = _forward_roll
 
 
+
+# ---------------------------------------------------------------------------
+# V10 Stage 1 candidate hook (research candidate, release-closed, default OFF)
+# ---------------------------------------------------------------------------
+# Explicit additive dispatch - no monkey patching. Returns the candidate module only when the
+# CURRENT Run's immutable NativeConfig (contextvars-bound) selects it; otherwise None and the
+# canonical body below runs unchanged. The candidate returns either a bit-identical result or
+# None before any effect, in which case the canonical body runs and decides (and raises).
+
+def _native_v10_candidate():
+    from financial_engine.native_v10.config import current_config
+    if current_config().mode == "off":
+        return None
+    from financial_engine.native_v10 import dispatch
+    return dispatch
+
 # ---------------------------------------------------------------------------
 # Issue 1: Finalisation sub-loop — enforce interest/CFADS self-consistency
 # ---------------------------------------------------------------------------
@@ -616,6 +632,15 @@ def _finalise_authoritative(
     Returns (rows, cfads, cash_tax, converged: bool).
     converged=False signals FINALISATION_NOT_CONVERGED; caller sets is_authoritative=False.
     """
+    _v10 = _native_v10_candidate()
+    if _v10 is not None:
+        _served = _v10.finalise(
+            D, period_indices, rate_map, period_start_end, cfads_by, policy, repayment_str,
+            tax_cfads_fn, explicit_by=explicit_by, dscr_map=dscr_map,
+            availability_map=availability_map, roll=roll,
+        )
+        if _served is not None:
+            return _served
     abs_tol = policy.convergence_tolerance_keur
     rel_tol = policy.convergence_relative_tolerance
     prev_cash_tax: dict[int, float] = {idx: 0.0 for idx in period_indices}
@@ -908,6 +933,16 @@ def _solve_dscr(
     Convergence tracks: debt_size, opening, interest, principal, closing, CFADS, cash_tax.
     After outer-loop convergence, runs finalisation to ensure schedule self-consistency.
     """
+    _v10 = _native_v10_candidate()
+    if _v10 is not None:
+        _served = _v10.solve_dscr(
+            policy=policy, inputs=inputs, period_indices=period_indices,
+            period_start_end=period_start_end, rate_map=rate_map, tax_cfads_fn=tax_cfads_fn,
+            binding_constraint=binding_constraint, dscr_map=dscr_map,
+            availability_map=availability_map,
+        )
+        if _served is not None:
+            return _served
     D = inputs.initial_debt_guess_keur
     alpha = policy.damping_alpha
     max_iter = policy.maximum_iterations

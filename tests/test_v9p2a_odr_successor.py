@@ -15,8 +15,12 @@ import quarterly_candidate_recognition as R
 import rc7b_postmerge_successor as B
 import rc7c_candidate_successor as C
 import v9p2a_odr_successor as O
+import v10_native_shadow_successor as V
 
 ROOT = Path(__file__).resolve().parent.parent
+# Historical subject: the OD-R contract is judged on OD-R bytes - HEAD itself, or, only while HEAD is the complete recognised V10 successor,
+# its immutable OD-R checkpoint (main 0b57031a). Any other HEAD stays the subject and fails exactly as before; never relabelled.
+SUBJECT = V.historical_subject()
 SIX = tuple(sorted(O.ODR_AUTHORITIES))
 NEW_PATHS = ("financial_engine/shareholder_waterfall/model.py", "financial_engine/shl/maturity_authority.py",
              "financial_engine/shl/production.py")          # OD-R paths outside the twelve RC-7C paths
@@ -28,7 +32,7 @@ def _git(repo, *args, **kwargs):
 
 @pytest.fixture(scope="module")
 def head():
-    return _git(ROOT, "rev-parse", "HEAD").decode().strip()
+    return _git(ROOT, "rev-parse", f"{SUBJECT}^{{commit}}").decode().strip()
 
 
 @pytest.fixture(scope="module")
@@ -93,22 +97,22 @@ def test_contract_constants_are_exact():
 
 
 def test_real_repository_is_exactly_the_odr_successor(head):
-    assert O.odr_violations() == []
-    assert R.recognized_state() == "ODR"
-    blobs = R.candidate_blobs()
+    assert O.odr_violations(ref=head) == []
+    assert R.recognized_state(ref=head) == "ODR"
+    blobs = R.candidate_blobs(ref=head)
     assert blobs == {**C.RC7C_CANDIDATE_AUTHORITIES, **O.ODR_AUTHORITIES} and len(blobs) == 15
     for path, expected in blobs.items():
-        assert O.blob(path) == expected, path
-    assert C.rc7c_recognized() is False and B.postmerge_recognized() is False          # the historical validators are not widened
+        assert O.blob(path, head) == expected, path
+    assert C.rc7c_recognized(ref=head) is False and B.postmerge_recognized(ref=head) is False   # the historical validators are not widened
     assert C.rc7c_recognized(ref=O.RC7C_INTEGRATION_MAIN) and C.rc7c_recognized(ref=O.RC7C_MAIN)
-    assert O.historical_subject() == O.RC7C_INTEGRATION_MAIN
-    assert not R.scope_exempt("financial_engine/tax/engine.py") and not R.scope_exempt("finco_core/tax/engine.py")
+    assert O.historical_subject(ref=head) == O.RC7C_INTEGRATION_MAIN
+    assert not R.scope_exempt("financial_engine/tax/engine.py", ref=head) and not R.scope_exempt("finco_core/tax/engine.py", ref=head)
 
 
-def test_recognition_is_never_approval_activation_or_release():
+def test_recognition_is_never_approval_activation_or_release(head):
     import finance_integrity_governance as fig
     import model_v2_governance as governance
-    states = O.states()
+    states = O.states(ref=head)
     assert states["exact_odr_content_recognized"] is True
     assert states["financial_owner_exact_content_decision"] == "RECORDED_NOT_AUTHENTICATED"
     for denied in ("authenticated_owner_attestation", "merge_authorized", "product_activation", "od_r_default_policy", "financial_release"):

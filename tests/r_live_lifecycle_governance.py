@@ -1,11 +1,18 @@
 """Current guard adapter; historical Radar/Model/Finance authorities stay immutable.
 
-Only the separately approved two-blob PR #346 content can augment the original
-answer. Every financial engine decision delegates unchanged to its old authority.
+Only the separately approved two-blob PR #346 content, or its separately approved
+exact Python 3.10 successor (issue #348), can augment the original answer.
+Every financial engine decision delegates unchanged to its old authority.
 No test import hook, monkeypatch, scope-file permission or namespace grant.
 """
 from pathlib import Path
-from r_live_lifecycle_content_authority import reviewed_lifecycle_content_matches
+from r_live_lifecycle_content_authority import reviewed_lifecycle_content_matches as _pr346_matches
+from r_live_lifecycle_py310_successor import py310_content_matches
+
+
+def reviewed_lifecycle_content_matches(path: str, *, repo, ref='HEAD') -> bool:
+    return _pr346_matches(path,repo=repo,ref=ref) or py310_content_matches(path,repo=repo,ref=ref)
+
 
 REPO=Path(__file__).resolve().parents[1]
 

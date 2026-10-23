@@ -1,0 +1,52 @@
+{
+  "Financial": {
+    "approved": true,
+    "reference": "conversation:2026-10-23:PR347:Financial-Owner-Exact-Content-Approval:Decision-A"
+  },
+  "application_blobs": {
+    "app/runtime/model_execution.py": "c8c5a0dc184b8901c7cb292b0dbbd248e4cf191a",
+    "app/runtime/native_shadow.py": "2351375d62878aa5c7156ee881601260a9de4114",
+    "app/services/production_financial_authority.py": "98c04020d03711f3683b5340fc2f89387a60553c",
+    "main_web.py": "9b3734417fe6cd931b7814e015ca42d5c9264f8b"
+  },
+  "candidate_then_canonical_authorized": false,
+  "deployment_authorized": false,
+  "kind": "v10-native-shadow-exact-content-approval",
+  "merge_authorized": false,
+  "native_activation_authorized": false,
+  "native_replace_mode_authorized": false,
+  "odr_checkpoint": {
+    "head": "0b57031ae6949d8e7d187a1932c4451e213238f7",
+    "tree": "608b4ae23169d2fbce084c6f63e4fd43925549b5"
+  },
+  "protected_blobs": {
+    "financial_engine/native_v10/__init__.py": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+    "financial_engine/native_v10/approved_canonical_blobs.json": "c24555f03783d67f6aa9f3af16b497a805710960",
+    "financial_engine/native_v10/approved_canonical_blobs_stage2.json": "74c025e6e45660d6143161daa11480b94eec0ce6",
+    "financial_engine/native_v10/build.py": "0fce6c25c3d37545012a49fa246a2a6a9d38c615",
+    "financial_engine/native_v10/build_stage2.py": "509c18541f07db8acb9fca384069ccc767af4eb9",
+    "financial_engine/native_v10/config.py": "5e7f4994583384a0ef5ec88efa798dc9c361e8b1",
+    "financial_engine/native_v10/dispatch.py": "31e02b8a6c833d5dc37138cd175dfec2d3d2973a",
+    "financial_engine/native_v10/eligibility.py": "9bf5683680c9f0725454bb2760049a159d00cea6",
+    "financial_engine/native_v10/fk_v10_manifest.json": "af6b668048d2ba2e74685dd21251fdafe2749ea6",
+    "financial_engine/native_v10/fk_v10_stage2_manifest.json": "a656d48153f870bbbe8b03c72ac8b5fb797301fc",
+    "financial_engine/native_v10/isolation.py": "9e227d17d975cd09685f20e6495c3645f202b4c0",
+    "financial_engine/native_v10/kernel_v10.c": "e0b5372aec22261cc4e82e8348fb6089a5d1ba77",
+    "financial_engine/native_v10/kernel_v10_stage2.c": "29cb3e3874ccd3e10cbc482c10c8f83f08158584",
+    "financial_engine/native_v10/loader.py": "80993fb46cf3539e9dd8018da1b5da29db9de2ba",
+    "financial_engine/native_v10/provenance.py": "769f0e645b4267be05aadefb09a22f7763f3199c",
+    "financial_engine/native_v10/stage2.py": "90121690f598a9eaf6944dc038e386c80bfaef9c",
+    "financial_engine/senior_debt/solver.py": "9d30525b3fc09b422c1deb38784bf49834cbac35",
+    "financial_engine/shl/production.py": "fb563770bc87a0a8403e21e5f571ebec39840f18"
+  },
+  "pull_request": 347,
+  "repository": "Finco-Protocol/FincoProtocol",
+  "runtime_compilation_authorized": false,
+  "schema": 1,
+  "scope": "PR347-V10-dormant-shadow-exact-content-governance-and-CI-closure-only",
+  "source_candidate": {
+    "head": "f137aaccff601c2f86126e1215165a7edc81574d",
+    "tree": "1bd953ed1967c82a76e8f7c0a84caa7347c027f1"
+  },
+  "stage3_authorized": false
+}
