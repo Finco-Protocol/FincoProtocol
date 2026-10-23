@@ -1,6 +1,7 @@
 """Exact-blob conservative partition constraints and credential-free container invocation."""
 from pathlib import Path
 import sys
+import json
 
 import pytest
 import yaml
@@ -97,7 +98,8 @@ def test_candidate_has_real_stages_but_no_active_registration():
     root=Path(__file__).resolve().parents[1]
     path=root/'docs/ci_v3/phase2/shadow-workflow.candidate.yml'
     text=path.read_text(encoding='utf-8');flow=yaml.load(text,Loader=yaml.BaseLoader)
-    assert not (root/'.github/workflows/ci_v3_shadow.yml').exists()
+    assert (root/'.github/workflows/ci_v3_shadow.yml').read_bytes() == (root/'docs/ci_v3/phase3b/ci_v3_shadow.yml').read_bytes()
+    assert json.loads((root/'docs/ci_v3/phase3a/admission-root.closed.json').read_text())['enabled'] is False
     assert set(flow['jobs'])=={'admission','plan','worker-0','worker-1','worker-2','aggregate'}
     assert 'exit 78' not in text and 'ci_v3_hosted_controller worker' in text
     assert flow['jobs']['aggregate']['if']=='always()'
