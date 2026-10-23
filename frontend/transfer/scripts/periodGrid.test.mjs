@@ -6,7 +6,7 @@ import {
   periodHeaders,
   periodRows,
   pastePeriodRectangle,
-} from "../src/components/mockups/finco-model/_workbook/periodGrid.ts";
+} from "../../src/finco/_workbook/periodGrid.ts";
 
 const capexRows = periodRows("capex", "quarterly");
 const capexValues = capexRows.map((row) => [...row.values]);

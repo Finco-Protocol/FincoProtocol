@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Field, readProjectContext, Status } from "../_shared/FincoShell";
-import { useDemoSessionState } from "../_shared/demoSession";
+import { persistCurrentDemoSessionBatch, useDemoSessionState } from "../_shared/demoSession";
 import SourceAuthorityDrawer from "../_shared/SourceAuthorityDrawer";
 import { workbookHref } from "./catalog";
 
@@ -105,12 +105,21 @@ export default function RevenueWorkspace({ onDraftDirty, onSelectContract }: { o
       setNotice("Save unavailable. Correct the marked fields; no values were acknowledged.");
       return;
     }
-    setSaved(old => ({ ...old, [active]: { ...current, steps: current.steps.map(step => ({ ...step })) } }));
-    setAcknowledgedContracts(old => ({ ...old, [active]: true }));
+    const nextSaved = { ...saved, [active]: { ...current, steps: current.steps.map(step => ({ ...step })) } };
+    const nextAcknowledgements = { ...acknowledgedContracts, [active]: true };
+    if (!persistCurrentDemoSessionBatch([
+      ["ppa-contract-saved", nextSaved],
+      ["ppa-save-acknowledgements", nextAcknowledgements],
+    ])) {
+      setNotice("Save could not be confirmed because browser storage is unavailable. Your PPA edits remain unsaved in this view.");
+      return;
+    }
+    setSaved(nextSaved);
+    setAcknowledgedContracts(nextAcknowledgements);
     setNotice(`${active} acknowledged in this page only. No model run, revenue allocation or result update occurred.`);
   }
   return <div className="fm-wf" aria-label="Synthetic multi-contract PPA editor">
-    <div className="fm-wf-notice" role="note"><strong>SYNTHETIC DEMO · no revenue calculation</strong><span>Each record has its own browser-tab session draft; same-tab reload preserves it, while Reset or closing the tab clears it. Statements do not update.</span></div>
+    <div className="fm-wf-notice" role="note"><strong>SYNTHETIC DEMO · no revenue calculation</strong><span>Each record has a local browser-tab draft when storage is available. If storage is blocked, changes remain only in this view and may be lost on navigation or reload. Statements do not update.</span></div>
     <div className="fm-wf-toolbar">
       <strong>Contract register</strong>
       <span className="fm-wf-muted">PPA-A fixed · PPA-B indexed · PPA-C scheduled · unsigned examples</span>
@@ -170,13 +179,13 @@ export default function RevenueWorkspace({ onDraftDirty, onSelectContract }: { o
       sourceLabel="Synthetic PPA register example"
       relatedHref={workbookHref("pl")}
       relatedLabel="Open fixed P&L statement example →"
-      note="Contract and tariff values are local illustrations. The statement link is contextual navigation only; no revenue allocation, price curve, or calculation lineage is asserted."
+      note="Contract and tariff values are local illustrations. The statement link opens a related section only; it does not show how revenue was calculated."
     />
     <div className="fm-wf-actions">
       <span className="fm-wf-muted">Save affects {active} only · no backend · no Run</span>
       <button type="button" className="fm-btn fm-btn-primary" disabled={Boolean(Object.keys(errors).length)} onClick={save}>Save {active} demo</button>
     </div>
-    {notice && <div className="fm-info-note" role="status">{notice}</div>}
+    {notice && <div className="fm-info-note" role={notice.includes("unavailable") || notice.includes("could not be confirmed") ? "alert" : "status"}>{notice}</div>}
     <div className="fm-wf-note"><strong>Workflow context:</strong> selected contract ID is carried in the local navigation query only. <a href={workbookHref("pl")}>Open fixed P&amp;L statement example →</a> Contract edits do not flow into that statement.</div>
   </div>;
 }

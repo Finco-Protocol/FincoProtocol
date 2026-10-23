@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Field, Status } from "../_shared/FincoShell";
-import { useDemoSessionState } from "../_shared/demoSession";
+import { persistCurrentDemoSessionBatch, useDemoSessionState } from "../_shared/demoSession";
 
 type Timeline = {
   financialClose: string; constructionStart: string; cod: string; operationStart: string;
@@ -61,10 +61,18 @@ export default function TimelineTaxWorkspace({ onDraftDirty }: { onDraftDirty: (
   }
   function saveTimeline() {
     if (timelineErrors) { setMessage("Timeline Save blocked. Correct the marked date sequence."); return; }
+    if (!persistCurrentDemoSessionBatch([["timeline-saved", { ...timeline }]])) {
+      setMessage("Save could not be confirmed because browser storage is unavailable. Timeline edits remain unsaved in this view.");
+      return;
+    }
     setSavedTimeline({ ...timeline }); setMessage("Timeline inputs acknowledged in this page only. No schedule or model Run was created.");
   }
   function saveTax() {
     if (taxErrors.length) { setMessage("Tax Save blocked. Correct the marked assumptions."); return; }
+    if (!persistCurrentDemoSessionBatch([["tax-saved", { ...tax }]])) {
+      setMessage("Save could not be confirmed because browser storage is unavailable. Tax edits remain unsaved in this view.");
+      return;
+    }
     setSavedTax({ ...tax }); setMessage("Tax assumptions acknowledged in this page only. No tax calculation or model Run was created.");
   }
   const timelineFields: [keyof Timeline, string][] = [
@@ -74,7 +82,7 @@ export default function TimelineTaxWorkspace({ onDraftDirty }: { onDraftDirty: (
     ["horizon", "Model horizon · reference"],
   ];
   return <div className="fm-wf" aria-label="Synthetic project timeline and tax workspace">
-    <div className="fm-wf-notice" role="note"><strong>SYNTHETIC DEMO · no timing or tax engine</strong><span>Local fields and view selectors only. Dates, periods, tax and depreciation do not generate a schedule or cash flow.</span></div>
+    <div className="fm-wf-notice" role="note"><strong>SYNTHETIC EXAMPLE · no timing or tax calculations</strong><span>Fields and view choices only. Dates, periods, tax and depreciation do not generate a schedule or cash flow.</span></div>
     <section className="fm-wf-section" aria-label="Project timeline">
       <div className="fm-wf-editor-head"><div><h3>Project & timing milestones</h3><p>Chronology is a basic input check; this is not a construction or operating model.</p></div><span className={timelineDirty ? "fm-wf-dirty" : "fm-wf-muted"}>{timelineDirty ? "WORKING COPY · UNSAVED" : "LOCAL SAVE · NOT RUN"}</span></div>
       <div className="fm-wf-grid fm-wf-fields">{timelineFields.map(([key,label])=><Field key={key} label={label} value={timeline[key]} type="date" error={!validDate(timeline[key]) ? "Enter a valid calendar date." : undefined} onChange={value => updateTimeline(key,value)} />)}</div>
@@ -83,9 +91,9 @@ export default function TimelineTaxWorkspace({ onDraftDirty }: { onDraftDirty: (
         {timelineFields.map(([key,label],index)=><div key={key} className="fm-wf-milestone"><span>{String(index + 1).padStart(2,"0")}</span><strong>{label}</strong><code>{timeline[key]}</code></div>)}
       </div>
       <div className="fm-wf-grid fm-wf-summary">
-        <div><span>Construction periods</span><strong>Monthly · candidate display</strong><small>Illustrative view label; not a released engine policy.</small></div>
+        <div><span>Construction periods</span><strong>Monthly · example view</strong><small>This display choice does not set a live model frequency.</small></div>
         <label className="fm-wf-field">Operation display <span>View-only design choice</span><select aria-label="Operation period display" value={operatingView} onChange={event => setOperatingView(event.target.value)}><option>Quarterly · 3M</option><option>Semiannual · 6M</option></select></label>
-        <div><span>Frequency release status</span><strong>Not confirmed</strong><small>Changing this selector does not change model math.</small></div>
+        <div><span>Model frequency</span><strong>Not available</strong><small>Changing this selector does not change displayed figures.</small></div>
       </div>
       <div className="fm-wf-actions"><span className="fm-wf-muted">Timeline Save only · no Run</span><button type="button" className="fm-btn fm-btn-primary" disabled={Boolean(timelineErrors)} onClick={saveTimeline}>Save timing demo</button></div>
     </section>
@@ -111,7 +119,7 @@ export default function TimelineTaxWorkspace({ onDraftDirty }: { onDraftDirty: (
       </div>
       <div className="fm-wf-actions"><span className="fm-wf-muted">Tax Save only · no Run</span><button type="button" className="fm-btn fm-btn-primary" disabled={Boolean(taxErrors.length)} onClick={saveTax}>Save tax demo</button></div>
     </section>
-    {message && <div className="fm-info-note" role="status">{message}</div>}
+    {message && <div className="fm-info-note" role={message.includes("blocked") || message.includes("could not be confirmed") ? "alert" : "status"}>{message}</div>}
     <div className="fm-wf-note"><Status tone="amber">NOT A TAX OPINION</Status> The prototype does not implement jurisdiction rules, tax-loss utilization, VAT recovery, depreciation, withholding or payment schedules.</div>
   </div>;
 }

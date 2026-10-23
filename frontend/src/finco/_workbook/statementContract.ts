@@ -1,3 +1,5 @@
+import type { InsightExplainInput } from "../_insight/insightContract";
+
 export type StatementSheetId = "pl" | "balance" | "cashflow" | "cfads" | "debt" | "sponsor";
 export type StatementViewId = "annual" | "model";
 export type StatementFacilityId = "senior" | "mezzanine";
@@ -46,6 +48,9 @@ export type StatementRunStatus = {
 
 export type StatementWorkbookProps = {
   onSheetChange?: (id: string) => void;
+  /** Presentation-only hook: opens the Insight explain dialog for a statement row.
+   *  The caller owns all displayed values; this prop never supplies financial data. */
+  onExplain?: (item: InsightExplainInput) => void;
   /** Explicit null means no statement snapshot is available; never substitute demo rows. */
   snapshot: StatementWorkbookSnapshot | null;
   status: StatementRunStatus;

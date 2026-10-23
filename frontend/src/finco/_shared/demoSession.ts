@@ -1,7 +1,39 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 import { DEMO_SESSION_PREFIX, DEMO_WORKING_COPIES_KEY, LEGACY_SESSION_PREFIX, demoSessionStorageScope } from "./demoSessionKeys";
+import {
+  getDemoStorageSnapshot,
+  persistDemoSessionBatch,
+  probeDemoSessionStorage,
+  readDemoSessionValue,
+  reportDemoStorageFailure,
+  reportDemoStorageSuccess,
+  subscribeDemoStorage,
+  writeDemoSessionValue,
+  type DemoSessionWrite,
+} from "./demoSessionStorage";
 
 export { DEMO_SESSION_PREFIX, DEMO_WORKING_COPIES_KEY, demoSessionStoragePrefix } from "./demoSessionKeys";
+export {
+  persistDemoSessionBatch,
+  probeDemoSessionStorage,
+  reportDemoStorageFailure,
+  reportDemoStorageSuccess,
+} from "./demoSessionStorage";
+
+export function useDemoSessionStorageHealth() {
+  return useSyncExternalStore(subscribeDemoStorage, getDemoStorageSnapshot, getDemoStorageSnapshot);
+}
+
+export function persistCurrentDemoSessionBatch(entries: readonly DemoSessionWrite[]): boolean {
+  if (typeof window === "undefined") {
+    reportDemoStorageFailure("write");
+    return false;
+  }
+  const params = new URLSearchParams(window.location.search);
+  const projectId = params.get("projectId")?.trim() || "PRJ-0241";
+  const mode = params.get("mode") === "reference" ? "reference" : "working-copy";
+  return persistDemoSessionBatch(projectId, entries, mode);
+}
 
 function currentProjectScope(): string {
   const projectId = new URLSearchParams(window.location.search).get("projectId")?.trim();
@@ -17,20 +49,13 @@ export function useDemoSessionState<T>(
   // It does scope local drafts so switching sample projects cannot leak edits.
   const storageKey = `${DEMO_SESSION_PREFIX}${currentProjectScope()}:${key}`;
   const [value, setValue] = useState<T>(() => {
-    try {
-      const stored = window.sessionStorage.getItem(storageKey);
-      return stored === null ? initialValue : (JSON.parse(stored) as T);
-    } catch {
-      return initialValue;
-    }
+    const result = readDemoSessionValue(storageKey);
+    if (!result.ok || result.value === null) return initialValue;
+    try { return JSON.parse(result.value) as T; } catch { return initialValue; }
   });
 
   useEffect(() => {
-    try {
-      window.sessionStorage.setItem(storageKey, JSON.stringify(value));
-    } catch {
-      // This remains a local in-memory demo if browser storage is unavailable.
-    }
+    writeDemoSessionValue(storageKey, value);
   }, [storageKey, value]);
 
   return [value, setValue];
@@ -44,7 +69,8 @@ export function clearDemoSessionState(): void {
       key === DEMO_WORKING_COPIES_KEY
     );
     keys.forEach(key => window.sessionStorage.removeItem(key));
+    reportDemoStorageSuccess("clear");
   } catch {
-    // The reset is best-effort when browser storage is blocked.
+    reportDemoStorageFailure("clear");
   }
 }

@@ -10,7 +10,7 @@ const reviewRows = [
   ["Average DSCR", "1.28x", "1.16x", "1.11x", "≥ 1.25x", "NOT EVALUATED", "No period aggregation performed"],
   ["Maturity / repayment status", "2045 · sculpted ref.", "2043 · amortising ref.", "Not assessed", "Not assessed", "NOT EVALUATED", "No maturity or repayment test"],
   ["CFADS", "€8.4m", "€7.1m", "€6.8m", "Unavailable", "OBSERVED", "Fixed CFADS example"],
-  ["Debt service", "€6.7m", "€6.5m", "€6.4m", "Unavailable", "OBSERVED", "Fixed statement snapshot"],
+  ["Debt service", "€6.7m", "€6.5m", "€6.4m", "Unavailable", "OBSERVED", "Fixed statement example"],
   ["LLCR", "Unavailable", "Unavailable", "Unavailable", "Unavailable", "UNAVAILABLE", "No discounted debt-life analysis"],
   ["PLCR", "Unavailable", "Unavailable", "Unavailable", "Unavailable", "UNAVAILABLE", "No discounted project-life analysis"],
   ["Debt balance at maturity", "Not assessed", "Not assessed", "Not assessed", "Not assessed", "NOT EVALUATED", "No maturity test"],
@@ -115,7 +115,7 @@ export default function CreditDecisionWorkspace() {
     <div className="fm-wf-controls">
       <label className="fm-wf-field">Lender case <span>Fixed comparison context</span><select aria-label="Lender case" value={lenderCase} onChange={event => { setLenderCase(event.target.value); updateContextParam("creditCase", event.target.value); }}><option>P50 base</option><option>P90 downside</option></select></label>
       <label className="fm-wf-field">Facility <span>Fixed sample schedule</span><select aria-label="Credit facility" value={facility} onChange={event => { const value = event.target.value as Facility; setFacility(value); updateContextParam("facility", value); }}>{Object.keys(facilityRows).map(item => <option key={item}>{item}</option>)}</select></label>
-      <label className="fm-wf-field">Period basis <span>Display-only choice</span><select aria-label="Credit period basis" value={basis} onChange={event => { const value = event.target.value as Basis; setBasis(value); updateContextParam("creditBasis", value); }}><option value="annual">Annual</option><option value="model">Model-period snapshots</option></select></label>
+      <label className="fm-wf-field">Period basis <span>Display choice only</span><select aria-label="Credit period basis" value={basis} onChange={event => { const value = event.target.value as Basis; setBasis(value); updateContextParam("creditBasis", value); }}><option value="annual">Annual</option><option value="model">Model-period examples</option></select></label>
       <label className="fm-wf-field">Reporting period <span>Fixed sample period</span><select aria-label="Credit reporting period" value={activePeriod} onChange={event => { setSelectedPeriod(event.target.value); updateContextParam("creditPeriod", event.target.value); }}>{periods.map(period => <option key={period}>{period}</option>)}</select></label>
     </div>
     <div className="fm-wf-summary fm-credit-summary">
@@ -139,7 +139,7 @@ export default function CreditDecisionWorkspace() {
       </div>
     </section>
     <section className="fm-wf-section" aria-label={`${facility} fixed credit schedule`}>
-      <div className="fm-wf-editor-head"><div><h3>Period-level credit workspace</h3><p>{facility} · {basis === "annual" ? "annual example array" : "model-period snapshot array"} · no relationship to edited facility assumptions</p></div><Status tone="gray">STATIC EXAMPLE · NOT RECONCILED</Status></div>
+      <div className="fm-wf-editor-head"><div><h3>Credit view by period</h3><p>{facility} · {basis === "annual" ? "annual example values" : "selected model-period examples"} · not linked to edited facility assumptions</p></div><Status tone="gray">FIXED EXAMPLE · NOT RECONCILED</Status></div>
       <div className="fm-wf-scroll" role="region" aria-label="Credit period schedule, horizontally scrollable" tabIndex={0}>
         <table className="fm-table fm-wf-table fm-wf-period-table">
           <thead><tr><th scope="col">Metric · €m unless stated</th>{periods.map(period => <th scope="col" key={period}>{period}</th>)}</tr></thead>
@@ -152,15 +152,15 @@ export default function CreditDecisionWorkspace() {
           </tr>)}</tbody>
         </table>
       </div>
-      <section className="fm-credit-evidence" data-testid="credit-evidence-panel" aria-live="polite" aria-label="Selected synthetic credit observation">
-        <div className="fm-wf-editor-head"><div><h3>Selected evidence · {selectedMetric === "dscr" ? "DSCR" : scheduleLabels.find(([key]) => key === selectedMetric)?.[1]}</h3><p>{project.name} · scenario {scenarioId} · {facility} · {activePeriod}</p></div><Status tone="amber">{hasSelectedValue ? selectedMetric === "dscr" ? "FIXED VALUE · NOT A COVENANT RESULT" : "FIXED SYNTHETIC OBSERVATION" : "UNAVAILABLE / NOT EVALUATED"}</Status></div>
+      <section className="fm-credit-evidence" data-testid="credit-evidence-panel" aria-live="polite" aria-label="Selected credit example">
+        <div className="fm-wf-editor-head"><div><h3>Selected example · {selectedMetric === "dscr" ? "DSCR" : scheduleLabels.find(([key]) => key === selectedMetric)?.[1]}</h3><p>{project.name} · scenario {scenarioId} · {facility} · {activePeriod}</p></div><Status tone="amber">{hasSelectedValue ? selectedMetric === "dscr" ? "FIXED VALUE · NOT A COVENANT RESULT" : "FIXED SYNTHETIC EXAMPLE" : "VALUE UNAVAILABLE"}</Status></div>
         <div className="fm-credit-evidence-value"><span>{selectedMetric === "dscr" ? "Displayed reference value" : scheduleLabels.find(([key]) => key === selectedMetric)?.[1]}</span><strong>{hasSelectedValue ? selectedValue : "Unavailable"}</strong></div>
         <dl className="fm-credit-evidence-meta">
-          <div><dt>Fixed demo Run ID</dt><dd>DEMO-FIXED-018</dd></div>
-          <div><dt>Evidence state</dt><dd>{hasSelectedValue ? "Authored sample value · no covenant or reconciliation test" : "No value supplied for this facility / period"}</dd></div>
-          <div><dt>Financial integrity</dt><dd>NOT EVALUATED · no verified calculation lineage</dd></div>
+          <div><dt>Example reference</dt><dd>DEMO-FIXED-018</dd></div>
+          <div><dt>Value details</dt><dd>{hasSelectedValue ? "Authored sample value · no covenant or reconciliation test" : "No value supplied for this facility / period"}</dd></div>
+          <div><dt>Financial checks</dt><dd>Not performed · no linked calculations are available</dd></div>
         </dl>
-        <p>Selections identify a displayed row and period only. They do not establish a mathematical dependency, lender conclusion, or relationship to edited financing assumptions.</p>
+        <p>Selections identify a displayed row and period only. They do not show how a value was calculated, establish a lender conclusion, or connect to edited financing assumptions.</p>
         <div className="fm-credit-evidence-links">
           <a href={workbookHref("senior-debt")}>Open facility assumptions · navigation only →</a>
           <a href={workbookHref("debt")}>Open fixed Statements &amp; Debt example →</a>

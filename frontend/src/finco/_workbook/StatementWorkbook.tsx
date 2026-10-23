@@ -175,7 +175,7 @@ function StatementTable({
   >
     <span id="fm-sw-grid-help" className="fm-sr-only">Only the active statement value is in the page Tab order. Use the arrow keys to move between values; press Enter to open the source navigation reference. Tab leaves the table.</span>
     <table className="fm-sw-table">
-      <caption className="fm-sr-only">{sheet.title}, {dataOrigin === "synthetic-demo" ? "fixed synthetic example rows" : dataOrigin === "caller-provided" ? "caller-provided rows" : "unavailable rows"}, {view === "annual" ? "annual" : "model-period snapshots"}. Not a fully populated engine statement.</caption>
+      <caption className="fm-sr-only">{sheet.title}, {dataOrigin === "synthetic-demo" ? "fixed synthetic example rows" : dataOrigin === "caller-provided" ? "supplied rows" : "unavailable rows"}, {view === "annual" ? "annual" : "selected model periods"}. Illustrative financial statement with selected sample rows.</caption>
       <thead>
         {view === "annual" ? <tr><th scope="col">Statement line · {sheet.unit}</th><th scope="colgroup" colSpan={periods.length}>Operating years</th></tr> :
           <tr><th scope="col">Statement line · {sheet.unit}</th>{visiblePeriodBands.map((band, index) => {
@@ -250,8 +250,8 @@ function StatementTable({
                   <div className="fm-sw-trace-copy">
                     <strong>SYNTHETIC SOURCE TRACE · {item.label} · {periods[tracePeriod]}</strong>
                     <span className="fm-sw-trace-code">{formatExpressionLabel(item.label)} = fixed illustrative value · {displayStatementValue(values[periodIndexes[tracePeriod]] || "—", item.label, unit, precision)} {unit}</span>
-                    <span>Associated section: {source.label} · Run DEMO-FIXED-018 · {view === "annual" ? "Annual example array" : "Model-period snapshot array"}.</span>
-                    <span><strong>Calculation lineage unavailable.</strong> Navigation identifies a relevant design section only; it does not prove numerical dependency on its inputs.</span>
+                    <span>Related section: {source.label} · Example reference DEMO-FIXED-018 · {view === "annual" ? "Annual example" : "Selected model periods"}.</span>
+                    <span><strong>Calculation link unavailable.</strong> This opens a related section only; it does not show how the displayed value was calculated.</span>
                   </div>
                   <a className="fm-sw-trace-open" href={sourceHref}>Open {source.label} →</a>
                   <button className="fm-sw-trace-close" type="button" onClick={() => setTraceId(null)}>Close trace</button>
@@ -265,7 +265,7 @@ function StatementTable({
   </div>;
 }
 
-export default function StatementWorkbook({ onSheetChange, snapshot, status }: StatementWorkbookProps) {
+export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, status }: StatementWorkbookProps) {
   const project = readProjectContext();
   const visibleSheets = snapshot?.sheets ?? [];
   const visibleAnnualPeriods = snapshot?.annualPeriods ?? [];
@@ -353,7 +353,7 @@ export default function StatementWorkbook({ onSheetChange, snapshot, status }: S
     return <section id="statement-workbook" tabIndex={-1}>
       <div className="fm-sw-warning fm-sw-unavailable" role="status" aria-live="polite">
         <h2>Statement data unavailable</h2>
-        <p>No statement snapshot was supplied. No synthetic statement rows are substituted.</p>
+        <p>No statement data has been supplied. No sample statement rows are shown.</p>
       </div>
     </section>;
   }
@@ -367,26 +367,29 @@ export default function StatementWorkbook({ onSheetChange, snapshot, status }: S
             <div className="fm-sw-subtitle">{project.name} <span aria-hidden="true">·</span> {project.technology} <span aria-hidden="true">·</span> Illustrative EUR model view</div>
             <div className="fm-sw-tags">
               {dataOrigin === "synthetic-demo" && <span className="fm-sw-tag fm-sw-tag--demo">FIXED SYNTHETIC EXAMPLE</span>}
-              {dataOrigin === "caller-provided" && <span className="fm-sw-tag">CALLER-PROVIDED · ORIGIN UNVERIFIED</span>}
-              {dataOrigin === "unavailable" && <span className="fm-sw-tag">STATEMENT SOURCE UNAVAILABLE</span>}
+              {dataOrigin === "caller-provided" && <span className="fm-sw-tag">Source not provided</span>}
+              {dataOrigin === "unavailable" && <span className="fm-sw-tag">Statement not available</span>}
               <span className="fm-sw-tag">Partial example rows</span>
-              <span className="fm-sw-tag">No engine connection</span>
+              <span className="fm-sw-tag">Calculations are not available here</span>
             </div>
           </div>
-            <div className="fm-sw-run" aria-label="Illustrative run status">
+            <div className="fm-sw-run" aria-label="Illustrative results status"
+              data-run-freshness={runStatus.freshness}
+              data-check-status={runStatus.integrity}
+              data-model-version={runStatus.engine}>
             <span>{status.label}</span><strong>{status.runId}</strong>
-            <span className="fm-sw-tag">{runStatus.freshness}</span>
-            <span className="fm-sw-tag">{runStatus.integrity}</span>
-            <span className="fm-sw-tag">{runStatus.engine}</span>
+            <span className="fm-sw-tag">{runStatus.freshness === "current" ? "Up to date" : runStatus.freshness === "stale" ? "Earlier results shown" : runStatus.freshness === "not-run" ? "No results yet" : "Update status unavailable"}</span>
+            <span className="fm-sw-tag">{/not[- ]evaluated/i.test(runStatus.integrity) ? "Review status not assessed" : "Review status supplied"}</span>
+            <span className="fm-sw-tag">{/unknown|not connected/i.test(runStatus.engine) ? "Calculation details not supplied" : "Calculation details supplied"}</span>
           </div>
         </header>
 
         <div className="fm-sw-warning" role="note">
           <strong>Display-only workbook.</strong>{" "}
           {dataOrigin === "synthetic-demo"
-            ? "Fixed synthetic values are not linked to inputs and do not recalculate. Freshness is unknown because input linkage is absent; integrity has not been evaluated. These independent partial sheet samples are not complete or cross-sheet-reconciled engine statements."
+            ? "Fixed illustrative values are not linked to inputs and do not recalculate. Calculation status is unavailable in this preview. These independent examples are not complete financial statements or reconciled across sheets."
             : dataOrigin === "caller-provided"
-              ? "Rows are supplied to this presentation component; their source and financial authority are not verified here. No calculations or reconciliation are performed."
+              ? "The source of these rows has not been confirmed. No calculations or reconciliation are performed."
               : "No statement data is available. No synthetic rows are substituted."}
         </div>
 
@@ -453,6 +456,35 @@ export default function StatementWorkbook({ onSheetChange, snapshot, status }: S
                 return `${address} · ${activeRow?.label || "Selected line"} · ${statementCellText(activeValue[tracePeriod])} ${activeSheet.unit} · ${origin}`;
               })() : dataOrigin === "synthetic-demo" ? "Select a cell to open its synthetic trace" : "Select a cell to inspect its display value"}
             </span>
+            {traceId && onExplain && (() => {
+              const selectedRow = rows.find((item) => item.id === traceId);
+              if (!selectedRow) return null;
+              const rowValues = view === "annual" ? selectedRow.annual : selectedRow.model;
+              const source = traceSources[selectedRow.id];
+              const period = periods[tracePeriod] || "Period unavailable";
+              return <button
+                type="button"
+                className="fm-sw-scroll-btn fm-sw-explain"
+                data-testid="statement-explain-selected"
+                onClick={event => {
+                  event.currentTarget.focus();
+                  onExplain({
+                  id: `statement-${sheetId}-${selectedRow.id}-${tracePeriod}`,
+                  kind: "Statement row",
+                  title: selectedRow.label,
+                  value: displayStatementValue(rowValues[tracePeriod] || "—", selectedRow.label, unit, precision),
+                  unit: activeSheet.unit,
+                  period,
+                  basis: dataOrigin === "synthetic-demo"
+                    ? status.freshness === "stale"
+                      ? `Earlier fixed illustrative statement value from ${status.runId}. It does not reflect current edits; any related section is navigation only.`
+                      : `Fixed illustrative statement value from ${status.runId}. Any related section is a navigation association only; no calculation path is supplied.`
+                    : "Displayed value only. No source or calculation path is supplied.",
+                  destination: source ? { sheet: source.sheet, label: source.label } : undefined,
+                  });
+                }}
+              >Explain selected row</button>;
+            })()}
             {sheetId === "debt" && <label className="fm-sw-field" htmlFor="fm-sw-facility">Facility
               <select id="fm-sw-facility" className="fm-sw-select" aria-label="Statement facility" value={facility} onChange={(event) => { setFacility(event.target.value as FacilityId); setTraceId(null); }}>
                 <option value="senior">Senior</option>
@@ -469,11 +501,11 @@ export default function StatementWorkbook({ onSheetChange, snapshot, status }: S
           </div>}
           {sheetId !== "sponsor" && <div className="fm-sw-subbar">
             <span><strong>{displayedSheet.title}</strong> · Display units: {unit} · formatting only</span>
-            <span>{view === "annual" ? `Annual view · ${visibleAnnualPeriods[0]}–${visibleAnnualPeriods.at(-1)}` : "Selected period snapshots · not a full time series"}</span>
+            <span>{view === "annual" ? `Annual view · ${visibleAnnualPeriods[0]}–${visibleAnnualPeriods.at(-1)}` : "Selected model periods · not a full time series"}</span>
           </div>}
           {sheetId === "sponsor" && <div className="fm-sw-subbar">
             <span><strong>{displayedSheet.title}</strong> · Display units: {unit} · formatting only</span>
-            <span>{view === "annual" ? `Annual view · ${visibleAnnualPeriods[0]}–${visibleAnnualPeriods.at(-1)}` : "Selected period snapshots · not a full time series"}</span>
+            <span>{view === "annual" ? `Annual view · ${visibleAnnualPeriods[0]}–${visibleAnnualPeriods.at(-1)}` : "Selected model periods · not a full time series"}</span>
           </div>}
           <div className="fm-sw-subbar">
             <span id="fm-sw-scroll-help">Scroll periods horizontally · Focus table and use ← / →</span>
@@ -504,8 +536,8 @@ export default function StatementWorkbook({ onSheetChange, snapshot, status }: S
             </div>}
         </section>
         <footer className="fm-sw-footnote">
-          <span><strong>Example coverage:</strong> selected statement lines and period snapshots only; no complete model time series.</span>
-          <span>Frequency snapshots are illustrative and carry no production frequency-policy authority.</span>
+          <span><strong>Example coverage:</strong> selected statement lines and periods only; this is not a complete model time series.</span>
+          <span>Displayed period frequency is illustrative and does not set a live model frequency.</span>
         </footer>
       </section>
   </section>;

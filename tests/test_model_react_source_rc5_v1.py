@@ -69,6 +69,9 @@ FORBIDDEN_PRODUCTION_MODULES = (
     "src/finco/_workbook/syntheticStatementProvider.ts",
     "src/finco/_results/syntheticResultsProvider.ts",
     "src/finco/_results/runComparisonFixtures.ts",
+    # UX-03: new RC11 demo/synthetic modules stay out of the production graph.
+    "src/finco/_shared/demoSessionStorage.ts",
+    "src/finco/_insight/syntheticInsightFixtures.ts",
 )
 
 
