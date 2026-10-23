@@ -8,6 +8,7 @@
   window.__fincoRhStatementsNav = true;
   var KEY = 'fincoRhStmt';
   var returnFocus = '';
+  var navigationGeneration = 0;
 
   function current() {
     var s = document.getElementById('v2-run-statements');
@@ -23,6 +24,7 @@
   document.addEventListener('click', function (e) {
     var open = e.target.closest && e.target.closest('[data-rh-statements]');
     if (open) {
+      navigationGeneration++;
       var c = current();
       try { var st = Object.assign({}, window.history.state || {}); st[KEY] = { view: 'statements', id: open.getAttribute('data-history-id') }; window.history.pushState(st, '', window.location.href); } catch (err) { /* history unavailable */ }
       returnFocus = 'run-detail-open-statements';
@@ -35,15 +37,32 @@
     }
   }, true);
 
+  function replaceHistorical(target, url, generation) {
+    var node = document.querySelector(target), source = document.createElement('span');
+    source.hidden = true;
+    document.body.appendChild(source);
+    // A native Forward (or a new opener) can supersede an in-flight Back.
+    // Never let that old response replace the new view or its keyboard focus.
+    source.addEventListener('htmx:beforeOnLoad', function (event) {
+      if (generation !== navigationGeneration || document.querySelector(target) !== node) {
+        event.preventDefault();
+      }
+    });
+    window.htmx.ajax('GET', url, { source: source, target: target, swap: 'outerHTML' })
+      .then(function () { source.remove(); }, function () { source.remove(); });
+  }
+
   window.addEventListener('popstate', function (e) {
+    var generation = ++navigationGeneration;
+    returnFocus = '';
     var cur = current();
     var entry = e.state && e.state[KEY];
     if (!cur || !window.htmx) { return; }
     if (cur.kind === 'statements' && !entry) {
       returnFocus = 'run-detail-open-statements';
-      window.htmx.ajax('GET', detailUrl(cur.project, cur.id), { target: '#v2-run-statements', swap: 'outerHTML' });
+      replaceHistorical('#v2-run-statements', detailUrl(cur.project, cur.id), generation);
     } else if (cur.kind === 'detail' && entry && entry.view === 'statements') {
-      window.htmx.ajax('GET', statementsUrl(cur.project, entry.id || cur.id), { target: '#v2-run-detail', swap: 'outerHTML' });
+      replaceHistorical('#v2-run-detail', statementsUrl(cur.project, entry.id || cur.id), generation);
     }
   });
 

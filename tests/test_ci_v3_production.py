@@ -98,3 +98,68 @@ if __name__=='__main__':
  print(json.dumps(result))
 ''')
  subprocess.run([__import__('sys').executable,str(script)],check=True,env={**os.environ,'PYTHONPATH':str(ROOT)},capture_output=True,text=True,timeout=20)
+
+
+def test_browser_exception_after_passes_cannot_produce_success(tmp_path):
+ import sys
+ script='''from pathlib import Path
+from tests.model_statements_tree_acceptance import browser_failure_guard,write_browser_summary
+import sys
+out=Path(sys.argv[1]);results=[{'check':'earlier check','status':'PASS'}]
+try:
+ with browser_failure_guard(out,results,{'name':'keyboard OPEX'},[]):
+  raise TimeoutError('synthetic navigation timeout')
+finally:
+ write_browser_summary(out,results,{})
+'''
+ run=subprocess.run([sys.executable,'-c',script,str(tmp_path)],cwd=ROOT,capture_output=True,text=True)
+ assert run.returncode!=0 and 'TimeoutError' in run.stderr
+ summary=read_json(tmp_path/'browser-results.json')
+ assert summary['all_pass'] is False and summary['passed']==1 and summary['total']==2
+ fail=summary['checks'][-1]
+ assert fail['status']=='FAIL' and fail['exception_type']=='TimeoutError' and fail['step']=='keyboard OPEX'
+
+
+def test_browser_diagnostic_failure_preserves_original_exception(tmp_path):
+ from tests.model_statements_tree_acceptance import browser_failure_guard
+ class ClosedDuringFailure:
+  def is_closed(self):return False
+  def evaluate(self,*args):raise RuntimeError('page lost')
+  def screenshot(self,**kwargs):raise RuntimeError('screenshot lost')
+ results=[]
+ with pytest.raises(AssertionError,match='wrong keyboard focus'):
+  with browser_failure_guard(tmp_path,results,{'name':'Tab'},[ClosedDuringFailure()]):
+   raise AssertionError('wrong keyboard focus')
+ assert results[-1]['status']=='FAIL' and results[-1]['exception_type']=='AssertionError'
+ assert results[-1]['diagnostic_error']=='page lost' and results[-1]['screenshot_error']=='screenshot lost'
+
+
+def test_owned_descriptor_sharer_is_joined_without_name_permission(tmp_path):
+ import sys
+ script=tmp_path/'descriptor_sharer.py'
+ script.write_text('''from multiprocessing.reduction import DupFd
+from tools.ci_v3_built_image_child import finalize_multiprocessing
+import os,json
+r,w=os.pipe()
+x=DupFd(r);fd=x.detach()
+for f in [r,w,fd]:os.close(f)
+result=finalize_multiprocessing()
+assert result['resource_sharer_owned_thread_before'] is True
+assert result['resource_sharer_owned_thread_after'] is False and result['verified']
+print(json.dumps(result))
+''')
+ subprocess.run([sys.executable,str(script)],check=True,env={**os.environ,'PYTHONPATH':str(ROOT)},capture_output=True,text=True,timeout=20)
+
+
+def test_unowned_serve_named_thread_still_blocks_cleanup():
+ import threading
+ from tools.ci_v3_built_image_child import finalize_multiprocessing
+ release=threading.Event()
+ thread=threading.Thread(target=release.wait,name='Thread-1 (_serve)',daemon=True)
+ thread.start()
+ try:
+  result=finalize_multiprocessing()
+  assert result['verified'] is False and result['reason']=='application work remains'
+  assert thread.name in result['threads']
+ finally:
+  release.set();thread.join(2)

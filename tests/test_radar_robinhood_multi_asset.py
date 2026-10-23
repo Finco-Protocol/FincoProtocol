@@ -112,12 +112,32 @@ def _build_service(calls: list, uid="AAPL", address=_AAPL_ADDR):
 
 @pytest.fixture
 def make_client():
+    # These offline clients do not run the application's lifespan. The fixture
+    # therefore owns the injected services and must close/join their pools.
+    import time
+    owned = []
+
     def _make(service):
         radar_router_module.set_service(service)
         app = FastAPI()
         app.include_router(radar_router_module.router)
-        return TestClient(app)
-    return _make
+        client = TestClient(app)
+        owned.append((client, service))
+        return client
+
+    yield _make
+    problems = []
+    for client, service in reversed(owned):
+        client.close()
+        pool = service._provider_pool
+        service.close()
+        deadline = time.monotonic() + 5
+        for thread in list(pool._threads) if pool is not None else []:
+            thread.join(max(0, deadline - time.monotonic()))
+            if thread.is_alive():
+                problems.append(thread.name)
+    radar_router_module.set_service(None)
+    assert not problems, f"offline fixture provider work did not stop: {problems}"
 
 
 # ---------------------------------------------------------------------------

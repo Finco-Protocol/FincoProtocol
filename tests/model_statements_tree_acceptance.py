@@ -9,6 +9,7 @@ production-registered one (nothing is mounted by this script).  Every check is w
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -24,6 +25,67 @@ from tests.model_workspace_navigation import activate_destination
 
 USER = "statements-tree-browser"
 
+
+def focus_diagnostics(page):
+    return page.evaluate("""() => {
+      const a = document.activeElement, r = document.getElementById('v2-run-statements');
+      return {url: location.href, hash: location.hash,
+        focus: a && {html: a.outerHTML.slice(0, 2000), key: a.dataset.stKey,
+          rowKey: a.closest('[data-st-row]')?.dataset.stKey,
+          tabindex: a.getAttribute('tabindex'), link: a.hasAttribute('data-st-link'), href: a.getAttribute('href')},
+        root: r && {ready: r.dataset.stReady, historyId: r.dataset.historyId, connected: r.isConnected},
+        rows: r && [...r.querySelectorAll('table[data-st-basis="annual"][data-st-tree="pnl"] tr[data-st-row]')]
+          .map(e => ({key:e.dataset.stKey, hidden:e.hidden, tabindex:e.getAttribute('tabindex'), expanded:e.getAttribute('aria-expanded')})),
+        selectedOpex: document.getElementById('tab-opex')?.getAttribute('aria-selected'),
+        events: window.__fincoStatementTrace || []};
+    }""")
+
+
+def record_browser_exception(out, results, error, step, pages):
+    record = {"check": "uncaught browser exception", "status": "FAIL", "observed": str(error),
+              "exception_type": type(error).__name__, "step": step["name"], "screenshot": ""}
+    for page in reversed(pages):
+        try:
+            if page.is_closed():
+                continue
+            try:
+                record["diagnostics"] = focus_diagnostics(page)
+            except Exception as diagnostic_error:
+                record["diagnostic_error"] = str(diagnostic_error)
+            try:
+                page.screenshot(path=str(out / "failure.png"), timeout=5000)
+                record["screenshot"] = "failure.png"
+            except Exception as screenshot_error:
+                record["screenshot_error"] = str(screenshot_error)
+            break
+        except Exception:
+            continue
+    results.append(record)
+    print("FAIL", record["step"], "|", record["exception_type"], str(error), flush=True)
+
+
+@contextmanager
+def browser_failure_guard(out, results, step, pages):
+    # Capture the live page BEFORE Playwright tears it down, then retain the
+    # original exception/exit status. Diagnostic failures cannot replace it.
+    try:
+        yield
+    except BaseException as error:
+        record_browser_exception(out, results, error, step, pages)
+        raise
+
+
+def write_browser_summary(out, results, logs):
+    summary = {
+        "schema": "finco.statements-tree.browser-acceptance.v1", "generated_at": datetime.now(timezone.utc).isoformat(),
+        "command": "python -m tests.model_statements_tree_acceptance", "checks": results, "network_and_console": logs,
+        "passed": sum(1 for r in results if r["status"] == "PASS"), "total": len(results),
+        "all_pass": bool(results) and all(r["status"] == "PASS" for r in results),
+        "screenshots": sorted(p.name for p in out.glob("*.png")),
+        "screenshot_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.glob("*.png"))}}
+    (out / "browser-results.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print("SUMMARY", summary["passed"], "/", summary["total"], "all_pass" if summary["all_pass"] else "FAILURES")
+    return summary
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -45,7 +107,10 @@ def main() -> int:
     logs: dict[str, dict] = {}
 
     def check(tag, ok, observed="", shot=""):
+        step["name"] = tag
         results.append({"check": tag, "status": "PASS" if ok else "FAIL", "observed": str(observed)[:500], "screenshot": shot})
+        if isinstance(observed, dict) and "focus" in observed:
+            results[-1]["diagnostics"] = observed
         print(("PASS " if ok else "FAIL ") + tag, "|", str(observed)[:160], flush=True)
         return ok
 
@@ -53,16 +118,8 @@ def main() -> int:
         pg.screenshot(path=str(out / name))
         return name
 
-    def write_summary():
-        summary = {
-            "schema": "finco.statements-tree.browser-acceptance.v1", "generated_at": datetime.now(timezone.utc).isoformat(),
-            "command": "python -m tests.model_statements_tree_acceptance", "checks": results, "network_and_console": logs,
-            "passed": sum(1 for r in results if r["status"] == "PASS"), "total": len(results),
-            "all_pass": all(r["status"] == "PASS" for r in results), "screenshots": sorted(p.name for p in out.glob("*.png")),
-            "screenshot_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.glob("*.png"))}}
-        (out / "browser-results.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        print("SUMMARY", summary["passed"], "/", summary["total"], "all_pass" if summary["all_pass"] else "FAILURES")
-        return summary
+    pages = []
+    step = {"name": "startup"}
 
     original_db = db.DB_PATH
     server = None
@@ -83,7 +140,7 @@ def main() -> int:
             url = f"http://127.0.0.1:{port}"
             record = create_reference_seeded_project(user_id=USER, requested_name="Statements tree", template_source="generic_solar_reference", capacity_mw=16)
 
-            with sync_playwright() as pw:
+            with sync_playwright() as pw, browser_failure_guard(out, results, step, pages):
                 kwargs = {"executable_path": os.environ["FINCO_TEST_CHROMIUM_PATH"]} if os.environ.get("FINCO_TEST_CHROMIUM_PATH") else {}
                 browser = pw.chromium.launch(**kwargs)
 
@@ -91,7 +148,20 @@ def main() -> int:
                     ctx = browser.new_context(viewport={"width": width, "height": 1000})
                     ctx.add_cookies([{"name": COOKIE_NAME, "value": cookie, "url": url}])
                     ctx.set_default_timeout(60000)
+                    ctx.add_init_script("""(() => {
+                      const trace = window.__fincoStatementTrace = [];
+                      function record(e) {
+                        const a = document.activeElement, row = a && a.closest('[data-st-row]');
+                        trace.push({ms: performance.now(), event: e.type, key: e.key, hash: location.hash,
+                          tag: a && a.tagName, id: a && a.id, row: row && row.dataset.stKey,
+                          link: a && a.hasAttribute('data-st-link'), href: a && a.getAttribute('href')});
+                        if (trace.length > 100) trace.shift();
+                      }
+                      ['focusin', 'keydown', 'popstate', 'htmx:beforeSwap', 'htmx:afterSwap']
+                        .forEach(name => addEventListener(name, record, true));
+                    })()""")
                     page = ctx.new_page()
+                    pages.append(page)
                     log = logs.setdefault(tag, {"page_errors": [], "console_errors": [], "bad_responses": []})
                     page.on("pageerror", lambda e: log["page_errors"].append(str(e)))
                     page.on("console", lambda m: log["console_errors"].append(f"{m.text} @ {m.location.get('url')}") if m.type == "error" and "favicon" not in m.text and "favicon" not in (m.location.get("url") or "")
@@ -302,8 +372,18 @@ def main() -> int:
                 keyboard_expanded = htree.locator('tr[data-st-key="ebit_keur"]').get_attribute("aria-expanded") == "true"
                 hp.keyboard.press("ArrowDown")
                 hp.keyboard.press("ArrowDown")
-                on_opex = hp.evaluate("() => document.activeElement.dataset.stKey")
+                step["name"] = "ArrowDown must focus historical operating expenses row"
+                state = focus_diagnostics(hp)
+                on_opex = state["focus"].get("key")
+                assert on_opex == "operating_expenses_keur", json.dumps(state)
+                check(step["name"], True, state)
                 hp.keyboard.press("Tab")                      # to the line's link (its chevron is absent on a leaf)
+                step["name"] = "Tab must focus the historical operating expenses link"
+                state = focus_diagnostics(hp)
+                assert (state["focus"].get("rowKey") == "operating_expenses_keur"
+                        and state["focus"]["link"] and state["focus"]["href"] == "#opex"), json.dumps(state)
+                check(step["name"], True, state)
+                step["name"] = "Enter must follow the OPEX link and select OPEX"
                 hp.keyboard.press("Enter")
                 hp.wait_for_function("() => location.hash === '#opex' && document.getElementById('tab-opex').getAttribute('aria-selected') === 'true'")
                 hp.go_back()
@@ -313,6 +393,45 @@ def main() -> int:
                             and hp.locator('#v2-run-statements table[data-st-tree="pnl"][data-st-basis="annual"] tr[data-st-key="ebit_keur"]').get_attribute("aria-expanded") == "true")
                 check("keyboard-only expansion and drill-down, then Back to the same historical view", keyboard_expanded and on_opex == "operating_expenses_keur" and same_dom,
                       (keyboard_expanded, on_opex, same_dom, hp.evaluate("() => ({stmts: document.querySelectorAll('#v2-run-statements').length, detail: document.querySelectorAll('#v2-run-detail').length, list: document.querySelectorAll('#v2-sheet-run-history').length, hid: (document.getElementById('v2-run-statements') || {dataset: {}}).dataset.historyId, hash: location.hash})"), chosen), shot(hp, "07-historical-after-keyboard-back-1440.png"))
+                # Repeat actual native traversal, including deliberately delayed
+                # HTMX responses. This is fault injection, not a wait for focus.
+                def delayed_statements(route):
+                    response = route.fetch()
+                    time.sleep(0.15)
+                    route.fulfill(response=response)
+
+                for cycle in range(2):
+                    hp.route('**/v2/workbook/run-history/statements?*', delayed_statements)
+                    try:
+                        step["name"] = f"delayed native Back/Forward cycle {cycle + 1}"
+                        hp.go_back()
+                        hp.wait_for_selector('#v2-run-detail')
+                        hp.go_forward()
+                        hp.wait_for_function("(id) => { const r = document.getElementById('v2-run-statements'); return r && r.dataset.stReady === '1' && r.dataset.historyId === id; }", arg=chosen)
+                        htree = hp.locator('#v2-run-statements table[data-st-tree="pnl"][data-st-basis="annual"]')
+                        # Back restores the expanded state captured when the
+                        # link was followed. Start this NEW expansion scenario
+                        # collapsed through its real control, after restoration.
+                        if htree.locator('tr[data-st-key="ebit_keur"]').get_attribute('aria-expanded') == 'true':
+                            htree.locator('tr[data-st-key="ebit_keur"] [data-st-toggle]').click()
+                        htree.locator('tr[data-st-key="ebit_keur"]').focus()
+                        hp.keyboard.press('ArrowRight')
+                        hp.keyboard.press('ArrowDown')
+                        hp.keyboard.press('ArrowDown')
+                        state = focus_diagnostics(hp)
+                        assert state['focus'].get('key') == 'operating_expenses_keur', json.dumps(state)
+                        hp.keyboard.press('Tab')
+                        state = focus_diagnostics(hp)
+                        assert (state['focus'].get('rowKey') == 'operating_expenses_keur'
+                                and state['focus']['link'] and state['focus']['href'] == '#opex'), json.dumps(state)
+                        hp.keyboard.press('Enter')
+                        hp.wait_for_function("location.hash === '#opex' && document.getElementById('tab-opex').getAttribute('aria-selected') === 'true'")
+                        hp.go_back()
+                        hp.wait_for_function("(id) => { const r = document.getElementById('v2-run-statements'); return location.hash === '#run-history' && r && r.dataset.stReady === '1' && r.dataset.historyId === id; }", arg=chosen)
+                        check(step["name"], dup() == [] and hp.locator('#v2-run-detail').count() == 0,
+                              state, shot(hp, f"07-delayed-history-cycle-{cycle + 1}.png"))
+                    finally:
+                        hp.unroute('**/v2/workbook/run-history/statements?*', delayed_statements)
                 # the Outputs sheet is untouched by the historical flow
                 activate_destination(hp, "tab-outputs")
                 hp.wait_for_function("() => { const r = document.getElementById('v2-sheet-outputs'); return !!r && r.dataset.stReady === '1' && !!r.querySelector('table[data-st-tree]'); }")
@@ -349,11 +468,15 @@ def main() -> int:
                           json.dumps({k: v[:3] for k, v in log.items()}))
                 check("the committed Run history is unchanged by all of the above", {h.history_id: h.to_dict() for h in get_run_history(USER, record.project_id)} == {h["history_id"]: h for h in before_hist})
                 browser.close()
+        except BaseException as error:
+            if not any(r.get("check") == "uncaught browser exception" for r in results):
+                record_browser_exception(out, results, error, step, [])
+            raise
         finally:
             if server is not None:
                 server.should_exit = True
             db.DB_PATH = original_db
-            summary = write_summary()
+            summary = write_browser_summary(out, results, logs)
     return 0 if summary["all_pass"] else 1
 
 

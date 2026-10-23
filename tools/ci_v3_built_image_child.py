@@ -15,18 +15,29 @@ def finalize_multiprocessing(timeout=5):
     """
     import multiprocessing as mp
     import threading
-    live=[t.name for t in threading.enumerate() if t is not threading.current_thread() and t.is_alive()]
+    from multiprocessing import resource_sharer
+    sharer = resource_sharer._resource_sharer
+    owned_sharer_thread = sharer._thread
+    live=[t.name for t in threading.enumerate()
+          if t is not threading.current_thread() and t is not owned_sharer_thread and t.is_alive()]
     children=mp.active_children()
     if live or children:
         return {'verified':False,'reason':'application work remains','threads':live,'children':[p.pid for p in children]}
     from multiprocessing import resource_tracker, forkserver, util
     tracker=resource_tracker._resource_tracker
     server=forkserver._forkserver
-    result={'verified':False,'tracker_pid_before':tracker._pid,'forkserver_pid_before':server._forkserver_pid}
+    result={'verified':False,'tracker_pid_before':tracker._pid,'forkserver_pid_before':server._forkserver_pid,
+            'resource_sharer_owned_thread_before':bool(owned_sharer_thread and owned_sharer_thread.is_alive())}
     def close():
         try:
             import gc
             gc.collect()
+            # Join the exact stdlib-owned descriptor-sharing thread; its name
+            # is not an admission rule. Application threads still block above.
+            resource_sharer.stop(timeout=timeout)
+            if owned_sharer_thread is not None and owned_sharer_thread.is_alive():
+                raise RuntimeError('owned descriptor sharer did not stop')
+            result['resource_sharer_owned_thread_after'] = bool(sharer._thread and sharer._thread.is_alive())
             # Flush registered IPC finalizers before closing the tracker they use.
             # Do not run _exit_function: it would terminate/join app children.
             util._run_finalizers()
