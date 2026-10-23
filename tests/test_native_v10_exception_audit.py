@@ -19,6 +19,8 @@ import types
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 from financial_engine.native_v10 import provenance as pv
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -165,6 +167,10 @@ def _discharge(site):
 
 
 def test_every_native_region_instruction_is_classified_and_every_residual_site_is_discharged():
+    from financial_engine.native_v10 import eligibility
+    reason = eligibility.check_runtime()
+    if reason:   # the audit concerns the bytecode of an interpreter that may execute native code
+        pytest.skip(f"bytecode audit applies to validated native runtimes only: {reason}")
     totals, residual, unclassified = _audit()
     assert sum(totals.values()) > 5000 and residual                # the audit really covers the regions
     assert unclassified == []

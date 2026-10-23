@@ -94,6 +94,10 @@ def test_tampered_artifacts_manifests_and_seal_decline(tmp_path, native_artifact
 
 
 def test_admission_layer_and_stage2_blob_tamper_fail_authentication(tmp_path):
+    # source authentication runs only after the runtime gate admitted the interpreter (loader order)
+    reason = eligibility.check_runtime()
+    if reason:
+        pytest.skip(f"source authentication is reached only on validated runtimes: {reason}")
     m = json.loads(provenance.APPROVED_MANIFEST.read_text())
     m["blobs"]["financial_engine/native_v10/dispatch.py"] = "0" * 40
     (tmp_path / "m.json").write_text(json.dumps(m))

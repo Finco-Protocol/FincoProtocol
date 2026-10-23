@@ -170,7 +170,10 @@ def test_executor_shutdown_reports_a_surviving_observer_as_straggler(monkeypatch
 def test_repeated_application_lifespans_leave_no_observer(monkeypatch):
     from fastapi.testclient import TestClient
 
-    import main_web
+    try:
+        import main_web
+    except ImportError as exc:   # pre-existing on main: the web app needs Python >= 3.11 (enum.StrEnum)
+        pytest.skip(f"web application not importable on this interpreter: {exc}")
 
     previous = me.reset_model_executor_for_tests(ModelExecutor(ModelExecutionConfig(mode="thread", concurrency=1)))
     assert previous == []
