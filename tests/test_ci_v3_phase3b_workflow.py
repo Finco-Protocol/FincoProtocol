@@ -1,5 +1,6 @@
-"""The deployable shadow workflow bytes stay inactive, additive, bounded and advisory-only."""
+"""Advisory deployment stays exact, additive, bounded and closed to unapproved execution."""
 from pathlib import Path
+import json
 import re
 
 import pytest
@@ -15,7 +16,13 @@ def flow():
 
 
 def test_not_active_and_existing_public_workflow_untouched():
-    assert not (ROOT / ".github/workflows/ci_v3_shadow.yml").exists()
+    deployed = ROOT / ".github/workflows/ci_v3_shadow.yml"
+    assert deployed.read_bytes() == CANDIDATE.read_bytes()
+    admission = json.loads((ROOT / "docs/ci_v3/phase3a/admission-root.closed.json").read_text())
+    activation = json.loads((ROOT / "docs/ci_v3/phase4/activation.closed.json").read_text())
+    assert admission["enabled"] is False and admission["authoritative_acceptance"] is False
+    assert activation["enabled"] is False and activation["rollback"] is True
+    assert not (ROOT / ".github/workflows/ci_v3_required_job.yml").exists()
     public = (ROOT / ".github/workflows/public_safety_and_smoke.yml").read_text(encoding="utf-8")
     assert "ci_v3" not in public and "tools.ci_v3" not in public
 
