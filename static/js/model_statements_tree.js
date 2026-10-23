@@ -137,22 +137,38 @@
       setView(root, id, st.view === 'tree' ? 'tree' : 'flat');
     });
     selectPeriod(root, ctx.period || '');
+    // Restoration belongs to the old navigation, never to a new interaction.
+    // Both deferred passes must stop once the user focuses/uses this root.
+    var cancelled = false, applying = false;
+    var interactionEvents = ['focusin', 'keydown', 'pointerdown'];
+    function cancelRestore() { if (!applying) { cancelled = true; } }
+    interactionEvents.forEach(function (name) { root.addEventListener(name, cancelRestore, true); });
     function settle() {
-      Object.keys(ctx.scroll || {}).forEach(function (k) {
-        var parts = k.split(':');
-        var t = root.querySelector('table[data-st-tree="' + parts[0] + '"][data-st-basis="' + parts[1] + '"]');
-        var region = t ? t.closest('[data-st-region]') : null;
-        if (region) { region.scrollLeft = ctx.scroll[k].left; region.scrollTop = ctx.scroll[k].top; }
-      });
-      if (typeof ctx.windowY === 'number') { window.scrollTo(0, ctx.windowY); }
-      if (ctx.focus) {
-        var t2 = root.querySelector('table[data-st-tree="' + ctx.focus.statement + '"][data-st-basis="' + ctx.focus.basis + '"]');
-        var row = t2 ? keyMap(t2)[ctx.focus.key] : null;
-        if (row && !row.hidden) { setRoving(t2, row); row.focus({ preventScroll: true }); }
-      }
+      if (!root.isConnected || cancelled) { return; }
+      applying = true;
+      try {
+        Object.keys(ctx.scroll || {}).forEach(function (k) {
+          var parts = k.split(':');
+          var t = root.querySelector('table[data-st-tree="' + parts[0] + '"][data-st-basis="' + parts[1] + '"]');
+          var region = t ? t.closest('[data-st-region]') : null;
+          if (region) { region.scrollLeft = ctx.scroll[k].left; region.scrollTop = ctx.scroll[k].top; }
+        });
+        if (typeof ctx.windowY === 'number') { window.scrollTo(0, ctx.windowY); }
+        if (ctx.focus) {
+          var t2 = root.querySelector('table[data-st-tree="' + ctx.focus.statement + '"][data-st-basis="' + ctx.focus.basis + '"]');
+          var row = t2 ? keyMap(t2)[ctx.focus.key] : null;
+          if (row && !row.hidden) { setRoving(t2, row); row.focus({ preventScroll: true }); }
+        }
+      } finally { applying = false; }
     }
     // layout settles after the unit/basis controls have applied; run twice so a late reflow cannot undo it
-    window.requestAnimationFrame(function () { settle(); window.setTimeout(settle, 60); });
+    window.requestAnimationFrame(function () {
+      settle();
+      window.setTimeout(function () {
+        settle();
+        interactionEvents.forEach(function (name) { root.removeEventListener(name, cancelRestore, true); });
+      }, 60);
+    });
     return true;
   }
 

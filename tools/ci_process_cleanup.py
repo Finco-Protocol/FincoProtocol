@@ -29,7 +29,11 @@ def children():
         except (FileNotFoundError,ProcessLookupError):
             continue
         if int(fields[1])==os.getpid():
-            result.append({'pid':int(entry.name),'state':fields[0],'start_ticks':int(fields[19])})
+            try:
+                command=(entry/'cmdline').read_bytes().replace(b'\0',b' ').decode('utf-8',errors='replace')[:2048]
+            except OSError:
+                command='<unavailable>'
+            result.append({'pid':int(entry.name),'state':fields[0],'start_ticks':int(fields[19]),'command':command})
     return sorted(result,key=lambda p:p['pid'])
 
 

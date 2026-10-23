@@ -9,7 +9,7 @@ def flow(name):
 
 
 def test_not_deployed_and_original_mandatory_still_sequential():
-    assert (ROOT/'.github/workflows/ci_v3_required_job.yml').read_bytes() == (ROOT/'docs/ci_v3/phase4/ci_v3_required_job.candidate.yml').read_bytes()
+    assert (ROOT/'docs/ci_v3/phase4/ci_v3_required_job.protected.yml').read_bytes() == (ROOT/'docs/ci_v3/phase4/ci_v3_required_job.candidate.yml').read_bytes()
     assert (ROOT/'.github/workflows/public_safety_and_smoke.yml').read_bytes() == (ROOT/'docs/ci_v3/phase4/public_safety_and_smoke.candidate.yml').read_bytes()
     public=(ROOT/'.github/workflows/public_safety_and_smoke.yml').read_text()
     assert './.github/workflows/ci_v3_required_job.yml' in public and 'mode: control' in public

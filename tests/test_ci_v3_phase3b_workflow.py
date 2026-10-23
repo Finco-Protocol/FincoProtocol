@@ -22,7 +22,7 @@ def test_not_active_and_existing_public_workflow_untouched():
     activation = json.loads((ROOT / "docs/ci_v3/phase4/activation.closed.json").read_text())
     assert admission["enabled"] is False and admission["authoritative_acceptance"] is False
     assert activation["enabled"] is False and activation["rollback"] is True
-    required = (ROOT / ".github/workflows/ci_v3_required_job.yml").read_bytes()
+    required = (ROOT / "docs/ci_v3/phase4/ci_v3_required_job.protected.yml").read_bytes()
     assert required == (ROOT / "docs/ci_v3/phase4/ci_v3_required_job.candidate.yml").read_bytes()
     public = (ROOT / ".github/workflows/public_safety_and_smoke.yml").read_text(encoding="utf-8")
     assert "./.github/workflows/ci_v3_required_job.yml" in public
