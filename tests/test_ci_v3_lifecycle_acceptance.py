@@ -137,10 +137,14 @@ def test_web_shutdown_attempts_both_owners_before_reporting_failure():
     async def demo():
         called.append('demo'); raise ShutdownIncomplete('fixture blocked cleanup')
     async def warmer(): called.append('warmer')
-    namespace = {'_stop_demo_cleanup':demo, '_stop_r_live_snapshot_warmer':warmer}
+    async def native():
+        called.append('native'); raise ShutdownIncomplete('fixture native shadow survivor')
+    namespace = {'_stop_demo_cleanup':demo, '_stop_r_live_snapshot_warmer':warmer, '_stop_native_v10_shadow':native}
     exec(compile(ast.Module(body=[node],type_ignores=[]),'main_web.py','exec'),namespace)
-    with pytest.raises(ExceptionGroup): asyncio.run(namespace['_shutdown_background_services']())
-    assert called == ['demo','warmer']
+    from app.background_lifecycle import LifecycleErrors      # the builtin ExceptionGroup on Python >= 3.11
+    with pytest.raises(LifecycleErrors) as group: asyncio.run(namespace['_shutdown_background_services']())
+    assert called == ['demo','warmer','native']                   # every owner attempted before reporting
+    assert [str(e) for e in group.value.exceptions] == ['fixture blocked cleanup', 'fixture native shadow survivor']
 
 
 def test_sqlite_release_deadline_is_failure_until_cleanup_is_joined(tmp_path):

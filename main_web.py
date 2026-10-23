@@ -349,7 +349,7 @@ async def _start_r_live_snapshot_warmer():
     with FINCO_RLIVE_WARMING_ENABLED=0 (e.g. when the dedicated systemd
     collector owns warming). The web read path never calls this module.
     """
-    from app.background_lifecycle import ShutdownIncomplete
+    from app.background_lifecycle import LifecycleErrors, ShutdownIncomplete
     try:
         from app.radar_rwa.r_live_warming import start_background_warmer
         owner = getattr(app.state, "snapshot_warmer_owner", None)
@@ -364,7 +364,7 @@ async def _start_r_live_snapshot_warmer():
         try:
             await _stop_demo_cleanup()
         except Exception as rollback_error:
-            raise ExceptionGroup("background startup and rollback failed", [startup_error, rollback_error])
+            raise LifecycleErrors("background startup and rollback failed", [startup_error, rollback_error])
         raise
     except Exception:
         import logging
@@ -381,6 +381,7 @@ async def _stop_r_live_snapshot_warmer():
 
 @app.on_event("shutdown")
 async def _shutdown_background_services():
+    from app.background_lifecycle import LifecycleErrors
     errors = []
     for stop in (_stop_demo_cleanup, _stop_r_live_snapshot_warmer, _stop_native_v10_shadow):
         try:
@@ -388,7 +389,7 @@ async def _shutdown_background_services():
         except Exception as exc:
             errors.append(exc)
     if errors:
-        raise ExceptionGroup("application background shutdown incomplete", errors)
+        raise LifecycleErrors("application background shutdown incomplete", errors)
 
 
 # -- Template setup -----------------------------------------------------------
