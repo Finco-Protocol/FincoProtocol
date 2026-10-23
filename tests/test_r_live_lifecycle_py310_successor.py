@@ -37,6 +37,13 @@ def head():
 def repo(tmp_path_factory):
     clone = tmp_path_factory.mktemp("rlive310-successor") / "clone"
     subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(ROOT), str(clone)], check=True)
+    # the clone has no working tree: park its HEAD on an unrelated empty commit so every evaluated ref is judged on committed
+    # bytes only (both authorities check working bytes only for the checkout HEAD)
+    empty = _git(clone, "hash-object", "-t", "tree", "-w", "--stdin", input=b"").decode().strip()
+    env = dict(os.environ, GIT_AUTHOR_NAME="Synthetic", GIT_AUTHOR_EMAIL="noreply@users.noreply.github.com",
+               GIT_COMMITTER_NAME="Synthetic", GIT_COMMITTER_EMAIL="noreply@users.noreply.github.com")
+    parked = _git(clone, "commit-tree", empty, input=b"parked HEAD\n", env=env).decode().strip()
+    _git(clone, "update-ref", "--no-deref", "HEAD", parked)
     return clone
 
 
@@ -159,9 +166,12 @@ def test_a_one_byte_committed_change_revokes_the_pair(repo, tmp_path, head, path
 
 
 @recorded
-def test_the_superseded_pr346_warming_blob_is_rejected(repo, tmp_path, head):
+def test_the_superseded_pr346_warming_blob_is_not_this_successor(repo, tmp_path, head):
     ref = mutate(repo, tmp_path, head, {WARMING: _git(repo, "cat-file", "blob", S.BLOBS[WARMING][0])})
-    assert_rejected(repo, ref, f"RLIVE310_BLOB_MISMATCH: {WARMING}")
+    assert f"RLIVE310_BLOB_MISMATCH: {WARMING}" in S.py310_violations(repo=repo, ref=ref)
+    assert not any(S.py310_content_matches(p, repo=repo, ref=ref) for p in S.APPROVED_BLOBS)
+    # restoring the exact PR #346 pair stays what PR #346 itself approved - judged by its own unchanged authority
+    assert all(A.reviewed_lifecycle_content_matches(p, repo=repo, ref=ref) for p in A.APPROVED_LIFECYCLE_BLOBS)
 
 
 @recorded

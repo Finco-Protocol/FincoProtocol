@@ -24,8 +24,10 @@ def fixture(tmp_path,monkeypatch):
     git(repo,'add','.');git(repo,'commit','-m','synthetic original review')
     original={'head':git(repo,'rev-parse','HEAD'),'tree':git(repo,'rev-parse','HEAD^{tree}')}
     git(repo,'update-ref','refs/remotes/origin/main','HEAD')
-    for name in authority.APPROVED_LIFECYCLE_BLOBS:
-        dest=repo/name;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes((REPO/name).read_bytes())
+    for name,pin in authority.APPROVED_LIFECYCLE_BLOBS.items():
+        # the exact approved PR #346 bytes, content-addressed by the pin (HEAD may carry a recognised successor blob)
+        dest=repo/name;dest.parent.mkdir(parents=True,exist_ok=True)
+        dest.write_bytes(subprocess.check_output(['git','cat-file','blob',pin],cwd=REPO))
     git(repo,'add','.');git(repo,'commit','-m','synthetic corrected source')
     corrected={'head':git(repo,'rev-parse','HEAD'),'tree':git(repo,'rev-parse','HEAD^{tree}')}
     monkeypatch.setattr(authority,'ORIGINAL_REVIEWED_SOURCE',original)
