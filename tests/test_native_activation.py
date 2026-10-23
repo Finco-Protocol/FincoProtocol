@@ -56,8 +56,11 @@ def process_executor():
     assert me.reset_model_executor_for_tests(None) == []
 
 
-def _run(fn, *args, submit=None):
-    return asyncio.run(na.run_activated(submit or me.run_model_process, fn, *args))
+def _run(fn, *args):
+    """Exactly the production call shape of every activated site."""
+    async def go():
+        return na.native_result(await me.run_model_process(na.activated(fn), *args))
+    return asyncio.run(go())
 
 
 # ── settings (no native code involved) ─────────────────────────────────────────────
@@ -94,30 +97,21 @@ def test_kill_switch_file_turns_every_new_run_canonical(tmp_path):
     assert na.setting(env) == ("off", "KILL_SWITCH")
 
 
-def test_off_submits_the_unchanged_callable():
-    seen = []
-
-    async def submit(fn, *args, **kwargs):
-        seen.append(fn)
-        return fn(*args, **kwargs)
-
-    assert _run(len, (1, 2), submit=submit) == 2
-    assert seen == [len] and na.snapshot()["totals"] == {}
+def test_off_is_the_unchanged_canonical_call():
+    assert na.activated(len) is len                                 # the identical callable is submitted
+    value = object()
+    assert na.native_result(value) is value                         # identity on every non-activated value
+    assert na.snapshot()["totals"] == {}
 
 
 def test_enabled_but_not_process_isolated_is_canonical(monkeypatch):
     monkeypatch.setenv(na.ENV_RUN, "stage1+2")
-    seen = []
-
-    async def thread_submit(fn, *args, **kwargs):
-        seen.append(fn)
-        return fn(*args, **kwargs)
-
-    assert _run(len, (1, 2, 3), submit=thread_submit) == 3
-    assert seen == [len] and na.snapshot()["totals"] == {"runs_not_isolated": 1}
     me.reset_model_executor_for_tests(me.ModelExecutor(me.ModelExecutionConfig(mode="thread", concurrency=1)))
     try:
-        assert not na.isolated(me.run_model_process)                # executor in dev/test thread mode
+        assert not na.isolated()                                    # executor in dev/test thread mode
+        assert na.activated(len) is len
+        assert _run(len, (1, 2, 3)) == 3
+        assert na.snapshot()["totals"] == {"runs_not_isolated": 2}
     finally:
         assert me.reset_model_executor_for_tests(None) == []
 
@@ -267,24 +261,36 @@ ACTIVATED_SITES = {
     "app/v2/router.py": 2, "app/api/router.py": 1, "app/services/goal_seek.py": 1, "app/v2/sensitivity_matrix_router.py": 1,
 }
 ENGINE_CALLABLES = {"run_project", "run_sensitivity_points", "_run_points", "run_matrix_points"}
+PROCESS_SUBMIT = {"run_model_process", "_run_proc"}
 
 
 def test_every_process_pool_engine_run_goes_through_activation():
-    """No process-pool submission of an engine Run bypasses ``run_activated`` (and the four wired files use it)."""
+    """Every process-pool submission of an engine Run is exactly ``native_result(await run_model_process(activated(fn),
+    ...))``; ``activated`` is used nowhere else (never with a thread submission)."""
     def name(node):
         return node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", None)
 
-    bypass, counts = [], {}
+    bad, counts = [], {}
     for path in sorted((ROOT / "app").rglob("*.py")):
         rel = path.relative_to(ROOT).as_posix()
-        for node in ast.walk(ast.parse(path.read_bytes())):          # bytes: honours a UTF-8 BOM
-            if isinstance(node, ast.Call) and node.args:
-                callee = name(node.func)
-                if callee in ("run_model_process", "_run_proc") and name(node.args[0]) in ENGINE_CALLABLES:
-                    bypass.append(f"{rel}:{node.lineno}")
-                if callee == "run_activated":
+        tree = ast.parse(path.read_bytes())                         # bytes: honours a UTF-8 BOM
+        wrapped = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and name(node.func) == "native_result" and len(node.args) == 1 \
+                    and isinstance(node.args[0], ast.Await) and isinstance(node.args[0].value, ast.Call):
+                submit = node.args[0].value
+                first = submit.args[0] if submit.args else None
+                if name(submit.func) in PROCESS_SUBMIT and isinstance(first, ast.Call) and name(first.func) == "activated":
+                    wrapped.add(id(first))
                     counts[rel] = counts.get(rel, 0) + 1
-    assert bypass == []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if name(node.func) == "activated" and id(node) not in wrapped and not rel.endswith("native_activation.py"):
+                bad.append(f"{rel}:{node.lineno}: activated() outside native_result(await run_model_process(...))")
+            if name(node.func) in PROCESS_SUBMIT and node.args and name(node.args[0]) in ENGINE_CALLABLES:
+                bad.append(f"{rel}:{node.lineno}: engine Run submitted without activation")
+    assert bad == []
     assert counts == ACTIVATED_SITES
 
 

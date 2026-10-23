@@ -1,24 +1,27 @@
 """V10 native Run activation: the production switch that lets an eligible Model Run be served by the verified V10
 exact-replay kernels (Stage 1 senior debt solve / finalisation / tax; optionally Stage 2 SHL). Default OFF.
 
-The Run itself is unchanged: ``run_activated(run_model_process, fn, ...)`` is exactly ``await run_model_process(fn, ...)``
-while activation is off; otherwise it submits a picklable ``NativeActivatedRun`` that binds ONE immutable
-``NativeConfig(mode="candidate")`` to the Run's own context inside the model worker process and calls ``fn`` with the same
-arguments, and records that Run's native evidence (calls served, declines by reason, build ID) in this process.
+Call shape at every activated site: ``native_result(await run_model_process(activated(fn), *args, **kwargs))``. While
+activation is off ``activated(fn)`` is ``fn`` itself and ``native_result`` is the identity, so the call is exactly the
+canonical ``await run_model_process(fn, ...)``. Otherwise the worker process executes a picklable ``NativeActivatedRun``
+that binds ONE immutable ``NativeConfig(mode="candidate")`` to the Run's own context and calls ``fn`` with the same
+arguments; ``native_result`` records that Run's native evidence (calls served, declines by reason, build ID) in this
+process and returns only the Run's value.
 
-Native code only ever runs in an isolated model worker PROCESS: a Run submitted any other way (a thread, or the executor
-in its dev/test ``thread`` mode) is canonical, so a native fault can never take down the web server process. Every
-admission, loader, ABI, build-ID and source-authentication check stays in ``financial_engine.native_v10``; any call the
-kernels do not admit is served by canonical Python (a decline, counted with its reason). Results, exceptions, CAS, fingerprints and persistence
-are exactly those of the canonical Run - the kernels claim exact replay and nothing here compares or rewrites values.
+Native code only ever runs in an isolated model worker PROCESS: while the executor is in its dev/test ``thread`` mode a
+Run is canonical, and thread-submitted Runs are never wired, so a native fault can never take down the web server
+process. Every admission, loader, ABI, build-ID and source-authentication check stays in ``financial_engine.native_v10``;
+any call the kernels do not admit is served by canonical Python (a decline, counted with its reason). Results,
+exceptions, CAS, fingerprints and persistence are exactly those of the canonical Run - the kernels claim exact replay and
+nothing here compares or rewrites values.
 
 Production settings (read per Run, at submission):
 
 ``FINCO_NATIVE_V10_RUN``                ``off`` (default) | ``stage1`` | ``stage1+2``; any other value is ``off``.
 ``FINCO_NATIVE_V10_RUN_BUILD_ID``       optional: serve only by the Stage 1 binary with exactly this build ID.
-``FINCO_NATIVE_V10_KILL_SWITCH_FILE``   path of the immediate rollback file (default ``/var/lib/finco/native_v10_run.disabled``):
-                                        while it exists every new Run is canonical, without a restart and regardless of
-                                        whether native code is available.
+``FINCO_NATIVE_V10_KILL_SWITCH_FILE``   immediate rollback file (default ``/var/lib/finco/native_v10_run.disabled``):
+                                        while it exists every new Run is canonical, without a restart and regardless
+                                        of whether native code is available.
 
 Kernels are never compiled at runtime: they are built and verified offline (``deploy/scripts/build_native_v10.sh``);
 missing or unverified artifacts make every call decline to canonical Python.
@@ -31,7 +34,7 @@ import threading
 import time
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any, Callable
 
 ENV_RUN = "FINCO_NATIVE_V10_RUN"
 ENV_BUILD_ID = "FINCO_NATIVE_V10_RUN_BUILD_ID"
@@ -85,29 +88,36 @@ def run_config(environ=None):
     return NativeConfig(mode="candidate", stage2_experimental=MODES[mode], require_build_id=build_id)
 
 
-def isolated(submit: Callable[..., Any]) -> bool:
-    """True only when ``submit`` executes the Run in a separate model worker process."""
+def isolated() -> bool:
+    """True only while the model executor runs submitted Runs in separate worker PROCESSES."""
     from app.runtime import model_execution as me
 
-    return submit is me.run_model_process and me.get_model_executor().config.mode == "process"
+    return me.get_model_executor().config.mode == "process"
 
 
-async def run_activated(submit: Callable[..., Awaitable[Any]], fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """Submit one Model Run through ``submit`` with the activation decided now. Off (or not process-isolated): exactly
-    ``await submit(fn, *args, **kwargs)``. On: the Run executes as ``NativeActivatedRun`` in the worker process; its
-    native evidence comes back next to the value, is recorded here, and only the value is returned."""
-    config = run_config()
-    if config is not None and not isolated(submit):
-        _warn_once("not-isolated", "native_v10 run activation: Run not executed in an isolated worker process; "
-                   "served by canonical Python")
+def activated(fn: Callable[..., Any], environ=None) -> Callable[..., Any]:
+    """The callable to submit to ``run_model_process`` for one Model Run, with the activation decided now.
+
+    Off, refused or not process-isolated: ``fn`` itself (the unchanged canonical call). On: a picklable
+    ``NativeActivatedRun``; pass the awaited value through ``native_result``. Use ONLY as the callable of
+    ``run_model_process`` (the model worker process), never of a thread submission."""
+    config = run_config(environ)
+    if config is not None and not isolated():
+        _warn_once("not-isolated", "native_v10 run activation: the model executor is not process-isolated; "
+                   "Runs are served by canonical Python")
         with _LOCK:
             _TOTALS["runs_not_isolated"] += 1
         config = None
-    if config is None:
-        return await submit(fn, *args, **kwargs)
-    outcome = await submit(NativeActivatedRun(fn, config), *args, **kwargs)
-    _record(config, outcome.stats, "ok", outcome.wall_s)
-    return outcome.value
+    return fn if config is None else NativeActivatedRun(fn, config)
+
+
+def native_result(value: Any) -> Any:
+    """The Run's own value: an activated Run's native evidence is recorded here and stripped; anything else is
+    returned unchanged (identity)."""
+    if isinstance(value, NativeRunOutcome):
+        _record(value.config, value.stats, "ok", value.wall_s)
+        return value.value
+    return value
 
 
 @dataclass(frozen=True)
@@ -117,6 +127,7 @@ class NativeRunOutcome:
     value: Any
     stats: dict
     wall_s: float
+    config: Any
 
 
 @dataclass(frozen=True)
@@ -138,7 +149,7 @@ class NativeActivatedRun:
             except BaseException:
                 _record(self.config, stats.as_dict(), "error", time.perf_counter() - started)
                 raise
-        return NativeRunOutcome(value, stats.as_dict(), time.perf_counter() - started)
+        return NativeRunOutcome(value, stats.as_dict(), time.perf_counter() - started, self.config)
 
 
 def _record(config, stats: dict, outcome: str, wall: float) -> None:
@@ -148,7 +159,8 @@ def _record(config, stats: dict, outcome: str, wall: float) -> None:
     declined = sum(stats["declines"].values())
     with _LOCK:
         _TOTALS["runs"] += 1
-        _TOTALS["runs_with_native_calls" if served else "runs_without_native_calls"] += 1   # e.g. all declined, or a cached result
+        # "without": every call declined, or the worker answered from its Run cache
+        _TOTALS["runs_with_native_calls" if served else "runs_without_native_calls"] += 1
         _TOTALS["native_calls"] += served
         _TOTALS["declined_calls"] += declined
         _DECLINES.update(stats["declines"])
