@@ -352,3 +352,100 @@ def test_investor_delayed_response_cannot_restore_pre_scenario_evidence(workspac
     assert page.locator('[data-testid=investor-freshness]').inner_text().startswith('NOT RUN')
     assert_unique_dom_ids(page)
     assert not errors, errors
+
+
+@pytest.mark.parametrize('boundary', ['row', 'link'])
+@pytest.mark.parametrize('pass_to_delay', ['frame', 'timer'])
+def test_historical_statement_restore_cannot_override_new_keyboard_input(browser, boundary, pass_to_delay):
+    """Control the actual restore callbacks, without waiting or forcing the link focus."""
+    import json
+    context = browser.new_context()
+    page = context.new_page()
+    html = '''<div id="v2-run-statements" data-st-historical="1" data-out-project="p"
+      data-out-snapshot="s" data-out-scenario="Base" data-history-id="h">
+      <h2 id="rh-stmt-title" tabindex="-1">Historical</h2>
+      <button data-rh-back-detail>Back to Run detail</button>
+      <div><div data-st-viewbar="pnl"></div><div data-st-pane="tree">
+      <div data-st-region><table data-st-tree="pnl" data-st-basis="annual"><tbody>
+      <tr tabindex="-1" data-st-row data-st-key="ebit_keur" aria-expanded="false"><td>
+        <button data-st-toggle>Expand</button><a data-st-link href="#trust">EBIT</a></td></tr>
+      <tr tabindex="-1" data-st-row data-st-key="revenues_keur" data-st-parent="ebit_keur"><td>Revenue</td></tr>
+      <tr tabindex="-1" data-st-row data-st-key="operating_expenses_keur" data-st-parent="ebit_keur"><td>
+        <a data-st-link href="#opex">Operating expenses</a></td></tr>
+      </tbody></table></div></div></div></div>'''
+    page.route('http://statements.test/', lambda route: route.fulfill(body=html, content_type='text/html'))
+    try:
+        page.goto('http://statements.test/')
+        page.evaluate('''() => {
+          window.pendingRestore = [];
+          window.requestAnimationFrame = cb => { window.pendingRestore.push(cb); return 1; };
+          const original = window.setTimeout;
+          window.setTimeout = (cb, ms, ...args) => {
+            if (ms === 60) { window.pendingRestore.push(cb); return 1; }
+            return original(cb, ms, ...args);
+          };
+        }''')
+        state = {'run': {'project': 'p', 'snapshot': 's', 'scenario': 'Base'},
+                 'statements': {'pnl': {'expanded': [], 'view': 'tree'}},
+                 'focus': {'statement': 'pnl', 'basis': 'annual', 'key': 'ebit_keur'}}
+        page.evaluate('(state) => history.replaceState({fincoStmt: state}, "")', state)
+        page.add_script_tag(path=str(Path(__file__).resolve().parents[1] / 'static/js/model_statements_tree.js'))
+        assert page.evaluate('window.pendingRestore.length') == 1
+        if pass_to_delay == 'timer':
+            page.evaluate('pendingRestore.shift()()')
+        page.locator('[data-st-key="ebit_keur"]').focus()
+        page.keyboard.press('ArrowRight')
+        page.keyboard.press('ArrowDown')
+        page.keyboard.press('ArrowDown')
+        assert page.evaluate('document.activeElement.dataset.stKey') == 'operating_expenses_keur'
+        if boundary == 'link':
+            page.keyboard.press('Tab')
+        # A late real restore must not rewind a deliberate keyboard interaction.
+        page.evaluate('() => { while (pendingRestore.length) pendingRestore.shift()(); }')
+        from tests.model_statements_tree_acceptance import focus_diagnostics
+        state = focus_diagnostics(page)
+        expected = state['focus'].get('rowKey') if boundary == 'link' else state['focus'].get('key')
+        assert expected == 'operating_expenses_keur', json.dumps(state)
+        if boundary == 'row':
+            page.keyboard.press('Tab')
+        state = focus_diagnostics(page)
+        assert state['focus']['link'] and state['focus']['href'] == '#opex', json.dumps(state)
+        page.keyboard.press('Enter')
+        page.wait_for_function("location.hash === '#opex'")
+    finally:
+        context.close()
+
+
+def test_late_historical_back_response_cannot_replace_forward_state(browser):
+    """Exercise real HTMX and native history, holding only the old response."""
+    context = browser.new_context()
+    page = context.new_page()
+    pending = []
+    html = '''<div id="v2-run-statements" data-out-project="p" data-history-id="h">
+      <h2 id="rh-stmt-title" tabindex="-1">Historical</h2><button data-rh-back-detail>Back</button></div>'''
+    root = Path(__file__).resolve().parents[1]
+    page.route('http://statements.test/', lambda route: route.fulfill(body=html, content_type='text/html'))
+    page.route('**/run-history/detail?*', lambda route: pending.append(route))
+    try:
+        page.goto('http://statements.test/')
+        page.add_script_tag(path=str(root/'static/vendor/htmx.min.js'))
+        page.add_script_tag(path=str(root/'static/js/model_run_history_statements_nav.js'))
+        page.evaluate('''() => {
+          window.completedReads = 0;
+          document.addEventListener('htmx:afterRequest', () => completedReads++);
+          history.replaceState({}, '', '/');
+          history.pushState({fincoRhStmt:{view:'statements', id:'h'}}, '', '/');
+        }''')
+        with page.expect_request('**/run-history/detail?*'):
+            page.go_back()
+        page.go_forward()
+        page.wait_for_function("history.state?.fincoRhStmt?.view === 'statements'")
+        assert len(pending) == 1
+        pending[0].fulfill(content_type='text/html', body='''<div id="v2-run-detail">
+          <button data-testid="run-detail-open-statements" data-rh-statements
+          data-history-id="h" hx-get="/v2/workbook/run-history/statements?project=p">Open</button></div>''')
+        page.wait_for_function('completedReads === 1')
+        assert page.locator('#v2-run-statements').count() == 1, page.content()
+        assert page.locator('#v2-run-detail').count() == 0
+    finally:
+        context.close()

@@ -1,4 +1,4 @@
-name: "CI V3 Required Test Job \u2014 protected activation"
+name: CI V3 Required Public Test Job
 'on':
   workflow_call:
     inputs:
@@ -18,15 +18,7 @@ name: "CI V3 Required Test Job \u2014 protected activation"
       execution_mode:
         value: ${{ jobs.route.outputs.execution_mode }}
       controller_sha:
-        value: ${{ jobs.route.outputs.controller_sha }}
-      root_sha256:
-        value: ${{ jobs.route.outputs.root_sha256 }}
-      root_b64:
-        value: ${{ jobs.route.outputs.root_b64 }}
-      tested_sha:
-        value: ${{ jobs.route.outputs.tested_sha }}
-      host_anchors:
-        value: ${{ jobs.tests.outputs.host_anchors }}
+        value: ${{ inputs.tested-sha }}
 permissions:
   contents: read
   actions: read
@@ -34,83 +26,50 @@ jobs:
   route:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    permissions:
-      contents: read
-      actions: read
-    defaults:
-      run:
-        working-directory: controller
-        shell: bash
-    env:
-      GH_TOKEN: ${{ github.token }}
-      CI_V3_ROOT_B64: ${{ vars.CI_V3_ROOT_B64 }}
-      CI_V3_ROOT_SHA256: ${{ vars.CI_V3_ROOT_SHA256 }}
-      CI_V3_REQUESTED_HEAD: ${{ inputs.tested-sha }}
+    outputs:
+      execution_mode: ${{ steps.route.outputs.execution_mode }}
     steps:
-    - name: Default or operator rollback to sequential before any execution
-      id: closed
-      if: ${{ vars.CI_V3_MANDATORY_ENABLED != 'true' || vars.CI_V3_MANDATORY_ROLLBACK == 'true' }}
-      working-directory: ${{ github.workspace }}
-      run: echo "execution_mode=sequential" >> "$GITHUB_OUTPUT"
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
-        ref: ${{ vars.CI_V3_CONTROLLER_SHA }}
-        path: controller
+        ref: ${{ inputs.tested-sha }}
         fetch-depth: 0
         persist-credentials: false
-      if: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' }}
-      continue-on-error: true
-    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-      with:
-        python-version: '3.12'
-      if: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' }}
-      continue-on-error: true
-    - name: Materialize independently pinned owner root
-      run: 'python - <<''PY''
+    - name: Select production or operator rollback
+      id: route
+      env:
+        ROLLBACK: ${{ vars.CI_V3_MANDATORY_ROLLBACK }}
+      run: 'python - <<''PYCODE''
 
-        import base64, os
+        import json,os
 
         from pathlib import Path
 
-        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
+        p=json.loads(Path(''docs/ci_v3/phase4/production-routing.json'').read_text())
 
-        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
+        trusted=os.environ[''GITHUB_EVENT_NAME''] != ''pull_request'' or ''${{ github.event.pull_request.head.repo.full_name
+        }}'' == os.environ[''GITHUB_REPOSITORY'']
 
-        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
+        import subprocess
 
-        PY'
-      if: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' }}
-      continue-on-error: true
-    - name: Verify service identity, immutable controller and owner bundle
-      id: open
-      run: python -m tools.ci_v3_mandatory route --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --project . --output "$RUNNER_TEMP/mandatory-route.json"
-      if: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' }}
-      continue-on-error: true
-    - name: Record pre-execution fallback when admission preparation fails
-      if: ${{ always() && steps.closed.outputs.execution_mode != 'sequential' && (steps.open.outcome != 'success' || steps.open.outputs.execution_mode
-        != 'parallel') }}
-      working-directory: ${{ github.workspace }}
-      run: 'echo "execution_mode=sequential" >> "$GITHUB_OUTPUT"
+        paths=[''financial_engine'',''finco_core'',''domain'',''app'',''main_web.py'',''requirements.txt'',''requirements-ci-tests.txt'',''constraints.txt'']
 
-        echo "Admission unavailable before test execution; retaining original sequential control."'
-      id: fallback
-    name: ci-v3-route
-    outputs:
-      tested_sha: ${{ steps.open.outputs.tested_sha }}
-      controller_sha: ${{ steps.open.outputs.controller_sha }}
-      root_sha256: ${{ steps.open.outputs.root_sha256 }}
-      root_b64: ${{ steps.open.outputs.root_b64 }}
-      image: ${{ steps.open.outputs.image }}
-      execution_mode: ${{ steps.closed.outputs.execution_mode || (steps.open.outcome == 'success' && steps.open.outputs.execution_mode)
-        || steps.fallback.outputs.execution_mode }}
-    environment:
-      name: ${{ vars.CI_V3_MANDATORY_ENABLED == 'true' && vars.CI_V3_MANDATORY_ROLLBACK != 'true' && 'ci-v3-mandatory-admission'
-        || 'ci-v3-sequential-default' }}
+        compatible=subprocess.run([''git'',''diff'',''--quiet'',''e96561a220fc6adeb85587eb01d61745a922ab41'',''HEAD'',''--'',*paths]).returncode
+        == 0
+
+        trusted=trusted and compatible
+
+        mode=''parallel'' if p[''enabled''] and not p[''rollback''] and os.environ.get(''ROLLBACK'')!=''true'' and trusted
+        else ''sequential''
+
+        with open(os.environ[''GITHUB_OUTPUT''],''a'') as f:print(''execution_mode=''+mode,file=f)
+
+        print(''CI_V3_ROUTE=''+mode)
+
+        PYCODE'
   sequential:
-    if: ${{ needs.route.outputs.execution_mode == 'sequential' }}
     needs:
     - route
+    if: ${{ needs.route.outputs.execution_mode == 'sequential' }}
     uses: ./.github/workflows/ci_public_job.yml
     with:
       mode: control
@@ -118,396 +77,248 @@ jobs:
       merge-sha: ${{ inputs.merge-sha }}
       pr-number: ${{ inputs.pr-number }}
   plan:
+    outputs:
+      worker_0_nodes: ${{ steps.distribution.outputs.worker_0_nodes }}
+      worker_1_nodes: ${{ steps.distribution.outputs.worker_1_nodes }}
+      worker_2_nodes: ${{ steps.distribution.outputs.worker_2_nodes }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
     permissions:
       contents: read
       actions: read
-    defaults:
-      run:
-        working-directory: controller
-        shell: bash
     env:
-      GH_TOKEN: ${{ github.token }}
-      CI_V3_ROOT_B64: ${{ needs.route.outputs.root_b64 }}
-      CI_V3_ROOT_SHA256: ${{ needs.route.outputs.root_sha256 }}
+      FINCO_PRODUCTION_HEAD: ${{ inputs.tested-sha }}
+    needs:
+    - route
+    if: ${{ needs.route.outputs.execution_mode == 'parallel' }}
+    timeout-minutes: 25
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
-        ref: ${{ needs.route.outputs.controller_sha }}
-        path: controller
+        ref: ${{ inputs.tested-sha }}
         fetch-depth: 0
         persist-credentials: false
     - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
       with:
         python-version: '3.12'
-    - name: Materialize independently pinned owner root
-      run: 'python - <<''PY''
+    - name: Require exact source and identical PR merge tree
+      run: python -m tools.ci_merge_tree_guard --expected '${{ inputs.tested-sha }}' --merge-sha '${{ inputs.merge-sha }}'
+        --pr-number '${{ inputs.pr-number }}' --output merge-tree.json
+    - name: Build pinned GCC runtime once (no registry/token)
+      run: 'set -euo pipefail
 
-        import base64, os
+        docker build --file docs/ci_v3/phase4/runtime/Dockerfile --tag finco-ci-v3:run --iidfile image-id.txt .
 
+        docker save finco-ci-v3:run | gzip -n > runtime-image.tar.gz'
+    - name: Full collection, authenticated original baseline and whole-module plan
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: python -m tools.ci_v3_production plan --output plan --image "$(cat image-id.txt)"
+    - name: Expose exact current-source node ownership
+      id: distribution
+      run: |
+        python - <<'PYCODE'
+        import json, os
         from pathlib import Path
-
-        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
-
-        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
-
-        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
-
-        PY'
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        data = json.loads(Path('plan/plan.json').read_text())
+        owners = data['plan']['module_workers']
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            for index in range(3):
+                count = sum(owners[node['module']] == f'worker-{index}' for node in data['inventory']['nodes'])
+                print(f'worker_{index}_nodes={count}', file=stream)
+        PYCODE
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: ${{ always() }}
       with:
-        ref: ${{ needs.route.outputs.tested_sha }}
-        path: subject
-        fetch-depth: 0
-        persist-credentials: false
-    - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --output "$RUNNER_TEMP/image-state"
-    - name: Actual full collection, reconciliation and conservative partition
-      run: python -m tools.ci_v3_hosted_controller plan --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --project ../subject --output "$RUNNER_TEMP/payload-plan"
-    - name: Retain independent host receipt anchor
-      id: receipt
-      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --output "$RUNNER_TEMP/payload-plan"
-    - name: Upload original evidence with immutable service digest
-      id: upload
-      if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: ci-v3-plan-${{ github.run_id }}-${{ github.run_attempt }}
-        path: ${{ runner.temp }}/payload-plan/
+        name: public-ci-v3-plan
+        path: plan/
         if-no-files-found: error
-        retention-days: 14
-    name: ci-v3-plan
-    needs:
-    - route
-    outputs:
-      artifact_id: ${{ steps.upload.outputs.artifact-id }}
-      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
-      receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
-      job_id: ${{ steps.receipt.outputs.job_id }}
-    if: ${{ needs.route.outputs.execution_mode == 'parallel' }}
+        retention-days: 30
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: ${{ always() }}
+      with:
+        name: ci-v3-runtime
+        path: runtime-image.tar.gz
+        if-no-files-found: error
+        retention-days: 30
   worker-0:
     runs-on: ubuntu-24.04
-    timeout-minutes: 100
     permissions:
       contents: read
       actions: read
-    defaults:
-      run:
-        working-directory: controller
-        shell: bash
     env:
-      GH_TOKEN: ${{ github.token }}
-      CI_V3_ROOT_B64: ${{ needs.route.outputs.root_b64 }}
-      CI_V3_ROOT_SHA256: ${{ needs.route.outputs.root_sha256 }}
-      CI_V3_HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }}}'
+      FINCO_PRODUCTION_HEAD: ${{ inputs.tested-sha }}
+    needs:
+    - route
+    - plan
+    if: ${{ needs.route.outputs.execution_mode == 'parallel' }}
+    timeout-minutes: 100
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
-        ref: ${{ needs.route.outputs.controller_sha }}
-        path: controller
+        ref: ${{ inputs.tested-sha }}
         fetch-depth: 0
         persist-credentials: false
     - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
       with:
         python-version: '3.12'
-    - name: Materialize independently pinned owner root
-      run: 'python - <<''PY''
-
-        import base64, os
-
-        from pathlib import Path
-
-        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
-
-        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
-
-        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
-
-        PY'
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
-        ref: ${{ needs.route.outputs.tested_sha }}
-        path: subject
-        fetch-depth: 0
-        persist-credentials: false
-    - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --output "$RUNNER_TEMP/image-state"
-    - name: Real full-module worker in private no-network container
-      run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --project ../subject --worker worker-0 --output "$RUNNER_TEMP/payload-worker-0"
-    - name: Retain independent host receipt anchor
-      id: receipt
-      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --output "$RUNNER_TEMP/payload-worker-0" --worker worker-0
-    - name: Upload original evidence with immutable service digest
-      id: upload
-      if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        name: public-ci-v3-plan
+        path: evidence/public-ci-v3-plan
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
-        name: ci-v3-worker-0-${{ github.run_id }}-${{ github.run_attempt }}
-        path: ${{ runner.temp }}/payload-worker-0/
+        name: ci-v3-runtime
+        path: .
+    - name: 'Execute original nodes owned by worker 0: ${{ needs.plan.outputs.worker_0_nodes }} nodes'
+      run: python -m tools.ci_v3_production worker --worker 0 --output worker-0
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: ${{ always() }}
+      with:
+        name: public-ci-v3-worker-0
+        path: worker-0/
         if-no-files-found: error
-        retention-days: 14
-    name: ci-v3-worker-0
-    needs:
-    - route
-    - plan
-    outputs:
-      artifact_id: ${{ steps.upload.outputs.artifact-id }}
-      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
-      receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
-      job_id: ${{ steps.receipt.outputs.job_id }}
-    if: ${{ needs.route.outputs.execution_mode == 'parallel' }}
+        retention-days: 30
   worker-1:
     runs-on: ubuntu-24.04
-    timeout-minutes: 100
     permissions:
       contents: read
       actions: read
-    defaults:
-      run:
-        working-directory: controller
-        shell: bash
     env:
-      GH_TOKEN: ${{ github.token }}
-      CI_V3_ROOT_B64: ${{ needs.route.outputs.root_b64 }}
-      CI_V3_ROOT_SHA256: ${{ needs.route.outputs.root_sha256 }}
-      CI_V3_HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }}}'
+      FINCO_PRODUCTION_HEAD: ${{ inputs.tested-sha }}
+    needs:
+    - route
+    - plan
+    if: ${{ needs.route.outputs.execution_mode == 'parallel' }}
+    timeout-minutes: 100
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
-        ref: ${{ needs.route.outputs.controller_sha }}
-        path: controller
+        ref: ${{ inputs.tested-sha }}
         fetch-depth: 0
         persist-credentials: false
     - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
       with:
         python-version: '3.12'
-    - name: Materialize independently pinned owner root
-      run: 'python - <<''PY''
-
-        import base64, os
-
-        from pathlib import Path
-
-        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
-
-        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
-
-        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
-
-        PY'
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
-        ref: ${{ needs.route.outputs.tested_sha }}
-        path: subject
-        fetch-depth: 0
-        persist-credentials: false
-    - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --output "$RUNNER_TEMP/image-state"
-    - name: Real full-module worker in private no-network container
-      run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --project ../subject --worker worker-1 --output "$RUNNER_TEMP/payload-worker-1"
-    - name: Retain independent host receipt anchor
-      id: receipt
-      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --output "$RUNNER_TEMP/payload-worker-1" --worker worker-1
-    - name: Upload original evidence with immutable service digest
-      id: upload
-      if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        name: public-ci-v3-plan
+        path: evidence/public-ci-v3-plan
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
-        name: ci-v3-worker-1-${{ github.run_id }}-${{ github.run_attempt }}
-        path: ${{ runner.temp }}/payload-worker-1/
+        name: ci-v3-runtime
+        path: .
+    - name: 'Execute original nodes owned by worker 1: ${{ needs.plan.outputs.worker_1_nodes }} nodes'
+      run: python -m tools.ci_v3_production worker --worker 1 --output worker-1
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: ${{ always() }}
+      with:
+        name: public-ci-v3-worker-1
+        path: worker-1/
         if-no-files-found: error
-        retention-days: 14
-    name: ci-v3-worker-1
-    needs:
-    - route
-    - plan
-    outputs:
-      artifact_id: ${{ steps.upload.outputs.artifact-id }}
-      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
-      receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
-      job_id: ${{ steps.receipt.outputs.job_id }}
-    if: ${{ needs.route.outputs.execution_mode == 'parallel' }}
+        retention-days: 30
   worker-2:
     runs-on: ubuntu-24.04
-    timeout-minutes: 100
     permissions:
       contents: read
       actions: read
-    defaults:
-      run:
-        working-directory: controller
-        shell: bash
     env:
-      GH_TOKEN: ${{ github.token }}
-      CI_V3_ROOT_B64: ${{ needs.route.outputs.root_b64 }}
-      CI_V3_ROOT_SHA256: ${{ needs.route.outputs.root_sha256 }}
-      CI_V3_HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }}}'
-    steps:
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      with:
-        ref: ${{ needs.route.outputs.controller_sha }}
-        path: controller
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-      with:
-        python-version: '3.12'
-    - name: Materialize independently pinned owner root
-      run: 'python - <<''PY''
-
-        import base64, os
-
-        from pathlib import Path
-
-        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
-
-        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
-
-        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
-
-        PY'
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      with:
-        ref: ${{ needs.route.outputs.tested_sha }}
-        path: subject
-        fetch-depth: 0
-        persist-credentials: false
-    - name: Pull only admitted immutable execution image
-      run: python -m tools.ci_v3_hosted_controller pull-image --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --output "$RUNNER_TEMP/image-state"
-    - name: Real full-module worker in private no-network container
-      run: python -m tools.ci_v3_hosted_controller worker --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --project ../subject --worker worker-2 --output "$RUNNER_TEMP/payload-worker-2"
-    - name: Retain independent host receipt anchor
-      id: receipt
-      run: python -m tools.ci_v3_hosted_controller outputs --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --output "$RUNNER_TEMP/payload-worker-2" --worker worker-2
-    - name: Upload original evidence with immutable service digest
-      id: upload
-      if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: ci-v3-worker-2-${{ github.run_id }}-${{ github.run_attempt }}
-        path: ${{ runner.temp }}/payload-worker-2/
-        if-no-files-found: error
-        retention-days: 14
-    name: ci-v3-worker-2
+      FINCO_PRODUCTION_HEAD: ${{ inputs.tested-sha }}
     needs:
     - route
     - plan
-    outputs:
-      artifact_id: ${{ steps.upload.outputs.artifact-id }}
-      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
-      receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
-      job_id: ${{ steps.receipt.outputs.job_id }}
     if: ${{ needs.route.outputs.execution_mode == 'parallel' }}
-  aggregate:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      actions: read
-    defaults:
-      run:
-        working-directory: controller
-        shell: bash
-    env:
-      GH_TOKEN: ${{ github.token }}
-      CI_V3_ROOT_B64: ${{ needs.route.outputs.root_b64 }}
-      CI_V3_ROOT_SHA256: ${{ needs.route.outputs.root_sha256 }}
-      CI_V3_HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }},"worker-0":${{ toJSON(needs.worker-0.outputs) }},"worker-1":${{
-        toJSON(needs.worker-1.outputs) }},"worker-2":${{ toJSON(needs.worker-2.outputs) }}}'
-      ADMISSION_RESULT: ${{ needs.route.result }}
+    timeout-minutes: 100
     steps:
-    - name: Require independent admission even on failure path
-      working-directory: ${{ github.workspace }}
-      run: test "$ADMISSION_RESULT" = success
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
-        ref: ${{ needs.route.outputs.controller_sha }}
-        path: controller
+        ref: ${{ inputs.tested-sha }}
         fetch-depth: 0
         persist-credentials: false
     - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
       with:
         python-version: '3.12'
-    - name: Materialize independently pinned owner root
-      run: 'python - <<''PY''
-
-        import base64, os
-
-        from pathlib import Path
-
-        value = os.environ.get(''CI_V3_ROOT_B64'', '''')
-
-        data = base64.b64decode(value, validate=True) if value else Path(''docs/ci_v3/phase3a/admission-root.closed.json'').read_bytes()
-
-        Path(os.environ[''RUNNER_TEMP''], ''ci-v3-root.json'').write_bytes(data)
-
-        PY'
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
-        ref: ${{ needs.route.outputs.tested_sha }}
-        path: subject
-        fetch-depth: 0
-        persist-credentials: false
-    - name: Authenticate transfers and verify every original node and process
-      run: python -m tools.ci_v3_mandatory verify --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --project ../subject --output "$RUNNER_TEMP/shadow-proof"
-    - name: Retain advisory proof or explicit rejection
-      if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        name: public-ci-v3-plan
+        path: evidence/public-ci-v3-plan
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
-        name: finco-v3-advisory-${{ github.run_id }}-${{ github.run_attempt }}
-        path: ${{ runner.temp }}/shadow-proof/
+        name: ci-v3-runtime
+        path: .
+    - name: 'Execute original nodes owned by worker 2: ${{ needs.plan.outputs.worker_2_nodes }} nodes'
+      run: python -m tools.ci_v3_production worker --worker 2 --output worker-2
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: ${{ always() }}
+      with:
+        name: public-ci-v3-worker-2
+        path: worker-2/
         if-no-files-found: error
-        retention-days: 14
-    name: ci-v3-advisory-evidence
-    if: ${{ always() && needs.route.outputs.execution_mode == 'parallel' }}
+        retention-days: 30
+  aggregate:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    env:
+      FINCO_PRODUCTION_HEAD: ${{ inputs.tested-sha }}
     needs:
     - route
     - plan
     - worker-0
     - worker-1
     - worker-2
+    if: ${{ always() && needs.route.outputs.execution_mode == 'parallel' }}
+    timeout-minutes: 15
+    steps:
+    - name: Fail on any selected worker failure
+      env:
+        WORKER_0: ${{ needs.worker-0.result }}
+        WORKER_1: ${{ needs.worker-1.result }}
+        WORKER_2: ${{ needs.worker-2.result }}
+      run: 'test "$WORKER_0" = success
+
+        test "$WORKER_1" = success
+
+        test "$WORKER_2" = success'
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ inputs.tested-sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        pattern: public-ci-v3-*
+        path: evidence
+    - name: Independently authenticate all current worker artifacts and verify complete phases/native JUnit
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: python -m tools.ci_v3_production verify --independent --output proof
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: ${{ always() }}
+      with:
+        name: public-ci-v3-aggregate
+        path: proof/
+        if-no-files-found: error
+        retention-days: 30
   tests:
     name: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs:
     - route
     - sequential
     - aggregate
-    - plan
-    - worker-0
-    - worker-1
-    - worker-2
     if: ${{ always() }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    outputs:
-      host_anchors: ${{ steps.anchors.outputs.host_anchors }}
     steps:
-    - name: Require the selected execution to pass without a retry
+    - name: Preserve terminal required context; never retry selected failures
       env:
         ROUTE_RESULT: ${{ needs.route.result }}
         MODE: ${{ needs.route.outputs.execution_mode }}
         SEQUENTIAL_RESULT: ${{ needs.sequential.result }}
         PARALLEL_RESULT: ${{ needs.aggregate.result }}
-      run: "test \"$ROUTE_RESULT\" = success\nif [ \"$MODE\" = sequential ]; then\n  test \"$SEQUENTIAL_RESULT\" = success\n\
-        else\n  test \"$MODE\" = parallel\n  test \"$PARALLEL_RESULT\" = success\nfi"
-    - id: anchors
-      env:
-        HOST_ANCHORS: '{"plan":${{ toJSON(needs.plan.outputs) }},"worker-0":${{ toJSON(needs.worker-0.outputs) }},"worker-1":${{
-          toJSON(needs.worker-1.outputs) }},"worker-2":${{ toJSON(needs.worker-2.outputs) }}}'
-      run: echo "host_anchors=$HOST_ANCHORS" >> "$GITHUB_OUTPUT"
+      run: "test \"$ROUTE_RESULT\" = success\nif [ \"$MODE\" = parallel ]; then\n  test \"$PARALLEL_RESULT\" = success\n \
+        \ test \"$SEQUENTIAL_RESULT\" = skipped\nelif [ \"$MODE\" = sequential ]; then\n  test \"$SEQUENTIAL_RESULT\" = success\n\
+        \  test \"$PARALLEL_RESULT\" = skipped\nelse\n  exit 1\nfi"

@@ -1,3 +1,13 @@
+# Active owner-directed production route
+
+The explicit "ACTIVATE PRODUCTION NOW" instruction supersedes the earlier activation-only administrative procedure. The active `owner-directed-run-built-v1` profile builds the pinned Ubuntu/GCC runtime once per Actions run, transfers it through an immutable run artifact with archive/config/software identity verification, and uses the existing whole-module three-worker planner and private Docker containment. It does not claim registry publication, independent owner approval records or an accepted pilot. The earlier protected-root workflow is retained verbatim in `ci_v3_required_job.protected.yml`; its closed roots remain closed.
+
+`production-routing.json` enables this profile. Set repository `CI_V3_MANDATORY_ROLLBACK=true` to select the original sequential job on the next run; if variable-write access is unavailable, set that file's `rollback` to true through a normal reviewed change. Fork PRs use sequential. A selected parallel failure stays red. The ordinary PR cycle validates the actual three-worker route; no additional pilot or sequential baseline is dispatched. The mandatory aggregate and top-level proof independently download service-authenticated worker artifacts, check complete current collection, original setup/call/teardown and native outcomes, target calibration, private image/software identity and subreaper cleanup.
+
+The authenticated PR #351 e96561a sequential baseline is identified as historical, never relabeled current-source or identical-tree after this CI change. Every old original ID must remain; added nodes must execute successfully; common phases/native outcomes and collection skips must agree. Application/financial/dependency changes outside its source scope require the sequential route and a refreshed baseline before a new parallel comparison. Browser, financial governance and native default-OFF protections remain unchanged. Performance reporting must retain actual environment differences; no preactivation speedup is asserted. The runtime image is a run-built Actions artifact, not a registry manifest digest.
+
+The former procedure below is historical documentation for the retained protected profile, not an assertion of approvals or current switch values.
+
 # Direct production activation — operator handoff
 
 This deployment retains the sequential job and stable `source-safety`,
