@@ -3222,15 +3222,16 @@ async def v2_workbook_run(
         BUSY_MESSAGE, ModelExecutionBusy, ModelExecutionFailed, ModelExecutionTimeout,
         run_model_process,
     )
+    from app.runtime.native_activation import activated, native_result
     _stage_mark("model_entered")
     try:
-        result = await run_model_process(
-            run_project,
+        result = native_result(await run_model_process(
+            activated(run_project),
             runtime_project_key,
             "Base",  # Contract A: always "Base"; display name must not activate legacy ScenarioManager
             project_inputs_override=override,
             **({"investor_evidence_requested": True} if f4_terms is not None else {}),
-        )
+        ))
         _stage_mark("model_completed")
     except ModelExecutionBusy:
         # BUSY != CALCULATION_FAILED: nothing ran, nothing changed, safe to retry.
@@ -5467,6 +5468,7 @@ async def v2_scenario_sensitivity_run(
     from app.runtime.model_execution import (
         BUSY_MESSAGE as _BUSY_MESSAGE, ModelExecutionBusy as _Busy, run_model_process as _run_proc,
     )
+    from app.runtime.native_activation import activated, native_result
     from app.services.sensitivity_execution import (
         run_sensitivity_points as _run_points, sensitivity_grid_size_error as _grid_error,
     )
@@ -5476,7 +5478,7 @@ async def v2_scenario_sensitivity_run(
         return HTMLResponse(content=f"<p>{_size_error}</p>", status_code=422)
     if _pending:
         try:
-            _outputs = await _run_proc(_run_points, runtime_key, [r["_pi"] for r in _pending])
+            _outputs = native_result(await _run_proc(activated(_run_points), runtime_key, [r["_pi"] for r in _pending]))
         except _Busy:
             return HTMLResponse(
                 content=f"<p>{_BUSY_MESSAGE}</p>", status_code=429,
