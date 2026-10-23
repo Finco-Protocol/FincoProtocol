@@ -203,3 +203,70 @@ def test_candidate_without_resource_limits_is_never_a_match(executor, monkeypatc
     (record,) = observer.records()
     assert record["outcome"] == "CANDIDATE_LIMITS_FAILED" and record["candidate"] is None
     assert observer.stats().get("MATCH", 0) == 0
+
+
+@pytest.mark.parametrize("limits", ["FailingLimits", "SetrlimitRefusedLimits"])
+def test_limits_failure_through_the_executor_keeps_the_canonical_result(executor, monkeypatch, limits):
+    """End to end: a refused RLIMIT declines the candidate with explicit evidence; the canonical value is returned
+    unchanged, nothing is a MATCH and no candidate worker survives."""
+    import multiprocessing
+
+    import tests.native_v10_support as support
+    from financial_engine.native_v10 import isolation
+
+    monkeypatch.setattr(isolation, "WorkerLimits", getattr(support, limits))
+    monkeypatch.setenv(ns.ENV_SHADOW, "stage1")
+    assert asyncio.run(executor.run_process(len, (1, 2, 3))) == 3            # canonical, unchanged
+    observer = executor.native_shadow_observer()
+    assert observer is not None and observer.drain(60)
+    (record,) = observer.records()
+    assert record["outcome"] == "CANDIDATE_LIMITS_FAILED" and record["candidate"] is None
+    assert observer.stats().get("MATCH", 0) == 0
+    assert [p for p in multiprocessing.active_children() if p.is_alive()] == []
+
+
+class _Survivor:
+    """A retired observer that consumes every budget it is given and survives (or, once freed, stops)."""
+
+    def __init__(self, budgets):
+        self.state, self.mode, self.stuck, self.budgets = ns.RUNNING, "stage1", True, budgets
+
+    def shutdown(self, timeout=30.0):
+        self.budgets.append(timeout)
+        if self.stuck:
+            import time
+            time.sleep(timeout)
+            raise ns.ShadowShutdownIncomplete("survivor (test)")
+        self.state = ns.STOPPED
+
+
+def test_one_total_deadline_is_shared_never_multiplied_across_survivors(executor):
+    import time
+
+    budgets: list = []
+    survivors = [_Survivor(budgets) for _ in range(3)]
+    executor._shadow_retired = list(survivors)
+    started = time.monotonic()
+    with pytest.raises(ns.ShadowShutdownIncomplete):
+        executor.shutdown_native_shadow(0.3)
+    elapsed = time.monotonic() - started
+    assert len(budgets) == 3 and budgets[0] <= 0.3 and budgets[1] <= 0.05 and budgets[2] <= 0.05   # remaining budget only
+    assert elapsed < 0.6                                        # bounded by ONE total timeout, not 3 x 0.3
+    assert executor.native_shadow_owned() and executor.native_shadow_observer() is None
+    for survivor in survivors:
+        survivor.stuck = False
+    executor.shutdown_native_shadow(1)
+    assert not executor.native_shadow_owned()
+
+
+def test_a_survivor_blocks_replacement_until_application_shutdown_completes(executor, monkeypatch):
+    budgets: list = []
+    survivor = _Survivor(budgets)
+    executor._shadow_retired = [survivor]
+    executor._shadow_disabled_reason = "survivor (test)"
+    monkeypatch.setenv(ns.ENV_SHADOW, "stage1")
+    assert asyncio.run(executor.run_process(len, (1,))) == 1               # canonical, never shadowed
+    assert executor.native_shadow_observer() is None and _shadow_threads() == []
+    survivor.stuck = False
+    executor.shutdown_native_shadow(1)
+    assert not executor.native_shadow_owned()

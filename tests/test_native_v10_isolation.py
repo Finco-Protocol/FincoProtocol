@@ -83,3 +83,16 @@ def test_limits_apply_verifies_by_read_back(monkeypatch):
     import pytest
     with pytest.raises(OSError, match="not in effect"):
         isolation.WorkerLimits().apply()
+
+
+def test_injected_setrlimit_failure_in_the_real_apply_never_runs_the_candidate(tmp_path):
+    """The real ``WorkerLimits.apply`` with ``setrlimit`` refused in the worker: explicit evidence, no task execution, reaped."""
+    from tests.native_v10_support import SetrlimitRefusedLimits
+
+    marker = tmp_path / "ran"
+    pid = os.getpid()
+    ev = isolation.run_in_worker("tests.native_v10_support.touch_task", {"path": str(marker)},
+                                 limits=SetrlimitRefusedLimits(timeout_seconds=60))
+    assert ev.status == "CANDIDATE_LIMITS_FAILED" and "setrlimit refused (injected)" in (ev.error or "")
+    assert ev.verdict is None and ev.digests == {} and not marker.exists()
+    assert os.getpid() == pid and ev.reaped and _alive_children() == []

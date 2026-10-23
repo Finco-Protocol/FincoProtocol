@@ -190,11 +190,35 @@ def _failing_limits_class():
     return FailingLimits
 
 
+def _setrlimit_refused_class():
+    import errno
+    from dataclasses import dataclass
+
+    from financial_engine.native_v10.isolation import WorkerLimits
+
+    @dataclass(frozen=True)
+    class SetrlimitRefusedLimits(WorkerLimits):
+        """The REAL ``WorkerLimits.apply`` with ``resource.setrlimit`` refused (EPERM) inside the spawned worker."""
+        def apply(self) -> None:
+            import resource
+
+            def refused(*_args):
+                raise OSError(errno.EPERM, "setrlimit refused (injected)")
+
+            resource.setrlimit = refused
+            super().apply()
+
+    return SetrlimitRefusedLimits
+
+
+_LAZY = {"FailingLimits": _failing_limits_class, "SetrlimitRefusedLimits": _setrlimit_refused_class}
+
+
 def __getattr__(name):            # lazily defined so importing this module never imports native code
-    if name == "FailingLimits":
-        cls = _failing_limits_class()
-        cls.__module__, cls.__qualname__ = __name__, "FailingLimits"
-        globals()["FailingLimits"] = cls
+    if name in _LAZY:
+        cls = _LAZY[name]()
+        cls.__module__, cls.__qualname__ = __name__, name
+        globals()[name] = cls
         return cls
     raise AttributeError(name)
 
