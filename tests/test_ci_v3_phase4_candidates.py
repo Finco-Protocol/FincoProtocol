@@ -9,9 +9,13 @@ def flow(name):
 
 
 def test_not_deployed_and_original_mandatory_still_sequential():
-    assert not (ROOT/'.github/workflows/ci_v3_required_job.yml').exists()
+    assert (ROOT/'.github/workflows/ci_v3_required_job.yml').read_bytes() == (ROOT/'docs/ci_v3/phase4/ci_v3_required_job.candidate.yml').read_bytes()
+    assert (ROOT/'.github/workflows/public_safety_and_smoke.yml').read_bytes() == (ROOT/'docs/ci_v3/phase4/public_safety_and_smoke.candidate.yml').read_bytes()
     public=(ROOT/'.github/workflows/public_safety_and_smoke.yml').read_text()
-    assert 'ci_v3' not in public and 'mode: control' in public
+    assert './.github/workflows/ci_v3_required_job.yml' in public and 'mode: control' in public
+    required=flow('ci_v3_required_job.candidate.yml')
+    assert required['jobs']['sequential']['uses']=='./.github/workflows/ci_public_job.yml'
+    assert required['jobs']['sequential']['with']['mode']=='control'
 
 
 def test_reusable_permissions_and_stable_required_contexts():
@@ -35,3 +39,24 @@ def test_exact_parallel_allocation_including_wrappers_and_source_proof():
     assert total==375
     for i in range(3):assert required['jobs'][f'worker-{i}']['needs']==['route','plan']
     assert 'ci-v3-mandatory-admission' in required['jobs']['route']['environment']['name']
+
+
+def test_bootstrap_failures_can_fallback_only_before_parallel_selection():
+    required=flow('ci_v3_required_job.candidate.yml')
+    for name,job in required['jobs'].items():
+        for step in job.get('steps',[]):
+            if step.get('continue-on-error')=='true':assert name=='route'
+    route=required['jobs']['route']
+    assert "steps.open.outcome == 'success'" in route['outputs']['execution_mode']
+    assert "steps.open.outcome != 'success'" in next(s['if'] for s in route['steps'] if s.get('id')=='fallback')
+
+
+def test_real_terminal_summary_fails_selected_parallel_without_sequential_retry():
+    import os,subprocess
+    required=flow('ci_v3_required_job.candidate.yml');script=required['jobs']['tests']['steps'][0]['run']
+    for mode,seq,parallel,success in [('sequential','success','skipped',True),('parallel','skipped','success',True),
+      ('parallel','success','failure',False),('parallel','success','cancelled',False),
+      ('parallel','success','skipped',False),('sequential','failure','success',False),('', 'success','success',False)]:
+        result=subprocess.run(['bash','-e','-c',script],env={**os.environ,'ROUTE_RESULT':'success',
+            'MODE':mode,'SEQUENTIAL_RESULT':seq,'PARALLEL_RESULT':parallel},capture_output=True)
+        assert (result.returncode==0)==success,(mode,seq,parallel,result.stderr)

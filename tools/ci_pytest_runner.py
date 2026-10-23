@@ -93,6 +93,16 @@ def main(argv: list[str]) -> int:
     stall = _env_int("FINCO_CI_STALL_S", 300)
     max_stall_snapshots = _env_int("FINCO_CI_MAX_STALL_SNAPSHOTS", 6)
     stall_snapshots, last_stall_key = 0, None
+    # This independent parent adopts daemonized/setsid descendants too.
+    if __package__:
+        from .ci_process_cleanup import enable_subreaper, finish_cleanup
+    else:
+        from ci_process_cleanup import enable_subreaper, finish_cleanup
+    try:
+        enable_subreaper()
+    except (OSError, RuntimeError) as exc:
+        print('FINCO_CI_CLEANUP ' + json.dumps({'cleanup_verified':False,'error':str(exc)}), flush=True)
+        return 125
     env = dict(os.environ, PYTHONUNBUFFERED="1")
     child = subprocess.Popen(
         [sys.executable, "-u", str(HERE / "ci_pytest_child.py"), *argv],
@@ -135,9 +145,11 @@ def main(argv: list[str]) -> int:
         time.sleep(2)
 
     if reason is None:
+        cleanup = finish_cleanup()
         reader.join(timeout=10)
+        print('FINCO_CI_CLEANUP ' + json.dumps(cleanup, sort_keys=True), flush=True)
         print(f"PYTHON_PROCESS_EXITED FINCO_CI_SUPERVISOR child exit code {child.returncode}", flush=True)
-        return int(child.returncode)
+        return int(child.returncode) if child.returncode else (0 if cleanup['cleanup_verified'] else 125)
 
     print(f"FINCO_CI_SUPERVISOR TIMEOUT: {reason}", flush=True)
     print(f"FINCO_CI_SUPERVISOR ACTIVE AT TIMEOUT: {_progress_line(progress_dir)}", flush=True)
@@ -160,6 +172,8 @@ def main(argv: list[str]) -> int:
             continue
     with diag.open("a", encoding="utf-8") as fh:
         fh.write("Python thread stacks (faulthandler/SIGUSR1) are in the job log after the TIMEOUT marker.\n")
+    cleanup = finish_cleanup()
+    print('FINCO_CI_CLEANUP ' + json.dumps(cleanup, sort_keys=True), flush=True)
     return TIMEOUT_EXIT
 
 

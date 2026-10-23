@@ -22,9 +22,12 @@ def test_not_active_and_existing_public_workflow_untouched():
     activation = json.loads((ROOT / "docs/ci_v3/phase4/activation.closed.json").read_text())
     assert admission["enabled"] is False and admission["authoritative_acceptance"] is False
     assert activation["enabled"] is False and activation["rollback"] is True
-    assert not (ROOT / ".github/workflows/ci_v3_required_job.yml").exists()
+    required = (ROOT / ".github/workflows/ci_v3_required_job.yml").read_bytes()
+    assert required == (ROOT / "docs/ci_v3/phase4/ci_v3_required_job.candidate.yml").read_bytes()
     public = (ROOT / ".github/workflows/public_safety_and_smoke.yml").read_text(encoding="utf-8")
-    assert "ci_v3" not in public and "tools.ci_v3" not in public
+    assert "./.github/workflows/ci_v3_required_job.yml" in public
+    rollback = (ROOT / "docs/ci_v3/phase4/public_safety_and_smoke.sequential.rollback.yml").read_text()
+    assert "ci_v3" not in rollback and "mode: control" in rollback
 
 
 def test_manual_dispatch_only_protected_admission_three_parallel_workers(flow):

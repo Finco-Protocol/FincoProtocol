@@ -67,6 +67,8 @@ def test_clean_run_is_accepted_with_rc0_and_a_normal_interpreter_exit(tmp_path, 
     assert code == 0 and record["normal_exit"] is True and record["exit_code"] == 0
     assert record["process_markers"]["pytest_return_code"] == 0 and record["process_markers"]["child_exit_code"] == 0
     assert record["junit_failures"] == 0 and record["junit_sha256"]
+    assert record["cleanup_verified"] is True
+    assert record["process_markers"]["cleanup"]["mechanism"] == "linux-subreaper-proc-waitpid-v1"
     assert not (tmp_path / "diag.txt").exists()
 
 
