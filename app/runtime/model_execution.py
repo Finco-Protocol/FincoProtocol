@@ -223,6 +223,7 @@ class ModelExecutor:
         self._warm_workers: int = 0
         self._warm_pids: tuple[int, ...] = ()
         self._shadow_lock = threading.Lock()
+        self._shadow_transition = threading.Lock()     # serialises create / replace / stop (off the loop)
         self._shadow_observer = None                    # app.runtime.native_shadow.ShadowObserver | None
         self._shadow_retired: list = []                 # observers whose shutdown was incomplete
         self._shadow_disabled_reason: str | None = None
@@ -413,52 +414,95 @@ class ModelExecutor:
             LOG.warning("native_v10 shadow begin failed")
             return None
 
+    # Lifecycle serialisation: every create / replace / stop runs under ``_shadow_transition`` (never
+    # taken on the event loop). An observer leaves ``_shadow_observer`` only by moving into
+    # ``_shadow_retired`` (still owned) BEFORE it is stopped, and leaves ``_shadow_retired`` only once it
+    # is STOPPED (thread joined, candidate worker reaped). A replacement is created only while nothing
+    # is retired, so no two observers - and no observer next to a surviving candidate worker - coexist.
+    # ``_shadow_lock`` guards the fields for short, non-blocking reads/writes only.
+    def _native_shadow_retire_current(self) -> None:
+        with self._shadow_lock:
+            current, self._shadow_observer = self._shadow_observer, None
+            if current is not None:
+                self._shadow_retired.append(current)
+
+    def _native_shadow_stop_retired(self, deadline: float) -> list[str]:
+        """Stop every retired observer within the shared deadline; return what survived (still owned)."""
+        from app.runtime import native_shadow as ns
+
+        with self._shadow_lock:
+            retired = list(self._shadow_retired)
+        failures = []
+        for observer in retired:
+            try:
+                observer.shutdown(max(0.0, deadline - time.monotonic()))
+            except ns.ShadowShutdownIncomplete as exc:
+                failures.append(str(exc))
+        with self._shadow_lock:
+            self._shadow_retired = [o for o in self._shadow_retired if o.state != ns.STOPPED]
+            if self._shadow_retired:
+                self._shadow_disabled_reason = "; ".join(failures) or "native shadow shutdown incomplete"
+        return failures
+
     def _native_shadow_reconcile(self, mode: str | None):
         """Make the owned observer match ``mode`` (None = off). Replaces only after a COMPLETE shutdown."""
         from app.runtime import native_shadow as ns
 
-        with self._shadow_lock:
+        deadline = time.monotonic() + NATIVE_SHADOW_SHUTDOWN_TIMEOUT_SECONDS
+        if not self._shadow_transition.acquire(timeout=NATIVE_SHADOW_SHUTDOWN_TIMEOUT_SECONDS):
+            return None                         # another transition still runs: no shadow for this call
+        try:
             current = self._shadow_observer
             if current is not None and current.mode == mode and current.state == ns.RUNNING:
                 return current
-            if current is not None:
-                self._shadow_observer = None
-                try:
-                    current.shutdown(NATIVE_SHADOW_SHUTDOWN_TIMEOUT_SECONDS)
-                except ns.ShadowShutdownIncomplete as exc:
-                    self._shadow_retired.append(current)
-                    self._shadow_disabled_reason = str(exc)
-                    LOG.error("native_v10 shadow disabled (fail closed): %s", exc)
-            if mode is None or self._shadow_disabled_reason is not None:
+            with self._shadow_lock:
+                survivors = bool(self._shadow_retired)
+            if survivors:
+                # an earlier incomplete shutdown: poll only (zero wait) so no request waits on a survivor
+                self._native_shadow_stop_retired(time.monotonic())
+            self._native_shadow_retire_current()
+            if self._native_shadow_stop_retired(deadline if not survivors else time.monotonic()):
+                LOG.error("native_v10 shadow disabled (fail closed): %s", self._shadow_disabled_reason)
+            with self._shadow_lock:
+                blocked = bool(self._shadow_retired) or self._shadow_disabled_reason is not None
+            if mode is None or blocked:
                 return None
-            self._shadow_observer = ns.observer_from_environment(mode).start()
-            return self._shadow_observer
+            observer = ns.observer_from_environment(mode).start()
+            with self._shadow_lock:
+                self._shadow_observer = observer
+            return observer
+        finally:
+            self._shadow_transition.release()
 
     def native_shadow_observer(self):
-        """The currently owned shadow observer (observability / tests); None when off."""
+        """The currently owned RUNNING shadow observer (observability / tests); None when off."""
         return self._shadow_observer
 
-    def shutdown_native_shadow(self, timeout: float = NATIVE_SHADOW_SHUTDOWN_TIMEOUT_SECONDS) -> None:
-        """Stop the owned observer within ``timeout``.
+    def native_shadow_owned(self) -> bool:
+        """True while this executor owns any shadow observer (running, stopping or incomplete)."""
+        with self._shadow_lock:
+            return self._shadow_observer is not None or bool(self._shadow_retired)
 
-        Raises ``ShadowShutdownIncomplete`` when its thread or candidate worker survives the bound, or
-        when an earlier observer of this executor did; the executor then stays shadow-disabled.
+    def shutdown_native_shadow(self, timeout: float | None = None) -> None:
+        """Stop every owned observer within ONE total ``timeout`` (lock wait + all joins).
+
+        Raises ``ShadowShutdownIncomplete`` when a thread or candidate worker survives the bound (it
+        stays owned and re-checked by later calls; the executor stays shadow-disabled) or when a
+        concurrent lifecycle transition does not finish within the bound.
         """
-        with self._shadow_lock:
-            current, self._shadow_observer = self._shadow_observer, None
-            retired = list(self._shadow_retired)
-        if current is not None:
-            try:
-                current.shutdown(timeout)
-            except Exception as exc:
-                with self._shadow_lock:
-                    self._shadow_retired.append(current)
-                    self._shadow_disabled_reason = str(exc)
-                raise
-        for old in retired:                 # re-check within the same bound: a survivor may be ending now
-            old.shutdown(timeout)
-        with self._shadow_lock:
-            self._shadow_retired = [o for o in self._shadow_retired if o.state != "STOPPED"]
+        from app.runtime import native_shadow as ns
+
+        timeout = NATIVE_SHADOW_SHUTDOWN_TIMEOUT_SECONDS if timeout is None else max(0.0, timeout)
+        deadline = time.monotonic() + timeout
+        if not self._shadow_transition.acquire(timeout=timeout):
+            raise ns.ShadowShutdownIncomplete("native shadow shutdown incomplete: lifecycle transition in progress")
+        try:
+            self._native_shadow_retire_current()
+            failures = self._native_shadow_stop_retired(deadline)
+        finally:
+            self._shadow_transition.release()
+        if failures:
+            raise ns.ShadowShutdownIncomplete("; ".join(failures))
 
     async def run_thread(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Closure-bound legacy call in a bounded thread behind the same admission gate."""
@@ -545,7 +589,7 @@ class ModelExecutor:
         for pool in (process, thread):
             if pool is not None:
                 pool.shutdown(wait=False, cancel_futures=True)
-        if self._shadow_observer is not None or self._shadow_retired:
+        if self.native_shadow_owned():
             try:
                 self.shutdown_native_shadow()
             except Exception as exc:  # noqa: BLE001 - reported, never raised from interpreter exit
@@ -584,7 +628,7 @@ class ModelExecutor:
             t.join(max(0.0, deadline - time.monotonic()))
             if t.is_alive():
                 stragglers.append(f"thread {t.name}")
-        if self._shadow_observer is not None or self._shadow_retired:
+        if self.native_shadow_owned():
             try:
                 self.shutdown_native_shadow(max(1.0, deadline - time.monotonic()))
             except Exception as exc:  # noqa: BLE001

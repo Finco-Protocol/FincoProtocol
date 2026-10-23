@@ -170,6 +170,35 @@ def allocate_task(gib: int) -> int:
     return len(bytearray(gib * 1024 ** 3))
 
 
+def touch_task(path: str) -> dict:
+    """Leave a marker proving the task body executed."""
+    Path(path).write_text("ran")
+    return {"verdict": "OK", "digests": {}}
+
+
+def _failing_limits_class():
+    from dataclasses import dataclass
+
+    from financial_engine.native_v10.isolation import WorkerLimits
+
+    @dataclass(frozen=True)
+    class FailingLimits(WorkerLimits):
+        """setrlimit refused in the candidate worker (e.g. a hardened container)."""
+        def apply(self) -> None:
+            raise OSError("setrlimit refused (test)")
+
+    return FailingLimits
+
+
+def __getattr__(name):            # lazily defined so importing this module never imports native code
+    if name == "FailingLimits":
+        cls = _failing_limits_class()
+        cls.__module__, cls.__qualname__ = __name__, "FailingLimits"
+        globals()["FailingLimits"] = cls
+        return cls
+    raise AttributeError(name)
+
+
 def git_tracked(path_glob: str) -> list[str]:
     out = subprocess.run(["git", "ls-files", "--", path_glob], capture_output=True, text=True,
                          cwd=str(HERE.parents[1]), check=True).stdout

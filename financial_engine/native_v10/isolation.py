@@ -33,10 +33,24 @@ class WorkerLimits:
     address_space_bytes: int = 4 * 1024 ** 3
     cpu_seconds: int = 900
 
+    def apply(self) -> None:
+        """Install the mandatory RLIMIT_AS / RLIMIT_CPU limits in THIS process and verify them by read-back.
+
+        Raises on any failure (missing ``resource`` module, refused setrlimit, limit not in effect): a
+        candidate never runs without its resource limits.
+        """
+        import resource
+        resource.setrlimit(resource.RLIMIT_AS, (self.address_space_bytes, self.address_space_bytes))
+        resource.setrlimit(resource.RLIMIT_CPU, (self.cpu_seconds, self.cpu_seconds + 5))
+        if resource.getrlimit(resource.RLIMIT_AS) != (self.address_space_bytes, self.address_space_bytes) or \
+                resource.getrlimit(resource.RLIMIT_CPU) != (self.cpu_seconds, self.cpu_seconds + 5):
+            raise OSError("resource limits not in effect after setrlimit")
+
 
 @dataclass
 class CandidateEvidence:
-    # OK | CANDIDATE_EXCEPTION | CANDIDATE_CRASH | CANDIDATE_TIMEOUT | CANDIDATE_CANCELLED
+    # OK | CANDIDATE_EXCEPTION | CANDIDATE_CRASH | CANDIDATE_TIMEOUT | CANDIDATE_CANCELLED |
+    # CANDIDATE_LIMITS_FAILED (mandatory resource limits could not be installed: the task never ran)
     status: str
     verdict: str | None = None
     digests: dict = field(default_factory=dict)
@@ -47,17 +61,15 @@ class CandidateEvidence:
     reaped: bool = True             # False only if the worker process survived kill + bounded join
 
 
-def _limit(limits: WorkerLimits) -> None:
-    try:
-        import resource
-        resource.setrlimit(resource.RLIMIT_AS, (limits.address_space_bytes, limits.address_space_bytes))
-        resource.setrlimit(resource.RLIMIT_CPU, (limits.cpu_seconds, limits.cpu_seconds + 5))
-    except (ImportError, ValueError, OSError):
-        pass
-
-
 def _worker_main(conn, bootstrap: str | None, task: str, payload: dict, limits: WorkerLimits) -> None:
-    _limit(limits)
+    try:
+        limits.apply()
+    except BaseException as exc:  # noqa: BLE001 - fail closed: the task is never executed without limits
+        try:
+            conn.send(("CANDIDATE_LIMITS_FAILED", f"{type(exc).__name__}: {str(exc)[:500]}"))
+        finally:
+            conn.close()
+        return
     try:
         if bootstrap:
             __import__(bootstrap)

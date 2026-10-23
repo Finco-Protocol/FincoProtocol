@@ -56,3 +56,30 @@ def test_a_task_result_that_is_not_evidence_is_reported_never_raised():
     ev = isolation.run_in_worker("tests.native_v10_support.sleep_for", {"seconds": 0.0})   # returns a float
     assert ev.status == "CANDIDATE_EXCEPTION" and ev.error == "CANDIDATE_RESULT_NOT_EVIDENCE: float"
     assert os.getpid() == pid and ev.reaped and _alive_children() == []
+
+
+def test_resource_limit_setup_failure_never_runs_the_candidate(tmp_path):
+    """Fail closed: when the mandatory RLIMITs cannot be installed the task body never executes."""
+    from tests.native_v10_support import FailingLimits
+
+    marker = tmp_path / "ran"
+    ev = isolation.run_in_worker("tests.native_v10_support.touch_task", {"path": str(marker)},
+                                 limits=FailingLimits(timeout_seconds=60))
+    assert ev.status == "CANDIDATE_LIMITS_FAILED" and "setrlimit refused" in (ev.error or "")
+    assert not marker.exists() and ev.reaped and _alive_children() == []
+
+
+def test_default_limits_are_installed_and_verified(tmp_path):
+    marker = tmp_path / "ran"
+    ev = isolation.run_in_worker("tests.native_v10_support.touch_task", {"path": str(marker)})
+    assert ev.status == "OK" and marker.exists() and ev.reaped
+
+
+def test_limits_apply_verifies_by_read_back(monkeypatch):
+    import resource
+
+    monkeypatch.setattr(resource, "setrlimit", lambda *_a: None)            # refused silently
+    monkeypatch.setattr(resource, "getrlimit", lambda *_a: (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+    import pytest
+    with pytest.raises(OSError, match="not in effect"):
+        isolation.WorkerLimits().apply()
