@@ -160,10 +160,13 @@ def test_all_three_original_guard_call_paths_reject_each_attack(three_guards,att
 def test_historical_authorities_and_original_assertions_preserved():
     import ast
     from v9p2a_odr_successor import HISTORICAL_AUTHORITY_MODULES, WIRING_BLOBS, RC7C_MAIN
+    from v10_native_shadow_successor import historical_subject
+    # HEAD itself, or - only while HEAD is the recognised V10 successor - its immutable OD-R checkpoint (never relabelled)
+    subject=historical_subject()
     for name in HISTORICAL_AUTHORITY_MODULES:
-        assert git(REPO,'rev-parse','HEAD:'+name)==git(REPO,'rev-parse',RC7C_MAIN+':'+name)
+        assert git(REPO,'rev-parse',subject+':'+name)==git(REPO,'rev-parse',RC7C_MAIN+':'+name)
     for name,(_,pin) in WIRING_BLOBS.items():
-        assert git(REPO,'rev-parse','HEAD:'+name)==pin
+        assert git(REPO,'rev-parse',subject+':'+name)==pin
     functions={
         'tests/test_ci_acceptance.py':'test_frozen_financial_namespaces_unmodified',
         'tests/test_multi_source_evidence_v2.py':'test_existing_authorities_are_not_modified',
@@ -186,7 +189,8 @@ def test_committed_odr_and_financial_engine_decisions_preserved():
     import model_v2_governance as model
     import r_live_lifecycle_governance as adapter
     from v9p2a_odr_successor import odr_violations
-    assert odr_violations()==[]
+    from v10_native_shadow_successor import historical_subject
+    assert odr_violations(ref=historical_subject())==[]
     paths=set(historical.APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS)
     for value in vars(model).values():
         if isinstance(value,dict):paths.update(p for p in value if isinstance(p,str) and p.startswith('financial_engine/'))

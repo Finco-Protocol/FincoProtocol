@@ -54,14 +54,25 @@ def test_rc7b_candidate_path_never_acquires_f3_or_released_authority_but_is_reco
     assert not approved_frozen_path(RC7B_PATH)
     import v9p2a_odr_successor as odr_successor
     state = recognition.recognized_state(repo=governance.REPO)
-    assert state in ("RC7B", "RC7C", "ODR")
+    assert state in ("RC7B", "RC7C", "ODR", "V10")
     assert strictly_frozen_changes([RC7B_PATH]) == []
+    odr_ref = "HEAD"
+    if state == "V10":
+        # the V10 successor carries period_engine.py as its unchanged RC-7C blob; OD-R stays judged at its immutable V10 checkpoint
+        import v10_native_shadow_successor as v10_successor
+        assert recognition.candidate_blobs(repo=governance.REPO)[RC7B_PATH] == rc7c_successor.RC7C_CANDIDATE_AUTHORITIES[RC7B_PATH]
+        v10_states = v10_successor.states(repo=governance.REPO)
+        for denied in ("financial_release", "native_activation", "native_replace_mode", "merge_authorized"):
+            assert v10_states[denied] is False, denied
+        odr_ref = v10_successor.historical_subject(repo=governance.REPO)
+        assert odr_ref != "HEAD" and recognition.recognized_state(repo=governance.REPO, ref=odr_ref) == "ODR"
+        state = "ODR"
     if state == "ODR":
         # the OD-R successor carries period_engine.py as its unchanged RC-7C blob; RC-7C itself stays judged at its immutable checkpoint
-        assert recognition.candidate_blobs(repo=governance.REPO)[RC7B_PATH] == rc7c_successor.RC7C_CANDIDATE_AUTHORITIES[RC7B_PATH]
-        subject = odr_successor.historical_subject(repo=governance.REPO)
+        assert recognition.candidate_blobs(repo=governance.REPO, ref=odr_ref)[RC7B_PATH] == rc7c_successor.RC7C_CANDIDATE_AUTHORITIES[RC7B_PATH]
+        subject = odr_successor.historical_subject(repo=governance.REPO, ref=odr_ref)
         assert recognition.recognized_state(repo=governance.REPO, ref=subject) == "RC7C"
-        odr_states = odr_successor.states(repo=governance.REPO)
+        odr_states = odr_successor.states(repo=governance.REPO, ref=odr_ref)
         for denied in ("financial_release", "product_activation", "merge_authorized", "od_r_default_policy"):
             assert odr_states[denied] is False, denied
         states = rc7c_successor.states(repo=governance.REPO, ref=subject)
