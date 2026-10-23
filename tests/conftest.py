@@ -83,3 +83,55 @@ def pytest_sessionfinish(session, exitstatus):
         sys.stderr.flush()
         if session.exitstatus == 0:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def _close_owned_acquisition_services(owned):
+    """Close only fixture-owned services and join their actual pool threads."""
+    deadline = time.monotonic() + 5
+    problems = []
+    for service, pool in owned:
+        try:
+            service.close()
+            if pool is not None:
+                pool.shutdown(wait=False)  # drain admitted work; never cancel it
+        except Exception as error:
+            problems.append(f"service shutdown: {type(error).__name__}: {error}")
+    for _, pool in owned:
+        for thread in list(pool._threads) if pool is not None else []:
+            thread.join(max(0, deadline - time.monotonic()))
+            if thread.is_alive():
+                problems.append(f"provider work did not stop: {thread.name}")
+    assert not problems, "\n".join(problems)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _suite_acquisition_service_lifecycle():
+    # Test modules construct offline AcquisitionServices, sometimes retain them
+    # in clients/tracebacks and often omit their executor shutdown. Own those
+    # instances until module teardown, independently of worker partition order.
+    module = sys.modules.get("app.radar_runtime.service")
+    if module is None:
+        yield
+        return
+    service_class = module.AcquisitionService
+    original = service_class.__init__
+    owned = []
+    from functools import wraps
+
+    @wraps(original)
+    def construct(service, *args, **kwargs):
+        original(service, *args, **kwargs)
+        owned.append((service, service._provider_pool))
+
+    patch = pytest.MonkeyPatch()
+    patch.setattr(service_class, "__init__", construct)
+    try:
+        yield
+    finally:
+        try:
+            _close_owned_acquisition_services(owned)
+        finally:
+            router = sys.modules.get("app.radar_ui.router")
+            if router is not None and any(router._service_instance is service for service, _ in owned):
+                router.set_service(None)
+            patch.undo()

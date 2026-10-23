@@ -163,3 +163,14 @@ def test_unowned_serve_named_thread_still_blocks_cleanup():
   assert thread.name in result['threads']
  finally:
   release.set();thread.join(2)
+
+
+def test_fixture_owned_acquisition_pool_is_closed_and_joined():
+ from app.radar_runtime.service import AcquisitionService
+ from app.radar_runtime.snapshot_store import SnapshotStore
+ from tests.conftest import _close_owned_acquisition_services
+ service=AcquisitionService(SnapshotStore(':memory:'))
+ pool=service._provider_pool
+ assert pool.submit(lambda: 1).result(timeout=2)==1
+ _close_owned_acquisition_services([(service,pool)])
+ assert service._closed and not any(t.is_alive() for t in pool._threads)
