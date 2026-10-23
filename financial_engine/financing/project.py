@@ -1040,6 +1040,32 @@ def run_project_financing_model(
         )
         return result
 
+    kwargs = dict(
+        source_id=source_id,
+        baseline_commit_sha=baseline_commit_sha,
+        convergence_tolerance_keur=convergence_tolerance_keur,
+        maximum_iterations=maximum_iterations,
+        _typed_shl_context=_typed_shl_context,
+        _u2_period_financing_income=_u2_period_financing_income,
+    )
+    # A successful deferred solve cannot prove that a skipped intermediate
+    # capacity input would have passed. Until an eligibility proof exists, retain
+    # every canonical capacity evaluation, including its original failure order.
+    return _run_shl_senior_fixed_point(project_inputs, **kwargs)
+
+
+def _run_shl_senior_fixed_point(
+    project_inputs: ProjectInputs,
+    *,
+    source_id: str,
+    baseline_commit_sha: str,
+    convergence_tolerance_keur: float,
+    maximum_iterations: int,
+    _typed_shl_context: _TypedConstructionShlContext | None,
+    _u2_period_financing_income: "tuple | None",
+) -> ProjectFinancingResult:
+    """Canonical capacity-first SHL/Senior iteration; no skipped rejection gates."""
+    fin = project_inputs.financing
     uses = _project_uses(project_inputs)
     gearing_capacity = uses.total_project_uses_keur * fin.gearing_ratio
 
