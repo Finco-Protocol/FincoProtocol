@@ -10,12 +10,25 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def flow():return yaml.load((ROOT/'.github/workflows/ci_v3_required_job.yml').read_text(),Loader=yaml.BaseLoader)
 
-@pytest.mark.parametrize('rollback,event,repo,mode',[('', 'push','Finco-Protocol/FincoProtocol','parallel'),('true','push','Finco-Protocol/FincoProtocol','sequential'),('','pull_request','elsewhere/fork','sequential'),('','pull_request','Finco-Protocol/FincoProtocol','parallel')])
+def _parallel_admission_paths_unchanged():
+ # Replicates the route step's compatibility gate exactly: the parallel
+ # three-worker route is admitted only while the application surfaces are
+ # byte-identical to the reviewed production commit. Application-modifying
+ # branches (e.g. a React integration PR) legitimately route sequential; the
+ # trusted-repo expectations below derive from this gate instead of assuming
+ # the checkout is the admitted tree, while the rollback and third-party-fork
+ # expectations stay absolute.
+ paths=['financial_engine','finco_core','domain','app','main_web.py','requirements.txt','requirements-ci-tests.txt','constraints.txt']
+ return subprocess.run(['git','diff','--quiet','e96561a220fc6adeb85587eb01d61745a922ab41','HEAD','--',*paths],
+                       cwd=ROOT).returncode==0
+
+@pytest.mark.parametrize('rollback,event,repo,mode',[('', 'push','Finco-Protocol/FincoProtocol','admitted'),('true','push','Finco-Protocol/FincoProtocol','sequential'),('','pull_request','elsewhere/fork','sequential'),('','pull_request','Finco-Protocol/FincoProtocol','admitted')])
 def test_real_route_and_immediate_rollback(tmp_path,rollback,event,repo,mode):
  script=flow()['jobs']['route']['steps'][-1]['run'].replace('${{ github.event.pull_request.head.repo.full_name }}',repo)
  output=tmp_path/'output'
  subprocess.run(['bash','-e','-c',script],cwd=ROOT,check=True,env={**os.environ,'ROLLBACK':rollback,'GITHUB_EVENT_NAME':event,'GITHUB_REPOSITORY':'Finco-Protocol/FincoProtocol','GITHUB_OUTPUT':str(output)})
- assert output.read_text()=='execution_mode='+mode+'\n'
+ expected='parallel' if mode=='admitted' and _parallel_admission_paths_unchanged() else 'sequential'
+ assert output.read_text()=='execution_mode='+expected+'\n'
 
 def test_active_profile_retains_all_bounds_and_no_credential_or_failure_bypass():
  f=flow();jobs=f['jobs'];assert set(jobs)=={'route','sequential','plan','worker-0','worker-1','worker-2','aggregate','tests'}
