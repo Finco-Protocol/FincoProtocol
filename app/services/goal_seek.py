@@ -704,12 +704,13 @@ def make_canonical_evaluator(
             ModelExecutionTimeout,
             run_model_process,
         )
+        from app.runtime.native_activation import run_activated
         from app.services.sensitivity_execution import run_sensitivity_points
 
         candidates = [_with_tariff(base_override, float(t)) for t in tariffs]
         try:
-            outputs = await run_model_process(
-                run_sensitivity_points, runtime_project_key, candidates)
+            outputs = await run_activated(
+                run_model_process, run_sensitivity_points, runtime_project_key, candidates)
         except ModelExecutionBusy:
             raise
         except (ModelExecutionFailed, ModelExecutionTimeout) as exc:

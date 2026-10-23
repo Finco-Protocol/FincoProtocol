@@ -67,6 +67,7 @@ async def matrix_run(
     from app.runtime.model_execution import (
         BUSY_MESSAGE, ModelExecutionBusy, ModelExecutionTimeout, run_model_process,
     )
+    from app.runtime.native_activation import run_activated
     from app.services.sensitivity_execution import sensitivity_grid_size_error
     from app.services import sensitivity_matrix as svc
     from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
@@ -118,7 +119,7 @@ async def matrix_run(
     outputs: list[dict] = []
     if batch:
         try:
-            outputs = await run_model_process(svc.run_matrix_points, svc.RUNTIME_KEYS[vertical], batch)
+            outputs = await run_activated(run_model_process, svc.run_matrix_points, svc.RUNTIME_KEYS[vertical], batch)
         except ModelExecutionBusy:
             return HTMLResponse(f"<p>{BUSY_MESSAGE}</p>", status_code=429,
                                 headers={"Retry-After": "5", "X-Finco-Model-Busy": "1", **NO_STORE})

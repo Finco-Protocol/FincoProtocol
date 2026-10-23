@@ -2,6 +2,7 @@ from app.runtime.model_execution import (
     BUSY_CODE, BUSY_MESSAGE, ModelExecutionBusy, ModelExecutionFailed, ModelExecutionTimeout,
     run_model_process,
 )
+from app.runtime.native_activation import run_activated
 from fastapi import APIRouter, HTTPException
 from app.api.schemas import RunRequest, RunResponse, KPIs
 from app.api.project_runner import run_project
@@ -117,7 +118,7 @@ async def post_run(request: RunRequest):
             project_inputs_override = build_projectinputs(request.inputs)
 
         # P0-A: bounded execution in the model executor; never on the event loop.
-        result = await run_model_process(run_project, request.project_type, request.scenario,
+        result = await run_activated(run_model_process, run_project, request.project_type, request.scenario,
                                          request.period_view,
                                          project_inputs_override=project_inputs_override)
         return result
