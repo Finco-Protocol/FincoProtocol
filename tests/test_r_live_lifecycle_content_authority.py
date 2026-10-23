@@ -44,9 +44,12 @@ def test_committed_exact_approved_pair_and_reference():
     assert authority.APPROVED_LIFECYCLE_BLOBS=={
         'app/radar_rwa/r_live_snapshot_store.py':'4179c296c803f42040b2811dc70ef55a1cdfa1d0',
         'app/radar_rwa/r_live_warming.py':'563c1a256886f7b26af21ac63e121216f908c840'}
+    from r_live_lifecycle_py310_successor import historical_subject
+    # HEAD itself, or - only while HEAD is the recognised R-LIVE 3.10 successor (#348) - its immutable PR #346 checkpoint
+    subject=historical_subject()
     for name,pin in authority.APPROVED_LIFECYCLE_BLOBS.items():
-        assert git(REPO,'rev-parse','HEAD:'+name)==pin
-        assert authority.reviewed_lifecycle_content_matches(name,repo=REPO)
+        assert git(REPO,'rev-parse',subject+':'+name)==pin
+        assert authority.reviewed_lifecycle_content_matches(name,repo=REPO,ref=subject)
     assert authority.ORIGINAL_REVIEWED_SOURCE['head']!=authority.CORRECTED_PROTECTED_SOURCE['head']
     assert git(REPO,'rev-parse',authority.CORRECTED_PROTECTED_SOURCE['head']+'^{tree}')==authority.CORRECTED_PROTECTED_SOURCE['tree']
     assert not authority.APPROVAL_ORIGIN['github_signed_attestation']

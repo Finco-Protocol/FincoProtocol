@@ -242,4 +242,5 @@ def test_a_manifest_cannot_authorise_unreviewed_content(monkeypatch):
 
 def test_the_source_candidate_carries_no_approval_record():
     assert V.blob(V.APPROVAL_PATH, V.SOURCE_CANDIDATE["head"]) is None
-    assert V.blob("tests/v10_native_shadow_successor.py", V.SOURCE_CANDIDATE["head"]) is None
+    # the candidate's own copy of this successor carries no owner decision either
+    assert b"OWNER_APPROVAL_SHA256 = None" in _git(ROOT, "show", V.SOURCE_CANDIDATE["head"] + ":tests/v10_native_shadow_successor.py")

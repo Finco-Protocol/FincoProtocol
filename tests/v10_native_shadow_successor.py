@@ -15,7 +15,8 @@ checkpoint ``main`` ``0b57031a`` (PR #346 merged, OD-R recognised).
 3. the protected-namespace diff (``financial_engine/``, ``finco_core/``, ``domain/``) from the checkpoint is exactly the V10
    protected paths: nothing else may differ, nothing may be missing, deleted or added;
 4. the application files are exact; every pin-carrying historical authority module (incl. the OD-R successor itself and the
-   PR #346 lifecycle authority) is byte-identical to the checkpoint; the wiring module is exactly the reviewed successor blob;
+   PR #346 lifecycle authority) is byte-identical to the checkpoint; the wiring module is exactly the reviewed successor blob
+   (the R-LIVE guard adapter is pinned by its own separate Python 3.10 successor, ``r_live_lifecycle_py310_successor``);
 5. the Financial Owner exact-content record is byte-exact (sha256 pinned here, owner authority is this reviewed code pin,
    never a self-asserting JSON field);
 6. release stays closed: the OD-R release / quarterly / selector checks hold at the evaluated ref, ``NativeConfig`` defaults to
@@ -36,7 +37,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 ODR_CHECKPOINT = {"head": "0b57031ae6949d8e7d187a1932c4451e213238f7", "tree": "608b4ae23169d2fbce084c6f63e4fd43925549b5"}
-SOURCE_CANDIDATE = {"head": "baa8e8b4df89a8b9becd21824b98a6e9cf75be8a", "tree": "421425248dcc5bd10837423e23ab5ce006c3974e"}
+SOURCE_CANDIDATE = {"head": "f137aaccff601c2f86126e1215165a7edc81574d", "tree": "1bd953ed1967c82a76e8f7c0a84caa7347c027f1"}
 SUCCESSOR = "V10_NATIVE_SHADOW_EXACT_CONTENT_SUCCESSOR"
 
 # Protected V10 paths: (blob at the OD-R checkpoint or None, exact approved V10 blob).
@@ -65,7 +66,7 @@ APPLICATION = {
     "app/services/production_financial_authority.py": ("89083cd41a4de029ae3c57ee0a4f4a871c7863bd", "98c04020d03711f3683b5340fc2f89387a60553c"),
     "app/runtime/model_execution.py": ("22dd596a826a1fdfe3e7eb0e9fab6b75c75310a3", "c8c5a0dc184b8901c7cb292b0dbbd248e4cf191a"),
     "app/runtime/native_shadow.py": (None, "2351375d62878aa5c7156ee881601260a9de4114"),
-    "main_web.py": ("e005ece7002ea8e07edb98f15da3d5c9c2731a8a", "34989a594acff48abd0273f3d275ceb111142f8c"),
+    "main_web.py": ("e005ece7002ea8e07edb98f15da3d5c9c2731a8a", "9b3734417fe6cd931b7814e015ca42d5c9264f8b"),
 }
 V10_PROTECTED_BLOBS = {path: after for path, (_before, after) in PROTECTED.items()}
 # Pin-carrying historical authority modules: byte-identical to the OD-R checkpoint, never rewritten.
@@ -74,7 +75,7 @@ HISTORICAL_AUTHORITY_MODULES = (
     "tests/rc7b_quarterly_candidate_authority.py", "tests/rc7b_postmerge_successor.py", "tests/rc7c_candidate_successor.py",
     "tests/radar_authority_governance.py", "tests/finance_integrity_governance.py", "tests/rc3_authority_states.py",
     "tests/v9p2a_odr_successor.py",
-    "tests/r_live_lifecycle_content_authority.py", "tests/r_live_lifecycle_governance.py",
+    "tests/r_live_lifecycle_content_authority.py",
 )
 # Current-authority wiring changed by this successor: (OD-R checkpoint blob, exact reviewed V10 successor blob).
 WIRING_BLOBS = {
