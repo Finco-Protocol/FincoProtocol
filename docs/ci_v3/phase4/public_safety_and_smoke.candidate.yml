@@ -1,4 +1,4 @@
-# INACTIVE. Exact deployment and activation require independent owner approval.
+# Protected production routing; missing admission uses the retained sequential job.
 name: Public Safety and Model Smoke
 permissions:
   contents: read
