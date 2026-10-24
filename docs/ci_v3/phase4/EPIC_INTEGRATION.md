@@ -27,8 +27,9 @@ historical outcomes and new-node PASS before selecting workers, so this referenc
 selects the retained sequential bootstrap instead of starting a doomed parallel
 run. No new nonpass permission is introduced.
 
-Sequential bootstrap explicitly installs the existing frontend lock without
-lifecycle scripts. The private runtime image includes the same locked toolchain;
+The host-side sequential supervisor explicitly installs the existing frontend
+lock without lifecycle scripts before pytest; the exact-content governed
+sequential workflow remains byte-for-byte unchanged. The private runtime image includes the same locked toolchain;
 tests receive a source-checked link to immutable dependencies, with no network or
 installation during tests. Missing or mismatched tools fail before collection.
 The existing TypeScript module-graph assertions run unchanged. Compile CI also

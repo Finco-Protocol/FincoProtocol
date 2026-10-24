@@ -43,3 +43,16 @@ def frontend_record(project=Path('.')):
 def frontend_image_record(bundle=Path('/opt/ci-v3/frontend')):
     path=Path(bundle)/'identity.json'
     return json.loads(path.read_text()) if path.is_file() else None
+
+
+def prepare_sequential_frontend(project, evidence):
+    """Host-side setup before sequential pytest; package scripts stay disabled."""
+    import subprocess
+    project=Path(project);evidence=Path(evidence)
+    if not (project/'frontend/package-lock.json').is_file():return None
+    subprocess.run(['npm','ci','--prefix',str(project/'frontend'),'--ignore-scripts','--no-audit','--no-fund'],check=True,timeout=120)
+    record=frontend_record(project)
+    if not record['typescript_entry_sha256']:raise ValueError('frontend compiler missing after locked installation')
+    evidence.parent.mkdir(parents=True,exist_ok=True)
+    evidence.write_text(json.dumps(record,sort_keys=True)+'\n')
+    return record
