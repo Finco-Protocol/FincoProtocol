@@ -15,9 +15,13 @@ import pytest
 import quarterly_candidate_recognition as R
 import v9p2a_odr_successor as O
 import v10_native_shadow_successor as V
+import v11_stage3_successor as V11
 
 ROOT = Path(__file__).resolve().parent.parent
-RECOGNISED = V.v10_recognized()
+# Historical subject: the V10 contract is judged on V10 bytes - HEAD itself, or, only while HEAD is the complete recognised V11 Stage 3
+# successor, its immutable V10 checkpoint (main 9e712e21). Any other HEAD stays the subject and fails exactly as before; never relabelled.
+SUBJECT = V11.historical_subject()
+RECOGNISED = V.v10_recognized(ref=SUBJECT)
 pytestmark = pytest.mark.skipif(not RECOGNISED and V.OWNER_APPROVAL_SHA256 is None,
                                 reason="V10 successor not yet carrying a recorded Financial Owner exact-content decision")
 
@@ -28,7 +32,7 @@ def _git(repo, *args, **kwargs):
 
 @pytest.fixture(scope="module")
 def head():
-    return _git(ROOT, "rev-parse", "HEAD").decode().strip()
+    return _git(ROOT, "rev-parse", f"{SUBJECT}^{{commit}}").decode().strip()
 
 
 @pytest.fixture(scope="module")
@@ -91,22 +95,25 @@ def test_contract_constants_are_exact():
 
 
 def test_real_repository_is_exactly_the_v10_successor(head):
-    assert V.v10_violations() == []
-    assert R.recognized_state() == "V10"
-    blobs = R.candidate_blobs()
+    assert V.v10_violations(ref=head) == []
+    assert R.recognized_state(ref=head) == "V10"
+    blobs = R.candidate_blobs(ref=head)
     assert blobs == {**O.odr_candidate_authorities(), **V.V10_PROTECTED_BLOBS}
     for path, expected in blobs.items():
-        assert V.blob(path) == expected, path
-    assert O.odr_recognized() is False                               # the historical OD-R validator is not widened
+        assert V.blob(path, head) == expected, path
+    assert O.odr_recognized(ref=head) is False                       # the historical OD-R validator is not widened
     assert O.odr_recognized(ref=V.ODR_CHECKPOINT["head"])
-    assert V.historical_subject() == V.ODR_CHECKPOINT["head"]
-    assert not R.scope_exempt("financial_engine/tax/engine.py") and not R.scope_exempt("finco_core/tax/engine.py")
+    assert V.historical_subject(ref=head) == V.ODR_CHECKPOINT["head"]
+    assert not R.scope_exempt("financial_engine/tax/engine.py", ref=head) and \
+        not R.scope_exempt("finco_core/tax/engine.py", ref=head)
+    if SUBJECT != "HEAD":                                            # HEAD is the V11 successor: the V10 validator is not widened
+        assert V.v10_violations() != [] and R.recognized_state() == "V11S3"
 
 
 def test_recognition_is_never_approval_activation_or_release():
     import finance_integrity_governance as fig
     import model_v2_governance as governance
-    states = V.states()
+    states = V.states(ref=SUBJECT)
     assert states["exact_v10_content_recognized"] is True
     assert states["financial_owner_exact_content_decision"] == "RECORDED_NOT_AUTHENTICATED"
     for denied in ("authenticated_owner_attestation", "native_replace_mode", "native_activation", "stage2_default_enabled",
@@ -211,23 +218,23 @@ def test_exact_bytes_without_ancestry_are_rejected(repo, tmp_path, head):
 def test_an_altered_or_missing_checkpoint_is_rejected(monkeypatch, name):
     monkeypatch.setattr(V, "_CACHE", {})
     monkeypatch.setattr(V, name, {"head": "0" * 40, "tree": "0" * 40})
-    problems = V.v10_violations()
+    problems = V.v10_violations(ref=SUBJECT)
     assert any(p.startswith("V10_CHECKPOINT_MISSING") for p in problems), problems
-    assert R.recognized_state() is None
+    assert R.recognized_state(ref=SUBJECT) is None and R.recognized_state() is None
 
 
 def test_a_checkpoint_with_a_substituted_tree_is_rejected(monkeypatch):
     monkeypatch.setattr(V, "_CACHE", {})
     monkeypatch.setattr(V, "SOURCE_CANDIDATE", {**V.SOURCE_CANDIDATE, "tree": V.ODR_CHECKPOINT["tree"]})
-    assert any(p.startswith("V10_CHECKPOINT_MISSING") for p in V.v10_violations())
+    assert any(p.startswith("V10_CHECKPOINT_MISSING") for p in V.v10_violations(ref=SUBJECT))
 
 
 def test_a_stale_or_absent_approval_reference_is_rejected(monkeypatch):
     for name, value in (("OWNER_APPROVAL_SHA256", "0" * 64), ("OWNER_APPROVAL_SHA256", None), ("OWNER_APPROVAL_REFERENCE", None)):
         monkeypatch.setattr(V, "_CACHE", {})
         monkeypatch.setattr(V, name, value)
-        problems = V.v10_violations()
-        assert problems and R.recognized_state() is None, (name, value)
+        problems = V.v10_violations(ref=SUBJECT)
+        assert problems and R.recognized_state(ref=SUBJECT) is None and R.recognized_state() is None, (name, value)
         monkeypatch.undo()
         monkeypatch.setattr(V, "_CACHE", {})
 
@@ -236,7 +243,7 @@ def test_a_manifest_cannot_authorise_unreviewed_content(monkeypatch):
     path = "financial_engine/native_v10/dispatch.py"
     monkeypatch.setattr(V, "_CACHE", {})
     monkeypatch.setattr(V, "PROTECTED", {**V.PROTECTED, path: (None, "1" * 40)})
-    problems = V.v10_violations()
+    problems = V.v10_violations(ref=SUBJECT)
     assert f"V10_SOURCE_CANDIDATE_NOT_APPROVED_CONTENT: {path}" in problems and f"V10_BLOB_MISMATCH: {path}" in problems
 
 

@@ -166,8 +166,9 @@ def test_historical_authorities_and_original_assertions_preserved():
     import ast
     from v9p2a_odr_successor import HISTORICAL_AUTHORITY_MODULES, WIRING_BLOBS, RC7C_MAIN
     from v10_native_shadow_successor import historical_subject
-    # HEAD itself, or - only while HEAD is the recognised V10 successor - its immutable OD-R checkpoint (never relabelled)
-    subject=historical_subject()
+    from v11_stage3_successor import historical_subject as v11_subject
+    # HEAD itself, or - only while HEAD is the recognised V10 (chained: V11) successor - its immutable OD-R checkpoint (never relabelled)
+    subject=historical_subject(ref=v11_subject())
     for name in HISTORICAL_AUTHORITY_MODULES:
         assert git(REPO,'rev-parse',subject+':'+name)==git(REPO,'rev-parse',RC7C_MAIN+':'+name)
     for name,(_,pin) in WIRING_BLOBS.items():
@@ -195,7 +196,8 @@ def test_committed_odr_and_financial_engine_decisions_preserved():
     import r_live_lifecycle_governance as adapter
     from v9p2a_odr_successor import odr_violations
     from v10_native_shadow_successor import historical_subject
-    assert odr_violations(ref=historical_subject())==[]
+    from v11_stage3_successor import historical_subject as v11_subject
+    assert odr_violations(ref=historical_subject(ref=v11_subject()))==[]
     paths=set(historical.APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS)
     for value in vars(model).values():
         if isinstance(value,dict):paths.update(p for p in value if isinstance(p,str) and p.startswith('financial_engine/'))

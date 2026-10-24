@@ -74,7 +74,7 @@ def test_stream_guard_exemption_covers_only_allow_listed_engine_files():
     # Under the V10 successor the same pre-existing path-only allow-list applies to the second V10-changed engine file, solver.py.
     state = recognized_state()
     path_only = {"financial_engine/shl/production.py"} if state == "ODR" else \
-        {"financial_engine/shl/production.py", "financial_engine/senior_debt/solver.py"} if state == "V10" else set()
+        {"financial_engine/shl/production.py", "financial_engine/senior_debt/solver.py"} if state in ("V10", "V11S3") else set()
     for path in path_only:
         assert path in APPROVED and not any(path in pins for pins in (
             _governance.F3_2_4_FINANCING_AUTHORITIES, _governance.WF07_REVENUE_AUTHORITIES, _governance.F3_5_A_JUNIOR_AUTHORITIES))
