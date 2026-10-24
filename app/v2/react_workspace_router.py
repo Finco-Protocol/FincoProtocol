@@ -707,7 +707,9 @@ async def react_revenue_contracts(request: Request, project: str):
         "contracts": editor,
         "save": {"url": "/v2/workbook/revenue/contracts",
                  "method": "form",
-                 "csrf_token": issue_token(request, project),
+                 # the canonical writer validates the PLAIN grid CSRF token
+                 # (validate_csrf_token); no bound financing token here
+                 "csrf_token": tokens["csrf_token"],
                  "content_hash": tokens["content_hash"],
                  "workbook_version": tokens["workbook_version"]},
     })
@@ -896,10 +898,19 @@ async def react_scenarios(request: Request, project: str):
 
 @router.get("/model-react/scenario-compare")
 async def react_scenario_compare(request: Request, project: str, scenario_id: str = ""):
-    """Assumption-level compare: the Working Copy/Base snapshot versus one
-    scenario's overrides, with each side's persisted Run identity.  KPI deltas
-    are intentionally not computed here — they belong to the persisted
-    statements/results evidence."""
+    """Assumption-level compare between the canonical Base Case snapshot and the
+    EFFECTIVE resolved scenario inputs.
+
+    Resolution goes through ``resolve_scenario_snapshot`` — the established
+    canonical authority: an override replaces its Base value only for keys in
+    ``SCENARIO_INPUT_FIELDS``; every other key inherits, so a newly created
+    scenario with empty overrides reports ZERO differences.  An explicitly
+    overridden zero is distinguished from an absent override by the
+    ``explicitly_overridden`` flag.  Persisted Run identities are attributed per
+    side from the immutable run history (``active_scenario_id``); a side with no
+    committed Run is UNAVAILABLE and never borrows the other side's Last Run.
+    Financial KPI deltas are not computed in the browser.
+    """
     if not react_poc_enabled():
         return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
@@ -910,24 +921,55 @@ async def react_scenario_compare(request: Request, project: str, scenario_id: st
     if failure is not None:
         return failure
 
-    from app.persistence.scenarios_repository import get_scenario
+    from app.persistence._helpers import SCENARIO_INPUT_FIELDS
+    from app.persistence.run_history_repository import get_run_history
+    from app.persistence.scenarios_repository import get_scenario, resolve_scenario_snapshot
 
     scenario = get_scenario(scenario_id, owner) if scenario_id else None
-    if scenario_id and (scenario is None or scenario.project_id != record.project_id):
+    if scenario_id and (scenario is None or scenario.project_id != record.project_id or scenario.archived):
+        # Foreign and archived scenarios are denied outright (404: not a
+        # comparable case of this project).
         return _json({"ok": False, "code": "SCENARIO_NOT_FOUND"}, 404)
+
+    base_snapshot = dict(ws.draft_snapshot or {})
     overrides = dict(scenario.overrides or {}) if scenario is not None else {}
-    base_keys = set(overrides) | set(ws.draft_snapshot or {})
+    effective = resolve_scenario_snapshot(base_snapshot, overrides)
+
     differences = []
-    for key in sorted(base_keys):
-        base_value = (ws.draft_snapshot or {}).get(key)
-        scenario_value = overrides.get(key)
-        if base_value != scenario_value:
+    for key in sorted(SCENARIO_INPUT_FIELDS):
+        base_value = base_snapshot.get(key)
+        scenario_value = effective.get(key)
+        if scenario_value != base_value:
             differences.append({
                 "field_id": key,
                 "base_value": _jsonable(base_value),
                 "scenario_value": _jsonable(scenario_value),
-                "scenario_only": base_value is None,
+                "explicitly_overridden": key in overrides,
+                "scenario_only": base_value is None and key in overrides,
             })
+
+    # Persisted Run identities, attributed per side from the immutable history.
+    try:
+        history = get_run_history(owner, record.project_id)
+        entries = [entry.to_dict() if hasattr(entry, "to_dict") else dict(entry) for entry in history]
+    except Exception:  # noqa: BLE001 - evidence read fails closed to UNAVAILABLE
+        entries = None
+    def _runs_for(sid: Optional[str]) -> list[dict[str, Any]]:
+        if entries is None:
+            return []
+        if sid is None:
+            return [e for e in entries if not e.get("active_scenario_id")]
+        return [e for e in entries if e.get("active_scenario_id") == sid]
+
+    scenario_side_runs = _runs_for(scenario.scenario_id) if scenario is not None else []
+    latest = scenario_side_runs[0] if scenario_side_runs else None
+    scenario_run_evidence = (
+        {"snapshot_id": latest.get("runtime_snapshot_id"), "ran_at": latest.get("ran_at"),
+         "history_id": latest.get("history_id"), "state": "AVAILABLE"} if latest
+        else {"state": "UNAVAILABLE", "note": "No committed Run exists for this scenario."}
+        if entries is not None
+        else {"state": "UNAVAILABLE", "note": "Run history could not be read."}
+    )
     return _json({
         "ok": True,
         "react_workspace": {"version": REACT_WORKSPACE_VERSION},
@@ -935,10 +977,14 @@ async def react_scenario_compare(request: Request, project: str, scenario_id: st
                     "protected_reference": _is_protected(record)},
         "base": {"label": f"Working Copy / {ws.active_scenario_name or 'Base Case'}",
                  "scenario_id": ws.active_scenario_id,
-                 "last_run_snapshot_id": getattr(ws, "last_runtime_snapshot_id", None)},
+                 "run_evidence": {"state": "UNAVAILABLE",
+                                  "note": "Run history is attributed to the scenario it was committed "
+                                          "under; the Working Copy side does not borrow another case's "
+                                          "Last Run. Use the runs projection for the committed evidence."}},
         "scenario": ({"label": scenario.scenario_name, "scenario_id": scenario.scenario_id,
                       "archived": bool(scenario.archived),
-                      "last_run_snapshot_id": None} if scenario is not None else None),
+                      "override_count": len(overrides),
+                      "run_evidence": scenario_run_evidence} if scenario is not None else None),
         "differences": differences,
         "kpi_compare": {"available": False,
                         "reason": "Financial KPI deltas are not computed in the browser; "

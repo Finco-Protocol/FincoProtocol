@@ -487,6 +487,17 @@ export async function saveRevenueContracts(args: RevenueContractsSaveArgs): Prom
         + "Reload to reconcile — do not re-submit blindly.",
     };
   }
+  // The canonical writer answers DIRECT JSON errors (401/403/404/409/422) on
+  // its own route — surface them as refusals with the typed message; a success
+  // is the clean workbook redirect.
+  let payload: { error?: string } | null = null;
+  if (!response.ok || response.headers.get("content-type")?.includes("application/json")) {
+    try {
+      payload = (await response.json()) as { error?: string } | null;
+    } catch { payload = null; }
+  }
+  if (payload && payload.error) return { ok: false, message: payload.error };
+  if (!response.ok) return { ok: false, message: `The contracts save was refused (HTTP ${response.status}). Nothing was saved.` };
   const outcome = classifyFormPostOutcome(response, "/v2/workbook");
   if (outcome.kind === "login") {
     return { ok: false, message: "Your session has expired — sign in again. The contracts were NOT saved." };
@@ -498,10 +509,5 @@ export async function saveRevenueContracts(args: RevenueContractsSaveArgs): Prom
       message: `The contracts-save outcome is UNKNOWN: unexpected destination (${outcome.finalPath}). Reload to reconcile.`,
     };
   }
-  let payload: { error?: string } | null = null;
-  try {
-    payload = (await response.json()) as { error?: string } | null;
-  } catch { /* the canonical success redirect lands on the workbook HTML */ }
-  if (payload && payload.error) return { ok: false, message: payload.error };
   return { ok: true };
 }

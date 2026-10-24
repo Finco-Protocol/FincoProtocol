@@ -269,7 +269,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
             ? <>
               <CanonicalInputGrid payload={inputs} busy={busy} onSave={saveCells} onRefresh={refreshAll} />
               <CostLinesView project={project} />
-              {revenuePayload && <RevenueEditorView project={project} revenuePayload={revenuePayload} onSaved={() => { void loadInputs(); void loadWorkspace(); }} />}
+              {revenuePayload && <RevenueEditorView project={project} revenuePayload={revenuePayload} onSaved={() => { void loadInputs(); void loadWorkspace(); setRevenuePayload(null); }} />}
               <RevenueView project={project} />
             </>
             : <p className="rx-boot-loading" role="status">Loading the canonical input grid…</p>

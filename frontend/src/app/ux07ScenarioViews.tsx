@@ -35,28 +35,51 @@ function Note({ message, tone }: { message: string; tone: "ok" | "error" | "conf
   return <div className="fm-info-note" role="status" data-tone={tone}>{message}</div>;
 }
 
-async function postScenarioForm(url: string, fields: Record<string, string>): Promise<{ ok: boolean; message: string }> {
+async function postScenarioForm(
+  url: string,
+  fields: Record<string, string>,
+): Promise<{ outcome: "ok" | "refused" | "unknown"; message: string }> {
   const body = new URLSearchParams(fields);
+  let response: Response;
   try {
-    const response = await fetch(url, {
+    response = await fetch(url, {
       method: "POST",
       credentials: "same-origin",
       redirect: "follow",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
     });
-    const finalUrl = new URL(response.url);
-    const v2Err = finalUrl.searchParams.get("v2_err");
-    if (v2Err !== null) return { ok: false, message: v2Err };
-    if (finalUrl.pathname === "/login") return { ok: false, message: "Your session has expired — sign in again. Nothing was changed." };
-    if (!response.ok) return { ok: false, message: `The scenario action was refused (HTTP ${response.status}).` };
-    return { ok: true, message: "Scenario updated through the canonical authority. No Run was started." };
   } catch {
-    return { ok: false, message: "The scenario outcome is UNKNOWN: the connection failed before a definitive response. Reload to reconcile." };
+    return { outcome: "unknown", message: "The scenario outcome is UNKNOWN: the connection failed before a definitive response. Reload to reconcile — do not re-submit blindly." };
   }
+  // Direct canonical JSON answers (validation / auth / conflict) are refusals
+  // with the backend's own message — never UNKNOWN, never success.
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload && payload.error) return { outcome: "refused", message: payload.error };
+    } catch { /* fall through to destination classification */ }
+    return { outcome: "refused", message: `The scenario action was refused (HTTP ${response.status}).` };
+  }
+  let finalUrl: URL;
+  try {
+    finalUrl = new URL(response.url);
+  } catch {
+    return { outcome: "unknown", message: "The scenario outcome is UNKNOWN: the response destination could not be read. Reload to reconcile." };
+  }
+  if (finalUrl.pathname === "/login") {
+    return { outcome: "refused", message: "Your session has expired — sign in again. Nothing was changed." };
+  }
+  const v2Err = finalUrl.searchParams.get("v2_err");
+  if (v2Err !== null) return { outcome: "refused", message: v2Err };
+  if (finalUrl.pathname !== "/v2/workbook") {
+    return { outcome: "unknown", message: `The scenario outcome is UNKNOWN: unexpected destination (${finalUrl.pathname}). Reload to reconcile.` };
+  }
+  return { outcome: "ok", message: "Scenario updated through the canonical authority. No Run was started." };
 }
 
-export function ScenarioView({ project }: { project: string }) {
+export function ScenarioView({ project, onScenarioChanged }: { project: string; onScenarioChanged?: () => void }) {
   const fetcher = useCallback(() => fetchScenarios(project), [project]);
   const state = useCanonicalView(fetcher, [project]);
   const [newName, setNewName] = useState("");
@@ -68,9 +91,21 @@ export function ScenarioView({ project }: { project: string }) {
     setBusy(true);
     setStatus(null);
     const result = await postScenarioForm(url, fields);
+    if (result.outcome === "ok") {
+      // Reconcile through a fresh authorized scenarios projection before
+      // claiming success: the canonical redirect alone is not commit evidence.
+      const fresh = await fetchScenarios(project);
+      if (fresh.ok === true) {
+        setStatus({ tone: "ok", text: `${result.message} (verified against the fresh projection)` });
+        state.retry();
+        onScenarioChanged?.();
+      } else {
+        setStatus({ tone: "conflict", text: "The scenario action answered success, but the fresh projection could not confirm it. Reload to reconcile — do not re-submit blindly." });
+      }
+    } else {
+      setStatus({ tone: result.outcome === "unknown" ? "conflict" : "error", text: result.message });
+    }
     setBusy(false);
-    setStatus({ tone: result.ok ? "ok" : "error", text: result.message });
-    if (result.ok) state.retry();
   };
 
   if (state.state === "loading") return <p className="fm-info-note" role="status">Loading scenarios…</p>;
@@ -88,6 +123,7 @@ export function ScenarioView({ project }: { project: string }) {
     <section className="fm-card fm-section" aria-label="Scenario management">
       <div className="fm-card-title"><h2>Scenarios</h2><span>canonical scenario authority · a selection never runs the model</span></div>
       {data.project.protected_reference && <div className="fm-banner" role="note"><span className="fm-demo-label">PROTECTED REFERENCE</span><span className="fm-banner-copy">References have a single immutable case; scenario management applies to Working Copies.</span></div>}
+      <fieldset className="fm-readonly-fieldset" disabled={Boolean(data.project.protected_reference)} aria-label="Scenario actions (disabled on protected references)"><legend className="fm-sr-only">Scenario actions</legend>
       {status && <Note message={status.text} tone={status.tone} />}
       <div className="fm-table-wrap">
         <table className="fm-table">
@@ -110,7 +146,7 @@ export function ScenarioView({ project }: { project: string }) {
                         <button type="button" className="fm-btn" disabled={busy} aria-label={`Rename scenario ${s.name}`}
                           onClick={() => {
                             const next = window.prompt(`Rename scenario ${s.name} to:`, s.name);
-                            if (next && next.trim() && next !== s.name) act(data.mutations.rename.url, { project, scenario_id: s.scenario_id, scenario_name: next.trim() });
+                            if (next && next.trim() && next !== s.name) act(data.mutations.rename.url, { project, scenario_id: s.scenario_id, new_name: next.trim() });
                           }}>Rename</button>
                         <button type="button" className="fm-btn" disabled={busy} aria-label={`Archive scenario ${s.name}`}
                           onClick={() => act(data.mutations.archive.url, { project, scenario_id: s.scenario_id })}>Archive</button>
@@ -139,6 +175,7 @@ export function ScenarioView({ project }: { project: string }) {
         </div>
       )}
       <p className="fm-info-note">{data.mutations.note}</p>
+      </fieldset>
       {compareId && <ScenarioCompareView project={project} scenarioId={compareId} />}
     </section>
   );
@@ -186,17 +223,36 @@ export function RevenueEditorView({ project, revenuePayload, onSaved }: {
   revenuePayload: { contracts: Record<string, unknown>; save: { url: string; csrf_token: string; content_hash: string; workbook_version: string } };
   onSaved?: () => void;
 }) {
-  const initial = useMemoJson(revenuePayload.contracts);
-  const [draft, setDraft] = useState(() => JSON.stringify(revenuePayload.contracts, null, 2));
+  // Correction B: the canonical contract payload lives in `contracts.raw` (the
+  // string the writer validates).  The surrounding editor projection carries
+  // presentation metadata that must NOT be submitted.  A project without an
+  // existing contract configuration shows an explicit empty state — no
+  // synthetic default contract is ever invented here.
+  const contracts = revenuePayload.contracts as {
+    active?: boolean; raw?: string; scope?: string; technology?: string; overridden?: boolean;
+  };
+  const hasContract = contracts.active === true && typeof contracts.raw === "string" && contracts.raw.trim() !== "";
+  const initial = hasContract ? prettyOrRaw(contracts.raw as string) : "";
+  const [draft, setDraft] = useState(initial);
   const [status, setStatus] = useState<{ tone: "ok" | "error" | "conflict"; text: string } | null>(null);
   const [inFlight, setInFlight] = useState(false);
-  const dirty = draft !== initial;
+  const dirty = hasContract && draft !== initial;
 
-  function useMemoJson(value: Record<string, unknown>): string {
-    return JSON.stringify(value, null, 2);
+  function prettyOrRaw(raw: string): string {
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      return raw; // the canonical writer decides; never pre-mutate
+    }
   }
 
+  const syntaxProblem = dirty ? (() => { try { JSON.parse(draft); return null; } catch (e) { return `Invalid JSON syntax: ${(e as Error).message}`; } })() : null;
+
   const save = async () => {
+    if (syntaxProblem) {
+      setStatus({ tone: "error", text: syntaxProblem });
+      return;
+    }
     setInFlight(true);
     setStatus(null);
     const result = await saveRevenueContracts({
@@ -221,13 +277,21 @@ export function RevenueEditorView({ project, revenuePayload, onSaved }: {
     <section className="fm-card fm-section" aria-label="Revenue and PPA contract editor">
       <div className="fm-card-title"><h3>Revenue contract editor</h3><span>canonical payload · validated by the writer</span></div>
       {status && <Note message={status.text} tone={status.tone} />}
-      <label className="fm-field">
-        <span className="fm-field-label">Canonical contracts payload (streams &amp; products JSON — validated server-side)</span>
-        <textarea className="fm-input" rows={14} spellCheck={false} data-revenue-editor="true"
-          style={{ width: "100%", fontFamily: "var(--font-mono, monospace)", fontSize: 11 }}
-          value={draft} disabled={inFlight}
-          onChange={(e) => setDraft(e.target.value)} />
-      </label>
+      {!hasContract ? (
+        <div className="fm-banner" role="note">
+          <span className="fm-demo-label">NO CONTRACT CONFIGURED</span>
+          <span className="fm-banner-copy">This project has no revenue contract payload yet. The canonical guided PPA form in the legacy workbook creates one; this editor never invents a default contract, because that could change financial economics.</span>
+        </div>
+      ) : (
+        <label className="fm-field">
+          <span className="fm-field-label">Canonical contracts payload — scope: {String(contracts.scope ?? "unknown")} · technology: {String(contracts.technology ?? "unknown")}{contracts.overridden ? " · scenario-overridden" : ""} (validated server-side)</span>
+          <textarea className="fm-input" rows={14} spellCheck={false} data-revenue-editor="true"
+            style={{ width: "100%", fontFamily: "var(--font-mono, monospace)", fontSize: 11 }}
+            value={draft} disabled={inFlight}
+            onChange={(e) => setDraft(e.target.value)} />
+        </label>
+      )}
+      {syntaxProblem && <div className="fm-banner" role="alert"><span className="fm-demo-label">JSON SYNTAX</span><span className="fm-banner-copy">{syntaxProblem}</span></div>}
       <div className="fm-toolbar" style={{ marginTop: 8 }}>
         <button type="button" className="fm-btn fm-btn-primary" disabled={inFlight || !dirty}
           aria-label="Save revenue contracts" onClick={save}>
