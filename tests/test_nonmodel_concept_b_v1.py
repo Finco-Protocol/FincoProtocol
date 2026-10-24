@@ -37,9 +37,9 @@ NONMODEL = REPO / "frontend" / "src" / "nonmodel"
 FRONTEND = Path(__file__).resolve().parents[1] / "frontend"
 HANDOFF_ZIP_SHA256 = "549a3ac34733c09fbd3d05e80b0c5efa70f9b52aeaa0fac8eca78b6df841df63"
 BYTE_IDENTICAL_SOURCES = {
-    "_shared/fixtures.ts": "792406de626a215d474613755f240065d09b443874fcee20fda62ea7ee932c37",
-    "_shared/non-model-logic.ts": "2f09535f54b55259371a59964aeae84b75057594482376d54a4dbc64698bd14f",
-    "concept-b.css": "95a8e4188ff38261491ee5117367b22ca77fb8bff5407361a44784011cfb4669",
+    "_shared/fixtures.ts": "362566c3eefaff99c62707e1d43fdf91c78e27972811ebb5aff24ad15cdcfb2a",
+    "_shared/non-model-logic.ts": "aaa0e51000416cf8094afc41c1d3b47bc0a2a3238b1c9d853918b6875115e3f6",
+    "concept-b.css": "65e83b6efd7d00a4274c272b5486cb945091791cb770e62326d7bc24d0ba5e47",
 }
 
 #: Canonical host destinations the footer may link to (verified on the base
@@ -66,7 +66,10 @@ DEMO_MARKERS = (
 
 
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    # Handoff pins were computed over LF content; a Windows checkout materializes
+    # CRLF (core.autocrlf), which changes bytes but not the delivered source.
+    content = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(content).hexdigest()
 
 
 def _nonmodel_sources() -> list[Path]:
