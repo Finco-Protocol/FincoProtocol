@@ -1,7 +1,8 @@
 # V10 native Run activation — operator runbook
 
-Status: implemented, **default OFF**. Enabling it in production requires the Financial Owner release decision for the
-authoritative execution scope below. Nothing in this repository enables it.
+Status: implemented, **default OFF** in code. Production enablement (V10 Stage 1+2 together with V11 Stage 3) is the
+release transaction described in `docs/model_v11/NATIVE_PRODUCTION_RELEASE.md`. It is governed by the Financial Owner
+release-authority record `docs/model_v11/v11-stage3-release-authority.json` and never by an `.env` edit.
 
 ## What is activated
 

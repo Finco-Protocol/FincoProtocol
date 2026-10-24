@@ -28,6 +28,8 @@ _LIFECYCLE_PROBLEMS: list[str] = []
 
 # V10 native candidate: one session-scoped, provenance-checked artifact install (see the module docstring)
 from tests.native_v10_support import native_artifacts  # noqa: E402,F401
+# V11 Stage 3 candidate: same rule, its own artifact and manifest
+from tests.native_v11_support import stage3_artifacts  # noqa: E402,F401
 
 
 @pytest.fixture(scope="module", autouse=True)

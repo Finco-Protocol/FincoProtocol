@@ -16,11 +16,12 @@ import rc7b_postmerge_successor as B
 import rc7c_candidate_successor as C
 import v9p2a_odr_successor as O
 import v10_native_shadow_successor as V
+import v11_stage3_successor as V11
 
 ROOT = Path(__file__).resolve().parent.parent
 # Historical subject: the OD-R contract is judged on OD-R bytes - HEAD itself, or, only while HEAD is the complete recognised V10 successor,
 # its immutable OD-R checkpoint (main 0b57031a). Any other HEAD stays the subject and fails exactly as before; never relabelled.
-SUBJECT = V.historical_subject()
+SUBJECT = V.historical_subject(ref=V11.historical_subject())
 SIX = tuple(sorted(O.ODR_AUTHORITIES))
 NEW_PATHS = ("financial_engine/shareholder_waterfall/model.py", "financial_engine/shl/maturity_authority.py",
              "financial_engine/shl/production.py")          # OD-R paths outside the twelve RC-7C paths

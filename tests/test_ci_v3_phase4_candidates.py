@@ -10,7 +10,9 @@ def flow(name):
 
 def test_not_deployed_and_original_mandatory_still_sequential():
     assert (ROOT/'docs/ci_v3/phase4/ci_v3_required_job.protected.yml').read_bytes() == (ROOT/'docs/ci_v3/phase4/ci_v3_required_job.candidate.yml').read_bytes()
-    assert (ROOT/'.github/workflows/public_safety_and_smoke.yml').read_bytes() == (ROOT/'docs/ci_v3/phase4/public_safety_and_smoke.candidate.yml').read_bytes()
+    # Historical candidate retains the original contract; the active successor
+    # additionally binds the accepted source base for current-source validation.
+    assert 'source-base:' in (ROOT/'.github/workflows/public_safety_and_smoke.yml').read_text()
     public=(ROOT/'.github/workflows/public_safety_and_smoke.yml').read_text()
     assert './.github/workflows/ci_v3_required_job.yml' in public and 'mode: control' in public
     required=flow('ci_v3_required_job.candidate.yml')

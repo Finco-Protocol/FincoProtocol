@@ -39,6 +39,7 @@ jobs:
     with:
       mode: control
       tested-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      source-base: ${{ github.event.pull_request.base.sha || github.event.before }}
       merge-sha: ${{ github.event_name == 'pull_request' && github.sha || '' }}
       pr-number: ${{ github.event.pull_request.number || '' }}
     permissions:
@@ -99,6 +100,8 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
         FINCO_PRODUCTION_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        FINCO_PRODUCTION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        FINCO_PRODUCTION_MERGE_SHA: ${{ github.event_name == 'pull_request' && github.sha || '' }}
         SOURCE_RESULT: ${{ needs.source-safety.result }}
         EXECUTION_RESULT: ${{ needs.safety-and-smoke.result }}
       run: |

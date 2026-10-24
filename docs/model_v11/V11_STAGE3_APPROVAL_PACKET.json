@@ -1,0 +1,486 @@
+{
+ "branch": "feat/v11-stage3-native-senior-debt",
+ "decision_requested": "Financial Owner exact-content approval of the V11 Stage 3a + 3b candidate (protected blobs below)",
+ "evidence": {
+  "catalogue_738": {
+   "case_authority_pairs": 246,
+   "declines": {
+    "DYNAMIC_INTEREST_LIMITATION": 4156,
+    "SENIOR_INVALID_INPUT": 16,
+    "canonical SHL maturity fail-closed rejections": "declined, canonical raised identically"
+   },
+   "mismatches": 0,
+   "runs": 738,
+   "stage3_served_evaluations": 65614
+  },
+  "host": "4 vCPU Xeon 2.1 GHz, CPython 3.12.3, gcc 13.3.0, CI-pinned dependencies; cache-miss Runs, arms interleaved",
+  "performance": {
+   "DataCenter": {
+    "engine_cpu_median_s": {
+     "off": 0.83576,
+     "s12s3": 0.31845,
+     "s3": 0.31991,
+     "v10": 0.71462
+    },
+    "engine_identical_to_python": {
+     "off": true,
+     "s12s3": true,
+     "s3": true,
+     "v10": true
+    },
+    "engine_peak_python_mb": {
+     "off": 10.42,
+     "s12s3": 2.81,
+     "s3": 2.6,
+     "v10": 5.28
+    },
+    "engine_warm_median_s": {
+     "off": 0.8411,
+     "s12s3": 0.31987,
+     "s3": 0.32274,
+     "v10": 0.72134
+    },
+    "engine_warm_p95_s": {
+     "off": 0.96075,
+     "s12s3": 0.36506,
+     "s3": 0.37748,
+     "v10": 0.77494
+    },
+    "executor_cold_median_s": {
+     "off": 1.84848,
+     "s12s3": 1.4191,
+     "s3": 1.39818,
+     "v10": 1.82656
+    },
+    "executor_identical_to_python": {
+     "off": true,
+     "s12s3": true,
+     "s3": true,
+     "v10": true
+    },
+    "executor_warm_median_s": {
+     "off": 0.84204,
+     "s12s3": 0.3163,
+     "s3": 0.33839,
+     "v10": 0.72987
+    },
+    "http_cold_median_s": {
+     "off": 1.48632,
+     "s12s3": 0.94394,
+     "s3": 0.90903,
+     "v10": 1.22838
+    },
+    "http_warm_median_s": {
+     "off": 1.06378,
+     "s12s3": 0.51588,
+     "s3": 0.53514,
+     "v10": 0.93259
+    },
+    "http_warm_p95_s": {
+     "off": 1.14936,
+     "s12s3": 0.6426,
+     "s3": 0.65643,
+     "v10": 1.09959
+    },
+    "speedup_vs_v10_engine": 2.26,
+    "speedup_vs_v10_http": 1.81,
+    "stage3_counters": {
+     "build_id": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344",
+     "declines": {},
+     "loader_reason": null,
+     "native_full_tax": 88,
+     "native_models": 44,
+     "native_plain": 22,
+     "native_shl_fixed_points": 22,
+     "native_solves": 198,
+     "native_tax_evaluations": 1210
+    }
+   },
+   "EV": {
+    "engine_cpu_median_s": {
+     "off": 1.23161,
+     "s12s3": 0.43273,
+     "s3": 0.46379,
+     "v10": 0.77468
+    },
+    "engine_identical_to_python": {
+     "off": true,
+     "s12s3": true,
+     "s3": true,
+     "v10": true
+    },
+    "engine_peak_python_mb": {
+     "off": 25.29,
+     "s12s3": 3.76,
+     "s3": 3.89,
+     "v10": 5.56
+    },
+    "engine_warm_median_s": {
+     "off": 1.24624,
+     "s12s3": 0.43734,
+     "s3": 0.46407,
+     "v10": 0.78516
+    },
+    "engine_warm_p95_s": {
+     "off": 1.32054,
+     "s12s3": 0.49652,
+     "s3": 0.50869,
+     "v10": 1.01546
+    },
+    "executor_cold_median_s": {
+     "off": 2.41481,
+     "s12s3": 1.66706,
+     "s3": 1.52199,
+     "v10": 1.85234
+    },
+    "executor_identical_to_python": {
+     "off": true,
+     "s12s3": true,
+     "s3": true,
+     "v10": true
+    },
+    "executor_warm_median_s": {
+     "off": 1.2661,
+     "s12s3": 0.46841,
+     "s3": 0.47959,
+     "v10": 0.83113
+    },
+    "http_cold_median_s": {
+     "off": 1.91952,
+     "s12s3": 0.96909,
+     "s3": 0.9976,
+     "v10": 1.3043
+    },
+    "http_warm_median_s": {
+     "off": 1.53587,
+     "s12s3": 0.67623,
+     "s3": 0.66688,
+     "v10": 1.07242
+    },
+    "http_warm_p95_s": {
+     "off": 1.60937,
+     "s12s3": 0.73114,
+     "s3": 0.6889,
+     "v10": 1.15581
+    },
+    "speedup_vs_v10_engine": 1.8,
+    "speedup_vs_v10_http": 1.59,
+    "stage3_counters": {
+     "build_id": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344",
+     "declines": {},
+     "loader_reason": null,
+     "native_full_tax": 136,
+     "native_models": 68,
+     "native_plain": 34,
+     "native_shl_fixed_points": 34,
+     "native_solves": 204,
+     "native_tax_evaluations": 2474
+    }
+   },
+   "Solar": {
+    "engine_cpu_median_s": {
+     "off": 1.90065,
+     "s12s3": 0.41396,
+     "s3": 0.48732,
+     "v10": 0.92983
+    },
+    "engine_identical_to_python": {
+     "off": true,
+     "s12s3": true,
+     "s3": true,
+     "v10": true
+    },
+    "engine_peak_python_mb": {
+     "off": 49.84,
+     "s12s3": 3.73,
+     "s3": 3.36,
+     "v10": 7.01
+    },
+    "engine_warm_median_s": {
+     "off": 1.9193,
+     "s12s3": 0.42152,
+     "s3": 0.49158,
+     "v10": 0.93572
+    },
+    "engine_warm_p95_s": {
+     "off": 2.04644,
+     "s12s3": 0.49293,
+     "s3": 0.54924,
+     "v10": 1.03282
+    },
+    "executor_cold_median_s": {
+     "off": 2.95792,
+     "s12s3": 1.58527,
+     "s3": 1.53276,
+     "v10": 1.95429
+    },
+    "executor_identical_to_python": {
+     "off": true,
+     "s12s3": true,
+     "s3": true,
+     "v10": true
+    },
+    "executor_warm_median_s": {
+     "off": 1.95379,
+     "s12s3": 0.4566,
+     "s3": 0.50901,
+     "v10": 0.98899
+    },
+    "http_cold_median_s": {
+     "off": 2.41153,
+     "s12s3": 1.14221,
+     "s3": 1.21524,
+     "v10": 1.76273
+    },
+    "http_warm_median_s": {
+     "off": 2.10601,
+     "s12s3": 0.72868,
+     "s3": 0.75544,
+     "v10": 1.19427
+    },
+    "http_warm_p95_s": {
+     "off": 2.291,
+     "s12s3": 0.7953,
+     "s3": 0.82333,
+     "v10": 1.27625
+    },
+    "speedup_vs_v10_engine": 2.22,
+    "speedup_vs_v10_http": 1.64,
+    "stage3_counters": {
+     "build_id": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344",
+     "declines": {},
+     "loader_reason": null,
+     "native_full_tax": 138,
+     "native_models": 69,
+     "native_plain": 34,
+     "native_shl_fixed_points": 35,
+     "native_solves": 279,
+     "native_tax_evaluations": 4193
+    }
+   },
+   "Wind": {
+    "engine_cpu_median_s": {
+     "off": 2.37244,
+     "s12s3": 0.58182,
+     "s3": 0.60476,
+     "v10": 1.19661
+    },
+    "engine_identical_to_python": {
+     "off": true,
+     "s12s3": true,
+     "s3": true,
+     "v10": true
+    },
+    "engine_peak_python_mb": {
+     "off": 63.15,
+     "s12s3": 5.05,
+     "s3": 4.5,
+     "v10": 8.45
+    },
+    "engine_warm_median_s": {
+     "off": 2.39563,
+     "s12s3": 0.58662,
+     "s3": 0.6055,
+     "v10": 1.20744
+    },
+    "engine_warm_p95_s": {
+     "off": 2.51731,
+     "s12s3": 0.62527,
+     "s3": 0.69191,
+     "v10": 1.24955
+    },
+    "executor_cold_median_s": {
+     "off": 3.26014,
+     "s12s3": 1.63713,
+     "s3": 1.60404,
+     "v10": 2.17232
+    },
+    "executor_identical_to_python": {
+     "off": true,
+     "s12s3": true,
+     "s3": true,
+     "v10": true
+    },
+    "executor_warm_median_s": {
+     "off": 2.22442,
+     "s12s3": 0.56601,
+     "s3": 0.57167,
+     "v10": 1.24432
+    },
+    "http_cold_median_s": {
+     "off": 2.93289,
+     "s12s3": 1.23212,
+     "s3": 1.21467,
+     "v10": 1.80752
+    },
+    "http_warm_median_s": {
+     "off": 2.7372,
+     "s12s3": 0.83074,
+     "s3": 0.9168,
+     "v10": 1.6353
+    },
+    "http_warm_p95_s": {
+     "off": 4.53199,
+     "s12s3": 1.45597,
+     "s3": 1.57219,
+     "v10": 2.62943
+    },
+    "speedup_vs_v10_engine": 2.06,
+    "speedup_vs_v10_http": 1.97,
+    "stage3_counters": {
+     "build_id": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344",
+     "declines": {},
+     "loader_reason": null,
+     "native_full_tax": 152,
+     "native_models": 76,
+     "native_plain": 38,
+     "native_shl_fixed_points": 38,
+     "native_solves": 282,
+     "native_tax_evaluations": 4369
+    }
+   }
+  },
+  "tests": {
+   "allocation_failure_injection": "120 cases: NOMEM decline or identical result",
+   "asan_ubsan": "2 Runs + 160 models bit-identical, 22 malformed plans rejected, 300 mutations, no sanitizer report",
+   "governance_dry_run_with_synthetic_record": "2820 passed, 0 failed (throwaway worktree, never pushed)",
+   "governance_pending_decision": "29 expected failures (V11 not recognised without owner record)",
+   "native_v10_v11_and_activation": "145 passed",
+   "stage3a_tax_fuzz_local": "240/240 exact (all ATAD rules, LCF generation/use/expiry, terminal unpaid, EBT gate, opening vintages)",
+   "stage3b_fuzz_local": "600 cases: 395 exact, 205 canonical rejections declined without effect, 0 failures"
+  },
+  "worker_side_coverage": {
+   "declines": 0,
+   "served_evaluations": 14568,
+   "stage3_runs": 322
+  }
+ },
+ "exclusions": {
+  "deployment": false,
+  "merge": false,
+  "note": "No application, deployment or workflow source references the Stage 3 package; Stage3Config defaults to off.",
+  "production_enablement": false,
+  "runtime_compilation": false,
+  "stage3_activation": false,
+  "staging_enablement": false,
+  "v10_reseal": false
+ },
+ "non_protected_changes_in_source_candidate": [
+  ".gitignore",
+  "docs/model_v11/STAGE3_NATIVE_SENIOR_DEBT.md",
+  "tests/conftest.py",
+  "tests/native_v11_support.py",
+  "tests/test_native_v11_stage3_fuzz.py",
+  "tests/test_native_v11_stage3_identity.py",
+  "tests/test_native_v11_stage3_safety.py",
+  "tests/test_native_v11_stage3_sanitizers.py",
+  "tests/test_native_v11_stage3_tax.py"
+ ],
+ "protected_blobs": {
+  "financial_engine/financing/project.py": {
+   "after": "4d77988da20ec9ea767d85cc16448489d9f48bb6",
+   "before": "3bc6c097b218d27be216cdd86133f2772a82ad70"
+  },
+  "financial_engine/native_v11/__init__.py": {
+   "after": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+   "before": null
+  },
+  "financial_engine/native_v11/approved_canonical_blobs_stage3.json": {
+   "after": "12c3aef94e3c4b440e25ab433fd524c99d6d6823",
+   "before": null
+  },
+  "financial_engine/native_v11/build_stage3.py": {
+   "after": "25ff48402d46a90d6a8cf71453ab7c5df4d977fa",
+   "before": null
+  },
+  "financial_engine/native_v11/config.py": {
+   "after": "751e020a0c06c8dfa2113c9ec82a0123892dc81b",
+   "before": null
+  },
+  "financial_engine/native_v11/fk_v11_stage3_manifest.json": {
+   "after": "6d70d6b84ebba6ac86ba1c7f9727502e6c3aec9f",
+   "before": null
+  },
+  "financial_engine/native_v11/kernel_v11_stage3.c": {
+   "after": "63490c990f9268db7b6dcade5fa344ce0f6fec72",
+   "before": null
+  },
+  "financial_engine/native_v11/stage3.py": {
+   "after": "0d55acf14d685b9f72ed9666d86e8e59f0c3326f",
+   "before": null
+  }
+ },
+ "repository": "Finco-Protocol/FincoProtocol",
+ "schema": "finco.v11.stage3.exact-content-approval-packet.v1",
+ "source_candidate": {
+  "head": "3bf206d0d4c3b0430916cd05eae552dd3b5fed77",
+  "tree": "0d775362e0689f3b0f9a76d82341f2c620ead227"
+ },
+ "stage3_build": {
+  "abi_version": 30001,
+  "approved_blobs_sha256": "c11cefae1bf634fe54fac5db9fe124d96dd85a0292b42843dbb957296cb02778",
+  "artifact": "_fk_v11_stage3.so",
+  "artifact_sha256": "eda33517ec07522e3985ccc02228b30289d4c471bbeb5745b51f8e7373817963",
+  "build_id": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344",
+  "compiler": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "flags": [
+   "-std=c11",
+   "-O2",
+   "-fno-fast-math",
+   "-ffp-contract=off",
+   "-fno-strict-aliasing",
+   "-fPIC",
+   "-shared",
+   "-fstack-protector-strong",
+   "-D_FORTIFY_SOURCE=2",
+   "-fvisibility=default",
+   "-Wall",
+   "-Wextra",
+   "-Werror=implicit-function-declaration",
+   "-ffile-prefix-map={src}=.",
+   "-Wl,--build-id=none",
+   "-Wl,--hash-style=gnu"
+  ],
+  "source_sha256": "c57031d279e456cedba296531113ff9bd95ad42014c32afd146e7c573b114555",
+  "target": "x86_64-linux-gnu",
+  "variant": "release"
+ },
+ "stage3_canonical_dependency_pins": {
+  "financial_engine/cfads.py": "58f2632d96ea66a7e2c0a62957c704d4895a9671",
+  "financial_engine/financing/project.py": "4d77988da20ec9ea767d85cc16448489d9f48bb6",
+  "financial_engine/native_v10/eligibility.py": "9bf5683680c9f0725454bb2760049a159d00cea6",
+  "financial_engine/native_v10/provenance.py": "769f0e645b4267be05aadefb09a22f7763f3199c",
+  "financial_engine/native_v11/config.py": "751e020a0c06c8dfa2113c9ec82a0123892dc81b",
+  "financial_engine/native_v11/kernel_v11_stage3.c": "63490c990f9268db7b6dcade5fa344ce0f6fec72",
+  "financial_engine/native_v11/stage3.py": "0d55acf14d685b9f72ed9666d86e8e59f0c3326f",
+  "financial_engine/orchestrator.py": "85c8008f2b4a656fd28eea1169689b19131576e4",
+  "financial_engine/policies/tax.py": "5fe5f01231da8b0d5c1a01008e520f358d8b51f5",
+  "financial_engine/run_scope.py": "018242000ea73f95b18284a2987f437401cdb6c6",
+  "financial_engine/senior_debt/interest.py": "58b5ba30093dc31d4e42f2e602f157a48710faa3",
+  "financial_engine/senior_debt/solver.py": "9d30525b3fc09b422c1deb38784bf49834cbac35",
+  "financial_engine/shl/engine.py": "48c3956739fcd972dd7347f167a959f8b65ce53a",
+  "financial_engine/shl/production.py": "fb563770bc87a0a8403e21e5f571ebec39840f18",
+  "financial_engine/shl/waterfall.py": "11595ce0ce2795738b27a565fc15243e5f1c051c",
+  "financial_engine/tax/atad.py": "3e1d1c166a03527d4d86214e33a6b0b0b94e4da9",
+  "financial_engine/tax/engine.py": "1f764661d501c757a6e25cc3e62a599c30930f5e",
+  "financial_engine/tax/loss_ledger.py": "8985b61cfeee9ba4647440ee55b521467c2d8e64",
+  "financial_engine/tax/models.py": "340bcbe98ad1f517a1682edc27a2d50d10825a41",
+  "financial_engine/tax/tax_year.py": "9605e39e00b6e4a48f38738f997576e5f56fc236",
+  "finco_core/engine/period_engine.py": "d72de84d082962d9c49a840178211602495c027a"
+ },
+ "v10_checkpoint": {
+  "head": "9e712e21b9efd1a57fe702f178a496aaefb427ec",
+  "tree": "e8305ab124e59d62b63dad121c3e333040939f2f"
+ },
+ "v10_identities_unchanged": {
+  "native_v10_tree_unchanged": true,
+  "stage1": {
+   "artifact_sha256": "da763e0e8895359b81c6197b7252c349be9201c380aeee051dea60e5077e1307",
+   "build_id": "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434"
+  },
+  "stage2": {
+   "artifact_sha256": "34dc14a975d6ab3020fbcd898feac877621a9b5bae6a3731edc3f00089f1922e",
+   "build_id": "1471f6d88750b150d364b61b3c80b32e315eca1c5af5a8f298d5430260785e15"
+  }
+ }
+}

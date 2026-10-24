@@ -1,0 +1,99 @@
+{
+ "Financial": {
+  "approved": true,
+  "reference": "conversation:2026-10-24:PR360-CorrectionA:Financial-Owner-Release-Decision:V11-Stage3+V10-Stage1+2-permanent-production"
+ },
+ "activation": {
+  "FINCO_NATIVE_V10_RUN": "stage1+2",
+  "FINCO_NATIVE_V10_RUN_BUILD_ID": "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434",
+  "FINCO_NATIVE_V11_RUN": "on",
+  "FINCO_NATIVE_V11_RUN_BUILD_ID": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344"
+ },
+ "activation_at": "approved deployment of the approved normal merge",
+ "activation_file": "/opt/finco_protocol/.env.native",
+ "branch": "feat/v11-stage3-native-senior-debt",
+ "content_approval": {
+  "path": "docs/model_v11/v11-stage3-content-approval.json",
+  "protected_blobs": {
+   "financial_engine/financing/project.py": "4d77988da20ec9ea767d85cc16448489d9f48bb6",
+   "financial_engine/native_v11/__init__.py": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+   "financial_engine/native_v11/approved_canonical_blobs_stage3.json": "12c3aef94e3c4b440e25ab433fd524c99d6d6823",
+   "financial_engine/native_v11/build_stage3.py": "25ff48402d46a90d6a8cf71453ab7c5df4d977fa",
+   "financial_engine/native_v11/config.py": "751e020a0c06c8dfa2113c9ec82a0123892dc81b",
+   "financial_engine/native_v11/fk_v11_stage3_manifest.json": "6d70d6b84ebba6ac86ba1c7f9727502e6c3aec9f",
+   "financial_engine/native_v11/kernel_v11_stage3.c": "63490c990f9268db7b6dcade5fa344ce0f6fec72",
+   "financial_engine/native_v11/stage3.py": "0d55acf14d685b9f72ed9666d86e8e59f0c3326f"
+  },
+  "sha256": "f0555f999b10359af9243494e1115387c25a3554689a8cdba9da0dab1dd470c0"
+ },
+ "content_checkpoint": {
+  "head": "94fd918e547f818cc0ca256db96f5fe1a165dc45",
+  "tree": "7131ab3ba632ac35bd31ea0368cce99ba7e393cc"
+ },
+ "fallback": "every call the kernels do not admit is served by canonical Python in the same Run",
+ "kind": "v11-stage3-v10-stage12-permanent-production-release-authority",
+ "merge_authorized": false,
+ "permanent": true,
+ "phased_rollout": false,
+ "pilot_or_canary": false,
+ "production_enablement_authorized": true,
+ "release_candidate": {
+  "head": "08d8108e4f4bdbf11b340b98275d9b750f5c4196",
+  "tree": "2d2da00db6b346eae2bc579314bd738078166415"
+ },
+ "release_surface": {
+  "app/runtime/native_activation.py": "75eb68bde98982317abf7501caf80a57b5e6f3cf",
+  "deploy/env.example": "78bcb2bfd24866517068b0d6eba09c23d804a4fb",
+  "deploy/scripts/release_native.sh": "8421e3e308ad5f9b4a05e691a140d4fe8265e615",
+  "deploy/systemd/finco-web.service": "eea293b4a98854ad5145b4e68584d999224ba802",
+  "tools/native_release.py": "2eaf84c7d9bb599693caa6f6949e75defca3f90f"
+ },
+ "repository": "Finco-Protocol/FincoProtocol",
+ "rollback": {
+  "immediate_all_native": "/var/lib/finco/native_v10_run.disabled",
+  "immediate_v11": "/var/lib/finco/native_v11_run.disabled",
+  "permanent": "deploy/scripts/release_native.sh remove + restart"
+ },
+ "run_scope": {
+  "canonical": [
+   "Save & Run",
+   "Compare",
+   "legacy /run",
+   "main_web exports",
+   "lender case",
+   "covenant views",
+   "V2 section render",
+   "every Run while the model executor is in thread mode"
+  ],
+  "native": [
+   "POST /v2/workbook/run",
+   "V2 sensitivity points",
+   "V2 sensitivity matrix",
+   "goal seek",
+   "POST /api/v1/run",
+   "POST /api/v1/model/references/{key}/run"
+  ]
+ },
+ "runtime_compilation_authorized": false,
+ "runtime_identities": {
+  "v10_stage1": {
+   "artifact_sha256": "da763e0e8895359b81c6197b7252c349be9201c380aeee051dea60e5077e1307",
+   "build_id": "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434"
+  },
+  "v10_stage2": {
+   "artifact_sha256": "34dc14a975d6ab3020fbcd898feac877621a9b5bae6a3731edc3f00089f1922e",
+   "build_id": "1471f6d88750b150d364b61b3c80b32e315eca1c5af5a8f298d5430260785e15"
+  },
+  "v11_stage3": {
+   "artifact_sha256": "eda33517ec07522e3985ccc02228b30289d4c471bbeb5745b51f8e7373817963",
+   "build_id": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344"
+  }
+ },
+ "schema": 1,
+ "scope": "V11-Stage3a+3b-with-V10-Stage1+2-permanent-production-release",
+ "stage3_activation_authorized": true,
+ "staging_enablement_authorized": false,
+ "thread_mode_native_authorized": false,
+ "v10_reseal_authorized": false,
+ "v10_stage12_production_release_authorized": true
+}
