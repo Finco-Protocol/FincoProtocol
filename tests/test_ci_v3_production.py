@@ -31,10 +31,13 @@ def test_real_route_and_immediate_rollback(tmp_path,rollback,event,repo,mode):
  assert output.read_text()=='execution_mode='+expected+'\n'
 
 def test_active_profile_retains_all_bounds_and_no_credential_or_failure_bypass():
- f=flow();jobs=f['jobs'];assert set(jobs)=={'route','sequential','plan','worker-0','worker-1','worker-2','aggregate','tests'}
- assert sum(int(j['timeout-minutes']) for n,j in jobs.items() if n!='sequential')==355
+ f=flow();jobs=f['jobs'];assert set(jobs)=={'route','sequential','plan','worker','aggregate','tests'}
+ assert sum(int(j['timeout-minutes']) for n,j in jobs.items() if n!='sequential')==155
  assert jobs['sequential']['uses']=='./.github/workflows/ci_public_job.yml'
- for i in range(3):assert jobs[f'worker-{i}']['needs']==['route','plan']
+ assert jobs['worker']['needs']==['route','plan']
+ assert jobs['worker']['strategy']['fail-fast']=='false'
+ assert jobs['worker']['strategy']['matrix']=='${{ fromJSON(needs.plan.outputs.worker_matrix) }}'
+ assert jobs['aggregate']['needs']==['route','plan','worker']
  assert jobs['tests']['if']=='${{ always() }}' and jobs['tests']['name']=='tests'
  assert 'continue-on-error' not in (ROOT/'.github/workflows/ci_v3_required_job.yml').read_text()
  for n,j in jobs.items():
@@ -55,6 +58,7 @@ def real_tiny(tmp_path_factory):
 
 @pytest.fixture
 def evidence(real_tiny,tmp_path,monkeypatch):
+ monkeypatch.setattr(prod,'routing',lambda:{'worker_count':3})
  d=real_tiny;plan=tmp_path/'public-ci-v3-plan';plan.mkdir()
  shutil.copytree(d['directory']/'baseline/public-verification-results',plan/'baseline/public-verification-results')
  first=read_json(d['paths']['worker-0']/'child/adapter.json');ctx=first['context'];monkeypatch.setattr(prod,'context',lambda:ctx)
@@ -187,3 +191,102 @@ def test_fixture_owned_acquisition_pool_is_closed_and_joined():
  assert pool.submit(lambda: 1).result(timeout=2)==1
  _close_owned_acquisition_services([(service,pool)])
  assert service._closed and not any(t.is_alive() for t in pool._threads)
+
+
+def scale_plan(tmp_path,monkeypatch,count):
+ from tools.ci_v3_schema import seal
+ from tools.ci_v3_partition_plan import plan_partitions
+ # Synthetic collection, not FINCO runtime or owner evidence.
+ nodes=[f'tests/test_scale_{i:02}.py::test_original' for i in range(24)]
+ ctx={'source':{'head':'a'*40,'tree':'b'*40},'repository':prod.REPO,'run_id':'123','attempt':1}
+ inv=prod.inventory({'collection':{'source':ctx['source'],'nodes':nodes,'skips':[]}})
+ policy=seal({'schema':1,'kind':'ci-v3-policy','authority':'offline-prototype','inventory_digest':inv['digest'],'new_nodes':'fail-closed','selective_execution':False,'module_overlaps':{},'allowed_nonpass':{}})
+ weights=seal({'schema':1,'kind':'ci-v3-weights','source':ctx['source'],'inventory_digest':inv['digest'],'modules_ms':{m:1000+i for i,m in enumerate(inv['modules'])}})
+ group=list(inv['modules'])[:2]
+ allocation=plan_partitions(inv,policy,weights,count,groups={'shared':group})
+ assert allocation==plan_partitions(inv,policy,weights,count,groups={'shared':group})
+ assert allocation['module_workers'][group[0]]==allocation['module_workers'][group[1]]
+ write_json(tmp_path/'plan.json',{'context':ctx,'inventory':inv,'plan':allocation})
+ monkeypatch.setattr(prod,'context',lambda:ctx)
+ monkeypatch.setattr(prod,'routing',lambda:{'worker_count':count})
+ return ctx
+
+
+@pytest.mark.parametrize('count', range(2,13))
+def test_configurable_matrix_preserves_grouped_whole_module_ownership(tmp_path,monkeypatch,count):
+ scale_plan(tmp_path,monkeypatch,count)
+ matrix=prod.worker_matrix(tmp_path)['include']
+ assert [v['index'] for v in matrix]==list(range(count))
+ assert sum(v['nodes'] for v in matrix)==24 and all(v['nodes']>0 for v in matrix)
+ # A source/config mismatch must reject instead of resizing the plan.
+ monkeypatch.setattr(prod,'routing',lambda:{'worker_count':2 if count!=2 else 3})
+ with pytest.raises(ContractError,match='worker count drift'):prod.worker_matrix(tmp_path)
+
+
+@pytest.mark.parametrize('value',[None,True,False,1,13,2.0,'5'])
+def test_invalid_production_worker_configuration_rejected(tmp_path,monkeypatch,value):
+ p=tmp_path/'routing.json';write_json(p,{'worker_count':value})
+ monkeypatch.setattr(prod,'ROUTING',p)
+ with pytest.raises(ContractError,match='worker count'):prod.routing()
+
+
+@pytest.mark.parametrize('attack',['missing','extra','duplicate','out-of-order','count','foreign-owner'])
+def test_dynamic_aggregate_rejects_worker_identity_and_count_attacks(evidence,attack):
+ from tools.ci_v3_schema import seal
+ plan,workers=evidence
+ if attack=='missing':workers=workers[:-1]
+ elif attack=='extra':workers=workers+[workers[0]]
+ elif attack=='duplicate':workers=[workers[0],workers[0],workers[2]]
+ elif attack=='out-of-order':workers=list(reversed(workers))
+ else:
+  data=read_json(plan/'plan.json');allocation={k:v for k,v in data['plan'].items() if k!='digest'}
+  if attack=='count':allocation['worker_count']=5
+  else:allocation['module_workers'][next(iter(allocation['module_workers']))]='worker-11'
+  data['plan']=seal(allocation);write_json(plan/'plan.json',data)
+ with pytest.raises(ContractError):prod.verify_data(plan,workers)
+
+
+def test_matrix_failure_does_not_trigger_sequential_retry():
+ jobs=flow()['jobs']
+ assert jobs['worker']['strategy']['fail-fast']=='false'
+ script=jobs['aggregate']['steps'][0]['run']
+ for state in ['failure','cancelled','skipped']:
+  run=subprocess.run(['bash','-e','-c',script],env={**os.environ,'PLAN':'success','WORKERS':state})
+  assert run.returncode!=0
+ assert jobs['sequential']['if']=="${{ needs.route.outputs.execution_mode == 'sequential' }}"
+ assert sum('docker build' in step.get('run','') for job in jobs.values() for step in job.get('steps',[]))==1
+
+
+@pytest.mark.parametrize('count',[5,8,12])
+@pytest.mark.parametrize('attack',[None,'missing','extra','duplicate','failed-producer','archive-bytes'])
+def test_independent_service_authentication_requires_exact_dynamic_workers(tmp_path,monkeypatch,count,attack):
+ import hashlib,io,zipfile
+ download=tmp_path/'download';plan=download/'public-ci-v3-plan';plan.mkdir(parents=True)
+ ctx=scale_plan(plan,monkeypatch,count)
+ artifacts=[];jobs=[];archives={}
+ names=['public-ci-v3-plan',*[f'public-ci-v3-worker-{i}' for i in range(count)]]
+ for ident,name in enumerate(names,1):
+  folder=download/name
+  if name!='public-ci-v3-plan':folder.mkdir();(folder/'receipt.txt').write_text(name)
+  buffer=io.BytesIO()
+  with zipfile.ZipFile(buffer,'w') as archive:
+   for file in folder.rglob('*'):
+    if file.is_file():archive.writestr(str(file.relative_to(folder)),file.read_bytes())
+  data=buffer.getvalue();archives[ident]=data
+  artifacts.append({'id':ident,'name':name,'expired':False,'digest':'sha256:'+hashlib.sha256(data).hexdigest()})
+  suffix='plan' if name=='public-ci-v3-plan' else name.removeprefix('public-ci-v3-')
+  jobs.append({'name':'safety-and-smoke / '+suffix,'status':'completed','conclusion':'success'})
+ if attack=='missing':artifacts.pop()
+ elif attack=='extra':artifacts.append({**artifacts[-1],'name':f'public-ci-v3-worker-{count}'})
+ elif attack=='duplicate':artifacts.append(dict(artifacts[-1]))
+ elif attack=='failed-producer':jobs[-1]['conclusion']='failure'
+ elif attack=='archive-bytes':archives[len(names)]=b'corrupted'
+ class Service:
+  def get(self,path):return {'head_sha':ctx['source']['head'],'run_attempt':ctx['attempt']}
+  def listing(self,path,key):return artifacts if key=='artifacts' else jobs
+  def raw(self,path,archive):return archives[int(path.split('/')[-2])]
+ if attack:
+  with pytest.raises(ContractError):prod.authenticate_current(Service(),download,tmp_path/'authenticated')
+ else:
+  result=prod.authenticate_current(Service(),download,tmp_path/'authenticated')
+  assert {p.name for p in result.iterdir()}==set(names)

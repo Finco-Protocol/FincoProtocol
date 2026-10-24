@@ -8,7 +8,7 @@ import argparse
 from collections import Counter
 import hashlib,json,os,subprocess,sys
 from pathlib import Path
-from tools.ci_v3_schema import read_json,write_json,require,seal,skip_counter,validate_inventory,check_seal
+from tools.ci_v3_schema import read_json,write_json,require,seal,skip_counter,validate_inventory,check_seal,worker_count
 from tools.ci_v3_container import observe_container
 from tools.ci_v3_partition_plan import plan_partitions
 from tools.ci_v3_phase_compare import control_report,phase_map,native_cases
@@ -20,6 +20,28 @@ REPO='Finco-Protocol/FincoProtocol'
 BASE_HEAD='e96561a220fc6adeb85587eb01d61745a922ab41'
 BASE_RUN=39971606511
 BASE_ARCHIVES={'public-verification-results': (12516255156, '6a00783ef7639f4a3cd60e89118265eb0870ffe6a0d0df753afa84bc8aba5faf'), 'public-shadow-proof': (12515687491, 'af888a778831b20bd4330ef0b74632b34dbba20af0ad245be22513deea591583'), 'public-source-safety': (12509561813, '2e08315411661bebc18c3efd4e89de54c214c03a1252b7427715050810a4f7af')}
+
+ROUTING=Path(__file__).resolve().parents[1]/'docs/ci_v3/phase4/production-routing.json'
+
+def routing():
+ value=read_json(ROUTING);worker_count(value.get('worker_count'))
+ return value
+
+def production_plan(folder):
+ data=read_json(folder/'plan.json');plan=data['plan']
+ check_seal(plan,'ci-v3-plan');validate_inventory(data['inventory'])
+ count=worker_count(plan.get('worker_count'))
+ require(count==routing()['worker_count'],'configured/plan worker count drift')
+ names={f'worker-{i}' for i in range(count)}
+ owners=plan['module_workers']
+ require(set(owners)==set(data['inventory']['modules']) and set(owners.values())==names,'incomplete/foreign/empty worker assignment')
+ require(plan['source']==data['inventory']['source']==context()['source'] and plan['inventory_digest']==data['inventory']['digest'],'plan inventory/source drift')
+ require(data['context']==context(),'plan source/run/attempt drift')
+ return data
+
+def worker_matrix(folder):
+ data=production_plan(folder);owners=data['plan']['module_workers']
+ return {'include':[{'index':i,'nodes':sum(owners[n['module']]==f'worker-{i}' for n in data['inventory']['nodes'])} for i in range(data['plan']['worker_count'])]}
 
 def git(*a):return subprocess.check_output(['git',*a],text=True).strip()
 def context():
@@ -83,8 +105,9 @@ def make_plan(project,out,image):
   if c.get('classname'):times[node_id(c.get('classname'),c.get('name'),set(inv['modules'])).split('::')[0]]+=round(float(c.get('time','0'))*1000)
  counts=Counter(n['module'] for n in inv['nodes'])
  weights=seal({'schema':1,'kind':'ci-v3-weights','source':ctx['source'],'inventory_digest':inv['digest'],'modules_ms':{m:max(1,times.get(m,counts[m]*1000)) for m in inv['modules']},'measurement':'historical authenticated native JUnit durations; new modules node-count proxy'})
- groups=read_json('docs/ci_v3/phase4/production-routing.json')['groups']
- plan=plan_partitions(inv,policy,weights,workers=3,groups=groups)
+ config=routing();groups=config['groups']
+ plan=plan_partitions(inv,policy,weights,workers=config['worker_count'],groups=groups)
+ require(set(plan['module_workers'].values())=={f'worker-{i}' for i in range(config['worker_count'])},'empty production worker')
  write_json(out/'plan.json',{'context':ctx,'inventory':inv,'plan':plan,'image':image,'image_archive_sha256':sha('runtime-image.tar.gz'),'collection_environment':report['environment'],'collection_plugins':semantic_plugin_profile(report['plugin_registrations']),'baseline_original_source':baseline['source'],'baseline_is_current_source':False,'groups':groups})
  write_json(out/'collection-process.json',proc)
  # Keep only actual evidence, never Git clones/bootstrap copies/databases.
@@ -92,7 +115,8 @@ def make_plan(project,out,image):
  for name in ['source','bootstrap']:shutil.rmtree(out/'collection'/name)
 
 def worker(project,out,planfolder,index):
- plan=read_json(planfolder/'plan.json');require(plan['context']==context(),'plan source/run/attempt drift')
+ plan=production_plan(planfolder)
+ require(type(index) is int and 0 <= index < plan['plan']['worker_count'],'worker index outside plan')
  require(sha('runtime-image.tar.gz')==plan['image_archive_sha256'],'runtime transfer bytes')
  subprocess.run(['docker','load','--input','runtime-image.tar.gz'],check=True)
  request={'mode':'worker','worker':f'worker-{index}','context':context(),'inventory':plan['inventory'],'owned_modules':[m for m,w in plan['plan']['module_workers'].items() if w==f'worker-{index}'],'target_calibration':{'ceiling_s':.6,'statistic':'maximum','samples':3}}
@@ -106,7 +130,8 @@ def worker(project,out,planfolder,index):
  require(proc['normal_successful_exit'],'worker failure or cleanup failure')
 
 def verify_data(planfolder,workers):
- data=read_json(planfolder/'plan.json');require(data['context']==context(),'aggregate source/run/attempt drift')
+ data=production_plan(planfolder)
+ require(len(workers)==data['plan']['worker_count'],'missing/extra worker artifacts')
  validate_inventory(data['inventory']);check_seal(data['plan'],'ci-v3-plan')
  require(data['inventory']['source']==data['plan']['source']==context()['source'] and data['plan']['inventory_digest']==data['inventory']['digest'], 'plan inventory/source drift')
  baseline=control_report(read_json(planfolder/'baseline/public-verification-results/inventory.json'));bp=phase_map(baseline);bn=native_cases((planfolder/'baseline/public-verification-results/results.xml').read_bytes(),baseline)
@@ -129,14 +154,17 @@ def verify_data(planfolder,workers):
    else:require(outcome(v)['status']=='passed','new nonpass needs explicit treatment: '+n)
   seen.update(phases)
  require(set(seen)==expected,'incomplete full coverage')
- return {'source':data['context']['source'],'run_id':data['context']['run_id'],'attempt':data['context']['attempt'],'execution_mode':'parallel','workers':3,'original_nodes':len(seen),'baseline_original_nodes':len(bp),'new_nodes':len(expected-set(bp)),'collection_skips':sum(skips.values()),'all_phases_verified':True,'native_junit_verified':True,'cleanup_verified':True,'original_common_outcomes_equal':True,'baseline_source':baseline['source'],'baseline_is_current_source':False,'environment_equal_to_sequential_baseline':data['collection_environment']==baseline['environment']}
+ return {'source':data['context']['source'],'run_id':data['context']['run_id'],'attempt':data['context']['attempt'],'execution_mode':'parallel','workers':data['plan']['worker_count'],'original_nodes':len(seen),'baseline_original_nodes':len(bp),'new_nodes':len(expected-set(bp)),'collection_skips':sum(skips.values()),'all_phases_verified':True,'native_junit_verified':True,'cleanup_verified':True,'original_common_outcomes_equal':True,'baseline_source':baseline['source'],'baseline_is_current_source':False,'environment_equal_to_sequential_baseline':data['collection_environment']==baseline['environment']}
 
 def authenticate_current(api,downloaded,out):
  ctx=context();run=api.get(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}')
  require(run['head_sha']==ctx['source']['head'] and run['run_attempt']==ctx['attempt'],'service current run source/attempt')
  listing=api.listing(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}/artifacts','artifacts')
  jobs=api.listing(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}/attempts/{ctx["attempt"]}/jobs','jobs')
- for name in ['public-ci-v3-plan',*[f'public-ci-v3-worker-{i}' for i in range(3)]]:
+ count=production_plan(downloaded/'public-ci-v3-plan')['plan']['worker_count']
+ expected={f'public-ci-v3-worker-{i}' for i in range(count)}
+ require({a['name'] for a in listing if a['name'].startswith('public-ci-v3-worker-')}==expected,'unexpected/missing worker artifact identity')
+ for name in ['public-ci-v3-plan',*sorted(expected)]:
   matches=[a for a in listing if a['name']==name and not a['expired']];require(len(matches)==1,'missing/duplicate service artifact')
   suffix='plan' if name=='public-ci-v3-plan' else name.removeprefix('public-ci-v3-')
   producers=[j for j in jobs if j['name'].endswith('/ '+suffix) or j['name']==suffix]
@@ -147,12 +175,12 @@ def authenticate_current(api,downloaded,out):
  return out
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('stage',choices=['plan','worker','verify']);p.add_argument('--output',required=True);p.add_argument('--plan',default='evidence/public-ci-v3-plan');p.add_argument('--evidence',default='evidence');p.add_argument('--worker',type=int,choices=[0,1,2]);p.add_argument('--image');p.add_argument('--independent',action='store_true');a=p.parse_args();out=Path(a.output).resolve();out.mkdir(parents=True,exist_ok=False)
+ p=argparse.ArgumentParser();p.add_argument('stage',choices=['plan','worker','verify']);p.add_argument('--output',required=True);p.add_argument('--plan',default='evidence/public-ci-v3-plan');p.add_argument('--evidence',default='evidence');p.add_argument('--worker',type=int,choices=range(12));p.add_argument('--image');p.add_argument('--independent',action='store_true');a=p.parse_args();out=Path(a.output).resolve();out.mkdir(parents=True,exist_ok=False)
  if a.stage=='plan':make_plan(Path.cwd(),out,a.image)
  elif a.stage=='worker':worker(Path.cwd(),out,Path(a.plan).resolve(),a.worker)
  else:
   folder=Path(a.evidence).resolve()
   if a.independent:folder=authenticate_current(GitHub(),folder,out/'authenticated')
-  result=verify_data(folder/'public-ci-v3-plan',[folder/f'public-ci-v3-worker-{i}' for i in range(3)])
+  result=verify_data(folder/'public-ci-v3-plan',[folder/f'public-ci-v3-worker-{i}' for i in range(production_plan(folder/'public-ci-v3-plan')['plan']['worker_count'])])
   write_json(out/'production-proof.json',result)
 if __name__=='__main__':main()
