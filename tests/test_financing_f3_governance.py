@@ -63,8 +63,11 @@ def test_rc7b_candidate_path_never_acquires_f3_or_released_authority_but_is_reco
         import v11_stage3_successor as v11_successor
         assert recognition.candidate_blobs(repo=governance.REPO)[RC7B_PATH] == rc7c_successor.RC7C_CANDIDATE_AUTHORITIES[RC7B_PATH]
         v11_states = v11_successor.states(repo=governance.REPO)
-        for denied in ("financial_release", "stage3_activation", "production_enablement", "v10_reseal", "merge_authorized"):
+        for denied in ("financial_release", "v10_reseal", "merge_authorized"):
             assert v11_states[denied] is False, denied
+        import v11_stage3_release_authority as v11_release        # activation only via the separate owner release authority
+        assert v11_states["stage3_activation"] is v11_states["production_enablement"] is \
+            v11_release.release_recognized(repo=governance.REPO)
         v10_ref = v11_successor.historical_subject(repo=governance.REPO)
         assert v10_ref != "HEAD" and recognition.recognized_state(repo=governance.REPO, ref=v10_ref) == "V10"
         state = "V10"

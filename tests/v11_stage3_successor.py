@@ -20,12 +20,15 @@ merged, V10 recognised there).
 5. the Financial Owner exact-content record is byte-exact (sha256 pinned here; owner authority is this reviewed code pin, never a
    self-asserting JSON field);
 6. release stays closed: ``Stage3Config`` and V10 ``NativeConfig`` default to ``off``; the validated native targets are exactly Linux
-   x86_64 CPython 3.12/3.13; no application, deployment or workflow source references the Stage 3 package (there is no activation
-   path); no compiled artifact is tracked; the OD-R release / quarterly / selector checks hold.
+   x86_64 CPython 3.12/3.13; no application, deployment or workflow source references the Stage 3 package except exactly the
+   release surface the Financial Owner released in the separate release authority (``v11_stage3_release_authority``; without a
+   recognised release there is no activation path at all); no compiled artifact is tracked; the OD-R release / quarterly /
+   selector checks hold.
 
 Recognition grants the V11 paths their place in the current-authority wiring ONLY. It never makes a path a released engine authority or
-an approved frozen path, never rewrites a historical pin, never authorizes Stage 3 activation, production enablement, a V10 reseal,
-runtime compilation, merge or deployment.
+an approved frozen path, never rewrites a historical pin, never itself authorizes Stage 3 activation, production enablement, a V10
+reseal, runtime compilation, merge or deployment (activation and production enablement exist only through the separate release
+authority and its own owner record; the content record is never reinterpreted).
 """
 from __future__ import annotations
 
@@ -71,7 +74,7 @@ OWNER_APPROVAL_SHA256 = "f0555f999b10359af9243494e1115387c25a3554689a8cdba9da0da
 STAGE3_DEFAULT = 'mode: str = "off"'
 V10_NATIVE_DEFAULTS = ('mode: str = "off"', "stage2_experimental: bool = False")
 VALIDATED_TARGETS_SOURCE = ('("Linux", "x86_64", "cpython", (3, 13))', '("Linux", "x86_64", "cpython", (3, 12))')
-# no activation path: these sources must never reference the Stage 3 package
+# no activation path: these sources must never reference the Stage 3 package, except exactly the owner-released release surface
 ACTIVATION_SURFACES = ("app/", "main_web.py", "deploy/", ".github/", "tools/", "Dockerfile", "docker-compose.yml")
 
 _CACHE: dict = {}
@@ -150,8 +153,10 @@ def v11_violations(*, repo=None, ref: str = "HEAD") -> list[str]:
     if not PROTECTED or SOURCE_CANDIDATE["head"] is None or any(after is None for _p, (_b, after) in WIRING_BLOBS.items()):
         return ["V11_CONTRACT_INCOMPLETE"]
     v10_at_checkpoint = tuple(_module("v10_native_shadow_successor").v10_violations(repo=root, ref=V10_CHECKPOINT["head"]))
+    released = _module("v11_stage3_release_authority").released_surfaces(repo=root, ref=head)
     key = (str(root), head, OWNER_APPROVAL_SHA256, OWNER_APPROVAL_REFERENCE, tuple(sorted(WIRING_BLOBS.items())),
-           tuple(sorted(PROTECTED.items())), tuple(V10_CHECKPOINT.items()), tuple(SOURCE_CANDIDATE.items()), v10_at_checkpoint)
+           tuple(sorted(PROTECTED.items())), tuple(V10_CHECKPOINT.items()), tuple(SOURCE_CANDIDATE.items()), v10_at_checkpoint,
+           tuple(sorted(released)))
     if key in _CACHE:
         return list(_CACHE[key])
     bad: list[str] = []
@@ -213,8 +218,10 @@ def v11_violations(*, repo=None, ref: str = "HEAD") -> list[str]:
             bad.append("V11_VALIDATED_TARGETS_WIDENED")
         surfaces = _git("grep", "-l", "-e", "native_v11", "-e", "Stage3Config", "-e", "stage3_run", head, "--",
                         *ACTIVATION_SURFACES, repo=root)
-        if surfaces:
-            bad.append(f"V11_STAGE3_ACTIVATION_SURFACE: {sorted(surfaces.splitlines())}")
+        # git grep <rev>: lines are "<rev>:<path>"; no match -> exit 1 -> None
+        unreleased = {line.split(":", 1)[-1] for line in (surfaces or "").splitlines()} - released
+        if unreleased:
+            bad.append(f"V11_STAGE3_ACTIVATION_SURFACE: {sorted(unreleased)}")
         tracked = _git("ls-tree", "-r", "--name-only", head, "--", "financial_engine/native_v11/", "financial_engine/native_v10/",
                        repo=root)
         if tracked is None or any(p.endswith(".so") for p in tracked.splitlines()):
@@ -253,13 +260,14 @@ def historical_subject(*, repo=None, ref: str = "HEAD") -> str:
 
 def states(*, repo=None, ref: str = "HEAD") -> dict:
     recognised = v11_recognized(repo=repo, ref=ref)
+    released = recognised and _module("v11_stage3_release_authority").release_recognized(repo=repo, ref=ref)
     return {
         "exact_v11_content_recognized": recognised,
         "historical_v10_checkpoint_verified": recognised,
         "financial_owner_exact_content_decision": "RECORDED_NOT_AUTHENTICATED" if recognised else None,
         "authenticated_owner_attestation": False,
-        "stage3_activation": False,
-        "production_enablement": False,
+        "stage3_activation": released,                          # only through the separate owner release authority
+        "production_enablement": released,
         "v10_reseal": False,
         "merge_authorized": False,
         "financial_release": False,

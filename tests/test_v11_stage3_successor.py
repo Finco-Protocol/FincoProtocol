@@ -107,9 +107,12 @@ def test_recognition_is_never_approval_activation_or_release():
     states = V.states()
     assert states["exact_v11_content_recognized"] is True
     assert states["financial_owner_exact_content_decision"] == "RECORDED_NOT_AUTHENTICATED"
-    for denied in ("authenticated_owner_attestation", "stage3_activation", "production_enablement", "v10_reseal", "merge_authorized",
-                   "financial_release"):
+    for denied in ("authenticated_owner_attestation", "v10_reseal", "merge_authorized", "financial_release"):
         assert states[denied] is False, denied
+    # activation / production enablement only through the separate owner release authority, never through this record
+    import v11_stage3_release_authority as release
+    assert states["stage3_activation"] is states["production_enablement"] is release.release_recognized()
+    assert V.expected_approval()["stage3_activation_authorized"] is False
     for path in V.PROTECTED:
         assert not governance.released_engine_authority_matches(path), path
     for module in (V, R):
