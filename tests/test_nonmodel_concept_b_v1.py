@@ -237,7 +237,11 @@ def test_model_bundle_excludes_nonmodel_experience_and_vice_versa():
     nonmodel = nonmodel_bundle.read_text(encoding="utf-8")
     assert "FincoNonModelExperience" not in model and "b-skip-link" not in model, \
         "the MODEL bundle must not contain the Non-Model experience"
-    assert not re.search(r"Landing|Roadmap", model[:200_000]) or True  # marker strings are minified; the strong proof is the module graph below
+    fixture_literals = ("fx-demo-003", "FROZEN DEMO CLOCK", "fixture://finco/demo")
+    leaked = [literal for literal in fixture_literals if literal in model]
+    assert leaked == [], f"Non-Model fixture data leaked into the MODEL bundle: {leaked}"
+    for literal in fixture_literals:
+        assert literal in nonmodel, f"the NON-MODEL bundle must carry its own fixture data ({literal})"
     assert "b-skip-link" in nonmodel and "non-model" in nonmodel.lower(), \
         "the NON-MODEL bundle must contain the Concept B experience"
     assert "rx-page" not in nonmodel, "the NON-MODEL bundle must not contain the Model workspace UI"
