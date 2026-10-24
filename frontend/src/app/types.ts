@@ -326,3 +326,43 @@ export interface TrustPayload {
   certificate: Record<string, unknown>;
   validation: Record<string, unknown>;
 }
+
+// ── UX-07 scenario management & compare ─────────────────────────────────────
+
+export interface ScenarioRecordPayload {
+  scenario_id: string;
+  name: string;
+  is_base_case: boolean;
+  archived: boolean;
+  override_count: number;
+  updated_at: string | null;
+  active: boolean;
+}
+
+export interface ScenariosPayload {
+  ok: true;
+  project: { code: string; protected_reference: boolean };
+  active_scenario_id: string | null;
+  active_scenario_name: string | null;
+  scenarios: ScenarioRecordPayload[];
+  mutations: {
+    create: { url: string; fields: string[] };
+    select: { url: string; fields: string[] };
+    rename: { url: string; fields: string[] };
+    archive: { url: string; fields: string[] };
+    note: string;
+  };
+}
+
+export interface ScenarioComparePayload {
+  ok: true;
+  base: { label: string; scenario_id: string | null; last_run_snapshot_id: string | null };
+  scenario: { label: string; scenario_id: string; archived: boolean; last_run_snapshot_id: string | null } | null;
+  differences: Array<{
+    field_id: string;
+    base_value: unknown;
+    scenario_value: unknown;
+    scenario_only: boolean;
+  }>;
+  kpi_compare: { available: false; reason: string };
+}

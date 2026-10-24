@@ -425,12 +425,22 @@ async def react_workspace_statements(request: Request, project: str):
 # ───────────────────────────── inputs grid ─────────────────────────────
 
 def _jsonable(value: Any) -> Any:
+    from datetime import date, datetime
+    from decimal import Decimal
+    from uuid import UUID
+
     if is_dataclass(value):
         return {k: _jsonable(v) for k, v in asdict(value).items()}
     if isinstance(value, dict):
         return {str(k): _jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_jsonable(v) for v in value]
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, UUID):
+        return str(value)
     return value
 
 
@@ -819,4 +829,118 @@ async def react_trust(request: Request, project: str):
                     "protected_reference": _is_protected(record)},
         "certificate": _jsonable(certificate),
         "validation": _jsonable(validation),
+    })
+
+
+# ───────────────────── UX-07: scenario management & compare ─────────────────────
+#
+# Scenario management projects the canonical scenario records; every mutation
+# (create/select/rename/archive) stays on the existing canonical form routes.
+# The compare projection lists ASSUMPTION-LEVEL differences (override keys and
+# values) and the persisted Run identity of each side; financial KPI deltas are
+# NOT computed here — statements/results come from the persisted evidence
+# projections, and a missing comparable side is reported unavailable, never zero.
+
+_REACT_SCENARIO_SHEET = "debt"  # kept for reference; scenarios are not registry fields
+
+
+@router.get("/model-react/scenarios")
+async def react_scenarios(request: Request, project: str):
+    """Scenario records + the active scenario, projected from the canonical
+    scenario repository.  Mutations remain on the canonical form routes:
+    POST /v2/workbook/scenarios/{create,select,rename,archive}."""
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+    ws, failure = _workspace_or_404(record, owner)
+    if failure is not None:
+        return failure
+
+    from app.persistence.scenarios_repository import list_scenarios
+
+    try:
+        records = list_scenarios(owner, record.project_id, include_archived=True)
+    except Exception:  # noqa: BLE001 - fail closed
+        return _json({"ok": False, "code": "SCENARIOS_UNAVAILABLE",
+                      "message": "Scenarios could not be read. Reload to refresh."}, 503)
+    scenarios = [{
+        "scenario_id": r.scenario_id,
+        "name": r.scenario_name,
+        "is_base_case": bool(r.is_base_case),
+        "archived": bool(r.archived),
+        "override_count": len(r.overrides or {}),
+        "updated_at": _jsonable(getattr(r, "updated_at", None)),
+        "active": r.scenario_id == ws.active_scenario_id,
+    } for r in records]
+    return _json({
+        "ok": True,
+        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+        "project": {"code": record.project_code,
+                    "protected_reference": _is_protected(record)},
+        "active_scenario_id": ws.active_scenario_id,
+        "active_scenario_name": ws.active_scenario_name,
+        "scenarios": scenarios,
+        "mutations": {
+            "create": {"url": "/v2/workbook/scenarios/create", "fields": ["project", "scenario_name"]},
+            "select": {"url": "/v2/workbook/scenarios/select", "fields": ["project", "scenario_id"]},
+            "rename": {"url": "/v2/workbook/scenarios/rename", "fields": ["project", "scenario_id", "scenario_name"]},
+            "archive": {"url": "/v2/workbook/scenarios/archive", "fields": ["project", "scenario_id"]},
+            "note": "Form routes of the canonical scenario authority. Creating or selecting a "
+                    "scenario NEVER starts a Run.",
+        },
+    })
+
+
+@router.get("/model-react/scenario-compare")
+async def react_scenario_compare(request: Request, project: str, scenario_id: str = ""):
+    """Assumption-level compare: the Working Copy/Base snapshot versus one
+    scenario's overrides, with each side's persisted Run identity.  KPI deltas
+    are intentionally not computed here — they belong to the persisted
+    statements/results evidence."""
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+    ws, failure = _workspace_or_404(record, owner)
+    if failure is not None:
+        return failure
+
+    from app.persistence.scenarios_repository import get_scenario
+
+    scenario = get_scenario(scenario_id, owner) if scenario_id else None
+    if scenario_id and (scenario is None or scenario.project_id != record.project_id):
+        return _json({"ok": False, "code": "SCENARIO_NOT_FOUND"}, 404)
+    overrides = dict(scenario.overrides or {}) if scenario is not None else {}
+    base_keys = set(overrides) | set(ws.draft_snapshot or {})
+    differences = []
+    for key in sorted(base_keys):
+        base_value = (ws.draft_snapshot or {}).get(key)
+        scenario_value = overrides.get(key)
+        if base_value != scenario_value:
+            differences.append({
+                "field_id": key,
+                "base_value": _jsonable(base_value),
+                "scenario_value": _jsonable(scenario_value),
+                "scenario_only": base_value is None,
+            })
+    return _json({
+        "ok": True,
+        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+        "project": {"code": record.project_code,
+                    "protected_reference": _is_protected(record)},
+        "base": {"label": f"Working Copy / {ws.active_scenario_name or 'Base Case'}",
+                 "scenario_id": ws.active_scenario_id,
+                 "last_run_snapshot_id": getattr(ws, "last_runtime_snapshot_id", None)},
+        "scenario": ({"label": scenario.scenario_name, "scenario_id": scenario.scenario_id,
+                      "archived": bool(scenario.archived),
+                      "last_run_snapshot_id": None} if scenario is not None else None),
+        "differences": differences,
+        "kpi_compare": {"available": False,
+                        "reason": "Financial KPI deltas are not computed in the browser; "
+                                  "persisted statements/results projections carry the evidence."},
     })

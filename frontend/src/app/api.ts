@@ -209,6 +209,14 @@ export type RunModelResult =
  *  committed — so the caller must reconcile from the workspace snapshot and
  *  never blind-retry an ambiguous financial mutation. */
 export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
+  // Correction A (UX-07 workstream A): a followed redirect that lands on a 200
+  // HTML page is NOT proof of a committed Run.  Success is established only by
+  // the canonical redirect contract AND fresh persisted Run History evidence:
+  // the committed-history count must grow after a clean redirect.
+  const runsUrl = `/v2/model-react/runs?project=${encodeURIComponent(args.project)}`;
+  const before = await getJson<RunsPayload>(runsUrl);
+  const beforeCount = before.ok === true ? before.runs.length : null;
+
   const body = new URLSearchParams({
     project: args.project,
     content_hash: args.contentHash,
@@ -227,23 +235,273 @@ export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
     return {
       kind: "unknown",
       message: "The Run outcome is UNKNOWN: the connection failed before a definitive response. "
+        + "Reload the workspace to reconcile the persisted Last Run before running again — never re-run blindly.",
+    };
+  }
+  const outcome = classifyFormPostOutcome(response, "/v2/workbook");
+  if (outcome.kind === "login") {
+    return { ok: false, message: "Your session has expired — sign in again. No Run was started." };
+  }
+  if (outcome.kind === "error-redirect") {
+    return { ok: false, message: outcome.v2Err };
+  }
+  if (outcome.kind === "other") {
+    return {
+      kind: "unknown",
+      message: `The Run outcome is UNKNOWN: the server redirected to an unexpected destination (${outcome.finalPath}). `
         + "Reload the workspace to reconcile the persisted Last Run before running again.",
     };
   }
-  if (response.ok) {
-    try {
-      const finalUrl = new URL(response.url);
-      const err = finalUrl.searchParams.get("v2_err");
-      if (err) return { ok: false, message: err };
-      return { ok: true };
-    } catch {
-      return { ok: true };
-    }
+  // Clean canonical success redirect.  Reconcile against persisted evidence:
+  // the committed Run History must show a NEW entry, otherwise the outcome is
+  // UNKNOWN (never success).
+  const after = await getJson<RunsPayload>(runsUrl);
+  if (after.ok === true && beforeCount !== null && after.runs.length > beforeCount) {
+    return { ok: true };
   }
-  if (response.status === 401) return { ok: false, message: "Your session is not authorized. Sign in again; nothing was run." };
-  if (response.status === 409) return { ok: false, message: "This project type cannot be run from the React workspace. The project was not modified." };
-  if (response.status === 503) return { ok: false, message: "The workspace changed while the Run was starting. Nothing was run; reload and retry." };
-  return { ok: false, message: `Run could not start (HTTP ${response.status}). Nothing was run.` };
+  return {
+    kind: "unknown",
+    message: "The Run outcome is UNKNOWN: the canonical redirect arrived but the persisted Run History "
+      + "could not confirm a new committed Run. Reload the workspace to reconcile — do not re-run blindly.",
+  };
 }
 
 export type HistoryRow = RunHistoryEntry;
+
+// ── Correction A: truthful mutation-outcome classification ──────────────────
+//
+// The canonical non-HTMX form routes answer with REDIRECTS (303 success /
+// 303 + ?v2_err= failure / 302 → /login on an expired session), and a browser
+// fetch follows them, so the FINAL response can be a 200 HTML page whose URL is
+// the only honest signal.  HTTP 200 alone is never proof that a financial
+// mutation committed: these helpers classify the final destination and, where a
+// redirect still cannot prove a commit, reconcile against a fresh canonical
+// projection before any success is claimed.  Anything unverifiable is UNKNOWN
+// and is never retried automatically.
+
+export type FormPostOutcome =
+  | { kind: "login" }
+  | { kind: "error-redirect"; v2Err: string }
+  | { kind: "clean"; finalPath: string }
+  | { kind: "other"; finalPath: string };
+
+export function classifyFormPostOutcome(response: Response, expectedPath: string): FormPostOutcome {
+  let url: URL;
+  try {
+    url = new URL(response.url);
+  } catch {
+    return { kind: "other", finalPath: "<unreadable>" };
+  }
+  if (url.pathname === "/login") return { kind: "login" };
+  const v2Err = url.searchParams.get("v2_err");
+  if (v2Err !== null) return { kind: "error-redirect", v2Err };
+  if (url.pathname === expectedPath) return { kind: "clean", finalPath: url.pathname };
+  return { kind: "other", finalPath: url.pathname };
+}
+
+async function postForm(url: string, body: URLSearchParams): Promise<Response | null> {
+  try {
+    return await fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      redirect: "follow",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+  } catch {
+    return null;
+  }
+}
+
+export interface SaveWorkbookFieldArgs {
+  updateUrl: string;
+  project: string;
+  fieldId: string;
+  value: string;
+  workbookVersion: string;
+  contentHash: string;
+  csrfToken: string;
+  /** The bound financing CSRF token — required ONLY by
+   *  `debt.financing.instruments` (the canonical route 403s otherwise). */
+  financingCsrfToken?: string;
+  /** Reconcile a clean canonical redirect against fresh authorized evidence
+   *  before success is claimed (e.g. re-read the projection and compare the
+   *  persisted field value). */
+  verifyCommitted?: () => Promise<boolean>;
+}
+
+export type SaveWorkbookFieldResult =
+  | { ok: true; verified: boolean }
+  | { ok: false; message: string }
+  | { kind: "unknown"; message: string };
+
+export async function saveWorkbookField(args: SaveWorkbookFieldArgs): Promise<SaveWorkbookFieldResult> {
+  const body = new URLSearchParams({
+    project: args.project,
+    field_id: args.fieldId,
+    value: args.value,
+    workbook_version: args.workbookVersion,
+    content_hash: args.contentHash,
+    sheet_id: "debt",
+    // The canonical route requires the BOUND financing token for
+    // debt.financing.instruments and the grid token for every other field.
+    csrf_token: args.fieldId === "debt.financing.instruments"
+      ? (args.financingCsrfToken ?? "")
+      : args.csrfToken,
+  });
+  const response = await postForm(args.updateUrl, body);
+  if (response === null) {
+    return {
+      kind: "unknown",
+      message: "The Save outcome is UNKNOWN: the connection failed before a definitive response. "
+        + "Reload to reconcile — do not re-submit blindly.",
+    };
+  }
+  const outcome = classifyFormPostOutcome(response, "/v2/workbook");
+  if (outcome.kind === "login") {
+    return { ok: false, message: "Your session has expired — sign in again. The field was NOT saved." };
+  }
+  if (outcome.kind === "error-redirect") {
+    return { ok: false, message: outcome.v2Err };
+  }
+  if (outcome.kind === "other") {
+    return {
+      kind: "unknown",
+      message: `The Save outcome is UNKNOWN: the server redirected to an unexpected destination (${outcome.finalPath}). `
+        + "Reload to reconcile before saving again.",
+    };
+  }
+  // Canonical success redirect.  Where the caller can reconcile, a clean
+  // redirect alone is not treated as proof: verify through fresh evidence.
+  if (args.verifyCommitted) {
+    let committed = false;
+    try {
+      committed = await args.verifyCommitted();
+    } catch {
+      committed = false;
+    }
+    if (!committed) {
+      return {
+        kind: "unknown",
+        message: "The Save outcome is UNKNOWN: the canonical redirect arrived but the fresh projection "
+          + "could not confirm the saved value. Reload to reconcile — the edit may or may not be committed.",
+      };
+    }
+    return { ok: true, verified: true };
+  }
+  return { ok: true, verified: false };
+}
+
+export interface SaveCostLinesBatchArgs {
+  saveUrl: string;
+  project: string;
+  csrfToken: string;
+  workbookVersion: string;
+  contentHash: string;
+  sheet: "capex" | "opex";
+  edits: Array<Record<string, unknown>>;
+}
+
+export type SaveCostLinesBatchResult =
+  | { ok: true; savedCount: number }
+  | { ok: false; message: string }
+  | { kind: "unknown"; message: string };
+
+/** Atomic CAPEX/OPEX line batch through the canonical writer.  Success is the
+ *  `X-Cost-Batch-Saved` header on the canonical response — a redirect to the
+ *  login page or any other HTML answer without the header is NOT a success. */
+export async function saveCostLinesBatch(args: SaveCostLinesBatchArgs): Promise<SaveCostLinesBatchResult> {
+  const body = new URLSearchParams({
+    project: args.project,
+    csrf_token: args.csrfToken,
+    workbook_version: args.workbookVersion,
+    content_hash: args.contentHash,
+    sheet: args.sheet,
+    payload: JSON.stringify(args.edits),
+  });
+  const response = await postForm(args.saveUrl, body);
+  if (response === null) {
+    return {
+      kind: "unknown",
+      message: "The batch outcome is UNKNOWN: the connection failed before a definitive response. "
+        + "Reload to reconcile — do not re-submit blindly.",
+    };
+  }
+  const savedCount = response.headers.get("X-Cost-Batch-Saved");
+  if (response.ok && savedCount !== null) return { ok: true, savedCount: Number(savedCount) };
+  const outcome = classifyFormPostOutcome(response, "/v2/workbook");
+  if (outcome.kind === "login") {
+    return { ok: false, message: "Your session has expired — sign in again. No line was saved." };
+  }
+  let message = `Batch refused (HTTP ${response.status}). No line was saved.`;
+  try {
+    const payload = (await response.json()) as { message?: string };
+    if (payload && payload.message) message = payload.message;
+  } catch { /* HTML answers (redirects) keep the generic refusal */ }
+  if (outcome.kind === "error-redirect") message = outcome.v2Err;
+  return { ok: false, message };
+}
+
+// ── UX-07: scenario management & compare + revenue contract writer ──────────
+
+import type { ScenariosPayload, ScenarioComparePayload } from "./types";
+
+export const fetchScenarios = (project: string) =>
+  withContentionRetry(() => getJson<ScenariosPayload>(`/v2/model-react/scenarios?project=${encodeURIComponent(project)}`));
+
+export const fetchScenarioCompare = (project: string, scenarioId: string) =>
+  withContentionRetry(() =>
+    getJson<ScenarioComparePayload>(`/v2/model-react/scenario-compare?project=${encodeURIComponent(project)}&scenario_id=${encodeURIComponent(scenarioId)}`));
+
+export interface RevenueContractsSaveArgs {
+  saveUrl: string;
+  project: string;
+  csrfToken: string;
+  contentHash: string;
+  /** The canonical revenue payload JSON string (streams + products); the
+   *  canonical writer validates it — the client never prices anything. */
+  contractsJson: string;
+}
+
+export type RevenueContractsSaveResult =
+  | { ok: true }
+  | { ok: false; message: string }
+  | { kind: "unknown"; message: string };
+
+/** Revenue/PPA contract save through the canonical writer (composite CAS,
+ *  bound CSRF, atomic).  Validation errors are the canonical service's own
+ *  typed errors — the client displays them verbatim. */
+export async function saveRevenueContracts(args: RevenueContractsSaveArgs): Promise<RevenueContractsSaveResult> {
+  const body = new URLSearchParams({
+    project: args.project,
+    csrf_token: args.csrfToken,
+    content_hash: args.contentHash,
+    contracts: args.contractsJson,
+    action: "save",
+  });
+  const response = await postForm(args.saveUrl, body);
+  if (response === null) {
+    return {
+      kind: "unknown",
+      message: "The contracts-save outcome is UNKNOWN: the connection failed before a definitive response. "
+        + "Reload to reconcile — do not re-submit blindly.",
+    };
+  }
+  const outcome = classifyFormPostOutcome(response, "/v2/workbook");
+  if (outcome.kind === "login") {
+    return { ok: false, message: "Your session has expired — sign in again. The contracts were NOT saved." };
+  }
+  if (outcome.kind === "error-redirect") return { ok: false, message: outcome.v2Err };
+  if (outcome.kind === "other") {
+    return {
+      kind: "unknown",
+      message: `The contracts-save outcome is UNKNOWN: unexpected destination (${outcome.finalPath}). Reload to reconcile.`,
+    };
+  }
+  let payload: { error?: string } | null = null;
+  try {
+    payload = (await response.json()) as { error?: string } | null;
+  } catch { /* the canonical success redirect lands on the workbook HTML */ }
+  if (payload && payload.error) return { ok: false, message: payload.error };
+  return { ok: true };
+}
