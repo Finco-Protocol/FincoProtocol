@@ -42,8 +42,8 @@ RELEASE_SURFACE = {
     "deploy/env.example": ("8d09ccc862d55d8c254cb99d517c1ff84cd7ac55", "78bcb2bfd24866517068b0d6eba09c23d804a4fb"),
 }
 RELEASE_PATH = "docs/model_v11/v11-stage3-release-authority.json"
-OWNER_RELEASE_REFERENCE = None
-OWNER_RELEASE_SHA256 = None
+OWNER_RELEASE_REFERENCE = "conversation:2026-10-24:PR360-CorrectionA:Financial-Owner-Release-Decision:V11-Stage3+V10-Stage1+2-permanent-production"   # explicit Financial Owner exact release decision (packet sha256 f6059dac)
+OWNER_RELEASE_SHA256 = "60b8d508973d3c5ad22ae221c48a9854ae83444cc5be6b47dfe081731f4f2581"
 
 MANIFESTS = {"v10_stage1": "financial_engine/native_v10/fk_v10_manifest.json",
              "v10_stage2": "financial_engine/native_v10/fk_v10_stage2_manifest.json",
