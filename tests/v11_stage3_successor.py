@@ -66,8 +66,8 @@ WIRING_BLOBS = {
 }
 PROTECTED_PREFIXES = ("financial_engine/", "finco_core/", "domain/")
 APPROVAL_PATH = "docs/model_v11/v11-stage3-content-approval.json"
-OWNER_APPROVAL_REFERENCE = None     # set only from an explicit Financial Owner exact-content decision
-OWNER_APPROVAL_SHA256 = None
+OWNER_APPROVAL_REFERENCE = "conversation:2026-10-24:V11-B/C:Financial-Owner-Exact-Content-Approval:Stage3a+3b"   # explicit Financial Owner exact-content decision (packet sha256 eaa2a05b)
+OWNER_APPROVAL_SHA256 = "f0555f999b10359af9243494e1115387c25a3554689a8cdba9da0dab1dd470c0"
 STAGE3_DEFAULT = 'mode: str = "off"'
 V10_NATIVE_DEFAULTS = ('mode: str = "off"', "stage2_experimental: bool = False")
 VALIDATED_TARGETS_SOURCE = ('("Linux", "x86_64", "cpython", (3, 13))', '("Linux", "x86_64", "cpython", (3, 12))')

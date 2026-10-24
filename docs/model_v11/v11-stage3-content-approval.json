@@ -1,0 +1,36 @@
+{
+  "Financial": {
+    "approved": true,
+    "reference": "conversation:2026-10-24:V11-B/C:Financial-Owner-Exact-Content-Approval:Stage3a+3b"
+  },
+  "branch": "feat/v11-stage3-native-senior-debt",
+  "deployment_authorized": false,
+  "kind": "v11-stage3-native-senior-debt-exact-content-approval",
+  "merge_authorized": false,
+  "production_enablement_authorized": false,
+  "protected_blobs": {
+    "financial_engine/financing/project.py": "4d77988da20ec9ea767d85cc16448489d9f48bb6",
+    "financial_engine/native_v11/__init__.py": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+    "financial_engine/native_v11/approved_canonical_blobs_stage3.json": "12c3aef94e3c4b440e25ab433fd524c99d6d6823",
+    "financial_engine/native_v11/build_stage3.py": "25ff48402d46a90d6a8cf71453ab7c5df4d977fa",
+    "financial_engine/native_v11/config.py": "751e020a0c06c8dfa2113c9ec82a0123892dc81b",
+    "financial_engine/native_v11/fk_v11_stage3_manifest.json": "6d70d6b84ebba6ac86ba1c7f9727502e6c3aec9f",
+    "financial_engine/native_v11/kernel_v11_stage3.c": "63490c990f9268db7b6dcade5fa344ce0f6fec72",
+    "financial_engine/native_v11/stage3.py": "0d55acf14d685b9f72ed9666d86e8e59f0c3326f"
+  },
+  "repository": "Finco-Protocol/FincoProtocol",
+  "runtime_compilation_authorized": false,
+  "schema": 1,
+  "scope": "V11-B/C-Stage3a-native-tax-and-Stage3b-native-senior-debt-exact-content-only",
+  "source_candidate": {
+    "head": "3bf206d0d4c3b0430916cd05eae552dd3b5fed77",
+    "tree": "0d775362e0689f3b0f9a76d82341f2c620ead227"
+  },
+  "stage3_activation_authorized": false,
+  "staging_enablement_authorized": false,
+  "v10_checkpoint": {
+    "head": "9e712e21b9efd1a57fe702f178a496aaefb427ec",
+    "tree": "e8305ab124e59d62b63dad121c3e333040939f2f"
+  },
+  "v10_reseal_authorized": false
+}
