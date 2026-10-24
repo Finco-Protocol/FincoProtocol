@@ -299,7 +299,7 @@ def test_every_process_pool_engine_run_goes_through_activation():
     assert counts == ACTIVATED_SITES
 
 
-def test_activation_is_off_everywhere_but_the_release_written_production_activation():
+def test_activation_is_off_by_default_everywhere_it_could_be_enabled():
     """Only the release transaction enables native Runs (``.env.native``, loaded by the production unit alone); CI,
     the example configuration, the staging unit, tests and development never do."""
     workflows = "".join(p.read_text() for p in (ROOT / ".github").rglob("*.y*ml"))
