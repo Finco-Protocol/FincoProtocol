@@ -976,6 +976,29 @@ def _run_with_construction_idc(
     return _odr_returned
 
 
+def _native_v11_stage3():
+    """V11 Stage 3 candidate hook (research candidate, release-closed, default OFF; Run-local config only)."""
+    from financial_engine.native_v11.config import current_config
+    if current_config().mode == "off":
+        return None
+    from financial_engine.native_v11 import stage3
+    return stage3
+
+
+def _senior_debt_model(model_input, *, shl_maturity_context=None):
+    """``run_senior_debt_model`` behind the explicit V11 Stage 3 candidate dispatch (no monkey patching).
+
+    The candidate returns either the bit-identical canonical result or ``None`` before any effect, in
+    which case the canonical orchestrator below runs unchanged and decides (and raises).
+    """
+    _v11 = _native_v11_stage3()
+    if _v11 is not None:
+        _served = _v11.run_senior_debt_model(model_input, shl_maturity_context=shl_maturity_context)
+        if _served is not None:
+            return _served
+    return run_senior_debt_model(model_input, shl_maturity_context=shl_maturity_context)
+
+
 def run_project_financing_model(
     project_inputs: ProjectInputs,
     *,
@@ -1294,7 +1317,7 @@ def run_project_financing_model(
         _pass_ctx = _odr_pass_context(capacity_model_input, _odr_evidence)
         if _pass_ctx is not None:
             _odr_passes.append(("CAPACITY", _pass_ctx))
-        capacity_result = run_senior_debt_model(
+        capacity_result = _senior_debt_model(
             capacity_model_input, shl_maturity_context=_pass_ctx,
         )
         if capacity_result.senior_debt is None:
@@ -1348,7 +1371,7 @@ def run_project_financing_model(
         _pass_ctx = _odr_pass_context(funded_model_input, _odr_evidence)
         if _pass_ctx is not None:
             _odr_passes.append(("FUNDED", _pass_ctx))
-        model_result = run_senior_debt_model(
+        model_result = _senior_debt_model(
             funded_model_input, shl_maturity_context=_pass_ctx,
         )
         if (
@@ -1368,7 +1391,7 @@ def run_project_financing_model(
             _pass_ctx = _odr_pass_context(funded_model_input, _odr_evidence)
             if _pass_ctx is not None:
                 _odr_passes.append(("STRICT", _pass_ctx))
-            model_result = run_senior_debt_model(
+            model_result = _senior_debt_model(
                 funded_model_input, shl_maturity_context=_pass_ctx,
             )
             if _senior_service_budget_excess(model_result, funded_model_input) > convergence_tolerance_keur:

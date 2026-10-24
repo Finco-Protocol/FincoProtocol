@@ -1,0 +1,27 @@
+{
+ "blobs": {
+  "financial_engine/cfads.py": "58f2632d96ea66a7e2c0a62957c704d4895a9671",
+  "financial_engine/financing/project.py": "4d77988da20ec9ea767d85cc16448489d9f48bb6",
+  "financial_engine/native_v10/eligibility.py": "9bf5683680c9f0725454bb2760049a159d00cea6",
+  "financial_engine/native_v10/provenance.py": "769f0e645b4267be05aadefb09a22f7763f3199c",
+  "financial_engine/native_v11/config.py": "751e020a0c06c8dfa2113c9ec82a0123892dc81b",
+  "financial_engine/native_v11/kernel_v11_stage3.c": "63490c990f9268db7b6dcade5fa344ce0f6fec72",
+  "financial_engine/native_v11/stage3.py": "0d55acf14d685b9f72ed9666d86e8e59f0c3326f",
+  "financial_engine/orchestrator.py": "85c8008f2b4a656fd28eea1169689b19131576e4",
+  "financial_engine/policies/tax.py": "5fe5f01231da8b0d5c1a01008e520f358d8b51f5",
+  "financial_engine/run_scope.py": "018242000ea73f95b18284a2987f437401cdb6c6",
+  "financial_engine/senior_debt/interest.py": "58b5ba30093dc31d4e42f2e602f157a48710faa3",
+  "financial_engine/senior_debt/solver.py": "9d30525b3fc09b422c1deb38784bf49834cbac35",
+  "financial_engine/shl/engine.py": "48c3956739fcd972dd7347f167a959f8b65ce53a",
+  "financial_engine/shl/production.py": "fb563770bc87a0a8403e21e5f571ebec39840f18",
+  "financial_engine/shl/waterfall.py": "11595ce0ce2795738b27a565fc15243e5f1c051c",
+  "financial_engine/tax/atad.py": "3e1d1c166a03527d4d86214e33a6b0b0b94e4da9",
+  "financial_engine/tax/engine.py": "1f764661d501c757a6e25cc3e62a599c30930f5e",
+  "financial_engine/tax/loss_ledger.py": "8985b61cfeee9ba4647440ee55b521467c2d8e64",
+  "financial_engine/tax/models.py": "340bcbe98ad1f517a1682edc27a2d50d10825a41",
+  "financial_engine/tax/tax_year.py": "9605e39e00b6e4a48f38738f997576e5f56fc236",
+  "finco_core/engine/period_engine.py": "d72de84d082962d9c49a840178211602495c027a"
+ },
+ "python_optimize": 0,
+ "schema": "finco.native_v10.approved_blobs.v1"
+}
