@@ -8,7 +8,7 @@ import argparse
 from collections import Counter
 import hashlib,json,os,subprocess,sys
 from pathlib import Path
-from tools.ci_v3_schema import read_json,write_json,require,seal,skip_counter,validate_inventory,check_seal,worker_count
+from tools.ci_v3_schema import read_json,write_json,require,seal,skip_counter,validate_inventory,check_seal,worker_count,ContractError
 from tools.ci_v3_container import observe_container
 from tools.ci_v3_partition_plan import plan_partitions
 from tools.ci_v3_phase_compare import control_report,phase_map,native_cases
@@ -21,11 +21,49 @@ BASE_HEAD='e96561a220fc6adeb85587eb01d61745a922ab41'
 BASE_RUN=39971606511
 BASE_ARCHIVES={'public-verification-results': (12516255156, '6a00783ef7639f4a3cd60e89118265eb0870ffe6a0d0df753afa84bc8aba5faf'), 'public-shadow-proof': (12515687491, 'af888a778831b20bd4330ef0b74632b34dbba20af0ad245be22513deea591583'), 'public-source-safety': (12509561813, '2e08315411661bebc18c3efd4e89de54c214c03a1252b7427715050810a4f7af')}
 
+from tools.ci_v3_source_reference import source_base, authenticate_reference, validate_reference, reconciliation, runtime_inputs_match, runtime_packages
+
 ROUTING=Path(__file__).resolve().parents[1]/'docs/ci_v3/phase4/production-routing.json'
 
 def routing():
  value=read_json(ROUTING);worker_count(value.get('worker_count'))
+ require(type(value.get('enabled')) is bool and type(value.get('rollback')) is bool,'invalid routing switches')
  return value
+
+def route_mode(config,trusted,rollback,runtime_compatible,reference_ready):
+ return 'parallel' if config['enabled'] and not config['rollback'] and rollback!='true' and trusted and runtime_compatible and reference_ready else 'sequential'
+
+def validate_reference_policy(reference, historical):
+ # A successful legacy control is evidence, not a Financial/CI nonpass approval.
+ original=phase_map(historical);accepted=phase_map(reference['report'])
+ require(set(original)<=set(accepted),'accepted reference lost historical coverage')
+ for node,values in accepted.items():
+  if node in original:require(values==original[node],'accepted reference changed historical outcomes')
+  else:require(outcome(values)['status']=='passed','accepted reference has nonhistorical nonpass; sequential bootstrap required: '+node)
+
+def route_preflight(out):
+ config=routing();ctx=context()
+ trusted=os.environ['GITHUB_EVENT_NAME'] in ('push','pull_request') and (os.environ['GITHUB_EVENT_NAME']!='pull_request' or os.environ.get('SOURCE_REPO')==REPO)
+ compatible=runtime_inputs_match();ready=False;reason='disabled, rollback, untrusted source or incompatible runtime'
+ if route_mode(config,trusted,os.environ.get('ROLLBACK',''),compatible,True)=='parallel':
+  try:
+   api=GitHub();reference=authenticate_reference(api,source_base(),out/'reference')
+   historical=authenticate_baseline(api,out/'historical')
+   validate_reference_policy(reference,historical)
+   write_json(out/'source-reference.json',reference);ready=True;reason='accepted-source reference authenticated'
+  except (ValueError,OSError,subprocess.CalledProcessError) as error:
+   reason='accepted-source evidence unavailable: '+str(error)
+ mode=route_mode(config,trusted,os.environ.get('ROLLBACK',''),compatible,ready)
+ with open(os.environ['GITHUB_OUTPUT'],'a') as stream:print('execution_mode='+mode,file=stream)
+ print('CI_V3_ROUTE='+mode+'; '+reason)
+
+def validate_merge_guard(guard):
+ src=context()['source'];expected=os.environ.get('FINCO_PRODUCTION_MERGE_SHA','')
+ require(guard.get('head')==src['head'] and guard.get('tree')==src['tree'] and guard.get('equivalent') is True,'merge-tree source binding')
+ if expected:
+  require(guard.get('mode')=='identical-tree' and guard.get('merge_sha')==expected and guard.get('merge_tree')==src['tree'],'synthetic merge-tree binding')
+ else:
+  require(guard.get('mode')=='main-head' and guard.get('merge_sha') is None and guard.get('merge_tree') is None,'main source merge-tree binding')
 
 def production_plan(folder):
  data=read_json(folder/'plan.json');plan=data['plan']
@@ -70,9 +108,8 @@ def authenticate_baseline(api,out):
          and cleanup.get('cleanup_verified') is True and cleanup.get('survivors_observed')==cleanup.get('survivors_remaining')==[], 'baseline descendant cleanup')
  phase_map(report);native_cases((out/'public-verification-results/results.xml').read_bytes(),report)
  require(git('merge-base','--is-ancestor',BASE_HEAD,'HEAD')=='','baseline ancestry')
- # Explicit CI-only successor; never assert a false identical-tree alias.
- unchanged=['financial_engine','finco_core','domain','app','main_web.py','requirements.txt','requirements-ci-tests.txt','constraints.txt']
- require(not git('diff','--name-only',BASE_HEAD,'HEAD','--',*unchanged),'application/dependency source changed; baseline cannot carry forward')
+ # Authenticate this historical source in its original checkout. Current-source
+ # expectations come from the separately authenticated accepted-source reference.
  guard=read_json(out/'public-verification-results/merge-tree.json')
  clone=out/'original-checkout'
  subprocess.run(['git','clone','--quiet','--shared','--no-checkout','.',str(clone)],check=True)
@@ -89,12 +126,17 @@ def inventory(report):
   'modules':{n.split('::')[0]:{'isolation_review':'unproven','dependency_evidence':{}} for n in report['collection']['nodes']},'collection_skips':report['collection']['skips']})
 
 def make_plan(project,out,image):
- ctx=context();baseline=authenticate_baseline(GitHub(),out/'baseline')
+ ctx=context();api=GitHub();baseline=authenticate_baseline(api,out/'baseline')
+ reference=authenticate_reference(api,source_base(),out/'reference')
+ historical=set(baseline['selected']);require(historical<=set(reference['report']['selected']),'accepted reference lost historical coverage')
+ guard=read_json('merge-tree.json');validate_merge_guard(guard)
+ require(runtime_inputs_match(),'runtime source inputs changed without a reviewed contract')
  child,proc=observe_container({'mode':'discover','worker':None,'context':ctx},out/'collection',project,image,900,built_image=True)
  require(proc['normal_successful_exit'],'collection/cleanup failed')
  report=read_json(child/'adapter.json');require(not report['phases'] and not report['unauthorized_deselection'],'collection executed/deselected')
  inv=inventory(report);old=set(baseline['selected']);require(old<=set(report['collection']['nodes']),'original nodes lost')
- require(skip_counter(baseline['collection']['skips'])==skip_counter(inv['collection_skips']),'collection skip change')
+ changes=reconciliation(reference,inv)
+ runtime_packages(report['environment'])
  policy=seal({'schema':1,'kind':'ci-v3-policy','authority':'offline-prototype','inventory_digest':inv['digest'],'new_nodes':'fail-closed','selective_execution':False,'module_overlaps':{},'allowed_nonpass':{}})
  times=Counter()
  for ph in baseline['phases']:times[ph['nodeid'].split('::')[0]]+=round(ph.get('duration_s',ph.get('duration',0))*1000)
@@ -108,7 +150,7 @@ def make_plan(project,out,image):
  config=routing();groups=config['groups']
  plan=plan_partitions(inv,policy,weights,workers=config['worker_count'],groups=groups)
  require(set(plan['module_workers'].values())=={f'worker-{i}' for i in range(config['worker_count'])},'empty production worker')
- write_json(out/'plan.json',{'context':ctx,'inventory':inv,'plan':plan,'image':image,'image_archive_sha256':sha('runtime-image.tar.gz'),'collection_environment':report['environment'],'collection_plugins':semantic_plugin_profile(report['plugin_registrations']),'baseline_original_source':baseline['source'],'baseline_is_current_source':False,'groups':groups})
+ write_json(out/'plan.json',{'context':ctx,'inventory':inv,'plan':plan,'image':image,'image_archive_sha256':sha('runtime-image.tar.gz'),'collection_environment':report['environment'],'collection_plugins':semantic_plugin_profile(report['plugin_registrations']),'baseline_original_source':baseline['source'],'baseline_is_current_source':False,'groups':groups,'source_reference':reference,'inventory_reconciliation':changes,'merge_guard':guard,'runtime_inputs':read_json('docs/ci_v3/phase4/runtime/inputs.json')})
  write_json(out/'collection-process.json',proc)
  # Keep only actual evidence, never Git clones/bootstrap copies/databases.
  import shutil
@@ -135,6 +177,12 @@ def verify_data(planfolder,workers):
  validate_inventory(data['inventory']);check_seal(data['plan'],'ci-v3-plan')
  require(data['inventory']['source']==data['plan']['source']==context()['source'] and data['plan']['inventory_digest']==data['inventory']['digest'], 'plan inventory/source drift')
  baseline=control_report(read_json(planfolder/'baseline/public-verification-results/inventory.json'));bp=phase_map(baseline);bn=native_cases((planfolder/'baseline/public-verification-results/results.xml').read_bytes(),baseline)
+ reference=data['source_reference'];rp,rn=validate_reference(reference,source_base())
+ require(set(bp)<=set(rp),'accepted reference lost historical coverage')
+ changes=reconciliation(reference,data['inventory']);require(changes==data['inventory_reconciliation'],'inventory reconciliation mismatch')
+ validate_merge_guard(data['merge_guard'])
+ require(runtime_inputs_match() and data['runtime_inputs']==read_json('docs/ci_v3/phase4/runtime/inputs.json'),'runtime source contract drift')
+ runtime_packages(data['collection_environment'])
  seen={};skips=skip_counter(data['inventory']['collection_skips']);expected={n['nodeid'] for n in data['inventory']['nodes']}
  for index,folder in enumerate(workers):
   binding=read_json(folder/'binding.json');require(binding=={'context':context(),'worker':index,'plan_sha256':sha(planfolder/'plan.json'),'image':data['image']},'worker binding')
@@ -151,14 +199,16 @@ def verify_data(planfolder,workers):
   for n,v in phases.items():
    require(outcome(v)['status'] in ('passed','skipped','xfail'),'failure/unexpected xpass')
    if n in bp:require(v==bp[n] and native[n]==bn[n],'original phase/native outcome regression: '+n)
+   else:require(outcome(v)['status']=='passed','nonhistorical nonpass requires explicit reviewed authority: '+n)
+   if n in rp:require(v==rp[n] and list(native[n])==rn[n],'accepted-source phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','new nonpass needs explicit treatment: '+n)
   seen.update(phases)
  require(set(seen)==expected,'incomplete full coverage')
- return {'source':data['context']['source'],'run_id':data['context']['run_id'],'attempt':data['context']['attempt'],'execution_mode':'parallel','workers':data['plan']['worker_count'],'original_nodes':len(seen),'baseline_original_nodes':len(bp),'new_nodes':len(expected-set(bp)),'collection_skips':sum(skips.values()),'all_phases_verified':True,'native_junit_verified':True,'cleanup_verified':True,'original_common_outcomes_equal':True,'baseline_source':baseline['source'],'baseline_is_current_source':False,'environment_equal_to_sequential_baseline':data['collection_environment']==baseline['environment']}
+ return {'source':data['context']['source'],'run_id':data['context']['run_id'],'attempt':data['context']['attempt'],'execution_mode':'parallel','workers':data['plan']['worker_count'],'original_nodes':len(seen),'baseline_original_nodes':len(bp),'new_nodes':len(expected-set(bp)),'collection_skips':sum(skips.values()),'all_phases_verified':True,'native_junit_verified':True,'cleanup_verified':True,'original_common_outcomes_equal':True,'baseline_source':baseline['source'],'baseline_is_current_source':False,'environment_equal_to_sequential_baseline':data['collection_environment']==baseline['environment'],'accepted_reference_source':reference['source'],'accepted_reference_base':reference['base'],'accepted_reference_run_id':reference['run_id'],'accepted_reference_attempt':reference['attempt'],'accepted_reference_digest':reference['digest'],'inventory_reconciliation':changes,'current_source_execution_verified':True,'same_source_sequential_control_claimed':False}
 
 def authenticate_current(api,downloaded,out):
  ctx=context();run=api.get(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}')
- require(run['head_sha']==ctx['source']['head'] and run['run_attempt']==ctx['attempt'],'service current run source/attempt')
+ require(run['head_sha']==ctx['source']['head'] and run['run_attempt']==ctx['attempt'] and run.get('path')=='.github/workflows/public_safety_and_smoke.yml' and run.get('head_repository',{}).get('full_name')==REPO,'service current repository/workflow/source/attempt')
  listing=api.listing(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}/artifacts','artifacts')
  jobs=api.listing(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}/attempts/{ctx["attempt"]}/jobs','jobs')
  count=production_plan(downloaded/'public-ci-v3-plan')['plan']['worker_count']
@@ -172,11 +222,15 @@ def authenticate_current(api,downloaded,out):
   a=matches[0];payload=api.raw(f'/repos/{REPO}/actions/artifacts/{a["id"]}/zip',archive=True)
   require('sha256:'+hashlib.sha256(payload).hexdigest()==a['digest'],'service archive digest')
   extract_archive(payload,out/name);require(files(out/name)==files(downloaded/name),'downloaded evidence differs from independent service archive')
+ data=production_plan(out/'public-ci-v3-plan')
+ independently_verified=authenticate_reference(api,source_base(),out/'reference-authentication',anchor=data['source_reference'])
+ require(independently_verified==data['source_reference'],'accepted-source reference differs from independent authentication')
  return out
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('stage',choices=['plan','worker','verify']);p.add_argument('--output',required=True);p.add_argument('--plan',default='evidence/public-ci-v3-plan');p.add_argument('--evidence',default='evidence');p.add_argument('--worker',type=int,choices=range(12));p.add_argument('--image');p.add_argument('--independent',action='store_true');a=p.parse_args();out=Path(a.output).resolve();out.mkdir(parents=True,exist_ok=False)
- if a.stage=='plan':make_plan(Path.cwd(),out,a.image)
+ p=argparse.ArgumentParser();p.add_argument('stage',choices=['route','plan','worker','verify']);p.add_argument('--output',required=True);p.add_argument('--plan',default='evidence/public-ci-v3-plan');p.add_argument('--evidence',default='evidence');p.add_argument('--worker',type=int,choices=range(12));p.add_argument('--image');p.add_argument('--independent',action='store_true');a=p.parse_args();out=Path(a.output).resolve();out.mkdir(parents=True,exist_ok=False)
+ if a.stage=='route':route_preflight(out)
+ elif a.stage=='plan':make_plan(Path.cwd(),out,a.image)
  elif a.stage=='worker':worker(Path.cwd(),out,Path(a.plan).resolve(),a.worker)
  else:
   folder=Path(a.evidence).resolve()
