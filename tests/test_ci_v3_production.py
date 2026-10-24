@@ -92,7 +92,7 @@ def evidence(real_tiny,tmp_path,monkeypatch):
  monkeypatch.setattr(ref,'git',lambda *args:subprocess.check_output(['git','-C',str(d['project']),*args],text=True).strip())
  monkeypatch.setattr(prod,'runtime_packages',lambda environment:None)
  monkeypatch.setenv('FINCO_PRODUCTION_MERGE_SHA','')
- write_json(plan/'plan.json',{'context':ctx,'inventory':d['bundle']['inventory'],'plan':allocation,'image':image,'collection_environment':first['environment'],'collection_plugins':semantic_plugin_profile(first['plugin_registrations']),'source_reference':snapshot,'inventory_reconciliation':ref.reconciliation(snapshot,d['bundle']['inventory']),'merge_guard':{'head':ctx['source']['head'],'tree':ctx['source']['tree'],'merge_sha':None,'equivalent':True},'runtime_inputs':read_json(ROOT/'docs/ci_v3/phase4/runtime/inputs.json')})
+ write_json(plan/'plan.json',{'context':ctx,'inventory':d['bundle']['inventory'],'plan':allocation,'image':image,'collection_environment':first['environment'],'collection_plugins':semantic_plugin_profile(first['plugin_registrations']),'source_reference':snapshot,'inventory_reconciliation':ref.reconciliation(snapshot,d['bundle']['inventory']),'merge_guard':{'head':ctx['source']['head'],'tree':ctx['source']['tree'],'merge_sha':None,'merge_tree':None,'mode':'main-head','equivalent':True},'runtime_inputs':read_json(ROOT/'docs/ci_v3/phase4/runtime/inputs.json')})
  workers=[]
  for i in range(3):
   folder=tmp_path/f'worker-{i}';folder.mkdir();shutil.copytree(d['paths'][f'worker-{i}']/'child',folder/'execution/child')
@@ -311,7 +311,7 @@ def test_independent_service_authentication_requires_exact_dynamic_workers(tmp_p
  elif attack=='failed-producer':jobs[-1]['conclusion']='failure'
  elif attack=='archive-bytes':archives[len(names)]=b'corrupted'
  class Service:
-  def get(self,path):return {'head_sha':ctx['source']['head'],'run_attempt':ctx['attempt']}
+  def get(self,path):return {'head_sha':ctx['source']['head'],'run_attempt':ctx['attempt'],'path':'.github/workflows/public_safety_and_smoke.yml','head_repository':{'full_name':prod.REPO}}
   def listing(self,path,key):return artifacts if key=='artifacts' else jobs
   def raw(self,path,archive):return archives[int(path.split('/')[-2])]
  if attack:
@@ -335,7 +335,7 @@ def test_invalid_routing_switch_type_is_rejected(tmp_path,monkeypatch,field,valu
  monkeypatch.setattr(prod,'ROUTING',p)
  with pytest.raises(ContractError):prod.routing()
 
-@pytest.mark.parametrize('attack',['removed-node','reconciliation','reference-base','merge-tree','merge-sha','attempt','setup','call','teardown','skip','xfail','failure','reference-outcome'])
+@pytest.mark.parametrize('attack',['removed-node','reconciliation','reference-base','merge-tree','merge-sha','merge-result-tree','merge-mode','attempt','setup','call','teardown','skip','xfail','failure','reference-outcome'])
 def test_current_source_regressions_cannot_claim_historical_equivalence(evidence,attack):
  from tools.ci_v3_schema import seal
  plan,workers=evidence;data=read_json(plan/'plan.json')
@@ -347,6 +347,8 @@ def test_current_source_regressions_cannot_claim_historical_equivalence(evidence
   ref={k:v for k,v in data['source_reference'].items() if k!='digest'};ref['base']={'head':'f'*40,'tree':'f'*40};data['source_reference']=seal(ref)
  elif attack=='merge-tree':data['merge_guard']['tree']='e'*40
  elif attack=='merge-sha':data['merge_guard']['merge_sha']='e'*40
+ elif attack=='merge-result-tree':data['merge_guard']['merge_tree']='e'*40
+ elif attack=='merge-mode':data['merge_guard']['mode']='unchecked'
  elif attack=='reference-outcome':
   ref={k:v for k,v in data['source_reference'].items() if k!='digest'};ref['report']['phases'][0]['reason']='changed expected outcome without authority';data['source_reference']=seal(ref)
  else:
@@ -384,3 +386,13 @@ def test_negative_controls_kill_removal_of_critical_verifier_checks(evidence,che
  else:lines[found[0]]='  pass  # SYNTHETIC MUTANT: required cleanup check removed'
  scope=dict(prod.__dict__);exec('\n'.join(lines),scope)
  with pytest.raises(pytest.fail.Exception):rejection_contract(scope['verify_data'])
+
+
+@pytest.mark.parametrize('field,value',[('merge_tree','f'*40),('mode','main-head'),('merge_sha','e'*40),('equivalent',False)])
+def test_synthetic_merge_record_requires_all_exact_identity_fields(evidence,monkeypatch,field,value):
+ plan,workers=evidence;data=read_json(plan/'plan.json');src=data['context']['source'];merge='d'*40
+ monkeypatch.setenv('FINCO_PRODUCTION_MERGE_SHA',merge)
+ guard={**src,'mode':'identical-tree','merge_sha':merge,'merge_tree':src['tree'],'equivalent':True}
+ prod.validate_merge_guard(guard)
+ guard[field]=value
+ with pytest.raises(ContractError):prod.validate_merge_guard(guard)

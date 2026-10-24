@@ -47,6 +47,14 @@ def route_preflight(out):
  with open(os.environ['GITHUB_OUTPUT'],'a') as stream:print('execution_mode='+mode,file=stream)
  print('CI_V3_ROUTE='+mode+'; '+reason)
 
+def validate_merge_guard(guard):
+ src=context()['source'];expected=os.environ.get('FINCO_PRODUCTION_MERGE_SHA','')
+ require(guard.get('head')==src['head'] and guard.get('tree')==src['tree'] and guard.get('equivalent') is True,'merge-tree source binding')
+ if expected:
+  require(guard.get('mode')=='identical-tree' and guard.get('merge_sha')==expected and guard.get('merge_tree')==src['tree'],'synthetic merge-tree binding')
+ else:
+  require(guard.get('mode')=='main-head' and guard.get('merge_sha') is None and guard.get('merge_tree') is None,'main source merge-tree binding')
+
 def production_plan(folder):
  data=read_json(folder/'plan.json');plan=data['plan']
  check_seal(plan,'ci-v3-plan');validate_inventory(data['inventory'])
@@ -111,7 +119,7 @@ def make_plan(project,out,image):
  ctx=context();api=GitHub();baseline=authenticate_baseline(api,out/'baseline')
  reference=authenticate_reference(api,source_base(),out/'reference')
  historical=set(baseline['selected']);require(historical<=set(reference['report']['selected']),'accepted reference lost historical coverage')
- guard=read_json('merge-tree.json');require(guard['head']==ctx['source']['head'] and guard['tree']==ctx['source']['tree'] and guard['equivalent'] is True and (guard.get('merge_sha') or '')==os.environ.get('FINCO_PRODUCTION_MERGE_SHA',''),'merge-tree binding')
+ guard=read_json('merge-tree.json');validate_merge_guard(guard)
  require(runtime_inputs_match(),'runtime source inputs changed without a reviewed contract')
  child,proc=observe_container({'mode':'discover','worker':None,'context':ctx},out/'collection',project,image,900,built_image=True)
  require(proc['normal_successful_exit'],'collection/cleanup failed')
@@ -162,7 +170,7 @@ def verify_data(planfolder,workers):
  reference=data['source_reference'];rp,rn=validate_reference(reference,source_base())
  require(set(bp)<=set(rp),'accepted reference lost historical coverage')
  changes=reconciliation(reference,data['inventory']);require(changes==data['inventory_reconciliation'],'inventory reconciliation mismatch')
- guard=data['merge_guard'];require(guard['head']==context()['source']['head'] and guard['tree']==context()['source']['tree'] and guard['equivalent'] is True and (guard.get('merge_sha') or '')==os.environ.get('FINCO_PRODUCTION_MERGE_SHA',''),'aggregate merge-tree binding')
+ validate_merge_guard(data['merge_guard'])
  require(runtime_inputs_match() and data['runtime_inputs']==read_json('docs/ci_v3/phase4/runtime/inputs.json'),'runtime source contract drift')
  runtime_packages(data['collection_environment'])
  seen={};skips=skip_counter(data['inventory']['collection_skips']);expected={n['nodeid'] for n in data['inventory']['nodes']}
@@ -189,7 +197,7 @@ def verify_data(planfolder,workers):
 
 def authenticate_current(api,downloaded,out):
  ctx=context();run=api.get(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}')
- require(run['head_sha']==ctx['source']['head'] and run['run_attempt']==ctx['attempt'],'service current run source/attempt')
+ require(run['head_sha']==ctx['source']['head'] and run['run_attempt']==ctx['attempt'] and run.get('path')=='.github/workflows/public_safety_and_smoke.yml' and run.get('head_repository',{}).get('full_name')==REPO,'service current repository/workflow/source/attempt')
  listing=api.listing(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}/artifacts','artifacts')
  jobs=api.listing(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}/attempts/{ctx["attempt"]}/jobs','jobs')
  count=production_plan(downloaded/'public-ci-v3-plan')['plan']['worker_count']
