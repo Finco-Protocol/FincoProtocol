@@ -14,6 +14,9 @@ name: CI V3 Required Public Test Job
       pr-number:
         type: string
         default: ''
+      source-base:
+        type: string
+        required: true
     outputs:
       execution_mode:
         value: ${{ jobs.route.outputs.execution_mode }}
@@ -38,37 +41,13 @@ jobs:
       id: route
       env:
         ROLLBACK: ${{ vars.CI_V3_MANDATORY_ROLLBACK }}
-      run: 'python - <<''PYCODE''
-
-        import json,os
-
-        from pathlib import Path
-
-        from tools.ci_v3_production import routing
-
-
-        p=routing()
-
-        trusted=os.environ[''GITHUB_EVENT_NAME''] != ''pull_request'' or ''${{ github.event.pull_request.head.repo.full_name
-        }}'' == os.environ[''GITHUB_REPOSITORY'']
-
-        import subprocess
-
-        paths=[''financial_engine'',''finco_core'',''domain'',''app'',''main_web.py'',''requirements.txt'',''requirements-ci-tests.txt'',''constraints.txt'']
-
-        compatible=subprocess.run([''git'',''diff'',''--quiet'',''e96561a220fc6adeb85587eb01d61745a922ab41'',''HEAD'',''--'',*paths]).returncode
-        == 0
-
-        trusted=trusted and compatible
-
-        mode=''parallel'' if p[''enabled''] and not p[''rollback''] and os.environ.get(''ROLLBACK'')!=''true'' and trusted
-        else ''sequential''
-
-        with open(os.environ[''GITHUB_OUTPUT''],''a'') as f:print(''execution_mode=''+mode,file=f)
-
-        print(''CI_V3_ROUTE=''+mode)
-
-        PYCODE'
+        GH_TOKEN: ${{ github.token }}
+        SOURCE_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      run: python -m tools.ci_v3_production route --output routing-evidence
+    env:
+      FINCO_PRODUCTION_HEAD: ${{ inputs.tested-sha }}
+      FINCO_PRODUCTION_BASE: ${{ inputs.source-base }}
+      FINCO_PRODUCTION_MERGE_SHA: ${{ inputs.merge-sha }}
   sequential:
     needs:
     - route
@@ -88,6 +67,8 @@ jobs:
       actions: read
     env:
       FINCO_PRODUCTION_HEAD: ${{ inputs.tested-sha }}
+      FINCO_PRODUCTION_BASE: ${{ inputs.source-base }}
+      FINCO_PRODUCTION_MERGE_SHA: ${{ inputs.merge-sha }}
     needs:
     - route
     if: ${{ needs.route.outputs.execution_mode == 'parallel' }}
@@ -140,6 +121,8 @@ jobs:
       actions: read
     env:
       FINCO_PRODUCTION_HEAD: ${{ inputs.tested-sha }}
+      FINCO_PRODUCTION_BASE: ${{ inputs.source-base }}
+      FINCO_PRODUCTION_MERGE_SHA: ${{ inputs.merge-sha }}
     needs:
     - route
     - plan
@@ -182,6 +165,8 @@ jobs:
       actions: read
     env:
       FINCO_PRODUCTION_HEAD: ${{ inputs.tested-sha }}
+      FINCO_PRODUCTION_BASE: ${{ inputs.source-base }}
+      FINCO_PRODUCTION_MERGE_SHA: ${{ inputs.merge-sha }}
     needs:
     - route
     - plan

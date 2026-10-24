@@ -3,6 +3,8 @@
 `app.persistence` is the single active persistence backend for the pilot
 product workflow. It stores snapshots and workflow metadata only.
 Runtime calculations remain authoritative in the model layer.
+Schema readiness is cached per process and database-file identity; every fresh
+connection still applies its own SQLite pragmas and per-connection data repair.
 """
 
 import os
