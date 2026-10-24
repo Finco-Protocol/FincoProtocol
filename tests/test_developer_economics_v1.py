@@ -1002,8 +1002,9 @@ class TestGovernanceTreatment:
             # candidate - never the released F3.5 authority or the active Model V2 scope. The historical pin still holds at the RC-7C checkpoint.
             from v9p2a_odr_successor import historical_subject
             from v10_native_shadow_successor import historical_subject as v10_subject
-            # chained: while HEAD is the recognised V10 successor, OD-R is judged at its immutable V10 checkpoint first
-            subject = historical_subject(repo=REPO, ref=v10_subject(repo=REPO))
+            from v11_stage3_successor import historical_subject as v11_subject
+            # chained: while HEAD is the recognised V10 (or V11) successor, OD-R is judged at its immutable checkpoints first
+            subject = historical_subject(repo=REPO, ref=v10_subject(repo=REPO, ref=v11_subject(repo=REPO)))
             assert subject != "HEAD"
             assert blob == candidate_blobs(repo=REPO)[path] != gov.F3_5_A_JUNIOR_AUTHORITIES[path]
             assert not gov.released_engine_authority_matches(path)

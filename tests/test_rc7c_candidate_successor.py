@@ -21,6 +21,7 @@ import rc7b_quarterly_candidate_authority as A
 import rc7c_candidate_successor as C
 import v9p2a_odr_successor as O
 import v10_native_shadow_successor as V
+import v11_stage3_successor as V11
 
 ROOT = Path(__file__).resolve().parent.parent
 TWELVE = tuple(A.RC7B_CANDIDATE_AUTHORITIES)
@@ -29,7 +30,7 @@ EIGHT = C.RC7C_UNCHANGED_RC7B_PATHS
 # Historical subject: the RC-7C contract is judged on RC-7C bytes - HEAD itself, or, only while HEAD is the complete recognised OD-R successor,
 # its immutable RC-7C integration checkpoint. Any other HEAD stays the subject and fails exactly as before. While HEAD is the complete recognised
 # V10 successor, OD-R itself is judged at its immutable V10 checkpoint first (chained, never relabelled).
-SUBJECT = O.historical_subject(ref=V.historical_subject())
+SUBJECT = O.historical_subject(ref=V.historical_subject(ref=V11.historical_subject()))
 
 
 def git(repo, *args, check=True):
@@ -103,11 +104,14 @@ def test_real_repository_is_the_recognised_rc7c_candidate_and_nothing_more():
     if SUBJECT != "HEAD":
         # HEAD is the OD-R successor (or, chained, the V10 successor): neither historical validator recognises it as its own state; only the
         # separate OD-R contract does - at HEAD, or at its immutable V10 checkpoint while HEAD is the recognised V10 successor
-        odr_ref = V.historical_subject()
+        v10_ref = V11.historical_subject()
+        odr_ref = V.historical_subject(ref=v10_ref)
         assert C.rc7c_violations() != [] and not C.rc7c_recognized() and B.postmerge_recognized() is False
         assert O.odr_violations(ref=odr_ref) == [] and R.recognized_state(ref=odr_ref) == "ODR"
         if odr_ref != "HEAD":                                       # the OD-R validator is not widened either
-            assert O.odr_violations() != [] and R.recognized_state() == "V10"
+            assert O.odr_violations() != [] and R.recognized_state(ref=v10_ref) == "V10"
+        if v10_ref != "HEAD":                                       # nor the V10 validator (chained: HEAD is the V11 successor)
+            assert V.v10_violations() != [] and R.recognized_state() == "V11S3"
 
 
 def test_four_blobs_are_the_pinned_rc7c_blobs_and_eight_are_the_merged_rc7b_blobs():

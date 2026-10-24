@@ -75,3 +75,5 @@ tools/ui/node_modules/
 # V10 native candidate: compiled artifacts are built reproducibly outside the runtime, never committed
 financial_engine/native_v10/*.so
 financial_engine/native_v10/build/
+# V11 Stage 3 candidate: same rule (built offline by financial_engine/native_v11/build_stage3.py)
+financial_engine/native_v11/*.so

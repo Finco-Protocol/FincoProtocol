@@ -9,6 +9,9 @@ One import point instead of per-guard wiring. It answers: "is the tree under tes
   blobs; two carried blobs), every other RC-7C path unchanged. ``CANDIDATE_PATHS`` stays the twelve; the OD-R state adds its two new paths.
 * ``v10_native_shadow_successor`` - OD-R at its immutable checkpoint (main ``0b57031a``), then exactly the V10 dormant native-shadow paths
   (Financial Owner exact-content decision for PR #347); every other path unchanged. Content recognition only: no release, no activation.
+* ``v11_stage3_successor`` - V10 at its immutable checkpoint (main ``9e712e21``), then exactly the V11 Stage 3 native senior-debt
+  candidate paths (one Financial Owner exact-content decision for Stage 3a + 3b); every other path, incl. every approved V10 native
+  source and manifest, unchanged. Content recognition only: no release, no activation, no V10 reseal.
 
 Recognition grants bytes on a branch/main ONLY. It is not Financial Owner approval, not D-01..D-12 approval, not Gate P, not product admission, not
 activation and not a financial release; ``approved_frozen_path`` and ``released_engine_authority_matches`` never consult it. The historical pin maps
@@ -30,13 +33,18 @@ try:
     import v10_native_shadow_successor as v10
 except ModuleNotFoundError:
     from tests import v10_native_shadow_successor as v10
+try:
+    import v11_stage3_successor as v11
+except ModuleNotFoundError:
+    from tests import v11_stage3_successor as v11
 
 CANDIDATE_PATHS = tuple(authority.RC7B_CANDIDATE_AUTHORITIES)           # the same twelve protected paths in every recognised state
 
 
 def recognized_state(*, repo=None, ref: str = "HEAD", fetcher=None) -> str | None:
     """``"RC7B"`` (twelve RC-7B blobs), ``"RC7C"`` (eight RC-7B + four RC-7C blobs), ``"ODR"`` (RC-7C + the six exact OD-R blobs),
-    ``"V10"`` (OD-R + the exact V10 dormant native-shadow blobs) or None. The four are mutually exclusive by blob identity."""
+    ``"V10"`` (OD-R + the exact V10 dormant native-shadow blobs), ``"V11S3"`` (V10 + the exact V11 Stage 3 blobs) or None. The states
+    are mutually exclusive by blob identity."""
     if rc7b.candidate_recognized(repo=repo, ref=ref, fetcher=fetcher):
         return "RC7B"
     if rc7c.rc7c_recognized(repo=repo, ref=ref):
@@ -45,6 +53,8 @@ def recognized_state(*, repo=None, ref: str = "HEAD", fetcher=None) -> str | Non
         return "ODR"
     if v10.v10_recognized(repo=repo, ref=ref):
         return "V10"
+    if v11.v11_recognized(repo=repo, ref=ref):
+        return "V11S3"
     return None
 
 
@@ -63,6 +73,8 @@ def candidate_blobs(*, repo=None, ref: str = "HEAD", fetcher=None) -> dict:
         return odr.odr_candidate_authorities()
     if state == "V10":
         return v10.v10_candidate_authorities()
+    if state == "V11S3":
+        return v11.v11_candidate_authorities()
     return {}
 
 

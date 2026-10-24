@@ -41,9 +41,10 @@ def rejected_run():
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch, tmp_path):
-    for name in (na.ENV_RUN, na.ENV_BUILD_ID):
+    for name in (na.ENV_RUN, na.ENV_BUILD_ID, na.ENV_V11_RUN, na.ENV_V11_BUILD_ID):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv(na.ENV_KILL_SWITCH, str(tmp_path / "native_v10_run.disabled"))
+    monkeypatch.setenv(na.ENV_V11_KILL_SWITCH, str(tmp_path / "native_v11_run.disabled"))
     na._reset_for_tests()
     yield
     na._reset_for_tests()
@@ -259,14 +260,16 @@ def test_concurrent_runs_keep_their_own_configuration_and_evidence():
 
 ACTIVATED_SITES = {
     "app/v2/router.py": 2, "app/api/router.py": 1, "app/services/goal_seek.py": 1, "app/v2/sensitivity_matrix_router.py": 1,
+    "app/api/v1/model_router.py": 1,
 }
-ENGINE_CALLABLES = {"run_project", "run_sensitivity_points", "_run_points", "run_matrix_points"}
-PROCESS_SUBMIT = {"run_model_process", "_run_proc"}
+ENGINE_CALLABLES = {"run_project", "run_sensitivity_points", "_run_points", "run_matrix_points", "build_run_response_data"}
+PROCESS_SUBMIT = {"run_model_process", "_run_proc", "run_model_process_sync"}
 
 
 def test_every_process_pool_engine_run_goes_through_activation():
     """Every process-pool submission of an engine Run is exactly ``native_result(await run_model_process(activated(fn),
-    ...))``; ``activated`` is used nowhere else (never with a thread submission)."""
+    ...))`` (or, from a plain ``def`` route, ``native_result(run_model_process_sync(activated(fn), ...))``); ``activated``
+    is used nowhere else (never with a thread submission)."""
     def name(node):
         return node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", None)
 
@@ -276,9 +279,11 @@ def test_every_process_pool_engine_run_goes_through_activation():
         tree = ast.parse(path.read_bytes())                         # bytes: honours a UTF-8 BOM
         wrapped = set()
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and name(node.func) == "native_result" and len(node.args) == 1 \
-                    and isinstance(node.args[0], ast.Await) and isinstance(node.args[0].value, ast.Call):
-                submit = node.args[0].value
+            if not (isinstance(node, ast.Call) and name(node.func) == "native_result" and len(node.args) == 1):
+                continue
+            inner = node.args[0]
+            submit = inner.value if isinstance(inner, ast.Await) else inner
+            if isinstance(submit, ast.Call) and (isinstance(inner, ast.Await) or name(submit.func) == "run_model_process_sync"):
                 first = submit.args[0] if submit.args else None
                 if name(submit.func) in PROCESS_SUBMIT and isinstance(first, ast.Call) and name(first.func) == "activated":
                     wrapped.add(id(first))
@@ -295,12 +300,18 @@ def test_every_process_pool_engine_run_goes_through_activation():
 
 
 def test_activation_is_off_by_default_everywhere_it_could_be_enabled():
+    """Only the release transaction enables native Runs (``.env.native``, loaded by the production unit alone); CI,
+    the example configuration, the staging unit, tests and development never do."""
     workflows = "".join(p.read_text() for p in (ROOT / ".github").rglob("*.y*ml"))
-    assert na.ENV_RUN not in workflows and na.ENV_BUILD_ID not in workflows
+    for name in (na.ENV_RUN, na.ENV_BUILD_ID, na.ENV_V11_RUN, na.ENV_V11_BUILD_ID, ".env.native"):
+        assert name not in workflows
     env_example = (ROOT / "deploy/env.example").read_text()
-    assert f"{na.ENV_RUN}=off" in env_example.splitlines()
+    assert f"{na.ENV_RUN}=off" in env_example.splitlines() and f"{na.ENV_V11_RUN}=off" in env_example.splitlines()
     for unit in (ROOT / "deploy/systemd").glob("*.service"):
-        assert na.ENV_RUN not in unit.read_text()
+        text = unit.read_text()
+        assert na.ENV_RUN not in text and na.ENV_V11_RUN not in text            # never set directly in a unit
+        loads = [line for line in text.splitlines() if line.startswith("EnvironmentFile=") and ".env.native" in line]
+        assert loads == (["EnvironmentFile=-/opt/finco_protocol/.env.native"] if unit.name == "finco-web.service" else [])
 
 
 def test_release_refuses_a_kernel_that_differs_from_the_reviewed_manifest(tmp_path, monkeypatch):
