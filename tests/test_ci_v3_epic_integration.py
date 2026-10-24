@@ -78,3 +78,13 @@ def test_frontend_mismatch_fails_instead_of_skipping(tmp_path,attack):
  elif attack=='installed-lock':(target/'node_modules/.package-lock.json').write_text('{"changed":true}')
  else:(source/'frontend/node_modules').mkdir()
  with pytest.raises(ValueError):prepare_frontend(source,target)
+
+
+def test_runtime_transition_requires_sequential_checkpoint(monkeypatch):
+ reference={'source':{'head':'synthetic'}}
+ current=(ROOT/'docs/ci_v3/phase4/runtime/inputs.json').read_bytes()
+ monkeypatch.setattr(prod.subprocess,'check_output',lambda *args,**kwargs:current)
+ prod.require_reference_runtime(reference)
+ monkeypatch.setattr(prod.subprocess,'check_output',lambda *args,**kwargs:b'{}')
+ with pytest.raises(ContractError,match='runtime inputs changed'):
+  prod.require_reference_runtime(reference)

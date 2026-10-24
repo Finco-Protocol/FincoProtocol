@@ -326,7 +326,7 @@ def test_in_flight_lock_and_back_forward(browser, react_enabled):
         page.wait_for_selector("[data-statements-view='true']")
 
         # responsive layouts render without document-level horizontal overflow
-        for width in (1440, 900, 390):
+        for width in (1440, 900, 390, 320):
             page.set_viewport_size({"width": width, "height": 900})
             page.wait_for_timeout(200)
             overflow = page.evaluate(

@@ -41,6 +41,12 @@ def validate_reference_policy(reference, historical):
   if node in original:require(values==original[node],'accepted reference changed historical outcomes')
   else:require(outcome(values)['status']=='passed','accepted reference has nonhistorical nonpass; sequential bootstrap required: '+node)
 
+def require_reference_runtime(reference):
+ # A different software contract needs a fresh sequential control, before workers.
+ path='docs/ci_v3/phase4/runtime/inputs.json'
+ previous=subprocess.check_output(['git','show',reference['source']['head']+':'+path])
+ require(json.loads(previous)==read_json(path),'accepted-source runtime inputs changed; sequential bootstrap required')
+
 def route_preflight(out):
  config=routing();ctx=context()
  trusted=os.environ['GITHUB_EVENT_NAME'] in ('push','pull_request') and (os.environ['GITHUB_EVENT_NAME']!='pull_request' or os.environ.get('SOURCE_REPO')==REPO)
@@ -48,6 +54,7 @@ def route_preflight(out):
  if route_mode(config,trusted,os.environ.get('ROLLBACK',''),compatible,True)=='parallel':
   try:
    api=GitHub();reference=authenticate_reference(api,source_base(),out/'reference')
+   require_reference_runtime(reference)
    historical=authenticate_baseline(api,out/'historical')
    validate_reference_policy(reference,historical)
    write_json(out/'source-reference.json',reference);ready=True;reason='accepted-source reference authenticated'
