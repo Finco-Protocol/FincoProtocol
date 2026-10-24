@@ -10,25 +10,56 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def flow():return yaml.load((ROOT/'.github/workflows/ci_v3_required_job.yml').read_text(),Loader=yaml.BaseLoader)
 
-def _parallel_admission_paths_unchanged():
- # Replicates the route step's compatibility gate exactly: the parallel
- # three-worker route is admitted only while the application surfaces are
- # byte-identical to the reviewed production commit. Application-modifying
- # branches (e.g. a React integration PR) legitimately route sequential; the
- # trusted-repo expectations below derive from this gate instead of assuming
- # the checkout is the admitted tree, while the rollback and third-party-fork
- # expectations stay absolute.
- paths=['financial_engine','finco_core','domain','app','main_web.py','requirements.txt','requirements-ci-tests.txt','constraints.txt']
- return subprocess.run(['git','diff','--quiet','e96561a220fc6adeb85587eb01d61745a922ab41','HEAD','--',*paths],
-                       cwd=ROOT).returncode==0
+def _route_script():return flow()['jobs']['route']['steps'][-1]['run']
 
-@pytest.mark.parametrize('rollback,event,repo,mode',[('', 'push','Finco-Protocol/FincoProtocol','admitted'),('true','push','Finco-Protocol/FincoProtocol','sequential'),('','pull_request','elsewhere/fork','sequential'),('','pull_request','Finco-Protocol/FincoProtocol','admitted')])
-def test_real_route_and_immediate_rollback(tmp_path,rollback,event,repo,mode):
- script=flow()['jobs']['route']['steps'][-1]['run'].replace('${{ github.event.pull_request.head.repo.full_name }}',repo)
+def _route_gate():
+ """The source-compatibility gate exactly as the route script states it: (pinned commit, gated paths)."""
+ import ast,re
+ script=_route_script()
+ pin=re.search(r"'git','diff','--quiet','([0-9a-f]{40})','HEAD'",script).group(1)
+ paths=ast.literal_eval(re.search(r"paths=(\[[^\]]*\])",script).group(1))
+ return pin,paths
+
+@pytest.fixture(scope='module')
+def route_trees(tmp_path_factory):
+ """Two disposable clones of the tested commit (the gate reads HEAD, so it is judged hermetically, never on the developer's
+ or the PR's own diff): 'compatible' restores every gated path to the pinned commit; 'incompatible' also changes app/."""
+ pin,paths=_route_gate()
+ head=subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,check=True,capture_output=True,text=True).stdout.strip()
+ env={**os.environ,'GIT_AUTHOR_NAME':'SYNTHETIC','GIT_AUTHOR_EMAIL':'noreply@users.noreply.github.com',
+      'GIT_COMMITTER_NAME':'SYNTHETIC','GIT_COMMITTER_EMAIL':'noreply@users.noreply.github.com'}
+ def git(d,*a):return subprocess.run(['git',*a],cwd=d,check=True,capture_output=True,text=True,env=env).stdout
+ trees={}
+ for kind in ('compatible','incompatible'):
+  d=tmp_path_factory.mktemp('SYNTHETIC-route-'+kind)/'repo'
+  subprocess.run(['git','clone','-q','--shared','--no-checkout',str(ROOT),str(d)],check=True,env=env)
+  git(d,'checkout','-q','--detach',head)
+  changed=[x for x in git(d,'diff','--name-only','--no-renames',pin,'HEAD','--',*paths).splitlines() if x]
+  present={x for x in git(d,'ls-tree','-r','--name-only',pin,'--',*changed).splitlines() if x} if changed else set()
+  for name in changed:
+   git(d,'checkout',pin,'--',name) if name in present else git(d,'rm','-q','--',name)
+  if kind=='incompatible':
+   (d/'app'/'__init__.py').write_text((d/'app'/'__init__.py').read_text()+'\n# SYNTHETIC incompatible source\n')
+   git(d,'add','app/__init__.py')
+  git(d,'commit','-q','--allow-empty','-m','SYNTHETIC route fixture '+kind)
+  probe=subprocess.run(['git','diff','--quiet',pin,'HEAD','--',*paths],cwd=d).returncode
+  assert (probe==0)==(kind=='compatible')
+  trees[kind]=d
+ return trees
+
+def _route(cwd,tmp_path,rollback,event,repo):
+ script=_route_script().replace('${{ github.event.pull_request.head.repo.full_name }}',repo)
  output=tmp_path/'output'
- subprocess.run(['bash','-e','-c',script],cwd=ROOT,check=True,env={**os.environ,'ROLLBACK':rollback,'GITHUB_EVENT_NAME':event,'GITHUB_REPOSITORY':'Finco-Protocol/FincoProtocol','GITHUB_OUTPUT':str(output)})
- expected='parallel' if mode=='admitted' and _parallel_admission_paths_unchanged() else 'sequential'
- assert output.read_text()=='execution_mode='+expected+'\n'
+ subprocess.run(['bash','-e','-c',script],cwd=cwd,check=True,env={**os.environ,'ROLLBACK':rollback,'GITHUB_EVENT_NAME':event,'GITHUB_REPOSITORY':'Finco-Protocol/FincoProtocol','GITHUB_OUTPUT':str(output)})
+ return output.read_text()
+
+@pytest.mark.parametrize('rollback,event,repo,mode',[('', 'push','Finco-Protocol/FincoProtocol','parallel'),('true','push','Finco-Protocol/FincoProtocol','sequential'),('','pull_request','elsewhere/fork','sequential'),('','pull_request','Finco-Protocol/FincoProtocol','parallel')])
+def test_real_route_and_immediate_rollback(tmp_path,route_trees,rollback,event,repo,mode):
+ assert _route(route_trees['compatible'],tmp_path,rollback,event,repo)=='execution_mode='+mode+'\n'
+
+@pytest.mark.parametrize('rollback,event,repo',[('', 'push','Finco-Protocol/FincoProtocol'),('true','push','Finco-Protocol/FincoProtocol'),('','pull_request','elsewhere/fork'),('','pull_request','Finco-Protocol/FincoProtocol')])
+def test_incompatible_source_is_always_routed_sequentially(tmp_path,route_trees,rollback,event,repo):
+ assert _route(route_trees['incompatible'],tmp_path,rollback,event,repo)=='execution_mode=sequential\n'
 
 def test_active_profile_retains_all_bounds_and_no_credential_or_failure_bypass():
  f=flow();jobs=f['jobs'];assert set(jobs)=={'route','sequential','plan','worker','aggregate','tests'}

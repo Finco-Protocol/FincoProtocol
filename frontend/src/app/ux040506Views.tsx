@@ -12,6 +12,8 @@ import {
   fetchSheetFields,
   fetchTrust,
   runModel,
+  saveCostLinesBatch,
+  saveWorkbookField,
 } from "./api";
 import type { SheetFieldPayload } from "./types";
 
@@ -77,43 +79,40 @@ export function FinancingView({ project }: { project: string }) {
     if (value === undefined || value === (field.value ?? "")) return;
     setInFlight(true);
     setStatus(null);
-    const body = new URLSearchParams({
+    const result = await saveWorkbookField({
+      updateUrl: data.save.url,
       project,
-      field_id: field.field_id,
+      fieldId: field.field_id,
       value,
-      workbook_version: data.save.workbook_version,
-      content_hash: data.save.content_hash,
-      sheet_id: "financing",
-      // The legacy /v2/workbook/update writer binds financing-sheet fields to
-      // the bound financing CSRF token the legacy financing form uses.
-      csrf_token: data.save.financing_csrf_token,
+      workbookVersion: data.save.workbook_version,
+      contentHash: data.save.content_hash,
+      csrfToken: data.save.csrf_token,
+      financingCsrfToken: data.save.financing_csrf_token,
+      // Correction A: a clean canonical redirect alone is not proof of a commit.
+      // Reconcile through a fresh authorized projection and compare the
+      // persisted value with what was submitted (numeric-tolerant).
+      verifyCommitted: async () => {
+        const fresh = await fetchSheetFields(project, "debt");
+        if (fresh.ok !== true) return false;
+        const persisted = fresh.fields.find((f) => f.field_id === field.field_id);
+        if (!persisted) return false;
+        const persistedText = String(persisted.value ?? "").trim();
+        const submittedText = value.trim();
+        if (persistedText === submittedText) return true;
+        const a = Number(persistedText), b = Number(submittedText);
+        return Number.isFinite(a) && Number.isFinite(b) && a === b;
+      },
     });
-    try {
-      const response = await fetch(data.save.url, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString(),
-      });
-      if (response.ok && response.status !== 303 && !response.url.includes("v2_err=")) {
-        setStatus({ tone: "ok", text: `${field.label} saved atomically. The model was not run.` });
-        setDrafts((d) => { const n = { ...d }; delete n[field.field_id]; return n; });
-        state.retry();
-      } else if (response.status === 409 || response.url.includes("v2_err=Stale")) {
-        setStatus({ tone: "conflict", text: "The workspace changed since this view loaded. Your edit was NOT saved — reload and re-apply." });
-      } else {
-        let message = `Save refused (HTTP ${response.status}). Nothing was saved.`;
-        try {
-          const payload = (await response.json()) as { error?: string; message?: string };
-          if (payload && (payload.error || payload.message)) message = payload.error || payload.message || message;
-        } catch { /* form endpoint may answer HTML; the generic note stands */ }
-        setStatus({ tone: "error", text: message });
-      }
-    } catch {
-      setStatus({ tone: "conflict", text: "The save outcome is UNKNOWN: the connection failed before a definitive response. Reload to reconcile — do not blind-retry." });
-    } finally {
-      setInFlight(false);
+    if ("kind" in result) {
+      setStatus({ tone: "conflict", text: result.message });
+    } else if (result.ok) {
+      setStatus({ tone: "ok", text: `${field.label} saved atomically${result.verified ? " and verified in the fresh projection" : ""}. The model was not run.` });
+      setDrafts((d) => { const n = { ...d }; delete n[field.field_id]; return n; });
+      state.retry();
+    } else {
+      setStatus({ tone: "error", text: result.message });
     }
+    setInFlight(false);
   };
 
   if (state.state === "loading") return <LoadingNote />;
@@ -185,40 +184,25 @@ export function CostLinesView({ project }: { project: string }) {
     if (!edits.length) return;
     setInFlight(true);
     setStatus(null);
-    const body = new URLSearchParams({
+    const result = await saveCostLinesBatch({
+      saveUrl: data.save.url,
       project,
-      csrf_token: data.save.csrf_token,
-      workbook_version: data.save.workbook_version,
-      content_hash: data.save.content_hash,
+      csrfToken: data.save.csrf_token,
+      workbookVersion: data.save.workbook_version,
+      contentHash: data.save.content_hash,
       sheet,
-      payload: JSON.stringify(edits),
+      edits,
     });
-    try {
-      const response = await fetch(data.save.url, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString(),
-      });
-      const batchSaved = response.headers.get("X-Cost-Batch-Saved");
-      if (response.ok && batchSaved !== null) {
-        setStatus({ tone: "ok", text: `${batchSaved} line(s) saved atomically. The model was not run.` });
-        setStaged({});
-        state.retry();
-      } else {
-        let message = `Batch refused (HTTP ${response.status}). No line was saved.`;
-        try {
-          const payload = (await response.json()) as { message?: string; code?: string };
-          if (payload && payload.message) message = payload.message;
-          if (payload && payload.code === "STALE_CONTENT") { setStatus({ tone: "conflict", text: message }); setInFlight(false); return; }
-        } catch { /* HTML success-render path carries the header above */ }
-        setStatus({ tone: "error", text: message });
-      }
-    } catch {
-      setStatus({ tone: "conflict", text: "The batch outcome is UNKNOWN: the connection failed before a definitive response. Reload to reconcile — do not blind-retry." });
-    } finally {
-      setInFlight(false);
+    if ("kind" in result) {
+      setStatus({ tone: "conflict", text: result.message });
+    } else if (result.ok) {
+      setStatus({ tone: "ok", text: `${result.savedCount} line(s) saved atomically. The model was not run.` });
+      setStaged({});
+      state.retry();
+    } else {
+      setStatus({ tone: "error", text: result.message });
     }
+    setInFlight(false);
   };
 
   if (state.state === "loading") return <LoadingNote />;
