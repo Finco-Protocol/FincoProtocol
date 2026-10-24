@@ -396,3 +396,35 @@ def test_synthetic_merge_record_requires_all_exact_identity_fields(evidence,monk
  prod.validate_merge_guard(guard)
  guard[field]=value
  with pytest.raises(ContractError):prod.validate_merge_guard(guard)
+
+
+def test_accepted_sequential_success_does_not_authorize_new_nonpass(evidence):
+ """A reference may preserve expectations, never invent Financial/CI policy."""
+ import xml.etree.ElementTree as ET
+ from tools.ci_v3_phase_compare import phase_map
+ from tools.ci_v3_real_contract import outcome
+ from tools.ci_v3_nonpass import node_id
+ plan,workers=evidence
+ data=read_json(plan/'plan.json');reference=data['source_reference']
+ # The current/reference synthetic campaign has a real skip/xfail. Simulate it
+ # being newly introduced relative to the independently pinned historical policy.
+ chosen=next(n for n,v in phase_map(reference['report']).items() if outcome(v)['status']!='passed')
+ file=plan/'baseline/public-verification-results/inventory.json';old=read_json(file)
+ modules={n.split('::')[0] for n in old['collected']}
+ old['collected']=[n for n in old['collected'] if n!=chosen]
+ old['selected']=[n for n in old['selected'] if n!=chosen]
+ old['phases']=[ph for ph in old['phases'] if ph['nodeid']!=chosen]
+ old['outcomes'].pop(chosen)
+ write_json(file,old)
+ file=plan/'baseline/public-verification-results/results.xml';tree=ET.parse(file)
+ for suite in tree.iter('testsuite'):
+  for case in list(suite.findall('testcase')):
+   if case.get('classname') and node_id(case.get('classname'),case.get('name'),modules)==chosen:suite.remove(case)
+  direct=list(suite.findall('testcase'))
+  if direct:
+   for key,count in [('tests',len(direct)),('failures',sum(c.find('failure') is not None for c in direct)),('errors',sum(c.find('error') is not None for c in direct)),('skipped',sum(c.find('skipped') is not None for c in direct))]:suite.set(key,str(count))
+ tree.write(file,encoding='utf-8')
+ # All current reference/native outcomes agree; absence of actual policy is
+ # independently blocking even though the accepted-source run was successful.
+ with pytest.raises(ContractError,match='nonhistorical nonpass requires explicit reviewed authority'):
+  prod.verify_data(plan,workers)

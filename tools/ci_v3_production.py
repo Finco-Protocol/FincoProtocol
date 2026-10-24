@@ -189,6 +189,7 @@ def verify_data(planfolder,workers):
   for n,v in phases.items():
    require(outcome(v)['status'] in ('passed','skipped','xfail'),'failure/unexpected xpass')
    if n in bp:require(v==bp[n] and native[n]==bn[n],'original phase/native outcome regression: '+n)
+   else:require(outcome(v)['status']=='passed','nonhistorical nonpass requires explicit reviewed authority: '+n)
    if n in rp:require(v==rp[n] and list(native[n])==rn[n],'accepted-source phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','new nonpass needs explicit treatment: '+n)
   seen.update(phases)
