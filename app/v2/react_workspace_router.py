@@ -501,3 +501,322 @@ def _pis_with_identity(record, owner: str, ws):
     from app.v2.router import _build_pis_with_composite_identity
 
     return _build_pis_with_composite_identity(ws, record, owner)
+
+
+# ─────────────────── UX-04/05/06: canonical surface projections ───────────────────
+#
+# Read-only JSON projections over the SAME canonical authorities the legacy V2
+# workbook uses.  Every mutation stays on the existing canonical writer route:
+# scalar/financing fields on POST /v2/workbook/update (bound financing CSRF),
+# CAPEX/OPEX line batches on POST /v2/workbook/grid/cost-lines/save, revenue
+# contracts on POST /v2/workbook/revenue/contracts, Run on POST /v2/workbook/run
+# (form contract, 303 on success / ?v2_err=… on failure — no new Run authority).
+# Nothing here computes, estimates or fabricates a financial value.
+
+_REACT_FIELD_SHEETS = ("project_setup", "debt", "revenue", "tax")
+
+
+def _identity_tokens(record, owner: str):
+    """Composite CAS identity + the canonical save tokens, or a fail-closed response."""
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import WorkbookIdentityError, assemble_consistent_for_get
+
+    try:
+        identity = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
+    except WorkbookIdentityError:
+        return None, _json({"ok": False, "code": "WORKSPACE_UNAVAILABLE",
+                            "message": "The workspace identity could not be assembled. Reload to refresh."}, 503)
+    return {"csrf_token": generate_csrf_token(),
+            "content_hash": identity.composite_hash,
+            "workbook_version": WORKBOOK.version}, None
+
+
+def _workspace_or_404(record, owner: str):
+    from app.persistence.workspace_repository import get_workspace_state
+
+    ws = get_workspace_state(owner, record.project_id)
+    if ws is None:
+        return None, _json({"ok": False, "code": "WORKSPACE_NOT_FOUND"}, 404)
+    return ws, None
+
+
+def _pis_or_503(record, owner: str, ws):
+    """The canonical PIS assembly, failing closed as the inputs projection does."""
+    try:
+        return _pis_with_identity(record, owner, ws), None
+    except Exception:  # noqa: BLE001 - presentation adapter fails closed, never fabricates
+        return None, _json({"ok": False, "code": "SHEET_PROJECTION_UNAVAILABLE",
+                            "message": "The sheet could not be projected. Reload to refresh."}, 503)
+
+
+def _is_protected(record) -> bool:
+    from app.services.project_library_service import is_protected_reference
+
+    return is_protected_reference(record)
+
+
+@router.get("/model-react/fields/{sheet_id}")
+async def react_sheet_fields(request: Request, sheet_id: str, project: str):
+    """Registry-sheet field grid (project_setup | debt | revenue | tax).
+
+    One entry per canonical FieldSpec with its binding label ("bound" = editable
+    through POST /v2/workbook/update, "partial", "display-only", "template-locked")
+    and validation metadata.  Financing fields authenticate with the BOUND
+    financing CSRF token the legacy financing form uses; everything else uses the
+    grid CSRF token.  No values are computed here — they come from the same PIS
+    the legacy sheets render.
+    """
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    if sheet_id not in _REACT_FIELD_SHEETS:
+        return _json({"ok": False, "code": "SHEET_UNKNOWN"}, 404)
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+    ws, failure = _workspace_or_404(record, owner)
+    if failure is not None:
+        return failure
+    pis, failure = _pis_or_503(record, owner, ws)
+    if failure is not None:
+        return failure
+    tokens, failure = _identity_tokens(record, owner)
+    if failure is not None:
+        return failure
+
+    from app.v2.router import _build_sheet_fields
+    from app.workbook.financing_csrf import issue_token
+
+    try:
+        fields = _jsonable(_build_sheet_fields(sheet_id, pis))
+    except Exception:  # noqa: BLE001 - fail closed
+        return _json({"ok": False, "code": "SHEET_PROJECTION_UNAVAILABLE",
+                      "message": "The sheet could not be projected. Reload to refresh."}, 503)
+    return _json({
+        "ok": True,
+        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+        "sheet": sheet_id,
+        "project": {"code": record.project_code,
+                    "protected_reference": _is_protected(record)},
+        "fields": fields,
+        "save": {"url": "/v2/workbook/update",
+                 "method": "form",
+                 "csrf_token": tokens["csrf_token"],
+                 "financing_csrf_token": issue_token(request, project),
+                 "content_hash": tokens["content_hash"],
+                 "workbook_version": tokens["workbook_version"]},
+    })
+
+
+@router.get("/model-react/costlines")
+async def react_cost_lines(request: Request, sheet: str = "capex", project: str = ""):
+    """CAPEX/OPEX line-item projection + the canonical batch Save contract.
+
+    Rows come from the same loaders the atomic batch writer verifies row versions
+    against; the only write path remains POST /v2/workbook/grid/cost-lines/save.
+    """
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    if sheet not in ("capex", "opex"):
+        return _json({"ok": False, "code": "SHEET_UNKNOWN"}, 404)
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+    tokens, failure = _identity_tokens(record, owner)
+    if failure is not None:
+        return failure
+
+    try:
+        from app.v2.cost_batch_commands import MAX_BATCH_LINES, _list_capex, _list_opex
+        from app.persistence.db import get_connection
+
+        with get_connection() as conn:
+            cur = conn.cursor()
+            rows = (_list_capex if sheet == "capex" else _list_opex)(cur, record.project_id, include_inactive=True)
+        lines = [{"sub_line_id": r.sub_line_id, "label": r.label, "amount_keur": r.amount_keur,
+                  "row_version": r.updated_at, "notes": getattr(r, "comments", None),
+                  "inflation_pct": getattr(r, "inflation_pct", None), "active": r.is_active,
+                  "category": getattr(r, "parent_category_code", "")} for r in rows]
+    except Exception:  # noqa: BLE001 - fail closed, never fabricate line items
+        return _json({"ok": False, "code": "COST_LINES_UNAVAILABLE",
+                      "message": "Cost lines could not be projected. Reload to refresh."}, 503)
+    return _json({
+        "ok": True,
+        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+        "sheet": sheet,
+        "project": {"code": record.project_code,
+                    "protected_reference": _is_protected(record)},
+        "lines": lines,
+        "save": {"url": "/v2/workbook/grid/cost-lines/save",
+                 "method": "form",
+                 "csrf_token": tokens["csrf_token"],
+                 "content_hash": tokens["content_hash"],
+                 "workbook_version": tokens["workbook_version"],
+                 "max_batch_lines": MAX_BATCH_LINES},
+    })
+
+
+@router.get("/model-react/revenue")
+async def react_revenue_contracts(request: Request, project: str):
+    """Revenue/PPA contract editor projection + the canonical Save contract.
+
+    The editor state is the SAME builder the legacy revenue contract form renders;
+    the only write path remains POST /v2/workbook/revenue/contracts (composite CAS,
+    bound CSRF, 409 on conflict).  No price or allocation is calculated here.
+    """
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+    ws, failure = _workspace_or_404(record, owner)
+    if failure is not None:
+        return failure
+    pis, failure = _pis_or_503(record, owner, ws)
+    if failure is not None:
+        return failure
+    tokens, failure = _identity_tokens(record, owner)
+    if failure is not None:
+        return failure
+
+    from app.v2.router import _build_revenue_contract_editor
+    from app.workbook.financing_csrf import issue_token
+
+    try:
+        editor = _jsonable(_build_revenue_contract_editor(pis, ws))
+    except Exception:  # noqa: BLE001 - fail closed
+        return _json({"ok": False, "code": "REVENUE_PROJECTION_UNAVAILABLE",
+                      "message": "Revenue contracts could not be projected. Reload to refresh."}, 503)
+    return _json({
+        "ok": True,
+        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+        "project": {"code": record.project_code,
+                    "protected_reference": _is_protected(record)},
+        "contracts": editor,
+        "save": {"url": "/v2/workbook/revenue/contracts",
+                 "method": "form",
+                 "csrf_token": issue_token(request, project),
+                 "content_hash": tokens["content_hash"],
+                 "workbook_version": tokens["workbook_version"]},
+    })
+
+
+@router.get("/model-react/runs")
+async def react_run_history(request: Request, project: str):
+    """Persisted Run History + the committed Last Run identity.
+
+    Every entry comes from the canonical run-history repository (immutable
+    committed evidence); unavailable fields stay null and are never substituted.
+    """
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+
+    from app.persistence.run_history_repository import get_run_history
+
+    try:
+        history = get_run_history(owner, record.project_id)
+    except Exception:  # noqa: BLE001 - fail closed
+        return _json({"ok": False, "code": "RUN_HISTORY_UNAVAILABLE",
+                      "message": "Run history could not be read. Reload to refresh."}, 503)
+    entries = []
+    for entry in history:
+        data = entry.to_dict() if hasattr(entry, "to_dict") else dict(entry)
+        entries.append(_jsonable(data))
+    return _json({
+        "ok": True,
+        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+        "project": {"code": record.project_code,
+                    "protected_reference": _is_protected(record)},
+        "runs": entries,
+        "run_contract": {"url": "/v2/workbook/run",
+                         "method": "form",
+                         "note": "Run initiation stays on the canonical route; success redirects "
+                                 "(303) to the workbook, failures redirect with ?v2_err=. "
+                                 "Save NEVER triggers a Run."},
+    })
+
+
+@router.get("/model-react/diagnostics")
+async def react_diagnostics(request: Request, project: str):
+    """Model Quality / diagnostics projection over the committed Last Run.
+
+    ``build_quality_insight_safe`` is the canonical fail-closed evaluator: every
+    check is evaluated from persisted evidence only; NOT RUN stays NOT RUN and a
+    stale Working Copy is reported as STALE, never as current.
+    """
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+    ws, failure = _workspace_or_404(record, owner)
+    if failure is not None:
+        return failure
+
+    from app.v2.diagnostics_client import diagnostics_client_payload
+    from app.v2.insight_quality_projection import build_quality_insight_safe
+
+    freshness_state = getattr(getattr(ws, "freshness", None), "state", None)
+    state = getattr(freshness_state, "value", None) or "NOT_RUN"
+    projection = build_quality_insight_safe(
+        ws, run_state=state,
+        active_scenario_id=ws.active_scenario_id,
+        scenario_name=ws.active_scenario_name or "",
+        include_diagnostics=True)
+    diagnostics = projection.get("diagnostics")
+    payload = {
+        "ok": True,
+        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+        "project": {"code": record.project_code,
+                    "protected_reference": _is_protected(record)},
+        "run_state": projection.get("run_state"),
+        "insight": {k: v for k, v in projection.items() if k != "diagnostics"},
+    }
+    if isinstance(diagnostics, dict):
+        payload["diagnostics"] = diagnostics_client_payload(diagnostics)
+    else:
+        payload["diagnostics"] = {"state": "UNAVAILABLE", "available": False}
+    return _json(payload)
+
+
+@router.get("/model-react/trust")
+async def react_trust(request: Request, project: str):
+    """Trust & integrity evidence projection (certificate + validation sections).
+
+    Same canonical builders the legacy trust fragments render; a section that
+    cannot be evaluated arrives as UNAVAILABLE, never as a fabricated pass.
+    """
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+
+    from app.ui.trust_pack import build_certificate_fragment
+
+    try:
+        certificate = build_certificate_fragment(owner, record.project_id)
+    except Exception:
+        certificate = {"state": "UNAVAILABLE", "reason": "CERTIFICATE_UNAVAILABLE", "not_verify": True}
+    validation = {"state": "UNAVAILABLE", "reason": "VALIDATION_UNAVAILABLE", "not_verify": True}
+    try:
+        from app.ui.trust_pack import build_validation_fragment
+        validation = build_validation_fragment(owner, record.project_id)
+    except Exception:
+        pass
+    return _json({
+        "ok": True,
+        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+        "project": {"code": record.project_code,
+                    "protected_reference": _is_protected(record)},
+        "certificate": _jsonable(certificate),
+        "validation": _jsonable(validation),
+    })
