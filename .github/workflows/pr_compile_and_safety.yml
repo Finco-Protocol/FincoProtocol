@@ -63,9 +63,9 @@ jobs:
       # the existing browser role (tools/ci_browser_job.py "grid" selection).
       - name: React PoC build, bundle identity and contract guards (when present)
         run: |
-          if [ -f frontend/package.json ]; then
+          if [ -f package.json ]; then
             node --version
-            npm ci --no-audit --no-fund
+            npm ci --ignore-scripts --no-audit --no-fund
             npm run typecheck
             npm run build
             cp dist/finco-react.js dist/finco-react.css ../static/react/
