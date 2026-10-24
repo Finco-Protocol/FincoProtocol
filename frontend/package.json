@@ -2,7 +2,7 @@
   "name": "finco-model-react",
   "private": true,
   "version": "0.1.0",
-  "description": "FINCO Model full-React frontend (UX-01 PoC). Presentation only \u2014 every financial calculation, validation, Save and Run stays server-authoritative behind the existing canonical /v2 routes.",
+  "description": "FINCO Model full-React frontend (UX-01 PoC). Presentation only — every financial calculation, validation, Save and Run stays server-authoritative behind the existing canonical /v2 routes.",
   "type": "module",
   "scripts": {
     "dev": "vite",
