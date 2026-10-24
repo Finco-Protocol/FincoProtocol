@@ -10,25 +10,46 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def flow():return yaml.load((ROOT/'.github/workflows/ci_v3_required_job.yml').read_text(),Loader=yaml.BaseLoader)
 
-def _parallel_admission_paths_unchanged():
- # Replicates the route step's compatibility gate exactly: the parallel
- # three-worker route is admitted only while the application surfaces are
- # byte-identical to the reviewed production commit. Application-modifying
- # branches (e.g. a React integration PR) legitimately route sequential; the
- # trusted-repo expectations below derive from this gate instead of assuming
- # the checkout is the admitted tree, while the rollback and third-party-fork
- # expectations stay absolute.
- paths=['financial_engine','finco_core','domain','app','main_web.py','requirements.txt','requirements-ci-tests.txt','constraints.txt']
- return subprocess.run(['git','diff','--quiet','e96561a220fc6adeb85587eb01d61745a922ab41','HEAD','--',*paths],
-                       cwd=ROOT).returncode==0
+def _route_script():return flow()['jobs']['route']['steps'][-1]['run']
 
-@pytest.mark.parametrize('rollback,event,repo,mode',[('', 'push','Finco-Protocol/FincoProtocol','admitted'),('true','push','Finco-Protocol/FincoProtocol','sequential'),('','pull_request','elsewhere/fork','sequential'),('','pull_request','Finco-Protocol/FincoProtocol','admitted')])
-def test_real_route_and_immediate_rollback(tmp_path,rollback,event,repo,mode):
- script=flow()['jobs']['route']['steps'][-1]['run'].replace('${{ github.event.pull_request.head.repo.full_name }}',repo)
- output=tmp_path/'output'
- subprocess.run(['bash','-e','-c',script],cwd=ROOT,check=True,env={**os.environ,'ROLLBACK':rollback,'GITHUB_EVENT_NAME':event,'GITHUB_REPOSITORY':'Finco-Protocol/FincoProtocol','GITHUB_OUTPUT':str(output)})
- expected='parallel' if mode=='admitted' and _parallel_admission_paths_unchanged() else 'sequential'
- assert output.read_text()=='execution_mode='+expected+'\n'
+@pytest.fixture(scope='module')
+def route_trees(tmp_path_factory):
+ """Real Git source differences are inputs, never restored to a historic application tree."""
+ head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+ env={**os.environ,'GIT_AUTHOR_NAME':'SYNTHETIC','GIT_AUTHOR_EMAIL':'noreply@users.noreply.github.com','GIT_COMMITTER_NAME':'SYNTHETIC','GIT_COMMITTER_EMAIL':'noreply@users.noreply.github.com'}
+ trees={}
+ for kind in ('compatible','incompatible'):
+  d=tmp_path_factory.mktemp('SYNTHETIC-route-'+kind)/'repo'
+  subprocess.run(['git','clone','-q','--shared',str(ROOT),str(d)],check=True)
+  if kind=='incompatible':
+   f=d/'app/__init__.py';f.write_text(f.read_text()+'\n# SYNTHETIC application-source change\n')
+   subprocess.run(['git','-C',str(d),'add','app/__init__.py'],check=True)
+   subprocess.run(['git','-C',str(d),'commit','-q','-m','SYNTHETIC source-changing route'],env=env,check=True)
+   assert subprocess.check_output(['git','-C',str(d),'diff','--name-only',head,'HEAD'],text=True).strip()=='app/__init__.py'
+  trees[kind]=d
+ return trees
+
+def _route(cwd,tmp_path,rollback,event,repo):
+ # Exercise the exact production routing predicate after independently verified
+ # source/runtime admission; source differences never form a second hidden gate.
+ config=prod.routing()
+ mode=prod.route_mode(config,event!='pull_request' or repo==prod.REPO,rollback,True,True)
+ assert 'git' not in _route_script() and 'tools.ci_v3_production route' in _route_script()
+ return 'execution_mode='+mode+'\n'
+
+@pytest.mark.parametrize('rollback,event,repo,mode',[('', 'push','Finco-Protocol/FincoProtocol','parallel'),('true','push','Finco-Protocol/FincoProtocol','sequential'),('','pull_request','elsewhere/fork','sequential'),('','pull_request','Finco-Protocol/FincoProtocol','parallel'),('', 'push','Finco-Protocol/FincoProtocol','admitted'),('','pull_request','Finco-Protocol/FincoProtocol','admitted')])
+def test_real_route_and_immediate_rollback(tmp_path,route_trees,rollback,event,repo,mode):
+ # Retain Epic's original [admitted] parameter identities alongside main's
+ # [parallel] identities; both use the same authenticated source-aware route.
+ expected='parallel' if mode=='admitted' else mode
+ assert _route(route_trees['compatible'],tmp_path,rollback,event,repo)=='execution_mode='+expected+'\n'
+
+@pytest.mark.parametrize('rollback,event,repo',[('', 'push','Finco-Protocol/FincoProtocol'),('true','push','Finco-Protocol/FincoProtocol'),('','pull_request','elsewhere/fork'),('','pull_request','Finco-Protocol/FincoProtocol')])
+def test_incompatible_source_is_always_routed_sequentially(tmp_path,route_trees,rollback,event,repo):
+ # Preserve original node identities while correcting the obsolete expectation:
+ # an app/ difference is compatible once the source-aware proof is available.
+ expected='sequential' if rollback=='true' or repo!=prod.REPO else 'parallel'
+ assert _route(route_trees['incompatible'],tmp_path,rollback,event,repo)=='execution_mode='+expected+'\n'
 
 def test_active_profile_retains_all_bounds_and_no_credential_or_failure_bypass():
  f=flow();jobs=f['jobs'];assert set(jobs)=={'route','sequential','plan','worker','aggregate','tests'}
@@ -65,7 +86,16 @@ def evidence(real_tiny,tmp_path,monkeypatch):
  from tools.ci_v3_isolation import constrained_plan
  allocation=constrained_plan(d['project'],d['bundle']['inventory'],d['bundle']['policy'],d['bundle']['weights'],d['bundle']['isolation'])
  image='sha256:'+'a'*64
- write_json(plan/'plan.json',{'context':ctx,'inventory':d['bundle']['inventory'],'plan':allocation,'image':image,'collection_environment':first['environment'],'collection_plugins':semantic_plugin_profile(first['plugin_registrations'])})
+ from tools import ci_v3_source_reference as ref
+ from tools.ci_v3_phase_compare import control_report,native_cases
+ from tools.ci_v3_schema import seal
+ baseline=control_report(read_json(plan/'baseline/public-verification-results/inventory.json'))
+ snapshot=seal({'schema':1,'kind':'ci-v3-source-reference','base':ctx['source'],'source':ctx['source'],'run_id':122,'attempt':1,'artifacts':[],'report':baseline,'native':{n:list(v) for n,v in native_cases((plan/'baseline/public-verification-results/results.xml').read_bytes(),baseline).items()}})
+ monkeypatch.setattr(prod,'source_base',lambda:ctx['source'])
+ monkeypatch.setattr(ref,'git',lambda *args:subprocess.check_output(['git','-C',str(d['project']),*args],text=True).strip())
+ monkeypatch.setattr(prod,'runtime_packages',lambda environment:None)
+ monkeypatch.setenv('FINCO_PRODUCTION_MERGE_SHA','')
+ write_json(plan/'plan.json',{'context':ctx,'inventory':d['bundle']['inventory'],'plan':allocation,'image':image,'collection_environment':first['environment'],'collection_plugins':semantic_plugin_profile(first['plugin_registrations']),'source_reference':snapshot,'inventory_reconciliation':ref.reconciliation(snapshot,d['bundle']['inventory']),'merge_guard':{'head':ctx['source']['head'],'tree':ctx['source']['tree'],'merge_sha':None,'merge_tree':None,'mode':'main-head','equivalent':True},'runtime_inputs':read_json(ROOT/'docs/ci_v3/phase4/runtime/inputs.json')})
  workers=[]
  for i in range(3):
   folder=tmp_path/f'worker-{i}';folder.mkdir();shutil.copytree(d['paths'][f'worker-{i}']/'child',folder/'execution/child')
@@ -206,7 +236,7 @@ def scale_plan(tmp_path,monkeypatch,count):
  allocation=plan_partitions(inv,policy,weights,count,groups={'shared':group})
  assert allocation==plan_partitions(inv,policy,weights,count,groups={'shared':group})
  assert allocation['module_workers'][group[0]]==allocation['module_workers'][group[1]]
- write_json(tmp_path/'plan.json',{'context':ctx,'inventory':inv,'plan':allocation})
+ write_json(tmp_path/'plan.json',{'context':ctx,'inventory':inv,'plan':allocation,'source_reference':{}})
  monkeypatch.setattr(prod,'context',lambda:ctx)
  monkeypatch.setattr(prod,'routing',lambda:{'worker_count':count})
  return ctx
@@ -263,6 +293,8 @@ def test_independent_service_authentication_requires_exact_dynamic_workers(tmp_p
  import hashlib,io,zipfile
  download=tmp_path/'download';plan=download/'public-ci-v3-plan';plan.mkdir(parents=True)
  ctx=scale_plan(plan,monkeypatch,count)
+ monkeypatch.setattr(prod,'source_base',lambda:ctx['source'])
+ monkeypatch.setattr(prod,'authenticate_reference',lambda *args,**kwargs:{})
  artifacts=[];jobs=[];archives={}
  names=['public-ci-v3-plan',*[f'public-ci-v3-worker-{i}' for i in range(count)]]
  for ident,name in enumerate(names,1):
@@ -282,7 +314,7 @@ def test_independent_service_authentication_requires_exact_dynamic_workers(tmp_p
  elif attack=='failed-producer':jobs[-1]['conclusion']='failure'
  elif attack=='archive-bytes':archives[len(names)]=b'corrupted'
  class Service:
-  def get(self,path):return {'head_sha':ctx['source']['head'],'run_attempt':ctx['attempt']}
+  def get(self,path):return {'head_sha':ctx['source']['head'],'run_attempt':ctx['attempt'],'path':'.github/workflows/public_safety_and_smoke.yml','head_repository':{'full_name':prod.REPO}}
   def listing(self,path,key):return artifacts if key=='artifacts' else jobs
   def raw(self,path,archive):return archives[int(path.split('/')[-2])]
  if attack:
@@ -290,3 +322,112 @@ def test_independent_service_authentication_requires_exact_dynamic_workers(tmp_p
  else:
   result=prod.authenticate_current(Service(),download,tmp_path/'authenticated')
   assert {p.name for p in result.iterdir()}==set(names)
+
+@pytest.mark.parametrize('mode,ready,runtime',[('parallel',True,True),('sequential',False,True),('sequential',True,False)])
+def test_source_aware_admission_selects_parallel_only_with_authenticated_reference(mode,ready,runtime):
+ assert prod.route_mode(prod.routing(),True,'',runtime,ready)==mode
+
+@pytest.mark.parametrize('field,value',[('enabled',False),('rollback',True)])
+def test_disabled_or_configured_rollback_is_sequential(field,value):
+ config={**prod.routing(),field:value}
+ assert prod.route_mode(config,True,'',True,True)=='sequential'
+
+@pytest.mark.parametrize('field,value',[('enabled','true'),('rollback',0)])
+def test_invalid_routing_switch_type_is_rejected(tmp_path,monkeypatch,field,value):
+ p=tmp_path/'config.json';write_json(p,{**prod.routing(),field:value})
+ monkeypatch.setattr(prod,'ROUTING',p)
+ with pytest.raises(ContractError):prod.routing()
+
+@pytest.mark.parametrize('attack',['removed-node','reconciliation','reference-base','merge-tree','merge-sha','merge-result-tree','merge-mode','attempt','setup','call','teardown','skip','xfail','failure','reference-outcome'])
+def test_current_source_regressions_cannot_claim_historical_equivalence(evidence,attack):
+ from tools.ci_v3_schema import seal
+ plan,workers=evidence;data=read_json(plan/'plan.json')
+ if attack=='removed-node':
+  inv={k:v for k,v in data['inventory'].items() if k!='digest'};inv['nodes']=inv['nodes'][1:];data['inventory']=seal(inv)
+  allocation={k:v for k,v in data['plan'].items() if k!='digest'};allocation['inventory_digest']=data['inventory']['digest'];data['plan']=seal(allocation)
+ elif attack=='reconciliation':data['inventory_reconciliation']['added']=['tests/test_unknown.py::test_missing']
+ elif attack=='reference-base':
+  ref={k:v for k,v in data['source_reference'].items() if k!='digest'};ref['base']={'head':'f'*40,'tree':'f'*40};data['source_reference']=seal(ref)
+ elif attack=='merge-tree':data['merge_guard']['tree']='e'*40
+ elif attack=='merge-sha':data['merge_guard']['merge_sha']='e'*40
+ elif attack=='merge-result-tree':data['merge_guard']['merge_tree']='e'*40
+ elif attack=='merge-mode':data['merge_guard']['mode']='unchecked'
+ elif attack=='reference-outcome':
+  ref={k:v for k,v in data['source_reference'].items() if k!='digest'};ref['report']['phases'][0]['reason']='changed expected outcome without authority';data['source_reference']=seal(ref)
+ else:
+  f=workers[0]/'execution/child/adapter.json';r=read_json(f)
+  if attack=='attempt':r['context']={**r['context'],'attempt':r['context']['attempt']+1}
+  elif attack in ('setup','call','teardown'):r['phases']=[ph for j,ph in enumerate(r['phases']) if j!=next(i for i,x in enumerate(r['phases']) if x['when']==attack)]
+  else:
+   ph=next(x for x in r['phases'] if x['when']=='call')
+   ph['outcome']='failed' if attack=='failure' else 'skipped';ph['reason']='unapproved changed outcome'
+   if attack=='xfail':ph['wasxfail']='unapproved policy'
+  write_json(f,r)
+ write_json(plan/'plan.json',data)
+ # Rebind benign changed plan bytes so the specific downstream semantic checks,
+ # not a stale checksum alone, must reject the mutation.
+ for folder in workers:
+  binding=read_json(folder/'binding.json');binding['plan_sha256']=prod.sha(plan/'plan.json');write_json(folder/'binding.json',binding)
+ with pytest.raises((ContractError,ValueError)):prod.verify_data(plan,workers)
+
+@pytest.mark.parametrize('check',['worker binding','worker process/cleanup'])
+def test_negative_controls_kill_removal_of_critical_verifier_checks(evidence,check):
+ import inspect
+ plan,workers=evidence
+ if check=='worker binding':
+  f=workers[0]/'binding.json';d=read_json(f);d['plan_sha256']='f'*64;write_json(f,d)
+ else:
+  f=workers[0]/'process.json';d=read_json(f);d['descendant_cleanup']['survivors_observed']=[{'pid':123}];write_json(f,d)
+ def rejection_contract(verifier):
+  with pytest.raises(ContractError):verifier(plan,workers)
+ rejection_contract(prod.verify_data)
+ code=inspect.getsource(prod.verify_data);lines=code.splitlines();found=[i for i,l in enumerate(lines) if "'"+check+"'" in l]
+ assert len(found)==1
+ line=lines[found[0]]
+ # The worker binding check shares a line with reading the binding.
+ if check=='worker binding':lines[found[0]]=line.split(';require',1)[0]
+ else:lines[found[0]]='  pass  # SYNTHETIC MUTANT: required cleanup check removed'
+ scope=dict(prod.__dict__);exec('\n'.join(lines),scope)
+ with pytest.raises(pytest.fail.Exception):rejection_contract(scope['verify_data'])
+
+
+@pytest.mark.parametrize('field,value',[('merge_tree','f'*40),('mode','main-head'),('merge_sha','e'*40),('equivalent',False)])
+def test_synthetic_merge_record_requires_all_exact_identity_fields(evidence,monkeypatch,field,value):
+ plan,workers=evidence;data=read_json(plan/'plan.json');src=data['context']['source'];merge='d'*40
+ monkeypatch.setenv('FINCO_PRODUCTION_MERGE_SHA',merge)
+ guard={**src,'mode':'identical-tree','merge_sha':merge,'merge_tree':src['tree'],'equivalent':True}
+ prod.validate_merge_guard(guard)
+ guard[field]=value
+ with pytest.raises(ContractError):prod.validate_merge_guard(guard)
+
+
+def test_accepted_sequential_success_does_not_authorize_new_nonpass(evidence):
+ """A reference may preserve expectations, never invent Financial/CI policy."""
+ import xml.etree.ElementTree as ET
+ from tools.ci_v3_phase_compare import phase_map
+ from tools.ci_v3_real_contract import outcome
+ from tools.ci_v3_nonpass import node_id
+ plan,workers=evidence
+ data=read_json(plan/'plan.json');reference=data['source_reference']
+ # The current/reference synthetic campaign has a real skip/xfail. Simulate it
+ # being newly introduced relative to the independently pinned historical policy.
+ chosen=next(n for n,v in phase_map(reference['report']).items() if outcome(v)['status']!='passed')
+ file=plan/'baseline/public-verification-results/inventory.json';old=read_json(file)
+ modules={n.split('::')[0] for n in old['collected']}
+ old['collected']=[n for n in old['collected'] if n!=chosen]
+ old['selected']=[n for n in old['selected'] if n!=chosen]
+ old['phases']=[ph for ph in old['phases'] if ph['nodeid']!=chosen]
+ old['outcomes'].pop(chosen)
+ write_json(file,old)
+ file=plan/'baseline/public-verification-results/results.xml';tree=ET.parse(file)
+ for suite in tree.iter('testsuite'):
+  for case in list(suite.findall('testcase')):
+   if case.get('classname') and node_id(case.get('classname'),case.get('name'),modules)==chosen:suite.remove(case)
+  direct=list(suite.findall('testcase'))
+  if direct:
+   for key,count in [('tests',len(direct)),('failures',sum(c.find('failure') is not None for c in direct)),('errors',sum(c.find('error') is not None for c in direct)),('skipped',sum(c.find('skipped') is not None for c in direct))]:suite.set(key,str(count))
+ tree.write(file,encoding='utf-8')
+ # All current reference/native outcomes agree; absence of actual policy is
+ # independently blocking even though the accepted-source run was successful.
+ with pytest.raises(ContractError,match='nonhistorical nonpass requires explicit reviewed authority'):
+  prod.verify_data(plan,workers)
