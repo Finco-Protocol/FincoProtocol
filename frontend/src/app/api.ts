@@ -1,6 +1,8 @@
-// Authorized fetch adapters for the UX-02 React workspace.  Same-origin only;
-// every mutation stays on the canonical routes (grid/save, cost-lines/save,
-// library/clone, workbook/run — the latter deliberately not called from here).
+// Authorized fetch adapters for the UX-02..06 React workspace.  Same-origin
+// only; every mutation stays on the canonical routes (grid/save,
+// cost-lines/save, workbook/update, revenue/contracts, library/clone and
+// workbook/run — Run initiation goes through the canonical route's own form
+// contract (303 on success / ?v2_err= on failure); Save NEVER triggers a Run).
 
 import type {
   InputsPayload,
@@ -153,3 +155,95 @@ export async function createWorkingCopy(args: CreateWorkingCopyArgs): Promise<Cr
   }
   return { ok: false, message: `Working-copy creation failed (HTTP ${response.status}).` };
 }
+
+// ── UX-04/05/06 canonical surface fetchers ──────────────────────────────────
+
+import type {
+  CostLinesPayload,
+  DiagnosticsPayload,
+  RevenueContractsPayload,
+  RunHistoryEntry,
+  RunsPayload,
+  SheetFieldsPayload,
+  TrustPayload,
+} from "./types";
+
+export const fetchSheetFields = (project: string, sheet: string) =>
+  withContentionRetry(() =>
+    getJson<SheetFieldsPayload>(`/v2/model-react/fields/${encodeURIComponent(sheet)}?project=${encodeURIComponent(project)}`));
+
+export const fetchCostLines = (project: string, sheet: "capex" | "opex") =>
+  withContentionRetry(() =>
+    getJson<CostLinesPayload>(`/v2/model-react/costlines?sheet=${sheet}&project=${encodeURIComponent(project)}`));
+
+export const fetchRevenueContracts = (project: string) =>
+  withContentionRetry(() =>
+    getJson<RevenueContractsPayload>(`/v2/model-react/revenue?project=${encodeURIComponent(project)}`));
+
+export const fetchRuns = (project: string) =>
+  withContentionRetry(() => getJson<RunsPayload>(`/v2/model-react/runs?project=${encodeURIComponent(project)}`));
+
+export const fetchDiagnostics = (project: string) =>
+  withContentionRetry(() =>
+    getJson<DiagnosticsPayload>(`/v2/model-react/diagnostics?project=${encodeURIComponent(project)}`));
+
+export const fetchTrust = (project: string) =>
+  withContentionRetry(() => getJson<TrustPayload>(`/v2/model-react/trust?project=${encodeURIComponent(project)}`));
+
+export interface RunModelArgs {
+  runUrl: string;
+  project: string;
+  contentHash: string;
+  workbookVersion: string;
+}
+
+export type RunModelResult =
+  | { ok: true }
+  | { ok: false; message: string }
+  | { kind: "unknown"; message: string };
+
+/** Run initiation through the EXISTING canonical `/v2/workbook/run` route.
+ *  The user presses Run explicitly; Save never triggers this.  Success answers a
+ *  303 redirect to the workbook (followed); a user-safe failure redirects with
+ *  `?v2_err=`.  A lost connection is UNKNOWN — the Run may or may not have
+ *  committed — so the caller must reconcile from the workspace snapshot and
+ *  never blind-retry an ambiguous financial mutation. */
+export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
+  const body = new URLSearchParams({
+    project: args.project,
+    content_hash: args.contentHash,
+    workbook_version: args.workbookVersion,
+  });
+  let response: Response;
+  try {
+    response = await fetch(args.runUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      redirect: "follow",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+  } catch {
+    return {
+      kind: "unknown",
+      message: "The Run outcome is UNKNOWN: the connection failed before a definitive response. "
+        + "Reload the workspace to reconcile the persisted Last Run before running again.",
+    };
+  }
+  if (response.ok) {
+    try {
+      const finalUrl = new URL(response.url);
+      const err = finalUrl.searchParams.get("v2_err");
+      if (err) return { ok: false, message: err };
+      return { ok: true };
+    } catch {
+      return { ok: true };
+    }
+  }
+  if (response.status === 401) return { ok: false, message: "Your session is not authorized. Sign in again; nothing was run." };
+  if (response.status === 409) return { ok: false, message: "This project type cannot be run from the React workspace. The project was not modified." };
+  if (response.status === 503) return { ok: false, message: "The workspace changed while the Run was starting. Nothing was run; reload and retry." };
+  return { ok: false, message: `Run could not start (HTTP ${response.status}). Nothing was run.` };
+}
+
+export type HistoryRow = RunHistoryEntry;

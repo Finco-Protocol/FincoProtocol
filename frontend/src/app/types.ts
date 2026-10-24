@@ -220,3 +220,109 @@ export interface InputsPayload {
   };
   cost_line_boundary: { note: string; capex_opex_editable: boolean };
 }
+
+// ── UX-04/05/06 canonical surface projections ──────────────────────────────
+
+export interface SheetFieldPayload {
+  field_id: string;
+  label: string;
+  value: string | null;
+  display_value?: string | null;
+  binding_label: string; // "bound" | "partial" | "display-only" | "template-locked"
+  unit?: string | null;
+  field_type?: string;
+  section_id?: string;
+  section_label?: string;
+  options?: string[];
+  required?: boolean;
+  min_value?: number | null;
+  max_value?: number | null;
+  step?: string | null;
+  help_text?: string | null;
+}
+
+export interface SheetFieldsPayload {
+  ok: true;
+  sheet: string;
+  project: { code: string; protected_reference: boolean };
+  fields: SheetFieldPayload[];
+  save: {
+    url: string;
+    method: string;
+    csrf_token: string;
+    financing_csrf_token: string;
+    content_hash: string;
+    workbook_version: string;
+  };
+}
+
+export interface CostLinePayload {
+  sub_line_id: string;
+  label: string;
+  amount_keur: number | string | null;
+  row_version: string;
+  notes: string | null;
+  inflation_pct: number | null;
+  active: boolean;
+  category: string;
+}
+
+export interface CostLinesPayload {
+  ok: true;
+  sheet: "capex" | "opex";
+  project: { code: string; protected_reference: boolean };
+  lines: CostLinePayload[];
+  save: {
+    url: string;
+    method: string;
+    csrf_token: string;
+    content_hash: string;
+    workbook_version: string;
+    max_batch_lines: number;
+  };
+}
+
+export interface RevenueContractsPayload {
+  ok: true;
+  project: { code: string; protected_reference: boolean };
+  contracts: Record<string, unknown>;
+  save: {
+    url: string;
+    method: string;
+    csrf_token: string;
+    content_hash: string;
+    workbook_version: string;
+  };
+}
+
+export interface RunHistoryEntry {
+  history_id?: string;
+  ran_at?: string;
+  scenario_id?: string | null;
+  scenario_name?: string | null;
+  origin?: string | null;
+  engine_version?: string | null;
+  workbook_version?: string | null;
+  composite_identity?: Record<string, unknown> | null;
+  [key: string]: unknown;
+}
+
+export interface RunsPayload {
+  ok: true;
+  project: { code: string; protected_reference: boolean };
+  runs: RunHistoryEntry[];
+  run_contract: { url: string; method: string; note: string };
+}
+
+export interface DiagnosticsPayload {
+  ok: true;
+  run_state: string;
+  insight: Record<string, unknown>;
+  diagnostics: Record<string, unknown>;
+}
+
+export interface TrustPayload {
+  ok: true;
+  certificate: Record<string, unknown>;
+  validation: Record<string, unknown>;
+}

@@ -69,6 +69,11 @@ def write_json(path, value):
     path.write_bytes(canonical_bytes(value))
 
 
+def worker_count(value):
+    require(type(value) is int and 2 <= value <= 12, "worker count must be an integer from 2 through 12")
+    return value
+
+
 def integer(value, label, minimum=0):
     require(type(value) is int and value >= minimum, label + " must be an integer")
 
@@ -186,8 +191,7 @@ def validate_plan(plan, inventory, policy):
     require(plan.get("policy_digest") == policy["digest"], "plan policy mismatch")
     require(plan.get("source") == inventory["source"], "plan source mismatch")
     require(plan.get("authority") == "offline-prototype", "plan has no CI authority")
-    integer(plan.get("worker_count"), "worker count", 2)
-    require(plan["worker_count"] in (2, 3, 4), "only 2/3/4 workers supported")
+    worker_count(plan.get("worker_count"))
     ids = ["worker-%d" % i for i in range(plan["worker_count"])]
     assignment = plan.get("module_workers")
     require(isinstance(assignment, dict) and set(assignment) == set(inventory["modules"]),

@@ -11,28 +11,32 @@ import {
   toStatementStatus,
 } from "./adapters";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
+import { CostLinesView, DiagnosticsView, FinancingView, RevenueView, RunsView, TrustView } from "./ux040506Views";
 import type { InputsPayload, StatementsPayload, WorkspacePayload } from "./types";
 
-type Section = "overview" | "inputs" | "statements" | "results" | "gated";
+type Section = "overview" | "inputs" | "statements" | "results" | "financing" | "diagnostics" | "trust" | "gated";
 
-// Harvested ModelNav labels → canonical React sections.  Design modules whose
-// canonical backend admission is not yet verified stay visibly gated (D4).
+// Harvested ModelNav labels → canonical React sections.  UX-04/05/06 activate
+// financing, model checks (diagnostics) and trust over canonical projections;
+// scenarios and analysis stay visibly gated until their backend admission is
+// verified for the React workspace (D4 discipline retained).
 const NAV_TO_SECTION: Record<string, Section> = {
   inputs: "inputs",
   statements: "statements",
   results: "results",
-  financing: "gated",
+  financing: "financing",
   scenarios: "gated",
   analysis: "gated",
-  checks: "gated",
-  trust: "gated",
+  checks: "diagnostics",
+  trust: "trust",
   overview: "overview",
 };
 const SECTION_LABELS: Record<string, string> = {
   overview: "Overview", inputs: "Inputs", statements: "Statements", results: "Results",
+  financing: "Financing", diagnostics: "Model checks", trust: "Trust",
 };
 
-const SECTION_IDS: Section[] = ["overview", "inputs", "statements", "results"];
+const SECTION_IDS: Section[] = ["overview", "inputs", "statements", "results", "financing", "diagnostics", "trust"];
 
 function sectionFromHash(): Section {
   const raw = window.location.hash.replace("#", "");
@@ -250,18 +254,22 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
           <ModelNav active={SECTION_LABELS[section] ?? "Inputs"} onSectionNavigate={(id) => navigate(NAV_TO_SECTION[id] ?? "overview")} />
         </div>
         <p className="rx-note">
-          Run action: the canonical Run stays in the{" "}
-          <a href={`${legacyUrl}`}>legacy workbook</a> — the React workspace never runs
-          the model and saving never triggers one.
+          Run action: the canonical Run is available in the Results section (it posts to the
+          existing <code>/v2/workbook/run</code> route). Saving never triggers a Run.
         </p>
         {section === "overview" && <StatusRow workspace={workspace} />}
         {section === "inputs" && (
           inputs
             ? <>
               <CanonicalInputGrid payload={inputs} busy={busy} onSave={saveCells} onRefresh={refreshAll} />
+              <CostLinesView project={project} />
+              <RevenueView project={project} />
             </>
             : <p className="rx-boot-loading" role="status">Loading the canonical input grid…</p>
         )}
+        {section === "financing" && <FinancingView project={project} />}
+        {section === "diagnostics" && <DiagnosticsView project={project} />}
+        {section === "trust" && <TrustView project={project} />}
         {section === "statements" && (
           statements
             ? <>
@@ -300,12 +308,18 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
                 statementSnapshot={toStatementSnapshot(statements)}
                 statementStatus={toStatementStatus(statements)}
               />
+              <RunsView
+                project={project}
+                contentHash={workspace.workbook.composite_hash}
+                workbookVersion={workspace.workbook.version}
+                onRan={refreshAll}
+              />
             </div>
             : <p className="rx-boot-loading" role="status">Loading the persisted results…</p>
         )}
         <footer className="rx-footer">
           <p className="rx-note">
-            UX-02 integrated React workbook over the canonical FINCO Model authorities.
+            UX-02..06 integrated React workbook over the canonical FINCO Model authorities.
             The legacy Jinja2/HTMX workbook remains the default experience.
           </p>
         </footer>

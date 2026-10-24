@@ -7,7 +7,7 @@ import sys
 
 from tools.ci_v3_schema import (
     ContractError, DOMAINS, SCHEMA, check_seal, integer, read_json, require,
-    seal, validate_inventory, validate_plan, validate_policy, write_json,
+    seal, validate_inventory, validate_plan, validate_policy, write_json, worker_count,
 )
 
 
@@ -22,7 +22,7 @@ def plan_partitions(inventory, policy, weights, workers=3, groups=None):
             "missing/foreign module weights; no implicit default")
     for value in measured.values():
         integer(value, "module milliseconds")
-    require(type(workers) is int and workers in (2, 3, 4), "only 2/3/4 workers supported")
+    worker_count(workers)
     names = ["worker-%d" % i for i in range(workers)]
     loads = dict.fromkeys(names, 0)
     assigned = {}
@@ -88,7 +88,7 @@ def main(argv=None):
     parser.add_argument("--inventory", required=True)
     parser.add_argument("--policy", required=True)
     parser.add_argument("--weights", required=True)
-    parser.add_argument("--workers", type=int, choices=(2, 3, 4), default=3)
+    parser.add_argument("--workers", type=int, choices=range(2, 13), default=3)
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     try:
