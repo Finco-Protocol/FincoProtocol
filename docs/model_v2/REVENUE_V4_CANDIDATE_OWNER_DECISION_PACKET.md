@@ -68,8 +68,8 @@ Units are pinned (MW × declared month-hours = MWh). Owner decisions:
 
 The released production authorities fail closed on negative prices. In the
 candidate: MARKET_FLOOR floors a negative market price to the (non-negative)
-floor; MARKET_CAP and REVENUE_SHARING pass a negative market price through
-unchanged. Owner must decide, before any release: (a) may a negative market
+floor; MARKET_CAP passes a negative market price through unchanged
+(REVENUE_SHARING is unsupported, see D-10). Owner must decide, before any release: (a) may a negative market
 price reach settlement at all (this is exactly the D-01 policy), and (b) if
 yes, does a floor mode override the NPH policy or yield to it? The candidate
 does NOT chain the two mechanisms.
@@ -85,8 +85,7 @@ pro-rated (currently they never are).
 
 Released PPA-01 order: indexation → floor/cap → one contractual quantization
 → revenue. Where does the RTM fee (and its escalation) enter? Candidate
-default ordering implemented: price resolution (incl. sharing split) → RTM
-fee → net. Owner decides the authoritative order and whether the fee is
+default ordering implemented: price resolution → RTM fee → net. Owner decides the authoritative order and whether the fee is
 in/out of any contractual rounding.
 
 ## D-08 — Fee exceeding gross revenue
@@ -102,6 +101,41 @@ Save vs require explicit merchant/curtailment stream vs keep as-is). It
 interacts with D-01/D-02: a fixed-MWh contract on a book whose shares do not
 cover 100% of production changes the unallocated-energy question. Recorded
 here for one combined owner session; no code in this candidate.
+
+## D-10 — Revenue Sharing formula (OPEN; mechanism currently UNSUPPORTED)
+
+An earlier draft of this candidate resolved REVENUE_SHARING as
+`market_price × project_share`, i.e. a participation in *market revenue*. The
+Harvest V4 reference instead describes a seller share related to the
+*difference between the contractual price and the market price*. These are
+different financial contracts and the candidate must not present either as
+accepted parity. Therefore `REVENUE_SHARING` is recognised but **UNSUPPORTED**:
+it fails closed (`REVENUE_V4_UNSUPPORTED`) at rule validation, stream and book
+parsing, serialization and price resolution, and produces no number.
+
+Owner must define: the exact sharing formula (which price is the reference,
+sign and direction of the difference, whether it applies only above/below the
+contract price), the share's basis (price vs revenue vs volume), its interplay
+with MARKET_FLOOR/CAP (D-05), and the rounding order (D-07). Only after an
+exact-content decision and independent review may a mechanism be introduced.
+
+## Correction D (PR #363) — fail-closed hardening, no policy change
+
+Documented here for the reviewer; none of D-01..D-09 is decided or altered:
+- REVENUE_SHARING unsupported (D-10 above); `project_share` is rejected in
+  every supported price mode.
+- `parse_route_to_market`/`parse_stream_candidate` apply defaults
+  (`escalation_rate`=0, `escalation_timing`=NO_ESCALATION, `source_ref`="")
+  only when the key is absent; explicit empty strings, booleans or null are
+  rejected instead of repaired.
+- `parse_candidate` requires the exact `_schema`, `schema_version` (integer
+  1) and a recognised `activation` marker; markers are descriptive and can
+  never enable the package.
+- `resolve_market_mode_price`: missing evidence (`None`) → `None`
+  (UNAVAILABLE); malformed evidence (NaN, ±Infinity, booleans, other types)
+  → `REVENUE_V4_VALUE`, for every price mode including FIXED. The negative
+  bucket price in `apply_negative_price_policy` now rejects booleans like
+  every other numeric input.
 
 ## Required approvals for ANY release path
 

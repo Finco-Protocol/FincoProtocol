@@ -16,8 +16,9 @@ Coverage:
     (incl. zero-hour periods, residual assignment, crossing-COD zero
     periods), MONTHLY_MW_SHAPE conversion + period aggregation (missing
     month, double-claimed month)
-  - price modes: FIXED / MARKET_FLOOR / MARKET_CAP / FLOOR_AND_CAP /
-    REVENUE_SHARING (exact Decimal), missing market evidence -> None
+  - price modes: FIXED / MARKET_FLOOR / MARKET_CAP / FLOOR_AND_CAP,
+    REVENUE_SHARING unsupported (fail closed everywhere), missing market
+    evidence -> None, malformed market evidence -> typed error
   - route-to-market: EUR/MWh vs percent, up-only escalation (negative
     rate fails closed), exact review-month counting, fee-exceeds-revenue
     fail closed
@@ -67,6 +68,11 @@ def released(monkeypatch):
     monkeypatch.setattr(contracts, "ACTIVATION_ENABLED", True)
     monkeypatch.setattr(pure, "ACTIVATION_ENABLED", True)
     yield
+
+
+#: Candidate book identity markers a hand-written payload must carry.
+IDENT = {"_schema": "finco.revenue-v4-candidate", "schema_version": 1,
+         "activation": "RELEASE_CLOSED"}
 
 
 # ── Release closure ──────────────────────────────────────────────────────────
@@ -178,9 +184,14 @@ class TestFailClosedParsing:
         with pytest.raises(ValueError, match="at least 0.0"):
             parse_price_mode({"mode": "FIXED", "fixed_price_eur_mwh": -5.0})
 
-    def test_revenue_share_bounds(self, released):
-        with pytest.raises(ValueError, match="at most 1.0"):
-            parse_price_mode({"mode": "REVENUE_SHARING", "project_share": 1.2})
+    def test_revenue_sharing_is_unsupported_not_validated_as_a_mechanism(self, released):
+        """Any REVENUE_SHARING payload fails closed as UNSUPPORTED, including
+        otherwise well-formed ones; its bounds are never the question."""
+        for raw in ({"mode": "REVENUE_SHARING", "project_share": 0.7},
+                    {"mode": "REVENUE_SHARING", "project_share": 1.2},
+                    {"mode": "REVENUE_SHARING"}):
+            with pytest.raises(ValueError, match="REVENUE_V4_UNSUPPORTED.*D-10"):
+                parse_price_mode(raw)
 
     def test_negative_escalation_rejected_up_only(self, released):
         with pytest.raises(ValueError, match="at least 0.0"):
@@ -229,7 +240,7 @@ class TestFailClosedParsing:
             parse_stream_candidate({"stream_id": "s1"})
 
     def test_duplicate_stream_ids_rejected(self, released):
-        raw = {"streams": [
+        raw = {**IDENT, "streams": [
             {"stream_id": "s1", "price_mode": {"mode": "FIXED", "fixed_price_eur_mwh": 1.0}},
             {"stream_id": "s1", "price_mode": {"mode": "FIXED", "fixed_price_eur_mwh": 2.0}},
         ]}
@@ -237,7 +248,7 @@ class TestFailClosedParsing:
             parse_candidate(raw)
 
     def test_stream_level_nph_must_target_own_stream(self, released):
-        raw = {"streams": [{"stream_id": "s1",
+        raw = {**IDENT, "streams": [{"stream_id": "s1",
                             "negative_price_hours": {"scope": "SINGLE_STREAM",
                                                      "action": "CURTAIL",
                                                      "stream_id": "s2"}}]}
@@ -245,7 +256,7 @@ class TestFailClosedParsing:
             parse_candidate(raw)
 
     def test_plant_and_stream_nph_policies_cannot_combine(self, released):
-        raw = {"streams": [{"stream_id": "s1",
+        raw = {**IDENT, "streams": [{"stream_id": "s1",
                             "negative_price_hours": {"scope": "SINGLE_STREAM",
                                                      "action": "CURTAIL",
                                                      "stream_id": "s1"}}],
@@ -256,7 +267,7 @@ class TestFailClosedParsing:
 
     def test_empty_book_rejected(self, released):
         with pytest.raises(ValueError, match="non-empty"):
-            parse_candidate({"streams": []})
+            parse_candidate({**IDENT, "streams": []})
 
 
 # ── Negative price policies (math) ───────────────────────────────────────────
@@ -425,10 +436,14 @@ class TestPriceModes:
     def test_fixed_ignores_market(self, released):
         rule = PriceModeRule(mode="FIXED", fixed_price_eur_mwh=42.0)
         assert resolve_market_mode_price(rule, 100.0) == Decimal("42.0")
-        # FIXED needs no market evidence at all — malformed market data
-        # cannot disturb a fixed price
-        assert resolve_market_mode_price(rule, float("nan")) == Decimal("42.0")
-        assert resolve_market_mode_price(rule, float("inf")) == Decimal("42.0")
+        # FIXED needs no market evidence at all: a MISSING observation is fine
+        assert resolve_market_mode_price(rule, None) == Decimal("42.0")
+
+    def test_fixed_does_not_hide_malformed_market_evidence(self, released):
+        rule = PriceModeRule(mode="FIXED", fixed_price_eur_mwh=42.0)
+        for bad in (float("nan"), float("inf"), True, "banana"):
+            with pytest.raises(ValueError, match="REVENUE_V4_VALUE"):
+                resolve_market_mode_price(rule, bad)
 
     def test_market_floor_lifts_low_prices(self, released):
         rule = PriceModeRule(mode="MARKET_FLOOR", floor_eur_mwh=20.0)
@@ -451,17 +466,19 @@ class TestPriceModes:
         assert resolve_market_mode_price(rule, 50.0) == Decimal("50")
         assert resolve_market_mode_price(rule, 120.0) == Decimal("80")
 
-    def test_revenue_sharing_exact_decimal_split(self, released):
-        rule = PriceModeRule(mode="REVENUE_SHARING", project_share=0.7)
-        assert resolve_market_mode_price(rule, 100.0) == Decimal("70.000000")
-        assert resolve_market_mode_price(rule, 33.333333) == \
-            (Decimal("33.333333") * Decimal("0.7")).quantize(Decimal("0.000001"))
-
     def test_missing_market_evidence_is_none_never_zero(self, released):
+        for mode, kw in (("MARKET_FLOOR", {"floor_eur_mwh": 20.0}),
+                         ("MARKET_CAP", {"cap_eur_mwh": 80.0}),
+                         ("FLOOR_AND_CAP", {"floor_eur_mwh": 20.0,
+                                            "cap_eur_mwh": 80.0})):
+            assert resolve_market_mode_price(PriceModeRule(mode=mode, **kw), None) is None
+
+    def test_malformed_market_evidence_fails_closed_never_missing(self, released):
         rule = PriceModeRule(mode="MARKET_FLOOR", floor_eur_mwh=20.0)
-        assert resolve_market_mode_price(rule, float("nan")) is None
-        assert resolve_market_mode_price(rule, float("inf")) is None
-        assert resolve_market_mode_price(rule, "banana") is None
+        for bad in (float("nan"), float("inf"), float("-inf"), True, False,
+                    "banana", "10", [10.0], Decimal("10")):
+            with pytest.raises(ValueError, match="REVENUE_V4_VALUE"):
+                resolve_market_mode_price(rule, bad)
 
     def test_cap_mode_passes_negative_market_through_typed(self, released):
         """MARKET_CAP without a floor does not invent a price floor; the
@@ -600,6 +617,160 @@ class TestCompositionAndSerialization:
         monkeypatch.setattr(contracts, "ACTIVATION_ENABLED", True)
         marker = self._book().to_payload()["activation"]
         assert marker == "ENABLED_FOR_ISOLATED_ACCEPTANCE_ONLY"
+
+
+# ── Correction D: sharing semantics, fail-closed parsing, identity, evidence ─
+
+
+class TestRevenueSharingIsNotSilentlyAccepted:
+    """The earlier ``market_price x project_share`` arithmetic is a market
+    revenue participation; Harvest V4 describes sharing of the contractual-vs-
+    market DIFFERENCE. No formula is approved, so no result may be produced."""
+
+    SHARING = {"mode": "REVENUE_SHARING", "project_share": 0.7}
+
+    def test_rule_validation_rejects_sharing(self, released):
+        with pytest.raises(ValueError, match="REVENUE_V4_UNSUPPORTED"):
+            PriceModeRule(mode="REVENUE_SHARING", project_share=0.7).validate()
+
+    def test_resolution_never_returns_a_sharing_number(self, released):
+        rule = PriceModeRule(mode="REVENUE_SHARING", project_share=0.7)
+        for market in (100.0, -3.0, 0.0, None, float("nan")):
+            with pytest.raises(ValueError):
+                resolve_market_mode_price(rule, market)
+
+    def test_stream_and_book_parsing_reject_sharing(self, released):
+        stream = {"stream_id": "s1", "price_mode": self.SHARING}
+        with pytest.raises(ValueError, match="REVENUE_V4_UNSUPPORTED"):
+            parse_stream_candidate(stream)
+        with pytest.raises(ValueError, match="REVENUE_V4_UNSUPPORTED"):
+            parse_candidate({**IDENT, "streams": [stream]})
+
+    def test_a_book_holding_a_sharing_rule_cannot_be_serialized(self, released):
+        book = AdvancedRevenueV4Candidate(streams=(StreamCandidate(
+            stream_id="s1",
+            price_mode=PriceModeRule(mode="REVENUE_SHARING", project_share=0.7)),))
+        with pytest.raises(ValueError, match="REVENUE_V4_UNSUPPORTED"):
+            book.canonical_json()
+
+    def test_project_share_is_rejected_in_every_supported_mode(self, released):
+        for raw in ({"mode": "FIXED", "fixed_price_eur_mwh": 1.0},
+                    {"mode": "MARKET_FLOOR", "floor_eur_mwh": 1.0},
+                    {"mode": "MARKET_CAP", "cap_eur_mwh": 1.0},
+                    {"mode": "FLOOR_AND_CAP", "floor_eur_mwh": 1.0, "cap_eur_mwh": 2.0}):
+            with pytest.raises(ValueError, match="must not carry"):
+                parse_price_mode({**raw, "project_share": 0.7})
+
+    def test_the_decision_packet_records_the_open_sharing_formula(self):
+        import pathlib
+        packet = pathlib.Path("docs/model_v2/REVENUE_V4_CANDIDATE_OWNER_DECISION_PACKET.md").read_text(encoding="utf-8")
+        assert "D-10" in packet and "REVENUE_SHARING" in packet
+
+
+class TestParsingDoesNotRepairMalformedValues:
+    BASE = {"fee_basis": "EUR_PER_MWH", "fee_value": 1.0}
+
+    def test_absent_optional_fields_take_the_documented_defaults(self, released):
+        fee = parse_route_to_market(dict(self.BASE))
+        assert fee.escalation_rate == 0.0 and fee.escalation_timing == "NO_ESCALATION"
+
+    def test_explicit_zero_escalation_rate_is_legitimate(self, released):
+        assert parse_route_to_market({**self.BASE, "escalation_rate": 0}).escalation_rate == 0.0
+
+    @pytest.mark.parametrize("bad", ["", False, True, None, "0.1", [], {}])
+    def test_malformed_escalation_rate_is_rejected(self, released, bad):
+        with pytest.raises(ValueError, match="REVENUE_V4_VALUE"):
+            parse_route_to_market({**self.BASE, "escalation_rate": bad})
+
+    @pytest.mark.parametrize("bad", ["", False, 0, None, "annual_review", ["ANNUAL_REVIEW"]])
+    def test_malformed_escalation_timing_is_rejected(self, released, bad):
+        with pytest.raises(ValueError, match="REVENUE_V4_UNSUPPORTED"):
+            parse_route_to_market({**self.BASE, "escalation_timing": bad})
+
+    def test_source_ref_default_only_when_absent(self, released):
+        stream = {"stream_id": "s1", "price_mode": {"mode": "FIXED", "fixed_price_eur_mwh": 1.0}}
+        assert parse_stream_candidate(dict(stream)).source_ref == ""
+        assert parse_stream_candidate({**stream, "source_ref": ""}).source_ref == ""
+        assert parse_stream_candidate({**stream, "source_ref": "doc-1"}).source_ref == "doc-1"
+
+    @pytest.mark.parametrize("bad", [0, False, True, None, [], {}, 5])
+    def test_malformed_source_ref_is_rejected_not_defaulted(self, released, bad):
+        stream = {"stream_id": "s1", "source_ref": bad,
+                  "price_mode": {"mode": "FIXED", "fixed_price_eur_mwh": 1.0}}
+        with pytest.raises(ValueError, match="source_ref must be a string"):
+            parse_stream_candidate(stream)
+
+
+class TestCandidateSchemaIdentity:
+    def _payload(self):
+        return AdvancedRevenueV4Candidate(streams=(StreamCandidate(
+            stream_id="s1", price_mode=PriceModeRule(
+                mode="FIXED", fixed_price_eur_mwh=1.0)),)).to_payload()
+
+    def test_valid_serialized_identity_is_accepted(self, released):
+        assert parse_candidate(self._payload()).canonical_json()
+        closed = {**self._payload(), "activation": "RELEASE_CLOSED"}
+        assert parse_candidate(closed).canonical_json()
+
+    @pytest.mark.parametrize("key", ["_schema", "schema_version", "activation"])
+    def test_missing_identity_marker_is_rejected(self, released, key):
+        payload = self._payload()
+        del payload[key]
+        with pytest.raises(ValueError, match="REVENUE_V4_(UNSUPPORTED|SCHEMA)"):
+            parse_candidate(payload)
+
+    @pytest.mark.parametrize("bad", [0, 2, -1, True, False, 1.0, "1", None, [1]])
+    def test_unsupported_schema_version_is_rejected(self, released, bad):
+        payload = {**self._payload(), "schema_version": bad}
+        with pytest.raises(ValueError, match="schema_version"):
+            parse_candidate(payload)
+
+    @pytest.mark.parametrize("bad", ["ACTIVE", "ENABLED", "PRODUCTION", "released",
+                                     "", None, True, 1, ["RELEASE_CLOSED"]])
+    def test_misleading_activation_marker_is_rejected(self, released, bad):
+        payload = {**self._payload(), "activation": bad}
+        with pytest.raises(ValueError, match="activation marker"):
+            parse_candidate(payload)
+
+    def test_isolated_enablement_claim_requires_an_open_gate(self, released, monkeypatch):
+        import app.revenue_v4_candidate.contracts as contracts
+        payload = {**self._payload(), "activation": "ENABLED_FOR_ISOLATED_ACCEPTANCE_ONLY"}
+        monkeypatch.setattr(contracts, "ACTIVATION_ENABLED", False)
+        with pytest.raises(ValueError, match="misleading activation marker"):
+            contracts._require_candidate_identity(payload)
+
+    def test_a_payload_marker_can_never_open_the_gate(self):
+        """No fixture: the gate is closed and an ENABLED-claiming payload still
+        cannot be parsed, so a marker is descriptive and never an activation."""
+        payload = {**TestCandidateSchemaIdentity._payload(None),
+                   "activation": "ENABLED_FOR_ISOLATED_ACCEPTANCE_ONLY"}
+        with pytest.raises(ValueError, match="REVENUE_V4_RELEASE_CLOSED"):
+            parse_candidate(payload)
+        assert ACTIVATION_ENABLED is False
+
+
+class TestMissingVersusMalformedEvidence:
+    def test_bucket_inputs_reject_booleans_consistently(self, released):
+        policy = NegativePriceHoursPolicy(scope="PLANT", action="NO_SETTLEMENT")
+        good = dict(negative_mwh=10.0, negative_price_eur_mwh=-1.0,
+                    nonnegative_mwh=90.0, nonnegative_price_eur_mwh=40.0)
+        for field in good:
+            for bad in (True, False, "1", None):
+                with pytest.raises(ValueError, match="REVENUE_V4_VALUE"):
+                    apply_negative_price_policy(policy, **{**good, field: bad})
+
+    def test_bucket_negative_price_must_not_be_positive_or_non_finite(self, released):
+        policy = NegativePriceHoursPolicy(scope="PLANT", action="CURTAIL")
+        for bad in (1.0, float("nan"), float("-inf")):
+            with pytest.raises(ValueError, match="REVENUE_V4_VALUE"):
+                apply_negative_price_policy(
+                    policy, negative_mwh=1.0, negative_price_eur_mwh=bad,
+                    nonnegative_mwh=1.0, nonnegative_price_eur_mwh=1.0)
+
+    def test_zero_is_valid_evidence_not_missing(self, released):
+        rule = PriceModeRule(mode="MARKET_FLOOR", floor_eur_mwh=0.0)
+        assert resolve_market_mode_price(rule, 0.0) == Decimal("0")
+        assert resolve_market_mode_price(rule, 0) == Decimal("0")
 
 
 # ── Isolation: the candidate is invisible to the production path ─────────────

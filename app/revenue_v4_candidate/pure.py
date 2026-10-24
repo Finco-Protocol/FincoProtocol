@@ -21,7 +21,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Mapping, Optional, Sequence, Tuple
 
 from app.revenue_v4_candidate.contracts import (
@@ -110,7 +110,9 @@ def apply_negative_price_policy(
     if isinstance(nonnegative_mwh, bool) or not isinstance(nonnegative_mwh, (int, float)) \
             or not math.isfinite(float(nonnegative_mwh)) or nonnegative_mwh < 0:
         raise ValueError("REVENUE_V4_VALUE: nonnegative_mwh must be finite non-negative")
-    if not math.isfinite(float(negative_price_eur_mwh)) \
+    if isinstance(negative_price_eur_mwh, bool) \
+            or not isinstance(negative_price_eur_mwh, (int, float)) \
+            or not math.isfinite(float(negative_price_eur_mwh)) \
             or negative_price_eur_mwh > 0:
         raise ValueError(
             "REVENUE_V4_VALUE: negative_price_eur_mwh must be finite and "
@@ -284,28 +286,47 @@ def aggregate_monthly_to_periods(
 
 def resolve_market_mode_price(
     rule: PriceModeRule,
-    market_price_eur_mwh: float,
+    market_price_eur_mwh: Optional[float],
 ) -> Optional[Decimal]:
     """Resolve one candidate price for one market observation.
 
-    Returns the effective EUR/MWh price as an exact Decimal, or ``None``
-    when the market evidence itself is missing (MISSING != ZERO). The
-    released non-negative rule is enforced for the RESULT of floor modes:
-    floors/caps are non-negative by contract validation, so a floored
-    result is non-negative; MARKET_CAP and REVENUE_SHARING pass a negative
-    market price through unchanged (owner decision D-05 covers whether a
-    negative market price may reach settlement at all — the released
-    production authorities still fail closed on negative prices, and this
-    candidate never feeds them).
+    Returns the effective EUR/MWh price as an exact Decimal.
+
+    Evidence handling is typed and fail-closed:
+
+    - ``None`` is genuinely MISSING market evidence: the result is
+      ``None`` (UNAVAILABLE), never zero.
+    - Any other supplied value must be a finite, non-boolean ``int`` or
+      ``float``. NaN, +/-Infinity, booleans, strings and other types are
+      MALFORMED evidence and raise ``REVENUE_V4_VALUE``; they are never
+      treated as missing and never repaired. This check precedes every
+      mode, so a FIXED price cannot hide a corrupt market feed.
+
+    The released non-negative rule is enforced for the RESULT of floor
+    modes: floors/caps are non-negative by contract validation, so a
+    floored result is non-negative; MARKET_CAP passes a negative market
+    price through unchanged (owner decision D-05 covers whether a negative
+    market price may reach settlement at all — the released production
+    authorities still fail closed on negative prices, and this candidate
+    never feeds them).
+
+    REVENUE_SHARING is unsupported: ``rule.validate()`` rejects it with
+    ``REVENUE_V4_UNSUPPORTED`` (decision packet D-10), so no sharing
+    result is ever produced.
     """
     require_release()
     rule.validate()
+    if market_price_eur_mwh is not None and (
+            isinstance(market_price_eur_mwh, bool)
+            or not isinstance(market_price_eur_mwh, (int, float))
+            or not math.isfinite(float(market_price_eur_mwh))):
+        raise ValueError(
+            "REVENUE_V4_VALUE: market_price_eur_mwh must be a finite number "
+            "or None (malformed market evidence is never treated as missing)")
     if rule.mode == "FIXED":
-        # a FIXED price needs no market evidence at all
+        # a FIXED price needs no market evidence (and a missing one is fine)
         return Decimal(str(rule.fixed_price_eur_mwh))
-    if isinstance(market_price_eur_mwh, bool) \
-            or not isinstance(market_price_eur_mwh, (int, float)) \
-            or not math.isfinite(float(market_price_eur_mwh)):
+    if market_price_eur_mwh is None:
         return None
     market = Decimal(str(float(market_price_eur_mwh)))
     if rule.mode == "MARKET_FLOOR":
@@ -315,11 +336,9 @@ def resolve_market_mode_price(
     if rule.mode == "FLOOR_AND_CAP":
         bounded = max(market, Decimal(str(rule.floor_eur_mwh)))
         return min(bounded, Decimal(str(rule.cap_eur_mwh)))
-    # REVENUE_SHARING: exact Decimal split, HALF_UP at 6 dp only for
-    # reporting-friendliness of the split itself (order vs the released
-    # PPA-01 rounding authority is decision packet D-07).
-    raw = market * Decimal(str(rule.project_share))
-    return raw.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    raise ValueError(
+        f"REVENUE_V4_UNSUPPORTED: price_mode {rule.mode!r} has no supported "
+        "resolution")
 
 
 # ── Route-to-market fee ──────────────────────────────────────────────────────

@@ -16,9 +16,11 @@ Scope (Harvest V4 observed reference behaviour — NOT automatic approval):
 2. PPA contracted-volume modes beyond the released share-of-output:
    FIXED_ANNUAL_MWH and MONTHLY_MW_SHAPE (typed, with explicit units,
    declared hours and UTC-only shape timezone in V1).
-3. Merchant price modes: MARKET_FLOOR / MARKET_CAP / FLOOR_AND_CAP and
-   REVENUE_SHARING (the released runtime has no merchant floor/cap and no
-   sharing concept).
+3. Merchant price modes: MARKET_FLOOR / MARKET_CAP / FLOOR_AND_CAP (the
+   released runtime has no merchant floor/cap). REVENUE_SHARING is
+   recognised but UNSUPPORTED: the harvest describes a seller share of the
+   contractual-vs-market price difference, whose formula the Financial
+   Owner has not defined (decision packet D-10). It is never evaluated.
 4. Route-to-market fee with up-only annual escalation and an exact review
    month.
 
@@ -62,6 +64,9 @@ NPH_ACTIONS = ("SETTLE_NORMALLY", "NO_SETTLEMENT", "CURTAIL")
 VOLUME_MODES = ("SHARE_OF_OUTPUT", "FIXED_ANNUAL_MWH", "MONTHLY_MW_SHAPE")
 PRICE_MODES = ("FIXED", "MARKET_FLOOR", "MARKET_CAP", "FLOOR_AND_CAP",
                "REVENUE_SHARING")
+#: Recognised vocabulary members that carry NO supported financial meaning.
+#: They fail closed at every validation and calculation boundary.
+UNSUPPORTED_PRICE_MODES = ("REVENUE_SHARING",)
 FEE_BASES = ("EUR_PER_MWH", "PERCENT_OF_REVENUE")
 ESCALATION_TIMINGS = ("NO_ESCALATION", "ANNUAL_REVIEW")
 
@@ -212,8 +217,16 @@ class PriceModeRule:
     FLOOR_AND_CAP resolve the stream price from the market price with an
     explicit floor and/or cap (both non-negative in V1 — a negative floor
     would reopen the negative-price question and is OWNER DECISION
-    REQUIRED, D-05). REVENUE_SHARING splits the market price with the
-    offtaker: the project receives ``market_price * project_share``.
+    REQUIRED, D-05).
+
+    REVENUE_SHARING is UNSUPPORTED and fails closed. An earlier draft
+    computed ``market_price * project_share`` (a participation in market
+    revenue). The Harvest V4 reference instead describes a seller share
+    related to the DIFFERENCE between the contractual and the market
+    price. These are different financial contracts, no formula for the
+    latter has been approved, and the candidate must not present either
+    as accepted parity (decision packet D-10). ``project_share`` is kept
+    only so the closed key set is stable; it is rejected in every mode.
 
     The released PPA-contract floor/cap authority
     (``PPAParams.ppa_price_floor/cap``) is a DIFFERENT mechanism (contract
@@ -230,6 +243,12 @@ class PriceModeRule:
 
     def validate(self) -> None:
         _choice(self.mode, "price_mode.mode", PRICE_MODES)
+        if self.mode in UNSUPPORTED_PRICE_MODES:
+            raise ValueError(
+                f"REVENUE_V4_UNSUPPORTED: price_mode {self.mode} is not "
+                "supported; the sharing formula (contractual-vs-market "
+                "difference) is OWNER DECISION REQUIRED (decision packet "
+                "D-10) and no result is produced")
         if self.mode == "FIXED":
             if self.fixed_price_eur_mwh is None:
                 raise ValueError(
@@ -252,19 +271,11 @@ class PriceModeRule:
         if self.mode == "FLOOR_AND_CAP" and self.floor_eur_mwh > self.cap_eur_mwh:
             raise ValueError(
                 "REVENUE_V4_VALUE: price_mode floor exceeds cap")
-        if self.mode == "REVENUE_SHARING":
-            if self.project_share is None:
-                raise ValueError(
-                    "REVENUE_V4_SCHEMA: REVENUE_SHARING requires "
-                    "project_share")
-            _num(self.project_share, "price_mode.project_share",
-                 minimum=0.0, maximum=1.0)
         allowed = {
             "FIXED": {"fixed_price_eur_mwh"},
             "MARKET_FLOOR": {"floor_eur_mwh"},
             "MARKET_CAP": {"cap_eur_mwh"},
             "FLOOR_AND_CAP": {"floor_eur_mwh", "cap_eur_mwh"},
-            "REVENUE_SHARING": {"project_share"},
         }[self.mode]
         self._no_extras(require=allowed)
 
@@ -342,6 +353,9 @@ class StreamCandidate:
     def validate(self) -> None:
         if not isinstance(self.stream_id, str) or not self.stream_id.strip():
             raise ValueError("REVENUE_V4_SCHEMA: stream_id is required")
+        if not isinstance(self.source_ref, str):
+            raise ValueError(
+                "REVENUE_V4_SCHEMA: source_ref must be a string")
         if len(self.stream_id) > 200 or len(self.source_ref) > 200:
             raise ValueError(
                 "REVENUE_V4_IDENTITY: stream_id/source_ref must be at most "
@@ -440,10 +454,10 @@ class AdvancedRevenueV4Candidate:
                     "review_month": r.review_month}
 
         return {
-            "_schema": "finco.revenue-v4-candidate",
-            "schema_version": 1,
-            "activation": "RELEASE_CLOSED" if not ACTIVATION_ENABLED
-            else "ENABLED_FOR_ISOLATED_ACCEPTANCE_ONLY",
+            "_schema": _CANDIDATE_SCHEMA,
+            "schema_version": _SCHEMA_VERSION,
+            "activation": _ACTIVATION_CLOSED if not ACTIVATION_ENABLED
+            else _ACTIVATION_ISOLATED,
             # canonical form is stream-id ordered: the same book serializes
             # to the same bytes regardless of declaration order
             "streams": [
@@ -479,6 +493,9 @@ _STREAM_KEYS = frozenset({"stream_id", "source_ref", "negative_price_hours",
 _BOOK_KEYS = frozenset({"_schema", "schema_version", "activation",
                         "streams", "plant_negative_price_hours"})
 _CANDIDATE_SCHEMA = "finco.revenue-v4-candidate"
+_SCHEMA_VERSION = 1
+_ACTIVATION_CLOSED = "RELEASE_CLOSED"
+_ACTIVATION_ISOLATED = "ENABLED_FOR_ISOLATED_ACCEPTANCE_ONLY"
 
 
 def _object(raw, label: str, keys: frozenset) -> dict:
@@ -494,6 +511,16 @@ def _object(raw, label: str, keys: frozenset) -> dict:
 
 def _optional(raw: dict, key: str):
     return raw.get(key)
+
+
+def _default_if_absent(raw: dict, key: str, default):
+    """Apply a documented default ONLY when the key is genuinely absent.
+
+    An explicitly supplied value (empty string, ``False``, ``0``, ``None``)
+    is passed through unchanged so validation can reject it; a truthiness
+    fallback would silently turn malformed input into a valid default.
+    """
+    return raw[key] if key in raw else default
 
 
 def parse_negative_price_hours(raw) -> NegativePriceHoursPolicy:
@@ -549,9 +576,9 @@ def parse_route_to_market(raw) -> RouteToMarketFee:
     fee = RouteToMarketFee(
         fee_basis=_optional(raw, "fee_basis"),
         fee_value=_optional(raw, "fee_value"),
-        escalation_rate=_optional(raw, "escalation_rate") or 0.0,
-        escalation_timing=_optional(raw, "escalation_timing")
-        or "NO_ESCALATION",
+        escalation_rate=_default_if_absent(raw, "escalation_rate", 0.0),
+        escalation_timing=_default_if_absent(
+            raw, "escalation_timing", "NO_ESCALATION"),
         review_month=_optional(raw, "review_month"),
     )
     fee.validate()
@@ -571,7 +598,7 @@ def parse_stream_candidate(raw) -> StreamCandidate:
     rtm = None if rtm_raw is None else parse_route_to_market(rtm_raw)
     candidate = StreamCandidate(
         stream_id=_optional(raw, "stream_id"),
-        source_ref=_optional(raw, "source_ref") or "",
+        source_ref=_default_if_absent(raw, "source_ref", ""),
         negative_price_hours=nph,
         contracted_volume=vol,
         price_mode=price,
@@ -581,19 +608,46 @@ def parse_stream_candidate(raw) -> StreamCandidate:
     return candidate
 
 
+def _require_candidate_identity(raw: dict) -> None:
+    """Schema, version and activation markers must be present and exact.
+
+    The markers are descriptive only; they can never enable anything. A
+    payload that omits them, carries a foreign schema or version, or
+    claims an activation state this process cannot itself emit is
+    misleading and fails closed.
+    """
+    if "_schema" not in raw or raw["_schema"] != _CANDIDATE_SCHEMA:
+        raise ValueError(
+            f"REVENUE_V4_UNSUPPORTED: candidate _schema "
+            f"{raw.get('_schema')!r} is not {_CANDIDATE_SCHEMA!r}")
+    version = raw.get("schema_version")
+    if type(version) is not int or version != _SCHEMA_VERSION:
+        raise ValueError(
+            f"REVENUE_V4_UNSUPPORTED: candidate schema_version {version!r} "
+            f"is not {_SCHEMA_VERSION}")
+    activation = raw.get("activation")
+    if activation not in (_ACTIVATION_CLOSED, _ACTIVATION_ISOLATED) \
+            or not isinstance(activation, str):
+        raise ValueError(
+            f"REVENUE_V4_SCHEMA: candidate activation marker "
+            f"{activation!r} is not a recognised candidate state")
+    if activation == _ACTIVATION_ISOLATED and not ACTIVATION_ENABLED:
+        raise ValueError(
+            "REVENUE_V4_SCHEMA: candidate claims isolated enablement while "
+            "this process is release-closed (misleading activation marker)")
+
+
 def parse_candidate(raw) -> AdvancedRevenueV4Candidate:
     """Parse and validate a full candidate book payload (fail closed).
 
     Accepts the exact serialized form produced by
-    :meth:`AdvancedRevenueV4Candidate.to_payload`; an unknown ``_schema``
-    fails closed exactly like the released authorities."""
+    :meth:`AdvancedRevenueV4Candidate.to_payload`; a missing or foreign
+    ``_schema``, an unsupported ``schema_version`` or a misleading
+    ``activation`` marker fails closed exactly like the released
+    authorities. No marker can enable anything."""
     require_release()
     raw = _object(raw, "candidate book", _BOOK_KEYS)
-    schema = raw.get("_schema")
-    if schema is not None and schema != _CANDIDATE_SCHEMA:
-        raise ValueError(
-            f"REVENUE_V4_UNSUPPORTED: candidate _schema {schema!r} is not "
-            f"{_CANDIDATE_SCHEMA!r}")
+    _require_candidate_identity(raw)
     streams_raw = raw.get("streams")
     if not isinstance(streams_raw, list) or not streams_raw:
         raise ValueError(
