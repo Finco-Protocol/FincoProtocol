@@ -282,3 +282,94 @@ def test_spawned_and_forked_processes_initialise_or_validate_independently(fresh
     assert proc.exitcode == 0 and recorded == 1 and fk == 1
     connect()                                                 # the parent's record is still valid
     assert len(db._SCHEMA_READY) == 1
+
+
+def test_concurrent_first_connections_run_full_schema_once(fresh_db, monkeypatch):
+    """Readiness and WAL setup are serialised, while returned connections stay independent."""
+    calls = []
+    count_lock = threading.Lock()
+    barrier = threading.Barrier(8)
+    errors = []
+
+    def counted(conn):
+        with count_lock:
+            calls.append(threading.get_ident())
+        REAL_INIT_SCHEMA(conn)
+
+    monkeypatch.setattr(db, "_init_schema", counted)
+
+    def worker():
+        try:
+            barrier.wait(10)
+            for _ in range(5):
+                conn = db.get_connection()
+                assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+                conn.close()
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(60)
+    assert not any(thread.is_alive() for thread in threads)
+    assert errors == []
+    assert len(calls) == 1
+    assert schema(fresh_db) == reference_schema(fresh_db.parent)
+
+
+def test_failed_schema_initialisation_closes_its_connection(fresh_db, monkeypatch):
+    closed = []
+    real_connect = sqlite3.connect
+
+    class Tracked(sqlite3.Connection):
+        def close(self):
+            closed.append(self)
+            return super().close()
+
+    def connect_tracked(*args, **kwargs):
+        return real_connect(*args, **kwargs, factory=Tracked)
+
+    def fail(conn):
+        raise sqlite3.OperationalError("injected original initialisation failure")
+
+    monkeypatch.setattr(sqlite3, "connect", connect_tracked)
+    monkeypatch.setattr(db, "_init_schema", fail)
+    with pytest.raises(sqlite3.OperationalError, match="injected original initialisation failure"):
+        db.get_connection()
+    assert len(closed) == 1 and db._SCHEMA_READY == {}
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        closed[0].execute("SELECT 1")
+
+
+def test_fork_while_parent_initialisation_mutex_is_held_does_not_deadlock(fresh_db):
+    connect()
+    held, release = threading.Event(), threading.Event()
+
+    def hold_parent_lock():
+        with db._SCHEMA_INIT_LOCK:
+            held.set()
+            release.wait(60)
+
+    thread = threading.Thread(target=hold_parent_lock)
+    thread.start()
+    assert held.wait(10)
+    ctx = multiprocessing.get_context("fork")
+    queue = ctx.Queue()
+    proc = ctx.Process(target=_child_connect, args=(str(fresh_db), queue))
+    try:
+        proc.start()
+        # The child must finish before the parent releases the inherited mutex.
+        recorded, foreign_keys = queue.get(timeout=10)
+        proc.join(10)
+        assert proc.exitcode == 0 and recorded == 1 and foreign_keys == 1
+    finally:
+        release.set()
+        thread.join(10)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(10)
+        queue.close()
+        queue.join_thread()
+    assert not thread.is_alive()
