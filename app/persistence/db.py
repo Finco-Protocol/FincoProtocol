@@ -15,7 +15,8 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 
 def get_connection():
-    """Return a fresh SQLite connection with schema ensured."""
+    """Return a fresh SQLite connection with schema ensured (full idempotent routine once per file and schema
+    version per process; see ``_SCHEMA_READY``)."""
     import sqlite3
 
     conn = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
@@ -23,8 +24,43 @@ def get_connection():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")
+    identity = _schema_identity(conn, DB_PATH)
+    if identity is not None and _SCHEMA_READY.get(identity[0]) == identity[1]:
+        # The full idempotent schema already completed for this exact file at this exact schema version in this
+        # process: only the per-connection data repair runs (unchanged statement, unchanged order of effects).
+        _backfill_reference_roles(conn)
+        conn.commit()
+        return conn
     _init_schema(conn)
+    if identity is not None:
+        after = _schema_identity(conn, DB_PATH)
+        if after is not None and after[0] == identity[0]:
+            _SCHEMA_READY[after[0]] = after[1]     # recorded only after a SUCCESSFUL full initialisation
     return conn
+
+
+# Process-local record of databases whose full idempotent schema completed: {(abspath, st_dev, st_ino): schema_version}.
+# Valid only while SQLite's own schema cookie is unchanged: any schema change by any process or connection (a migration,
+# a restored or recreated file, even with a reused inode) changes either the file identity or PRAGMA schema_version,
+# and the next connection runs the full routine again. In-memory, temporary and URI databases are never recorded.
+_SCHEMA_READY: dict = {}
+
+
+def _schema_identity(conn, path):
+    """(file identity, schema_version) of a recorded-eligible database, else None (always run the full routine)."""
+    name = str(path or "")
+    if not name or name == ":memory:" or name.startswith("file:"):
+        return None
+    try:
+        st = os.stat(name)
+        version = conn.execute("PRAGMA schema_version").fetchone()[0]
+    except (OSError, ValueError, TypeError, IndexError):
+        return None
+    return (os.path.abspath(name), st.st_dev, st.st_ino), version
+
+
+def _reset_schema_cache_for_tests() -> None:
+    _SCHEMA_READY.clear()
 
 
 def _init_schema(conn):
@@ -285,15 +321,7 @@ def _init_schema(conn):
     # Backfill: only rows already owned by the system reference user get
     # promoted to role='reference'. User-owned factory_template rows are
     # intentionally left untouched — they must not become globally visible.
-    conn.execute(
-        """
-        UPDATE projects
-        SET project_role='reference', is_protected=1
-        WHERE user_id='__reference__'
-          AND template_source IN ('generic_wind_reference','generic_solar_reference','generic_storage_reference','generic_data_center_reference')
-          AND project_role='user_project'
-        """
-    )
+    _backfill_reference_roles(conn)
     _ensure_column(conn, "scenarios", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "scenarios", "full_inputs_json", "TEXT")  # V3-8
     _ensure_column(conn, "scenario_exports", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
@@ -361,6 +389,20 @@ def _init_schema(conn):
         " ON model_run_history(user_id, project_id, ran_at DESC, history_id DESC)"
     )
     conn.commit()
+
+
+def _backfill_reference_roles(conn) -> None:
+    """Per-connection data repair: only rows already owned by the system reference user are promoted to
+    role='reference'. Runs on EVERY connection, exactly as before the schema record existed."""
+    conn.execute(
+        """
+        UPDATE projects
+        SET project_role='reference', is_protected=1
+        WHERE user_id='__reference__'
+          AND template_source IN ('generic_wind_reference','generic_solar_reference','generic_storage_reference','generic_data_center_reference')
+          AND project_role='user_project'
+        """
+    )
 
 
 def _ensure_column(conn, table_name: str, column_name: str, column_sql: str) -> None:
