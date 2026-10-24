@@ -48,5 +48,10 @@ retained sequential execution on subsequent runs.
 This change targets main only. PR #357 overlaps `tests/test_ci_v3_production.py`
 and `app/persistence/db.py`. No Epic branch or UX feature branch is changed.
 A later Epic integration requires separate review after the main correction is
-approved and normally merged. The application edit here only clarifies the
-already merged SQLite lifecycle docstring; no application behavior changes.
+approved and normally merged. The original hosted concurrency test exposed a real `PRAGMA journal_mode=WAL`
+first-open race in the merged SQLite cache. The application correction serialises
+only connection setup/schema-readiness bookkeeping within a process, resets that
+mutex/cache safely after fork, and closes a connection if setup fails. All SQL,
+connection timeouts, financial calculations and original assertions are unchanged.
+The original eight-thread/five-connection test is retained verbatim; additional
+tests cover once-only initialisation, failure cleanup and a held-mutex fork.
