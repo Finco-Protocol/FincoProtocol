@@ -73,6 +73,10 @@ def main():
     args.append("tests")
     started = round((time.perf_counter() - clock) * 1000)
     code = int(pytest.main(args, plugins=[adapter]))
+    ipc = None
+    if request.get('finalize_owned_multiprocessing'):
+        from tools.ci_v3_built_image_child import finalize_multiprocessing
+        ipc = finalize_multiprocessing()
     import multiprocessing
     import threading
     live = [(t.name, t.daemon) for t in threading.enumerate() if t is not threading.main_thread() and t.is_alive()]
@@ -81,8 +85,9 @@ def main():
     write_json(directory / "pytest-return.json", {"code": code, "pytest_started_ms": started,
         "pytest_returned_ms": round((time.perf_counter() - clock) * 1000), "leaks": leaks,
         "threads_observed": [{"name": n, "daemon": d} for n, d in live], "threads_approved_daemon": approved,
+        "owned_multiprocessing_cleanup": ipc,
         "pytest_import_ms": pytest_import_ms, "adapter_import_ms": adapter_import_ms})
-    return code
+    return code if code else (125 if ipc is not None and not ipc['verified'] else 0)
 
 
 if __name__ == "__main__":

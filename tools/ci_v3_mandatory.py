@@ -1,4 +1,4 @@
-"""Dormant required-gate adapter. No active workflow imports or invokes this code.
+"""Required-gate adapter: sequential default and protected parallel activation.
 
 Protected source-specific activation authority is mandatory. Rejected admission
 selects sequential BEFORE work. A selected parallel failure is terminal.
@@ -23,6 +23,17 @@ def activation_check(root):
               '.github/workflows/ci_public_job.yml'}
     require(set(root.get('workflow_files_sha256',{}))==expected
             and activation.get('workflow_files_sha256')==root['workflow_files_sha256'], 'mandatory workflow tree not reviewed')
+    if activation.get('admission_mode') == 'direct-production-v1':
+        require('accepted_pair_proof' not in root and 'accepted_control' not in root,
+                'direct profile must not fabricate hosted pair/control receipts')
+        pin=root['activation_sha256']
+        require(sha(canonical_bytes(activation))==pin,'activation content pin mismatch')
+        result=select_mode(activation,root['direct_admission'],source=root['source'],
+            workflow_sha256=root['workflow_sha256'],controller={'head':root['controller_head'],'tree':root['controller_tree']},
+            root_sha256=pin,expected_root_sha256=pin)
+        require(root['shadow_plugin_profile_sha256']==root['direct_admission']['environment_decision']['worker_plugins_sha256'],
+                'direct worker plugin profile differs')
+        return result
     proof=root['accepted_pair_proof']
     require(root['accepted_control']['root_sha256']==proof['roots_sha256']['control'], 'accepted control differs from accepted hosted pair')
     receipt=proof['transports']['control']['receipts']['control']
@@ -52,6 +63,9 @@ def verify_current_phases(root,bundle,project,received,output,api):
     from tools.ci_v3_phase_compare import compare,control_report
     from tools.ci_v3_pytest_config import semantic_plugin_profile
     from tools.ci_v3_schema import digest
+    if root.get('activation',{}).get('admission_mode') == 'direct-production-v1':
+        from tools.ci_v3_direct import verify_phases
+        return verify_phases(root,bundle,project,received,output,api)
     output=Path(output);output.mkdir(parents=True,exist_ok=False)
     binding=root['accepted_control']
     root_path=output/'accepted-control-root.json'
@@ -106,6 +120,15 @@ def main(argv=None):
         validate_run(api,root,int(os.environ['GITHUB_RUN_ID']),int(os.environ['GITHUB_RUN_ATTEMPT']))
         bundle=load_bundle(api,root)
         if args.stage=='route':
+            if root.get('activation',{}).get('admission_mode') == 'direct-production-v1':
+                from tools.ci_v3_direct import authenticate_control
+                from tools.ci_v3_hosted_controller import make_plan
+                # Resolve complete reviewed isolation/groups before selecting any
+                # parallel job; this plans data only and executes no tests.
+                make_plan(args.project,bundle)
+                # Authenticate original full native/control/browser evidence before
+                # producing the parallel output; no test workload has started.
+                authenticate_control(root,bundle,args.project,Path(args.output).parent/'direct-admission-evidence',api)
             require(os.environ.get('CI_V3_REQUESTED_HEAD')==root['source']['head'],'source input not authorized')
             write_outputs({'execution_mode':'parallel','tested_sha':root['source']['head'],
                 'controller_sha':root['controller_head'],'root_sha256':args.root_sha256,

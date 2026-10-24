@@ -235,7 +235,31 @@ class CapexInputSchemaDesign:
 # These enums are inert — not imported by runtime calculation modules.
 # Future Phase (21G): wire treatment choices to depreciation/tax/funding/IDC.
 
-from enum import StrEnum, auto
+from enum import auto
+try:
+    from enum import StrEnum                 # Python >= 3.11
+except ImportError:                          # Python 3.10: semantics of the 3.11 enum.StrEnum
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """Members are ``str``; ``auto()`` yields the lower-cased member name; ``str()`` / ``format()`` give the value."""
+
+        def __new__(cls, *values):
+            if len(values) > 3:
+                raise TypeError(f"too many arguments for str(): {values!r}")
+            if len(values) == 1 and not isinstance(values[0], str):
+                raise TypeError(f"{values[0]!r} is not a string")
+            value = str(*values)
+            member = str.__new__(cls, value)
+            member._value_ = value
+            return member
+
+        __str__ = str.__str__
+        __format__ = str.__format__
+
+        @staticmethod
+        def _generate_next_value_(name, start, count, last_values):
+            return name.lower()
 from dataclasses import dataclass, field
 from typing import Literal
 

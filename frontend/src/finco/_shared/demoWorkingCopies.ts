@@ -101,28 +101,70 @@ function cloneReferenceDemoState(
   const entries = keys.map(key => [key.slice(sourcePrefix.length), storage.getItem(key)] as const)
     .filter((entry): entry is readonly [string, string] => entry[1] !== null)
     .filter(([key]) => !resetAcknowledgementKeys.includes(key as typeof resetAcknowledgementKeys[number]));
-
-  entries.forEach(([key, value]) => storage.setItem(`${targetPrefix}${key}`, value));
+  const writes = new Map<string, string>(entries.map(([key, value]) => [`${targetPrefix}${key}`, value]));
 
   // A copy starts clean: the visible reference draft becomes its local baseline.
   for (const [draftKey, savedKey] of draftToSavedPairs) {
     const draft = storage.getItem(`${sourcePrefix}${draftKey}`);
     if (draft !== null) {
-      storage.setItem(`${targetPrefix}${draftKey}`, draft);
-      storage.setItem(`${targetPrefix}${savedKey}`, draft);
+      writes.set(`${targetPrefix}${draftKey}`, draft);
+      writes.set(`${targetPrefix}${savedKey}`, draft);
     }
   }
   for (const key of resetAcknowledgementKeys) {
     const initial = key === "period-line-save-acknowledgements" || key === "cost-line-save-ack"
       ? { capex: false, opex: false }
       : false;
-    storage.setItem(`${targetPrefix}${key}`, JSON.stringify(initial));
+    writes.set(`${targetPrefix}${key}`, JSON.stringify(initial));
+  }
+  const prior = [...writes.keys()].map(key => [key, storage.getItem(key)] as const);
+  const applied: string[] = [];
+  try {
+    for (const [key, value] of writes) {
+      storage.setItem(key, value);
+      applied.push(key);
+    }
+    for (const [key, value] of writes) {
+      if (storage.getItem(key) !== value) throw new Error("A copied draft value could not be verified.");
+    }
+  } catch (error) {
+    for (const key of applied.reverse()) {
+      const previous = prior.find(([priorKey]) => priorKey === key)?.[1] ?? null;
+      try {
+        if (previous === null) storage.removeItem(key);
+        else storage.setItem(key, previous);
+      } catch {
+        // Cleanup is best-effort; the caller never reports a created copy.
+      }
+    }
+    throw error;
   }
 }
 
 function saveRecord(storage: DemoSessionStorage, record: DemoWorkingCopy): void {
   const copies = readCopies(storage);
-  storage.setItem(DEMO_WORKING_COPIES_KEY, JSON.stringify([...copies, record]));
+  const serialized = JSON.stringify([...copies, record]);
+  const previous = storage.getItem(DEMO_WORKING_COPIES_KEY);
+  try {
+    storage.setItem(DEMO_WORKING_COPIES_KEY, serialized);
+    if (storage.getItem(DEMO_WORKING_COPIES_KEY) !== serialized) {
+      throw new Error("The local Working Copy could not be verified in browser storage.");
+    }
+  } catch (error) {
+    try {
+      if (previous === null) storage.removeItem(DEMO_WORKING_COPIES_KEY);
+      else storage.setItem(DEMO_WORKING_COPIES_KEY, previous);
+    } catch {
+      // Best-effort rollback; the failure remains visible to the caller.
+    }
+    throw error;
+  }
+}
+
+function hasWorkingCopyScope(storage: DemoSessionStorage, projectId: string): boolean {
+  const prefix = demoSessionStoragePrefix(projectId, "working-copy");
+  return Array.from({ length: storage.length }, (_, index) => storage.key(index))
+    .some(key => Boolean(key && key.startsWith(prefix)));
 }
 
 function createId(storage: DemoSessionStorage, parentId: string | null, kind: DemoWorkingCopy["kind"]): string {
@@ -133,7 +175,7 @@ function createId(storage: DemoSessionStorage, parentId: string | null, kind: De
   const prefix = kind === "reference-copy" ? `DEMO-WC-${parentId}` : "DEMO-LOCAL";
   let candidate = `${prefix}-${String(ordinal).padStart(2, "0")}`;
   let next = ordinal + 1;
-  while (copies.some(copy => copy.id === candidate)) {
+  while (copies.some(copy => copy.id === candidate) || hasWorkingCopyScope(storage, candidate)) {
     candidate = `${prefix}-${String(next).padStart(2, "0")}`;
     next += 1;
   }
@@ -159,7 +201,7 @@ export function createDemoWorkingCopy(
     cloneReferenceDemoState(storage, reference.id, id);
     saveRecord(storage, record);
   } catch (error) {
-    removeScope(storage, id);
+    try { removeScope(storage, id); } catch { /* The creation error remains visible; no copy is reported as created. */ }
     throw new Error(`Could not create a local working copy in this browser tab: ${error instanceof Error ? error.message : "session storage is unavailable"}`);
   }
   return record;

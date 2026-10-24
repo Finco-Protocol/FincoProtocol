@@ -4,6 +4,7 @@ import { resolveStatementRunStatus, resolveStatementSnapshot, type StatementRunS
 import { SYNTHETIC_STATEMENT_SNAPSHOT, SYNTHETIC_STATEMENT_STATUS } from "./_workbook/syntheticStatementProvider";
 import { resolveResultsRunStatus, resolveResultsSnapshot, type ResultsPresentationSnapshot, type ResultsRunStatus } from "./_results/resultsContract";
 import { SYNTHETIC_RESULTS_SNAPSHOT, SYNTHETIC_RESULTS_STATUS } from "./_results/syntheticResultsProvider";
+import { SYNTHETIC_INSIGHT_FINDINGS } from "./_insight/syntheticInsightFixtures";
 
 export type ResultsAnalysisProps = {
   /** Omitted uses the Canvas demo fixture; explicit null remains unavailable. */
@@ -30,6 +31,7 @@ export function ResultsAnalysis({
     resultsStatus={resolvedResultsStatus}
     statementSnapshot={resolvedStatement}
     statementStatus={resolvedStatementStatus}
+    insightFindings={SYNTHETIC_INSIGHT_FINDINGS}
   />;
 }
 

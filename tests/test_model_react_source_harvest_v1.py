@@ -149,7 +149,7 @@ def test_production_module_graph_excludes_demo_modules():
     assert result.returncode == 0, result.stderr[-500:]
     listed = result.stdout.replace("\\", "/").splitlines()
     forbidden = [line for line in listed
-                 if re.search(r"frontend/(src/finco/(_shared/demo|_workbook/synthetic|_results/(synthetic|runComparison))|transfer/)", line)]
+                 if re.search(r"frontend/(src/finco/(_shared/demo|_insight/synthetic|_workbook/synthetic|_results/(synthetic|runComparison))|transfer/)", line)]
     assert forbidden == [], forbidden[:10]
 
 

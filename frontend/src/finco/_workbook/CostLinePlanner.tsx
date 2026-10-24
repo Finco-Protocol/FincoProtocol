@@ -24,7 +24,9 @@ export type CostLinePlannerProps = {
   operationPeriod: string;
   onOperationPeriodChange: (value: "3M" | "6M") => void;
   onChange: (next: string[][]) => void;
-  onSave: () => void;
+  /** Epic's UX-02 caller acknowledges with void; the RC11 composition returns an
+   *  explicit boolean. Only a literal false is a refused save. */
+  onSave: () => boolean | void;
   onEditing?: (editing: boolean) => void;
   onPendingError?: (pending: boolean) => void;
   readOnly?: boolean;
@@ -299,7 +301,11 @@ export default function CostLinePlanner({ sheet, values, committed, operationPer
       setSaveNotice("Correct the marked cells and resolve the rejected paste before saving this line batch.");
       return;
     }
-    onSave();
+    if (onSave() === false) {
+      setLocallySaved(false);
+      setSaveNotice("Save could not be confirmed. Your edits remain staged in this view; browser storage may be unavailable.");
+      return;
+    }
     setLocallySaved(true);
     setSaveNotice("Local demo save acknowledged for this line batch only. No model run was triggered; fixed Last Run values did not change.");
   };
@@ -390,7 +396,7 @@ export default function CostLinePlanner({ sheet, values, committed, operationPer
       sourceLabel="Synthetic period-grid example"
       relatedHref={workbookHref("pl")}
       relatedLabel="Open fixed P&L workbook sheet →"
-      note={`${sheet.toUpperCase()} values are local illustrative inputs. The related statement link is contextual navigation only; no row-to-result calculation lineage is asserted.`}
+      note={`${sheet.toUpperCase()} values are local illustrative inputs. The related statement link opens another section only; it does not show how that section's values were calculated.`}
     />
     <div className="fm-period-scroll" ref={scrollRef} role="region" aria-label={`${sheet.toUpperCase()} period spreadsheet`} tabIndex={-1}>
       <table className="fm-period-table">
@@ -481,12 +487,12 @@ export default function CostLinePlanner({ sheet, values, committed, operationPer
       <div className="fm-period-instructions">
         <strong>Cell {address}</strong> · Enter edits · arrows move between editable cells · Enter / Shift+Enter stages and moves vertically · Tab / Shift+Tab stages across cells · Esc cancels · paste a TSV rectangle · Ctrl/Cmd+Z undoes one staged change.
       </div>
-      <div className="fm-period-disclaimer">Fixed summaries are reference values and may not reconcile. No totals, forecasts, or financial results are calculated here. Demo TSV staging is local only; it does not represent production multi-row cost-line persistence (canonical line saves are per-row serial CAS and require independent verification).</div>
+      <div className="fm-period-disclaimer">Fixed summaries are examples and may not reconcile. No totals, forecasts, or financial results are calculated here. Cell edits and pasted values stay in this preview and are not sent to a live workbook.</div>
     </div>
     {(firstError || pendingError || saveNotice) && <div className={`fm-period-message${firstError || pendingError ? " is-error" : ""}`} role={firstError || pendingError ? "alert" : "status"}>
       {pendingError && <p><strong>Paste not applied.</strong> {pendingError} No cell in the rectangle was changed.</p>}
       {firstError && <p><strong>Cell {colLabel(firstError.col)}{firstError.row + 1} needs correction.</strong> {firstError.message} Correct the marked value before saving.</p>}
-      {saveNotice && <p id="fm-period-save-note">{saveNotice}</p>}
+      {saveNotice && <p id="fm-period-save-note" role={saveNotice.includes("could not be confirmed") ? "alert" : "status"}>{saveNotice}</p>}
     </div>}
     {!firstError && !pendingError && !saveNotice && <span id="fm-period-save-note" className="fm-period-sr-only">Save is available when all editable values are valid and no cell is being edited.</span>}
     {sheet === "capex" && <div className="fm-period-profile-note" aria-live="polite">{profileCopy[profile]}</div>}

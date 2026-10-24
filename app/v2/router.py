@@ -3222,15 +3222,16 @@ async def v2_workbook_run(
         BUSY_MESSAGE, ModelExecutionBusy, ModelExecutionFailed, ModelExecutionTimeout,
         run_model_process,
     )
+    from app.runtime.native_activation import activated, native_result
     _stage_mark("model_entered")
     try:
-        result = await run_model_process(
-            run_project,
+        result = native_result(await run_model_process(
+            activated(run_project),
             runtime_project_key,
             "Base",  # Contract A: always "Base"; display name must not activate legacy ScenarioManager
             project_inputs_override=override,
             **({"investor_evidence_requested": True} if f4_terms is not None else {}),
-        )
+        ))
         _stage_mark("model_completed")
     except ModelExecutionBusy:
         # BUSY != CALCULATION_FAILED: nothing ran, nothing changed, safe to retry.
@@ -5467,6 +5468,7 @@ async def v2_scenario_sensitivity_run(
     from app.runtime.model_execution import (
         BUSY_MESSAGE as _BUSY_MESSAGE, ModelExecutionBusy as _Busy, run_model_process as _run_proc,
     )
+    from app.runtime.native_activation import activated, native_result
     from app.services.sensitivity_execution import (
         run_sensitivity_points as _run_points, sensitivity_grid_size_error as _grid_error,
     )
@@ -5476,7 +5478,7 @@ async def v2_scenario_sensitivity_run(
         return HTMLResponse(content=f"<p>{_size_error}</p>", status_code=422)
     if _pending:
         try:
-            _outputs = await _run_proc(_run_points, runtime_key, [r["_pi"] for r in _pending])
+            _outputs = native_result(await _run_proc(activated(_run_points), runtime_key, [r["_pi"] for r in _pending]))
         except _Busy:
             return HTMLResponse(
                 content=f"<p>{_BUSY_MESSAGE}</p>", status_code=429,
@@ -6071,3 +6073,17 @@ router.include_router(run_workspace_v3_router)
 # Isolated Credit V5 GET; no workbook, Run or existing V3/V4 route changes.
 from app.v2.credit_v5_router import router as credit_v5_router
 router.include_router(credit_v5_router)
+
+# UX-03 Correction B: the FINCO Model React surfaces compose here (the same
+# always-mounted V2 composition point as every other sub-router) instead of as
+# separate main_web.py registrations, so the application composition stays the
+# V10-approved content. Read-only GETs over the canonical session resolver;
+# the FINCO_MODEL_REACT_V1 flag contract (absent -> OFF) is unchanged and is
+# evaluated per request inside the routers. Registration order is load-bearing:
+# the workspace routes are literal paths and MUST be included before the PoC
+# /model-react/{project_code} page catch-all.
+from app.v2.react_workspace_router import router as react_workspace_router
+router.include_router(react_workspace_router)
+
+from app.v2.react_poc_router import router as react_poc_router
+router.include_router(react_poc_router)

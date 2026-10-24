@@ -11,9 +11,9 @@ const scenarioRows = [
   ["CAPEX", "€104.8m ref.", "€104.8m ref.", "€104.8m ref.", "Not linked to draft"],
   ["OPEX", "€1.8m ref.", "€1.8m ref.", "€1.8m ref.", "Not linked to draft"],
   ["Senior debt", "€67.0m ref.", "€67.0m ref.", "€67.0m ref.", "Not sized"],
-  ["Project IRR", "7.82%", "6.11%", "9.06%", "Fixed snapshots"],
-  ["Equity IRR", "12.46%", "9.18%", "15.31%", "Fixed snapshots"],
-  ["NPV", "€8.7m", "€(4.2)m", "€21.3m", "Fixed snapshots"],
+  ["Project IRR", "7.82%", "6.11%", "9.06%", "Fixed examples"],
+  ["Equity IRR", "12.46%", "9.18%", "15.31%", "Fixed examples"],
+  ["NPV", "€8.7m", "€(4.2)m", "€21.3m", "Fixed examples"],
   ["Minimum DSCR", "1.25x", "1.08x", "1.39x", "Not a covenant test"],
   ["LLCR", "Unavailable", "Unavailable", "Unavailable", "No calculation"],
 ];
@@ -140,38 +140,38 @@ export default function DecisionAnalysisWorkspace({ sheet }: { sheet: string }) 
     <div className="fm-wf-toolbar"><div><strong>{heading}</strong><div className="fm-wf-muted">DEMO-FIXED-018 · fixed comparison context</div></div><Status tone="amber">NO LIVE CALCULATIONS</Status></div>
 
     {isScenario && <section className="fm-wf-section">
-      <div className="fm-wf-editor-head"><div><h3>Base, Downside & Upside</h3><p>Fixed scenario snapshots; assumption values do not recalculate outcomes.</p></div><Status tone="gray">DIFFERENCE COLUMN IS DESCRIPTIVE</Status></div>
+      <div className="fm-wf-editor-head"><div><h3>Base, Downside & Upside</h3><p>Fixed scenario examples; assumption values do not recalculate outcomes.</p></div><Status tone="gray">DIFFERENCE COLUMN IS DESCRIPTIVE</Status></div>
       <div className="fm-wf-controls">
         <label className="fm-wf-field">Working Copy scenario context <span>Selection only · fixed output remains unchanged</span><select aria-label="Scenario comparison context" value={scenarioId} onChange={event => chooseScenario(event.target.value)}><option value="base">base · Base case</option><option value="downside">downside · Downside</option><option value="upside">upside · Upside</option></select></label>
       </div>
       <div className="fm-wf-comparison-context" data-testid="scenario-run-context">
         <div><span>Working Copy</span><strong>Scenario ID · {scenarioId}</strong><small>Current draft/save status is not supplied to this fixed comparison.</small></div>
-        <div><span>Last Run · fixed reference</span><strong>{latestFixedRun.id}</strong><small>Synthetic snapshot label · {latestFixedRun.date}</small></div>
-        <div><span>Independent status</span><strong>SYNTHETIC · NOT RUN HERE</strong><small>Freshness not verified · engine not connected · integrity NOT EVALUATED.</small></div>
+        <div><span>Last Run · fixed reference</span><strong>{latestFixedRun.id}</strong><small>Synthetic example · {latestFixedRun.date}</small></div>
+        <div><span>Independent status</span><strong>SYNTHETIC · NOT RUN HERE</strong><small>No live calculation is connected; financial checks were not performed.</small></div>
       </div>
       <div className="fm-wf-scroll"><table className="fm-table fm-wf-table fm-wf-period-table">
         <thead><tr>{["Metric", "Base case", "Downside", "Upside", "Difference / status"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
         <tbody>{scenarioRows.map(row => <tr key={row[0]}><th scope="row">{row[0]}</th>{row.slice(1).map((value, index) => <td key={index}>{value}</td>)}</tr>)}</tbody>
       </table></div>
-      <div className="fm-wf-note" data-testid="scenario-period-availability" role="note">Scenario figures are fixed snapshot examples. Their period frequency, exact date coverage, and per-period metric rows were not supplied; no periods are aligned or inferred. See Run Compare for separate authored calendars.</div>
+      <div className="fm-wf-note" data-testid="scenario-period-availability" role="note">Scenario figures are fixed examples. Their period frequency, date coverage, and per-period values were not supplied; periods are not aligned or inferred. See Run Compare for each example’s own calendar.</div>
       <div className="fm-wf-note">PPA shares, costs and debt are fixed reference values. Scenario IRR, NPV and DSCR are authored examples; no deltas are calculated.</div>
     </section>}
 
     {isRunCompare && <section className="fm-wf-section">
-      <div className="fm-wf-editor-head"><div><h3>Select up to three illustrative runs</h3><p>Selections change only the displayed fixed context and never mutate a Working Copy.</p></div><Status tone="gray">NO EXECUTION HISTORY</Status></div>
+      <div className="fm-wf-editor-head"><div><h3>Select up to three illustrative runs</h3><p>Selections change only the displayed fixed context and never mutate a Working Copy.</p></div><Status tone="gray">NO ACTUAL RUNS SHOWN</Status></div>
       <div className="fm-wf-run-picker">{runs.map(run => <label key={run.id}><input type="checkbox" checked={selectedRuns.includes(run.id)} onChange={() => toggleRun(run.id)} disabled={!selectedRuns.includes(run.id) && selectedRuns.length >= 3} /><span><strong>{run.id}</strong><small>{run.scenario} · {run.date}</small></span></label>)}</div>
       <div className="fm-wf-comparison-context" data-testid="scenario-run-context">
-        <div><label htmlFor="selected-run-context">Selected historical reference</label><select id="selected-run-context" aria-label="Selected historical Run reference" value={selectedRun?.id || ""} onChange={event => chooseRun(event.target.value)} disabled={!selectedRuns.length}><option value="" disabled>Select a chosen reference</option>{runs.filter(run => selectedRuns.includes(run.id)).map(run => <option key={run.id} value={run.id}>{run.id}</option>)}</select><small>{selectedRun ? `Scenario ID · ${selectedRun.scenarioId} · synthetic snapshot label ${selectedRun.date}` : "No historical reference selected."}</small></div>
+        <div><label htmlFor="selected-run-context">Selected historical example</label><select id="selected-run-context" aria-label="Selected historical Run example" value={selectedRun?.id || ""} onChange={event => chooseRun(event.target.value)} disabled={!selectedRuns.length}><option value="" disabled>Select a chosen example</option>{runs.filter(run => selectedRuns.includes(run.id)).map(run => <option key={run.id} value={run.id}>{run.id}</option>)}</select><small>{selectedRun ? `Scenario ID · ${selectedRun.scenarioId} · example date ${selectedRun.date}` : "No historical example selected."}</small></div>
         <div><span>Working Copy</span><strong>Scenario ID · {scenarioId}</strong><small>Input draft state is not attached to historical results; edits do not change them.</small></div>
-        <div><span>Last Run / provenance dimensions</span><strong>{selectedRun?.id || "Unavailable"}</strong><small>Origin: synthetic · freshness: unverified · engine: not connected · integrity: NOT EVALUATED.</small></div>
+        <div><span>Selected result details</span><strong>{selectedRun?.id || "Unavailable"}</strong><small>Synthetic example · update status unknown · no live calculation linked · financial checks not performed.</small></div>
       </div>
       <div className="fm-wf-scroll"><table className="fm-table fm-wf-table fm-wf-period-table">
         <thead><tr><th scope="col">Metric</th>{runs.filter(run => selectedRuns.includes(run.id)).map(run => <th scope="col" key={run.id}>{run.id}</th>)}</tr></thead>
         <tbody>{([
-          ["Scenario", run => run.scenario], ["Snapshot date", run => run.date], ["Model / engine version", run => run.version],
+          ["Scenario", run => run.scenario], ["Example date", run => run.date], ["Model version", run => run.version],
           ["Period basis", run => SYNTHETIC_RUN_PERIODS[run.id]?.frequency || "Unavailable"],
           ["Equity IRR · fixed", run => run.irr], ["Minimum DSCR · fixed", run => run.dscr], ["CAPEX reference", run => run.capex],
-          ["Input snapshot", () => "Unavailable"], ["Period match", () => "NOT ALIGNED"],
+          ["Input version", () => "Unavailable"], ["Period match", () => "NOT ALIGNED"],
         ] as [string, (run: typeof runs[number]) => string][]).map(([label, getter]) => <tr key={label}><th scope="row">{label}</th>{runs.filter(run => selectedRuns.includes(run.id)).map(run => <td key={run.id}>{getter(run)}</td>)}</tr>)}</tbody>
       </table></div>
       <div className="fm-wf-section" data-testid="run-period-comparison">
@@ -204,7 +204,7 @@ export default function DecisionAnalysisWorkspace({ sheet }: { sheet: string }) 
         <label className="fm-wf-field">Displayed outcome <span>Fixed table selector</span><select aria-label="Sensitivity output metric" value={outcome} onChange={event => setDisplayContext("outcome", event.target.value, setOutcome)}><option>Project IRR</option><option>Equity IRR</option><option>Minimum DSCR</option></select></label>
       </div>
       <div className="fm-wf-scroll"><table className="fm-table fm-wf-table fm-wf-period-table">
-        <caption>Fixed synthetic {outcome} snapshot · driver: {driver}</caption>
+        <caption>Fixed synthetic {outcome} example · driver: {driver}</caption>
         <thead><tr><th scope="col">{driver} fixture</th><th scope="col">Low case</th><th scope="col">Reference case</th><th scope="col">High case</th></tr></thead>
         <tbody>{(outcome === "Equity IRR" ? sensitivity[driver] : otherSensitivity[outcome][driver]).map((row,index) => <tr key={row[0]}><th scope="row">{row[0]}</th>{row.slice(1).map(value => <td className="fm-mono" key={value}>{value}</td>)}</tr>)}</tbody>
       </table></div>

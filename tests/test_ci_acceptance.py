@@ -289,6 +289,17 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
             assert git("cat-file", "-t", actual) == "blob", f"Missing OD-R successor blob: {path}"
             assert actual == ODR_AUTHORITIES[path], f"Unreviewed OD-R content: {path}"
         return
+    # V10 dormant native shadow (PR #347): against a main that carries OD-R, the V10 successor changes exactly its protected paths (two engine files,
+    # sixteen new native_v10 files) under the Financial Owner's exact-content decision. Recognised only while the whole V10 contract holds (OD-R
+    # checkpoint, source candidate, exact blobs, no other protected change, pinned hub, closed flags, native default off). Bytes only: not merge
+    # authorisation, native activation or release. Any other diff falls through.
+    from v10_native_shadow_successor import V10_PROTECTED_BLOBS, v10_recognized
+    if protected == set(V10_PROTECTED_BLOBS) and v10_recognized(repo=root, ref=head):
+        for path in sorted(protected):
+            actual = git("rev-parse", "--verify", f"{head}:{path}")
+            assert git("cat-file", "-t", actual) == "blob", f"Missing V10 successor blob: {path}"
+            assert actual == V10_PROTECTED_BLOBS[path], f"Unreviewed V10 content: {path}"
+        return
     assert protected == _F3_5_REVIEWED_PROTECTED_PATHS, f"Unapproved or incomplete protected diff: {sorted(protected)}"
     for path in sorted(protected):
         actual = git("rev-parse", "--verify", f"{head}:{path}")
@@ -535,19 +546,22 @@ def _workflow(name):
 
 
 def test_shadow_does_not_replace_unsharded_gate_or_merge_coverage():
-    """CI V2 contract (supersedes the #247 shard/duplicate-merge-run structure).
+    """Retained full sequential control and independently verified protected route.
 
-    The behavioural requirements are unchanged and are asserted directly: the Public Safety suite is ONE
-    complete, unsharded, undeselected pytest on the exact HEAD; the synthetic merge is proven to have an
-    identical Git tree BEFORE any dependency installation (a mismatch fails closed instead of silently
-    testing different code); the mandatory aggregate verifies the artifacts independently of job badges.
+    Sequential remains ONE unsharded, undeselected invocation. The activated
+    alternative preserves complete original coverage and independently verifies
+    all workers; neither route may rerun a selected failure into success.
     """
     public, public_text = _workflow("public_safety_and_smoke.yml")
     reusable, reusable_text = _workflow("ci_public_job.yml")
     jobs = public["jobs"]
     assert set(jobs) == {"source-safety", "safety-and-smoke", "mandatory-evidence"}      # seven-job budget, no shards
     control = jobs["safety-and-smoke"]
-    assert control["uses"].endswith("ci_public_job.yml") and control["with"]["mode"] == "control"
+    assert control["uses"].endswith("ci_v3_required_job.yml") and control["with"]["mode"] == "control"
+    router, _ = _workflow("ci_v3_required_job.yml")
+    assert router["jobs"]["sequential"]["uses"].endswith("ci_public_job.yml")
+    assert router["jobs"]["sequential"]["with"]["mode"] == "control"
+    assert "tools.ci_v3_production verify --independent" in "\n".join(s.get("run", "") for s in router["jobs"]["aggregate"]["steps"])
     assert {"merge-sha", "pr-number", "tested-sha"} <= set(control["with"])
     gate = jobs["mandatory-evidence"]
     assert gate["if"] == "always()" and set(gate["needs"]) == {"source-safety", "safety-and-smoke"}

@@ -288,6 +288,23 @@ async def _prewarm_model_workers():
              _time.monotonic() - started), flush=True)
 
 
+async def _stop_native_v10_shadow():
+    """V10 dormant shadow: stop the executor-owned observer (one of the coordinated background services).
+
+    No-op unless shadow mode (FINCO_NATIVE_V10_SHADOW) created an observer or an earlier observer is
+    still retired after an incomplete shutdown. An incomplete shutdown raises ShadowShutdownIncomplete;
+    the executor keeps ownership of the survivor and stays shadow-disabled (no replacement), canonical
+    service is unaffected. The process pool itself keeps its existing lifecycle.
+    """
+    import asyncio
+
+    from app.runtime.model_execution import peek_model_executor
+
+    executor = peek_model_executor()
+    if executor is not None and executor.native_shadow_owned():
+        await asyncio.to_thread(executor.shutdown_native_shadow)
+
+
 @app.on_event("startup")
 async def _schedule_demo_cleanup():
     """Schedule recurring demo TTL cleanup in a daemon thread (P6.5).
@@ -332,7 +349,7 @@ async def _start_r_live_snapshot_warmer():
     with FINCO_RLIVE_WARMING_ENABLED=0 (e.g. when the dedicated systemd
     collector owns warming). The web read path never calls this module.
     """
-    from app.background_lifecycle import ShutdownIncomplete
+    from app.background_lifecycle import LifecycleErrors, ShutdownIncomplete
     try:
         from app.radar_rwa.r_live_warming import start_background_warmer
         owner = getattr(app.state, "snapshot_warmer_owner", None)
@@ -347,7 +364,7 @@ async def _start_r_live_snapshot_warmer():
         try:
             await _stop_demo_cleanup()
         except Exception as rollback_error:
-            raise ExceptionGroup("background startup and rollback failed", [startup_error, rollback_error])
+            raise LifecycleErrors("background startup and rollback failed", [startup_error, rollback_error])
         raise
     except Exception:
         import logging
@@ -364,14 +381,15 @@ async def _stop_r_live_snapshot_warmer():
 
 @app.on_event("shutdown")
 async def _shutdown_background_services():
+    from app.background_lifecycle import LifecycleErrors
     errors = []
-    for stop in (_stop_demo_cleanup, _stop_r_live_snapshot_warmer):
+    for stop in (_stop_demo_cleanup, _stop_r_live_snapshot_warmer, _stop_native_v10_shadow):
         try:
             await stop()
         except Exception as exc:
             errors.append(exc)
     if errors:
-        raise ExceptionGroup("application background shutdown incomplete", errors)
+        raise LifecycleErrors("application background shutdown incomplete", errors)
 
 
 # -- Template setup -----------------------------------------------------------
@@ -414,20 +432,6 @@ app.include_router(_v2_import_router, prefix="/v2")
 
 from app.v2.grid_router import router as _v2_grid_router
 app.include_router(_v2_grid_router, prefix="/v2")
-
-# UX-01 Full-React PoC — isolated, feature-flagged (FINCO_MODEL_REACT_V1, default OFF).
-# Read-only surface + same-origin static assets; ALL persistence stays on the existing
-# canonical /v2/workbook/grid/* routes.  Flag OFF leaves every legacy route untouched.
-# UX-02 React Core Integration — authorized read projections (library / workspace /
-# statements / inputs) over the existing canonical authorities.  Same feature flag
-# (FINCO_MODEL_REACT_V1, default OFF); ALL persistence stays on the canonical routes.
-# Mounted BEFORE the UX-01 PoC router so its literal /model-react/* paths win over
-# the PoC /model-react/{project_code} page catch-all.
-from app.v2.react_workspace_router import router as _v2_react_workspace_router
-app.include_router(_v2_react_workspace_router, prefix="/v2")
-
-from app.v2.react_poc_router import router as _v2_react_poc_router
-app.include_router(_v2_react_poc_router, prefix="/v2")
 
 # Workflow C: reject over-size or unbounded uploads BEFORE multipart parsing.
 # UploadFile may spool the incoming body before the route executes, so an

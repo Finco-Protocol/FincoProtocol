@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Assumptions, assumptionLabels, InputKey } from "../_shared/validation";
 import { pasteScalars, scalarKeys } from "./gridPaste";
+import type { InsightExplainInput } from "../_insight/insightContract";
 import "./workbook.css";
 
 const units: Partial<Record<InputKey, string>> = { capacity: "MWp", start: "date", cod: "date", term: "years", ppaPrice: "€/MWh", ppaTenor: "years", contracted: "%", indexation: "%", scheduledStep: "%", capex: "€m", opex: "€m/yr", tax: "%", debt: "€m", interest: "% p.a.", tenor: "years", dscr: "x", mezzDebt: "€m", mezzCoupon: "%", mezzPik: "%", equity: "€m", ownership: "%" };
-export type InputGridProps = { values: Assumptions; committed: Assumptions; errors: Partial<Record<InputKey, string>>; onChange: (values: Assumptions) => void; onSave: () => void; onRun: () => void; onEditing: (editing: boolean) => void; blocked: boolean; dirty: boolean; runBlocked?: boolean; readOnly?: boolean };
+export type InputGridProps = { values: Assumptions; committed: Assumptions; errors: Partial<Record<InputKey, string>>; onChange: (values: Assumptions) => void; onSave: () => void; onRun: () => void; onEditing: (editing: boolean) => void; onExplain?: (item: InsightExplainInput) => void; blocked: boolean; dirty: boolean; runBlocked?: boolean; readOnly?: boolean };
 function readInitialCell() {
   const params = new URLSearchParams(window.location.search);
   const row = Number.parseInt(params.get("inputRow") || "0", 10);
@@ -14,7 +15,7 @@ function readInitialCell() {
     col: Number.isFinite(col) ? Math.max(0, Math.min(1, col)) : 0,
   };
 }
-export default function InputGrid({ values, committed, errors, onChange, onSave, onRun, onEditing, blocked, dirty, runBlocked, readOnly = false }: InputGridProps) {
+export default function InputGrid({ values, committed, errors, onChange, onSave, onRun, onEditing, onExplain, blocked, dirty, runBlocked, readOnly = false }: InputGridProps) {
   const [cell, setCell] = useState(readInitialCell);
   const [editing, setEditing] = useState(false);
   const [buffer, setBuffer] = useState("");
@@ -97,7 +98,19 @@ export default function InputGrid({ values, committed, errors, onChange, onSave,
     <div className="fm-wb-grid-toolbar"><span><b>{readOnly ? "REFERENCE · READ ONLY" : dirty ? "UNSAVED / STAGED" : "No staged scalar changes"}</b> · {readOnly ? "inspect only" : "browser-tab demo only"}</span>
       <div><button type="button" className="fm-btn" disabled={readOnly || !undo.length || editing} onClick={undoBatch}>Undo staged edit</button> <button type="button" className="fm-btn" disabled={readOnly} aria-disabled={blocked || editing} onClick={onSave}>Save scalar batch</button> <button type="button" className="fm-btn fm-btn-primary" disabled={readOnly} aria-disabled={runBlocked || blocked || dirty || editing} onClick={onRun}>Run demo separately</button></div>
     </div>
-    <div className="fm-wb-formula" aria-label="Cell address and display-only value bar"><strong>{address}</strong><span>fx · display only</span><output>{editing ? buffer : valueAt(cell.row, cell.col)}</output><small>{units[key as InputKey] || (key === "currency" ? "ISO" : key === "projectIRR" ? "%" : "—")} · {readOnly ? "Reference · read-only" : editable ? "Working-copy input" : "Fixed synthetic reference"} · {key === "projectIRR" ? "label only" : editable ? "no expression" : "no formula evaluation"}</small></div>
+    <div className="fm-wb-formula" aria-label="Cell address and display-only value bar"><strong>{address}</strong><span>Display value</span><output>{editing ? buffer : valueAt(cell.row, cell.col)}</output><small>{units[key as InputKey] || (key === "currency" ? "ISO" : key === "projectIRR" ? "%" : "—")} · {readOnly ? "Reference · read-only" : editable ? "Working-copy input" : "Fixed synthetic reference"} · {key === "projectIRR" ? "label only" : editable ? "no expression" : "no formula evaluation"}</small>{onExplain && <button type="button" className="fm-small-link fm-grid-explain" onClick={event => {
+      event.currentTarget.focus();
+      onExplain({
+      id: `input-${key}`,
+      kind: "Input",
+      title: assumptionLabels[key as InputKey] || (key === "currency" ? "Reporting currency" : "Project IRR display label"),
+      value: editing ? buffer : String(valueAt(cell.row, cell.col)),
+      unit: units[key as InputKey],
+      basis: editable
+        ? "Displayed from the current local input draft. No source document or calculation link is supplied."
+        : "Fixed display reference only. No formula or source detail is supplied.",
+      });
+    }}>Explain</button>}</div>
      <div className="fm-wb-grid-help" id="fm-wb-grid-help">Enter/F2 edit · Enter/Shift+Enter stage + down/up · Tab/Shift+Tab next/previous cell · Esc cancel · arrows select · Ctrl/Cmd+Z undo. Paste one value column from selected row, or TSV metric + value pairs. Locked cells reject edits.</div>
      <div className="fm-wb-grid-scroll" id="fm-wb-grid-scroll" role="region" tabIndex={0} aria-label="Input grid scroll area" aria-describedby="fm-wb-grid-help">
        <table role="grid" tabIndex={0} aria-label="Hybrid input grid" aria-describedby="fm-wb-grid-help" aria-readonly={readOnly || undefined} aria-rowcount={rows.length + 1} aria-colcount={4} className="fm-wb-input-table"

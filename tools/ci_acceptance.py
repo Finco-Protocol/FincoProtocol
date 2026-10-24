@@ -149,6 +149,11 @@ def run_command(args):
             sys.stdout.flush()
             log.write(line)
             elapsed = time.monotonic() - clock
+            if line.startswith("FINCO_CI_CLEANUP "):
+                try:
+                    markers["cleanup"] = json.loads(line.removeprefix("FINCO_CI_CLEANUP "))
+                except (ValueError, TypeError):
+                    markers["cleanup"] = {"cleanup_verified": False}
             if "PYTEST_MAIN_STARTED" in line:
                 markers["pytest_started_seconds"] = elapsed
             if "PYTEST_MAIN_RETURNED" in line:
@@ -167,6 +172,8 @@ def run_command(args):
              "command": command, "exit_code": exit_code,
              "normal_exit": normal, "process_markers": markers,
              "environment_sha256": environment_digest()}
+    if supervised:
+        value["cleanup_verified"] = normal and markers.get("cleanup", {}).get("cleanup_verified") is True
     if args.junit:
         path = Path(args.junit)
         if path.is_file():

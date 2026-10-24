@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { readHostConfig, type HostConfig } from "./api/client";
 import { LibraryView } from "./app/LibraryView";
+import { ThemeProvider } from "./finco/_shared/ThemeSelector";
 import { WorkspaceView } from "./app/WorkspaceView";
 
 type Phase = "loading" | "error" | "ready";
@@ -60,19 +61,25 @@ export default function App({ host }: { host: HTMLElement }) {
   }
 
   const project = config.project;
+  // UX-03B: the theme layer is presentation-only; scoping it to the mount root
+  // keeps the legacy Jinja/HTMX UI untouched and no data path is involved.
   if (project) {
     return (
-      <WorkspaceView
-        key={project}
-        project={project}
-        legacyUrl={config.legacyUrl}
-        onNavigateToLibrary={() => { window.location.href = "/v2/model-react/"; }}
-      />
+      <ThemeProvider host={host}>
+        <WorkspaceView
+          key={project}
+          project={project}
+          legacyUrl={config.legacyUrl}
+          onNavigateToLibrary={() => { window.location.href = "/v2/model-react/"; }}
+        />
+      </ThemeProvider>
     );
   }
   return (
-    <LibraryView
-      onOpenProject={(code) => { window.location.href = `/v2/model-react/${encodeURIComponent(code)}`; }}
-    />
+    <ThemeProvider host={host}>
+      <LibraryView
+        onOpenProject={(code) => { window.location.href = `/v2/model-react/${encodeURIComponent(code)}`; }}
+      />
+    </ThemeProvider>
   );
 }

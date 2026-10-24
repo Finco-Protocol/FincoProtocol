@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Field, readProjectContext, Status } from "../_shared/FincoShell";
-import { useDemoSessionState } from "../_shared/demoSession";
+import { persistCurrentDemoSessionBatch, useDemoSessionState } from "../_shared/demoSession";
 import SourceAuthorityDrawer from "../_shared/SourceAuthorityDrawer";
 import { workbookHref } from "./catalog";
 
@@ -71,8 +71,17 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
   }
   function save() {
     if (errors.length) { setNotice("Facility Save blocked by input validation. No values were acknowledged."); return; }
-    setSaved(old => ({ ...old, [active]: { ...current } }));
-    setSavedFacilities(old => ({ ...old, [active]: true }));
+    const nextSaved = { ...saved, [active]: { ...current } };
+    const nextAcknowledgements = { ...savedFacilities, [active]: true };
+    if (!persistCurrentDemoSessionBatch([
+      ["facility-saved", nextSaved],
+      ["facility-save-acknowledgements", nextAcknowledgements],
+    ])) {
+      setNotice("Save could not be confirmed because browser storage is unavailable. Facility edits remain unsaved in this view.");
+      return;
+    }
+    setSaved(nextSaved);
+    setSavedFacilities(nextAcknowledgements);
     setNotice(`${active} acknowledged locally. No sizing, sculpting or model Run occurred.`);
   }
   const showFacility = sheet === "senior-debt" || sheet === "investor";
@@ -85,7 +94,7 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
       <button type="button" onClick={() => onOpen("sources-uses")}>Sources &amp; Uses</button>
       <a href={workbookHref("debt")}>Debt schedule</a>
       <button type="button" onClick={() => onOpen("credit-decision")}>Credit review</button>
-      <span>Navigation only · no calculation lineage</span>
+      <span>This link opens a related section only; it does not show how values were calculated.</span>
     </nav>
     <div className="fm-wf-scroll">
       <table className="fm-table fm-wf-table">
@@ -101,7 +110,7 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
       </table>
     </div>
     {(showFacility || showSources) && <div className="fm-wf-grid fm-wf-summary">
-      <div><span>Senior Debt A/B</span><strong>Illustrative register entries</strong><small>No committed debt or sizing authority.</small></div>
+      <div><span>Senior Debt A/B</span><strong>Illustrative register entries</strong><small>No debt commitments or sizing results are confirmed here.</small></div>
       <div><span>Junior / SHL</span><strong>Preview-only examples</strong><small>Cash / PIK and subordination are not calculated.</small></div>
       <div><span>Sponsor equity</span><strong>Local demo commitment</strong><small>No waterfall or return calculation.</small></div>
       <div><span>Model state</span><strong>NOT RUN · fixed results</strong><small>Selection and Save do not change outputs.</small></div>
@@ -126,7 +135,7 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
         {!isEquity && <Field label="DSCR covenant assumption" value={current.dscr} unit="x" onChange={value => update("dscr", value)} />}
         {!isEquity && <Field label="Cash sweep" value={current.cashSweep} calculated />}
         {(active === "Junior / Mezzanine" || active === "Shareholder Loan (SHL)") && <Field label="PIK coupon assumption" value={current.pik} unit="%" onChange={value => update("pik", value)} />}
-        <Field label="Availability / authority" value={current.availability} calculated />
+        <Field label="Availability" value={current.availability} calculated />
       </div>
       <div className="fm-wf-note"><strong>Unavailable:</strong> debt sizing, DSCR sculpting, cash-sweep waterfalls, covenant tests, lender bankability and intercreditor enforcement. No formula is executed.</div>
       <SourceAuthorityDrawer
@@ -138,10 +147,10 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
         sourceLabel="Synthetic facility register example"
         relatedHref={workbookHref("debt")}
         relatedLabel="Open fixed Debt statement example →"
-        note="Facility terms are local display assumptions. The statement link is contextual navigation only; it does not establish facility-level calculation lineage."
+        note="Facility terms are illustrative display assumptions. The statement link opens a related section only; it does not show how facility values were calculated."
       />
       <div className="fm-wf-actions"><span className="fm-wf-muted">Save facility draft only · no Run</span><button type="button" className="fm-btn fm-btn-primary" disabled={Boolean(errors.length)} onClick={save}>Save {active} demo</button></div>
-      {notice && <div className="fm-info-note" role="status">{notice}</div>}
+      {notice && <div className="fm-info-note" role={notice.includes("unavailable") || notice.includes("could not be confirmed") ? "alert" : "status"}>{notice}</div>}
       {errors.length > 0 && <ul className="fm-wf-errors" role="alert">{errors.map(error => <li key={error}>{error}</li>)}</ul>}
     </section>}
     {showSources && <section className="fm-wf-section" aria-label="Sources and uses fixed example">
@@ -157,7 +166,7 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
         </tbody></table></div>
       </div>
       <div className="fm-wf-note"><strong>Balancing example:</strong> both displayed totals are fixed at €104.8m and are not reconciled to edited facilities, CAPEX, fees, IDC or reserves. The amounts do not update on selection or Save.</div>
-      <div className="fm-wf-editor-head"><div><h3>Reserves & debt-service trace</h3><p>Fixed sample periods, not a calculation or sizing schedule.</p></div><Status tone="gray">ENGINE NOT CONNECTED</Status></div>
+      <div className="fm-wf-editor-head"><div><h3>Reserves & debt-service view</h3><p>Fixed sample periods, not a calculation or sizing schedule.</p></div><Status tone="gray">NO LIVE CALCULATION</Status></div>
       <div className="fm-wf-scroll">
         <table className="fm-table fm-wf-table fm-wf-period-table"><thead><tr><th scope="col">Metric · EUR m</th><th scope="col">2025</th><th scope="col">2026</th><th scope="col">2027</th><th scope="col">2028</th><th scope="col">2029</th><th scope="col">2030</th></tr></thead><tbody>
           {[
@@ -172,7 +181,7 @@ export default function FinanceWorkspace({ sheet, onOpen, onDraftDirty, onSelect
           ].map(([label,...values])=><tr key={label}><th scope="row">{label}</th>{values.map((value,index)=><td className="fm-mono" key={index}>{value}</td>)}</tr>)}
         </tbody></table>
       </div>
-      <p className="fm-wf-muted">Debt opening/closing, interest, principal, CFADS and DSCR lines are separately authored synthetic snapshots; they are not cross-sheet reconciled. Sculpting and DSRA/DSRF sizing remain unavailable.</p>
+      <p className="fm-wf-muted">Debt opening/closing, interest, principal, CFADS and DSCR lines are separate synthetic examples; they are not reconciled across sheets. Sculpting and DSRA/DSRF sizing are not available here.</p>
       <a className="fm-btn" href={workbookHref("debt")}>Open fixed Statements & Debt example →</a>
     </section>}
     <div style={{ display: sheet === "senior-debt" ? "block" : "none" }}><p className="fm-wf-muted">The statement workbook retains fixed Senior and Mezzanine samples; the new facility register is not connected to those rows.</p><button type="button" className="fm-btn" onClick={() => onOpen("debt")}>Open fixed Statements & Debt sheet</button></div>

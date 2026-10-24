@@ -7,6 +7,8 @@ One import point instead of per-guard wiring. It answers: "is the tree under tes
 * ``rc7c_candidate_successor`` - eight unchanged RC-7B blobs + the four explicitly pinned RC-7C blobs (candidate policy ``rc7c-quarterly-candidate-v2``);
 * ``v9p2a_odr_successor`` - RC-7C at its immutable checkpoints, then exactly six OD-R paths (Financial Owner exact-content decision on the four new
   blobs; two carried blobs), every other RC-7C path unchanged. ``CANDIDATE_PATHS`` stays the twelve; the OD-R state adds its two new paths.
+* ``v10_native_shadow_successor`` - OD-R at its immutable checkpoint (main ``0b57031a``), then exactly the V10 dormant native-shadow paths
+  (Financial Owner exact-content decision for PR #347); every other path unchanged. Content recognition only: no release, no activation.
 
 Recognition grants bytes on a branch/main ONLY. It is not Financial Owner approval, not D-01..D-12 approval, not Gate P, not product admission, not
 activation and not a financial release; ``approved_frozen_path`` and ``released_engine_authority_matches`` never consult it. The historical pin maps
@@ -24,19 +26,25 @@ except ModuleNotFoundError:          # imported as ``tests.quarterly_candidate_r
     from tests import rc7c_candidate_successor as rc7c
     from tests import rc7b_quarterly_candidate_authority as authority
     from tests import v9p2a_odr_successor as odr
+try:
+    import v10_native_shadow_successor as v10
+except ModuleNotFoundError:
+    from tests import v10_native_shadow_successor as v10
 
 CANDIDATE_PATHS = tuple(authority.RC7B_CANDIDATE_AUTHORITIES)           # the same twelve protected paths in every recognised state
 
 
 def recognized_state(*, repo=None, ref: str = "HEAD", fetcher=None) -> str | None:
-    """``"RC7B"`` (twelve RC-7B blobs), ``"RC7C"`` (eight RC-7B + four RC-7C blobs), ``"ODR"`` (RC-7C + the six exact OD-R blobs) or None.
-    The three are mutually exclusive by blob identity."""
+    """``"RC7B"`` (twelve RC-7B blobs), ``"RC7C"`` (eight RC-7B + four RC-7C blobs), ``"ODR"`` (RC-7C + the six exact OD-R blobs),
+    ``"V10"`` (OD-R + the exact V10 dormant native-shadow blobs) or None. The four are mutually exclusive by blob identity."""
     if rc7b.candidate_recognized(repo=repo, ref=ref, fetcher=fetcher):
         return "RC7B"
     if rc7c.rc7c_recognized(repo=repo, ref=ref):
         return "RC7C"
     if odr.odr_recognized(repo=repo, ref=ref):
         return "ODR"
+    if v10.v10_recognized(repo=repo, ref=ref):
+        return "V10"
     return None
 
 
@@ -53,6 +61,8 @@ def candidate_blobs(*, repo=None, ref: str = "HEAD", fetcher=None) -> dict:
         return dict(rc7c.RC7C_CANDIDATE_AUTHORITIES)
     if state == "ODR":
         return odr.odr_candidate_authorities()
+    if state == "V10":
+        return v10.v10_candidate_authorities()
     return {}
 
 

@@ -1,4 +1,4 @@
-# INACTIVE. Exact deployment and activation require independent owner approval.
+# Protected production routing; missing admission uses the retained sequential job.
 name: Public Safety and Model Smoke
 permissions:
   contents: read
@@ -98,27 +98,13 @@ jobs:
       working-directory: controller
       env:
         GH_TOKEN: ${{ github.token }}
-        CI_V3_ROOT_B64: ${{ needs.safety-and-smoke.outputs.root_b64 }}
-        CI_V3_ROOT_SHA256: ${{ needs.safety-and-smoke.outputs.root_sha256 }}
-        CI_V3_HOST_ANCHORS: ${{ needs.safety-and-smoke.outputs.host_anchors }}
+        FINCO_PRODUCTION_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         SOURCE_RESULT: ${{ needs.source-safety.result }}
         EXECUTION_RESULT: ${{ needs.safety-and-smoke.result }}
-      run: 'test "$SOURCE_RESULT" = success
-
+      run: |
+        test "$SOURCE_RESULT" = success
         test "$EXECUTION_RESULT" = success
-
-        python - <<''PYCODE''
-
-        import base64,os
-
-        from pathlib import Path
-
-        Path(os.environ[''RUNNER_TEMP''],''ci-v3-root.json'').write_bytes(base64.b64decode(os.environ[''CI_V3_ROOT_B64''],validate=True))
-
-        PYCODE
-
-        python -m tools.ci_v3_mandatory verify --root "$RUNNER_TEMP/ci-v3-root.json" --root-sha256 "$CI_V3_ROOT_SHA256"
-        --project ../subject --output ../artifacts/parallel-required-proof'
+        python -m tools.ci_v3_production verify --independent --evidence ../evidence --output ../artifacts/parallel-required-proof
     - name: Upload mandatory aggregate proof (historical artifact alias)
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

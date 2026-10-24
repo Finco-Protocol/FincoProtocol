@@ -17,10 +17,10 @@ type SourceAuthorityDrawerProps = {
 };
 
 const stateLabels: Record<SourceAuthorityState, string> = {
-  draft: "Local demo draft · save state not recorded",
-  saved: "Demo saved · this browser session only",
+  draft: "Unsaved changes in this preview",
+  saved: "Saved in this browser preview only",
   reference: "Protected reference · read-only",
-  fixed: "Fixed synthetic reference",
+  fixed: "Fixed example value",
 };
 
 export default function SourceAuthorityDrawer({
@@ -37,17 +37,17 @@ export default function SourceAuthorityDrawer({
   const contentId = useId();
 
   return <details className="fm-source-authority" data-testid="source-authority-drawer">
-    <summary aria-controls={contentId}>Source &amp; status · {selection}</summary>
+    <summary aria-controls={contentId}>Input details · {selection}</summary>
     <div id={contentId} className="fm-source-authority-content">
       <dl>
         <div><dt>Project / scenario</dt><dd>{project.name} · {scenarioId}</dd></div>
         <div><dt>Selected item</dt><dd>{selection}{valueLabel ? ` · ${valueLabel}` : ""}</dd></div>
-        <div><dt>State</dt><dd>{stateLabels[state]}</dd></div>
-        <div><dt>Displayed source</dt><dd>{sourceLabel}</dd></div>
+        <div><dt>Editing status</dt><dd>{stateLabels[state]}</dd></div>
+        <div><dt>Example source</dt><dd>{sourceLabel}</dd></div>
       </dl>
       <p>{note}</p>
       <a href={relatedHref}>{relatedLabel}</a>
-      <small>Navigation association only; verified calculation lineage is not available.</small>
+      <small>This link opens a related section only; it does not show how the value was calculated.</small>
     </div>
   </details>;
 }

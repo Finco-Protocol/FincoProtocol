@@ -1,0 +1,34 @@
+{
+  "Financial": {
+    "approved": true,
+    "reference": "conversation:2026-10-23:PR347:Financial-Owner-Exact-Content-Approval:Decision-B"
+  },
+  "blobs": {
+    "app/radar_rwa/r_live_snapshot_store.py": "4179c296c803f42040b2811dc70ef55a1cdfa1d0",
+    "app/radar_rwa/r_live_warming.py": "c29fe4cdfe4e07df6ecd82a2a714f13f4b78d7e9"
+  },
+  "hosted_shadow_authorized": false,
+  "image_publication_authorized": false,
+  "issue": 348,
+  "kind": "r-live-lifecycle-py310-exact-content-approval",
+  "merge_authorized": false,
+  "phase4_activation_authorized": false,
+  "pr346_checkpoint": {
+    "head": "0b57031ae6949d8e7d187a1932c4451e213238f7",
+    "tree": "608b4ae23169d2fbce084c6f63e4fd43925549b5"
+  },
+  "predecessor_blobs": {
+    "app/radar_rwa/r_live_snapshot_store.py": "4179c296c803f42040b2811dc70ef55a1cdfa1d0",
+    "app/radar_rwa/r_live_warming.py": "563c1a256886f7b26af21ac63e121216f908c840"
+  },
+  "pull_request": 347,
+  "repository": "Finco-Protocol/FincoProtocol",
+  "runtime_activation_authorized": false,
+  "schema": 1,
+  "scope": "PR347-issue348-R-LIVE-python310-exact-content-governance-and-CI-closure-only",
+  "source_candidate": {
+    "head": "f137aaccff601c2f86126e1215165a7edc81574d",
+    "tree": "1bd953ed1967c82a76e8f7c0a84caa7347c027f1"
+  },
+  "workflow_deployment_authorized": false
+}

@@ -14,6 +14,29 @@ class ShutdownIncomplete(RuntimeError):
     """The caller still owns work/resources; replacement is unsafe."""
 
 
+try:  # Python >= 3.11: the builtin exception group itself (no behaviour change)
+    LifecycleErrors = ExceptionGroup  # noqa: F821
+except NameError:  # Python 3.10: minimal stand-in that keeps EVERY error observable
+    class LifecycleErrors(Exception):
+        """``ExceptionGroup(message, exceptions)`` equivalent for Python 3.10: ``.message`` and ``.exceptions``."""
+
+        def __init__(self, message, exceptions):
+            exceptions = tuple(exceptions)
+            if not isinstance(message, str):
+                raise TypeError("argument 1 must be str")
+            if not exceptions:
+                raise ValueError("second argument (exceptions) must be a non-empty sequence")
+            if not all(isinstance(exc, Exception) for exc in exceptions):
+                raise TypeError("Cannot nest BaseExceptions in an ExceptionGroup")
+            super().__init__(message, exceptions)
+            self.message = message
+            self.exceptions = exceptions
+
+        def __str__(self):
+            count = len(self.exceptions)
+            return f"{self.message} ({count} sub-exception{'s' if count > 1 else ''})"
+
+
 class RecurringService:
     def __init__(self, operation, *, name, initial_delay, interval):
         if initial_delay < 0 or interval <= 0:

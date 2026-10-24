@@ -1,5 +1,6 @@
 import React, { useEffect, useId } from "react";
 import { fincoWorkingCopyBridge, type FincoWorkingCopySummary } from "./fincoProjectBridge";
+import { ThemeSelector } from "./ThemeSelector";
 
 declare global {
   interface Window {
@@ -112,6 +113,7 @@ export function Shell({ children, crumb = "Project library", mainContentId = "fm
         </div>
         <div className="fm-top-right">
           <span className="fm-demo-label">{originLabel}</span>
+          <ThemeSelector />
           <span>EUR · IFRS</span>
           <div className="fm-avatar">AR</div>
         </div>
