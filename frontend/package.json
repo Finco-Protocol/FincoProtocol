@@ -8,8 +8,10 @@
     "dev": "vite",
     "build": "tsc --noEmit && tsc -p tsconfig.finco.json --noEmit && vite build",
     "build:transfer": "vite build --config transfer/vite.transfer.config.ts",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.finco.json --noEmit",
-    "preview": "vite preview"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.finco.json --noEmit && tsc -p tsconfig.nonmodel.json --noEmit",
+    "preview": "vite preview",
+    "check:nonmodel": "node src/nonmodel/_checks/nonmodel-check.mjs",
+    "build:nonmodel": "vite build --config vite.nonmodel.config.ts"
   },
   "dependencies": {
     "react": "18.3.1",

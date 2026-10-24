@@ -17,5 +17,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src", "vite.config.ts"],
-  "exclude": ["src/finco", "transfer"]
+  "exclude": ["src/finco", "src/nonmodel", "transfer"]
 }

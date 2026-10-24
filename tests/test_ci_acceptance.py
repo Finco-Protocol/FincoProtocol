@@ -300,6 +300,17 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
             assert git("cat-file", "-t", actual) == "blob", f"Missing V10 successor blob: {path}"
             assert actual == V10_PROTECTED_BLOBS[path], f"Unreviewed V10 content: {path}"
         return
+    # V11 Stage 3 native senior-debt candidate: against a main that carries V10, the V11 successor changes exactly its protected paths (the
+    # default-off hook in financing/project.py and the new native_v11 files; no V10 reseal) under one Financial Owner exact-content decision.
+    # Recognised only while the whole V11 contract holds (V10 checkpoint, source candidate, exact blobs, no other protected change, pinned
+    # hub, closed flags, Stage 3 default off, no activation surface). Bytes only: not merge authorisation, activation or release.
+    from v11_stage3_successor import V11_PROTECTED_BLOBS, v11_recognized
+    if protected == set(V11_PROTECTED_BLOBS) and v11_recognized(repo=root, ref=head):
+        for path in sorted(protected):
+            actual = git("rev-parse", "--verify", f"{head}:{path}")
+            assert git("cat-file", "-t", actual) == "blob", f"Missing V11 successor blob: {path}"
+            assert actual == V11_PROTECTED_BLOBS[path], f"Unreviewed V11 content: {path}"
+        return
     assert protected == _F3_5_REVIEWED_PROTECTED_PATHS, f"Unapproved or incomplete protected diff: {sorted(protected)}"
     for path in sorted(protected):
         actual = git("rev-parse", "--verify", f"{head}:{path}")

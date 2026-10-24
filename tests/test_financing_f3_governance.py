@@ -54,17 +54,32 @@ def test_rc7b_candidate_path_never_acquires_f3_or_released_authority_but_is_reco
     assert not approved_frozen_path(RC7B_PATH)
     import v9p2a_odr_successor as odr_successor
     state = recognition.recognized_state(repo=governance.REPO)
-    assert state in ("RC7B", "RC7C", "ODR", "V10")
+    assert state in ("RC7B", "RC7C", "ODR", "V10", "V11S3")
     assert strictly_frozen_changes([RC7B_PATH]) == []
     odr_ref = "HEAD"
+    v10_ref = "HEAD"
+    if state == "V11S3":
+        # the V11 successor carries period_engine.py as its unchanged RC-7C blob; V10 stays judged at its immutable V11 checkpoint
+        import v11_stage3_successor as v11_successor
+        assert recognition.candidate_blobs(repo=governance.REPO)[RC7B_PATH] == rc7c_successor.RC7C_CANDIDATE_AUTHORITIES[RC7B_PATH]
+        v11_states = v11_successor.states(repo=governance.REPO)
+        for denied in ("financial_release", "v10_reseal", "merge_authorized"):
+            assert v11_states[denied] is False, denied
+        import v11_stage3_release_authority as v11_release        # activation only via the separate owner release authority
+        assert v11_states["stage3_activation"] is v11_states["production_enablement"] is \
+            v11_release.release_recognized(repo=governance.REPO)
+        v10_ref = v11_successor.historical_subject(repo=governance.REPO)
+        assert v10_ref != "HEAD" and recognition.recognized_state(repo=governance.REPO, ref=v10_ref) == "V10"
+        state = "V10"
     if state == "V10":
         # the V10 successor carries period_engine.py as its unchanged RC-7C blob; OD-R stays judged at its immutable V10 checkpoint
         import v10_native_shadow_successor as v10_successor
-        assert recognition.candidate_blobs(repo=governance.REPO)[RC7B_PATH] == rc7c_successor.RC7C_CANDIDATE_AUTHORITIES[RC7B_PATH]
-        v10_states = v10_successor.states(repo=governance.REPO)
+        assert recognition.candidate_blobs(repo=governance.REPO, ref=v10_ref)[RC7B_PATH] == \
+            rc7c_successor.RC7C_CANDIDATE_AUTHORITIES[RC7B_PATH]
+        v10_states = v10_successor.states(repo=governance.REPO, ref=v10_ref)
         for denied in ("financial_release", "native_activation", "native_replace_mode", "merge_authorized"):
             assert v10_states[denied] is False, denied
-        odr_ref = v10_successor.historical_subject(repo=governance.REPO)
+        odr_ref = v10_successor.historical_subject(repo=governance.REPO, ref=v10_ref)
         assert odr_ref != "HEAD" and recognition.recognized_state(repo=governance.REPO, ref=odr_ref) == "ODR"
         state = "ODR"
     if state == "ODR":

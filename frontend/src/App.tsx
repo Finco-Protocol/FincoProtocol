@@ -22,6 +22,20 @@ function ErrorView({ message, onRetry }: { message: string; onRetry: () => void 
 }
 
 /**
+ * Mount-time surface selector (Concept B NON-MODEL integration V1).
+ *
+ * `data-surface="non-model"` on the host mount element renders the isolated
+ * Concept B NON-MODEL experience (public Landing, Radar, Crypto and Roadmap
+ * preview surfaces; app/v2/nonmodel_router.py serves that host page). The
+ * attribute comes from static server-rendered markup and cannot change for a
+ * mounted root, so reading it before any hook introduces no hook-order hazard.
+ * Every other value keeps the Model workspace behavior below unchanged.
+ */
+export default function App({ host }: { host: HTMLElement }) {
+  return <ModelApp host={host} />;
+}
+
+/**
  * UX-02 integrated React application.
  *
  * Route adapter (minimal, consistent with the FastAPI surface):
@@ -31,7 +45,7 @@ function ErrorView({ message, onRetry }: { message: string; onRetry: () => void 
  * any second account/session system.  The feature flag, same-origin assets and
  * the legacy Jinja2/HTMX fallback are unchanged from UX-01.
  */
-export default function App({ host }: { host: HTMLElement }) {
+function ModelApp({ host }: { host: HTMLElement }) {
   const [config] = useState<HostConfig | null>(() => readHostConfig(host));
   const [phase, setPhase] = useState<Phase>("loading");
   const [errorMessage, setErrorMessage] = useState("");

@@ -240,8 +240,9 @@ def post_model_reference_run(
         BUSY_CODE, BUSY_MESSAGE, ModelExecutionBusy, ModelExecutionFailed, ModelExecutionTimeout,
         ModelWorkerError, run_model_process_sync,
     )
+    from app.runtime.native_activation import activated, native_result
     try:
-        data = run_model_process_sync(_run.build_run_response_data, reference_key, capacity_mw)
+        data = native_result(run_model_process_sync(activated(_run.build_run_response_data), reference_key, capacity_mw))
     except ModelExecutionBusy:
         return JSONResponse(
             status_code=429, headers={"Retry-After": "5"},

@@ -11,6 +11,12 @@ WorkingDirectory=/opt/finco_protocol
 # The service manager owns production environment loading. run_web.sh validates
 # mandatory configuration without printing values.
 EnvironmentFile=/opt/finco_protocol/.env
+# Permanent native Run activation (V10 Stage 1+2 + V11 Stage 3, build-ID pinned). Written ONLY by the release
+# transaction deploy/scripts/release_native.sh install after the kernels were built, verified against their committed
+# manifests, installed and self-tested; loaded after .env so it is the production setting. Contains no secrets.
+# Missing file ("-"): every Run is canonical Python. Immediate rollback without restart: the kill-switch files
+# /var/lib/finco/native_v10_run.disabled (all native) and /var/lib/finco/native_v11_run.disabled (Stage 3 only).
+EnvironmentFile=-/opt/finco_protocol/.env.native
 # P0-C: production is ALWAYS the secure app mode. This is set here, not only in .env, so a
 # forgotten variable can never silently start the development mode. NOTE: systemd applies
 # EnvironmentFile AFTER Environment=, so an .env value would override this line; run_web.sh

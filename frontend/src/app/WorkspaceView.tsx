@@ -12,9 +12,11 @@ import {
 } from "./adapters";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
 import { CostLinesView, DiagnosticsView, FinancingView, RevenueView, RunsView, TrustView } from "./ux040506Views";
-import type { InputsPayload, StatementsPayload, WorkspacePayload } from "./types";
+import { RevenueEditorView, ScenarioView } from "./ux07ScenarioViews";
+import type { InputsPayload, RevenueContractsPayload, StatementsPayload, WorkspacePayload } from "./types";
+import { fetchRevenueContracts } from "./api";
 
-type Section = "overview" | "inputs" | "statements" | "results" | "financing" | "diagnostics" | "trust" | "gated";
+type Section = "overview" | "inputs" | "statements" | "results" | "financing" | "diagnostics" | "trust" | "scenarios" | "gated";
 
 // Harvested ModelNav labels → canonical React sections.  UX-04/05/06 activate
 // financing, model checks (diagnostics) and trust over canonical projections;
@@ -25,7 +27,7 @@ const NAV_TO_SECTION: Record<string, Section> = {
   statements: "statements",
   results: "results",
   financing: "financing",
-  scenarios: "gated",
+  scenarios: "scenarios",
   analysis: "gated",
   checks: "diagnostics",
   trust: "trust",
@@ -33,10 +35,10 @@ const NAV_TO_SECTION: Record<string, Section> = {
 };
 const SECTION_LABELS: Record<string, string> = {
   overview: "Overview", inputs: "Inputs", statements: "Statements", results: "Results",
-  financing: "Financing", diagnostics: "Model checks", trust: "Trust",
+  financing: "Financing", diagnostics: "Model checks", trust: "Trust", scenarios: "Scenarios",
 };
 
-const SECTION_IDS: Section[] = ["overview", "inputs", "statements", "results", "financing", "diagnostics", "trust"];
+const SECTION_IDS: Section[] = ["overview", "inputs", "statements", "results", "financing", "diagnostics", "trust", "scenarios"];
 
 function sectionFromHash(): Section {
   const raw = window.location.hash.replace("#", "");
@@ -84,6 +86,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
   const [error, setError] = useState<{ code: string; message?: string } | null>(null);
   const [statements, setStatements] = useState<StatementsPayload | null>(null);
   const [inputs, setInputs] = useState<InputsPayload | null>(null);
+  const [revenuePayload, setRevenuePayload] = useState<RevenueContractsPayload | null>(null);
   const [busy, setBusy] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
@@ -122,7 +125,10 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
     if (section === "statements" && !statements) void loadStatements();
     if (section === "results" && !statements) void loadStatements();
     if (section === "inputs" && !inputs) void loadInputs();
-  }, [section, statements, inputs, loadStatements, loadInputs]);
+    if (section === "inputs" && !revenuePayload) void fetchRevenueContracts(project).then((r) => {
+      if (r.ok === true) setRevenuePayload(r);
+    });
+  }, [section, statements, inputs, revenuePayload, loadStatements, loadInputs, project]);
 
   useEffect(() => {
     const onHash = () => setSection(sectionFromHash());
@@ -263,11 +269,13 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
             ? <>
               <CanonicalInputGrid payload={inputs} busy={busy} onSave={saveCells} onRefresh={refreshAll} />
               <CostLinesView project={project} />
+              {revenuePayload && <RevenueEditorView project={project} revenuePayload={revenuePayload} onSaved={() => { void loadInputs(); void loadWorkspace(); setRevenuePayload(null); }} />}
               <RevenueView project={project} />
             </>
             : <p className="rx-boot-loading" role="status">Loading the canonical input grid…</p>
         )}
         {section === "financing" && <FinancingView project={project} />}
+        {section === "scenarios" && <ScenarioView project={project} />}
         {section === "diagnostics" && <DiagnosticsView project={project} />}
         {section === "trust" && <TrustView project={project} />}
         {section === "statements" && (

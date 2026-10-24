@@ -79,10 +79,26 @@ jobs:
             files=""
             [ -f tests/test_model_react_poc_v1.py ] && files="$files tests/test_model_react_poc_v1.py"
             [ -f tests/test_model_react_source_harvest_v1.py ] && files="$files tests/test_model_react_source_harvest_v1.py"
+            [ -f tests/test_nonmodel_concept_b_v1.py ] && files="$files tests/test_nonmodel_concept_b_v1.py"
             if [ -n "$files" ]; then
               python -m pytest -q $files --junitxml=artifacts/react-poc-contract-results.xml
             fi
           fi
+
+      # Concept B NON-MODEL integration V1 (additive, same already-required fast
+      # gate): run the scoped logic + static-render integration check for the
+      # NON-MODEL experience against the exact PR head, with a strict TS
+      # typecheck.  Self-sufficient install: the React build step above keeps
+      # its own (dormant) `frontend/package.json` condition under
+      # working-directory: frontend, so node_modules may not exist here yet.
+      - name: Concept B NON-MODEL integration check (when present)
+        run: |
+          if [ -f src/nonmodel/_checks/nonmodel-check.mjs ]; then
+            [ -d node_modules ] || npm ci --no-audit --no-fund
+            npm run typecheck
+            npm run check:nonmodel
+          fi
+        working-directory: frontend
 
       - name: Upload exact-head provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -153,8 +153,16 @@ def test_bundle_contains_no_runtime_cdn_dependency():
     static_dir = Path(asset_paths.resolve_static_dir(""))
     bundle = (static_dir / "react" / "finco-react.js").read_text(encoding="utf-8")
     urls = set(re.findall(r"https?://[^\s\"'`\\)]+", bundle))
+    # Concept B NON-MODEL integration V1 (additive, narrowly scoped): the
+    # approved Concept B design renders read-only source-documentation anchors
+    # pointing at this repository's GitHub blobs (frontend/src/nonmodel/
+    # _shared/fixtures.ts, byte-identical to the handoff).  They are
+    # click-through navigation destinations, never runtime fetches — the
+    # NON-MODEL tree contains no fetch/XHR/WebSocket usage (enforced by
+    # tests/test_nonmodel_concept_b_v1.py).
     allowed = {u for u in urls if u.startswith("http://www.w3.org/")
-               or u.startswith("https://reactjs.org/docs/error-decoder")}
+               or u.startswith("https://reactjs.org/docs/error-decoder")
+               or u.startswith("https://github.com/Finco-Protocol/FincoProtocol/blob/main/")}
     assert urls == allowed, f"unexpected non-same-origin URLs in bundle: {sorted(urls - allowed)}"
 
 

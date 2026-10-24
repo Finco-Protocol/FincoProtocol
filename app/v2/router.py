@@ -6087,3 +6087,13 @@ router.include_router(react_workspace_router)
 
 from app.v2.react_poc_router import router as react_poc_router
 router.include_router(react_poc_router)
+
+# -- Concept B NON-MODEL experience (public React surface, V1) ----------------
+# Isolated presentation-only page route (GET /v2/non-model): the integrated
+# Concept B NON-MODEL frontend renders public Landing / Radar / Crypto /
+# Roadmap preview surfaces over labelled synthetic fixtures. No bootstrap, no
+# persistence, no session resolution, no backend call; the canonical
+# server-rendered surfaces (/radar/**, /crypto, /roadmap) stay untouched and
+# authoritative. See app/v2/nonmodel_router.py for the boundary contract.
+from app.v2.nonmodel_router import router as nonmodel_router
+router.include_router(nonmodel_router)
