@@ -87,10 +87,15 @@ jobs:
 
       # Concept B NON-MODEL integration V1 (additive, same already-required fast
       # gate): run the scoped logic + static-render integration check for the
-      # NON-MODEL experience against the exact PR head.
+      # NON-MODEL experience against the exact PR head, with a strict TS
+      # typecheck.  Self-sufficient install: the React build step above keeps
+      # its own (dormant) `frontend/package.json` condition under
+      # working-directory: frontend, so node_modules may not exist here yet.
       - name: Concept B NON-MODEL integration check (when present)
         run: |
           if [ -f src/nonmodel/_checks/nonmodel-check.mjs ]; then
+            [ -d node_modules ] || npm ci --no-audit --no-fund
+            npm run typecheck
             npm run check:nonmodel
           fi
         working-directory: frontend
