@@ -36,12 +36,13 @@ def environment_record():
     packages = sorted({(d.metadata["Name"].lower().replace("_", "-"), d.version)
                        for d in importlib.metadata.distributions() if d.metadata["Name"]})
     from tools.ci_v3_runtime_fingerprint import capture
+    from tools.ci_v3_frontend import frontend_image_record
     fingerprint = capture()
     # Software identity is independent of incidental runner CPU addresses/limits.
     # Full host observations remain in adapter/control reports and pair review.
     for key in ("cpu", "cpu_count", "affinity", "cgroup_limits", "kernel"):
         fingerprint.pop(key, None)
-    return {"runtime_fingerprint": fingerprint, "python": sys.version, "executable": str(Path(sys.executable).resolve()),
+    return {"frontend_dependencies":frontend_image_record(),"runtime_fingerprint": fingerprint, "python": sys.version, "executable": str(Path(sys.executable).resolve()),
             "platform": sys.platform, "machine": platform.machine(), "packages": packages,
             "native_thread_environment": {k: os.environ.get(k) for k in THREAD_ENV},
             "pytest_plugin_autoload": os.environ.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "")}

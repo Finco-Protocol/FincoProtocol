@@ -2,7 +2,7 @@ name: Protocol Verification Corpus
 
 on:
   push:
-    branches: [main]
+    branches: [main, epic/model-react-frontend-v1]
   pull_request:
     paths:
       - "finco_protocol/**"

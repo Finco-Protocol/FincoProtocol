@@ -2,6 +2,8 @@
   "requirements.txt": "6ef9e91bc586efa19834f8fe14fd7b3a3790667a610b88c294758aeb2729e0d6",
   "requirements-ci-tests.txt": "3d1b83c3ac2277c359c4c096ae857e48f16cb223dd5ab5803e4881d99299f029",
   "constraints.txt": "658b6b3d1864d02e29ead22e936481540cfa558292943b8f6a8401d1b4d430a9",
-  "docs/ci_v3/phase4/runtime/Dockerfile": "5caa1a102934ddfe953893d066c3e70b1979ce7c209fcffe501cbcaaf8fc48fb",
-  "docs/ci_v3/phase4/runtime/python.lock": "0d7eb0a140f11a0a7c35eb6143696fcd638b566cff50a3d8e1531252363822b9"
+  "docs/ci_v3/phase4/runtime/Dockerfile": "25e12896149f690b466c37f7737c74ea165f98c91d00605f14107fb9fb8c3a0b",
+  "docs/ci_v3/phase4/runtime/python.lock": "0d7eb0a140f11a0a7c35eb6143696fcd638b566cff50a3d8e1531252363822b9",
+  "frontend/package.json": "fda5929a5c6016ed2fa24b561db09be2aa0e27d7b5b57d1f4be3ab02d169b6e1",
+  "frontend/package-lock.json": "f9125a763c679fef5997f38366973c17aab70b056e45d7fcbf97fa8745408d4b"
 }

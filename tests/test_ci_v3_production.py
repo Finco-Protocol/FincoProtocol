@@ -37,9 +37,12 @@ def _route(cwd,tmp_path,rollback,event,repo):
  assert 'git' not in _route_script() and 'tools.ci_v3_production route' in _route_script()
  return 'execution_mode='+mode+'\n'
 
-@pytest.mark.parametrize('rollback,event,repo,mode',[('', 'push','Finco-Protocol/FincoProtocol','parallel'),('true','push','Finco-Protocol/FincoProtocol','sequential'),('','pull_request','elsewhere/fork','sequential'),('','pull_request','Finco-Protocol/FincoProtocol','parallel')])
+@pytest.mark.parametrize('rollback,event,repo,mode',[('', 'push','Finco-Protocol/FincoProtocol','parallel'),('true','push','Finco-Protocol/FincoProtocol','sequential'),('','pull_request','elsewhere/fork','sequential'),('','pull_request','Finco-Protocol/FincoProtocol','parallel'),('', 'push','Finco-Protocol/FincoProtocol','admitted'),('','pull_request','Finco-Protocol/FincoProtocol','admitted')])
 def test_real_route_and_immediate_rollback(tmp_path,route_trees,rollback,event,repo,mode):
- assert _route(route_trees['compatible'],tmp_path,rollback,event,repo)=='execution_mode='+mode+'\n'
+ # Retain Epic's original [admitted] parameter identities alongside main's
+ # [parallel] identities; both use the same authenticated source-aware route.
+ expected='parallel' if mode=='admitted' else mode
+ assert _route(route_trees['compatible'],tmp_path,rollback,event,repo)=='execution_mode='+expected+'\n'
 
 @pytest.mark.parametrize('rollback,event,repo',[('', 'push','Finco-Protocol/FincoProtocol'),('true','push','Finco-Protocol/FincoProtocol'),('','pull_request','elsewhere/fork'),('','pull_request','Finco-Protocol/FincoProtocol')])
 def test_incompatible_source_is_always_routed_sequentially(tmp_path,route_trees,rollback,event,repo):

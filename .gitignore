@@ -72,6 +72,13 @@ tools/_offline_keys.json
 # FINCO UI build tooling
 tools/ui/node_modules/
 
+# FINCO Model React frontend (UX-01) — sources are committed; dependencies and
+# the intermediate Vite output are not. The served bundle is committed at
+# static/react/finco-react.{js,css}.
+frontend/node_modules
+frontend/dist/
+frontend/dist-transfer/
+
 # V10 native candidate: compiled artifacts are built reproducibly outside the runtime, never committed
 financial_engine/native_v10/*.so
 financial_engine/native_v10/build/

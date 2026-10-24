@@ -44,6 +44,10 @@ def main():
         write_json(directory / "interpreter-exit.json", {"finalizing": True,
             "at_ms": round((time.perf_counter() - clock) * 1000)})
     atexit.register(finalizing)
+    if request.get("finalize_owned_multiprocessing"):
+        from tools.ci_v3_frontend import prepare_frontend
+        receipt=prepare_frontend(Path(request["project"]))
+        if receipt is not None:write_json(directory / "frontend-runtime.json",receipt)
     if request.get("target_calibration") is not None:
         from tools.ci_v3_calibrate import worker_cold_start_s, verdict
         contract = request["target_calibration"]
