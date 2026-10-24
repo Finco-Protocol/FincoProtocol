@@ -1,6 +1,6 @@
 """Release-closed costing arithmetic. No production imports or policy defaults."""
 from dataclasses import dataclass
-from decimal import Decimal, localcontext
+from decimal import Decimal, Context, ROUND_HALF_EVEN, localcontext
 from typing import Literal
 
 COMPONENTS = ('devex', 'capex', 'opex', 'finance', 'tax')
@@ -41,8 +41,7 @@ class Result:
 def calculate(rows: tuple[Row, ...], basis: Basis) -> Result:
     if not isinstance(rows, tuple):
         raise ValueError('immutable row tuple required')
-    with localcontext() as context:
-        context.prec = 50
+    with localcontext(Context(prec=50, rounding=ROUND_HALF_EVEN)):
         return _calculate(rows, basis)
 
 

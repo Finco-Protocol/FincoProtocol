@@ -66,11 +66,13 @@ def test_unknown_or_incomparable_basis_rejected(change):
     with pytest.raises(ValueError):calculate((row(),),replace(basis(),**change))
 
 def test_precision_does_not_depend_on_callers_decimal_context():
-    from decimal import localcontext
+    from decimal import localcontext, ROUND_UP, ROUND_DOWN
     with localcontext() as ctx:
         ctx.prec=3
+        ctx.rounding=ROUND_UP
         low=calculate((row(energy='7'),),basis())
     with localcontext() as ctx:
         ctx.prec=60
+        ctx.rounding=ROUND_DOWN
         high=calculate((row(energy='7'),),basis())
     assert low==high
