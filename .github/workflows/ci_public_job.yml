@@ -51,6 +51,13 @@ jobs:
         run: |
           python -m tools.ci_acceptance run --expected '${{ inputs.tested-sha }}' --label install --output artifacts/install.json -- \
             bash -e -c 'python -m pip install --upgrade pip; pip install -r requirements.txt -c constraints.txt; pip install -r requirements-ci-tests.txt -c constraints.txt; python -m pip check'
+      - name: Prepare locked frontend tools for complete bootstrap coverage
+        run: |
+          if [ -f frontend/package-lock.json ]; then
+            python -m tools.ci_acceptance run --expected '${{ inputs.tested-sha }}' --label frontend --output artifacts/frontend.json -- \
+              npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+            python -c 'import json; from tools.ci_v3_frontend import frontend_record; from pathlib import Path; Path("artifacts/frontend-dependencies.json").write_text(json.dumps(frontend_record(),sort_keys=True))'
+          fi
       - name: Synthetic reference and regression tests (FULL, UNSHARDED, EXACT HEAD)
         env:
           FINCO_CI_PYTEST_BUDGET_S: '12000'

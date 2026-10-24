@@ -33,13 +33,23 @@ def routing():
 def route_mode(config,trusted,rollback,runtime_compatible,reference_ready):
  return 'parallel' if config['enabled'] and not config['rollback'] and rollback!='true' and trusted and runtime_compatible and reference_ready else 'sequential'
 
+def validate_reference_policy(reference, historical):
+ # A successful legacy control is evidence, not a Financial/CI nonpass approval.
+ original=phase_map(historical);accepted=phase_map(reference['report'])
+ require(set(original)<=set(accepted),'accepted reference lost historical coverage')
+ for node,values in accepted.items():
+  if node in original:require(values==original[node],'accepted reference changed historical outcomes')
+  else:require(outcome(values)['status']=='passed','accepted reference has nonhistorical nonpass; sequential bootstrap required: '+node)
+
 def route_preflight(out):
  config=routing();ctx=context()
  trusted=os.environ['GITHUB_EVENT_NAME'] in ('push','pull_request') and (os.environ['GITHUB_EVENT_NAME']!='pull_request' or os.environ.get('SOURCE_REPO')==REPO)
  compatible=runtime_inputs_match();ready=False;reason='disabled, rollback, untrusted source or incompatible runtime'
  if route_mode(config,trusted,os.environ.get('ROLLBACK',''),compatible,True)=='parallel':
   try:
-   reference=authenticate_reference(GitHub(),source_base(),out/'reference')
+   api=GitHub();reference=authenticate_reference(api,source_base(),out/'reference')
+   historical=authenticate_baseline(api,out/'historical')
+   validate_reference_policy(reference,historical)
    write_json(out/'source-reference.json',reference);ready=True;reason='accepted-source reference authenticated'
   except (ValueError,OSError,subprocess.CalledProcessError) as error:
    reason='accepted-source evidence unavailable: '+str(error)

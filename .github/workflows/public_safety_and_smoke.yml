@@ -119,5 +119,6 @@ jobs:
   push:
     branches:
     - main
+    - epic/model-react-frontend-v1
   pull_request: null
   workflow_dispatch: null
