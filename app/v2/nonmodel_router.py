@@ -35,8 +35,10 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+
+from app.utils.workbook_flag import env_flag
 
 router = APIRouter()
 
@@ -46,9 +48,26 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates", "v2"))
 
 
+def nonmodel_preview_enabled() -> bool:
+    """Admission gate: absent/empty → OFF (the route stays non-public).
+
+    The Concept B preview is a design surface, not a deployed product: an
+    ordinary deployment of main must NOT expose it.  Enabling it requires the
+    explicit environment contract below, evaluated per request like every
+    other FINCO React surface flag.
+    """
+    return env_flag("FINCO_NONMODEL_PREVIEW", default=False)
+
+
 @router.get("/non-model", response_class=HTMLResponse)
-async def nonmodel_experience_page() -> HTMLResponse:
-    """Serve the Concept B NON-MODEL experience host page (public, read-only)."""
+async def nonmodel_experience_page():
+    """Serve the Concept B NON-MODEL experience host page (gated, read-only)."""
+    if not nonmodel_preview_enabled():
+        return JSONResponse(
+            {"ok": False, "code": "NONMODEL_PREVIEW_DISABLED"},
+            status_code=404,
+            headers={"Cache-Control": "no-store"},
+        )
     html = _templates.get_template("nonmodel_host.html").render(
         asset_version=NONMODEL_ASSET_VERSION,
     )

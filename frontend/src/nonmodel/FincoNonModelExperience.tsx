@@ -221,7 +221,7 @@ function LandingScreen() {
   const chart = illustrativeChartData(featured, "24h");
   const featuredValue = currentLegValue(featured, "market");
   return (
-    <main className="b-main b-landing" id="main-content">
+    <main className="b-main b-landing" id="main-content" tabIndex={-1}>
       <div className="b-hero-grid">
         <section className="b-hero-copy">
           <div className="b-eyebrow"><span className="b-eyebrow-rule" /> MARKET CONTEXT · EVIDENCE FIRST</div>
@@ -359,7 +359,7 @@ function RadarScreen({
             : "Radar overview";
   const availableCount = filtered.filter((item) => pairAssessment(item).eligible).length;
   return (
-    <main className="b-main b-terminal" id="main-content">
+    <main className="b-main b-terminal" id="main-content" tabIndex={-1}>
       <PageHeading
         eyebrow={`RADAR · ${route === "/radar/r-live" ? "R-LIVE" : "LOCAL FIXTURE TERMINAL"}`}
         title={title}
@@ -630,7 +630,7 @@ function CryptoScreen({
   const watchedItems = instruments.filter((item) => watchlist.includes(item.id));
   const previewItems = instruments.filter((item) => ["Crypto", "Tokenized Markets", "Stablecoins"].includes(item.category));
   return (
-    <main className="b-main b-crypto" id="main-content">
+    <main className="b-main b-crypto" id="main-content" tabIndex={-1}>
       <PageHeading
         eyebrow="CRYPTO · ACCESS PREVIEW"
         title="Context without execution."
@@ -765,7 +765,7 @@ function RoadmapScreen() {
     },
   ];
   return (
-    <main className="b-main b-roadmap" id="main-content">
+    <main className="b-main b-roadmap" id="main-content" tabIndex={-1}>
       <PageHeading eyebrow="PUBLIC ROADMAP · STATUS IS NOT A PROMISE" title="A clear view of what exists—and what does not." description="Roadmap stages distinguish interface implementation, operational data availability, and future targets." right={<div className="b-demo-stamp"><BookOpen size={13} /> PUBLIC STATUS NOTES</div>} />
       <div className="b-roadmap-caveat"><ShieldCheck size={16} /><p><strong>Targets are not guarantees.</strong> Dates and planned work can change. Source documentation or UI presence alone does not establish staging acceptance, live data, or production availability.</p></div>
       <div className="b-roadmap-list">
@@ -791,7 +791,7 @@ function RoadmapScreen() {
 }
 
 function NotFoundScreen() {
-  return <main className="b-main b-not-found" id="main-content"><div className="b-eyebrow">ROUTE NOT FOUND</div><h1>This prototype route is not supported.</h1><p>Use the in-app hash navigation. This experience supports `#/` routes; path-style URLs are not part of this prototype.</p><a className="b-button b-button-primary" href="#/">Return to Landing <ArrowDownRight size={15} /></a></main>;
+  return <main className="b-main b-not-found" id="main-content" tabIndex={-1}><div className="b-eyebrow">ROUTE NOT FOUND</div><h1>This prototype route is not supported.</h1><p>Use the in-app hash navigation. This experience supports `#/` routes; path-style URLs are not part of this prototype.</p><a className="b-button b-button-primary" href="#/">Return to Landing <ArrowDownRight size={15} /></a></main>;
 }
 
 export function FincoNonModelExperience({
@@ -933,7 +933,20 @@ export function FincoNonModelExperience({
 
   return (
     <div className="finco-b-app" data-testid="finco-concept-b">
-      <a className="b-skip-link" href="#main-content">Skip to content</a>
+      <a
+        className="b-skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          // Correction A (N1): move keyboard focus into the main content
+          // WITHOUT changing the URL hash — `#main-content` is not a route,
+          // and a hash change would be misread by the in-experience router.
+          event.preventDefault();
+          const main = document.getElementById("main-content");
+          if (main) main.focus({ preventScroll: false });
+        }}
+      >
+        Skip to content
+      </a>
       <SiteHeader route={route} />
       {screen}
       <SiteFooter />

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { readHostConfig, type HostConfig } from "./api/client";
 import { LibraryView } from "./app/LibraryView";
-import { FincoNonModelExperience } from "./nonmodel/FincoNonModelExperience";
 import { ThemeProvider } from "./finco/_shared/ThemeSelector";
 import { WorkspaceView } from "./app/WorkspaceView";
 
@@ -33,9 +32,6 @@ function ErrorView({ message, onRetry }: { message: string; onRetry: () => void 
  * Every other value keeps the Model workspace behavior below unchanged.
  */
 export default function App({ host }: { host: HTMLElement }) {
-  if (host.dataset.surface === "non-model") {
-    return <FincoNonModelExperience />;
-  }
   return <ModelApp host={host} />;
 }
 

@@ -354,14 +354,23 @@ export interface ScenariosPayload {
   };
 }
 
+export interface ScenarioRunEvidence {
+  state: "AVAILABLE" | "UNAVAILABLE";
+  snapshot_id?: string | null;
+  ran_at?: string | null;
+  history_id?: string | null;
+  note?: string;
+}
+
 export interface ScenarioComparePayload {
   ok: true;
-  base: { label: string; scenario_id: string | null; last_run_snapshot_id: string | null };
-  scenario: { label: string; scenario_id: string; archived: boolean; last_run_snapshot_id: string | null } | null;
+  base: { label: string; scenario_id: string | null; run_evidence: ScenarioRunEvidence };
+  scenario: { label: string; scenario_id: string; archived: boolean; override_count: number; run_evidence: ScenarioRunEvidence } | null;
   differences: Array<{
     field_id: string;
     base_value: unknown;
     scenario_value: unknown;
+    explicitly_overridden: boolean;
     scenario_only: boolean;
   }>;
   kpi_compare: { available: false; reason: string };

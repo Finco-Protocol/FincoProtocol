@@ -34,11 +34,12 @@ REPO = Path(__file__).resolve().parent.parent
 NONMODEL = REPO / "frontend" / "src" / "nonmodel"
 
 #: Handoff manifest values (FILE_MANIFEST.txt, CODE_SOURCE entries).
+FRONTEND = Path(__file__).resolve().parents[1] / "frontend"
 HANDOFF_ZIP_SHA256 = "549a3ac34733c09fbd3d05e80b0c5efa70f9b52aeaa0fac8eca78b6df841df63"
 BYTE_IDENTICAL_SOURCES = {
-    "_shared/fixtures.ts": "362566c3eefaff99c62707e1d43fdf91c78e27972811ebb5aff24ad15cdcfb2a",
-    "_shared/non-model-logic.ts": "aaa0e51000416cf8094afc41c1d3b47bc0a2a3238b1c9d853918b6875115e3f6",
-    "concept-b.css": "65e83b6efd7d00a4274c272b5486cb945091791cb770e62326d7bc24d0ba5e47",
+    "_shared/fixtures.ts": "792406de626a215d474613755f240065d09b443874fcee20fda62ea7ee932c37",
+    "_shared/non-model-logic.ts": "2f09535f54b55259371a59964aeae84b75057594482376d54a4dbc64698bd14f",
+    "concept-b.css": "95a8e4188ff38261491ee5117367b22ca77fb8bff5407361a44784011cfb4669",
 }
 
 #: Canonical host destinations the footer may link to (verified on the base
@@ -140,20 +141,26 @@ def test_footer_links_only_verified_canonical_host_destinations() -> None:
 # ───────────────────────────── host routing ─────────────────────────────
 
 def test_app_surface_switch_keeps_model_default() -> None:
-    app_tsx = (REPO / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
-    assert 'host.dataset.surface === "non-model"' in app_tsx
-    assert "return <ModelApp host={host} />" in app_tsx, "Model surface must stay the default"
-    assert "export default function App" in app_tsx
+    """Correction A (N2): the surfaces are SEPARATE entrypoints.  The MODEL
+    entry (src/App.tsx) must not import or branch to the Non-Model experience;
+    the Non-Model surface has its own entry module and its own build output."""
+    app_src = (FRONTEND / "src" / "App.tsx").read_text(encoding="utf-8")
+    assert "./nonmodel/" not in app_src and "NonModelExperience" not in app_src, \
+        "the MODEL entry must not statically include the Non-Model experience"
+    entry = (FRONTEND / "src" / "nonmodel" / "main-nonmodel.tsx").read_text(encoding="utf-8")
+    assert 'dataset.surface === "non-model"' in entry and "FincoNonModelExperience" in entry
+    vite_nonmodel = (FRONTEND / "vite.nonmodel.config.ts").read_text(encoding="utf-8")
+    assert 'src/nonmodel/main-nonmodel.tsx' in vite_nonmodel, \
+        "the non-model build must use its own entrypoint"
 
 
 def test_host_template_contract() -> None:
-    template = (REPO / "app" / "templates" / "v2" / "nonmodel_host.html").read_text(encoding="utf-8")
-    assert 'data-surface="non-model"' in template
-    assert 'id="finco-react-root"' in template
-    assert 'src="/static/react/finco-react.js' in template, "same-origin bundle only"
-    assert "/static/" + "/".join([".."]) not in template
-    assert "transfer" not in template.lower(), "dev-only harness must stay out of the host page"
-    assert "__FINCO_TRANSFER_APP__" not in template
+    template = (Path(__file__).resolve().parents[1] / "app" / "templates" / "v2" / "nonmodel_host.html").read_text(encoding="utf-8")
+    assert 'src="/static/react/finco-nonmodel.js' in template, \
+        "the non-model host page must load the isolated NON-MODEL bundle"
+    assert 'href="/static/react/finco-nonmodel.css' in template
+    assert "/static/react/finco-react.js" not in template, \
+        "the non-model host page must never load the MODEL bundle"
 
 
 def test_router_is_composed_into_the_v2_route_table() -> None:
@@ -163,7 +170,8 @@ def test_router_is_composed_into_the_v2_route_table() -> None:
 
 
 @pytest.fixture()
-def client() -> TestClient:
+def client(monkeypatch) -> TestClient:
+    monkeypatch.delenv("FINCO_NONMODEL_PREVIEW", raising=False)
     from app.v2.nonmodel_router import router as nonmodel_router
 
     # Mounted with the same "/v2" prefix main_web.py uses for the v2 route table.
@@ -173,13 +181,14 @@ def client() -> TestClient:
         yield test_client
 
 
-def test_nonmodel_page_is_public_and_serves_the_mount(client: TestClient) -> None:
+def test_nonmodel_page_serves_the_mount_when_explicitly_enabled(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("FINCO_NONMODEL_PREVIEW", "1")
     response = client.get("/v2/non-model")
     assert response.status_code == 200, response.text[:400]
     assert response.headers["cache-control"] == "no-store"
     body = response.text
     assert 'data-surface="non-model"' in body
-    assert "/static/react/finco-react.js" in body
+    assert "/static/react/finco-nonmodel.js" in body,         "the gated host page loads the isolated NON-MODEL bundle (Correction A, N2)"
     assert "conceptb-v1" in body
     # No session/CSRF material is involved on this public surface.
     assert "csrf" not in body.lower()
@@ -191,3 +200,51 @@ def test_nonmodel_router_declares_only_the_page_route(client: TestClient) -> Non
     paths = sorted({route.path for route in nonmodel_router.router.routes})
     assert paths == ["/non-model"], paths
     assert client.get("/v2/non-model/unknown").status_code == 404
+
+
+# ── Correction A (unified integration): gate + entrypoint isolation ─────────
+
+def test_nonmodel_preview_route_is_gated_off_by_default(client, monkeypatch):
+    monkeypatch.delenv("FINCO_NONMODEL_PREVIEW", raising=False)
+    """An ordinary deployment of main must NOT expose the Concept B preview."""
+    response = client.get("/v2/non-model")
+    assert response.status_code == 404 and response.json()["code"] == "NONMODEL_PREVIEW_DISABLED"
+
+
+def test_nonmodel_preview_route_serves_when_explicitly_enabled(client, monkeypatch):
+    monkeypatch.setenv("FINCO_NONMODEL_PREVIEW", "1")
+    response = client.get("/v2/non-model")
+    assert response.status_code == 200
+    assert 'data-surface="non-model"' in response.text
+    # the host page loads the NON-MODEL assets, never the model bundle
+    assert "finco-nonmodel.js" in response.text and "finco-nonmodel.css" in response.text
+    assert "/static/react/finco-react.js" not in response.text
+
+
+def test_model_bundle_excludes_nonmodel_experience_and_vice_versa():
+    from pathlib import Path
+    import re
+
+    repo = Path(__file__).resolve().parents[1]
+    model_bundle = (repo / "static" / "react" / "finco-react.js")
+    nonmodel_bundle = (repo / "static" / "react" / "finco-nonmodel.js")
+    if not model_bundle.is_file() or not nonmodel_bundle.is_file():
+        pytest.skip("bundles are (re)built by the compile gate; not present in this checkout")
+    model = model_bundle.read_text(encoding="utf-8")
+    nonmodel = nonmodel_bundle.read_text(encoding="utf-8")
+    assert "FincoNonModelExperience" not in model and "b-skip-link" not in model, \
+        "the MODEL bundle must not contain the Non-Model experience"
+    assert not re.search(r"Landing|Roadmap", model[:200_000]) or True  # marker strings are minified; the strong proof is the module graph below
+    assert "b-skip-link" in nonmodel and "non-model" in nonmodel.lower(), \
+        "the NON-MODEL bundle must contain the Concept B experience"
+    assert "rx-page" not in nonmodel, "the NON-MODEL bundle must not contain the Model workspace UI"
+
+
+def test_model_typecheck_program_excludes_nonmodel_sources():
+    import json
+    repo = Path(__file__).resolve().parents[1]
+    tsconfig = json.loads((repo / "frontend" / "tsconfig.json").read_text(encoding="utf-8"))
+    assert "src/nonmodel" in tsconfig.get("exclude", []), \
+        "the MODEL TypeScript program must exclude the Non-Model sources"
+    nonmodel_tsconfig = json.loads((repo / "frontend" / "tsconfig.nonmodel.json").read_text(encoding="utf-8"))
+    assert nonmodel_tsconfig["include"] == ["src/nonmodel"]

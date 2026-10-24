@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchScenarioCompare, fetchScenarios, saveRevenueContracts } from "./api";
+import type { ScenarioRecordPayload, ScenariosPayload } from "./types";
 
 type FetchState<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
@@ -87,20 +88,25 @@ export function ScenarioView({ project, onScenarioChanged }: { project: string; 
   const [busy, setBusy] = useState(false);
   const [compareId, setCompareId] = useState("");
 
-  const act = async (url: string, fields: Record<string, string>) => {
+  // Correction C (C3): each mutation verifies its OWN effect in the fresh
+  // canonical projection — a readable projection alone is not proof that the
+  // REQUESTED mutation occurred.  Ambiguous evidence is UNKNOWN.
+  const act = async (
+    url: string,
+    fields: Record<string, string>,
+    verify: (fresh: ScenariosPayload) => boolean,
+  ) => {
     setBusy(true);
     setStatus(null);
     const result = await postScenarioForm(url, fields);
     if (result.outcome === "ok") {
-      // Reconcile through a fresh authorized scenarios projection before
-      // claiming success: the canonical redirect alone is not commit evidence.
       const fresh = await fetchScenarios(project);
-      if (fresh.ok === true) {
+      if (fresh.ok === true && verify(fresh)) {
         setStatus({ tone: "ok", text: `${result.message} (verified against the fresh projection)` });
         state.retry();
         onScenarioChanged?.();
       } else {
-        setStatus({ tone: "conflict", text: "The scenario action answered success, but the fresh projection could not confirm it. Reload to reconcile — do not re-submit blindly." });
+        setStatus({ tone: "conflict", text: "The scenario action answered success, but the fresh projection could not confirm THIS mutation. Reload to reconcile — do not re-submit blindly." });
       }
     } else {
       setStatus({ tone: result.outcome === "unknown" ? "conflict" : "error", text: result.message });
@@ -139,17 +145,20 @@ export function ScenarioView({ project, onScenarioChanged }: { project: string; 
                   <span className="fm-toolbar">
                     {!s.active && !s.archived && (
                       <button type="button" className="fm-btn" disabled={busy} aria-label={`Select scenario ${s.name}`}
-                        onClick={() => act(data.mutations.select.url, { project, scenario_id: s.scenario_id })}>Select</button>
+                        onClick={() => act(data.mutations.select.url, { project, scenario_id: s.scenario_id },
+                        (fresh) => fresh.active_scenario_id === s.scenario_id)}>Select</button>
                     )}
                     {!s.is_base_case && !s.archived && (
                       <>
                         <button type="button" className="fm-btn" disabled={busy} aria-label={`Rename scenario ${s.name}`}
                           onClick={() => {
                             const next = window.prompt(`Rename scenario ${s.name} to:`, s.name);
-                            if (next && next.trim() && next !== s.name) act(data.mutations.rename.url, { project, scenario_id: s.scenario_id, new_name: next.trim() });
+                            if (next && next.trim() && next !== s.name) act(data.mutations.rename.url, { project, scenario_id: s.scenario_id, new_name: next.trim() },
+                          (fresh) => fresh.scenarios.some((x: ScenarioRecordPayload) => x.scenario_id === s.scenario_id && x.name === next.trim()));
                           }}>Rename</button>
                         <button type="button" className="fm-btn" disabled={busy} aria-label={`Archive scenario ${s.name}`}
-                          onClick={() => act(data.mutations.archive.url, { project, scenario_id: s.scenario_id })}>Archive</button>
+                          onClick={() => act(data.mutations.archive.url, { project, scenario_id: s.scenario_id },
+                        (fresh) => fresh.scenarios.some((x: ScenarioRecordPayload) => x.scenario_id === s.scenario_id && x.archived))}>Archive</button>
                       </>
                     )}
                     <button type="button" className="fm-btn" aria-label={`Compare with scenario ${s.name}`}
@@ -169,7 +178,8 @@ export function ScenarioView({ project, onScenarioChanged }: { project: string; 
             value={newName} onChange={(e) => setNewName(e.target.value)} />
           <button type="button" className="fm-btn fm-btn-primary" disabled={busy || !newName.trim()}
             aria-label="Create scenario"
-            onClick={() => act(data.mutations.create.url, { project, scenario_name: newName.trim() }).then(() => setNewName(""))}>
+            onClick={() => act(data.mutations.create.url, { project, scenario_name: newName.trim() },
+              (fresh) => fresh.scenarios.some((x) => x.name === newName.trim())).then(() => setNewName(""))}>
             Create scenario
           </button>
         </div>
@@ -207,11 +217,18 @@ export function ScenarioCompareView({ project, scenarioId }: { project: string; 
           </tbody>
         </table>
       </div>
-      <p className="fm-info-note">
-        Persisted Run evidence: {data.base.last_run_snapshot_id ? `Base side Last Run ${data.base.last_run_snapshot_id.slice(0, 12)}` : "Base side has NO persisted Run"} ·{" "}
-        {data.scenario?.last_run_snapshot_id ? `scenario Run ${data.scenario.last_run_snapshot_id.slice(0, 12)}` : "scenario side has NO persisted Run"}.
-        {data.kpi_compare.reason}
-      </p>
+      {([
+        ["Base", data.base.run_evidence],
+        ["Scenario", data.scenario?.run_evidence],
+      ] as Array<[string, { state: string; snapshot_id?: string | null; ran_at?: string | null; note?: string } | undefined]>).map(([label, evidence]) => (
+        <p key={label} className="fm-info-note" data-run-evidence-state={evidence?.state ?? "UNAVAILABLE"}>
+          <strong>{label} Run evidence:</strong>{" "}
+          {evidence?.state === "AVAILABLE"
+            ? <>committed Run <span className="fm-mono">{String(evidence.snapshot_id ?? "").slice(0, 12)}</span>{evidence.ran_at ? ` · ran ${evidence.ran_at}` : ""}</>
+            : <>UNAVAILABLE — {evidence?.note ?? "no committed Run exists for this side."}</>}
+        </p>
+      ))}
+      <p className="fm-info-note">{data.kpi_compare.reason}</p>
     </div>
   );
 }
@@ -237,6 +254,12 @@ export function RevenueEditorView({ project, revenuePayload, onSaved }: {
   const [status, setStatus] = useState<{ tone: "ok" | "error" | "conflict"; text: string } | null>(null);
   const [inFlight, setInFlight] = useState(false);
   const dirty = hasContract && draft !== initial;
+  // Correction C (C2): a scenario switch changes the contract scope — reset the
+  // editor to the freshly projected payload and drop stale CAS tokens.
+  useEffect(() => {
+    setDraft(initial);
+    setStatus(null);
+  }, [initial]);
 
   function prettyOrRaw(raw: string): string {
     try {
@@ -265,12 +288,26 @@ export function RevenueEditorView({ project, revenuePayload, onSaved }: {
     setInFlight(false);
     if ("kind" in result) {
       setStatus({ tone: "conflict", text: result.message });
-    } else if (result.ok) {
-      setStatus({ tone: "ok", text: "Revenue contracts saved atomically through the canonical writer. No Run was started." });
-      onSaved?.();
-    } else {
-      setStatus({ tone: "error", text: result.message });
+      return;
     }
+    if (result.ok) {
+      // Correction C (C2): a clean redirect alone is not proof — reload the
+      // canonical revenue projection and adopt its fresh CAS identity and
+      // committed payload before clearing the dirty state.
+      const response = await fetch(`/v2/model-react/revenue?project=${encodeURIComponent(project)}`,
+        { credentials: "same-origin", headers: { Accept: "application/json" } });
+      const fresh = (await response.json()) as { ok?: boolean; contracts?: Record<string, unknown>; save?: typeof revenuePayload.save };
+      if (fresh && fresh.ok === true && fresh.save && fresh.contracts
+          && typeof fresh.contracts.raw === "string" && fresh.save.content_hash !== revenuePayload.save.content_hash) {
+        setStatus({ tone: "ok", text: "Revenue contracts saved atomically and verified in the fresh projection (new composite identity). No Run was started." });
+        setDraft(JSON.stringify(fresh.contracts, null, 2));
+        onSaved?.();
+      } else {
+        setStatus({ tone: "conflict", text: "The contracts-save outcome is UNKNOWN: the canonical redirect arrived but the fresh projection could not confirm a new committed payload. Reload to reconcile — your edits are preserved." });
+      }
+      return;
+    }
+    setStatus({ tone: "error", text: result.message });
   };
 
   return (
