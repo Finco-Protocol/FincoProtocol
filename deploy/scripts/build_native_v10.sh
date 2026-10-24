@@ -8,6 +8,9 @@
 #          them through the production loaders. Any mismatch installs nothing and removes old kernels.
 # remove   deletes the kernels: every Run is served by canonical Python.
 #
+# Production releases use deploy/scripts/release_native.sh (V10 Stage 1+2 + V11 Stage 3 + the permanent activation);
+# this V10-only helper remains for the V10 kernels alone and never writes an activation.
+#
 # Run as the deploy user BEFORE (re)starting finco-web: at runtime the service tree is read-only
 # (ProtectSystem=strict). Activation itself is a separate setting (FINCO_NATIVE_V10_RUN, default off).
 
