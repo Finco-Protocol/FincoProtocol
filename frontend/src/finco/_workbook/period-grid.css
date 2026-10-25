@@ -1,0 +1,77 @@
+.fm-period-editor { overflow: hidden; }
+.fm-period-title { align-items: center; }
+.fm-period-title > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.fm-period-title h2 { margin: 0; }
+.fm-period-unit { color: var(--muted); font: 9px 'DM Mono', monospace; letter-spacing: .02em; }
+.fm-period-title .fm-period-state { padding: 4px 7px; border: 1px solid #91a3ad; color: #40586b; background: #e8eef0; font: 700 8px 'DM Mono', monospace; letter-spacing: .075em; }
+.fm-period-state.is-dirty { background: #fff1d3; color: #77591c; border-color: #c5a66b; }
+.fm-period-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 11px; border-bottom: 1px solid var(--line); background: #f7f8f6; }
+.fm-period-toolbar-left { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
+.fm-period-toolbar label { display: inline-flex; align-items: center; gap: 7px; color: var(--navy); font-size: 9px; font-weight: 700; }
+.fm-period-toolbar select { min-height: 27px; border: 1px solid #aab8bf; background: #fff; color: var(--ink); padding: 3px 24px 3px 7px; font: 10px 'DM Sans', sans-serif; }
+.fm-period-copy { color: var(--muted); font-size: 9px; line-height: 1.4; max-width: 420px; }
+.fm-period-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.fm-period-precision { display: inline-flex; align-items: center; gap: 4px; color: #566a72; font: 700 9px 'DM Sans', sans-serif; }
+.fm-period-precision select { min-height: 27px; border: 1px solid #aab8bf; background: #fff; color: var(--ink); padding: 3px 20px 3px 6px; font: 10px 'DM Mono', monospace; }
+.fm-period-actions .fm-period-scroll-control { min-height: 28px; padding: 4px 8px; border: 1px solid #a6b5bc; color: var(--navy); background: #edf2f2; font: 700 9px 'DM Mono', monospace; cursor: pointer; }
+.fm-period-actions .fm-period-scroll-control:hover { background: #dfe9e8; }
+.fm-period-actions .fm-period-save { min-height: 28px; padding: 5px 9px; font-size: 9px; }
+.fm-period-actions .fm-period-save:disabled { opacity: .52; cursor: not-allowed; }
+.fm-period-boundary { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 5px 12px; padding: 6px 11px; color: #4d6470; background: #e9eff0; border-bottom: 1px solid var(--line); font: 700 8px 'DM Mono', monospace; letter-spacing: .055em; }
+.fm-period-boundary span:last-child { color: #74858d; font-weight: 500; }
+.fm-period-formula { display: flex; align-items: center; min-height: 34px; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font: 10px 'DM Mono', monospace; }
+.fm-period-address { min-width: 48px; padding: 4px 7px; text-align: center; color: #25475a; background: #edf3f2; border: 1px solid #a4b7bb; }
+.fm-period-formula-label { color: var(--ink-soft); }
+.fm-period-value { min-width: 52px; margin-left: auto; color: var(--ink); text-align: right; }
+.fm-period-lock { padding: 3px 5px; color: #697b83; background: #e9edef; font: 8px 'DM Sans', sans-serif; }
+.fm-period-scroll { max-height: 420px; overflow: auto; min-width: 0; scrollbar-gutter: stable; overscroll-behavior: contain; }
+.fm-period-table { width: 100%; min-width: max-content; border-spacing: 0; table-layout: fixed; color: var(--ink); font-size: 10px; }
+.fm-period-table th, .fm-period-table td { position: relative; height: 32px; padding: 0; text-align: right; border-right: 1px solid #d7dfe0; border-bottom: 1px solid #d7dfe0; background: #fbfcfa; }
+.fm-period-table thead th { position: sticky; top: 0; z-index: 4; min-width: 86px; padding: 5px 7px; color: #27485a; background: #e5edef; text-align: right; font: 700 9px 'DM Mono', monospace; white-space: nowrap; box-shadow: 0 1px #c7d2d5; }
+.fm-period-table thead th span { display: block; margin-bottom: 2px; color: #8a9aa0; font-size: 8px; }
+.fm-period-table .fm-period-metric-head, .fm-period-table .fm-period-metric { position: sticky; left: 0; z-index: 5; width: 230px; min-width: 230px; max-width: 230px; text-align: left; box-shadow: 1px 0 #cbd5d8; }
+.fm-period-table .fm-period-metric-head { z-index: 7; padding: 7px 9px; background: #dce7e9; }
+.fm-period-table .fm-period-metric-head span { float: right; margin: 0; color: #637780; font: 8px 'DM Mono', monospace; }
+.fm-period-table .fm-period-metric { padding: 5px 8px; background: #f0f4f2; font-weight: 600; }
+.fm-period-row-group .fm-period-metric, .fm-period-row-group td { background: #dfe8e8; color: #36515c; font-weight: 700; }
+.fm-period-row-group .fm-period-metric { letter-spacing: .04em; text-transform: uppercase; font-size: 9px; }
+.fm-period-row-fixed .fm-period-metric, .fm-period-row-fixed td { background: #edf1ef; color: #677880; }
+.fm-period-row-date .fm-period-cell-button { color: #386079; text-align: center; }
+.fm-period-row-number { display: inline-block; width: 25px; color: #91a0a2; font: 8px 'DM Mono', monospace; }
+.fm-period-group-toggle { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.fm-period-group-toggle:focus-visible { outline: 2px solid #3c7191; outline-offset: 2px; }
+.fm-period-metric small { float: right; margin: 2px 2px 0 5px; color: #859496; font: 8px 'DM Mono', monospace; }
+.fm-period-cell-button, .fm-period-input { display: block; width: 100%; min-width: 86px; height: 32px; margin: 0; border: 0; border-radius: 0; padding: 5px 8px; background: transparent; color: inherit; text-align: right; font: 10px 'DM Mono', monospace; }
+.fm-period-cell-button { cursor: cell; }
+.fm-period-cell-button:focus-visible { outline: 2px solid #456f78; outline-offset: -2px; position: relative; z-index: 2; }
+.fm-period-cell-button:disabled { cursor: default; color: inherit; }
+.fm-period-cell.is-dirty { background: #fff1d4; box-shadow: inset 3px 0 #aa8750; }
+.fm-period-cell.is-locked { background: #edf1ef; }
+.fm-period-cell.is-selected { z-index: 1; outline: 2px solid #345d68; outline-offset: -2px; }
+.fm-period-row.is-active-row .fm-period-metric { background: #e9f0ef; }
+.fm-period-cell.is-active-column { background-image: linear-gradient(#f1f6f5, #f1f6f5); }
+.fm-period-cell.is-selected { background-image: none; }
+.fm-period-cell.is-range { background: #dce9e5; }
+.fm-period-cell.is-range.is-dirty { background: #f9e8c4; }
+.fm-period-cell.has-error { background: #f7e5df; box-shadow: inset 3px 0 #a94838; }
+.fm-period-cell.has-error .fm-period-cell-button { color: #8c3329; }
+.fm-period-input { position: relative; z-index: 3; height: 32px; outline: 2px solid #315f69; outline-offset: -2px; background: #fffdf6; }
+.fm-period-empty { color: #a6b0ae; }
+.fm-period-error { position: absolute; z-index: 8; top: 100%; right: 0; width: max-content; max-width: 230px; padding: 5px 7px; color: #762f26; background: #fff2ed; border: 1px solid #d19a8d; box-shadow: 0 2px 5px #253b3a25; text-align: left; white-space: normal; font: 9px 'DM Sans', sans-serif; }
+.fm-period-footer { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(200px, 1fr); gap: 12px; padding: 8px 11px; border-top: 1px solid var(--line); color: #667981; background: #f7f8f6; font-size: 9px; line-height: 1.45; }
+.fm-period-instructions strong { color: #2c4d59; font-family: 'DM Mono', monospace; }
+.fm-period-disclaimer { color: #7d898d; }
+.fm-period-message { padding: 7px 11px; border-top: 1px solid #c8d4d4; color: #465e63; background: #eef4f1; font-size: 10px; line-height: 1.45; }
+.fm-period-message p { margin: 2px 0; }
+.fm-period-message.is-error { color: #74392e; background: #fbefea; border-color: #d9b3a8; }
+.fm-period-profile-note { padding: 6px 11px; border-top: 1px solid var(--line); color: #718187; font-size: 9px; }
+.fm-period-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+@media (max-width: 640px) {
+  .fm-period-title > div { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .fm-period-toolbar { align-items: flex-start; }
+  .fm-period-toolbar-left, .fm-period-actions { width: 100%; }
+  .fm-period-actions .fm-period-save { margin-left: auto; }
+  .fm-period-table .fm-period-metric-head, .fm-period-table .fm-period-metric { width: 180px; min-width: 180px; max-width: 180px; }
+  .fm-period-table thead th:not(:first-child), .fm-period-cell-button, .fm-period-input { min-width: 78px; }
+  .fm-period-footer { grid-template-columns: 1fr; gap: 5px; }
+}

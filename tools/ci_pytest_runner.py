@@ -86,6 +86,14 @@ def _snapshot(pid: int, diag: Path, reason: str, progress_dir: Path | None = Non
 
 
 def main(argv: list[str]) -> int:
+    # Preparation belongs to the supervisor, outside pytest and its test hooks.
+    # Keep the exact-content governed sequential workflow unchanged.
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        if __package__:
+            from .ci_v3_frontend import prepare_sequential_frontend
+        else:
+            from ci_v3_frontend import prepare_sequential_frontend
+        prepare_sequential_frontend(Path.cwd(), Path("artifacts/frontend-dependencies.json"))
     budget = _env_int("FINCO_CI_PYTEST_BUDGET_S", 3000)
     grace = _env_int("FINCO_CI_EXIT_GRACE_S", 180)
     diag = Path(os.environ.get("FINCO_CI_DIAG_PATH", "artifacts/ci-hang-diagnostics.txt"))

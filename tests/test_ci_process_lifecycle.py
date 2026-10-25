@@ -26,7 +26,10 @@ HEAD, TREE = "a" * 40, "b" * 40
 def _supervised(tmp_path, tests: str, conftest: str = "", grace: int = 4, budget: int = 120):
     (tmp_path / "test_synthetic.py").write_text(tests, encoding="utf-8")
     (tmp_path / "conftest.py").write_text(conftest, encoding="utf-8")
-    env = dict(os.environ, PYTHONPATH=str(ROOT), FINCO_CI_PYTEST_BUDGET_S=str(budget), FINCO_CI_EXIT_GRACE_S=str(grace),
+    # Synthetic suites exercise the lifecycle only: the supervisor's host-side frontend preparation of the real
+    # subject (GITHUB_ACTIONS) must not run here, e.g. against a read-only private source in a parallel worker.
+    env = {key: value for key, value in os.environ.items() if key != "GITHUB_ACTIONS"}
+    env.update(PYTHONPATH=str(ROOT), FINCO_CI_PYTEST_BUDGET_S=str(budget), FINCO_CI_EXIT_GRACE_S=str(grace),
                FINCO_CI_DIAG_PATH=str(tmp_path / "diag.txt"), FINCO_CI_PROGRESS_DIR=str(tmp_path / "progress"))
     return [sys.executable, str(RUNNER), "-q", "-p", "no:cacheprovider", "--confcutdir", str(tmp_path),
             "--junitxml", str(tmp_path / "results.xml"), "--rootdir", str(tmp_path), str(tmp_path / "test_synthetic.py")], env
@@ -35,6 +38,7 @@ def _supervised(tmp_path, tests: str, conftest: str = "", grace: int = 4, budget
 def _record(tmp_path, monkeypatch, command, env, label="control"):
     monkeypatch.setattr("tools.ci_acceptance.attest", lambda value: {"head": HEAD, "tree": TREE})
     monkeypatch.setattr("tools.ci_acceptance.environment_digest", lambda: "environment")
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     output = tmp_path / "process.json"
