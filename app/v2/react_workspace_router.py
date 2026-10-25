@@ -218,6 +218,12 @@ def _row_texts(row: Mapping[str, Any]) -> list[str]:
             for c in row.get("cells") or ()]
 
 
+def _row_values(row: Mapping[str, Any]) -> list[Optional[float]]:
+    """Canonical numeric cell values, aligned 1:1 with ``_row_texts`` (None = not persisted)."""
+    return [c.get("v") if isinstance(c.get("v"), (int, float)) and not isinstance(c.get("v"), bool) else None
+            for c in row.get("cells") or ()]
+
+
 def _sheet_from_tables(table: Any, annual_table: Any, sheet_id: str, label: str) -> dict[str, Any]:
     """Adapt one canonical statement table (+ its annual view) into the harvested
     ``StatementSheet`` shape.  Cells are the server-formatted display strings; a
@@ -229,11 +235,13 @@ def _sheet_from_tables(table: Any, annual_table: Any, sheet_id: str, label: str)
                 "unavailable": (table or {}).get("unavailable") or []}
     model_periods = _column_labels(table)
     annual_by_key: dict[str, list[str]] = {}
+    annual_values_by_key: dict[str, list[Optional[float]]] = {}
     annual_periods: list[str] = []
     if isinstance(annual_table, Mapping) and annual_table.get("available"):
         annual_periods = _column_labels(annual_table)
         for row in annual_table.get("rows") or ():
             annual_by_key[str(row.get("key"))] = _row_texts(row)
+            annual_values_by_key[str(row.get("key"))] = _row_values(row)
     rows = []
     for row in table.get("rows") or ():
         key = str(row.get("key"))
@@ -243,9 +251,15 @@ def _sheet_from_tables(table: Any, annual_table: Any, sheet_id: str, label: str)
             "model": _row_texts(row),
             "annual": annual_by_key.get(key, ["—"] * len(annual_periods)),
             "kind": "metric" if row.get("total") else "detail",
+            # Canonical row metadata: the projection's own unit and numeric cell values
+            # (aligned with the display text), so the client never infers a unit from a label.
+            "unit": row.get("unit"),
+            "model_v": _row_values(row),
+            "annual_v": annual_values_by_key.get(key, [None] * len(annual_periods)),
         })
     return {"id": sheet_id, "label": label, "title": table.get("title") or label,
             "unit": (table.get("rows") or [{}])[0].get("unit", "keur") if table.get("rows") else "keur",
+            "units": sorted({str(r.get("unit")) for r in table.get("rows") or () if r.get("unit")}),
             "rows": rows, "available": bool(table.get("rows")),
             "note": table.get("note") or "", "unavailable": table.get("unavailable") or [],
             "_model_periods": model_periods, "_annual_periods": annual_periods}
@@ -289,7 +303,8 @@ def _debt_sheet(outputs: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, A
         fid = str(facility.get("id") or "senior")
         facility_rows = [{"id": str(r.get("key")), "label": f"{facility.get('label')} — {r.get('label')}",
                           "model": _row_texts(r), "annual": [],
-                          "kind": "metric" if r.get("total") else "detail"}
+                          "kind": "metric" if r.get("total") else "detail",
+                          "unit": r.get("unit"), "model_v": _row_values(r), "annual_v": []}
                          for r in operating.get("rows") or ()]
         by_facility[fid] = facility_rows
         if not rows:
@@ -301,6 +316,7 @@ def _debt_sheet(outputs: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, A
                  "note": debt.get("note") or "No facility schedule persisted.", "unavailable": []}
         return sheet, {}
     sheet = {"id": "debt", "label": "Debt", "title": "Debt schedules", "unit": "keur",
+             "units": sorted({str(r["unit"]) for r in rows if r.get("unit")}),
              "rows": rows, "available": True, "note": debt.get("note") or "",
              "unavailable": []}
     return sheet, {"by_facility": by_facility, "model_periods": model_periods}

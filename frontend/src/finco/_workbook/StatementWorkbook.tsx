@@ -3,6 +3,10 @@ import { fincoBasePath, readProjectContext } from "../_shared/FincoShell";
 import { preferredScrollBehavior } from "../_shared/motion";
 import { statementCellTabIndex, statementCellText, statementStatusText, type StatementFacilityId, type StatementRow, type StatementSheet, type StatementSheetId, type StatementViewId, type StatementWorkbookProps } from "./statementContract";
 import "./statements.css";
+import {
+  DISPLAY_UNITS, formatStatementCell, formatUnitLabel, classifyRowUnit, formatFromCanonicalUnit, resolveRowFormat, sheetUnitLabel,
+  type DisplayUnit, type RowFormat,
+} from "../../app/units";
 
 type SheetId = StatementSheetId;
 type ViewId = StatementViewId;
@@ -16,26 +20,23 @@ const initialSheet = (): SheetId => {
   return validSheetIds.includes(fromUrl as SheetId) ? (fromUrl as SheetId) : "pl";
 };
 const initialView = (): ViewId => new URLSearchParams(window.location.search).get("statementView") === "model" ? "model" : "annual";
-type UnitDisplay = "EUR" | "kEUR" | "mEUR";
-const unitScale: Record<UnitDisplay, number> = { EUR: 1_000_000, kEUR: 1_000, mEUR: 1 };
-function displayStatementValue(value: string, label: string, unit: UnitDisplay, precision: number) {
-  const trimmed = value.trim();
-  if (/^not evaluated$/i.test(trimmed)) return "NOT EVALUATED";
-  if (/^not tested$/i.test(trimmed)) return "NOT TESTED";
-  if (!trimmed || /^(—|–|-|n\/a|na)$/i.test(trimmed)) return "—";
-  const formattedMetric = /irr|moic|dscr|coverage ratio|%|x$/i.test(label);
-  const suffix = formattedMetric && /[%x]$/i.test(trimmed) ? trimmed.slice(-1) : "";
-  const numericText = suffix ? trimmed.slice(0, -1) : trimmed;
-  const negative = /^\(.*\)$/.test(numericText) || numericText.startsWith("-");
-  const number = Number(numericText.replace(/[(),]/g, ""));
-  if (!Number.isFinite(number)) return value;
-  const formatted = new Intl.NumberFormat("en-GB", {
-    minimumFractionDigits: precision,
-    maximumFractionDigits: precision,
-    useGrouping: true,
-  }).format(Math.abs(number) * (formattedMetric ? 1 : unitScale[unit]));
-  return `${negative ? `(${formatted})` : formatted}${suffix}`;
+type UnitDisplay = DisplayUnit;
+type DataOrigin = NonNullable<StatementWorkbookProps["status"]["dataOrigin"]>;
+const rowFormatOf = (row: Row, sheet: Sheet): RowFormat => resolveRowFormat(row.label, row.unit, sheet.unit);
+const rowUnitSource = (row: Row, sheet: Sheet) => classifyRowUnit(row.label, row.unit, sheet.unit).source;
+/** The row's canonical (source) unit label, "unit unavailable" when metadata is ambiguous. */
+const canonicalUnitText = (row: Row, sheet: Sheet): string => {
+  const format = rowFormatOf(row, sheet);
+  return format.kind === "money" ? format.base : format.kind === "ratio" ? "x" : format.kind === "percent" ? "%" : "unit unavailable";
+};
+/** Display conversion only: canonical text in the sheet's canonical unit -> chosen display unit. */
+function displayStatementValue(value: string, format: RowFormat, unit: UnitDisplay, precision: number, numeric?: number | null) {
+  return formatStatementCell(value, format, unit, precision, numeric);
 }
+const defaultDisplayUnit = (sheets: Sheet[]): UnitDisplay => {
+  const canonical = formatFromCanonicalUnit(sheets[0]?.unit);
+  return canonical?.kind === "money" ? canonical.base : "kEUR";
+};
 
 const traceSources: Record<string, { label: string; sheet: string }> = {
   revenue: { label: "Revenue / PPA", sheet: "revenue" },
@@ -131,6 +132,7 @@ function StatementTable({
   periodBands: visiblePeriodBands,
   regionRef,
   dataOrigin,
+  runId,
 }: {
   sheet: Sheet;
   periods: string[];
@@ -147,7 +149,8 @@ function StatementTable({
   facility: FacilityId;
   periodBands: { label: string; span: number }[];
   regionRef: React.RefObject<HTMLDivElement>;
-  dataOrigin: "synthetic-demo" | "caller-provided" | "unavailable";
+  dataOrigin: DataOrigin;
+  runId: string;
 }) {
   const periodIndexes = periods.map((_, index) => view === "model" && !showInitialPeriod ? index + 1 : index);
   const rows = useMemo(() => {
@@ -173,21 +176,24 @@ function StatementTable({
       }
     }}
   >
-    <span id="fm-sw-grid-help" className="fm-sr-only">Only the active statement value is in the page Tab order. Use the arrow keys to move between values; press Enter to open the source navigation reference. Tab leaves the table.</span>
+    <span id="fm-sw-grid-help" className="fm-sr-only">Only the active statement value is in the page Tab order. Use the arrow keys to move between values; press Enter to {dataOrigin === "canonical-run" ? "show the canonical source" : "open the source navigation reference"}. Tab leaves the table.</span>
     <table className="fm-sw-table">
-      <caption className="fm-sr-only">{sheet.title}, {dataOrigin === "synthetic-demo" ? "fixed synthetic example rows" : dataOrigin === "caller-provided" ? "supplied rows" : "unavailable rows"}, {view === "annual" ? "annual" : "selected model periods"}. Illustrative financial statement with selected sample rows.</caption>
+      <caption className="fm-sr-only">{sheet.title}, {dataOrigin === "synthetic-demo" ? "fixed synthetic example rows" : dataOrigin === "canonical-run" ? "persisted Run rows" : dataOrigin === "caller-provided" ? "supplied rows" : "unavailable rows"}, {view === "annual" ? "annual" : "model periods"}.{dataOrigin === "canonical-run" ? ` Values in ${unit} unless a row states another unit.` : " Illustrative financial statement with selected sample rows."}</caption>
       <thead>
-        {view === "annual" ? <tr><th scope="col">Statement line · {sheet.unit}</th><th scope="colgroup" colSpan={periods.length}>Operating years</th></tr> :
-          <tr><th scope="col">Statement line · {sheet.unit}</th>{visiblePeriodBands.map((band, index) => {
+        {view === "annual" ? <tr><th scope="col">Statement line · {dataOrigin === "canonical-run" ? unit : sheet.unit}</th><th scope="colgroup" colSpan={periods.length}>Operating years</th></tr> :
+          <tr><th scope="col">Statement line · {dataOrigin === "canonical-run" ? unit : sheet.unit}</th>{visiblePeriodBands.map((band, index) => {
             const span = index === 0 && !showInitialPeriod ? band.span - 1 : band.span;
             return span > 0 ? <th key={band.label} scope="colgroup" colSpan={span}>{band.label}</th> : null;
           })}</tr>}
-        <tr><th scope="col">{dataOrigin === "synthetic-demo" ? "Fixed example rows" : dataOrigin === "caller-provided" ? "Provided rows" : "Unavailable"}</th>{periods.map((period) => <th scope="col" key={period}>{period}</th>)}</tr>
+        <tr><th scope="col">{dataOrigin === "synthetic-demo" ? "Fixed example rows" : dataOrigin === "canonical-run" ? "Line items" : dataOrigin === "caller-provided" ? "Provided rows" : "Unavailable"}</th>{periods.map((period) => <th scope="col" key={period}>{period}</th>)}</tr>
       </thead>
       <tbody>
           {rows.map((item, rowIndex) => {
           const isOpen = Boolean(item.children && expanded[`${sheet.id}:${item.id}`]);
           const values = view === "annual" ? item.annual : item.model;
+          const numericValues = view === "annual" ? item.annualValues : item.modelValues;
+          const format = rowFormatOf(item, sheet);
+          const rowUnit = formatUnitLabel(format, unit);
           const traceOpen = traceId === item.id;
             const source = traceSources[item.id] || { label: "Workbook source category", sheet: "input-grid" };
             const inputParams = new URLSearchParams(window.location.search);
@@ -204,7 +210,7 @@ function StatementTable({
             inputParams.set("returnScrollY", String(Math.round(window.scrollY)));
             const sourceHref = `${fincoBasePath()}ModelWorkspace?${inputParams.toString()}#workbook`;
           return <React.Fragment key={item.id}>
-            <tr className={`${item.kind === "section" ? "fm-sw-section" : item.kind === "detail" ? "fm-sw-detail" : ""}${traceOpen ? " fm-sw-row-selected" : ""}`}>
+            <tr data-unit-source={rowUnitSource(item, sheet)} data-row-unit={rowUnit} className={`${item.kind === "section" ? "fm-sw-section" : item.kind === "detail" ? "fm-sw-detail" : ""}${traceOpen ? " fm-sw-row-selected" : ""}`}>
               <th scope="row" className="fm-sw-label">
                 <span className="fm-sw-row-select">
                   {item.children && <button
@@ -215,7 +221,7 @@ function StatementTable({
                     onClick={() => onToggleGroup(item.id)}
                   ><span className="fm-sw-chevron" aria-hidden="true">{isOpen ? "▾" : "▸"}</span></button>}
                   <button className="fm-sw-row-select" type="button" aria-expanded={traceOpen} onClick={() => setTraceId(traceOpen ? null : item.id)}>
-                    {item.label}
+                    {item.label}{dataOrigin === "canonical-run" && format.kind !== "money" && <span className="fm-sw-row-unit"> ({rowUnit})</span>}
                   </button>
                 </span>
               </th>
@@ -228,7 +234,7 @@ function StatementTable({
                   tabIndex={statementCellTabIndex(item.id, index, traceId, tracePeriod, rowIndex === 0 && index === 0)}
                   data-statement-row={item.id}
                   data-statement-col={index}
-                  aria-label={`${item.label}, ${periods[index]}, ${displayStatementValue(value, item.label, unit, precision)} ${unit}. ${dataOrigin === "synthetic-demo" ? "Open synthetic source trace." : "Open display navigation reference."}`}
+                  aria-label={`${item.label}, ${periods[index]}, ${displayStatementValue(value, format, unit, precision, numericValues?.[sourceIndex])} ${rowUnit}. ${dataOrigin === "synthetic-demo" ? "Open synthetic source trace." : dataOrigin === "canonical-run" ? "Show canonical source." : "Open display navigation reference."}`}
                   onClick={() => { setTraceId(item.id); setTracePeriod(index); }}
                   onKeyDown={event => {
                     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -240,16 +246,28 @@ function StatementTable({
                     setTracePeriod(nextColumn);
                     event.currentTarget.closest("table")?.querySelector<HTMLButtonElement>(`button[data-statement-row="${targetRowId}"][data-statement-col="${nextColumn}"]`)?.focus();
                   }}
-                >{displayStatementValue(value, item.label, unit, precision)}</button>
+                 data-canonical={value} data-canonical-v={numericValues?.[sourceIndex] ?? undefined}>{displayStatementValue(value, format, unit, precision, numericValues?.[sourceIndex])}</button>
               </td>;
               })}
             </tr>
-            {traceOpen && <tr className="fm-sw-trace-row">
+            {traceOpen && dataOrigin === "canonical-run" && <tr className="fm-sw-trace-row" data-canonical-source="true">
+              <th scope="row" className="fm-sw-trace-cell" colSpan={periods.length + 1}>
+                <div className="fm-sw-trace">
+                  <div className="fm-sw-trace-copy">
+                    <strong>CANONICAL SOURCE · {item.label} · {periods[tracePeriod]}</strong>
+                    <span className="fm-sw-trace-code">{displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision, numericValues?.[periodIndexes[tracePeriod]])} {rowUnit} · persisted value {statementCellText(values[periodIndexes[tracePeriod]])} {canonicalUnitText(item, sheet)}</span>
+                    <span>Statement: {sheet.title} · persisted Run {runId}. Unit conversion and rounding are display-only.</span>
+                  </div>
+                  <button className="fm-sw-trace-close" type="button" onClick={() => setTraceId(null)}>Close</button>
+                </div>
+              </th>
+            </tr>}
+            {traceOpen && dataOrigin !== "canonical-run" && <tr className="fm-sw-trace-row">
               <th scope="row" className="fm-sw-trace-cell" colSpan={periods.length + 1}>
                 <div className="fm-sw-trace">
                   <div className="fm-sw-trace-copy">
                     <strong>SYNTHETIC SOURCE TRACE · {item.label} · {periods[tracePeriod]}</strong>
-                    <span className="fm-sw-trace-code">{formatExpressionLabel(item.label)} = fixed illustrative value · {displayStatementValue(values[periodIndexes[tracePeriod]] || "—", item.label, unit, precision)} {unit}</span>
+                    <span className="fm-sw-trace-code">{formatExpressionLabel(item.label)} = fixed illustrative value · {displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision, numericValues?.[periodIndexes[tracePeriod]])} {rowUnit}</span>
                     <span>Related section: {source.label} · Example reference DEMO-FIXED-018 · {view === "annual" ? "Annual example" : "Selected model periods"}.</span>
                     <span><strong>Calculation link unavailable.</strong> This opens a related section only; it does not show how the displayed value was calculated.</span>
                   </div>
@@ -293,20 +311,23 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
     const count = modelView ? visibleModelPeriods.length - (hiddenInitial ? 1 : 0) : visibleAnnualPeriods.length;
     return Number.isFinite(candidate) ? Math.max(0, Math.min(count - 1, candidate)) : 0;
   });
-  const [unit, setUnit] = useState<UnitDisplay>("mEUR");
+  const [unit, setUnit] = useState<UnitDisplay>(() => dataOrigin === "canonical-run" ? defaultDisplayUnit(visibleSheets) : "mEUR");
   const [precision, setPrecision] = useState(1);
   const regionRef = useRef<HTMLDivElement>(null);
   const activeSheet = visibleSheets.find((item) => item.id === sheetId) || visibleSheets[0];
-  const facilityRows = snapshot?.debtRowsByFacility?.[facility];
+  const facilityKeys = Object.keys(snapshot?.debtRowsByFacility ?? {});
+  const canonicalFacilities = dataOrigin === "canonical-run" && facilityKeys.length > 1;
+  const effectiveFacility = (canonicalFacilities && !facilityKeys.includes(facility) ? facilityKeys[0] : facility) as FacilityId;
+  const facilityRows = snapshot?.debtRowsByFacility?.[effectiveFacility];
   const rows = activeSheet
     ? sheetId === "debt"
-      ? facilityRows ?? (facility === "senior" ? activeSheet.rows : [])
+      ? facilityRows ?? (facility === "senior" || dataOrigin === "canonical-run" ? activeSheet.rows : [])
       : activeSheet.rows
     : [];
   const displayedSheet = activeSheet
     ? rows === activeSheet.rows
       ? activeSheet
-      : { ...activeSheet, title: `${facility === "senior" ? "Senior" : "Mezzanine"} facility debt schedule`, rows }
+      : { ...activeSheet, title: canonicalFacilities ? `${effectiveFacility} facility debt schedule` : `${facility === "senior" ? "Senior" : "Mezzanine"} facility debt schedule`, rows }
     : null;
   const periods = view === "annual" ? visibleAnnualPeriods : showInitialPeriod ? visibleModelPeriods : visibleModelPeriods.slice(1);
   useEffect(() => {
@@ -364,29 +385,34 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
           <div>
             <div className="fm-eyebrow">{project.id} · Financial statements</div>
             <h1 className="fm-sw-title">Statement workbook</h1>
-            <div className="fm-sw-subtitle">{project.name} <span aria-hidden="true">·</span> {project.technology} <span aria-hidden="true">·</span> Illustrative EUR model view</div>
+            <div className="fm-sw-subtitle">{project.name} <span aria-hidden="true">·</span> {project.technology} <span aria-hidden="true">·</span> {dataOrigin === "canonical-run" ? `Persisted Run · canonical unit ${sheetUnitLabel(visibleSheets[0]?.unit)}` : "Illustrative EUR model view"}</div>
             <div className="fm-sw-tags">
               {dataOrigin === "synthetic-demo" && <span className="fm-sw-tag fm-sw-tag--demo">FIXED SYNTHETIC EXAMPLE</span>}
+              {dataOrigin === "canonical-run" && <span className="fm-sw-tag" data-statement-origin="canonical-run">Persisted Run values</span>}
               {dataOrigin === "caller-provided" && <span className="fm-sw-tag">Source not provided</span>}
               {dataOrigin === "unavailable" && <span className="fm-sw-tag">Statement not available</span>}
-              <span className="fm-sw-tag">Partial example rows</span>
-              <span className="fm-sw-tag">Calculations are not available here</span>
+              {dataOrigin === "canonical-run"
+                ? <span className="fm-sw-tag">Display units are formatting only</span>
+                : <><span className="fm-sw-tag">Partial example rows</span>
+                  <span className="fm-sw-tag">Calculations are not available here</span></>}
             </div>
           </div>
-            <div className="fm-sw-run" aria-label="Illustrative results status"
+            <div className="fm-sw-run" aria-label={dataOrigin === "canonical-run" ? "Persisted Run status" : "Illustrative results status"}
               data-run-freshness={runStatus.freshness}
               data-check-status={runStatus.integrity}
               data-model-version={runStatus.engine}>
             <span>{status.label}</span><strong>{status.runId}</strong>
-            <span className="fm-sw-tag">{runStatus.freshness === "current" ? "Up to date" : runStatus.freshness === "stale" ? "Earlier results shown" : runStatus.freshness === "not-run" ? "No results yet" : "Update status unavailable"}</span>
-            <span className="fm-sw-tag">{/not[- ]evaluated/i.test(runStatus.integrity) ? "Review status not assessed" : "Review status supplied"}</span>
-            <span className="fm-sw-tag">{/unknown|not connected/i.test(runStatus.engine) ? "Calculation details not supplied" : "Calculation details supplied"}</span>
+            <span className="fm-sw-tag">{status.freshness === "current" ? "Up to date" : status.freshness === "stale" ? "Earlier results shown" : status.freshness === "not run" ? "No results yet" : "Update status unavailable"}</span>
+            <span className="fm-sw-tag">{dataOrigin === "canonical-run" ? runStatus.integrity : /not[- ]evaluated/i.test(runStatus.integrity) ? "Review status not assessed" : "Review status supplied"}</span>
+            <span className="fm-sw-tag">{dataOrigin === "canonical-run" ? `Engine: ${status.engineVersion || "identity unavailable"}` : /unknown|not connected/i.test(runStatus.engine) ? "Calculation details not supplied" : "Calculation details supplied"}</span>
           </div>
         </header>
 
         <div className="fm-sw-warning" role="note">
-          <strong>Display-only workbook.</strong>{" "}
-          {dataOrigin === "synthetic-demo"
+          <strong>{dataOrigin === "canonical-run" ? "Persisted Run statements." : "Display-only workbook."}</strong>{" "}
+          {dataOrigin === "canonical-run"
+            ? "Every figure is the value persisted by the Run, in its canonical unit. Changing units or precision only re-expresses those values; nothing is recalculated in the browser."
+            : dataOrigin === "synthetic-demo"
             ? "Fixed illustrative values are not linked to inputs and do not recalculate. Calculation status is unavailable in this preview. These independent examples are not complete financial statements or reconciled across sheets."
             : dataOrigin === "caller-provided"
               ? "The source of these rows has not been confirmed. No calculations or reconciliation are performed."
@@ -421,7 +447,7 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
             </label>
             <label className="fm-sw-field" htmlFor="fm-sw-unit">Units
               <select id="fm-sw-unit" className="fm-sw-select" value={unit} onChange={event => setUnit(event.target.value as UnitDisplay)}>
-                <option value="EUR">EUR</option><option value="kEUR">kEUR</option><option value="mEUR">mEUR</option>
+                {DISPLAY_UNITS.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
             <label className="fm-sw-field" htmlFor="fm-sw-precision">Precision
@@ -452,8 +478,8 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
                 const activeRow = rows.find(item => item.id === traceId);
                 const activeValue = activeRow?.[view] ?? [];
                 const address = `${String.fromCharCode(66 + tracePeriod)}${Math.max(2, rows.findIndex(item => item.id === traceId) + 2)}`;
-                const origin = dataOrigin === "synthetic-demo" ? "fixed synthetic reference" : dataOrigin === "caller-provided" ? "caller-provided display value" : "unavailable";
-                return `${address} · ${activeRow?.label || "Selected line"} · ${statementCellText(activeValue[tracePeriod])} ${activeSheet.unit} · ${origin}`;
+                const origin = dataOrigin === "synthetic-demo" ? "fixed synthetic reference" : dataOrigin === "canonical-run" ? "persisted Run value" : dataOrigin === "caller-provided" ? "caller-provided display value" : "unavailable";
+                return `${address} · ${activeRow?.label || "Selected line"} · ${statementCellText(activeValue[tracePeriod])} ${activeRow ? canonicalUnitText(activeRow, activeSheet) : activeSheet.unit} · ${origin}`;
               })() : dataOrigin === "synthetic-demo" ? "Select a cell to open its synthetic trace" : "Select a cell to inspect its display value"}
             </span>
             {traceId && onExplain && (() => {
@@ -472,7 +498,7 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
                   id: `statement-${sheetId}-${selectedRow.id}-${tracePeriod}`,
                   kind: "Statement row",
                   title: selectedRow.label,
-                  value: displayStatementValue(rowValues[tracePeriod] || "—", selectedRow.label, unit, precision),
+                  value: displayStatementValue(rowValues[tracePeriod] || "—", rowFormatOf(selectedRow, activeSheet), unit, precision, (view === "annual" ? selectedRow.annualValues : selectedRow.modelValues)?.[tracePeriod]),
                   unit: activeSheet.unit,
                   period,
                   basis: dataOrigin === "synthetic-demo"
@@ -485,7 +511,12 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
                 }}
               >Explain selected row</button>;
             })()}
-            {sheetId === "debt" && <label className="fm-sw-field" htmlFor="fm-sw-facility">Facility
+            {sheetId === "debt" && canonicalFacilities && <label className="fm-sw-field" htmlFor="fm-sw-facility">Facility
+              <select id="fm-sw-facility" className="fm-sw-select" aria-label="Statement facility" value={effectiveFacility} onChange={(event) => { setFacility(event.target.value as FacilityId); setTraceId(null); }}>
+                {facilityKeys.map((key) => <option key={key} value={key}>{key}</option>)}
+              </select>
+            </label>}
+            {sheetId === "debt" && dataOrigin !== "canonical-run" && <label className="fm-sw-field" htmlFor="fm-sw-facility">Facility
               <select id="fm-sw-facility" className="fm-sw-select" aria-label="Statement facility" value={facility} onChange={(event) => { setFacility(event.target.value as FacilityId); setTraceId(null); }}>
                 <option value="senior">Senior</option>
                 <option value="mezzanine">Mezzanine</option>
@@ -495,18 +526,14 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
         </div>
 
         <section id="fm-sw-sheet" role="tabpanel" aria-labelledby={`fm-sw-tab-${sheetId}`}>
-          {sheetId === "sponsor" && <div className="fm-sw-subbar">
+          {sheetId === "sponsor" && dataOrigin === "synthetic-demo" && <div className="fm-sw-subbar">
             <span><strong>Fixed sponsor outputs:</strong> Equity IRR 12.46% · Equity MOIC 1.82x</span>
             <span>Display values only · no return calculation</span>
           </div>}
-          {sheetId !== "sponsor" && <div className="fm-sw-subbar">
+          <div className="fm-sw-subbar">
             <span><strong>{displayedSheet.title}</strong> · Display units: {unit} · formatting only</span>
-            <span>{view === "annual" ? `Annual view · ${visibleAnnualPeriods[0]}–${visibleAnnualPeriods.at(-1)}` : "Selected model periods · not a full time series"}</span>
-          </div>}
-          {sheetId === "sponsor" && <div className="fm-sw-subbar">
-            <span><strong>{displayedSheet.title}</strong> · Display units: {unit} · formatting only</span>
-            <span>{view === "annual" ? `Annual view · ${visibleAnnualPeriods[0]}–${visibleAnnualPeriods.at(-1)}` : "Selected model periods · not a full time series"}</span>
-          </div>}
+            <span>{view === "annual" ? `Annual view · ${visibleAnnualPeriods[0]}–${visibleAnnualPeriods.at(-1)}` : dataOrigin === "canonical-run" ? `Model periods · ${visibleModelPeriods.length} persisted periods` : "Selected model periods · not a full time series"}</span>
+          </div>
           <div className="fm-sw-subbar">
             <span id="fm-sw-scroll-help">Scroll periods horizontally · Focus table and use ← / →</span>
             <div className="fm-sw-scroll-controls">
@@ -531,14 +558,20 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
               periodBands={visiblePeriodBands}
               regionRef={regionRef}
               dataOrigin={dataOrigin}
+              runId={status.runId}
             /> : <div className="fm-sw-warning fm-sw-unavailable" role="status" aria-live="polite">
               No statement rows are supplied for this sheet or facility.
             </div>}
         </section>
-        <footer className="fm-sw-footnote">
+        {dataOrigin === "canonical-run"
+          ? <footer className="fm-sw-footnote" data-statement-notes="true">
+            <span><strong>{displayedSheet.title}:</strong> {activeSheet.note || "As persisted by the Run."}</span>
+            {activeSheet.unavailable && activeSheet.unavailable.length > 0 && <span>Not persisted by this Run: {activeSheet.unavailable.join(", ")}</span>}
+          </footer>
+          : <footer className="fm-sw-footnote">
           <span><strong>Example coverage:</strong> selected statement lines and periods only; this is not a complete model time series.</span>
           <span>Displayed period frequency is illustrative and does not set a live model frequency.</span>
-        </footer>
+        </footer>}
       </section>
   </section>;
 }
