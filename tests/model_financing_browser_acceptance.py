@@ -4,6 +4,8 @@ python -m tests.model_financing_browser_acceptance
 Evidence remains untracked under artifacts/model-financing-bankability/.
 """
 from __future__ import annotations
+
+from tests.run_clone_csrf import post_valid_csrf
 from tests.model_workspace_navigation import activate_destination
 
 import json
@@ -57,7 +59,7 @@ def main():
                     assert page.status_code == 200
                     h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
                     v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
-                    response = client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={
+                    response = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={
                         "project": record.project_code, "content_hash": h, "workbook_version": v})
                     assert response.status_code == 200, response.text[:1000]
                     records.append((kind, record))

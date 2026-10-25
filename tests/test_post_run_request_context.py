@@ -2,6 +2,8 @@
 
 Wall-clock thresholds belong to the paired benchmark, not these tests.
 """
+
+from tests.run_clone_csrf import post_valid_csrf
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
 import json
@@ -46,7 +48,7 @@ def seed_database(tmp_path_factory):
                     requested_name="Context " + case)
                 cookies = {COOKIE_NAME: create_session_token(user_id=uid, username="admin")}
                 h, v = _tokens(client, cookies, record.project_code)
-                response = client.post("/v2/workbook/run", cookies=cookies,
+                response = post_valid_csrf(client, "/v2/workbook/run", cookies=cookies,
                     headers={"HX-Request": "true"}, data={"project": record.project_code,
                     "content_hash": h, "workbook_version": v})
                 assert response.status_code == 200
@@ -320,7 +322,7 @@ def test_scenario_switch_during_render_restores_correct_run_and_legacy_base(stat
             base = next(s for s in scenarios if s.is_base_case)
             child = next(s for s in scenarios if not s.is_base_case)
             h, v = _tokens(client, cookies, pr.project_code)
-            response = client.post("/v2/workbook/run", cookies=cookies,
+            response = post_valid_csrf(client, "/v2/workbook/run", cookies=cookies,
                 headers={"HX-Request": "true"}, data={"project": pr.project_code,
                 "content_hash": h, "workbook_version": v})
             assert response.status_code == 200

@@ -7,6 +7,8 @@ route test); the activated feasible Run is proven native by the parent's own evi
 identically."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import json
 import shutil
 
@@ -45,7 +47,7 @@ def _post(seed, mode, tmp_path, monkeypatch):
         pis = WorkbookService.build_draft_input_set_from_workspace(ws)
         ident = assemble_consistent_for_get(user_id=OWNER, project_id=meta["project_id"],
                                             workbook_version=pis.workbook_version)
-        resp = client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+        resp = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"},
                            data={"project": meta["project_code"], "workbook_version": pis.workbook_version,
                                  "content_hash": ident.composite_hash})
         history = get_run_history(OWNER, meta["project_id"])

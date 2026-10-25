@@ -5,6 +5,8 @@ no mocked finance output, artificial comparison or external customer files.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 import socket
 import threading
@@ -82,7 +84,7 @@ def _run(ctx, page, root, code):
     assert response and response.status == 200
     h = page.locator('input[name="content_hash"]').first.input_value()
     v = page.locator('input[name="workbook_version"]').first.input_value()
-    run = ctx.request.post(
+    run = post_valid_csrf(ctx.request,
         f"{root}/v2/workbook/run",
         headers={"HX-Request": "true"},
         form={"project": code, "content_hash": h, "workbook_version": v},

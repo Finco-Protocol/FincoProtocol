@@ -6,6 +6,8 @@ while explicit contracts own pricing.  Synthetic Working Copies only.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import copy
 import json
 
@@ -70,7 +72,7 @@ def _save_contracts(env, record, payload):
 
 def _run(env, record):
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                data={"project": record.project_code, **tokens(page.text)})
     assert response.status_code == 200
     assert not _ws(record).dirty

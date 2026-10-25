@@ -1,4 +1,6 @@
 """Real authorized Save / Scenario / Run / Last Run export acceptance."""
+
+from tests.run_clone_csrf import post_valid_csrf
 import copy
 import json
 from io import BytesIO
@@ -42,7 +44,7 @@ def test_contract_save_reload_scenario_run_and_immutable_export(env, monkeypatch
         return env.client.post("/v2/workbook/revenue/contracts", headers={"HX-Request": "true"},
                                data={**project, **contract_tokens(page().text), "contracts": json.dumps(raw) if isinstance(raw, dict) else raw, **extra})
     def run():
-        response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **tokens(page().text)})
+        response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **tokens(page().text)})
         assert 'id="v2-sheet-returns"' in response.text, response.text[:3000]
         if (ws().last_runtime_summary or {}).get("revenue_multistream_audit"):
             assert 'data-testid="revenue-contracts-audit"' in response.text

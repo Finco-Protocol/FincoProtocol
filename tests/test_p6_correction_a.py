@@ -11,6 +11,8 @@ Items covered:
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import asyncio
 import json
 import os
@@ -258,7 +260,7 @@ def test_idor_library_clone_session_b_cannot_clone_session_a_project(client):
     try:
         rowid = _insert_project(uid_a, project_code_a, "Session A Clone Target")
         # Try to clone using the integer project_id of Session A's row
-        resp = client.post(
+        resp = post_valid_csrf(client,
             f"/library/clone/{rowid}",
             cookies=_make_demo_cookie(uid_b),
             follow_redirects=False,
@@ -409,7 +411,7 @@ def test_working_copy_is_user_owned_not_reference(client):
         pytest.skip("Reference models not seeded")
 
     uid = _make_demo_user_id()
-    resp = client.post(
+    resp = post_valid_csrf(client,
         f"/library/clone/{ref[0]}",
         cookies=_make_demo_cookie(uid),
         follow_redirects=False,

@@ -4,6 +4,8 @@ Run explicitly: python -m tests.rc5_scenario_browser_acceptance   (FINCO_TEST_CH
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import os
 import re
 import socket
@@ -41,7 +43,7 @@ def main():
                                                          template_source="generic_solar_reference", capacity_mw=32)
                 page = client.get("/v2/workbook", params={"project": record.project_code})
                 tokens = {k: re.search(r'name="' + k + r'" value="([^"]+)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
-                assert client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+                assert post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                    data={"project": record.project_code, **tokens}).status_code == 200
             sock = socket.socket()
             sock.bind(("127.0.0.1", 0))

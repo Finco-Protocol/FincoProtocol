@@ -6,6 +6,8 @@ or approval, no customer spreadsheets and no external AI calls.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import io
 import socket
 import threading
@@ -449,7 +451,7 @@ def _run_in_real_browser_context(ctx, page, root: str, project):
     assert response and response.status == 200
     hash_token = page.locator('input[name="content_hash"]').first.input_value()
     version = page.locator('input[name="workbook_version"]').first.input_value()
-    run_response = ctx.request.post(
+    run_response = post_valid_csrf(ctx.request,
         root + "/v2/workbook/run",
         headers={"HX-Request": "true"},
         form={

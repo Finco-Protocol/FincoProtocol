@@ -21,6 +21,8 @@ Cross-project (§19):
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 from unittest import mock
 
@@ -56,7 +58,7 @@ def _run_once(client, cookies, code):
     page = client.get(f"/v2/workbook?project={code}", cookies=cookies)
     h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
     v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
-    return client.post("/v2/workbook/run",
+    return post_valid_csrf(client, "/v2/workbook/run",
                        data={"project": code, "content_hash": h,
                              "workbook_version": v},
                        cookies=cookies, headers={"HX-Request": "true"})

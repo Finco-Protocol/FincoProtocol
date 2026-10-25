@@ -3,6 +3,8 @@ identity; runtime freshness, institutional export and scenario presentation
 all agree on the same effective authority."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import io
 import re
 import uuid
@@ -68,7 +70,7 @@ def _client(owner):
 
 def _run(client, headers, rec, owner):
     from app.workbook.registry import WORKBOOK
-    r = client.post("/v2/workbook/run", data={
+    r = post_valid_csrf(client, "/v2/workbook/run", data={
         "project": rec.project_code, "workbook_version": WORKBOOK.version,
         "content_hash": _hash(owner, rec)}, headers=headers)
     assert r.status_code == 200, r.text

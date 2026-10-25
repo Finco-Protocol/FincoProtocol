@@ -6,6 +6,8 @@ Run History entry the product itself committed.  Synthetic reference projects on
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import json
 from types import SimpleNamespace
 
@@ -69,7 +71,7 @@ def set_bankability(lab, record, config: dict):
 def commit_run(lab, record):
     from app.persistence.run_history_repository import get_latest_history_entry
     from app.persistence.workspace_repository import get_workspace_state
-    response = lab.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={
+    response = post_valid_csrf(lab.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={
         "project": record.project_code, **tokens(record)})
     assert response.status_code == 200, response.text[:600]
     ws = get_workspace_state(USER, record.project_id)

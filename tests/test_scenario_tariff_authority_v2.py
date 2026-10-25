@@ -1,6 +1,8 @@
 """Correction A: real scenario input binding, immutable lineage and export parity."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import copy
 
 import pytest
@@ -73,7 +75,7 @@ def test_real_base_upside_downside_run_restore_reset_and_export(env, monkeypatch
     def page():
         return env.client.get("/v2/workbook", params=project)
     def run():
-        response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **tokens(page().text)})
+        response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **tokens(page().text)})
         assert response.status_code == 200 and 'id="v2-sheet-returns"' in response.text
         return get_workspace_state(owner, record.project_id)
     baseline = run()

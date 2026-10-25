@@ -3,6 +3,8 @@
 Real authorized Save / Scenario / Run / History acceptance on neutral Solar and Wind fixtures. Every
 financial figure is compared with the existing canonical calculator; nothing here re-implements one.
 """
+
+from tests.run_clone_csrf import post_valid_csrf
 import copy
 import json
 import re
@@ -104,7 +106,7 @@ class Flow:
 
     def run(self):
         wb = self.env.client.get("/v2/workbook", params=self.project)
-        r = self.env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**self.project, **_tokens(wb.text)})
+        r = post_valid_csrf(self.env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**self.project, **_tokens(wb.text)})
         assert r.status_code == 200 and 'id="v2-sheet-returns"' in r.text, r.text[:2000]
         assert not self.ws().dirty
         return copy.deepcopy(self.ws().last_runtime_summary)
@@ -418,7 +420,7 @@ def test_failed_run_publishes_no_partial_developer_result(env, monkeypatch):
         raise RuntimeError("synthetic engine failure")
     monkeypatch.setattr(runner, "run_project", boom)
     wb = env.client.get("/v2/workbook", params=flow.project)
-    r = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
+    r = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
     assert "developer_economics" not in (flow.ws().last_runtime_summary or {})
     assert flow.ws().last_runtime_summary == summary_before
     assert len(get_run_history(OWNER, flow.record.project_id)) == history_before and flow.ws().dirty
@@ -439,7 +441,7 @@ def test_corrupt_persisted_payload_fails_closed_on_run_and_page(env):
     conn.execute("UPDATE workspace_states SET draft_snapshot_json=? WHERE project_id=?", (json.dumps(draft), flow.record.project_id))
     conn.commit(); conn.close()
     history = len(get_run_history(OWNER, flow.record.project_id))
-    r = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
+    r = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
     assert len(get_run_history(OWNER, flow.record.project_id)) == history       # nothing committed
     page = flow.page()
     assert "failed closed" in page or "DEV_ECON_SCHEMA" in page

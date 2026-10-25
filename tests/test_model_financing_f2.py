@@ -1,4 +1,6 @@
 """F2 atomic configuration, canonical economics and authorized lifecycle acceptance."""
+
+from tests.run_clone_csrf import post_valid_csrf
 from dataclasses import replace
 import json
 from pathlib import Path
@@ -91,7 +93,7 @@ def run(env, record):
     from app.persistence.workspace_repository import get_workspace_state
     from app.workbook.service import WorkbookService
     page = env.client.get('/v2/workbook', params={'project': record.project_code})
-    response = env.client.post('/v2/workbook/run', headers={'HX-Request': 'true'}, data=dict(
+    response = post_valid_csrf(env.client, '/v2/workbook/run', headers={'HX-Request': 'true'}, data=dict(
         project=record.project_code, **tokens(page.text)))
     assert response.status_code == 200
     ws = get_workspace_state('decision-user', record.project_id)
@@ -310,7 +312,7 @@ def test_materialized_manual_fee_conflict_rejects_save_and_run_without_solver(en
     assert 'no competing fee override' in save(env, record, config(fees=fees)).text
     page = env.client.get('/v2/workbook', params={'project': record.project_code})
     assert 'uncheck to remove' in page.text
-    response = env.client.post('/v2/workbook/run', headers={'HX-Request': 'true'},
+    response = post_valid_csrf(env.client, '/v2/workbook/run', headers={'HX-Request': 'true'},
         data=dict(project=record.project_code, **tokens(page.text)))
     assert 'Remove the bankability fee override before Run' in response.text
     assert get_workspace_state('decision-user', record.project_id) == before

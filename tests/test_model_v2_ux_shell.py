@@ -20,6 +20,8 @@ No finance logic lives in the shell modules.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 
 import pytest
@@ -315,7 +317,7 @@ def _run_once(client, cookies, record):
                       cookies=cookies)
     m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
     mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
-    return client.post(
+    return post_valid_csrf(client,
         "/v2/workbook/run",
         data={"project": record.project_code,
               "content_hash": m.group(1),

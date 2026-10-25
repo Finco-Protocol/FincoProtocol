@@ -20,6 +20,8 @@ The append-only run-history authority itself is NOT modified.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 import sqlite3
 from unittest import mock
@@ -65,7 +67,7 @@ def _run(client, cookies, code, *, tamper_hash: str | None = None):
     assert page.status_code == 200
     m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
     mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
-    return client.post(
+    return post_valid_csrf(client,
         "/v2/workbook/run",
         data={"project": code,
               "content_hash": tamper_hash or m.group(1),

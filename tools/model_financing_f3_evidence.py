@@ -95,14 +95,38 @@ def run_case(kind: str, client, cookie_user: str) -> dict:
                         "workbook_version": v, "content_hash": h, "sheet_id": "debt", "csrf_token": bound_csrf(editor)},
                         headers={"HX-Request": "true"})
     recon.add("F3 proposal + activation saved through the workspace CAS", saved.status_code == 200 and "field-error" not in saved.text)
-    h, v = tokens(page().text)
-    ran = client.post("/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
+    # The Run uses its OWN operation-scoped token, not the Capital Stack
+    # token from the F3 editor.  Read all fields from one authenticated
+    # canonical Run form so the CSRF, project and CAS identity agree.
+    from bs4 import BeautifulSoup
+    run_page = page()
+    assert run_page.status_code == 200, f"{kind}: workbook Run form unavailable ({run_page.status_code})"
+    run_form = BeautifulSoup(run_page.text, "html.parser").select_one("#v2-canonical-run-form")
+    if run_form is None:
+        raise RuntimeError(f"{kind}: canonical Run form missing after F3 activation")
+    def run_field(name):
+        field = run_form.select_one(f'input[name="{name}"]')
+        if field is None or not field.get("value"):
+            raise RuntimeError(f"{kind}: canonical Run form missing {name}")
+        return field["value"]
+    if run_field("project") != rec.project_code:
+        raise RuntimeError(f"{kind}: canonical Run form project mismatch")
+    h, v, run_csrf = (run_field("content_hash"), run_field("workbook_version"),
+                      run_field("run_csrf_token"))
+    ran = client.post("/v2/workbook/run",
+                      data={"project": rec.project_code, "content_hash": h,
+                            "workbook_version": v, "run_csrf_token": run_csrf},
                       headers={"HX-Request": "true"})
-    recon.add("canonical Run committed", ran.status_code == 200)
+    if ran.status_code != 200 or ran.headers.get("X-Finco-Run-Outcome") == "FAILED":
+        raise RuntimeError(f"{kind}: canonical Run rejected (HTTP {ran.status_code}, "
+                           f"outcome {ran.headers.get('X-Finco-Run-Outcome', 'missing')})")
     ws = get_workspace_state(cookie_user, rec.project_id)
     entry = get_latest_history_entry(cookie_user, rec.project_id)
-    summary = ws.last_runtime_summary
-    fe = summary["financing_evidence"]
+    summary = ws.last_runtime_summary or {}
+    fe = summary.get("financing_evidence")
+    if not ws.last_runtime_snapshot_id or entry is None or not isinstance(fe, dict):
+        raise RuntimeError(f"{kind}: canonical Run did not persist financing evidence")
+    recon.add("canonical Run committed", True)
     integ = ws.last_integrity_evidence
     saved_state = config.parse_state(ws.draft_snapshot[config.SNAPSHOT_KEY])["scopes"]["base"]
     proposal = saved_state["proposal"]

@@ -234,6 +234,12 @@ def test_consecutive_atomic_save_run_stale_current_with_csp_enabled(workspace):
         page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 0')
         ws = get_workspace_state(record.user_id, record.project_id)
         assert ProjectInputSet.from_snapshot(ws.draft_snapshot).get(field) == float(value)
+        # Keep RC-SEC post-Save CSRF/CAS regression after #375 browser integration.
+        form = page.locator('#v2-canonical-run-form')
+        assert form.locator('[name="content_hash"]').input_value()
+        assert form.locator('[name="run_csrf_token"]').input_value(), (
+            "Post-Save OOB Run form dropped its scoped CSRF token"
+        )
     assert sum('/grid/save' in url for url in posts) == 2
     assert not any('/run' in url for url in posts)
     with page.expect_response(lambda response: '/v2/workbook/run' in response.url and response.request.method == 'POST', timeout=240000) as ran:

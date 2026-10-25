@@ -5,6 +5,8 @@ RuntimeResult and verify unavailable evidence is never replaced by a zero plug.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -123,7 +125,7 @@ def _run(client, record):
     pis = WorkbookService.build_draft_input_set_from_workspace(ws)
     h = assemble_consistent_for_get(
         "f1-owner", record.project_id, pis.workbook_version).composite_hash
-    response = client.post("/v2/workbook/run",
+    response = post_valid_csrf(client, "/v2/workbook/run",
                            data={"project": record.project_code,
                                  "content_hash": h, "workbook_version": pis.workbook_version},
                            headers={"HX-Request": "true"})

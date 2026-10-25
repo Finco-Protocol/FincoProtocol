@@ -6,6 +6,8 @@ the persisted rows and (for the Run steps) the real canonical model.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 
 import pytest
@@ -69,7 +71,7 @@ def _state(client, code):
 
 def _run(client, code):
     _, h, v = _page(client, code)
-    r = client.post("/v2/workbook/run", headers=HX,
+    r = post_valid_csrf(client, "/v2/workbook/run", headers=HX,
                     data={"project": code, "content_hash": h, "workbook_version": v})
     assert r.status_code == 200
     return r

@@ -2,6 +2,8 @@
 committed canonical Runs (second ring; shares the helpers of the first real-run module)."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import json
 from dataclasses import asdict
 
@@ -150,7 +152,7 @@ def test_failed_run_attempt_is_never_committed_and_cannot_appear_as_a_scenario(c
     count = len(history(record))
     set_field(cenv, record, "revenue.ppa.base_tariff", 1)
     page = cenv.client.get("/v2/workbook", params={"project": record.project_code})
-    response = cenv.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": record.project_code, **tokens(page.text)})
+    response = post_valid_csrf(cenv.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": record.project_code, **tokens(page.text)})
     assert response.status_code == 200
     if len(history(record)) != count:
         pytest.skip("this input did not fail closed; the failure contract is covered by the synthetic integrity test")

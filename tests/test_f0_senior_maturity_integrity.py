@@ -1,6 +1,8 @@
 """Production maturity protection; no alternative financial calculation."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import asyncio
 import copy
 import re
@@ -333,7 +335,7 @@ def test_authenticated_failed_run_preserves_last_run_history_and_export(tmp_path
         client.cookies.set(COOKIE_NAME, create_session_token(user_id="maturity-owner", username="admin"))
         assert client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
         _, data = tokens()
-        response = client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data=data)
+        response = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=data)
         assert response.status_code == 200
         valid, _ = tokens()
         assert WorkbookService.get_runtime_result(valid) is not None, response.text[:1000]
@@ -352,7 +354,7 @@ def test_authenticated_failed_run_preserves_last_run_history_and_export(tmp_path
         effective = WorkbookService.build_draft_input_set_from_workspace(stale).to_projectinputs()
         assert effective.financing.gearing_ratio == .95
         assert effective.financing.senior_tenor_years == 8
-        response = client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data=data)
+        response = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=data)
         assert response.status_code == 200
         assert 'data-testid="banner-error"' in response.text
         # The route's existing safe banner does not print raw engine internals.

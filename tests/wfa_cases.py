@@ -5,6 +5,8 @@ product, bundled read-only, and validated by the independent credit identities. 
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Callable
@@ -96,7 +98,7 @@ def build_case(lab, kind: str, label: str, sizing: str, delta: str, setup: Calla
         S.set_bankability(lab, record, bank)
         applied["bankability"] = bank
     case = Case(label, kind, sizing, delta, applied)
-    response = lab.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    response = post_valid_csrf(lab.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                data={"project": record.project_code, **S.tokens(record)})
     ws = get_workspace_state(S.USER, record.project_id)
     if response.status_code != 200 or not ws.last_runtime_summary or ws.dirty:

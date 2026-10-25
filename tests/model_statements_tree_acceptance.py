@@ -8,6 +8,8 @@ production-registered one (nothing is mounted by this script).  Every check is w
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import argparse
 from contextlib import contextmanager
 import hashlib
@@ -175,7 +177,7 @@ def main() -> int:
 
                 ctx, page = new_page("main")
                 page.goto(f"{url}/v2/workbook?project={record.project_code}")
-                ran = page.request.post(f"{url}/v2/workbook/run", form=dict(project=record.project_code, **tokens(page)), headers={"HX-Request": "true"})
+                ran = post_valid_csrf(page.request, f"{url}/v2/workbook/run", form=dict(project=record.project_code, **tokens(page)), headers={"HX-Request": "true"})
                 ws = get_workspace_state(USER, record.project_id)
                 check("canonical Run committed", ran.status == 200 and bool(ws.last_runtime_summary) and not ws.dirty)
                 history = get_run_history(USER, record.project_id)
@@ -311,7 +313,7 @@ def main() -> int:
                     ctx2.close()
 
                 # ── Run History -> historical Statements -> Run detail (real UI, production registration) ──
-                second = page.request.post(f"{url}/v2/workbook/run", form=dict(project=record.project_code, **tokens(page)), headers={"HX-Request": "true"})
+                second = post_valid_csrf(page.request, f"{url}/v2/workbook/run", form=dict(project=record.project_code, **tokens(page)), headers={"HX-Request": "true"})
                 entries = sorted(get_run_history(USER, record.project_id), key=lambda h: h.created_at)
                 check("a second Run gives a second distinct history entry", second.status == 200 and len(entries) == 2 and entries[0].history_id != entries[1].history_id)
                 before_hist = [h.to_dict() for h in entries]

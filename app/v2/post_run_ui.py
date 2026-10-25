@@ -478,9 +478,14 @@ def build_post_save_ui_state(
     fragments: list[str] = []
 
     if include_banner_and_controls and request is not None:
+        # Grid/Save and scenario mutations replace the canonical Run form OOB.
+        # Reissue its operation-scoped token on every replacement; otherwise
+        # subsequent legitimate Runs receive a 403 after the first Save.
+        from app.workbook.financing_csrf import issue_token
         ctx = {
             "request": request,
             "project_code": project,
+            "run_csrf_token": issue_token(request, project, purpose="workbook-run-v1"),
             "workbook_version": pis_fresh.workbook_version,
             "content_hash": pis_fresh.content_hash,
             "template_source": pis_fresh.template_source,

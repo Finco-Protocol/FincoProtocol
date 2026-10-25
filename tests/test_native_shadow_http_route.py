@@ -14,6 +14,8 @@ The shadow records MATCH for the feasible and for the rejected (fail-closed) Run
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import hashlib
 import json
 import re
@@ -147,7 +149,7 @@ def _post(seed, shadow, tmp_path, monkeypatch):
         pis = WorkbookService.build_draft_input_set_from_workspace(ws)
         ident = assemble_consistent_for_get(user_id=OWNER, project_id=meta["project_id"],
                                             workbook_version=pis.workbook_version)
-        resp = client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+        resp = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"},
                            data={"project": meta["project_code"], "workbook_version": pis.workbook_version,
                                  "content_hash": ident.composite_hash})
         observer = me.get_model_executor().native_shadow_observer()

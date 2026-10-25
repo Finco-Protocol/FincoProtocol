@@ -6,6 +6,8 @@ that STALE / NOT_RUN / scenario states are labelled from canonical authorities.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 from unittest import mock
 
@@ -54,7 +56,7 @@ def _tokens(html):
 
 def _run(env, user, rec):
     h, v = _tokens(_get(env, user, rec).text)
-    r = env.client.post("/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
+    r = post_valid_csrf(env.client, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
                         cookies=env.cookie(user), headers={"HX-Request": "true"})
     assert r.status_code == 200
 
@@ -194,7 +196,7 @@ def test_post_run_post_save_and_scenario_oob_panels_carry_q3(env):
     rec = _project(env, user, "generic_solar_reference", "Q3 oob")
     h, v = _tokens(_get(env, user, rec).text)
     ck = env.cookie(user)
-    run = env.client.post("/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
+    run = post_valid_csrf(env.client, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
                           cookies=ck, headers={"HX-Request": "true"})
     oob = _oob_panel(run.text)
     assert 'data-q3-state="CURRENT"' in oob and "Scenarios workspace" in oob

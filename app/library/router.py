@@ -29,6 +29,7 @@ import os
 import logging
 import traceback as _traceback
 from typing import Optional
+from app.workbook.financing_csrf import issue_token as _issue_csrf_token
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -168,6 +169,7 @@ async def project_library_page(
         "user": user,
         "projects": records,
         "references": _reference_templates(search, role),
+        "clone_csrf_token": _issue_csrf_token(request, "", purpose="library-clone-v1"),
         **_model_home_payload(user.user_id, records,
                               _reference_templates(search, role)),
         "search": search or "",
@@ -230,6 +232,7 @@ async def project_library_list(
         "user": user,
         "projects": records,
         "references": references,
+        "clone_csrf_token": _issue_csrf_token(request, "", purpose="library-clone-v1"),
         **_model_home_payload(user.user_id, records, references),
         "search": search or "",
         "role_filter": role or "",
@@ -255,10 +258,23 @@ async def project_library_clone(
     request: Request,
     source_project_id: str,
     requested_name: Optional[str] = Form(default=None),
+    csrf_token: str = Form(default=""),
 ):
     user = _get_current_user(request)
     if not user:
         return JSONResponse({"error": "Login required"}, status_code=401)
+
+    from app.auth import validate_csrf_token
+    from app.workbook.financing_csrf import extract_bound_token
+    if not validate_csrf_token(extract_bound_token(
+            request, "", csrf_token, purpose="library-clone-v1")):
+        return JSONResponse({"error": "Invalid or missing CSRF token"}, status_code=403)
+
+    # A valid CSRF token is not authority to clone another user's project.
+    # Unknown and noncanonical sources share the same non-disclosing response.
+    from app.persistence.projects_repository import get_canonical_reference_by_id
+    if get_canonical_reference_by_id(source_project_id) is None:
+        return JSONResponse({"error": "Project not found"}, status_code=404)
 
     from app.services.project_library_service import (
         ProtectedProjectError,

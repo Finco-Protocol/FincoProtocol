@@ -17,6 +17,8 @@ Proves the truth-correction contract without changing any behavior:
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import os
 import re
 import subprocess
@@ -127,7 +129,7 @@ class TestReferenceRegressionCheckNaming:
 
         m = _re.search(r'name="content_hash" value="([^"]+)"', pre.text)
         mv = _re.search(r'name="workbook_version" value="([^"]+)"', pre.text)
-        run = client.post(
+        run = post_valid_csrf(client,
             "/v2/workbook/run",
             data={"project": record.project_code, "content_hash": m.group(1),
                   "workbook_version": mv.group(1)},
