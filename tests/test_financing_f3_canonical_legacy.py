@@ -225,7 +225,14 @@ def test_legacy_mapping_remains_nonactivating_and_f3_imports_are_narrowly_owned(
                # F3.5-A candidate ownership only; this does not release financial blobs.
                ROOT / "app/workbook/junior_debt_config.py",
                ROOT / "financial_engine/financing/junior_debt.py",
-               ROOT / "finco_core/inputs/junior_debt.py"}
+               ROOT / "finco_core/inputs/junior_debt.py",
+               # WF-05A F3.1 multi-tranche CANDIDATE ownership only; NON_AUTHORITATIVE, no route, no
+               # activation surface. Exactly the three modules that import the contract (the package
+               # __init__ imports none and is deliberately NOT listed); the reverse direction (nothing
+               # may import the candidate) is pinned by test_no_other_module_imports_the_candidate_package.
+               ROOT / "app/model_v2/financing_f31_multitranche_candidate/validation.py",
+               ROOT / "app/model_v2/financing_f31_multitranche_candidate/schedules.py",
+               ROOT / "app/model_v2/financing_f31_multitranche_candidate/reconciliation.py"}
     offenders = []
     for name in ("app", "financial_engine", "finco_core", "domain", "main_web.py", "main_api.py"):
         root = ROOT / name
@@ -247,7 +254,13 @@ def test_legacy_mapping_remains_nonactivating_and_f3_imports_are_narrowly_owned(
 
 @pytest.mark.parametrize("path", ["app/workbook/unapproved_junior.py",
     "financial_engine/financing/unapproved_junior.py", "finco_core/inputs/unapproved_junior.py",
-    "app/workbook/junior_debt_config.py.extra.py", "domain/unapproved_junior.py"])
+    "app/workbook/junior_debt_config.py.extra.py", "domain/unapproved_junior.py",
+    # the F3.1 candidate allow-list is per file: unlisted siblings, the package __init__ and look-alike
+    # packages are still rejected
+    "app/model_v2/financing_f31_multitranche_candidate/unreviewed.py",
+    "app/model_v2/financing_f31_multitranche_candidate/__init__.py",
+    "app/model_v2/financing_f31_multitranche_candidate_extra/validation.py",
+    "app/model_v2/financing_f31_multitranche_candidate/sub/schedules.py"])
 def test_import_ownership_rejects_unrelated_consumers(path, tmp_path, monkeypatch):
     target = tmp_path / path
     target.parent.mkdir(parents=True)
