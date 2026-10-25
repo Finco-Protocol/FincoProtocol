@@ -653,16 +653,33 @@ class TestLibraryCloneSeeding:
         assert "technical_management" not in re.sub(r'(name|value|data-[a-z-]+|id|for)="[^"]*"', "", page)
 
     def test_storage_and_non_reference_sources_keep_their_guards(self, seeded_db):
+        from app.persistence.db import get_connection
         from app.persistence.projects_repository import get_reference_by_template_source
 
         client, cookies, own = _client_for(user_id="u-clone-guard")
         storage = get_reference_by_template_source("generic_storage_reference")
+        assert storage is not None
+
+        def project_rows():
+            with get_connection() as conn:
+                return [tuple(row) for row in conn.execute(
+                    "SELECT project_id, user_id, project_role FROM projects ORDER BY project_id"
+                )]
+
+        before = project_rows()
         r = post_valid_csrf(client, f"/library/clone/{storage.project_id}", cookies=cookies,
                         headers={"HX-Request": "true"})
         assert r.status_code == 400
-        r = post_valid_csrf(client, f"/library/clone/{own.project_id}", cookies=cookies,
+        assert "Storage" in r.text
+        assert project_rows() == before
+
+        own_response = post_valid_csrf(client, f"/library/clone/{own.project_id}", cookies=cookies,
                         headers={"HX-Request": "true"})
-        assert r.status_code == 400                      # a user-owned project is not clonable
-        r = post_valid_csrf(client, "/library/clone/does-not-exist", cookies=cookies,
+        assert own_response.status_code == 404  # noncanonical source never discloses its existence
+        assert project_rows() == before
+
+        unknown_response = post_valid_csrf(client, "/library/clone/does-not-exist", cookies=cookies,
                         headers={"HX-Request": "true"})
-        assert r.status_code == 400
+        assert unknown_response.status_code == 404
+        assert unknown_response.json() == own_response.json() == {"error": "Project not found"}
+        assert project_rows() == before
