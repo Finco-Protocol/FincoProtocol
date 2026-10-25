@@ -31,7 +31,7 @@
           <p class="proto-home__supporting">AI explains. FINCO calculates.</p>
           <div class="proto-home__ctas">
             <a href="/radar/r-live" class="proto-cta proto-cta--primary">Open R-LIVE</a>
-            <a href="/library" class="proto-cta proto-cta--secondary">Open FINCO Model</a>
+            <a href="{% if finco_model_react %}/v2/model-react{% else %}/library{% endif %}" class="proto-cta proto-cta--secondary">Open FINCO Model</a>
           </div>
         </div>
 
@@ -46,7 +46,7 @@
               <li>DSCR · Equity IRR · Coverage · Distributions</li>
               <li>Institutional export with evidence lineage</li>
             </ul>
-            <a href="/library" class="proto-capability-card__cta">Open Model Library →</a>
+            <a href="{% if finco_model_react %}/v2/model-react{% else %}/library{% endif %}" class="proto-capability-card__cta">Open Model Library →</a>
           </div>
 
           <div class="proto-capability-card proto-capability-card--dark">
@@ -112,7 +112,7 @@
             <span class="proto-arch__product-link">Open Radar →</span>
           </a>
 
-          <a href="/library" class="proto-arch__product">
+          <a href="{% if finco_model_react %}/v2/model-react{% else %}/library{% endif %}" class="proto-arch__product">
             <div class="proto-arch__product-num">03</div>
             <h3 class="proto-arch__product-name">FINCO Model</h3>
             <p class="proto-arch__product-headline">Model the Asset</p>

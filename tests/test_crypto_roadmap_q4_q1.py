@@ -67,6 +67,17 @@ def test_protocol_layer_is_explicit_and_separate():
     assert "Verified Assets" in roadmap, "roadmap keeps the layer description"
 
 
+def _render_protocol_nav(react_enabled: bool, *, active_page: str = "home") -> str:
+    """Render the real shared Jinja partial, not its unexpanded source."""
+    from jinja2 import Environment, FileSystemLoader
+
+    env = Environment(loader=FileSystemLoader(REPO / "app/templates"), autoescape=True)
+    rendered = env.get_template("partials/_protocol_nav.html").render(
+        finco_model_react=react_enabled, proto_active_page=active_page, user=None,
+    )
+    return " ".join(rendered.split())
+
+
 def test_shared_navigation_exposes_primary_products_and_active_contracts():
     nav = _flat("app/templates/partials/_protocol_nav.html")
     # Primary navigation (compact): Radar · Model · API · Docs (Radar opens R-LIVE, the default Radar surface; the
@@ -74,10 +85,10 @@ def test_shared_navigation_exposes_primary_products_and_active_contracts():
     # $FINCO stay reachable through the secondary "More" menu, not as equal top-level products.
     primary, secondary = nav.split('data-testid="proto-nav-secondary"', 1)
     assert 'href="/radar/r-live"' not in primary          # no duplicate global R-LIVE entry
-    for label, href in (("Radar", "/radar"), ("Model", "/library"),
-                        ("API", "/api"), ("Docs", "/docs")):
+    for label, href in (("Radar", "/radar"), ("API", "/api"), ("Docs", "/docs")):
         assert f'href="{href}"' in primary, label
         assert f"> {label} </a>" in primary, label
+    assert "> Model </a>" in primary
     for label, href in (("Yield", "/yield"), ("Account &amp; access", "/crypto")):
         assert f'href="{href}"' in secondary, label
         assert f"{label}</a>" in secondary, label
@@ -85,6 +96,69 @@ def test_shared_navigation_exposes_primary_products_and_active_contracts():
     assert "proto_active_page == 'crypto'" in nav
     assert 'proto_active_page="yield"' in _flat("app/templates/yield/base.html")
     assert 'proto_active_page="crypto"' in _flat("app/templates/crypto/overview.html")
+
+    for react_enabled, destination, forbidden in (
+        (True, "/v2/model-react", "/library"),
+        (False, "/library", "/v2/model-react"),
+    ):
+        rendered = _render_protocol_nav(react_enabled)
+        rendered_primary, rendered_secondary = rendered.split('data-testid="proto-nav-secondary"', 1)
+        assert 'href="/radar/r-live"' not in rendered_primary
+        # Primary product hierarchy and relative order must not change with the flag.
+        ordered_links = ("/radar", destination, "/api", "/docs")
+        positions = [rendered_primary.index(f'href="{href}"') for href in ordered_links]
+        assert positions == sorted(positions)
+        for label in ("Radar", "Model", "API", "Docs"):
+            assert f"> {label} </a>" in rendered_primary
+        for label, href in (("Yield", "/yield"), ("Account &amp; access", "/crypto")):
+            assert f'href="{href}"' in rendered_secondary, label
+        assert f'href="{forbidden}"' not in rendered_primary
+        assert 'href="/v2/model-react/library"' not in rendered
+
+        model_active = _render_protocol_nav(react_enabled, active_page="model")
+        assert (
+            f'href="{destination}" class="proto-nav__link proto-nav__link--active" '
+            'aria-current="page"> Model </a>'
+        ) in model_active
+        for page, label, href in (("yield", "Yield", "/yield"), ("crypto", "Account &amp; access", "/crypto")):
+            active = _render_protocol_nav(react_enabled, active_page=page)
+            assert f'href="{href}" class="proto-nav__link proto-nav__link--active" aria-current="page">{label}</a>' in active
+            assert f'href="{href}" class="proto-nav__link">' not in active.split('data-testid="proto-nav-secondary"', 1)[1]
+
+
+def test_protocol_home_model_navigation_obeys_effective_runtime_flag(monkeypatch):
+    """Real authenticated-route rendering: all four entry points change together."""
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    import main_web
+
+    assert main_web._finco_model_react_flag in main_web.templates.context_processors
+    paths = {getattr(route, "path", None) for route in main_web.app.routes}
+    assert "/v2/model-react" in paths                   # HTML host
+    assert "/v2/model-react/library" in paths           # JSON API, never a human link
+
+    # Exercise the protected route with a controlled authenticated user; no auth
+    # implementation or production access policy is changed by this test.
+    monkeypatch.setattr(main_web, "get_current_user", lambda _request: SimpleNamespace(is_demo=True))
+    client = TestClient(main_web.app, raise_server_exceptions=True)
+    for flag, destination, forbidden in (
+        ("on", "/v2/model-react", "/library"),
+        ("off", "/library", "/v2/model-react"),
+        ("on", "/v2/model-react", "/library"),  # runtime switch without re-import
+        ("invalid", "/library", "/v2/model-react"),  # unknown values fail closed
+    ):
+        monkeypatch.setenv("FINCO_MODEL_REACT_V1", flag)
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 200, (flag, response.status_code, response.headers.get("location"))
+        html = response.text
+        assert "FINCO Protocol" in html
+        # Navbar, hero CTA, capability card, architecture product card.
+        assert html.count(f'href="{destination}"') == 4, (flag, destination)
+        assert f'href="{forbidden}"' not in html
+        assert 'href="/v2/model-react/library"' not in html
+        assert 'href="/radar"' in html
+        assert 'href="/api"' in html
+        assert 'href="/docs"' in html
 
 
 def test_public_yield_route_is_truthful_when_runtime_is_off(monkeypatch):
