@@ -1,6 +1,6 @@
 # React main integration V1 — release closed
 
-## Exact intake and preservation
+## Historical intake and preservation
 
 Main: 0397d9af2ea87bc2930218faa2e2d5adb503234f,
 tree e54ebe91b6b9090ca698066da2dc84db653fc1fd.
@@ -127,3 +127,37 @@ when they differ. No coverage, collection-skip, nonpass or aggregate guard is
 relaxed. A successful new accepted checkpoint permits later eligible parallel
 runs under the existing contract. This integration's initial route may therefore
 be sequential; no five-worker activation is claimed from configuration alone.
+
+## Final main synchronization — acceptance remains pending
+
+Current main synchronized: b72942f22f1d3a8dcce351b56b96fdba0e6b9cdd,
+tree ab9b84aecd342bba7fe072a10842de3b74f7ab1c. Historical intake main
+0397d9af2ea87bc2930218faa2e2d5adb503234f remains recorded above separately.
+Normal merge cbac9ef4c86951eacd77200f7bc5f67d9b402f8f has exactly parents
+1a11124bd0dbf2bcbe6f0c6947a8881492c1f4d4 and
+b72942f22f1d3a8dcce351b56b96fdba0e6b9cdd. No conflicts. PR #363's six
+Advanced Revenue V4 files are preserved byte-for-byte, release closed. No Revenue
+V4 logic or production configuration is changed.
+
+Previous integration HEAD 1a11124b passed mandatory sequential CI 40135361029;
+its historical 18,298-test result is not proof for this synchronized HEAD.
+
+Epic run 40133886851 worker-2 job 120992169301 failed exactly
+`tests/test_ci_acceptance.py::test_frozen_financial_namespaces_unmodified`:
+main 0397d9af was not an ancestor of Epic bd91603d. Authentic artifact
+12576418147 SHA256 d7d2147ffeaff8fa283958566af44485b57ecf355a8ea00ad026c11c82f1d1ea
+records pytest exit 1, 3,777 PASS, one failure, 83 skips, one xfail and 14,522
+explicit worker deselections. This is a real failed source-governance assertion,
+not evidence of a financial numerical defect or a cleanup defect, and is not
+suppressed. Calibration max 0.25790653s was below 0.6s. Cleanup verified
+linux-subreaper-proc-waitpid-v1, no remaining processes/threads, source unchanged,
+container removed, no timeout/cancellation. The synchronized integration contains
+current main as an actual parent ancestor, addressing the exact failed condition.
+The same unchanged test and final exact-head mandatory CI must independently
+confirm it. Historical Epic failure remains failed and its evidence is retained.
+
+Acceptance: NOT READY until all mandatory checks on the new exact HEAD pass.
+The current pre-transition archive source candidate is now b72942f2 (including
+Revenue V4); the historical 0397d9af candidate above is not silently relabelled as
+a live deployment. Actual host/artifact/schema validation remains required before
+any separately authorized release. No deployment, activation, DB or staging change.
