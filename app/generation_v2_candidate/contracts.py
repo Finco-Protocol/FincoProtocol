@@ -121,6 +121,18 @@ def _choice(value, label: str, allowed) -> str:
     return value
 
 
+def require_month_aligned(value: date, label: str) -> None:
+    """Fail closed on a date that is not the first day of a calendar month."""
+    if value.day != 1:
+        raise _fail(
+            "GENERATION_V2_UNSUPPORTED",
+            f"{label} {value} is not month-aligned (day 1). Commissioning is "
+            "modelled per whole calendar month with declared month-hour "
+            "evidence; a partial month needs an approved proration basis "
+            "(OWNER DECISION REQUIRED, D-06) and is never approximated with "
+            "full-month hours")
+
+
 def _require_date_order(start: date, end: date, start_label: str,
                         end_label: str) -> None:
     if end <= start:
@@ -204,6 +216,11 @@ class TransmissionLossFactor:
             return True
         return any(w.valid_from <= when < w.valid_until for w in self.windows)
 
+    def factor_over(self, first_day: date, last_day: date) -> LossFactorSpan:
+        """What applies over the inclusive day span [first_day, last_day]:
+        UNIFORM / UNCOVERED / VARIES (see :class:`LossFactorSpan`)."""
+        return _loss_factor_over(self, first_day, last_day)
+
     def factor_on(self, when: date) -> Optional[float]:
         """The loss factor on an exact date, or None when the dated series
         does not cover the date (typed UNAVAILABLE at the caller)."""
@@ -214,6 +231,49 @@ class TransmissionLossFactor:
             if w.valid_from <= when < w.valid_until:
                 return w.loss_factor
         return None
+
+
+@dataclass(frozen=True)
+class LossFactorSpan:
+    """The transmission-loss factor over an inclusive span of calendar days.
+
+    ``status``: ``UNIFORM`` (one factor applies to EVERY day of the span),
+    ``UNCOVERED`` (no day of the span is covered by the dated series) or
+    ``VARIES`` (different factors, or covered and uncovered days, occur
+    within the span; ``change_dates`` are the first days of each change).
+    A single end-date lookup can only answer for one day; this is the only
+    statement of what applies to a whole period."""
+
+    status: str
+    factor: Optional[float]
+    change_dates: Tuple[date, ...]
+
+
+def _loss_factor_over(factor: "TransmissionLossFactor", first_day: date,
+                      last_day: date) -> LossFactorSpan:
+    _date(first_day, "span first_day")
+    _date(last_day, "span last_day")
+    if last_day < first_day:
+        raise _fail("GENERATION_V2_VALUE",
+                    f"span last_day ({last_day}) precedes first_day ({first_day})")
+    factor.validate()
+    if factor.mode == "FLAT":
+        return LossFactorSpan("UNIFORM", factor.flat_factor, ())
+    # piecewise constant between window edges: the factor can only change on
+    # a window's valid_from / valid_until, so first_day plus every edge inside
+    # (first_day, last_day] characterises every day of the span exactly
+    edges = sorted({edge for w in factor.windows
+                    for edge in (w.valid_from, w.valid_until)
+                    if first_day < edge <= last_day})
+    probes = [first_day] + edges
+    values = [factor.factor_on(day) for day in probes]
+    changes = tuple(day for day, value, previous in zip(probes[1:], values[1:], values)
+                    if value != previous)
+    if all(v is None for v in values):
+        return LossFactorSpan("UNCOVERED", None, ())
+    if changes:
+        return LossFactorSpan("VARIES", None, changes)
+    return LossFactorSpan("UNIFORM", values[0], ())
 
 
 # ── B. Degradation onset ─────────────────────────────────────────────────────
@@ -425,11 +485,17 @@ PRICE_BASES = ("FIXED", "PPA", "MARKET")
 class PreCodCommissioning:
     """Explicit pre-COD commissioning window with a monthly ramp.
 
-    The window is ``[commissioning_start, cod_date)`` — the COD month
-    itself is NEVER part of the commissioning window (pre-COD months are
-    never silently treated as post-COD periods). ``monthly_ramp_pct``
-    carries one percentage per calendar month of the window, in order;
-    its length must equal the window's month count exactly.
+    The window is ``[commissioning_start, cod_date)`` and BOTH dates must
+    be month-aligned (the first day of a calendar month): the ramp and the
+    declared month-hour evidence are per WHOLE calendar month, so a mid-month
+    start would price a partial month with full-month hours and a mid-month
+    COD would leave the pre-COD days of the COD month in no month at all.
+    Partial-month commissioning needs an approved proration basis (decision
+    D-06) and is rejected rather than approximated. The COD month itself is
+    therefore NEVER part of the commissioning window and no pre-COD day is
+    missing. ``monthly_ramp_pct`` carries one percentage per calendar month
+    of the window, in order; its length must equal the window's month count
+    exactly.
 
     ``price_basis``: FIXED settles at ``fixed_price_eur_mwh``; PPA at
     ``ppa_price_eur_mwh``; MARKET at the merchant price evidence supplied
@@ -450,6 +516,8 @@ class PreCodCommissioning:
         _date(self.cod_date, "cod_date")
         _require_date_order(self.commissioning_start, self.cod_date,
                             "commissioning_start", "cod_date")
+        require_month_aligned(self.commissioning_start, "commissioning_start")
+        require_month_aligned(self.cod_date, "cod_date")
         if not isinstance(self.monthly_ramp_pct, tuple) \
                 or not self.monthly_ramp_pct:
             raise _fail("GENERATION_V2_SCHEMA",

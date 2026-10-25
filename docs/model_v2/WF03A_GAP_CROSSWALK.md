@@ -23,3 +23,9 @@ Status legend: RELEASED (production authority on main) · PINNED-CANDIDATE (exis
 - Release closure: `ACTIVATION_ENABLED` literal `False`; every public calculation entry raises `GENERATION_V2_RELEASE_CLOSED`; no environment variable can enable it (`TestReleaseClosure`).
 - Production invisibility: no production module references `generation_v2_candidate`, and the package imports nothing from `finco_core`, `financial_engine`, `domain.revenue`, `revenue_v4_candidate` or `financing_instruments` (AST-scanned, `TestProductionIsolation`).
 - Legacy runs bit-identical: accepted Solar/Wind reference runs compared by full canonical payload SHA-256 between this branch and `b72942f2` — see PR evidence.
+
+## Correction A (PR #366)
+
+- Commissioning geometry: non-month-aligned start/COD rejected; aligned windows tested for exact pre-COD day coverage incl. leap February (decision D-06).
+- Dated transmission loss: a factor change inside an operating period requires independently evidenced sub-period generation, otherwise fail closed; `compose_operating_adjustments` no longer reports the last day's factor for a varying period (decision D-09, new, OPEN).
+- No protected path, canonical output or released periodisation is changed.

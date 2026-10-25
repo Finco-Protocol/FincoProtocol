@@ -28,6 +28,7 @@ from app.generation_v2_candidate.contracts import (
     PreCodCommissioning,
     TransmissionLossFactor,
     VolumeAdjustmentEvent,
+    require_month_aligned,
     require_release,
     validate_no_event_overlaps,
 )
@@ -113,39 +114,207 @@ def apply_transmission_loss(
     )
 
 
+@dataclass(frozen=True)
+class SubperiodGeneration:
+    """Independently evidenced gross generation for an inclusive day span
+    INSIDE one operating period (e.g. metered generation before and after a
+    loss-factor change). It is evidence supplied by the caller; this package
+    never derives it by prorating the period total over days."""
+
+    first_day: date
+    last_day: date
+    gross_mwh: float
+
+
+@dataclass(frozen=True)
+class PeriodLossOutcome:
+    """Transmission outcome for one inclusive-day operating period.
+
+    ``basis`` is ``UNIFORM_FACTOR`` (one factor provably applies to every day
+    of the period) or ``SUBPERIOD_EVIDENCE`` (the factor changes inside the
+    period and the split follows independently evidenced sub-period
+    generation). ``splits`` are the exact gross -> delivered + loss rows."""
+
+    first_day: date
+    last_day: date
+    gross_mwh: float
+    delivered_mwh: float
+    loss_mwh: float
+    basis: str
+    splits: Tuple[TransmissionSplit, ...]
+
+
+def _check_span(first_day, last_day, label: str) -> None:
+    if not isinstance(first_day, date) or not isinstance(last_day, date):
+        raise _fail("GENERATION_V2_SCHEMA", f"{label} requires date first_day/last_day")
+    if last_day < first_day:
+        raise _fail("GENERATION_V2_VALUE",
+                    f"{label} last_day ({last_day}) precedes first_day ({first_day})")
+
+
+def _split_uniform(factor: TransmissionLossFactor, first_day: date,
+                   last_day: date, gross: float) -> TransmissionSplit:
+    span = factor.factor_over(first_day, last_day)
+    if span.status == "UNCOVERED":
+        raise _fail(
+            "GENERATION_V2_UNAVAILABLE",
+            f"no transmission loss factor covers {first_day}..{last_day}; a "
+            "dated series must cover every evaluated period (gaps never "
+            "pass energy through unadjusted)")
+    if span.status == "VARIES":
+        raise _fail(
+            "GENERATION_V2_UNAVAILABLE",
+            f"the transmission loss factor changes on "
+            f"{', '.join(d.isoformat() for d in span.change_dates)} inside "
+            f"{first_day}..{last_day}")
+    loss = gross * span.factor
+    return TransmissionSplit(gross_mwh=gross, delivered_mwh=gross - loss,
+                             loss_mwh=loss, loss_factor=span.factor,
+                             on_date=last_day)
+
+
+def _evidenced_subperiods(factor, first_day, last_day, gross, evidence):
+    """Validate independently evidenced sub-period generation for a period
+    whose factor changes inside it; return one exact split per sub-period."""
+    parts = tuple(evidence)
+    if not parts or not all(isinstance(p, SubperiodGeneration) for p in parts):
+        raise _fail("GENERATION_V2_SCHEMA",
+                    "sub-period evidence must be SubperiodGeneration rows")
+    # 1. geometry first: the sub-periods must tile [first_day, last_day] exactly
+    expected_start = first_day
+    for part in parts:
+        _check_span(part.first_day, part.last_day, "sub-period")
+        if part.first_day != expected_start:
+            raise _fail(
+                "GENERATION_V2_OVERLAP" if part.first_day < expected_start
+                else "GENERATION_V2_UNAVAILABLE",
+                f"sub-period evidence must tile {first_day}..{last_day} "
+                f"exactly; expected a sub-period starting {expected_start}, "
+                f"got {part.first_day}")
+        expected_start = part.last_day + _ONE_DAY
+    if expected_start != last_day + _ONE_DAY:
+        raise _fail("GENERATION_V2_UNAVAILABLE",
+                    f"sub-period evidence ends before {last_day}; every day of "
+                    "the period needs evidenced generation")
+    # 2. each sub-period needs one provable factor; amounts must reconcile
+    splits, total = [], 0.0
+    for part in parts:
+        sub_gross = _energy(part.gross_mwh, f"sub-period gross_mwh[{part.first_day}]")
+        splits.append(_split_uniform(factor, part.first_day, part.last_day, sub_gross))
+        total += sub_gross
+    if abs(total - gross) > 1e-9 * max(1.0, abs(gross)):
+        raise _fail(
+            "GENERATION_V2_VALUE",
+            f"sub-period generation ({total}) does not reconcile with the "
+            f"period gross ({gross})")
+    return tuple(splits)
+
+
+def apply_transmission_loss_to_spans(
+    factor: TransmissionLossFactor,
+    spans: Sequence[Tuple[date, date, float]],
+    *,
+    subperiod_evidence: Optional[Mapping[Tuple[date, date], Sequence[SubperiodGeneration]]] = None,
+) -> Tuple[PeriodLossOutcome, ...]:
+    """Apply the transmission loss factor to inclusive-day operating periods.
+
+    ``spans`` are ``(first_day, last_day, gross_mwh)`` rows (``last_day`` is
+    the canonical period end; convert a released row ``(start, end]`` to
+    ``start + 1 day .. end``, and a COD stub that includes its start day to
+    ``start .. end``). The factor must be PROVABLY uniform over every day of
+    the span:
+
+    - uniform -> one exact split at that factor;
+    - uncovered -> typed UNAVAILABLE (gaps never pass energy unadjusted);
+    - the factor changes inside the period -> the split follows
+      ``subperiod_evidence[(first_day, last_day)]``, independently evidenced
+      sub-period generation that tiles the period and reconciles with its
+      gross; without it the period fails closed. The period total is NEVER
+      prorated over days and the last day's factor is NEVER applied to the
+      whole period (allocation of generation across a factor change is
+      OWNER DECISION D-09).
+
+    Conservation holds per sub-period, per period and in total."""
+    require_release()
+    evidence = subperiod_evidence or {}
+    rows = tuple(spans)
+    for row in rows:
+        if not isinstance(row, tuple) or len(row) != 3:
+            raise _fail("GENERATION_V2_SCHEMA",
+                        "spans rows must be (first_day, last_day, gross_mwh)")
+        _check_span(row[0], row[1], "period")
+    ordered = sorted(rows, key=lambda r: (r[0], r[1]))
+    for earlier, later in zip(ordered, ordered[1:]):
+        if later[0] <= earlier[1]:
+            raise _fail("GENERATION_V2_OVERLAP",
+                        f"period {later[0]}..{later[1]} overlaps period "
+                        f"{earlier[0]}..{earlier[1]}; one day can carry only "
+                        "one period's energy")
+    outcomes = []
+    total_gross = 0.0
+    for first_day, last_day, gross in rows:
+        gross = _energy(gross, f"gross_mwh[{first_day}..{last_day}]")
+        total_gross += gross
+        status = factor.factor_over(first_day, last_day).status
+        if status == "VARIES":
+            given = evidence.get((first_day, last_day))
+            if given is None:
+                change = factor.factor_over(first_day, last_day).change_dates
+                raise _fail(
+                    "GENERATION_V2_UNAVAILABLE",
+                    f"the transmission loss factor changes on "
+                    f"{', '.join(d.isoformat() for d in change)} inside the "
+                    f"period {first_day}..{last_day}; independently evidenced "
+                    "sub-period generation is required and no proration or "
+                    "last-day factor is applied (OWNER DECISION REQUIRED, D-09)")
+            splits = _evidenced_subperiods(factor, first_day, last_day, gross, given)
+            basis = "SUBPERIOD_EVIDENCE"
+        else:
+            splits = (_split_uniform(factor, first_day, last_day, gross),)
+            basis = "UNIFORM_FACTOR"
+        outcomes.append(PeriodLossOutcome(
+            first_day=first_day, last_day=last_day, gross_mwh=gross,
+            delivered_mwh=sum(x.delivered_mwh for x in splits),
+            loss_mwh=sum(x.loss_mwh for x in splits), basis=basis, splits=splits))
+    total_loss = sum(o.loss_mwh for o in outcomes)
+    total_delivered = sum(o.delivered_mwh for o in outcomes)
+    if abs((total_delivered + total_loss) - total_gross) > 1e-9 * max(1.0, abs(total_gross)):
+        raise _fail("GENERATION_V2_VALUE", "transmission conservation identity broken")
+    return tuple(outcomes)
+
+
 def apply_transmission_loss_to_periods(
     factor: TransmissionLossFactor,
-    periods: Sequence[Tuple[date, float]],
+    periods: Sequence[Tuple],
+    *,
+    subperiod_evidence: Optional[Mapping[Tuple[date, date], Sequence[SubperiodGeneration]]] = None,
 ) -> Tuple[Tuple[date, float, float], ...]:
-    """Apply the factor to (period_end_date, gross_mwh) rows.
+    """Apply the factor to period rows; returns ``(period_end, delivered_mwh,
+    loss_mwh)`` rows (conservation per row and in total).
 
-    Each row's delivery is evaluated at the period END date (the canonical
-    boundary alignment surface). A DATED_SERIES gap over any requested
-    period fails closed with the exact uncovered boundary — gaps can never
-    silently pass energy through unadjusted. Returns
-    ``(period_end, delivered_mwh, loss_mwh)`` rows; conservation holds per
-    row and in total."""
-
+    Rows are ``(first_day, last_day, gross_mwh)`` (see
+    :func:`apply_transmission_loss_to_spans`) or, for a FLAT factor only,
+    ``(period_end, gross_mwh)``. A DATED_SERIES cannot be applied from a
+    period end alone: one date cannot show that a single factor applies to
+    the whole period, so a two-field row with a dated series fails closed
+    instead of silently using the last day's factor for the entire period."""
     require_release()
-    out = []
-    total_gross = 0.0
-    for period_end, gross in periods:
-        gross = _energy(gross, f"gross_mwh[{period_end}]")
-        total_gross += gross
-        split = apply_transmission_loss(factor, gross, period_end)
-        if split is None:
-            raise _fail(
-                "GENERATION_V2_UNAVAILABLE",
-                f"no transmission loss factor covers the canonical boundary "
-                f"{period_end}; a dated series must cover every evaluated "
-                "period (gaps never pass energy through unadjusted)")
-        out.append((period_end, split.delivered_mwh, split.loss_mwh))
-    total_loss = sum(l for _, _, l in out)
-    total_delivered = sum(d for _, d, _ in out)
-    if abs((total_delivered + total_loss) - total_gross) > 1e-9:
-        raise _fail("GENERATION_V2_VALUE",
-                    "transmission conservation identity broken")
-    return tuple(out)
+    rows = []
+    for row in periods:
+        if isinstance(row, tuple) and len(row) == 2:
+            if factor.mode != "FLAT":
+                raise _fail(
+                    "GENERATION_V2_SCHEMA",
+                    "a DATED_SERIES loss factor needs (first_day, last_day, "
+                    "gross_mwh) rows: a period end date alone cannot show "
+                    "that one factor applies to the whole period")
+            period_end, gross = row
+            rows.append((period_end, period_end, gross))
+        else:
+            rows.append(row)
+    outcomes = apply_transmission_loss_to_spans(
+        factor, rows, subperiod_evidence=subperiod_evidence)
+    return tuple((o.last_day, o.delivered_mwh, o.loss_mwh) for o in outcomes)
 
 
 # ── B/C. Canonical-shape operating adjustments ───────────────────────────────
@@ -166,6 +335,7 @@ class OperatingPeriodAdjustments:
     availability: float
     degradation_factor: float
     loss_factor: Optional[float]
+    loss_state: str = "UNIFORM"
 
 
 def compose_operating_adjustments(
@@ -176,6 +346,7 @@ def compose_operating_adjustments(
     degradation: DegradationOnset,
     availability: FirstYearAvailability,
     transmission_loss: TransmissionLossFactor,
+    period_first_day: Optional[date] = None,
 ) -> OperatingPeriodAdjustments:
     """Compose the candidate adjustments for one canonical operating period.
 
@@ -191,12 +362,27 @@ def compose_operating_adjustments(
             or period_index < 0:
         raise _fail("GENERATION_V2_VALUE",
                     "period_index must be a non-negative integer")
+    # ``on_date`` is the period's last day. A FLAT factor is uniform by
+    # definition. A DATED_SERIES factor is reported only when it provably
+    # applies to every day [period_first_day, on_date]; otherwise loss_factor
+    # stays None (typed UNAVAILABLE upstream) with an explicit loss_state —
+    # the factor on the last day is never used for a whole period.
+    if transmission_loss.mode == "FLAT":
+        loss_factor, loss_state = transmission_loss.flat_factor, "UNIFORM"
+    elif period_first_day is None:
+        loss_factor, loss_state = None, "SPAN_NOT_SUPPLIED"
+    else:
+        span = transmission_loss.factor_over(period_first_day, on_date)
+        loss_factor = span.factor if span.status == "UNIFORM" else None
+        loss_state = {"UNIFORM": "UNIFORM", "UNCOVERED": "UNCOVERED",
+                      "VARIES": "VARIES_WITHIN_PERIOD"}[span.status]
     return OperatingPeriodAdjustments(
         period_index=period_index,
         operating_year_index=operating_year_index,
         availability=availability.availability_for(operating_year_index),
         degradation_factor=degradation.factor_for(operating_year_index),
-        loss_factor=transmission_loss.factor_on(on_date),
+        loss_factor=loss_factor,
+        loss_state=loss_state,
     )
 
 
@@ -396,6 +582,8 @@ def month_sequence(start: date, end_exclusive: date) -> Tuple[Tuple[int, int], .
     if end_exclusive <= start:
         raise _fail("GENERATION_V2_VALUE",
                     "the commissioning window is empty")
+    require_month_aligned(start, "window start")
+    require_month_aligned(end_exclusive, "window end (COD)")
     out = []
     y, m = start.year, start.month
     while (y, m) != (end_exclusive.year, end_exclusive.month):

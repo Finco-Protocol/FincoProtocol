@@ -80,7 +80,15 @@ is never re-derived). Confirm the reporting basis.
   hours × ramp_pct/100 × availability`, with month hours DECLARED as evidence
   (never derived from a calendar inside the candidate) and the ramp window
   exactly `[commissioning_start, COD)` — the COD month is never a
-  commissioning month.
+  commissioning month. **Correction A:** both dates must be month-aligned (day
+  1); a mid-month start or COD is rejected (`GENERATION_V2_UNSUPPORTED`)
+  because it would either price a partial month with full-month hours or leave
+  the pre-COD days of the COD month in no month. For aligned windows the
+  months cover every pre-COD day exactly once (tested against a calendar
+  oracle incl. leap February).
+- OPEN: the approved proration basis for a partial commissioning month (day
+  count, declared partial-month hours, or a ramp-day curve), required before a
+  non-month-aligned commissioning start or COD can be accepted.
 - OPEN: the source and vintage of the declared month hours (P50-based
   simulation vs contractual commissioning schedule) and their timezone/day-count
   convention.
@@ -123,6 +131,27 @@ pre-COD commissioning. Deliberate non-assumptions:
 - Compensation pricing for volume events (contract price vs merchant
   evidence) must not silently conflict with Revenue V4 price-mode resolution;
   the integration order is undecided.
+
+## D-09 — Allocation of period generation across a mid-period loss-factor change
+
+A dated transmission-loss series can change inside one canonical operating
+period (e.g. a factor change on 1 April inside a Jan-Jun period).
+**Correction A:** the candidate no longer applies the period-end factor to the
+whole period. It applies one factor only when it is provably uniform over every
+day of the period; when the factor changes inside the period it requires
+**independently evidenced sub-period generation** (tiling the period exactly,
+reconciling with the period gross, each sub-period at a single factor) or it
+fails closed (`GENERATION_V2_UNAVAILABLE`). It never prorates the period total
+over days and never uses the last day's factor for the period.
+
+- OPEN: whether a day-count (or other) proration of period generation across a
+  factor change is an acceptable methodology when no sub-period evidence exists;
+  the candidate takes the fail-closed default, not a policy.
+- OPEN: the evidence standard for sub-period generation (metered, P50 profile,
+  contractual) and which loss factor governs the settlement date vs the
+  production date.
+- OPEN: interaction with degradation, availability and volume events in the
+  same period (each is currently applied once, independently).
 
 ## Required approvals for ANY release path
 

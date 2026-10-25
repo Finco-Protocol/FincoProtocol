@@ -12,7 +12,8 @@ change) and construction-month boundaries from exact month arithmetic.
 from __future__ import annotations
 
 import ast
-from datetime import date
+import calendar
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -30,8 +31,10 @@ from app.generation_v2_candidate import (
     validate_no_event_overlaps,
 )
 from app.generation_v2_candidate.pure import (
+    SubperiodGeneration,
     apply_transmission_loss,
     apply_transmission_loss_to_periods,
+    apply_transmission_loss_to_spans,
     apply_volume_adjustments,
     build_pre_cod_proposal,
     compose_operating_adjustments,
@@ -179,8 +182,10 @@ class TestInvariant1EnergyConservation:
                      LossFactorWindow(date(2027, 1, 1), date(2027, 7, 1), 0.02)))
         assert factor.factor_on(date(2026, 12, 31)) is None
         with pytest.raises(ValueError, match="GENERATION_V2_UNAVAILABLE"):
+            # the period's inclusive day span is supplied: a dated series
+            # cannot be applied from a period end date alone (Correction A)
             apply_transmission_loss_to_periods(
-                factor, [(date(2026, 12, 31), 100.0)])
+                factor, [(date(2026, 7, 1), date(2026, 12, 31), 100.0)])
 
     def test_overlapping_loss_windows_fail_closed(self, released):
         with pytest.raises(ValueError, match="GENERATION_V2_OVERLAP"):
@@ -793,6 +798,256 @@ class TestMonthlyConstructionGridIntegration:
         assert month_sequence(commissioning.commissioning_start,
                               commissioning.cod_date) == (
             (2025, 4), (2025, 5), (2025, 6))
+
+
+# ── Correction A: commissioning period geometry ─────────────────────────────
+
+
+def _calendar_days(months):
+    return sum(calendar.monthrange(y, m)[1] for y, m in months)
+
+
+def _commissioning(start, cod, ramp, **kw):
+    kw.setdefault("price_basis", "FIXED")
+    kw.setdefault("fixed_price_eur_mwh", 30.0)
+    return PreCodCommissioning(commissioning_start=start, cod_date=cod,
+                               monthly_ramp_pct=ramp, **kw)
+
+
+class TestCommissioningGeometryCorrectionA:
+    @pytest.mark.parametrize("start,cod,ramp", [
+        (date(2028, 3, 15), date(2028, 7, 1), (25.0, 50.0, 75.0, 95.0)),      # mid-month start
+        (date(2028, 3, 1), date(2028, 7, 10), (25.0, 50.0, 75.0, 95.0)),      # mid-month COD
+        (date(2028, 3, 15), date(2028, 7, 10), (25.0, 50.0, 75.0, 95.0)),     # both
+        (date(2028, 2, 2), date(2028, 3, 1), (50.0,)),                        # leap February, day 2
+        (date(2028, 1, 1), date(2028, 2, 29), (40.0,)),                       # COD on leap day
+    ])
+    def test_non_month_aligned_dates_are_rejected_on_every_path(self, released, start, cod, ramp):
+        c = _commissioning(start, cod, ramp)
+        with pytest.raises(ValueError, match="GENERATION_V2_UNSUPPORTED.*month-aligned"):
+            c.validate()
+        with pytest.raises(ValueError, match="GENERATION_V2_UNSUPPORTED"):
+            c.window_months()
+        with pytest.raises(ValueError, match="GENERATION_V2_UNSUPPORTED"):
+            month_sequence(start, cod)
+        hours = {(y, m): 700.0 for y in (2028,) for m in range(1, 13)}
+        with pytest.raises(ValueError, match="GENERATION_V2_UNSUPPORTED"):
+            build_pre_cod_proposal(c, capacity_mw=10.0, month_hours=hours, availability=0.95)
+
+    def test_the_rejection_names_the_open_proration_decision(self, released):
+        with pytest.raises(ValueError, match="D-06"):
+            _commissioning(date(2028, 3, 15), date(2028, 7, 1), (50.0, 60.0, 70.0, 80.0)).validate()
+
+    def test_a_mid_month_start_cannot_price_a_partial_month_with_full_month_hours(self, released):
+        """The defect: start 2028-03-15 produced a March row priced with all 744 declared March hours."""
+        hours = {(2028, 3): 744.0, (2028, 4): 720.0, (2028, 5): 744.0, (2028, 6): 720.0}
+        with pytest.raises(ValueError, match="month-aligned"):
+            build_pre_cod_proposal(_commissioning(date(2028, 3, 15), date(2028, 7, 1), (25.0, 50.0, 75.0, 95.0)),
+                                   capacity_mw=10.0, month_hours=hours, availability=1.0)
+
+    def test_a_mid_month_cod_cannot_drop_the_pre_cod_days_of_the_cod_month(self, released):
+        """The defect: COD 2028-07-10 silently lost 2028-07-01..09 (they belong to no commissioning month)."""
+        with pytest.raises(ValueError, match="month-aligned"):
+            month_sequence(date(2028, 3, 1), date(2028, 7, 10))
+
+    @pytest.mark.parametrize("start,cod", [
+        (date(2028, 1, 1), date(2028, 4, 1)),      # includes leap February 2028 (29 days)
+        (date(2027, 1, 1), date(2027, 4, 1)),      # non-leap February
+        (date(2027, 11, 1), date(2028, 3, 1)),     # across the year end and a leap February
+        (date(2028, 2, 1), date(2028, 3, 1)),      # leap February alone
+        (date(2025, 1, 1), date(2025, 7, 1)),
+    ])
+    def test_aligned_windows_cover_every_pre_cod_day_exactly_once(self, released, start, cod):
+        months = month_sequence(start, cod)
+        assert _calendar_days(months) == (cod - start).days            # no missing day, none counted twice
+        assert months[-1] < (cod.year, cod.month)                      # the COD month is never pre-COD
+        assert len(set(months)) == len(months)
+
+    def test_leap_february_uses_the_declared_696_hours_and_non_leap_the_declared_672(self, released):
+        ramp = (50.0, 60.0, 70.0)
+        leap = build_pre_cod_proposal(
+            _commissioning(date(2028, 1, 1), date(2028, 4, 1), ramp), capacity_mw=10.0,
+            month_hours={(2028, 1): 744.0, (2028, 2): 696.0, (2028, 3): 744.0}, availability=1.0)
+        flat = build_pre_cod_proposal(
+            _commissioning(date(2027, 1, 1), date(2027, 4, 1), ramp), capacity_mw=10.0,
+            month_hours={(2027, 1): 744.0, (2027, 2): 672.0, (2027, 3): 744.0}, availability=1.0)
+        assert [r.hours for r in leap.months] == [744.0, 696.0, 744.0]
+        assert leap.months[1].gross_mwh == pytest.approx(10.0 * 696.0 * 0.60)
+        assert flat.months[1].gross_mwh == pytest.approx(10.0 * 672.0 * 0.60)
+        assert leap.physical_total_mwh == pytest.approx(10.0 * (744 * .5 + 696 * .6 + 744 * .7))
+
+    def test_the_declared_month_hour_evidence_contract_is_preserved(self, released):
+        c = _commissioning(date(2028, 1, 1), date(2028, 4, 1), (50.0, 60.0, 70.0))
+        with pytest.raises(ValueError, match="GENERATION_V2_UNAVAILABLE.*2028-02"):
+            build_pre_cod_proposal(c, capacity_mw=10.0, month_hours={(2028, 1): 744.0, (2028, 3): 744.0},
+                                   availability=1.0)                  # declared hours are never fabricated
+        declared = build_pre_cod_proposal(c, capacity_mw=10.0, month_hours={(2028, 1): 744.0, (2028, 2): 700.0, (2028, 3): 744.0},
+                                          availability=1.0)
+        assert declared.months[1].hours == 700.0                      # the declared value is used as declared
+
+    def test_ramp_must_still_cover_exactly_the_aligned_window(self, released):
+        c = _commissioning(date(2028, 1, 1), date(2028, 4, 1), (50.0, 60.0))
+        with pytest.raises(ValueError, match="GENERATION_V2_SCHEMA"):
+            build_pre_cod_proposal(c, capacity_mw=10.0, month_hours={(2028, m): 700.0 for m in (1, 2, 3)}, availability=1.0)
+
+
+# ── Correction A: dated transmission loss inside an operating period ────────
+
+
+FACTOR_INSIDE = TransmissionLossFactor(
+    mode="DATED_SERIES",
+    windows=(LossFactorWindow(date(2026, 1, 1), date(2026, 4, 1), 0.04),
+             LossFactorWindow(date(2026, 4, 1), date(2026, 7, 1), 0.02),
+             LossFactorWindow(date(2026, 7, 1), date(2027, 1, 1), 0.03)))
+H1_2026 = (date(2026, 1, 1), date(2026, 6, 30))     # the canonical row (2025-12-31, 2026-06-30]
+H2_2026 = (date(2026, 7, 1), date(2026, 12, 31))
+
+
+class TestLossFactorChangeInsideAPeriod:
+    def test_the_span_lookup_distinguishes_uniform_varying_and_uncovered(self, released):
+        f = FACTOR_INSIDE
+        assert f.factor_over(*H2_2026).status == "UNIFORM" and f.factor_over(*H2_2026).factor == 0.03
+        assert f.factor_over(date(2026, 1, 1), date(2026, 3, 31)).factor == 0.04
+        varies = f.factor_over(*H1_2026)
+        assert varies.status == "VARIES" and varies.factor is None and varies.change_dates == (date(2026, 4, 1),)
+        assert f.factor_over(date(2026, 3, 31), date(2026, 4, 1)).status == "VARIES"      # one day either side
+        assert f.factor_over(date(2030, 1, 1), date(2030, 6, 30)).status == "UNCOVERED"
+        assert f.factor_over(date(2026, 12, 15), date(2027, 1, 15)).status == "VARIES"    # covered then uncovered
+        assert f.factor_over(date(2026, 5, 5), date(2026, 5, 5)).factor == 0.02           # single day
+
+    def test_adjacent_windows_with_the_same_factor_are_not_a_change(self, released):
+        f = TransmissionLossFactor(mode="DATED_SERIES", windows=(
+            LossFactorWindow(date(2026, 1, 1), date(2026, 4, 1), 0.03),
+            LossFactorWindow(date(2026, 4, 1), date(2026, 7, 1), 0.03)))
+        assert f.factor_over(*H1_2026).status == "UNIFORM"
+
+    def test_a_flat_factor_is_uniform_everywhere(self, released):
+        assert TransmissionLossFactor(mode="FLAT", flat_factor=0.03).factor_over(*H1_2026).status == "UNIFORM"
+
+    def test_the_last_days_factor_is_never_applied_to_the_whole_period(self, released):
+        """The defect: H1 2026 gross 1000 MWh was settled at the 30 Jun factor (2%) -> loss 20 MWh."""
+        with pytest.raises(ValueError, match="GENERATION_V2_UNAVAILABLE.*2026-04-01.*D-09"):
+            apply_transmission_loss_to_periods(FACTOR_INSIDE, [(*H1_2026, 1000.0)])
+        with pytest.raises(ValueError, match="GENERATION_V2_UNAVAILABLE"):
+            apply_transmission_loss_to_spans(FACTOR_INSIDE, [(*H1_2026, 1000.0)])
+
+    def test_independently_evidenced_subperiod_generation_is_used_exactly(self, released):
+        evidence = {H1_2026: (SubperiodGeneration(date(2026, 1, 1), date(2026, 3, 31), 400.0),
+                              SubperiodGeneration(date(2026, 4, 1), date(2026, 6, 30), 600.0))}
+        (out,) = apply_transmission_loss_to_spans(FACTOR_INSIDE, [(*H1_2026, 1000.0)], subperiod_evidence=evidence)
+        assert out.basis == "SUBPERIOD_EVIDENCE" and len(out.splits) == 2
+        assert out.loss_mwh == pytest.approx(400 * 0.04 + 600 * 0.02) == pytest.approx(28.0)
+        assert out.delivered_mwh == pytest.approx(972.0) and out.delivered_mwh + out.loss_mwh == pytest.approx(1000.0)
+        assert [s.loss_factor for s in out.splits] == [0.04, 0.02]
+        assert out.loss_mwh not in (pytest.approx(20.0), pytest.approx(40.0))   # neither the last day's nor the first day's factor
+
+    def test_wrapper_returns_period_end_delivered_and_loss(self, released):
+        evidence = {H1_2026: (SubperiodGeneration(date(2026, 1, 1), date(2026, 3, 31), 400.0),
+                              SubperiodGeneration(date(2026, 4, 1), date(2026, 6, 30), 600.0))}
+        rows = apply_transmission_loss_to_periods(FACTOR_INSIDE, [(*H1_2026, 1000.0), (*H2_2026, 500.0)],
+                                                  subperiod_evidence=evidence)
+        assert rows[0][0] == date(2026, 6, 30) and rows[0][2] == pytest.approx(28.0)
+        assert rows[1] == (date(2026, 12, 31), pytest.approx(485.0), pytest.approx(15.0))
+        assert sum(d + l for _, d, l in rows) == pytest.approx(1500.0)
+
+    def test_uniform_periods_are_unchanged_and_need_no_evidence(self, released):
+        (out,) = apply_transmission_loss_to_spans(FACTOR_INSIDE, [(*H2_2026, 500.0)])
+        assert out.basis == "UNIFORM_FACTOR" and out.loss_mwh == pytest.approx(15.0) and len(out.splits) == 1
+
+    @pytest.mark.parametrize("parts,fragment", [
+        (((date(2026, 1, 2), date(2026, 3, 31), 400.0), (date(2026, 4, 1), date(2026, 6, 30), 600.0)), "tile"),     # day 1 missing
+        (((date(2026, 1, 1), date(2026, 3, 31), 400.0), (date(2026, 4, 2), date(2026, 6, 30), 600.0)), "tile"),     # gap
+        (((date(2026, 1, 1), date(2026, 4, 1), 400.0), (date(2026, 4, 1), date(2026, 6, 30), 600.0)), "OVERLAP"),   # overlap
+        (((date(2026, 1, 1), date(2026, 3, 31), 400.0), (date(2026, 4, 1), date(2026, 6, 29), 600.0)), "ends before"),
+        (((date(2026, 1, 1), date(2026, 3, 31), 400.0), (date(2026, 4, 1), date(2026, 6, 30), 599.0)), "reconcile"),
+        (((date(2026, 1, 1), date(2026, 6, 30), 1000.0),), "changes on"),                                           # not split at the change
+        (((date(2026, 1, 1), date(2026, 3, 31), -1.0), (date(2026, 4, 1), date(2026, 6, 30), 1001.0)), "GENERATION_V2_VALUE"),
+        (((date(2026, 1, 1), date(2026, 3, 31), float("nan")), (date(2026, 4, 1), date(2026, 6, 30), 600.0)), "GENERATION_V2_VALUE"),
+    ])
+    def test_subperiod_evidence_must_tile_the_period_reconcile_and_be_uniform(self, released, parts, fragment):
+        evidence = {H1_2026: tuple(SubperiodGeneration(*p) for p in parts)}
+        with pytest.raises(ValueError, match=fragment):
+            apply_transmission_loss_to_spans(FACTOR_INSIDE, [(*H1_2026, 1000.0)], subperiod_evidence=evidence)
+
+    def test_malformed_evidence_and_evidence_for_another_period_do_not_help(self, released):
+        with pytest.raises(ValueError, match="SubperiodGeneration"):
+            apply_transmission_loss_to_spans(FACTOR_INSIDE, [(*H1_2026, 1000.0)],
+                                             subperiod_evidence={H1_2026: ((date(2026, 1, 1), 400.0),)})
+        with pytest.raises(ValueError, match="SubperiodGeneration"):
+            apply_transmission_loss_to_spans(FACTOR_INSIDE, [(*H1_2026, 1000.0)], subperiod_evidence={H1_2026: ()})
+        other = {H2_2026: (SubperiodGeneration(*H2_2026, 1000.0),)}
+        with pytest.raises(ValueError, match="GENERATION_V2_UNAVAILABLE"):
+            apply_transmission_loss_to_spans(FACTOR_INSIDE, [(*H1_2026, 1000.0)], subperiod_evidence=other)
+
+    def test_a_dated_series_cannot_be_applied_from_a_period_end_alone(self, released):
+        with pytest.raises(ValueError, match="GENERATION_V2_SCHEMA.*period end date alone"):
+            apply_transmission_loss_to_periods(FACTOR_INSIDE, [(date(2026, 12, 31), 100.0)])
+        out = apply_transmission_loss_to_periods(TransmissionLossFactor(mode="FLAT", flat_factor=0.05),
+                                                 [(date(2026, 12, 31), 100.0)])
+        assert out == ((date(2026, 12, 31), pytest.approx(95.0), pytest.approx(5.0)),)
+
+    def test_coverage_gaps_inside_a_period_still_fail_closed(self, released):
+        gappy = TransmissionLossFactor(mode="DATED_SERIES", windows=(
+            LossFactorWindow(date(2026, 1, 1), date(2026, 3, 1), 0.04),
+            LossFactorWindow(date(2026, 5, 1), date(2026, 7, 1), 0.04)))
+        assert gappy.factor_over(*H1_2026).status == "VARIES"         # the same factor, but a gap in between
+        with pytest.raises(ValueError, match="GENERATION_V2_UNAVAILABLE"):
+            apply_transmission_loss_to_spans(gappy, [(*H1_2026, 1000.0)])
+        with pytest.raises(ValueError, match="GENERATION_V2_UNAVAILABLE.*covers"):
+            apply_transmission_loss_to_spans(gappy, [(date(2026, 3, 5), date(2026, 4, 20), 10.0)])
+
+    def test_overlapping_or_malformed_period_rows_fail_closed(self, released):
+        flat = TransmissionLossFactor(mode="FLAT", flat_factor=0.02)
+        with pytest.raises(ValueError, match="GENERATION_V2_OVERLAP"):
+            apply_transmission_loss_to_spans(flat, [(*H1_2026, 10.0), (date(2026, 6, 30), date(2026, 12, 31), 10.0)])
+        with pytest.raises(ValueError, match="GENERATION_V2_VALUE"):
+            apply_transmission_loss_to_spans(flat, [(date(2026, 6, 30), date(2026, 1, 1), 10.0)])
+        with pytest.raises(ValueError, match="GENERATION_V2_SCHEMA"):
+            apply_transmission_loss_to_spans(flat, [(date(2026, 1, 1), 10.0)])
+        unsorted = apply_transmission_loss_to_spans(flat, [(*H2_2026, 5.0), (*H1_2026, 10.0)])
+        assert [o.first_day for o in unsorted] == [H2_2026[0], H1_2026[0]]       # caller order preserved
+
+    def test_conservation_holds_per_subperiod_period_and_total(self, released):
+        evidence = {H1_2026: (SubperiodGeneration(date(2026, 1, 1), date(2026, 3, 31), 123.456),
+                              SubperiodGeneration(date(2026, 4, 1), date(2026, 6, 30), 876.544))}
+        outs = apply_transmission_loss_to_spans(FACTOR_INSIDE, [(*H1_2026, 1000.0), (*H2_2026, 321.0)],
+                                                subperiod_evidence=evidence)
+        for o in outs:
+            assert o.delivered_mwh + o.loss_mwh == pytest.approx(o.gross_mwh)
+            for sp in o.splits:
+                assert sp.delivered_mwh + sp.loss_mwh == pytest.approx(sp.gross_mwh)
+        assert sum(o.delivered_mwh + o.loss_mwh for o in outs) == pytest.approx(1321.0)
+
+    def test_released_canonical_rows_drive_the_span_semantics(self, released, canonical_axis):
+        """Canonical rows cover (start, end]: row (2025-12-31, 2026-06-30] is Jan 1..Jun 30, 181 days."""
+        operating = [p for p in canonical_axis if p.is_operation]
+        row = next(p for p in operating if p.end_date == date(2026, 6, 30))
+        first_day = row.start_date + timedelta(days=1)
+        assert (row.end_date - first_day).days + 1 == row.days_in_period == 181
+        assert FACTOR_INSIDE.factor_over(first_day, row.end_date).status == "VARIES"
+        later = next(p for p in operating if p.end_date == date(2026, 12, 31))
+        assert FACTOR_INSIDE.factor_over(later.start_date + timedelta(days=1), later.end_date).status == "UNIFORM"
+
+    def test_composition_never_reports_the_last_days_factor_for_a_varying_period(self, released):
+        kwargs = dict(period_index=2, operating_year_index=1, degradation=DegradationOnset.canonical(0.004),
+                      availability=FirstYearAvailability(0.90, 0.98), transmission_loss=FACTOR_INSIDE)
+        varying = compose_operating_adjustments(on_date=H1_2026[1], period_first_day=H1_2026[0], **kwargs)
+        assert varying.loss_factor is None and varying.loss_state == "VARIES_WITHIN_PERIOD"
+        uniform = compose_operating_adjustments(on_date=H2_2026[1], period_first_day=H2_2026[0], **kwargs)
+        assert uniform.loss_factor == 0.03 and uniform.loss_state == "UNIFORM"
+        not_supplied = compose_operating_adjustments(on_date=H2_2026[1], **kwargs)
+        assert not_supplied.loss_factor is None and not_supplied.loss_state == "SPAN_NOT_SUPPLIED"
+        uncovered = compose_operating_adjustments(on_date=date(2030, 6, 30), period_first_day=date(2030, 1, 1), **kwargs)
+        assert uncovered.loss_factor is None and uncovered.loss_state == "UNCOVERED"
+        flat = compose_operating_adjustments(on_date=H1_2026[1], **{**kwargs, "transmission_loss":
+                                             TransmissionLossFactor(mode="FLAT", flat_factor=0.03)})
+        assert flat.loss_factor == 0.03 and flat.loss_state == "UNIFORM"
+
+    def test_new_entry_points_stay_release_closed(self):
+        with pytest.raises(ValueError, match="GENERATION_V2_RELEASE_CLOSED"):
+            apply_transmission_loss_to_spans(FACTOR_INSIDE, [(*H2_2026, 1.0)])
+        with pytest.raises(ValueError, match="GENERATION_V2_RELEASE_CLOSED"):
+            apply_transmission_loss_to_periods(FACTOR_INSIDE, [(*H2_2026, 1.0)])
 
 
 # ── Isolation: the candidate is invisible to the production path ─────────────
