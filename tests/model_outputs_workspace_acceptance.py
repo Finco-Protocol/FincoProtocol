@@ -135,6 +135,14 @@ def main() -> int:
                     return {k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1) for k in ("content_hash", "workbook_version")}
 
                 def post(page, path, data):
+                    if path == "/v2/workbook/run":
+                        # Browser direct-POST must use the real, session/project-bound
+                        # token rendered into the legacy canonical Run form.
+                        run_token = page.locator(
+                            '#v2-canonical-run-form [name="run_csrf_token"]'
+                        ).input_value()
+                        assert run_token, "Canonical Run form must provide a bound CSRF token"
+                        data = dict(data, run_csrf_token=run_token)
                     if path == "/v2/workbook/update" and data.get("field_id") == "debt.financing.instruments":
                         data = dict(data, csrf_token=page.locator('[data-f3-form] [name="csrf_token"]').input_value())
                     return page.request.post(f"{url}{path}", form=data, headers={"HX-Request": "true"})
