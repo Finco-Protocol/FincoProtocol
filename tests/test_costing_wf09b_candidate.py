@@ -94,10 +94,14 @@ def energy(values, boundary=EnergyBoundary.DELIVERED_AC_EXPORT, run=REF, ids=("c
                                      for p, v in zip(ids, values)))
 
 
+VALUATION = date(2026, 1, 1)
+
+
 def discount(factors, convention="synthetic supplied factors", rate_source="synthetic receipt",
-             run=REF, basis=PriceBasis.NOMINAL, ids=("c0", "o1", "o2"), currency="EUR"):
-    return DiscountReceipt(run, convention, rate_source, currency, basis, date(2026, 1, 1),
-                           tuple((p, D(f)) for p, f in zip(ids, factors)), "disc-receipt")
+             run=REF, basis=PriceBasis.NOMINAL, ids=("c0", "o1", "o2"), currency="EUR",
+             valuation_date=VALUATION, factors_as_of=VALUATION):
+    return DiscountReceipt(run, convention, rate_source, currency, basis, valuation_date,
+                           tuple((p, D(f)) for p, f in zip(ids, factors)), "disc-receipt", factors_as_of)
 
 
 def request(costs, en, disc, ax=None, vertical=Vertical.SOLAR, metric=Metric.UNLEVERED_PRE_FINANCING, **kw):
@@ -361,6 +365,69 @@ class TestMissingEvidence:
 
 
 # ── 11. discounted energy denominator ───────────────────────────────────────
+
+
+class TestValuationOriginCompleteness:
+    """Correction A: a calculation is never returned without an explicit, factor-compatible valuation origin."""
+
+    def _eval(self, **kw):
+        return evaluate(request(solar_costs().receipts(), energy(["0", "2000", "2000"]), discount(["1", "0.9", "0.8"], **kw)))
+
+    def test_a_valid_valuation_origin_preserves_the_existing_calculation(self):
+        r = self._eval()
+        assert r.status == CANDIDATE and r.numerator_keur == 1185 and r.pv_energy_mwh == 3400
+        assert close(r.total_eur_mwh, eur_mwh(1185, 3400))
+
+    def test_a_missing_valuation_date_is_unavailable_with_a_stable_reason(self):
+        r = self._eval(valuation_date=None)
+        assert r.status == UNAVAILABLE and r.reasons == ("WF09B_VALUATION_DATE_MISSING",)
+        assert r.total_eur_mwh is None and r.numerator_keur is None and r.reconciliation is None
+
+    def test_the_valuation_date_is_never_inferred_from_another_date(self):
+        # the factor schedule's own origin, the Run/axis dates and the first period start are all present; none substitutes
+        for factors_as_of in (None, VALUATION, date(2026, 12, 31), SOLAR_PERIODS[0][2]):
+            r = self._eval(valuation_date=None, factors_as_of=factors_as_of)
+            assert r.status == UNAVAILABLE and r.reasons == ("WF09B_VALUATION_DATE_MISSING",), factors_as_of
+
+    def test_missing_factor_origin_means_compatibility_cannot_be_verified(self):
+        r = self._eval(factors_as_of=None)
+        assert r.status == UNAVAILABLE and r.reasons == ("WF09B_FACTOR_VALUATION_ORIGIN_MISSING",)
+
+    @pytest.mark.parametrize("other", [date(2026, 1, 2), date(2025, 12, 31), date(2026, 12, 31), date(2027, 1, 1)])
+    def test_factors_discounted_to_a_different_date_are_incompatible(self, other):
+        with pytest.raises(Wf09bError, match="WF09B_VALUATION_ORIGIN_MISMATCH"):
+            self._eval(factors_as_of=other)
+
+    def test_valuation_origin_reasons_accumulate_with_other_missing_evidence(self):
+        r = self._eval(valuation_date=None, convention=None, rate_source=None)
+        assert r.reasons == ("WF09B_DISCOUNT_CONVENTION_MISSING", "WF09B_DISCOUNT_RATE_SOURCE_MISSING",
+                             "WF09B_VALUATION_DATE_MISSING")
+
+    @pytest.mark.parametrize("bad", ["2026-01-01", 20260101, 2026.0, True])
+    def test_valuation_dates_must_be_calendar_dates(self, bad):
+        with pytest.raises(Wf09bError, match="WF09B_VALUE"):
+            discount(["1", "0.9", "0.8"], valuation_date=bad, factors_as_of=VALUATION)
+        with pytest.raises(Wf09bError, match="WF09B_VALUE"):
+            discount(["1", "0.9", "0.8"], valuation_date=VALUATION, factors_as_of=bad)
+        from datetime import datetime
+        with pytest.raises(Wf09bError, match="WF09B_VALUE"):
+            discount(["1", "0.9", "0.8"], valuation_date=datetime(2026, 1, 1), factors_as_of=VALUATION)
+
+    def test_the_valuation_origin_is_part_of_the_provenance(self):
+        a = self._eval()
+        b = evaluate(request(solar_costs().receipts(), energy(["0", "2000", "2000"]),
+                             discount(["1", "0.9", "0.8"], valuation_date=date(2025, 12, 31), factors_as_of=date(2025, 12, 31))))
+        assert a.status == b.status == CANDIDATE and a.total_eur_mwh == b.total_eur_mwh and a.provenance != b.provenance
+
+    def test_every_vertical_and_metric_requires_the_origin(self):
+        r = evaluate(request(solar_costs(True).receipts(), energy(["0", "2000", "2000"]),
+                             discount(["1", "0.9", "0.8"], valuation_date=None), metric=Metric.LEVERED_AFTER_TAX))
+        assert r.reasons == ("WF09B_VALUATION_DATE_MISSING",)
+        r = evaluate(request(bess_costs().receipts(), energy(["0", "600"], EnergyBoundary.DELIVERED_AC_DISCHARGE, ids=BESS_IDS),
+                             discount(["1", "0.9"], ids=BESS_IDS, valuation_date=None), ax=axis(BESS_AXIS),
+                             vertical=Vertical.BESS, metric=Metric.LCOS, charging=ChargingEvidence.EXPLICIT_BUY,
+                             augmentation=AugmentationEvidence.NOT_APPLICABLE_EVIDENCED))
+        assert r.reasons == ("WF09B_VALUATION_DATE_MISSING",)
 
 
 class TestDiscountedEnergyDenominator:

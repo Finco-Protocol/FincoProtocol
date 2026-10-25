@@ -145,6 +145,13 @@ def evaluate(req: CostingRequest) -> CostingResult:
         reasons.append("WF09B_DISCOUNT_RATE_SOURCE_MISSING")
     if axis_set - set(factors):
         reasons.append("WF09B_DISCOUNT_FACTOR_MISSING")
+    if req.discount.valuation_date is None:
+        reasons.append("WF09B_VALUATION_DATE_MISSING")
+    elif req.discount.factors_as_of is None:
+        reasons.append("WF09B_FACTOR_VALUATION_ORIGIN_MISSING")
+    elif req.discount.factors_as_of != req.discount.valuation_date:
+        raise Wf09bError("WF09B_VALUATION_ORIGIN_MISMATCH",
+                         "the supplied factors discount to a different date than the valuation date")
     # ── kinds applicable to this vertical / metric ──
     attributed = [ln for ln in req.costs.lines if ln.treatment is Treatment.ATTRIBUTED]
     excluded = [ln for ln in req.costs.lines if ln.treatment is Treatment.EXCLUDED_MOVEMENT]

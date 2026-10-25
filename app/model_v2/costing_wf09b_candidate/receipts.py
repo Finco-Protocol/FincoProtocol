@@ -227,7 +227,12 @@ class EnergyReceipts:
 @dataclass(frozen=True)
 class DiscountReceipt:
     """Explicit valuation origin: supplied factors only. No rate, WACC, day-count or
-    conversion is derived. ``convention`` / ``rate_source`` may be None (MISSING)."""
+    conversion is derived. ``convention`` / ``rate_source`` / ``valuation_date`` /
+    ``factors_as_of`` may be None (MISSING) and then yield UNAVAILABLE; a valuation
+    date is NEVER inferred from the Run date, the first period, financial close or
+    the convention text. ``factors_as_of`` is the date the supplied factor schedule
+    itself discounts to; it must equal ``valuation_date`` (it can never stand in for it).
+    """
 
     run: RunIdRef
     convention: Optional[str]
@@ -237,6 +242,7 @@ class DiscountReceipt:
     valuation_date: Optional[date]
     factors: tuple                         # ((period_id, Decimal factor), ...)
     source_ref: str
+    factors_as_of: Optional[date] = None
 
     def __post_init__(self):
         if not isinstance(self.run, RunIdRef):
@@ -248,6 +254,8 @@ class DiscountReceipt:
         if self.valuation_date is not None:
             calendar(self.valuation_date, "discount.valuation_date")
         ident(self.source_ref, "discount.source_ref")
+        if self.factors_as_of is not None:
+            calendar(self.factors_as_of, "discount.factors_as_of")
         if not isinstance(self.factors, tuple):
             raise Wf09bError("WF09B_VALUE", "discount.factors must be a tuple")
         for f in self.factors:

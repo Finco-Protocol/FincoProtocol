@@ -37,7 +37,7 @@ alignment, double counting, cash-movement-vs-cost, charging basis).
 | `CostLine` CAPEX / IDC / financing / reserve | `financial_engine/financing/project_uses.py::compute_project_uses` → `ProjectUses` (hard capex, `idc_keur`, `commitment_fees_keur`, reserve funding, developer uses) | **totals at financial close, not period-timed lines with origin ids** |
 | `CostLine` DEVEX | `financial_engine/developer_economics` uses (reimbursement/fee) | no DEVEX line with a capitalisation flag exposed to Run results |
 | `EnergyLine` | `OperatingPeriodResult.production_mwh` | a production quantity per period; **no stated delivered/exported boundary and no curtailment/loss/auxiliary breakdown** |
-| `DiscountReceipt` | `financial_engine/valuation/model.py::discount_dated_cashflows` / `project_npv` policy | NPV policy exists but is `NOT_CONFIGURED` on the references; **no approved LCOE valuation origin, factors or convention** |
+| `DiscountReceipt` (valuation date + `factors_as_of`) | `financial_engine/valuation/model.py::discount_dated_cashflows` / `project_npv` policy | NPV policy exists but is `NOT_CONFIGURED` on the references; **no approved LCOE valuation origin, factors or convention** |
 | BESS charging | `domain/bess/settlement.py` / `financial_engine/bess.py` native receipts (WF-09A §BESS) | native receipts exist; **not wired to a Run cost line, and the WF-08 candidate is intentionally not imported** |
 
 ## 3. What is genuinely calculable today
@@ -55,6 +55,18 @@ alignment, double counting, cash-movement-vs-cost, charging basis).
 * **Unavailable by design:** Data Center and EV Charging (no approved physical
   denominator; energy is not the economic unit), augmentation and lifecycle
   replacement CAPEX, net-spread-only LCOS.
+
+### Valuation origin (Correction A)
+
+`valuation_date` is mandatory evidence: `None` ⇒ UNAVAILABLE
+`WF09B_VALUATION_DATE_MISSING`. It is never inferred from the Run date, the first
+operating period, financial close, the axis, the discount convention text or the
+factor schedule's own origin. Compatibility with the supplied factor contract is
+checked through `factors_as_of` (the date the factor schedule itself discounts to):
+missing ⇒ UNAVAILABLE `WF09B_FACTOR_VALUATION_ORIGIN_MISSING`; different from the
+valuation date ⇒ `WF09B_VALUATION_ORIGIN_MISMATCH` (inconsistent evidence). No
+factor magnitude is judged (rates, signs and conventions stay Financial Owner
+decisions). Supplying a valid origin leaves every existing result unchanged.
 
 ## 4. Double-counting and cash-vs-cost rules
 
@@ -89,12 +101,12 @@ mismatch raises `WF09B_RECONCILIATION_FAILED` (proven by tampering tests).
 
 ## 6. Fail-closed matrix
 
-Raises (inconsistent or malformed evidence): Run identity mismatch across receipts,
+Raises (inconsistent or malformed evidence): Run identity mismatch across receipts, factors discounted to a date other than the valuation date (`WF09B_VALUATION_ORIGIN_MISMATCH`),
 unknown period, misaligned/overlapping/gapped axis, currency ≠ EUR, real/nominal
 mismatch, energy boundary ≠ vertical boundary, charging kinds outside BESS,
 duplicate identities, cash movement attributed as cost, synthetic energy adjustment.
 Returns UNAVAILABLE (missing or unapproved evidence): stale/incomplete Run, missing
-convention / rate source / factor, missing amount, missing component or energy
+convention / rate source / factor / valuation date / factor valuation origin, missing amount, missing component or energy
 period, zero discounted energy, net-spread-only or missing charging cost,
 augmentation/replacement CAPEX or unknown augmentation status, Data Center / EV
 Charging, metric not supported by the vertical.
@@ -119,7 +131,7 @@ Charging, metric not supported by the vertical.
 
 ## 8. Verification summary
 
-78 focused tests with `Fraction` hand-calculated expectations; 28 guard mutations
+93 focused tests with `Fraction` hand-calculated expectations; 32 guard mutations
 all caught; blob pins for `research/wf09a/costing.py`, `domain/analytics/lcoe.py`,
 `app/model_v2/canonical_analytics.py`, `financial_engine/orchestrator.py`,
 `financial_engine/tax/engine.py`, `financial_engine/bess.py`; import isolation by AST

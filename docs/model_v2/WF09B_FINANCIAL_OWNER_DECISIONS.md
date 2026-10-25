@@ -18,3 +18,4 @@ receipt, not approval. No self-approval.
 | C-10 | Data Center and EV Charging economic denominators (MWh may not be the appropriate unit) | UNAVAILABLE (`WF09B_VERTICAL_DENOMINATOR_NOT_APPROVED`) |
 | C-11 | Reconciliation tolerance and display rounding / published precision | 1e-30 internal tolerance only; no rounding or published figure |
 | C-12 | Evidence attestation: who certifies Run freshness, evidence completeness and calculation authority | supplied flags; stale / incomplete ⇒ UNAVAILABLE |
+| C-13 | Valuation date relative to the period axis (before first period, at financial close, at COD, per period) and who attests the factor schedule's own origin (`factors_as_of`) | the date is mandatory evidence, never inferred; factors must be attested to the same date; no relationship to the axis is imposed |
