@@ -7,6 +7,8 @@ FAILS when the corresponding identity is corrupted (adversarial corruption of ev
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import copy
 import json
 import os
@@ -246,7 +248,7 @@ def committed_project(tmp_path_factory):
     content_hash = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
     version = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
     before = api.get(f"/api/v1.1/projects/{record.project_id}/integrity", cookies=cookies)
-    run = client.post("/v2/workbook/run",
+    run = post_valid_csrf(client, "/v2/workbook/run",
                       data={"project": record.project_code, "content_hash": content_hash,
                             "workbook_version": version},
                       cookies=cookies, headers={"HX-Request": "true"})

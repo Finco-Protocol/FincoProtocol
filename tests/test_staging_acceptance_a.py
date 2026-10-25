@@ -4,6 +4,8 @@ Real canonical runs through the V2 HTTP surface (no mocks of the engine).
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 
 import pytest
@@ -53,7 +55,7 @@ def _tokens(client, cookies, code):
 
 def _run(client, cookies, code):
     _, h, v = _tokens(client, cookies, code)
-    r = client.post("/v2/workbook/run",
+    r = post_valid_csrf(client, "/v2/workbook/run",
                     data={"project": code, "content_hash": h, "workbook_version": v},
                     cookies=cookies, headers={"HX-Request": "true"})
     assert r.status_code == 200
@@ -630,7 +632,7 @@ class TestLibraryCloneSeeding:
 
         client, cookies, _seed = _client_for(user_id=f"u-clone-{template[8:12]}", template=template)
         ref = get_reference_by_template_source(template)
-        resp = client.post(f"/library/clone/{ref.project_id}", cookies=cookies,
+        resp = post_valid_csrf(client, f"/library/clone/{ref.project_id}", cookies=cookies,
                            headers={"HX-Request": "true"})
         assert resp.status_code in (200, 204, 303), resp.text[:200]
         from app.persistence.projects_repository import list_project_records
@@ -655,12 +657,12 @@ class TestLibraryCloneSeeding:
 
         client, cookies, own = _client_for(user_id="u-clone-guard")
         storage = get_reference_by_template_source("generic_storage_reference")
-        r = client.post(f"/library/clone/{storage.project_id}", cookies=cookies,
+        r = post_valid_csrf(client, f"/library/clone/{storage.project_id}", cookies=cookies,
                         headers={"HX-Request": "true"})
         assert r.status_code == 400
-        r = client.post(f"/library/clone/{own.project_id}", cookies=cookies,
+        r = post_valid_csrf(client, f"/library/clone/{own.project_id}", cookies=cookies,
                         headers={"HX-Request": "true"})
         assert r.status_code == 400                      # a user-owned project is not clonable
-        r = client.post("/library/clone/does-not-exist", cookies=cookies,
+        r = post_valid_csrf(client, "/library/clone/does-not-exist", cookies=cookies,
                         headers={"HX-Request": "true"})
         assert r.status_code == 400

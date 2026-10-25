@@ -16,6 +16,8 @@ Items covered:
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import logging
 import os
 import sqlite3
@@ -696,7 +698,7 @@ def test_working_copy_is_user_owned_not_reference_deterministic(client):
     assert ref_project_id, "Reference project must have a non-null project_id"
     uid = _make_demo_user_id()
 
-    resp = client.post(
+    resp = post_valid_csrf(client,
         f"/library/clone/{ref_project_id}",
         cookies=_make_demo_cookie(uid),
         follow_redirects=False,

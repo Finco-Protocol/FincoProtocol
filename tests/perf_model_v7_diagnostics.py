@@ -81,7 +81,7 @@ def test_measurements(live_server, browser, template):
             **fields, 'sub_line_id':line['sub_line_id'], 'label':line['label'],
             'amount_keur':str(100 + index), 'notes':'', 'row_version':line['updated_at']})
         fields, _ = _tokens(s)
-        row['committed_run'] = _fetch(page, '/v2/workbook/run', fields)
+        row['committed_run'] = _fetch(page, '/v2/workbook/run', {**fields, 'csrf_token': page.locator('#v2-canonical-run-form [name=run_csrf_token]').input_value()})
         ws = get_workspace_state(s.uid, s.rec.project_id)
         assert ws.last_runtime_snapshot_id
         finance = {key:getattr(ws,key) for key in ('last_runtime_summary','last_debt_schedule',

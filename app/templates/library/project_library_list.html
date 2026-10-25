@@ -111,6 +111,7 @@
         <span data-testid="clone-unavailable-{{ card.project_code }}" class="fo-library-btn-clone-unavailable">Editable runtime not yet supported</span>
         {% else %}
         <form method="POST" action="/library/clone/{{ card.project_id }}" hx-post="/library/clone/{{ card.project_id }}" hx-target="#library-clone-error" hx-swap="innerHTML" hx-disabled-elt="find button">
+          <input type="hidden" name="csrf_token" value="{{ clone_csrf_token }}">
           <button type="submit" data-testid="clone-{{ card.project_code }}" class="fo-library-btn-clone">Create working copy</button>
         </form>
         {% endif %}

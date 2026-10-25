@@ -8,6 +8,8 @@ scenario's name is never substituted.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 import uuid
 from types import SimpleNamespace
@@ -52,7 +54,7 @@ def tokens(html):
 
 def run(env, user, rec):
     h, v = tokens(page(env, user, rec))
-    r = env.client.post("/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
+    r = post_valid_csrf(env.client, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
                         cookies=env.cookie(user), headers={"HX-Request": "true"})
     assert r.status_code == 200
     return r.text

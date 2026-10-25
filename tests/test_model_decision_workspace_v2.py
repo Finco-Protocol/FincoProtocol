@@ -1,6 +1,8 @@
 """Workflow D authority, typed deltas, capability and render contracts."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import json
 from pathlib import Path
 import re
@@ -279,7 +281,7 @@ def test_tender_apply_refreshes_canonical_run_tokens_without_touching_last_run(e
     from app.persistence.run_history_repository import get_run_history
     record = env.create()
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    run = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    run = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                           data={"project": record.project_code, **tokens(page.text)})
     assert run.status_code == 200 and 'id="v2-sheet-returns"' in run.text
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
@@ -297,7 +299,7 @@ def test_tender_apply_refreshes_canonical_run_tokens_without_touching_last_run(e
     assert get_run_history("decision-user", record.project_id) == history
     assert 'hx-swap-oob="true"' in result.text
     assert tokens(result.text)["content_hash"] != tokens(page.text)["content_hash"]
-    rerun = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    rerun = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                             data={"project": record.project_code, **tokens(result.text)})
     assert rerun.status_code == 200 and 'id="v2-sheet-returns"' in rerun.text
     assert not get_workspace_state("decision-user", record.project_id).dirty

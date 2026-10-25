@@ -5,6 +5,8 @@ nothing is moved for the user. What changes is that the user is told, in plain l
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 from types import SimpleNamespace
 
@@ -48,7 +50,7 @@ class P:
 
     def run(self):
         ch, wv = self.ident()
-        return self.c.post("/v2/workbook/run", headers=H, data={"project": self.rec.project_code, "workbook_version": wv, "content_hash": ch})
+        return post_valid_csrf(self.c, "/v2/workbook/run", headers=H, data={"project": self.rec.project_code, "workbook_version": wv, "content_hash": ch})
 
     def history(self):
         from app.persistence.run_history_repository import get_run_history

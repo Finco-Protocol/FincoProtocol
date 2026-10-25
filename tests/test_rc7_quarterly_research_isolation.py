@@ -1,4 +1,6 @@
 """Research isolation and actual baseline production-admission proofs."""
+
+from tests.run_clone_csrf import post_valid_csrf
 import ast
 from dataclasses import replace
 import importlib
@@ -154,7 +156,7 @@ def test_actual_workbook_run_refusal_preserves_last_run_and_history(env, monkeyp
 
     # Inject invalid typed input upstream, not a substituted engine/result.
     monkeypatch.setattr(factories, "create_generic_solar_reference", unsupported)
-    response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
         data={"project": project.project_code, **tokens(page.text)})
     assert response.status_code == 200 and "v2-banner-error" in response.text
     assert "H1_UNSUPPORTED_PERIOD_FREQUENCY" in caplog.text

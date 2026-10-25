@@ -3,6 +3,8 @@
 Positive cases require every independent identity VERIFIED with zero FAIL.  Negative cases require the product to
 fail closed, persist nothing and leave the last committed Run untouched.  Release-closed features stay closed.
 """
+
+from tests.run_clone_csrf import post_valid_csrf
 import json
 from copy import deepcopy
 from decimal import Decimal
@@ -217,7 +219,7 @@ def test_E4_contribution_total_mismatch_rejects_the_run_and_commits_nothing(equi
     assert save_agreement(env, record, doc).status_code == 200
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     from tests.test_model_decision_workspace_v2 import tokens
-    response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=record.project_code, **tokens(page.text)))
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=record.project_code, **tokens(page.text)))
     after = _ws(record)
     assert after.dirty and after.last_runtime_snapshot_id == ws.last_runtime_snapshot_id
     C.emit({"case": "E4", "family": "EQUITY", "input_modification": "contribution total 5 kEUR below project funding",

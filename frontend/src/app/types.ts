@@ -311,7 +311,7 @@ export interface RunsPayload {
   ok: true;
   project: { code: string; protected_reference: boolean };
   runs: RunHistoryEntry[];
-  run_contract: { url: string; method: string; note: string };
+  run_contract: { url: string; method: string; csrf_token: string; note: string };
 }
 
 export interface DiagnosticsPayload {

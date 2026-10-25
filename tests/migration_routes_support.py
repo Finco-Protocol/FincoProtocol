@@ -1,6 +1,8 @@
 """Shared route helpers for the Excel migration tests (HTTP level; no private state)."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import html
 import re
 
@@ -122,7 +124,7 @@ def apply(env, project, approved, manifest=""):
 
 def run_model(env, project):
     page = env.client.get("/v2/workbook", params={"project": project.project_code})
-    response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": project.project_code, **tokens(page.text)})
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": project.project_code, **tokens(page.text)})
     assert response.status_code == 200
     return response
 

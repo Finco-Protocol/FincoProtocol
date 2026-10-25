@@ -1,4 +1,6 @@
 """Reuse the real Revenue writer, authorization, scenario CAS and immutable export."""
+
+from tests.run_clone_csrf import post_valid_csrf
 import copy
 import json
 from io import BytesIO
@@ -32,7 +34,7 @@ def test_candidate_save_scenario_stale_run_history_and_product_export(env, candi
         return env.client.post("/v2/workbook/revenue/contracts", headers={"HX-Request": "true"},
             data={**project, **contract_tokens(page()), "contracts": json.dumps(payload), **extra})
     def run():
-        response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **tokens(page())})
+        response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **tokens(page())})
         assert response.status_code == 200, response.text[:2000]
         assert 'data-testid="overview-status-current"' in response.text
         assert not ws().dirty

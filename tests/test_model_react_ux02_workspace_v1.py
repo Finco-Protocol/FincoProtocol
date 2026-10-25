@@ -6,6 +6,8 @@ only; the engine runs through the canonical Run route exactly as the legacy test
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 from types import SimpleNamespace
 
@@ -63,7 +65,7 @@ def _run_canonical(env, code):
     page = env.client.get("/v2/workbook", params={"project": code})
     tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
               for k in ("content_hash", "workbook_version")}
-    response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                data=dict(project=code, **tokens))
     assert response.status_code == 200, response.text[:400]
     assert response.headers.get("X-Finco-Run-Outcome") != "FAILED"

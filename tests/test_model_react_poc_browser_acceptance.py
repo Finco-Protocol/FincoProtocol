@@ -14,6 +14,8 @@ in PR #338).
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import pytest
 
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
@@ -63,7 +65,7 @@ def run_via_canonical_path(context, live_server, project_code):
     boot = context.request.get(f"{live_server}/v2/model-react/workspace?project={project_code}")
     assert boot.ok, boot.text()
     payload = boot.json()
-    response = context.request.post(
+    response = post_valid_csrf(context.request,
         f"{live_server}/v2/workbook/run",
         form={"project": project_code, "content_hash": payload["workbook"]["composite_hash"],
               "workbook_version": payload["workbook"]["version"]})

@@ -11,6 +11,8 @@ these wire behaviours.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
@@ -196,7 +198,7 @@ def test_rejected_run_creates_no_history_entry(env, monkeypatch):
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     tokens = _grid_tokens(page.text)
     stale = ("0" * 63 + "1") if tokens["content_hash"][-1] != "1" else ("0" * 63 + "2")
-    response = env.client.post("/v2/workbook/run",
+    response = post_valid_csrf(env.client, "/v2/workbook/run",
                                data=dict(project=record.project_code, content_hash=stale,
                                          workbook_version=tokens["workbook_version"]),
                                follow_redirects=False)
@@ -211,7 +213,7 @@ def test_committed_run_grows_the_history_exactly_once(env, monkeypatch):
     before = _runs_payload(env, record.project_code)
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     tokens = _grid_tokens(page.text)
-    response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                data=dict(project=record.project_code, **tokens))
     assert response.status_code == 200 and response.headers.get("X-Finco-Run-Outcome") != "FAILED"
     after = _runs_payload(env, record.project_code)
@@ -224,7 +226,7 @@ def test_committed_run_grows_the_history_exactly_once(env, monkeypatch):
 def test_run_without_session_redirects_to_login(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    response = env.anonymous.post("/v2/workbook/run",
+    response = post_valid_csrf(env.anonymous, "/v2/workbook/run",
                                   data=dict(project=record.project_code, content_hash="h", workbook_version="v"),
                                   follow_redirects=False)
     assert response.status_code == 302 and _redirect_target(response)["path"] == "/login"
@@ -238,7 +240,7 @@ def test_htmx_run_failure_keeps_200_with_failed_outcome_header(env, monkeypatch)
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     tokens = _grid_tokens(page.text)
     stale = ("0" * 63 + "1") if tokens["content_hash"][-1] != "1" else ("0" * 63 + "2")
-    response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                data=dict(project=record.project_code, content_hash=stale,
                                          workbook_version=tokens["workbook_version"]))
     # Rejection shape varies by stage (explicit FAILED header on the early

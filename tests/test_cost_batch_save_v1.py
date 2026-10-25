@@ -13,6 +13,8 @@ Synthetic disposable working copies only.  Pins the contract of ``app.v2.cost_ba
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import json
 import re
 
@@ -339,7 +341,7 @@ def _economic(value):
 
 def _run(client, rec):
     tok = _tokens(client, rec)
-    res = client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={
+    res = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={
         "project": rec.project_code, "workbook_version": tok["version"], "content_hash": tok["hash"]})
     assert res.status_code == 200, res.text[:300]
     ws = get_workspace_state(OWNER, rec.project_id)

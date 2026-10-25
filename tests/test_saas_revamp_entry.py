@@ -1,6 +1,8 @@
 """Product entry checks on an isolated database; no model run is performed."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -32,7 +34,7 @@ def test_reference_clone_opens_independent_working_project(client_with_reference
     reference = get_reference_by_template_source(source)
     assert reference and reference.project_role == "reference" and reference.is_protected
     user_id, cookies = _cookie()
-    response = client_with_references.post(
+    response = post_valid_csrf(client_with_references,
         f"/library/clone/{reference.project_id}",
         cookies=cookies,
         headers={"HX-Request": "true"} if htmx else {},
@@ -59,7 +61,7 @@ def test_storage_reference_clone_returns_400_and_creates_no_project(client_with_
     reference = get_reference_by_template_source("generic_storage_reference")
     assert reference and reference.project_role == "reference" and reference.is_protected
     user_id, cookies = _cookie()
-    response = client_with_references.post(
+    response = post_valid_csrf(client_with_references,
         f"/library/clone/{reference.project_id}",
         cookies=cookies,
         headers={"HX-Request": "true"} if htmx else {},
@@ -132,7 +134,7 @@ def test_clone_unexpected_error_htmx_returns_500_with_safe_body(client_with_refe
         raise RuntimeError("private-payload-marker")
 
     monkeypatch.setattr(project_library_service, "create_working_copy", failed_clone)
-    response = client_with_references.post(
+    response = post_valid_csrf(client_with_references,
         f"/library/clone/{reference.project_id}", cookies=cookies,
         headers={"HX-Request": "true"},
     )
@@ -158,7 +160,7 @@ def test_clone_unexpected_error_non_htmx_returns_500_with_safe_body(client_with_
         raise RuntimeError("private-payload-marker")
 
     monkeypatch.setattr(project_library_service, "create_working_copy", failed_clone)
-    response = client_with_references.post(
+    response = post_valid_csrf(client_with_references,
         f"/library/clone/{reference.project_id}", cookies=cookies,
     )
     assert response.status_code == 500

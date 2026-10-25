@@ -3,6 +3,8 @@
 Everything runs through the existing canonical project runner and engines; no figure is computed here.
 Revenue V3 is exercised only under the explicit test-only activation fixture (production stays closed).
 """
+
+from tests.run_clone_csrf import post_valid_csrf
 import copy
 import json
 import re
@@ -157,7 +159,7 @@ def test_failed_combined_run_commits_nothing(env, monkeypatch):
     import app.api.project_runner as runner
     monkeypatch.setattr(runner, "run_project", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("synthetic")))
     wb = env.client.get("/v2/workbook", params=flow.project)
-    env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
+    post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
     assert flow.ws().last_runtime_summary == summary and flow.ws().dirty
     assert len(get_run_history(OWNER, flow.record.project_id)) == count
 

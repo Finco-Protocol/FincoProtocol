@@ -65,6 +65,7 @@ import os
 import urllib.parse
 from typing import Optional
 
+from app.workbook.financing_csrf import issue_token as _issue_csrf_token
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -714,6 +715,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
         "request": request,
         "project_code": project,
         "financing_csrf_token": issue_token(request, project),
+        "run_csrf_token": issue_token(request, project, purpose="workbook-run-v1"),
         "grid_csrf_token": __import__("app.auth", fromlist=["generate_csrf_token"]).generate_csrf_token(),
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
@@ -2124,6 +2126,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     context = {
         "project_code": project,
         "financing_csrf_token": issue_token(request, project),
+        "run_csrf_token": issue_token(request, project, purpose="workbook-run-v1"),
         "project_name": project_record.project_name or project,
         "project_type": (project_record.project_type or "").capitalize(),
         "is_data_center": _is_dc,
@@ -2810,6 +2813,8 @@ async def v2_workbook_run(
     project: str = Form(...),
     content_hash: str = Form(...),
     workbook_version: str = Form(...),
+    csrf_token: str = Form(default=""),
+    run_csrf_token: str = Form(default=""),
     _: None = Depends(require_v2_active),
 ):
     """V2 Run endpoint — canonical engine orchestration for Workbook V2.
@@ -2892,8 +2897,19 @@ async def v2_workbook_run(
     from app.persistence.projects_repository import resolve_accessible_project
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
-        msg = f"Project {project!r} not found."
-        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+        return JSONResponse({"error": "Project not found"}, status_code=404)
+
+    # Authorization precedes CSRF so inaccessible resources remain undisclosed.
+    # Validate before workspace migrations, engine execution or any persistence.
+    from app.auth import validate_csrf_token
+    from app.workbook.financing_csrf import extract_bound_token
+    # The legacy form uses a distinct name so unrelated generic-CSRF DOM
+    # readers cannot mistake the Run-scoped token for a grid/revenue token.
+    # React's existing form contract uses csrf_token; both apply the SAME
+    # session/resource/purpose validation and contradictory dual values fail.
+    if (csrf_token and run_csrf_token and csrf_token != run_csrf_token) or not validate_csrf_token(extract_bound_token(
+            request, project, csrf_token or run_csrf_token, purpose="workbook-run-v1")):
+        return JSONResponse({"error": "Invalid or missing CSRF token"}, status_code=403)
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
@@ -2975,6 +2991,7 @@ async def v2_workbook_run(
             "project_code": project,
             "workbook_version": workbook_version,
             "content_hash": current_identity.composite_hash,
+            "run_csrf_token": _issue_csrf_token(request, project, purpose="workbook-run-v1"),
         }
         stale_banner_html = _templates.get_template(
             "partials/_v2_status_banner.html"
@@ -3389,6 +3406,7 @@ async def v2_workbook_run(
             "project_code": project,
             "workbook_version": workbook_version,
             "content_hash": conflict_hash,
+            "run_csrf_token": _issue_csrf_token(request, project, purpose="workbook-run-v1"),
         }
         conflict_banner_html = _templates.get_template(
             "partials/_v2_status_banner.html"

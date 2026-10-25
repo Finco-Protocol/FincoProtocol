@@ -5,6 +5,8 @@ Screenshots and machine-readable evidence remain ignored in artifacts/.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 from tests.model_workspace_navigation import activate_destination
 
 import json
@@ -53,7 +55,7 @@ def main():
                     page = client.get("/v2/workbook", params={"project": record.project_code})
                     data = {key: re.search(r'name="' + key + r'" value="([^"]+)"', page.text).group(1)
                             for key in ("content_hash", "workbook_version")}
-                    result = client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": record.project_code, **data})
+                    result = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": record.project_code, **data})
                     assert result.status_code == 200, result.text[:1000]
                     assert get_workspace_state("decision-browser", record.project_id).last_runtime_snapshot_id
                     records.append((kind, record))

@@ -1,6 +1,8 @@
 """Workflow B acceptance over typed inputs and immutable Last Run evidence."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -267,7 +269,7 @@ def test_real_run_cash_gearing_returns_and_integrity_use_exact_persisted_authori
     from app.api.v1_1.institutional import get_run_integrity_checks
     record = projects[kind]
     v, h = tokens(record)
-    response = client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={
+    response = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={
         "project": record.project_code, "workbook_version": v, "content_hash": h})
     assert response.status_code == 200, response.text[:1000]
     before = get_workspace_state("finance-owner", record.project_id)
@@ -321,7 +323,7 @@ def test_investor_fragment_preserves_prior_run_and_has_no_writes(client, project
     from app.workbook.update_service import WorkbookUpdateService
     record = projects["solar"]
     v, h = tokens(record)
-    response = client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={
+    response = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={
         "project": record.project_code, "workbook_version": v, "content_hash": h})
     assert response.status_code == 200
     v, h = tokens(record)

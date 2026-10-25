@@ -8,6 +8,8 @@ and the GET surfaces are read-only and owner-isolated.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 from dataclasses import replace
 from datetime import date
@@ -246,7 +248,7 @@ def _run(client, cookies, code):
     page = client.get(f"/v2/workbook?project={code}", cookies=cookies)
     h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
     v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
-    r = client.post("/v2/workbook/run", data={"project": code, "content_hash": h, "workbook_version": v},
+    r = post_valid_csrf(client, "/v2/workbook/run", data={"project": code, "content_hash": h, "workbook_version": v},
                     cookies=cookies, headers={"HX-Request": "true"})
     assert r.status_code == 200
 

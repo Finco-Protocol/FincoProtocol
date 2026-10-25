@@ -35,6 +35,7 @@ import json
 from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping, Optional
 
+from app.workbook.financing_csrf import issue_token as _issue_csrf_token
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -130,7 +131,7 @@ async def react_workspace_library(request: Request, search: str = "", page: int 
         "total": total,
         "total_pages": max(1, math.ceil(total / PAGE_SIZE)),
         "clone_url": "/library/clone/{source_project_id}",
-        "csrf_token": generate_csrf_token(),
+        "csrf_token": _issue_csrf_token(request, "", purpose="library-clone-v1"),
     })
 
 
@@ -747,6 +748,7 @@ async def react_run_history(request: Request, project: str):
                     "protected_reference": _is_protected(record)},
         "runs": entries,
         "run_contract": {"url": "/v2/workbook/run",
+                         "csrf_token": _issue_csrf_token(request, project, purpose="workbook-run-v1"),
                          "method": "form",
                          "note": "Run initiation stays on the canonical route; success redirects "
                                  "(303) to the workbook, failures redirect with ?v2_err=. "

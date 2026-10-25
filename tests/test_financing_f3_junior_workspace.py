@@ -1,4 +1,6 @@
 """Existing authorized CAS, scenarios and immutable export; candidate release stays closed."""
+
+from tests.run_clone_csrf import post_valid_csrf
 from dataclasses import replace
 from io import BytesIO
 import json
@@ -152,7 +154,7 @@ def test_unfundable_run_preserves_immutable_last_run(env, monkeypatch, caplog):
     assert "field-error-banner" not in save(env, record, raw, field=config.FIELD_ID).text
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     before = get_workspace_state("decision-user", record.project_id)
-    response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
         data=dict(project=record.project_code, **tokens(page.text)))
     after = get_workspace_state("decision-user", record.project_id)
     assert "v2-banner-error" in response.text

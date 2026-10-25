@@ -5,6 +5,8 @@ consumes it.  Real Solar/Wind projects, real persistence, real Run.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import json
 
 import pytest
@@ -58,7 +60,7 @@ def _history(record):
 
 def _post_run(env, record):
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    return env.client.post("/v2/workbook/run", headers=HX, data={"project": record.project_code, **tokens(page.text)})
+    return post_valid_csrf(env.client, "/v2/workbook/run", headers=HX, data={"project": record.project_code, **tokens(page.text)})
 
 
 def _tariff(ws):
@@ -363,7 +365,7 @@ def test_stale_cas_run_is_refused_without_writing(env):
     stale = tokens(page.text)
     stale["content_hash"] = "0" * 64
     before, history = _ws(record), _history(record)
-    response = env.client.post("/v2/workbook/run", headers=HX, data={"project": record.project_code, **stale})
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers=HX, data={"project": record.project_code, **stale})
     assert response.status_code in (200, 409)
     assert _ws(record).last_runtime_snapshot_id == before.last_runtime_snapshot_id
     assert _history(record) == history

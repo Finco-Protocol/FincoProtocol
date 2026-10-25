@@ -1,4 +1,6 @@
 """Actual Reference clone, canonical writer/Run/CAS, immutable scenario history."""
+
+from tests.run_clone_csrf import post_valid_csrf
 from copy import deepcopy
 import json
 import re
@@ -140,7 +142,7 @@ def test_invalid_dispatch_run_preserves_last_run_and_history(env, storage):
     data['configuration'] = json.dumps(raw)
     assert save(env, storage, data).status_code == 303
     page = env.client.get('/v2/workbook', params={'project': storage.project_code})
-    response = env.client.post('/v2/workbook/run', data={'project': storage.project_code, **tokens(page.text)}, headers={'HX-Request': 'true'})
+    response = post_valid_csrf(env.client, '/v2/workbook/run', data={'project': storage.project_code, **tokens(page.text)}, headers={'HX-Request': 'true'})
     assert 'role="alert"' in response.text
     assert 'previous Last Run is unchanged' in response.text
     after = get_workspace_state('decision-user', storage.project_id)

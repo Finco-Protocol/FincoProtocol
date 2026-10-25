@@ -20,6 +20,8 @@ calculations, no new truth authorities, no engine execution at render time.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import math
 import re
 from unittest import mock
@@ -66,7 +68,7 @@ def _run_via_workbook(client, cookies, record) -> None:
     assert page.status_code == 200
     m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
     mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
-    run = client.post(
+    run = post_valid_csrf(client,
         "/v2/workbook/run",
         data={
             "project": record.project_code,

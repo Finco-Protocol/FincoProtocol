@@ -1,4 +1,6 @@
 """Read-only authenticated refresh and Last Run lifecycle through real Model V2 routes."""
+
+from tests.run_clone_csrf import post_valid_csrf
 import json
 import re
 from unittest import mock
@@ -51,7 +53,7 @@ def test_failed_run_keeps_prior_successful_diagnostics(env):
     before = get_workspace_state(owner, rec.project_id)
     h, v = q3._tokens(q3._get(env, owner, rec).text)
     with mock.patch('app.api.project_runner.run_project', side_effect=RuntimeError('synthetic failed Run')):
-        env.client.post('/v2/workbook/run', data={'project':rec.project_code,'content_hash':h,'workbook_version':v},
+        post_valid_csrf(env.client, '/v2/workbook/run', data={'project':rec.project_code,'content_hash':h,'workbook_version':v},
                         cookies=env.cookie(owner), headers={'HX-Request':'true'})
     after = get_workspace_state(owner, rec.project_id)
     assert after.last_runtime_snapshot_id == before.last_runtime_snapshot_id

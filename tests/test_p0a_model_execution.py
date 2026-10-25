@@ -1,6 +1,8 @@
 """P0-A — runtime execution isolation: bounded, off-event-loop, CAS-preserving model execution."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import ast
 import asyncio
 import copy
@@ -466,7 +468,7 @@ def _identity(p):
 
 def _post_run(client, p, content_hash=None):
     from app.workbook.registry import WORKBOOK
-    return client.post("/v2/workbook/run", headers=p["headers"], data={
+    return post_valid_csrf(client, "/v2/workbook/run", headers=p["headers"], data={
         "project": p["code"], "workbook_version": WORKBOOK.version,
         "content_hash": content_hash or _identity(p).composite_hash})
 
