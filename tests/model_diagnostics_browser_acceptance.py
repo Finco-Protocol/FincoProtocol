@@ -23,6 +23,10 @@ def capture(page, errors, name):
 
 
 def run(page):
+    # Both the initial and post-Save OOB legacy forms must have scoped Run CSRF.
+    assert page.locator('#v2-canonical-run-form [name="run_csrf_token"]').input_value(), (
+        "Canonical Run form is missing its session/project-bound CSRF token"
+    )
     with page.expect_response(lambda r: '/v2/workbook/run' in r.url and r.request.method == 'POST', timeout=240000) as response:
         page.locator('[data-testid="header-run-btn"]').click()
     assert response.value.status == 200
