@@ -225,7 +225,13 @@ def test_legacy_mapping_remains_nonactivating_and_f3_imports_are_narrowly_owned(
                # F3.5-A candidate ownership only; this does not release financial blobs.
                ROOT / "app/workbook/junior_debt_config.py",
                ROOT / "financial_engine/financing/junior_debt.py",
-               ROOT / "finco_core/inputs/junior_debt.py"}
+               ROOT / "finco_core/inputs/junior_debt.py",
+               # WF-05A F3.1 multi-tranche CANDIDATE ownership only;
+               # NON_AUTHORITATIVE, no route, no activation surface.
+               ROOT / "app/model_v2/financing_f31_multitranche_candidate/__init__.py",
+               ROOT / "app/model_v2/financing_f31_multitranche_candidate/validation.py",
+               ROOT / "app/model_v2/financing_f31_multitranche_candidate/schedules.py",
+               ROOT / "app/model_v2/financing_f31_multitranche_candidate/reconciliation.py"}
     offenders = []
     for name in ("app", "financial_engine", "finco_core", "domain", "main_web.py", "main_api.py"):
         root = ROOT / name
