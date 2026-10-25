@@ -1,0 +1,33 @@
+{# Concept B NON-MODEL experience host page.
+
+   Isolated public React surface (app/v2/nonmodel_router.py).  Loads ONLY
+   same-origin assets (/static/react/**) — no CDN runtime dependency.  The
+   React bundle reads its surface selection from the #finco-react-root data
+   attributes; no inline script or inline JSON, so no value crosses an HTML
+   boundary.  The canonical server-rendered surfaces (/radar/**, /crypto,
+   /roadmap, /) stay fully authoritative and untouched; the in-experience
+   footer links to them without activating any capability. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO · Concept B NON-MODEL experience</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/react/finco-nonmodel.css?v={{ asset_version }}">
+</head>
+<body>
+  <div id="finco-react-root"
+       data-surface="non-model"
+       data-asset-version="{{ asset_version }}">
+    <noscript>
+      <p role="alert">The Concept B NON-MODEL experience requires JavaScript.
+        The canonical FINCO surfaces remain available directly:
+        <a href="/radar">Radar</a>, <a href="/crypto">Crypto</a> and
+        <a href="/roadmap">Roadmap</a>.</p>
+    </noscript>
+    <p role="status">Loading the FINCO Concept B experience…</p>
+  </div>
+  <script src="/static/react/finco-nonmodel.js?v={{ asset_version }}" defer></script>
+</body>
+</html>

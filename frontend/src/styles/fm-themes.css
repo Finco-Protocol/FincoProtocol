@@ -1,0 +1,204 @@
+/* ============================================================================
+   FINCO Model React — UX-03B selectable themes (B / D / G).
+   Owner decision 2026-10-23; token source: final Replit Theme Lab handoff
+   (source HEAD 522b4ef0, QA 16 PASS / 0 FAIL). Supersedes the earlier dark-G
+   palette: G keeps a lighter green shell and a pure white financial workspace.
+
+   Scoping contract: the data-fm-theme attribute is only ever set on the React
+   mount root (#finco-react-root) by ThemeProvider/applyTheme. Every rule here
+   is therefore keyed under [data-fm-theme="…"] and can never restyle the
+   legacy Jinja/HTMX UI. Themes swap custom properties only; no rule here
+   changes layout, data, or financial-cell semantics, and no state may be
+   communicated by colour alone (the existing text labels/badges stay).
+   ========================================================================== */
+
+/* ── B — Slate & Teal Institutional ─────────────────────────────────────── */
+
+[data-fm-theme="b-slate-teal"] {
+  --fo-slate-50: #e8eeec;
+  --fo-slate-0: #fbfdfc;
+  --fo-slate-200: #c5d3d0;
+  --fo-slate-300: #b3c4c0;
+  --fo-slate-500: #526a69;
+  --fo-slate-600: #415857;
+  --fo-slate-900: #203838;
+  --fo-brand-500: #1b7a72;
+  --fo-brand-600: #176963;
+  --fo-brand-700: #12574f;
+  --fo-green-700: #176963;
+  --fo-focus: #176963;
+}
+
+[data-fm-theme="b-slate-teal"] .finco-root {
+  --ink: #203838;
+  --ink-soft: #31473f;
+  --muted: #526a69;
+  --line: #c5d3d0;
+  --line-soft: #dce6e3;
+  --paper: #e8eeec;
+  --surface: #fbfdfc;
+  --surface-blue: #e6efec;
+  --navy: #176963;
+  --blue: #176963;
+  --blue-soft: #e3efed;
+  --green: #176963;
+  --green-soft: #e3efed;
+}
+
+/* ── D — High-Contrast Analytical ───────────────────────────────────────── */
+
+[data-fm-theme="d-high-contrast"] {
+  --fo-slate-50: #e7ebef;
+  --fo-slate-0: #ffffff;
+  --fo-slate-200: #aebdca;
+  --fo-slate-300: #93a6b8;
+  --fo-slate-400: #526d84;
+  --fo-slate-500: #3e5365;
+  --fo-slate-600: #2c4257;
+  --fo-slate-700: #1e3247;
+  --fo-slate-900: #13273a;
+  --fo-brand-500: #1a527e;
+  --fo-brand-600: #153f61;
+  --fo-brand-700: #0f304d;
+  --fo-focus: #153f61;
+}
+
+[data-fm-theme="d-high-contrast"] .finco-root {
+  --ink: #13273a;
+  --ink-soft: #25405a;
+  --muted: #3e5365;
+  --line: #aebdca;
+  --line-soft: #c9d5e0;
+  --paper: #e7ebef;
+  --surface: #ffffff;
+  --surface-blue: #e4ecf3;
+  --navy: #153f61;
+  --blue: #153f61;
+  --blue-soft: #e1eaf2;
+  --green: #1d5c45;
+  --green-soft: #e2efe8;
+}
+
+/* ── G — Forest Green / White Workbook (final LIGHT palette) ──────────────
+   Green surrounding chrome (top bar, shell frame, active navigation) over a
+   white content canvas and white financial grid cells. #174a36 is ONLY the
+   active-navigation text colour over pale mint #e5f3eb — not a shell colour. */
+
+[data-fm-theme="g-forest-green-white"] {
+  --fo-slate-50: #f7faf8;
+  --fo-slate-0: #ffffff;
+  --fo-slate-200: #d4e1d9;
+  --fo-slate-300: #b9cdc1;
+  --fo-slate-400: #6d8279;
+  --fo-slate-500: #51665f;
+  --fo-slate-600: #3d5249;
+  --fo-slate-700: #2c4237;
+  --fo-slate-900: #192d29;
+  --fo-brand-500: #2c7a58;
+  --fo-brand-600: #246347;
+  --fo-brand-700: #1c4f39;
+  --fo-green-700: #246447;
+  --fo-amber-700: #76571b;
+  --fo-red-700: #963f37;
+  --fo-focus: #246347;
+}
+
+[data-fm-theme="g-forest-green-white"] .finco-root {
+  --ink: #192d29;
+  --ink-soft: #2e463f;
+  --muted: #51665f;
+  --line: #d4e1d9;
+  --line-soft: #e7eee9;
+  --paper: #f7faf8;
+  --surface: #ffffff;
+  --surface-blue: #eef4f0;
+  --navy: #246347;
+  --blue: #246347;
+  --blue-soft: #e5f3eb;
+  --green: #246447;
+  --green-soft: #e7f1eb;
+  --amber: #76571b;
+  --amber-soft: #f5f0e3;
+  --red: #963f37;
+  --red-soft: #f7e9e6;
+
+  /* Green chrome tokens (default values live on .finco-root / class rules). */
+  --fm-topbar-bg: #317b5d;
+  --fm-topbar-ink: #ffffff;
+  --fm-topbar-line: rgba(255, 255, 255, 0.45);
+  --fm-workspacebar-bg: #2e765b;
+  --fm-workspacebar-ink: #eaf3ee;
+  --fm-workspacebar-strong-ink: #ffffff;
+  --fm-nav-hover-bg: #e5f3eb;
+  --fm-nav-active-ink: #174a36;
+  --fm-control-line: #6b8072;
+  --fm-mark-line: rgba(255, 255, 255, 0.55);
+}
+
+/* G chrome: green top bar and shell rail with light text on them. */
+[data-fm-theme="g-forest-green-white"] .fm-topbar {
+  background: var(--fm-topbar-bg);
+  color: var(--fm-topbar-ink);
+  border-bottom-color: rgba(255, 255, 255, 0.28);
+}
+[data-fm-theme="g-forest-green-white"] .fm-workspace-bar {
+  background: var(--fm-workspacebar-bg);
+  color: var(--fm-workspacebar-ink);
+}
+[data-fm-theme="g-forest-green-white"] .fm-workspace-bar strong {
+  color: var(--fm-workspacebar-strong-ink);
+}
+[data-fm-theme="g-forest-green-white"] .fm-nav a:hover {
+  background: var(--fm-nav-hover-bg);
+}
+[data-fm-theme="g-forest-green-white"] .fm-nav a.active {
+  color: var(--fm-nav-active-ink);
+  border-bottom-color: var(--fm-nav-active-ink);
+}
+[data-fm-theme="g-forest-green-white"] .fm-topbar :is(.fm-brand-name, .fm-avatar) {
+  color: #ffffff;
+}
+[data-fm-theme="g-forest-green-white"] .fm-topbar .fm-brand-caption {
+  color: #d7e8df;
+  border-left-color: rgba(255, 255, 255, 0.4);
+}
+[data-fm-theme="g-forest-green-white"] .fm-workspace-bar a {
+  color: inherit;
+}
+[data-fm-theme="g-forest-green-white"] .fm-workspace-bar :is(a:hover, a:focus-visible) {
+  color: #ffffff;
+  text-decoration: underline;
+}
+[data-fm-theme="g-forest-green-white"] .fm-workspace-bar .fm-crumb-current {
+  color: #ffffff;
+}
+
+/* ── Theme selector control (all themes; presentation only) ─────────────── */
+
+.fm-theme-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.fm-theme-select-caption {
+  color: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+.fm-theme-select-control {
+  font: inherit;
+  font-size: 10.5px;
+  min-height: 26px;
+  padding: 2px 6px;
+  border: 1px solid var(--fm-control-line, #c8d1d8);
+  border-radius: 4px;
+  background: var(--surface, #ffffff);
+  color: var(--ink, #182b43);
+  cursor: pointer;
+}
+.fm-theme-select-control:focus-visible {
+  outline: 2px solid var(--blue, #35658b);
+  outline-offset: 2px;
+}

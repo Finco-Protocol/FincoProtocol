@@ -1,0 +1,29 @@
+{# Explicit fallback / rollback surface for the UX-01 React PoC while FINCO_MODEL_REACT_V1 is OFF.
+
+   This page replaces nothing: every legacy route is untouched, and this surface links
+   straight back to the canonical legacy workbook. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Model — React Preview unavailable</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/react/finco-react.css?v={{ asset_version }}">
+</head>
+<body>
+  <main class="rx-fallback" role="main">
+    <p class="rx-brand">FINCO Protocol · Model</p>
+    <h1>React preview unavailable</h1>
+    <p role="status">The React preview is disabled by its feature flag on this server
+      (<code>FINCO_MODEL_REACT_V1</code>). The classic FINCO Model interface remains the
+      authoritative experience and is unchanged.</p>
+    {% if project_code %}
+    <p><a class="rx-button" href="{{ legacy_url }}">Open project “{{ project_code }}” in the legacy workbook</a></p>
+    {% else %}
+    <p><a class="rx-button" href="{{ legacy_url }}">Open the legacy workbook</a></p>
+    {% endif %}
+  </main>
+</body>
+</html>

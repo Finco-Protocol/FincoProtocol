@@ -2,7 +2,7 @@ name: Protocol UI Browser Acceptance
 
 on:
   push:
-    branches: [ui/protocol-unified-application-shell]
+    branches: [ui/protocol-unified-application-shell, epic/model-react-frontend-v1]
   pull_request:
   workflow_dispatch:
 

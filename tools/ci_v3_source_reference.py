@@ -40,6 +40,7 @@ def runtime_inputs_match(root=Path('.')):
         contract=read_json(root/'docs/ci_v3/phase4/runtime/inputs.json')
         required={'requirements.txt','requirements-ci-tests.txt','constraints.txt',
                   'docs/ci_v3/phase4/runtime/Dockerfile','docs/ci_v3/phase4/runtime/python.lock'}
+        if (root/'frontend/package.json').is_file():required.update({'frontend/package.json','frontend/package-lock.json'})
         require(set(contract)==required,'runtime input contract shape')
         return all(hashlib.sha256((root/name).read_bytes()).hexdigest()==pin for name,pin in contract.items())
     except (OSError,ValueError):

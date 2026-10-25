@@ -32,3 +32,10 @@ re-derived (quarantine / conflict / inactive) by
 |---|---|---|---|
 | Flowbite (`flowbite`) | 2.5.2 | MIT | `static/vendor/flowbite.min.js` (Accordion / Collapse / Dismiss behaviour) and the Flowbite component markup used in the Model workspace templates. Self-hosted; no CDN. |
 | Tailwind CSS (`tailwindcss`) | 3.4.17 | MIT | Build-time only (`tools/ui`): generates the scoped `static/css/flowbite_finco.min.css`. Not shipped or run at runtime. |
+
+
+## FINCO Concept B NON-MODEL experience (GitHub integration V1)
+
+| Component | Version | License | Use |
+|---|---|---|---|
+| Lucide icons (path data inlined in `frontend/src/nonmodel/icons.tsx`) | 0.544.0 (`lucide-react`) | ISC | The Concept B handoff renders `lucide-react` icons. The host pins the production React dependency surface to react + react-dom only, so the exact 24×24 SVG path data for the 22 icons used is inlined locally with the same rendering contract instead of adding a runtime dependency. Upstream: https://github.com/lucide-icons/lucide |
