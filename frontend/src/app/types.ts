@@ -93,13 +93,29 @@ export interface LibraryPayload {
   csrf_token: string;
 }
 
+/** One canonical statement row: display text plus the projection's own unit and numeric cell values. */
+export interface StatementRowPayload {
+  id: string;
+  label: string;
+  model: string[];
+  annual: string[];
+  kind?: string;
+  /** Canonical row unit ("keur", "x", …); takes precedence over any label inference. */
+  unit?: string | null;
+  /** Canonical numeric cell values aligned with `model` / `annual` (null = not persisted). */
+  model_v?: Array<number | null>;
+  annual_v?: Array<number | null>;
+}
+
 /** Server-adapted StatementSheet — mirrors the harvested statementContract shape. */
 export interface StatementSheetPayload {
   id: string;
   label: string;
   title: string;
   unit: string;
-  rows: Array<{ id: string; label: string; model: string[]; annual: string[]; kind?: string }>;
+  /** Distinct canonical row units of the sheet (e.g. ["keur", "x"]). */
+  units?: string[];
+  rows: StatementRowPayload[];
   available: boolean;
   note: string;
   unavailable: string[];
@@ -148,7 +164,7 @@ export interface StatementsPayload {
     modelPeriods: string[];
     periodBands: Array<{ label: string; span: number }>;
     sheets: StatementSheetPayload[];
-    debtRowsByFacility: Record<string, Array<{ id: string; label: string; model: string[]; annual: string[]; kind?: string }>>;
+    debtRowsByFacility: Record<string, StatementRowPayload[]>;
   } | null;
   status: StatementRunStatusPayload;
   results: ResultsPayload;

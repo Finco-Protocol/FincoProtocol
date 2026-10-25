@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import StatementWorkbook from "../finco/_workbook/StatementWorkbook";
-import { ResultsAnalysisView } from "../finco/ResultsAnalysisView";
-import { Shell, ModelNav } from "../finco/_shared/FincoShell";
+import { Shell } from "../finco/_shared/FincoShell";
 import { workspaceHeading } from "./adapters";
 import { fetchInputs, fetchStatements, fetchWorkspace } from "./api";
-import {
-  toResultsRunStatus,
-  toResultsSnapshot,
-  toStatementSnapshot,
-  toStatementStatus,
-} from "./adapters";
+import { toStatementSnapshot, toStatementStatus } from "./adapters";
+import { FinancialResults } from "./FinancialResults";
+import { WorkspaceNav, isWorkspaceSection, type WorkspaceSection } from "./WorkspaceNav";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
 import { CostLinesView, DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
 import { ModelExportView } from "./workflow/ModelExportView";
@@ -21,39 +17,20 @@ import { DirtyProvider } from "./workflow/workflowShared";
 import type { InputsPayload, RevenueContractsPayload, StatementsPayload, WorkspacePayload } from "./types";
 import { fetchRevenueContracts } from "./api";
 
-type Section = "overview" | "inputs" | "statements" | "results" | "financing" | "diagnostics" | "trust" | "scenarios" | "gated";
-
-// Harvested ModelNav labels → canonical React sections.  UX-04/05/06 activate
-// financing, model checks (diagnostics) and trust over canonical projections;
-// scenarios and analysis stay visibly gated until their backend admission is
-// verified for the React workspace (D4 discipline retained).
-const NAV_TO_SECTION: Record<string, Section> = {
-  inputs: "inputs",
-  statements: "statements",
-  results: "results",
-  financing: "financing",
-  scenarios: "scenarios",
-  analysis: "gated",
-  checks: "diagnostics",
-  trust: "trust",
-  overview: "overview",
-};
-const SECTION_LABELS: Record<string, string> = {
-  overview: "Overview", inputs: "Inputs", statements: "Statements", results: "Results",
-  financing: "Financing", diagnostics: "Model checks", trust: "Trust", scenarios: "Scenarios",
-};
+type Section = WorkspaceSection;
 
 const INPUT_GROUPS: Array<[string, string]> = [
   ["wf-inputs-setup", "Project setup"], ["wf-inputs-grid", "Assumption grid"], ["wf-inputs-costs", "CAPEX & OPEX"],
   ["wf-inputs-revenue", "Revenue & PPA"], ["wf-inputs-tax", "Tax & depreciation"],
 ];
 
-const SECTION_IDS: Section[] = ["overview", "inputs", "statements", "results", "financing", "diagnostics", "trust", "scenarios"];
-
 function sectionFromHash(): Section {
   const raw = window.location.hash.replace("#", "");
-  return (SECTION_IDS as string[]).includes(raw) ? (raw as Section) : "overview";
+  return isWorkspaceSection(raw) ? raw : "overview";
 }
+
+/** Chip text for the shell: the persisted Run state of this Working Copy. */
+const RUN_CHIP: Record<string, string> = { CURRENT: "CURRENT RUN", STALE: "STALE RUN", NOT_RUN: "NOT RUN" };
 
 function FreshnessBadge({ state }: { state: string }) {
   const cls = state === "CURRENT" ? "rx-badge rx-badge-ok"
@@ -79,7 +56,7 @@ function StatusRow({ workspace }: { workspace: WorkspacePayload }) {
       <p className="rx-run-identity" data-run-state={workspace.freshness.state}>
         {identity
           ? <>Last Run: snapshot <code>{identity.snapshot_id.slice(0, 12)}</code>{" · "}ran {identity.ran_at || "unavailable"}{" · "}scenario {identity.scenario_proven ? identity.scenario : "UNAVAILABLE"}</>
-          : "No persisted Run. Use the legacy workbook Run control; the React workspace never runs the model."}
+          : "No persisted Run yet. Use the Run control in the Results section to run the model; saving never runs it."}
       </p>
       <p className="rx-note">Scenario: {workspace.workbook.scenario_name || "Base Case"} · Composite {workspace.workbook.composite_hash.slice(0, 12)}</p>
     </div>
@@ -160,7 +137,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
 
   useEffect(() => {
     if (section === "statements" && !statements) void loadStatements();
-    if (section === "results" && !statements) void loadStatements();
+    if ((section === "results" || section === "analysis") && !statements) void loadStatements();
     if (section === "inputs" && !inputs) void loadInputs();
     if (section === "inputs" && !revenuePayload) void loadRevenue();
   }, [section, statements, inputs, revenuePayload, loadStatements, loadInputs, loadRevenue]);
@@ -171,9 +148,9 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  function navigate(sectionId: string) {
+  function navigate(sectionId: Section) {
     window.location.hash = sectionId;
-    setSection((SECTION_IDS as string[]).includes(sectionId) ? (sectionId as Section) : "gated");
+    setSection(sectionId);
   }
 
   const refreshAll = useCallback(() => {
@@ -268,7 +245,8 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
 
   return (
     <DirtyProvider>
-    <Shell crumb={workspace.project.name} dataOrigin="caller-provided" mainContentId="rx-main-content">
+    <Shell crumb={workspace.project.name} dataOrigin="canonical-run" mainContentId="rx-main-content"
+      originLabel={RUN_CHIP[workspace.freshness.state] ?? "RUN UNAVAILABLE"}>
       <div className="rx-page" role="main" data-react-workspace-version={workspace.react_workspace.version}>
         <header className="rx-header">
           <div>
@@ -283,17 +261,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
             <a className="rx-legacy-link" href="#library" onClick={(e) => { e.preventDefault(); onNavigateToLibrary(); }}>Project Library</a>
           </nav>
         </header>
-        <div onClickCapture={(event) => {
-          const anchor = (event.target as HTMLElement).closest("a");
-          if (!anchor) return;
-          const hash = (anchor.getAttribute("href") || "").split("#")[1];
-          if (!hash) return;
-          event.preventDefault();
-          event.stopPropagation();
-          navigate(NAV_TO_SECTION[hash] ?? "overview");
-        }}>
-          <ModelNav active={SECTION_LABELS[section] ?? "Inputs"} onSectionNavigate={(id) => navigate(NAV_TO_SECTION[id] ?? "overview")} />
-        </div>
+        <WorkspaceNav active={section} onNavigate={navigate} />
         <WorkflowBar
           project={project}
           freshness={workspace.freshness.state}
@@ -363,35 +331,26 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
             </>
             : <p className="rx-boot-loading" role="status">Loading the persisted statements…</p>
         )}
-        {section === "gated" && (
-          <section className="rx-card" data-feature-gate="true">
-            <h2>Capability gated</h2>
-            <p className="rx-empty" role="note">
-              This module&rsquo;s canonical backend admission has not been verified for the
-              React workspace yet. Its canonical experience remains in the{" "}
-              <a href={legacyUrl}>legacy workbook</a>. A design presence in the React
-              prototype does not make a capability available.
-            </p>
-          </section>
-        )}
         {section === "results" && (
           statements
             ? <div data-results-view="true" data-results-state={statements.state}>
-              <ResultsAnalysisView
-                resultsSnapshot={toResultsSnapshot(statements)}
-                resultsStatus={toResultsRunStatus(statements)}
-                statementSnapshot={toStatementSnapshot(statements)}
-                statementStatus={toStatementStatus(statements)}
-              />
+              <FinancialResults payload={statements} page="results" />
               <RunsView project={project} />
               <ModelExportView project={project} freshness={workspace.freshness.state} legacyUrl={legacyUrl} />
             </div>
             : <p className="rx-boot-loading" role="status">Loading the persisted results…</p>
         )}
+        {section === "analysis" && (
+          statements
+            ? <div data-analysis-view="true" data-analysis-state={statements.state}>
+              <FinancialResults payload={statements} page="analysis" />
+            </div>
+            : <p className="rx-boot-loading" role="status">Loading the persisted analysis…</p>
+        )}
         <footer className="rx-footer">
           <p className="rx-note">
-            UX-02..06 integrated React workbook over the canonical FINCO Model authorities.
-            The legacy Jinja2/HTMX workbook remains the default experience.
+            Figures are read from this project&rsquo;s persisted Run and canonical workspace records;
+            the browser never calculates financial results. The classic workbook remains available.
           </p>
         </footer>
       </div>
