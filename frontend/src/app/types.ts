@@ -296,15 +296,17 @@ export interface RevenueContractsPayload {
 }
 
 export interface RunHistoryEntry {
-  history_id?: string;
-  ran_at?: string;
-  scenario_id?: string | null;
-  scenario_name?: string | null;
-  origin?: string | null;
-  engine_version?: string | null;
-  workbook_version?: string | null;
-  composite_identity?: Record<string, unknown> | null;
-  [key: string]: unknown;
+  history_id: string;
+  project_code: string;
+  runtime_snapshot_id: string;
+  runtime_origin: string | null;
+  ran_at: string;
+  active_scenario_id: string | null;
+  active_scenario_name: string | null;
+  last_runtime_scenario_id: string | null;
+  engine_version: string | null;
+  workbook_version: string | null;
+  composite_hash: string | null;
 }
 
 export interface RunsPayload {
@@ -314,17 +316,38 @@ export interface RunsPayload {
   run_contract: { url: string; method: string; note: string };
 }
 
+export interface PersistedIntegrity {
+  overall?: string;
+  counts?: Record<string, number>;
+  checks?: Array<Record<string, unknown>>;
+  run_identity?: Record<string, unknown>;
+  scope?: string;
+}
+
 export interface DiagnosticsPayload {
   ok: true;
   run_state: string;
+  integrity: PersistedIntegrity | null;
   insight: Record<string, unknown>;
   diagnostics: Record<string, unknown>;
 }
 
+export interface DeferredTrustAction {
+  state: "DEFERRED" | "UNAVAILABLE";
+  reason: string;
+  authority: string;
+  scope: string;
+  load_url: string | null;
+  not_verify: true;
+}
+
 export interface TrustPayload {
   ok: true;
-  certificate: Record<string, unknown>;
-  validation: Record<string, unknown>;
+  run_state: string;
+  identity: Record<string, unknown> | null;
+  integrity: PersistedIntegrity | null;
+  certificate: DeferredTrustAction;
+  validation: DeferredTrustAction;
 }
 
 // ── UX-07 scenario management & compare ─────────────────────────────────────
