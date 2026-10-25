@@ -28,7 +28,7 @@
          {% if _radar_active %}aria-current="page"{% endif %}>
         Radar
       </a>
-      <a href="/library"
+      <a href="{% if finco_model_react %}/v2/model-react{% else %}/library{% endif %}"
          class="proto-nav__link{% if proto_active_page == 'model' %} proto-nav__link--active{% endif %}"
          {% if proto_active_page == 'model' %}aria-current="page"{% endif %}>
         Model

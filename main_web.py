@@ -410,6 +410,12 @@ app.include_router(_library_router)
 #
 # Flag default changed in PR-A: absent → ACTIVE (see app/utils/workbook_flag.py).
 from app.v2.router import router as _v2_router
+@app.context_processor
+def _finco_model_react_flag():
+    """Central FINCO Model React flag for templates (owner-approved landing/nav links)."""
+    from app.utils.workbook_flag import env_flag
+    return {"finco_model_react": env_flag("FINCO_MODEL_REACT_V1", default=False)}
+
 app.include_router(_v2_router, prefix="/v2")
 from app.v2.capex_router import capex_router as _v2_capex_router
 app.include_router(_v2_capex_router, prefix="/v2/capex")
