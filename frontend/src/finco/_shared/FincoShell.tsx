@@ -81,15 +81,20 @@ export function projectWorkspaceHref(
   return `${fincoBasePath()}ModelWorkspace?${params.toString()}#workbook`;
 }
 
-export function Shell({ children, crumb = "Project library", mainContentId = "fm-main-content", dataOrigin = "synthetic-demo" }: {
+export function Shell({ children, crumb = "Project library", mainContentId = "fm-main-content", dataOrigin = "synthetic-demo", originLabel, libraryHref }: {
   children: React.ReactNode;
   crumb?: string;
   mainContentId?: string;
-  dataOrigin?: "synthetic-demo" | "caller-provided" | "unavailable";
+  dataOrigin?: "synthetic-demo" | "caller-provided" | "canonical-run" | "unavailable";
+  /** Live application only: the persisted-state chip text (e.g. "CURRENT RUN"). */
+  originLabel?: string;
+  /** Live application only: the real Project Library route (the demo path is a design-harness route). */
+  libraryHref?: string;
 }) {
-  const originLabel = dataOrigin === "synthetic-demo"
+  const live = dataOrigin === "canonical-run";
+  const originText = originLabel ?? (dataOrigin === "synthetic-demo"
     ? "SYNTHETIC DEMO DATA"
-    : dataOrigin === "caller-provided" ? "DATA ORIGIN UNVERIFIED" : "NO RESULTS DATA";
+    : dataOrigin === "caller-provided" ? "DATA ORIGIN UNVERIFIED" : dataOrigin === "canonical-run" ? "PERSISTED PROJECT DATA" : "NO RESULTS DATA");
   useEffect(() => {
     const fragment = decodeURIComponent(window.location.hash.slice(1));
     if (!fragment) return;
@@ -112,16 +117,18 @@ export function Shell({ children, crumb = "Project library", mainContentId = "fm
           <div className="fm-brand-caption">Renewable project finance</div>
         </div>
         <div className="fm-top-right">
-          <span className="fm-demo-label">{originLabel}</span>
+          <span className={live ? "fm-live-label" : "fm-demo-label"} data-origin-chip={dataOrigin}>{originText}</span>
           <ThemeSelector />
-          <span>EUR · IFRS</span>
-          <div className="fm-avatar">AR</div>
+          <span>{live ? "EUR" : "EUR · IFRS"}</span>
+          {!live && <div className="fm-avatar">AR</div>}
         </div>
       </header>
       <nav className="fm-workspace-bar" aria-label="Project breadcrumb">
-        <a href={`${fincoBasePath()}ProjectLibrary`}>Portfolio</a><span aria-hidden="true">/</span><strong>Renewables</strong><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span>
+        {live
+          ? <><a href={libraryHref ?? "/v2/model-react/"}>Project Library</a><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span></>
+          : <><a href={`${fincoBasePath()}ProjectLibrary`}>Portfolio</a><span aria-hidden="true">/</span><strong>Renewables</strong><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span></>}
       </nav>
-      <div className="fm-notice">Design prototype • No live calculations or backend connection</div>
+      {!live && <div className="fm-notice">Design prototype • No live calculations or backend connection</div>}
       {children}
     </div>
   );

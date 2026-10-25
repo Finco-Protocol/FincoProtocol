@@ -10,6 +10,8 @@ export type StatementRow = {
   annual: string[];
   model: string[];
   kind?: "section" | "detail" | "metric";
+  /** Canonical per-row unit metadata ("keur", "x", "%") when the projection supplies it. */
+  unit?: string;
   children?: StatementRow[];
   indent?: boolean;
 };
@@ -20,6 +22,10 @@ export type StatementSheet = {
   title: string;
   unit: string;
   rows: StatementRow[];
+  /** Canonical caveat text persisted with the statement, when supplied. */
+  note?: string;
+  /** Canonical lines this Run did not persist, when supplied. */
+  unavailable?: string[];
 };
 
 export type StatementPeriodBand = { label: string; span: number };
@@ -42,8 +48,9 @@ export type StatementRunStatus = {
    *  "not evaluated" only when there is genuinely no integrity evaluation. */
   integrity: "not evaluated" | "UNAVAILABLE" | "PASS" | "FAIL" | "INCOMPLETE";
   engineVersion: string | null;
-  /** Defaults to the current demo only for existing callers; integrations should identify caller-provided data. */
-  dataOrigin?: "synthetic-demo" | "caller-provided" | "unavailable";
+  /** Defaults to the current demo only for existing callers; integrations should identify caller-provided data.
+   *  `canonical-run` = values read from the project's persisted Run through the canonical workspace API. */
+  dataOrigin?: "synthetic-demo" | "caller-provided" | "canonical-run" | "unavailable";
 };
 
 export type StatementWorkbookProps = {
