@@ -11,8 +11,13 @@ import {
   toStatementStatus,
 } from "./adapters";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
-import { CostLinesView, DiagnosticsView, FinancingView, RevenueView, RunsView, TrustView } from "./ux040506Views";
-import { RevenueEditorView, ScenarioView } from "./ux07ScenarioViews";
+import { CostLinesView, DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
+import { ModelExportView } from "./workflow/ModelExportView";
+import { PPAEditorView } from "./workflow/PPAEditorView";
+import { ScenarioWorkspace } from "./workflow/ScenarioWorkspace";
+import { SheetFieldsEditor } from "./workflow/SheetFieldsEditor";
+import { WorkflowBar } from "./workflow/WorkflowBar";
+import { DirtyProvider } from "./workflow/workflowShared";
 import type { InputsPayload, RevenueContractsPayload, StatementsPayload, WorkspacePayload } from "./types";
 import { fetchRevenueContracts } from "./api";
 
@@ -37,6 +42,11 @@ const SECTION_LABELS: Record<string, string> = {
   overview: "Overview", inputs: "Inputs", statements: "Statements", results: "Results",
   financing: "Financing", diagnostics: "Model checks", trust: "Trust", scenarios: "Scenarios",
 };
+
+const INPUT_GROUPS: Array<[string, string]> = [
+  ["wf-inputs-setup", "Project setup"], ["wf-inputs-grid", "Assumption grid"], ["wf-inputs-costs", "CAPEX & OPEX"],
+  ["wf-inputs-revenue", "Revenue & PPA"], ["wf-inputs-tax", "Tax & depreciation"],
+];
 
 const SECTION_IDS: Section[] = ["overview", "inputs", "statements", "results", "financing", "diagnostics", "trust", "scenarios"];
 
@@ -88,6 +98,9 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
   const [inputs, setInputs] = useState<InputsPayload | null>(null);
   const [revenuePayload, setRevenuePayload] = useState<RevenueContractsPayload | null>(null);
   const [busy, setBusy] = useState(false);
+  // Bumped after ANY committed change so every editor re-reads its CAS tokens;
+  // unsaved drafts in other editors are reconciled, never silently rebased.
+  const [dataVersion, setDataVersion] = useState(0);
 
   const loadWorkspace = useCallback(async () => {
     setError(null);
@@ -110,6 +123,30 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
     void loadWorkspace();
   }, [loadWorkspace]);
 
+  const loadRevenue = useCallback(async () => {
+    const result = await fetchRevenueContracts(project);
+    if (result.ok === true) setRevenuePayload(result);
+  }, [project]);
+
+  const afterMutation = useCallback(() => {
+    setDataVersion((v) => v + 1);
+    void loadWorkspace();
+  }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (dataVersion === 0) return;
+    void loadInputs();
+    void loadRevenue();
+  }, [dataVersion, loadInputs, loadRevenue]);
+
+  // A scenario switch changes the scope of every projection: drop them all.
+  const onScenarioChanged = useCallback(() => {
+    setInputs(null);
+    setStatements(null);
+    setRevenuePayload(null);
+    afterMutation();
+  }, [afterMutation]);
+
   useEffect(() => {
     if (!workspace) return;
     // Keep the harvested readProjectContext() on canonical values.
@@ -125,10 +162,8 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
     if (section === "statements" && !statements) void loadStatements();
     if (section === "results" && !statements) void loadStatements();
     if (section === "inputs" && !inputs) void loadInputs();
-    if (section === "inputs" && !revenuePayload) void fetchRevenueContracts(project).then((r) => {
-      if (r.ok === true) setRevenuePayload(r);
-    });
-  }, [section, statements, inputs, revenuePayload, loadStatements, loadInputs, project]);
+    if (section === "inputs" && !revenuePayload) void loadRevenue();
+  }, [section, statements, inputs, revenuePayload, loadStatements, loadInputs, loadRevenue]);
 
   useEffect(() => {
     const onHash = () => setSection(sectionFromHash());
@@ -194,8 +229,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
           ...prev,
           save: { ...prev.save, content_hash: b.content_hash as string, csrf_token: "" },
         } : prev);
-        void loadInputs();
-        void loadWorkspace();
+        afterMutation();
         return { kind: "saved", contentHash: b.content_hash as string, runState: b.run_state as string };
       }
       if (response.ok) {
@@ -212,7 +246,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
     } finally {
       setBusy(false);
     }
-  }, [inputs, project, loadInputs, loadWorkspace]);
+  }, [inputs, project, afterMutation]);
 
   if (error) {
     return (
@@ -233,6 +267,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
   }
 
   return (
+    <DirtyProvider>
     <Shell crumb={workspace.project.name} dataOrigin="caller-provided" mainContentId="rx-main-content">
       <div className="rx-page" role="main" data-react-workspace-version={workspace.react_workspace.version}>
         <header className="rx-header">
@@ -259,23 +294,55 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
         }}>
           <ModelNav active={SECTION_LABELS[section] ?? "Inputs"} onSectionNavigate={(id) => navigate(NAV_TO_SECTION[id] ?? "overview")} />
         </div>
-        <p className="rx-note">
-          Run action: the canonical Run is available in the Results section (it posts to the
-          existing <code>/v2/workbook/run</code> route). Saving never triggers a Run.
-        </p>
+        <WorkflowBar
+          project={project}
+          freshness={workspace.freshness.state}
+          protectedReference={Boolean(workspace.project.protected_reference)}
+          contentHash={workspace.workbook.composite_hash}
+          workbookVersion={workspace.workbook.version}
+          onRan={refreshAll}
+          onReload={refreshAll}
+        />
         {section === "overview" && <StatusRow workspace={workspace} />}
         {section === "inputs" && (
           inputs
             ? <>
-              <CanonicalInputGrid payload={inputs} busy={busy} onSave={saveCells} onRefresh={refreshAll} />
-              <CostLinesView project={project} />
-              {revenuePayload && <RevenueEditorView project={project} revenuePayload={revenuePayload} onSaved={() => { void loadInputs(); void loadWorkspace(); setRevenuePayload(null); }} />}
-              <RevenueView project={project} />
+              <nav className="wf-jump" aria-label="Input groups" data-inputs-jump="true">
+                {INPUT_GROUPS.map(([id, label]) => <a key={id} href={`#${id}`} data-jump-target={id}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); document.getElementById(id)?.scrollIntoView({ block: "start" }); document.getElementById(id)?.focus({ preventScroll: true }); }}>{label}</a>)}
+              </nav>
+              <div id="wf-inputs-setup" tabIndex={-1}>
+                <SheetFieldsEditor project={project} sheet="project_setup" title="Project setup" reloadKey={dataVersion} onSaved={afterMutation} />
+              </div>
+              <div id="wf-inputs-grid" tabIndex={-1}>
+                <CanonicalInputGrid payload={inputs} busy={busy} onSave={saveCells} onRefresh={refreshAll} />
+              </div>
+              <div id="wf-inputs-costs" tabIndex={-1}>
+                <CostLinesView project={project} reloadKey={dataVersion} onMutated={afterMutation} />
+              </div>
+              <div id="wf-inputs-revenue" tabIndex={-1}>
+                {revenuePayload && (
+                  <PPAEditorView
+                    project={project}
+                    protectedReference={Boolean(workspace.project.protected_reference)}
+                    contracts={revenuePayload.contracts}
+                    save={revenuePayload.save}
+                    onSaved={afterMutation}
+                  />
+                )}
+              </div>
+              <div id="wf-inputs-tax" tabIndex={-1}>
+                <SheetFieldsEditor project={project} sheet="tax" title="Tax and depreciation" reloadKey={dataVersion} onSaved={afterMutation} />
+              </div>
             </>
             : <p className="rx-boot-loading" role="status">Loading the canonical input grid…</p>
         )}
-        {section === "financing" && <FinancingView project={project} />}
-        {section === "scenarios" && <ScenarioView project={project} />}
+        {section === "financing" && (
+          <SheetFieldsEditor project={project} sheet="debt" title="Debt & Equity financing" reloadKey={dataVersion} onSaved={afterMutation} />
+        )}
+        {section === "scenarios" && (
+          <ScenarioWorkspace project={project} freshness={workspace.freshness.state} onScenarioChanged={onScenarioChanged} />
+        )}
         {section === "diagnostics" && <DiagnosticsView project={project} />}
         {section === "trust" && <TrustView project={project} />}
         {section === "statements" && (
@@ -316,12 +383,8 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
                 statementSnapshot={toStatementSnapshot(statements)}
                 statementStatus={toStatementStatus(statements)}
               />
-              <RunsView
-                project={project}
-                contentHash={workspace.workbook.composite_hash}
-                workbookVersion={workspace.workbook.version}
-                onRan={refreshAll}
-              />
+              <RunsView project={project} />
+              <ModelExportView project={project} freshness={workspace.freshness.state} legacyUrl={legacyUrl} />
             </div>
             : <p className="rx-boot-loading" role="status">Loading the persisted results…</p>
         )}
@@ -333,5 +396,6 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
         </footer>
       </div>
     </Shell>
+    </DirtyProvider>
   );
 }
