@@ -5,7 +5,7 @@ import test from "node:test";
 import { loadUnits } from "./loadUnits.mjs";
 
 const {
-  classifyRowUnit, formatMetricDisplay, formatMoneyText, formatRatioText, formatStatementCell, formatUnitLabel,
+  classifyRowUnit, decimalFromNumber, formatMetricDisplay, formatMoneyValue, formatMoneyText, formatRatioText, formatStatementCell, formatUnitLabel,
   plotValue, resolveRowFormat, sheetUnitLabel,
 } = await loadUnits();
 
@@ -164,4 +164,40 @@ test("row unit provenance is explicit; ambiguous metadata is never silently conv
   }
   assert.equal(formatUnitLabel(ambiguous.format, "mEUR"), "unit unavailable");
   assert.deepEqual(classifyRowUnit("Mystery line", undefined, undefined).format, { kind: "unspecified" });
+});
+
+test("canonical numeric value takes precedence over its rounded display text for money", () => {
+  const money = { kind: "money", base: "kEUR" };
+  // display text is rounded to 2 decimals ("1,232.50"); the canonical value is 1232.4951
+  assert.equal(formatStatementCell("1,232.50", money, "mEUR", 3), "1.233", "text-only path (legacy payload)");
+  assert.equal(formatStatementCell("1,232.50", money, "mEUR", 3, 1232.4951), "1.232", "value path is exact");
+  assert.equal(formatStatementCell("1,232.50", money, "kEUR", 2, 1232.4951), "1,232.50");
+  assert.equal(formatStatementCell("1,232.50", money, "EUR", 0, 1232.4951), "1,232,495");
+  assert.equal(formatStatementCell("0.00", money, "kEUR", 1, 0), "0.0", "zero is a value, not unavailable");
+  assert.equal(formatStatementCell("-33.70", money, "kEUR", 1, -33.7), "(33.7)");
+  assert.equal(formatStatementCell("-0.00", money, "kEUR", 1, -0.04), "0.0", "no negative zero");
+  assert.equal(formatStatementCell("—", money, "kEUR", 1, null), "—", "explicitly unavailable stays unavailable");
+  assert.equal(formatStatementCell("0.00", money, "kEUR", 1, null), "—", "a null canonical value is never rendered as zero");
+});
+
+test("ratios and percentages ignore the numeric value and keep canonical text precision", () => {
+  for (const unit of ["EUR", "kEUR", "mEUR"]) {
+    assert.equal(formatStatementCell("1.25", { kind: "ratio" }, unit, 0, 1.2534), "1.25x");
+    assert.equal(formatStatementCell("11.77", { kind: "percent" }, unit, 3, 11.7712), "11.77%");
+    assert.equal(formatStatementCell("—", { kind: "ratio" }, unit, 0, null), "—");
+  }
+});
+
+test("decimalFromNumber yields exact decimal strings, including exponent forms", () => {
+  assert.equal(decimalFromNumber(1232.5), "1232.5");
+  assert.equal(decimalFromNumber(-0.04), "-0.04");
+  assert.equal(decimalFromNumber(1e-7), "0.0000001");
+  assert.equal(decimalFromNumber(-1.5e-7), "-0.00000015");
+  assert.equal(decimalFromNumber(1.5e21), "1500000000000000000000");
+  assert.equal(decimalFromNumber(0), "0");
+  assert.equal(decimalFromNumber(null), null);
+  assert.equal(decimalFromNumber(Number.NaN), null);
+  assert.equal(formatMoneyValue(1e-7, "kEUR", "kEUR", 2), "0.00");
+  assert.equal(formatMoneyValue(123456789.125, "kEUR", "mEUR", 3), "123,456.789", "123456789.125 kEUR = 123,456.789125 mEUR");
+  assert.equal(formatMoneyValue(null, "kEUR", "mEUR", 3), "—");
 });

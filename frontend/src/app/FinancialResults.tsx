@@ -21,6 +21,8 @@ interface PeriodRow {
   key: string;
   label: string;
   texts: string[];
+  /** Canonical numeric cell values aligned with `texts` (null = not persisted; absent on legacy payloads). */
+  values?: Array<number | null>;
   format: RowFormat;
   /** How the row's unit was established (canonical metadata vs inference). */
   unitSource: UnitSource;
@@ -67,11 +69,13 @@ function statementRows(
     if (!row) continue;
     const texts = basis === "annual" ? row.annual : row.model;
     if (!texts.length) continue;
+    const values = basis === "annual" ? row.annual_v : row.model_v;
     rows.push({
       key: `${sheetId}.${row.id}`,
       label: labelOverride ?? row.label,
       texts,
-      ...classified(row.label, (row as { unit?: string }).unit, sheet.unit),
+      values: values && values.length === texts.length ? values : undefined,
+      ...classified(row.label, row.unit ?? undefined, sheet.unit),
       source: `${sheet.title} · ${row.label}`,
     });
   }
@@ -87,6 +91,7 @@ function tableRows(table: CanonicalTable | null | undefined, keys: ReadonlyArray
       key: `${table.id ?? sourceTitle}.${row.key}`,
       label: row.label,
       texts: row.cells.map((cell) => (cell.v === null ? "—" : cell.text)),
+      values: row.cells.map((cell) => cell.v),
       ...classified(row.label, row.unit, "keur"),
       source: `${table.title ?? sourceTitle} · ${row.label}`,
     });
@@ -210,9 +215,10 @@ function PeriodTable({ model, unit, precision }: { model: PeriodTableModel; unit
                 </th>
                 {model.periods.map((period, index) => {
                   const canonical = row.texts[index] ?? "—";
-                  const shown = formatStatementCell(canonical, row.format, unit, precision);
+                  const numeric = row.values?.[index];
+                  const shown = formatStatementCell(canonical, row.format, unit, precision, numeric);
                   return (
-                    <td key={`${row.key}-${index}`} data-canonical={canonical} data-row={row.key} data-period={period}
+                    <td key={`${row.key}-${index}`} data-canonical={canonical} data-v={numeric === undefined || numeric === null ? undefined : String(numeric)} data-row={row.key} data-period={period}
                       data-unit={formatUnitLabel(row.format, unit)}
                       className={shown === "—" ? "rx-live-na" : undefined}>{shown}</td>
                   );
@@ -229,7 +235,7 @@ function PeriodTable({ model, unit, precision }: { model: PeriodTableModel; unit
 
 // ── charts ─────────────────────────────────────────────────────────────────
 
-interface ChartSeries { key: string; label: string; texts: string[]; format: RowFormat; kind: "bar" | "line" }
+interface ChartSeries { key: string; label: string; texts: string[]; values?: Array<number | null>; format: RowFormat; kind: "bar" | "line" }
 
 interface ChartModel {
   id: string;
@@ -245,7 +251,8 @@ const PLOT = { left: 62, right: 628, top: 14, bottom: 168 };
 
 function TimeSeriesChart({ chart, unit, precision }: { chart: ChartModel; unit: DisplayUnit; precision: number }) {
   const series = chart.series.filter((item) => item.texts.length > 0);
-  const numeric = series.map((item) => item.texts.map((text) => plotValue(text)));
+  // geometry from the canonical numeric value; the display-text parse is only a legacy-payload fallback
+  const numeric = series.map((item) => item.values ?? item.texts.map((text) => plotValue(text)));
   const all = numeric.flat().filter((value): value is number => value !== null);
   if (!series.length || !chart.periods.length || !all.length) {
     return (
@@ -264,7 +271,7 @@ function TimeSeriesChart({ chart, unit, precision }: { chart: ChartModel; unit: 
   const barSeries = series.filter((item) => item.kind === "bar");
   const barWidth = Math.max(1, (slot * 0.72) / Math.max(1, barSeries.length));
   const x = (index: number) => PLOT.left + slot * index + slot / 2;
-  const show = (item: ChartSeries, text: string) => formatStatementCell(text, item.format, unit, precision);
+  const show = (item: ChartSeries, text: string, index: number) => formatStatementCell(text, item.format, unit, precision, item.values?.[index]);
   const unitText = (item: ChartSeries) => formatUnitLabel(item.format, unit);
   const tickEvery = Math.max(1, Math.ceil(n / 8));
   const firstMoney = series.find((item) => item.format.kind === "money");
@@ -272,7 +279,7 @@ function TimeSeriesChart({ chart, unit, precision }: { chart: ChartModel; unit: 
   const extremeText = (target: number) => {
     for (let s = 0; s < series.length; s++) {
       const index = numeric[s].findIndex((value) => value === target);
-      if (index >= 0) return show(series[s], series[s].texts[index]);
+      if (index >= 0) return show(series[s], series[s].texts[index], index);
     }
     return null;
   };
@@ -294,8 +301,8 @@ function TimeSeriesChart({ chart, unit, precision }: { chart: ChartModel; unit: 
                 {numeric[s].map((value, index) => value === null ? null : (
                   <rect key={index} x={x(index) - (barSeries.length * barWidth) / 2 + barIndex * barWidth}
                     y={Math.min(y(value), y(0))} width={barWidth} height={Math.max(0.5, Math.abs(y(value) - y(0)))}
-                    data-point={chart.periods[index]} data-canonical={item.texts[index]}>
-                    <title>{`${item.label} · ${chart.periods[index]}: ${show(item, item.texts[index])} ${unitText(item)}`}</title>
+                    data-point={chart.periods[index]} data-canonical={item.texts[index]} data-v={numeric[s][index] === null ? undefined : String(numeric[s][index])}>
+                    <title>{`${item.label} · ${chart.periods[index]}: ${show(item, item.texts[index], index)} ${unitText(item)}`}</title>
                   </rect>
                 ))}
               </g>
@@ -313,8 +320,8 @@ function TimeSeriesChart({ chart, unit, precision }: { chart: ChartModel; unit: 
                 <polyline key={k} fill="none" points={segment.map((p) => `${x(p.index)},${y(p.value)}`).join(" ")} />
               ))}
               {n <= 60 && numeric[s].map((value, index) => value === null ? null : (
-                <circle key={index} cx={x(index)} cy={y(value)} r={2.2} data-point={chart.periods[index]} data-canonical={item.texts[index]}>
-                  <title>{`${item.label} · ${chart.periods[index]}: ${show(item, item.texts[index])} ${unitText(item)}`}</title>
+                <circle key={index} cx={x(index)} cy={y(value)} r={2.2} data-point={chart.periods[index]} data-canonical={item.texts[index]} data-v={numeric[s][index] === null ? undefined : String(numeric[s][index])}>
+                  <title>{`${item.label} · ${chart.periods[index]}: ${show(item, item.texts[index], index)} ${unitText(item)}`}</title>
                 </circle>
               ))}
             </g>
@@ -336,7 +343,7 @@ function TimeSeriesChart({ chart, unit, precision }: { chart: ChartModel; unit: 
               {chart.periods.map((period, index) => (
                 <tr key={`${period}-${index}`}>
                   <th scope="row">{period}</th>
-                  {series.map((item) => <td key={item.key}>{show(item, item.texts[index] ?? "—")}</td>)}
+                  {series.map((item) => <td key={item.key}>{show(item, item.texts[index] ?? "—", index)}</td>)}
                 </tr>
               ))}
             </tbody>
@@ -396,7 +403,8 @@ function useModels(payload: StatementsPayload) {
       periods: model,
       rows: debtSheet ? debtSheet.rows.map((row) => ({
         key: `debt.${row.id}`, label: row.label, texts: row.model,
-        ...classified(row.label, (row as { unit?: string }).unit, debtSheet.unit),
+        values: row.model_v && row.model_v.length === row.model.length ? row.model_v : undefined,
+        ...classified(row.label, row.unit ?? undefined, debtSheet.unit),
         source: `${debtSheet.title} · ${row.label}`,
       })) : [],
       note: debtSheet?.note || "This Run persisted no debt schedule.",
@@ -408,44 +416,45 @@ function useModels(payload: StatementsPayload) {
         id: "revenue-opex", title: "Revenue and operating performance (annual)",
         source: "Persisted Run · Profit & Loss", periods: annual,
         series: statementRows(payload, "pl", [["revenues_keur", "Revenue"], ["operating_expenses_keur", "Operating expenses"], ["ebit_keur", "EBIT"]], "annual")
-          .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, format: row.format, kind: index === 2 ? "line" as const : "bar" as const })),
+          .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: index === 2 ? "line" as const : "bar" as const })),
       },
       {
         id: "ebitda-cash", title: "EBITDA and operating cash flow",
         source: "Persisted Run · Cash Flow (PF waterfall)", periods: model,
         series: statementRows(payload, "cashflow", [["ebitda_cash_keur", "EBITDA (cash)"], ["revenue_cash_keur", "Revenue cash"], ["opex_cash_keur", "Operating cash costs"]], "model")
-          .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, format: row.format, kind: index === 0 ? "bar" as const : "line" as const })),
+          .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: index === 0 ? "bar" as const : "line" as const })),
       },
       {
         id: "cfads-debt-service", title: "CFADS and debt service",
         source: "Persisted Run · CFADS", periods: model,
         series: cfadsRows.filter((row) => row.key !== "cfads.dscr")
-          .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, format: row.format, kind: index === 0 ? "bar" as const : "line" as const })),
+          .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: index === 0 ? "bar" as const : "line" as const })),
       },
       {
         id: "dscr", title: "Debt service coverage ratio (DSCR)",
         source: "Persisted Run · CFADS", periods: model,
         series: cfadsRows.filter((row) => row.key === "cfads.dscr")
-          .map((row) => ({ key: row.key, label: "DSCR", texts: row.texts, format: { kind: "ratio" } as RowFormat, kind: "line" as const })),
+          .map((row) => ({ key: row.key, label: "DSCR", texts: row.texts, values: row.values, format: { kind: "ratio" } as RowFormat, kind: "line" as const })),
       },
       {
         id: "debt-balance", title: "Debt balance and service",
         source: "Persisted Run · Debt schedule", periods: model,
         series: (debtSheet?.rows ?? []).filter((row) => /closing|service/i.test(row.id))
           .map((row) => ({ key: `debt.${row.id}`, label: row.label, texts: row.model,
-            format: resolveRowFormat(row.label, (row as { unit?: string }).unit, debtSheet?.unit), kind: /closing/i.test(row.id) ? "bar" as const : "line" as const })),
+            values: row.model_v && row.model_v.length === row.model.length ? row.model_v : undefined,
+            format: resolveRowFormat(row.label, row.unit ?? undefined, debtSheet?.unit), kind: /closing/i.test(row.id) ? "bar" as const : "line" as const })),
       },
       {
         id: "distributions", title: "Distributions and cash after reserves",
         source: "Persisted Run · Distribution waterfall", periods: columnLabels(distributions),
         series: waterfall.rows.filter((row) => !/dsra/i.test(row.key))
-          .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, format: row.format, kind: index === 1 ? "bar" as const : "line" as const })),
+          .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: index === 1 ? "bar" as const : "line" as const })),
       },
       {
         id: "sponsor-cash-flow-chart", title: "Sponsor cash flow",
         source: "Persisted Run · Sponsor cash flows", periods: columnLabels(sponsor),
         series: sponsorTable.rows.filter((row) => /legal_equity_distribution|additional_equity|shl_cash_interest/.test(row.key))
-          .map((row) => ({ key: row.key, label: row.label, texts: row.texts, format: row.format, kind: /legal_equity/.test(row.key) ? "bar" as const : "line" as const })),
+          .map((row) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: /legal_equity/.test(row.key) ? "bar" as const : "line" as const })),
       },
     ];
     return { operating, sponsorTable, waterfall, debt, charts };

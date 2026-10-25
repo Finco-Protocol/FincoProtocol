@@ -125,47 +125,82 @@ def check_product_truth_no_prototype_or_synthetic_content_in_any_section(seeded)
     assert errors == [], errors
 
 
+def expect_display_v(value, base: str, shown: str, precision: int) -> str:
+    """Independent oracle on the canonical numeric value (exact decimal of its shortest repr)."""
+    if value is None:
+        return "—"
+    return expect_display(repr(float(value)), base, shown, precision)
+
+
+COLLECT_CELLS = """() => Array.from(document.querySelectorAll('button.fm-sw-cell-button')).map(b => ({
+    row: b.dataset.statementRow, col: Number(b.dataset.statementCol), text: b.innerText,
+    canonical: b.dataset.canonical, v: b.dataset.canonicalV === undefined ? null : b.dataset.canonicalV,
+    unit: b.closest('tr').dataset.rowUnit, source: b.closest('tr').dataset.unitSource }))"""
+
+
 def check_statement_units_ratios_negatives_and_rounding_match_canonical_api(seeded):
+    """Same-Run end to end: API projection (canonical unit/v/text) == rendered DOM, all six destinations."""
     context, page, record, errors, base = seeded
     run_canonical(context, base, record.project_code)
     payload = api(context, base, "statements", record.project_code)
     sheets = {s["id"]: s for s in payload["snapshot"]["sheets"]}
-    revenue = next(r for r in sheets["pl"]["rows"] if r["id"] == "revenues_keur")
-    retained = next(r for r in sheets["pl"]["rows"] if r["id"] == "retained_earnings_keur")
-    assert sheets["pl"]["unit"] == "keur"
+    assert set(sheets) == {"pl", "balance", "cashflow", "cfads", "debt", "sponsor"}
+    labels = {"pl": "Profit & Loss", "balance": "Balance Sheet", "cashflow": "Cash Flow (PF waterfall)",
+              "cfads": "CFADS", "debt": "Debt", "sponsor": "Distributions"}
     open_section(page, base, record.project_code, "statements")
-    for unit in ("EUR", "kEUR", "mEUR"):
-        for precision in (0, 1, 3):
-            page.select_option("#fm-sw-unit", unit)
-            page.select_option("#fm-sw-precision", str(precision))
-            for row, col in ((revenue, 1), (revenue, 7), (retained, 1), (retained, 2)):
-                shown = page.locator(
-                    f"button[data-statement-row='{row['id']}'][data-statement-col='{col}']").inner_text()
-                expected = expect_display(row["annual"][col], "kEUR", unit, precision)
-                if row["annual"][col] == "—":
-                    expected = "—"
-                assert shown == expected, (unit, precision, row["id"], col, row["annual"][col], shown, expected)
-    # the header never labels kEUR canonical values as mEUR
+    compared = ratio_cells = negative_cells = unavailable_cells = zero_cells = 0
+    for sheet_id, sheet in sheets.items():
+        page.get_by_role("tab", name=labels[sheet_id], exact=True).click()
+        views = ("annual", "model") if sheet_id in ("pl", "balance", "cashflow") else ("model",)
+        for view in views:
+            page.select_option("#fm-sw-view", view)
+            key_v, key_t = ("annual_v", "annual") if view == "annual" else ("model_v", "model")
+            rows = {r["id"]: r for r in sheet["rows"]}
+            for unit in ("EUR", "kEUR", "mEUR"):
+                for precision in (0, 3):
+                    page.select_option("#fm-sw-unit", unit)
+                    page.select_option("#fm-sw-precision", str(precision))
+                    cells = page.evaluate(COLLECT_CELLS)
+                    assert len(cells) == sum(len(r[key_t]) for r in rows.values()), (sheet_id, view)
+                    for cell in cells:
+                        row = rows[cell["row"]]
+                        canonical_text, canonical_v = row[key_t][cell["col"]], row[key_v][cell["col"]]
+                        assert cell["canonical"] == canonical_text, (sheet_id, cell)
+                        assert (cell["v"] is None) == (canonical_v is None), (sheet_id, cell, canonical_v)
+                        assert cell["source"] == "canonical-row-unit", (sheet_id, cell["row"], cell["source"])
+                        if row["unit"] == "x":      # ratio: never monetary-scaled, canonical text precision
+                            expected = "—" if canonical_v is None else f"{canonical_text}x"
+                            assert cell["unit"] == "x"
+                            ratio_cells += canonical_v is not None
+                        else:
+                            assert row["unit"] == "keur"
+                            expected = expect_display_v(canonical_v, "kEUR", unit, precision)
+                            assert cell["unit"] == unit
+                        assert cell["text"] == expected, (sheet_id, view, unit, precision, cell["row"], cell["col"],
+                                                          canonical_text, canonical_v, cell["text"], expected)
+                        compared += 1
+                        if canonical_v is None:
+                            assert cell["text"] == "—", "an unavailable cell must never render as a number"
+                            unavailable_cells += 1
+                        elif canonical_v == 0:
+                            zero_cells += 1
+                        elif canonical_v < 0:
+                            negative_cells += 1
+    assert compared > 5000 and ratio_cells > 0 and unavailable_cells > 0 and zero_cells > 0 and negative_cells > 0, \
+        (compared, ratio_cells, unavailable_cells, zero_cells, negative_cells)
+    # canonical default shows the canonical value; headers never label kEUR values as mEUR
+    page.get_by_role("tab", name="Profit & Loss", exact=True).click()
+    page.select_option("#fm-sw-view", "annual")
     page.select_option("#fm-sw-unit", "kEUR")
     page.select_option("#fm-sw-precision", "2")
     assert "Statement line · kEUR" in page.inner_text("#fm-sw-sheet")
-    assert page.locator("button[data-statement-row='revenues_keur'][data-statement-col='1']").inner_text() == \
-        revenue["annual"][1], "default canonical unit must show the canonical text unchanged"
-    # a ratio row is never unit-scaled: DSCR keeps its canonical value + "x" under every unit
-    page.get_by_role("tab", name="CFADS").click()
-    page.select_option("#fm-sw-view", "model")
-    dscr = next(r for r in sheets["cfads"]["rows"] if r["id"] == "dscr")
-    index = next(i for i, t in enumerate(dscr["model"]) if t not in ("—", ""))
-    for unit in ("EUR", "kEUR", "mEUR"):
-        page.select_option("#fm-sw-unit", unit)
-        shown = page.locator(f"button[data-statement-row='dscr'][data-statement-col='{index}']").inner_text()
-        assert shown == f"{dscr['model'][index]}x", (unit, shown, dscr["model"][index])
-    # explicit provenance of every row's unit: DSCR is label-inferred (backend does not yet send row units), money rows come from the sheet unit
-    assert page.locator("tr[data-unit-source]").count() > 0
-    assert page.locator("tr[data-unit-source='label-inference']").count() == 1
-    assert page.locator("tr[data-unit-source='unspecified']").count() == 0
-    page.get_by_role("tab", name="Profit & Loss").click()
-    assert page.locator("tr[data-unit-source='sheet-unit']").count() == len(sheets["pl"]["rows"])
+    revenue = next(r for r in sheets["pl"]["rows"] if r["id"] == "revenues_keur")
+    assert page.locator("button[data-statement-row='revenues_keur'][data-statement-col='1']").inner_text() == revenue["annual"][1]
+    # provenance: every row of every destination is resolved from canonical metadata, never from a label
+    for sheet_id in sheets:
+        page.get_by_role("tab", name=labels[sheet_id], exact=True).click()
+        assert page.locator("tr[data-unit-source]").count() > 0
+        assert page.locator("tr[data-unit-source]:not([data-unit-source='canonical-row-unit'])").count() == 0, sheet_id
     assert errors == [], errors
 
 
@@ -220,12 +255,15 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
         for i in range(cells.count()):
             cell = cells.nth(i)
             assert cell.get_attribute("data-canonical") == canonical_row["annual"][i]
-            assert cell.inner_text() == expect_display(canonical_row["annual"][i], "kEUR", "kEUR", 1)
+            canonical_v = canonical_row["annual_v"][i]
+            assert (cell.get_attribute("data-v") is None) == (canonical_v is None)
+            assert canonical_v is None or float(cell.get_attribute("data-v")) == canonical_v, "DOM value == API v"
+            assert cell.inner_text() == expect_display_v(canonical_v, "kEUR", "kEUR", 1)
     # unit switch converts the same canonical values; headers carry the unit
     page.select_option("select[data-control='unit']", "mEUR")
     page.select_option("select[data-control='precision']", "3")
     cell = page.locator("[data-period-table='operating-performance'] td[data-row='pl.revenues_keur']").nth(1)
-    assert cell.inner_text() == expect_display(pl["revenues_keur"]["annual"][1], "kEUR", "mEUR", 3)
+    assert cell.inner_text() == expect_display_v(pl["revenues_keur"]["annual_v"][1], "kEUR", "mEUR", 3)
     assert "Line · mEUR" in page.locator("[data-period-table='operating-performance']").inner_text()
     # sponsor cash flow table
     sponsor = payload["results"]["sponsor_table"]
@@ -245,8 +283,11 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
     assert bars.count() == sum(1 for t in pl["revenues_keur"]["annual"] if t not in ("—", ""))
     assert [bars.nth(i).get_attribute("data-canonical") for i in range(bars.count())][:3] == \
         [t for t in pl["revenues_keur"]["annual"] if t not in ("—", "")][:3]
+    # chart geometry is driven by the canonical numeric value, not parsed display text
+    assert [float(bars.nth(i).get_attribute("data-v")) for i in range(bars.count())] == \
+        [v for v in pl["revenues_keur"]["annual_v"] if v is not None]
     title = bars.nth(1).locator("title").text_content()
-    assert expect_display(pl["revenues_keur"]["annual"][1], "kEUR", "kEUR", 1) in title and "kEUR" in title
+    assert expect_display_v(pl["revenues_keur"]["annual_v"][1], "kEUR", "kEUR", 1) in title and "kEUR" in title
     assert page.locator("[data-chart='dscr']").get_attribute("data-chart-state") == "available"
     assert " x" in page.locator("[data-chart='dscr'] .rx-note").inner_text()
     for chart_id in ("revenue-opex", "ebitda-cash", "cfads-debt-service", "dscr", "debt-balance",

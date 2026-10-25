@@ -12,6 +12,9 @@ export type StatementRow = {
   kind?: "section" | "detail" | "metric";
   /** Canonical per-row unit metadata ("keur", "x", "%") when the projection supplies it. */
   unit?: string;
+  /** Canonical numeric cell values aligned with `model` / `annual` (null = not persisted). */
+  modelValues?: Array<number | null>;
+  annualValues?: Array<number | null>;
   children?: StatementRow[];
   indent?: boolean;
 };

@@ -158,17 +158,47 @@ export function formatRatioText(text: string | null | undefined, kind: "ratio" |
   return `${parsed.negative && !isZero ? "-" : ""}${body}${kind === "ratio" ? "x" : "%"}`;
 }
 
-/** One entry point for table cells. */
+/**
+ * Exact decimal string of a canonical numeric value (shortest round-trip form of the
+ * JSON number, exponent expanded) so unit conversion shifts the value itself, not a
+ * rounded display string.  Non-finite input has no decimal form.
+ */
+export function decimalFromNumber(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const text = String(value);
+  const match = /^(-?)(\d+)(?:\.(\d+))?e([+-]\d+)$/i.exec(text);
+  if (!match) return text;
+  const [, sign, whole, fraction = "", exponent] = match;
+  const shifted = shiftDecimal(whole, fraction, Number(exponent));
+  return `${sign}${shifted.integer}${shifted.fraction ? `.${shifted.fraction}` : ""}`;
+}
+
+/** Money from the canonical numeric value (preferred over display text, which is already rounded). */
+export function formatMoneyValue(value: number | null | undefined, base: DisplayUnit, display: DisplayUnit, precision: number): string {
+  const decimal = decimalFromNumber(value);
+  return decimal === null ? UNAVAILABLE_TEXT : formatMoneyText(decimal, base, display, precision);
+}
+
+/**
+ * One entry point for table cells.  Money uses the canonical numeric `value` when the
+ * projection supplies it (full precision), else the canonical display text; ratios and
+ * percentages always show the server-formatted text (canonical precision).  A cell whose
+ * canonical value is absent is unavailable, never zero.
+ */
 export function formatStatementCell(
   text: string | null | undefined,
   format: RowFormat,
   display: DisplayUnit,
   precision: number,
+  value?: number | null,
 ): string {
   if (format.kind === "unspecified") return (text ?? "").trim() ? String(text).trim() : UNAVAILABLE_TEXT;
-  return format.kind === "money"
-    ? formatMoneyText(text, format.base, display, precision)
-    : formatRatioText(text, format.kind);
+  if (format.kind === "money") {
+    if (value === null) return UNAVAILABLE_TEXT;
+    if (typeof value === "number") return formatMoneyValue(value, format.base, display, precision);
+    return formatMoneyText(text, format.base, display, precision);
+  }
+  return formatRatioText(text, format.kind);
 }
 
 /** Unit label shown next to a row/column header (never claims a unit for ratios). */

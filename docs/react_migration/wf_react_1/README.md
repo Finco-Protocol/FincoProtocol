@@ -42,15 +42,11 @@ cross-referenced by the reviewer; each row names the observed defect so the mapp
 | E2 | Facility selector always offered "Mezzanine" for aggregate debt | **Resolved** | selector built from persisted facility keys, hidden when single |
 | E3 | Responsive coverage | **Resolved** | desktop / tablet / mobile no-overflow tests + screenshots |
 
-### Requires pending #376 integration (recorded, **not** edited here)
+### Post-#376 status (Correction B)
 
-| Item | Shared file(s) | Needed change |
-|---|---|---|
-| Per-row canonical unit metadata in the statements projection (currently only the sheet's first-row unit survives; ratios are classified by label fallback) | `app/v2/react_workspace_router.py` (`_sheet_from_tables`, `_row_texts`) | pass each row's `unit` (and cell `v`) through; the React side already reads `row.unit` first (`resolveRowFormat`) |
-| Numeric `v` for statement cells (chart geometry currently parses the authoritative display text) | same router | add `v` beside `text` |
-| Financing view developer-facing helper text (e.g. "Persisted via inputs_section form … PARTIAL path") | `frontend/src/app/ux040506Views.tsx` | presentation copy only |
-| Run history "Scenario —" column | `ux040506Views.tsx` / router | read scenario label |
-| Bundle | `static/react/finco-react.js` | **rebuild after ordinary merge of #376** (minified single line; any textual conflict is resolved by rebuilding, never by hand) |
+#376 is merged (main `7e0cf17`). The deferred row-unit metadata is now integrated (see Correction B). Still open and
+**not** part of WF-React-1: the Financing view's developer-facing helper text and the Run-history "Scenario" column
+(`frontend/src/app/ux040506Views.tsx`, WF-React-2 surface scope).
 
 ### Belongs to WF-React-2
 
@@ -95,8 +91,9 @@ Screenshots (real persisted Run): `screenshots/{desktop,mobile}-{library,results
 
 ## Boundaries honoured
 
-* No edits to `app/v2/react_workspace_router.py`, `frontend/src/app/api.ts`, `frontend/src/app/types.ts`,
-  `frontend/src/app/ux040506Views.tsx` (owned by #376). Clone/Run contracts untouched (`createWorkingCopy`/`runModel`
+* Original WF-React-1 commits did not edit `app/v2/react_workspace_router.py`, `frontend/src/app/api.ts`,
+  `frontend/src/app/ux040506Views.tsx` (owned by #376 at the time); Correction B edits the router (additive row
+  metadata) and `types.ts` after #376 merged. Clone/Run contracts untouched (`createWorkingCopy`/`runModel`
   callers unchanged).
 * Canonical engine, Run identity, CAS, ownership and protected-reference paths untouched; no backend change.
 * `static/react/finco-react.{js,css}` rebuilt from this source with `npm run build` (CI bundle-identity gate); it must be
@@ -164,3 +161,54 @@ edited here): in `_sheet_from_tables` / `_debt_sheet` pass each canonical row's 
 and add the numeric cell value beside the text (`_row_texts` -> `{text, v}`); the React side already reads
 `row.unit` first, so label inference then disappears for every row with no other change. Chart geometry currently
 parses the authoritative display text; with `v` it would use the numeric value.
+
+## Correction B (PR #377) — post-#376 sync, canonical row units, Node 18
+
+### Normal merge
+`main` (`7e0cf17`, #376 merged) was merged into the #377 branch with an ordinary two-parent merge commit (no rebase,
+squash, cherry-pick or force push). The only textual conflict was the generated `static/react/finco-react.js`; it was
+resolved by building the production bundle from the merged TypeScript source, not by choosing a side or editing minified
+JavaScript. `tests/test_model_workspace_consolidation_browser.py`, `api.ts`, `types.ts`, `ux040506Views.tsx` and the
+workspace router auto-merged. The merged source already carries #376's Run `csrf_token` in `run_contract` (consumed by
+`RunsView`) and the operation-scoped Library clone token (`library.csrf_token`, consumed by `LibraryView`); no
+security-owned or pinned source was modified.
+
+### Canonical row-unit integration (replaces the label-inference limitation)
+`react_workspace_router._sheet_from_tables`, `_debt_sheet` (+ new `_row_values`) now forward, per row and from the
+canonical `build_output_workspace` projection itself:
+
+| Field | Source | Notes |
+|---|---|---|
+| `unit` | row `unit` (`keur`, `x`) | takes precedence over every inference |
+| `model_v` / `annual_v` | cell `v` | aligned 1:1 with `model` / `annual`; `null` = not persisted |
+| `model` / `annual` | cell `text` or `—` | unchanged server display text |
+| sheet `units` | sorted distinct row units | sheet `unit` kept for compatibility |
+
+`annual_v` is aligned with the annual-table columns by canonical row key; a missing annual counterpart is `—` / `null`.
+React: `types.ts` (`StatementRowPayload`), `adapters.ts`, `statementContract.ts`, `StatementWorkbook.tsx` and
+`FinancialResults.tsx` read `unit` first, convert **money from the canonical numeric value** (exact decimal of the JSON
+number; display text is already rounded to 2 decimals and can differ at midpoints), keep ratios/percentages on canonical
+text precision, render `null` as `—` (never zero), and drive chart geometry from `v` (display-text parsing remains only
+as a legacy-payload fallback). Every row of all six destinations resolves as `canonical-row-unit` (`data-unit-source`);
+the previous label-dependent rows (`cfads.dscr`, `debt.dscr`) no longer exist.
+
+Evidence:
+* `tests/test_model_react_wf1_unit_integrity_v1.py` — spies the canonical projection on a real Run and asserts, for every
+  row of the six destinations: API `unit` == canonical unit, classification `canonical-row-unit`, `model_v`/`annual_v`
+  == canonical cell `v`, text aligned, annual/model period counts aligned, unavailable == `—`/`null`; classifier executed
+  under Node 18.19.1.
+* Browser `test_statement_units_ratios_negatives_and_rounding_match_canonical_api` — same Run, all six destinations,
+  model + annual views, EUR/kEUR/mEUR x 0/3 decimals: > 5,000 rendered cells compared with an independent Decimal oracle
+  on the canonical value (monetary), canonical text + `x` (ratios), `—` (unavailable), zero, negative.
+* `units.test.mjs` (15 tests): value-over-text precedence (e.g. `1,232.50` text vs `1232.4951` value -> mEUR 1.232),
+  exponent forms, null/zero/negative, ratio/percent text precision.
+
+### Node 18 CI failure (worker-0 / worker-3)
+Run `40236165208` workers 0 and 3 failed `test_every_statement_row_classification_matches_the_canonical_row_unit` and
+`test_unit_conversion_node_suite_passes` with `ERR_UNKNOWN_FILE_EXTENSION` (CI runtime Node `18.19.1` cannot import
+`.ts`; local Node 22 strips types). Fix: `frontend/transfer/scripts/loadUnits.mjs` transpiles the production
+`units.ts` with the repository's own `typescript` package (already installed/symlinked by CI for typecheck and graph
+tests; no new dependency, no network) into a temporary ES module and imports it; the node suite and the Python
+integrity test both use it. Reproduced and verified on a real Node 18.19.1 binary. Other `.ts`-importing `.mjs`
+tests (`outcomeIntegrity`, `statementContract`, …) are not executed by any pytest/CI selection; they remain
+development-time Node 22 checks.

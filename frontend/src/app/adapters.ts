@@ -3,6 +3,7 @@
 // calculation, aggregation or reconciliation happens here.
 
 import type {
+  StatementRowPayload,
   StatementsPayload,
   WorkspacePayload,
 } from "./types";
@@ -14,9 +15,22 @@ import type {
 
 const SHEET_IDS: StatementSheetId[] = ["pl", "balance", "cashflow", "cfads", "debt", "sponsor"];
 
+type Row = StatementWorkbookSnapshot["sheets"][number]["rows"][number];
+
+/** Canonical row -> workbook row: unit and numeric values travel with the display text. */
+function toStatementRow(row: StatementRowPayload): Row {
+  const { model_v, annual_v, unit, ...rest } = row;
+  return {
+    ...rest,
+    kind: row.kind === "metric" || row.kind === "section" ? row.kind : "detail",
+    unit: unit ?? undefined,
+    modelValues: model_v,
+    annualValues: annual_v && annual_v.length ? annual_v : undefined,
+  };
+}
+
 export function toStatementSnapshot(payload: StatementsPayload): StatementWorkbookSnapshot | null {
   if (!payload.snapshot) return null;
-  type Row = StatementWorkbookSnapshot["sheets"][number]["rows"][number];
   const sheets = payload.snapshot.sheets
     .filter((sheet) => (SHEET_IDS as string[]).includes(sheet.id))
     .map((sheet) => ({
@@ -25,17 +39,15 @@ export function toStatementSnapshot(payload: StatementsPayload): StatementWorkbo
       // The persisted "sponsor" destination is the Run's distribution waterfall;
       // label it for what it contains (sponsor cash flows are shown in Results).
       label: sheet.id === "sponsor" ? "Distributions" : sheet.label,
-      rows: sheet.rows.map((row): Row => ({
-        ...row,
-        kind: row.kind === "metric" || row.kind === "section" ? row.kind : "detail",
-      })),
+      rows: sheet.rows.map(toStatementRow),
     }));
   return {
     annualPeriods: payload.snapshot.annualPeriods,
     modelPeriods: payload.snapshot.modelPeriods,
     periodBands: payload.snapshot.periodBands,
     sheets,
-    debtRowsByFacility: payload.snapshot.debtRowsByFacility,
+    debtRowsByFacility: Object.fromEntries(
+      Object.entries(payload.snapshot.debtRowsByFacility).map(([key, rows]) => [key, rows.map(toStatementRow)])),
   };
 }
 

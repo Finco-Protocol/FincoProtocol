@@ -30,8 +30,8 @@ const canonicalUnitText = (row: Row, sheet: Sheet): string => {
   return format.kind === "money" ? format.base : format.kind === "ratio" ? "x" : format.kind === "percent" ? "%" : "unit unavailable";
 };
 /** Display conversion only: canonical text in the sheet's canonical unit -> chosen display unit. */
-function displayStatementValue(value: string, format: RowFormat, unit: UnitDisplay, precision: number) {
-  return formatStatementCell(value, format, unit, precision);
+function displayStatementValue(value: string, format: RowFormat, unit: UnitDisplay, precision: number, numeric?: number | null) {
+  return formatStatementCell(value, format, unit, precision, numeric);
 }
 const defaultDisplayUnit = (sheets: Sheet[]): UnitDisplay => {
   const canonical = formatFromCanonicalUnit(sheets[0]?.unit);
@@ -191,6 +191,7 @@ function StatementTable({
           {rows.map((item, rowIndex) => {
           const isOpen = Boolean(item.children && expanded[`${sheet.id}:${item.id}`]);
           const values = view === "annual" ? item.annual : item.model;
+          const numericValues = view === "annual" ? item.annualValues : item.modelValues;
           const format = rowFormatOf(item, sheet);
           const rowUnit = formatUnitLabel(format, unit);
           const traceOpen = traceId === item.id;
@@ -233,7 +234,7 @@ function StatementTable({
                   tabIndex={statementCellTabIndex(item.id, index, traceId, tracePeriod, rowIndex === 0 && index === 0)}
                   data-statement-row={item.id}
                   data-statement-col={index}
-                  aria-label={`${item.label}, ${periods[index]}, ${displayStatementValue(value, format, unit, precision)} ${rowUnit}. ${dataOrigin === "synthetic-demo" ? "Open synthetic source trace." : dataOrigin === "canonical-run" ? "Show canonical source." : "Open display navigation reference."}`}
+                  aria-label={`${item.label}, ${periods[index]}, ${displayStatementValue(value, format, unit, precision, numericValues?.[sourceIndex])} ${rowUnit}. ${dataOrigin === "synthetic-demo" ? "Open synthetic source trace." : dataOrigin === "canonical-run" ? "Show canonical source." : "Open display navigation reference."}`}
                   onClick={() => { setTraceId(item.id); setTracePeriod(index); }}
                   onKeyDown={event => {
                     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -245,7 +246,7 @@ function StatementTable({
                     setTracePeriod(nextColumn);
                     event.currentTarget.closest("table")?.querySelector<HTMLButtonElement>(`button[data-statement-row="${targetRowId}"][data-statement-col="${nextColumn}"]`)?.focus();
                   }}
-                >{displayStatementValue(value, format, unit, precision)}</button>
+                 data-canonical={value} data-canonical-v={numericValues?.[sourceIndex] ?? undefined}>{displayStatementValue(value, format, unit, precision, numericValues?.[sourceIndex])}</button>
               </td>;
               })}
             </tr>
@@ -254,7 +255,7 @@ function StatementTable({
                 <div className="fm-sw-trace">
                   <div className="fm-sw-trace-copy">
                     <strong>CANONICAL SOURCE · {item.label} · {periods[tracePeriod]}</strong>
-                    <span className="fm-sw-trace-code">{displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision)} {rowUnit} · persisted value {statementCellText(values[periodIndexes[tracePeriod]])} {canonicalUnitText(item, sheet)}</span>
+                    <span className="fm-sw-trace-code">{displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision, numericValues?.[periodIndexes[tracePeriod]])} {rowUnit} · persisted value {statementCellText(values[periodIndexes[tracePeriod]])} {canonicalUnitText(item, sheet)}</span>
                     <span>Statement: {sheet.title} · persisted Run {runId}. Unit conversion and rounding are display-only.</span>
                   </div>
                   <button className="fm-sw-trace-close" type="button" onClick={() => setTraceId(null)}>Close</button>
@@ -266,7 +267,7 @@ function StatementTable({
                 <div className="fm-sw-trace">
                   <div className="fm-sw-trace-copy">
                     <strong>SYNTHETIC SOURCE TRACE · {item.label} · {periods[tracePeriod]}</strong>
-                    <span className="fm-sw-trace-code">{formatExpressionLabel(item.label)} = fixed illustrative value · {displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision)} {rowUnit}</span>
+                    <span className="fm-sw-trace-code">{formatExpressionLabel(item.label)} = fixed illustrative value · {displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision, numericValues?.[periodIndexes[tracePeriod]])} {rowUnit}</span>
                     <span>Related section: {source.label} · Example reference DEMO-FIXED-018 · {view === "annual" ? "Annual example" : "Selected model periods"}.</span>
                     <span><strong>Calculation link unavailable.</strong> This opens a related section only; it does not show how the displayed value was calculated.</span>
                   </div>
@@ -497,7 +498,7 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
                   id: `statement-${sheetId}-${selectedRow.id}-${tracePeriod}`,
                   kind: "Statement row",
                   title: selectedRow.label,
-                  value: displayStatementValue(rowValues[tracePeriod] || "—", rowFormatOf(selectedRow, activeSheet), unit, precision),
+                  value: displayStatementValue(rowValues[tracePeriod] || "—", rowFormatOf(selectedRow, activeSheet), unit, precision, (view === "annual" ? selectedRow.annualValues : selectedRow.modelValues)?.[tracePeriod]),
                   unit: activeSheet.unit,
                   period,
                   basis: dataOrigin === "synthetic-demo"
