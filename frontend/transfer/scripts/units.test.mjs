@@ -2,10 +2,12 @@
 // Pure presentation checks: exact decimal-string scaling, no binary float drift.
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  classifyRowUnit, formatMetricDisplay, formatMoneyText, formatRatioText, formatStatementCell, formatUnitLabel, plotValue,
-  resolveRowFormat, sheetUnitLabel,
-} from "../../src/app/units.ts";
+import { loadUnits } from "./loadUnits.mjs";
+
+const {
+  classifyRowUnit, formatMetricDisplay, formatMoneyText, formatRatioText, formatStatementCell, formatUnitLabel,
+  plotValue, resolveRowFormat, sheetUnitLabel,
+} = await loadUnits();
 
 test("kEUR canonical text converts exactly to EUR and mEUR", () => {
   assert.equal(formatMoneyText("1,232.50", "kEUR", "kEUR", 1), "1,232.5");

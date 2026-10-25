@@ -81,8 +81,9 @@ def _canonical_units(outputs):
 
 def _classify(payload):
     script = """
-import { classifyRowUnit } from './frontend/src/app/units.ts';
+import { loadUnits } from './frontend/transfer/scripts/loadUnits.mjs';
 import fs from 'node:fs';
+const { classifyRowUnit } = await loadUnits();
 const payload = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
 const out = [];
 for (const sheet of payload.snapshot.sheets) for (const row of sheet.rows) {
