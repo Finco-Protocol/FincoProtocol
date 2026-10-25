@@ -291,7 +291,7 @@ export function RunsView({ project, contentHash, workbookVersion, onRan }: {
     if (!runsContract || !contentHash || !workbookVersion) return;
     setInFlight(true);
     setStatus(null);
-    const result = await runModel({ runUrl: runsContract.url, project, contentHash, workbookVersion });
+    const result = await runModel({ runUrl: runsContract.url, csrfToken: runsContract.csrf_token, project, contentHash, workbookVersion });
     setInFlight(false);
     if ("kind" in result) {
       setStatus({ tone: "conflict", text: result.message });

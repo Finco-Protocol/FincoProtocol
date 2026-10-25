@@ -1,6 +1,8 @@
 """WF-09 candidate planner: catalogue, timeline, route safety and the hard 'no write / no Run' guarantee."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 from decimal import Decimal
 
@@ -229,7 +231,7 @@ def test_only_the_reviewed_save_route_exists_and_the_planner_package_holds_no_wr
 def test_preview_leaves_committed_runs_and_history_immutable(env):
     project = env.create("solar")
     page = env.client.get("/v2/workbook", params={"project": project.project_code})
-    assert env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    assert post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                            data={"project": project.project_code, **tokens(page.text)}).status_code == 200
     history = [h.to_dict() for h in get_run_history(OWNER, project.project_id)]
     before = evidence(project)

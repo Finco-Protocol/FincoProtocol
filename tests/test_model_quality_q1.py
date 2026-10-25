@@ -6,6 +6,8 @@ executes the financial engine during evaluation.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import ast
 import copy
 import dataclasses
@@ -829,7 +831,7 @@ def test_maturity_authority_is_bound_to_the_committed_run_and_history(seeded_db)
     page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
     h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
     v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
-    resp = client.post("/v2/workbook/run", data={"project": record.project_code, "content_hash": h, "workbook_version": v},
+    resp = post_valid_csrf(client, "/v2/workbook/run", data={"project": record.project_code, "content_hash": h, "workbook_version": v},
                        cookies=cookies, headers={"HX-Request": "true"})
     assert resp.status_code == 200
     ws = get_workspace_state(user, record.project_id)

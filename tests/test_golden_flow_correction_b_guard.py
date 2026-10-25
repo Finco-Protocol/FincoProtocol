@@ -31,10 +31,16 @@ def digest(tree):
 
 def normalized():
     tree = ast.parse(SOURCE.read_text(encoding="utf-8"))
-    kept, removed = [], {"import_pytest": 0, "fixture": 0, "param": 0}
+    kept, removed = [], {"import_pytest": 0, "fixture": 0, "param": 0,
+                         "csrf_helper_import": 0, "csrf_run_calls": 0}
     for node in tree.body:
         if isinstance(node, ast.Import) and [a.name for a in node.names] == ["pytest"]:
             removed["import_pytest"] += 1
+            continue
+        if isinstance(node, ast.ImportFrom) and node.module == "tests.run_clone_csrf":
+            assert len(node.names) == 1 and node.names[0].name == "post_valid_csrf" and not node.names[0].asname, (
+                "only the reviewed CSRF transport helper may be imported")
+            removed["csrf_helper_import"] += 1
             continue
         if isinstance(node, ast.FunctionDef) and node.name == FIXTURE:
             removed["fixture"] += 1
@@ -45,12 +51,36 @@ def normalized():
             removed["param"] += 1
         kept.append(node)
     tree.body = kept
+
+    # Restore ONLY the two approved positive transport call ASTs to their
+    # original client.post form before applying the unchanged original digest.
+    # No assertion, financial value, CAS condition or Run counter is masked.
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id not in ("first_run", "rerun"):
+            continue
+        call = node.value
+        assert isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "post_valid_csrf", (
+            "approved Run assignment must use only the explicit CSRF helper")
+        assert len(call.args) >= 2 and isinstance(call.args[0], ast.Name) and call.args[0].id == "client", (
+            "the CSRF helper must receive the existing client")
+        assert isinstance(call.args[1], ast.Constant) and call.args[1].value == "/v2/workbook/run", (
+            "the existing canonical Run route must remain unchanged")
+        node.value = ast.Call(
+            func=ast.Attribute(value=ast.Name(id="client", ctx=ast.Load()), attr="post", ctx=ast.Load()),
+            args=call.args[1:], keywords=call.keywords)
+        removed["csrf_run_calls"] += 1
+    assert not any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "post_valid_csrf"
+                   for n in ast.walk(tree)), "unexpected extra CSRF helper call"
     return tree, removed
 
 
 def test_only_the_disclosed_precondition_differs_from_the_original_module():
     tree, removed = normalized()
-    assert removed == {"import_pytest": 1, "fixture": 1, "param": 1}
+    assert removed == {"import_pytest": 1, "fixture": 1, "param": 1,
+                       "csrf_helper_import": 1, "csrf_run_calls": 2}
     assert digest(tree) == ORIGINAL_AST_SHA256
 
 

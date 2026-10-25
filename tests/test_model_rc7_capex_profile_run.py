@@ -2,6 +2,8 @@
 funding schedule and IDC -> Reset restores the default Run exactly.  No mocked engine, no mocked persistence."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import json
 
 import pytest
@@ -37,7 +39,7 @@ def _ws(project):
 def _run(env, project):
     page = env.client.get("/v2/workbook", params={"project": project.project_code})
     assert page.status_code == 200
-    response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                data={"project": project.project_code, **tokens(page.text)})
     return response
 

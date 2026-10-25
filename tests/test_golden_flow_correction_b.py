@@ -1,6 +1,8 @@
 """Golden Flow Correction B: composite identity is runtime freshness authority."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 import uuid
 from types import SimpleNamespace
@@ -138,7 +140,7 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
             assert created.status_code == 200, created.text
             create_hash = _hashes(created.text)[-1]
 
-            first_run = client.post(
+            first_run = post_valid_csrf(client,
                 "/v2/workbook/run",
                 data={
                     "project": code,
@@ -222,7 +224,7 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
             assert "Working changes pending" in reopened.text
             assert calls == calls_before_mutation
 
-            rerun = client.post(
+            rerun = post_valid_csrf(client,
                 "/v2/workbook/run",
                 data={
                     "project": code,

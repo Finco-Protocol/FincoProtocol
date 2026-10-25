@@ -3,6 +3,8 @@ header, page title, Project library card and the field itself agree after Save, 
 and committed Run History are not touched; a stale or invalid rename changes neither side."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import json
 import re
 
@@ -113,7 +115,7 @@ def test_a_rename_never_touches_committed_run_history_or_other_owners(env):
     other = _project(env, "sc34-id-6", name="Other Owner Project")
     _login(env, "sc34-id-5")
     ch, wv, _ = _identity(env, rec)
-    run = env.post("/v2/workbook/run", headers=HTMX, data={"project": rec.project_code, "workbook_version": wv, "content_hash": ch})
+    run = post_valid_csrf(env, "/v2/workbook/run", headers=HTMX, data={"project": rec.project_code, "workbook_version": wv, "content_hash": ch})
     assert run.status_code == 200, run.text
     before = json.dumps(get_run_history("sc34-id-5", rec.project_id), default=str, sort_keys=True)
     assert before != "[]"

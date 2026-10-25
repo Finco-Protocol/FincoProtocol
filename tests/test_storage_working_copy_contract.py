@@ -43,6 +43,8 @@ SOLAR/WIND REGRESSION
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -232,7 +234,7 @@ def test_solar_wind_clone_succeeds(client_contract, source):
     from app.persistence.projects_repository import get_reference_by_template_source
     reference = get_reference_by_template_source(source)
     user_id, cookies = _cookie()
-    response = client_contract.post(
+    response = post_valid_csrf(client_contract,
         f"/library/clone/{reference.project_id}",
         cookies=cookies,
         follow_redirects=False,
@@ -251,7 +253,7 @@ def test_storage_clone_returns_400_zero_rows(client_contract, htmx):
     reference = get_reference_by_template_source("generic_storage_reference")
     assert reference is not None
     user_id, cookies = _cookie()
-    response = client_contract.post(
+    response = post_valid_csrf(client_contract,
         f"/library/clone/{reference.project_id}",
         cookies=cookies,
         headers={"HX-Request": "true"} if htmx else {},
@@ -272,7 +274,7 @@ def test_storage_clone_leaves_reference_unchanged(client_contract):
     from app.persistence.projects_repository import get_reference_by_template_source
     reference = get_reference_by_template_source("generic_storage_reference")
     _, cookies = _cookie()
-    client_contract.post(
+    post_valid_csrf(client_contract,
         f"/library/clone/{reference.project_id}",
         cookies=cookies,
         follow_redirects=False,
@@ -576,7 +578,7 @@ def test_all_user_owned_storage_roles_fail_closed(client_contract, project_role,
     get_response = client_contract.get(f"/v2/workbook?project={code}", cookies=cookies)
     assert get_response.status_code == 200
     assert 'data-testid="unsupported-runtime-page"' in get_response.text
-    run_response = client_contract.post(
+    run_response = post_valid_csrf(client_contract,
         "/v2/workbook/run",
         cookies=cookies,
         data={"project": code, "content_hash": "0" * 64, "workbook_version": "2"},
@@ -594,7 +596,7 @@ def test_all_user_owned_storage_roles_fail_closed(client_contract, project_role,
 def test_storage_working_copy_run_returns_409(client_contract, storage_working_copy, htmx):
     """POST /v2/workbook/run for Storage working copy returns 409 for both HTMX and non-HTMX."""
     user_id, cookies, record = storage_working_copy
-    response = client_contract.post(
+    response = post_valid_csrf(client_contract,
         "/v2/workbook/run",
         cookies=cookies,
         headers={"HX-Request": "true"} if htmx else {},
@@ -626,7 +628,7 @@ def test_storage_working_copy_run_zero_engine_invocations(client_contract, stora
 
     monkeypatch.setattr(project_runner, "run_project", spy_run_project)
     user_id, cookies, record = storage_working_copy
-    client_contract.post(
+    post_valid_csrf(client_contract,
         "/v2/workbook/run",
         cookies=cookies,
         data={
@@ -648,7 +650,7 @@ def test_storage_working_copy_run_creates_no_last_run_snapshot(client_contract, 
             "SELECT last_runtime_snapshot_id, last_runtime_summary_json FROM workspace_states WHERE project_id=?",
             (record.project_id,),
         ).fetchone()
-    client_contract.post(
+    post_valid_csrf(client_contract,
         "/v2/workbook/run",
         cookies=cookies,
         data={
@@ -679,7 +681,7 @@ def test_solar_wind_workbook_opens_without_regression(client_contract, source):
     assert reference is not None
     _, cookies = _cookie()
     # Clone to a working copy first
-    clone_resp = client_contract.post(
+    clone_resp = post_valid_csrf(client_contract,
         f"/library/clone/{reference.project_id}",
         cookies=cookies,
         follow_redirects=False,
@@ -701,7 +703,7 @@ def test_solar_wind_workbook_opens_without_regression(client_contract, source):
     hash_match = re.search(r'name="content_hash"\s+value="([^"]+)"', html)
     version_match = re.search(r'name="workbook_version"\s+value="([^"]+)"', html)
     assert hash_match and version_match
-    run_response = client_contract.post(
+    run_response = post_valid_csrf(client_contract,
         "/v2/workbook/run",
         cookies=cookies,
         data={

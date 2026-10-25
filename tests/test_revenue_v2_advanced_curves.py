@@ -4,6 +4,8 @@ All fixture prices and project identities are synthetic. This suite supplements
 rather than changes WF07/F0/F3.8 tests or financial tolerances.
 """
 from __future__ import annotations
+
+from tests.run_clone_csrf import post_valid_csrf
 import copy
 import json
 from decimal import Decimal
@@ -361,7 +363,7 @@ def test_v2_curve_last_run_and_export_are_immutable_after_unsaved_change(env, mo
     assert save(payload).status_code == 200
     raw_original = ws().draft_snapshot[SNAPSHOT_KEY]
     assert json.loads(raw_original) == payload
-    run = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    run = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                           data={**project, **tokens(page())})
     assert 'id="v2-sheet-returns"' in run.text, run.text[:2000]
     assert not ws().dirty

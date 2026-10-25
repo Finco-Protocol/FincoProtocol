@@ -1,6 +1,8 @@
 """Golden Flow Correction A: Inputs Slice 1 Save preserves Last Run authority."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import uuid
 from unittest.mock import patch
 
@@ -54,7 +56,7 @@ def test_inputs_slice1_htmx_save_uses_resolved_owner_and_preserves_last_run():
             project_id=record.project_id,
             workbook_version=WORKBOOK.version,
         )
-        run_response = client.post(
+        run_response = post_valid_csrf(client,
             "/v2/workbook/run",
             data={
                 "project": code,

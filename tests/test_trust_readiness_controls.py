@@ -296,6 +296,14 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
     from tests.rc7b_quarterly_csrf_successor import ROUTER as QUARTERLY_ROUTER, current_quarterly_csrf_successor_valid
     if current_quarterly_csrf_successor_valid():
         expected = expected | {QUARTERLY_ROUTER}
+    # RC-SEC: recognize the new Clone validator ONLY while the exact reviewed
+    # Run/Clone security successor (including protected Run handler) holds.
+    from tests.rc_sec_csrf_successor import (CLONE_ROUTER as RC_SEC_ROUTER,
+                                            RUN_HANDLER as RC_SEC_RUN_HANDLER,
+                                            current_rc_sec_csrf_successor_valid)
+    rc_sec_valid = current_rc_sec_csrf_successor_valid()
+    if rc_sec_valid:
+        expected = expected | {RC_SEC_ROUTER}
     assert users == expected
     import ast
     tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))
@@ -306,7 +314,8 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
     }
     # Capital Stack protection applies only to its exact instrument field.
     # Other workbook fields and known POST coverage gaps remain unchanged.
-    assert protected == {"v2_revenue_contracts", "v2_revenue_commercial_stress", "v2_workbook_update"}
+    assert protected == ({"v2_revenue_contracts", "v2_revenue_commercial_stress", "v2_workbook_update"}
+                         | ({RC_SEC_RUN_HANDLER} if rc_sec_valid else set()))
     update = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                   and node.name == "v2_workbook_update")
     gate = next(node for node in update.body if isinstance(node, ast.If)

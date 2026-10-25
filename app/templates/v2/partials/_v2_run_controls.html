@@ -3,7 +3,7 @@
   Always carries the current composite content_hash so the Run button submits
   the right identity.
 
-  Context vars: project_code, workbook_version, content_hash
+  Context vars: project_code, workbook_version, content_hash, run_csrf_token
 #}
 <form method="post" action="/v2/workbook/run"
       id="v2-canonical-run-form"
@@ -11,6 +11,7 @@
       hx-swap="none"
       hx-disabled-elt="find button"
       class="v2-run-form">
+  <input type="hidden" name="run_csrf_token" value="{{ run_csrf_token }}">
   <input type="hidden" name="project" value="{{ project_code }}">
   <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
   <input type="hidden" name="content_hash" value="{{ content_hash }}">

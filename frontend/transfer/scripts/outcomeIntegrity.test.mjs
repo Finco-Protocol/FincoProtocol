@@ -134,15 +134,16 @@ test("1c. clean redirect without confirmable evidence is UNKNOWN, not success", 
 
 test("7. valid Run: committed only when persisted Run History grows", async () => {
   const calls = withFetch([RUNS(1), CLEAN_WORKBOOK(), RUNS(2)]);
-  const result = await runModel({ runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
+  const result = await runModel({ csrfToken: "run-token", runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
   assert.equal(result.ok, true);
   assert.equal(calls.length, 3, "snapshot + canonical POST + reconciliation");
   assert.equal(calls[1].url, "/v2/workbook/run");
+  assert.equal(new URLSearchParams(calls[1].body).get("csrf_token"), "run-token");
 });
 
 test("8. expired session during Run is NEVER a success", async () => {
   withFetch([RUNS(0), LOGIN_PAGE()]);
-  const result = await runModel({ runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
+  const result = await runModel({ csrfToken: "run-token", runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
   assert.equal(result.ok, false);
   assert.match(result.message, /session has expired/);
   assert.match(result.message, /No Run was started/);
@@ -150,27 +151,27 @@ test("8. expired session during Run is NEVER a success", async () => {
 
 test("9. Run error redirect (v2_err) is a refusal", async () => {
   withFetch([RUNS(0), ERR_REDIRECT("Unsupported runtime.")]);
-  const result = await runModel({ runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
+  const result = await runModel({ csrfToken: "run-token", runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
   assert.equal(result.ok, false);
   assert.match(result.message, /Unsupported runtime/);
 });
 
 test("10. unexpected final destination during Run is UNKNOWN", async () => {
   withFetch([RUNS(0), fakeResponse({ url: "http://test.local/somewhere/else" })]);
-  const result = await runModel({ runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
+  const result = await runModel({ csrfToken: "run-token", runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
   assert.equal(result.kind, "unknown");
 });
 
 test("11. clean Run redirect WITHOUT a history growth is UNKNOWN, never success", async () => {
   withFetch([RUNS(1), CLEAN_WORKBOOK(), RUNS(1)]);
-  const result = await runModel({ runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
+  const result = await runModel({ csrfToken: "run-token", runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
   assert.equal(result.kind, "unknown");
   assert.match(result.message, /do not re-run/);
 });
 
 test("11b. network loss during Run is UNKNOWN and never retried", async () => {
   const calls = withFetch([RUNS(0), new Error("connection lost")]);
-  const result = await runModel({ runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
+  const result = await runModel({ csrfToken: "run-token", runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
   assert.equal(result.kind, "unknown");
   assert.equal(calls.length, 2, "snapshot + POST only; no automatic retry of an ambiguous Run");
 });
@@ -227,4 +228,13 @@ test("13d. cost batch network loss is UNKNOWN", async () => {
 test("after every test fetch is restored", async (t) => {
   t.after(() => { globalThis.fetch = REAL_FETCH; });
   assert.ok(REAL_FETCH);
+});
+
+
+test("Run CSRF refusal is explicit failure and never automatically retried", async () => {
+  const calls = withFetch([RUNS(0), fakeResponse({status: 403, url: "http://test.local/v2/workbook/run"})]);
+  const result = await runModel({ csrfToken: "invalid", runUrl: "/v2/workbook/run", project: "p", contentHash: "h", workbookVersion: "v" });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /rejected before execution/);
+  assert.equal(calls.length, 2);
 });

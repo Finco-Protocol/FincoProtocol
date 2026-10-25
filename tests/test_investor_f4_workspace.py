@@ -1,4 +1,6 @@
 """Real authorized CAS, canonical Run, history/export and stale lifecycle."""
+
+from tests.run_clone_csrf import post_valid_csrf
 from copy import deepcopy
 from io import BytesIO
 import json
@@ -203,7 +205,7 @@ def test_failed_funding_reconciliation_cannot_commit_a_run(env):
     before, _ = run(env, record)
     assert save(env, record, document()).status_code == 200
     page_html = env.client.get('/v2/workbook', params={'project': record.project_code}).text
-    response = env.client.post('/v2/workbook/run', headers={'HX-Request': 'true'},
+    response = post_valid_csrf(env.client, '/v2/workbook/run', headers={'HX-Request': 'true'},
         data=dict(project=record.project_code, **tokens(page_html)))
     assert "No Run was committed" in response.text
     after = get_workspace_state("decision-user", record.project_id)
@@ -320,7 +322,7 @@ def test_agreement_edit_during_run_rejects_commit_without_mutating_last_run(env,
 
     monkeypatch.setattr(f4, 'allocate_run', concurrent_edit)
     html = env.client.get('/v2/workbook', params={'project': record.project_code}).text
-    response = env.client.post('/v2/workbook/run', headers={'HX-Request': 'true'},
+    response = post_valid_csrf(env.client, '/v2/workbook/run', headers={'HX-Request': 'true'},
                               data=dict(project=record.project_code, **tokens(html)))
     assert response.status_code == 200
     after = get_workspace_state('decision-user', record.project_id)

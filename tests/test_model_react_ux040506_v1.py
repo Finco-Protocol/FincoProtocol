@@ -19,6 +19,8 @@ existing canonical writer route.  These tests pin:
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 from types import SimpleNamespace
 
 import pytest
@@ -89,7 +91,7 @@ def test_runs_projection_lists_committed_history(env, monkeypatch):
     tokens = {k: part for k, part in
               [(k, __import__("re").search(f'name="{k}" value="([^"]*)"', page.text).group(1))
                for k in ("content_hash", "workbook_version")]}
-    run_response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                    data=dict(project=record.project_code, **tokens))
     assert run_response.status_code == 200
     assert run_response.headers.get("X-Finco-Run-Outcome") != "FAILED"

@@ -12,6 +12,8 @@ the deployed default (canonical) behaviour is unchanged for the same project.
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import dataclasses as dc
 from contextlib import closing
 
@@ -76,7 +78,7 @@ def workbook(tmp_path, monkeypatch):
 
         def run(self):
             _, data = self.tokens()
-            return self.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data=data)
+            return post_valid_csrf(self.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=data)
 
         def update(self, field, value):
             _, data = self.tokens()

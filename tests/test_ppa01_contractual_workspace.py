@@ -1,4 +1,6 @@
 """Dated PPA Save/Scenario/Run/history integration, without a second financial writer."""
+
+from tests.run_clone_csrf import post_valid_csrf
 import copy
 from datetime import date
 from decimal import Decimal
@@ -77,7 +79,7 @@ def test_unaligned_save_and_genuine_run_refusal_preserve_last_run(env,kind):
         conn.close()
     # No successful GET is needed to prove the Run refusal for invalid persisted inputs.
     identity=assemble_consistent_for_get(OWNER,flow.record.project_id,WORKBOOK.version)
-    response=env.client.post('/v2/workbook/run',headers={'HX-Request':'true'},data={**flow.project,
+    response=post_valid_csrf(env.client, '/v2/workbook/run',headers={'HX-Request':'true'},data={**flow.project,
         'content_hash':identity.composite_hash,'workbook_version':WORKBOOK.version})
     assert response.headers.get('X-Finco-Run-Outcome')=='FAILED', response.text[:500]
     assert flow.ws().last_runtime_summary==summary

@@ -1,6 +1,8 @@
 """Q4 safety and integration checks. Real Solar/Wind lifecycle remains a release gate."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 from unittest.mock import patch
 
 import pytest
@@ -165,7 +167,7 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
         page = c.get(url, cookies=cookie(user))
         assert page.status_code == 200
         h, v = identity(page.text)
-        result = c.post("/v2/workbook/run",
+        result = post_valid_csrf(c, "/v2/workbook/run",
                         data={"project": record.project_code, "content_hash": h,
                               "workbook_version": v},
                         cookies=cookie(user), headers={"HX-Request": "true"})
@@ -337,7 +339,7 @@ def test_q4_solar_target_dscr_real_engine_effective_change(q4_http):
         return {k: re.search(r'name="' + k + r'" value="([^"]+)"', html).group(1)
                 for k in ("content_hash", "workbook_version")}
     def _run():
-        response = client.post("/v2/workbook/run", cookies=cookies(owner),
+        response = post_valid_csrf(client, "/v2/workbook/run", cookies=cookies(owner),
             headers={"HX-Request": "true"},
             data=dict(project=project.project_code, **_fields()))
         assert response.status_code == 200, response.text[:900]
@@ -455,7 +457,7 @@ def test_q4_atomic_rollback_after_base_insert_before_child_insert(q4_http):
         assert response.status_code == 200
         return {key: re.search(r'name="' + key + r'" value="([^"]+)"', response.text).group(1)
                 for key in ("content_hash", "workbook_version")}
-    run = client.post("/v2/workbook/run", cookies=cookies(user),
+    run = post_valid_csrf(client, "/v2/workbook/run", cookies=cookies(user),
                       headers={"HX-Request": "true"},
                       data=dict(project=project.project_code, **page_tokens()))
     assert run.status_code == 200

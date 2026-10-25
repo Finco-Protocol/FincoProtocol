@@ -4,6 +4,8 @@ After a successful Run every surface that states the Last Run must show the SAME
 strip and the Trust sheet. Freshness (CURRENT / STALE / NOT RUN) and integrity (PASS / FAIL / UNAVAILABLE) stay independent. Nothing is
 calculated here: the projection only arranges values the existing authorities already produced.
 """
+
+from tests.run_clone_csrf import post_valid_csrf
 import re
 
 import pytest
@@ -61,7 +63,7 @@ def test_the_trust_sheet_and_the_strip_cannot_name_an_older_run_than_the_toolbar
     with TestClient(main_web.app) as client:
         cookies = {COOKIE_NAME: create_session_token(user_id=pr.user_id, username="admin")}
         content_hash, version = _tokens(client, cookies, pr.project_code)
-        response = client.post("/v2/workbook/run", cookies=cookies, headers={"HX-Request": "true"},
+        response = post_valid_csrf(client, "/v2/workbook/run", cookies=cookies, headers={"HX-Request": "true"},
                                data={"project": pr.project_code, "content_hash": content_hash, "workbook_version": version})
     assert response.status_code == 200
     second = get_workspace_state(pr.user_id, pr.project_id)

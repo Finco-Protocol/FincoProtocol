@@ -191,6 +191,7 @@ export const fetchTrust = (project: string) =>
   withContentionRetry(() => getJson<TrustPayload>(`/v2/model-react/trust?project=${encodeURIComponent(project)}`));
 
 export interface RunModelArgs {
+  csrfToken: string;
   runUrl: string;
   project: string;
   contentHash: string;
@@ -221,6 +222,7 @@ export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
     project: args.project,
     content_hash: args.contentHash,
     workbook_version: args.workbookVersion,
+    csrf_token: args.csrfToken,
   });
   let response: Response;
   try {
@@ -237,6 +239,9 @@ export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
       message: "The Run outcome is UNKNOWN: the connection failed before a definitive response. "
         + "Reload the workspace to reconcile the persisted Last Run before running again — never re-run blindly.",
     };
+  }
+  if (response.status === 403) {
+    return { ok: false, message: "Run was rejected before execution. Reload the workspace to refresh session authorization." };
   }
   const outcome = classifyFormPostOutcome(response, "/v2/workbook");
   if (outcome.kind === "login") {

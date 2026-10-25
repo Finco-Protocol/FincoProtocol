@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import List
 
+from app.workbook.financing_csrf import issue_token as _issue_csrf_token
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -134,6 +135,7 @@ def _render_opex_sheet_with_oob(
         "project_code": project,
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
+        "run_csrf_token": _issue_csrf_token(request, project, purpose="workbook-run-v1"),
     })
     run_controls_oob = '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
     response = HTMLResponse(content=resp.body.decode() + "\n" + oob + "\n" + run_controls_oob)

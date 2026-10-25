@@ -15,6 +15,8 @@ single editable input saves exclusively through the existing canonical
 """
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 from types import SimpleNamespace
 
@@ -303,7 +305,7 @@ def test_save_after_run_classifies_last_run_stale_and_never_recomputes(env, monk
     flag_on(monkeypatch)
     record = env.create()
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    run_response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                    data=dict(project=record.project_code, **grid_tokens(page.text)))
     assert run_response.status_code == 200, run_response.text[:600]
     from app.workbook.service import WorkbookService
@@ -339,7 +341,7 @@ def test_pnl_projection_matches_canonical_persisted_evidence(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    run_response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                    data=dict(project=record.project_code, **grid_tokens(page.text)))
     assert run_response.status_code == 200, run_response.text[:600]
     from app.workbook.service import WorkbookService
@@ -375,7 +377,7 @@ def test_unavailable_values_are_never_zeros_and_period_labels_survive(env, monke
     flag_on(monkeypatch)
     record = env.create()
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    run_response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                    data=dict(project=record.project_code, **grid_tokens(page.text)))
     assert run_response.status_code == 200, run_response.text[:600]
     payload = bootstrap(env, record.project_code)
@@ -394,7 +396,7 @@ def test_input_freshness_and_run_integrity_remain_independent(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    run_response = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"},
+    run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                    data=dict(project=record.project_code, **grid_tokens(page.text)))
     assert run_response.status_code == 200, run_response.text[:600]
     payload = bootstrap(env, record.project_code)

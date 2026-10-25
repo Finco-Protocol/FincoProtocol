@@ -1,6 +1,8 @@
 """WF-07 / S7-06: the Library classifies canonical references, previews and editable working copies unambiguously and never shows a missing result as zero."""
 from __future__ import annotations
 
+from tests.run_clone_csrf import post_valid_csrf
+
 import re
 
 from tests.test_qa_create_project_country_capacity import _login, client  # noqa: F401
@@ -33,7 +35,7 @@ def test_working_copies_and_runs_are_distinguished_after_cloning(client):
     html = _page(client)
     m = re.search(r'action="/library/clone/([^"]+)"', html)
     assert m, "a clonable reference exists"
-    r = client.post(f"/library/clone/{m.group(1)}", headers={"HX-Request": "true"})
+    r = post_valid_csrf(client, f"/library/clone/{m.group(1)}", headers={"HX-Request": "true"})
     assert r.status_code in (200, 204, 303), r.text[:200]
     after = _page(client, login=False)
     assert re.search(r'data-testid="badge-working-copy-[^"]+">Working copy<', after)              # editable working copy is its own class
