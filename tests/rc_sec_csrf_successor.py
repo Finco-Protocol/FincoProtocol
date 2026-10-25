@@ -45,6 +45,13 @@ def _call(fn: ast.AST, name: str):
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == name]
 
 
+def _uses(fn: ast.AST, name: str):
+    # A call or a loaded reference (e.g. handed to the sandboxed model executor).
+    return [n for n in ast.walk(fn)
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == name)
+            or (isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Load))]
+
+
 def _route(fn, path: str) -> bool:
     return any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
                and isinstance(d.func.value, ast.Name) and d.func.value.id == "router"
@@ -121,7 +128,7 @@ def violations(sources: dict[str, str], *, check_pin: bool = True) -> list[str]:
             if not _line_after(_call(fn, name), [validate]):
                 errors.append(f"{label}: {name} must precede validator")
         for name in later:
-            if not _line_after([validate], _call(fn, name)):
+            if not _line_after([validate], _uses(fn, name)):
                 errors.append(f"{label}: validator must precede {name}")
         if not any(isinstance(n, ast.If) and ast.unparse(n.test) == "not user"
                    and any(isinstance(x, ast.Return) for x in n.body)
@@ -140,11 +147,13 @@ def violations(sources: dict[str, str], *, check_pin: bool = True) -> list[str]:
     reference_gates = [n for n in run.body if isinstance(n, ast.If)
                        and ast.unparse(n.test) == "is_protected_reference(project_record)"
                        and any(isinstance(x, ast.Return) for x in n.body)]
-    if len(reference_gates) != 1 or not _line_after(reference_gates, _call(run, "run_project")):
+    if len(reference_gates) != 1 or not _line_after(reference_gates, _uses(run, "run_project")):
         errors.append("Run: protected reference guard must precede engine")
     if "current_identity.composite_hash != content_hash" not in run_body:
         errors.append("Run: content-hash CAS guard removed")
-    if not _line_after(_call(run, "assemble_consistent_for_get"), _call(run, "run_project")):
+    cas_reads = _call(run, "assemble_consistent_for_get")
+    engine = _uses(run, "run_project")
+    if not cas_reads or not engine or min(n.lineno for n in cas_reads) > min(n.lineno for n in engine):
         errors.append("Run: composite CAS must precede engine")
     if "csrf_token and run_csrf_token and (csrf_token != run_csrf_token)" not in run_body:
         errors.append("Run: contradictory dual tokens must fail closed")
@@ -156,7 +165,7 @@ def violations(sources: dict[str, str], *, check_pin: bool = True) -> list[str]:
             _call(clone, "get_canonical_reference_by_id"), _call(clone, "create_working_copy")):
         errors.append("Clone: canonical-reference guard after mutation")
     bound = ast.unparse(trees[BINDING_MODULE])
-    if ("purpose: str='capital-stack-save-v1'" not in bound
+    if (bound.count("purpose: str='capital-stack-save-v1'") != 2
             or 'hmac.compare_digest' not in bound
             or 'auth.decode_session_token' not in bound
             or 'auth.decode_demo_session_token' not in bound
