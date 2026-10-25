@@ -1,0 +1,31 @@
+# WF-03A — Generation Losses & Pre-COD Candidate V1 — Gap Crosswalk
+
+Branch: `feat/wf03a-generation-losses-precod-v1` (base `b72942f22f1d3a8dcce351b56b96fdba0e6b9cdd`, the live main tip; the mission checkpoint `0397d9af2ea87bc2930218faa2e2d5adb503234f` is a contained ancestor — main advanced by the PR #363 merge between mission checkpoint and preflight, reported per governance).
+Companion: `WF03A_FINANCIAL_OWNER_DECISIONS.md` (D-01..D-08).
+
+Status legend: RELEASED (production authority on main) · PINNED-CANDIDATE (existing release-closed candidate, not reopened) · CANDIDATE-NEW (this branch) · GAP-UNTOUCHED.
+
+| # | WF-03A capability | Current state on main (`b72942f2`) | Verdict |
+|---|---|---|---|
+| A | Transmission loss factor (flat / dated series; gross vs delivered; conservation; reject invalid/gaps/overlap) | GAP. `grid_availability` (0.99) is an availability multiplier, not a loss factor; no loss-factor vocabulary exists (`git grep transmission/loss factor/grid_loss` → only unwired `domain/regulatory/regulatory_params.py:31 transmission_fee_eur_mwh` and BESS `marginal_loss_factor`). | **CANDIDATE-NEW** — `TransmissionLossFactor` (FLAT / DATED_SERIES with exclusive-end windows, overlap + invalid-factor rejection, gap = typed UNAVAILABLE) + `pure.apply_transmission_loss[_to_periods]` with exact `gross = delivered + loss` identity. |
+| B | Explicit degradation onset | GAP. Released formula `(1 - pv_degradation) ** (year_index - 1)` in all four functions of `finco_core/revenue/generation.py` (PPA-01 pinned blob `8e23a949…`); no onset input; degradation first bites in operating year 2. | **CANDIDATE-NEW** — `DegradationOnset` with `first_affected_year`; `canonical(rate)` reproduces the released formula exactly (non-circular test vs `period_generation`); onset 1 / later onset / zero rate all typed. The pinned released file is NOT modified. |
+| C | First-year availability | GAP. Availability is two constant scalars (`plant_availability × grid_availability`, `TechnicalParams`); no year-1 override, no vector. | **CANDIDATE-NEW** — `FirstYearAvailability` (single-sourced by operating-year index; partial COD stub = operating year 1; no annualisation — the field set is exhaustively tested). |
+| D | Named volume adjustments with compensation | GAP in the released chain. `app/scenarios.py curtailment_multiplier` is a deprecated no-op p50 scaler; named-curtailment-with-compensation exists only in the unwired `domain/regulatory/regulatory_params.py:15-52`. | **CANDIDATE-NEW** — `VolumeAdjustmentEvent` (named, dated, non-overlapping windows; overlap → `GENERATION_V2_OVERLAP`; exact day-count proration incl. leap Feb; per-event attribution; CONTRACTED/MERCHANT compensation ledgers kept separate from physical MWh; missing merchant evidence = UNAVAILABLE). |
+| E | Pre-COD commissioning (monthly ramp, price basis, revenue proposals) | GAP. Zero pre-COD generation/revenue anywhere: `full_generation_schedule` returns 0.0 for `is_operation=False`; `git grep pre_cod/commissioning/ramp` → only the DC/EV post-COD ramps and CAPEX line C.10. Monthly pre-COD FUNDING periods exist (`finco_core/construction/stage_b2.py`, `app/capex_profiles/`); monthly pre-COD OPERATING periods do not. | **CANDIDATE-NEW** — `PreCodCommissioning` (window `[start, COD)`, monthly ramp exactly covering the window, FIXED/PPA/MARKET price basis) + `pure.build_pre_cod_proposal` (physical vs potential-sales ledgers; missing market evidence = UNAVAILABLE per month, total suppressed, priced rows kept). No posting into construction waterfall / tax / IDC / equity (D-07). |
+| — | Periodisation | RELEASED: `finco_core/engine/period_engine.py` (SEMESTRIAL only; COD-anchored two-construction-column; Jun 30 / Dec 31 boundaries; `day_fraction` proration; construction rows `is_construction=True`). | REUSED unchanged — the candidate consumes `PeriodEngine.periods()` and exact month arithmetic in tests; it never redefines a period. |
+| — | Revenue V4 candidate (NPH / volume modes / price modes / RTM) | PINNED-CANDIDATE (merged by PR #363; `app/revenue_v4_candidate/`, release-closed). | NOT edited, NOT copied, NOT imported, NOT depended on (isolation tests on both sides keep passing). Integration boundaries are D-08. |
+| — | Revenue V3 (Capacity/Ancillary/REC), PPA-01, V10/V11, RC-7B | PINNED-CANDIDATE / RELEASED pins. | Untouched; `finco_core/revenue/generation.py`, `domain/revenue/multistream_runtime.py`, `domain/revenue/revenue_config.py` remain at their exact pinned blobs. |
+| — | React / UI / API / defaults | PR #364 (React integration) and all product surfaces. | Untouched — backend candidate only. |
+
+## Isolation proof obligations (this branch)
+
+- New files only: `app/generation_v2_candidate/{__init__,contracts,pure}.py`, `tests/test_generation_v2_candidate.py`, this doc, the decision packet. Diff vs main contains ZERO protected paths (`domain/`, `finco_core/`, `financial_engine/`), zero UI/API/static paths.
+- Release closure: `ACTIVATION_ENABLED` literal `False`; every public calculation entry raises `GENERATION_V2_RELEASE_CLOSED`; no environment variable can enable it (`TestReleaseClosure`).
+- Production invisibility: no production module references `generation_v2_candidate`, and the package imports nothing from `finco_core`, `financial_engine`, `domain.revenue`, `revenue_v4_candidate` or `financing_instruments` (AST-scanned, `TestProductionIsolation`).
+- Legacy runs bit-identical: accepted Solar/Wind reference runs compared by full canonical payload SHA-256 between this branch and `b72942f2` — see PR evidence.
+
+## Correction A (PR #366)
+
+- Commissioning geometry: non-month-aligned start/COD rejected; aligned windows tested for exact pre-COD day coverage incl. leap February (decision D-06).
+- Dated transmission loss: a factor change inside an operating period requires independently evidenced sub-period generation, otherwise fail closed; `compose_operating_adjustments` no longer reports the last day's factor for a varying period (decision D-09, new, OPEN).
+- No protected path, canonical output or released periodisation is changed.
