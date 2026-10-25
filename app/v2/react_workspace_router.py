@@ -155,7 +155,10 @@ async def react_workspace_shell(request: Request, project: str):
         from app.workbook.workbook_identity import WorkbookIdentityError
 
         context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
-        integrity_state, _report = get_run_integrity_checks(owner, record.project_id, context=context)
+        integrity_state, report = get_run_integrity_checks(owner, record.project_id, context=context)
+        from app.persistence.scenario_insight_reads import resolve_last_run_scenario
+        last_run_scenario = resolve_last_run_scenario(
+            owner, record.project_id, context.workspace.last_runtime_scenario_id).label
         payload = {
             "ok": True,
             "react_workspace": {"version": REACT_WORKSPACE_VERSION},
@@ -184,8 +187,9 @@ async def react_workspace_shell(request: Request, project: str):
 
             outputs = build_output_workspace_safe(
                 runtime_result=context.runtime_result, workspace=context.workspace,
-                freshness=context.freshness, last_run_scenario=None,
-                integrity_report=None, statement_projection=context.projection.fs)
+                freshness=context.freshness, last_run_scenario=last_run_scenario,
+                integrity_report=report if integrity_state == "AVAILABLE" else None,
+                statement_projection=context.projection.fs)
             payload["identity"] = outputs.get("identity")
             payload["integrity"] = outputs.get("integrity")
             payload["status_dimensions"] = outputs.get("status_dimensions")
@@ -740,7 +744,14 @@ async def react_run_history(request: Request, project: str):
     entries = []
     for entry in history:
         data = entry.to_dict() if hasattr(entry, "to_dict") else dict(entry)
-        entries.append(_jsonable(data))
+        # Summary is an allowlist over immutable ledger identity, not the full
+        # financial payload or actor identifiers. Detail/export keep their own
+        # canonical authorization and persisted evidence surfaces.
+        entries.append(_jsonable({key: data.get(key) for key in (
+            "history_id", "project_code", "runtime_snapshot_id", "runtime_origin",
+            "ran_at", "engine_version", "workbook_version", "active_scenario_id",
+            "active_scenario_name", "last_runtime_scenario_id", "composite_hash",
+        )}))
     return _json({
         "ok": True,
         "react_workspace": {"version": REACT_WORKSPACE_VERSION},
@@ -770,42 +781,54 @@ async def react_diagnostics(request: Request, project: str):
     if failure is not None:
         return failure
     assert record is not None and owner is not None
-    ws, failure = _workspace_or_404(record, owner)
-    if failure is not None:
-        return failure
-
     from app.v2.diagnostics_client import diagnostics_client_payload
     from app.v2.insight_quality_projection import build_quality_insight_safe
+    from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
+    from app.workbook.workbook_identity import WorkbookIdentityError
 
-    freshness_state = getattr(getattr(ws, "freshness", None), "state", None)
-    state = getattr(freshness_state, "value", None) or "NOT_RUN"
-    projection = build_quality_insight_safe(
-        ws, run_state=state,
-        active_scenario_id=ws.active_scenario_id,
-        scenario_name=ws.active_scenario_name or "",
-        include_diagnostics=True)
-    diagnostics = projection.get("diagnostics")
-    payload = {
-        "ok": True,
-        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
-        "project": {"code": record.project_code,
-                    "protected_reference": _is_protected(record)},
-        "run_state": projection.get("run_state"),
-        "insight": {k: v for k, v in projection.items() if k != "diagnostics"},
-    }
-    if isinstance(diagnostics, dict):
-        payload["diagnostics"] = diagnostics_client_payload(diagnostics)
-    else:
-        payload["diagnostics"] = {"state": "UNAVAILABLE", "available": False}
-    return _json(payload)
+    try:
+        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        effective_inputs = None
+        if context.freshness.state.value == "CURRENT":
+            try:
+                effective_inputs = context.inputs.to_projectinputs()
+            except Exception:  # thresholds stay unbound without valid effective inputs
+                pass
+        from app.persistence.scenario_insight_reads import resolve_last_run_scenario
+        scenario_name = resolve_last_run_scenario(
+            owner, record.project_id, context.workspace.last_runtime_scenario_id).label
+        projection = build_quality_insight_safe(
+            context.workspace, run_state=context.freshness.state.value,
+            project_inputs=effective_inputs,
+            active_scenario_id=context.workspace.active_scenario_id,
+            scenario_name=scenario_name or "",
+            include_diagnostics=True)
+        diagnostics = projection.get("diagnostics")
+        from app.api.v1_1.institutional import get_run_integrity_checks
+        integrity_state, integrity = get_run_integrity_checks(owner, record.project_id, context=context)
+        context.validate_current()
+        return _json({
+            "ok": True,
+            "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+            "project": {"code": record.project_code,
+                        "protected_reference": _is_protected(record)},
+            "run_state": context.freshness.state.value,
+            "integrity": integrity if integrity_state == "AVAILABLE" else None,
+            "insight": {k: v for k, v in projection.items() if k != "diagnostics"},
+            "diagnostics": (diagnostics_client_payload(diagnostics) if isinstance(diagnostics, dict)
+                            else {"state": "UNAVAILABLE", "available": False}),
+        })
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        return _json({"ok": False, "code": "DIAGNOSTICS_UNAVAILABLE",
+                      "message": "The workspace changed while diagnostics were assembled. Reload to refresh."}, 503)
 
 
 @router.get("/model-react/trust")
 async def react_trust(request: Request, project: str):
-    """Trust & integrity evidence projection (certificate + validation sections).
+    """Read persisted Run integrity only; never run a regression or sign on GET.
 
-    Same canonical builders the legacy trust fragments render; a section that
-    cannot be evaluated arrives as UNAVAILABLE, never as a fabricated pass.
+    Reference regression and certificate issuance are separate explicit actions
+    on the existing authorized canonical routes, not validation of this project.
     """
     if not react_poc_enabled():
         return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
@@ -814,26 +837,48 @@ async def react_trust(request: Request, project: str):
         return failure
     assert record is not None and owner is not None
 
-    from app.ui.trust_pack import build_certificate_fragment
+    from urllib.parse import urlencode
+    from app.api.v1_1.institutional import get_run_integrity_checks, get_run_identity
+    from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
+    from app.workbook.workbook_identity import WorkbookIdentityError
 
     try:
-        certificate = build_certificate_fragment(owner, record.project_id)
-    except Exception:
-        certificate = {"state": "UNAVAILABLE", "reason": "CERTIFICATE_UNAVAILABLE", "not_verify": True}
-    validation = {"state": "UNAVAILABLE", "reason": "VALIDATION_UNAVAILABLE", "not_verify": True}
-    try:
-        from app.ui.trust_pack import build_validation_fragment
-        validation = build_validation_fragment(owner, record.project_id)
-    except Exception:
-        pass
-    return _json({
-        "ok": True,
-        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
-        "project": {"code": record.project_code,
-                    "protected_reference": _is_protected(record)},
-        "certificate": _jsonable(certificate),
-        "validation": _jsonable(validation),
-    })
+        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        identity_state, identity = get_run_identity(owner, record.project_id, context=context)
+        integrity_state, integrity = get_run_integrity_checks(owner, record.project_id, context=context)
+        has_run = identity_state == "AVAILABLE" and context.freshness.has_runtime
+        query = urlencode({"project": record.project_code})
+        validation = {
+            "state": "DEFERRED" if has_run else "UNAVAILABLE",
+            "reason": "EXPLICIT_REFERENCE_REGRESSION_REQUIRED" if has_run else "COMMITTED_LAST_RUN_REQUIRED",
+            "authority": "REFERENCE_REGRESSION_CHECK",
+            "scope": "Pinned canonical reference regression only; not validation of this Working Copy or its Run.",
+            "load_url": f"/v2/workbook/trust/validation?{query}" if has_run else None,
+            "not_verify": True,
+        }
+        certificate = {
+            "state": "DEFERRED" if has_run else "UNAVAILABLE",
+            "reason": "EXPLICIT_CERTIFICATE_REQUEST_REQUIRED" if has_run else "COMMITTED_LAST_RUN_REQUIRED",
+            "authority": "SIGNED_RUN_CERTIFICATE",
+            "scope": "Provenance only; availability and signing-key readiness are not established by this read.",
+            "load_url": f"/v2/workbook/trust/certificate?{query}" if has_run else None,
+            "not_verify": True,
+        }
+        context.validate_current()
+        return _json({
+            "ok": True,
+            "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+            "project": {"code": record.project_code,
+                        "protected_reference": _is_protected(record)},
+            "run_state": context.freshness.state.value,
+            "identity": identity if identity_state == "AVAILABLE" else None,
+            "integrity": integrity if integrity_state == "AVAILABLE" else None,
+            "certificate": certificate,
+            "validation": validation,
+        })
+    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
+        return _json({"ok": False, "code": "TRUST_UNAVAILABLE",
+                      "message": "The workspace changed while trust evidence was assembled. Reload to refresh."}, 503)
 
 
 # ───────────────────── UX-07: scenario management & compare ─────────────────────
