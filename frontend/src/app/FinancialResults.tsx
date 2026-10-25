@@ -3,9 +3,9 @@ import "../finco/_group.css";
 import "../styles/finco-live.css";
 import type { CanonicalTable, StatementSheetPayload, StatementsPayload } from "./types";
 import {
-  DISPLAY_UNITS, formatFromCanonicalUnit, formatMoneyText, formatStatementCell, formatUnitLabel,
-  plotValue, resolveRowFormat, sheetUnitLabel,
-  type DisplayUnit, type RowFormat,
+  DISPLAY_UNITS, formatFromCanonicalUnit, formatMetricDisplay, formatStatementCell, formatUnitLabel,
+  classifyRowUnit, plotValue, resolveRowFormat, sheetUnitLabel,
+  type DisplayUnit, type RowFormat, type UnitSource,
 } from "./units";
 
 // Canonical presentation of the persisted Run.  Every figure on this page is a
@@ -22,6 +22,8 @@ interface PeriodRow {
   label: string;
   texts: string[];
   format: RowFormat;
+  /** How the row's unit was established (canonical metadata vs inference). */
+  unitSource: UnitSource;
   source: string;
 }
 
@@ -40,6 +42,11 @@ const STATE_TEXT: Record<string, string> = {
   NOT_RUN: "NOT RUN",
   UNAVAILABLE: "UNAVAILABLE",
 };
+
+function classified(label: string, rowUnit: string | undefined, sheetUnit: string | undefined): { format: RowFormat; unitSource: UnitSource } {
+  const { format, source } = classifyRowUnit(label, rowUnit, sheetUnit);
+  return { format, unitSource: source };
+}
 
 function sheetOf(payload: StatementsPayload, id: string): StatementSheetPayload | null {
   return payload.snapshot?.sheets.find((sheet) => sheet.id === id && sheet.available) ?? null;
@@ -64,7 +71,7 @@ function statementRows(
       key: `${sheetId}.${row.id}`,
       label: labelOverride ?? row.label,
       texts,
-      format: resolveRowFormat(row.label, (row as { unit?: string }).unit, sheet.unit),
+      ...classified(row.label, (row as { unit?: string }).unit, sheet.unit),
       source: `${sheet.title} · ${row.label}`,
     });
   }
@@ -80,7 +87,7 @@ function tableRows(table: CanonicalTable | null | undefined, keys: ReadonlyArray
       key: `${table.id ?? sourceTitle}.${row.key}`,
       label: row.label,
       texts: row.cells.map((cell) => (cell.v === null ? "—" : cell.text)),
-      format: resolveRowFormat(row.label, row.unit, "keur"),
+      ...classified(row.label, row.unit, "keur"),
       source: `${table.title ?? sourceTitle} · ${row.label}`,
     });
   }
@@ -136,14 +143,8 @@ const METRIC_GROUPS: ReadonlyArray<{ id: string; title: string; match: RegExp }>
   { id: "other", title: "Other metrics", match: /.*/ },
 ];
 
-function metricDisplay(display: string, unit: DisplayUnit, precision: number): string {
-  const money = /^(.*?)\s*(kEUR|mEUR|EUR)$/.exec(display.trim());
-  if (!money) return display;
-  const base = money[2] as DisplayUnit;
-  if (base === unit) return display;
-  const converted = formatMoneyText(money[1], base, unit, precision);
-  return converted === "—" ? display : `${converted} ${unit}`;
-}
+/** Monetary KPI display text -> selected unit and precision (never touches ratios, IRR or percentages). */
+const metricDisplay = formatMetricDisplay;
 
 function MetricCards({ payload, unit, precision }: { payload: StatementsPayload; unit: DisplayUnit; precision: number }) {
   const metrics = payload.results.metrics;
@@ -204,7 +205,7 @@ function PeriodTable({ model, unit, precision }: { model: PeriodTableModel; unit
           <tbody>
             {model.rows.map((row) => (
               <tr key={row.key}>
-                <th scope="row" title={row.source}>
+                <th scope="row" title={row.source} data-unit-source={row.unitSource}>
                   {row.label}{row.format.kind !== "money" && !row.label.includes(`(${formatUnitLabel(row.format, unit)})`) && <span className="rx-live-row-unit"> ({formatUnitLabel(row.format, unit)})</span>}
                 </th>
                 {model.periods.map((period, index) => {
@@ -395,7 +396,7 @@ function useModels(payload: StatementsPayload) {
       periods: model,
       rows: debtSheet ? debtSheet.rows.map((row) => ({
         key: `debt.${row.id}`, label: row.label, texts: row.model,
-        format: resolveRowFormat(row.label, (row as { unit?: string }).unit, debtSheet.unit),
+        ...classified(row.label, (row as { unit?: string }).unit, debtSheet.unit),
         source: `${debtSheet.title} · ${row.label}`,
       })) : [],
       note: debtSheet?.note || "This Run persisted no debt schedule.",

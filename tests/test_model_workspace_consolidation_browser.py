@@ -536,3 +536,69 @@ def test_trust_diagnostics_and_history_render_exact_contracts_without_automatic_
         raise
     finally:
         context.close()
+
+
+# ── WF-React-1 (PR #377): Product Truth & Financial Workspace acceptance ───────────────
+# Additive acceptance in the EXISTING mandatory consolidation role (shared Playwright
+# fixture lifecycle; no module-level skip of its own).  The bodies live in
+# tests/model_react_wf1_browser_acceptance.py, like the diagnostics acceptance above.
+
+@pytest.fixture
+def react_enabled(live_server):
+    """The flag is read per request inside the server process, so setting it here
+    switches the already-running live server onto the React surface."""
+    old = os.environ.get('FINCO_MODEL_REACT_V1')
+    os.environ['FINCO_MODEL_REACT_V1'] = '1'
+    yield live_server
+    if old is None:
+        os.environ.pop('FINCO_MODEL_REACT_V1', None)
+    else:
+        os.environ['FINCO_MODEL_REACT_V1'] = old
+
+
+@pytest.fixture
+def seeded(browser, react_enabled):
+    from tests.model_react_wf1_browser_acceptance import make_session
+    context, page, record, errors = make_session(browser, react_enabled, 'wf1-user')
+    try:
+        yield context, page, record, errors, react_enabled
+    finally:
+        context.close()
+
+
+def test_product_truth_no_prototype_or_synthetic_content_in_any_section(seeded):
+    from tests.model_react_wf1_browser_acceptance import check_product_truth_no_prototype_or_synthetic_content_in_any_section
+    check_product_truth_no_prototype_or_synthetic_content_in_any_section(seeded)
+
+
+def test_statement_units_ratios_negatives_and_rounding_match_canonical_api(seeded):
+    from tests.model_react_wf1_browser_acceptance import check_statement_units_ratios_negatives_and_rounding_match_canonical_api
+    check_statement_units_ratios_negatives_and_rounding_match_canonical_api(seeded)
+
+
+def test_results_and_analysis_values_are_the_canonical_values_of_the_same_run(seeded):
+    from tests.model_react_wf1_browser_acceptance import check_results_and_analysis_values_are_the_canonical_values_of_the_same_run
+    check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(seeded)
+
+
+def test_current_stale_not_run_are_consistent_across_every_surface(seeded):
+    from tests.model_react_wf1_browser_acceptance import check_current_stale_not_run_are_consistent_across_every_surface
+    check_current_stale_not_run_are_consistent_across_every_surface(seeded)
+
+
+def test_library_search_pagination_and_reference_working_copy_status(browser, react_enabled):
+    from tests.model_react_wf1_browser_acceptance import check_library_search_pagination_and_reference_working_copy_status
+    check_library_search_pagination_and_reference_working_copy_status(browser, react_enabled)
+
+
+def test_results_analysis_navigation_and_back_forward(seeded):
+    from tests.model_react_wf1_browser_acceptance import check_results_analysis_navigation_and_back_forward
+    check_results_analysis_navigation_and_back_forward(seeded)
+
+
+@pytest.mark.parametrize('name,viewport', [('desktop', {'width': 1440, 'height': 1000}),
+                                           ('tablet', {'width': 820, 'height': 1100}),
+                                           ('mobile', {'width': 390, 'height': 844})])
+def test_responsive_layout_has_no_page_level_horizontal_overflow(browser, react_enabled, name, viewport):
+    from tests.model_react_wf1_browser_acceptance import check_responsive_layout_has_no_page_level_horizontal_overflow
+    check_responsive_layout_has_no_page_level_horizontal_overflow(browser, react_enabled, name, viewport)

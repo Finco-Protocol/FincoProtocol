@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  formatMoneyText, formatRatioText, formatStatementCell, formatUnitLabel, plotValue,
+  classifyRowUnit, formatMetricDisplay, formatMoneyText, formatRatioText, formatStatementCell, formatUnitLabel, plotValue,
   resolveRowFormat, sheetUnitLabel,
 } from "../../src/app/units.ts";
 
@@ -72,4 +72,94 @@ test("plotValue positions marks from the authoritative displayed number only", (
   assert.equal(plotValue("(33.70)"), -33.7);
   assert.equal(plotValue("—"), null);
   assert.equal(plotValue("NOT AVAILABLE"), null);
+});
+
+// ── Monetary KPI precision regression matrix (independent BigInt oracle) ────────────
+// The oracle shares no code with units.ts: it works on exact rationals (BigInt) and
+// rounds half away from zero.
+const EXP = { EUR: 0, kEUR: 3, mEUR: 6 };
+function oracle(text, base, unit, precision) {
+  const raw = text.replace(/,/g, "").replace(/^\((.*)\)$/, "-$1");
+  const negative = raw.startsWith("-");
+  const [i, f = ""] = raw.replace("-", "").split(".");
+  let num = BigInt(i + f);                       // value = num / 10^f.length
+  let scalePow = f.length + (EXP[unit] - EXP[base]);   // value_in_unit = num * 10^(EXP[base]-EXP[unit]) / 10^f.length
+  // value_in_unit = num / 10^scalePow ; round to `precision` places
+  let digits;
+  if (scalePow <= precision) digits = num * 10n ** BigInt(precision - scalePow);
+  else {
+    const div = 10n ** BigInt(scalePow - precision);
+    digits = num / div;
+    if ((num % div) * 2n >= div) digits += 1n;   // half away from zero (magnitude)
+  }
+  let str = digits.toString().padStart(precision + 1, "0");
+  const whole = precision ? str.slice(0, -precision) : str;
+  const frac = precision ? "." + str.slice(-precision) : "";
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const body = grouped + frac;
+  return negative && digits !== 0n ? `(${body})` : body;
+}
+
+const MONETARY_SAMPLES = ["2,305", "500", "22,495", "0", "0.00", "1,232.5", "999.9995", "0.0004", "-0.0004",
+  "-1,234.5675", "(2.5)", "-500", "1.005", "2.675", "0.0005", "12,345,678.9"];
+
+test("monetary KPI matrix: every unit x precision x value matches the independent oracle", () => {
+  let checked = 0;
+  for (const base of ["EUR", "kEUR", "mEUR"]) {
+    for (const unit of ["EUR", "kEUR", "mEUR"]) {
+      for (const precision of [0, 1, 2, 3]) {
+        for (const sample of MONETARY_SAMPLES) {
+          const shown = formatMetricDisplay(`${sample} ${base}`, unit, precision);
+          assert.equal(shown, `${oracle(sample, base, unit, precision)} ${unit}`, `${sample} ${base} -> ${unit}/${precision}`);
+          assert.ok(!/\(0(\.0+)?\)/.test(shown), `no negative zero: ${shown}`);
+          checked += 1;
+        }
+      }
+    }
+  }
+  assert.equal(checked, 3 * 3 * 4 * MONETARY_SAMPLES.length);
+});
+
+test("canonical-unit monetary KPI still honours the selected precision (no byte-identical bypass)", () => {
+  assert.equal(formatMetricDisplay("2,305 kEUR", "kEUR", 0), "2,305 kEUR");
+  assert.equal(formatMetricDisplay("2,305 kEUR", "kEUR", 1), "2,305.0 kEUR");
+  assert.equal(formatMetricDisplay("2,305 kEUR", "kEUR", 3), "2,305.000 kEUR");
+  assert.equal(formatMetricDisplay("22,495.55 kEUR", "kEUR", 1), "22,495.6 kEUR");
+  assert.equal(formatMetricDisplay("22,495.55 kEUR", "kEUR", 0), "22,496 kEUR");
+  assert.equal(formatMetricDisplay("999.95 kEUR", "kEUR", 1), "1,000.0 kEUR", "carry");
+  assert.equal(formatMetricDisplay("-0.04 kEUR", "kEUR", 1), "0.0 kEUR", "no negative zero");
+  assert.equal(formatMetricDisplay("-500 kEUR", "kEUR", 2), "(500.00) kEUR");
+  assert.equal(formatMetricDisplay("500 kEUR", "mEUR", 3), "0.500 mEUR");
+  assert.equal(formatMetricDisplay("500 kEUR", "EUR", 0), "500,000 EUR");
+});
+
+test("IRR, XIRR, MOIC, DSCR, percentages, ratios and unavailable text are never treated as currency", () => {
+  for (const unit of ["EUR", "kEUR", "mEUR"]) {
+    for (const precision of [0, 1, 2, 3]) {
+      for (const text of ["11.77%", "31.25%", "16.80%", "-2.5%", "9.88x", "1.25x", "0.00x", "NOT AVAILABLE",
+        "—", "", "n/a", "UNAVAILABLE", "1.97", "500"]) {
+        assert.equal(formatMetricDisplay(text, unit, precision), text, `${text} must be verbatim (${unit}/${precision})`);
+      }
+    }
+  }
+  // a currency suffix with a non-numeric body is not converted either
+  assert.equal(formatMetricDisplay("NOT AVAILABLE kEUR", "mEUR", 2), "NOT AVAILABLE kEUR");
+});
+
+test("row unit provenance is explicit; ambiguous metadata is never silently converted", () => {
+  assert.deepEqual(classifyRowUnit("DSCR (x)", "x", "keur"), { format: { kind: "ratio" }, source: "canonical-row-unit" });
+  assert.deepEqual(classifyRowUnit("Revenues", "keur", "keur"), { format: { kind: "money", base: "kEUR" }, source: "canonical-row-unit" });
+  assert.deepEqual(classifyRowUnit("DSCR (x)", undefined, "keur"), { format: { kind: "ratio" }, source: "label-inference" });
+  assert.deepEqual(classifyRowUnit("Equity IRR", undefined, "keur"), { format: { kind: "percent" }, source: "label-inference" });
+  assert.deepEqual(classifyRowUnit("Revenues", undefined, "keur"), { format: { kind: "money", base: "kEUR" }, source: "sheet-unit" });
+  // no row unit, no hint in the label, unrecognised sheet unit: shown verbatim, never converted
+  const ambiguous = classifyRowUnit("Mystery line", undefined, "widgets");
+  assert.deepEqual(ambiguous, { format: { kind: "unspecified" }, source: "unspecified" });
+  for (const unit of ["EUR", "kEUR", "mEUR"]) {
+    assert.equal(formatStatementCell("1,232.50", ambiguous.format, unit, 3), "1,232.50");
+    assert.equal(formatStatementCell("—", ambiguous.format, unit, 3), "—");
+    assert.equal(formatStatementCell("", ambiguous.format, unit, 3), "—");
+  }
+  assert.equal(formatUnitLabel(ambiguous.format, "mEUR"), "unit unavailable");
+  assert.deepEqual(classifyRowUnit("Mystery line", undefined, undefined).format, { kind: "unspecified" });
 });

@@ -86,7 +86,8 @@ value ↔ API; chart marks carry `data-canonical` and a tooltip with the display
 * `frontend/transfer/scripts/units.test.mjs` — exact EUR/kEUR/mEUR conversion, rounding, negatives, ratios, unavailable.
 * `tests/test_model_react_wf1_product_truth_v1.py` — static guards (no prototype/synthetic tokens in live modules,
   no number derivation, canonical-only Shell chrome, units suite).
-* `tests/test_model_react_wf1_browser_acceptance.py` — product truth in every section, unit/ratio/negative/rounding
+* `tests/model_react_wf1_browser_acceptance.py` (bodies) executed through nine wrapper nodes in the existing mandatory
+  `tests/test_model_workspace_consolidation_browser.py` role (see Correction A) — product truth in every section, unit/ratio/negative/rounding
   oracle, same-Run Results/Analysis/Statements parity, CURRENT/STALE/NOT_RUN consistency (Overview, Results, Analysis,
   Statements, Library), Library pagination/search/status, navigation, responsive (1440/820/390).
 
@@ -100,3 +101,66 @@ Screenshots (real persisted Run): `screenshots/{desktop,mobile}-{library,results
 * Canonical engine, Run identity, CAS, ownership and protected-reference paths untouched; no backend change.
 * `static/react/finco-react.{js,css}` rebuilt from this source with `npm run build` (CI bundle-identity gate); it must be
   rebuilt again after #376 is merged forward.
+
+## Correction A (PR #377) — CI V3 recovery, KPI precision, unit integrity
+
+### 1. CI V3 collection governance
+
+* **Failure:** Public Safety and Model Smoke run `40233631274`, job `safety-and-smoke / plan` (`121290669908`):
+  `ContractError: collection skip change; reviewed reconciliation authority required`
+  (`tools/ci_v3_source_reference.py::reconciliation` compares the Counter of `{nodeid, reason}` collection skips of
+  the accepted-source reference with the PR inventory).
+* **Reproduced** by collecting `tests/` with `playwright` unimportable (the plan environment): accepted base
+  `7352950` yields **66** collection skips; PR head `3255ab4` yielded **67**. The exact delta was one record:
+  `tests/test_model_react_wf1_browser_acceptance.py — "playwright not installed in this workflow"`
+  (the module-level `pytest.importorskip`).
+* **Resolution (PR #375 precedent):** the nine browser cases moved into the already-governed
+  `tests/test_model_workspace_consolidation_browser.py` (same module, same `browser`/`live_server` fixture
+  lifecycle). Bodies live in the non-collected helper `tests/model_react_wf1_browser_acceptance.py` (no skip), with
+  thin wrappers that keep the original test names. The standalone module was deleted.
+* **Verified:** collection skips with Playwright blocked are **66 on main and 66 on the corrected head** (identical
+  sorted inventory); no node of main was removed; no baseline, pin, allowance or governance source was edited.
+  `tools.ci_browser_job.validate_consolidation` (the role's fail-closed inventory/JUnit/screenshot verifier) passes
+  locally on the 45-node module (36 original + 9 WF-React-1), driven by the role's own inventory plugin.
+
+The nine nodes: `test_product_truth_no_prototype_or_synthetic_content_in_any_section`,
+`test_statement_units_ratios_negatives_and_rounding_match_canonical_api`,
+`test_results_and_analysis_values_are_the_canonical_values_of_the_same_run`,
+`test_current_stale_not_run_are_consistent_across_every_surface`,
+`test_library_search_pagination_and_reference_working_copy_status`,
+`test_results_analysis_navigation_and_back_forward`,
+`test_responsive_layout_has_no_page_level_horizontal_overflow[desktop|tablet|mobile]`.
+
+### 2. Monetary KPI precision
+
+`metricDisplay()` returned the canonical string unchanged when the display unit equalled the canonical unit, bypassing
+the selected precision. It now delegates to `formatMetricDisplay()` (`frontend/src/app/units.ts`): a KPI is monetary
+only when its canonical text carries an explicit `EUR`/`kEUR`/`mEUR` suffix, and every such value is re-expressed
+through the exact-decimal formatter for every unit/precision (including unit == canonical). IRR, XIRR, MOIC, DSCR,
+percentages, unsuffixed text and unavailable text stay verbatim. The canonical string is preserved in
+`data-metric-canonical`. Proof: a 3×3×4×16 matrix (576 combinations; positive, negative, zero, midpoint, carry,
+no negative zero) against an **independent BigInt oracle** in `units.test.mjs`, and the same matrix in the browser
+against an independent `Decimal` oracle for every KPI of a real Run.
+
+### 3. Statement-unit integrity (residual limitation, explicit)
+
+`tests/test_model_react_wf1_unit_integrity_v1.py` runs the real statements route on a real persisted Run, spies the
+canonical output projection and compares **every row of the six destinations** with the canonical unit the projection
+assigned:
+
+* canonical units present in the statement projection: **`keur` and `x` only** (no percentage rows exist in the six
+  destinations; percentages occur only in key metrics, which are verbatim);
+* every row's React classification equals its canonical unit; money rows convert exactly, ratio rows never scale;
+* rows that depend on **label inference** (canonical unit differs from the sheet-level unit that the router derives from
+  the first row): exactly **`cfads.dscr` and `debt.dscr`** (asserted as the exact set); every other row is classified
+  from the sheet unit, which assumes a homogeneous-unit sheet (also a limitation until row units are forwarded);
+* unit provenance is visible in the DOM (`data-unit-source` = `canonical-row-unit | sheet-unit | label-inference |
+  unspecified`), so a reviewer can see it per row; rows with no row unit, no label hint and an unrecognised sheet unit
+  are shown **verbatim as "unit unavailable"** (previously silently treated as kEUR);
+* unavailable cells (`v is None`) arrive as `—` and are asserted never to render as zero.
+
+**Minimal backend change required at the authorized #376 integration** (`app/v2/react_workspace_router.py`, not
+edited here): in `_sheet_from_tables` / `_debt_sheet` pass each canonical row's `unit` through (`"unit": row.get("unit")`)
+and add the numeric cell value beside the text (`_row_texts` -> `{text, v}`); the React side already reads
+`row.unit` first, so label inference then disappears for every row with no other change. Chart geometry currently
+parses the authoritative display text; with `v` it would use the numeric value.

@@ -4,7 +4,7 @@ import { preferredScrollBehavior } from "../_shared/motion";
 import { statementCellTabIndex, statementCellText, statementStatusText, type StatementFacilityId, type StatementRow, type StatementSheet, type StatementSheetId, type StatementViewId, type StatementWorkbookProps } from "./statementContract";
 import "./statements.css";
 import {
-  DISPLAY_UNITS, formatStatementCell, formatUnitLabel, formatFromCanonicalUnit, resolveRowFormat, sheetUnitLabel,
+  DISPLAY_UNITS, formatStatementCell, formatUnitLabel, classifyRowUnit, formatFromCanonicalUnit, resolveRowFormat, sheetUnitLabel,
   type DisplayUnit, type RowFormat,
 } from "../../app/units";
 
@@ -23,6 +23,12 @@ const initialView = (): ViewId => new URLSearchParams(window.location.search).ge
 type UnitDisplay = DisplayUnit;
 type DataOrigin = NonNullable<StatementWorkbookProps["status"]["dataOrigin"]>;
 const rowFormatOf = (row: Row, sheet: Sheet): RowFormat => resolveRowFormat(row.label, row.unit, sheet.unit);
+const rowUnitSource = (row: Row, sheet: Sheet) => classifyRowUnit(row.label, row.unit, sheet.unit).source;
+/** The row's canonical (source) unit label, "unit unavailable" when metadata is ambiguous. */
+const canonicalUnitText = (row: Row, sheet: Sheet): string => {
+  const format = rowFormatOf(row, sheet);
+  return format.kind === "money" ? format.base : format.kind === "ratio" ? "x" : format.kind === "percent" ? "%" : "unit unavailable";
+};
 /** Display conversion only: canonical text in the sheet's canonical unit -> chosen display unit. */
 function displayStatementValue(value: string, format: RowFormat, unit: UnitDisplay, precision: number) {
   return formatStatementCell(value, format, unit, precision);
@@ -203,7 +209,7 @@ function StatementTable({
             inputParams.set("returnScrollY", String(Math.round(window.scrollY)));
             const sourceHref = `${fincoBasePath()}ModelWorkspace?${inputParams.toString()}#workbook`;
           return <React.Fragment key={item.id}>
-            <tr className={`${item.kind === "section" ? "fm-sw-section" : item.kind === "detail" ? "fm-sw-detail" : ""}${traceOpen ? " fm-sw-row-selected" : ""}`}>
+            <tr data-unit-source={rowUnitSource(item, sheet)} data-row-unit={rowUnit} className={`${item.kind === "section" ? "fm-sw-section" : item.kind === "detail" ? "fm-sw-detail" : ""}${traceOpen ? " fm-sw-row-selected" : ""}`}>
               <th scope="row" className="fm-sw-label">
                 <span className="fm-sw-row-select">
                   {item.children && <button
@@ -248,7 +254,7 @@ function StatementTable({
                 <div className="fm-sw-trace">
                   <div className="fm-sw-trace-copy">
                     <strong>CANONICAL SOURCE · {item.label} · {periods[tracePeriod]}</strong>
-                    <span className="fm-sw-trace-code">{displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision)} {rowUnit} · persisted value {statementCellText(values[periodIndexes[tracePeriod]])} {sheetUnitLabel(item.unit ?? (format.kind === "money" ? sheet.unit : format.kind === "ratio" ? "x" : "%"))}</span>
+                    <span className="fm-sw-trace-code">{displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision)} {rowUnit} · persisted value {statementCellText(values[periodIndexes[tracePeriod]])} {canonicalUnitText(item, sheet)}</span>
                     <span>Statement: {sheet.title} · persisted Run {runId}. Unit conversion and rounding are display-only.</span>
                   </div>
                   <button className="fm-sw-trace-close" type="button" onClick={() => setTraceId(null)}>Close</button>
@@ -472,7 +478,7 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
                 const activeValue = activeRow?.[view] ?? [];
                 const address = `${String.fromCharCode(66 + tracePeriod)}${Math.max(2, rows.findIndex(item => item.id === traceId) + 2)}`;
                 const origin = dataOrigin === "synthetic-demo" ? "fixed synthetic reference" : dataOrigin === "canonical-run" ? "persisted Run value" : dataOrigin === "caller-provided" ? "caller-provided display value" : "unavailable";
-                return `${address} · ${activeRow?.label || "Selected line"} · ${statementCellText(activeValue[tracePeriod])} ${activeRow ? sheetUnitLabel(activeRow.unit ?? (rowFormatOf(activeRow, activeSheet).kind === "money" ? activeSheet.unit : rowFormatOf(activeRow, activeSheet).kind === "ratio" ? "x" : "%")) : activeSheet.unit} · ${origin}`;
+                return `${address} · ${activeRow?.label || "Selected line"} · ${statementCellText(activeValue[tracePeriod])} ${activeRow ? canonicalUnitText(activeRow, activeSheet) : activeSheet.unit} · ${origin}`;
               })() : dataOrigin === "synthetic-demo" ? "Select a cell to open its synthetic trace" : "Select a cell to inspect its display value"}
             </span>
             {traceId && onExplain && (() => {

@@ -1,17 +1,17 @@
-"""WF-React-1 — Product Truth & Financial Workspace: real-Chromium acceptance.
+"""WF-React-1 browser acceptance bodies (Product Truth & Financial Workspace).
 
-Covers, against the real server and a real persisted Run:
+Not collected by pytest: executed through the thin wrappers in
+``tests/test_model_workspace_consolidation_browser.py`` (the existing mandatory
+Chromium role and its Playwright fixture lifecycle), exactly like the diagnostics
+acceptance bodies.  No module-level skip lives here.
 
-* no prototype banner / hardcoded Run identity / synthetic KPI in ANY section;
-* canonical EUR / kEUR / mEUR display conversion, ratios, negatives, rounding,
-  proven against the canonical statements API (exact Decimal arithmetic);
-* same-Run Results / Analysis / Statements / Library parity;
-* CURRENT / STALE / NOT_RUN consistency across every surface;
-* Library pagination, server search and Reference / Working-Copy status;
-* Results / Analysis navigation and responsive layout (desktop + mobile).
-
-Skipped automatically where Chromium is unavailable.  Screenshots are written to
-``$WF1_SCREENSHOT_DIR`` when set (used to produce the reviewed evidence set).
+Covers, against the real server and a real persisted Run: product truth in every
+section; canonical EUR/kEUR/mEUR conversion, ratios, negatives, rounding and
+monetary KPI precision proven with an independent Decimal oracle; same-Run
+Results/Analysis/Statements/Library parity; CURRENT/STALE/NOT_RUN consistency;
+Library pagination, server search and Reference/Working-Copy status; navigation
+and Back/Forward; desktop/tablet/mobile layout.  Screenshots go under
+``$WF1_SCREENSHOT_DIR`` (or the role's ``$WF05_SCREENSHOT_DIR``) as ``wf1-*.png``.
 """
 from __future__ import annotations
 
@@ -22,12 +22,27 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("playwright", reason="playwright not installed in this workflow")
+CIT_CELL = "[data-grid-cell='tax.assumptions.cit_rate_pct']"
+SAVE_BUTTON = "#rx-grid-save"
 
-from tests.test_model_react_poc_browser_acceptance import (  # noqa: F401,E402
-    CIT_CELL, SAVE_BUTTON, make_session, react_enabled,
-)
-from tests.test_workflow_c_browser_v1 import browser, live_server  # noqa: F401,E402
+
+def make_session(browser, live_server, uid):
+    from app.auth import COOKIE_NAME, create_session_token
+    from app.services.reference_seed_service import create_reference_seeded_project
+
+    record = create_reference_seeded_project(user_id=uid, template_source="generic_solar_reference",
+                                             requested_name="UX02 browser", capacity_mw=20.0)
+    context = browser.new_context(viewport={"width": 1440, "height": 1000})
+    context.add_cookies([{"name": COOKIE_NAME, "value": create_session_token(user_id=uid, username="admin"),
+                          "url": live_server}])
+    page = context.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    page.on("console", lambda message: errors.append(message.text)
+            if message.type == "error"
+            and not str((message.location or {}).get("url", "")).endswith("/favicon.ico") else None)
+    return context, page, record, errors
+
 
 FORBIDDEN = (
     "DEMO-FIXED", "Design prototype", "SYNTHETIC DEMO", "synthetic", "No live calculations",
@@ -36,7 +51,6 @@ FORBIDDEN = (
 )
 SECTIONS = ("overview", "inputs", "statements", "financing", "results", "scenarios", "analysis",
             "diagnostics", "trust")
-SHOTS = os.environ.get("WF1_SCREENSHOT_DIR")
 
 
 def run_canonical(context, base, code):
@@ -69,9 +83,10 @@ def open_section(page, base, code, section):
 
 
 def shot(page, name):
-    if SHOTS:
-        Path(SHOTS).mkdir(parents=True, exist_ok=True)
-        page.screenshot(path=str(Path(SHOTS) / f"{name}.png"), full_page=True)
+    folder = os.environ.get("WF1_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR")
+    if folder:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(Path(folder) / f"wf1-{name}.png"), full_page=True)
 
 
 def expect_display(canonical: str, base: str, shown: str, precision: int) -> str:
@@ -88,16 +103,7 @@ def expect_display(canonical: str, base: str, shown: str, precision: int) -> str
     return f"({body})" if value < 0 and rounded != 0 else body
 
 
-@pytest.fixture()
-def seeded(browser, react_enabled):  # noqa: F811
-    context, page, record, errors = make_session(browser, react_enabled, "wf1-user")
-    try:
-        yield context, page, record, errors, react_enabled
-    finally:
-        context.close()
-
-
-def test_product_truth_no_prototype_or_synthetic_content_in_any_section(seeded):
+def check_product_truth_no_prototype_or_synthetic_content_in_any_section(seeded):
     context, page, record, errors, base = seeded
     run_canonical(context, base, record.project_code)
     status = api(context, base, "workspace", record.project_code)["identity"]["snapshot_id"][:12]
@@ -119,7 +125,7 @@ def test_product_truth_no_prototype_or_synthetic_content_in_any_section(seeded):
     assert errors == [], errors
 
 
-def test_statement_units_ratios_negatives_and_rounding_match_canonical_api(seeded):
+def check_statement_units_ratios_negatives_and_rounding_match_canonical_api(seeded):
     context, page, record, errors, base = seeded
     run_canonical(context, base, record.project_code)
     payload = api(context, base, "statements", record.project_code)
@@ -154,11 +160,16 @@ def test_statement_units_ratios_negatives_and_rounding_match_canonical_api(seede
         page.select_option("#fm-sw-unit", unit)
         shown = page.locator(f"button[data-statement-row='dscr'][data-statement-col='{index}']").inner_text()
         assert shown == f"{dscr['model'][index]}x", (unit, shown, dscr["model"][index])
-    # a tax row is NOT mistaken for a ratio (label ends in "x")
+    # explicit provenance of every row's unit: DSCR is label-inferred (backend does not yet send row units), money rows come from the sheet unit
+    assert page.locator("tr[data-unit-source]").count() > 0
+    assert page.locator("tr[data-unit-source='label-inference']").count() == 1
+    assert page.locator("tr[data-unit-source='unspecified']").count() == 0
+    page.get_by_role("tab", name="Profit & Loss").click()
+    assert page.locator("tr[data-unit-source='sheet-unit']").count() == len(sheets["pl"]["rows"])
     assert errors == [], errors
 
 
-def test_results_and_analysis_values_are_the_canonical_values_of_the_same_run(seeded):
+def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(seeded):
     context, page, record, errors, base = seeded
     run_canonical(context, base, record.project_code)
     payload = api(context, base, "statements", record.project_code)
@@ -170,18 +181,38 @@ def test_results_and_analysis_values_are_the_canonical_values_of_the_same_run(se
     assert page.locator("[data-run-context]").get_attribute("data-run-state") == "CURRENT"
     assert run_id in page.locator("[data-run-context]").inner_text()
     assert f"Integrity: {payload['status']['integrity']}" in page.locator("[data-results-view]").inner_text()
-    # every metric card shows the canonical display text (or an explicit unavailable state)
+    # every metric card keeps the canonical source text separately (data-metric-canonical); monetary KPIs are
+    # re-expressed through the selected unit/precision, everything else (IRR, MOIC, DSCR, %) is verbatim
     metrics = payload["results"]["metrics"]
     cards = page.locator("[data-metric-label]")
     assert cards.count() == len(metrics) and len(metrics) > 0
-    for metric in metrics:
-        card = page.locator(f"[data-metric-label='{metric['label']}']")
-        assert card.get_attribute("data-metric-canonical") == metric["display"]
-        value = card.locator(".rx-live-kpi-value").inner_text()
-        if metric["available"]:
-            assert value == metric["display"], (metric["label"], value, metric["display"])
-        else:
-            assert value == "Not available" and metric["source"] in card.inner_text()
+
+    def expected_metric(metric, unit, precision):
+        if not metric["available"]:
+            return "Not available"
+        money = re.fullmatch(r"(.*?)\s*(kEUR|mEUR|EUR)", metric["display"].strip())
+        if not money:
+            return metric["display"]
+        return f"{expect_display(money.group(1), money.group(2), unit, precision)} {unit}"
+
+    monetary = [m for m in metrics if m["available"] and re.search(r"(kEUR|mEUR|EUR)$", m["display"])]
+    verbatim = [m for m in metrics if m["available"] and m not in monetary]
+    assert monetary and verbatim, "the Run must expose both monetary and non-monetary KPIs"
+    for unit in ("EUR", "kEUR", "mEUR"):
+        for precision in (0, 1, 2, 3):
+            page.select_option("select[data-control='unit']", unit)
+            page.select_option("select[data-control='precision']", str(precision))
+            for metric in metrics:
+                card = page.locator(f"[data-metric-label='{metric['label']}']")
+                assert card.get_attribute("data-metric-canonical") == metric["display"], "source text must be preserved"
+                value = card.locator(".rx-live-kpi-value").inner_text()
+                assert value == expected_metric(metric, unit, precision), (metric["label"], unit, precision, value)
+                if not metric["available"]:
+                    assert metric["source"] in card.inner_text()
+    for metric in verbatim:
+        assert page.locator(f"[data-metric-label='{metric['label']}'] .rx-live-kpi-value").inner_text() == metric["display"]
+    page.select_option("select[data-control='unit']", "kEUR")
+    page.select_option("select[data-control='precision']", "1")
     # operating performance annual table: every cell traces to the canonical annual statement column
     for row_key, canonical_row in (("pl.revenues_keur", pl["revenues_keur"]), ("pl.ebit_keur", pl["ebit_keur"])):
         cells = page.locator(f"[data-period-table='operating-performance'] td[data-row='{row_key}']")
@@ -227,7 +258,7 @@ def test_results_and_analysis_values_are_the_canonical_values_of_the_same_run(se
     assert errors == [], errors
 
 
-def test_current_stale_not_run_are_consistent_across_every_surface(seeded):
+def check_current_stale_not_run_are_consistent_across_every_surface(seeded):
     context, page, record, errors, base = seeded
     code = record.project_code
 
@@ -273,7 +304,7 @@ def test_current_stale_not_run_are_consistent_across_every_surface(seeded):
     assert errors == [], errors
 
 
-def test_library_search_pagination_and_reference_working_copy_status(browser, react_enabled):  # noqa: F811
+def check_library_search_pagination_and_reference_working_copy_status(browser, react_enabled):
     from app.services.reference_seed_service import create_reference_seeded_project
 
     context, page, record, errors = make_session(browser, react_enabled, "wf1-library")
@@ -339,7 +370,7 @@ def test_library_search_pagination_and_reference_working_copy_status(browser, re
         context.close()
 
 
-def test_results_analysis_navigation_and_back_forward(seeded):
+def check_results_analysis_navigation_and_back_forward(seeded):
     context, page, record, errors, base = seeded
     run_canonical(context, base, record.project_code)
     open_section(page, base, record.project_code, "overview")
@@ -365,10 +396,7 @@ def test_results_analysis_navigation_and_back_forward(seeded):
     assert errors == [], errors
 
 
-@pytest.mark.parametrize("name,viewport", [("desktop", {"width": 1440, "height": 1000}),
-                                           ("tablet", {"width": 820, "height": 1100}),
-                                           ("mobile", {"width": 390, "height": 844})])
-def test_responsive_layout_has_no_page_level_horizontal_overflow(browser, react_enabled, name, viewport):  # noqa: F811
+def check_responsive_layout_has_no_page_level_horizontal_overflow(browser, react_enabled, name, viewport):
     from app.auth import COOKIE_NAME, create_session_token
     from app.services.reference_seed_service import create_reference_seeded_project
 

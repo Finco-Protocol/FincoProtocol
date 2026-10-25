@@ -15,7 +15,12 @@ export const DISPLAY_UNITS: readonly DisplayUnit[] = ["EUR", "kEUR", "mEUR"];
 export type RowFormat =
   | { kind: "money"; base: DisplayUnit }
   | { kind: "ratio" }
-  | { kind: "percent" };
+  | { kind: "percent" }
+  /** No canonical unit metadata and no safe inference: shown verbatim, never converted. */
+  | { kind: "unspecified" };
+
+/** How a row's format was established (evidence for the residual label-inference limitation). */
+export type UnitSource = "canonical-row-unit" | "sheet-unit" | "label-inference" | "unspecified";
 
 /** Maps canonical unit metadata ("keur", "EUR", "m_eur", "x", "pct", "%") to a format. */
 export function formatFromCanonicalUnit(raw: string | null | undefined): RowFormat | null {
@@ -39,11 +44,18 @@ const PERCENT_LABEL = /\(\s*%\s*\)\s*$|%\s*$|\b(irr|xirr|yield|margin|gearing|ra
  * "Net Tax" is never mistaken for a "x" ratio).
  */
 export function resolveRowFormat(label: string, rowUnit?: string | null, sheetUnit?: string | null): RowFormat {
+  return classifyRowUnit(label, rowUnit, sheetUnit).format;
+}
+
+/** Same decision as `resolveRowFormat`, with the basis it was made on. */
+export function classifyRowUnit(label: string, rowUnit?: string | null, sheetUnit?: string | null): { format: RowFormat; source: UnitSource } {
   const fromRow = formatFromCanonicalUnit(rowUnit);
-  if (fromRow) return fromRow;
-  if (RATIO_LABEL.test(label)) return { kind: "ratio" };
-  if (PERCENT_LABEL.test(label)) return { kind: "percent" };
-  return formatFromCanonicalUnit(sheetUnit) ?? { kind: "money", base: "kEUR" };
+  if (fromRow) return { format: fromRow, source: "canonical-row-unit" };
+  if (RATIO_LABEL.test(label)) return { format: { kind: "ratio" }, source: "label-inference" };
+  if (PERCENT_LABEL.test(label)) return { format: { kind: "percent" }, source: "label-inference" };
+  const fromSheet = formatFromCanonicalUnit(sheetUnit);
+  if (fromSheet) return { format: fromSheet, source: "sheet-unit" };
+  return { format: { kind: "unspecified" }, source: "unspecified" };
 }
 
 export type ParsedValue =
@@ -117,6 +129,25 @@ export function formatMoneyText(text: string | null | undefined, base: DisplayUn
   return parsed.negative && !isZero ? `(${body})` : body;
 }
 
+const MONETARY_METRIC = /^(.*?)\s*(kEUR|mEUR|EUR)$/;
+
+/**
+ * Key-metric display text -> chosen unit and precision.  A metric is monetary ONLY
+ * when its canonical text carries an explicit EUR/kEUR/mEUR unit suffix; it is then
+ * ALWAYS re-expressed through the exact-decimal authority (even when the selected
+ * unit equals the canonical unit, so the selected precision always applies).
+ * IRR, XIRR, MOIC, DSCR, percentages and any text without a currency suffix, and
+ * non-numeric text, are returned verbatim.  The canonical source string is never
+ * modified (callers keep it separately).
+ */
+export function formatMetricDisplay(display: string, unit: DisplayUnit, precision: number): string {
+  const money = MONETARY_METRIC.exec(display.trim());
+  if (!money) return display;
+  const base = money[2] as DisplayUnit;
+  if (parseDisplayNumber(money[1]).kind !== "number") return display;
+  return `${formatMoneyText(money[1], base, unit, precision)} ${unit}`;
+}
+
 /** Ratios and percentages keep the canonical precision; only the suffix and sign convention are applied. */
 export function formatRatioText(text: string | null | undefined, kind: "ratio" | "percent"): string {
   const parsed = parseDisplayNumber(text);
@@ -134,6 +165,7 @@ export function formatStatementCell(
   display: DisplayUnit,
   precision: number,
 ): string {
+  if (format.kind === "unspecified") return (text ?? "").trim() ? String(text).trim() : UNAVAILABLE_TEXT;
   return format.kind === "money"
     ? formatMoneyText(text, format.base, display, precision)
     : formatRatioText(text, format.kind);
@@ -141,7 +173,7 @@ export function formatStatementCell(
 
 /** Unit label shown next to a row/column header (never claims a unit for ratios). */
 export function formatUnitLabel(format: RowFormat, display: DisplayUnit): string {
-  return format.kind === "money" ? display : format.kind === "ratio" ? "x" : "%";
+  return format.kind === "money" ? display : format.kind === "ratio" ? "x" : format.kind === "percent" ? "%" : "unit unavailable";
 }
 
 /** Canonical sheet unit ("keur") as a display label ("kEUR"). */
