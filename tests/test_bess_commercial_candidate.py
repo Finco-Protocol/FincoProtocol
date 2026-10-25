@@ -18,7 +18,7 @@ import json
 import subprocess
 import sys
 from datetime import date, datetime, timedelta, timezone
-from decimal import ROUND_UP, Decimal as D, localcontext
+from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, ROUND_HALF_EVEN, ROUND_UP, Decimal as D, localcontext
 from pathlib import Path
 
 import pytest
@@ -820,6 +820,193 @@ class TestReleaseClosureAndIsolation:
                      for a in (n.names if isinstance(n, ast.Import) else [ast.alias(name=n.module or "")])}
             assert not names & {"fastapi", "flask", "starlette", "jinja2", "requests", "httpx", "os", "financial_engine",
                                 "finco_core", "research"}, (f.name, names)
+
+
+# ── Correction A: duplicate claim identities and context-free provenance ───
+
+
+def claim_line(i, claim, service=Service.MERCHANT_ENERGY, cls=RevenueClass.MERCHANT, amount=D(10)):
+    contracted = cls is not RevenueClass.MERCHANT
+    return RevenueLine(f"L{i}", "P1", service, cls, amount, claim, "c-1" if contracted else None)
+
+
+class TestDuplicateClaimCannotIncreaseRevenue:
+    SERVICES = list(Service)
+    CLASSES = list(RevenueClass)
+
+    @pytest.mark.parametrize("service_a", SERVICES)
+    @pytest.mark.parametrize("service_b", SERVICES)
+    @pytest.mark.parametrize("class_a", CLASSES)
+    @pytest.mark.parametrize("class_b", CLASSES)
+    def test_stacking_rejects_one_claim_in_any_two_service_class_buckets(self, released, service_a, service_b, class_a, class_b):
+        lines = (claim_line(1, "claim-X", service_a, class_a), claim_line(2, "claim-X", service_b, class_b))
+        with pytest.raises(BessCommercialError, match="DOUBLE_COUNT.*claim_id"):
+            stack_by_service(lines)
+
+    def test_duplicate_claim_is_rejected_before_any_total_is_produced(self, released):
+        honest = (claim_line(1, "claim-A"), claim_line(2, "claim-B", Service.CAPACITY_RESERVATION, RevenueClass.CONTRACTED))
+        assert sum(stack_by_service(honest).values()) == 20
+        padded = honest + (claim_line(3, "claim-A", Service.CAPACITY_RESERVATION, RevenueClass.CONTRACTED_UNSECURED),)
+        with pytest.raises(BessCommercialError, match="DOUBLE_COUNT"):
+            stack_by_service(padded)
+        with pytest.raises(BessCommercialError, match="DOUBLE_COUNT"):
+            present_for_lender(padded)
+
+    def test_line_ids_and_claims_are_both_unique_in_every_aggregation(self, released):
+        a = claim_line(1, "claim-A")
+        for aggregate in (stack_by_service, present_for_lender):
+            with pytest.raises(BessCommercialError, match="DOUBLE_COUNT.*revenue line_id"):
+                aggregate((a, a))
+
+    def test_distinct_claims_still_aggregate_exactly(self, released):
+        lines = tuple(claim_line(i, f"claim-{i}") for i in range(1, 5))
+        assert stack_by_service(lines)[("P1", "MERCHANT_ENERGY", "MERCHANT")] == 40
+
+    def test_aggregation_rejects_malformed_lines_with_typed_errors(self, released):
+        good = claim_line(1, "claim-A")
+        for aggregate in (stack_by_service, present_for_lender):
+            for bad in ([good], (good, "L2"), (None,), ({"line_id": "L2"},), "L1"):
+                with pytest.raises(BessCommercialError, match="immutable tuple|RevenueLine required"):
+                    aggregate(bad)
+
+
+class TestClaimInventoryIntegrity:
+    @staticmethod
+    def claims(*pairs):
+        return tuple(EnergyClaim(cid, service, H20, Direction.DISCHARGE_AC, D("0.1")) for cid, service in pairs)
+
+    def test_duplicate_claim_identities_are_rejected_not_overwritten(self, released):
+        line = claim_line(1, "claim-X")
+        for inventory in (self.claims(("claim-X", Service.MERCHANT_ENERGY), ("claim-X", Service.MERCHANT_ENERGY)),
+                          self.claims(("claim-X", Service.MERCHANT_ENERGY), ("claim-X", Service.ENERGY_THROUGHPUT)),
+                          self.claims(("claim-X", Service.ENERGY_THROUGHPUT), ("claim-X", Service.MERCHANT_ENERGY))):
+            with pytest.raises(BessCommercialError, match="DOUBLE_COUNT.*claim inventory"):
+                link_to_allocation((line,), inventory)
+
+    def test_duplicate_detection_does_not_depend_on_claim_order(self, released):
+        line = claim_line(1, "claim-X")
+        a, b = self.claims(("claim-X", Service.MERCHANT_ENERGY), ("claim-X", Service.ENERGY_THROUGHPUT))
+        messages = set()
+        for inventory in ((a, b), (b, a)):
+            with pytest.raises(BessCommercialError) as raised:
+                link_to_allocation((line,), inventory)
+            messages.add(str(raised.value))
+        assert len(messages) == 1
+
+    def test_duplicates_are_rejected_even_when_no_line_uses_them(self, released):
+        with pytest.raises(BessCommercialError, match="DOUBLE_COUNT"):
+            link_to_allocation((), self.claims(("claim-Z", Service.MERCHANT_ENERGY), ("claim-Z", Service.MERCHANT_ENERGY)))
+
+    @pytest.mark.parametrize("junk", ["claim-X", None, 7, {"claim_id": "claim-X"}, ["claim-X"],
+                                      type("Lookalike", (), {"claim_id": "claim-X", "service": Service.MERCHANT_ENERGY})()])
+    def test_malformed_claim_objects_raise_typed_errors(self, released, junk):
+        good = self.claims(("claim-A", Service.MERCHANT_ENERGY))
+        with pytest.raises(BessCommercialError, match="EnergyClaim or ReservationClaim required"):
+            link_to_allocation((claim_line(1, "claim-A"),), good + (junk,))
+
+    def test_inventory_must_be_an_immutable_tuple(self, released):
+        with pytest.raises(BessCommercialError, match="immutable tuple"):
+            link_to_allocation((claim_line(1, "claim-A"),), list(self.claims(("claim-A", Service.MERCHANT_ENERGY))))
+
+    def test_the_one_claim_one_line_invariant_and_valid_linking_are_preserved(self, released):
+        inventory = self.claims(("claim-A", Service.MERCHANT_ENERGY), ("claim-B", Service.ENERGY_THROUGHPUT))
+        link_to_allocation((claim_line(1, "claim-A"), claim_line(2, "claim-B", Service.ENERGY_THROUGHPUT)), inventory)
+        with pytest.raises(BessCommercialError, match="DOUBLE_COUNT.*claim_id"):
+            link_to_allocation((claim_line(1, "claim-A"), claim_line(2, "claim-A")), inventory)
+
+
+LONG = "1.234567890123456789012345678901234567"        # 37 significant digits (> 28 and > 34)
+CONTEXTS = [(prec, rounding) for prec in (10, 28, 40, 60)
+            for rounding in (ROUND_UP, ROUND_DOWN, ROUND_HALF_EVEN, ROUND_CEILING, ROUND_FLOOR)]
+
+
+def under(prec, rounding, fn):
+    with localcontext() as ctx:
+        ctx.prec, ctx.rounding = prec, rounding
+        return fn()
+
+
+class TestDecimalCanonicalizationIsContextFree:
+    VALUES = [LONG, "123456789012345678901234567890123456.789", "-98765432109876543210.987654321098765432109876",
+              "0.000000000000000000000000000000000001234567", "1E+40", "-1E-40", "3.141592653589793238462643383279502884"]
+
+    @pytest.mark.parametrize("prec,rounding", CONTEXTS)
+    def test_canonical_json_and_identity_ignore_the_callers_precision_and_rounding(self, prec, rounding):
+        for text in self.VALUES:
+            value = D(text)
+            expected = canonical_json(value)
+            assert under(prec, rounding, lambda: canonical_json(value)) == expected
+            assert under(prec, rounding, lambda: identity(value)) == identity(value)
+
+    @pytest.mark.parametrize("text", VALUES)
+    def test_the_numeric_value_is_preserved_exactly(self, text):
+        from fractions import Fraction
+        value = D(text)
+        for prec, rounding in CONTEXTS:
+            payload = json.loads(under(prec, rounding, lambda: canonical_json(value)))["payload"]
+            assert Fraction(D(payload)) == Fraction(value)        # exact-rational oracle, no rounding anywhere
+
+    def test_a_36th_digit_difference_changes_identity_under_every_context(self):
+        a, b = D(LONG), D(LONG[:-1] + "8")
+        for prec, rounding in CONTEXTS:
+            assert under(prec, rounding, lambda: identity(a)) != under(prec, rounding, lambda: identity(b))
+
+    def test_serialization_does_not_round_or_raise_flags_in_the_callers_context(self):
+        from decimal import Inexact, Rounded
+        with localcontext() as ctx:
+            ctx.prec = 10
+            ctx.clear_flags()
+            canonical_json(D(LONG))
+            identity(D(LONG))
+            assert not ctx.flags[Rounded] and not ctx.flags[Inexact]
+
+    @pytest.mark.parametrize("variants", [("1.0", "1.000", "1", "1E+0", "10E-1"), ("100", "1E+2", "10E+1", "100.00"),
+                                          (LONG, LONG + "000", "0" + LONG), ("-2.50", "-2.5", "-25E-1")])
+    def test_equal_values_share_one_identity_regardless_of_scale(self, variants):
+        for prec, rounding in CONTEXTS:
+            ids = {under(prec, rounding, lambda v=v: identity(D(v))) for v in variants}
+            assert len(ids) == 1
+
+    @pytest.mark.parametrize("zero", ["0", "-0", "0.0", "-0.000", "0E+9", "-0E-9"])
+    def test_every_zero_including_negative_zero_is_one_canonical_zero(self, zero):
+        assert json.loads(canonical_json(D(zero)))["payload"] == "0"
+        assert identity(D(zero)) == identity(D(0))
+        assert identity(D(zero)) != identity(None)                # a reported zero is not MISSING
+
+    @pytest.mark.parametrize("bad", ["NaN", "-NaN", "sNaN", "Infinity", "-Infinity"])
+    def test_non_finite_values_are_still_rejected(self, bad):
+        with pytest.raises(BessCommercialError, match="non-finite"):
+            canonical_json(D(bad))
+        with pytest.raises(BessCommercialError, match="non-finite"):
+            contracts.decimal_text(D(bad))
+
+    @pytest.mark.parametrize("text", ["1E+5000", "1E-5000", "1" + "0" * 1500])
+    def test_absurd_magnitudes_are_rejected_not_expanded(self, text):
+        with pytest.raises(BessCommercialError, match="bounded serialization domain"):
+            canonical_json(D(text))
+
+    def test_decimal_text_forms(self):
+        text = contracts.decimal_text
+        assert text(D("1E-30")) == "0." + "0" * 29 + "1" and text(D("1E+30")) == "1" + "0" * 30
+        assert text(D("-1.50")) == "-1.5" and text(D("100")) == "100" and text(D("0.5")) == "0.5"
+
+    def test_contracts_with_long_decimals_serialize_identically_across_contexts(self, released):
+        amounts = [D("12345678901234567890.123456789012345678"), D(LONG), D("0.000000000000000000000000000000000007"),
+                   D("5"), D("6.5")]
+        legs_ = tuple(ReceiptLeg(kind, f"r-{kind.value}", amount) for kind, amount in zip(LegKind, amounts))
+        period = ChargingPeriod("P1", ChargingBasis.EXPLICIT_BUY_LEG, "ev-long", legs_, None, None,
+                                D("1.234567890123456789012345678901234567"), D("2.000000000000000000000000000000000001"))
+        baseline_period, baseline_statement = canonical_json(period), canonical_json(charging_statement(period))
+        for prec, rounding in CONTEXTS:
+            assert under(prec, rounding, lambda: canonical_json(period)) == baseline_period
+            assert under(prec, rounding, lambda: canonical_json(charging_statement(period))) == baseline_statement
+            assert under(prec, rounding, lambda: identity(charging_statement(period))) == identity(charging_statement(period))
+
+    def test_native_evidence_identity_is_context_free(self, released, native):
+        statement = charging_statement(explicit(day(native, 0)))
+        base = identity(statement)
+        for prec, rounding in CONTEXTS:
+            assert under(prec, rounding, lambda: identity(statement)) == base
 
 
 # ── 14. Existing BESS / canonical outputs are bit-identical ─────────────────

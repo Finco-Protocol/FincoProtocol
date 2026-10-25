@@ -200,12 +200,43 @@ def reconciles(a: Decimal, b: Decimal) -> bool:
 # ── Canonical serialization and provenance identity ──────────────────────────
 
 
+#: Serialization bound: a finite Decimal beyond this many digits / this decimal exponent is rejected rather than
+#: expanded (a plain-notation string of ``1E+999999999`` would otherwise be a memory hazard).
+_MAX_DECIMAL_DIGITS = 1000
+_MAX_DECIMAL_EXPONENT = 1000
+
+
+def decimal_text(value: Decimal) -> str:
+    """Exact, canonical plain-notation text of a finite Decimal, independent of the ambient Decimal context.
+
+    Built from the value's digit tuple, so no operation can round it: ``Decimal.normalize()``, ``quantize()``
+    and arithmetic all round to the CALLER's precision and rounding mode, which would make canonical JSON and
+    the SHA-256 identity depend on the caller. Equal values share one text regardless of scale (``1.0`` /
+    ``1.000`` / ``1E+0`` -> ``"1"``); every zero, including negative zero, is ``"0"``.
+    """
+    if not isinstance(value, Decimal) or not value.is_finite():
+        raise BessCommercialError("BESS_COMMERCIAL_VALUE: non-finite Decimal cannot be serialized")
+    sign, digit_tuple, exponent = value.as_tuple()
+    digits = list(digit_tuple)
+    if not any(digits):
+        return "0"
+    if len(digits) > _MAX_DECIMAL_DIGITS or abs(value.adjusted()) > _MAX_DECIMAL_EXPONENT:
+        raise BessCommercialError("BESS_COMMERCIAL_VALUE: Decimal outside the bounded serialization domain")
+    while digits[-1] == 0:                 # strip trailing zeros: scale-independent identity
+        digits.pop()
+        exponent += 1
+    body = "".join(map(str, digits))
+    if exponent >= 0:
+        text = body + "0" * exponent
+    else:
+        point = len(body) + exponent       # digits before the decimal point
+        text = body[:point] + "." + body[point:] if point > 0 else "0." + "0" * -point + body
+    return "-" + text if sign else text
+
+
 def _encode(value):
     if isinstance(value, Decimal):
-        if not value.is_finite():
-            raise BessCommercialError("BESS_COMMERCIAL_VALUE: non-finite Decimal cannot be serialized")
-        text = format(value.normalize(), "f")
-        return "0" if Decimal(text) == 0 else text
+        return decimal_text(value)
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, datetime):

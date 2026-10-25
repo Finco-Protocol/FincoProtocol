@@ -33,9 +33,9 @@ Native facts that shape the candidate:
 
 | Module | Content |
 |---|---|
-| `contracts.py` | Release gate (`ACTIVATION_ENABLED = False`), strict Decimal validators, typed vocabularies, `Decision.OPEN` (the only representable owner-decision state), exact-context decorator, canonical JSON, SHA-256 provenance identity. |
+| `contracts.py` | Release gate (`ACTIVATION_ENABLED = False`), strict Decimal validators, typed vocabularies, `Decision.OPEN` (the only representable owner-decision state), exact-context decorator, canonical JSON and SHA-256 provenance identity built from each Decimal's exact digit tuple (never `normalize()`/rounding), so identity is independent of the caller's precision and rounding mode; non-finite and absurd-magnitude values are rejected. |
 | `charging.py` | `ChargingPeriod`, `ReceiptLeg`, `charging_statement`, `charging_book` (cross-period double-count guards), native adapters, reconciliation with native hourly evidence. |
-| `revenue.py` | `RevenueLine` classification (CONTRACTED / CONTRACTED_UNSECURED / MERCHANT), lender presentation mapping (eligibility and haircut OPEN), per-service stacking, one-to-one linkage to allocation claims. |
+| `revenue.py` | `RevenueLine` classification (CONTRACTED / CONTRACTED_UNSECURED / MERCHANT), lender presentation mapping (eligibility and haircut OPEN), per-service stacking, one-to-one linkage to allocation claims. Every aggregation path first requires unique `line_id` AND unique `claim_id`; the claim inventory must be typed and duplicate-free (never silently overwritten). |
 | `allocation.py` | Energy claims (throughput, merchant), capacity / ancillary reservations (MW, no MWh), reconciliation with native dispatch, double-claim rejection, rated-power cap. |
 | `tolling.py` | Typed tolling candidate: capacity, availability fee, term, guarantee, energy ownership, dispatch responsibility, DECLARED deductions, four allocation decisions fixed at OPEN. |
 | `augmentation.py` | SOH-threshold / planned / warranty triggers read from native SoH, replacement-CAPEX proposal, funding / residual / CAPEX-class decisions OPEN, posting unconditionally closed. |

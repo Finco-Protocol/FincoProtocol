@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
 
+from app.bess_commercial_candidate.allocation import EnergyClaim, ReservationClaim
 from app.bess_commercial_candidate.contracts import (
     exact_arithmetic,
     BessCommercialError, Decision, RevenueClass, Service, enum_member, ident, opt_dec, opt_ident,
@@ -103,16 +104,26 @@ def _bucket(lines) -> Bucket:
     return Bucket(total, len(lines), missing)
 
 
-@exact_arithmetic
-def present_for_lender(lines) -> LenderPresentation:
-    """Group lines by period and class. Classes are reported separately and never netted."""
-    require_release()
+def _validated_lines(lines) -> tuple:
+    """Typed, duplicate-free revenue lines: one line per line_id AND one line per allocation claim.
+
+    Every aggregation path goes through this check first, so two revenue lines backed by the same claim can
+    never be added together (the one-claim / one-revenue-line invariant).
+    """
     lines = tuple_of(lines, "lines")
     for line in lines:
         if not isinstance(line, RevenueLine):
             raise BessCommercialError("BESS_COMMERCIAL_SCHEMA: RevenueLine required")
     unique([line.line_id for line in lines], "revenue line_id")
     unique([line.claim_id for line in lines], "claim_id (one allocation claim backs one revenue line)")
+    return lines
+
+
+@exact_arithmetic
+def present_for_lender(lines) -> LenderPresentation:
+    """Group lines by period and class. Classes are reported separately and never netted."""
+    require_release()
+    lines = _validated_lines(lines)
     periods = []
     for period_id in sorted({line.period_id for line in lines}):
         mine = [line for line in lines if line.period_id == period_id]
@@ -127,8 +138,7 @@ def present_for_lender(lines) -> LenderPresentation:
 def stack_by_service(lines) -> dict:
     """Per (period, service, class) totals so stacked services stay visibly separate."""
     require_release()
-    lines = tuple_of(lines, "lines")
-    unique([line.line_id for line in lines], "revenue line_id")
+    lines = _validated_lines(lines)
     out: dict = {}
     for line in lines:
         key = (line.period_id, line.service.value, line.classification.value)
@@ -145,11 +155,15 @@ def link_to_allocation(lines, claims) -> None:
     a physical MWh or reserved MW cannot be monetised twice.
     """
     require_release()
-    by_id = {}
-    for claim in tuple_of(claims, "claims"):
-        by_id[claim.claim_id] = claim
+    lines = _validated_lines(lines)
+    inventory = tuple_of(claims, "claims")
+    for claim in inventory:
+        if not isinstance(claim, (EnergyClaim, ReservationClaim)):
+            raise BessCommercialError("BESS_COMMERCIAL_SCHEMA: EnergyClaim or ReservationClaim required")
+    unique([claim.claim_id for claim in inventory], "claim_id in the claim inventory")
+    by_id = {claim.claim_id: claim for claim in inventory}
     used = set()
-    for line in tuple_of(lines, "lines"):
+    for line in lines:
         claim = by_id.get(line.claim_id)
         if claim is None:
             raise BessCommercialError(
