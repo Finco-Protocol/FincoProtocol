@@ -48,3 +48,60 @@ A jurisdiction code is an OPAQUE attribution label. The candidate never maps a j
 ## 6. Test evidence summary (65 tests)
 
 Release closure (literal-False flag, 10 gated entries, no-env proof) · Case 1 reconciliation identity + CIT feed · Case 2 dated rates + split fail-closed + uncovered UNAVAILABLE · Case 3 FIFO use/expiration/cap/unlimited/future-vintage · Case 4 limitation outputs + de-minimis + disabled + negative EBITDA + no carryforward field · Case 5 book/tax temporary differences + non-SL + pre-COD in-service fail · Case 6 construction VAT refund position · Case 7 CAPITALISE/EXPENSE explicit-only · Case 8 cash vs P&L ledger separation + negative (refund) cash · Case 9 dividend gross/net conservation + explicit zero rate · Case 10 SHL + senior/junior basis gating · Case 11 separate entities + no-consolidation structural scan + duplicate ids · Case 12 jurisdiction opacity + missing evidence + unknown arrangements + malformed numbers · Case 13 COD stub 184/365 + leap 366 denominator via the real PeriodEngine + tax-year-keyed ledger · Case 14 negative income → loss + zero tax · Case 15 double-withholding + duplicate flow ids · Case 16 exact intercompany identity + principal non-taxable + unknown-entity/leakage fails · Case 17 AST import-forbidden scan + reverse reference scan + released-file diff proof.
+
+
+## Correction A — monetary integrity and date authority
+
+No country/treaty defaults or owner decisions are introduced. D-01..D-13 remain
+OPEN and the literal release flag stays False. Calculations accept finite Decimal,
+integer or compatible float evidence. Decimal amounts are never converted through
+float; integers are exact, while a float's shortest decimal spelling represents
+already rounded binary evidence, not recovery of its original decimal source.
+Money validators preserve those types; no candidate monetary path calls float().
+
+All public numerical operations use an isolated, evidence-scaled Decimal context
+(minimum 128 digits, with guard digits for supplied significance/exponents),
+ROUND_HALF_UP, and six-decimal output postings. Caller precision, rounding mode and
+Inexact traps cannot change the result. Proportional calculations use exact input
+Decimals until the declared output quantum. Where rounded ledgers must conserve
+money, complementary fields derive from already rounded postings: withheld + net
+= posted gross, recoverable + nonrecoverable = posted input VAT, deductible +
+disallowed = posted interest, and depreciation totals equal posted row sums.
+Loss vintages/incoming taxable ledger amounts are six-decimal postings before
+FIFO movements; openings, consumption, generation, expiry and closing reconcile.
+These are candidate numerical bookkeeping conventions, not statutory tax rules.
+
+Tax reconciliation checks loss use against the positive exact-input pre-loss base
+before rounding and again against the posted base. Negative/above-available offsets
+fail TAX_WF10_LOSS_UTILISATION; a negative base without offset generates its actual
+posted loss. The exact-input pre-loss sum is rounded once. Rounded displayed lines
+may not sum to that value; rounding_adjustment_keur exposes the difference instead
+of silently changing taxable income or creating a loss from rounding. The reported
+identity includes that explicit adjustment. No positive-income year can generate
+a loss through excess utilisation or component-rounding cancellation.
+
+DATED_SERIES requires an immutable, strictly chronological tuple (duplicates retain
+TAX_WF10_OVERLAP; unsorted input fails TAX_WF10_RATE_ORDER). Lookup cannot select an
+older window because of input order. CIT validates every effective transition in
+(start, end], where the supplied tax-year boundaries are inclusive. Change/reversion
+fails TAX_WF10_TAX_YEAR_RATE_SPLIT even when beginning/end rates match. Repeated
+same-rate windows are stable; uncovered beginning/end remains UNAVAILABLE. A new
+rate on the year start is that year's initial rate, not an intrayear split; a new
+rate on the inclusive end is a split. Invalid date intervals fail closed.
+
+A depreciation asset entering inside a supplied period cannot consume the full
+period fraction implicitly. active_day_fraction plus active_fraction_source is
+required, nonnegative and <= full period fraction; without it the helper fails
+TAX_WF10_DEPRECIATION_PRORATION_REQUIRED. No active fraction is derived from a
+jurisdiction, day-count guess or COD label. Entry exactly at period start can use
+the existing full fraction; entry on its inclusive final date still needs supplied
+partial-active evidence. The old full-life numerical fixture now uses genuine full
+annual periods starting with the in-service date; its monetary assertions are
+unchanged. New tests retain and separately exercise the previously invalid geometry.
+
+Correction evidence covers significant Decimal values above float's exact integer
+range and long-significance amounts; finite guards; half-up boundaries and micro
+CIT/withholding/loss postings; low/high ambient context equivalence across CIT,
+losses, VAT, withholding and depreciation; all dated transitions including reversion;
+loss rejection and exact reported identities; explicit depreciation proration.
+Adjacent canonical CIT and FIFO regression tests remain unchanged.

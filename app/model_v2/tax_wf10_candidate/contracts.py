@@ -41,7 +41,7 @@ Design rules (mission §3):
 from __future__ import annotations
 
 import json
-import math
+from decimal import Decimal
 from dataclasses import dataclass
 from datetime import date
 from typing import Optional, Tuple
@@ -68,33 +68,25 @@ def _fail(code: str, message: str) -> ValueError:
 
 def _num(value, label: str, *, minimum: Optional[float] = None,
          maximum: Optional[float] = None, exclusive_min: bool = False) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) \
-            or not math.isfinite(float(value)):
-        raise _fail("TAX_WF10_VALUE", f"{label} must be a finite number, got "
-                                      f"{value!r}")
-    v = float(value)
+    if isinstance(value,bool) or not isinstance(value,(int,float,Decimal)):
+        raise _fail("TAX_WF10_VALUE", f"{label} must be a finite number")
+    v = value if isinstance(value,Decimal) else Decimal(str(value))
+    if not v.is_finite():
+        raise _fail("TAX_WF10_VALUE", f"{label} must be a finite number")
     if minimum is not None:
-        if exclusive_min and v <= minimum:
+        if exclusive_min and v <= Decimal(str(minimum)):
             raise _fail("TAX_WF10_VALUE",
                         f"{label} must be strictly above {minimum}")
-        if not exclusive_min and v < minimum:
+        if not exclusive_min and v < Decimal(str(minimum)):
             raise _fail("TAX_WF10_VALUE", f"{label} must be at least {minimum}")
-    if maximum is not None and v > maximum:
+    if maximum is not None and v > Decimal(str(maximum)):
         raise _fail("TAX_WF10_VALUE", f"{label} must be at most {maximum}")
-    return v
+    return value
 
 
 def _pct(value, label: str) -> float:
     """Percentage 0..100 (never a fraction)."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)) \
-            or not math.isfinite(float(value)):
-        raise _fail("TAX_WF10_VALUE", f"{label} must be a finite number")
-    v = float(value)
-    if not 0.0 <= v <= 100.0:
-        raise _fail("TAX_WF10_VALUE",
-                    f"{label} is a percentage and must be within [0, 100], "
-                    f"got {v!r}")
-    return v
+    return _num(value,label,minimum=0,maximum=100)
 
 
 def _rate(value, label: str) -> float:
@@ -203,7 +195,9 @@ class TaxRateSchedule:
             if self.flat_rate is not None:
                 raise _fail("TAX_WF10_SCHEMA",
                             "DATED_SERIES must not carry flat_rate")
-            ordered = sorted(self.windows, key=lambda w: w.effective_from)
+            if not isinstance(self.windows,tuple):
+                raise _fail("TAX_WF10_SCHEMA", "rate windows must be an immutable chronological tuple")
+            ordered = self.windows
             for window in ordered:
                 window.validate()
             for earlier, later in zip(ordered, ordered[1:]):
@@ -212,10 +206,15 @@ class TaxRateSchedule:
                                 f"two rate windows share effective_from "
                                 f"{earlier.effective_from}")
 
+            for earlier, later in zip(ordered, ordered[1:]):
+                if later.effective_from < earlier.effective_from:
+                    raise _fail("TAX_WF10_RATE_ORDER", "rate windows must be strictly chronological")
+
     def rate_on(self, when: date) -> Optional[float]:
         """The CIT rate effective on an exact date, or None when a
         DATED_SERIES does not cover the date (typed UNAVAILABLE)."""
         self.validate()
+        _date(when, "rate lookup date")
         if self.mode == "FLAT":
             return self.flat_rate
         applicable: Optional[TaxRateWindow] = None
@@ -264,7 +263,7 @@ class OpeningLossVintage:
     """An explicitly supplied opening tax-loss vintage."""
 
     origin_tax_year: int
-    amount_keur: float
+    amount_keur: Decimal | int | float
 
     def validate(self) -> None:
         if not isinstance(self.origin_tax_year, int) \
@@ -293,10 +292,10 @@ class InterestLimitationInputs:
     the capacity is the de-minimis threshold alone (the all-limited
     alternative is Financial Owner decision D-04)."""
 
-    ebitda_keur: float
-    net_interest_keur: float
+    ebitda_keur: Decimal | int | float
+    net_interest_keur: Decimal | int | float
     ebitda_limit_pct: float
-    de_minimis_keur: float
+    de_minimis_keur: Decimal | int | float
     enabled: bool = True
 
     def validate(self) -> None:
@@ -327,7 +326,7 @@ class DepreciationAsset:
 
     asset_id: str
     category: str
-    gross_basis_keur: float
+    gross_basis_keur: Decimal | int | float
     book_useful_life_years: int
     tax_useful_life_years: int
     in_service_date: date
@@ -398,8 +397,8 @@ class VatPeriodInput:
     """One period's declared net (VAT-exclusive) amounts and phase."""
 
     phase: str
-    output_net_keur: float
-    input_net_keur: float
+    output_net_keur: Decimal | int | float
+    input_net_keur: Decimal | int | float
 
     def validate(self) -> None:
         _choice(self.phase, "vat period phase", VAT_PHASES)
@@ -460,7 +459,7 @@ class IntercompanyFlow:
     payee_entity_id: str
     flow_type: str
     period_index: int
-    gross_keur: float
+    gross_keur: Decimal | int | float
 
     def validate(self) -> None:
         _identity(self.flow_id, "intercompany flow_id")

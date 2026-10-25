@@ -339,11 +339,11 @@ class TestCase05BookVsTaxDepreciation:
         asset = DepreciationAsset(
             asset_id="pv-1", category="solar_panels", gross_basis_keur=1000.0,
             book_useful_life_years=10, tax_useful_life_years=5,
-            in_service_date=date(2025, 7, 1))
-        periods = [DepreciationPeriod(i, date(2025, 1, 1), date(2025, 12, 31),
+            in_service_date=date(2025, 1, 1))
+        periods = [DepreciationPeriod(i, date(2024+i, 1, 1), date(2024+i, 12, 31),
                                       1.0) for i in range(1, 6)]
         schedules = build_depreciation_schedules(
-            asset, cod_date=date(2025, 7, 1), periods=periods)
+            asset, cod_date=date(2025, 1, 1), periods=periods)
         assert schedules.rows[0].book_keur == D("100.000000")
         assert schedules.rows[0].tax_keur == D("200.000000")
         assert schedules.rows[0].difference_keur == D("100.000000")
@@ -856,3 +856,147 @@ class TestCase17CanonicalOutputsUnchanged:
             cwd=str(REPO), capture_output=True, text=True)
         assert result.returncode == 0
         assert result.stdout.strip() == "", result.stdout
+
+
+# Correction A: independent precision and date-boundary regressions.
+@pytest.mark.parametrize('money',[D('9007199254740993.123456'),D('12345678901234567890123456789012345678901234567890.123456')])
+def test_correction_a_decimal_money_never_round_trips_float(released,money):
+    from app.model_v2.tax_wf10_candidate.pure import _dec
+    assert _dec(money,'synthetic') is money
+    result=corporate_tax_for_tax_year(taxable_income_keur=money,tax_rate_schedule=TaxRateSchedule('FLAT',1),tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31))
+    assert result==money
+    rec=taxable_income_reconciliation(tax_year=2025,ebitda_keur=money,tax_depreciation_keur=0,deductible_interest_keur=0)
+    assert rec.taxable_before_losses_keur==money
+
+
+@pytest.mark.parametrize('income,rate,expected',[('0.000005','.1','0.000001'),('0.0000049','.1','0.000000'),('0.0000005','.5','0.000000'),('1.2345675','1','1.234568')])
+def test_correction_a_cit_boundary_rounding(released,income,rate,expected):
+    result=corporate_tax_for_tax_year(taxable_income_keur=D(income),tax_rate_schedule=TaxRateSchedule('FLAT',D(rate)),tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31))
+    assert result==D(expected)
+
+
+@pytest.mark.parametrize('bad',[D('NaN'),D('Infinity'),D('-Infinity'),float('nan'),float('inf'),True])
+def test_correction_a_nonfinite_money_rejected(released,bad):
+    with pytest.raises(ValueError,match='TAX_WF10_VALUE'):
+        corporate_tax_for_tax_year(taxable_income_keur=bad,tax_rate_schedule=TaxRateSchedule('FLAT',.1),tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31))
+    with pytest.raises(ValueError,match='TAX_WF10_VALUE'):
+        VatPeriodInput('OPERATING',bad,0).validate()
+
+
+def test_correction_a_float_evidence_uses_its_decimal_spelling():
+    from app.model_v2.tax_wf10_candidate.pure import _dec
+    value=0.1+0.2
+    assert _dec(value,'binary evidence')==D(str(value))
+    assert _dec(9007199254740993,'integer evidence')==D(9007199254740993)
+
+
+@pytest.mark.parametrize('rates',[(.1,.2,.1),(.1,.2,.3),(.1,.1,.2,.1)])
+def test_correction_a_all_intrayear_rate_transitions_detected(released,rates):
+    windows=tuple(TaxRateWindow(date(2025,i+1,1),r) for i,r in enumerate(rates))
+    with pytest.raises(ValueError,match='TAX_WF10_TAX_YEAR_RATE_SPLIT'):
+        corporate_tax_for_tax_year(taxable_income_keur=D(100),tax_rate_schedule=TaxRateSchedule('DATED_SERIES',windows=windows),tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31))
+
+
+def test_correction_a_unsorted_schedule_fails_closed():
+    schedule=TaxRateSchedule('DATED_SERIES',windows=(TaxRateWindow(date(2026,1,1),.2),TaxRateWindow(date(2025,1,1),.1)))
+    with pytest.raises(ValueError,match='TAX_WF10_RATE_ORDER'):schedule.validate()
+    with pytest.raises(ValueError,match='TAX_WF10_RATE_ORDER'):schedule.rate_on(date(2026,6,1))
+
+
+def test_correction_a_cit_boundary_dates_stable_and_uncovered(released):
+    schedule=TaxRateSchedule('DATED_SERIES',windows=(TaxRateWindow(date(2025,1,1),.1),TaxRateWindow(date(2026,1,1),.2)))
+    def cit(start,end):return corporate_tax_for_tax_year(taxable_income_keur=D(100),tax_rate_schedule=schedule,tax_year_start=start,tax_year_end=end)
+    assert cit(date(2025,1,1),date(2025,12,31))==10
+    assert cit(date(2026,1,1),date(2026,12,31))==20
+    assert cit(date(2024,12,31),date(2025,12,31)) is None
+    with pytest.raises(ValueError,match='RATE_SPLIT'):cit(date(2025,1,1),date(2026,1,1))
+    with pytest.raises(ValueError,match='TAX_WF10_VALUE'):cit(date(2026,1,1),date(2025,1,1))
+    identical=TaxRateSchedule('DATED_SERIES',windows=(TaxRateWindow(date(2025,1,1),.1),TaxRateWindow(date(2025,6,1),.1)))
+    assert corporate_tax_for_tax_year(taxable_income_keur=D(100),tax_rate_schedule=identical,tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31))==10
+
+
+@pytest.mark.parametrize('income,used',[('100','101'),('100','100.0000001'),('0','1'),('-50','1'),('100','-1')])
+def test_correction_a_loss_overutilisation_rejected(released,income,used):
+    with pytest.raises(ValueError,match='TAX_WF10_LOSS_UTILISATION'):
+        taxable_income_reconciliation(tax_year=2025,ebitda_keur=D(income),tax_depreciation_keur=0,deductible_interest_keur=0,loss_used_keur=D(used))
+
+
+def test_correction_a_legitimate_loss_and_exact_posted_identities(released):
+    positive=taxable_income_reconciliation(tax_year=2025,ebitda_keur=D('100.123456'),tax_depreciation_keur=0,deductible_interest_keur=0,loss_used_keur=D('100.123456'))
+    assert positive.taxable_after_losses_keur==positive.loss_generated_keur==0
+    negative=taxable_income_reconciliation(tax_year=2025,ebitda_keur=D('-50.123456'),tax_depreciation_keur=0,deductible_interest_keur=0)
+    assert negative.loss_generated_keur==D('50.123456') and negative.taxable_after_losses_keur==0
+    rec=taxable_income_reconciliation(tax_year=2025,ebitda_keur=D('1.0000005'),financing_income_keur=D('1.0000005'),tax_depreciation_keur=0,deductible_interest_keur=0)
+    assert rec.taxable_before_losses_keur==rec.ebitda_keur+rec.financing_income_keur-rec.tax_depreciation_keur+rec.non_deductible_addbacks_keur-rec.deductible_interest_keur+rec.rounding_adjustment_keur
+
+
+def test_correction_a_partial_asset_requires_explicit_active_fraction(released):
+    asset=DepreciationAsset('synthetic','asset',D(1000),10,5,date(2025,7,1))
+    period=DepreciationPeriod(1,date(2025,1,1),date(2025,12,31),D(1))
+    with pytest.raises(ValueError,match='TAX_WF10_DEPRECIATION_PRORATION_REQUIRED'):
+        build_depreciation_schedules(asset,cod_date=date(2025,1,1),periods=(period,))
+    from dataclasses import replace
+    supplied=replace(period,active_day_fraction=D('.5'),active_fraction_source='synthetic independent active-year fraction')
+    r=build_depreciation_schedules(asset,cod_date=date(2025,1,1),periods=(supplied,))
+    assert r.rows[0].book_keur==50 and r.rows[0].tax_keur==100
+    with pytest.raises(ValueError):build_depreciation_schedules(asset,cod_date=date(2025,1,1),periods=(replace(supplied,active_day_fraction=D('1.1')),))
+    at_end=replace(asset,in_service_date=date(2025,12,31))
+    with pytest.raises(ValueError,match='PRORATION_REQUIRED'):build_depreciation_schedules(at_end,cod_date=date(2025,1,1),periods=(period,))
+
+
+def test_correction_a_all_money_paths_independent_of_ambient_context(released):
+    from decimal import localcontext, ROUND_DOWN, ROUND_UP, Inexact
+    value=D('9007199254740993.123456')
+    def evaluate():
+        return (
+            corporate_tax_for_tax_year(taxable_income_keur=value,tax_rate_schedule=TaxRateSchedule('FLAT',D('.2')),tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31)),
+            tax_loss_schedule(taxable_income_after_limits_by_tax_year={2025:value},config=TaxLossCarryforwardConfig(100,unlimited=True),opening_vintages=(OpeningLossVintage(2024,value),),first_tax_year=2025),
+            apply_withholding(WithholdingApplication('synthetic',WithholdingRule('DIVIDEND',D('.2'),'payer','payee','synthetic supplied rule'),value)),
+            compute_vat_position(VatConfig(D('.2'),100,100,'EXPENSE'),VatPeriodInput('OPERATING',value,value)),
+            build_depreciation_schedules(DepreciationAsset('synthetic','asset',value,2,4,date(2025,1,1)),cod_date=date(2025,1,1),periods=(DepreciationPeriod(1,date(2025,1,1),date(2025,12,31),D(1)),)),
+        )
+    with localcontext() as ctx:
+        ctx.prec=4;ctx.rounding=ROUND_DOWN;ctx.traps[Inexact]=True
+        low=evaluate()
+    with localcontext() as ctx:
+        ctx.prec=90;ctx.rounding=ROUND_UP
+        high=evaluate()
+    assert low==high
+    assert low[1].total_used_keur==value
+    assert low[2].gross_keur==value and low[2].gross_keur==low[2].withheld_keur+low[2].net_keur
+
+
+def test_correction_a_micro_loss_and_withholding_postings_reconcile(released):
+    ledger=tax_loss_schedule(taxable_income_after_limits_by_tax_year={2025:D('-.0000005'),2026:D('.000001')},config=TaxLossCarryforwardConfig(100,unlimited=True),first_tax_year=2025)
+    assert ledger.rows[0].generated_keur==D('.000001') and ledger.rows[1].used_keur==D('.000001')
+    assert ledger.closing_total_keur==0
+    w=apply_withholding(WithholdingApplication('micro',WithholdingRule('DIVIDEND',D('.5'),'payer','payee','synthetic'),D('.000001')))
+    assert w.gross_keur==w.withheld_keur+w.net_keur and w.net_keur==0
+
+
+
+def test_correction_a_positive_exact_income_never_creates_rounding_loss(released):
+    result=taxable_income_reconciliation(tax_year=2025,ebitda_keur=D('.00000049'),financing_income_keur=D('.00000049'),tax_depreciation_keur=D('.00000051'),deductible_interest_keur=0)
+    assert result.taxable_before_losses_keur==0 and result.loss_generated_keur==0
+    assert result.rounding_adjustment_keur==D('.000001')
+
+
+
+def test_correction_a_equal_decimal_and_binary_rate_evidence_is_stable(released):
+    schedule=TaxRateSchedule('DATED_SERIES',windows=(TaxRateWindow(date(2025,1,1),.1),TaxRateWindow(date(2025,6,1),D('.1'))))
+    assert corporate_tax_for_tax_year(taxable_income_keur=D(100),tax_rate_schedule=schedule,tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31))==D(10)
+
+
+
+def test_correction_a_missing_rate_does_not_mask_nonfinite_money(released):
+    schedule=TaxRateSchedule('DATED_SERIES',windows=(TaxRateWindow(date(2030,1,1),.1),))
+    with pytest.raises(ValueError,match='TAX_WF10_VALUE'):
+        corporate_tax_for_tax_year(taxable_income_keur=D('NaN'),tax_rate_schedule=schedule,tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31))
+
+
+
+@pytest.mark.parametrize('income',[D(0),D(100)])
+def test_correction_a_empty_loss_ledger_stays_zero(released,income):
+    r=tax_loss_schedule(taxable_income_after_limits_by_tax_year={2025:income},config=TaxLossCarryforwardConfig(100,unlimited=True),first_tax_year=2025)
+    assert r.closing_total_keur==r.total_used_keur==r.total_expired_keur==0
+    assert r.rows[0].opening_by_vintage==r.rows[0].closing_by_vintage==()

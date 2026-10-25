@@ -13,10 +13,10 @@ the production CIT stack without re-deriving it.
 """
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, Context, localcontext, MAX_EMAX, MIN_EMIN
+from functools import wraps
 from typing import Mapping, Optional, Sequence, Tuple
 
 from app.model_v2.tax_wf10_candidate.contracts import (
@@ -41,15 +41,44 @@ def _fail(code: str, message: str) -> ValueError:
     return ValueError(f"{code}: {message}")
 
 
+def _decimal_context(fn):
+    """Deterministic working precision, scaled to supplied evidence, not ambient state."""
+    @wraps(fn)
+    def call(*args, **kwargs):
+        integer=0;fraction=0;count=0
+        def visit(value):
+            nonlocal integer,fraction,count
+            if isinstance(value,(Decimal,int,float)) and not isinstance(value,bool):
+                number=value if isinstance(value,Decimal) else Decimal(str(value))
+                if number.is_finite():
+                    integer=max(integer,number.adjusted()+1,0)
+                    fraction=max(fraction,-number.as_tuple().exponent,0)
+                    count+=1
+            elif is_dataclass(value):
+                for field in fields(value):visit(getattr(value,field.name))
+            elif isinstance(value,Mapping):
+                for item in value.values():visit(item)
+            elif isinstance(value,(tuple,list)):
+                for item in value:visit(item)
+        visit(args);visit(kwargs)
+        with localcontext(Context(prec=max(128,integer+fraction+len(str(count))+64),
+                                  rounding=ROUND_HALF_UP,Emax=MAX_EMAX,Emin=MIN_EMIN)):
+            return fn(*args,**kwargs)
+    return call
+
+
+@_decimal_context
 def _q(value: Decimal) -> Decimal:
-    return Decimal(value).quantize(_QUANTUM, rounding=ROUND_HALF_UP)
+    return _dec(value,"posting").quantize(_QUANTUM, rounding=ROUND_HALF_UP)
 
 
 def _dec(value, label: str) -> Decimal:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) \
-            or not math.isfinite(float(value)):
+    if isinstance(value,bool) or not isinstance(value,(Decimal,int,float)):
         raise _fail("TAX_WF10_VALUE", f"{label} must be a finite number")
-    return Decimal(str(float(value)))
+    result=value if isinstance(value,Decimal) else Decimal(str(value))
+    if not result.is_finite():
+        raise _fail("TAX_WF10_VALUE", f"{label} must be a finite number")
+    return result
 
 
 # ── A. CIT: reconciliation, dated rates, loss schedule ───────────────────────
@@ -61,7 +90,9 @@ class TaxableIncomeReconciliation:
 
     Identity (exact, asserted): ``taxable_before_losses == ebitda +
     financing_income − tax_depreciation + non_deductible_addbacks −
-    deductible_interest``. ``taxable_after_losses`` floors at zero: a
+    deductible_interest + rounding_adjustment``. The explicit rounding
+    adjustment reconciles rounded lines to the rounded exact-input sum.
+    ``taxable_after_losses`` floors at zero: a
     negative result generates a new loss vintage (``loss_generated``) and
     NEVER a negative tax."""
 
@@ -75,17 +106,19 @@ class TaxableIncomeReconciliation:
     taxable_before_losses_keur: Decimal
     taxable_after_losses_keur: Decimal
     loss_generated_keur: Decimal
+    rounding_adjustment_keur: Decimal = Decimal(0)
 
 
+@_decimal_context
 def taxable_income_reconciliation(
     *,
     tax_year: int,
-    ebitda_keur: float,
-    financing_income_keur: float = 0.0,
-    tax_depreciation_keur: float,
-    non_deductible_addbacks_keur: float = 0.0,
-    deductible_interest_keur: float,
-    loss_used_keur: float = 0.0,
+    ebitda_keur: Decimal | int | float,
+    financing_income_keur: Decimal | int | float = 0.0,
+    tax_depreciation_keur: Decimal | int | float,
+    non_deductible_addbacks_keur: Decimal | int | float = 0.0,
+    deductible_interest_keur: Decimal | int | float,
+    loss_used_keur: Decimal | int | float = 0.0,
 ) -> TaxableIncomeReconciliation:
     """Deterministic taxable-income reconciliation with explicit lines.
 
@@ -99,16 +132,27 @@ def taxable_income_reconciliation(
     if not isinstance(tax_year, int) or isinstance(tax_year, bool) \
             or tax_year < 1:
         raise _fail("TAX_WF10_VALUE", "tax_year must be an integer >= 1")
-    ebitda = _dec(ebitda_keur, "ebitda_keur")
-    financing_income = _dec(financing_income_keur, "financing_income_keur")
-    tax_dep = _dec(tax_depreciation_keur, "tax_depreciation_keur")
-    addbacks = _dec(non_deductible_addbacks_keur,
-                    "non_deductible_addbacks_keur")
-    interest = _dec(deductible_interest_keur, "deductible_interest_keur")
-    loss_used = _dec(loss_used_keur, "loss_used_keur")
+    raw_before = (_dec(ebitda_keur,"ebitda_keur")
+                  + _dec(financing_income_keur,"financing_income_keur")
+                  - _dec(tax_depreciation_keur,"tax_depreciation_keur")
+                  + _dec(non_deductible_addbacks_keur,"non_deductible_addbacks_keur")
+                  - _dec(deductible_interest_keur,"deductible_interest_keur"))
+    raw_loss = _dec(loss_used_keur,"loss_used_keur")
+    if raw_loss < 0 or raw_loss > max(Decimal(0),raw_before):
+        raise _fail("TAX_WF10_LOSS_UTILISATION", "loss utilisation exceeds positive pre-loss taxable income")
+    ebitda = _q(_dec(ebitda_keur, "ebitda_keur"))
+    financing_income = _q(_dec(financing_income_keur, "financing_income_keur"))
+    tax_dep = _q(_dec(tax_depreciation_keur, "tax_depreciation_keur"))
+    addbacks = _q(_dec(non_deductible_addbacks_keur,
+                    "non_deductible_addbacks_keur"))
+    interest = _q(_dec(deductible_interest_keur, "deductible_interest_keur"))
+    loss_used = _q(_dec(loss_used_keur, "loss_used_keur"))
     if loss_used < 0:
         raise _fail("TAX_WF10_VALUE", "loss_used_keur must be non-negative")
-    before = ebitda + financing_income - tax_dep + addbacks - interest
+    before = _q(raw_before)
+    rounding_adjustment = before - (ebitda + financing_income - tax_dep + addbacks - interest)
+    if loss_used > max(Decimal(0),before):
+        raise _fail("TAX_WF10_LOSS_UTILISATION", "loss utilisation exceeds positive pre-loss taxable income")
     after = before - loss_used
     if after < 0:
         loss_generated = -after
@@ -126,9 +170,11 @@ def taxable_income_reconciliation(
         taxable_before_losses_keur=_q(before),
         taxable_after_losses_keur=_q(after),
         loss_generated_keur=_q(loss_generated),
+        rounding_adjustment_keur=_q(rounding_adjustment),
     )
 
 
+@_decimal_context
 def corporate_tax_for_tax_year(
     *,
     taxable_income_keur: Decimal,
@@ -138,28 +184,39 @@ def corporate_tax_for_tax_year(
 ) -> Optional[Decimal]:
     """CIT liability for one tax year at the evidence-supplied rate.
 
-    The rate must be UNAMBIGUOUS for the whole tax year: the rates
-    effective on the year's first and last date must be identical — a
+    The rate must be UNAMBIGUOUS for the whole tax year: every effective
+    transition inside the supplied inclusive year is checked — a
     rate change inside a tax year fails closed
     (``TAX_WF10_TAX_YEAR_RATE_SPLIT``) rather than blending. A date not
     covered by a DATED_SERIES is UNAVAILABLE (``None``) — never a default
     rate. Negative taxable income yields zero tax (loss generation is
     the reconciliation's concern)."""
     require_release()
+    taxable = _dec(taxable_income_keur, "taxable_income_keur")
     schedule = tax_rate_schedule
     schedule.validate()
+    if not isinstance(tax_year_start,date) or not isinstance(tax_year_end,date) or tax_year_end < tax_year_start:
+        raise _fail("TAX_WF10_VALUE", "invalid tax-year date interval")
     start_rate = schedule.rate_on(tax_year_start)
     end_rate = schedule.rate_on(tax_year_end)
     if start_rate is None or end_rate is None:
         return None
-    if start_rate != end_rate:
+    start_rate = _dec(start_rate,"start rate")
+    end_rate = _dec(end_rate,"end rate")
+    transitions = [_dec(w.rate,"dated rate") for w in schedule.windows
+                   if tax_year_start < w.effective_from <= tax_year_end]
+    previous=start_rate
+    changed=False
+    for rate in transitions:
+        if rate != previous:changed=True
+        previous=rate
+    if changed or start_rate != end_rate:
         raise _fail(
             "TAX_WF10_TAX_YEAR_RATE_SPLIT",
             f"the CIT rate changes inside tax year "
             f"[{tax_year_start} .. {tax_year_end}] "
             f"({start_rate} -> {end_rate}); the caller must align tax years "
             "to the rate schedule (no silent blending)")
-    taxable = _dec(float(taxable_income_keur), "taxable_income_keur")
     if taxable < 0:
         taxable = Decimal(0)
     return _q(taxable * Decimal(str(start_rate)))
@@ -188,6 +245,7 @@ class LossLedgerResult:
     closing_total_keur: Decimal
 
 
+@_decimal_context
 def tax_loss_schedule(
     *,
     taxable_income_after_limits_by_tax_year: Mapping[int, Decimal],
@@ -221,7 +279,7 @@ def tax_loss_schedule(
                 "rejected)")
         ledger[vintage.origin_tax_year] = (
             ledger.get(vintage.origin_tax_year, Decimal(0))
-            + _dec(vintage.amount_keur, "opening vintage amount"))
+            + _q(_dec(vintage.amount_keur, "opening vintage amount")))
     years = sorted(taxable_income_after_limits_by_tax_year)
     if not years:
         raise _fail("TAX_WF10_VALUE",
@@ -230,8 +288,9 @@ def tax_loss_schedule(
     total_used = Decimal(0)
     total_expired = Decimal(0)
     for year in years:
-        income = _dec(float(taxable_income_after_limits_by_tax_year[year]),
+        income = _dec(taxable_income_after_limits_by_tax_year[year],
                       f"taxable income [{year}]")
+        income = _q(income)
         # expiry BEFORE use
         expired = Decimal(0)
         if not config.unlimited:
@@ -244,7 +303,7 @@ def tax_loss_schedule(
         # FIFO use, capped
         used = Decimal(0)
         if income > 0:
-            capacity = income * Decimal(str(config.utilisation_cap_pct)) / Decimal(100)
+            capacity = min(income, _q(income * Decimal(str(config.utilisation_cap_pct)) / Decimal(100)))
             for origin in sorted(ledger):
                 if used >= capacity:
                     break
@@ -280,7 +339,7 @@ def tax_loss_schedule(
     # exact per-year identity audit: replay openings forward and record
     # each year's opening snapshot on its row
     replay: dict[int, Decimal] = {
-        v.origin_tax_year: _dec(v.amount_keur, "opening amount")
+        v.origin_tax_year: _q(_dec(v.amount_keur, "opening amount"))
         for v in opening_vintages}
     audited_rows = []
     for row in result.rows:
@@ -333,6 +392,7 @@ class InterestLimitationOutcome:
     binding_rule: str
 
 
+@_decimal_context
 def interest_limitation(
     inputs: InterestLimitationInputs,
 ) -> InterestLimitationOutcome:
@@ -358,8 +418,8 @@ def interest_limitation(
     pct_component = ebitda * Decimal(str(inputs.ebitda_limit_pct)) / Decimal(100)
     de_minimis = _dec(inputs.de_minimis_keur, "de_minimis_keur")
     capacity = max(pct_component, de_minimis)
-    deductible = min(interest, capacity)
-    disallowed = interest - deductible
+    deductible = _q(min(interest, capacity))
+    disallowed = _q(interest) - deductible
     binding = "DE_MINIMIS" if de_minimis >= pct_component else "EBITDA_PCT"
     return InterestLimitationOutcome(
         capacity_keur=_q(capacity),
@@ -379,7 +439,9 @@ class DepreciationPeriod:
     period_index: int
     start_date: date
     end_date: date
-    day_fraction: float
+    day_fraction: Decimal | float
+    active_day_fraction: Decimal | float | None = None
+    active_fraction_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -404,6 +466,7 @@ class DepreciationSchedules:
     total_temporary_difference_keur: Decimal
 
 
+@_decimal_context
 def build_depreciation_schedules(
     asset: DepreciationAsset,
     *,
@@ -415,7 +478,8 @@ def build_depreciation_schedules(
     Annual amounts are ``basis / useful_life_years``; each canonical
     period receives ``annual × day_fraction`` (the released axis's own
     proration — stub COD periods included, leap denominators inherited).
-    Periods before the in-service date contribute zero. Accumulated
+    Periods before the in-service date contribute zero; an in-service date
+    inside a period requires an explicit active fraction and source. Accumulated
     depreciation is capped at the gross basis (the final partial period
     absorbs the remainder). The per-period temporary difference is
     ``tax − book``; the cumulative difference is tracked explicitly.
@@ -433,7 +497,20 @@ def build_depreciation_schedules(
     cum_diff = Decimal(0)
     rows = []
     for period in periods:
-        if period.day_fraction < 0:
+        fraction=_dec(period.day_fraction,"day_fraction")
+        if period.end_date < period.start_date:
+            raise _fail("TAX_WF10_VALUE", "invalid depreciation period interval")
+        partial=period.start_date < asset.in_service_date <= period.end_date
+        if partial and (period.active_day_fraction is None or not isinstance(period.active_fraction_source,str) or not period.active_fraction_source.strip()):
+            raise _fail("TAX_WF10_DEPRECIATION_PRORATION_REQUIRED", "in-service date falls inside period; supplied active fraction and source required")
+        if period.active_day_fraction is not None:
+            if not partial or not isinstance(period.active_fraction_source,str) or not period.active_fraction_source.strip():
+                raise _fail("TAX_WF10_VALUE", "active fraction requires partial period and explicit source")
+            active=_dec(period.active_day_fraction,"active_day_fraction")
+            if not 0 <= active <= fraction:
+                raise _fail("TAX_WF10_VALUE", "active fraction outside supplied full-period fraction")
+            fraction=active
+        if fraction < 0:
             raise _fail("TAX_WF10_VALUE", "day_fraction must be non-negative")
         if period.end_date < asset.in_service_date:
             row = DepreciationRow(period_index=period.period_index,
@@ -443,14 +520,16 @@ def build_depreciation_schedules(
                                   cumulative_difference_keur=_q(cum_diff))
             rows.append(row)
             continue
-        book = min(book_annual * Decimal(str(period.day_fraction)),
-                   basis - book_acc)
-        tax = min(tax_annual * Decimal(str(period.day_fraction)),
-                  basis - tax_acc)
+        book = min(_q(book_annual * fraction),
+                   _q(basis) - book_acc)
+        tax = min(_q(tax_annual * fraction),
+                  _q(basis) - tax_acc)
         if book < 0:
             book = Decimal(0)
         if tax < 0:
             tax = Decimal(0)
+        book = _q(book)
+        tax = _q(tax)
         book_acc += book
         tax_acc += tax
         diff = tax - book
@@ -493,6 +572,7 @@ class VatPosition:
     capitalised_keur: Decimal
 
 
+@_decimal_context
 def compute_vat_position(
     config: VatConfig, period_input: VatPeriodInput,
 ) -> VatPosition:
@@ -508,13 +588,13 @@ def compute_vat_position(
     config.validate()
     period_input.validate()
     rate = Decimal(str(config.rate))
-    output_vat = _dec(period_input.output_net_keur,
-                      "output_net_keur") * rate
-    input_vat = _dec(period_input.input_net_keur, "input_net_keur") * rate
+    output_vat = _q(_dec(period_input.output_net_keur,
+                      "output_net_keur") * rate)
+    input_vat = _q(_dec(period_input.input_net_keur, "input_net_keur") * rate)
     recovery_pct = (config.recovery_pct_construction
                     if period_input.phase == "CONSTRUCTION"
                     else config.recovery_pct_operating)
-    recoverable = (input_vat * Decimal(str(recovery_pct))
+    recoverable = _q(_dec(period_input.input_net_keur,"input_net_keur") * rate * Decimal(str(recovery_pct))
                    / Decimal(100))
     nonrecoverable = input_vat - recoverable
     net_cash = output_vat - recoverable
@@ -548,7 +628,7 @@ class WithholdingApplication:
 
     flow_id: str
     rule: WithholdingRule
-    gross_keur: float
+    gross_keur: Decimal | int | float
     period_index: int = 0
 
     def validate(self) -> None:
@@ -582,6 +662,7 @@ class WithholdingOutcome:
     period_index: int
 
 
+@_decimal_context
 def apply_withholding(application: WithholdingApplication) -> WithholdingOutcome:
     """Deterministic withholding with exact gross/net conservation.
 
@@ -590,8 +671,8 @@ def apply_withholding(application: WithholdingApplication) -> WithholdingOutcome
     require_release()
     application.validate()
     gross = _dec(application.gross_keur, "withholding gross_keur")
-    withheld = gross * Decimal(str(application.rule.rate))
-    net = gross - withheld
+    withheld = _q(gross * Decimal(str(application.rule.rate)))
+    net = _q(gross) - withheld
     return WithholdingOutcome(
         flow_id=application.flow_id,
         flow_type=application.rule.flow_type,
@@ -604,6 +685,7 @@ def apply_withholding(application: WithholdingApplication) -> WithholdingOutcome
     )
 
 
+@_decimal_context
 def withholding_ledger(
     applications: Sequence[WithholdingApplication],
 ) -> Tuple[WithholdingOutcome, ...]:
@@ -653,6 +735,7 @@ class IntercompanyInterestAttribution:
     payee_taxable_income_keur: Decimal
 
 
+@_decimal_context
 def attribute_intercompany_interest(
     flow,
     *,

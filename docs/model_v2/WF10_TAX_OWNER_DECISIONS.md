@@ -36,3 +36,11 @@ implied. Harvest/reference observations are NOT FINCO policy authority.
    (see design doc §5 seams).
 4. Until then the package stays release-closed and production-invisible
    (proven by the isolation scans in `tests/test_tax_wf10_candidate.py`).
+
+
+Correction A does not close any decision. D-13's six-decimal ROUND_HALF_UP candidate
+postings now use exact Decimal inputs and isolated working precision, with explicit
+rounding-adjustment/complementary ledger evidence. This is not approval of statutory
+rounding, currency minor units or a jurisdictional convention. D-06 additionally
+requires independently supplied active fractions for assets entering within a period;
+no partial-period day-count policy is inferred. All decisions remain OPEN.
