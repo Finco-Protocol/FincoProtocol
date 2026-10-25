@@ -15,7 +15,7 @@ import {
   saveCostLinesBatch,
   saveWorkbookField,
 } from "./api";
-import type { SheetFieldPayload } from "./types";
+import type { PersistedIntegrity, SheetFieldPayload } from "./types";
 
 type FetchState<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
@@ -324,10 +324,10 @@ export function RunsView({ project, contentHash, workbookVersion, onRan }: {
             {historyRows.map((run, index) => (
               <tr key={run.history_id ?? index}>
                 <td className="fm-mono">{run.ran_at ?? "—"}</td>
-                <td>{run.scenario_name ?? run.scenario_id ?? "—"}</td>
-                <td>{run.origin ?? "—"}</td>
+                <td>{run.active_scenario_name ?? run.active_scenario_id ?? "—"}</td>
+                <td>{run.runtime_origin ?? "—"}</td>
                 <td>{run.engine_version ?? "—"}</td>
-                <td className="fm-mono">{run.composite_identity ? String((run.composite_identity as Record<string, unknown>).composite_hash ?? "—") : "—"}</td>
+                <td className="fm-mono">{run.composite_hash ?? "—"}<br /><span>Snapshot: {run.runtime_snapshot_id || "—"}</span></td>
               </tr>
             ))}
             {!historyRows.length && <tr><td colSpan={5}><span role="status">NOT RUN — no committed Run exists for this project yet.</span></td></tr>}
@@ -340,8 +340,28 @@ export function RunsView({ project, contentHash, workbookVersion, onRan }: {
 
 // ───────────────────────────── UX-06: diagnostics + trust ─────────────────────────────
 
-function KeyValueBlocks(source: Record<string, unknown>, skip: Set<string>): Array<[string, unknown]> {
-  return Object.entries(source).filter(([k]) => !skip.has(k));
+function readable(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "Unavailable";
+  if (Array.isArray(value)) return value.map(readable).join("; ");
+  if (typeof value === "object") return Object.entries(value as Record<string, unknown>)
+    .map(([key, item]) => `${key.replace(/_/g, " ")}: ${readable(item)}`).join("; ");
+  return String(value);
+}
+
+function IntegrityEvidence({ integrity }: { integrity: PersistedIntegrity | null }) {
+  return <section className="fm-card fm-section" aria-label="Current Run integrity">
+    <div className="fm-card-title"><h3>Current Run integrity</h3><span>{integrity?.overall ?? "UNAVAILABLE"}</span></div>
+    <p className="fm-info-note">Internal consistency of the committed Run only. This is separate from input freshness, reference regression, certificate signing and FINCO Verify.</p>
+    <p className="fm-info-note">Snapshot: <span className="fm-mono">{readable(integrity?.run_identity?.snapshot_id)}</span></p>
+    <p className="fm-info-note">Checks: {readable(integrity?.counts)}</p>
+    {integrity?.checks?.length ? <div className="fm-table-wrap"><table className="fm-table">
+      <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
+      <tbody>{integrity.checks.map((check, index) => <tr key={String(check.check_id ?? index)}>
+        <td>{readable(check.title ?? check.check_id)}</td><td>{readable(check.status)}</td>
+        <td>{readable(check.reason_code ?? check.detail)}</td>
+      </tr>)}</tbody>
+    </table></div> : <p className="fm-info-note">No committed integrity checks are available.</p>}
+  </section>;
 }
 
 export function DiagnosticsView({ project }: { project: string }) {
@@ -358,6 +378,7 @@ export function DiagnosticsView({ project }: { project: string }) {
     <section className="fm-card fm-section" aria-label="Model checks and diagnostics">
       <div className="fm-card-title"><h2>Model checks &amp; diagnostics</h2><span>evaluated from the committed Last Run</span></div>
       <p className="fm-info-note" role="note">{notClaims}</p>
+      <IntegrityEvidence integrity={data.integrity} />
       <p className="fm-info-note"><strong>Run state: {String(insight.run_state ?? data.run_state)}</strong> · {String(insight.context_note ?? "")}</p>
       <div className="fm-table-wrap">
         <table className="fm-table">
@@ -374,9 +395,8 @@ export function DiagnosticsView({ project }: { project: string }) {
           </tbody>
         </table>
       </div>
-      {KeyValueBlocks(diagnostics, new Set(["checks", "client_schema"])).map(([key, value]) => (
-        <p key={key} className="fm-info-note"><strong>{key}:</strong> {typeof value === "object" ? JSON.stringify(value) : String(value)}</p>
-      ))}
+      <p className="fm-info-note">Diagnostics state: {readable(diagnostics.state)} · {checks.length} reported checks</p>
+      <p className="fm-info-note">Evidence identity: {readable(diagnostics.identity)}</p>
     </section>
   );
 }
@@ -387,19 +407,24 @@ export function TrustView({ project }: { project: string }) {
   if (state.state === "loading") return <LoadingNote />;
   if (state.state === "error") return <ErrorNote message={state.message} onRetry={state.retry} />;
   const data = state.data;
-  const section = (title: string, source: Record<string, unknown>) => (
-    <div className="fm-card fm-section" style={{ marginBottom: 12 }}>
-      <div className="fm-card-title"><h3>{title}</h3><span>{String(source.state ?? "—")}</span></div>
-      {KeyValueBlocks(source, new Set(["state"])).map(([key, value]) => (
-        <p key={key} className="fm-info-note"><strong>{key}:</strong> {typeof value === "object" ? JSON.stringify(value) : String(value)}</p>
-      ))}
-    </div>
-  );
   return (
     <section aria-label="Trust and integrity evidence">
-      {section("Run certificate", data.certificate)}
-      {section("Validation evidence", data.validation)}
-      <p className="fm-info-note">Trust sections come from the canonical evidence builders; an unavailable section is shown as UNAVAILABLE and is never presented as a pass.</p>
+      <p className="fm-info-note">Run freshness: {data.run_state}. Snapshot: <span className="fm-mono">{readable(data.identity?.snapshot_id)}</span></p>
+      <IntegrityEvidence integrity={data.integrity} />
+      <section className="fm-card fm-section" aria-label="Reference regression evidence">
+        <div className="fm-card-title"><h3>Reference regression evidence</h3><span>{data.validation.state}</span></div>
+        <p className="fm-info-note">{data.validation.scope}</p>
+        <p className="fm-info-note">Not executed by opening this page. A reference PASS is not validation of this project.</p>
+        {data.validation.load_url ? <a className="fm-btn" href={data.validation.load_url} target="_blank" rel="noopener noreferrer">Explicitly run reference regression (separate evidence)</a>
+          : <p className="fm-info-note">{data.validation.reason}</p>}
+      </section>
+      <section className="fm-card fm-section" aria-label="Run certificate">
+        <div className="fm-card-title"><h3>Run certificate</h3><span>{data.certificate.state}</span></div>
+        <p className="fm-info-note">{data.certificate.scope}</p>
+        {data.certificate.load_url ? <a className="fm-btn" href={data.certificate.load_url} target="_blank" rel="noopener noreferrer">Explicitly request certificate (canonical route)</a>
+          : <p className="fm-info-note">{data.certificate.reason}</p>}
+      </section>
+      <p className="fm-info-note">No project validation was triggered by this read. Unavailable evidence stays unavailable; none of these sections imply FINCO Verify.</p>
     </section>
   );
 }
