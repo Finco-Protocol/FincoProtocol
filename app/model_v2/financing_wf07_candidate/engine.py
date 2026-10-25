@@ -199,6 +199,11 @@ class Wf07Inputs:
             for d in t.draws:
                 if d.period_index not in known:
                     raise Wf07Error("WF07_DRAW_PERIOD", f"{t.shl_id}@{d.period_index}")
+                if d.period_index in op:
+                    raise Wf07Error(
+                        "WF07_SHL_OPERATING_DRAW_UNSUPPORTED",
+                        f"{t.shl_id}@{d.period_index}: SHL draws are construction-period only in V0 "
+                        "(no operating funding contract is approved or reconciled)")
         unique([d.evidence_id for d in self.senior_draws]
                + [u.evidence_id for u in self.uses]
                + [d.evidence_id for t in self.shl for d in t.draws], "funding/use evidence")

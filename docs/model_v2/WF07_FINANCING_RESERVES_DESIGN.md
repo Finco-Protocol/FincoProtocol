@@ -44,7 +44,12 @@ WF-06, F3.1 or F4 candidates.
 ## 3. Contract boundaries
 
 * **A. Shareholder loans** — explicit commitment and dated draws (Σ ≤ commitment,
-  unique evidence ids); construction PIK is `CAPITALIZED`, operating interest is
+  unique evidence ids) **in construction periods only**: an operating-period draw
+  is rejected (`WF07_SHL_OPERATING_DRAW_UNSUPPORTED`, at the `Wf07Inputs` boundary
+  and again in `shl_due`) because V0 has no evidenced, reconciled operating funding
+  contract, so debt could rise with no matching cash movement (Correction A; see
+  decision W-13). Operating SHL balance changes are exactly disclosed PIK less
+  scheduled principal; construction PIK is `CAPITALIZED`, operating interest is
   an `OPERATING_EXPENSE_CANDIDATE` classification only (deductibility OPEN);
   cash vs PIK per phase; explicit scheduled principal (never a sweep); an SHL is
   `SPONSOR_DEBT` and can be neither `LEGAL_EQUITY` nor a `DISTRIBUTION`.
@@ -53,9 +58,16 @@ WF-06, F3.1 or F4 candidates.
   `opening drawn + draw − restoration = closing drawn`, `available = limit −
   drawn`; it never carries a cash deposit and cannot be pre-funded as a project
   use. Targets are supplied evidence; `forward_requirement()` derives candidate
-  aggregate / per-facility values from supplied contractual schedules
-  (`None` in the window ⇒ UNAVAILABLE, not zero; a short tail is flagged
-  `truncated`). Initial DSRA funding is a `RESERVE_FUNDING` construction use and
+  aggregate / per-facility values from supplied contractual schedules and returns
+  a `ForwardRequirement(amount, truncated, status, reasons)`. Input is validated:
+  duplicate (period, facility) rows, duplicate source identities, malformed rows
+  and a facility used in two layers raise; an unknown or non-senior requested
+  facility raises (never a zero). Coverage is explicit: with the canonical
+  `axis` every in-scope senior facility needs a row in each window period
+  (explicit zero after maturity), otherwise status `UNAVAILABLE` with typed reasons
+  and `amount=None`; a short tail is `TRUNCATED`; without an axis, no future rows is
+  `UNAVAILABLE` (`WF07_FORWARD_WINDOW_EMPTY`). A real zero contractual service is a
+  valid zero. Initial DSRA funding is a `RESERVE_FUNDING` construction use and
   must equal the operating opening balance (counted once).
 * **C. Creditor ordering** — single supported order: N pari-passu SENIOR
   (aggregate) → reserve draws/restoration/top-up → JUNIOR → SHL → distribution
@@ -84,11 +96,19 @@ Typed halts (run stops, nothing is invented): `WF07_CASH_EVIDENCE_MISSING`,
 
 ## 5. Verification summary
 
-56 focused tests; independent `Fraction` oracles (SHL accrual, DSRA ledger,
+66 focused tests; independent `Fraction` oracles (SHL accrual, DSRA ledger,
 randomised 300-scenario waterfall); SHL schedule equals the released float
-engine at 1e-9; 16 guard mutations all caught; protected blobs pinned; import
+engine at 1e-9; 27 guard mutations all caught; protected blobs pinned; import
 isolation by AST and by `sys.modules` delta; nothing outside the package refers
 to it.
+
+## 5a. Correction A (PR #369 review)
+
+Reproduced on `abab077`: an SHL draw in an operating period raised the balance
+(408 → 708) while the operating cash reconciliation stayed balanced (residual 0)
+— debt with no cash source; `forward_requirement` summed duplicate rows (109) and
+returned a valid zero for an unknown facility. Both fixed; tests and mutations
+cover each boundary.
 
 ## 6. Integration plan (future, separate approval)
 

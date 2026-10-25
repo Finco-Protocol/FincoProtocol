@@ -152,10 +152,9 @@ class TestSingleSeniorWithShl:
 class TestAggregateReserveRequirements:
     def test_two_seniors_aggregate_forward_requirement_funds_one_dsra(self):
         services = svc(0, {"A": [60, 60, 60], "B": [40, 40, 40]})
-        agg, truncated = forward_requirement(services, 0, 1)
-        assert (agg, truncated) == (D(100), False)
-        per_a, _ = forward_requirement(services, 0, 1, "A")
-        assert per_a == D(60)
+        agg = forward_requirement(services, 0, 1)
+        assert (agg.amount, agg.truncated, agg.status) == (D(100), False, "COMPLETE")
+        assert forward_requirement(services, 0, 1, "A").amount == D(60)
         res = run(inputs(periods=periods(0, [300, 300, 300]), services=services, reserves=(dsra(),),
                          targets=targets(0, "DSRA", [100, 100, 100]),
                          openings=(ReserveOpening("DSRA", D(0), "open-DSRA"),)))
@@ -168,15 +167,84 @@ class TestAggregateReserveRequirements:
     def test_three_seniors_with_different_maturities_and_a_truncated_horizon(self):
         table = {"A": [50, 50, 50], "B": [30, 30, 0], "C": [20, 20, 20]}
         services = svc(0, table)
-        assert forward_requirement(services, 0, 2) == (D(170), False)       # p1 100 + p2 70
-        assert forward_requirement(services, 1, 2) == (D(70), True)
-        assert forward_requirement(services, 2, 2) == (D(0), True)
+        axis = (0, 1, 2)
+        full = forward_requirement(services, 0, 2, axis=axis)
+        assert (full.amount, full.truncated, full.status) == (D(170), False, "COMPLETE")   # p1 100 + p2 70
+        tail = forward_requirement(services, 1, 2, axis=axis)
+        assert (tail.amount, tail.truncated, tail.status) == (D(70), True, "TRUNCATED")
+        end = forward_requirement(services, 2, 2, axis=axis)
+        assert (end.amount, end.truncated, end.status) == (D(0), True, "TRUNCATED")   # no future axis period
+        assert forward_requirement(services, 0, 2, "B", axis=axis).amount == D(30)    # zero service is a valid 0
         res = run(inputs(periods=periods(0, [300, 300, 300]), services=services))
         assert [op_row(res, i).senior_due for i in range(3)] == [D(100), D(100), D(70)]
 
     def test_missing_contractual_service_in_the_window_is_unavailable_not_zero(self):
         services = svc(0, {"A": [50, None, 50]})
-        assert forward_requirement(services, 0, 2) == (None, False)
+        res = forward_requirement(services, 0, 2)
+        assert res.amount is None and res.status == "UNAVAILABLE"
+        assert res.reasons == ("WF07_FORWARD_CONTRACTUAL_SERVICE_MISSING",)
+
+
+class TestForwardRequirementInputValidation:
+    def test_duplicate_rows_and_source_identities_are_rejected(self):
+        a = FacilityService(1, "A", Layer.SENIOR, D(10), "s1")
+        with pytest.raises(Wf07Error, match="WF07_DUPLICATE"):
+            forward_requirement((a, FacilityService(1, "A", Layer.SENIOR, D(11), "s2")), 0, 1)
+        with pytest.raises(Wf07Error, match="WF07_DUPLICATE"):
+            forward_requirement((a, FacilityService(2, "A", Layer.SENIOR, D(11), "s1")), 0, 1)
+
+    def test_malformed_rows_and_inconsistent_facility_identity_are_rejected(self):
+        a = FacilityService(1, "A", Layer.SENIOR, D(10), "s1")
+        for bad in (None, 5, "rows", {"x": a}):
+            with pytest.raises(Wf07Error, match="WF07_VALUE"):
+                forward_requirement(bad, 0, 1)
+        with pytest.raises(Wf07Error, match="WF07_VALUE"):
+            forward_requirement((a, "not a row"), 0, 1)
+        with pytest.raises(Wf07Error, match="WF07_FACILITY_LAYER"):
+            forward_requirement((a, FacilityService(2, "A", Layer.JUNIOR, D(1), "s2")), 0, 1)
+        for horizon in (0, -1, True, 1.5):
+            with pytest.raises(Wf07Error, match="WF07_VALUE"):
+                forward_requirement((a,), 0, horizon)
+        with pytest.raises(Wf07Error, match="WF07_VALUE"):
+            forward_requirement((a,), 0, 1, axis=(2, 1))
+
+    def test_an_unknown_or_non_senior_facility_is_never_a_zero_requirement(self):
+        rows = svc(1, {"A": [10]}) + svc(1, {"J": [5]}, Layer.JUNIOR)
+        with pytest.raises(Wf07Error, match="WF07_UNKNOWN_FACILITY"):
+            forward_requirement(rows, 0, 1, "ghost")
+        with pytest.raises(Wf07Error, match="WF07_FACILITY_NOT_SENIOR"):
+            forward_requirement(rows, 0, 1, "J")
+        none = forward_requirement((), 0, 1)
+        assert none.amount is None and none.reasons == ("WF07_NO_SENIOR_EVIDENCE",)
+        only_junior = forward_requirement(svc(1, {"J": [5]}, Layer.JUNIOR), 0, 1)
+        assert only_junior.amount is None and only_junior.status == "UNAVAILABLE"
+
+    def test_actual_zero_service_is_a_valid_zero_but_absent_coverage_is_not(self):
+        zero = svc(1, {"A": [0, 0]})
+        ok = forward_requirement(zero, 0, 2, axis=(1, 2))
+        assert (ok.amount, ok.status) == (D(0), "COMPLETE")
+        gap = forward_requirement(svc(1, {"A": [10, 10, 10]})[:1] + svc(1, {"A": [10, 10, 10]})[2:], 0, 3,
+                                  axis=(1, 2, 3))
+        assert gap.amount is None and gap.reasons == ("WF07_FORWARD_FACILITY_ROW_MISSING",)
+        # a facility without a row in a window period (no explicit zero after maturity) is incomplete evidence
+        stagger = svc(1, {"A": [10, 10, 10]}) + svc(1, {"B": [5]})
+        res = forward_requirement(stagger, 0, 3, axis=(1, 2, 3))
+        assert res.amount is None and res.reasons == ("WF07_FORWARD_FACILITY_ROW_MISSING",)
+        # without an axis, no future rows at all cannot be told apart from missing evidence
+        assert forward_requirement(zero, 2, 2).reasons == ("WF07_FORWARD_WINDOW_EMPTY",)
+
+    def test_valid_staggered_maturities_with_explicit_zeros(self):
+        rows = svc(1, {"A": [50, 50, 50, 50], "B": [30, 30, 0, 0], "C": [20, 0, 0, 0]})
+        axis = (1, 2, 3, 4)
+        sums = {p: forward_requirement(rows, p - 1, 1, axis=axis).amount for p in axis}
+        assert sums == {1: D(100), 2: D(80), 3: D(50), 4: D(50)}
+        assert forward_requirement(rows, 0, 4, axis=axis).amount == D(280)
+        assert forward_requirement(rows, 0, 4, "B", axis=axis).amount == D(60)
+        assert forward_requirement(rows, 0, 6, axis=axis).truncated is True
+
+    def test_the_validation_helper_is_shared_with_the_period_engine_boundary(self):
+        with pytest.raises(Wf07Error, match="WF07_DUPLICATE"):
+            inputs(periods=periods(0, [1]), services=svc(0, {"A": [1]}) + svc(0, {"A": [2]}))
 
 
 # ── 4. DSRA top-up after an increased obligation, release after decrease ────
@@ -364,6 +432,44 @@ class TestShlCashAndPik:
                        uses=(ConstructionUse(0, "EPC", D(100), "u"),)))
 
 
+# ── operating-period SHL draws are rejected (V0) ────────────────────────────
+
+
+class TestOperatingShlDrawsFailClosed:
+    def _operating_draw_terms(self, period=3):
+        return ShlTerms("SHL-OP", D(500), D("0.08"), InterestMode.PIK, InterestMode.CASH,
+                        (ShlDraw(0, D(100), "d0"), ShlDraw(period, D(50), "d-op")))
+
+    def test_an_operating_period_draw_cannot_enter_the_engine(self):
+        with pytest.raises(Wf07Error, match="WF07_SHL_OPERATING_DRAW_UNSUPPORTED"):
+            inputs(periods=periods(1, [300, 300, 300]), shl=(self._operating_draw_terms(2),),
+                   uses=(ConstructionUse(0, "EPC", D(100), "u"),), services=svc(1, {"A": [10, 10, 10]}))
+
+    def test_the_period_step_refuses_an_operating_draw_even_if_called_directly(self):
+        from app.model_v2.financing_wf07_candidate.shl import shl_due
+        with pytest.raises(Wf07Error, match="WF07_SHL_OPERATING_DRAW_UNSUPPORTED"):
+            shl_due(self._operating_draw_terms(3), D(100), 3, Phase.OPERATING, Q)
+        ok = shl_due(self._operating_draw_terms(3), D(100), 0, Phase.CONSTRUCTION, Q)
+        assert ok.draw == 100                       # the same draw is fine in a construction period
+
+    def test_operating_debt_never_increases_without_cash_except_by_disclosed_pik(self):
+        t = shl(commitment=1000, omode=InterestMode.PIK, draws=((0, 1000),))
+        res = run(inputs(periods=periods(1, [500, 500, 500]), shl=(t,),
+                         uses=(ConstructionUse(0, "EPC", D(1000), "u"),)))
+        for r in res.shl_rows:
+            if r.phase is Phase.OPERATING:
+                assert r.draw == 0
+                assert r.closing - r.opening == r.pik_interest - r.principal_paid
+        # a balance increase is exactly the disclosed PIK, never an undisclosed draw
+        assert sum(r.draw for r in res.shl_rows if r.phase is Phase.OPERATING) == 0
+
+    def test_a_construction_draw_still_has_matching_funding_in_sources_and_uses(self):
+        t = shl(commitment=1000, draws=((0, 400),))
+        res = run(inputs(periods=periods(1, [100]), shl=(t,), uses=(ConstructionUse(0, "EPC", D(400), "u"),),
+                         services=svc(1, {"A": [10]})))
+        assert res.construction[0].shl_draws == 400 and res.construction[0].funding_gap == 0
+
+
 # ── 8. subordination and waterfall ordering ─────────────────────────────────
 
 
@@ -513,7 +619,7 @@ class TestDuplicateClaimsRejected:
             ShlTerms("S", D(100), D(0), InterestMode.PIK, InterestMode.CASH,
                      (ShlDraw(0, D(10), "e"), ShlDraw(1, D(10), "e")))
         with pytest.raises(Wf07Error, match="WF07_DUPLICATE"):
-            inputs(equity_pools=(EquityPool("X", D(1)),), shl=(shl(sid="X"),))
+            inputs(periods=periods(1, [1]), equity_pools=(EquityPool("X", D(1)),), shl=(shl(sid="X"),))
 
     def test_senior_draw_evidence_cannot_be_reused_across_periods_or_categories(self):
         draws = (SeniorDraw(0, "A", D(10), "sd"), SeniorDraw(1, "A", D(10), "sd"))

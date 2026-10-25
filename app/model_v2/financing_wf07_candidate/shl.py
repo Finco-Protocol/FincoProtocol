@@ -117,6 +117,11 @@ class ShlRow:
 def shl_due(terms: ShlTerms, opening: Decimal, period_index: int, phase: Phase,
             accrual_fraction: Decimal) -> ShlDue:
     draw = terms.draw_in(period_index)
+    if phase is not Phase.CONSTRUCTION and draw > 0:
+        # V0: an operating-period draw would raise the debt balance with no evidenced
+        # funding/cash movement in the operating cash reconciliation. Fail closed.
+        raise Wf07Error("WF07_SHL_OPERATING_DRAW_UNSUPPORTED",
+                        f"{terms.shl_id} period {period_index}: SHL draws are construction-period only in V0")
     accrued = (opening + draw) * terms.annual_rate * accrual_fraction
     mode = terms.construction_mode if phase is Phase.CONSTRUCTION else terms.operating_mode
     cash = accrued if mode is InterestMode.CASH else Decimal(0)
