@@ -5,11 +5,11 @@ This paper records questions, not resolved policy. Candidate remains release clo
 
 | Decision | Candidate boundary | Required independent owner / evidence |
 |---|---|---|
-| Sizing mode names/priority and applicable caps | explicit caller priority, all ties shown; fixed commitments never resized | Financial + Credit: actual mandate and binding-constraint hierarchy |
-| Fixed debt DSCR <1 | reconciled accounting can coexist with cash breach; convergence is not approval | Financial + Application: covenant/EoD treatment and authorized execution behavior |
+| Sizing mode names/priority and applicable caps | explicit REQUIRED/INAPPLICABLE declarations with reasons; incomplete required caps block MINIMUM; fixed commitments never resized | Financial + Credit: actual mandate and binding-constraint hierarchy |
+| Fixed debt DSCR <1 | principal reconciliation can coexist with unknown/mismatched interest or cash breach; convergence is not approval | Financial + Application: covenant/EoD treatment and authorized execution behavior |
 | Endogenous/non-monotone sizing | unavailable, no new iterative engine | Financial + Numerical: canonical tax/CFADS response, bracketing, residuals, failures and mode-switch cases |
 | N-tranche shared CFADS | aggregate once; per-tranche needs explicit shares <=1 | Financial + Lender: intercreditor ranking, allocation basis, period coverage and cash ownership |
-| Rate/day-count and debt windows | supplied rate factors, preserved period IDs, own maturity/grace | Financial: dated rate/accrual policy, grace interest, stubs, calendar boundaries |
+| Rate/day-count and debt windows | independently supplied per-facility accrual/rates and convention; missing evidence is UNVERIFIED; preserved period IDs and own maturity/grace | Financial: dated rate/accrual policy, grace interest, stubs, calendar boundaries |
 | Balloon meaning and limits | candidate limit is principal due in maturity period; residual debt remains breach | Financial + Legal: balloon vs ordinary last installment, refinancing and terminal balance authority |
 | Discount methodology | explicit aligned factors/convention, no defaults | Financial + Valuation: valuation origin, rate source, nominal/real/currency basis, LLCR/PLCR windows and debt denominator |
 | LLCR/PLCR target sizing | absent; analytical ratios only | Financial: targets, actual canonical re-solve, joint sensitivity and validation |

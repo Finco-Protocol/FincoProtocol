@@ -52,13 +52,16 @@ precision/reconciliation policy. Existing engine floating tolerances are untouch
 rate-factor/target window uses backward induction. B_t=CFADS_t/target_t;
 closing is capped to B_t/f_t to prevent unpaid interest capitalization, then
 opening=(closing+B_t)/(1+f_t). Before repayment start only the interest-affordability
-cap applies, with no principal. Missing/negative sizing CFADS => UNAVAILABLE;
+cap applies, with no principal. Missing sizing CFADS => UNAVAILABLE; negative sizing CFADS => UNSUPPORTED;
 zero cash is a genuine zero capacity. Debt-dependent/non-monotone or iterative
-solver cases => UNAVAILABLE; no fake CONVERGED result or algebraic scaling of a
+solver capacity cases => UNSUPPORTED (requiring that capacity makes sizing UNAVAILABLE);
+no fake CONVERGED result or algebraic scaling of a
 committed Run. This does not jointly size heterogeneous tranches with shared cash.
 
 `size`: explicit, gearing (eligible uses * fraction), DSCR or minimum of all
-explicitly applicable constraints. Callers supply complete priority for ties;
+explicitly applicable constraints. An immutable applicability declaration is
+required for EXPLICIT, GEARING and DSCR; None never declares inapplicability.
+Callers supply complete priority for ties;
 all constraint values, all ties and violated caps are retained. An unavailable
 DSCR constraint stays explicitly unavailable even when fixed debt is retained. EXPLICIT and
 GEARING amounts are not silently reduced to DSCR capacity. MINIMUM proposes a
@@ -83,7 +86,8 @@ Per-facility DSCR/LLCR/PLCR requires explicit nonnegative period shares, a state
 most one; no allocation means UNAVAILABLE, never every facility receiving the full
 CFADS. Partial allocations leave cash unallocated. Sizing targets are NOT covenants:
 contractual covenant comparison requires a separately supplied threshold.
-Accounting RECONCILED, cash feasibility, contractual maturity/balloon feasibility,
+Principal reconciliation, independently evidenced per-facility interest
+reconciliation, combined accounting, cash feasibility, contractual maturity/balloon feasibility,
 target feasibility, covenant feasibility
 and lender NOT_ASSESSED remain distinct.
 
@@ -151,3 +155,47 @@ must be read with their actual source IDs; no earlier green SHA is inherited.
 5. Only later authorized canonical Run/CAS/serialization/evidence/export wiring and
    product acceptance may release anything. No frontend, persistence, flags or CI
    changes belong here. No lender acceptance inferred from green technical CI.
+
+## Correction A — explicit applicability and accounting evidence
+
+`size` and `check_committed_limits` require a tuple of exactly three unique
+`Applicability(name, state, reason)` records. States are REQUIRED or INAPPLICABLE;
+every declaration needs a nonblank rationale. No default inference from None.
+Inapplicable constraints must have no supplied value/partial value/status evidence;
+selected fixed modes must themselves be required. Empty mandates, duplicate or
+unknown names/states and contradictory values fail closed.
+
+`Sizing.evidence` records every constraint in declared priority: AVAILABLE, MISSING,
+UNSUPPORTED or INAPPLICABLE. A required DSCR capacity supplied as None or an
+UNAVAILABLE Metric is MISSING; the capacity function now explicitly labels
+unsupported endogenous/negative sizing as UNSUPPORTED. A complete MINIMUM needs
+ALL required constraints AVAILABLE; otherwise status UNAVAILABLE, complete=False,
+and amount=None. Explicit exclusions are recorded, not treated as missing.
+Fixed EXPLICIT/GEARING amounts remain unchanged even if another required cap is
+unknown, but the result is incomplete/UNAVAILABLE rather than a complete candidate.
+Known caps and breaches remain visible. Complete numerical minima and all tie
+priority results are unchanged. No released API or financial mode is altered.
+
+`validate_facilities` proves principal roll-forward only. It checks interest is a
+finite nonnegative amount but that alone does NOT prove contractual accrual.
+`Credit.principal_reconciliation` is RECONCILED after those checks. Comprehensive
+candidate `accounting` is UNVERIFIED by default, including supplied zero interest.
+
+Optional `InterestEvidence` is independently supplied immutable contractual evidence
+per facility: its own canonical period IDs, annual rates, year fractions, source
+reference and accrual convention. The independent check compares every supplied
+interest amount against opening * own annual rate * own year fraction at the
+candidate's declared precision. It never uses the project's sizing interest_factor
+or another facility's rate/convention. Missing facilities remain UNVERIFIED;
+malformed/duplicate/foreign/shifted evidence fails closed; any discrepancy gives
+per-facility MISMATCH and combined accounting NOT_RECONCILED. Only complete matching
+evidence for every facility yields accounting RECONCILED. Principal reconciliation
+is still separately visible for incorrect interest.
+
+This is mathematical reconciliation within the represented principal/interest
+ledger, not authentication of the caller's source text, an approval of a day-count
+policy or a general certification of tax/fees/reserves/financial statements.
+Gate R still owns actual receipt authentication, period/day-count/rate generation,
+precision policy and lender/owner authorization. Supplying evidence never promotes
+covenant or lender acceptance. Neither sculpt output nor fixed zero-rate receipts
+are self-attested as interest-verified by the library.

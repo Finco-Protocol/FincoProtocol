@@ -7,10 +7,16 @@ from pathlib import Path
 import pytest
 from app.model_v2.credit_wf06_candidate import ACTIVATION_ENABLED, NON_AUTHORITATIVE
 from app.model_v2.credit_wf06_candidate.pure import (
-    Period,Row,Facility,Metric,dscr_capacity,size,sculpt,assess,propose_sweep,
+    Period,Row,Facility,Metric,Applicability,AccrualPeriod,InterestEvidence,dscr_capacity,size,sculpt,assess,propose_sweep,
 )
 
 PRIORITY=('DSCR','GEARING','EXPLICIT')
+
+def applies(explicit=True,gearing=True,dscr=True):
+    return tuple(Applicability(name,'REQUIRED' if enabled else 'INAPPLICABLE',
+                               'synthetic declared applicable' if enabled else 'synthetic explicitly outside mandate')
+                 for name,enabled in [('EXPLICIT',explicit),('GEARING',gearing),('DSCR',dscr)])
+
 
 def periods(cash=('100','100','100'), rate='0', target='1.25', start=1):
     return tuple(Period(i,None if c is None else D(c),D(rate),D(target),D(1),'synthetic canonical cash + explicit period rates/DF') for i,c in enumerate(cash,start))
@@ -32,7 +38,7 @@ def credit(ps,fs,shares=None,covenant=None):
 
 def sizing(mode,ps,explicit=None,uses=None,gearing=None):
     return size(mode,explicit=explicit,eligible_uses=uses,gearing=gearing,
-                capacity=dscr_capacity(ps,ps[0].index,ps[-1].index,debt_independent=True),priority=PRIORITY)
+                capacity=dscr_capacity(ps,ps[0].index,ps[-1].index,debt_independent=True),priority=PRIORITY,applicability=applies(explicit is not None,uses is not None,True))
 
 
 def test_closed_form_capacity_independent_fraction_oracle():
@@ -66,7 +72,7 @@ def test_fixed_commitment_below_one_is_not_resized_or_approved():
     ps=periods(('10','10','10'));s=sizing('EXPLICIT',ps,D(90),D(100),D('.5'))
     assert s.amount==90 and s.breaches==('DSCR','GEARING')
     r=credit(ps,(fixed(),),covenant=D('1.2'))
-    assert r.accounting=='RECONCILED' and r.cash_feasibility==r.covenant_feasibility=='BREACH'
+    assert r.principal_reconciliation=='RECONCILED' and r.accounting=='UNVERIFIED' and r.cash_feasibility==r.covenant_feasibility=='BREACH'
     with localcontext() as ctx:
         ctx.prec=50
         assert r.aggregate_dscr[0][1].value==D(10)/30
@@ -104,17 +110,17 @@ def test_allocated_ratios_and_loan_project_life_hand_calculation():
     assert r.facility_dscr[0][1][0][1].value==2
 
 
-@pytest.mark.parametrize('cash,expected',[(('0','0','0'),'CANDIDATE'),((None,'2','3'),'UNAVAILABLE'),(('-1','2','3'),'UNAVAILABLE')])
+@pytest.mark.parametrize('cash,expected',[(('0','0','0'),'CANDIDATE'),((None,'2','3'),'UNAVAILABLE'),(('-1','2','3'),'UNSUPPORTED')])
 def test_zero_missing_negative_sizing(cash,expected):
     r=dscr_capacity(periods(cash),1,3,debt_independent=True)
     assert r.status==expected
-    if expected=='UNAVAILABLE':assert r.value is None
+    if expected in ('UNAVAILABLE','UNSUPPORTED'):assert r.value is None
     else:assert r.value==0
 
 
 def test_nonmonotone_endogenous_solver_is_not_fabricated():
     cap=dscr_capacity(periods(),1,3,debt_independent=False)
-    r=size('MINIMUM',explicit=None,eligible_uses=D(100),gearing=D('.5'),capacity=cap,priority=PRIORITY)
+    r=size('MINIMUM',explicit=None,eligible_uses=D(100),gearing=D('.5'),capacity=cap,priority=PRIORITY,applicability=applies(False,True,True))
     assert r.status=='UNAVAILABLE' and r.amount is None
 
 
@@ -233,7 +239,7 @@ def test_ambient_rounding_does_not_change_candidate():
 def test_borrower_gearing_cap_applies_to_sum_of_fixed_facilities_once():
     from app.model_v2.credit_wf06_candidate.pure import check_committed_limits
     fs=(fixed('a','60'),fixed('b','60'))
-    r=check_committed_limits(periods(),fs,eligible_uses=D(100),gearing=D('.8'),aggregate_capacity=None,priority=PRIORITY)
+    r=check_committed_limits(periods(),fs,eligible_uses=D(100),gearing=D('.8'),aggregate_capacity=None,priority=PRIORITY,applicability=applies(True,True,False))
     assert r.amount==120 and r.breaches==('GEARING',)
     assert fs[0].commitment==60 and fs[1].commitment==60
 
@@ -248,3 +254,130 @@ def test_fixed_debt_retains_unknown_capacity_as_unknown_not_waived():
     r=sizing('EXPLICIT',periods((None,'100','100')),explicit=D(90))
     assert r.amount==90 and r.unavailable_constraints==('DSCR',)
     assert r.lender_acceptance=='NOT_ASSESSED'
+
+
+def minimum(capacity, applicability=None, **overrides):
+    args=dict(explicit=D(300),eligible_uses=D(1000),gearing=D('.5'),capacity=capacity,
+              priority=PRIORITY,applicability=applies() if applicability is None else applicability)
+    args.update(overrides)
+    return size('MINIMUM',**args)
+
+
+def test_required_missing_capacity_cannot_complete_minimum():
+    r=minimum(None)
+    assert r.status=='UNAVAILABLE' and r.amount is None and not r.complete
+    assert r.unavailable_constraints==('DSCR',)
+    assert next(e for e in r.evidence if e.name=='DSCR').state=='MISSING'
+
+
+def test_explicit_inapplicability_is_recorded_with_reason():
+    r=minimum(None,applies(True,True,False))
+    assert r.complete and r.amount==300 and r.status=='CANDIDATE'
+    e=next(e for e in r.evidence if e.name=='DSCR')
+    assert e.state==e.applicability=='INAPPLICABLE' and e.reason
+
+
+def test_missing_unsupported_inapplicable_capacity_are_distinct():
+    missing_result=minimum(Metric('UNAVAILABLE',None,'missing source evidence'))
+    unsupported=minimum(dscr_capacity(periods(),1,3,debt_independent=False))
+    excluded=minimum(None,applies(True,True,False))
+    assert [next(e for e in r.evidence if e.name=='DSCR').state for r in (missing_result,unsupported,excluded)]==['MISSING','UNSUPPORTED','INAPPLICABLE']
+    assert not missing_result.complete and not unsupported.complete and excluded.complete
+
+
+@pytest.mark.parametrize('field,missing',[('explicit',None),('eligible_uses',None),('gearing',None)])
+def test_other_required_constraints_also_block_minimum(field,missing):
+    r=minimum(Metric('CANDIDATE',D(240),'synthetic capacity'),**{field:missing})
+    assert r.amount is None and not r.complete
+
+
+@pytest.mark.parametrize('declaration',[
+    (),applies()[:-1],applies()+(applies()[0],),
+    (Applicability('UNKNOWN','REQUIRED','synthetic'),)+applies()[1:],
+    (Applicability('EXPLICIT','OPTIONAL','synthetic'),)+applies()[1:],
+    (Applicability('EXPLICIT','REQUIRED',''),)+applies()[1:],
+    [*applies()],(applies()[0],applies()[0],applies()[2]),
+])
+def test_invalid_applicability_rejected(declaration):
+    with pytest.raises(ValueError):minimum(None,declaration)
+
+
+def test_inapplicable_supplied_and_empty_mandate_rejected():
+    with pytest.raises(ValueError):minimum(Metric('CANDIDATE',D(240),'synthetic'),applies(True,True,False))
+    with pytest.raises(ValueError):minimum(None,applies(False,False,False),explicit=None,eligible_uses=None,gearing=None)
+    with pytest.raises(ValueError):size('DSCR',explicit=D(300),eligible_uses=D(1000),gearing=D('.5'),capacity=None,priority=PRIORITY,applicability=applies(True,True,False))
+
+
+def test_full_minimum_evidence_and_all_ties_keep_priority():
+    r=minimum(Metric('CANDIDATE',D(240),'synthetic'),explicit=D(240),eligible_uses=D(480))
+    assert r.complete and r.amount==240 and r.binding==PRIORITY
+    assert len(r.evidence)==3 and all(e.state=='AVAILABLE' for e in r.evidence)
+
+
+@pytest.mark.parametrize('mode,expected',[('EXPLICIT',D(300)),('GEARING',D(500))])
+def test_fixed_modes_retain_amount_with_missing_required_dscr(mode,expected):
+    r=size(mode,explicit=D(300),eligible_uses=D(1000),gearing=D('.5'),capacity=None,priority=PRIORITY,applicability=applies())
+    assert r.amount==expected and not r.complete and r.status=='UNAVAILABLE'
+    assert r.unavailable_constraints==('DSCR',)
+
+
+def accrual(f,rate='0',fraction='1'):
+    return InterestEvidence(f.identifier,tuple(AccrualPeriod(r.index,D(rate),D(fraction)) for r in f.rows),
+                            'synthetic independent signed contract terms','synthetic fixed rate * explicit year fraction')
+
+
+def with_interest(fs,evidence):
+    return assess(periods(),fs,interest_evidence=evidence,aggregate_loan_end=max(f.maturity for f in fs),
+                  covenant_dscr=None,discount_convention='synthetic supplied factors',
+                  max_maturity_principal=tuple((f.identifier,f.commitment) for f in fs))
+
+
+def test_principal_reconciles_but_missing_interest_is_unverified():
+    f=fixed();r=with_interest((f,),None)
+    assert r.principal_reconciliation=='RECONCILED'
+    assert r.interest_reconciliation==( ('a','UNVERIFIED'), )
+    assert r.accounting=='UNVERIFIED'
+
+
+def test_corrupt_interest_never_reports_accounting_reconciled():
+    f=fixed();f=replace(f,rows=(replace(f.rows[0],interest=D(999)),)+f.rows[1:])
+    r=with_interest((f,),(accrual(f),))
+    assert r.principal_reconciliation=='RECONCILED' and r.accounting=='NOT_RECONCILED'
+    assert r.interest_reconciliation==( ('a','MISMATCH'), )
+
+
+def test_wrong_interest_without_accrual_evidence_cannot_pass():
+    f=fixed();f=replace(f,rows=tuple(replace(r,interest=D(999)) for r in f.rows))
+    assert with_interest((f,),()).accounting=='UNVERIFIED'
+
+
+def test_independent_heterogeneous_contract_interest_not_sizing_rate():
+    a=fixed('a');b=fixed('b')
+    a=replace(a,rows=tuple(replace(r,interest=r.opening*D('.05')*D('.5')) for r in a.rows))
+    b=replace(b,rows=tuple(replace(r,interest=r.opening*D('.12')*D('.25')) for r in b.rows))
+    # Global sizing interest_factor is zero; it must NOT be used for either facility.
+    result=with_interest((a,b),(accrual(a,'.05','.5'),accrual(b,'.12','.25')))
+    assert result.accounting=='RECONCILED'
+    assert result.interest_reconciliation==( ('a','RECONCILED'),('b','RECONCILED') )
+    assert a.rows[0].interest==D('2.250') and b.rows[0].interest==D('2.700')
+
+
+def test_partial_interest_evidence_never_gives_full_reconciliation():
+    a=fixed('a');b=fixed('b')
+    result=with_interest((a,b),(accrual(a),))
+    assert result.accounting=='UNVERIFIED'
+    assert result.interest_reconciliation==( ('a','RECONCILED'),('b','UNVERIFIED') )
+
+
+@pytest.mark.parametrize('attack',['duplicate','foreign','axis','negative-rate','missing-source','missing-convention','mutable','zero-fraction'])
+def test_invalid_accrual_evidence_rejected(attack):
+    f=fixed();e=accrual(f)
+    if attack=='duplicate':evidence=(e,e)
+    elif attack=='foreign':evidence=(replace(e,facility_id='foreign'),)
+    elif attack=='axis':evidence=(replace(e,periods=e.periods[:-1]),)
+    elif attack=='negative-rate':evidence=(replace(e,periods=(replace(e.periods[0],annual_rate=D(-1)),)+e.periods[1:]),)
+    elif attack=='missing-source':evidence=(replace(e,source=''),)
+    elif attack=='missing-convention':evidence=(replace(e,convention=''),)
+    elif attack=='mutable':evidence=[e]
+    else:evidence=(replace(e,periods=(replace(e.periods[0],year_fraction=D(0)),)+e.periods[1:]),)
+    with pytest.raises(ValueError):with_interest((f,),evidence)

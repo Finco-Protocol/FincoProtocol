@@ -68,6 +68,41 @@ class Metric:
 
 
 @dataclass(frozen=True)
+class Applicability:
+    name: str
+    state: Literal['REQUIRED', 'INAPPLICABLE']
+    reason: str
+
+
+@dataclass(frozen=True)
+class ConstraintEvidence:
+    name: str
+    applicability: str
+    state: str
+    value: D | None
+    reason: str
+
+
+@dataclass(frozen=True)
+class AccrualPeriod:
+    index: int
+    annual_rate: D
+    year_fraction: D
+
+
+@dataclass(frozen=True)
+class InterestEvidence:
+    facility_id: str
+    periods: tuple[AccrualPeriod, ...]
+    source: str
+    convention: str
+
+    def __post_init__(self):
+        if not isinstance(self.periods, tuple):
+            raise ValueError('immutable independent accrual periods required')
+
+
+@dataclass(frozen=True)
 class Sizing:
     status: str
     amount: D | None
@@ -77,6 +112,8 @@ class Sizing:
     numerical: str
     lender_acceptance: str = 'NOT_ASSESSED'
     unavailable_constraints: tuple[str,...] = ()
+    evidence: tuple[ConstraintEvidence,...] = ()
+    complete: bool = False
 
 
 @dataclass(frozen=True)
@@ -86,6 +123,8 @@ class Credit:
     llcr: Metric
     plcr: Metric
     facility_coverage: tuple[tuple[str,Metric,Metric], ...]
+    principal_reconciliation: str
+    interest_reconciliation: tuple[tuple[str,str], ...]
     accounting: str
     cash_feasibility: str
     contractual_feasibility: str
@@ -125,10 +164,10 @@ def ratio(numerator,denominator):
 @arithmetic
 def dscr_capacity(periods: tuple[Period,...], start: int, maturity: int, *, debt_independent: bool) -> Metric:
     window(periods,start,maturity)
-    if debt_independent is not True:return missing('endogenous or non-monotone CFADS requires canonical solver; not implemented')
+    if debt_independent is not True:return Metric('UNSUPPORTED',None,'endogenous or non-monotone CFADS requires canonical solver; not implemented')
     relevant=tuple(p for p in periods if p.index<=maturity)
     if any(p.cfads is None for p in relevant):return missing('missing CFADS')
-    if any(p.cfads<0 for p in relevant):return missing('negative CFADS sizing unsupported')
+    if any(p.cfads<0 for p in relevant):return Metric('UNSUPPORTED',None,'negative CFADS sizing unsupported')
     closing=D(0)
     for p in reversed(relevant):
         budget=p.cfads/p.sizing_target
@@ -144,29 +183,66 @@ def dscr_capacity(periods: tuple[Period,...], start: int, maturity: int, *, debt
 @arithmetic
 def size(mode: Literal['EXPLICIT','GEARING','DSCR','MINIMUM'], *, explicit: D | None,
          eligible_uses: D | None, gearing: D | None, capacity: Metric | None,
-         priority: tuple[str,...]) -> Sizing:
-    if mode not in ('EXPLICIT','GEARING','DSCR','MINIMUM'):raise ValueError('unknown sizing mode')
-    if not isinstance(priority,tuple) or set(priority)!={'EXPLICIT','GEARING','DSCR'} or len(priority)!=3:
+         priority: tuple[str,...], applicability: tuple[Applicability,...]) -> Sizing:
+    names={'EXPLICIT','GEARING','DSCR'}
+    if mode not in (*names,'MINIMUM'):
+        raise ValueError('unknown sizing mode')
+    if not isinstance(priority,tuple) or set(priority)!=names or len(priority)!=3:
         raise ValueError('explicit complete tie-break priority required')
-    caps={}
+    if not isinstance(applicability,tuple) or len(applicability)!=3 or any(not isinstance(a,Applicability) for a in applicability):
+        raise ValueError('explicit immutable applicability for all constraints required')
+    specs={a.name:a for a in applicability}
+    if set(specs)!=names:
+        raise ValueError('duplicate, missing or unknown applicability identity')
+    for a in applicability:
+        if a.state not in ('REQUIRED','INAPPLICABLE') or not isinstance(a.reason,str) or not a.reason.strip():
+            raise ValueError('invalid applicability state or missing declaration reason')
+    if all(a.state=='INAPPLICABLE' for a in applicability):
+        raise ValueError('at least one constraint must apply')
+    if mode!='MINIMUM' and specs[mode].state!='REQUIRED':
+        raise ValueError('selected sizing constraint must apply')
+    values={};states={};reasons={}
     if explicit is not None:
         if amount(explicit)<0:raise ValueError('negative debt')
-        caps['EXPLICIT']=explicit
-    if (eligible_uses is None)!=(gearing is None):raise ValueError('incomplete gearing evidence')
-    if gearing is not None:
-        if amount(eligible_uses)<0 or not 0<=amount(gearing)<=1:raise ValueError('invalid gearing')
-        caps['GEARING']=eligible_uses*gearing
-    if capacity is not None and capacity.value is not None:
-        if capacity.status!='CANDIDATE' or amount(capacity.value)<0:raise ValueError('invalid capacity')
-        caps['DSCR']=capacity.value
-    if capacity is not None and capacity.value is None and mode in ('DSCR','MINIMUM'):
-        return Sizing('UNAVAILABLE',None,tuple(caps.items()),(),(),capacity.reason,unavailable_constraints=('DSCR',))
-    if (mode!='MINIMUM' and mode not in caps) or not caps:
-        return Sizing('UNAVAILABLE',None,tuple(caps.items()),(),(),'missing selected constraint')
-    chosen=min(caps.values()) if mode=='MINIMUM' else caps[mode]
-    binding=tuple(k for k in priority if k in caps and caps[k]==chosen)
-    breaches=tuple(k for k in priority if k in caps and chosen>caps[k])
-    return Sizing('CANDIDATE',chosen,tuple((k,caps[k]) for k in priority if k in caps),binding,breaches,'CLOSED_FORM_NOT_ITERATIVE',unavailable_constraints=('DSCR',) if capacity is not None and capacity.value is None else ())
+        values['EXPLICIT']=explicit
+    if gearing is not None or eligible_uses is not None:
+        if gearing is None or eligible_uses is None:
+            states['GEARING']='MISSING';reasons['GEARING']='incomplete gearing evidence'
+            if gearing is not None and not 0<=amount(gearing)<=1:raise ValueError('invalid gearing')
+            if eligible_uses is not None and amount(eligible_uses)<0:raise ValueError('negative eligible uses')
+        else:
+            if amount(eligible_uses)<0 or not 0<=amount(gearing)<=1:raise ValueError('invalid gearing')
+            values['GEARING']=eligible_uses*gearing
+    if capacity is not None:
+        if not isinstance(capacity,Metric):raise ValueError('typed capacity required')
+        if capacity.status=='CANDIDATE':
+            if capacity.value is None or amount(capacity.value)<0:raise ValueError('invalid capacity')
+            values['DSCR']=capacity.value
+        elif capacity.status in ('UNAVAILABLE','UNSUPPORTED') and capacity.value is None:
+            states['DSCR']='MISSING' if capacity.status=='UNAVAILABLE' else 'UNSUPPORTED'
+            reasons['DSCR']=capacity.reason
+        else:raise ValueError('invalid capacity status/value combination')
+    supplied={'EXPLICIT':explicit is not None,'GEARING':eligible_uses is not None or gearing is not None,'DSCR':capacity is not None}
+    evidence=[]
+    for name in priority:
+        a=specs[name]
+        if a.state=='INAPPLICABLE':
+            if supplied[name]:raise ValueError('inapplicable constraint has supplied evidence')
+            evidence.append(ConstraintEvidence(name,a.state,'INAPPLICABLE',None,a.reason))
+        else:
+            state='AVAILABLE' if name in values else states.get(name,'MISSING')
+            evidence.append(ConstraintEvidence(name,a.state,state,values.get(name),reasons.get(name,a.reason)))
+    unavailable=tuple(e.name for e in evidence if e.state in ('MISSING','UNSUPPORTED'))
+    complete=not unavailable
+    caps=tuple((name,values[name]) for name in priority if name in values)
+    # Incomplete MINIMUM has no proposed amount. Fixed modes retain their amount
+    # and known breaches but explicitly remain incomplete when another required cap is unknown.
+    chosen=None if (mode=='MINIMUM' and not complete) else (min(values.values()) if mode=='MINIMUM' else values.get(mode))
+    binding=tuple(name for name,value in caps if chosen is not None and value==chosen)
+    breaches=tuple(name for name,value in caps if chosen is not None and chosen>value)
+    return Sizing('CANDIDATE' if complete else 'UNAVAILABLE',chosen,caps,binding,breaches,
+                  'CLOSED_FORM_NOT_ITERATIVE',unavailable_constraints=unavailable,
+                  evidence=tuple(evidence),complete=complete)
 
 
 @arithmetic
@@ -221,8 +297,38 @@ def allocations(periods,facilities,shares):
 
 
 @arithmetic
+def verify_interest(facilities, evidence):
+    if evidence is None:evidence=()
+    if not isinstance(evidence,tuple) or any(not isinstance(e,InterestEvidence) for e in evidence):
+        raise ValueError('immutable typed interest evidence required')
+    supplied={e.facility_id:e for e in evidence}
+    if len(supplied)!=len(evidence) or not set(supplied)<={f.identifier for f in facilities}:
+        raise ValueError('duplicate or foreign interest evidence')
+    results=[]
+    for f in facilities:
+        e=supplied.get(f.identifier)
+        if e is None:
+            results.append((f.identifier,'UNVERIFIED'))
+            continue
+        if not isinstance(e.source,str) or not e.source.strip() or not isinstance(e.convention,str) or not e.convention.strip():
+            raise ValueError('independent accrual source and convention required')
+        if any(not isinstance(p,AccrualPeriod) or type(p.index) is not int for p in e.periods):
+            raise ValueError('typed canonical accrual periods required')
+        if tuple(p.index for p in e.periods)!=tuple(r.index for r in f.rows):
+            raise ValueError('interest evidence axis mismatch')
+        status='RECONCILED'
+        for r,p in zip(f.rows,e.periods):
+            if amount(p.annual_rate)<0 or amount(p.year_fraction,positive=True)<=0:
+                raise ValueError('unsupported independent rate or accrual fraction')
+            if r.interest!=r.opening*p.annual_rate*p.year_fraction:
+                status='MISMATCH'
+        results.append((f.identifier,status))
+    return tuple(results)
+
+
+@arithmetic
 def assess(periods: tuple[Period,...], facilities: tuple[Facility,...], *, aggregate_loan_end: int,
-           shares=None, allocation_basis: str | None = None, covenant_dscr: D | None, discount_convention: str | None, max_maturity_principal: tuple[tuple[str,D],...]) -> Credit:
+           interest_evidence: tuple[InterestEvidence,...] | None = None, shares=None, allocation_basis: str | None = None, covenant_dscr: D | None, discount_convention: str | None, max_maturity_principal: tuple[tuple[str,D],...]) -> Credit:
     validate_facilities(periods,facilities)
     if type(aggregate_loan_end) is not int or aggregate_loan_end!=max(f.maturity for f in facilities):
         raise ValueError('aggregate loan life must end at last supplied maturity')
@@ -263,7 +369,10 @@ def assess(periods: tuple[Period,...], facilities: tuple[Facility,...], *, aggre
             per.append((f.identifier,tuple((r.index,ratio(None if next(p for p in periods if p.index==r.index).cfads is None else next(p for p in periods if p.index==r.index).cfads*weights[next(i for i,p in enumerate(periods) if p.index==r.index)],r.service)) for r in f.rows)))
             fcov.append((f.identifier,coverage(f.maturity,f.commitment,weights),coverage(periods[-1].index,f.commitment,weights)))
     ones=(D(1),)*len(periods)
-    return Credit(tuple(aggregate),tuple(per),coverage(aggregate_loan_end,total,ones),coverage(periods[-1].index,total,ones),tuple(fcov),'RECONCILED',cash,contractual,cov)
+    interest=verify_interest(facilities,interest_evidence)
+    accounting=('NOT_RECONCILED' if any(status=='MISMATCH' for _,status in interest) else
+                'UNVERIFIED' if any(status=='UNVERIFIED' for _,status in interest) else 'RECONCILED')
+    return Credit(tuple(aggregate),tuple(per),coverage(aggregate_loan_end,total,ones),coverage(periods[-1].index,total,ones),tuple(fcov),'RECONCILED',interest,accounting,cash,contractual,cov)
 
 
 @arithmetic
@@ -285,8 +394,8 @@ def propose_sweep(periods,facilities,*,period_index: int, available_after_reserv
 
 @arithmetic
 def check_committed_limits(periods,facilities,*,eligible_uses: D | None,gearing: D | None,
-                           aggregate_capacity: Metric | None,priority: tuple[str,...]):
+                           aggregate_capacity: Metric | None,priority: tuple[str,...], applicability: tuple[Applicability,...]):
     """One borrower gearing test, never the full uses cap independently per tranche."""
     validate_facilities(periods,facilities)
     return size('EXPLICIT',explicit=sum((f.commitment for f in facilities),D(0)),
-                eligible_uses=eligible_uses,gearing=gearing,capacity=aggregate_capacity,priority=priority)
+                eligible_uses=eligible_uses,gearing=gearing,capacity=aggregate_capacity,priority=priority,applicability=applicability)
