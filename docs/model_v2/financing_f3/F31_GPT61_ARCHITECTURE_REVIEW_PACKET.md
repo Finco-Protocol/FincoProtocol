@@ -55,24 +55,74 @@ persistence, no activation surface), providing:
    senior draws fund uses first, equity allocator fills the residual
    (share capital → premium → other → additional); `F3_PERIOD_OVERFUNDING`,
    `F3_CONSTRUCTION_USES_DO_NOT_RECONCILE`, `F3_SOURCES_USES_UNRECONCILED`,
-   optional canonical-CFADS shortfall (`F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL`).
+   required canonical-CFADS coverage of the TOTAL contractual service of all
+   tranches per operating period (`F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL`;
+   missing / invalid evidence: `F3_CFADS_EVIDENCE_MISSING` / `_INVALID`).
 
-One governance test edit: +4 candidate paths in the
-`test_financing_f3_canonical_legacy.py` AST import allow-list (that file is
-NOT in the V11 `HISTORICAL_AUTHORITY_MODULES` pin set — verified; the F3.5-A
-stream used the identical additive pattern).
+One governance test edit: **+3** candidate paths (`validation.py`, `schedules.py`,
+`reconciliation.py`) in the `test_financing_f3_canonical_legacy.py` AST import
+allow-list (that file is NOT in the V11 `HISTORICAL_AUTHORITY_MODULES` pin set —
+verified; the F3.5-A stream used the identical additive pattern). Correction A
+reduced the original +4 to +3: the package `__init__.py` imports no
+`financing_instruments` module and was dropped (least privilege).
+
+## 2a. Correction A (post independent review) — what changed and why
+
+1. **Equity funding commitments (defect):** `reconciliation.py` offered the FULL
+   share-capital / premium / other / additional commitment to EVERY construction
+   period, so a commitment already drawn could be drawn again (reproduced: share
+   capital drawn 200 against a commitment of 100, additional equity under-drawn
+   200 of 300, while sources still equalled uses). The four commitments are now
+   DEPLETING pools across all periods in the released waterfall order, and the
+   aggregate actual draws per source, the senior draws and the total uses are
+   reconciled (`F3_EQUITY_COMMITMENT_EXCEEDED`, `F3_SOURCES_USES_UNRECONCILED`,
+   `F3_DRAWDOWN_EXCEEDS_COMMITMENT`, `F3_MULTITRANCHE_INPUT_INVALID`).
+   Equivalence with the released `allocate_construction_sources_per_period` is
+   tested (multi-period synthetic cases) and with the released engine on Solar and
+   Wind (N=2, 1e-9).
+2. **Contractual CFADS coverage (defect):** the check compared EACH tranche's
+   service with the full CFADS, so three tranches of 40 passed against a CFADS of
+   100 (aggregate 120). It now compares the TOTAL service of all tranches in each
+   operating period (the released rule compares the aggregate senior service).
+   CFADS evidence is REQUIRED: a missing value for a period with service raises
+   `F3_CFADS_EVIDENCE_MISSING`, an invalid one `F3_CFADS_EVIDENCE_INVALID`
+   (previously `.get(idx, 0.0)` turned a missing value into a mislabelled
+   shortfall, and omitting `cfads_by_period` skipped the check entirely).
+3. **Import-ownership allow-list review:** the extension is per file (no
+   directory wildcard), consistent with the F3.5-A precedent, and the original
+   purpose (only narrowly owned modules import the F3 financing contract) is
+   preserved. Two gaps were closed: the unneeded `__init__.py` entry was removed,
+   and the reverse direction — the allow-list lets the candidate import the
+   contract, so nothing outside the package may import the candidate — is now
+   pinned by `test_no_other_module_imports_the_candidate_package`. Negative
+   controls prove that an unlisted sibling file, the package `__init__.py`, a
+   look-alike package and a nested module are still rejected. No import
+   restriction, protected pin or the released exactly-two-Senior validator was
+   weakened.
 
 ## 3. Evidence produced (exact-head, reviewer re-run commands)
 
 - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests/test_financing_f31_multitranche_candidate.py`
-  → 19 passed: isolation pins (AST: no engine/persistence/route imports),
+  → **78 passed after Correction A** (19 originally; the Correction A additions
+  are listed in §2a: depleting equity pools with an exact-rational oracle, N=3
+  hand cases, aggregate CFADS coverage, missing/invalid CFADS, N=2 equivalence
+  with the released allocator and with the released engine on Solar and Wind,
+  and the reverse-direction import guard; 53 of them fail against the previous
+  reconciliation source and all 14 guard mutations are caught). Original
+  contents: isolation pins (AST: no engine/persistence/route imports),
   released-rule matrix at N=3, hand-computed 3-tranche schedules (ACT_365,
   exclusive-end day counts, per-draw IDC, undrawn-integral fees), **N=2
   equivalence with the released engine on Solar and Wind at 1e-9**, released
   validator still exactly-2, reconciliation matrix, scenario combinations
   (SHL/mezzanine/construction-facility/bond/PIK/reserves/quarterly all fail
   closed with the released codes).
-- Full battery on the synced branch: **691 passed / 0 failed** incl. all F3
+- Correction A validation: **1002 passed / 3 skipped** over every F3 financing
+  suite (the multisenior governance pins included), `test_ci_acceptance.py`,
+  `test_revenue_v4_candidate.py`, Finance Integrity / WF07 / PPA-01 governance and
+  the API reference runs; `test_financing_f3_junior_governance.py` cannot be
+  collected in a shallow clone (it `git show`s a historical commit) and fails
+  identically on pristine main. Public safety scan PASS.
+- Full battery on the previously synced branch (before Correction A): **691 passed / 0 failed** incl. all F3
   governance suites, `test_ci_acceptance.py` (V10/V11 chain),
   `test_reference_canonical_last_run.py` (Solar/Wind/DC/EV canonical Last
   Run equivalence), public engine smoke, `test_revenue_v4_candidate.py`.
@@ -153,8 +203,10 @@ multi-tranche; O-9 WF-06 handoff confirmation; O-10 export granularity.
 2. `git diff <merge-base> HEAD --name-only -- financial_engine/ finco_core/ domain/`
    → must be empty.
 3. Confirm the allow-list edit is the ONLY governance-adjacent change and is
-   additive (4 candidate paths, comment-marked, file not in
-   `HISTORICAL_AUTHORITY_MODULES`).
+   additive (3 explicit candidate paths, comment-marked, file not in
+   `HISTORICAL_AUTHORITY_MODULES`), that the new negative controls reject
+   unlisted candidate files, and that nothing outside the package imports the
+   candidate.
 4. Read `build_candidate_facility_schedules` against the released
    `build_facility_schedules` side-by-side and confirm rule-for-rule
    equivalence (the N=2 test is the executable proof).

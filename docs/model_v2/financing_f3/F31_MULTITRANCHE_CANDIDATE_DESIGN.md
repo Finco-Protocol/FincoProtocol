@@ -110,7 +110,7 @@ FinancingCollection (f3-1.0, unchanged)
             └─ [CANDIDATE] reconcile_multitranche_sources_uses (new, pure)
                  inputs: total_project_uses_keur + period_uses_keur
                  (canonical authority outputs, supplied), gearing_ratio,
-                 equity seeds, optional canonical CFADS map
+                 equity seeds, REQUIRED canonical CFADS map
 Released (untouched): build_facility_schedules → build_aggregate_contract
   → run_multisenior_financing → canonical solver/CFADS/tax/waterfall/statements
 Future Gate-R integration seam: candidate schedules → aggregate contract →
@@ -153,7 +153,7 @@ own test).
   gearing cap as constraint; per-period contractual senior draws vs uses
   (`F3_PERIOD_OVERFUNDING`); uses reconciliation; equity residual fill
   (share capital → premium → other → additional equity) after contractual
-  senior draws; optional canonical-CFADS shortfall check
+  senior draws; required canonical-CFADS coverage check on the aggregate service per operating period; equity commitments are depleting pools across all construction periods
   (`F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL`).
 
 ## 7. 3+ tranche design (work item 3 — design level, NOT implemented)
@@ -226,7 +226,7 @@ senior cash funding anything outside that period's uses.
 - Equal maturity dates across tranches → allowed (pari-passu wall; pro-rata rule = O-3).
 - Non-finite / negative commitments → schema-level `F3_NON_FINITE_VALUE` / `F3_NEGATIVE_VALUE`.
 - Empty construction (draws present, no construction periods) → `F3_DRAW_OUTSIDE_CONSTRUCTION`.
-- Optional CFADS supplied with missing period keys → treated as 0 CFADS for that period (shortfall check only; never used to resize).
+- CFADS missing for an operating period with contractual service → `F3_CFADS_EVIDENCE_MISSING` (Correction A: a missing value is never treated as 0 CFADS or as a pass); an invalid value → `F3_CFADS_EVIDENCE_INVALID`; omitting the CFADS map entirely fails closed. CFADS is only ever compared, never used to resize.
 
 ## 9. Interface proposal for WF-06 (out of scope here, no code)
 
