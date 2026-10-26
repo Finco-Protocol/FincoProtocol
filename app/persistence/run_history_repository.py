@@ -394,6 +394,11 @@ def _decode_entry(row) -> RunHistoryEntry:
                 "RUN_HISTORY_PAYLOAD_MALFORMED: last_runtime_identity_json "
                 "is not a JSON object"
             )
+    # Each stored object column is decoded EXACTLY ONCE: the validated value
+    # below is the value the entry carries (previously every column was parsed
+    # a second time while the entry was built). Validation order, the first
+    # failure raised and its message are unchanged.
+    objects: dict = {}
     for column in (
         "runtime_summary_json",
         "financial_statements_json",
@@ -410,6 +415,7 @@ def _decode_entry(row) -> RunHistoryEntry:
                 "RUN_HISTORY_PAYLOAD_MALFORMED: column "
                 f"{column} is not a JSON object"
             )
+        objects[column] = decoded
     entry = RunHistoryEntry(
         history_id=row["history_id"],
         user_id=row["user_id"],
@@ -425,14 +431,14 @@ def _decode_entry(row) -> RunHistoryEntry:
         last_runtime_scenario_id=row["last_runtime_scenario_id"],
         composite_hash=row["composite_hash"],
         last_runtime_identity=identity_decoded,
-        runtime_summary=_load("runtime_summary_json"),
-        financial_statements=_load("financial_statements_json"),
-        debt_schedule=_load("debt_schedule_json"),
-        tax_schedule=_load("tax_schedule_json"),
-        distribution_schedule=_load("distribution_schedule_json"),
-        sponsor_schedule=_load("sponsor_schedule_json"),
-        integrity_evidence=_load("integrity_evidence_json"),
-        replay_metadata=_load("replay_metadata_json"),
+        runtime_summary=objects["runtime_summary_json"],
+        financial_statements=objects["financial_statements_json"],
+        debt_schedule=objects["debt_schedule_json"],
+        tax_schedule=objects["tax_schedule_json"],
+        distribution_schedule=objects["distribution_schedule_json"],
+        sponsor_schedule=objects["sponsor_schedule_json"],
+        integrity_evidence=objects["integrity_evidence_json"],
+        replay_metadata=objects["replay_metadata_json"],
         created_at=row["created_at"],
     )
     for field in ("history_id", "user_id", "project_id", "project_code",
