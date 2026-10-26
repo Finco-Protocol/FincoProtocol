@@ -1,0 +1,40 @@
+/* Isolated analytical components; inherit FINCO typography and theme. */
+.fi-insights { color: inherit; font: inherit; max-width: 1600px; margin: auto; padding: 1rem; }
+.fi-insights * { box-sizing: border-box; }
+.fi-insights .fi-panel { border: 1px solid var(--border, #718398); border-radius: .5rem; padding: 1.2rem; margin: 1rem 0; background: var(--surface, transparent); }
+.fi-insights h2, .fi-insights h3, .fi-insights h4 { margin-top: 0; }
+.fi-insights p { line-height: 1.5; }
+.fi-insights .fi-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: .8rem; }
+.fi-insights .fi-metric { border: 1px solid var(--border, #718398); border-radius: .35rem; padding: 1rem; min-width: 0; }
+.fi-insights .fi-metric-value { font-size: 1.55rem; font-variant-numeric: tabular-nums; margin: .5rem 0; }
+.fi-insights .fi-metric-value small { font-size: .8rem; }
+.fi-insights .fi-meta, .fi-insights .fi-source { font-size: .8rem; overflow-wrap: anywhere; }
+.fi-insights .fi-evidence { margin-top: .7rem; font-size: .85rem; }
+.fi-insights summary { cursor: pointer; padding: .45rem 0; }
+.fi-insights .fi-evidence dl { margin: .5rem 0; }
+.fi-insights .fi-evidence dl div { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: .5rem; padding: .25rem 0; }
+.fi-insights dt { font-weight: 600; }
+.fi-insights dd { margin: 0; overflow-wrap: anywhere; }
+.fi-insights .fi-links { display: flex; flex-wrap: wrap; gap: .7rem; }
+.fi-insights a { color: inherit; text-decoration: underline; }
+.fi-insights .fi-table-scroll { max-width: 100%; overflow: auto; border: 1px solid var(--border, #718398); }
+.fi-insights table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.fi-insights caption { text-align: left; font-weight: 600; padding: .8rem; }
+.fi-insights th, .fi-insights td { padding: .7rem; text-align: left; vertical-align: top; min-width: 130px; border-bottom: 1px solid var(--border, #718398); }
+.fi-insights td small, .fi-insights th small { display: block; font-weight: normal; margin-top: .35rem; overflow-wrap: anywhere; }
+.fi-insights .fi-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 1rem; }
+.fi-insights .fi-chart { margin: 1rem 0; min-width: 0; }
+.fi-insights .fi-chart svg { width: 100%; height: auto; overflow: visible; }
+.fi-insights .fi-chart text { fill: currentColor; font-size: 10px; }
+.fi-insights .fi-chart figcaption { font-weight: 600; font-size: .9rem; }
+.fi-insights .fi-line { fill: none; stroke: var(--accent, #267591); stroke-width: 2; }
+.fi-insights .fi-point { fill: var(--accent, #267591); }
+.fi-insights .fi-zero { stroke: currentColor; opacity: .35; stroke-dasharray: 4; }
+.fi-insights .fi-chart-axis { display: flex; justify-content: space-between; font-size: .75rem; }
+.fi-insights .fi-run-option { display: flex; gap: .7rem; align-items: start; padding: .65rem 0; overflow-wrap: anywhere; }
+.fi-insights fieldset { border: 0; padding: 0; margin: .8rem 0; }
+.fi-insights button { font: inherit; padding: .6rem 1rem; border-radius: .3rem; cursor: pointer; }
+.fi-insights button:disabled { cursor: default; opacity: .6; }
+.fi-insights :focus-visible { outline: 3px solid var(--accent, #267591); outline-offset: 3px; }
+.fi-insights .fi-finding { border-bottom: 1px solid var(--border, #718398); padding: .5rem 0; }
+@media (max-width: 600px) { .fi-insights { padding: .5rem; } .fi-insights .fi-panel { padding: .8rem; } .fi-insights h2 { font-size: 1.3rem; } }
