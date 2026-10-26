@@ -205,6 +205,12 @@ async def react_poc_bootstrap(request: Request, project: str):
         }, 503)
 
 
+# Literal read-only analytics routes precede the project-page catch-all.
+# Registration does not connect analytical components to the shared React shell.
+from app.v2.react_insights_router import router as insights_router
+router.include_router(insights_router)
+
+
 @router.get("/model-react/{project_code}", response_class=HTMLResponse)
 async def react_poc_page(request: Request, project_code: str):
     if not react_poc_enabled():
