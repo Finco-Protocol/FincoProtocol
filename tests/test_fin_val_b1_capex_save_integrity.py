@@ -67,6 +67,16 @@ def _ws(record):
 
 
 def _page_tokens(env, record):
+    """Tokens exactly as the server renders them for this session and project.
+
+    * ``grid_csrf``    - ``data-csrf`` of the rendered input grid (the grid-save token of whichever contract
+                         the server is running: plain signed token on current main, operation-bound
+                         ``grid-save`` token under the SEC-02 mutation contract).
+    * ``update_csrf``  - the hidden ``csrf_token`` of a rendered ``/v2/workbook/update`` field form
+                         (``workbook-update`` operation token under SEC-02; absent on current main, where
+                         that route carries no token and the key is simply not sent).
+    Nothing is minted by the test; no unpublished security module is imported.
+    """
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     assert page.status_code == 200
     out = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
@@ -75,22 +85,29 @@ def _page_tokens(env, record):
     attrs = grid.group(0)
     out["grid_csrf"] = re.search(r'data-csrf="([^"]*)"', attrs).group(1)
     out["grid_hash"] = re.search(r'data-content-hash="([^"]*)"', attrs).group(1)
+    form = re.search(r'hx-post="/v2/workbook/update"[^>]*>\s*<input type="hidden" name="csrf_token" value="([^"]*)"', page.text)
+    out["update_csrf"] = form.group(1) if form else ""
     return out
 
 
-def _direct_tokens(record):
-    """Tokens computed from canonical identity (no page render): used where the workbook page itself is not the subject."""
-    from app.auth import generate_csrf_token
+def _refresh_cas(tokens, record):
+    """Replace only the compare-and-swap identity (not any CSRF token) with the server's current composite hash.
+
+    Used when the workbook page itself is not renderable (unreadable legacy draft) so tokens were captured from
+    the rendered page BEFORE the draft was damaged.
+    """
     from app.workbook.workbook_identity import assemble_consistent_for_get
     h = assemble_consistent_for_get(USER, record.project_id, WORKBOOK.version).composite_hash
-    return {"content_hash": h, "grid_hash": h, "grid_csrf": generate_csrf_token(), "workbook_version": WORKBOOK.version}
+    return {**tokens, "content_hash": h, "grid_hash": h, "workbook_version": WORKBOOK.version}
 
 
 def _single_save(env, record, field_id, value, tokens=None):
     t = tokens or _page_tokens(env, record)
-    return env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data={
-        "project": record.project_code, "field_id": field_id, "value": value,
-        "content_hash": t["content_hash"], "workbook_version": t["workbook_version"]})
+    data = {"project": record.project_code, "field_id": field_id, "value": value,
+            "content_hash": t["content_hash"], "workbook_version": t["workbook_version"]}
+    if t.get("update_csrf"):
+        data["csrf_token"] = t["update_csrf"]
+    return env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=data)
 
 
 def _grid_save(env, record, cells, tokens=None, **over):
@@ -183,10 +200,18 @@ def test_grid_save_refuses_negative_atomically(env, field_id):
 
 
 def test_zero_and_positive_capex_remain_savable_and_effective_values_match(env):
-    record = env.create()
+    # (a) zero stays valid through both routes, on a project whose page renders between the Saves
+    record = env.create(name="FinVal zero")
+    assert _single_save(env, record, "capex.C.epc_contract", "0").status_code == 200
+    assert float(_snapshot(record)["capex_epc_contract_keur"]) == 0.0
+    r1 = _grid_save(env, record, [{"field_id": "capex.C.insurances", "value": "0"}])
+    assert r1.status_code == 200 and float(_snapshot(record)["capex_insurances_keur"]) == 0.0
+    assert build_projectinputs_from_snapshot(_snapshot(record)).capex.insurances.amount_keur == 0.0
+    # (b) all 14 positive amounts in ONE atomic grid Save (tokens rendered before; the page is not needed afterwards)
+    record = env.create(name="FinVal positive")
     base_inputs = build_projectinputs_from_snapshot(_snapshot(record))
     values = {f: str(1000 + 10 * i) for i, f in enumerate(CAPEX_FIELDS)}
-    response = _grid_save(env, record, [{"field_id": f, "value": v} for f, v in values.items()], _direct_tokens(record))
+    response = _grid_save(env, record, [{"field_id": f, "value": v} for f, v in values.items()])
     assert response.status_code == 200 and response.json()["ok"] is True
     snap = _snapshot(record)
     effective = build_projectinputs_from_snapshot(snap)
@@ -195,22 +220,16 @@ def test_zero_and_positive_capex_remain_savable_and_effective_values_match(env):
         attr = _SCALAR_CAPEX_MAP[_key(field_id)]
         assert getattr(effective.capex, attr).amount_keur == pytest.approx(float(raw))
     assert effective.revenue.ppa_base_tariff == base_inputs.revenue.ppa_base_tariff     # unrelated inputs unchanged
-    # zero remains valid through both routes
-    assert _single_save(env, record, "capex.C.epc_contract", "0", _direct_tokens(record)).status_code == 200
-    assert float(_snapshot(record)["capex_epc_contract_keur"]) == 0.0
-    r2 = _grid_save(env, record, [{"field_id": "capex.C.insurances", "value": "0"}], _direct_tokens(record))
-    assert r2.status_code == 200 and float(_snapshot(record)["capex_insurances_keur"]) == 0.0
-    assert build_projectinputs_from_snapshot(_snapshot(record)).capex.insurances.amount_keur == 0.0
 
 
 def test_resaving_the_current_positive_value_is_an_effective_noop(env):
     record = env.create()
     seed = [{"field_id": "capex.C.epc_contract", "value": "21000"}, {"field_id": "capex.C.grid_connection", "value": "2500.5"}]
-    assert _grid_save(env, record, seed, _direct_tokens(record)).status_code == 200
+    assert _grid_save(env, record, seed).status_code == 200
     before_inputs = build_projectinputs_from_snapshot(_snapshot(record))
     snap = _snapshot(record)
     again = [{"field_id": c["field_id"], "value": str(snap[_key(c["field_id"])])} for c in seed]
-    assert _grid_save(env, record, again, _direct_tokens(record)).status_code == 200
+    assert _grid_save(env, record, again).status_code == 200            # fresh rendered tokens and CAS identity
     assert build_projectinputs_from_snapshot(_snapshot(record)).capex == before_inputs.capex
 
 
@@ -229,6 +248,7 @@ def test_stored_invalid_snapshot_is_not_rewritten_by_this_change(env):
     """Legacy unreadable drafts stay exactly as stored: reads, identity computation and an unrelated Save do not
     migrate, clean or reject-by-rewrite the stored negative value (no automatic repair in this PR)."""
     record = env.create()
+    rendered = _page_tokens(env, record)          # authentic server-issued tokens, captured while the page still renders
     with sqlite3.connect(env.db_path) as conn:
         raw = conn.execute("SELECT draft_snapshot_json FROM workspace_states WHERE project_id=?", (record.project_id,)).fetchone()[0]
         snap = json.loads(raw)
@@ -240,17 +260,17 @@ def test_stored_invalid_snapshot_is_not_rewritten_by_this_change(env):
     # the unreadable page is the pre-existing SC-3 dependency (router-owned); it is not "fixed" or masked here
     assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 500
     # an unrelated, valid canonical Save still works and leaves the legacy negative value untouched
-    response = _grid_save(env, record, [{"field_id": "revenue.ppa.base_tariff", "value": "51"}], _direct_tokens(record))
+    response = _grid_save(env, record, [{"field_id": "revenue.ppa.base_tariff", "value": "51"}], _refresh_cas(rendered, record))
     assert response.status_code == 200
     after = _snapshot(record)
     assert after["capex_epc_contract_keur"] == "-20000.0"
     assert float(after["rev_ppa_base_tariff"]) == 51.0
     # saving the invalid field again is refused; the stored legacy value is still not rewritten
-    refused = _grid_save(env, record, [{"field_id": "capex.C.epc_contract", "value": "-5"}], _direct_tokens(record))
+    refused = _grid_save(env, record, [{"field_id": "capex.C.epc_contract", "value": "-5"}], _refresh_cas(rendered, record))
     assert refused.status_code == 422
     assert _snapshot(record)["capex_epc_contract_keur"] == "-20000.0"
     # the explicit repair path remains a deliberate user Save of a valid value (no automatic rewrite happened before it)
-    fixed = _grid_save(env, record, [{"field_id": "capex.C.epc_contract", "value": "20000"}], _direct_tokens(record))
+    fixed = _grid_save(env, record, [{"field_id": "capex.C.epc_contract", "value": "20000"}], _refresh_cas(rendered, record))
     assert fixed.status_code == 200 and float(_snapshot(record)["capex_epc_contract_keur"]) == 20000.0
     assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
 
@@ -267,6 +287,11 @@ def test_cas_csrf_ownership_and_scenario_guards_unchanged(env):
         "workbook_version": t["workbook_version"], "scenario_id": None,
         "cells": [{"field_id": "capex.C.epc_contract", "value": "-1"}]})
     assert bad.status_code == 403 and bad.json()["code"] == "CSRF_INVALID"
+    for missing in ({"csrf_token": ""}, {"csrf_token": None}):
+        body = {"project": record.project_code, "content_hash": t["grid_hash"], "workbook_version": t["workbook_version"],
+                "scenario_id": None, "cells": cells, **missing}
+        assert env.client.post("/v2/workbook/grid/save", json=body).status_code in (403, 422)
+    assert _snapshot(record) == before
     # stale CAS
     stale = _grid_save(env, record, cells, t, content_hash="0" * 64)
     assert stale.status_code == 409 and stale.json()["reload"] is True
@@ -274,7 +299,9 @@ def test_cas_csrf_ownership_and_scenario_guards_unchanged(env):
     assert _grid_save(env, record, cells, t, workbook_version="0.0.0").status_code == 409
     # scenario scope mismatch
     assert _grid_save(env, record, cells, t, scenario_id="no-such-scenario").status_code == 409
-    # ownership: another user cannot save to this project
+    # ownership / cross-session: another user replaying the owner's rendered token is denied and nothing is written.
+    # Current main answers 404 (token is not session bound, ownership check refuses); the session-bound SEC-02
+    # contract answers 403 CSRF_INVALID first.  Both deny before any persistence.
     from fastapi.testclient import TestClient
     from app.auth import COOKIE_NAME, create_session_token
     with TestClient(env.app, raise_server_exceptions=False) as other:
@@ -282,15 +309,35 @@ def test_cas_csrf_ownership_and_scenario_guards_unchanged(env):
         r = other.post("/v2/workbook/grid/save", json={
             "project": record.project_code, "csrf_token": t["grid_csrf"], "content_hash": t["grid_hash"],
             "workbook_version": t["workbook_version"], "scenario_id": None, "cells": cells})
-        assert r.status_code == 404
+        assert r.status_code in (403, 404)
+        assert _snapshot(record) == before
     # single-field stale hash is refused as before
-    s = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data={
-        "project": record.project_code, "field_id": "capex.C.epc_contract", "value": "21000",
-        "content_hash": "0" * 64, "workbook_version": t["workbook_version"]})
+    s = _single_save(env, record, "capex.C.epc_contract", "21000", {**t, "content_hash": "0" * 64})
     assert s.status_code == 200 and "changed" in s.text.lower()
     assert _snapshot(record) == before
     # and the valid write still works afterwards
     assert _grid_save(env, record, cells, t).status_code == 200
+
+
+def test_forged_workbook_update_token_never_commits_once_the_server_enforces_it(env):
+    """Negative token test for the single-field route.  Current main renders a ``csrf_token`` in the field form
+    but does not validate it; the SEC-02 contract (operation-bound ``workbook-update`` token) does.  The test
+    detects enforcement with a no-op probe (value equal to the stored one) and, only if the server enforces, asserts
+    that forged/missing tokens are refused and write nothing.  It never claims enforcement the base lacks."""
+    record = env.create()
+    t = _page_tokens(env, record)
+    before = _snapshot(record)
+    current = str(before["capex_epc_contract_keur"]) if str(before.get("capex_epc_contract_keur") or "").strip() else "0"
+    probe = _single_save(env, record, "capex.C.epc_contract", current, {**t, "update_csrf": "bad"})
+    if probe.status_code != 403:
+        pytest.skip("workbook-update token is not enforced on this base (SEC-02 / PR #381 contract)")
+    assert _snapshot(record) == before
+    forged = _single_save(env, record, "capex.C.epc_contract", "21000", {**t, "update_csrf": "bad"})
+    missing = _single_save(env, record, "capex.C.epc_contract", "21000", {**t, "update_csrf": ""})
+    assert forged.status_code == 403 and missing.status_code == 403
+    assert _snapshot(record) == before
+    # the authentic rendered token is accepted, so the refusal above is attributable to the token only
+    assert _single_save(env, record, "capex.C.epc_contract", "21000", t).status_code == 200
 
 
 # ── SC-4: precision-safe allocation ─────────────────────────────────────────────────────────────────
