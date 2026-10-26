@@ -1,0 +1,30 @@
+/* RC-REACT-MVP — touch targets and responsive closeout (audit D-031).
+   Presentation only; uses the existing theme tokens and adds no theme. */
+
+@media (pointer: coarse), (max-width: 820px) {
+  .rx-page .fm-btn,
+  .rx-page .rx-button,
+  .fi-insights button,
+  .wf-dialog button,
+  .wf-bar button { min-height: 44px; min-width: 44px; }
+
+  .fm-nav a,
+  .fm-workspace-bar a,
+  .rx-header nav a,
+  .wf-jump a { display: inline-flex; align-items: center; min-height: 44px; padding-block: 0; }
+  .fm-workspace-bar a, .rx-header nav a { padding-inline: 6px; }
+
+  .rx-page .fm-input,
+  .rx-page .rx-input,
+  .rx-page select,
+  .rx-page .rx-grid-input { min-height: 44px; }
+
+  .fi-insights .fi-run-option { min-height: 44px; align-items: center; }
+  .fi-insights .fi-run-option input[type="checkbox"] { width: 24px; height: 24px; flex: 0 0 auto; }
+  .rx-page a.fm-btn { display: inline-flex; align-items: center; }
+}
+
+/* Long scenario names and identifiers never widen the page. */
+.fi-insights, .wf-section, .rx-page { overflow-wrap: anywhere; }
+.fi-insights table th, .fi-insights table td { overflow-wrap: anywhere; }
+.fi-insights .fi-table-scroll { overflow-x: auto; max-width: 100%; }
