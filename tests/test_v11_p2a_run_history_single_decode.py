@@ -16,7 +16,7 @@ import pytest
 
 from app.persistence import run_history_repository as rh
 from app.persistence.db import get_cursor, init_db
-from app.persistence.projects_repository import save_project
+from app.persistence import projects_repository
 from app.persistence.run_history_repository import (
     RunHistoryEntry, RunHistoryError, append_run_history_cursor, get_latest_history_entry, get_run_history,
     get_run_history_entry, prepare_run_history_payload,
@@ -114,12 +114,14 @@ def workspace(tmp_path, monkeypatch):
     from app.persistence import db
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "p2a.db"))
     init_db()
+    # Resolve through the module at call time: other suites reload projects_repository, which would leave a
+    # module-level ``save_project`` bound to a stale ``_UNSET`` sentinel default.
     snapshot = {"active_project": CODE, "capacity_mw": "64"}
-    record = save_project(user_id=USER, project_code=CODE, project_name="P2a",
+    record = projects_repository.save_project(user_id=USER, project_code=CODE, project_name="P2a",
                           source_project_template="generic_solar_reference")
     save_workspace_state(user_id=USER, project_id=record.project_id, project_code=CODE,
                          draft_snapshot=snapshot, saved_snapshot=snapshot)
-    other = save_project(user_id=OTHER_USER, project_code="P2A-OTHER", project_name="Other",
+    other = projects_repository.save_project(user_id=OTHER_USER, project_code="P2A-OTHER", project_name="Other",
                          source_project_template="generic_solar_reference")
     save_workspace_state(user_id=OTHER_USER, project_id=other.project_id, project_code="P2A-OTHER",
                          draft_snapshot=snapshot, saved_snapshot=snapshot)

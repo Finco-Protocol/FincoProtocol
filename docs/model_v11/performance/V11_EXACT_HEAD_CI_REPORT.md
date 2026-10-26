@@ -31,10 +31,32 @@ No test was skipped, modified or quarantined.
 A same-run retry (`rerun_failed_jobs`) was attempted once; the CI contract rejects it (`plan source/run/attempt drift`),
 so a fresh exact-head run requires a new head.
 
-## Head 2 — this report's commit
+## Head 2 — `84da9997b7c6234e654d894670311753541388f5` (tree `0c971eb2da39ab1e1b500b23f02310937122996e`)
 
-Head 2 differs from Head 1 only by this documentation file. Its checks are the PR's check runs on the final head;
-results are recorded in the PR conversation because a commit cannot contain its own CI result.
+Differs from Head 1 only by this report. Public Safety run 40384088178 and all other required checks: **15/15 success**
+(route, plan, workers 0-4, aggregate, tests, mandatory-evidence, mandatory-browser-evidence, compile-and-safety, source-safety,
+authoritative-history, dependency-audit; sequential skipped by design). Worker-1 passed; the Head-1 flake did not recur.
+
+## Head 3 — `4e7c375578f6d552c1e0cdc1e98109405ee7b413`
+
+Created by the repository owner account: forward merge of `main` at `6c642adcd193691818f1413bf5273885470c8ef9` (PR #384, D-029).
+Main's CI V3 reconciliation now runs this PR in **sequential** (single-node) mode. Public Safety run 40395823616:
+route, source-safety, compile-and-safety, authoritative-history, mandatory-browser-evidence, dependency-audit success;
+**sequential/tests failed**, so tests and mandatory-evidence failed.
+
+Failure analysis: 89 errors, all in this PR's own new file `tests/test_v11_p2a_run_history_single_decode.py`, at fixture setup:
+`PROJECT_STAGE_INVALID: <object object ...> is not a canonical ProjectStage value`. No other test failed in the 3800+ node run.
+Root cause: the new test imported `save_project` at module level. `tests/test_public_reference_models.py` does
+`importlib.reload(projects_repository)`, which creates a new `_UNSET` sentinel; the stale function kept the old sentinel as its
+default, so `project_stage` was no longer recognised as "omitted" and the raw `object()` reached `normalize_stage`. Previously
+the PR ran in parallel shards where the reloading test did not precede these tests in the same process. Reproduced locally
+(`pytest tests/test_public_reference_models.py tests/test_v11_p2a_run_history_single_decode.py` -> 89 errors) and fixed by
+resolving `projects_repository.save_project` at call time (test-only change, no production code, no other test touched).
+After the fix both orders pass (92 passed together; 89 passed alone).
+
+## Head 4 — the commit carrying this correction
+
+Checks for this head are recorded in the PR conversation (a commit cannot contain its own CI result).
 
 ## Local evidence (merged head)
 
