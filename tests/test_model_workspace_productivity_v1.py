@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 from model_workspace_harness import (
-    TRICKY_VALUES, default_panel, render_macro_rows, render_panel, sheet_fields,
+    PRESENTATION_MUTATION_TOKEN, TRICKY_VALUES, default_panel, render_macro_rows, render_panel, sheet_fields,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -272,6 +272,31 @@ class TestTypedFieldClassification:
 _ADDED_ATTRS = re.compile(r'\s+data-(?:field-label|sheet-id|required|register-path)="[^"]*"')
 
 
+def _historical_macro_dom(html: str, *, editable: bool) -> str:
+    """Verify the exact additive SEC-02 control before comparing historical DOM.
+
+    This removes one literal input only, never other hidden inputs or form wiring.
+    The fixture and every original DOM digest remain immutable.
+    """
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    forms = soup.find_all("form")
+    controls = soup.select('[name="csrf_token"]')
+    if not editable:
+        assert not forms and not controls, "read-only rows must not mutate"
+        return html
+    assert len(forms) == 1
+    assert len(controls) == 1
+    control = controls[0]
+    assert control.attrs == {"type": "hidden", "name": "csrf_token", "value": PRESENTATION_MUTATION_TOKEN}
+    assert PRESENTATION_MUTATION_TOKEN
+    assert control.parent is forms[0]
+    assert forms[0].find(True, recursive=False) is control, "CSRF must be the first form control"
+    literal = '<input type="hidden" name="csrf_token" value="' + PRESENTATION_MUTATION_TOKEN + '">'
+    assert html.count(literal) == 1
+    return html.replace(literal, "", 1)
+
+
 def _normalise(html: str, *, strip_added: bool) -> str:
     if strip_added:
         html = _ADDED_ATTRS.sub("", html)
@@ -286,12 +311,15 @@ class TestDenseLayoutPreservesContract:
         assert golden["base_commit"] == "1951e26df9305edaa4cec3d0066af9fd2ec48fb9"
         actual: dict[str, str] = {}
         for sheet in SHEETS_UNDER_TEST:
+            fields = {f["field_id"]: f for f in sheet_fields(sheet)}
             for editable in (True, False):
                 rows = render_macro_rows(sheet, project_editable=editable, values=TRICKY_VALUES)
                 for field_id, html in rows.items():
                     key = f"{sheet}|{'editable' if editable else 'protected'}|{field_id}"
                     actual[key] = hashlib.sha256(
-                        _normalise(html, strip_added=True).encode()).hexdigest()
+                        _normalise(_historical_macro_dom(
+                            html, editable=editable and fields[field_id]["binding_label"] == "bound"),
+                            strip_added=True).encode()).hexdigest()
         # F2/F3/WF07 add exact grouped editors; original DOM hashes stay locked.
         financing_additions = {
             "debt|editable|debt.bankability.configuration",
@@ -304,6 +332,37 @@ class TestDenseLayoutPreservesContract:
         assert set(actual) == set(golden["hashes"]) | financing_additions
         drifted = sorted(k for k, v in golden["hashes"].items() if actual[k] != v)
         assert not drifted, f"macro DOM identity drifted for: {drifted}"
+
+    @pytest.mark.parametrize("old,new", [
+        ('name="content_hash"', 'name="unrelated_hash"'),
+        ('hx-target="#v2-sheet-project-setup"', 'hx-target="#wrong-target"'),
+        ('</form>', '<input type="hidden" name="extra" value="1"></form>'),
+        ('data-field-id="project_setup.technical.capacity_mw"', 'data-field-id="wrong-field"'),
+    ])
+    def test_unrelated_dom_changes_still_fail_the_original_golden(self, old, new):
+        field = "project_setup.technical.capacity_mw"
+        html = render_macro_rows("project_setup", values=TRICKY_VALUES)[field]
+        golden = json.loads((ROOT / "tests/fixtures/model_workspace_field_editor_golden.json").read_text(encoding="utf-8"))
+        expected = golden["hashes"]["project_setup|editable|" + field]
+        def digest(text):
+            return hashlib.sha256(_normalise(_historical_macro_dom(text, editable=True), strip_added=True).encode()).hexdigest()
+        assert digest(html) == expected
+        assert old in html
+        assert digest(html.replace(old, new, 1)) != expected
+
+    @pytest.mark.parametrize("change", ["missing", "duplicate", "wrong-value", "wrong-placement", "readonly-form"])
+    def test_security_control_must_be_verified_before_golden_normalization(self, change):
+        html = render_macro_rows("project_setup")["project_setup.technical.capacity_mw"]
+        literal = '<input type="hidden" name="csrf_token" value="' + PRESENTATION_MUTATION_TOKEN + '">'
+        changed = {
+            "missing": html.replace(literal, ""),
+            "duplicate": html.replace(literal, literal * 2),
+            "wrong-value": html.replace(PRESENTATION_MUTATION_TOKEN, "other"),
+            "wrong-placement": html.replace(literal, "").replace("</form>", literal + "</form>"),
+            "readonly-form": html,
+        }[change]
+        with pytest.raises(AssertionError):
+            _historical_macro_dom(changed, editable=change != "readonly-form")
 
     @pytest.mark.parametrize("sheet_id", SHEETS_UNDER_TEST)
     def test_semantic_ids_wiring_and_addresses_are_unchanged(self, sheet_id):

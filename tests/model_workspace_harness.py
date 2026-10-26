@@ -19,6 +19,10 @@ _ENV = Environment(
     autoescape=select_autoescape(["html"]),
 )
 
+# Presentation only: this harness has no request, session or token issuer.
+# Never use this inert value in an authenticated caller.
+PRESENTATION_MUTATION_TOKEN = "inert-render-only-not-an-authenticated-capability"
+
 # (registry sheet_id, DOM id, C1 grid id, panel id, tab id, tab label)
 SHEETS = (
     ("project_setup", "v2-sheet-project-setup", "project_setup",
@@ -38,7 +42,7 @@ INTERACTION_SCRIPTS = (
 )
 
 _SHEET_TEMPLATE = _ENV.from_string("""
-{% from "partials/field_editor.html" import render_field %}
+{% from "partials/field_editor.html" import render_field with context %}
 <div id="{{ dom_id }}" data-sheet="{{ sheet_id }}" data-fc-grid="{{ grid_id }}" data-fc-scroll-container>
   {% for section in sections %}
   <details class="v2-inputs-section"{% if not collapsed %} open{% endif %} data-section="{{ section.id }}">
@@ -83,10 +87,11 @@ def render_sheet(sheet_id: str, *, project_editable: bool = True,
         dom_id=meta[1], sheet_id=sheet_id, grid_id=meta[2], sections=sections,
         collapsed=collapsed, project_editable=project_editable,
         workbook_version=WORKBOOK.version, content_hash=content_hash,
+        mutation_csrf_tokens={"workbook-update": PRESENTATION_MUTATION_TOKEN},
     )
 
 
-_ROW_TEMPLATE = """{% from "partials/field_editor.html" import render_field %}
+_ROW_TEMPLATE = """{% from "partials/field_editor.html" import render_field with context %}
 {{ render_field(f, "demo", workbook_version, "hash-0", project_editable,
                 hx_target="#" ~ dom_id, sheet_id=sheet_id) }}"""
 
@@ -113,7 +118,8 @@ def render_macro_rows(sheet_id: str, *, project_editable: bool = True,
     return {
         f["field_id"]: template.render(
             f=f, workbook_version=WORKBOOK.version, project_editable=project_editable,
-            dom_id=meta[1], sheet_id=sheet_id)
+            dom_id=meta[1], sheet_id=sheet_id,
+            mutation_csrf_tokens={"workbook-update": PRESENTATION_MUTATION_TOKEN})
         for f in sheet_fields(sheet_id, values)
     }
 

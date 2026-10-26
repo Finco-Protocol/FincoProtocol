@@ -53,8 +53,24 @@ def test_assess_review_apply_run_reconcile_in_chromium(browser, app_server, tmp_
     try:
         initial = _run_in_real_browser_context(ctx, page, root, project)
         history_before = tuple(h.history_id for h in get_run_history(OWNER, project.project_id))
+        # Read the actual server-issued operation token in this Chromium session.
+        page.goto(root + "/v2/workbook?project=" + project.project_code + "&sheet=scenarios")
+        form = page.locator('form[hx-post="/v2/workbook/scenarios/create"]')
+        assert form.count() == 1
+        assert form.locator('input[name="project"]').input_value() == project.project_code
+        csrf_token = form.locator('input[type="hidden"][name="csrf_token"]').input_value()
+        assert csrf_token
+        # The rejected attempt must leave every table (including workspace/scenarios) intact.
+        from tests.test_model_mutation_request_security_v1 import snapshot
+        before_missing = snapshot()
+        missing = ctx.request.post(root + "/v2/workbook/scenarios/create",
+                                   form={"project": project.project_code, "scenario_name": "Upside"},
+                                   headers={"HX-Request": "true"})
+        assert missing.status == 403
+        assert missing.json()["code"] == "CSRF_INVALID"
+        assert snapshot() == before_missing
         # the existing scenario workflow creates the Upside Working Copy scenario and makes it the active target
-        created = ctx.request.post(root + "/v2/workbook/scenarios/create", form={"project": project.project_code, "scenario_name": "Upside"},
+        created = ctx.request.post(root + "/v2/workbook/scenarios/create", form={"project": project.project_code, "scenario_name": "Upside", "csrf_token": csrf_token},
                                    headers={"HX-Request": "true"})
         assert created.status == 200, created.text()[:400]
         target = get_workspace_state(OWNER, project.project_id)

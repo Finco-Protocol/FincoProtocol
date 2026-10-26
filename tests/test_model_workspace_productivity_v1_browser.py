@@ -12,8 +12,6 @@ Set ``FINCO_TEST_CHROMIUM_PATH`` to use a specific Chromium binary.
 """
 from __future__ import annotations
 
-from tests.model_workspace_navigation import activate_destination
-
 import os
 
 import pytest
@@ -224,7 +222,9 @@ class TestDenseLayout:
 
     def test_first_row_save_control_is_clickable_under_the_sticky_header(self, make_page):
         page = make_page(collapsed_sheets=())
-        activate_destination(page, "tab-revenue")
+        # This isolated harness renders real tab buttons, not the full Option C
+        # navigation manifest/drawer. Exercise its actual click handler.
+        page.locator("#tab-revenue").click()
         field_id = page.evaluate("document.querySelector('#v2-sheet-revenue .v2-field-editable').dataset.fieldId")
         page.locator(f'#panel-revenue [data-field-id="{field_id}"] input[name="value"]').fill("0.45")
         page.locator(f'#panel-revenue [data-field-id="{field_id}"] form button').first.click(timeout=4000)

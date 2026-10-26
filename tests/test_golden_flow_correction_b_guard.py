@@ -3,6 +3,10 @@
 The only permitted differences from the version on main (before CI V3 Phase 3B) are: ``import pytest``, the isolated
 ``reference_runs_seeded`` fixture, and that fixture being requested by the one test. Every assertion, golden
 expectation and Run counter is pinned by the AST hash of the original module with those three pieces removed.
+
+Released Run CSRF transports and SEC-02's three explicit scenario transports are
+also normalized at their exact assignment/route sites; the original digest stays
+unchanged. Any argument, value, assertion or extra helper still changes/fails it.
 """
 import ast
 import hashlib
@@ -29,10 +33,11 @@ def digest(tree):
     return hashlib.sha256(json.dumps(canon(tree), sort_keys=True).encode()).hexdigest()
 
 
-def normalized():
-    tree = ast.parse(SOURCE.read_text(encoding="utf-8"))
+def normalized(text=None):
+    tree = ast.parse(SOURCE.read_text(encoding="utf-8") if text is None else text)
     kept, removed = [], {"import_pytest": 0, "fixture": 0, "param": 0,
-                         "csrf_helper_import": 0, "csrf_run_calls": 0}
+                         "csrf_helper_import": 0, "csrf_run_calls": 0,
+                         "mutation_helper_import": 0, "mutation_calls": 0}
     for node in tree.body:
         if isinstance(node, ast.Import) and [a.name for a in node.names] == ["pytest"]:
             removed["import_pytest"] += 1
@@ -41,6 +46,10 @@ def normalized():
             assert len(node.names) == 1 and node.names[0].name == "post_valid_csrf" and not node.names[0].asname, (
                 "only the reviewed CSRF transport helper may be imported")
             removed["csrf_helper_import"] += 1
+            continue
+        if isinstance(node, ast.ImportFrom) and node.module == "tests.model_mutation_csrf":
+            assert len(node.names) == 1 and node.names[0].name == "post_valid_mutation" and not node.names[0].asname
+            removed["mutation_helper_import"] += 1
             continue
         if isinstance(node, ast.FunctionDef) and node.name == FIXTURE:
             removed["fixture"] += 1
@@ -74,14 +83,53 @@ def normalized():
         removed["csrf_run_calls"] += 1
     assert not any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "post_valid_csrf"
                    for n in ast.walk(tree)), "unexpected extra CSRF helper call"
+    # SEC-02 changed exactly these three positive transports; retain the original
+    # route, data, assertions, values and Run counters in the historical digest.
+    expected = {"created": "/v2/workbook/scenarios/create",
+                "rejected": "/v2/workbook/scenarios/update-overrides",
+                "mutated": "/v2/workbook/scenarios/update-overrides"}
+    seen = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target, call = node.targets[0], node.value
+        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "post_valid_mutation"):
+            continue
+        assert isinstance(target, ast.Name) and target.id in expected and target.id not in seen
+        assert len(call.args) == 2 and isinstance(call.args[0], ast.Name) and call.args[0].id == "client"
+        assert isinstance(call.args[1], ast.Constant) and call.args[1].value == expected[target.id]
+        seen.add(target.id)
+        node.value = ast.Call(func=ast.Attribute(value=call.args[0], attr="post", ctx=ast.Load()),
+                              args=call.args[1:], keywords=call.keywords)
+        removed["mutation_calls"] += 1
+    assert seen == set(expected)
+    assert not any(isinstance(n, ast.Name) and n.id == "post_valid_mutation" for n in ast.walk(tree))
     return tree, removed
 
 
 def test_only_the_disclosed_precondition_differs_from_the_original_module():
     tree, removed = normalized()
     assert removed == {"import_pytest": 1, "fixture": 1, "param": 1,
-                       "csrf_helper_import": 1, "csrf_run_calls": 2}
+                       "csrf_helper_import": 1, "csrf_run_calls": 2,
+                       "mutation_helper_import": 1, "mutation_calls": 3}
     assert digest(tree) == ORIGINAL_AST_SHA256
+
+
+def test_financial_assertion_drift_is_not_masked_by_transport_normalization():
+    text = SOURCE.read_text(encoding="utf-8")
+    assert "assert calls == 1" in text
+    tree, _ = normalized(text.replace("assert calls == 1", "assert calls == 2", 1))
+    assert digest(tree) != ORIGINAL_AST_SHA256
+
+
+def test_mutation_route_drift_is_not_admitted_as_transport_only():
+    text = SOURCE.read_text(encoding="utf-8")
+    changed = text.replace('post_valid_mutation(client, "/v2/workbook/scenarios/create"',
+                           'post_valid_mutation(client, "/v2/workbook/scenarios/select"', 1)
+    assert changed != text
+    import pytest
+    with pytest.raises(AssertionError):
+        normalized(changed)
 
 
 def test_run_counter_assertion_and_seeding_order_are_intact():
