@@ -504,6 +504,20 @@ class WorkbookUpdateService:
                 # calibrated schedule must not accept a decorative scalar.
                 raise FieldValidationError(str(exc)) from exc
 
+        # --- R-1: finite derived-amount gate (before ANY persistence) -----
+        # A capacity edit rescales the reference-seeded PER_MW lines after the CAS.  Verify with a
+        # rolled-back dry run that every derived amount stays finite so an overflow can never leave a
+        # half-applied capacity (finiteness only; no capacity maximum exists or is implied).
+        if field_id == "project_setup.technical.capacity_mw":
+            from app.services.reference_seed_service import (
+                NonFiniteDerivedAmountError, preflight_capacity_rescale)
+            try:
+                preflight_capacity_rescale(
+                    user_id=ws.user_id, project_code=project_record.project_code,
+                    capacity_mw=float(validation.typed_value))
+            except NonFiniteDerivedAmountError as exc:
+                raise FieldValidationError(str(exc), FieldErrorClass.INVALID) from exc
+
         # --- Atomic compare-and-swap ------------------------------------
         # v2_atomic_draft_update opens a single exclusive-lock transaction:
         # 1. Reads draft_snapshot_json from DB

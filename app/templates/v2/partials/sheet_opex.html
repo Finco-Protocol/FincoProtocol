@@ -457,6 +457,15 @@
             <span class="v2-field-hint">Sum of the line items below. Edit a line, or add a custom line, to change this total.</span>
           </div>
 
+        {%- elif sg.is_bound and project_editable and (opex_authority_notes or {}).get(sg.code) -%}
+          {# The Run does not take this group's scalar value (its base item is replaced by the group's
+             line items, or it is derived from the technology drivers): no editor is offered. #}
+          <div id="opex-cattotal-{{ sg.code | replace(".", "-") }}" class="v2-field-row v2-field-readonly" data-testid="opex-category-total-{{ sg.code }}">
+            <span class="v2-field-label">{{ sg.field.label }} (category total)</span>
+            <span class="v2-field-value">{{ grouped_keur(sg.subtotal_y1) }} <small>kEUR/yr</small></span>
+            <span class="v2-field-hint">{% if opex_authority_notes[sg.code].startswith("Sum of line items") %}The Run takes this group's cost from its line items. Edit a line to change it.{% else %}{{ opex_authority_notes[sg.code] }}; edit the drivers to change it.{% endif %}</span>
+          </div>
+
         {%- elif sg.is_bound and project_editable -%}
           {{ render_field(sg.field, project_code, workbook_version, content_hash, project_editable,
                           hx_target="#panel-opex", sheet_id="opex") }}

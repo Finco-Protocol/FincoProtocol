@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ project_name }} — Working Copy recovery</title>
+  <link rel="stylesheet" href="/static/css/workbook_v2.css">
+</head>
+<body>
+  <main class="v2-unsupported-runtime" role="main" data-testid="workbook-recovery-page" data-recovery-code="{{ recovery.code }}">
+    <div class="v2-unsupported-runtime__card">
+      <h1 class="v2-unsupported-runtime__title">{{ project_name }}</h1>
+      <p class="v2-unsupported-runtime__message" data-testid="workbook-recovery-message">{{ recovery.message }}</p>
+      <p class="v2-unsupported-runtime__note">No value was corrected, rounded, clamped or discarded, and the model was not run. Each replacement below is saved through the normal authenticated Save and takes effect only when you submit it.</p>
+      {% if flash_error %}<p role="alert" class="v2-unsupported-runtime__note" data-testid="workbook-recovery-error">{{ flash_error }}</p>{% endif %}
+      {% if not recovery.complete %}<p class="v2-unsupported-runtime__note">More problems may exist; correct the listed value(s), then reload.</p>{% endif %}
+      <ul style="list-style:none;padding:0;margin:1rem 0;">
+      {% for issue in recovery.issues %}
+        <li data-testid="workbook-recovery-issue" data-field-id="{{ issue.field_id or '' }}" style="margin:0 0 1rem 0;">
+          <strong>{{ issue.label }}</strong>{% if issue.unit %} <small>({{ issue.unit }})</small>{% endif %}
+          <div>Stored value: <code>{{ issue.stored_value if issue.stored_value != '' else '(empty)' }}</code></div>
+          <div>Reason: {{ issue.reason }}</div>
+          {% if issue.repairable and project_editable %}
+          <form method="post" action="/v2/workbook/update" data-testid="workbook-recovery-form">
+            <input type="hidden" name="project" value="{{ project_code }}">
+            <input type="hidden" name="field_id" value="{{ issue.field_id }}">
+            <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+            <input type="hidden" name="content_hash" value="{{ content_hash }}">
+            <input type="hidden" name="csrf_token" value="{{ update_csrf_token }}">
+            <label for="rv-{{ loop.index }}">Replacement value</label>
+            <input id="rv-{{ loop.index }}" name="value" type="text" inputmode="decimal" autocomplete="off" required>
+            <button type="submit">Replace value</button>
+          </form>
+          {% elif not project_editable %}
+          <div>This is a protected reference and cannot be edited.</div>
+          {% else %}
+          <div>This value cannot be repaired from this view.</div>
+          {% endif %}
+        </li>
+      {% endfor %}
+      </ul>
+      <div class="v2-unsupported-runtime__actions">
+        <a href="{{ library_url }}" class="v2-unsupported-runtime__btn v2-unsupported-runtime__btn--primary" data-testid="workbook-recovery-back">Back to Model Workspace</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

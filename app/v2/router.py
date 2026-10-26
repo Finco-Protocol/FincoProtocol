@@ -1055,7 +1055,10 @@ def _build_opex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "") 
         _esc_value = "mixed"
         _esc_label = "varies by line — per-line rates are authoritative"
 
+    from app.v2.opex_authority import opex_group_authority_notes
     return {
+        "opex_authority_notes": dict(opex_group_authority_notes(
+            project_record.project_id, getattr(project_record, "template_source", "") or "")),
         "opex_inactive_lines": _inactive_cost_lines(project_record.project_id, "opex"),
         "opex_scenario_error": _ox_err,
         "opex_vm": opex_vm,
@@ -1999,7 +2002,8 @@ def _build_input_grid_ctx(project_record, pis, ws, workspace_owner: str, *, proj
         capex_ctx=capex_ctx, opex_ctx=opex_ctx, pis=pis, base_pis=base, baseline_note=note,
         project_editable=project_editable, content_hash=pis.content_hash,
         workbook_version=pis.workbook_version, scenario_id=ws.active_scenario_id or "",
-        registry_sheets=tuple(registry_sheets))}
+        registry_sheets=tuple(registry_sheets),
+        opex_authority_notes=opex_ctx.get("opex_authority_notes"))}
 
 
 @router.get("/workbook", response_class=HTMLResponse)
@@ -2101,6 +2105,28 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
 
     with span("input_build"):
         pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    # Working Copy recovery: a stored draft the canonical adapter refuses to materialise would fail every
+    # builder below.  Return a controlled, read-only recovery page instead; it corrects nothing itself.
+    from app.workbook.draft_recovery import diagnose_draft as _diagnose_draft
+    _recovery = _diagnose_draft(pis.to_snapshot())
+    if _recovery is not None:
+        raw_err = request.query_params.get("v2_err", "")
+        return _templates.TemplateResponse(
+            request=request,
+            name="workbook_recovery.html",
+            context={
+                "user": user,
+                "project_code": project,
+                "project_name": project_record.project_name or project,
+                "project_editable": not is_protected_reference(project_record),
+                "recovery": _recovery.to_dict(),
+                "workbook_version": pis.workbook_version,
+                "content_hash": pis.content_hash,
+                "update_csrf_token": mutation_token(request, project, "workbook-update"),
+                "flash_error": urllib.parse.unquote_plus(raw_err)[:500] if raw_err else "",
+                "library_url": "/library",
+            },
+        )
     runtime_freshness = _runtime_freshness(ws, pis)
     hydration_script = WorkbookService.runtime_hydration_script(ws)
 

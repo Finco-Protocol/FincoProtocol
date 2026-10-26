@@ -19,7 +19,7 @@ Persistence of grid edits goes exclusively through the C0 batch writer (``grid_r
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 
 @dataclass(frozen=True)
@@ -185,6 +185,7 @@ def build_input_grid_projection(
     workbook_version: str,
     scenario_id: str,
     registry_sheets: tuple[tuple[str, str, str, list[dict], dict[str, str]], ...] = (),
+    opex_authority_notes: Mapping[str, str] | None = None,
 ) -> InputGridProjection:
     # ── CAPEX ───────────────────────────────────────────────────────────────────────
     capex_vm = capex_ctx.get("capex_vm")
@@ -227,6 +228,9 @@ def build_input_grid_projection(
             row = _readonly(sg.code, name, total, "Calculated by the model")
         elif sg.is_bound and (sg.custom_lines or inactive.get(sg.code)):
             row = _readonly(sg.code, name, total, "Sum of line items — edit on the OPEX sheet")
+        elif sg.is_bound and (opex_authority_notes or {}).get(sg.code):
+            # The Run does not take this group's scalar value (replaced by its line items / derived from drivers).
+            row = _readonly(sg.code, name, total, (opex_authority_notes or {})[sg.code])
         elif sg.is_bound:
             row = _row_from_field(sg.code, name, sg.field, pis, base_pis,
                                   editable=project_editable, reason="Reference project is read-only",

@@ -141,7 +141,9 @@ def test_other_registry_numeric_bounds_unchanged():
         "revenue.ppa.base_tariff": (0, None), "project_setup.technical.capacity_mw": (0.1, None),
         "project_setup.technical.p50_hours": (1, None), "debt.senior.gearing_pct": (0, 100),
         "debt.senior.interest_rate_pct": (0, 20), "debt.senior.target_dscr": (1.0, 3.0),
-        "opex.lines.om_preventive": (None, None), "tax.assumptions.cit_rate_pct": (0, 100),
+        # B2/C1 (E-class): the 11 editable OPEX line amounts now carry min 0 like the adapter/engine (asserted in
+        # tests/test_fin_val_b2_c1_recovery_finite_opex.py); every other bound listed here is unchanged.
+        "opex.lines.om_preventive": (0, None), "tax.assumptions.cit_rate_pct": (0, 100),
     }
     for field_id, bounds in expected.items():
         spec = WORKBOOK.field(field_id)
@@ -240,8 +242,10 @@ def test_other_technologies_and_cost_line_authorities_unchanged(env):
         bad = _single_save(env, record, "capex.C.epc_contract", "-5", t)
         assert "≥ 0" in bad.text
         assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
-    # OPEX line registry fields keep their (absent) bounds: negative OPEX is NOT newly rejected by this PR.
-    assert WorkbookUpdateService.validate_field_update("opex.lines.om_preventive", "-100").is_valid
+    # B2/C1 supersedes the B1 statement that negative OPEX stays accepted: the engine clamps negative OPEX to zero
+    # (a silently ignored input), so the Save contract now refuses it.  See OPEX_FIELD_TO_ENGINE_AUTHORITY_MATRIX.md.
+    assert not WorkbookUpdateService.validate_field_update("opex.lines.om_preventive", "-100").is_valid
+    assert WorkbookUpdateService.validate_field_update("opex.lines.om_preventive", "0").is_valid
 
 
 def test_stored_invalid_snapshot_is_not_rewritten_by_this_change(env):
@@ -257,8 +261,11 @@ def test_stored_invalid_snapshot_is_not_rewritten_by_this_change(env):
         conn.execute("UPDATE workspace_states SET draft_snapshot_json=? WHERE project_id=?", (stored_json, record.project_id))
     assert _snapshot(record)["capex_epc_contract_keur"] == "-20000.0"
     assert _snapshot(record)["capex_epc_contract_keur"] == "-20000.0"           # reading never mutates the stored value
-    # the unreadable page is the pre-existing SC-3 dependency (router-owned); it is not "fixed" or masked here
-    assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 500
+    # B2/C1 (SC-3): the unreadable draft is now answered by an explicit recovery page (HTTP 200, no 500); the stored
+    # value is still not rewritten, cleaned or masked, and nothing is run.
+    recovery = env.client.get("/v2/workbook", params={"project": record.project_code})
+    assert recovery.status_code == 200 and 'data-testid="workbook-recovery-page"' in recovery.text
+    assert _snapshot(record)["capex_epc_contract_keur"] == "-20000.0"
     # an unrelated, valid canonical Save still works and leaves the legacy negative value untouched
     response = _grid_save(env, record, [{"field_id": "revenue.ppa.base_tariff", "value": "51"}], _refresh_cas(rendered, record))
     assert response.status_code == 200
@@ -479,17 +486,16 @@ def test_large_finite_capex_amount_page_renders_and_run_inputs_unchanged(env):
     assert float(_snapshot(record)["capex_epc_contract_keur"]) == 1e21          # stored value is exactly what was saved
 
 
-def test_residual_capacity_overflow_never_yields_a_plausible_value(env):
-    """R-1 (documented, NOT closed here): capacity >= ~1e306 makes the capacity rescale write non-finite derived
-    totals into the draft (app/services/reference_seed_service.py).  This PR must not hide that: the display layer
-    raises explicitly and never renders a zero/finite stand-in.  Full recovery needs the rescale guard / SC-3."""
+def test_residual_capacity_overflow_is_now_refused_atomically_by_the_finite_guard(env):
+    """R-1 (closed by B2/C1): capacity >= ~1e306 used to persist non-finite derived totals.  The Save is now
+    refused before anything is written; no plausible/zero stand-in value is ever produced."""
     record = env.create()
     t = _page_tokens(env, record)
-    _single_save(env, record, "project_setup.technical.capacity_mw", "1e308", t)
-    snap = _snapshot(record)
-    derived = [snap.get(k) for k in ("total_capex_keur", "opex_y1_keur")]
-    assert all(str(v).lower() in ("inf", "infinity") for v in derived if v is not None)      # observed: persisted as non-finite
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    assert page.status_code != 200                                                         # not silently rendered
+    before = _snapshot(record)
+    response = _single_save(env, record, "project_setup.technical.capacity_mw", "1e308", t)
+    assert "Nothing was changed" in response.text and "representable numeric range" in response.text   # explicit refusal
+    after = _snapshot(record)
+    assert after == before
+    assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
     with pytest.raises(NonFiniteParentAmountError):
-        allocate_parent_amount(float(snap["total_capex_keur"]), capex_children("solar", "C.01"))
+        allocate_parent_amount(float("inf"), capex_children("solar", "C.01"))
