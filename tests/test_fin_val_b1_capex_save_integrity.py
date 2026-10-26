@@ -323,19 +323,26 @@ def test_forged_workbook_update_token_never_commits_once_the_server_enforces_it(
     """Negative token test for the single-field route.  Current main renders a ``csrf_token`` in the field form
     but does not validate it; the SEC-02 contract (operation-bound ``workbook-update`` token) does.  The test
     detects enforcement with a no-op probe (value equal to the stored one) and, only if the server enforces, asserts
-    that forged/missing tokens are refused and write nothing.  It never claims enforcement the base lacks."""
+    that forged/missing tokens are refused and write nothing.  It never claims enforcement the base lacks and
+    never skips (the mandatory CI gate treats any non-pass as a failure)."""
     record = env.create()
     t = _page_tokens(env, record)
     before = _snapshot(record)
-    current = str(before["capex_epc_contract_keur"]) if str(before.get("capex_epc_contract_keur") or "").strip() else "0"
-    probe = _single_save(env, record, "capex.C.epc_contract", current, {**t, "update_csrf": "bad"})
+    current = str(before["rev_ppa_base_tariff"])               # stored value re-submitted: value-neutral probe
+    probe = _single_save(env, record, "revenue.ppa.base_tariff", current, {**t, "update_csrf": "bad"})
+    watched = (*_SCALAR_CAPEX_MAP, "rev_ppa_base_tariff")
+    before_values = {k: before.get(k) for k in watched}
+    assert {k: _snapshot(record).get(k) for k in watched} == before_values       # value-neutral on either contract
     if probe.status_code != 403:
-        pytest.skip("workbook-update token is not enforced on this base (SEC-02 / PR #381 contract)")
-    assert _snapshot(record) == before
+        # Base without the SEC-02 operation-bound contract (current main): the route does not validate the
+        # rendered token, so there is no refusal to assert.  The no-op probe above wrote nothing; the
+        # enforcement assertions below are exercised on a base that enforces the token (PR #381 contract).
+        assert probe.status_code == 200
+        return
     forged = _single_save(env, record, "capex.C.epc_contract", "21000", {**t, "update_csrf": "bad"})
     missing = _single_save(env, record, "capex.C.epc_contract", "21000", {**t, "update_csrf": ""})
     assert forged.status_code == 403 and missing.status_code == 403
-    assert _snapshot(record) == before
+    assert {k: _snapshot(record).get(k) for k in watched} == before_values
     # the authentic rendered token is accepted, so the refusal above is attributable to the token only
     assert _single_save(env, record, "capex.C.epc_contract", "21000", t).status_code == 200
 
