@@ -10,6 +10,7 @@ Exit code is non-zero if any check fails.
 from __future__ import annotations
 
 from tests.model_workspace_navigation import activate_destination
+from tests.browser_model_mutation import rendered_form_token
 
 import argparse
 import hashlib
@@ -145,6 +146,9 @@ def main() -> int:
                         data = dict(data, run_csrf_token=run_token)
                     if path == "/v2/workbook/update" and data.get("field_id") == "debt.financing.instruments":
                         data = dict(data, csrf_token=page.locator('[data-f3-form] [name="csrf_token"]').input_value())
+                    elif path == "/v2/workbook/update" or path in ("/v2/workbook/scenarios/create", "/v2/workbook/scenarios/select"):
+                        data = dict(data, csrf_token=rendered_form_token(
+                            page.request, url, data["project"], path, field_id=data.get("field_id")))
                     return page.request.post(f"{url}{path}", form=data, headers={"HX-Request": "true"})
 
                 READY_JS = """([code, state, notSnapshot, snapshot]) => {
