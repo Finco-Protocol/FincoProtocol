@@ -2861,6 +2861,9 @@ def _run_intent_response(request: Request, decision, is_htmx: bool, project: str
         return existing
     message = decision.message or kind
     if is_htmx:
+        if kind == "REPLAYED":
+            # The page that sent this Run is stale (its response was lost): reload the persisted workbook.
+            typed_headers["HX-Refresh"] = "true"
         banner_html = _templates.get_template("partials/_v2_status_banner.html").render({
             "ws_dirty": True, "has_runtime": False, "field_error": message, "flash_error": "", "run_failure": None})
         return HTMLResponse(content='<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>",
@@ -2869,6 +2872,17 @@ def _run_intent_response(request: Request, decision, is_htmx: bool, project: str
         return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303, headers=typed_headers)
     return RedirectResponse(url=f"/v2/workbook?project={project}&v2_err={urllib.parse.quote_plus(message)}",
                             status_code=303, headers=typed_headers)
+
+
+def _ri_stamp_committed(response, committed):
+    """A response produced AFTER the atomic commit must still say COMMITTED (the Run is durable): the client
+    consumes the intent on a terminal outcome, so a post-commit rendering failure must never read as FAILED."""
+    if committed is None:
+        return response
+    from app.services import run_intent_service as _ri
+    for name, value in _ri.headers(committed).items():
+        response.headers[name] = value
+    return response
 
 
 @router.post("/workbook/run")
@@ -3495,7 +3509,10 @@ async def v2_workbook_run(
         if _ri_decision is not None and "application/json" in (request.headers.get("accept") or ""):
             return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED")
         if not is_htmx:
-            return _non_htmx_error(msg)
+            _ri_cas_failure = _non_htmx_error(msg)
+            if _ri_decision is not None:
+                return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED", existing=_ri_cas_failure)
+            return _ri_cas_failure
         # Re-fetch workspace to get the current hash for the run controls.
         ws_conflict = get_workspace_state(
             user_id=workspace_owner, project_id=project_record.project_id
@@ -3532,6 +3549,9 @@ async def v2_workbook_run(
         conflict_controls_oob = (
             '<div id="v2-run-controls" hx-swap-oob="true">' + conflict_controls_html + "</div>"
         )
+        if _ri_decision is not None:
+            return HTMLResponse(content=conflict_banner_oob + "\n" + conflict_controls_oob,
+                                headers=_ri.headers(_ri_decision, "FAILED"))
         return HTMLResponse(content=conflict_banner_oob + "\n" + conflict_controls_oob)
     except Exception as exc:
         import logging
@@ -3612,22 +3632,23 @@ async def v2_workbook_run(
                 "project=%s", project
             )
 
+    # ── D-029: the intent was finalized INSIDE the commit transaction; read back its exact immutable history id.
+    # The committed truth is reported to JSON/form clients even if the HTMX projection below cannot be rebuilt. ──── #
+    _ri_committed = _ri.committed_decision(_ri_decision.intent) if _ri_decision is not None else None
+    if _ri_committed is not None and (not is_htmx or "application/json" in (request.headers.get("accept") or "")):
+        return _run_intent_response(request, _ri_committed, is_htmx, project)
+
     # ── Step 13–14: project from the persisted RuntimeResult ──────────────── #
     ws_fresh = ws_committed or get_workspace_state(
         user_id=workspace_owner, project_id=project_record.project_id
     )
     if ws_fresh is None:
         msg = "Run committed but workspace could not be reloaded."
-        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+        return _ri_stamp_committed(_htmx_error(msg) if is_htmx else _non_htmx_error(msg), _ri_committed)
     rr = WorkbookService.get_runtime_result(ws_fresh)
     if rr is None:
         msg = "Run committed but the persisted RuntimeResult could not be reconstructed."
-        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
-
-    # ── D-029: the intent was finalized INSIDE the commit transaction; read back its exact immutable history id. ──── #
-    _ri_committed = _ri.committed_decision(_ri_decision.intent) if _ri_decision is not None else None
-    if _ri_committed is not None and (not is_htmx or "application/json" in (request.headers.get("accept") or "")):
-        return _run_intent_response(request, _ri_committed, is_htmx, project)
+        return _ri_stamp_committed(_htmx_error(msg) if is_htmx else _non_htmx_error(msg), _ri_committed)
 
     # ── Step 15: HTMX response ────────────────────────────────────────────── #
     if not is_htmx:
@@ -3653,9 +3674,9 @@ async def v2_workbook_run(
     except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
         # The Run remains committed. Do not emit a mixed CURRENT response or
         # overwrite a concurrent scenario's evidence; existing GET reconciles.
-        return HTMLResponse(
+        return _ri_stamp_committed(HTMLResponse(
             "Run saved. Workspace changed while updating the view; reload the workbook.",
-            status_code=409)
+            status_code=409), _ri_committed)
     _stage_mark("response_generated")
     log_run_stages(project_type=project_record.project_type, origin="v2_workbook_run")
     if _ri_committed is not None:

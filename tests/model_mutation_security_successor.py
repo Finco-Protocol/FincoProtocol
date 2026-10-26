@@ -145,6 +145,14 @@ FINVAL_B2C1_SUCCESSORS={
     "frontend/src/app/types.ts":"d5077405dd2c316fe3ee006250287d11835382f4",
     "static/react/finco-react.js":"4b74bb50f43c665136e8fcac11e0a9beead08f8b",
 }
+# D-029 (PR #384) admits exact reviewed successors of the two pinned files the Run-intent integration had to change
+# (the Run route and the React bundle built from the reviewed WorkflowBar/api/runIntent sources).  Additive: every
+# original pin and the FIN-VAL B2/C1 layer above stay immutable and individually verified at SOURCE_HEAD.  Any further
+# drift of either file needs a new review.  Owner authorization for exactly these paths was relayed in the PR thread.
+D029_RUN_INTENT_SUCCESSORS={
+    "app/v2/router.py":"37f18a0e35c0e0a9ede5d71a0f9dfc906a68c7c2",
+    "static/react/finco-react.js":"907cfa53e07c78e03cd12dd537a806832dfeb7e8",
+}
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -179,6 +187,53 @@ def _reject(gate,code):
             or any(isinstance(a,ast.Constant) and a.value==code for a in value.args))
 
 
+def _dotted_calls(node,dotted):
+    out=[]
+    for n in ast.walk(node):
+        if isinstance(n,ast.Call):
+            name=ast.unparse(n.func)
+            if name==dotted:out.append(n)
+    return out
+
+
+def d029_run_order_violations(source):
+    """Structural D-029 invariants of the Run route, independent of any byte pin.
+
+    An intent id is not authorization: the ledger is consulted only after authentication, project resolution,
+    ownership and the purpose-bound Run CSRF; the protected-reference refusal is evaluated by the same call that
+    would otherwise read the ledger; reservation precedes the engine; the intent is finalized INSIDE the atomic
+    commit (never by a second writer).  Applies only to a router that carries the intent lifecycle."""
+    if "run_intent_id" not in source:return []
+    errors=[]
+    try:
+        fn=_function(ast.parse(source),"v2_workbook_run")
+        first=lambda d:min([c.lineno for c in _dotted_calls(fn,d)] or [10**9])
+        order=("resolve_accessible_project","validate_csrf_token","_ri.decide","_ri.reserve_and_start",
+               "run_model_process","v2_atomic_run_commit","_ri.committed_decision")
+        lines=[first(d) for d in order]
+        if any(l>=10**9 for l in lines) or lines!=sorted(lines) or len(set(lines))!=len(lines):
+            errors.append("run intent lifecycle out of order: "+", ".join("%s@%s"%(d,l) for d,l in zip(order,lines)))
+        if len(_dotted_calls(fn,"validate_csrf_token"))!=1:errors.append("run intent: validator duplicated")
+        decide=_dotted_calls(fn,"_ri.decide")
+        if len(decide)!=1:errors.append("run intent: reconciliation must be a single call")
+        else:
+            keywords={k.arg:ast.unparse(k.value) for k in decide[0].keywords}
+            if keywords.get("actor_id")!="workspace_owner" or keywords.get("project_id")!="project_record.project_id":
+                errors.append("run intent: reconciliation scope is not the owner/project")
+            if keywords.get("protected_reference")!="is_protected_reference(project_record)":
+                errors.append("run intent: protected-reference refusal not evaluated before the ledger")
+            if keywords.get("workbook_version")!="workbook_version" or keywords.get("content_hash")!="content_hash":
+                errors.append("run intent: reconciliation must use the ORIGINAL submitted binding")
+        commits=_dotted_calls(fn,"v2_atomic_run_commit")
+        if len(commits)!=1 or not any(k.arg=="run_intent" and ast.unparse(k.value)=="_ri_reservation" for k in commits[0].keywords):
+            errors.append("run intent: atomic commit must receive the reservation (single history writer)")
+        if _dotted_calls(fn,"_ri.finalize") or _dotted_calls(fn,"finalize_cursor"):
+            errors.append("run intent: no finalization outside the atomic commit transaction")
+    except (ValueError,TypeError,AttributeError) as exc:
+        errors.append("run intent: invalid route source: "+type(exc).__name__)
+    return errors
+
+
 def _browser_layers():
     return {
         BROWSER_CORRECTION_PATH:(BROWSER_CORRECTION_SOURCE_HEAD,BROWSER_CORRECTION_PARENT,BROWSER_CORRECTION_BLOB),
@@ -194,6 +249,7 @@ def violations(sources,*,check_pin=True):
         layer=_browser_layers().get(path)
         admitted={expected,layer[2]} if layer else {expected}
         if path in FINVAL_B2C1_SUCCESSORS:admitted=admitted|{FINVAL_B2C1_SUCCESSORS[path]}
+        if path in D029_RUN_INTENT_SUCCESSORS:admitted=admitted|{D029_RUN_INTENT_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):
             try:trees[path]=ast.parse(text)
@@ -233,6 +289,7 @@ def violations(sources,*,check_pin=True):
                     refs=[n for n in fn.body if isinstance(n,ast.If) and isinstance(n.test,ast.Call)
                           and isinstance(n.test.func,ast.Name) and n.test.func.id=="is_protected_reference" and _reject(n,409)]
                     if len(refs)!=1 or refs[0].lineno>=gate.lineno:errors.append(name+": reference gate missing/late")
+        errors.extend(d029_run_order_violations(sources["app/v2/router.py"]))
         # Token implementation is independently pinned, and retained even in
         # no-byte-pin mutation tests: no hidden helper bypass is admissible.
         if git_blob(sources[TOKEN_MODULE])!=BLOBS[TOKEN_MODULE]:errors.append("mutation token authority changed")

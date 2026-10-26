@@ -60,7 +60,7 @@ def test_finval_b2c1_successor_is_exactly_six_additive_paths_and_keeps_every_ori
         "app/v2/router.py","frontend/src/app/WorkspaceView.tsx","frontend/src/app/types.ts","static/react/finco-react.js"}
     for path,blob in S.FINVAL_B2C1_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40 and blob!=S.BLOBS[path]
-        assert S.git_blob(SOURCES[path])==blob                      # the current reviewed source is the admitted successor
+        assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path)}   # current source = an admitted reviewed successor
     assert S.TOKEN_MODULE not in S.FINVAL_B2C1_SUCCESSORS
 
 @pytest.mark.parametrize("path",["app/templates/v2/partials/sheet_opex.html","app/v2/react_workspace_router.py","app/v2/router.py",
@@ -93,3 +93,79 @@ def test_finval_b2c1_successor_does_not_weaken_the_protected_reference_guard():
     assert "is_protected_reference(" in source
     changed=dict(SOURCES);changed["app/v2/router.py"]=source.replace("is_protected_reference(","is_protected_reference_removed(")
     assert S.violations(changed,check_pin=False)
+
+
+# ── D-029 (PR #384): additive Run-intent successor layer ─────────────────────────────────────────────────────
+D029_PATHS={"app/v2/router.py","static/react/finco-react.js"}
+
+
+def _blob_source(blob):
+    return subprocess.check_output(["git","cat-file","blob",blob],cwd=S.ROOT).decode("utf-8")
+
+
+def test_d029_layer_is_exactly_two_additive_paths_and_keeps_every_original_and_finval_pin():
+    assert set(S.D029_RUN_INTENT_SUCCESSORS)==D029_PATHS
+    assert len(S.BLOBS)==112 and S.SOURCE_HEAD=="1800bf6092af650f18aa6ae70e9df221797090fd"
+    for path,blob in S.D029_RUN_INTENT_SUCCESSORS.items():
+        assert path in S.BLOBS and len(blob)==40
+        assert blob not in (S.BLOBS[path],S.FINVAL_B2C1_SUCCESSORS[path])        # a NEW reviewed state, never a repin
+        assert S.git_blob(SOURCES[path])==blob
+    assert S.TOKEN_MODULE not in S.D029_RUN_INTENT_SUCCESSORS
+
+
+@pytest.mark.parametrize("path",sorted(D029_PATHS))
+def test_d029_one_byte_of_drift_in_a_successor_path_fails_closed(path):
+    changed=dict(SOURCES);changed[path]+="\n"
+    assert S.violations(changed)
+
+
+@pytest.mark.parametrize("path",sorted(D029_PATHS))
+def test_d029_original_and_finval_blobs_remain_individually_admitted(path):
+    for blob in (S.BLOBS[path],S.FINVAL_B2C1_SUCCESSORS[path]):
+        changed=dict(SOURCES);changed[path]=_blob_source(blob)
+        assert not [e for e in S.violations(changed) if e.startswith(path+": unreviewed")]
+
+
+def _decide_before_csrf(s):
+    start=s.index("    # ── D-029: optional Run intent");end=s.index("    ws = get_workspace_state(user_id=workspace_owner",start)
+    block=s[start:end];rest=s[:start]+s[end:]
+    anchor="    # Authorization precedes CSRF so inaccessible"
+    return rest.replace(anchor,block+anchor,1)
+
+
+def test_d029_run_route_invariants_hold_and_each_negative_is_detected_without_byte_pins():
+    source=SOURCES["app/v2/router.py"]
+    assert S.d029_run_order_violations(source)==[]
+    mutations={
+        "decide before the CSRF gate":_decide_before_csrf,
+        "reconcile by today's hash":lambda s:s.replace("workbook_version=workbook_version, content_hash=content_hash,\n            protected_reference","workbook_version=workbook_version, content_hash=current_identity.composite_hash,\n            protected_reference",1),
+        "protected refusal dropped":lambda s:s.replace("protected_reference=is_protected_reference(project_record),","protected_reference=False,",1),
+        "actor is the session user":lambda s:s.replace("actor_id=workspace_owner, project_id=project_record.project_id, run_intent_id","actor_id=user.user_id, project_id=project_record.project_id, run_intent_id",1),
+        "commit without the reservation":lambda s:s.replace("            run_intent=_ri_reservation,\n",""),
+        "second finalizer":lambda s:s.replace("    _ri_committed = _ri.committed_decision(","    _ri.finalize(_ri_decision)\n    _ri_committed = _ri.committed_decision(",1),
+    }
+    for name,mutate in mutations.items():
+        changed=mutate(source)
+        assert changed!=source,name
+        assert S.d029_run_order_violations(changed),name
+        broken=dict(SOURCES);broken["app/v2/router.py"]=changed
+        assert S.violations(broken,check_pin=False),name
+
+
+def test_d029_security_gates_are_unchanged_by_the_successor():
+    source=SOURCES["app/v2/router.py"]
+    for needle,replacement in (('(await request.form()).get("csrf_token"), "workbook-update"','(await request.form()).get("csrf_token"), "wrong-operation"'),
+                               ("is_protected_reference(","is_protected_reference_removed(")):
+        assert needle in source
+        changed=dict(SOURCES);changed["app/v2/router.py"]=source.replace(needle,replacement,1 if "csrf" in needle else -1)
+        assert S.violations(changed,check_pin=False)
+
+
+def test_d029_register_is_an_additive_layer_in_the_validator_not_a_rewrite_of_history():
+    import re
+    original=subprocess.check_output(["git","show","6b779fb52f918ec079995924df3198269d09786e:tests/model_mutation_security_successor.py"],cwd=S.ROOT).decode("utf-8")
+    current=(S.ROOT/"tests/model_mutation_security_successor.py").read_text(encoding="utf-8")
+    pins=re.findall(r'^\s*"([^"]+)"\s*:\s*"([0-9a-f]{40})"',original,flags=re.M)
+    assert len(pins)>=112
+    for path,blob in pins:                                       # every historical pin line is still present verbatim
+        assert '"%s": "%s"'%(path,blob) in current or '"%s":"%s"'%(path,blob) in current,(path,blob)
