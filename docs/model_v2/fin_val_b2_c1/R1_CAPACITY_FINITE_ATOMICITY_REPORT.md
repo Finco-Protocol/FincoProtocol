@@ -68,3 +68,26 @@ Perform the capacity edit, the sub-line rescale and the reconciled snapshot writ
 3. write the snapshot in the same transaction; `COMMIT`; any exception → `ROLLBACK` (database byte-identical);
 4. keep the dry-run preflight as the early user-facing refusal, keep operation CSRF, CAS, ownership and "no implicit Run" unchanged; no economics, rounding or override semantics change (user-override rows are still skipped).
 Permanent regression tests: S1–S3 above become assertions (fault → database byte-identical; competing write is serialised, never lost). Files: `app/persistence/workspace_repository.py`, `app/services/reference_seed_service.py`, `app/workbook/update_service.py` (none pinned by the SEC-02/RC-SEC inventories at current main).
+
+
+## CORRECTION B — single-transaction capacity Save (implemented, local; not yet pushed)
+Source-protection evidence for the three files edited: none is in `CODEOWNERS` beyond the repository default, none is listed in the SEC-02 or RC-SEC blob inventories, and the tests that mention them are scenario negative-controls for unrelated exception windows (no exact-content pin). Scope was therefore treated as the explicitly instructed engineering change. Owner authorization for the *protected test paths* (B1 node, SEC-02 successor) is still outstanding and not assumed.
+
+**Design (as implemented).** `v2_atomic_draft_update` gained an optional `in_transaction_finalizer(cursor, snapshot) -> snapshot` that runs inside its existing `BEGIN EXCLUSIVE` transaction after the field is applied and before the identity/hash is recomputed and the row written. The capacity Save passes `reference_seed_service.rescale_snapshot_in_transaction`, which (a) rescales the untouched PER_MW seed sub-lines through the same cursor, (b) re-checks finiteness of every written amount, total, EV B.08 and Data Center power on the state actually being written, and (c) builds the reconciled snapshot from the snapshot read inside that transaction. The three former phases are gone from the Save path (`update_service` no longer calls `rescale_reference_seeded_project` or `save_workspace_state`). The preflight is retained only as an advisory early refusal (its message is the same) and is not trusted: test S4 disables it. `rescale_reference_seeded_project` remains as the standalone/dry-run form for its other callers and its tests; its calculation core is now shared (`_apply_capacity_rescale`), unchanged line for line.
+
+**Results (disposable databases, genuine second connections where stated).** Regression class `TestCapacitySaveIsOneTransaction` (37 tests, 4 technologies):
+| Case | Before (dfc1a585, `r1_atomic_branch.json`) | After |
+|---|---|---|
+| S1 exception after the sub-line writes | capacity committed at 30, lines/totals/seed capacity at 16 | every column of the workspace row, both sub-line tables and history byte-identical to before |
+| S2 exception after the row UPDATE, before COMMIT | n/a (old phases) | byte-identical to before |
+| S3 competing committed write | tariff 77 silently overwritten back to 50 | second writer blocks on the lock (thread proof), then is refused with the CAS stale error; its value is never written; with a fresh identity both edits are preserved; 6 racing rounds: exactly one winner, other refused, totals equal the line sums |
+| S4 non-finite (1e306, 5e307, 1e308) with the preflight disabled | n/a | refused inside the transaction, byte-identical |
+| finite 16 → 30 / 8 / 1234.5 | reference | persisted lines, scalars and seed profile equal the verbatim legacy three-phase oracle; effective CAPEX `ProjectInputs` equal; no Run history row |
+| user-overridden sub-line | n/a | amount and source untouched, other lines rescaled |
+| wrong owner, grid/batch route, protected reference | n/a | refused, byte-identical |
+
+Main-vs-branch committed Run summaries (Solar, Wind, Data Center, EV; default and 30 MW; Solar/Wind also tariff 60): all bit-identical once the per-run binding timestamps/hashes are excluded. Wider regression (reference seed, EV, Data Center, correction-A gates, persistence, B1, RC-7B production acceptance, hybrid grid, batch save, this module): 439 passed.
+
+**Fourth pre-existing defect found and fixed by construction.** The old final `save_workspace_state` call passed no scenario, so a capacity Save wrote NULL over `active_scenario_id`/`active_scenario_name` (reproduced on the legacy path: `('scn-probe','Probe')` → `(None, None)`). The single transaction updates only the draft snapshot, the content hash, `dirty` and `updated_at`, so the scenario binding survives (test added). This is a behaviour correction owners should know about.
+
+**Remaining residuals.** The standalone `rescale_reference_seeded_project` (non-Save callers) still ends in the unconditional `save_workspace_state`; it is no longer on the user-visible Save path. A different pre-existing item recorded earlier remains: a Run POST whose post-commit page render fails answers 500 after the history row is committed (D-029 territory, untouched).

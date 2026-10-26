@@ -619,3 +619,245 @@ class TestRecoveryGateDoesNotPreemptTypedScopeRefusals:
         monkeypatch.setattr(input_adapter, "build_projectinputs_from_snapshot", refuse)
         recovery = diagnose_draft({})
         assert recovery is not None and recovery.issues and not recovery.issues[0].repairable
+
+
+# ═══ R-1 (Correction B): the capacity Save is ONE transaction ═══════════════════════════════════════
+def _capacity_view(env, rec):
+    """Logical persisted state a capacity Save may change: line amounts, draft scalars, seed-profile capacity."""
+    with sqlite3.connect(env.db_path) as conn:
+        lines = {t: sorted((r[0], r[1], r[2]) for r in conn.execute(
+            f"SELECT {'business_code' if t == 'opex_sub_lines' else 'parent_category_code'}, amount_keur, source "
+            f"FROM {t} WHERE project_id=? AND is_active=1", (rec.project_id,)))
+            for t in ("capex_sub_lines", "opex_sub_lines")}
+    snap = _snapshot(rec)
+    profile = snap.get("_reference_seed_profile")
+    profile = json.loads(profile) if isinstance(profile, str) else (profile or {})
+    keys = ("capacity_mw", "total_capex_keur", "opex_y1_keur", "opex_power_expenses_y1_keur")
+    return lines, {k: snap.get(k) for k in keys}, profile.get("seed_capacity_mw"), (profile.get("data_center") or {}).get("seed_capacity_mw")
+
+
+def _save_capacity_via_service(rec, value, content_hash):
+    from app.persistence.projects_repository import get_project_by_code
+    from app.workbook.update_service import WorkbookUpdateService
+    return WorkbookUpdateService.apply_draft_update(
+        ws=_ws(rec), field_id="project_setup.technical.capacity_mw", raw_value=value, content_hash=content_hash,
+        workbook_version=WORKBOOK.version, project_record=get_project_by_code(USER, rec.project_code))
+
+
+def _save_tariff_via_service(rec, value, content_hash):
+    from app.persistence.projects_repository import get_project_by_code
+    from app.workbook.update_service import WorkbookUpdateService
+    return WorkbookUpdateService.apply_draft_update(
+        ws=_ws(rec), field_id="revenue.ppa.base_tariff", raw_value=value, content_hash=content_hash,
+        workbook_version=WORKBOOK.version, project_record=get_project_by_code(USER, rec.project_code))
+
+
+def _composite_hash(rec):
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    return assemble_consistent_for_get(USER, rec.project_id, WORKBOOK.version).composite_hash
+
+
+class TestCapacitySaveIsOneTransaction:
+    @pytest.mark.parametrize("kind", TECHS)
+    def test_s1_exception_after_the_sub_line_writes_rolls_back_everything(self, env, kind, monkeypatch):
+        import app.services.reference_seed_service as rs
+        record = env.create(kind)
+        tokens = _page_tokens(env, record)
+        before = _db_fingerprint(env, record)
+        view_before = _capacity_view(env, record)
+        original, calls = rs._apply_capacity_rescale, []
+
+        def apply_then_fail(cur, **kw):
+            calls.append(1)
+            result = original(cur, **kw)             # the sub-line UPDATEs really executed
+            if len(calls) >= 2:                      # call 1 is the rolled-back preflight; call 2 is the Save's transaction
+                raise RuntimeError("injected failure after the sub-line writes")
+            return result
+        monkeypatch.setattr(rs, "_apply_capacity_rescale", apply_then_fail)
+        resp = _single_save(env, record, "project_setup.technical.capacity_mw", "30", tokens)
+        assert len(calls) == 2 and resp.status_code >= 500
+        assert _db_fingerprint(env, record) == before                    # every column of every relevant row, incl. updated_at
+        assert _capacity_view(env, record) == view_before
+        monkeypatch.setattr(rs, "_apply_capacity_rescale", original)
+        assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+
+    @pytest.mark.parametrize("kind", TECHS)
+    def test_s2_exception_after_the_workspace_row_update_rolls_back_everything(self, env, kind, monkeypatch):
+        import app.persistence.workspace_repository as wr
+        record = env.create(kind)
+        tokens = _page_tokens(env, record)
+        before = _db_fingerprint(env, record)
+
+        mirror = wr.mirror_project_name_cursor
+
+        def fail_late(*args, **kwargs):
+            raise RuntimeError("injected failure after the draft row and the sub-lines were written")
+        monkeypatch.setattr(wr, "mirror_project_name_cursor", fail_late)     # runs after the UPDATE, before COMMIT
+        resp = _single_save(env, record, "project_setup.technical.capacity_mw", "30", tokens)
+        assert resp.status_code >= 500
+        assert _db_fingerprint(env, record) == before
+        monkeypatch.setattr(wr, "mirror_project_name_cursor", mirror)
+        assert _snapshot(record)["capacity_mw"] == "16"
+
+    @pytest.mark.parametrize("kind", TECHS)
+    @pytest.mark.parametrize("capacity", ["1e306", "5e307", "1e308"])
+    def test_s4_non_finite_is_refused_inside_the_transaction_even_without_the_preflight(self, env, kind, capacity, monkeypatch):
+        import app.services.reference_seed_service as rs
+        record = env.create(kind)
+        tokens = _page_tokens(env, record)
+        before = _db_fingerprint(env, record)
+        monkeypatch.setattr(rs, "preflight_capacity_rescale", lambda **kw: None)    # the advisory check is not the safeguard
+        resp = _single_save(env, record, "project_setup.technical.capacity_mw", capacity, tokens)
+        assert resp.status_code == 200 and "representable numeric range" in resp.text and "Nothing was changed" in resp.text
+        assert _db_fingerprint(env, record) == before
+
+    @pytest.mark.parametrize("kind", TECHS)
+    @pytest.mark.parametrize("capacity", ["30", "8", "1234.5"])
+    def test_finite_capacity_save_is_bit_identical_to_the_previous_three_phase_result(self, env, kind, capacity):
+        from app.persistence.workspace_repository import v2_atomic_draft_update
+        new_rec = env.create(kind, name="one-txn " + kind)
+        old_rec = env.create(kind, name="three-phase " + kind)
+        tokens = _page_tokens(env, new_rec)
+        assert _single_save(env, new_rec, "project_setup.technical.capacity_mw", capacity, tokens).status_code == 200
+        _prime(env, old_rec)
+        # previous behaviour: field CAS commit, then the verbatim legacy rescale + snapshot save
+        v2_atomic_draft_update(user_id=USER, project_id=old_rec.project_id, expected_content_hash=_composite_hash(old_rec),
+                               field_id="project_setup.technical.capacity_mw", typed_value=float(capacity))
+        _legacy_rescale(USER, old_rec.project_code, float(capacity))
+        assert _capacity_view(env, new_rec) == _capacity_view(env, old_rec)
+        from app.workbook.service import WorkbookService
+        assert repr(WorkbookService.build_draft_input_set_from_workspace(_ws(new_rec)).to_projectinputs().capex) == \
+            repr(WorkbookService.build_draft_input_set_from_workspace(_ws(old_rec)).to_projectinputs().capex)
+        assert _history_count(env, new_rec) == 0                         # saving capacity never runs the model
+
+    def test_user_overridden_sub_lines_are_never_rescaled(self, env):
+        record = env.create("solar")
+        tokens = _page_tokens(env, record)
+        with sqlite3.connect(env.db_path) as conn:
+            sub_id, amount = conn.execute(
+                "SELECT sub_line_id, amount_keur FROM capex_sub_lines WHERE project_id=? AND source='reference_seed' AND is_active=1 "
+                "AND amount_keur>0 AND replay_metadata_json LIKE '%PER_MW%' ORDER BY sub_line_id LIMIT 1", (record.project_id,)).fetchone()
+            conn.execute("UPDATE capex_sub_lines SET source='user_override', amount_keur=12345.0 WHERE sub_line_id=?", (sub_id,))
+            others_before = dict(conn.execute("SELECT sub_line_id, amount_keur FROM capex_sub_lines WHERE project_id=? AND sub_line_id<>?", (record.project_id, sub_id)).fetchall())
+        tokens = {**tokens, "content_hash": _composite_hash(record)}
+        assert _single_save(env, record, "project_setup.technical.capacity_mw", "30", tokens).status_code == 200
+        with sqlite3.connect(env.db_path) as conn:
+            assert conn.execute("SELECT amount_keur, source FROM capex_sub_lines WHERE sub_line_id=?", (sub_id,)).fetchone() == (12345.0, "user_override")
+            others_after = dict(conn.execute("SELECT sub_line_id, amount_keur FROM capex_sub_lines WHERE project_id=? AND sub_line_id<>?", (record.project_id, sub_id)).fetchall())
+        assert others_after != others_before and float(_snapshot(record)["capacity_mw"]) == 30.0
+
+    def test_owner_protected_reference_and_grid_route_fail_closed(self, env):
+        from app.persistence.projects_repository import get_reference_by_template_source
+        from app.services.project_library_service import ensure_reference_models
+        record = env.create("solar")
+        tokens = _page_tokens(env, record)
+        before = _db_fingerprint(env, record)
+        stranger = env.as_user("intruder-user")
+        resp = stranger.post("/v2/workbook/update", headers={"HX-Request": "true"}, data={
+            "project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "30",
+            "content_hash": tokens["content_hash"], "workbook_version": tokens["workbook_version"], "csrf_token": tokens["update_csrf"]})
+        assert resp.status_code in (403, 404) or "Nothing was changed" in resp.text or "not found" in resp.text.lower()
+        assert _db_fingerprint(env, record) == before
+        grid = _grid_save(env, record, [{"field_id": "project_setup.technical.capacity_mw", "value": "30"}], tokens)
+        assert grid.status_code in (409, 422)                            # capacity is a cascade field: never in a batch
+        assert _db_fingerprint(env, record) == before
+        ensure_reference_models()
+        ref = get_reference_by_template_source("generic_solar_reference")
+        with sqlite3.connect(env.db_path) as conn:
+            ref_before = conn.execute("SELECT group_concat(amount_keur) FROM capex_sub_lines WHERE project_id=?", (ref.project_id,)).fetchone()[0]
+        refused = env.client.post("/v2/workbook/update", data={
+            "project": ref.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "30",
+            "content_hash": "0" * 64, "workbook_version": WORKBOOK.version, "csrf_token": "x"})
+        assert refused.status_code in (403, 404)
+        with sqlite3.connect(env.db_path) as conn:
+            assert conn.execute("SELECT group_concat(amount_keur) FROM capex_sub_lines WHERE project_id=?", (ref.project_id,)).fetchone()[0] == ref_before
+
+    def test_committed_competing_edit_is_never_lost_with_real_connections(self, env, monkeypatch):
+        """A genuine second SQLite connection (a second thread) writes while the capacity Save holds its transaction."""
+        import threading
+        import app.services.reference_seed_service as rs
+        from app.workbook.update_service import StaleContentError
+        record = env.create("solar")
+        _prime(env, record)
+        hash0 = _composite_hash(record)
+        tariff_before = _snapshot(record)["rev_ppa_base_tariff"]
+        original, calls = rs._apply_capacity_rescale, []
+        inside, release = threading.Event(), threading.Event()
+
+        def hold_transaction_open(cur, **kw):
+            calls.append(1)
+            result = original(cur, **kw)
+            if len(calls) == 2:                      # the Save's own transaction: sub-lines written, not yet committed
+                inside.set()
+                assert release.wait(timeout=20)
+            return result
+        monkeypatch.setattr(rs, "_apply_capacity_rescale", hold_transaction_open)
+        outcome = {}
+
+        def capacity_save():
+            try:
+                _save_capacity_via_service(record, "30", hash0); outcome["capacity"] = "ok"
+            except Exception as exc:                 # noqa: BLE001
+                outcome["capacity"] = type(exc).__name__
+
+        def tariff_save():
+            try:
+                _save_tariff_via_service(record, "77", hash0); outcome["tariff"] = "ok"
+            except Exception as exc:                 # noqa: BLE001
+                outcome["tariff"] = type(exc).__name__
+        first = threading.Thread(target=capacity_save); first.start()
+        assert inside.wait(timeout=30)
+        second = threading.Thread(target=tariff_save); second.start()      # blocks on the held write lock
+        second.join(timeout=1.5)
+        assert second.is_alive(), "the competing writer must wait for the transaction, not interleave"
+        release.set(); first.join(timeout=30); second.join(timeout=30)
+        assert outcome["capacity"] == "ok" and outcome["tariff"] == StaleContentError.__name__
+        snap = _snapshot(record)
+        assert float(snap["capacity_mw"]) == 30.0 and snap["rev_ppa_base_tariff"] == tariff_before   # refused, not overwritten
+        monkeypatch.setattr(rs, "_apply_capacity_rescale", original)
+        # with the fresh identity the competing edit succeeds and BOTH edits are preserved
+        _save_tariff_via_service(record, "77", _composite_hash(record))
+        after = _snapshot(record)
+        assert float(after["capacity_mw"]) == 30.0 and float(after["rev_ppa_base_tariff"]) == 77.0
+        lines, scalars, seed_capacity, _ = _capacity_view(env, record)
+        assert seed_capacity == 30.0 and float(scalars["total_capex_keur"]) == pytest.approx(sum(r[1] for r in lines["capex_sub_lines"]), rel=1e-9)
+
+    def test_racing_capacity_and_tariff_saves_never_lose_an_update(self, env):
+        import threading
+        from app.workbook.update_service import StaleContentError
+        for round_no in range(6):
+            record = env.create("solar", name=f"race {round_no}")
+            _prime(env, record)
+            hash0 = _composite_hash(record)
+            tariff_before = _snapshot(record)["rev_ppa_base_tariff"]
+            outcome, barrier = {}, threading.Barrier(2)
+
+            def run(name, fn, value):
+                barrier.wait(timeout=10)
+                try:
+                    fn(record, value, hash0); outcome[name] = "ok"
+                except StaleContentError:
+                    outcome[name] = "stale"
+            threads = [threading.Thread(target=run, args=("capacity", _save_capacity_via_service, "30")),
+                       threading.Thread(target=run, args=("tariff", _save_tariff_via_service, "77"))]
+            for t in threads: t.start()
+            for t in threads: t.join(timeout=60)
+            assert sorted(outcome.values()) == ["ok", "stale"], outcome         # exactly one winner, the other refused by CAS
+            snap, (lines, scalars, seed_capacity, _) = _snapshot(record), _capacity_view(env, record)
+            if outcome["capacity"] == "ok":
+                assert float(snap["capacity_mw"]) == 30.0 and snap["rev_ppa_base_tariff"] == tariff_before and seed_capacity == 30.0
+            else:
+                assert float(snap["rev_ppa_base_tariff"]) == 77.0 and float(snap["capacity_mw"]) == 16.0 and seed_capacity == 16
+            assert float(scalars["total_capex_keur"]) == pytest.approx(sum(r[1] for r in lines["capex_sub_lines"]), rel=1e-9)
+
+    def test_the_active_scenario_binding_survives_a_capacity_save(self, env):
+        """The previous final snapshot save passed no scenario and so wrote NULL over the active scenario columns."""
+        record = env.create("solar")
+        _prime(env, record)
+        with sqlite3.connect(env.db_path) as conn:
+            conn.execute("UPDATE workspace_states SET active_scenario_id='scn-probe', active_scenario_name='Probe' WHERE project_id=?", (record.project_id,))
+        _save_capacity_via_service(record, "30", _composite_hash(record))
+        with sqlite3.connect(env.db_path) as conn:
+            assert conn.execute("SELECT active_scenario_id, active_scenario_name FROM workspace_states WHERE project_id=?",
+                                (record.project_id,)).fetchone() == ("scn-probe", "Probe")
+        assert float(_snapshot(record)["capacity_mw"]) == 30.0

@@ -504,19 +504,25 @@ class WorkbookUpdateService:
                 # calibrated schedule must not accept a decorative scalar.
                 raise FieldValidationError(str(exc)) from exc
 
-        # --- R-1: finite derived-amount gate (before ANY persistence) -----
-        # A capacity edit rescales the reference-seeded PER_MW lines after the CAS.  Verify with a
-        # rolled-back dry run that every derived amount stays finite so an overflow can never leave a
-        # half-applied capacity (finiteness only; no capacity maximum exists or is implied).
+        # --- R-1: early finite derived-amount refusal (advisory) ----------
+        # A capacity edit rescales the reference-seeded PER_MW lines.  A rolled-back dry run gives the user an
+        # early, specific refusal for the expected overflow case.  It is NOT the safeguard: the authoritative
+        # finiteness check runs again INSIDE the single write transaction below, on the state actually written.
+        _capacity_finalizer = None
         if field_id == "project_setup.technical.capacity_mw":
             from app.services.reference_seed_service import (
-                NonFiniteDerivedAmountError, preflight_capacity_rescale)
+                NonFiniteDerivedAmountError, preflight_capacity_rescale, rescale_snapshot_in_transaction)
             try:
                 preflight_capacity_rescale(
                     user_id=ws.user_id, project_code=project_record.project_code,
                     capacity_mw=float(validation.typed_value))
             except NonFiniteDerivedAmountError as exc:
                 raise FieldValidationError(str(exc), FieldErrorClass.INVALID) from exc
+            _capacity_value_mw = float(validation.typed_value)
+
+            def _capacity_finalizer(cursor, snapshot):  # noqa: E306 - runs inside v2_atomic_draft_update's transaction
+                return rescale_snapshot_in_transaction(
+                    cursor, project_record=project_record, snapshot=snapshot, capacity_mw=_capacity_value_mw)
 
         # --- Atomic compare-and-swap ------------------------------------
         # v2_atomic_draft_update opens a single exclusive-lock transaction:
@@ -533,8 +539,14 @@ class WorkbookUpdateService:
                 expected_content_hash=content_hash,
                 field_id=field_id,
                 typed_value=validation.typed_value,
+                in_transaction_finalizer=_capacity_finalizer,
             )
         except ValueError as exc:
+            if field_id == "project_setup.technical.capacity_mw":
+                from app.services.reference_seed_service import NonFiniteDerivedAmountError as _NonFinite
+                if isinstance(exc, _NonFinite):
+                    # Raised inside the transaction: the whole Save (capacity, sub-lines, snapshot) rolled back.
+                    raise FieldValidationError(str(exc), FieldErrorClass.INVALID) from exc
             from finco_core.inputs.financing_instruments import FinancingError
             if isinstance(exc, FinancingError):
                 raise FieldValidationError(str(exc)) from exc
@@ -551,19 +563,7 @@ class WorkbookUpdateService:
                 "Reload and try again."
             )
 
-        if field_id == "project_setup.technical.capacity_mw":
-            from app.persistence.workspace_repository import get_workspace_state
-            from app.services.reference_seed_service import rescale_reference_seeded_project
-
-            rescale_reference_seeded_project(
-                user_id=ws.user_id,
-                project_code=project_record.project_code,
-                capacity_mw=float(validation.typed_value),
-            )
-            refreshed = get_workspace_state(ws.user_id, ws.project_id)
-            if refreshed is not None:
-                return ProjectInputSet.from_snapshot(refreshed.draft_snapshot, workbook=WORKBOOK)
-
+        # The capacity edit, the sub-line rescale and the reconciled snapshot were committed together above.
         return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)
 
 

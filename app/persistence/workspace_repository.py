@@ -39,7 +39,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional
 
 from app.persistence.db import get_cursor
 from app.persistence._helpers import _now_utc, _to_json
@@ -734,8 +734,15 @@ def v2_atomic_draft_update(
     expected_content_hash: str,
     field_id: str,
     typed_value: Any,
+    in_transaction_finalizer: "Optional[Callable[[Any, dict], dict]]" = None,
 ) -> "Optional[WorkspaceStateRecord]":
     """Atomic compare-and-swap for Workbook V2 single-field draft edits.
+
+    ``in_transaction_finalizer(cursor, snapshot) -> snapshot`` (optional) runs INSIDE the same exclusive
+    transaction, after the field is applied and before the identity/hash is recomputed and the row written.
+    It may write related rows through ``cursor`` (the capacity Save rescales the reference-seeded sub-lines)
+    and returns the final snapshot.  Any exception rolls the whole transaction back, so the field, the related
+    rows and the snapshot commit or fail together; no write after the CAS check can be lost or half-applied.
 
     All steps execute inside a single ``BEGIN EXCLUSIVE`` transaction:
 
@@ -838,8 +845,10 @@ def v2_atomic_draft_update(
         else:
             _assert_f3_effective_candidate(row_snapshot, scope, updated_pis)
         new_snapshot = updated_pis.to_snapshot()
+        if in_transaction_finalizer is not None:
+            new_snapshot = in_transaction_finalizer(cur, new_snapshot)
 
-        # Re-assemble composite identity after scalar mutation (rows/scenario unchanged).
+        # Re-assemble composite identity after the mutation (and any finalizer row writes), same transaction.
         new_identity = assemble_transactional(
             draft_snapshot_json=_to_json(new_snapshot),
             project_id=project_id,
