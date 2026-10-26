@@ -243,7 +243,7 @@ def check_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explic
         dialog.get_by_label("Scenario name").fill("WF2 renamed")
         dialog.get_by_role("button", name="Rename").click()
         wait_status(page, "ok", "renamed", "[data-scenario-workspace='true']")
-        assert page.locator("[data-kpi-compare='unavailable']").count() == 1
+        assert page.locator("[data-kpi-compare='committed-runs']").count() == 1 and page.locator("[data-kpi-compare='unavailable']").count() == 0
         page.get_by_role("button", name="Select scenario UX02 browser").click()
         page.wait_for_function("""() => document.querySelector("[data-active-scenario-banner='true']").innerText.includes('Base Case') || document.querySelector("[data-active-scenario-banner='true']").innerText.includes('UX02')""")
         page.get_by_role("button", name="Archive scenario WF2 renamed").click()
@@ -575,7 +575,7 @@ def check_scenario_selection_compare_and_overrides_are_isolated_and_never_run(br
         page.get_by_role("button", name="Select scenario Case A").click()
         page.wait_for_function("""() => document.querySelector("[data-active-scenario-banner='true']").innerText.includes('Case A')""")
         assert history_count(context, base, record) == 0, "selection, compare and overrides never run the model"
-        assert page.locator("[data-kpi-compare='unavailable']").count() == 1
+        assert page.locator("[data-kpi-compare='committed-runs']").count() == 1 and page.locator("[data-kpi-compare='unavailable']").count() == 0
         for row in page.locator("[data-scenario-row]").all():
             assert row.locator("[data-run-evidence]").get_attribute("data-run-evidence") == "UNAVAILABLE"
     finally:

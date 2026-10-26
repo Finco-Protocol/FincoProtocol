@@ -511,7 +511,10 @@ export function FinancialResults({ payload, page }: { payload: StatementsPayload
             <h3 id="rx-key-metrics">Key financial metrics</h3>
             <MetricCards payload={payload} unit={unit} precision={precision} />
             <p className="rx-note" data-dscr-note="true">
-              Minimum and average DSCR are not published as Run metrics; the DSCR series is shown in the Analysis section exactly as persisted.
+              Minimum and average DSCR are not Last Run metrics here; the DSCR series is shown in Analysis as persisted, and credit indicators of an explicitly selected committed Run are in Analysis \u2192 Financial intelligence.
+            </p>
+            <p className="rx-note" data-analysis-link="true">
+              <a href="#analysis">Open deeper financial analysis and credit intelligence</a> · <a href="#scenarios">Compare committed scenario Runs</a>
             </p>
           </section>
           <PeriodTable model={models.operating} unit={unit} precision={precision} />
