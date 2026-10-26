@@ -178,6 +178,74 @@ def worker(project,out,planfolder,index):
  shutil.rmtree(out/'execution/child/tmp')
  require(proc['normal_successful_exit'],'worker failure or cleanup failure')
 
+# ── D-029 (PR #384): the ONE Financial-Owner-authorized historical outcome reconciliation ─────────────────────────────
+# Policy, not suppression. The original test `test_scope_guard_...` is SKIPPED in the authenticated baseline and the
+# accepted-source reference only because the Trust pack was not part of those diffs. D-029 legitimately changes the Trust
+# registry (one reviewed data-store entry), so the original test now genuinely EXECUTES and PASSES through its reviewed
+# exact-content successor. Every other historical node keeps hard phase/native equality. The exception holds only while
+# ALL of these are proven from actual evidence and Git content, never from a branch name, PR number or environment value:
+# exact node; baseline = setup passed / call skipped with the original reason / teardown passed; current = three passed
+# phases and native JUnit passed; the current Trust files are the exact reviewed blobs derived from the pinned main; the
+# Trust-scope diff against that main is exactly the reviewed set; the D-029 successor tests (positive and negative) passed
+# in this same run; and the reconciliation record in the repository equals the constants below.
+D029_NODE='tests/test_trust_readiness_registry.py::test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code'
+D029_SKIP_REASON='trust pack not part of this diff'
+D029_MAIN='36edeeb5d9a14749fdfafcd3b60a0d384cac73ba'
+D029_MAIN_BLOBS={'app/trust_readiness/registry.py':'32a6bcb86516ff4d1ee8b1dc90191fdb57c5dc2d'}
+D029_BLOBS={'app/trust_readiness/registry.py':'99ff83825e6bef013be9411235d2d77345f78b02',
+ 'docs/readiness/02_data_handling.md':'330db9c4ae6cd6c8349aad4a1d0c632010e6c1e4',
+ 'docs/readiness/06_retention_and_deletion.md':'a155b44b47ce3cbe22239e6a65635d666e0f3dac'}
+D029_TRUST_PATHS=('app/trust_readiness','docs/readiness','tests/test_trust_readiness_*.py','tools/render_readiness_docs.py','app/templates/trust','static/trust_readiness.css')
+D029_TRUST_CHANGED=frozenset({'app/trust_readiness/registry.py','docs/readiness/02_data_handling.md','docs/readiness/06_retention_and_deletion.md','tests/test_trust_readiness_registry.py'})
+_D='tests/test_trust_readiness_registry.py::'
+D029_EVIDENCE_NODES=tuple(_D+n for n in (
+ 'test_generated_documents_are_up_to_date','test_csrf_registry_correction_is_only_the_two_approved_sentences',
+ 'test_demo_retention_exception_accepts_only_exact_approved_content','test_f4_csrf_correction_preserves_historical_content_and_authorities',
+ 'test_d029_trust_successor_exact_baseline_and_exact_new_content','test_d029_trust_entry_makes_only_accurate_retention_claims',
+ 'test_d029_trust_successor_does_not_weaken_historical_layers','test_d029_successor_refuses_a_second_application_or_a_missing_anchor',
+ *('test_d029_trust_successor_rejects_arbitrary_registry_drift[%s-<lambda>]'%case for case in (
+  'unrelated edit','historical entry removed','misleading retention claim','altered security statement','entry duplicated','entry moved','entry softened'))))
+D029_RECORD='docs/model_v2/d029/evidence/D029_CI_V3_OUTCOME_RECONCILIATION.json'
+
+def d029_expected_record():
+ return {'authorization':'Financial Owner, PR #384 Correction C (relayed in the PR thread)','node':D029_NODE,
+  'transition':{'from':'SKIPPED','reason':D029_SKIP_REASON,'to':'PASSED'},'scope':'single node; no other historical outcome may change',
+  'main':D029_MAIN,'main_blobs':D029_MAIN_BLOBS,'current_blobs':D029_BLOBS,
+  'trust_scope_changed_paths':sorted(D029_TRUST_CHANGED),'required_passing_nodes':list(D029_EVIDENCE_NODES)}
+
+def d029_source_facts():
+ facts={'record':read_json(D029_RECORD),'blobs':{p:git('rev-parse','HEAD:'+p) for p in D029_BLOBS}}
+ facts['main_blobs']={p:git('rev-parse',D029_MAIN+':'+p) for p in D029_MAIN_BLOBS}
+ git('merge-base','--is-ancestor',D029_MAIN,'HEAD')
+ facts['changed']=frozenset(git('diff','--name-only',D029_MAIN,'HEAD','--',*D029_TRUST_PATHS).splitlines())
+ return facts
+
+def d029_transition_problems(node,old_phases,old_native,new_phases,new_native,facts,run_phases,run_native):
+ """[] means the single authorized SKIPPED -> PASSED transition holds. Pure; fails closed on anything else."""
+ if node!=D029_NODE:return ['not the authorized node']
+ problems=[];shape=lambda ph:[(p['when'],p['outcome'],p['wasxfail']) for p in ph]
+ try:
+  if shape(old_phases)!=[('setup','passed',None),('call','skipped',None),('teardown','passed',None)] or D029_SKIP_REASON not in old_phases[1]['reason']:problems.append('baseline is not the original skip')
+  if old_phases[0]!=new_phases[0] or old_phases[2]!=new_phases[2]:problems.append('setup/teardown phase changed')
+  if tuple(old_native)[0]!='skipped' or D029_SKIP_REASON not in str(tuple(old_native)[1]):problems.append('baseline native JUnit is not the original skip')
+  if shape(new_phases)!=[('setup','passed',None),('call','passed',None),('teardown','passed',None)] or outcome(new_phases)['status']!='passed':problems.append('current execution is not three passed phases')
+  if tuple(new_native)[0]!='passed':problems.append('current native JUnit does not confirm PASSED')
+  if facts['record']!=d029_expected_record():problems.append('reconciliation record differs from the reviewed constants')
+  if facts['blobs']!=D029_BLOBS:problems.append('Trust sources are not the exact reviewed blobs')
+  if facts['main_blobs']!=D029_MAIN_BLOBS:problems.append('Trust baseline is not the pinned main')
+  if facts['changed']!=D029_TRUST_CHANGED:problems.append('Trust-scope diff differs from the reviewed set')
+  for ev in D029_EVIDENCE_NODES:
+   if ev not in run_phases or outcome(run_phases[ev])['status']!='passed' or tuple(run_native.get(ev,('missing',)))[0]!='passed':problems.append('required successor test did not pass: '+ev)
+ except (KeyError,IndexError,TypeError,ValueError,ContractError) as e:problems.append('malformed evidence: '+type(e).__name__)
+ return problems
+
+def d029_authorized(node,old_phases,old_native,new_phases,new_native,run_phases,run_native,receipts):
+ if node!=D029_NODE:return False
+ try:facts=d029_source_facts()
+ except (OSError,ValueError,subprocess.CalledProcessError,ContractError):return False
+ if d029_transition_problems(node,old_phases,old_native,new_phases,new_native,facts,run_phases,run_native):return False
+ receipts.append({'node':node,'from':'SKIPPED','to':'PASSED'});return True
+
 def verify_data(planfolder,workers):
  data=production_plan(planfolder)
  require(len(workers)==data['plan']['worker_count'],'missing/extra worker artifacts')
@@ -190,6 +258,7 @@ def verify_data(planfolder,workers):
  validate_merge_guard(data['merge_guard'])
  require(runtime_inputs_match() and data['runtime_inputs']==read_json('docs/ci_v3/phase4/runtime/inputs.json'),'runtime source contract drift')
  runtime_packages(data['collection_environment'])
+ reconciled=[]
  seen={};skips=skip_counter(data['inventory']['collection_skips']);expected={n['nodeid'] for n in data['inventory']['nodes']}
  for index,folder in enumerate(workers):
   binding=read_json(folder/'binding.json');require(binding=={'context':context(),'worker':index,'plan_sha256':sha(planfolder/'plan.json'),'image':data['image']},'worker binding')
@@ -205,13 +274,13 @@ def verify_data(planfolder,workers):
   require(not set(seen)&set(phases),'duplicate execution')
   for n,v in phases.items():
    require(outcome(v)['status'] in ('passed','skipped','xfail'),'failure/unexpected xpass')
-   if n in bp:require(v==bp[n] and native[n]==bn[n],'original phase/native outcome regression: '+n)
+   if n in bp:require((v==bp[n] and native[n]==bn[n]) or d029_authorized(n,bp[n],bn[n],v,native[n],phases,native,reconciled),'original phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','nonhistorical nonpass requires explicit reviewed authority: '+n)
-   if n in rp:require(v==rp[n] and list(native[n])==rn[n],'accepted-source phase/native outcome regression: '+n)
+   if n in rp:require((v==rp[n] and list(native[n])==rn[n]) or d029_authorized(n,rp[n],rn[n],v,native[n],phases,native,reconciled),'accepted-source phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','new nonpass needs explicit treatment: '+n)
   seen.update(phases)
  require(set(seen)==expected,'incomplete full coverage')
- return {'source':data['context']['source'],'run_id':data['context']['run_id'],'attempt':data['context']['attempt'],'execution_mode':'parallel','workers':data['plan']['worker_count'],'original_nodes':len(seen),'baseline_original_nodes':len(bp),'new_nodes':len(expected-set(bp)),'collection_skips':sum(skips.values()),'all_phases_verified':True,'native_junit_verified':True,'cleanup_verified':True,'original_common_outcomes_equal':True,'baseline_source':baseline['source'],'baseline_is_current_source':False,'environment_equal_to_sequential_baseline':data['collection_environment']==baseline['environment'],'accepted_reference_source':reference['source'],'accepted_reference_base':reference['base'],'accepted_reference_run_id':reference['run_id'],'accepted_reference_attempt':reference['attempt'],'accepted_reference_digest':reference['digest'],'inventory_reconciliation':changes,'current_source_execution_verified':True,'same_source_sequential_control_claimed':False}
+ return {'source':data['context']['source'],'run_id':data['context']['run_id'],'attempt':data['context']['attempt'],'execution_mode':'parallel','workers':data['plan']['worker_count'],'original_nodes':len(seen),'baseline_original_nodes':len(bp),'new_nodes':len(expected-set(bp)),'collection_skips':sum(skips.values()),'all_phases_verified':True,'native_junit_verified':True,'cleanup_verified':True,'original_common_outcomes_equal':not reconciled,'authorized_outcome_reconciliations':reconciled,'baseline_source':baseline['source'],'baseline_is_current_source':False,'environment_equal_to_sequential_baseline':data['collection_environment']==baseline['environment'],'accepted_reference_source':reference['source'],'accepted_reference_base':reference['base'],'accepted_reference_run_id':reference['run_id'],'accepted_reference_attempt':reference['attempt'],'accepted_reference_digest':reference['digest'],'inventory_reconciliation':changes,'current_source_execution_verified':True,'same_source_sequential_control_claimed':False}
 
 def authenticate_current(api,downloaded,out):
  ctx=context();run=api.get(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}')
