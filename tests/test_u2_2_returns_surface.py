@@ -1,6 +1,8 @@
 """U2.2 — canonical Returns / Sponsor / Distribution V2 surface."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from dataclasses import replace
 import os
 from pathlib import Path
@@ -723,8 +725,7 @@ def test_f01_scenario_select_oob_replaces_returns_fragment():
                 patch("app.api.project_runner.run_project",
                       side_effect=AssertionError("engine called during scenario select")) as project_runner,
             ):
-                resp = client.post(
-                    "/v2/workbook/scenarios/select",
+                resp = post_valid_mutation(client, "/v2/workbook/scenarios/select",
                     data={"project": code, "scenario_id": sc_b.scenario_id},
                     headers={
                         "Cookie": f"{COOKIE_NAME}={token}",

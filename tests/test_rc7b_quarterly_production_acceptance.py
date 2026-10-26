@@ -11,6 +11,8 @@ not product admission and not owner approval. No mocked engine or persistence.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import io
 from datetime import date, timedelta
 from decimal import Decimal, localcontext
@@ -46,7 +48,7 @@ def eligible_references(monkeypatch):
 
 def _set(env, project, field_id, value, sheet="project_setup"):
     page = env.client.get("/v2/workbook", params={"project": project.project_code})
-    response = env.client.post("/v2/workbook/update", data={
+    response = post_valid_mutation(env.client, "/v2/workbook/update", data={
         "project": project.project_code, "sheet_id": sheet, "field_id": field_id, "value": value, **tokens(page.text)})
     assert response.status_code in (200, 303), response.text[:400]
 

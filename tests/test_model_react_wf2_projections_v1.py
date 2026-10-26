@@ -9,6 +9,8 @@ composite CAS), so the wire contract the client relies on is pinned.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
@@ -91,7 +93,7 @@ def test_capex_add_deactivate_reactivate_round_trip_matches_the_react_client_wir
     record = env.create()
     before = costlines(env, record, "capex")
     group = before["line_management"]["eligible_groups"][0]["code"]
-    add = env.client.post("/v2/capex/line/add", data={
+    add = post_valid_mutation(env.client, "/v2/capex/line/add", data={
         "project": record.project_code, "parent_category_code": group, "label": "WF2 test line",
         "amount_keur": "125.5", "notes": "", **cas(before)}, follow_redirects=False)
     assert add.status_code == 303 and urlparse(add.headers["location"]).path == "/v2/workbook"
@@ -101,14 +103,14 @@ def test_capex_add_deactivate_reactivate_round_trip_matches_the_react_client_wir
     assert after["save"]["content_hash"] != before["save"]["content_hash"], "a committed change moves the composite CAS identity"
 
     line = added[0]
-    off = env.client.post("/v2/capex/line/deactivate", data={
+    off = post_valid_mutation(env.client, "/v2/capex/line/deactivate", data={
         "project": record.project_code, "sub_line_id": line["sub_line_id"], "row_version": line["row_version"], **cas(after)},
         follow_redirects=False)
     assert off.status_code == 303
     mid = costlines(env, record, "capex")
     row = next(l for l in mid["lines"] if l["sub_line_id"] == line["sub_line_id"])
     assert row["active"] is False
-    on = env.client.post("/v2/capex/line/reactivate", data={
+    on = post_valid_mutation(env.client, "/v2/capex/line/reactivate", data={
         "project": record.project_code, "sub_line_id": line["sub_line_id"], "row_version": row["row_version"], **cas(mid)},
         follow_redirects=False)
     assert on.status_code == 303
@@ -121,7 +123,7 @@ def test_cost_line_add_with_a_stale_hash_changes_nothing(env):
     before = costlines(env, record, "opex")
     group = before["line_management"]["eligible_groups"][0]["code"]
     stale = dict(cas(before), content_hash="0" * 64)
-    response = env.client.post("/v2/opex/line/add", data={
+    response = post_valid_mutation(env.client, "/v2/opex/line/add", data={
         "project": record.project_code, "parent_group_code": group, "label": "should not exist",
         "amount_keur": "1", "inflation_pct": "0", "notes": "", **stale}, follow_redirects=False)
     assert response.status_code in (303, 409)
@@ -133,7 +135,7 @@ def test_cost_line_add_with_a_stale_hash_changes_nothing(env):
 def test_cost_line_add_to_a_derived_group_is_refused_by_the_server(env):
     record = env.create()
     before = costlines(env, record, "capex")
-    response = env.client.post("/v2/capex/line/add", data={
+    response = post_valid_mutation(env.client, "/v2/capex/line/add", data={
         "project": record.project_code, "parent_category_code": "C.13", "label": "derived", "amount_keur": "1",
         "notes": "", **cas(before)}, follow_redirects=False)
     assert response.status_code == 422 and "error" in response.json()
@@ -158,7 +160,7 @@ def test_last_run_export_without_a_committed_run_fails_closed_without_running_th
     record = env.create()
     monkeypatch.setattr("app.api.project_runner.run_project",
                         lambda *a, **k: pytest.fail("an export must never execute the engine"))
-    response = env.client.post("/v2/workbook/export", data={"project": record.project_code})
+    response = post_valid_mutation(env.client, "/v2/workbook/export", data={"project": record.project_code})
     assert response.status_code == 400 and "spreadsheetml" not in response.headers.get("content-type", "")
 
 
@@ -166,7 +168,7 @@ def test_last_run_export_without_a_committed_run_fails_closed_without_running_th
 
 
 def make_scenario(env, record, name="WF2 child"):
-    response = env.client.post("/v2/workbook/scenarios/create", data={
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={
         "project": record.project_code, "scenario_name": name}, follow_redirects=False)
     assert response.status_code == 303
     scenarios = env.client.get("/v2/model-react/scenarios", params={"project": record.project_code}).json()
@@ -201,12 +203,12 @@ def test_override_save_and_reset_round_trip_without_running_the_model(env, monke
     child, _ = make_scenario(env, record)
     monkeypatch.setattr("app.api.project_runner.run_project",
                         lambda *a, **k: pytest.fail("saving an override must never execute the engine"))
-    saved = env.client.post("/v2/workbook/scenarios/update-overrides", data={
+    saved = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", data={
         "project": record.project_code, "scenario_id": child["scenario_id"], "tariff_eur_mwh": "77.5"}, follow_redirects=False)
     assert saved.status_code == 303
     field = overrides(env.client, record, child["scenario_id"]).json()["fields"][0]
     assert field["overridden"] is True and float(field["override_value"]) == 77.5
-    reset = env.client.post("/v2/workbook/scenarios/remove-override", data={
+    reset = post_valid_mutation(env.client, "/v2/workbook/scenarios/remove-override", data={
         "project": record.project_code, "scenario_id": child["scenario_id"], "field": "tariff_eur_mwh"}, follow_redirects=False)
     assert reset.status_code == 303
     field = overrides(env.client, record, child["scenario_id"]).json()["fields"][0]
@@ -216,7 +218,7 @@ def test_override_save_and_reset_round_trip_without_running_the_model(env, monke
 def test_unbound_override_is_refused_by_the_server_and_not_stored(env):
     record = env.create()
     child, _ = make_scenario(env, record)
-    refused = env.client.post("/v2/workbook/scenarios/update-overrides", data={
+    refused = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", data={
         "project": record.project_code, "scenario_id": child["scenario_id"], "gearing_pct": "55"}, follow_redirects=False)
     assert refused.status_code == 422 and refused.json()["code"] == "SCENARIO_OVERRIDE_UNBOUND"
     payload = overrides(env.client, record, child["scenario_id"]).json()
@@ -239,7 +241,7 @@ def test_base_case_overrides_are_not_editable_and_foreign_or_unknown_scenarios_a
 def test_archived_scenario_override_projection_is_hidden(env):
     record = env.create()
     child, _ = make_scenario(env, record)
-    assert env.client.post("/v2/workbook/scenarios/archive", data={
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/archive", data={
         "project": record.project_code, "scenario_id": child["scenario_id"]}, follow_redirects=False).status_code == 303
     assert overrides(env.client, record, child["scenario_id"]).status_code == 404
 
@@ -250,9 +252,9 @@ def test_scenario_select_and_rename_never_run_the_model(env, monkeypatch):
     monkeypatch.setattr("app.api.project_runner.run_project",
                         lambda *a, **k: pytest.fail("scenario actions must never execute the engine"))
     base = next(s for s in listing["scenarios"] if s["is_base_case"])
-    assert env.client.post("/v2/workbook/scenarios/select", data={
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={
         "project": record.project_code, "scenario_id": base["scenario_id"]}, follow_redirects=False).status_code == 303
-    assert env.client.post("/v2/workbook/scenarios/rename", data={
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/rename", data={
         "project": record.project_code, "scenario_id": child["scenario_id"], "new_name": "Renamed"}, follow_redirects=False).status_code == 303
     after = env.client.get("/v2/model-react/scenarios", params={"project": record.project_code}).json()
     assert after["active_scenario_id"] == base["scenario_id"]

@@ -1,6 +1,8 @@
 """Production maturity protection; no alternative financial calculation."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import asyncio
@@ -341,11 +343,11 @@ def test_authenticated_failed_run_preserves_last_run_history_and_export(tmp_path
         assert WorkbookService.get_runtime_result(valid) is not None, response.text[:1000]
         history = get_run_history("maturity-owner", record.project_id)
         assert len(history) == 1
-        original_export = client.post("/v2/workbook/export", data={"project": record.project_code})
+        original_export = post_valid_mutation(client, "/v2/workbook/export", data={"project": record.project_code})
         assert original_export.status_code == 200
         for field, value in (("debt.senior.gearing_pct", "95"), ("debt.senior.tenor_years", "8")):
             _, data = tokens()
-            response = client.post("/v2/workbook/update", headers={"HX-Request": "true"},
+            response = post_valid_mutation(client, "/v2/workbook/update", headers={"HX-Request": "true"},
                 data=data | {"sheet_id": "debt", "field_id": field, "value": value})
             assert '"workbook-field-saved"' in response.headers.get("HX-Trigger", ""), response.text[:600]
         stale, data = tokens()
@@ -372,7 +374,7 @@ def test_authenticated_failed_run_preserves_last_run_history_and_export(tmp_path
         def no_calculation(*args, **kwargs):
             pytest.fail("Committed Last Run export attempted financial execution")
         monkeypatch.setattr(authority, "run_clean_production", no_calculation)
-        exported = client.post("/v2/workbook/export", data={"project": record.project_code})
+        exported = post_valid_mutation(client, "/v2/workbook/export", data={"project": record.project_code})
         assert exported.status_code == 200 and exported.content[:2] == b"PK"
         from io import BytesIO
         from openpyxl import load_workbook

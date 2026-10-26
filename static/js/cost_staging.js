@@ -528,8 +528,8 @@
   });
 
   function csrfToken() {
-    var el = document.querySelector('[data-csrf]');
-    return el ? el.getAttribute('data-csrf') : '';
+    var el = document.querySelector('[data-cost-csrf]');
+    return el ? el.getAttribute('data-cost-csrf') : '';
   }
   function liveTokens() {
     // The workbook shell is maintained by syncTokens after every successful cost, scenario or batch

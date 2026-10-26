@@ -12,6 +12,8 @@ Real-endpoint tests (no mocks) pinning:
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import json
 import re
 from types import SimpleNamespace
@@ -57,7 +59,7 @@ def env(tmp_path, monkeypatch):
 
         def make_scenario(code, name="Downside", session=None):
             session = session or client
-            created = session.post("/v2/workbook/scenarios/create",
+            created = post_valid_mutation(session, "/v2/workbook/scenarios/create",
                                    data={"project": code, "scenario_name": name})
             assert created.status_code in (200, 303)
             scenarios = session.get("/v2/model-react/scenarios", params={"project": code}).json()
@@ -95,7 +97,7 @@ def test_rename_with_new_name_persists(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
     scenario = env.make_scenario(record.project_code, "Downside")
-    response = env.client.post("/v2/workbook/scenarios/rename",
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/rename",
                                data={"project": record.project_code, "scenario_id": scenario["scenario_id"],
                                      "new_name": "Downside 2027"})
     assert response.status_code in (200, 303), response.text[:200]
@@ -108,7 +110,7 @@ def test_rename_without_new_name_is_a_form_validation_failure(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
     scenario = env.make_scenario(record.project_code, "Downside")
-    response = env.client.post("/v2/workbook/scenarios/rename",
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/rename",
                                data={"project": record.project_code, "scenario_id": scenario["scenario_id"]})
     assert response.status_code == 422, "missing new_name must fail the form contract"
     scenarios = env.client.get("/v2/model-react/scenarios", params={"project": record.project_code}).json()
@@ -121,7 +123,7 @@ def test_renaming_the_base_case_is_refused(env, monkeypatch):
     base = next(s for s in env.client.get("/v2/model-react/scenarios",
                                           params={"project": record.project_code}).json()["scenarios"]
                 if s["is_base_case"])
-    response = env.client.post("/v2/workbook/scenarios/rename",
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/rename",
                                data={"project": record.project_code, "scenario_id": base["scenario_id"],
                                      "new_name": "Not Base"})
     assert response.status_code in (403, 409, 422)
@@ -160,7 +162,7 @@ def test_single_override_reports_exactly_one_difference(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
     scenario = env.make_scenario(record.project_code, "One override")
-    response = env.client.post("/v2/workbook/scenarios/update-overrides",
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides",
                                data={"project": record.project_code, "scenario_id": scenario["scenario_id"],
                                      "tariff_eur_mwh": "71.5"})
     assert response.status_code in (200, 303)
@@ -191,7 +193,7 @@ def test_explicit_zero_override_differs_from_inherited_value(env, monkeypatch):
                             params={"project": record.project_code, "scenario_id": scenario["scenario_id"]}).json()
     assert not any(d["field_id"] == "tariff_eur_mwh" for d in before["differences"])
 
-    response = env.client.post("/v2/workbook/scenarios/update-overrides",
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides",
                                data={"project": record.project_code, "scenario_id": scenario["scenario_id"],
                                      "tariff_eur_mwh": "0"})
     assert response.status_code in (200, 303), "the canonical writer must accept an explicit zero"
@@ -214,7 +216,7 @@ def test_removed_override_restores_inheritance(env, monkeypatch):
     scenario = env.make_scenario(record.project_code, "Temp override")
 
     # 1. set an override DIFFERENT from Base (Base tariff is the seeded 50)
-    env.client.post("/v2/workbook/scenarios/update-overrides",
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides",
                     data={"project": record.project_code, "scenario_id": scenario["scenario_id"],
                           "tariff_eur_mwh": "70"})
     with_over = env.client.get("/v2/model-react/scenario-compare",
@@ -227,7 +229,7 @@ def test_removed_override_restores_inheritance(env, monkeypatch):
     assert "tariff_eur_mwh" in (persisted.overrides or {})
 
     # 3. remove it through the canonical removal route (repeatable `field` form)
-    removal = env.client.post("/v2/workbook/scenarios/remove-override",
+    removal = post_valid_mutation(env.client, "/v2/workbook/scenarios/remove-override",
                               content=f"project={record.project_code}&scenario_id={scenario['scenario_id']}"
                                       f"&field=tariff_eur_mwh",
                               headers={"Content-Type": "application/x-www-form-urlencoded"})
@@ -249,7 +251,7 @@ def test_scenario_selection_never_fabricates_run_history(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
     scenario = env.make_scenario(record.project_code, "Selected")
-    response = env.client.post("/v2/workbook/scenarios/select",
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/select",
                                data={"project": record.project_code, "scenario_id": scenario["scenario_id"]})
     assert response.status_code in (200, 303)
     runs = env.client.get("/v2/model-react/runs", params={"project": record.project_code}).json()
@@ -271,7 +273,7 @@ def test_archived_scenario_compare_is_denied(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
     scenario = env.make_scenario(record.project_code, "ToArchive")
-    env.client.post("/v2/workbook/scenarios/archive",
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/archive",
                     data={"project": record.project_code, "scenario_id": scenario["scenario_id"]})
     response = env.client.get("/v2/model-react/scenario-compare",
                               params={"project": record.project_code, "scenario_id": scenario["scenario_id"]})
@@ -312,6 +314,7 @@ def test_revenue_contracts_save_commits_and_updates_the_projection(env, monkeypa
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
               for k in ("content_hash", "workbook_version", "csrf_token")}
+    tokens["csrf_token"] = _revenue_form_csrf(page.text)
     response = env.client.post("/v2/workbook/revenue/contracts",
                                data={"project": record.project_code, **tokens,
                                      "contracts": json.dumps(payload), "action": "save"})
@@ -337,6 +340,7 @@ def test_revenue_contracts_stale_cas_is_refused(env, monkeypatch):
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
               for k in ("workbook_version", "csrf_token")}
+    tokens["csrf_token"] = _revenue_form_csrf(page.text)
     response = env.client.post("/v2/workbook/revenue/contracts",
                                data={"project": record.project_code, **tokens,
                                      "content_hash": stale_hash,
@@ -352,6 +356,7 @@ def test_revenue_contracts_malformed_payload_is_refused(env, monkeypatch):
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
               for k in ("content_hash", "workbook_version", "csrf_token")}
+    tokens["csrf_token"] = _revenue_form_csrf(page.text)
     response = env.client.post("/v2/workbook/revenue/contracts",
                                data={"project": record.project_code, **tokens,
                                      "contracts": json.dumps({"version": 999, "nonsense": True}),
@@ -390,3 +395,11 @@ def test_revenue_contracts_on_protected_reference_is_refused(env, monkeypatch):
     assert response.status_code == 409 and "rotected" in response.json().get("error", "")
     after = env.client.get("/v2/model-react/revenue", params={"project": record.project_code}).json()
     assert after["contracts"]["active"] is False, "a protected-reference write must never persist"
+
+
+def _revenue_form_csrf(html):
+    """Use the released Revenue form token, not another form's first token."""
+    from bs4 import BeautifulSoup
+    form = BeautifulSoup(html, "html.parser").select_one(
+        'form[hx-post="/v2/workbook/revenue/contracts"], form[action="/v2/workbook/revenue/contracts"]')
+    return form.select_one('input[name="csrf_token"]')["value"]

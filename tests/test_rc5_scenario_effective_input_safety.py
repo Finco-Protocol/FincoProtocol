@@ -5,6 +5,8 @@ consumes it.  Real Solar/Wind projects, real persistence, real Run.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import json
@@ -21,7 +23,7 @@ HX = {"HX-Request": "true"}
 
 
 def _create(env, record, name):
-    response = env.client.post("/v2/workbook/scenarios/create", headers=HX,
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", headers=HX,
                                data={"project": record.project_code, "scenario_name": name})
     return response
 
@@ -36,14 +38,14 @@ def _child(record, name=None):
 
 
 def _select(env, record, scenario):
-    response = env.client.post("/v2/workbook/scenarios/select", headers=HX,
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/select", headers=HX,
                                data={"project": record.project_code, "scenario_id": scenario.scenario_id})
     assert response.status_code == 200
     return response
 
 
 def _overrides(env, record, scenario, **fields):
-    return env.client.post("/v2/workbook/scenarios/update-overrides", headers=HX,
+    return post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", headers=HX,
                            data={"project": record.project_code, "scenario_id": scenario.scenario_id,
                                  **{k: str(v) for k, v in fields.items()}})
 
@@ -176,7 +178,7 @@ def test_previously_saved_unsupported_override_refuses_the_run_before_commitment
     page = env.client.get("/v2/workbook", params={"project": record.project_code, "sheet": "scenarios"})
     assert "Not applied to Run" in page.text and "gearing_pct" in page.text
     assert _child(record).overrides == {"gearing_pct": 55.0}
-    removed = env.client.post("/v2/workbook/scenarios/remove-override", headers=HX, data={
+    removed = post_valid_mutation(env.client, "/v2/workbook/scenarios/remove-override", headers=HX, data={
         "project": record.project_code, "scenario_id": child.scenario_id, "field": "gearing_pct"})
     assert removed.status_code == 200 and _child(record).overrides == {}
     ok = _post_run(env, record)
@@ -338,7 +340,7 @@ def test_archived_name_may_be_reused_but_other_projects_are_independent(env):
     assert _create(env, one, "Upside").status_code == 200
     assert _create(env, two, "Upside").status_code == 200
     scenario = _child(one)
-    archived = env.client.post("/v2/workbook/scenarios/archive", headers=HX, data={
+    archived = post_valid_mutation(env.client, "/v2/workbook/scenarios/archive", headers=HX, data={
         "project": one.project_code, "scenario_id": scenario.scenario_id})
     assert archived.status_code == 200
     assert _create(env, one, "Upside").status_code == 200

@@ -13,6 +13,8 @@ Synthetic disposable working copies only.  Pins the contract of ``app.v2.cost_ba
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import json
@@ -55,6 +57,9 @@ def _tokens(client, rec):
     m = re.search(r'id="v2-input-grid"[^>]*data-csrf="([^"]+)"[^>]*data-content-hash="([0-9a-f]+)"'
                   r'[^>]*data-workbook-version="([^"]+)"', page.text, re.S)
     csrf, chash, version = m.groups()
+    # Batch Save has its own operation domain; grid-edit tokens are deliberately refused.
+    from bs4 import BeautifulSoup
+    csrf = BeautifulSoup(page.text, "html.parser").select_one("[data-cost-csrf]")["data-cost-csrf"]
     return {"csrf": csrf, "hash": chash, "version": version}
 
 
@@ -209,7 +214,7 @@ def test_concurrent_row_edit_after_page_load_is_a_genuine_409_with_no_partial_wr
     lines, _ = _edits(rec, 3, 2)
     # another writer changes ONE staged row through the existing single-row command (rotates hash + version)
     other = lines[1]
-    res = world["owner"].post("/v2/capex/line/update", data={
+    res = post_valid_mutation(world["owner"], "/v2/capex/line/update", data={
         "project": rec.project_code, "sub_line_id": other["sub_line_id"], "label": other["label"],
         "amount_keur": "999", "row_version": other["row_version"], "workbook_version": tok["version"],
         "content_hash": tok["hash"]}, headers={"HX-Request": "true"})
@@ -313,7 +318,7 @@ def test_a_deactivated_line_cannot_be_saved_through_the_batch(world):
     rec = _project()
     tok = _tokens(world["owner"], rec)
     row = _rows("capex_sub_lines", rec.project_id)[0]
-    res = world["owner"].post("/v2/capex/line/deactivate", data={
+    res = post_valid_mutation(world["owner"], "/v2/capex/line/deactivate", data={
         "project": rec.project_code, "sub_line_id": row["sub_line_id"], "row_version": row["updated_at"],
         "workbook_version": tok["version"], "content_hash": tok["hash"]}, headers={"HX-Request": "true"})
     assert res.status_code == 200
@@ -401,7 +406,7 @@ def _current_version(kind, sid, rec):
 def test_scenario_state_is_consistent_the_batch_uses_the_current_composite_token(world):
     rec = _project()
     tok = _tokens(world["owner"], rec)
-    created = world["owner"].post("/v2/workbook/scenarios/create", data={
+    created = post_valid_mutation(world["owner"], "/v2/workbook/scenarios/create", data={
         "project": rec.project_code, "scenario_name": "Upside", "workbook_version": tok["version"],
         "content_hash": tok["hash"]}, headers={"HX-Request": "true"})
     if created.status_code != 200:
@@ -426,9 +431,12 @@ def test_single_row_command_still_works_after_a_batch_with_the_returned_token(wo
     assert res.status_code == 200
     new_hash = re.search(r'id="v2-cost-authority-capex"[^>]*data-content-hash="([0-9a-f]+)"', res.text).group(1)
     row = _rows("capex_sub_lines", rec.project_id)[0]
+    from bs4 import BeautifulSoup
+    form = BeautifulSoup(res.text, "html.parser").select_one(f'form[data-sub-line-id="{row["sub_line_id"]}"]')
+    row_csrf = form.select_one('input[name="csrf_token"]')["value"]
     single = world["owner"].post("/v2/capex/line/update", data={
         "project": rec.project_code, "sub_line_id": row["sub_line_id"], "label": row["label"], "amount_keur": "42",
-        "row_version": row["updated_at"], "workbook_version": tok["version"], "content_hash": new_hash},
+        "row_version": row["updated_at"], "workbook_version": tok["version"], "content_hash": new_hash, "csrf_token": row_csrf},
         headers={"HX-Request": "true"})
     assert single.status_code == 200 and "data-cost-error" not in single.text
     assert _rows("capex_sub_lines", rec.project_id)[0]["amount_keur"] == 42.0

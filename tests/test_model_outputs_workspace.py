@@ -1,6 +1,8 @@
 """Statements & Debt output workspace: read-only presentation of the persisted Last Run."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import html as htmllib
 import re
 from types import SimpleNamespace
@@ -139,7 +141,7 @@ def test_stale_view_identifies_the_previous_run_and_keeps_its_values(env):
     before = tables(get_outputs(env, record))
     prior_snapshot = ws.last_runtime_snapshot_id
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    changed = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
+    changed = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
         project=record.project_code, field_id="debt.senior.target_dscr", value="1.35", sheet_id="debt", **tokens(page.text)))
     assert changed.status_code == 200 and "field-error" not in changed.text, changed.text[:800]
     assert get_workspace_state(OWNER, record.project_id).dirty
@@ -290,7 +292,7 @@ def test_xlsx_export_parity_with_the_output_workspace(env, monkeypatch, kind, f3
     ws, rr = run(env, record)
     page = get_outputs(env, record)
     parsed = tables(page)
-    exported = env.client.post("/v2/workbook/export", params={"project": record.project_code}, data={"project": record.project_code})
+    exported = post_valid_mutation(env.client, "/v2/workbook/export", params={"project": record.project_code}, data={"project": record.project_code})
     assert exported.status_code == 200
     book = openpyxl.load_workbook(io.BytesIO(exported.content), data_only=True)
     compared = 0
@@ -325,7 +327,7 @@ def test_f3_facility_service_equals_the_xlsx_senior_debt_service_row(env, monkey
     ws, rr = run(env, record)
     page = get_outputs(env, record)
     parsed = tables(page)
-    exported = env.client.post("/v2/workbook/export", params={"project": record.project_code}, data={"project": record.project_code})
+    exported = post_valid_mutation(env.client, "/v2/workbook/export", params={"project": record.project_code}, data={"project": record.project_code})
     book = openpyxl.load_workbook(io.BytesIO(exported.content), data_only=True)
     row = next(r for r in book["Senior Debt"].iter_rows(values_only=True) if r and r[0] == "Senior Debt Service")
     xlsx_nonzero = [float(v) for v in row[1:] if isinstance(v, (int, float)) and v]
@@ -405,7 +407,7 @@ def _outputs_scenario(page: str):
 
 
 def _create_scenario(env, record, name):
-    response = env.client.post("/v2/workbook/scenarios/create", data={"project": record.project_code, "scenario_name": name},
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": record.project_code, "scenario_name": name},
                                headers={"HX-Request": "true"})
     assert response.status_code == 200
     from app.persistence.scenarios_repository import list_scenarios
@@ -434,13 +436,13 @@ def test_named_scenario_stale_and_switch_keep_the_committed_identity(env):
     assert _outputs_scenario(current) == "Upside" == _q3_scenario(env, record)
     # STALE: the PRIOR Run's identity, not the edited Working Copy.
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
+    post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
         project=record.project_code, field_id="debt.senior.target_dscr", value="1.33", sheet_id="debt", **tokens(page.text)))
     stale = get_outputs(env, record)
     assert 'data-state="STALE"' in stale and _outputs_scenario(stale) == "Upside" == _q3_scenario(env, record)
     assert "Upside" in re.search(r'data-testid="outputs-stale-banner">(.*?)</p>', stale, re.S).group(1)
     # Switching back restores the Base Case's OWN committed Run; the previously selected name is never substituted.
-    env.client.post("/v2/workbook/scenarios/select", headers={"HX-Request": "true"},
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/select", headers={"HX-Request": "true"},
                     data={"project": record.project_code, "scenario_id": get_base_case_scenario(OWNER, record.project_id).scenario_id})
     back = get_outputs(env, record)
     assert _outputs_scenario(back).startswith("Base Case") and "Upside" not in back
@@ -662,7 +664,7 @@ def test_stale_and_integrity_fail_are_independent_in_every_vertical(env, monkeyp
                     value=state(active=True, collection=FinancingCollection((first,) + tuple(base.instruments[1:]))))
     else:
         data = dict(field_id="debt.senior.target_dscr", value="1.37")
-    response = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
+    response = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
         project=record.project_code, sheet_id="debt", **data, **tokens(edit.text)))
     assert response.status_code == 200 and "field-error" not in response.text
     for overall, status in (("FAIL", "FAIL"), ("PASS", "PASS")):

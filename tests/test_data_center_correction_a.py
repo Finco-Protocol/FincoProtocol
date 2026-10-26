@@ -12,6 +12,8 @@ the single Data Center economic authority.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import math
 
 import pytest
@@ -212,8 +214,7 @@ class TestCurrentDriverThenCapacityRescale:
             m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
             mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
             assert m and mv, f"identity fields missing for {field_id}"
-            resp = client.post(
-                "/v2/workbook/update",
+            resp = post_valid_mutation(client, "/v2/workbook/update",
                 data={
                     "field_id": field_id,
                     "value": value,
@@ -367,8 +368,7 @@ class TestResetPreservesDerivedB08:
 
         m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
         mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
-        resp = client.post(
-            "/v2/workbook/update",
+        resp = post_valid_mutation(client, "/v2/workbook/update",
             data={
                 "field_id": "revenue.data_center.electricity_price",
                 "value": "90",

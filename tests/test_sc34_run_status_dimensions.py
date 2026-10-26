@@ -1,6 +1,8 @@
 """SC-03: input freshness, engine currency and Run Integrity are independent, additive Run status dimensions."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import dataclasses
 import json
 import re
@@ -135,7 +137,7 @@ def test_stale_inputs_remain_distinct_from_engine_currency(env):
     run(env, record)
     from tests.test_model_decision_workspace_v2 import tokens
     page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    r = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
+    r = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
         project=record.project_code, sheet_id="project_setup", field_id="project_setup.technical.p50_hours", value="1700", **tokens(page)))
     assert r.status_code == 200
     out = get_outputs(env, record)

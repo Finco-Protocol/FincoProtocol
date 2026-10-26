@@ -1,6 +1,8 @@
 """SC-09: Statements V2 drill-down over the immutable Run evidence (Last Run and one historical Run)."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import json
 import re
 
@@ -153,7 +155,7 @@ def test_last_run_links_say_when_they_open_a_working_copy_that_differs(env):
     current = outputs(env, record)
     assert 'data-st-context="RUN_MATCHES_WORKING_COPY"' in current and "(current Working Copy)" in current
     page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
+    post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
         project=record.project_code, sheet_id="project_setup", field_id="project_setup.technical.p50_hours", value="1700", **tokens(page)))
     stale = outputs(env, record)
     assert 'data-st-context="WORKING_COPY_DIFFERS"' in stale
@@ -164,15 +166,15 @@ def test_alternative_scenario_selection_never_presents_the_base_run_as_its_own(e
     from app.persistence.scenarios_repository import list_scenarios
     record = env.create("solar")
     run(env, record)
-    env.client.post("/v2/workbook/scenarios/create", headers={"HX-Request": "true"}, data={"project": record.project_code, "scenario_name": "Alt"})
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/create", headers={"HX-Request": "true"}, data={"project": record.project_code, "scenario_name": "Alt"})
     scenarios = list_scenarios(OWNER, record.project_id)
     alt = next(s for s in scenarios if not s.is_base_case)
     base = next(s for s in scenarios if s.is_base_case)
-    env.client.post("/v2/workbook/scenarios/select", headers={"HX-Request": "true"}, data={"project": record.project_code, "scenario_id": alt.scenario_id})
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/select", headers={"HX-Request": "true"}, data={"project": record.project_code, "scenario_id": alt.scenario_id})
     page = outputs(env, record)
     # The Base Run is not the child scenario's Run: no statements, no drill-down, no links into the child's inputs.
     assert 'data-out-state="NOT_RUN"' in page and 'role="treegrid"' not in page and "st-link" not in page
-    env.client.post("/v2/workbook/scenarios/select", headers={"HX-Request": "true"}, data={"project": record.project_code, "scenario_id": base.scenario_id})
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/select", headers={"HX-Request": "true"}, data={"project": record.project_code, "scenario_id": base.scenario_id})
     back = outputs(env, record)
     assert 'data-st-context="RUN_MATCHES_WORKING_COPY"' in back
 
@@ -239,7 +241,7 @@ def test_historical_statements_use_the_entry_not_the_current_working_copy(hist_e
     tariff = float(get_workspace_state(OWNER, record.project_id).draft_snapshot.get("rev_ppa_base_tariff")
                    or get_workspace_state(OWNER, record.project_id).draft_snapshot["tariff_eur_mwh"])
     page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    r = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
+    r = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
         project=record.project_code, sheet_id="revenue", field_id="revenue.ppa.base_tariff", value=str(tariff * 1.5), **tokens(page)))
     assert '"workbook-field-error"' not in r.headers.get("HX-Trigger", "")
     run(env, record)

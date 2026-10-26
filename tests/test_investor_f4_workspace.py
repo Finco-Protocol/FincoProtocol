@@ -1,5 +1,7 @@
 """Real authorized CAS, canonical Run, history/export and stale lifecycle."""
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 from copy import deepcopy
 from io import BytesIO
@@ -186,10 +188,10 @@ def test_scenario_isolation_and_selection_cas(env):
     base = get_workspace_state("decision-user", record.project_id).draft_snapshot[SNAPSHOT_KEY]
     old = page(env, record).text
     old_hash = re.search('name="content_hash" value="([^"]*)"', old).group(1)
-    env.client.post('/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
+    post_valid_mutation(env.client, '/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_name': 'Explicit alternative'})
     scenario = next(s for s in list_scenarios('decision-user', record.project_id) if not s.is_base_case)
-    env.client.post('/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
+    post_valid_mutation(env.client, '/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_id': scenario.scenario_id})
     assert save(env, record, document(), overrides={"content_hash": old_hash}).status_code == 409
     doc = document()
@@ -245,12 +247,12 @@ def test_scenario_run_binds_its_own_agreement_and_base_history_is_immutable(env)
     assert save(env, record, funded_agreement(base_ws)).status_code == 200
     base_ws, _ = run(env, record)
     base_evidence = deepcopy(base_ws.last_runtime_summary[EVIDENCE_KEY])
-    env.client.post('/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
+    post_valid_mutation(env.client, '/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_name': 'Alternative ownership'})
     scenarios = list_scenarios('decision-user', record.project_id)
     alternative = next(s for s in scenarios if not s.is_base_case)
     base = next(s for s in scenarios if s.is_base_case)
-    env.client.post('/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
+    post_valid_mutation(env.client, '/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_id': alternative.scenario_id})
     doc = funded_agreement(base_ws)
     doc['agreement_id'] = 'alternative-ownership'
@@ -260,7 +262,7 @@ def test_scenario_run_binds_its_own_agreement_and_base_history_is_immutable(env)
     assert evidence['binding']['scenario_id'] == alternative.scenario_id
     assert evidence['agreement']['agreement_id'] == 'alternative-ownership'
     assert 'data-state="CURRENT"' in page(env, record).text
-    env.client.post('/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
+    post_valid_mutation(env.client, '/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_id': base.scenario_id})
     assert 'data-state="CURRENT"' in page(env, record).text
     restored = next(h for h in get_run_history('decision-user', record.project_id)

@@ -1,4 +1,6 @@
 """F3.8 uses real committed Runs, not fabricated facility or statement fixtures."""
+from tests.model_mutation_csrf import post_valid_mutation
+
 import io
 from dataclasses import replace
 
@@ -183,7 +185,7 @@ def test_xlsx_uses_same_persisted_statement_cells_and_no_engine(env, monkeypatch
     record, ws, rr = _junior_run(env, monkeypatch, 'solar') if junior else _two_senior_run(env, monkeypatch, 'solar')
     trace = view(rr, ws)
     monkeypatch.setattr(production_financial_authority, 'run_clean_production', lambda *a, **k: pytest.fail('export ran engine'))
-    response = env.client.post('/v2/workbook/export', params={'project': record.project_code}, data={'project': record.project_code})
+    response = post_valid_mutation(env.client, '/v2/workbook/export', params={'project': record.project_code}, data={'project': record.project_code})
     assert response.status_code == 200
     book = openpyxl.load_workbook(io.BytesIO(response.content), data_only=True)
     rows = {r[0]: r[1:] for r in book['Cash Flow'].iter_rows(values_only=True) if r and isinstance(r[0], str)}

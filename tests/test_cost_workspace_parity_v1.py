@@ -8,6 +8,8 @@ freshness safety (real integration, no mocks of the fold or the export).
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import dataclasses
 import json
 
@@ -83,13 +85,13 @@ def _add_custom(client, rec, kind="opex"):
     else:
         data = dict(project=rec.project_code, parent_category_code="C.01", label="Custom capex",
                     amount_keur="50", notes="", workbook_version=v, content_hash=h)
-    assert client.post(f"/v2/{kind}/line/add", headers=HX, data=data).status_code == 200
+    assert post_valid_mutation(client, f"/v2/{kind}/line/add", headers=HX, data=data).status_code == 200
 
 
 def _scenario_with(client, rec, uid, overrides):
     from app.persistence.db import get_cursor
 
-    client.post("/v2/workbook/scenarios/create", headers=HX,
+    post_valid_mutation(client, "/v2/workbook/scenarios/create", headers=HX,
                 data={"project": rec.project_code, "scenario_name": "Parity S"})
     with get_cursor() as cur:
         cur.execute("UPDATE scenarios SET overrides_json=? WHERE user_id=? AND project_id=? "

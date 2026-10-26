@@ -6,6 +6,8 @@ while explicit contracts own pricing.  Synthetic Working Copies only.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import copy
@@ -60,7 +62,7 @@ def _grid_save(gclient, record, cells, *, content_hash=None, scenario="__current
             "content_hash": content_hash or _hash(record),
             "scenario_id": _ws(record).active_scenario_id if scenario == "__current__" else scenario,
             "cells": [{"field_id": f, "value": v} for f, v in cells]}
-    return gclient.post("/v2/workbook/grid/save", json=body)
+    return post_valid_mutation(gclient, "/v2/workbook/grid/save", json=body)
 
 
 def _save_contracts(env, record, payload):
@@ -162,11 +164,11 @@ def test_scenario_contract_authority_does_not_leak_through_grid_saves(env, gclie
     record = env.create("solar")
     payload = _contract_payload(env, record, "solar")
     assert _save_contracts(env, record, payload).status_code == 200
-    created = env.client.post("/v2/workbook/scenarios/create",
+    created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create",
                               data={"project": record.project_code, "scenario_name": "Alt contracts"})
     assert created.status_code == 200
     sc = next(s for s in list_scenarios(OWNER, record.project_id) if not s.is_base_case)
-    assert env.client.post("/v2/workbook/scenarios/select",
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/select",
                            data={"project": record.project_code, "scenario_id": sc.scenario_id}).status_code == 200
     different = copy.deepcopy(payload)
     different["streams"][0]["price_eur_mwh"] = 105

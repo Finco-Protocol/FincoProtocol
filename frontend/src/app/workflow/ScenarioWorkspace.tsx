@@ -86,7 +86,9 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
   ): Promise<boolean> => {
     setBusy(true);
     setStatus(null);
-    const result = await postWorkflowForm(url, fields);
+    const contract = [data.mutations.create, data.mutations.select, data.mutations.rename, data.mutations.archive]
+      .find((item) => item.url === url);
+    const result = await postWorkflowForm(url, { ...fields, csrf_token: contract?.csrf_token ?? "" });
     if (result.outcome !== "ok") {
       if (result.outcome === "unknown") setLocked(true);
       setStatus({ tone: result.outcome === "unknown" ? "conflict" : "error", text: result.message });
@@ -246,7 +248,13 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
             setDialog(null);
             void (async () => {
               setBusy(true);
-              const result = await postWorkflowForm("/v2/workbook/scenarios/remove-override", { project, scenario_id: scenario.scenario_id, field: fieldId });
+              const authority = await fetchScenarioOverrides(project, scenario.scenario_id);
+              if (!authority.ok) {
+                setBusy(false);
+                setStatus({ tone: "error", text: "Override security context unavailable. Reload before retrying." });
+                return;
+              }
+              const result = await postWorkflowForm(authority.mutations.remove.url, { project, scenario_id: scenario.scenario_id, field: fieldId, csrf_token: authority.mutations.remove.csrf_token });
               if (result.outcome !== "ok") {
                 if (result.outcome === "unknown") setLocked(true);
                 setStatus({ tone: result.outcome === "unknown" ? "conflict" : "error", text: result.message });
@@ -304,7 +312,7 @@ function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
     if (problem) { setErrors((prev) => ({ ...prev, [fieldId]: problem })); return; }
     setBusy(true);
     setLocal(null);
-    const result = await postWorkflowForm(data.mutations.update.url, { project, scenario_id: scenarioId, [fieldId]: value.trim() });
+    const result = await postWorkflowForm(data.mutations.update.url, { project, scenario_id: scenarioId, [fieldId]: value.trim(), csrf_token: data.mutations.update.csrf_token });
     if (result.outcome !== "ok") {
       setBusy(false);
       if (result.outcome === "refused") setErrors((prev) => ({ ...prev, [fieldId]: result.message }));

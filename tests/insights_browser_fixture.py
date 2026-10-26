@@ -5,6 +5,8 @@ memory; only committed, token-free financial API evidence is written to disk.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from contextlib import contextmanager
 import json
 from pathlib import Path
@@ -42,12 +44,12 @@ def browser_fixture(evidence_dir):
         solar = isolated.create("solar")
         run(isolated, solar)
         solar_base = last(solar)
-        response = isolated.client.post("/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
+        response = post_valid_mutation(isolated.client, "/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
             data={"project": solar.project_code, "scenario_name": "Browser revenue downside"})
         assert response.status_code == 200, response.text[:500]
         scenario = next(s for s in list_scenarios(user_id="decision-user", project_id=solar.project_id)
                         if s.scenario_name == "Browser revenue downside")
-        response = isolated.client.post("/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
+        response = post_valid_mutation(isolated.client, "/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
             data={"project": solar.project_code, "scenario_id": scenario.scenario_id, "tariff_eur_mwh": "40"})
         assert response.status_code == 200, response.text[:500]
         run(isolated, solar)

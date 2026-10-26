@@ -1,5 +1,7 @@
 """Existing authorized CAS, scenarios and immutable export; candidate release stays closed."""
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 from dataclasses import replace
 from io import BytesIO
@@ -119,7 +121,7 @@ def test_candidate_write_owner_reference_and_cas_isolation(env, monkeypatch):
     save(env, record, raw, field=config.FIELD_ID, stale_tokens=tokens(page.text))
     assert get_workspace_state("decision-user", record.project_id) == saved
     env.client.cookies.set(COOKIE_NAME, create_session_token(user_id="junior-other-owner", username="admin"))
-    response = env.client.post("/v2/workbook/update", data=dict(project=record.project_code,
+    response = post_valid_mutation(env.client, "/v2/workbook/update", data=dict(project=record.project_code,
         field_id=config.FIELD_ID, value=raw, sheet_id="debt", **tokens(page.text)))
     assert response.status_code == 404
 
@@ -171,11 +173,11 @@ def test_scenario_activation_isolated_from_base_history(env, monkeypatch):
     monkeypatch.setattr(junior_config, "ACTIVATION_ENABLED", True)
     record = env.create("wind")
     base, base_rr = run(env, record)
-    env.client.post("/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
         data={"project": record.project_code, "scenario_name": "Junior financing case"})
     scenarios = list_scenarios("decision-user", record.project_id)
     scenario = next(s for s in scenarios if not s.is_base_case)
-    env.client.post("/v2/workbook/scenarios/select", headers={"HX-Request": "true"},
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/select", headers={"HX-Request": "true"},
         data={"project": record.project_code, "scenario_id": scenario.scenario_id})
     selected = get_workspace_state("decision-user", record.project_id)
     pi = working_case(selected)
@@ -185,7 +187,7 @@ def test_scenario_activation_isolated_from_base_history(env, monkeypatch):
     assert isinstance(resolve_canonical_last_run_from_workspace(record, "decision-user", committed).project_inputs,
                       JuniorProjectInputs)
     base_scenario = next(s for s in scenarios if s.is_base_case)
-    env.client.post("/v2/workbook/scenarios/select", headers={"HX-Request": "true"},
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/select", headers={"HX-Request": "true"},
         data={"project": record.project_code, "scenario_id": base_scenario.scenario_id})
     restored = get_workspace_state("decision-user", record.project_id)
     assert restored.last_runtime_snapshot_id == base.last_runtime_snapshot_id

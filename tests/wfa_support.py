@@ -6,6 +6,8 @@ Run History entry the product itself committed.  Synthetic reference projects on
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import json
@@ -49,7 +51,7 @@ def tokens(record):
 
 
 def update_field(lab, record, field_id: str, value, sheet_id: str = "debt"):
-    response = lab.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data={
+    response = post_valid_mutation(lab.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data={
         "project": record.project_code, "sheet_id": sheet_id, "field_id": field_id, "value": str(value), **tokens(record)})
     assert response.status_code == 200, response.text[:400]
     assert '"workbook-field-error"' not in response.headers.get("HX-Trigger", ""), (field_id, value, response.text[:600])
@@ -57,7 +59,7 @@ def update_field(lab, record, field_id: str, value, sheet_id: str = "debt"):
 
 
 def set_contingency(lab, record, kind: str, pct: float):
-    response = lab.client.post("/v2/capex/contingency", headers={"HX-Request": "true"}, data={
+    response = post_valid_mutation(lab.client, "/v2/capex/contingency", headers={"HX-Request": "true"}, data={
         "project": record.project_code, "kind": kind, "contingency_pct": str(pct), **tokens(record)})
     assert response.status_code in (200, 204, 303), response.text[:400]
     return response

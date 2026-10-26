@@ -21,6 +21,7 @@
           hx-post="/v2/workbook/scenarios/create"
           hx-target="#v2-sheet-scenarios"
           hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['scenario-create'] }}">
       <input type="hidden" name="project" value="{{ project_code }}">
       <input class="v2-scenario-name-input" type="text" name="scenario_name"
              placeholder="New scenario name…" maxlength="80" required
@@ -85,6 +86,7 @@
               hx-target="#v2-sheet-scenarios"
               hx-swap="outerHTML"
               style="display:inline">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['scenario-select'] }}">
           <input type="hidden" name="project" value="{{ project_code }}">
           <input type="hidden" name="scenario_id" value="{{ sc.scenario_id }}">
           <button class="v2-scenario-action-btn" type="submit" title="Select scenario">Select</button>
@@ -117,6 +119,7 @@
               hx-swap="outerHTML"
               hx-confirm="Archive scenario '{{ sc.scenario_name }}'?"
               style="display:inline">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['scenario-archive'] }}">
           <input type="hidden" name="project" value="{{ project_code }}">
           <input type="hidden" name="scenario_id" value="{{ sc.scenario_id }}">
           <button class="v2-scenario-action-btn v2-scenario-action-btn--archive" type="submit"
@@ -160,6 +163,7 @@
           hx-post="/v2/workbook/scenarios/rename"
           hx-target="#v2-sheet-scenarios"
           hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['scenario-rename'] }}">
       <input type="hidden" name="project" value="{{ project_code }}">
       <input type="hidden" name="scenario_id" id="v2-rename-scenario-id">
       <label class="v2-scenario-modal-label">Rename scenario</label>
@@ -203,6 +207,7 @@
           hx-post="/v2/workbook/scenarios/update-overrides"
           hx-target="#v2-sheet-scenarios"
           hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['scenario-update-overrides'] }}">
       <input type="hidden" name="project" value="{{ project_code }}">
       <input type="hidden" name="scenario_id" id="v2-override-scenario-id">
 
@@ -419,7 +424,7 @@ function v2ResetOverride(btn) {
   htmx.ajax('POST', '/v2/workbook/scenarios/remove-override', {
     target: '#v2-sheet-scenarios',
     swap: 'outerHTML',
-    values: { project: project, scenario_id: scenarioId, field: field }
+    values: { project: project, scenario_id: scenarioId, field: field, csrf_token: {{ mutation_csrf_tokens["scenario-remove-override"] | tojson }} }
   });
 }
 

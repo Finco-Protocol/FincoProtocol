@@ -8,6 +8,7 @@
 {% set cfg = bankability.config %}
 <link rel="stylesheet" href="/static/css/model_bankability.css">
 <form data-f2-form hx-post="/v2/workbook/update" hx-target="#v2-sheet-senior-debt" hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['workbook-update'] }}">
   <input type="hidden" name="project" value="{{ project_code }}">
   <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
   <input type="hidden" name="content_hash" value="{{ content_hash }}">

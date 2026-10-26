@@ -6,6 +6,8 @@ read-only Solar/Wind run is tested in test_revenue_v2_advanced_curves.py.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import json
 import pytest
 
@@ -117,7 +119,7 @@ def test_successful_readonly_stress_preserves_working_copy_history_and_scenario(
     assert response.status_code in (200, 303), response.text[:500]
 
     if selected_scenario == "child":
-        created = env.client.post("/v2/workbook/scenarios/create",
+        created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create",
             data={**project, "scenario_name": "Synthetic Commercial Child"})
         assert created.status_code == 200
         active = state().active_scenario_id

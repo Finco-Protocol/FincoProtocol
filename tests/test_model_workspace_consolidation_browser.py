@@ -5,6 +5,16 @@ from pathlib import Path
 import pytest
 
 from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
+from tests.model_mutation_cookie_policy_acceptance import mutation_browser_servers  # noqa: F401
+
+
+def test_model_mutation_secure_cookie_policy(mutation_browser_servers, tmp_path):
+    from tests.model_mutation_cookie_policy_acceptance import (
+        test_verified_secure_lax_policy_same_origin_same_site_and_cross_site,
+    )
+    test_verified_secure_lax_policy_same_origin_same_site_and_cross_site(mutation_browser_servers, tmp_path)
+    from tests.model_mutation_cookie_policy_acceptance import check_legacy_cost_buttons_use_their_own_operation_tokens
+    check_legacy_cost_buttons_use_their_own_operation_tokens(mutation_browser_servers)
 
 
 def assert_unique_dom_ids(page):

@@ -6,6 +6,8 @@ the persisted rows and (for the Run steps) the real canonical model.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -125,7 +127,7 @@ def _canonical_total(user_id, record, kind):
 
 
 def _post(client, kind, action, **fields):
-    return client.post(f"{KINDS[kind]['prefix']}/line/{action}", headers=HX, data=fields)
+    return post_valid_mutation(client, f"{KINDS[kind]['prefix']}/line/{action}", headers=HX, data=fields)
 
 
 def _line_fields(client, record, kind, sub_line_id):
@@ -248,13 +250,13 @@ def test_reactivate_is_owner_scoped_and_protected_references_are_immutable(seede
     fields = _line_fields(client, rec, kind, sid)
 
     intruder = _login(f"u-cw-intruder-{kind}")
-    r = intruder.post(f"{KINDS[kind]['prefix']}/line/reactivate", headers=HX, data=fields)
+    r = post_valid_mutation(intruder, f"{KINDS[kind]['prefix']}/line/reactivate", headers=HX, data=fields)
     assert r.status_code in (404, 401, 403, 302)
     assert _row(rec.project_id, sid, kind)["is_active"] == 0          # not touched
 
     ref = get_reference_by_template_source("generic_solar_reference")
     _, h, v = _page(client, ref.project_code)
-    r = client.post(f"{KINDS[kind]['prefix']}/line/reactivate", headers=HX,
+    r = post_valid_mutation(client, f"{KINDS[kind]['prefix']}/line/reactivate", headers=HX,
                     data=dict(project=ref.project_code, sub_line_id=sid, row_version="x",
                               workbook_version=v, content_hash=h))
     assert r.status_code in (200, 403, 404, 409, 422)
@@ -296,11 +298,11 @@ def test_lifecycle_never_rewrites_last_run_or_history_and_scenarios_see_it(seede
     assert _state(client, code) == "Stale"
 
     # scenario navigation: cost lines are project-level, so every scenario's run reads Stale
-    client.post("/v2/workbook/scenarios/create", headers=HX,
+    post_valid_mutation(client, "/v2/workbook/scenarios/create", headers=HX,
                 data={"project": code, "scenario_name": "Scenario X"})
     base_id = next(s.scenario_id for s in list_scenarios(user_id=uid, project_id=rec.project_id)
                    if s.is_base_case)
-    client.post("/v2/workbook/scenarios/select", headers=HX,
+    post_valid_mutation(client, "/v2/workbook/scenarios/select", headers=HX,
                 data={"project": code, "scenario_id": base_id})
     assert _state(client, code) == "Stale"
     assert len(get_run_history(uid, rec.project_id)) == hist
@@ -326,7 +328,7 @@ def test_legacy_unseeded_working_copy_is_not_reseeded_and_still_edits(seeded_db)
         assert cur.fetchone()["c"] == 0
     assert "Inactive lines" not in page                      # nothing invented
     # a custom line can still be added and then deactivated / reactivated
-    r = client.post("/v2/capex/line/add", headers=HX,
+    r = post_valid_mutation(client, "/v2/capex/line/add", headers=HX,
                     data={"project": legacy.project_code, "parent_category_code": "C.01",
                           "label": "Legacy add", "amount_keur": "100", "notes": "",
                           "workbook_version": v, "content_hash": h})
@@ -445,7 +447,7 @@ def test_scenario_cost_override_survives_deactivate_and_reactivate(seeded_db, ki
 
     uid = f"u-cw-ovr-{kind}"
     client, rec = _project(uid, "generic_solar_reference")
-    client.post("/v2/workbook/scenarios/create", headers=HX,
+    post_valid_mutation(client, "/v2/workbook/scenarios/create", headers=HX,
                 data={"project": rec.project_code, "scenario_name": "Override X"})
     sid = _seeded_line(rec.project_id, kind)
     base_amount = float(_row(rec.project_id, sid, kind)["amount_keur"])

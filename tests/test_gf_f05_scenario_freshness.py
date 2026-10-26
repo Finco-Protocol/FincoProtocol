@@ -297,7 +297,8 @@ class TestGetPathIntegration:
             mock_tpl.get_template.return_value.render.return_value = (
                 '<div id="v2-sheet-scenarios"></div>'
             )
-            _scenario_list_html("u1", "proj1", "proj1", fake_ws)
+            _scenario_list_html("u1", "proj1", "proj1", fake_ws,
+                                request=SimpleNamespace(cookies={}, state=SimpleNamespace()))
 
         mock_assemble.assert_called_once()
         assert captured_hash.get("value") == "real-hash-abc123", (

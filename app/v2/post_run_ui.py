@@ -185,7 +185,7 @@ def build_post_run_ui_state(
 
     # I. Scenario last-run statuses (persisted during run step 12b).
     scenarios_html = _scenario_list_html(
-        workspace_owner, project_record.project_id, project, ws_fresh,
+        workspace_owner, project_record.project_id, project, ws_fresh, request=request,
         **({"context": context} if context is not None else {}))
     fragments.append(_as_oob(scenarios_html, "v2-sheet-scenarios"))
 
@@ -202,7 +202,7 @@ def build_post_run_ui_state(
     _pack = _build_trust_pack_for_state(
         ws_fresh, workspace_owner=workspace_owner, project_record=project_record, project=project, context=context)
     fragments.append(_build_result_surfaces_oob(
-        pack=_pack, ws_fresh=ws_fresh, project_record=project_record, project=project,
+        pack=_pack, ws_fresh=ws_fresh, project_record=project_record, project=project, request=request,
         project_editable=not is_protected_reference(project_record), freshness=freshness, context=context))
     fragments.append(_build_smart_panel_oob(
         ws_fresh, workspace_owner=workspace_owner,
@@ -277,7 +277,7 @@ def _assumption_register_for_state(ws_fresh, *, context=None):
         return None
 
 
-def _build_result_surfaces_oob(*, pack, ws_fresh, project_record, project: str, project_editable: bool, freshness,
+def _build_result_surfaces_oob(*, pack, ws_fresh, project_record, project: str, project_editable: bool, freshness, request,
                                context=None) -> str:
     """OOB refresh of the persistent strip (UX-002) and the Trust sheet (UX-001) from ONE trust pack and ONE freshness read.
 
@@ -285,6 +285,7 @@ def _build_result_surfaces_oob(*, pack, ws_fresh, project_record, project: str, 
     """
     from app.v2.result_status import build_result_status, last_run_matches_active_scenario
     from app.v2.router import _fmt_runtime_at, _templates
+    from app.workbook.mutation_csrf import mutation_tokens
     status = build_result_status(
         runtime_state=freshness.state.value, has_runtime=bool(getattr(ws_fresh, "last_runtime_snapshot_id", None)),
         last_runtime_at_display=_fmt_runtime_at(getattr(ws_fresh, "last_runtime_at", None) or ""),
@@ -296,6 +297,7 @@ def _build_result_surfaces_oob(*, pack, ws_fresh, project_record, project: str, 
         "project_editable": project_editable, "result_status": status})
     trust = _templates.get_template("partials/sheet_trust.html").render({
         "trust_pack": pack, "project_code": project, "project_editable": project_editable,
+        "mutation_csrf_tokens": mutation_tokens(request, project),
         "assumption_register_view": _assumption_register_for_state(ws_fresh, context=context)})
     return _as_oob(strip, "v2-hybrid-status") + "\n" + _as_oob(trust, "v2-sheet-trust")
 
@@ -482,9 +484,11 @@ def build_post_save_ui_state(
         # Reissue its operation-scoped token on every replacement; otherwise
         # subsequent legitimate Runs receive a 403 after the first Save.
         from app.workbook.financing_csrf import issue_token
+        from app.workbook.mutation_csrf import mutation_tokens
         ctx = {
             "request": request,
             "project_code": project,
+            "mutation_csrf_tokens": mutation_tokens(request, project),
             "run_csrf_token": issue_token(request, project, purpose="workbook-run-v1"),
             "workbook_version": pis_fresh.workbook_version,
             "content_hash": pis_fresh.content_hash,
@@ -568,7 +572,7 @@ def build_post_save_ui_state(
     # Scenario last-run statuses (persisted by the previous Run's step 12b).
     if include_scenario_list and project_record is not None and workspace_owner:
         scenarios_html = _scenario_list_html(
-            workspace_owner, project_record.project_id, project, ws_fresh,
+            workspace_owner, project_record.project_id, project, ws_fresh, request=request,
             **({"context": context} if context is not None else {}))
         fragments.append(_as_oob(scenarios_html, "v2-sheet-scenarios"))
 
@@ -586,7 +590,7 @@ def build_post_save_ui_state(
                 ws_fresh, workspace_owner=workspace_owner, project_record=project_record, project=project,
                 context=context)
             fragments.append(_build_result_surfaces_oob(
-                pack=_pack, ws_fresh=ws_fresh, project_record=project_record, project=project,
+                pack=_pack, ws_fresh=ws_fresh, project_record=project_record, project=project, request=request,
                 project_editable=not is_protected_reference(project_record), freshness=freshness, context=context))
             fragments.append(_build_smart_panel_oob(
                 ws_fresh, workspace_owner=workspace_owner,

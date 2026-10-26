@@ -35,6 +35,7 @@ import json
 from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping, Optional
 
+from app.workbook.mutation_csrf import mutation_token
 from app.workbook.financing_csrf import issue_token as _issue_csrf_token
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -513,7 +514,7 @@ async def react_workspace_inputs(request: Request, project: str):
                     "protected_reference": is_protected_reference(record)},
         "grid": projection,
         "save": {"url": "/v2/workbook/grid/save",
-                 "csrf_token": generate_csrf_token(),
+                 "csrf_token": mutation_token(request, project, "grid-save"),
                  "content_hash": composite_hash,
                  "workbook_version": WORKBOOK.version,
                  "scenario_id": ws.active_scenario_id,
@@ -632,7 +633,7 @@ async def react_sheet_fields(request: Request, sheet_id: str, project: str):
         "fields": fields,
         "save": {"url": "/v2/workbook/update",
                  "method": "form",
-                 "csrf_token": tokens["csrf_token"],
+                 "csrf_token": mutation_token(request, project, "workbook-update"),
                  "financing_csrf_token": issue_token(request, project),
                  "content_hash": tokens["content_hash"],
                  "workbook_version": tokens["workbook_version"]},
@@ -712,22 +713,22 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
         "lines": lines,
         "save": {"url": "/v2/workbook/grid/cost-lines/save",
                  "method": "form",
-                 "csrf_token": tokens["csrf_token"],
+                 "csrf_token": mutation_token(request, project, "grid-cost-lines-save"),
                  "content_hash": tokens["content_hash"],
                  "workbook_version": tokens["workbook_version"],
                  "max_batch_lines": MAX_BATCH_LINES},
         # WF-React-2: canonical line-management routes.  Only deactivation
         # (soft delete) exists - there is no hard delete.  These routes carry
-        # composite CAS (content_hash + workbook_version, row_version) and are
-        # inventoried as having no CSRF token; the projection does not hide that.
+        # composite CAS (content_hash + workbook_version, row_version) and an
+        # explicit session/project/operation-bound request token.
         "line_management": {
+            "csrf_tokens": {op: mutation_token(request, project, sheet + "-" + op) for op in ("add", "update", "deactivate", "reactivate", "reorder")},
             "add": {"url": f"/v2/{sheet}/line/add",
                     "group_field": "parent_category_code" if sheet == "capex" else "parent_group_code"},
             "deactivate": {"url": f"/v2/{sheet}/line/deactivate"},
             "reactivate": {"url": f"/v2/{sheet}/line/reactivate"},
             "eligible_groups": eligible_groups,
-            "csrf_note": "The canonical line routes validate composite CAS and row versions; they do not "
-                         "carry a CSRF token (inventoried gap, unchanged by this workflow).",
+            "csrf_note": "Line requests require session/project/operation-bound CSRF, composite CAS and row versions.",
         },
     })
 
@@ -772,8 +773,8 @@ async def react_revenue_contracts(request: Request, project: str):
         "contracts": editor,
         "save": {"url": "/v2/workbook/revenue/contracts",
                  "method": "form",
-                 # the canonical writer validates the PLAIN grid CSRF token
-                 # (validate_csrf_token); no bound financing token here
+                 # The released Revenue writer retains its plain signed token
+                 # contract; this is not a bound grid-edit or financing token.
                  "csrf_token": tokens["csrf_token"],
                  "content_hash": tokens["content_hash"],
                  "workbook_version": tokens["workbook_version"]},
@@ -844,7 +845,7 @@ async def react_run_history(request: Request, project: str):
         # export always reflects the last COMMITTED Run, never unsaved or newer
         # Working Copy edits; the historical export is bound to one immutable row.
         "exports": {
-            "last_run": {"url": "/v2/workbook/export", "method": "form-download",
+            "last_run": {"url": "/v2/workbook/export", "csrf_token": mutation_token(request, project, "workbook-export"), "method": "form-download",
                          "authority": "CANONICAL_LAST_RUN",
                          "available": export_available,
                          "unavailable_reason": export_reason,
@@ -1028,10 +1029,10 @@ async def react_scenarios(request: Request, project: str):
         "active_scenario_name": ws.active_scenario_name,
         "scenarios": scenarios,
         "mutations": {
-            "create": {"url": "/v2/workbook/scenarios/create", "fields": ["project", "scenario_name"]},
-            "select": {"url": "/v2/workbook/scenarios/select", "fields": ["project", "scenario_id"]},
-            "rename": {"url": "/v2/workbook/scenarios/rename", "fields": ["project", "scenario_id", "new_name"]},
-            "archive": {"url": "/v2/workbook/scenarios/archive", "fields": ["project", "scenario_id"]},
+            "create": {"url": "/v2/workbook/scenarios/create", "csrf_token": mutation_token(request, project, "scenario-create"), "fields": ["project", "scenario_name"]},
+            "select": {"url": "/v2/workbook/scenarios/select", "csrf_token": mutation_token(request, project, "scenario-select"), "fields": ["project", "scenario_id"]},
+            "rename": {"url": "/v2/workbook/scenarios/rename", "csrf_token": mutation_token(request, project, "scenario-rename"), "fields": ["project", "scenario_id", "new_name"]},
+            "archive": {"url": "/v2/workbook/scenarios/archive", "csrf_token": mutation_token(request, project, "scenario-archive"), "fields": ["project", "scenario_id"]},
             "note": "Form routes of the canonical scenario authority. Creating or selecting a "
                     "scenario NEVER starts a Run.",
         },
@@ -1181,8 +1182,8 @@ async def react_scenario_overrides(request: Request, project: str, scenario_id: 
         "fields": fields,
         "unsupported_override_keys": sorted(k for k in overrides if k not in supported),
         "mutations": {
-            "update": {"url": "/v2/workbook/scenarios/update-overrides", "fields": ["project", "scenario_id", "<field_id>"]},
-            "remove": {"url": "/v2/workbook/scenarios/remove-override", "fields": ["project", "scenario_id", "field"]},
+            "update": {"url": "/v2/workbook/scenarios/update-overrides", "csrf_token": mutation_token(request, project, "scenario-update-overrides"), "fields": ["project", "scenario_id", "<field_id>"]},
+            "remove": {"url": "/v2/workbook/scenarios/remove-override", "csrf_token": mutation_token(request, project, "scenario-remove-override"), "fields": ["project", "scenario_id", "field"]},
             "note": "The canonical Run applies only the fields listed here; any other override is refused "
                     "(SCENARIO_OVERRIDE_UNBOUND). Saving an override never runs the model.",
         },

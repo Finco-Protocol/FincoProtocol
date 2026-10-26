@@ -3,6 +3,8 @@ identity; runtime freshness, institutional export and scenario presentation
 all agree on the same effective authority."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import io
@@ -210,7 +212,7 @@ class TestExportReplay:
 def _active_scenario(client, headers, owner, rec, overrides):
     from app.persistence.scenarios_repository import update_scenario_overrides
     from app.persistence.workspace_repository import get_workspace_state
-    created = client.post("/v2/workbook/scenarios/create",
+    created = post_valid_mutation(client, "/v2/workbook/scenarios/create",
                           data={"project": rec.project_code, "scenario_name": "S8"}, headers=headers)
     assert created.status_code == 200, created.text
     sid = get_workspace_state(owner, rec.project_id).active_scenario_id

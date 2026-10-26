@@ -38,6 +38,8 @@ Override reset / removal (Phase 4 — model/scenario-override-reset):
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -51,7 +53,10 @@ def _get_test_client():
     from fastapi import FastAPI
     app = FastAPI()
     app.include_router(router, prefix="/v2")
-    return TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, raise_server_exceptions=False)
+    from app.auth import COOKIE_NAME, create_session_token
+    client.cookies.set(COOKIE_NAME, create_session_token(user_id="user-sc", username="scenario-unit-fixture"))
+    return client
 
 
 def _mock_user(user_id="user-sc"):
@@ -107,8 +112,7 @@ def _mock_authority_oob():
 
 def _post_overrides(client, data, htmx=True, follow_redirects=True):
     headers = {"HX-Request": "true"} if htmx else {}
-    return client.post(
-        "/v2/workbook/scenarios/update-overrides",
+    return post_valid_mutation(client, "/v2/workbook/scenarios/update-overrides",
         data=data,
         headers=headers,
         follow_redirects=follow_redirects,
@@ -514,6 +518,10 @@ def _render_scenarios_partial(scenarios, active_scenario_id=None, project_code="
     )
     template = env.get_template("partials/sheet_scenarios.html")
     return template.render(
+        # Markup-only fixtures have no authenticated request. These inert
+        # placeholders satisfy the explicit form context, never server CSRF.
+        mutation_csrf_tokens={"scenario-" + op: "display-only-not-a-request-token"
+                              for op in ("create", "select", "rename", "archive", "update-overrides", "remove-override")},
         scenarios=scenarios,
         active_scenario_id=active_scenario_id,
         project_code=project_code,
@@ -719,8 +727,7 @@ def test_a1_html_is_parseable_without_attribute_breakage():
 
 def _post_remove_override(client, data, htmx=True, follow_redirects=True):
     headers = {"HX-Request": "true"} if htmx else {}
-    return client.post(
-        "/v2/workbook/scenarios/remove-override",
+    return post_valid_mutation(client, "/v2/workbook/scenarios/remove-override",
         data=data,
         headers=headers,
         follow_redirects=follow_redirects,

@@ -193,6 +193,10 @@ async def capex_line_add(
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "capex-add"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     is_htmx = request.headers.get("HX-Request") == "true"
 
     try:
@@ -251,6 +255,10 @@ async def capex_line_update(
         project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "capex-update"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
@@ -312,6 +320,10 @@ async def capex_line_deactivate(
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "capex-deactivate"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     is_htmx = request.headers.get("HX-Request") == "true"
 
     try:
@@ -362,6 +374,10 @@ async def capex_line_reactivate(
         project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "capex-reactivate"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
@@ -414,6 +430,10 @@ async def capex_line_reorder(
         project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "capex-reorder"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
@@ -477,6 +497,10 @@ async def capex_contingency_set(
         project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "capex-contingency"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     raw = contingency_pct.strip()
     try:
         pct = None if raw == "" else float(raw)

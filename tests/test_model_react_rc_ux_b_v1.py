@@ -1,6 +1,8 @@
 """RC-UX-B: read-only, same-Run evidence and minimal immutable History summaries."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from types import SimpleNamespace
 
 import pytest
@@ -138,7 +140,7 @@ def test_stale_diagnostics_keep_committed_snapshot_not_active_working_copy(env):
     snapshot = env.get("workspace")["identity"]["snapshot_id"]
     fields = env.get("fields/project_setup")
     field = next(x for x in fields["fields"] if x["binding_label"] == "bound" and x["field_id"] == "project_setup.identity.project_name")
-    response = env.client.post("/v2/workbook/update", data={
+    response = post_valid_mutation(env.client, "/v2/workbook/update", data={
         "project": env.record.project_code, "field_id": field["field_id"], "value": "Changed Working Copy",
         "workbook_version": fields["save"]["workbook_version"], "content_hash": fields["save"]["content_hash"],
         "csrf_token": fields["save"]["csrf_token"]}, follow_redirects=False)

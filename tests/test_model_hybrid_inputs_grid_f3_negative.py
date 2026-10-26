@@ -7,6 +7,8 @@ mutation, no partial batch, an unchanged CAS hash and an untouched Last Run / Ru
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import pytest
 
 from app.auth import generate_csrf_token
@@ -37,7 +39,7 @@ def _post(client, project, cells, **extra):
             "scenario_id": _ws(project).active_scenario_id,
             "cells": [{"field_id": f, "value": v} for f, v in cells]}
     body.update(extra)
-    return client.post("/v2/workbook/grid/save", json=body)
+    return post_valid_mutation(client, "/v2/workbook/grid/save", json=body)
 
 
 def test_active_f3_competing_debt_field_is_a_controlled_409_with_zero_mutation(env, gclient):

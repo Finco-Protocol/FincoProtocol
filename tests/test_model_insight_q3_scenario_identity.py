@@ -8,6 +8,8 @@ scenario's name is never substituted.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -83,14 +85,14 @@ def last_run(user, rec):
 
 
 def select(env, user, rec, scenario_id):
-    r = env.client.post("/v2/workbook/scenarios/select", data={"project": rec.project_code, "scenario_id": scenario_id},
+    r = post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={"project": rec.project_code, "scenario_id": scenario_id},
                         cookies=env.cookie(user), headers={"HX-Request": "true"})
     assert r.status_code == 200
     return r.text
 
 
 def create_scenario(env, user, rec, name):
-    r = env.client.post("/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": name},
+    r = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": name},
                         cookies=env.cookie(user), headers={"HX-Request": "true"})
     assert r.status_code == 200
     from app.persistence.scenarios_repository import list_scenarios
@@ -171,7 +173,7 @@ def test_B_base_case_stale_keeps_the_prior_run_identity_and_unbinds_thresholds(e
     before = page(env, user, rec)
     snap = snapshot_in(before)
     h, v = tokens(before)
-    r = env.client.post("/v2/workbook/update", data={"field_id": "project_setup.technical.p50_hours", "value": "1240",
+    r = post_valid_mutation(env.client, "/v2/workbook/update", data={"field_id": "project_setup.technical.p50_hours", "value": "1240",
                         "project": rec.project_code, "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"},
                         cookies=env.cookie(user), headers={"HX-Request": "true"})
     assert r.status_code == 200

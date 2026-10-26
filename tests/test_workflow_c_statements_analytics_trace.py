@@ -5,6 +5,8 @@ values, typed freshness, typed integrity — no recomputation, no engine executi
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import re
 
 import pytest
@@ -251,7 +253,7 @@ def test_strip_matches_persisted_last_run_and_freshness_follows_save_and_run(see
     sid = _seeded_line(rec.project_id, "capex")
     row = _row(rec.project_id, sid, "capex")
     f = _line_fields(client, rec, "capex", sid)
-    saved = client.post("/v2/capex/line/update", headers=HX, data=dict(
+    saved = post_valid_mutation(client, "/v2/capex/line/update", headers=HX, data=dict(
         f, label=row["label"], amount_keur=str(float(row["amount_keur"]) + 1), notes=""))
     assert saved.status_code == 200
     assert 'data-run-state="STALE"' in saved.text and "Prior Last Run" in saved.text   # same OOB response

@@ -6,6 +6,8 @@ only; the engine runs through the canonical Run route exactly as the legacy test
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -237,7 +239,7 @@ def test_grid_save_through_the_canonical_route_and_stale_classification(env):
     try:
         record = env.create()
         inputs = env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).json()
-        response = env.client.post("/v2/workbook/grid/save", json={
+        response = post_valid_mutation(env.client, "/v2/workbook/grid/save", json={
             "project": record.project_code,
             "csrf_token": inputs["save"]["csrf_token"],
             "cells": [{"field_id": CIT, "value": "26.5"}],
@@ -249,7 +251,7 @@ def test_grid_save_through_the_canonical_route_and_stale_classification(env):
         out = response.json()
         assert out["ok"] and out["model_executed"] is False and out["run_state"] == "NOT_RUN"
         # a second Save with the SAME tokens is a stale conflict (no blind retry)
-        replay = env.client.post("/v2/workbook/grid/save", json={
+        replay = post_valid_mutation(env.client, "/v2/workbook/grid/save", json={
             "project": record.project_code,
             "csrf_token": inputs["save"]["csrf_token"],
             "cells": [{"field_id": CIT, "value": "27.5"}],
@@ -318,7 +320,7 @@ def test_statements_status_distinguishes_current_from_stale(env):
         tokens = {k: re.search(f'name="{k}" value="([^"]*)"', legacy.text).group(1)
                   for k in ("content_hash", "workbook_version")}
         csrf = re.search(r'data-csrf="([^"]+)"', legacy.text).group(1)
-        saved = env.client.post("/v2/workbook/grid/save", json={
+        saved = post_valid_mutation(env.client, "/v2/workbook/grid/save", json={
             "project": record.project_code, "csrf_token": csrf,
             "cells": [{"field_id": CIT, "value": "24.0"}],
             "workbook_version": tokens["workbook_version"], "content_hash": tokens["content_hash"],

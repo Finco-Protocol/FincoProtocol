@@ -1,4 +1,6 @@
 """Contract rounding through authorized Save, actual Run and immutable history."""
+from tests.model_mutation_csrf import post_valid_mutation
+
 import copy
 import json
 from decimal import Decimal, ROUND_HALF_UP
@@ -19,9 +21,9 @@ def test_rounding_save_scenario_run_and_immutable_history(env, kind):
     assert _save_revenue(flow, original).status_code == 200
     before = flow.run()
     history = copy.deepcopy(get_run_history(OWNER, flow.record.project_id))
-    assert env.client.post('/v2/workbook/scenarios/create', data={**flow.project, 'scenario_name': 'Rounded'}).status_code == 200
+    assert post_valid_mutation(env.client, '/v2/workbook/scenarios/create', data={**flow.project, 'scenario_name': 'Rounded'}).status_code == 200
     child = next(s for s in list_scenarios(OWNER, flow.record.project_id) if not s.is_base_case)
-    assert env.client.post('/v2/workbook/scenarios/select', data={**flow.project, 'scenario_id': child.scenario_id}).status_code == 200
+    assert post_valid_mutation(env.client, '/v2/workbook/scenarios/select', data={**flow.project, 'scenario_id': child.scenario_id}).status_code == 200
     selected = copy.deepcopy(original)
     selected['streams'][0]['price_rounding'] = dict(enabled=True, decimal_places=2, method='HALF_UP')
     assert _save_revenue(flow, selected).status_code == 200
@@ -53,7 +55,7 @@ def test_rounding_save_scenario_run_and_immutable_history(env, kind):
     assert flow.ws().last_runtime_summary == frozen and not flow.ws().dirty
     base = next(s for s in list_scenarios(OWNER, flow.record.project_id) if s.is_base_case)
     for sid in (base.scenario_id, child.scenario_id):
-        assert env.client.post('/v2/workbook/scenarios/select', data={**flow.project, 'scenario_id': sid}).status_code == 200
+        assert post_valid_mutation(env.client, '/v2/workbook/scenarios/select', data={**flow.project, 'scenario_id': sid}).status_code == 200
         assert 'CURRENT' in _page(flow)
     assert flow.ws().last_runtime_summary == frozen
     print(f'{kind}: maximum rounded revenue residual={max_residual:.17g} kEUR')

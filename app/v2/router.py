@@ -65,6 +65,7 @@ import os
 import urllib.parse
 from typing import Optional
 
+from app.workbook.mutation_csrf import mutation_token, mutation_tokens
 from app.workbook.financing_csrf import issue_token as _issue_csrf_token
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -716,7 +717,8 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error="", *
         "project_code": project,
         "financing_csrf_token": issue_token(request, project),
         "run_csrf_token": issue_token(request, project, purpose="workbook-run-v1"),
-        "grid_csrf_token": __import__("app.auth", fromlist=["generate_csrf_token"]).generate_csrf_token(),
+        "grid_csrf_token": mutation_token(request, project, "grid-save"),
+        "mutation_csrf_tokens": mutation_tokens(request, project),
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
@@ -2169,7 +2171,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "field_error": "",
         "library_url": "/library",
         # WF-05 grid: CSRF token for the JSON validate/save routes (session-bound server check).
-        "grid_csrf_token": __import__("app.auth", fromlist=["generate_csrf_token"]).generate_csrf_token(),
+        "grid_csrf_token": mutation_token(request, project, "grid-save"),
+        "mutation_csrf_tokens": mutation_tokens(request, project),
     }
     # Model Trust Pack V1: read-only composition of existing canonical read
     # services (API v1.1 institutional builders).  No engine execution, no
@@ -2514,6 +2517,11 @@ async def v2_workbook_update(
         form = await request.form()
         if not validate_csrf_token(extract_bound_token(request, project, form.get("csrf_token"))):
             return JSONResponse({"error": "Invalid Capital Stack CSRF token."}, status_code=403)
+
+    if field_id != "debt.financing.instruments":
+        from app.workbook.mutation_csrf import validate_mutation_token
+        if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "workbook-update"):
+            return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
 
     ws = get_workspace_state(user_id=_workspace_owner, project_id=project_record.project_id)
     if ws is None:
@@ -3586,6 +3594,10 @@ async def v2_workbook_export(
             status_code=404,
         )
 
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "workbook-export"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     safe_project = project_record.project_code or project
     # Derive runtime_project_code from template_source, mirroring main_web._normalize_template_source.
     _ts = (project_record.template_source or "").strip().lower()
@@ -3868,7 +3880,7 @@ async def v2_trust_validation_fragment(request: Request, project: str):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws, *, context=None) -> str:
+def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws, *, request, context=None) -> str:
     """Render the scenario list partial HTML (used by multiple endpoints)."""
     from app.persistence.scenarios_repository import list_scenarios
     from app.v2.scenario_presentation import build_scenario_presentations
@@ -3901,6 +3913,7 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws, *,
     _scen_record = context.project_record if context is not None else get_project_by_id(project_id)
     ctx = {
         "scenarios": presentations,
+        "mutation_csrf_tokens": mutation_tokens(request, project_code),
         "active_scenario_id": active_id,
         "project_code": project_code,
         "ws": ws,
@@ -3973,6 +3986,10 @@ async def v2_scenario_create(
     if is_protected_reference(project_record):
         return JSONResponse({"error": "Protected reference — cannot create scenarios."}, status_code=409)
 
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "scenario-create"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
         return JSONResponse({"error": "Workspace not found."}, status_code=404)
@@ -4021,7 +4038,7 @@ async def v2_scenario_create(
 
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
-        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws, request=request)
         return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
             request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
@@ -4046,6 +4063,10 @@ async def v2_reference_seed_reset(
         return JSONResponse({"error": "Project not found."}, status_code=404)
     if owner != user.user_id or is_protected_reference(record):
         return JSONResponse({"error": "Editable working copy required."}, status_code=403)
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "reference-seed-reset"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     try:
         reset_reference_seeded_lines(user_id=owner, project_code=project)
     except ValueError as exc:
@@ -4080,6 +4101,13 @@ async def v2_scenario_select(
     if project_record is None:
         return JSONResponse({"error": "Project not found."}, status_code=404)
 
+    if is_protected_reference(project_record):
+        return JSONResponse({"error": "Protected reference — cannot modify scenarios."}, status_code=409)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "scenario-select"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
     if sc is None or sc.project_id != project_record.project_id or sc.archived:
         return JSONResponse({"error": "Scenario not found or archived."}, status_code=404)
@@ -4100,7 +4128,7 @@ async def v2_scenario_select(
 
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
-        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws, request=request)
         return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
             request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
@@ -4127,6 +4155,13 @@ async def v2_scenario_rename(
     if project_record is None:
         return JSONResponse({"error": "Project not found."}, status_code=404)
 
+    if is_protected_reference(project_record):
+        return JSONResponse({"error": "Protected reference — cannot modify scenarios."}, status_code=409)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "scenario-rename"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
     if sc is None or sc.project_id != project_record.project_id:
         return JSONResponse({"error": "Scenario not found."}, status_code=404)
@@ -4147,7 +4182,7 @@ async def v2_scenario_rename(
 
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
-        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws, request=request)
         if ws is not None and ws.active_scenario_id == scenario_id:
             html += "\n" + _scenario_authority_oob(request, ws, project_record, project, workspace_owner)
         return HTMLResponse(content=html)
@@ -4173,6 +4208,13 @@ async def v2_scenario_archive(
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
         return JSONResponse({"error": "Project not found."}, status_code=404)
+
+    if is_protected_reference(project_record):
+        return JSONResponse({"error": "Protected reference — cannot modify scenarios."}, status_code=409)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "scenario-archive"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
 
     sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
     if sc is None or sc.project_id != project_record.project_id:
@@ -4200,7 +4242,7 @@ async def v2_scenario_archive(
 
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
-        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws, request=request)
         if archived_active:
             html += "\n" + _scenario_authority_oob(
                 request, ws, project_record, project, workspace_owner)
@@ -4265,6 +4307,10 @@ async def v2_scenario_update_overrides(
     if is_protected_reference(project_record):
         return JSONResponse({"error": "Protected reference — cannot edit overrides."}, status_code=409)
 
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "scenario-update-overrides"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
     if sc is None or sc.project_id != project_record.project_id:
         return JSONResponse({"error": "Scenario not found."}, status_code=404)
@@ -4297,7 +4343,7 @@ async def v2_scenario_update_overrides(
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
-        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws, request=request)
         return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
             request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
@@ -4369,6 +4415,10 @@ async def v2_scenario_remove_override(
     if is_protected_reference(project_record):
         return JSONResponse({"error": "Protected reference — cannot edit overrides."}, status_code=409)
 
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "scenario-remove-override"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
     if sc is None or sc.project_id != project_record.project_id:
         return JSONResponse({"error": "Scenario not found."}, status_code=404)
@@ -4385,7 +4435,7 @@ async def v2_scenario_remove_override(
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
-        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws, request=request)
         return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
             request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)

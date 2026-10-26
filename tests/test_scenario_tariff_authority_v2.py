@@ -1,6 +1,8 @@
 """Correction A: real scenario input binding, immutable lineage and export parity."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import copy
@@ -39,9 +41,9 @@ def test_unsupported_vertical_tariff_cannot_be_injected_through_post(env, kind):
     from app.persistence.scenarios_repository import list_scenarios
     record = env.create(kind)
     env.client.get("/v2/workbook", params={"project": record.project_code})
-    env.client.post("/v2/workbook/scenarios/create", data={"project": record.project_code, "scenario_name": "Alternative"})
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": record.project_code, "scenario_name": "Alternative"})
     sc = next(s for s in list_scenarios("decision-user", record.project_id) if not s.is_base_case)
-    response = env.client.post("/v2/workbook/scenarios/update-overrides", data={
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", data={
         "project": record.project_code, "scenario_id": sc.scenario_id, "tariff_eur_mwh": 85})
     assert response.status_code == 422
     assert "only supported for Solar and Wind" in response.text
@@ -53,9 +55,9 @@ def test_tariff_validation_precedes_scenario_write(env, value):
     from app.persistence.scenarios_repository import list_scenarios
     record = env.create()
     env.client.get("/v2/workbook", params={"project": record.project_code})
-    env.client.post("/v2/workbook/scenarios/create", data={"project": record.project_code, "scenario_name": "Alternative"})
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": record.project_code, "scenario_name": "Alternative"})
     sc = next(s for s in list_scenarios("decision-user", record.project_id) if not s.is_base_case)
-    response = env.client.post("/v2/workbook/scenarios/update-overrides", data={
+    response = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", data={
         "project": record.project_code, "scenario_id": sc.scenario_id, "tariff_eur_mwh": value})
     assert response.status_code == 422
     assert next(s for s in list_scenarios("decision-user", record.project_id) if s.scenario_id == sc.scenario_id).overrides == {}
@@ -84,13 +86,13 @@ def test_real_base_upside_downside_run_restore_reset_and_export(env, monkeypatch
     evidence = {"Base": dict(baseline.last_runtime_summary)}
     alternatives = []
     for name, tariff in (("Upside", 85), ("Downside", 45)):
-        created = env.client.post("/v2/workbook/scenarios/create", data={**project, "scenario_name": name})
+        created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={**project, "scenario_name": name})
         assert created.status_code == 200
         sc = next(s for s in list_scenarios(owner, record.project_id) if s.scenario_name == name)
-        updated = env.client.post("/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
+        updated = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
                                   data={**project, "scenario_id": sc.scenario_id, "tariff_eur_mwh": tariff})
         assert updated.status_code == 200
-        env.client.post("/v2/workbook/scenarios/select", data={**project, "scenario_id": sc.scenario_id})
+        post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={**project, "scenario_id": sc.scenario_id})
         ws = run()
         assert dict(ws.draft_snapshot) == original_draft
         assert ws.last_runtime_summary["scenario_revenue_input"]["effective_tariff_eur_mwh"] == tariff
@@ -110,7 +112,7 @@ def test_real_base_upside_downside_run_restore_reset_and_export(env, monkeypatch
     assert evidence["Upside"]["project_irr"] > evidence["Base"]["project_irr"] > evidence["Downside"]["project_irr"]
     before_history = get_run_history(owner, record.project_id)
     downside, _ = alternatives[-1]
-    changed = env.client.post("/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
+    changed = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
                               data={**project, "scenario_id": downside.scenario_id, "tariff_eur_mwh": 46})
     assert changed.status_code == 200
     assert get_run_history(owner, record.project_id) == before_history
@@ -144,13 +146,13 @@ def test_real_base_upside_downside_run_restore_reset_and_export(env, monkeypatch
     assert get_run_history(owner, record.project_id) == before_history
     for sc, bound in alternatives:
         assert get_scenario(sc.scenario_id, owner).last_run_summary == bound
-    env.client.post("/v2/workbook/scenarios/select", data={**project, "scenario_id": alternatives[0][0].scenario_id})
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={**project, "scenario_id": alternatives[0][0].scenario_id})
     restored = get_workspace_state(owner, record.project_id)
     assert restored.last_runtime_summary["scenario_revenue_input"]["effective_tariff_eur_mwh"] == 85
     assert resolve_canonical_last_run_from_workspace(record, owner, restored).project_inputs.revenue.ppa_base_tariff == 85
-    env.client.post("/v2/workbook/scenarios/remove-override", data={**project,
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/remove-override", data={**project,
         "scenario_id": alternatives[0][0].scenario_id, "field": "tariff_eur_mwh"})
     rerun = run()
     assert rerun.last_runtime_summary["scenario_revenue_input"]["effective_tariff_eur_mwh"] == evidence["Base"]["scenario_revenue_input"]["effective_tariff_eur_mwh"]
-    env.client.post("/v2/workbook/scenarios/select", data={**project, "scenario_id": base.scenario_id})
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={**project, "scenario_id": base.scenario_id})
     assert dict(get_workspace_state(owner, record.project_id).draft_snapshot) == original_draft

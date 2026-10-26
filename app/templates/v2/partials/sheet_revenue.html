@@ -24,7 +24,7 @@
     has_runtime              bool
     field_error              str
 #}
-{% from "partials/field_editor.html" import render_field %}
+{% from "partials/field_editor.html" import render_field with context %}
 
 {# Macro: read-only placeholder row #}
 {% macro placeholder_row(label, note="Not yet supported") %}
@@ -253,6 +253,7 @@
                   hx-post="/v2/workbook/update"
                   hx-target="#v2-sheet-revenue"
                   hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['workbook-update'] }}">
               <input type="hidden" name="sheet_id"        value="revenue">
               <input type="hidden" name="field_id"         value="{{ mcf.field.field_id }}">
               <input type="hidden" name="project"          value="{{ project_code }}">

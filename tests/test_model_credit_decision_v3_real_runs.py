@@ -3,6 +3,8 @@ P90-10y lender cases, DSRA / DSRF differences, DSCR below 1 with a converged sol
 immutability, owner scoping, protected-reference denial and the read-only route contract."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import json
 import re
 from dataclasses import asdict
@@ -58,7 +60,7 @@ def finding(data, run_index, fid):
 
 def set_field(cenv, record, field_id, value):
     page = cenv.client.get("/v2/workbook", params={"project": record.project_code}).text
-    response = cenv.client.post("/v2/workbook/update", headers={"HX-Request": "true"},
+    response = post_valid_mutation(cenv.client, "/v2/workbook/update", headers={"HX-Request": "true"},
                                 data={"project": record.project_code, "field_id": field_id, "value": str(value), **tokens(page)})
     assert response.status_code == 200 and "field-error" not in response.text[:4000], response.text[:600]
 

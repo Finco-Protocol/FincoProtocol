@@ -2,6 +2,8 @@
 STALE and historical identity, and the read-only route contract."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import json
 import re
 from unittest import mock
@@ -114,7 +116,7 @@ def test_stale_run_is_historical_evidence_and_never_mixes_the_changed_working_co
     # a Working Copy change makes the committed Run STALE; its evidence stays the prior Run
     from tests.test_model_decision_workspace_v2 import tokens
     page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    saved = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"},
+    saved = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
                             data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "17", **tokens(page)})
     assert saved.status_code == 200
     before = get_workspace_state(USER, record.project_id)
@@ -132,7 +134,7 @@ def test_a_new_run_changes_identity_and_the_first_runs_evidence_is_not_reused(en
     _, first = _get(env, record)
     from tests.test_model_decision_workspace_v2 import tokens
     page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    env.client.post("/v2/workbook/update", headers={"HX-Request": "true"},
+    post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
                     data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "18", **tokens(page)})
     run(env, record)
     _, second = _get(env, record)
@@ -182,7 +184,7 @@ def test_comparison_of_two_real_committed_runs_is_read_only_and_honest(env):
                                               "last_run": single["v2"]["run_comparison"]["last_run"]}
     from tests.test_model_decision_workspace_v2 import tokens
     page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    env.client.post("/v2/workbook/update", headers={"HX-Request": "true"},
+    post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
                     data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "18", **tokens(page)})
     run(env, record)
     history_before = [(h.history_id, h.composite_hash) for h in get_run_history(USER, record.project_id, limit=50)]

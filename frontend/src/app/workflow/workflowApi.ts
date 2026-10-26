@@ -77,6 +77,7 @@ export function addCostLine(
   const mgmt = data.line_management;
   const fields: Record<string, string> = {
     project: cas.project,
+    csrf_token: mgmt.csrf_tokens.add,
     [mgmt.add.group_field]: line.group,
     label: line.label.trim(),
     amount_keur: line.amount_keur.trim(),
@@ -98,6 +99,7 @@ export function setCostLineActive(
   const mgmt = data.line_management;
   return postWorkflowForm((active ? mgmt.reactivate : mgmt.deactivate).url, {
     project: cas.project,
+    csrf_token: mgmt.csrf_tokens[active ? "reactivate" : "deactivate"],
     sub_line_id: subLineId,
     row_version: rowVersion,
     workbook_version: cas.workbookVersion,
@@ -111,19 +113,18 @@ export type ExportOutcome =
   | { ok: true; filename: string; bytes: number }
   | { ok: false; message: string };
 
-/** Download the canonical Last Run workbook.  The route is read-only (no engine,
- *  no state change); a non-spreadsheet answer is shown as a refusal. */
-export async function downloadLastRunWorkbook(project: string): Promise<ExportOutcome> {
+/** Download committed-Run evidence; the server appends export audit evidence. */
+export async function downloadLastRunWorkbook(project: string, csrfToken: string): Promise<ExportOutcome> {
   let response: Response;
   try {
     response = await fetch("/v2/workbook/export", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ project }).toString(),
+      body: new URLSearchParams({ project, csrf_token: csrfToken }).toString(),
     });
   } catch {
-    return { ok: false, message: "The export could not be reached. Nothing was changed; try again." };
+    return { ok: false, message: "The export outcome is unknown. A download audit may already have been recorded; reload before choosing whether to retry." };
   }
   const type = response.headers.get("content-type") || "";
   if (!response.ok || !/spreadsheetml|octet-stream/.test(type)) {

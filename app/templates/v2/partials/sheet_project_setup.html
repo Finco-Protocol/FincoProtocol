@@ -18,7 +18,7 @@
 
   Values always come from pis.get(field_id).  Snapshot keys never appear here.
 #}
-{% from "partials/field_editor.html" import render_field %}
+{% from "partials/field_editor.html" import render_field with context %}
 {% from "partials/_date_duration.html" import date_duration %}
 
 <div id="v2-sheet-project-setup" data-sheet="project_setup"

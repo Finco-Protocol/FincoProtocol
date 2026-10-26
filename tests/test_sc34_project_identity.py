@@ -3,6 +3,8 @@ header, page title, Project library card and the field itself agree after Save, 
 and committed Run History are not touched; a stale or invalid rename changes neither side."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import json
@@ -42,7 +44,7 @@ def _identity(client, rec):
 
 
 def _rename(client, rec, value, content_hash, version):
-    return client.post("/v2/workbook/update", headers=HTMX, data={
+    return post_valid_mutation(client, "/v2/workbook/update", headers=HTMX, data={
         "project": rec.project_code, "sheet_id": "project_setup", "field_id": NAME_FIELD, "value": value,
         "content_hash": content_hash, "workbook_version": version})
 
@@ -96,13 +98,13 @@ def test_scenario_navigation_keeps_the_renamed_identity(env):
     rec = _project(env, "sc34-id-4")
     ch, wv, _ = _identity(env, rec)
     _rename(env, rec, "Scenario Safe Name", ch, wv)
-    made = env.post("/v2/workbook/scenarios/create", headers=HTMX, data={"project": rec.project_code, "scenario_name": "Upside"})
+    made = post_valid_mutation(env, "/v2/workbook/scenarios/create", headers=HTMX, data={"project": rec.project_code, "scenario_name": "Upside"})
     assert made.status_code == 200, made.text
     from app.persistence.workspace_repository import get_workspace_state
     from app.persistence.scenarios_repository import list_scenarios
     scenarios = list_scenarios("sc34-id-4", rec.project_id)
     for sc in scenarios:
-        assert env.post("/v2/workbook/scenarios/select", headers=HTMX, data={"project": rec.project_code, "scenario_id": sc.scenario_id}).status_code == 200
+        assert post_valid_mutation(env, "/v2/workbook/scenarios/select", headers=HTMX, data={"project": rec.project_code, "scenario_id": sc.scenario_id}).status_code == 200
         page = env.get(f"/v2/workbook?project={rec.project_code}").text
         assert re.findall(r'v2-toolbar-name">([^<]*)', page) == ["Scenario Safe Name"]
     assert _snapshot_name("sc34-id-4", rec) == "Scenario Safe Name"

@@ -7,6 +7,8 @@ committed ``ACTIVATION_ENABLED = False``.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import dataclasses
 import json
 from types import SimpleNamespace
@@ -214,7 +216,7 @@ def test_closed_endpoint_generic_field_and_writer_refuse_and_nothing_is_rendered
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
         "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)})
     assert response.status_code == 404 and response.json()["error"] == "QUARTERLY_ADMISSION_CLOSED"
-    generic = env.client.post("/v2/workbook/update", data={
+    generic = post_valid_mutation(env.client, "/v2/workbook/update", data={
         "project": record.project_code, "sheet_id": "project_setup", "field_id": cfg.FIELD_ID,
         "value": _selection(), **tokens(page.text)})
     assert generic.status_code == 409 and "QUARTERLY_GENERIC_FIELD_WRITE_REFUSED" in generic.text

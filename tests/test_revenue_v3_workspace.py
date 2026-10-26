@@ -1,5 +1,7 @@
 """Reuse the real Revenue writer, authorization, scenario CAS and immutable export."""
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 import copy
 import json
@@ -48,7 +50,7 @@ def test_candidate_save_scenario_stale_run_history_and_product_export(env, candi
     assert json.loads(ws().draft_snapshot[SNAPSHOT_KEY]) == raw
     baseline = run()
     assert baseline["revenue_multistream_audit"][0]["products"]
-    assert env.client.post("/v2/workbook/scenarios/create", data={**project, "scenario_name": "Service contract alternative"}).status_code == 200
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={**project, "scenario_name": "Service contract alternative"}).status_code == 200
     sc = next(s for s in list_scenarios("decision-user", record.project_id) if not s.is_base_case)
     changed = copy.deepcopy(raw)
     changed["products"][0]["price_eur"] = 25

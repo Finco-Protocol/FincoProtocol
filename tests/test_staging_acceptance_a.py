@@ -4,6 +4,8 @@ Real canonical runs through the V2 HTTP surface (no mocks of the engine).
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -83,7 +85,7 @@ def _scenarios(user_id, project_id):
 
 
 def _select(client, cookies, code, scenario_id):
-    r = client.post("/v2/workbook/scenarios/select",
+    r = post_valid_mutation(client, "/v2/workbook/scenarios/select",
                     data={"project": code, "scenario_id": scenario_id},
                     cookies=cookies, headers={"HX-Request": "true"})
     assert r.status_code == 200
@@ -111,7 +113,7 @@ class TestScenarioLastRunAuthority:
         base_snapshot_id = get_workspace_state(uid, pid).last_runtime_snapshot_id
         assert base_snapshot_id
 
-        client.post("/v2/workbook/scenarios/create",
+        post_valid_mutation(client, "/v2/workbook/scenarios/create",
                     data={"project": code, "scenario_name": "Scenario X"},
                     cookies=cookies, headers={"HX-Request": "true"})
         x_id = _scenarios(uid, pid)["Scenario X"].scenario_id
@@ -146,7 +148,7 @@ class TestScenarioLastRunAuthority:
         client, cookies, record = _client_for(user_id="u-staging-a2")
         code, uid, pid = record.project_code, record.user_id, record.project_id
         _run(client, cookies, code)
-        client.post("/v2/workbook/scenarios/create",
+        post_valid_mutation(client, "/v2/workbook/scenarios/create",
                     data={"project": code, "scenario_name": "Scenario X"},
                     cookies=cookies, headers={"HX-Request": "true"})
         x_id = _scenarios(uid, pid)["Scenario X"].scenario_id
@@ -173,7 +175,7 @@ class TestScenarioLastRunAuthority:
         client, cookies, record = _client_for(user_id="u-staging-a3")
         code, uid, pid = record.project_code, record.user_id, record.project_id
         _run(client, cookies, code)
-        client.post("/v2/workbook/scenarios/create",
+        post_valid_mutation(client, "/v2/workbook/scenarios/create",
                     data={"project": code, "scenario_name": "Never Run"},
                     cookies=cookies, headers={"HX-Request": "true"})
         ws = get_workspace_state(uid, pid)
@@ -223,7 +225,7 @@ def _two_scenario_project(user_id):
     client, cookies, record = _client_for(user_id=user_id)
     code, uid, pid = record.project_code, record.user_id, record.project_id
     _run(client, cookies, code)                                   # pre-scenario Base run
-    client.post("/v2/workbook/scenarios/create",
+    post_valid_mutation(client, "/v2/workbook/scenarios/create",
                 data={"project": code, "scenario_name": "Scenario X"},
                 cookies=cookies, headers={"HX-Request": "true"})
     x_id = _scenarios(uid, pid)["Scenario X"].scenario_id
@@ -257,7 +259,7 @@ class TestRestoreAuthorityHardening:
             cur.execute("UPDATE model_run_history SET runtime_summary_json='{not json' "
                         "WHERE history_id=?", (newest_id,))
 
-        resp = client.post("/v2/workbook/scenarios/select",
+        resp = post_valid_mutation(client, "/v2/workbook/scenarios/select",
                            data={"project": code, "scenario_id": x_id},
                            cookies=cookies, headers={"HX-Request": "true"})
         assert resp.status_code == 409
@@ -519,7 +521,7 @@ class TestEngineFailClosedMessage:
         last = get_workspace_state(uid, pid).last_runtime_snapshot_id
         rows = _history_count(uid, pid)
         page, h, v = _tokens(client, cookies, code)
-        add = client.post("/v2/opex/line/add", cookies=cookies, headers={"HX-Request": "true"},
+        add = post_valid_mutation(client, "/v2/opex/line/add", cookies=cookies, headers={"HX-Request": "true"},
                           data={"project": code, "parent_group_code": "B.02", "label": "Stress",
                                 "amount_keur": "1000", "inflation_pct": "0", "notes": "",
                                 "workbook_version": v, "content_hash": h})
@@ -566,7 +568,7 @@ class TestCapexControls:
         total_before = float(re.search(r'data-testid="total-capex-keur">\s*([\d,\.]+)', page)
                              .group(1).replace(",", ""))
 
-        resp = client.post("/v2/capex/line/deactivate", data=fields, cookies=cookies,
+        resp = post_valid_mutation(client, "/v2/capex/line/deactivate", data=fields, cookies=cookies,
                            headers={"HX-Request": "true"})
         assert resp.status_code == 200                      # was 422: content_hash missing
         with get_cursor() as cur:
@@ -609,7 +611,7 @@ class TestCapexControls:
 
         before = canonical_total()
         _, h, v = _tokens(client, cookies, code)
-        client.post("/v2/workbook/update", cookies=cookies, headers={"HX-Request": "true"},
+        post_valid_mutation(client, "/v2/workbook/update", cookies=cookies, headers={"HX-Request": "true"},
                     data={"sheet_id": "capex", "field_id": "capex.C.production_units",
                           "value": "600", "project": code,
                           "workbook_version": v, "content_hash": h})

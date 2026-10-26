@@ -13,6 +13,8 @@ Missing/blank keys still default to the canonical reference drivers.
 
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import re
 
 import pytest
@@ -305,7 +307,7 @@ def test_invalid_efficiency_form_edit_rejected_and_snapshot_preserved(ev_wc):
     assert float(form["value"]) == pytest.approx(94.0)
 
     form["value"] = "150"  # outside registry max 100
-    resp = client.post("/v2/workbook/update", data=form, cookies=cookies,
+    resp = post_valid_mutation(client, "/v2/workbook/update", data=form, cookies=cookies,
                        headers={"HX-Request": "true"}, follow_redirects=False)
     # HTMX contract: 200 with an error partial (the UI shows the banner);
     # the update service validation result must flag the max violation.

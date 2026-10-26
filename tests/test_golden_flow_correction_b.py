@@ -1,6 +1,8 @@
 """Golden Flow Correction B: composite identity is runtime freshness authority."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -132,8 +134,7 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
 
     with patch("app.api.project_runner.run_project", side_effect=counted_run):
         with TestClient(main_web.app, raise_server_exceptions=False) as client:
-            created = client.post(
-                "/v2/workbook/scenarios/create",
+            created = post_valid_mutation(client, "/v2/workbook/scenarios/create",
                 data={"project": code, "scenario_name": "Scenario X"},
                 headers=htmx,
             )
@@ -169,8 +170,7 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
 
             # RC-5: P50 is not a bound scenario override. The rejected Save persists nothing, mutates nothing, runs nothing and invents no STALE.
             ws_before_reject = get_workspace_state(owner, record.project_id)
-            rejected = client.post(
-                "/v2/workbook/scenarios/update-overrides",
+            rejected = post_valid_mutation(client, "/v2/workbook/scenarios/update-overrides",
                 data={"project": code, "scenario_id": scenario_id, "p50_hours": str(float(snapshot["p50_hours"]) * 1.1)},
                 headers=htmx,
             )
@@ -186,8 +186,7 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
             start_tariff = float(snapshot["tariff_eur_mwh"])
             changed_tariff = round(start_tariff * 1.1, 2)
             assert changed_tariff != start_tariff
-            mutated = client.post(
-                "/v2/workbook/scenarios/update-overrides",
+            mutated = post_valid_mutation(client, "/v2/workbook/scenarios/update-overrides",
                 data={
                     "project": code,
                     "scenario_id": scenario_id,

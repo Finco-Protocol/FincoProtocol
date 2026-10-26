@@ -12,6 +12,8 @@ the deployed default (canonical) behaviour is unchanged for the same project.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import dataclasses as dc
@@ -82,7 +84,7 @@ def workbook(tmp_path, monkeypatch):
 
         def update(self, field, value):
             _, data = self.tokens()
-            response = self.client.post("/v2/workbook/update", headers={"HX-Request": "true"},
+            response = post_valid_mutation(self.client, "/v2/workbook/update", headers={"HX-Request": "true"},
                 data=data | {"sheet_id": "debt", "field_id": field, "value": value})
             assert '"workbook-field-saved"' in response.headers.get("HX-Trigger", ""), response.text[:600]
 

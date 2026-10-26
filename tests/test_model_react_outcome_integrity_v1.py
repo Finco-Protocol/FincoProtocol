@@ -11,6 +11,8 @@ these wire behaviours.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -84,7 +86,7 @@ def test_valid_scalar_update_commits_exactly_once(env, monkeypatch):
     fields = env.client.get("/v2/model-react/fields/project_setup",
                             params={"project": record.project_code}).json()
     sample = next(f for f in fields["fields"] if f["binding_label"] == "bound")
-    response = env.client.post("/v2/workbook/update", data=dict(
+    response = post_valid_mutation(env.client, "/v2/workbook/update", data=dict(
         project=record.project_code, field_id=sample["field_id"],
         value=str(sample["value"] if sample["value"] is not None else ""),
         workbook_version=tokens["workbook_version"], content_hash=tokens["content_hash"],
@@ -100,7 +102,7 @@ def test_update_without_session_redirects_to_login_never_success(env, monkeypatc
     record = env.create()
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     tokens = _grid_tokens(page.text)
-    response = env.anonymous.post("/v2/workbook/update", data=dict(
+    response = post_valid_mutation(env.anonymous, "/v2/workbook/update", data=dict(
         project=record.project_code, field_id="project_setup.identity.project_name", value="renamed",
         workbook_version=tokens["workbook_version"], content_hash=tokens["content_hash"],
         csrf_token=tokens["csrf_token"]), follow_redirects=False)
@@ -117,7 +119,7 @@ def test_stale_composite_hash_answers_v2_err_redirect(env, monkeypatch):
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     tokens = _grid_tokens(page.text)
     stale = ("0" * 63 + "1") if tokens["content_hash"][-1] != "1" else ("0" * 63 + "2")
-    response = env.client.post("/v2/workbook/update", data=dict(
+    response = post_valid_mutation(env.client, "/v2/workbook/update", data=dict(
         project=record.project_code, field_id="project_setup.identity.project_name", value="renamed-stale",
         workbook_version=tokens["workbook_version"], content_hash=stale,
         csrf_token=tokens["csrf_token"]), follow_redirects=False)
@@ -159,7 +161,7 @@ def test_protected_reference_update_is_refused(env, monkeypatch):
                             params={"project": record.project_code}).json()
     assert fields["project"]["protected_reference"] is True, \
         "the projection must report the protection boundary truthfully"
-    response = env.client.post("/v2/workbook/update", data=dict(
+    response = post_valid_mutation(env.client, "/v2/workbook/update", data=dict(
         project=record.project_code, field_id="project_setup.identity.project_name", value="renamed",
         workbook_version=fields["save"]["workbook_version"], content_hash=fields["save"]["content_hash"],
         csrf_token=fields["save"]["csrf_token"]), follow_redirects=False)
@@ -176,7 +178,7 @@ def test_protected_reference_update_is_refused(env, monkeypatch):
 def test_cost_batch_without_session_is_refused_json_never_redirect(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    response = env.anonymous.post("/v2/workbook/grid/cost-lines/save", data=dict(
+    response = post_valid_mutation(env.anonymous, "/v2/workbook/grid/cost-lines/save", data=dict(
         project=record.project_code, csrf_token="", workbook_version="v", content_hash="h",
         sheet="capex", payload="[]"))
     # The batch writer validates CSRF before the session and answers JSON —

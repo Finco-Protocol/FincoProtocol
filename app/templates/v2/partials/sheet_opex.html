@@ -49,7 +49,7 @@
     has_runtime          bool
     field_error          str
 #}
-{% from "partials/field_editor.html" import render_field %}
+{% from "partials/field_editor.html" import render_field with context %}
 {% from "partials/_money_format.html" import grouped_keur %}
 {# Macro: shortest exact text for an editable number (no thousands separators, no trailing zeros) #}
 {% macro plain_num(v) -%}
@@ -95,6 +95,7 @@
   <form class="v2-inactive-line-form" hx-post="/v2/opex/line/reactivate"
         hx-target="#v2-sheet-opex" hx-swap="outerHTML"
         data-testid="opex-inactive-row-{{ ln.sub_line_id }}">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['opex-reactivate'] }}">
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="sub_line_id" value="{{ ln.sub_line_id }}">
     <input type="hidden" name="row_version" value="{{ ln.row_version }}">
@@ -129,6 +130,7 @@
       data-fc-row autocomplete="off"
       hx-post="/v2/opex/line/update" hx-target="this" hx-swap="outerHTML"
       hx-select="#{{ rid }}" hx-select-oob="{{ oob_ids }}">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['opex-update'] }}">
   <input type="hidden" name="project" value="{{ project_code }}">
   <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
   <input type="hidden" name="row_version" value="{{ line.row_version }}">
@@ -160,11 +162,11 @@
     <button type="button" class="v2-cost-action v2-opex-duplicate-btn"
             hx-post="/v2/opex/line/add" hx-include="closest form" hx-target="#v2-sheet-opex"
             hx-swap="outerHTML" hx-select="#v2-sheet-opex" hx-select-oob="unset"
-            hx-vals='{{ {"parent_group_code": line.parent_code, "label": (line.name ~ " (copy)")} | tojson | forceescape }}'
+            hx-vals='{{ {"parent_group_code": line.parent_code, "label": (line.name ~ " (copy)"), "csrf_token": mutation_csrf_tokens["opex-add"]} | tojson | forceescape }}'
             title="Duplicate line" aria-label="Duplicate {{ line.code }}"
             data-testid="opex-custom-duplicate-{{ line.sub_line_id }}">⧉</button>
     <button type="button" class="v2-opex-deactivate-btn v2-cost-action"
-            hx-post="/v2/opex/line/deactivate" hx-include="closest form" hx-target="#v2-sheet-opex"
+            hx-post="/v2/opex/line/deactivate" hx-vals='{{ {"csrf_token": mutation_csrf_tokens["opex-deactivate"]} | tojson | forceescape }}' hx-include="closest form" hx-target="#v2-sheet-opex"
             hx-swap="outerHTML" hx-select="#v2-sheet-opex" hx-select-oob="unset"
             hx-confirm="Deactivate this line? It is excluded from totals and can be reactivated."
             title="Deactivate line (excluded from totals; can be reactivated)" aria-label="Deactivate {{ line.code }}"
@@ -189,6 +191,7 @@
       hx-post="/v2/opex/line/add"
       hx-target="#v2-sheet-opex"
       hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['opex-add'] }}">
   <input type="hidden" name="project" value="{{ project_code }}">
   <input type="hidden" name="parent_group_code" value="{{ group_code }}">
   <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
@@ -226,7 +229,7 @@
 {%- endfor -%}
 {%- set opex_oob_ids = opex_oob | join(",") -%}
 
-<div id="v2-sheet-opex" data-sheet="opex"
+<div id="v2-sheet-opex" data-cost-csrf="{{ mutation_csrf_tokens['grid-cost-lines-save'] }}" data-sheet="opex"
      data-fc-grid="opex" data-fc-scroll-container data-cost-grid="opex">
 
   <span id="v2-cost-authority-opex" hidden data-content-hash="{{ content_hash }}"
@@ -259,7 +262,8 @@
   </div>
 
   {# ── KPI strip ────────────────────────────────────────────────── #}
-  <div class="v2-sheet-section-heading"><span>OPEX Summary</span><small>Year 1 cost, unit metrics and contingency</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
+  <div class="v2-sheet-section-heading"><span>OPEX Summary</span><small>Year 1 cost, unit metrics and contingency</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['reference-seed-reset'] }}"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
   <div id="opex-kpi-region" class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
     <div class="v2-opex-kpi-item">
       <span class="v2-opex-kpi-label">OPEX Y1 · including applied contingency</span>
@@ -323,6 +327,7 @@
   {% endif %}
   {% if project_editable and ocl %}
   <form class="v2-field-form v2-contingency-form" method="post" action="/v2/capex/contingency" data-testid="opex-contingency-form">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['capex-contingency'] }}">
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="kind" value="opex">
     <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
