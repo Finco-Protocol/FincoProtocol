@@ -1,0 +1,34 @@
+{
+  "financial_regression": {
+    "elapsed_s": 88.747,
+    "errors": 0,
+    "failures": 0,
+    "junit_sha256": "c6246ca7746a6b982d8356abc77d8a6df9e22a2c5fda534ebfadc3ec583b1925",
+    "skipped": 0,
+    "tests": 125
+  },
+  "ledger": {
+    "elapsed_s": 8.198,
+    "errors": 0,
+    "failures": 0,
+    "junit_sha256": "9375d6766302a34cfb23bbf247267ddbaada56e21b3e5882945b5d54a1cef44c",
+    "skipped": 0,
+    "tests": 32
+  },
+  "react_browser_baseline": {
+    "elapsed_s": 25.081,
+    "errors": 0,
+    "failures": 0,
+    "junit_sha256": "8094c7b6a786fbdaf38931ce8183aecced7fee87ae02d9075ca11cb9b675cbfe",
+    "skipped": 0,
+    "tests": 1
+  },
+  "security_governance": {
+    "elapsed_s": 143.063,
+    "errors": 0,
+    "failures": 0,
+    "junit_sha256": "6555e1de1ef21a519b7ebf96cce4d0459286ff6e7c840a7a0a0a97cdbc17cf7a",
+    "skipped": 0,
+    "tests": 151
+  }
+}
