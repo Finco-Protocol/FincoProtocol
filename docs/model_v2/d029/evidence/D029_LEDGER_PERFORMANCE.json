@@ -1,33 +1,33 @@
 {
   "history_and_finalize_commit_ms": {
-    "max": 16.8388,
-    "median": 10.127600000000001,
+    "max": 16.8549,
+    "median": 11.2128,
     "n": 40,
-    "p95": 12.6126
+    "p95": 15.8943
   },
   "lookup_ms": {
-    "max": 6.1838,
-    "median": 4.19115,
+    "max": 9.5232,
+    "median": 5.1764,
     "n": 40,
-    "p95": 5.6276
+    "p95": 8.2432
   },
   "reconcile_ms": {
-    "max": 9.0516,
-    "median": 7.1032,
+    "max": 14.0594,
+    "median": 7.6612,
     "n": 40,
-    "p95": 8.3365
+    "p95": 12.8506
   },
   "reservation_ms": {
-    "max": 16.0259,
-    "median": 9.77345,
+    "max": 19.7936,
+    "median": 10.5364,
     "n": 40,
-    "p95": 11.1954
+    "p95": 14.311
   },
   "scope": "Windows local SQLite WAL, 40 synthetic persistence-only iterations; no engine/HTTP latency claim",
   "start_ms": {
-    "max": 14.0796,
-    "median": 10.5043,
+    "max": 22.518,
+    "median": 12.1594,
     "n": 40,
-    "p95": 12.4302
+    "p95": 16.2219
   }
 }

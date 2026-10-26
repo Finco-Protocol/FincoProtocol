@@ -159,8 +159,9 @@ def install_schema(connection: sqlite3.Connection) -> None:
     if connection.in_transaction:
         raise RunIntentError("RUN_INTENT_MIGRATION_IN_TRANSACTION")
     try:
-        connection.executescript("BEGIN IMMEDIATE;\n" + _SCHEMA + "\nCOMMIT;")
+        connection.executescript("BEGIN IMMEDIATE;\n" + _SCHEMA)
         verify_schema(connection)
+        connection.commit()
     except BaseException:
         connection.rollback()
         raise
@@ -278,7 +279,9 @@ def require_owner_cursor(cursor, reservation: Reservation, *, running: bool = Tr
 
 def start(reservation: Reservation) -> Reservation:
     with _write() as conn:
-        require_owner_cursor(conn.cursor(), reservation, running=False)
+        current = require_owner_cursor(conn.cursor(), reservation, running=False)
+        if current.state != "RESERVED":
+            raise RunIntentError("RUN_INTENT_ALREADY_RUNNING")
         conn.execute("UPDATE model_run_intents SET state='RUNNING', updated_at_ms=? WHERE reservation_id=?",
                      (_now(conn), reservation.reservation_id))
         return _decode(conn.execute("SELECT * FROM model_run_intents WHERE reservation_id=?",

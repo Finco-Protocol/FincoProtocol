@@ -1,6 +1,6 @@
 # D-029 concurrency and fault injection results
 
-Executed isolated ledger suite: **32 passed**. Evidence uses disposable real SQLite WAL and actual history
+Executed isolated ledger suite: **34 passed**. Evidence uses disposable real SQLite WAL and actual history
 payload validation/cursor append with clearly synthetic empty financial outputs; no fake financial result is served.
 
 | Boundary | Executed evidence | Scope |
@@ -11,6 +11,8 @@ payload validation/cursor append with clearly synthetic empty financial outputs;
 | Reservation/precommit/postcommit process exit | durable reservation / rolled back writes / original committed ID | Real abrupt process exits |
 | Failed finalization / injected precommit crash | no committed phantom history | Transaction fault injection |
 | Missing unique constraint or fence trigger | explicit schema refusal, zero new claim | Negative controls |
+| Incompatible migration schema | new DDL objects rolled back on refusal | Migration transaction |
+| Second start on RUNNING reservation | no additional execution permit | Ledger |
 | Wrong history identity / no transaction | finalization refused | Ledger |
 | New key / same inputs | independent deliberate intent | Ledger |
 | Older replay after newer key | original history ID, no extra row | Reconciliation helper |

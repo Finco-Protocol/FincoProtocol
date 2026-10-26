@@ -5,7 +5,7 @@
   },
   "app/persistence/run_intent_repository.py": {
     "base": null,
-    "current": "16aefadffe8d965a0cdfd37e4514fc385cda7648"
+    "current": "6de642ebf5918cee1ecfdc31aaa29c8cb51b85ac"
   },
   "app/persistence/workspace_repository.py": {
     "base": "ac0f9eb2727da70706f4c81f2566d060af5786f3",
@@ -49,6 +49,6 @@
   },
   "tests/test_d029_run_intent_ledger.py": {
     "base": null,
-    "current": "304a9bf25c135a7be95b5702a8a10380dbb5e305"
+    "current": "f05d42faa47e812dc3deea639ef46d237874d7f9"
   }
 }

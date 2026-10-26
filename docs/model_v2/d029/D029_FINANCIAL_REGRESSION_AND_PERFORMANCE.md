@@ -10,11 +10,11 @@ Windows local WAL, 40 synthetic persistence iterations; includes normal get_conn
 
 | Operation | Median ms | p95 ms | Max ms |
 |---|---:|---:|---:|
-| reservation_ms | 9.773 | 11.195 | 16.026 |
-| lookup_ms | 4.191 | 5.628 | 6.184 |
-| start_ms | 10.504 | 12.430 | 14.080 |
-| history_and_finalize_commit_ms | 10.128 | 12.613 | 16.839 |
-| reconcile_ms | 7.103 | 8.336 | 9.052 |
+| reservation_ms | 10.536 | 14.311 | 19.794 |
+| lookup_ms | 5.176 | 8.243 | 9.523 |
+| start_ms | 12.159 | 16.222 | 22.518 |
+| history_and_finalize_commit_ms | 11.213 | 15.894 | 16.855 |
+| reconcile_ms | 7.661 | 12.851 | 14.059 |
 
 `history_and_finalize_commit_ms` includes synthetic canonical history append and commit, not a financial Run.
 `reconcile_ms` is exact-history helper lookup, not network replay latency. Five-process contention is proven

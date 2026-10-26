@@ -8,12 +8,12 @@
     "tests": 125
   },
   "ledger": {
-    "elapsed_s": 8.198,
+    "elapsed_s": 10.019,
     "errors": 0,
     "failures": 0,
-    "junit_sha256": "9375d6766302a34cfb23bbf247267ddbaada56e21b3e5882945b5d54a1cef44c",
+    "junit_sha256": "829413b522c64992a50e72c6b444ba81b81649265e9f039afbdc8e1f7768c278",
     "skipped": 0,
-    "tests": 32
+    "tests": 34
   },
   "react_browser_baseline": {
     "elapsed_s": 25.081,
@@ -24,11 +24,11 @@
     "tests": 1
   },
   "security_governance": {
-    "elapsed_s": 143.063,
+    "elapsed_s": 221.308,
     "errors": 0,
     "failures": 0,
-    "junit_sha256": "6555e1de1ef21a519b7ebf96cce4d0459286ff6e7c840a7a0a0a97cdbc17cf7a",
+    "junit_sha256": "ed332a45aba59a15f45fe4bb60a537f075835ac2e2fc723a77cd1a3d6c37e689",
     "skipped": 0,
-    "tests": 151
+    "tests": 155
   }
 }

@@ -91,7 +91,9 @@ def expire(owner):
         conn.close()
 
 
-@pytest.mark.parametrize("value", [None, 42, "", "x" * 100, str(uuid.uuid1()), str(uuid.uuid4()).upper(), "../project"])
+@pytest.mark.parametrize("value", [None, 42, "", "x" * 100,
+                                 "123e4567-e89b-12d3-a456-426614174000",
+                                 "123E4567-E89B-42D3-A456-426614174000", "../project"])
 def test_reject_invalid_keys(value):
     with pytest.raises(ri.RunIntentError, match="RUN_INTENT_INVALID"):
         ri.validate_key(value)
@@ -194,6 +196,30 @@ def test_expired_owner_without_takeover_also_cannot_commit(ledger):
     expire(owner)
     with pytest.raises(ri.RunIntentError, match="OWNERSHIP_LOST"):
         commit(request, owner)
+
+
+def test_start_is_not_a_second_execution_permit(ledger):
+    request = intent()
+    owner = claim(request)
+    with pytest.raises(ri.RunIntentError, match="ALREADY_RUNNING"):
+        ri.start(owner)
+    assert ri.lookup(request).state == "RUNNING"
+
+
+def test_migration_refusal_rolls_back_new_objects(ledger):
+    conn = db.get_connection()
+    try:
+        # Preexisting incompatible table: migration must neither adopt it nor
+        # leave half-installed triggers behind after refusing its schema.
+        definition = conn.execute("SELECT sql FROM sqlite_master WHERE name='model_run_intents'").fetchone()[0]
+        conn.execute("DROP TABLE model_run_intents")
+        conn.execute(definition.replace("UNIQUE (actor_id, project_id, run_intent_id),", ""))
+        with pytest.raises(ri.RunIntentError, match="SCHEMA_INVALID"):
+            ri.install_schema(conn)
+        assert not conn.in_transaction
+        assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'model_run_intents_%'").fetchone()[0] == 0
+    finally:
+        conn.close()
 
 
 def test_finalization_rejects_unrelated_history_and_requires_transaction(ledger):

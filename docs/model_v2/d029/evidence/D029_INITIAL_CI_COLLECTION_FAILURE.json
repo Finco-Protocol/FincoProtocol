@@ -1,0 +1,59 @@
+{
+  "all_five_workers_inspected": true,
+  "correction": "Use fixed UUIDv1 and uppercase UUIDv4 examples; retain all tests and CI inventory assertions.",
+  "exact_differences": {
+    "0": {
+      "fresh_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[3B57EA83-596B-4E2B-B33F-2B40EC4FACC5]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[a50ffed3-d14c-11f1-aa40-a35601da65ac]"
+      ],
+      "planned_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[0BCD59D9-ABE1-4E54-87F7-EC0A2823976C]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[62aa2bf9-d14c-11f1-b38a-25bbbc5de14c]"
+      ]
+    },
+    "1": {
+      "fresh_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[96A2928D-25DF-4A8A-95DE-850AAF5ECD8E]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[a7f705bd-d14c-11f1-8535-6f70c4937492]"
+      ],
+      "planned_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[0BCD59D9-ABE1-4E54-87F7-EC0A2823976C]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[62aa2bf9-d14c-11f1-b38a-25bbbc5de14c]"
+      ]
+    },
+    "2": {
+      "fresh_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[82B969CA-F57D-4981-BD01-299DD1AB6F28]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[a4b0411d-d14c-11f1-acdf-8fe7451ddef9]"
+      ],
+      "planned_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[0BCD59D9-ABE1-4E54-87F7-EC0A2823976C]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[62aa2bf9-d14c-11f1-b38a-25bbbc5de14c]"
+      ]
+    },
+    "3": {
+      "fresh_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[65EF3196-CE4F-4CD4-AEF5-7032E3FB83D1]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[a6feffca-d14c-11f1-a7ce-8f40586110cf]"
+      ],
+      "planned_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[0BCD59D9-ABE1-4E54-87F7-EC0A2823976C]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[62aa2bf9-d14c-11f1-b38a-25bbbc5de14c]"
+      ]
+    },
+    "4": {
+      "fresh_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[F6ABB89D-6E65-47D7-90E7-235BD715F1CF]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[a2559507-d14c-11f1-975e-3fdd23d8de83]"
+      ],
+      "planned_only": [
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[0BCD59D9-ABE1-4E54-87F7-EC0A2823976C]",
+        "tests/test_d029_run_intent_ledger.py::test_reject_invalid_keys[62aa2bf9-d14c-11f1-b38a-25bbbc5de14c]"
+      ]
+    }
+  },
+  "head": "e8e33afba3c1fdf43c3c5abfef10aa78a255f3a2",
+  "root_cause": "Two random UUID values in parameterized negative tests changed pytest node IDs on each import.",
+  "run_id": 40342419780
+}
