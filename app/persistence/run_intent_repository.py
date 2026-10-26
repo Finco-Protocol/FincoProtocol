@@ -167,6 +167,24 @@ def install_schema(connection: sqlite3.Connection) -> None:
         raise
 
 
+def ensure_schema(connection: sqlite3.Connection) -> None:
+    """Startup entry point: install on a fresh database, verify otherwise.
+
+    Never repairs a partial or foreign preexisting schema: a missing guard or a
+    weakened table raises RUN_INTENT_SCHEMA_INVALID so the application fails
+    closed instead of silently re-arming a different contract.  Concurrent first
+    starts are safe: install_schema serialises on BEGIN IMMEDIATE and is
+    idempotent, and a later starter that finds the complete schema only verifies.
+    """
+    names = [r[0] for r in connection.execute(
+        "SELECT name FROM sqlite_master WHERE name IN "
+        "('model_run_intents','model_run_intents_identity_immutable','model_run_intents_no_delete')").fetchall()]
+    if not names:
+        install_schema(connection)
+    else:
+        verify_schema(connection)
+
+
 def _normalize_schema(sql: str) -> str:
     return re.sub(r"\s+", " ", sql.replace("IF NOT EXISTS ", "")).strip().rstrip(";")
 
