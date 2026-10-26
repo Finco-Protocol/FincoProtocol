@@ -21,3 +21,9 @@
 
 ## Next, once authorized
 Apply items 1–3 of the request, fill the six final blobs after the freeze, (optionally) the single-transaction capacity Save with S1–S3 as permanent tests, push, then await fresh exact-head CI for all workflow families.
+
+
+## Correction B status (single-transaction capacity Save)
+* **Implemented and verified locally (unprotected files):** the capacity Save is one `BEGIN EXCLUSIVE` transaction (`v2_atomic_draft_update` + `in_transaction_finalizer`); S1/S2/S4, genuine two-connection races, bit-identity against the legacy oracle, user overrides and guard tests pass (37 tests); Solar/Wind/Data Center/EV committed Runs (default and 30 MW) are bit-identical to main; wider regression 439 passed; the React bundle rebuilds byte-identically twice. A fourth pre-existing defect (capacity Save nulling `active_scenario_id/name`) is fixed by construction. See the R-1 report, section "CORRECTION B".
+* **Still blocked — exact-path owner authorization:** (1) `tests/test_fin_val_b1_capex_save_integrity.py` node restore (`PROPOSED_B1_NODE_RESTORE.patch`; trial in a scratch tree: patch applies, two collection passes identical, 20,486 nodes, 0 original nodes missing) plus ratification of the three earlier assertion changes; (2) additive SEC-02 successor (`PROPOSED_SEC02_SUCCESSOR.patch`; trial in a scratch tree: the two red successor tests pass, 4 new negative tests pass, all 112 original pins untouched, the six blobs equal the current application blobs). Neither is applied to this branch.
+* **Disposition:** `BLOCKED — OWNER_AUTHORIZATION_REQUIRED`. Public Safety `plan` stays red until item (1) is applied. Fresh exact-head CI after Correction B has not been run.
