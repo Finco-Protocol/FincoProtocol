@@ -7,8 +7,9 @@ contains no workbook, client, vendor, country, or project-specific data.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 from typing import Iterable
 
 
@@ -234,6 +235,14 @@ def opex_children(parent_code: str, technology: str | None = None) -> tuple[Deta
     raise KeyError(f"Unknown public generic OPEX parent: {parent_code}")
 
 
+class NonFiniteParentAmountError(ValueError):
+    """A parent amount was NaN or infinite; no child allocation exists for it.
+
+    Raised explicitly so a non-finite derived amount can never be rounded, zeroed or otherwise
+    turned into a plausible-looking financial value.
+    """
+
+
 def allocate_parent_amount(amount_keur: float, children: Iterable[DetailChild], *, places: int = 8) -> tuple[tuple[DetailChild, float], ...]:
     """Allocate a canonical parent amount with a deterministic final residual.
 
@@ -244,15 +253,24 @@ def allocate_parent_amount(amount_keur: float, children: Iterable[DetailChild], 
     rows = tuple(children)
     if not rows:
         return ()
+    if not math.isfinite(float(amount_keur)):
+        raise NonFiniteParentAmountError(
+            f"Parent amount must be finite to allocate display children (got {amount_keur!r})."
+        )
     quant = Decimal("1").scaleb(-places)
     total = Decimal(str(float(amount_keur)))
     allocated: list[tuple[DetailChild, Decimal]] = []
     consumed = Decimal("0")
-    for child in rows[:-1]:
-        value = (total * child.weight).quantize(quant, rounding=ROUND_HALF_UP)
-        allocated.append((child, value))
-        consumed += value
-    allocated.append((rows[-1], total - consumed))
+    # The default 28-digit context cannot hold a parent amount's integer digits plus the display
+    # quantum (InvalidOperation from ~1e(28-places) upward).  Widen the precision locally, only
+    # as far as this parent needs; weights, ordering, rounding mode and last-child residual are unchanged.
+    with localcontext() as ctx:
+        ctx.prec = max(ctx.prec, total.adjusted() + places + 2)
+        for child in rows[:-1]:
+            value = (total * child.weight).quantize(quant, rounding=ROUND_HALF_UP)
+            allocated.append((child, value))
+            consumed += value
+        allocated.append((rows[-1], total - consumed))
     return tuple((child, float(value)) for child, value in allocated)
 
 
