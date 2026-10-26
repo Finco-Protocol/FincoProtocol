@@ -1,0 +1,89 @@
+# P1 prototype evaluation: executor process pool with/without native prewarm. Tree = origin/main + released .so files.
+import os, sys, time, json, re, pickle, statistics, dataclasses, signal, hashlib
+sys.path.insert(0, "/root/v11_perf/bench"); tree = "/root/v11_perf/benchtree"; sys.path.insert(0, tree); os.chdir(tree)
+REPS = int(sys.argv[1])
+os.environ.update({"PYTHONDONTWRITEBYTECODE": "1", "FINCO_RLIVE_WARMING_ENABLED": "0", "FINCO_MODEL_EXECUTION_MODE": "thread",
+    "FINCO_NATIVE_V10_KILL_SWITCH_FILE": "/nonexistent/k10", "FINCO_NATIVE_V11_KILL_SWITCH_FILE": "/nonexistent/k11"})
+OUT = "/root/v11_perf/bench/out_p1"; os.makedirs(OUT, exist_ok=True)
+import benchfn_p1 as bf
+def capture():
+    from app.persistence import db
+    db.DB_PATH = f"{OUT}/cap.db"
+    for suf in ("", "-wal", "-shm"):
+        try: os.unlink(db.DB_PATH + suf)
+        except FileNotFoundError: pass
+    db.init_db()
+    from app.services.reference_seed_service import create_reference_seeded_project
+    rec = create_reference_seeded_project(user_id="u", template_source="generic_solar_reference", requested_name="p1", capacity_mw=64.0)
+    from app.auth import COOKIE_NAME, create_session_token
+    ck = {COOKIE_NAME: create_session_token(user_id="u", username="admin")}
+    import app.api.project_runner as pr
+    real = pr.run_project; box = {}
+    def recording(*a, **k): box["args"] = a; box["kwargs"] = dict(k); return real(*a, **k)
+    pr.run_project = recording
+    from fastapi.testclient import TestClient
+    import main_web
+    from tests.run_clone_csrf import post_valid_csrf
+    with TestClient(main_web.app) as c:
+        page = c.get(f"/v2/workbook?project={rec.project_code}", cookies=ck)
+        h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1); v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+        r = post_valid_csrf(c, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v}, cookies=ck, headers={"HX-Request": "true"})
+        assert r.status_code == 200
+    pr.run_project = real
+    return box
+box = capture()
+pi0 = box["kwargs"]["project_inputs_override"]
+def pert(k):
+    items = [dataclasses.replace(it, y1_amount_keur=it.y1_amount_keur * (1 + 1e-6 * k)) if i == 0 else it for i, it in enumerate(pi0.opex)]
+    return dataclasses.replace(pi0, opex=type(pi0.opex)(items))
+os.environ.update({"FINCO_MODEL_EXECUTION_MODE": "process", "FINCO_MODEL_EXECUTION_CONCURRENCY": "2",
+    "FINCO_NATIVE_V10_RUN": "stage1+2", "FINCO_NATIVE_V10_RUN_BUILD_ID": "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434",
+    "FINCO_NATIVE_V11_RUN": "on", "FINCO_NATIVE_V11_RUN_BUILD_ID": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344"})
+from app.runtime import model_execution as me, native_activation as na
+from app.api.project_runner import run_project
+import p1probe
+def rss_kb(pid):
+    try:
+        for line in open(f"/proc/{pid}/status"):
+            if line.startswith("VmRSS"): return int(line.split()[1])
+    except OSError: return None
+digests = set()
+def one_rep(variant, rep):
+    me._worker_warmup_probe = p1probe.warmup_probe_with_native if variant == "p1" else p1probe.base_probe
+    ex = me.ModelExecutor(me.ModelExecutionConfig(concurrency=2, mode="process")); me._EXECUTOR = ex
+    t = time.perf_counter(); st = ex.warm_up(); warm_s = time.perf_counter() - t
+    pids = st["warm_pids"]; rec = {"variant": variant, "rep": rep, "warm_s": warm_s, "warm": st["warm"], "workers": st["warm_workers"], "pids": pids,
+                                   "rss_after_warm_kb": {p: rss_kb(p) for p in pids}, "runs": []}
+    seen = set()
+    for k in range(4):
+        t = time.perf_counter()
+        r = ex.run_process_sync(bf.Timed(na.activated(run_project)), *box["args"], project_inputs_override=pert(1 + rep * 10 + k + (500 if variant == "p1" else 0)))
+        rt = time.perf_counter() - t; v = r["value"]; value = na.native_result(v)
+        digests.add((k, hashlib.sha256(pickle.dumps(value, protocol=5)).hexdigest())) if False else None
+        rec["runs"].append({"seq": k, "pid": r["pid"], "first_for_pid": r["pid"] not in seen, "inner": r["inner_wall"], "roundtrip": rt,
+                            "v11_models": None if not hasattr(v, "stage3_stats") or v.stage3_stats is None else v.stage3_stats["native_models"]})
+        seen.add(r["pid"])
+    rec["rss_after_runs_kb"] = {p: rss_kb(p) for p in pids}
+    # worker replacement A: executor dies while idle -> what does the NEXT submission do?
+    import threading
+    os.kill(pids[0], signal.SIGKILL); time.sleep(0.5)
+    idle = []
+    for attempt in range(2):
+        try:
+            ex.run_process_sync(bf.Timed(na.activated(run_project)), *box["args"], project_inputs_override=pert(700 + rep * 3 + attempt)); idle.append("ok")
+        except Exception as exc:
+            idle.append(type(exc).__name__)
+    rec["idle_death_next_two_submissions"] = idle
+    if idle[-1] != "ok":
+        ex._discard_broken_process_pool()     # explicit recovery so the remaining measurement can proceed
+    t = time.perf_counter()
+    r = ex.run_process_sync(bf.Timed(na.activated(run_project)), *box["args"], project_inputs_override=pert(950 + rep))
+    rec["after_respawn"] = {"pid": r["pid"], "new_pid": r["pid"] not in pids, "inner": r["inner_wall"], "roundtrip": time.perf_counter() - t,
+                            "warm_flag_still": ex.is_warm}
+    ex.shutdown_and_join(); me._EXECUTOR = None
+    return rec
+results = []
+for rep in range(REPS):
+    for variant in (("base", "p1") if rep % 2 == 0 else ("p1", "base")):
+        results.append(one_rep(variant, rep)); print(variant, rep, round(results[-1]["warm_s"], 2), [round(x["inner"], 2) for x in results[-1]["runs"]], flush=True)
+json.dump(results, open(f"{OUT}/p1_results.json", "w"), indent=1)

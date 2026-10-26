@@ -1,0 +1,44 @@
+import os, sys, json, re, uuid, collections, time
+tree = sys.argv[1]; sys.path.insert(0, tree); os.chdir(tree)
+os.environ.update({"PYTHONDONTWRITEBYTECODE": "1", "FINCO_RLIVE_WARMING_ENABLED": "0", "FINCO_MODEL_EXECUTION_MODE": "thread",
+                   "FINCO_NATIVE_V10_KILL_SWITCH_FILE": "/nonexistent/k10", "FINCO_NATIVE_V11_KILL_SWITCH_FILE": "/nonexistent/k11"})
+from app.persistence import db
+db.DB_PATH = f"/root/v11_perf/bench/census_{os.path.basename(tree)}.db"
+for suf in ("", "-wal", "-shm"):
+    try: os.unlink(db.DB_PATH + suf)
+    except FileNotFoundError: pass
+db.init_db()
+USER = "bench-user"
+from app.services.reference_seed_service import create_reference_seeded_project
+rec = create_reference_seeded_project(user_id=USER, template_source="generic_solar_reference", requested_name="census", capacity_mw=64.0)
+from app.auth import COOKIE_NAME, create_session_token
+ck = {COOKIE_NAME: create_session_token(user_id=USER, username="admin")}
+import app.v2.post_run_ui as pru
+rec_kw = {}; orig = pru.build_coherent_post_run_ui_state
+def bc(**kw): rec_kw.clear(); rec_kw.update(kw); return orig(**kw)
+pru.build_coherent_post_run_ui_state = bc
+from fastapi.testclient import TestClient
+import main_web
+from tests.run_clone_csrf import post_valid_csrf
+with TestClient(main_web.app) as client:
+    page = client.get(f"/v2/workbook?project={rec.project_code}", cookies=ck)
+    h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1); v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+    r = post_valid_csrf(client, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v}, cookies=ck, headers={"HX-Request": "true", "X-Finco-Lazy-Views": "1"})
+    assert r.status_code == 200
+    from app.persistence.db import get_cursor
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM model_run_history WHERE project_id=?", (rec.project_id,)); row = dict(cur.fetchone()); cols = list(row)
+        for i in range(1, 26):
+            new = dict(row); new["history_id"] = uuid.uuid4().hex; new["runtime_snapshot_id"] = f"{row['runtime_snapshot_id']}-{i:04d}"
+            new["ran_at"] = f"2026-01-{i + 1:02d}T00:00:00+00:00"
+            cur.execute(f"INSERT INTO model_run_history ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", tuple(new[c] for c in cols))
+    by = collections.Counter(); bytes_by = collections.Counter(); real = json.loads
+    def counting(s, *a, **k):
+        f = sys._getframe(1); key = f"{os.path.relpath(f.f_code.co_filename, tree)}:{f.f_code.co_name}"
+        by[key] += 1; bytes_by[key] += len(s) if isinstance(s, (str, bytes)) else 0
+        return real(s, *a, **k)
+    json.loads = counting
+    t = time.perf_counter(); out = pru.build_coherent_post_run_ui_state(**rec_kw); el = time.perf_counter() - t
+    json.loads = real
+print("tree", tree, "replay_s", round(el, 3), "total json.loads", sum(by.values()), "bytes", sum(bytes_by.values()))
+for k, n in by.most_common(14): print(f"{n:5d} {bytes_by[k]/1024:9.0f} KB  {k}")

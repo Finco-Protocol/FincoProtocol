@@ -1,0 +1,98 @@
+{
+ "label": "base_r2",
+ "rows": 60,
+ "avg_row_json_bytes": 226648,
+ "list_limit": 25,
+ "json_loads_per_listing": 425,
+ "json_loads_per_entry": 17.0,
+ "repo_get_run_history_limit": {
+  "wall": {
+   "n": 50,
+   "median_ms": 236.337,
+   "p95_ms": 303.309,
+   "min_ms": 199.965,
+   "max_ms": 331.046,
+   "mad_ms": 11.772
+  },
+  "cpu": {
+   "n": 50,
+   "median_ms": 236.316,
+   "p95_ms": 303.276,
+   "min_ms": 199.953,
+   "max_ms": 330.996,
+   "mad_ms": 11.783
+  }
+ },
+ "decoder_only_25_rows": {
+  "wall": {
+   "n": 50,
+   "median_ms": 228.065,
+   "p95_ms": 277.0,
+   "min_ms": 197.448,
+   "max_ms": 303.747,
+   "mad_ms": 13.093
+  },
+  "cpu": {
+   "n": 50,
+   "median_ms": 228.053,
+   "p95_ms": 276.988,
+   "min_ms": 197.349,
+   "max_ms": 303.732,
+   "mad_ms": 13.109
+  }
+ },
+ "one_entry_decode": {
+  "wall": {
+   "n": 200,
+   "median_ms": 9.233,
+   "p95_ms": 11.591,
+   "min_ms": 6.404,
+   "max_ms": 86.449,
+   "mad_ms": 0.505
+  },
+  "cpu": {
+   "n": 200,
+   "median_ms": 9.218,
+   "p95_ms": 11.577,
+   "min_ms": 6.392,
+   "max_ms": 86.44,
+   "mad_ms": 0.504
+  }
+ },
+ "post_run_history_fragment": {
+  "wall": {
+   "n": 50,
+   "median_ms": 237.94,
+   "p95_ms": 266.463,
+   "min_ms": 186.466,
+   "max_ms": 315.792,
+   "mad_ms": 12.142
+  },
+  "cpu": {
+   "n": 50,
+   "median_ms": 237.902,
+   "p95_ms": 266.428,
+   "min_ms": 186.432,
+   "max_ms": 315.703,
+   "mad_ms": 12.143
+  }
+ },
+ "http_get_run_history_listing": {
+  "wall": {
+   "n": 25,
+   "median_ms": 243.078,
+   "p95_ms": 280.837,
+   "min_ms": 218.749,
+   "max_ms": 302.451,
+   "mad_ms": 10.874
+  },
+  "cpu": {
+   "n": 25,
+   "median_ms": 243.687,
+   "p95_ms": 280.714,
+   "min_ms": 218.896,
+   "max_ms": 303.902,
+   "mad_ms": 11.311
+  }
+ }
+}

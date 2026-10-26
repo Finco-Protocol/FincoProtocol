@@ -1,0 +1,51 @@
+"""Candidate P1 worker probe (PROTOTYPE kept outside the repository; the protected file is not modified)."""
+import os, time
+
+def _evict_failed(module, kind):
+    """A failed verification is cached per process by the loaders; do not let a prewarm failure become permanent."""
+    with module._LOCK:
+        cache = module._RESULT if kind == "dict" else module._LIB
+        for k in [k for k, v in cache.items() if v[0] is None]:
+            cache.pop(k, None)
+
+def native_prewarm():
+    from app.runtime import native_activation as na
+    v10, v10_reason = na.setting()
+    v11, v11_reason = na.v11_setting()
+    out = {"v10_mode": v10, "v11_mode": v11, "stages": {}}
+    t_all = time.perf_counter()
+    def stage(name, fn, module, kind, pin):
+        t = time.perf_counter()
+        lib, reason = fn()
+        rec = {"seconds": round(time.perf_counter() - t, 4), "ready": lib is not None, "reason": reason}
+        if lib is not None:
+            bid = lib.build_id if hasattr(lib, "build_id") else lib[1]
+            rec["build_id"] = bid
+            if pin and bid != pin:
+                rec["ready"], rec["reason"] = False, "BUILD_ID_PIN_MISMATCH"
+        else:
+            _evict_failed(module, kind)
+        out["stages"][name] = rec
+    if v10 != "off":
+        from financial_engine.native_v10 import loader
+        stage("v10_stage1", loader.get_native, loader, "dict", (os.environ.get(na.ENV_BUILD_ID) or "").strip() or None)
+        if v10 == "stage1+2":
+            from financial_engine.native_v10 import stage2
+            def s2():
+                r = stage2.get_stage2(); return (r[0], r[1])
+            stage("v10_stage2", s2, stage2, "lib", None)
+    if v11 != "off":
+        from financial_engine.native_v11 import stage3
+        stage("v11_stage3", stage3.get_stage3, stage3, "dict", (os.environ.get(na.ENV_V11_BUILD_ID) or "").strip() or None)
+    out["seconds"] = round(time.perf_counter() - t_all, 4)
+    return out
+
+def warmup_probe_with_native():
+    from app.runtime.model_execution import _worker_warmup_probe as base
+    res = base()
+    res["native"] = native_prewarm()
+    return res
+
+def base_probe():
+    from app.runtime.model_execution import _worker_warmup_probe as base
+    return base()
