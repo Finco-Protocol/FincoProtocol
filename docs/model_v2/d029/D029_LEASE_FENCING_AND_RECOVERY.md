@@ -1,28 +1,18 @@
-# D-029 lease fencing and recovery
+# D-029 lease, fencing and recovery
 
-Leases use SQLite's clock (milliseconds), not unrelated process clocks. Generation is monotonic integer;
-owner nonce changes on takeover. Scope/fingerprint/created identity stay immutable. No reset to generation 1.
-Generation overflow refuses recovery. Recovery policy is explicit, unused by the application, and not automatic.
+`LEASE_MS` = 1,020,000 (900 s executor cap + 120 s margin). `reserve` is a single unique INSERT; only the acquirer receives a
+reservation and may start the engine. Fencing is checked twice: at `start` and inside the commit transaction
+(`require_owner_cursor`), comparing generation, owner nonce, fingerprint, RUNNING state and unexpired lease.
 
-`require_owner_cursor` requires an active transaction, current schema, state, generation, owner nonce,
-frozen fingerprint and unexpired lease. The same check runs at finalization. BEGIN IMMEDIATE/EXCLUSIVE
-prevents another connection from taking over in the middle of the commit transaction.
-
-Executed: an independent OS process A claims then remains alive/stalled; a controlled lease fault expires A;
-B takes generation 2; A resumes and is refused both before and after B's commit in separate test cases.
-Exactly one synthetic history row remains. Additional real process exits cover after-reservation, before
-COMMIT (after history/finalization writes) and after COMMIT. Restart sees rollback or original committed ID.
-
-These are real SQLite/process fence tests, not actual five HTTP server workers running the financial engine.
-Recovery MAY recompute while old physical calculation is still alive. No exactly-once engine claim is made.
-An adequate lease must cover released execution timeout plus commit grace; worker admission/cancellation stay unchanged.
-No new heartbeat daemon or polling service is introduced. Explicit recovery and timeout/failure policy need owner review.
+`recover()` (explicit expired-lease takeover, generation + 1) exists and is tested but is NOT routed: an expired RESERVED/
+RUNNING intent answers typed `EXPIRED` and runs nothing. Test `test_stale_owner_is_fenced_and_commits_nothing` expires the
+lease mid-run, takes over with a second owner, releases the first, and proves: no history row, Last Run unchanged, the new
+owner's claim untouched. Automatic recovery needs an owner decision (see register).
 
 ## Status boundary
 
-Implemented: isolated reservation, lookup/reconciliation, schema audit, fencing and cursor finalization helpers.
-Proven: the executed persistence-only and released-baseline checks listed in `evidence/D029_LOCAL_TEST_RESULTS.json`.
-Proposed policy: `D029_OWNER_DECISION_REGISTER.md`; no production rollout is enabled.
-Deferred integration: canonical HTTP Run, financial commit hook, startup migration and real clients, after FIN-VAL #383 merges.
-Owner decisions: retention, expiration/retry and compatibility semantics remain open.
-Residual risk: the currently released Run route still permits duplicate commits; isolated tests do not prove end-to-end idempotency.
+Release state: **RELEASE CLOSED**. See the release-state matrix in `D029_EXECUTIVE_REVIEW.md`.
+Implemented and tested on PR #384 head: the canonical `POST /v2/workbook/run` intent lifecycle, the single-transaction
+commit, startup schema, the React and Legacy clients and the governance successor. Not owner-approved, not activated:
+the owner policies in `D029_OWNER_DECISION_REGISTER.md` remain candidates, `RELEASE_POLICY.enabled` is false, nothing is
+deployed or merged. A request without `run_intent_id` keeps the released, non-idempotent behaviour.

@@ -1,29 +1,53 @@
 # D-029 executive review
 
-**PARTIAL IMPLEMENTATION — INTEGRATION / OWNER DECISION REQUIRED**
+**Disposition: READY_FOR_INDEPENDENT_REVIEW — RELEASE CLOSED** (subject to the exact-head CI receipt in `D029_EXACT_HEAD_CI_REPORT.md`
+and to the one open authorization request listed under *Open items*).
 
-Base: `8944aca351ef89c81a8a9bf715ab352629c35624`, tree `3448aeb245ff118fde0907541dfe40ace42a86d8`.
-Merged dependencies #381/#382 are recorded in `evidence/D029_PREFLIGHT.json`.
-The supplied Stage A ZIP was independently checked and current-main duplicate commits reproduced.
+PR #384, branch `codex/d029-run-idempotency-v1`, forward-merged with main after #383 (`36edeeb5d9a1`). No rebase,
+squash, cherry-pick, force push, self-merge, deploy, staging mutation or feature activation.
 
-Four additive source/test/diagnostic files implement a durable, SQLite-unique intent, immutable submitted binding,
-frozen effective fingerprint, explicit takeover with generation/owner fencing, original-history reconciliation,
-and an atomic-finalization helper. No application endpoint imports them. No financial/history writer was added.
-The migration is explicit and unused by normal application startup. `RELEASE_POLICY.enabled` is false.
+## What the PR now does
 
-Do not merge this foundation as the complete D-029 fix. FIN-VAL B2/C1 #383 owns shared Run-adjacent source.
-After its independent merge, forward-merge main normally into the SAME D-029 branch/PR, finish the hooks,
-append narrow governance succession, then run all end-to-end/financial/CI requirements. No rebase,
-cherry-pick, force push, deployment, activation or self-approval is authorized.
+`POST /v2/workbook/run` accepts an optional `run_intent_id` (UUIDv4). Order, enforced by a structural validator
+(`d029_run_order_violations`): authenticate -> resolve project -> ownership -> purpose-bound Run CSRF (contradictory dual
+tokens fail) -> validate key -> reconcile an existing intent by its ORIGINAL submitted binding (actor = workspace owner,
+project, workbook version, content hash) -> only for a new intent: version/CAS/scenario, materialize effective inputs,
+freeze the fingerprint, durable reservation -> bounded executor -> final CAS + fence -> ONE transaction that checks the
+fence, appends exactly one history row, calls `finalize_cursor` and COMMITs -> typed response read back from the exact
+`history_id`. An intent id is never authorization; protected references are refused before any ledger access.
 
-Evidence tables distinguish actual canonical baseline Runs from synthetic persistence fault injection.
-The final published commit/tree and exact-head CI receipt must be read from the review package/live Draft PR.
+## Release-state matrix
+
+| Capability | IMPLEMENTED | TESTED | OWNER-APPROVED | ACTIVATED |
+|---|---|---|---|---|
+| Durable intent ledger, fencing, immutable identity | yes | yes (34 ledger + HTTP tests) | no | no |
+| Route integration (decide / reserve / typed outcomes) | yes | yes (real engine, HTTP) | no | no |
+| Atomic commit: fence + one history row + finalize before COMMIT | yes | yes (fault injection, rollback proof) | no | no |
+| Startup schema (additive, repeatable, fail-closed, concurrent-safe) + trust inventory | yes | yes | no | no |
+| React client (UUIDv4, resume with original binding, typed outcomes, exact history reconcile) | yes | yes (real Chromium) | no | no |
+| Legacy/HTMX client (one id across queue/lost response/OOB/reload) | yes | yes (real Chromium) | no | no |
+| Missing key => optional, non-idempotent | yes | yes | NO (candidate) | no |
+| Committed immutable / IN_PROGRESS typed / FAILED terminal / HISTORY_UNAVAILABLE / expired fails closed / no auto-retention | yes | yes | NO (candidates) | no |
+| Required keys, retention/tombstone, automatic recovery of expired intents | NO | NO | NO | no |
+| SEC-02 / FIN-VAL successor layer (two paths, original pins preserved) | yes | yes | authorization relayed in thread, not independently verified | no |
+| Wrappers in the mandatory Browser Acceptance role | no (see Open items) | local only | - | no |
+
+`RELEASE_POLICY.enabled` stays false. Nothing here activates or requires a key.
+
+## Open items
+
+1. `tests/test_model_workspace_consolidation_browser.py` is a pinned SEC-02 path and also the only file the mandatory
+   Browser Acceptance role executes. The seven D-029 Chromium checks are written (`tests/model_d029_run_intent_browser_acceptance.py`)
+   and pass locally, but wiring them into that role needs exact-path owner authorization for that file (plus a successor
+   entry). Until then they are local evidence, not CI evidence. Prepared patch is not applied.
+2. Owner decisions in the register remain PENDING.
+3. Authorization for `app/v2/router.py`, the React bundle, `workflow/WorkflowBar.tsx`, `trust_readiness/registry.py` and
+   `persistence/db.py` was relayed by the requester ("Imam odobrenje ownera"); it is recorded here as relayed, not verified.
 
 ## Status boundary
 
-Implemented: isolated reservation, lookup/reconciliation, schema audit, fencing and cursor finalization helpers.
-Proven: the executed persistence-only and released-baseline checks listed in `evidence/D029_LOCAL_TEST_RESULTS.json`.
-Proposed policy: `D029_OWNER_DECISION_REGISTER.md`; no production rollout is enabled.
-Deferred integration: canonical HTTP Run, financial commit hook, startup migration and real clients, after FIN-VAL #383 merges.
-Owner decisions: retention, expiration/retry and compatibility semantics remain open.
-Residual risk: the currently released Run route still permits duplicate commits; isolated tests do not prove end-to-end idempotency.
+Release state: **RELEASE CLOSED**. See the release-state matrix in `D029_EXECUTIVE_REVIEW.md`.
+Implemented and tested on PR #384 head: the canonical `POST /v2/workbook/run` intent lifecycle, the single-transaction
+commit, startup schema, the React and Legacy clients and the governance successor. Not owner-approved, not activated:
+the owner policies in `D029_OWNER_DECISION_REGISTER.md` remain candidates, `RELEASE_POLICY.enabled` is false, nothing is
+deployed or merged. A request without `run_intent_id` keeps the released, non-idempotent behaviour.

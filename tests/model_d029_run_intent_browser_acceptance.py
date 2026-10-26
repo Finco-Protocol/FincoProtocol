@@ -135,10 +135,19 @@ def check_react_lost_response_survives_reload_and_resumes_the_original_run(brows
         context.close()
 
 
+def current_draft_hash(context, base, record):
+    payload = context.request.get(f"{base}/v2/model-react/fields/project_setup?project={record.project_code}").json()
+    return payload["save"]["content_hash"]
+
+
 def check_react_resume_after_the_draft_changed_never_runs_against_the_new_draft(browser, react_enabled):
+    """A REAL committed edit moves the composite hash; the unresolved intent is then resumed with its ORIGINAL
+    binding and must return the original history row without a second financial execution."""
+    from tests.model_react_wf2_browser_acceptance import bumped, field_input_id, goto_section, numeric_bound_field
     context, page, record, errors = make_session(browser, react_enabled, "d029-react-edit")
     base = react_enabled
     try:
+        page.on("dialog", lambda d: d.accept())
         materialize(context, base, record)
         posts = record_run_posts(page)
         open_workspace(page, base, record, "overview")
@@ -147,15 +156,38 @@ def check_react_resume_after_the_draft_changed_never_runs_against_the_new_draft(
         click_run(page)
         wait_status(page, "conflict", None, "[data-workflow-bar='true']")
         before = runs(context, base, record)
-        # A second tab changes the workbook, so today's composite hash differs from the one submitted.
-        from tests.model_mutation_csrf import post_valid_mutation  # noqa: F401  (token helper used by the legacy tests)
+        assert len(before) == 1, "the server committed exactly once although the response was lost"
+        original_hash = posts[0]["content_hash"]
+        assert current_draft_hash(context, base, record) == original_hash
+
+        # A genuine, verified Save through the real editor (not a second tab simulation, not a mock).
+        goto_section(page, "inputs")
+        page.wait_for_selector("[data-sheet-editor='project_setup']")
+        row = numeric_bound_field(context, base, record, "project_setup", prefer=("project_setup.technical.p50_hours",))
+        new_value = bumped(row)
+        page.locator(f"#{field_input_id('project_setup', row['field_id'])}").fill(new_value)
+        page.get_by_role("button", name=f"Save {row['label']}").click()
+        wait_status(page, "ok", "verified", "[data-sheet-editor='project_setup']")
+        changed_hash = current_draft_hash(context, base, record)
+        assert changed_hash != original_hash, "the composite hash must have moved"
+        persisted = next(f for f in context.request.get(
+            f"{base}/v2/model-react/fields/project_setup?project={record.project_code}").json()["fields"] if f["field_id"] == row["field_id"])
+        assert float(persisted["value"]) == float(new_value)
+        assert runs(context, base, record) == before, "Save never creates or changes a Run"
+
         page.reload()
         page.wait_for_selector("[data-wf-resume='true']")
+        sent_before = len(posts)
         page.locator("[data-wf-resume='true']").click()
         wait_intent_consumed(page)
+        assert len(posts) == sent_before + 1
+        assert posts[-1]["run_intent_id"] == posts[0]["run_intent_id"]
+        assert posts[-1]["content_hash"] == original_hash != changed_hash, "resume uses the ORIGINAL binding"
         after = runs(context, base, record)
-        assert [r["history_id"] for r in after] == [r["history_id"] for r in before], "resume never creates a second Run"
-        assert posts[-1]["content_hash"] == posts[0]["content_hash"]
+        assert [r["history_id"] for r in after] == [r["history_id"] for r in before], "no second Run, same history row"
+        assert after[0]["runtime_snapshot_id"] == before[0]["runtime_snapshot_id"]
+        assert current_draft_hash(context, base, record) == changed_hash, "the replay did not touch the edited draft"
+        assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:
         context.close()
 

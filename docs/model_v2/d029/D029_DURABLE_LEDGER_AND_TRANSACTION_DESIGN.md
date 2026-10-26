@@ -1,34 +1,22 @@
-# D-029 ledger and transaction design
+# D-029 durable ledger and transaction design
 
-`model_run_intents` stores unique scoped intent, reservation ID, submitted/frozen SHA256 bindings, version/hash,
-state, generation, unguessable owner nonce, database-clock lease/timestamps, terminal code and unique history ID.
-Additive `install_schema(connection)` is repeatable and refuses to run inside a financial transaction.
-`verify_schema` fails closed on missing/mismatched unique constraints, CHECKs or immutable-state triggers.
-No migration is connected to `db._init_schema` yet, so production behavior and schema initialization are unchanged.
+Table `model_run_intents`: unique `(actor_id, project_id, run_intent_id)`; states RESERVED/RUNNING/FAILED/COMMITTED with CHECK
+constraints; immutable identity trigger; delete-refusal trigger; generation + `owner_nonce` fencing; lease expiry.
 
-States: RESERVED -> RUNNING -> COMMITTED, or RESERVED/RUNNING -> FAILED.
-Explicit expired RESERVED/RUNNING recovery increments generation and changes owner nonce, returning RESERVED.
-COMMITTED and FAILED records cannot be updated/deleted. There is no cleanup or key reuse operation.
-Short BEGIN IMMEDIATE transactions own claims; no ledger transaction spans engine execution or waits.
-WAL, connection timeout/busy handling and existing DB authority are reused. The SQLite unique constraint is cross-process authority.
+Startup: `db._init_schema` calls `run_intent_repository.ensure_schema`: fresh database => `install_schema` (single
+`BEGIN IMMEDIATE` script, `IF NOT EXISTS`, concurrent starters serialize and the later one only verifies); any pre-existing
+object => `verify_schema` (normalized SQL comparison) which raises `RUN_INTENT_SCHEMA_INVALID` instead of repairing. Additive
+and repeatable; no financial table is touched. Trust-readiness inventory entry: `data.run_intents`.
 
-Required hook: in `v2_atomic_run_commit`'s EXISTING BEGIN EXCLUSIVE transaction, verify the permit before
-financial writes and preserve final CAS/integrity checks. Capture `history_id = _append_history(cur, payload)`;
-call `finalize_cursor(cur, permit, history_id)` before existing COMMIT. Propagate every failure into existing
-rollback. Finalize validates scoped history actor/project/version/composite identity and current unexpired generation.
-The helper neither inserts financial/history rows nor commits. No post-commit second writer is permitted.
-
-Writer inventory: canonical V2 router and protected-reference initialization use `v2_atomic_run_commit`.
-Legacy runtime persistence also passes run_history_payload into `save_workspace_state`, whose two branches
-append via the SAME `append_run_history_cursor`. That cursor function is the sole SQL INSERT implementation
-found for model_run_history. Legacy/no-key callers and reference seeding retain released semantics.
-Idempotency guarantee cannot be claimed until the canonical hook is wired and demonstrated with real Runs.
+Commit: `workspace_repository.v2_atomic_run_commit(..., run_intent=reservation)` inside the existing BEGIN EXCLUSIVE:
+`require_owner_cursor` after the final CAS and before any write; `_append_history` returns the `history_id`;
+`finalize_cursor(cur, reservation, history_id)` runs BEFORE COMMIT. Any exception rolls back Last Run promotion, the history row
+and the intent together (tests inject faults at finalize and at history append and prove nothing persists).
 
 ## Status boundary
 
-Implemented: isolated reservation, lookup/reconciliation, schema audit, fencing and cursor finalization helpers.
-Proven: the executed persistence-only and released-baseline checks listed in `evidence/D029_LOCAL_TEST_RESULTS.json`.
-Proposed policy: `D029_OWNER_DECISION_REGISTER.md`; no production rollout is enabled.
-Deferred integration: canonical HTTP Run, financial commit hook, startup migration and real clients, after FIN-VAL #383 merges.
-Owner decisions: retention, expiration/retry and compatibility semantics remain open.
-Residual risk: the currently released Run route still permits duplicate commits; isolated tests do not prove end-to-end idempotency.
+Release state: **RELEASE CLOSED**. See the release-state matrix in `D029_EXECUTIVE_REVIEW.md`.
+Implemented and tested on PR #384 head: the canonical `POST /v2/workbook/run` intent lifecycle, the single-transaction
+commit, startup schema, the React and Legacy clients and the governance successor. Not owner-approved, not activated:
+the owner policies in `D029_OWNER_DECISION_REGISTER.md` remain candidates, `RELEASE_POLICY.enabled` is false, nothing is
+deployed or merged. A request without `run_intent_id` keeps the released, non-idempotent behaviour.

@@ -145,13 +145,15 @@ FINVAL_B2C1_SUCCESSORS={
     "frontend/src/app/types.ts":"d5077405dd2c316fe3ee006250287d11835382f4",
     "static/react/finco-react.js":"4b74bb50f43c665136e8fcac11e0a9beead08f8b",
 }
-# D-029 (PR #384) admits exact reviewed successors of the two pinned files the Run-intent integration had to change
-# (the Run route and the React bundle built from the reviewed WorkflowBar/api/runIntent sources).  Additive: every
+# D-029 (PR #384) admits exact reviewed successors of the three pinned files the Run-intent integration had to change
+# (the Run route, the React bundle built from the reviewed WorkflowBar/api/runIntent sources and, by explicit Financial Owner
+# authorization in Correction B, the mandatory consolidation browser file that gained the seven D-029 Chromium wrappers).  Additive: every
 # original pin and the FIN-VAL B2/C1 layer above stay immutable and individually verified at SOURCE_HEAD.  Any further
 # drift of either file needs a new review.  Owner authorization for exactly these paths was relayed in the PR thread.
 D029_RUN_INTENT_SUCCESSORS={
     "app/v2/router.py":"37f18a0e35c0e0a9ede5d71a0f9dfc906a68c7c2",
-    "static/react/finco-react.js":"907cfa53e07c78e03cd12dd537a806832dfeb7e8",
+    "static/react/finco-react.js":"907cfa53e07c78e03cd12dd537a806832dfeb7e8",    # Correction B: the seven real-Chromium D-029 wrappers the mandatory Browser Acceptance role executes (additive only).
+    "tests/test_model_workspace_consolidation_browser.py":"f1a762a4f7bbfca34e8e93c74fbba3042d970665",
 }
 ROUTES={
     "app/v2/router.py": {

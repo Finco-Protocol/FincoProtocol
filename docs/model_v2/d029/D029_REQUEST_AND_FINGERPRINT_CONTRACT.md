@@ -21,9 +21,8 @@ Re-executing under a new engine contract is a new intent; original committed evi
 
 ## Status boundary
 
-Implemented: isolated reservation, lookup/reconciliation, schema audit, fencing and cursor finalization helpers.
-Proven: the executed persistence-only and released-baseline checks listed in `evidence/D029_LOCAL_TEST_RESULTS.json`.
-Proposed policy: `D029_OWNER_DECISION_REGISTER.md`; no production rollout is enabled.
-Deferred integration: canonical HTTP Run, financial commit hook, startup migration and real clients, after FIN-VAL #383 merges.
-Owner decisions: retention, expiration/retry and compatibility semantics remain open.
-Residual risk: the currently released Run route still permits duplicate commits; isolated tests do not prove end-to-end idempotency.
+Release state: **RELEASE CLOSED**. See the release-state matrix in `D029_EXECUTIVE_REVIEW.md`.
+Implemented and tested on PR #384 head: the canonical `POST /v2/workbook/run` intent lifecycle, the single-transaction
+commit, startup schema, the React and Legacy clients and the governance successor. Not owner-approved, not activated:
+the owner policies in `D029_OWNER_DECISION_REGISTER.md` remain candidates, `RELEASE_POLICY.enabled` is false, nothing is
+deployed or merged. A request without `run_intent_id` keeps the released, non-idempotent behaviour.

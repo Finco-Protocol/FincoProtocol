@@ -1,29 +1,28 @@
-# D-029 security and CAS ordering
+# D-029 security and CAS ordering (as implemented)
 
-Required canonical order after #383 integration: authenticate -> resolve accessible immutable project ->
-protected-reference refusal -> validate released session/project/purpose Run CSRF -> validate/scope key ->
-look up original submitted binding -> replay ORIGINAL committed history or classify in-progress/failure.
-Only a genuinely new/recoverable intent continues through current version/CAS/canonical materialization,
-fingerprint/reservation and existing admission/engine/final CAS/integrity/atomic commit pipeline.
+Order in `v2_workbook_run` (structurally enforced by `d029_run_order_violations` in the SEC-02 successor module, with
+negative mutations proving each reorder is detected without byte pins):
 
-Never execute a protected reference because a key exists; never disclose a key/history through unauthorized access.
-Run CSRF remains purpose `workbook-run-v1`, with released dual-field contradiction refusal unchanged.
-The service is NOT an access-control boundary and must not be exposed directly as a public capability.
+1. authenticate; 2. resolve accessible project and workspace owner (404 for inaccessible, non-disclosing);
+3. purpose-bound `workbook-run-v1` CSRF, contradictory dual tokens rejected (403) - **before any ledger access**;
+4. `run_intent_id` syntax; 5. `decide(...)`: protected reference => REFUSED without touching the ledger; otherwise lookup by
+the ORIGINAL submitted binding (workspace owner, project, workbook_version, content_hash) => REPLAYED / IN_PROGRESS /
+FAILED / EXPIRED / HISTORY_UNAVAILABLE / CONFLICT, or NEW;
+6. only NEW continues: workspace, version, CAS, scenario, effective-input materialization, frozen fingerprint, durable
+reservation (unique acquirer only), bounded executor; 7. `v2_atomic_run_commit` re-checks CAS and the fence inside BEGIN
+EXCLUSIVE, appends exactly one history row, `finalize_cursor`, COMMIT. No second history writer, no post-commit finalizer.
 
-Committed replay must not restore Last Run, clear dirty, refresh certificates or return today's newer result.
-`reconcile` queries the exact immutable history ID with actor/project scope. Missing historical evidence returns
-HISTORY_UNAVAILABLE without reopening the successful key. Persisted malformed history remains a fail-closed read error.
+Deviation to confirm: the spec lists the protected-reference refusal before CSRF; the released handler (RC-SEC pinned) runs
+CSRF first and has exactly one protected gate. Both orders never read the ledger for a protected project; the released one
+reveals nothing to an unauthenticated-CSRF caller. Left as released.
 
-All existing governed paths and historical pins remain byte-identical in this foundation; see source blob receipt.
-Future integration must append an exact-path/blob successor after #383's successor reconciliation, retaining
-historical ancestor pins and their semantic checks. Do not repin old authority or suppress failing tests.
-Startup migration must additionally classify the new table in trust-readiness/data-retention inventory.
+Committed replay never restores Last Run, clears dirty, refreshes certificates or returns a newer result. Tests: cross-session
+token, cross-actor, cross-project, protected reference, foreign `history_id`, malformed history, invalid UUID, schema corruption.
 
 ## Status boundary
 
-Implemented: isolated reservation, lookup/reconciliation, schema audit, fencing and cursor finalization helpers.
-Proven: the executed persistence-only and released-baseline checks listed in `evidence/D029_LOCAL_TEST_RESULTS.json`.
-Proposed policy: `D029_OWNER_DECISION_REGISTER.md`; no production rollout is enabled.
-Deferred integration: canonical HTTP Run, financial commit hook, startup migration and real clients, after FIN-VAL #383 merges.
-Owner decisions: retention, expiration/retry and compatibility semantics remain open.
-Residual risk: the currently released Run route still permits duplicate commits; isolated tests do not prove end-to-end idempotency.
+Release state: **RELEASE CLOSED**. See the release-state matrix in `D029_EXECUTIVE_REVIEW.md`.
+Implemented and tested on PR #384 head: the canonical `POST /v2/workbook/run` intent lifecycle, the single-transaction
+commit, startup schema, the React and Legacy clients and the governance successor. Not owner-approved, not activated:
+the owner policies in `D029_OWNER_DECISION_REGISTER.md` remain candidates, `RELEASE_POLICY.enabled` is false, nothing is
+deployed or merged. A request without `run_intent_id` keeps the released, non-idempotent behaviour.

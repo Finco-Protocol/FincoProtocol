@@ -610,3 +610,39 @@ def test_keyed_run_is_bit_identical_to_the_released_keyless_run(env, kind):
     for field in ECONOMIC:
         assert json.dumps(a[field], sort_keys=True) == json.dumps(b[field], sort_keys=True), field
     assert plain["runtime_snapshot_id"] != with_key["runtime_snapshot_id"]
+
+
+def test_cross_project_key_never_replays_another_projects_run(env, monkeypatch):
+    first, second = env.create("solar"), env.create("wind")
+    calls = count_engine(monkeypatch)
+    key = str(uuid.uuid4())
+    a = post(env, run_form(env, first, key)).json()
+    assert a["outcome"] == "COMMITTED"
+    b = post(env, run_form(env, second, key)).json()        # same actor, same UUID, different project
+    assert b["outcome"] == "COMMITTED" and b["history_id"] != a["history_id"]
+    assert len(calls) == 2 and len(history(first)) == 1 and len(history(second)) == 1
+    scopes = {(i["project_id"], i["history_id"]) for i in intents()}
+    assert scopes == {(first.project_id, a["history_id"]), (second.project_id, b["history_id"])}
+
+
+def test_cross_session_csrf_token_cannot_carry_an_intent(env, monkeypatch):
+    from app.auth import COOKIE_NAME, create_session_token
+    record = env.create("solar")
+    calls = count_engine(monkeypatch)
+    form = run_form(env, record, str(uuid.uuid4()))
+    previous = env.client.cookies.get(COOKIE_NAME)
+    env.client.cookies.set(COOKIE_NAME, create_session_token(user_id=USER, username="admin"))
+    assert env.client.cookies.get(COOKIE_NAME) != previous            # a second, different session of the SAME actor
+    try:
+        response = post(env, form)
+    finally:
+        env.client.cookies.set(COOKIE_NAME, previous)
+    assert response.status_code == 403 and not calls and not intents() and not history(record)
+
+
+def test_contradictory_dual_csrf_tokens_fail_before_the_ledger(env, monkeypatch):
+    record = env.create("solar")
+    calls = count_engine(monkeypatch)
+    form = run_form(env, record, str(uuid.uuid4()))
+    response = post(env, dict(form, run_csrf_token="a-different-token"))
+    assert response.status_code == 403 and not calls and not intents()

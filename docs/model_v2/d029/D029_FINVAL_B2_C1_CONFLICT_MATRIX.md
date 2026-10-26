@@ -1,28 +1,21 @@
-# D-029 / FIN-VAL B2/C1 conflict matrix
+# D-029 / FIN-VAL B2/C1 conflict matrix (resolved)
 
-User confirmed another agent is working B2/C1, then provided [PR #383](https://github.com/Finco-Protocol/FincoProtocol/pull/383).
-Live receipt: Draft OPEN at `8422adbeca843ada3fb6f476ce06b1ef7b519e99`, base main `8944aca...`, 25 changed paths.
-No instruction or approval is inferred from the other agent's PR body. It is dependency evidence only.
+#383 merged (`36edeeb5d9a1`); main was forward-merged normally into this branch.
 
-| Surface | #383 evidence / D-029 need | Resolution |
-|---|---|---|
-| app/v2/router.py | B2/C1 recovery/Save; D-029 replay ordering/Run claim | Do not edit before independent merge |
-| frontend/src/app/api.ts | Direct shared file; D-029 exact intent submission/replay | Defer wiring |
-| react_workspace_router, WorkspaceView, types, static React bundle | Recovery projections/client changes; D-029 Run contract/UI | Defer overlapping integration |
-| workspace_repository.py | Not changed by current #383; shared persistence contract requested by prompt | Preserve until post-merge canonical hook |
-| db.py / trust-readiness inventory | D-029 startup/schema/data-store migration | Explicit migration isolated now; startup deferred |
-| new run_intent_repository/service + D-029 tests/reports | D-029-only new files, no #383 overlap | Implemented and locally validated |
-| SEC-02 successor inventory | #383 reports six changed pinned sources needing reconciliation | Preserve historical pins; integrate after successor authority settles |
-
-After #383 is independently merged: fetch main, normal forward merge (no rebase/cherry-pick), re-audit exact
-path/blob and security order, wire existing handler/commit authority, finish both clients, update narrow successor
-recognition and run all acceptance cases. Use this SAME D-029 Draft PR. No alternate Run handler or second writer.
+| Surface | Resolution |
+|---|---|
+| `app/v2/router.py` | Run handler extended on top of the FIN-VAL B2/C1 state; new blob admitted by `D029_RUN_INTENT_SUCCESSORS` |
+| `static/react/finco-react.js` | Rebuilt from reviewed sources (deterministic build verified against the previous bundle first); new blob in the same layer; CSS unchanged |
+| `frontend/src/app/api.ts`, `workflow/WorkflowBar.tsx`, new `runIntent.ts` | Not pinned; changed |
+| `workspace_repository.py` | Not pinned; additive `run_intent` parameter |
+| `db.py` / `trust_readiness/registry.py` | Startup schema + `data.run_intents` inventory (relayed authorization) |
+| SEC-02 / FIN-VAL pins | All 112 original pins and the six FIN-VAL B2/C1 successors preserved verbatim (test); D-029 layer is additive, 2 paths, never a repin; historical blobs remain individually admitted |
+| `tests/test_model_workspace_consolidation_browser.py` | Pinned; NOT modified. Wrappers prepared, awaiting exact-path authorization |
 
 ## Status boundary
 
-Implemented: isolated reservation, lookup/reconciliation, schema audit, fencing and cursor finalization helpers.
-Proven: the executed persistence-only and released-baseline checks listed in `evidence/D029_LOCAL_TEST_RESULTS.json`.
-Proposed policy: `D029_OWNER_DECISION_REGISTER.md`; no production rollout is enabled.
-Deferred integration: canonical HTTP Run, financial commit hook, startup migration and real clients, after FIN-VAL #383 merges.
-Owner decisions: retention, expiration/retry and compatibility semantics remain open.
-Residual risk: the currently released Run route still permits duplicate commits; isolated tests do not prove end-to-end idempotency.
+Release state: **RELEASE CLOSED**. See the release-state matrix in `D029_EXECUTIVE_REVIEW.md`.
+Implemented and tested on PR #384 head: the canonical `POST /v2/workbook/run` intent lifecycle, the single-transaction
+commit, startup schema, the React and Legacy clients and the governance successor. Not owner-approved, not activated:
+the owner policies in `D029_OWNER_DECISION_REGISTER.md` remain candidates, `RELEASE_POLICY.enabled` is false, nothing is
+deployed or merged. A request without `run_intent_id` keeps the released, non-idempotent behaviour.
