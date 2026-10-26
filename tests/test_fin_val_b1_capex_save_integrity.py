@@ -486,7 +486,7 @@ def test_large_finite_capex_amount_page_renders_and_run_inputs_unchanged(env):
     assert float(_snapshot(record)["capex_epc_contract_keur"]) == 1e21          # stored value is exactly what was saved
 
 
-def test_residual_capacity_overflow_is_now_refused_atomically_by_the_finite_guard(env):
+def test_residual_capacity_overflow_never_yields_a_plausible_value(env):
     """R-1 (closed by B2/C1): capacity >= ~1e306 used to persist non-finite derived totals.  The Save is now
     refused before anything is written; no plausible/zero stand-in value is ever produced."""
     record = env.create()
