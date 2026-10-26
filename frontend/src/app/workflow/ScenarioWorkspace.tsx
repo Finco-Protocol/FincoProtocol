@@ -15,7 +15,7 @@ import { fetchScenarioOverrides, postWorkflowForm } from "./workflowApi";
 import { validateOverrideValue } from "./ModelWorkflowValidation";
 import {
   Field, LoadingNote, StatusNote, UnavailableNote, WorkflowDialog, useCanonicalRead, useLeaveGuard, useReportDirty,
-  useReportPending, useSingleFlight, type StatusMessage,
+  useReportPending, useSingleFlight, useUnresolvedLock, type StatusMessage,
 } from "./workflowShared";
 
 type DialogState =
@@ -43,7 +43,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
   const [nameError, setNameError] = useState<string | undefined>();
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [busy, setBusy] = useState(false);
-  const [locked, setLocked] = useState(false);
+  const [locked, setLocked] = useUnresolvedLock("scenario-workspace");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [compareId, setCompareId] = useState("");
   const [overrideId, setOverrideId] = useState("");
@@ -285,7 +285,7 @@ function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [local, setLocal] = useState<StatusMessage | null>(null);
-  const [unresolved, setUnresolved] = useState(false);
+  const [unresolved, setUnresolved] = useUnresolvedLock(`scenario-overrides-${scenarioId}`);
   useReportDirty(`scenario-overrides-${scenarioId}`, Object.keys(drafts).length);
   useReportPending(`scenario-overrides-${scenarioId}`, busy || unresolved);
   const singleFlight = useSingleFlight();

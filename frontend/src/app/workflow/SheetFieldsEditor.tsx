@@ -13,7 +13,7 @@ import type { SheetFieldPayload, SheetFieldsPayload } from "../types";
 import { isIsoDate, parseStrictDecimal } from "./ModelWorkflowValidation";
 import {
   Field, LoadingNote, StatusNote, UnavailableNote, useCanonicalRead, useReportDirty, useReportPending, useSingleFlight,
-  type StatusMessage,
+  useUnresolvedLock, type StatusMessage,
 } from "./workflowShared";
 
 const NUMERIC = new Set(["float", "int", "keur", "pct", "bps", "years", "months", "mwh", "mw"]);
@@ -66,12 +66,12 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [inFlight, setInFlight] = useState<string | null>(null);
-  const [locked, setLocked] = useState(false);
+  const [locked, setLocked] = useUnresolvedLock(`sheet-${sheet}`);
   // The persisted value each draft was started from: a draft whose field changed
   // underneath it (another tab, another editor) is dropped, never rebased silently.
   const [baselines, setBaselines] = useState<Record<string, string>>({});
 
-  useEffect(() => { setDrafts({}); setErrors({}); setStatus(null); setLocked(false); setBaselines({}); }, [project, sheet]);
+  useEffect(() => { setDrafts({}); setErrors({}); setStatus(null); setBaselines({}); }, [project, sheet]);
   useReportDirty(`sheet-${sheet}`, Object.keys(drafts).length);
   useReportPending(`sheet-${sheet}`, inFlight !== null || locked);
   const singleFlight = useSingleFlight();

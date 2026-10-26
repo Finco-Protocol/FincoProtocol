@@ -35,8 +35,10 @@ export function describeDirtyKey(key: string): string {
 }
 
 interface LeaveOptions {
-  /** Registry keys that do not count as unsaved work for THIS navigation. */
+  /** Registry keys that do not count as unsaved or unresolved work for THIS navigation. */
   ignore?: (key: string) => boolean;
+  /** Reload IS the reconciliation of an unresolved mutation: it only asks about drafts. */
+  draftsOnly?: boolean;
   /** Called when the user chooses to stay (e.g. to restore a changed URL hash). */
   onStay?: () => void;
 }
@@ -48,7 +50,11 @@ interface DirtyContextValue {
   breakdown: Record<string, number>;
   /** A mutation is in flight or its outcome is unresolved (UNKNOWN / CAS conflict). */
   registerPending: (key: string, pending: boolean) => void;
+  /** Keys with a mutation in flight OR an unresolved outcome (union). */
   pendingKeys: string[];
+  /** Sticky locks of UNKNOWN / conflicting outcomes: they survive an editor unmounting. */
+  isUnresolved: (key: string) => boolean;
+  setUnresolved: (key: string, unresolved: boolean) => void;
   /** Run `proceed` now when nothing relevant is unsaved, otherwise ask the user. */
   confirmIfDirty: (proceed: () => void, options?: LeaveOptions) => void;
 }
@@ -56,10 +62,11 @@ interface DirtyContextValue {
 const DirtyContext = createContext<DirtyContextValue>({
   register: () => undefined, total: 0, breakdown: {},
   registerPending: () => undefined, pendingKeys: [],
+  isUnresolved: () => false, setUnresolved: () => undefined,
   confirmIfDirty: (proceed) => proceed(),
 });
 
-interface PendingLeave { proceed: () => void; onStay?: () => void; keys: string[]; count: number }
+interface PendingLeave { proceed: () => void; onStay?: () => void; keys: string[]; count: number; unresolved: string[] }
 
 /** Collects the unsaved edits and the unresolved mutations reported by every
  *  editor so the workspace shows one honest indicator, keeps Run separate and can
@@ -69,6 +76,9 @@ export function DirtyProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Record<string, true>>({});
   const countsRef = useRef<Record<string, number>>({});
   const [leave, setLeave] = useState<PendingLeave | null>(null);
+  const unresolvedRef = useRef<Set<string>>(new Set());
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const [unresolved, setUnresolvedState] = useState<string[]>([]);
   const register = useCallback((key: string, count: number) => {
     setCounts((prev) => {
       if ((prev[key] ?? 0) === count) return prev;
@@ -78,7 +88,13 @@ export function DirtyProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, []);
+  const setUnresolved = useCallback((key: string, value: boolean) => {
+    if (value) unresolvedRef.current.add(key); else unresolvedRef.current.delete(key);
+    setUnresolvedState(Array.from(unresolvedRef.current));
+  }, []);
+  const isUnresolved = useCallback((key: string) => unresolvedRef.current.has(key), []);
   const registerPending = useCallback((key: string, isPending: boolean) => {
+    if (isPending) inFlightRef.current.add(key); else inFlightRef.current.delete(key);
     setPending((prev) => {
       if (Boolean(prev[key]) === isPending) return prev;
       const next = { ...prev };
@@ -97,24 +113,37 @@ export function DirtyProvider({ children }: { children: ReactNode }) {
   const confirmIfDirty = useCallback((proceed: () => void, options: LeaveOptions = {}) => {
     const keys = Object.keys(countsRef.current).filter((k) => !(options.ignore?.(k)));
     const count = keys.reduce((sum, k) => sum + (countsRef.current[k] ?? 0), 0);
-    if (count === 0) { proceed(); return; }
-    setLeave({ proceed, onStay: options.onStay, keys, count });
+    // A mutation in flight or with an unknown outcome must not be walked away from silently
+    // either, even when its editor holds no staged draft (deactivate, scenario action, Run).
+    // (`inFlightRef` holds the keys of MOUNTED editors that are pending or locked; an unresolved lock of an
+    // editor that is no longer on screen stays sticky for its remount but is not asked about again.)
+    const open = options.draftsOnly ? [] : Array.from(inFlightRef.current).filter((k) => !(options.ignore?.(k)));
+    if (count === 0 && open.length === 0) { proceed(); return; }
+    setLeave({ proceed, onStay: options.onStay, keys, count, unresolved: open });
   }, []);
 
-  const pendingKeys = useMemo(() => Object.keys(pending), [pending]);
+  const pendingKeys = useMemo(() => Array.from(new Set([...Object.keys(pending), ...unresolved])), [pending, unresolved]);
   const value = useMemo(
-    () => ({ register, total, breakdown: counts, registerPending, pendingKeys, confirmIfDirty }),
-    [register, total, counts, registerPending, pendingKeys, confirmIfDirty],
+    () => ({ register, total, breakdown: counts, registerPending, pendingKeys, isUnresolved, setUnresolved, confirmIfDirty }),
+    [register, total, counts, registerPending, pendingKeys, isUnresolved, setUnresolved, confirmIfDirty],
   );
   return (
     <DirtyContext.Provider value={value}>
       {children}
       {leave && (
         <WorkflowDialog
-          title="Discard unsaved changes?"
-          description={`You have ${leave.count} unsaved edit${leave.count === 1 ? "" : "s"} in ${Array.from(new Set(leave.keys.map(describeDirtyKey))).join(", ")}. `
-            + "Nothing has been saved and the model has not been run. Staying keeps your changes exactly as they are."}
-          confirmLabel="Discard changes and continue" cancelLabel="Stay and keep editing" danger
+          title={leave.count > 0 ? "Discard unsaved changes?" : "Leave while a change is unresolved?"}
+          description={[
+            leave.count > 0
+              ? `You have ${leave.count} unsaved edit${leave.count === 1 ? "" : "s"} in ${Array.from(new Set(leave.keys.map(describeDirtyKey))).join(", ")}. `
+                + "Nothing has been saved and the model has not been run. Staying keeps your changes exactly as they are."
+              : "",
+            leave.unresolved.length > 0
+              ? `A save or change in ${Array.from(new Set(leave.unresolved.map(describeDirtyKey))).join(", ")} is still in progress or its outcome is unknown. `
+                + "Leaving does not cancel or retry it; those editors stay locked until you reload the workspace to reconcile."
+              : "",
+          ].filter(Boolean).join(" ")}
+          confirmLabel={leave.count > 0 ? "Discard changes and continue" : "Leave anyway"} cancelLabel="Stay and keep editing" danger
           onCancel={() => { const l = leave; setLeave(null); l.onStay?.(); }}
           onConfirm={() => { const l = leave; setLeave(null); l.proceed(); }} />
       )}
@@ -130,6 +159,16 @@ export function useReportDirty(key: string, count: number) {
   const { register } = useContext(DirtyContext);
   useEffect(() => { register(key, count); }, [register, key, count]);
   useEffect(() => () => register(key, 0), [register, key]);
+}
+
+/** Sticky lock for an UNKNOWN / conflicting outcome.  The lock lives in the provider,
+ *  so it survives the editor unmounting (navigation) and a remount starts locked:
+ *  only an explicit reconciliation (a reload, or `set(false)`) clears it. */
+export function useUnresolvedLock(key: string): [boolean, (locked: boolean) => void] {
+  const { isUnresolved, setUnresolved } = useContext(DirtyContext);
+  const [locked, setLocal] = useState(() => isUnresolved(key));
+  const set = useCallback((value: boolean) => { setUnresolved(key, value); setLocal(value); }, [key, setUnresolved]);
+  return [locked, set];
 }
 
 /** Report that this editor has a mutation in flight or an unresolved outcome. */

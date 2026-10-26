@@ -12,7 +12,7 @@ import { fetchCostLines } from "../api";
 import type { CostLinePayload, CostLinesPayload } from "../types";
 import { addCostLine, setCostLineActive } from "./workflowApi";
 import { validateNewCostLine, type NewCostLineDraft } from "./ModelWorkflowValidation";
-import { Field, StatusNote, WorkflowDialog, useReportDirty, useReportPending, useSingleFlight, type StatusMessage } from "./workflowShared";
+import { Field, StatusNote, WorkflowDialog, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock, type StatusMessage } from "./workflowShared";
 
 interface Props {
   project: string;
@@ -30,7 +30,7 @@ export function CostLineManager({ project, data, onChanged }: Props) {
   const [showErrors, setShowErrors] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [inFlight, setInFlight] = useState(false);
-  const [locked, setLocked] = useState(false);
+  const [locked, setLocked] = useUnresolvedLock(`cost-add-${sheet}`);
   const [retire, setRetire] = useState<CostLinePayload | null>(null);
 
   const eligible = useMemo(() => mgmt.eligible_groups.map((g) => g.code), [mgmt.eligible_groups]);

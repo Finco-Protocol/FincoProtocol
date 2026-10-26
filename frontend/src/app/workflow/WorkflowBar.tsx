@@ -9,7 +9,7 @@
 import { useCallback, useRef, useState } from "react";
 import { fetchRuns, runModel } from "../api";
 import type { RunsPayload } from "../types";
-import { StatusNote, useCanonicalRead, useDirtyTotal, useReportPending, type StatusMessage } from "./workflowShared";
+import { StatusNote, useCanonicalRead, useDirtyTotal, useReportPending, useUnresolvedLock, type StatusMessage } from "./workflowShared";
 
 interface Props {
   project: string;
@@ -29,12 +29,12 @@ const MEANING: Record<string, string> = {
 };
 
 export function WorkflowBar({ project, freshness, protectedReference, contentHash, workbookVersion, onRan, onReload }: Props) {
-  const { total, pendingKeys, confirmIfDirty } = useDirtyTotal();
+  const { total, breakdown, pendingKeys, confirmIfDirty } = useDirtyTotal();
   const fetcher = useCallback(() => fetchRuns(project), [project]);
   const read = useCanonicalRead<RunsPayload>(fetcher, [project]);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [running, setRunning] = useState(false);
-  const [locked, setLocked] = useState(false);
+  const [locked, setLocked] = useUnresolvedLock("run");
   // Synchronous guard: two activations in the same tick (double click, repeated
   // Enter) must produce at most one canonical Run request.
   const inFlight = useRef(false);
@@ -72,12 +72,13 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
 
   return (
     <div className="wf-bar" role="region" aria-label="Model status and actions" data-workflow-bar="true"
-         data-bar-freshness={freshness} data-unsaved={total}>
+         data-bar-freshness={freshness} data-unsaved={total}
+         data-dirty-keys={Object.keys(breakdown).join(",")} data-pending-keys={pendingKeys.join(",")}>
       <span className="rx-badge" data-run-state-label={freshness}><strong>{LABEL[freshness] ?? freshness}</strong></span>
       <span className="fm-info-note" style={{ margin: 0 }}>{MEANING[freshness] ?? ""}</span>
       {total > 0 && <span className="wf-dirty" role="status" data-unsaved-indicator="true">{total} unsaved edit{total === 1 ? "" : "s"}</span>}
       <div className="wf-bar-actions">
-        <button type="button" className="fm-btn" onClick={() => confirmIfDirty(onReload)} data-wf-reload="true">Reload</button>
+        <button type="button" className="fm-btn" onClick={() => confirmIfDirty(onReload, { draftsOnly: true })} data-wf-reload="true">Reload</button>
         <button type="button" className="fm-btn fm-btn-primary" disabled={running || Boolean(blockedReason)}
                 aria-describedby="wf-run-hint" data-wf-run="true" onClick={() => void run()}>
           {running ? "Run in progress…" : "Run model"}

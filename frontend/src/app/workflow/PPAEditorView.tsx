@@ -14,7 +14,8 @@ import {
   validateContractModel, type ContractModel, type StreamDraft,
 } from "./ModelWorkflowValidation";
 import {
-  Field, StatusNote, WorkflowDialog, useReportDirty, useReportPending, useSingleFlight, type StatusMessage,
+  Field, StatusNote, WorkflowDialog, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock,
+  type StatusMessage,
 } from "./workflowShared";
 
 type RevenueSave = { url: string; csrf_token: string; content_hash: string; workbook_version: string };
@@ -72,7 +73,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [inFlight, setInFlight] = useState(false);
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
-  const [lockedByUnknown, setLockedByUnknown] = useState(false);
+  const [lockedByUnknown, setLockedByUnknown] = useUnresolvedLock("revenue-ppa");
   const [creating, setCreating] = useState(false);
 
   // A new persisted payload (after a Save, a scenario switch or a reload) resets

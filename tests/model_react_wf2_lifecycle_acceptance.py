@@ -53,6 +53,18 @@ def wait_unsaved(page, count):
     page.wait_for_function(f"() => document.querySelector(\"[data-workflow-bar='true']\").dataset.unsaved === '{count}'", timeout=10000)
 
 
+def wait_navigation_complete(page, section, label):
+    """A confirmed discard is complete only when the URL, the rendered section AND the shared registry agree:
+    the hash changes first, then React commits the section and the unmounted editor's registry cleanup runs."""
+    page.wait_for_function(
+        """([section, label]) => {
+            const bar = document.querySelector("[data-workflow-bar='true']");
+            const active = document.querySelector('.fm-nav a.active');
+            return location.hash === '#' + section && active && active.textContent.includes(label)
+              && !document.querySelector('[data-input-grid]') && bar && bar.dataset.unsaved === '0' && bar.dataset.dirtyKeys === '';
+        }""", arg=[section, label], timeout=15000)
+
+
 def wait_dirty(page):
     page.wait_for_function("() => document.querySelector(\"[data-workflow-bar='true']\").dataset.unsaved !== '0'", timeout=10000)
 
@@ -171,7 +183,7 @@ def check_navigation_with_unsaved_edits_asks_and_keeps_the_draft(browser, react_
         # explicit discard: navigate, and the draft is really gone when returning
         tab(page, "Statements").click()
         dialog(page).get_by_role("button", name=DISCARD).click()
-        page.wait_for_function("() => window.location.hash === '#statements'")
+        wait_navigation_complete(page, "statements", "Statements")
         assert unsaved(page) == 0
         tab(page, "Inputs").click()
         page.wait_for_selector(CIT_CELL)
@@ -468,6 +480,7 @@ def check_drafts_never_transfer_to_another_scenario_or_project(browser, react_en
         page.wait_for_function("""() => document.querySelector("[data-active-scenario-banner='true']").innerText.includes('Isolation')""")
         tab(page, "Inputs").click()
         page.wait_for_selector(CIT_CELL)
+        wait_unsaved(page, 0)
         assert unsaved(page) == 0
         assert page.locator(CIT_CELL).input_value() == original, "the discarded draft was not applied to the new scenario"
         assert grid_value(context, base, record) == original
@@ -481,6 +494,7 @@ def check_drafts_never_transfer_to_another_scenario_or_project(browser, react_en
         page.wait_for_function("""() => !document.querySelector("[data-active-scenario-banner='true']").innerText.includes('Isolation')""")
         tab(page, "Inputs").click()
         page.wait_for_selector(CIT_CELL)
+        wait_unsaved(page, 0)
         assert unsaved(page) == 0 and page.locator(CIT_CELL).input_value() == original
         assert history_count(context, base, record) == 0
     finally:
@@ -512,5 +526,167 @@ def check_protected_reference_grid_cannot_stage_or_save(browser, react_enabled):
         assert page.locator(SAVE).is_disabled()
         assert unsaved(page) == 0 and run_button(page).is_disabled()
         assert posts == [] and history_count(context, base, record) == 0
+    finally:
+        context.close()
+
+
+# ── pending / unknown mutations cannot be walked away from ───────────────────
+
+
+def pending_keys(page):
+    return [k for k in (bar(page).get_attribute("data-pending-keys") or "").split(",") if k]
+
+
+def seed_capex_line(context, base, record, label):
+    costs = context.request.get(f"{base}/v2/model-react/costlines?sheet=capex&project={record.project_code}").json()
+    group = costs["line_management"]["eligible_groups"][0]["code"]
+    added = context.request.post(f"{base}/v2/capex/line/add", form={
+        "project": record.project_code, "parent_category_code": group, "label": label, "amount_keur": "10", "notes": "",
+        "workbook_version": costs["save"]["workbook_version"], "content_hash": costs["save"]["content_hash"]})
+    assert added.ok
+
+
+def open_capex_deactivate_confirm(page, label):
+    costs = page.locator("[data-cost-line-manager='capex']")
+    costs.scroll_into_view_if_needed()
+    costs.get_by_role("button", name=f"Deactivate {label}").click()
+    page.get_by_role("dialog").get_by_role("button", name="Deactivate line").click()
+
+
+def check_pending_mutations_cannot_escape_their_reconciliation_contract(browser, react_enabled):
+    base = react_enabled
+
+    # (1) CAPEX deactivate in flight, zero drafts: leaving asks; staying keeps the editor and its result
+    context, page, record, errors = make_session(browser, react_enabled, "wf2-life-h1")
+    try:
+        seed_capex_line(context, base, record, "pending line")
+        open_workspace(page, base, record, "inputs")
+        page.wait_for_selector("[data-cost-line-manager='capex']")
+        held = {}
+        context.route("**/v2/capex/line/deactivate", lambda route: held.setdefault("route", route))
+        open_capex_deactivate_confirm(page, "pending line")
+        page.wait_for_function("() => document.querySelector(\"[data-workflow-bar='true']\").dataset.pendingKeys.includes('cost-add-capex')")
+        assert unsaved(page) == 0 and run_button(page).is_disabled(), "no draft, but a mutation is in flight"
+        tab(page, "Financing").click()
+        d = dialog(page)
+        assert "unresolved" in d.inner_text().lower() or "in progress" in d.inner_text().lower()
+        d.get_by_role("button", name=STAY).click()
+        assert page.url.endswith("#inputs")
+        held["route"].continue_()
+        context.unroute("**/v2/capex/line/deactivate")
+        page.wait_for_selector("[data-cost-line-manager='capex'] tr[data-line-state='inactive']", timeout=20000)
+        page.wait_for_function("() => document.querySelector(\"[data-workflow-bar='true']\").dataset.pendingKeys === ''")
+        assert history_count(context, base, record) == 0
+    finally:
+        context.close()
+
+    # (2) UNKNOWN deactivate: leaving needs an explicit choice and the lock survives the editor unmounting
+    context, page, record, errors = make_session(browser, react_enabled, "wf2-life-h2")
+    try:
+        seed_capex_line(context, base, record, "unknown line")
+        open_workspace(page, base, record, "inputs")
+        page.wait_for_selector("[data-cost-line-manager='capex']")
+        posts = watch_posts(page, "/v2/capex/line/deactivate")
+        context.route("**/v2/capex/line/deactivate", lambda route: route.abort())
+        open_capex_deactivate_confirm(page, "unknown line")
+        wait_status(page, "conflict", None, "[data-cost-line-manager='capex']")
+        context.unroute("**/v2/capex/line/deactivate")
+        assert unsaved(page) == 0 and "cost-add-capex" in pending_keys(page)
+        tab(page, "Financing").click()
+        dialog(page).get_by_role("button", name="Leave anyway").click()
+        wait_navigation_complete(page, "financing", "Financing")
+        assert "cost-add-capex" in pending_keys(page) and run_button(page).is_disabled(), "the unresolved outcome still blocks Run"
+        tab(page, "Inputs").click()
+        costs = page.locator("[data-cost-line-manager='capex']")
+        costs.wait_for()
+        assert costs.locator("[data-cost-add='capex']").is_disabled(), "a remounted editor starts locked"
+        assert costs.get_by_role("button", name="Deactivate unknown line").is_disabled()
+        page.wait_for_timeout(1000)
+        assert len(posts) == 1, f"no duplicate mutation after navigating away and back: {posts}"
+        # reload is the reconciliation: no draft, so no prompt, and the editor is usable again
+        page.locator("[data-wf-reload='true']").click()
+        page.wait_for_selector("[data-workflow-bar='true']")
+        assert pending_keys(page) == []
+        assert history_count(context, base, record) == 0
+    finally:
+        context.close()
+
+    # (3) scenario action in flight
+    context, page, record, errors = make_session(browser, react_enabled, "wf2-life-h3")
+    try:
+        open_workspace(page, base, record, "scenarios")
+        page.wait_for_selector("[data-scenario-workspace='true']")
+        held = {}
+        context.route("**/v2/workbook/scenarios/create", lambda route: held.setdefault("route", route))
+        page.get_by_label("New scenario name").fill("In flight")
+        page.get_by_role("button", name="Create scenario").click()
+        page.wait_for_function("() => document.querySelector(\"[data-workflow-bar='true']\").dataset.pendingKeys.includes('scenario-workspace')")
+        assert run_button(page).is_disabled()
+        tab(page, "Inputs").click()
+        dialog(page).get_by_role("button", name=STAY).click()
+        assert page.url.endswith("#scenarios")
+        held["route"].continue_()
+        context.unroute("**/v2/workbook/scenarios/create")
+        wait_status(page, "ok", "created", "[data-scenario-workspace='true']")
+        assert history_count(context, base, record) == 0
+    finally:
+        context.close()
+
+    # (4) Run in flight and (5) UNKNOWN Run: leaving the page asks; staying never sends a second request
+    for uid, mode in (("wf2-life-h4", "inflight"), ("wf2-life-h5", "unknown")):
+        context, page, record, errors = make_session(browser, react_enabled, uid)
+        try:
+            materialize(context, base, record)
+            posts = watch_posts(page, "/v2/workbook/run")
+            open_workspace(page, base, record, "overview")
+            page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled")
+            held = {}
+            if mode == "inflight":
+                context.route("**/v2/workbook/run", lambda route: held.setdefault("route", route))
+            else:
+                context.route("**/v2/workbook/run", lambda route: route.abort())
+            run_button(page).click()
+            if mode == "unknown":
+                wait_status(page, "conflict", None, "[data-workflow-bar='true']")
+            else:
+                page.wait_for_function("() => document.querySelector(\"[data-workflow-bar='true']\").dataset.pendingKeys.includes('run')")
+            library = page.locator("header.rx-header").get_by_role("link", name="Project Library")
+            library.click()
+            dialog(page).get_by_role("button", name=STAY).click()
+            assert "/v2/model-react/" in page.url and page.url.split("?")[0].endswith(record.project_code)
+            assert run_button(page).is_disabled()
+            page.wait_for_timeout(800)
+            assert len(posts) == 1, posts
+            if mode == "inflight":
+                held["route"].continue_()
+                context.unroute("**/v2/workbook/run")
+                page.wait_for_selector("[data-workflow-bar='true'][data-bar-freshness='CURRENT']", timeout=120000)
+                assert len(posts) == 1 and history_count(context, base, record) == 1
+            else:
+                context.unroute("**/v2/workbook/run")
+                assert len(posts) == 1
+        finally:
+            context.close()
+
+    # (6) UNKNOWN grid Save, discard the draft and leave: the grid is locked when it returns
+    context, page, record, errors = make_session(browser, react_enabled, "wf2-life-h6")
+    try:
+        posts = watch_posts(page, "/v2/workbook/grid/save")
+        open_workspace(page, base, record, "inputs")
+        page.wait_for_selector(CIT_CELL)
+        stage_cit(page, "9")
+        context.route("**/v2/workbook/grid/save", lambda route: route.abort())
+        page.locator(SAVE).click()
+        page.wait_for_selector("[data-save-state='unknown']")
+        context.unroute("**/v2/workbook/grid/save")
+        tab(page, "Statements").click()
+        dialog(page).get_by_role("button", name=DISCARD).click()
+        wait_navigation_complete(page, "statements", "Statements")
+        assert "input-grid" in pending_keys(page) and run_button(page).is_disabled()
+        tab(page, "Inputs").click()
+        page.wait_for_selector(CIT_CELL)
+        assert page.locator(CIT_CELL).get_attribute("readonly") is not None and page.locator(SAVE).is_disabled()
+        assert len(posts) == 1, posts
+        assert history_count(context, base, record) == 0
     finally:
         context.close()

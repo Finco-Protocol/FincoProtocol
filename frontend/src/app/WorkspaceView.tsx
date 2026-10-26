@@ -167,6 +167,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
       const target = isWorkspaceSection(raw) ? raw : sectionRef.current;
       if (target === sectionRef.current) return;
       confirmIfDirty(() => setSection(target), {
+        ignore: (key) => key === "run",
         onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${sectionRef.current}`),
       });
     };
@@ -176,11 +177,12 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
 
   function navigate(sectionId: Section) {
     if (sectionId === sectionRef.current) return;
+    // The status bar (and its Run) stays mounted across sections, so a Run is not abandoned by switching tabs.
     confirmIfDirty(() => {
       if (window.location.hash !== `#${sectionId}`) allowNextHash.current = true;
       window.location.hash = sectionId;
       setSection(sectionId);
-    });
+    }, { ignore: (key) => key === "run" });
   }
 
   // Any other in-app link that leaves this page (Project Library breadcrumb, legacy

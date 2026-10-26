@@ -675,6 +675,7 @@ def test_wf2_editable_sections_fit_desktop_tablet_and_mobile(browser, react_enab
     'check_run_is_blocked_while_a_save_is_in_flight',
     'check_drafts_never_transfer_to_another_scenario_or_project',
     'check_protected_reference_grid_cannot_stage_or_save',
+    'check_pending_mutations_cannot_escape_their_reconciliation_contract',
 ])
 def test_wf2_lifecycle_acceptance(browser, react_enabled, check):
     import tests.model_react_wf2_lifecycle_acceptance as lifecycle
