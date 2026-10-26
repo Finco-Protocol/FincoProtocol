@@ -608,3 +608,75 @@ def test_results_analysis_navigation_and_back_forward(seeded):
 def test_responsive_layout_has_no_page_level_horizontal_overflow(browser, react_enabled, name, viewport):
     from tests.model_react_wf1_browser_acceptance import check_responsive_layout_has_no_page_level_horizontal_overflow
     check_responsive_layout_has_no_page_level_horizontal_overflow(browser, react_enabled, name, viewport)
+
+
+# ── WF-React-2 (PR #378): editable model workflow acceptance ───────────────────────────
+# Additive acceptance in the EXISTING mandatory consolidation role (shared Playwright
+# fixture lifecycle; no module-level skip of its own).  The bodies live in
+# tests/model_react_wf2_browser_acceptance.py, like the WF-React-1 acceptance above.
+
+def test_wf2_workflow_bar_and_sections_render_without_errors(browser, react_enabled):
+    from tests.model_react_wf2_browser_acceptance import check_workflow_bar_and_sections_render_without_errors
+    check_workflow_bar_and_sections_render_without_errors(browser, react_enabled)
+
+
+def test_wf2_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explicit(browser, react_enabled):
+    from tests.model_react_wf2_browser_acceptance import check_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explicit
+    check_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explicit(browser, react_enabled)
+
+
+def test_wf2_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser, react_enabled):
+    from tests.model_react_wf2_browser_acceptance import check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book
+    check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser, react_enabled)
+
+
+def test_wf2_stale_cas_cannot_overwrite_and_keeps_the_draft(browser, react_enabled):
+    from tests.model_react_wf2_browser_acceptance import check_stale_cas_cannot_overwrite_and_keeps_the_draft
+    check_stale_cas_cannot_overwrite_and_keeps_the_draft(browser, react_enabled)
+
+
+def test_wf2_rejected_csrf_token_changes_nothing_and_keeps_the_draft(browser, react_enabled):
+    from tests.model_react_wf2_browser_acceptance import check_rejected_csrf_token_changes_nothing_and_keeps_the_draft
+    check_rejected_csrf_token_changes_nothing_and_keeps_the_draft(browser, react_enabled)
+
+
+@pytest.mark.parametrize('scenario', ['field-save', 'cost-add', 'run'])
+def test_wf2_unknown_outcomes_are_reconciled_never_retried(browser, react_enabled, scenario):
+    from tests.model_react_wf2_browser_acceptance import check_unknown_outcomes_are_reconciled_never_retried
+    check_unknown_outcomes_are_reconciled_never_retried(browser, react_enabled, scenario)
+
+
+def test_wf2_protected_reference_workspace_is_read_only_in_every_editor(browser, react_enabled):
+    from tests.model_react_wf2_browser_acceptance import check_protected_reference_workspace_is_read_only_in_every_editor
+    check_protected_reference_workspace_is_read_only_in_every_editor(browser, react_enabled)
+
+
+def test_wf2_scenario_selection_compare_and_overrides_are_isolated_and_never_run(browser, react_enabled):
+    from tests.model_react_wf2_browser_acceptance import check_scenario_selection_compare_and_overrides_are_isolated_and_never_run
+    check_scenario_selection_compare_and_overrides_are_isolated_and_never_run(browser, react_enabled)
+
+
+@pytest.mark.parametrize('width,height', [(1440, 900), (900, 1000), (390, 844)])
+def test_wf2_editable_sections_fit_desktop_tablet_and_mobile(browser, react_enabled, width, height):
+    from tests.model_react_wf2_browser_acceptance import check_editable_sections_fit_desktop_tablet_and_mobile
+    check_editable_sections_fit_desktop_tablet_and_mobile(browser, react_enabled, width, height)
+
+
+# ── PR #378 Correction B: unsaved-input integrity, navigation protection, Run safety ───
+# Bodies in tests/model_react_wf2_lifecycle_acceptance.py (no module-level skip there).
+
+@pytest.mark.parametrize('check', [
+    'check_grid_draft_counts_blocks_run_and_unchanged_values_are_not_dirty',
+    'check_navigation_with_unsaved_edits_asks_and_keeps_the_draft',
+    'check_verified_save_clears_dirty_updates_identity_and_enables_an_explicit_run',
+    'check_failed_stale_and_unknown_saves_keep_drafts_and_locks_without_duplicates',
+    'check_every_editor_reports_unsaved_work_and_guards_navigation',
+    'check_rapid_repeated_activation_starts_at_most_one_run',
+    'check_run_is_blocked_while_a_save_is_in_flight',
+    'check_drafts_never_transfer_to_another_scenario_or_project',
+    'check_protected_reference_grid_cannot_stage_or_save',
+    'check_pending_mutations_cannot_escape_their_reconciliation_contract',
+])
+def test_wf2_lifecycle_acceptance(browser, react_enabled, check):
+    import tests.model_react_wf2_lifecycle_acceptance as lifecycle
+    getattr(lifecycle, check)(browser, react_enabled)

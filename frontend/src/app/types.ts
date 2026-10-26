@@ -250,6 +250,7 @@ export interface SheetFieldPayload {
   section_id?: string;
   section_label?: string;
   options?: string[];
+  option_labels?: Record<string, string>;
   required?: boolean;
   min_value?: number | null;
   max_value?: number | null;
@@ -296,6 +297,14 @@ export interface CostLinesPayload {
     workbook_version: string;
     max_batch_lines: number;
   };
+  /** WF-React-2: canonical line-management routes (add / deactivate / reactivate). */
+  line_management: {
+    add: { url: string; group_field: string };
+    deactivate: { url: string };
+    reactivate: { url: string };
+    eligible_groups: Array<{ code: string; label: string }>;
+    csrf_note: string;
+  };
 }
 
 export interface RevenueContractsPayload {
@@ -330,6 +339,34 @@ export interface RunsPayload {
   project: { code: string; protected_reference: boolean };
   runs: RunHistoryEntry[];
   run_contract: { url: string; method: string; csrf_token: string; note: string };
+  /** WF-React-2: read-only canonical export entry points. */
+  exports?: {
+    last_run: { url: string; method: string; authority: string; available: boolean; unavailable_reason: string; note: string };
+    historical: { url: string; query: string[]; note: string };
+  };
+}
+
+export interface ScenarioOverrideFieldPayload {
+  field_id: string;
+  label: string;
+  unit: string;
+  base_value: number | string | null;
+  override_value: number | string | null;
+  overridden: boolean;
+}
+
+export interface ScenarioOverridesPayload {
+  ok: true;
+  project: { code: string; protected_reference: boolean };
+  scenario: { scenario_id: string; name: string; is_base_case: boolean };
+  editable: boolean;
+  fields: ScenarioOverrideFieldPayload[];
+  unsupported_override_keys: string[];
+  mutations: {
+    update: { url: string; fields: string[] };
+    remove: { url: string; fields: string[] };
+    note: string;
+  };
 }
 
 export interface PersistedIntegrity {

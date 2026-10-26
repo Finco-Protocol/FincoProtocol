@@ -639,6 +639,35 @@ async def react_sheet_fields(request: Request, sheet_id: str, project: str):
     })
 
 
+
+def _eligible_cost_groups(sheet: str) -> list[dict[str, str]]:
+    """Groups that accept a custom row, from the same sets the canonical command
+    checks use (rejected and derived groups are excluded; the server still
+    re-validates every Add)."""
+    if sheet == "capex":
+        from app.persistence.capex_sub_lines import ALLOWED_PARENT_CATEGORIES
+        from app.v2.capex_commands import _DERIVED_GROUP_CODES
+        codes = sorted(set(ALLOWED_PARENT_CATEGORIES) - set(_DERIVED_GROUP_CODES))
+    else:
+        from app.persistence.opex_sub_lines import ALLOWED_PARENT_GROUPS
+        from app.v2.opex_commands import _DERIVED_GROUP_CODES
+        codes = sorted(set(ALLOWED_PARENT_GROUPS) - set(_DERIVED_GROUP_CODES))
+    labels: dict[str, str] = {}
+    if sheet == "capex":
+        # Presentation names of the canonical C.NN catalogue (the authority is the code set above).
+        labels = {f"C.{i:02d}": f"C.{i:02d} {name}" for i, name in enumerate((
+            "Production Units", "EPC Contract", "Grid Connection", "Operations Preparation", "Other EPC Costs",
+            "Construction Insurances", "Lease / Construction Taxes", "Audit & Legal", "Construction Management A",
+            "Commissioning", "Other Professional Services", "Construction Management B", "Contingency",
+            "Construction Taxes", "Project Acquisition / Development", "Project Rights"), start=1)}
+    try:
+        if sheet == "opex":
+            from app.ui.opex_sheet_projection import CANONICAL_OPEX_GROUPS
+            labels = {g.code: f"{g.code} {g.name}" for g in CANONICAL_OPEX_GROUPS}
+    except Exception:  # noqa: BLE001 - labels are presentation only
+        labels = {}
+    return [{"code": code, "label": labels.get(code, code)} for code in codes]
+
 @router.get("/model-react/costlines")
 async def react_cost_lines(request: Request, sheet: str = "capex", project: str = ""):
     """CAPEX/OPEX line-item projection + the canonical batch Save contract.
@@ -668,7 +697,9 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
         lines = [{"sub_line_id": r.sub_line_id, "label": r.label, "amount_keur": r.amount_keur,
                   "row_version": r.updated_at, "notes": getattr(r, "comments", None),
                   "inflation_pct": getattr(r, "inflation_pct", None), "active": r.is_active,
-                  "category": getattr(r, "parent_category_code", "")} for r in rows]
+                  "category": getattr(r, "parent_category_code", None) or getattr(r, "parent_group_code", "")}
+                 for r in rows]
+        eligible_groups = _eligible_cost_groups(sheet)
     except Exception:  # noqa: BLE001 - fail closed, never fabricate line items
         return _json({"ok": False, "code": "COST_LINES_UNAVAILABLE",
                       "message": "Cost lines could not be projected. Reload to refresh."}, 503)
@@ -685,6 +716,19 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
                  "content_hash": tokens["content_hash"],
                  "workbook_version": tokens["workbook_version"],
                  "max_batch_lines": MAX_BATCH_LINES},
+        # WF-React-2: canonical line-management routes.  Only deactivation
+        # (soft delete) exists - there is no hard delete.  These routes carry
+        # composite CAS (content_hash + workbook_version, row_version) and are
+        # inventoried as having no CSRF token; the projection does not hide that.
+        "line_management": {
+            "add": {"url": f"/v2/{sheet}/line/add",
+                    "group_field": "parent_category_code" if sheet == "capex" else "parent_group_code"},
+            "deactivate": {"url": f"/v2/{sheet}/line/deactivate"},
+            "reactivate": {"url": f"/v2/{sheet}/line/reactivate"},
+            "eligible_groups": eligible_groups,
+            "csrf_note": "The canonical line routes validate composite CAS and row versions; they do not "
+                         "carry a CSRF token (inventoried gap, unchanged by this workflow).",
+        },
     })
 
 
@@ -736,6 +780,27 @@ async def react_revenue_contracts(request: Request, project: str):
     })
 
 
+
+def _last_run_export_availability(record, owner) -> tuple[bool, str]:
+    """Whether the canonical Last Run export would succeed for the ACTIVE scenario.
+
+    Uses the same single-read resolver the export route uses (no engine, no
+    write), so the React client never offers a download the server will refuse -
+    for example right after selecting a scenario that has no committed Run.
+    """
+    if (getattr(record, "project_origin", "") or "") != "user_created":
+        return False, "Only Working Copies created by a user can be exported."
+    try:
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.services.export_service import resolve_canonical_last_run_from_workspace
+
+        resolve_canonical_last_run_from_workspace(record, owner, get_workspace_state(owner, record.project_id))
+    except ValueError:
+        return False, "No committed Run exists for the active scenario."
+    except Exception:  # noqa: BLE001 - fail closed; the route itself re-validates
+        return False, "The Last Run could not be read."
+    return True, ""
+
 @router.get("/model-react/runs")
 async def react_run_history(request: Request, project: str):
     """Persisted Run History + the committed Last Run identity.
@@ -768,12 +833,26 @@ async def react_run_history(request: Request, project: str):
             "ran_at", "engine_version", "workbook_version", "active_scenario_id",
             "active_scenario_name", "last_runtime_scenario_id", "composite_hash",
         )}))
+    export_available, export_reason = _last_run_export_availability(record, owner)
     return _json({
         "ok": True,
         "react_workspace": {"version": REACT_WORKSPACE_VERSION},
         "project": {"code": record.project_code,
                     "protected_reference": _is_protected(record)},
         "runs": entries,
+        # WF-React-2: read-only canonical export entry points.  The Last Run
+        # export always reflects the last COMMITTED Run, never unsaved or newer
+        # Working Copy edits; the historical export is bound to one immutable row.
+        "exports": {
+            "last_run": {"url": "/v2/workbook/export", "method": "form-download",
+                         "authority": "CANONICAL_LAST_RUN",
+                         "available": export_available,
+                         "unavailable_reason": export_reason,
+                         "note": "Exports the inputs and results of the last committed Run, "
+                                 "not the current Working Copy edits."},
+            "historical": {"url": "/v2/workbook/run-history/export", "query": ["project", "history_id"],
+                           "note": "One immutable committed Run; no engine execution."},
+        },
         "run_contract": {"url": "/v2/workbook/run",
                          "csrf_token": _issue_csrf_token(request, project, purpose="workbook-run-v1"),
                          "method": "form",
@@ -951,7 +1030,7 @@ async def react_scenarios(request: Request, project: str):
         "mutations": {
             "create": {"url": "/v2/workbook/scenarios/create", "fields": ["project", "scenario_name"]},
             "select": {"url": "/v2/workbook/scenarios/select", "fields": ["project", "scenario_id"]},
-            "rename": {"url": "/v2/workbook/scenarios/rename", "fields": ["project", "scenario_id", "scenario_name"]},
+            "rename": {"url": "/v2/workbook/scenarios/rename", "fields": ["project", "scenario_id", "new_name"]},
             "archive": {"url": "/v2/workbook/scenarios/archive", "fields": ["project", "scenario_id"]},
             "note": "Form routes of the canonical scenario authority. Creating or selecting a "
                     "scenario NEVER starts a Run.",
@@ -1052,4 +1131,59 @@ async def react_scenario_compare(request: Request, project: str, scenario_id: st
         "kpi_compare": {"available": False,
                         "reason": "Financial KPI deltas are not computed in the browser; "
                                   "persisted statements/results projections carry the evidence."},
+    })
+
+
+@router.get("/model-react/scenario-overrides")
+async def react_scenario_overrides(request: Request, project: str, scenario_id: str):
+    """Override-editor projection for ONE non-base scenario.
+
+    Lists exactly the fields the canonical Run applies (`supported_editor_fields`),
+    each with its Working Copy value, the persisted override (if any) and whether
+    the effective value is inherited or overridden.  Other overrides stay out of
+    the editor.  Read-only: edits go through the canonical
+    /v2/workbook/scenarios/{update-overrides,remove-override} routes.
+    """
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+    ws, failure = _workspace_or_404(record, owner)
+    if failure is not None:
+        return failure
+
+    from app.persistence.scenarios_repository import get_scenario
+    from app.v2.scenario_presentation import OVERRIDE_EDITOR_FIELDS
+    from app.workbook.scenario_override_authority import supported_editor_fields
+
+    scenario = get_scenario(scenario_id, owner)
+    if scenario is None or scenario.project_id != record.project_id or scenario.archived:
+        return _json({"ok": False, "code": "SCENARIO_NOT_FOUND"}, 404)
+    base = dict(ws.draft_snapshot or {})
+    overrides = dict(scenario.overrides or {})
+    supported = set(supported_editor_fields())
+    fields = [{
+        "field_id": key, "label": label, "unit": unit,
+        "base_value": _jsonable(base.get(key)),
+        "override_value": _jsonable(overrides[key]) if key in overrides else None,
+        "overridden": key in overrides,
+    } for key, label, unit in OVERRIDE_EDITOR_FIELDS if key in supported]
+    editable = not scenario.is_base_case and not _is_protected(record)
+    return _json({
+        "ok": True,
+        "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+        "project": {"code": record.project_code, "protected_reference": _is_protected(record)},
+        "scenario": {"scenario_id": scenario.scenario_id, "name": scenario.scenario_name,
+                     "is_base_case": bool(scenario.is_base_case)},
+        "editable": editable,
+        "fields": fields,
+        "unsupported_override_keys": sorted(k for k in overrides if k not in supported),
+        "mutations": {
+            "update": {"url": "/v2/workbook/scenarios/update-overrides", "fields": ["project", "scenario_id", "<field_id>"]},
+            "remove": {"url": "/v2/workbook/scenarios/remove-override", "fields": ["project", "scenario_id", "field"]},
+            "note": "The canonical Run applies only the fields listed here; any other override is refused "
+                    "(SCENARIO_OVERRIDE_UNBOUND). Saving an override never runs the model.",
+        },
     })

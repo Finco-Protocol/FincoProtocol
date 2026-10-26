@@ -326,6 +326,8 @@ export interface SaveWorkbookFieldArgs {
   workbookVersion: string;
   contentHash: string;
   csrfToken: string;
+  /** Registry sheet the field belongs to (default "debt", the original Financing caller). */
+  sheetId?: string;
   /** The bound financing CSRF token — required ONLY by
    *  `debt.financing.instruments` (the canonical route 403s otherwise). */
   financingCsrfToken?: string;
@@ -347,7 +349,7 @@ export async function saveWorkbookField(args: SaveWorkbookFieldArgs): Promise<Sa
     value: args.value,
     workbook_version: args.workbookVersion,
     content_hash: args.contentHash,
-    sheet_id: "debt",
+    sheet_id: args.sheetId ?? "debt",
     // The canonical route requires the BOUND financing token for
     // debt.financing.instruments and the grid token for every other field.
     csrf_token: args.fieldId === "debt.financing.instruments"

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import type { GridRowPayload, InputsPayload } from "./types";
+import { useDirtyTotal, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 
 export type GridSaveOutcome =
   | { kind: "saved"; contentHash: string; runState: string }
@@ -36,8 +37,12 @@ function flattenRows(payload: InputsPayload): GridRowPayload[] {
 export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: CanonicalInputGridProps) {
   const rows = useMemo(() => flattenRows(payload), [payload]);
   const [drafts, setDrafts] = useState<Draft>({});
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "conflict" | "rejected" | "unknown">("idle");
-  const [message, setMessage] = useState("");
+  const { isUnresolved, setUnresolved } = useDirtyTotal();
+  // An UNKNOWN / conflicting Save survives this grid unmounting (navigation): a remount starts locked.
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "conflict" | "rejected" | "unknown">(
+    () => (isUnresolved("input-grid") ? "unknown" : "idle"));
+  const [message, setMessage] = useState(
+    () => (isUnresolved("input-grid") ? "A previous Save outcome is unresolved. Reload to reconcile before saving again." : ""));
   const [activeCode, setActiveCode] = useState<string>("");
   // Focus anchor: the disabled submit button would blur focus to <body> while a
   // Save is in flight, so focus stays on the active (readOnly, focusable) cell.
@@ -50,8 +55,15 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
     return row !== undefined && drafts[code] !== row.value;
   });
   const locked = status === "conflict" || status === "unknown" || busy;
+  const singleFlight = useSingleFlight();
+  // Unsaved work: only cells whose staged value really differs from the persisted
+  // one.  Unresolved work: a Save in flight, an UNKNOWN outcome or a CAS conflict.
+  // Both are reported to the workspace so Run, navigation and Reload see them.
+  useReportDirty("input-grid", dirtyCodes.length);
+  useReportPending("input-grid", status === "saving" || status === "conflict" || status === "unknown" || busy);
 
   function stage(code: string, value: string) {
+    if (protectedRef || locked) return;
     setDrafts((prev) => ({ ...prev, [code]: value }));
     if (status === "saved" || status === "rejected") {
       setStatus("idle");
@@ -66,7 +78,11 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
   }
 
   async function save() {
-    if (locked || dirtyCodes.length === 0) return;
+    if (protectedRef || locked || dirtyCodes.length === 0) return;
+    await singleFlight(runSave);
+  }
+
+  async function runSave() {
     const cells = dirtyCodes.map((code) => ({
       field_id: rows.find((r) => (r.field_id || r.code) === code)?.field_id || code,
       value: drafts[code],
@@ -89,6 +105,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
           : "Saved. The persisted Last Run is unchanged and was not re-run.");
         break;
       case "stale":
+        setUnresolved("input-grid", true);
         setStatus("conflict");
         setMessage(outcome.message || "The model changed since this page loaded. Reload to continue.");
         break;
@@ -97,6 +114,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
         setMessage(outcome.message);
         break;
       case "unknown":
+        setUnresolved("input-grid", true);
         setStatus("unknown");
         setMessage(outcome.message);
         break;
