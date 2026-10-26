@@ -14,7 +14,7 @@ import {
   validateContractModel, type ContractModel, type StreamDraft,
 } from "./ModelWorkflowValidation";
 import {
-  Field, StatusNote, WorkflowDialog, useReportDirty, type StatusMessage,
+  Field, StatusNote, WorkflowDialog, useReportDirty, useReportPending, useSingleFlight, type StatusMessage,
 } from "./workflowShared";
 
 type RevenueSave = { url: string; csrf_token: string; content_hash: string; workbook_version: string };
@@ -88,6 +88,8 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
   const errors = useMemo(() => (draft ? validateContractModel(draft) : {}), [draft]);
   const editCount = savedModel && draft ? countContractEdits(savedModel, draft) : creating && draft ? 1 : 0;
   useReportDirty("revenue-ppa", editCount);
+  useReportPending("revenue-ppa", inFlight || lockedByUnknown);
+  const singleFlight = useSingleFlight();
   const readOnly = protectedReference || inFlight || lockedByUnknown;
 
   const update = (index: number, patch: Partial<StreamDraft>) => {
@@ -95,7 +97,10 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
     setStatus(null);
   };
 
-  const submit = async (model: ContractModel, originalRaw: string) => {
+  const submit = (model: ContractModel, originalRaw: string) => singleFlight(() => runSubmit(model, originalRaw));
+
+  const runSubmit = async (model: ContractModel, originalRaw: string) => {
+    if (lockedByUnknown) return;
     setShowErrors(true);
     const problems = validateContractModel(model);
     if (Object.keys(problems).length) {

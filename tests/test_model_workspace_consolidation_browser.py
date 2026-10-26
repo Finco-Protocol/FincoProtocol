@@ -660,3 +660,22 @@ def test_wf2_scenario_selection_compare_and_overrides_are_isolated_and_never_run
 def test_wf2_editable_sections_fit_desktop_tablet_and_mobile(browser, react_enabled, width, height):
     from tests.model_react_wf2_browser_acceptance import check_editable_sections_fit_desktop_tablet_and_mobile
     check_editable_sections_fit_desktop_tablet_and_mobile(browser, react_enabled, width, height)
+
+
+# ── PR #378 Correction B: unsaved-input integrity, navigation protection, Run safety ───
+# Bodies in tests/model_react_wf2_lifecycle_acceptance.py (no module-level skip there).
+
+@pytest.mark.parametrize('check', [
+    'check_grid_draft_counts_blocks_run_and_unchanged_values_are_not_dirty',
+    'check_navigation_with_unsaved_edits_asks_and_keeps_the_draft',
+    'check_verified_save_clears_dirty_updates_identity_and_enables_an_explicit_run',
+    'check_failed_stale_and_unknown_saves_keep_drafts_and_locks_without_duplicates',
+    'check_every_editor_reports_unsaved_work_and_guards_navigation',
+    'check_rapid_repeated_activation_starts_at_most_one_run',
+    'check_run_is_blocked_while_a_save_is_in_flight',
+    'check_drafts_never_transfer_to_another_scenario_or_project',
+    'check_protected_reference_grid_cannot_stage_or_save',
+])
+def test_wf2_lifecycle_acceptance(browser, react_enabled, check):
+    import tests.model_react_wf2_lifecycle_acceptance as lifecycle
+    getattr(lifecycle, check)(browser, react_enabled)

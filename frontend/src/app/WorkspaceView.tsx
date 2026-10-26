@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import StatementWorkbook from "../finco/_workbook/StatementWorkbook";
 import { Shell } from "../finco/_shared/FincoShell";
 import { workspaceHeading } from "./adapters";
@@ -13,7 +13,7 @@ import { PPAEditorView } from "./workflow/PPAEditorView";
 import { ScenarioWorkspace } from "./workflow/ScenarioWorkspace";
 import { SheetFieldsEditor } from "./workflow/SheetFieldsEditor";
 import { WorkflowBar } from "./workflow/WorkflowBar";
-import { DirtyProvider } from "./workflow/workflowShared";
+import { DirtyProvider, useLeaveGuard } from "./workflow/workflowShared";
 import type { InputsPayload, RevenueContractsPayload, StatementsPayload, WorkspacePayload } from "./types";
 import { fetchRevenueContracts } from "./api";
 
@@ -21,7 +21,7 @@ type Section = WorkspaceSection;
 
 const INPUT_GROUPS: Array<[string, string]> = [
   ["wf-inputs-setup", "Project setup"], ["wf-inputs-grid", "Assumption grid"], ["wf-inputs-costs", "CAPEX & OPEX"],
-  ["wf-inputs-revenue", "Revenue & PPA"], ["wf-inputs-tax", "Tax & depreciation"],
+  ["wf-inputs-revenue", "Revenue & PPA"],
 ];
 
 function sectionFromHash(): Section {
@@ -63,12 +63,27 @@ function StatusRow({ workspace }: { workspace: WorkspacePayload }) {
   );
 }
 
-export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
+interface WorkspaceViewProps {
   project: string;
   legacyUrl: string;
   onNavigateToLibrary: () => void;
-}) {
+}
+
+/** The unsaved-change registry wraps the whole workspace so navigation, Reload and
+ *  Run all consult the same state the editors report into. */
+export function WorkspaceView(props: WorkspaceViewProps) {
+  return <DirtyProvider><WorkspaceViewInner {...props} /></DirtyProvider>;
+}
+
+function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: WorkspaceViewProps) {
+  const confirmIfDirty = useLeaveGuard();
   const [section, setSection] = useState<Section>(sectionFromHash);
+  const sectionRef = useRef<Section>(section);
+  sectionRef.current = section;
+  const allowNextHash = useRef(false);
+  // Bumped when the ACTIVE scenario changes: every scope-bound editor remounts so a
+  // draft can never be applied to a different scenario's CAS identity.
+  const [scopeEpoch, setScopeEpoch] = useState(0);
   const [workspace, setWorkspace] = useState<WorkspacePayload | null>(null);
   const [error, setError] = useState<{ code: string; message?: string } | null>(null);
   const [statements, setStatements] = useState<StatementsPayload | null>(null);
@@ -118,6 +133,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
 
   // A scenario switch changes the scope of every projection: drop them all.
   const onScenarioChanged = useCallback(() => {
+    setScopeEpoch((n) => n + 1);
     setInputs(null);
     setStatements(null);
     setRevenuePayload(null);
@@ -142,16 +158,44 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
     if (section === "inputs" && !revenuePayload) void loadRevenue();
   }, [section, statements, inputs, revenuePayload, loadStatements, loadInputs, loadRevenue]);
 
+  // Hash changes (typed URL, Back/Forward) are guarded like tab clicks: the URL has
+  // already moved, so "stay" restores the hash of the section that is still shown.
   useEffect(() => {
-    const onHash = () => setSection(sectionFromHash());
+    const onHash = () => {
+      if (allowNextHash.current) { allowNextHash.current = false; setSection(sectionFromHash()); return; }
+      const raw = window.location.hash.replace("#", "");
+      const target = isWorkspaceSection(raw) ? raw : sectionRef.current;
+      if (target === sectionRef.current) return;
+      confirmIfDirty(() => setSection(target), {
+        onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${sectionRef.current}`),
+      });
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+  }, [confirmIfDirty]);
 
   function navigate(sectionId: Section) {
-    window.location.hash = sectionId;
-    setSection(sectionId);
+    if (sectionId === sectionRef.current) return;
+    confirmIfDirty(() => {
+      if (window.location.hash !== `#${sectionId}`) allowNextHash.current = true;
+      window.location.hash = sectionId;
+      setSection(sectionId);
+    });
   }
+
+  // Any other in-app link that leaves this page (Project Library breadcrumb, legacy
+  // workbook, ...) asks first when edits are unsaved.  Modified clicks open a new
+  // tab/window and downloads stay on the page, so they are not intercepted.
+  const guardLinkClick = (event: React.MouseEvent) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const anchor = (event.target as HTMLElement).closest("a");
+    if (!anchor) return;
+    const href = anchor.getAttribute("href") || "";
+    if (!href || href.startsWith("#") || anchor.hasAttribute("download") || (anchor.target && anchor.target !== "_self")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    confirmIfDirty(() => window.location.assign(anchor.href));
+  };
 
   const refreshAll = useCallback(() => {
     window.location.reload();
@@ -244,7 +288,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
   }
 
   return (
-    <DirtyProvider>
+    <div style={{ display: "contents" }} onClickCapture={guardLinkClick} data-leave-guard="true">
     <Shell crumb={workspace.project.name} dataOrigin="canonical-run" mainContentId="rx-main-content"
       originLabel={RUN_CHIP[workspace.freshness.state] ?? "RUN UNAVAILABLE"}>
       <div className="rx-page" role="main" data-react-workspace-version={workspace.react_workspace.version}>
@@ -258,7 +302,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
           <nav aria-label="Workspace navigation">
             <a className="rx-legacy-link" href={legacyUrl}>Legacy workbook ↗</a>
             {" · "}
-            <a className="rx-legacy-link" href="#library" onClick={(e) => { e.preventDefault(); onNavigateToLibrary(); }}>Project Library</a>
+            <a className="rx-legacy-link" href="#library" onClick={(e) => { e.preventDefault(); confirmIfDirty(onNavigateToLibrary); }}>Project Library</a>
           </nav>
         </header>
         <WorkspaceNav active={section} onNavigate={navigate} />
@@ -271,6 +315,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
           onRan={refreshAll}
           onReload={refreshAll}
         />
+        <div key={section === "scenarios" ? "scenarios" : `scope-${scopeEpoch}`} data-scope-epoch={scopeEpoch}>
         {section === "overview" && <StatusRow workspace={workspace} />}
         {section === "inputs" && (
           inputs
@@ -299,9 +344,6 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
                   />
                 )}
               </div>
-              <div id="wf-inputs-tax" tabIndex={-1}>
-                <SheetFieldsEditor project={project} sheet="tax" title="Tax and depreciation" reloadKey={dataVersion} onSaved={afterMutation} />
-              </div>
             </>
             : <p className="rx-boot-loading" role="status">Loading the canonical input grid…</p>
         )}
@@ -309,7 +351,8 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
           <SheetFieldsEditor project={project} sheet="debt" title="Debt & Equity financing" reloadKey={dataVersion} onSaved={afterMutation} />
         )}
         {section === "scenarios" && (
-          <ScenarioWorkspace project={project} freshness={workspace.freshness.state} onScenarioChanged={onScenarioChanged} />
+          <ScenarioWorkspace project={project} freshness={workspace.freshness.state}
+            onScenarioChanged={onScenarioChanged} onDataChanged={afterMutation} />
         )}
         {section === "diagnostics" && <DiagnosticsView project={project} />}
         {section === "trust" && <TrustView project={project} />}
@@ -347,6 +390,7 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
             </div>
             : <p className="rx-boot-loading" role="status">Loading the persisted analysis…</p>
         )}
+        </div>
         <footer className="rx-footer">
           <p className="rx-note">
             Figures are read from this project&rsquo;s persisted Run and canonical workspace records;
@@ -355,6 +399,6 @@ export function WorkspaceView({ project, legacyUrl, onNavigateToLibrary }: {
         </footer>
       </div>
     </Shell>
-    </DirtyProvider>
+    </div>
   );
 }

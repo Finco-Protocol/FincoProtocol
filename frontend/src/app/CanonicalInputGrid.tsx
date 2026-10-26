@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import type { GridRowPayload, InputsPayload } from "./types";
+import { useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 
 export type GridSaveOutcome =
   | { kind: "saved"; contentHash: string; runState: string }
@@ -50,8 +51,15 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
     return row !== undefined && drafts[code] !== row.value;
   });
   const locked = status === "conflict" || status === "unknown" || busy;
+  const singleFlight = useSingleFlight();
+  // Unsaved work: only cells whose staged value really differs from the persisted
+  // one.  Unresolved work: a Save in flight, an UNKNOWN outcome or a CAS conflict.
+  // Both are reported to the workspace so Run, navigation and Reload see them.
+  useReportDirty("input-grid", dirtyCodes.length);
+  useReportPending("input-grid", status === "saving" || status === "conflict" || status === "unknown" || busy);
 
   function stage(code: string, value: string) {
+    if (protectedRef || locked) return;
     setDrafts((prev) => ({ ...prev, [code]: value }));
     if (status === "saved" || status === "rejected") {
       setStatus("idle");
@@ -66,7 +74,11 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
   }
 
   async function save() {
-    if (locked || dirtyCodes.length === 0) return;
+    if (protectedRef || locked || dirtyCodes.length === 0) return;
+    await singleFlight(runSave);
+  }
+
+  async function runSave() {
     const cells = dirtyCodes.map((code) => ({
       field_id: rows.find((r) => (r.field_id || r.code) === code)?.field_id || code,
       value: drafts[code],

@@ -6,10 +6,10 @@
 // unsaved, so the model can never silently run against a different state than
 // the one on screen, and Save never triggers it.
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { fetchRuns, runModel } from "../api";
 import type { RunsPayload } from "../types";
-import { StatusNote, useCanonicalRead, useDirtyTotal, type StatusMessage } from "./workflowShared";
+import { StatusNote, useCanonicalRead, useDirtyTotal, useReportPending, type StatusMessage } from "./workflowShared";
 
 interface Props {
   project: string;
@@ -29,27 +29,36 @@ const MEANING: Record<string, string> = {
 };
 
 export function WorkflowBar({ project, freshness, protectedReference, contentHash, workbookVersion, onRan, onReload }: Props) {
-  const { total } = useDirtyTotal();
+  const { total, pendingKeys, confirmIfDirty } = useDirtyTotal();
   const fetcher = useCallback(() => fetchRuns(project), [project]);
   const read = useCanonicalRead<RunsPayload>(fetcher, [project]);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [running, setRunning] = useState(false);
   const [locked, setLocked] = useState(false);
+  // Synchronous guard: two activations in the same tick (double click, repeated
+  // Enter) must produce at most one canonical Run request.
+  const inFlight = useRef(false);
+  // A Run in flight or with an unknown outcome also blocks every other mutation's
+  // "Run" path and is visible to the rest of the workspace.
+  useReportPending("run", running || locked);
 
   const contract = read.state === "ready" ? read.data.run_contract : null;
   const blockedReason = protectedReference ? "Protected references cannot be run. Create a Working Copy."
     : total > 0 ? `Save or cancel your ${total} unsaved edit${total === 1 ? "" : "s"} before running.`
+      : pendingKeys.some((k) => k !== "run") ? "A save or change is still in progress or unresolved. Wait for it, or reload to reconcile, before running."
       : locked ? "The last Run outcome is unknown. Reload to reconcile first."
         : !contract ? "Run is unavailable until the run contract is loaded." : "";
 
   async function run() {
-    if (!contract || blockedReason) return;
+    if (inFlight.current || !contract || blockedReason) return;
+    inFlight.current = true;
     setRunning(true);
     setStatus(null);
     const result = await runModel({
       runUrl: contract.url, csrfToken: contract.csrf_token, project, contentHash, workbookVersion,
     });
     setRunning(false);
+    inFlight.current = false;
     if ("kind" in result) {
       setLocked(true);
       setStatus({ tone: "conflict", text: result.message });
@@ -68,7 +77,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
       <span className="fm-info-note" style={{ margin: 0 }}>{MEANING[freshness] ?? ""}</span>
       {total > 0 && <span className="wf-dirty" role="status" data-unsaved-indicator="true">{total} unsaved edit{total === 1 ? "" : "s"}</span>}
       <div className="wf-bar-actions">
-        <button type="button" className="fm-btn" onClick={onReload} data-wf-reload="true">Reload</button>
+        <button type="button" className="fm-btn" onClick={() => confirmIfDirty(onReload)} data-wf-reload="true">Reload</button>
         <button type="button" className="fm-btn fm-btn-primary" disabled={running || Boolean(blockedReason)}
                 aria-describedby="wf-run-hint" data-wf-run="true" onClick={() => void run()}>
           {running ? "Run in progress…" : "Run model"}

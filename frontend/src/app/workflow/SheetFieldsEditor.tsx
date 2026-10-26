@@ -12,7 +12,8 @@ import { fetchSheetFields, saveWorkbookField } from "../api";
 import type { SheetFieldPayload, SheetFieldsPayload } from "../types";
 import { isIsoDate, parseStrictDecimal } from "./ModelWorkflowValidation";
 import {
-  Field, LoadingNote, StatusNote, UnavailableNote, useCanonicalRead, useReportDirty, type StatusMessage,
+  Field, LoadingNote, StatusNote, UnavailableNote, useCanonicalRead, useReportDirty, useReportPending, useSingleFlight,
+  type StatusMessage,
 } from "./workflowShared";
 
 const NUMERIC = new Set(["float", "int", "keur", "pct", "bps", "years", "months", "mwh", "mw"]);
@@ -50,7 +51,7 @@ export function validateSheetField(field: SheetFieldPayload, value: string): str
 
 interface Props {
   project: string;
-  sheet: "project_setup" | "debt" | "tax";
+  sheet: "project_setup" | "debt";
   title: string;
   /** Called after a verified Save so the workspace refreshes its Run freshness. */
   onSaved?: () => void;
@@ -72,6 +73,8 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
 
   useEffect(() => { setDrafts({}); setErrors({}); setStatus(null); setLocked(false); setBaselines({}); }, [project, sheet]);
   useReportDirty(`sheet-${sheet}`, Object.keys(drafts).length);
+  useReportPending(`sheet-${sheet}`, inFlight !== null || locked);
+  const singleFlight = useSingleFlight();
 
   const data = read.state === "ready" ? read.data : null;
   useEffect(() => {
@@ -108,6 +111,11 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
   };
 
   async function saveField(field: SheetFieldPayload) {
+    if (locked || inFlight !== null) return;
+    await singleFlight(() => runSaveField(field));
+  }
+
+  async function runSaveField(field: SheetFieldPayload) {
     if (!data) return;
     const value = drafts[field.field_id];
     if (value === undefined) return;

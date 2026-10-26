@@ -14,7 +14,7 @@ import {
 } from "./api";
 import type { PersistedIntegrity } from "./types";
 import { CostLineManager } from "./workflow/CostLineManager";
-import { useReportDirty } from "./workflow/workflowShared";
+import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 
 type FetchState<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
@@ -77,9 +77,18 @@ export function CostLinesView({ project, reloadKey = 0, onMutated }: { project: 
 
   useEffect(() => { setStaged({}); setStatus(null); }, [sheet, project]);
   useReportDirty(`cost-lines-${sheet}`, Object.keys(staged).length);
+  useReportPending(`cost-lines-${sheet}`, inFlight);
+  const singleFlight = useSingleFlight();
+  const confirmIfDirty = useLeaveGuard();
+  // Switching CAPEX <-> OPEX discards that sheet's staged edits and add form: ask first.
+  const switchSheet = (next: "capex" | "opex") => {
+    if (next !== sheet) confirmIfDirty(() => setSheet(next), { ignore: (key) => !key.startsWith("cost-") });
+  };
 
-  const saveBatch = async () => {
-    if (state.state !== "ready") return;
+  const saveBatch = () => singleFlight(runSaveBatch);
+
+  const runSaveBatch = async () => {
+    if (state.state !== "ready" || inFlight) return;
     const data = state.data;
     const edits = Object.entries(staged).map(([subLineId, patch]) => {
       const line = data.lines.find((l) => l.sub_line_id === subLineId);
@@ -127,8 +136,8 @@ export function CostLinesView({ project, reloadKey = 0, onMutated }: { project: 
       <div className="fm-card-title">
         <h2>{sheet === "capex" ? "CAPEX construction plan" : "OPEX operating profile"}</h2>
         <span className="fm-toolbar">
-          <button type="button" className={`fm-btn ${sheet === "capex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "capex"} onClick={() => setSheet("capex")}>CAPEX</button>
-          <button type="button" className={`fm-btn ${sheet === "opex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "opex"} onClick={() => setSheet("opex")}>OPEX</button>
+          <button type="button" className={`fm-btn ${sheet === "capex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "capex"} onClick={() => switchSheet("capex")}>CAPEX</button>
+          <button type="button" className={`fm-btn ${sheet === "opex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "opex"} onClick={() => switchSheet("opex")}>OPEX</button>
         </span>
       </div>
       {data.project.protected_reference && <div className="fm-banner" role="note"><span className="fm-demo-label">PROTECTED REFERENCE</span><span className="fm-banner-copy">Read-only. Line items of a reference are immutable.</span></div>}
@@ -161,7 +170,7 @@ export function CostLinesView({ project, reloadKey = 0, onMutated }: { project: 
         <button type="button" className="fm-btn" disabled={inFlight || !stagedCount} onClick={() => setStaged({})}>Discard staged edits</button>
       </div>
       <p className="fm-info-note">One atomic batch through the canonical writer: all lines persist or none; row versions are verified (409 on a concurrent change); the model is never run by a Save.</p>
-      <CostLineManager project={project} data={data} onChanged={() => { state.retry(); onMutated?.(); }} />
+      <CostLineManager key={sheet} project={project} data={data} onChanged={() => { state.retry(); onMutated?.(); }} />
     </section>
   );
 }

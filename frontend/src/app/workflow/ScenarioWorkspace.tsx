@@ -14,7 +14,8 @@ import { ScenarioCompareView } from "../ux07ScenarioViews";
 import { fetchScenarioOverrides, postWorkflowForm } from "./workflowApi";
 import { validateOverrideValue } from "./ModelWorkflowValidation";
 import {
-  Field, LoadingNote, StatusNote, UnavailableNote, WorkflowDialog, useCanonicalRead, useReportDirty, type StatusMessage,
+  Field, LoadingNote, StatusNote, UnavailableNote, WorkflowDialog, useCanonicalRead, useLeaveGuard, useReportDirty,
+  useReportPending, useSingleFlight, type StatusMessage,
 } from "./workflowShared";
 
 type DialogState =
@@ -27,11 +28,13 @@ interface Props {
   project: string;
   /** Freshness of the ACTIVE scenario's Last Run (CURRENT / STALE / NOT_RUN). */
   freshness: string;
-  /** The scenario scope of the workspace changed: reload scope-dependent data. */
+  /** The ACTIVE scenario changed (select / create): every scope-bound editor must remount. */
   onScenarioChanged: () => void;
+  /** A committed change inside the same scope (rename, archive, override): re-read CAS tokens only. */
+  onDataChanged: () => void;
 }
 
-export function ScenarioWorkspace({ project, freshness, onScenarioChanged }: Props) {
+export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDataChanged }: Props) {
   const fetcher = useCallback(() => fetchScenarios(project), [project]);
   const read = useCanonicalRead<ScenariosPayload>(fetcher, [project]);
   const runsFetcher = useCallback(() => fetchRuns(project), [project]);
@@ -46,6 +49,13 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged }: Pro
   const [overrideId, setOverrideId] = useState("");
   const [overrideRefresh, setOverrideRefresh] = useState(0);
   useReportDirty("scenario-new", newName.trim() ? 1 : 0);
+  useReportPending("scenario-workspace", busy || locked);
+  const singleFlight = useSingleFlight();
+  const confirmIfDirty = useLeaveGuard();
+  // Selecting or creating a scenario changes the scope every other editor is bound to:
+  // unsaved edits elsewhere must be explicitly kept (stay) or discarded first.
+  const guardScope = (proceed: () => void, onStay?: () => void) =>
+    confirmIfDirty(proceed, { ignore: (key) => key.startsWith("scenario-"), onStay });
 
   const latestRun = useMemo(() => {
     const map = new Map<string, RunHistoryEntry>();
@@ -59,11 +69,20 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged }: Pro
   }, [runsRead]);
 
   /** Post a scenario mutation and verify THIS mutation in a fresh projection. */
-  const act = async (
+  const act = (
     url: string,
     fields: Record<string, string>,
     verify: (fresh: ScenariosPayload) => boolean,
     success: string,
+    scope = false,
+  ): Promise<boolean> => singleFlight(() => runAct(url, fields, verify, success, scope)).then(Boolean);
+
+  const runAct = async (
+    url: string,
+    fields: Record<string, string>,
+    verify: (fresh: ScenariosPayload) => boolean,
+    success: string,
+    scope: boolean,
   ): Promise<boolean> => {
     setBusy(true);
     setStatus(null);
@@ -79,7 +98,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged }: Pro
     if (fresh.ok === true && verify(fresh)) {
       setStatus({ tone: "ok", text: `${success} Verified in the fresh projection. No Run was started.` });
       read.reload();
-      onScenarioChanged();
+      if (scope) onScenarioChanged(); else onDataChanged();
       return true;
     }
     setLocked(true);
@@ -100,9 +119,11 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged }: Pro
     if (name.length > 200) { setNameError("Keep the name within 200 characters."); return; }
     if (nameTaken(name)) { setNameError("A scenario with this name already exists."); return; }
     setNameError(undefined);
-    const ok = await act(data.mutations.create.url, { project, scenario_name: name },
-      (fresh) => fresh.scenarios.some((s) => s.name === name && !data.scenarios.some((old) => old.scenario_id === s.scenario_id)),
-      `Scenario "${name}" created from the Base Case (no overrides yet) and selected.`);
+    const ok = await new Promise<boolean>((resolve) => guardScope(() => {
+      void act(data.mutations.create.url, { project, scenario_name: name },
+        (fresh) => fresh.scenarios.some((s) => s.name === name && !data.scenarios.some((old) => old.scenario_id === s.scenario_id)),
+        `Scenario "${name}" created from the Base Case (no overrides yet) and selected.`, true).then(resolve);
+    }, () => resolve(false)));
     if (ok) setNewName("");
   };
 
@@ -136,8 +157,8 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged }: Pro
                     <span className="fm-toolbar" style={{ flexWrap: "wrap" }}>
                       {!s.active && !s.archived && (
                         <button type="button" className="fm-btn" disabled={disabled} aria-label={`Select scenario ${s.name}`}
-                                onClick={() => void act(data.mutations.select.url, { project, scenario_id: s.scenario_id },
-                                  (fresh) => fresh.active_scenario_id === s.scenario_id, `Scenario "${s.name}" selected.`)}>Select</button>
+                                onClick={() => guardScope(() => void act(data.mutations.select.url, { project, scenario_id: s.scenario_id },
+                                  (fresh) => fresh.active_scenario_id === s.scenario_id, `Scenario "${s.name}" selected.`, true))}>Select</button>
                       )}
                       {!s.is_base_case && !s.archived && (
                         <>
@@ -145,7 +166,8 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged }: Pro
                                   onClick={() => setDialog({ kind: "rename", scenario: s })}>Rename</button>
                           <button type="button" className="fm-btn" disabled={disabled} aria-label={`Edit overrides of ${s.name}`}
                                   aria-pressed={overrideId === s.scenario_id}
-                                  onClick={() => setOverrideId(overrideId === s.scenario_id ? "" : s.scenario_id)}>Overrides</button>
+                                  onClick={() => confirmIfDirty(() => setOverrideId(overrideId === s.scenario_id ? "" : s.scenario_id),
+                                    { ignore: (key) => !key.startsWith("scenario-overrides-") })}>Overrides</button>
                           <button type="button" className="fm-btn" disabled={disabled} aria-label={`Archive scenario ${s.name}`}
                                   onClick={() => setDialog({ kind: "archive", scenario: s })}>Archive</button>
                         </>
@@ -180,7 +202,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged }: Pro
       )}
 
       {overrideId && <OverrideEditor key={`${overrideId}-${overrideRefresh}`} project={project} scenarioId={overrideId} disabled={disabled}
-                                     onChange={(s) => { setStatus(s); onScenarioChanged(); read.reload(); }}
+                                     onChange={(s) => { setStatus(s); onDataChanged(); read.reload(); }}
                                      onReset={(fieldId, label) => { const sc = data.scenarios.find((x) => x.scenario_id === overrideId); if (sc) setDialog({ kind: "reset", scenario: sc, fieldId, label }); }} />}
 
       {compareId && <ScenarioCompareView project={project} scenarioId={compareId} />}
@@ -237,7 +259,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged }: Pro
               if (row && !row.overridden) {
                 setStatus({ tone: "ok", text: `Override removed; "${scenario.name}" inherits the Working Copy value. Verified. No Run was started.` });
                 read.reload();
-                onScenarioChanged();
+                onDataChanged();
                 setOverrideRefresh((n) => n + 1);
               } else {
                 setLocked(true);
@@ -263,14 +285,19 @@ function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [local, setLocal] = useState<StatusMessage | null>(null);
+  const [unresolved, setUnresolved] = useState(false);
   useReportDirty(`scenario-overrides-${scenarioId}`, Object.keys(drafts).length);
+  useReportPending(`scenario-overrides-${scenarioId}`, busy || unresolved);
+  const singleFlight = useSingleFlight();
 
   if (read.state === "loading") return <LoadingNote label="Loading the scenario overrides…" />;
   if (read.state === "error") return <UnavailableNote message={read.message} onRetry={read.reload} />;
   const data = read.data;
-  const locked = disabled || busy || !data.editable;
+  const locked = disabled || busy || unresolved || !data.editable;
 
-  async function saveOverride(fieldId: string, label: string) {
+  const saveOverride = (fieldId: string, label: string) => (locked ? Promise.resolve() : singleFlight(() => runSaveOverride(fieldId, label)));
+
+  async function runSaveOverride(fieldId: string, label: string) {
     const value = drafts[fieldId];
     if (value === undefined) return;
     const problem = validateOverrideValue(value);
@@ -281,6 +308,7 @@ function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
     if (result.outcome !== "ok") {
       setBusy(false);
       if (result.outcome === "refused") setErrors((prev) => ({ ...prev, [fieldId]: result.message }));
+      if (result.outcome === "unknown") setUnresolved(true);
       setLocal({ tone: result.outcome === "unknown" ? "conflict" : "error", text: result.message });
       return;
     }
@@ -294,6 +322,7 @@ function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
       onChange(message);
       read.reload();
     } else {
+      setUnresolved(true);
       setLocal({ tone: "conflict", text: "The override save outcome is UNKNOWN: the fresh projection could not confirm it. Reload to reconcile - nothing was re-submitted." });
     }
   }

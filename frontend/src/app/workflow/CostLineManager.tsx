@@ -12,7 +12,7 @@ import { fetchCostLines } from "../api";
 import type { CostLinePayload, CostLinesPayload } from "../types";
 import { addCostLine, setCostLineActive } from "./workflowApi";
 import { validateNewCostLine, type NewCostLineDraft } from "./ModelWorkflowValidation";
-import { Field, StatusNote, WorkflowDialog, useReportDirty, type StatusMessage } from "./workflowShared";
+import { Field, StatusNote, WorkflowDialog, useReportDirty, useReportPending, useSingleFlight, type StatusMessage } from "./workflowShared";
 
 interface Props {
   project: string;
@@ -37,11 +37,15 @@ export function CostLineManager({ project, data, onChanged }: Props) {
   const errors = validateNewCostLine(draft, sheet, eligible);
   const dirty = draft.label.trim() !== "" || draft.group !== "" ? 1 : 0;
   useReportDirty(`cost-add-${sheet}`, dirty);
+  useReportPending(`cost-add-${sheet}`, inFlight || locked);
+  const singleFlight = useSingleFlight();
 
   const cas = { project, workbookVersion: data.save.workbook_version, contentHash: data.save.content_hash };
   const disabled = readOnlyProject || inFlight || locked;
 
-  async function add() {
+  const add = () => (disabled ? Promise.resolve() : singleFlight(runAdd));
+
+  async function runAdd() {
     setShowErrors(true);
     if (Object.keys(errors).length) {
       setStatus({ tone: "error", text: "Fix the highlighted fields. Nothing was added." });
@@ -77,7 +81,9 @@ export function CostLineManager({ project, data, onChanged }: Props) {
     }
   }
 
-  async function setActive(line: CostLinePayload, active: boolean) {
+  const setActive = (line: CostLinePayload, active: boolean) => (disabled ? Promise.resolve() : singleFlight(() => runSetActive(line, active)));
+
+  async function runSetActive(line: CostLinePayload, active: boolean) {
     setInFlight(true);
     setStatus(null);
     const result = await setCostLineActive(data, cas, line.sub_line_id, line.row_version, active);

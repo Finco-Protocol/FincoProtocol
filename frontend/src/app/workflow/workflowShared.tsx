@@ -22,23 +22,67 @@ export function StatusNote({ status }: { status: StatusMessage | null }) {
 
 // ───────────────────────────── dirty-state registry ─────────────────────────────
 
-interface DirtyContextValue {
-  register: (key: string, count: number) => void;
-  total: number;
-  breakdown: Record<string, number>;
+/** Human names for the registry keys, used in the leave-confirmation dialog. */
+export function describeDirtyKey(key: string): string {
+  if (key === "input-grid") return "Assumption grid";
+  if (key.startsWith("sheet-project_setup")) return "Project setup";
+  if (key.startsWith("sheet-tax")) return "Tax and depreciation";
+  if (key.startsWith("sheet-debt")) return "Financing";
+  if (key.startsWith("cost-")) return "CAPEX & OPEX";
+  if (key === "revenue-ppa") return "Revenue & PPA";
+  if (key.startsWith("scenario-")) return "Scenarios";
+  return key;
 }
 
-const DirtyContext = createContext<DirtyContextValue>({ register: () => undefined, total: 0, breakdown: {} });
+interface LeaveOptions {
+  /** Registry keys that do not count as unsaved work for THIS navigation. */
+  ignore?: (key: string) => boolean;
+  /** Called when the user chooses to stay (e.g. to restore a changed URL hash). */
+  onStay?: () => void;
+}
 
-/** Collects the number of unsaved edits reported by each editor so the workspace
- *  can show one honest indicator, warn before leaving and keep Run separate. */
+interface DirtyContextValue {
+  register: (key: string, count: number) => void;
+  /** Unsaved edit count (staged but not saved). */
+  total: number;
+  breakdown: Record<string, number>;
+  /** A mutation is in flight or its outcome is unresolved (UNKNOWN / CAS conflict). */
+  registerPending: (key: string, pending: boolean) => void;
+  pendingKeys: string[];
+  /** Run `proceed` now when nothing relevant is unsaved, otherwise ask the user. */
+  confirmIfDirty: (proceed: () => void, options?: LeaveOptions) => void;
+}
+
+const DirtyContext = createContext<DirtyContextValue>({
+  register: () => undefined, total: 0, breakdown: {},
+  registerPending: () => undefined, pendingKeys: [],
+  confirmIfDirty: (proceed) => proceed(),
+});
+
+interface PendingLeave { proceed: () => void; onStay?: () => void; keys: string[]; count: number }
+
+/** Collects the unsaved edits and the unresolved mutations reported by every
+ *  editor so the workspace shows one honest indicator, keeps Run separate and can
+ *  ask before anything discards a draft.  Nothing here saves, runs or retries. */
 export function DirtyProvider({ children }: { children: ReactNode }) {
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [pending, setPending] = useState<Record<string, true>>({});
+  const countsRef = useRef<Record<string, number>>({});
+  const [leave, setLeave] = useState<PendingLeave | null>(null);
   const register = useCallback((key: string, count: number) => {
     setCounts((prev) => {
       if ((prev[key] ?? 0) === count) return prev;
       const next = { ...prev };
       if (count > 0) next[key] = count; else delete next[key];
+      countsRef.current = next;
+      return next;
+    });
+  }, []);
+  const registerPending = useCallback((key: string, isPending: boolean) => {
+    setPending((prev) => {
+      if (Boolean(prev[key]) === isPending) return prev;
+      const next = { ...prev };
+      if (isPending) next[key] = true; else delete next[key];
       return next;
     });
   }, []);
@@ -49,17 +93,65 @@ export function DirtyProvider({ children }: { children: ReactNode }) {
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [total]);
-  const value = useMemo(() => ({ register, total, breakdown: counts }), [register, total, counts]);
-  return <DirtyContext.Provider value={value}>{children}</DirtyContext.Provider>;
+
+  const confirmIfDirty = useCallback((proceed: () => void, options: LeaveOptions = {}) => {
+    const keys = Object.keys(countsRef.current).filter((k) => !(options.ignore?.(k)));
+    const count = keys.reduce((sum, k) => sum + (countsRef.current[k] ?? 0), 0);
+    if (count === 0) { proceed(); return; }
+    setLeave({ proceed, onStay: options.onStay, keys, count });
+  }, []);
+
+  const pendingKeys = useMemo(() => Object.keys(pending), [pending]);
+  const value = useMemo(
+    () => ({ register, total, breakdown: counts, registerPending, pendingKeys, confirmIfDirty }),
+    [register, total, counts, registerPending, pendingKeys, confirmIfDirty],
+  );
+  return (
+    <DirtyContext.Provider value={value}>
+      {children}
+      {leave && (
+        <WorkflowDialog
+          title="Discard unsaved changes?"
+          description={`You have ${leave.count} unsaved edit${leave.count === 1 ? "" : "s"} in ${Array.from(new Set(leave.keys.map(describeDirtyKey))).join(", ")}. `
+            + "Nothing has been saved and the model has not been run. Staying keeps your changes exactly as they are."}
+          confirmLabel="Discard changes and continue" cancelLabel="Stay and keep editing" danger
+          onCancel={() => { const l = leave; setLeave(null); l.onStay?.(); }}
+          onConfirm={() => { const l = leave; setLeave(null); l.proceed(); }} />
+      )}
+    </DirtyContext.Provider>
+  );
 }
 
 export const useDirtyTotal = () => useContext(DirtyContext);
+export const useLeaveGuard = () => useContext(DirtyContext).confirmIfDirty;
 
 /** Report this editor's unsaved-edit count; cleared on unmount. */
 export function useReportDirty(key: string, count: number) {
   const { register } = useContext(DirtyContext);
   useEffect(() => { register(key, count); }, [register, key, count]);
   useEffect(() => () => register(key, 0), [register, key]);
+}
+
+/** Report that this editor has a mutation in flight or an unresolved outcome. */
+export function useReportPending(key: string, pending: boolean) {
+  const { registerPending } = useContext(DirtyContext);
+  useEffect(() => { registerPending(key, pending); }, [registerPending, key, pending]);
+  useEffect(() => () => registerPending(key, false), [registerPending, key]);
+}
+
+/** Synchronous single-flight guard: a second activation before the first
+ *  finishes (double click, repeated Enter) is dropped, even within one render. */
+export function useSingleFlight() {
+  const active = useRef(false);
+  return useCallback(async <T,>(task: () => Promise<T>): Promise<T | undefined> => {
+    if (active.current) return undefined;
+    active.current = true;
+    try {
+      return await task();
+    } finally {
+      active.current = false;
+    }
+  }, []);
 }
 
 // ───────────────────────────── canonical read hook ─────────────────────────────
