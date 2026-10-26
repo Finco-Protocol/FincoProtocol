@@ -304,6 +304,12 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
     rc_sec_valid = current_rc_sec_csrf_successor_valid()
     if rc_sec_valid:
         expected = expected | {RC_SEC_ROUTER}
+    # SEC-01/02 adds one canonical token validator module only when its exact
+    # reviewed source/callers and immutable ancestry hold. Historical inventories
+    # and every prior successor remain intact.
+    from tests.model_mutation_security_successor import TOKEN_MODULE, current_mutation_successor_valid
+    if current_mutation_successor_valid():
+        expected = expected | {TOKEN_MODULE}
     assert users == expected
     import ast
     tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))

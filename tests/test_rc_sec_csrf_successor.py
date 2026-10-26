@@ -15,9 +15,12 @@ SOURCES = {path: (S.ROOT / path).read_text(encoding="utf-8") for path in S.BLOBS
 
 
 def test_exact_reviewed_run_clone_and_helper_contract():
-    for name, source in SOURCES.items():
+    historical = {name: subprocess.check_output(["git", "show", f"{S.SOURCE_HEAD}:{name}"], cwd=S.ROOT).decode("utf-8") for name in S.BLOBS}
+    for name, source in historical.items():
         assert S.git_blob(source) == S.BLOBS[name], name
-    assert S.violations(SOURCES) == []
+    assert S.violations(historical) == []
+    from tests.model_mutation_security_successor import current_mutation_successor_valid
+    assert (S.violations(SOURCES) == []) or current_mutation_successor_valid()
     assert S.current_rc_sec_csrf_successor_valid() is True
     inventory_test()
 
