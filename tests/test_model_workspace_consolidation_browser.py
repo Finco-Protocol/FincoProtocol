@@ -690,3 +690,22 @@ def test_wf2_editable_sections_fit_desktop_tablet_and_mobile(browser, react_enab
 def test_wf2_lifecycle_acceptance(browser, react_enabled, check):
     import tests.model_react_wf2_lifecycle_acceptance as lifecycle
     getattr(lifecycle, check)(browser, react_enabled)
+
+
+# ── RC-REACT-MVP: integrated Financial Insights + Internal MVP acceptance ───────────────
+# Bodies in tests/model_react_mvp_acceptance.py (no module-level skip there).
+
+def test_mvp_library_clone_creates_an_openable_unprotected_working_copy(browser, react_enabled):
+    from tests.model_react_mvp_acceptance import check_library_clone_creates_an_openable_unprotected_working_copy
+    check_library_clone_creates_an_openable_unprotected_working_copy(browser, react_enabled)
+
+
+@pytest.mark.parametrize('kind', ['solar', 'wind'])
+def test_mvp_internal_path_with_financial_intelligence(browser, react_enabled, kind):
+    from tests.model_react_mvp_acceptance import check_internal_mvp_path_with_financial_intelligence
+    check_internal_mvp_path_with_financial_intelligence(browser, react_enabled, kind)
+
+
+def test_mvp_responsive_insights_and_touch_targets(browser, react_enabled):
+    from tests.model_react_mvp_acceptance import check_responsive_insights_and_touch_targets
+    check_responsive_insights_and_touch_targets(browser, react_enabled)

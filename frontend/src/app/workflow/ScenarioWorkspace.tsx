@@ -8,9 +8,12 @@
 // is never retried.
 
 import { useCallback, useMemo, useState } from "react";
-import { fetchRuns, fetchScenarios } from "../api";
-import type { RunHistoryEntry, ScenarioRecordPayload, ScenariosPayload } from "../types";
+import { fetchScenarios } from "../api";
+import { fetchInsightsHistory } from "../insights";
+import type { HistoryPayload } from "../insights";
+import type { ScenarioRecordPayload, ScenariosPayload } from "../types";
 import { ScenarioCompareView } from "../ux07ScenarioViews";
+import { ScenarioKpiComparison } from "./ScenarioKpiComparison";
 import { fetchScenarioOverrides, postWorkflowForm } from "./workflowApi";
 import { validateOverrideValue } from "./ModelWorkflowValidation";
 import {
@@ -37,8 +40,10 @@ interface Props {
 export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDataChanged }: Props) {
   const fetcher = useCallback(() => fetchScenarios(project), [project]);
   const read = useCanonicalRead<ScenariosPayload>(fetcher, [project]);
-  const runsFetcher = useCallback(() => fetchRuns(project), [project]);
-  const runsRead = useCanonicalRead(runsFetcher, [project]);
+  // Committed-Run attribution comes from the canonical insights history (the same authority as the KPI comparison),
+  // so the Base Case row and every scenario agree with the comparison panel below.
+  const runsFetcher = useCallback(() => fetchInsightsHistory(project), [project]);
+  const runsRead = useCanonicalRead<HistoryPayload>(runsFetcher, [project]);
   const [newName, setNewName] = useState("");
   const [nameError, setNameError] = useState<string | undefined>();
   const [status, setStatus] = useState<StatusMessage | null>(null);
@@ -57,15 +62,19 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
   const guardScope = (proceed: () => void, onStay?: () => void) =>
     confirmIfDirty(proceed, { ignore: (key) => key.startsWith("scenario-"), onStay });
 
-  const latestRun = useMemo(() => {
-    const map = new Map<string, RunHistoryEntry>();
+  const evidenceOf = useMemo(() => {
+    const byScenario = new Map<string, { history_id: string; snapshot_id: string; ran_at: string | null }>();
+    let base: { history_id: string; snapshot_id: string; ran_at: string | null } | null = null;
     if (runsRead.state === "ready") {
-      for (const run of runsRead.data.runs) {
-        const key = run.active_scenario_id ?? "";
-        if (key && !map.has(key)) map.set(key, run);
+      const identities = new Map(runsRead.data.history.map((r) => [r.identity.history_id, r.identity]));
+      for (const entry of runsRead.data.scenarios) {
+        if (!entry.committed_run) continue;
+        const found = identities.get(entry.committed_run.history_id);
+        const evidence = { history_id: entry.committed_run.history_id, snapshot_id: entry.committed_run.snapshot_id, ran_at: found?.ran_at ?? null };
+        if (entry.is_base_case) base = evidence; else if (entry.scenario_id) byScenario.set(entry.scenario_id, evidence);
       }
     }
-    return map;
+    return (scenario: ScenarioRecordPayload) => (scenario.is_base_case ? base : byScenario.get(scenario.scenario_id) ?? null);
   }, [runsRead]);
 
   /** Post a scenario mutation and verify THIS mutation in a fresh projection. */
@@ -118,7 +127,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
   const create = async () => {
     const name = newName.trim();
     if (!name) { setNameError("A scenario name is required."); return; }
-    if (name.length > 200) { setNameError("Keep the name within 200 characters."); return; }
+    if (name.length > 80) { setNameError("Keep the name within 80 characters."); return; }
     if (nameTaken(name)) { setNameError("A scenario with this name already exists."); return; }
     setNameError(undefined);
     const ok = await new Promise<boolean>((resolve) => guardScope(() => {
@@ -144,7 +153,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
           <thead><tr><th scope="col">Scenario</th><th scope="col">Type</th><th scope="col">Overrides</th><th scope="col">Committed Run evidence</th><th scope="col">Actions</th></tr></thead>
           <tbody>
             {data.scenarios.map((s) => {
-              const run = latestRun.get(s.scenario_id);
+              const run = evidenceOf(s);
               return (
                 <tr key={s.scenario_id} data-scenario-row={s.name} data-archived={s.archived || undefined}>
                   <th scope="row">{s.name}{s.active && <strong data-active-scenario="true"> · active</strong>}</th>
@@ -152,7 +161,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
                   <td>{s.is_base_case ? "—" : s.override_count}</td>
                   <td data-run-evidence={run ? "AVAILABLE" : "UNAVAILABLE"}>
                     {runsRead.state !== "ready" ? "Unavailable"
-                      : run ? <><span className="fm-mono">{String(run.runtime_snapshot_id ?? "").slice(0, 12)}</span> · {run.ran_at ?? "time unavailable"}{s.active ? ` · ${freshness === "NOT_RUN" ? "NOT RUN" : freshness}` : " · historical"}</>
+                      : run ? <><span className="fm-mono">{String(run.snapshot_id ?? "").slice(0, 12)}</span> · {run.ran_at ?? "time unavailable"}{s.active ? ` · ${freshness === "NOT_RUN" ? "NOT RUN" : freshness}` : " · historical"}</>
                         : "No committed Run"}
                   </td>
                   <td>
@@ -193,7 +202,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
         <div className="wf-inline-form">
           <Field id="wf-new-scenario" label="New scenario name" error={nameError}
                  hint="Forks the Base Case with no overrides, becomes the active scenario and is not run.">
-            {(p) => <input {...p} className="fm-input" value={newName} disabled={disabled} maxLength={200}
+            {(p) => <input {...p} className="fm-input" value={newName} disabled={disabled} maxLength={80}
                            onChange={(e) => { setNewName(e.target.value); setNameError(undefined); }}
                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void create(); } }} />}
           </Field>
@@ -209,11 +218,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
 
       {compareId && <ScenarioCompareView project={project} scenarioId={compareId} />}
 
-      <div className="fm-banner" role="note" data-kpi-compare="unavailable">
-        <span className="fm-demo-label">KPI COMPARISON UNAVAILABLE</span>
-        <span className="fm-banner-copy">No persisted per-scenario KPI projection exists yet, so revenue, EBITDA, CFADS, DSCR, debt service and returns are not
-          compared here and are never computed in the browser. Assumption compare and each scenario&rsquo;s committed Run evidence are shown instead.</span>
-      </div>
+      <ScenarioKpiComparison project={project} />
       <p className="fm-info-note">{data.mutations.note}</p>
 
       {dialog?.kind === "rename" && (

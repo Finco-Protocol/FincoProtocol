@@ -300,7 +300,7 @@ export function WorkflowDialog(props: DialogProps) {
         {input && (
           <label className="fm-field">
             <span className="fm-field-label">{input.label}</span>
-            <input className="fm-input" value={value} maxLength={200} onChange={(e) => setValue(e.target.value)}
+            <input className="fm-input" value={value} maxLength={80} onChange={(e) => setValue(e.target.value)}
                    onKeyDown={(e) => { if (e.key === "Enter" && !confirmDisabled) { e.preventDefault(); onConfirm(trimmed); } }} />
           </label>
         )}

@@ -8,6 +8,8 @@ import { FinancialResults } from "./FinancialResults";
 import { WorkspaceNav, isWorkspaceSection, type WorkspaceSection } from "./WorkspaceNav";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
 import { CostLinesView, DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
+import { FinancialInsights } from "./insights";
+import "../styles/rc-react-mvp.css";
 import { ModelExportView } from "./workflow/ModelExportView";
 import { PPAEditorView } from "./workflow/PPAEditorView";
 import { ScenarioWorkspace } from "./workflow/ScenarioWorkspace";
@@ -386,11 +388,19 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
             : <p className="rx-boot-loading" role="status">Loading the persisted results…</p>
         )}
         {section === "analysis" && (
-          statements
-            ? <div data-analysis-view="true" data-analysis-state={statements.state}>
-              <FinancialResults payload={statements} page="analysis" />
+          <div data-analysis-view="true" data-analysis-state={statements?.state ?? "LOADING"}>
+            {statements
+              ? <>
+                <p className="rx-note" data-analysis-scope="last-run">
+                  Charts below show the Working Copy&rsquo;s Last Run. Credit intelligence further down reads only the committed Runs you select explicitly.
+                </p>
+                <FinancialResults payload={statements} page="analysis" />
+              </>
+              : <p className="rx-boot-loading" role="status">Loading the persisted analysis…</p>}
+            <div data-financial-insights="true">
+              <FinancialInsights project={project} />
             </div>
-            : <p className="rx-boot-loading" role="status">Loading the persisted analysis…</p>
+          </div>
         )}
         </div>
         <footer className="rx-footer">
