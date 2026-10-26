@@ -485,6 +485,22 @@ _SCALAR_CAPEX_MAP: dict[str, str] = {
 }
 
 
+# Factory CAPEX categories that carry no amount share ONE zero-amount placeholder item named "Unused".
+# A scalar edit copies the item, so two edited categories would both stay named "Unused" and the book
+# depreciable basis (which keys components by item name) rejects the duplicate code.  The placeholder
+# is given the category's registry label instead (identifier only: amount, asset class, spending
+# profile and useful life are untouched, so no depreciation or financing quantity changes).
+_PLACEHOLDER_CAPEX_NAME = "Unused"
+_SCALAR_CAPEX_ITEM_NAMES: dict[str, str] = {
+    "epc_contract": "EPC Contract", "production_units": "Production Units", "epc_other": "EPC Other",
+    "grid_connection": "Grid Connection", "ops_prep": "Operations Preparation", "insurances": "Insurances",
+    "lease_tax": "Lease & Tax", "construction_mgmt_a": "Construction Management A",
+    "commissioning": "Commissioning", "taxes": "Import Taxes", "project_acquisition": "Project Acquisition",
+    "project_rights": "Project Rights", "audit_legal": "Audit & Legal",
+    "construction_mgmt_b": "Construction Management B",
+}
+
+
 def _apply_scalar_capex(
     proj: "ProjectInputs",
     scalars: dict[str, float],
@@ -499,7 +515,13 @@ def _apply_scalar_capex(
     new_capex = proj.capex
     for field_name, amount_keur in scalars.items():
         current_item = getattr(new_capex, field_name)
-        new_item = dc_replace(current_item, amount_keur=float(amount_keur))
+        updates: dict = {"amount_keur": float(amount_keur)}
+        if getattr(current_item, "name", None) == _PLACEHOLDER_CAPEX_NAME and field_name in _SCALAR_CAPEX_ITEM_NAMES:
+            label = _SCALAR_CAPEX_ITEM_NAMES[field_name]
+            taken = {getattr(getattr(new_capex, other), "name", None)
+                     for other in _SCALAR_CAPEX_ITEM_NAMES if other != field_name and hasattr(new_capex, other)}
+            updates["name"] = label if label not in taken else f"{label} [{field_name}]"
+        new_item = dc_replace(current_item, **updates)
         new_capex = dc_replace(new_capex, **{field_name: new_item})
     return dc_replace(proj, capex=new_capex)
 

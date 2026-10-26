@@ -487,6 +487,40 @@ async def react_workspace_inputs(request: Request, project: str):
     if ws is None:
         return _json({"ok": False, "code": "WORKSPACE_NOT_FOUND"}, 404)
     from app.v2.router import _build_input_grid_ctx
+    from app.workbook.draft_recovery import RECOVERY_CODE, diagnose_draft
+
+    recovery = diagnose_draft(ws.draft_snapshot)
+    if recovery is not None:
+        # The stored draft cannot be materialised.  Return a typed, truthful recovery state with the SAME
+        # operation-bound grid-save token and composite CAS the healthy projection issues: the owner repairs
+        # through the existing atomic grid writer; nothing is corrected, clamped or discarded here.
+        from app.workbook.registry import WORKBOOK as _WB
+        from app.workbook.workbook_identity import assemble_consistent_for_get as _assemble, WorkbookIdentityError as _IdErr
+        try:
+            _identity = _assemble(owner, record.project_id, _WB.version)
+        except _IdErr:
+            return _json({"ok": False, "code": "WORKSPACE_UNAVAILABLE",
+                          "message": "The workspace identity could not be assembled. Reload to refresh."}, 503)
+        _protected = is_protected_reference(record)
+        body = recovery.to_dict()
+        return _json({
+            "ok": False,
+            "code": RECOVERY_CODE,
+            "message": body["message"],
+            "react_workspace": {"version": REACT_WORKSPACE_VERSION},
+            "project": {"code": record.project_code,
+                        "name": getattr(record, "project_name", None) or record.project_code,
+                        "protected_reference": _protected},
+            "recovery": body,
+            "save": None if _protected else {
+                "url": "/v2/workbook/grid/save",
+                "csrf_token": mutation_token(request, project, "grid-save"),
+                "content_hash": _identity.composite_hash,
+                "workbook_version": _WB.version,
+                "scenario_id": ws.active_scenario_id,
+                "max_cells": 50,
+                "max_value_chars": 64},
+        }, 409)
 
     try:
         ctx = _build_input_grid_ctx(record, _pis_with_identity(record, owner, ws), ws, owner,

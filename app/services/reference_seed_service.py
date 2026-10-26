@@ -7,6 +7,7 @@ not invent market averages and it never calls the economic engine.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -506,12 +507,161 @@ def _resolve_seed_profile(snapshot: dict) -> "dict | None":
     return None
 
 
-def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacity_mw: float) -> None:
-    """Rescale only untouched PER_MW seed lines after a capacity edit.
+class NonFiniteDerivedAmountError(ValueError):
+    """A capacity rescale would produce a non-finite derived amount (overflow to Infinity / NaN).
+
+    Raised before anything is committed.  It is a numerical-representability refusal, not an
+    economic limit: no maximum capacity is defined or implied.
+    """
+
+
+def _require_finite(value: float, what: str) -> float:
+    if not math.isfinite(value):
+        raise NonFiniteDerivedAmountError(
+            f"Capacity cannot be applied: the derived {what} would exceed the representable numeric range. "
+            "Nothing was changed."
+        )
+    return value
+
+
+def _apply_capacity_rescale(cur, *, record, snapshot: dict, profile: dict, capacity_mw: float):
+    """Rewrite the untouched PER_MW seed sub-lines through ``cur`` and return the reconciled totals.
+
+    Transaction control belongs to the caller: this function never begins, commits or rolls back.  Every
+    derived amount is checked for finiteness here, so any caller (the standalone transaction, the dry run and
+    the capacity Save's single transaction) enforces the same rule on the state it is actually writing.
+    Returns ``(reconciled_capex_total, reconciled_opex_total, power_y1)``; ``snapshot`` is the draft read inside
+    the caller's transaction (EV / Data Center drivers are resolved from it, never from an earlier copy).
+    """
+    opex_items = profile.get("opex_items", {})
+    power_y1 = None
+    cur.execute(
+        "SELECT sub_line_id, replay_metadata_json FROM capex_sub_lines "
+        "WHERE project_id=? AND is_active=1 AND source='reference_seed'",
+        (record.project_id,),
+    )
+    for row in cur.fetchall():
+        metadata = json.loads(row["replay_metadata_json"] or "{}")
+        rate = metadata.get("unit_rate_keur_per_mw")
+        if rate is not None and metadata.get("scaling_mode") == ScalingMode.PER_MW.value:
+            amount = _require_finite(float(rate) * capacity_mw, "CAPEX line amount")
+            cur.execute(
+                "UPDATE capex_sub_lines SET amount_keur=?, updated_at=datetime('now') "
+                "WHERE project_id=? AND sub_line_id=?",
+                (amount, record.project_id, row["sub_line_id"]),
+            )
+    cur.execute(
+        "SELECT sub_line_id, replay_metadata_json FROM opex_sub_lines "
+        "WHERE project_id=? AND is_active=1 AND source='reference_seed'",
+        (record.project_id,),
+    )
+    for row in cur.fetchall():
+        metadata = json.loads(row["replay_metadata_json"] or "{}")
+        canonical_key = metadata.get("canonical_key")
+        seed = opex_items.get(canonical_key, {})
+        rate = metadata.get("unit_rate_keur_per_mw", seed.get("unit_rate_keur_per_mw"))
+        if rate is not None and metadata.get("scaling_mode") == ScalingMode.PER_MW.value:
+            amount = _require_finite(float(rate) * capacity_mw, "OPEX line amount")
+            cur.execute(
+                "UPDATE opex_sub_lines SET amount_keur=?, updated_at=datetime('now') "
+                "WHERE project_id=? AND sub_line_id=?",
+                (amount, record.project_id, row["sub_line_id"]),
+            )
+    cur.execute(
+        "SELECT COALESCE(SUM(amount_keur), 0) AS total FROM capex_sub_lines "
+        "WHERE project_id=? AND is_active=1",
+        (record.project_id,),
+    )
+    reconciled_capex_total = _require_finite(float(cur.fetchone()["total"]), "total CAPEX")
+    cur.execute(
+        "SELECT COALESCE(SUM(amount_keur), 0) AS total FROM opex_sub_lines "
+        "WHERE project_id=? AND is_active=1",
+        (record.project_id,),
+    )
+    reconciled_opex_total = _require_finite(float(cur.fetchone()["total"]), "total OPEX")
+    # EV Charging: the derived B.08 electricity line is a factory item
+    # (never a seeded sub-line) that scales exactly with capacity; add its
+    # driver-derived Y1 amount so the reconciled snapshot total includes it.
+    # Current persisted EV drivers are the authority — user edits to
+    # charging efficiency or electricity price survive the capacity change.
+    if record.template_source == "generic_ev_charging_reference":
+        reconciled_opex_total += _require_finite(
+            _ev_b08_from_snapshot(dict(snapshot), float(capacity_mw)), "EV electricity OPEX")
+        _require_finite(reconciled_opex_total, "total OPEX")
+    if record.template_source == "generic_data_center_reference":
+        # B.08 power expenses are DERIVED, not PER_MW: recompute the Y1
+        # power amount and the OPEX total from the Data Center authority.
+        # Correction A: the CURRENT persisted drivers are the authority —
+        # resolve them from the existing draft snapshot so user edits to
+        # occupancy/PUE/electricity price survive the capacity change.
+        # Driver snapshot keys are never overwritten here.
+        from app.data_center_authority import drivers_from_snapshot
+        drivers = drivers_from_snapshot(dict(snapshot))
+        power_y1 = _require_finite(annual_power_cost_keur(
+            capacity_mw=capacity_mw,
+            occupancy=drivers.occupancy_y1,
+            pue=drivers.pue,
+            electricity_price_eur_mwh=drivers.electricity_price_eur_mwh,
+        ), "Data Center power OPEX")
+        _require_finite(reconciled_opex_total + power_y1, "total OPEX")
+    _require_finite(float(f"{capacity_mw:.12g}"), "capacity")
+    _require_finite(float(f"{reconciled_capex_total:.12g}"), "total CAPEX")
+    _require_finite(float(f"{reconciled_opex_total + (power_y1 or 0.0):.12g}"), "total OPEX")
+    return reconciled_capex_total, reconciled_opex_total, power_y1
+
+
+def _reconciled_capacity_snapshot(snapshot: dict, profile: dict, record, capacity_mw: float,
+                                  capex_total: float, opex_total: float, power_y1) -> dict:
+    """Pure: the draft snapshot after a capacity rescale (capacity, reconciled totals, seed profile)."""
+    out = dict(snapshot)
+    out["capacity_mw"] = f"{capacity_mw:.12g}"
+    out["total_capex_keur"] = f"{capex_total:.12g}"
+    if record.template_source == "generic_data_center_reference":
+        out["opex_power_expenses_y1_keur"] = f"{power_y1:.12g}"
+        out["opex_y1_keur"] = f"{opex_total + power_y1:.12g}"
+    else:
+        out["opex_y1_keur"] = f"{opex_total:.12g}"
+    profile = dict(profile)
+    profile["seed_capacity_mw"] = capacity_mw
+    if profile.get("data_center") is not None:
+        profile["data_center"] = dict(profile["data_center"])
+        profile["data_center"]["seed_capacity_mw"] = capacity_mw
+    out["_reference_seed_profile"] = profile
+    return out
+
+
+def rescale_snapshot_in_transaction(cur, *, project_record, snapshot: dict, capacity_mw: float) -> dict:
+    """Capacity rescale inside the CALLER's open transaction (the single-transaction capacity Save).
+
+    Uses the caller's cursor/connection only (no new connection: the caller holds the exclusive lock), never
+    begins/commits/rolls back, and builds the reconciled snapshot from ``snapshot`` — the draft read inside that
+    same transaction.  Raises ``NonFiniteDerivedAmountError`` so the caller rolls the WHOLE Save back.  A project
+    that is not a cloneable reference seed (or carries no seed profile) is returned unchanged, exactly as the
+    standalone rescale returns without writing.
+    """
+    if project_record is None or project_record.template_source not in CLONEABLE_SEED_TEMPLATE_SOURCES:
+        return snapshot
+    profile = _resolve_seed_profile(snapshot)
+    if profile is None:
+        return snapshot
+    _require_finite(float(capacity_mw), "capacity")
+    capex_total, opex_total, power_y1 = _apply_capacity_rescale(
+        cur, record=project_record, snapshot=snapshot, profile=profile, capacity_mw=capacity_mw)
+    return _reconciled_capacity_snapshot(snapshot, profile, project_record, capacity_mw, capex_total, opex_total, power_y1)
+
+
+def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacity_mw: float,
+                                     _dry_run: bool = False) -> None:
+    """Rescale only untouched PER_MW seed lines after a capacity edit (standalone transaction).
 
     Rows whose ``source`` changed to ``user_override`` are intentionally left
     alone.  The reference unit rates in the stored seed metadata remain the
     authority; no new formula or market assumption is introduced here.
+
+    The user-visible capacity Save does NOT use this function for its writes: it uses
+    ``rescale_snapshot_in_transaction`` inside ``v2_atomic_draft_update`` so the capacity, the sub-lines and the
+    reconciled snapshot commit or roll back as ONE unit.  This standalone form remains for other callers and as
+    the rolled-back dry run (``_dry_run``) behind ``preflight_capacity_rescale``.
     """
     from app.persistence.projects_repository import get_project_by_code
 
@@ -524,87 +674,28 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
     profile = _resolve_seed_profile(ws.draft_snapshot)
     if profile is None:
         return
-    opex_items = profile.get("opex_items", {})
-    reconciled_capex_total = None
-    reconciled_opex_total = None
-    with get_cursor() as cur:
-        cur.execute(
-            "SELECT sub_line_id, replay_metadata_json FROM capex_sub_lines "
-            "WHERE project_id=? AND is_active=1 AND source='reference_seed'",
-            (record.project_id,),
-        )
-        for row in cur.fetchall():
-            metadata = json.loads(row["replay_metadata_json"] or "{}")
-            rate = metadata.get("unit_rate_keur_per_mw")
-            if rate is not None and metadata.get("scaling_mode") == ScalingMode.PER_MW.value:
-                cur.execute(
-                    "UPDATE capex_sub_lines SET amount_keur=?, updated_at=datetime('now') "
-                    "WHERE project_id=? AND sub_line_id=?",
-                    (float(rate) * capacity_mw, record.project_id, row["sub_line_id"]),
-                )
-        cur.execute(
-            "SELECT sub_line_id, replay_metadata_json FROM opex_sub_lines "
-            "WHERE project_id=? AND is_active=1 AND source='reference_seed'",
-            (record.project_id,),
-        )
-        for row in cur.fetchall():
-            metadata = json.loads(row["replay_metadata_json"] or "{}")
-            canonical_key = metadata.get("canonical_key")
-            seed = opex_items.get(canonical_key, {})
-            rate = metadata.get("unit_rate_keur_per_mw", seed.get("unit_rate_keur_per_mw"))
-            if rate is not None and metadata.get("scaling_mode") == ScalingMode.PER_MW.value:
-                cur.execute(
-                    "UPDATE opex_sub_lines SET amount_keur=?, updated_at=datetime('now') "
-                    "WHERE project_id=? AND sub_line_id=?",
-                    (float(rate) * capacity_mw, record.project_id, row["sub_line_id"]),
-                )
-        cur.execute(
-            "SELECT COALESCE(SUM(amount_keur), 0) AS total FROM capex_sub_lines "
-            "WHERE project_id=? AND is_active=1",
-            (record.project_id,),
-        )
-        reconciled_capex_total = float(cur.fetchone()["total"])
-        cur.execute(
-            "SELECT COALESCE(SUM(amount_keur), 0) AS total FROM opex_sub_lines "
-            "WHERE project_id=? AND is_active=1",
-            (record.project_id,),
-        )
-        reconciled_opex_total = float(cur.fetchone()["total"])
-        # EV Charging: the derived B.08 electricity line is a factory item
-        # (never a seeded sub-line) that scales exactly with capacity; add its
-        # driver-derived Y1 amount so the reconciled snapshot total includes it.
-        # Current persisted EV drivers are the authority — user edits to
-        # charging efficiency or electricity price survive the capacity change.
-        if record.template_source == "generic_ev_charging_reference":
-            reconciled_opex_total += _ev_b08_from_snapshot(dict(ws.draft_snapshot), float(capacity_mw))
-    snapshot = dict(ws.draft_snapshot)
-    snapshot["capacity_mw"] = f"{capacity_mw:.12g}"
-    snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
-    if record.template_source == "generic_data_center_reference":
-        # B.08 power expenses are DERIVED, not PER_MW: recompute the Y1
-        # power amount and the OPEX total from the Data Center authority.
-        # Correction A: the CURRENT persisted drivers are the authority —
-        # resolve them from the existing draft snapshot so user edits to
-        # occupancy/PUE/electricity price survive the capacity change.
-        # Driver snapshot keys are never overwritten here.
-        from app.data_center_authority import drivers_from_snapshot
-        drivers = drivers_from_snapshot(dict(ws.draft_snapshot))
-        power_y1 = annual_power_cost_keur(
-            capacity_mw=capacity_mw,
-            occupancy=drivers.occupancy_y1,
-            pue=drivers.pue,
-            electricity_price_eur_mwh=drivers.electricity_price_eur_mwh,
-        )
-        snapshot["opex_power_expenses_y1_keur"] = f"{power_y1:.12g}"
-        snapshot["opex_y1_keur"] = f"{reconciled_opex_total + power_y1:.12g}"
-    else:
-        snapshot["opex_y1_keur"] = f"{reconciled_opex_total:.12g}"
-    profile = dict(profile)
-    profile["seed_capacity_mw"] = capacity_mw
-    if profile.get("data_center") is not None:
-        profile["data_center"] = dict(profile["data_center"])
-        profile["data_center"]["seed_capacity_mw"] = capacity_mw
-    snapshot["_reference_seed_profile"] = profile
+    _require_finite(float(capacity_mw), "capacity")
+    # The shared connection is autocommit (isolation_level=None): without an explicit transaction every
+    # UPDATE would commit on its own and an exception could not undo it.  BEGIN IMMEDIATE makes the line
+    # updates and both reconciling sums one atomic unit; a failed finiteness check (or a dry run) ROLLBACKs.
+    from app.persistence.db import get_connection
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("BEGIN IMMEDIATE")
+        totals = _apply_capacity_rescale(
+            cur, record=record, snapshot=dict(ws.draft_snapshot), profile=profile, capacity_mw=capacity_mw)
+        cur.execute("ROLLBACK" if _dry_run else "COMMIT")
+    except BaseException:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        cur.close()
+        conn.close()
+    if _dry_run:
+        return
+    snapshot = _reconciled_capacity_snapshot(dict(ws.draft_snapshot), profile, record, capacity_mw, *totals)
     save_workspace_state(
         user_id=user_id,
         project_id=record.project_id,
@@ -615,6 +706,12 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
         governance_state=ws.governance_state,
         replay_metadata=ws.replay_metadata,
     )
+
+
+def preflight_capacity_rescale(*, user_id: str, project_code: str, capacity_mw: float) -> None:
+    """Dry-run of the capacity rescale: raises ``NonFiniteDerivedAmountError`` or returns, never writes."""
+    rescale_reference_seeded_project(
+        user_id=user_id, project_code=project_code, capacity_mw=capacity_mw, _dry_run=True)
 
 
 # ── Public read-only helpers (A3 Model Reference API) ─────────────────────────
