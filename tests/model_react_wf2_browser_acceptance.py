@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from playwright.sync_api import expect
 
 from tests.model_react_wf1_browser_acceptance import make_session
 
@@ -343,6 +344,10 @@ def check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser,
         ppa_panel(page).locator("[data-ppa-save='true']").click()
         wait_status(page, "ok", "verified", "[data-ppa-editor]")
         assert ppa_panel(page).locator("[data-ppa-stream]").first.get_attribute("data-contract-class") == "Indexed"
+        # The verified POST starts a parent projection refresh. Wait for the
+        # clean editor before typing: its raw-payload effect resets the draft.
+        page.locator("[data-unsaved-indicator='true']").wait_for(state="detached")
+        expect(ppa_panel(page).locator("[data-ppa-save='true']")).to_be_disabled(timeout=20000)
 
         # a malformed date maps to the exact field and nothing is sent
         posts = []
@@ -354,12 +359,15 @@ def check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser,
         assert posts == [], "client-side validation sends nothing"
         stream.get_by_role("button", name="Remove contract ppa").is_disabled()   # the last contract cannot be removed
         ppa_panel(page).get_by_role("button", name="Cancel edits").click()
+        expect(ppa_panel(page).locator("[data-ppa-stream]").first.get_by_label("Indexation rate")).to_have_value("0.02", timeout=20000)
 
         # switch to a scheduled price curve: chronological order is enforced per point
         stream = ppa_panel(page).locator("[data-ppa-stream]").first
         stream.get_by_label("Indexation rate").fill("0")
         ppa_panel(page).locator("[data-ppa-save='true']").click()
         wait_status(page, "ok", "verified", "[data-ppa-editor]")
+        page.locator("[data-unsaved-indicator='true']").wait_for(state="detached")
+        expect(ppa_panel(page).locator("[data-ppa-save='true']")).to_be_disabled(timeout=20000)
         stream = ppa_panel(page).locator("[data-ppa-stream]").first
         stream.get_by_role("button", name="Switch to a scheduled price curve").click()
         curve = stream.locator("[data-ppa-curve]")
