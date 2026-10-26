@@ -52,3 +52,44 @@ def test_browser_layer_preserves_all_original_pins_and_historical_contract():
 def test_browser_layer_wrong_source_parent_or_blob_fails_closed(monkeypatch,attribute):
     monkeypatch.setattr(S,attribute,"0"*40)
     assert not S.current_mutation_successor_valid()
+
+
+def test_finval_b2c1_successor_is_exactly_six_additive_paths_and_keeps_every_original_pin():
+    assert len(S.BLOBS)==112 and S.SOURCE_HEAD=="1800bf6092af650f18aa6ae70e9df221797090fd"
+    assert set(S.FINVAL_B2C1_SUCCESSORS)=={"app/templates/v2/partials/sheet_opex.html","app/v2/react_workspace_router.py",
+        "app/v2/router.py","frontend/src/app/WorkspaceView.tsx","frontend/src/app/types.ts","static/react/finco-react.js"}
+    for path,blob in S.FINVAL_B2C1_SUCCESSORS.items():
+        assert path in S.BLOBS and len(blob)==40 and blob!=S.BLOBS[path]
+        assert S.git_blob(SOURCES[path])==blob                      # the current reviewed source is the admitted successor
+    assert S.TOKEN_MODULE not in S.FINVAL_B2C1_SUCCESSORS
+
+@pytest.mark.parametrize("path",["app/templates/v2/partials/sheet_opex.html","app/v2/react_workspace_router.py","app/v2/router.py",
+    "frontend/src/app/WorkspaceView.tsx","frontend/src/app/types.ts","static/react/finco-react.js"])
+def test_finval_b2c1_one_byte_of_drift_in_any_successor_path_fails_closed(path):
+    changed=dict(SOURCES);changed[path]+="\n"
+    assert S.violations(changed)
+
+def test_finval_b2c1_historical_pins_still_validate_the_historical_sources():
+    historical=dict(SOURCES)
+    for path in S.FINVAL_B2C1_SUCCESSORS:
+        historical[path]=subprocess.check_output(["git","show",S.SOURCE_HEAD+":"+path],cwd=S.ROOT).decode("utf-8")
+    assert S.violations(historical)==[]                                # old pin values remain individually accepted
+
+def test_finval_b2c1_unreviewed_seventh_path_and_token_module_drift_are_refused():
+    for path in ("app/v2/grid_router.py","app/workbook/mutation_csrf.py"):
+        changed=dict(SOURCES);changed[path]+="\n"
+        assert S.violations(changed)
+
+def test_finval_b2c1_successor_does_not_weaken_the_operation_bound_csrf_gate():
+    source=SOURCES["app/v2/router.py"]
+    needle='(await request.form()).get("csrf_token"), "workbook-update"'
+    assert needle in source
+    changed=dict(SOURCES);changed["app/v2/router.py"]=source.replace(needle,'(await request.form()).get("csrf_token"), "wrong-operation"',1)
+    assert S.violations(changed)                       # the byte pin refuses it ...
+    assert S.violations(changed,check_pin=False)       # ... and so does the structural gate, independent of any pin
+
+def test_finval_b2c1_successor_does_not_weaken_the_protected_reference_guard():
+    source=SOURCES["app/v2/router.py"]
+    assert "is_protected_reference(" in source
+    changed=dict(SOURCES);changed["app/v2/router.py"]=source.replace("is_protected_reference(","is_protected_reference_removed(")
+    assert S.violations(changed,check_pin=False)

@@ -237,6 +237,33 @@ export interface InputsPayload {
   cost_line_boundary: { note: string; capex_opex_editable: boolean };
 }
 
+/** Typed recovery state returned (HTTP 409) instead of the grid when a stored draft cannot be materialised. */
+export const RECOVERY_CODE = "WORKING_COPY_RECOVERY_REQUIRED" as const;
+
+export interface RecoveryIssuePayload {
+  snapshot_key: string;
+  field_id: string | null;
+  label: string;
+  unit: string;
+  stored_value: string;
+  reason: string;
+  repairable: boolean;
+}
+
+export interface RecoveryPayload {
+  ok: false;
+  code: typeof RECOVERY_CODE;
+  message: string;
+  project: { code: string; name: string; protected_reference: boolean };
+  recovery: { code: string; message: string; complete: boolean; issues: RecoveryIssuePayload[] };
+  save: InputsPayload["save"] | null;
+}
+
+export function isRecoveryPayload(value: unknown): value is RecoveryPayload {
+  const v = value as { ok?: unknown; code?: unknown; recovery?: { issues?: unknown } } | null;
+  return Boolean(v && v.ok === false && v.code === RECOVERY_CODE && v.recovery && Array.isArray(v.recovery.issues));
+}
+
 // ── UX-04/05/06 canonical surface projections ──────────────────────────────
 
 export interface SheetFieldPayload {

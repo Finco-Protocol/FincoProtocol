@@ -135,6 +135,16 @@ PPA_CORRECTION_PATH="tests/model_react_wf2_browser_acceptance.py"
 PPA_CORRECTION_SOURCE_HEAD="cd3910debeaaa64c763600dd821608c8867b3009"
 PPA_CORRECTION_PARENT="afd8597f99964bb212866764c2e6f961e6e9f7fa"
 PPA_CORRECTION_BLOB="34a1be8ae3e3fbd165115ff13a2888b2fb602c39"
+# FIN-VAL B2/C1 admits exact reviewed successors of six pinned files (additive; every original pin above stays
+# immutable and each historical parent blob is still verified at SOURCE_HEAD). Any further drift needs a new review.
+FINVAL_B2C1_SUCCESSORS={
+    "app/templates/v2/partials/sheet_opex.html":"3220115c7565420b03694def6a8d8ad3a0ec042e",
+    "app/v2/react_workspace_router.py":"aee8e13815cc02f3e7ae43c57925aa6679515719",
+    "app/v2/router.py":"f92bdd593406ab1c04d343af75fba86d80055414",
+    "frontend/src/app/WorkspaceView.tsx":"5e14876224a9444151aa57b243291dbb98b2891e",
+    "frontend/src/app/types.ts":"d5077405dd2c316fe3ee006250287d11835382f4",
+    "static/react/finco-react.js":"4b74bb50f43c665136e8fcac11e0a9beead08f8b",
+}
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -183,6 +193,7 @@ def violations(sources,*,check_pin=True):
         if not isinstance(text,str):errors.append(path+": missing source");continue
         layer=_browser_layers().get(path)
         admitted={expected,layer[2]} if layer else {expected}
+        if path in FINVAL_B2C1_SUCCESSORS:admitted=admitted|{FINVAL_B2C1_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):
             try:trees[path]=ast.parse(text)
