@@ -1,0 +1,72 @@
+# Usage: p2a_bench.py <tree> <label> <entries> <samples>
+import os, sys, time, json, uuid, re, statistics, gc
+tree, label, N, S = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+sys.path.insert(0, tree); os.chdir(tree)
+os.environ.update({"PYTHONDONTWRITEBYTECODE": "1", "FINCO_RLIVE_WARMING_ENABLED": "0", "FINCO_MODEL_EXECUTION_MODE": "thread",
+                   "FINCO_NATIVE_V10_KILL_SWITCH_FILE": "/nonexistent/k10", "FINCO_NATIVE_V11_KILL_SWITCH_FILE": "/nonexistent/k11"})
+OUT = f"/root/v11_perf/bench/out_{label}"; os.makedirs(OUT, exist_ok=True)
+from app.persistence import db
+db.DB_PATH = f"{OUT}/p2a.db"
+for suf in ("", "-wal", "-shm"):
+    try: os.unlink(db.DB_PATH + suf)
+    except FileNotFoundError: pass
+db.init_db()
+USER = "bench-user"
+from app.services.reference_seed_service import create_reference_seeded_project
+rec = create_reference_seeded_project(user_id=USER, template_source="generic_solar_reference", requested_name="P2a bench", capacity_mw=64.0)
+from app.auth import COOKIE_NAME, create_session_token
+ck = {COOKIE_NAME: create_session_token(user_id=USER, username="admin")}
+from fastapi.testclient import TestClient
+import main_web
+with TestClient(main_web.app) as client:
+    page = client.get(f"/v2/workbook?project={rec.project_code}", cookies=ck)
+    h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1); v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+    from tests.run_clone_csrf import post_valid_csrf
+    r = post_valid_csrf(client, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v}, cookies=ck, headers={"HX-Request": "true"})
+    assert r.status_code == 200
+    # replicate the one real committed history row to N rows (same JSON sizes as a real Run)
+    from app.persistence.db import get_cursor
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM model_run_history WHERE project_id=?", (rec.project_id,)); row = dict(cur.fetchone())
+        cols = [c for c in row if c != "id"] if "id" in row else list(row)
+        for i in range(1, N):
+            new = dict(row); new["history_id"] = uuid.uuid4().hex; new["runtime_snapshot_id"] = f"{row['runtime_snapshot_id']}-{i:04d}"
+            new["ran_at"] = f"2026-01-{(i % 28) + 1:02d}T{(i // 28) % 24:02d}:00:00+00:00"
+            cur.execute(f"INSERT INTO model_run_history ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", tuple(new[c] for c in cols))
+        cur.execute("SELECT COUNT(*), AVG(length(runtime_summary_json)+length(financial_statements_json)+length(debt_schedule_json)+length(tax_schedule_json)+length(distribution_schedule_json)+length(sponsor_schedule_json)+length(integrity_evidence_json)+length(replay_metadata_json)) FROM model_run_history WHERE project_id=?", (rec.project_id,))
+        cnt, avg = cur.fetchone()
+    from app.persistence import run_history_repository as rh
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.v2.run_history_projection import HISTORY_LIST_LIMIT
+    def stats(xs):
+        xs = sorted(xs); n = len(xs); med = statistics.median(xs)
+        return {"n": n, "median_ms": round(med * 1e3, 3), "p95_ms": round(xs[min(n - 1, round(.95 * (n - 1)))] * 1e3, 3), "min_ms": round(xs[0] * 1e3, 3),
+                "max_ms": round(xs[-1] * 1e3, 3), "mad_ms": round(statistics.median([abs(x - med) for x in xs]) * 1e3, 3)}
+    res = {"label": label, "rows": cnt, "avg_row_json_bytes": int(avg), "list_limit": HISTORY_LIST_LIMIT}
+    class Count:
+        def __init__(self): self.n = 0
+        def loads(self, *a, **k): self.n += 1; return json.loads(*a, **k)
+        def __getattr__(self, x): return getattr(json, x)
+    real = rh.json; c = Count(); rh.json = c
+    rh.get_run_history(USER, rec.project_id, limit=HISTORY_LIST_LIMIT); res["json_loads_per_listing"] = c.n; res["json_loads_per_entry"] = c.n / min(HISTORY_LIST_LIMIT, cnt)
+    rh.json = real
+    def timed(fn, reps=S, warm=3):
+        for _ in range(warm): fn()
+        w, cp = [], []
+        for _ in range(reps):
+            gc.collect(); t = time.perf_counter(); c0 = time.process_time(); fn(); cp.append(time.process_time() - c0); w.append(time.perf_counter() - t)
+        return {"wall": stats(w), "cpu": stats(cp)}
+    res["repo_get_run_history_limit"] = timed(lambda: rh.get_run_history(USER, rec.project_id, limit=HISTORY_LIST_LIMIT))
+    rows = None
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM model_run_history WHERE project_id=? ORDER BY ran_at DESC, history_id DESC LIMIT ?", (rec.project_id, HISTORY_LIST_LIMIT)); rows = cur.fetchall()
+    res["decoder_only_25_rows"] = timed(lambda: [rh._decode_entry(r) for r in rows])
+    res["one_entry_decode"] = timed(lambda: rh._decode_entry(rows[0]), reps=S * 4)
+    ws = get_workspace_state(user_id=USER, project_id=rec.project_id)
+    import app.v2.post_run_ui as pru
+    from app.v2.router import _build_pis_with_composite_identity
+    pis = _build_pis_with_composite_identity(ws, rec, USER)
+    res["post_run_history_fragment"] = timed(lambda: pru._build_run_history_oob(ws, pis, project_record=rec))
+    res["http_get_run_history_listing"] = timed(lambda: client.get(f"/v2/workbook/run-history?project={rec.project_code}", cookies=ck, headers={"HX-Request": "true"}), reps=max(10, S // 2))
+    import cProfile, pstats
+print(json.dumps(res, indent=1)); json.dump(res, open(f"{OUT}/result.json", "w"), indent=1)

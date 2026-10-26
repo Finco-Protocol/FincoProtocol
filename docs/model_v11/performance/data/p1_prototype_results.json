@@ -1,0 +1,1794 @@
+[
+ {
+  "variant": "base",
+  "rep": 0,
+  "warm_s": 1.7262727270135656,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293127,
+   293130
+  ],
+  "rss_after_warm_kb": {
+   "293127": 95896,
+   "293130": 95920
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293127,
+    "first_for_pid": true,
+    "inner": 1.8590306850383058,
+    "roundtrip": 1.885883678914979,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293130,
+    "first_for_pid": true,
+    "inner": 1.8699877120088786,
+    "roundtrip": 1.8917897620704025,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293127,
+    "first_for_pid": false,
+    "inner": 0.9809792670421302,
+    "roundtrip": 0.9886837609810755,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293130,
+    "first_for_pid": false,
+    "inner": 1.0246400849428028,
+    "roundtrip": 1.0354489580495283,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293127": 109656,
+   "293130": 109740
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293165,
+   "new_pid": true,
+   "inner": 2.5547903949627653,
+   "roundtrip": 3.3272474789991975,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 0,
+  "warm_s": 2.1427243850193918,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293176,
+   293179
+  ],
+  "rss_after_warm_kb": {
+   "293176": 100024,
+   "293179": 100224
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293179,
+    "first_for_pid": true,
+    "inner": 1.4715674290200695,
+    "roundtrip": 1.4795583569211885,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293176,
+    "first_for_pid": true,
+    "inner": 1.4742466629249975,
+    "roundtrip": 1.4836817180039361,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293179,
+    "first_for_pid": false,
+    "inner": 1.0072922670515254,
+    "roundtrip": 1.0149792390875518,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293176,
+    "first_for_pid": false,
+    "inner": 1.1116386509966105,
+    "roundtrip": 1.1185570119414479,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293176": 108860,
+   "293179": 109080
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293202,
+   "new_pid": true,
+   "inner": 2.5501321299234405,
+   "roundtrip": 3.389141947031021,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 1,
+  "warm_s": 1.9876015359768644,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293214,
+   293217
+  ],
+  "rss_after_warm_kb": {
+   "293214": 100268,
+   "293217": 100008
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293214,
+    "first_for_pid": true,
+    "inner": 1.4310542939929292,
+    "roundtrip": 1.4375396890100092,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293217,
+    "first_for_pid": true,
+    "inner": 1.372412277967669,
+    "roundtrip": 1.3785557260271162,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293214,
+    "first_for_pid": false,
+    "inner": 0.9448042289586738,
+    "roundtrip": 0.9517333810217679,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293217,
+    "first_for_pid": false,
+    "inner": 1.055408876040019,
+    "roundtrip": 1.063476996961981,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293214": 109068,
+   "293217": 108832
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293228,
+   "new_pid": true,
+   "inner": 2.596384937991388,
+   "roundtrip": 3.3380615760106593,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 1,
+  "warm_s": 1.6296711679315194,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293238,
+   293241
+  ],
+  "rss_after_warm_kb": {
+   "293238": 95908,
+   "293241": 95560
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293238,
+    "first_for_pid": true,
+    "inner": 1.9070445229299366,
+    "roundtrip": 1.9348500210326165,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293241,
+    "first_for_pid": true,
+    "inner": 2.2404112690128386,
+    "roundtrip": 2.2762095789657906,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293238,
+    "first_for_pid": false,
+    "inner": 1.2088145430898294,
+    "roundtrip": 1.2225746409967542,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293241,
+    "first_for_pid": false,
+    "inner": 1.1787783129839227,
+    "roundtrip": 1.187647434999235,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293238": 109688,
+   "293241": 109364
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293270,
+   "new_pid": true,
+   "inner": 2.7278625699691474,
+   "roundtrip": 3.7334222430363297,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 2,
+  "warm_s": 1.541142450994812,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293281,
+   293284
+  ],
+  "rss_after_warm_kb": {
+   "293281": 95824,
+   "293284": 95844
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293284,
+    "first_for_pid": true,
+    "inner": 2.002258098917082,
+    "roundtrip": 2.023176016053185,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293281,
+    "first_for_pid": true,
+    "inner": 1.9444641030859202,
+    "roundtrip": 1.9693913629744202,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293284,
+    "first_for_pid": false,
+    "inner": 1.0441741849062964,
+    "roundtrip": 1.0522987520089373,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293281,
+    "first_for_pid": false,
+    "inner": 1.0580491300206631,
+    "roundtrip": 1.0684192769695073,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293281": 109624,
+   "293284": 109624
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293297,
+   "new_pid": true,
+   "inner": 2.705362156033516,
+   "roundtrip": 3.52182994002942,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 2,
+  "warm_s": 2.0314971869811416,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293306,
+   293309
+  ],
+  "rss_after_warm_kb": {
+   "293306": 99916,
+   "293309": 100164
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293306,
+    "first_for_pid": true,
+    "inner": 1.5052612830186263,
+    "roundtrip": 1.512822311022319,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293309,
+    "first_for_pid": true,
+    "inner": 1.4999398379586637,
+    "roundtrip": 1.5081891380250454,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293306,
+    "first_for_pid": false,
+    "inner": 1.0471408599987626,
+    "roundtrip": 1.0586129989242181,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293309,
+    "first_for_pid": false,
+    "inner": 1.0449458559742197,
+    "roundtrip": 1.055894319084473,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293306": 108740,
+   "293309": 108916
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293321,
+   "new_pid": true,
+   "inner": 3.0116639700718224,
+   "roundtrip": 3.983195852022618,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 3,
+  "warm_s": 1.9170945649966598,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293330,
+   293333
+  ],
+  "rss_after_warm_kb": {
+   "293330": 100152,
+   "293333": 100164
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293330,
+    "first_for_pid": true,
+    "inner": 1.4832029449753463,
+    "roundtrip": 1.4920126870274544,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293333,
+    "first_for_pid": true,
+    "inner": 1.7036755739245564,
+    "roundtrip": 1.7139185249106959,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293330,
+    "first_for_pid": false,
+    "inner": 1.1479526930488646,
+    "roundtrip": 1.1618355519603938,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293333,
+    "first_for_pid": false,
+    "inner": 1.0007791130337864,
+    "roundtrip": 1.0085260580526665,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293330": 108916,
+   "293333": 108924
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293352,
+   "new_pid": true,
+   "inner": 2.860422095982358,
+   "roundtrip": 3.7521027830662206,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 3,
+  "warm_s": 1.589273193036206,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293361,
+   293364
+  ],
+  "rss_after_warm_kb": {
+   "293361": 95768,
+   "293364": 95592
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293361,
+    "first_for_pid": true,
+    "inner": 1.9524661489995196,
+    "roundtrip": 1.9759375699795783,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293364,
+    "first_for_pid": true,
+    "inner": 1.7709763060556725,
+    "roundtrip": 1.798106511007063,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293361,
+    "first_for_pid": false,
+    "inner": 1.0684324159519747,
+    "roundtrip": 1.0800681619439274,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293364,
+    "first_for_pid": false,
+    "inner": 1.010804109973833,
+    "roundtrip": 1.0189489639597014,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293361": 109524,
+   "293364": 109364
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293376,
+   "new_pid": true,
+   "inner": 2.7650141520425677,
+   "roundtrip": 3.650879609049298,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 4,
+  "warm_s": 1.6477203889517114,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293389,
+   293392
+  ],
+  "rss_after_warm_kb": {
+   "293389": 95836,
+   "293392": 95940
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293392,
+    "first_for_pid": true,
+    "inner": 2.0340260869124904,
+    "roundtrip": 2.061252300045453,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293389,
+    "first_for_pid": true,
+    "inner": 2.1561963259009644,
+    "roundtrip": 2.1931879320181906,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293392,
+    "first_for_pid": false,
+    "inner": 1.1325609419727698,
+    "roundtrip": 1.1450541430385783,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293389,
+    "first_for_pid": false,
+    "inner": 1.0392739690141752,
+    "roundtrip": 1.0471984039759263,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293389": 109644,
+   "293392": 109728
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293405,
+   "new_pid": true,
+   "inner": 2.556004917016253,
+   "roundtrip": 3.316626615007408,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 4,
+  "warm_s": 1.8650571199832484,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293416,
+   293419
+  ],
+  "rss_after_warm_kb": {
+   "293416": 100224,
+   "293419": 100076
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293419,
+    "first_for_pid": true,
+    "inner": 1.3677993080345914,
+    "roundtrip": 1.374580524978228,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293416,
+    "first_for_pid": true,
+    "inner": 1.277131011011079,
+    "roundtrip": 1.2851771239656955,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293419,
+    "first_for_pid": false,
+    "inner": 1.0711358019616455,
+    "roundtrip": 1.0795438669156283,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293416,
+    "first_for_pid": false,
+    "inner": 0.9927769140340388,
+    "roundtrip": 1.0046923389891163,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293416": 109056,
+   "293419": 108884
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293432,
+   "new_pid": true,
+   "inner": 2.5446394099853933,
+   "roundtrip": 3.3334005170036107,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 5,
+  "warm_s": 1.8780894989613444,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293441,
+   293444
+  ],
+  "rss_after_warm_kb": {
+   "293441": 100232,
+   "293444": 100176
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293441,
+    "first_for_pid": true,
+    "inner": 1.3922975080786273,
+    "roundtrip": 1.3997622360475361,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293444,
+    "first_for_pid": true,
+    "inner": 1.4558489619521424,
+    "roundtrip": 1.4641624809009954,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293441,
+    "first_for_pid": false,
+    "inner": 1.1067829249659553,
+    "roundtrip": 1.1164139279862866,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293444,
+    "first_for_pid": false,
+    "inner": 0.9762049240525812,
+    "roundtrip": 0.9841983870137483,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293441": 109096,
+   "293444": 108968
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293456,
+   "new_pid": true,
+   "inner": 2.519886214984581,
+   "roundtrip": 3.257165696937591,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 5,
+  "warm_s": 1.515856610960327,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293463,
+   293466
+  ],
+  "rss_after_warm_kb": {
+   "293463": 95600,
+   "293466": 96000
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293463,
+    "first_for_pid": true,
+    "inner": 1.7089969590306282,
+    "roundtrip": 1.732577805989422,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293466,
+    "first_for_pid": true,
+    "inner": 1.743370346026495,
+    "roundtrip": 1.7640167300123721,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293463,
+    "first_for_pid": false,
+    "inner": 1.0231879909988493,
+    "roundtrip": 1.0307877430459484,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293466,
+    "first_for_pid": false,
+    "inner": 0.9434213079512119,
+    "roundtrip": 0.951551377074793,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293463": 109420,
+   "293466": 109800
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293482,
+   "new_pid": true,
+   "inner": 2.469362603034824,
+   "roundtrip": 3.3643990310374647,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 6,
+  "warm_s": 1.5357916459906846,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293491,
+   293494
+  ],
+  "rss_after_warm_kb": {
+   "293491": 96012,
+   "293494": 95652
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293491,
+    "first_for_pid": true,
+    "inner": 1.8620497019728646,
+    "roundtrip": 1.889744269894436,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293494,
+    "first_for_pid": true,
+    "inner": 1.8455920440610498,
+    "roundtrip": 1.8738071400439367,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293491,
+    "first_for_pid": false,
+    "inner": 0.8793951270636171,
+    "roundtrip": 0.8960257730213925,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293494,
+    "first_for_pid": false,
+    "inner": 1.1274511590600014,
+    "roundtrip": 1.1352810179814696,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293491": 109788,
+   "293494": 109432
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293508,
+   "new_pid": true,
+   "inner": 2.7012681579217315,
+   "roundtrip": 3.572193304891698,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 6,
+  "warm_s": 2.098997030989267,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293516,
+   293519
+  ],
+  "rss_after_warm_kb": {
+   "293516": 100500,
+   "293519": 100136
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293519,
+    "first_for_pid": true,
+    "inner": 1.4792015079874545,
+    "roundtrip": 1.488839603960514,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293516,
+    "first_for_pid": true,
+    "inner": 1.5970790000865236,
+    "roundtrip": 1.6079688280588016,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293519,
+    "first_for_pid": false,
+    "inner": 1.1971687930636108,
+    "roundtrip": 1.2065513239940628,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293516,
+    "first_for_pid": false,
+    "inner": 1.329579356010072,
+    "roundtrip": 1.3496308829635382,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293516": 109240,
+   "293519": 108936
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293536,
+   "new_pid": true,
+   "inner": 4.630181202082895,
+   "roundtrip": 9.948062977055088,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 7,
+  "warm_s": 2.435887243016623,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293557,
+   293560
+  ],
+  "rss_after_warm_kb": {
+   "293557": 100128,
+   "293560": 100300
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293560,
+    "first_for_pid": true,
+    "inner": 1.6305974640417844,
+    "roundtrip": 1.6418184279464185,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293557,
+    "first_for_pid": true,
+    "inner": 1.529354918980971,
+    "roundtrip": 1.5474272320279852,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293560,
+    "first_for_pid": false,
+    "inner": 1.1979124409845099,
+    "roundtrip": 1.2087619740050286,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293557,
+    "first_for_pid": false,
+    "inner": 1.1345314040081576,
+    "roundtrip": 1.1429547290317714,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293557": 108936,
+   "293560": 109040
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293575,
+   "new_pid": true,
+   "inner": 2.716977822012268,
+   "roundtrip": 3.7834796559764072,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 7,
+  "warm_s": 1.7059379169950262,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293582,
+   293585
+  ],
+  "rss_after_warm_kb": {
+   "293582": 95860,
+   "293585": 95620
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293582,
+    "first_for_pid": true,
+    "inner": 1.9258556719869375,
+    "roundtrip": 1.9485847150208429,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293585,
+    "first_for_pid": true,
+    "inner": 2.082621023990214,
+    "roundtrip": 2.1053810159210116,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293582,
+    "first_for_pid": false,
+    "inner": 1.082526347017847,
+    "roundtrip": 1.0892494349973276,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293585,
+    "first_for_pid": false,
+    "inner": 1.1704718489199877,
+    "roundtrip": 1.1774857990676537,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293582": 109648,
+   "293585": 109472
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293596,
+   "new_pid": true,
+   "inner": 2.69326537696179,
+   "roundtrip": 3.5320266790222377,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 8,
+  "warm_s": 1.5903468260075897,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293606,
+   293609
+  ],
+  "rss_after_warm_kb": {
+   "293606": 95848,
+   "293609": 95716
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293609,
+    "first_for_pid": true,
+    "inner": 1.9848006640095264,
+    "roundtrip": 2.0098638240015134,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293606,
+    "first_for_pid": true,
+    "inner": 1.925536113907583,
+    "roundtrip": 1.9477452079299837,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293609,
+    "first_for_pid": false,
+    "inner": 1.08058639196679,
+    "roundtrip": 1.0941356819821522,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293606,
+    "first_for_pid": false,
+    "inner": 1.1176223979564384,
+    "roundtrip": 1.1335128679638728,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293606": 109696,
+   "293609": 109492
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293622,
+   "new_pid": true,
+   "inner": 2.763008489040658,
+   "roundtrip": 3.6602973280241713,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 8,
+  "warm_s": 2.1538948920788243,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293631,
+   293634
+  ],
+  "rss_after_warm_kb": {
+   "293631": 100024,
+   "293634": 100016
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293631,
+    "first_for_pid": true,
+    "inner": 1.5460534589365125,
+    "roundtrip": 1.5558928010286763,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293634,
+    "first_for_pid": true,
+    "inner": 1.565071013988927,
+    "roundtrip": 1.5763909230008721,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293631,
+    "first_for_pid": false,
+    "inner": 1.1898023199755698,
+    "roundtrip": 1.1980430750409141,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293634,
+    "first_for_pid": false,
+    "inner": 1.1562958100112155,
+    "roundtrip": 1.164426840026863,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293631": 108896,
+   "293634": 108816
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293646,
+   "new_pid": true,
+   "inner": 3.408839749987237,
+   "roundtrip": 4.288707833969966,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 9,
+  "warm_s": 2.111289652995765,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293655,
+   293658
+  ],
+  "rss_after_warm_kb": {
+   "293655": 100200,
+   "293658": 100504
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293658,
+    "first_for_pid": true,
+    "inner": 1.7011712728999555,
+    "roundtrip": 1.7119180340087041,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293655,
+    "first_for_pid": true,
+    "inner": 1.6069946670904756,
+    "roundtrip": 1.6237320440122858,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293658,
+    "first_for_pid": false,
+    "inner": 1.2170582439284772,
+    "roundtrip": 1.2340120150474831,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293655,
+    "first_for_pid": false,
+    "inner": 1.1762358190026134,
+    "roundtrip": 1.186304077040404,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293655": 108948,
+   "293658": 109240
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293675,
+   "new_pid": true,
+   "inner": 2.5736122019588947,
+   "roundtrip": 3.608825050992891,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 9,
+  "warm_s": 1.5977665620157495,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293684,
+   293687
+  ],
+  "rss_after_warm_kb": {
+   "293684": 95768,
+   "293687": 95800
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293684,
+    "first_for_pid": true,
+    "inner": 1.9472718390170485,
+    "roundtrip": 1.9652592830825597,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293687,
+    "first_for_pid": true,
+    "inner": 1.9067910038866103,
+    "roundtrip": 1.9314048680244014,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293684,
+    "first_for_pid": false,
+    "inner": 1.2404361560475081,
+    "roundtrip": 1.24853164202068,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293687,
+    "first_for_pid": false,
+    "inner": 1.0573786300374195,
+    "roundtrip": 1.0655665169470012,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293684": 109520,
+   "293687": 109608
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293701,
+   "new_pid": true,
+   "inner": 2.7232117449166253,
+   "roundtrip": 3.5434995510149747,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 10,
+  "warm_s": 1.5632200660184026,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293708,
+   293711
+  ],
+  "rss_after_warm_kb": {
+   "293708": 95776,
+   "293711": 95776
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293711,
+    "first_for_pid": true,
+    "inner": 1.874014673056081,
+    "roundtrip": 1.898191082989797,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293708,
+    "first_for_pid": true,
+    "inner": 1.9489174979971722,
+    "roundtrip": 1.9743220950476825,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293711,
+    "first_for_pid": false,
+    "inner": 1.1097346399910748,
+    "roundtrip": 1.1184842420043424,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293708,
+    "first_for_pid": false,
+    "inner": 0.9246601948980242,
+    "roundtrip": 0.9309454190079123,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293708": 109552,
+   "293711": 109588
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293724,
+   "new_pid": true,
+   "inner": 2.695660028955899,
+   "roundtrip": 3.456301879021339,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 10,
+  "warm_s": 2.0424369249958545,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293735,
+   293738
+  ],
+  "rss_after_warm_kb": {
+   "293735": 100264,
+   "293738": 100356
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293735,
+    "first_for_pid": true,
+    "inner": 1.4562120670452714,
+    "roundtrip": 1.4662541470024735,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293738,
+    "first_for_pid": true,
+    "inner": 1.418265716987662,
+    "roundtrip": 1.4259797319537029,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293735,
+    "first_for_pid": false,
+    "inner": 1.0525251619983464,
+    "roundtrip": 1.0587636380223557,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293738,
+    "first_for_pid": false,
+    "inner": 1.0016543930396438,
+    "roundtrip": 1.0098690500017256,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293735": 109040,
+   "293738": 109156
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293754,
+   "new_pid": true,
+   "inner": 2.4897354919230565,
+   "roundtrip": 3.319540322991088,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 11,
+  "warm_s": 2.024525329004973,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293761,
+   293764
+  ],
+  "rss_after_warm_kb": {
+   "293761": 100248,
+   "293764": 100368
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293764,
+    "first_for_pid": true,
+    "inner": 1.3907722750445828,
+    "roundtrip": 1.4007463289890438,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293761,
+    "first_for_pid": true,
+    "inner": 1.4499367629177868,
+    "roundtrip": 1.4617931309621781,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293764,
+    "first_for_pid": false,
+    "inner": 1.0380666309501976,
+    "roundtrip": 1.0462479460984468,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293761,
+    "first_for_pid": false,
+    "inner": 1.0516856530448422,
+    "roundtrip": 1.0577209130860865,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293761": 109040,
+   "293764": 109096
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293776,
+   "new_pid": true,
+   "inner": 2.810470040072687,
+   "roundtrip": 3.72313503397163,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 11,
+  "warm_s": 1.7608887369278818,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293783,
+   293786
+  ],
+  "rss_after_warm_kb": {
+   "293783": 95872,
+   "293786": 95688
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293783,
+    "first_for_pid": true,
+    "inner": 1.9546468539629132,
+    "roundtrip": 1.974047300987877,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293786,
+    "first_for_pid": true,
+    "inner": 1.9519460879964754,
+    "roundtrip": 1.9761004489846528,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293783,
+    "first_for_pid": false,
+    "inner": 1.057126719970256,
+    "roundtrip": 1.0649009969783947,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293786,
+    "first_for_pid": false,
+    "inner": 0.941063238075003,
+    "roundtrip": 0.9523979260120541,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293783": 109684,
+   "293786": 109524
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293807,
+   "new_pid": true,
+   "inner": 2.57801155699417,
+   "roundtrip": 3.399490999057889,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 12,
+  "warm_s": 1.4746105750091374,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293814,
+   293817
+  ],
+  "rss_after_warm_kb": {
+   "293814": 95564,
+   "293817": 95784
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293814,
+    "first_for_pid": true,
+    "inner": 1.8057614749995992,
+    "roundtrip": 1.8255188569892198,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293817,
+    "first_for_pid": true,
+    "inner": 1.8042051319498569,
+    "roundtrip": 1.822611207026057,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293814,
+    "first_for_pid": false,
+    "inner": 0.9173437990248203,
+    "roundtrip": 0.92421105701942,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293817,
+    "first_for_pid": false,
+    "inner": 0.9813756300136447,
+    "roundtrip": 0.9882015419425443,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293814": 109384,
+   "293817": 109580
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293833,
+   "new_pid": true,
+   "inner": 2.727275831042789,
+   "roundtrip": 3.6119778469437733,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 12,
+  "warm_s": 2.1870118050137535,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293840,
+   293843
+  ],
+  "rss_after_warm_kb": {
+   "293840": 100168,
+   "293843": 100316
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293840,
+    "first_for_pid": true,
+    "inner": 1.5199671309674159,
+    "roundtrip": 1.5270435890415683,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293843,
+    "first_for_pid": true,
+    "inner": 1.3942072020145133,
+    "roundtrip": 1.4002088479464874,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293840,
+    "first_for_pid": false,
+    "inner": 1.1017801199341193,
+    "roundtrip": 1.1116171799367294,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293843,
+    "first_for_pid": false,
+    "inner": 1.1470621270127594,
+    "roundtrip": 1.1563697509700432,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293840": 108968,
+   "293843": 109088
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293855,
+   "new_pid": true,
+   "inner": 2.4868083939654753,
+   "roundtrip": 3.3306786939501762,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "p1",
+  "rep": 13,
+  "warm_s": 1.955732217989862,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293865,
+   293868
+  ],
+  "rss_after_warm_kb": {
+   "293865": 100176,
+   "293868": 100032
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293865,
+    "first_for_pid": true,
+    "inner": 1.4699580119922757,
+    "roundtrip": 1.4790248969802633,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293868,
+    "first_for_pid": true,
+    "inner": 1.3057556500425562,
+    "roundtrip": 1.3122618269408122,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293865,
+    "first_for_pid": false,
+    "inner": 1.037195343989879,
+    "roundtrip": 1.0448334760731086,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293868,
+    "first_for_pid": false,
+    "inner": 1.0675404929788783,
+    "roundtrip": 1.0804899089271203,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293865": 109128,
+   "293868": 108868
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293883,
+   "new_pid": true,
+   "inner": 2.629392786999233,
+   "roundtrip": 3.4066613799659535,
+   "warm_flag_still": true
+  }
+ },
+ {
+  "variant": "base",
+  "rep": 13,
+  "warm_s": 1.7461875400040299,
+  "warm": true,
+  "workers": 2,
+  "pids": [
+   293892,
+   293895
+  ],
+  "rss_after_warm_kb": {
+   "293892": 95604,
+   "293895": 95800
+  },
+  "runs": [
+   {
+    "seq": 0,
+    "pid": 293892,
+    "first_for_pid": true,
+    "inner": 1.950056625995785,
+    "roundtrip": 1.9799747909419239,
+    "v11_models": 68
+   },
+   {
+    "seq": 1,
+    "pid": 293895,
+    "first_for_pid": true,
+    "inner": 2.0966187729500234,
+    "roundtrip": 2.1328799010952935,
+    "v11_models": 68
+   },
+   {
+    "seq": 2,
+    "pid": 293892,
+    "first_for_pid": false,
+    "inner": 1.1216773829655722,
+    "roundtrip": 1.1333823300665244,
+    "v11_models": 68
+   },
+   {
+    "seq": 3,
+    "pid": 293895,
+    "first_for_pid": false,
+    "inner": 1.0238251090049744,
+    "roundtrip": 1.0318099189316854,
+    "v11_models": 68
+   }
+  ],
+  "rss_after_runs_kb": {
+   "293892": 109364,
+   "293895": 109560
+  },
+  "idle_death_next_two_submissions": [
+   "ModelExecutionFailed",
+   "ModelExecutionFailed"
+  ],
+  "after_respawn": {
+   "pid": 293908,
+   "new_pid": true,
+   "inner": 2.9024009089916945,
+   "roundtrip": 3.9102433170191944,
+   "warm_flag_still": true
+  }
+ }
+]
