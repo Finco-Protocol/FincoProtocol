@@ -26,7 +26,9 @@ async function getJson<T>(url: string): Promise<T | { ok: false; code: string; m
   }
   if (!response.ok || !body || typeof body !== "object") {
     const failed = body as { code?: string; message?: string } | null;
+    // Typed refusals (e.g. the Working Copy recovery state) carry extra fields: keep them.
     return {
+      ...(failed && typeof failed === "object" ? failed : {}),
       ok: false,
       code: (failed && failed.code) || `HTTP_${response.status}`,
       message: (failed && failed.message) || undefined,

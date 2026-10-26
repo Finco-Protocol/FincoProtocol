@@ -3,6 +3,7 @@ import StatementWorkbook from "../finco/_workbook/StatementWorkbook";
 import { Shell } from "../finco/_shared/FincoShell";
 import { workspaceHeading } from "./adapters";
 import { fetchInputs, fetchStatements, fetchWorkspace } from "./api";
+import { RecoveryPanel } from "./RecoveryPanel";
 import { toStatementSnapshot, toStatementStatus } from "./adapters";
 import { FinancialResults } from "./FinancialResults";
 import { WorkspaceNav, isWorkspaceSection, type WorkspaceSection } from "./WorkspaceNav";
@@ -16,7 +17,7 @@ import { ScenarioWorkspace } from "./workflow/ScenarioWorkspace";
 import { SheetFieldsEditor } from "./workflow/SheetFieldsEditor";
 import { WorkflowBar } from "./workflow/WorkflowBar";
 import { DirtyProvider, useLeaveGuard } from "./workflow/workflowShared";
-import type { InputsPayload, RevenueContractsPayload, StatementsPayload, WorkspacePayload } from "./types";
+import { isRecoveryPayload, type InputsPayload, type RecoveryPayload, type RevenueContractsPayload, type StatementsPayload, type WorkspacePayload } from "./types";
 import { fetchRevenueContracts } from "./api";
 
 type Section = WorkspaceSection;
@@ -90,6 +91,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
   const [error, setError] = useState<{ code: string; message?: string } | null>(null);
   const [statements, setStatements] = useState<StatementsPayload | null>(null);
   const [inputs, setInputs] = useState<InputsPayload | null>(null);
+  const [recovery, setRecovery] = useState<RecoveryPayload | null>(null);
   const [revenuePayload, setRevenuePayload] = useState<RevenueContractsPayload | null>(null);
   const [busy, setBusy] = useState(false);
   // Bumped after ANY committed change so every editor re-reads its CAS tokens;
@@ -110,7 +112,8 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
 
   const loadInputs = useCallback(async () => {
     const result = await fetchInputs(project);
-    if ("ok" in result && result.ok === true) setInputs(result);
+    if ("ok" in result && result.ok === true) { setRecovery(null); setInputs(result); }
+    else if (isRecoveryPayload(result)) setRecovery(result);
   }, [project]);
 
   useEffect(() => {
@@ -137,6 +140,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
   const onScenarioChanged = useCallback(() => {
     setScopeEpoch((n) => n + 1);
     setInputs(null);
+    setRecovery(null);
     setStatements(null);
     setRevenuePayload(null);
     afterMutation();
@@ -156,9 +160,9 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
   useEffect(() => {
     if (section === "statements" && !statements) void loadStatements();
     if ((section === "results" || section === "analysis") && !statements) void loadStatements();
-    if (section === "inputs" && !inputs) void loadInputs();
+    if (section === "inputs" && !inputs && !recovery) void loadInputs();
     if (section === "inputs" && !revenuePayload) void loadRevenue();
-  }, [section, statements, inputs, revenuePayload, loadStatements, loadInputs, loadRevenue]);
+  }, [section, statements, inputs, recovery, revenuePayload, loadStatements, loadInputs, loadRevenue]);
 
   // Hash changes (typed URL, Back/Forward) are guarded like tab clicks: the URL has
   // already moved, so "stay" restores the hash of the section that is still shown.
@@ -322,7 +326,9 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
         <div key={section === "scenarios" ? "scenarios" : `scope-${scopeEpoch}`} data-scope-epoch={scopeEpoch}>
         {section === "overview" && <StatusRow workspace={workspace} />}
         {section === "inputs" && (
-          inputs
+          recovery
+            ? <RecoveryPanel project={project} payload={recovery} onRepaired={refreshAll} />
+            : inputs
             ? <>
               <nav className="wf-jump" aria-label="Input groups" data-inputs-jump="true">
                 {INPUT_GROUPS.map(([id, label]) => <a key={id} href={`#${id}`} data-jump-target={id}
