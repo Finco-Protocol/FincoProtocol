@@ -4,6 +4,8 @@ Everything runs through the existing canonical project runner and engines; no fi
 Revenue V3 is exercised only under the explicit test-only activation fixture (production stays closed).
 """
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 import copy
 import json
@@ -123,9 +125,9 @@ def test_child_scenario_resolves_its_own_revenue_and_developer_inputs_and_matrix
     assert _save_revenue(flow, v2).status_code == 200
     assert flow.save(_doc(_fc(flow.record), developer_fee_value=100.0)).status_code == 303
     base = flow.run()
-    assert env.client.post("/v2/workbook/scenarios/create", data={**flow.project, "scenario_name": "Alt"}).status_code == 200
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={**flow.project, "scenario_name": "Alt"}).status_code == 200
     sc = next(s for s in list_scenarios(OWNER, flow.record.project_id) if not s.is_base_case)
-    assert env.client.post("/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": sc.scenario_id}).status_code == 200
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": sc.scenario_id}).status_code == 200
     alt_v2 = copy.deepcopy(v2)
     alt_v2["streams"][0]["price_eur_mwh"] = 105
     assert _save_revenue(flow, alt_v2).status_code == 200

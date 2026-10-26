@@ -1,4 +1,6 @@
 """Versioned proposals, explicit activation, scope-bound CAS and real Last Run."""
+from tests.model_mutation_csrf import post_valid_mutation
+
 import json
 from dataclasses import replace
 
@@ -198,10 +200,10 @@ def test_scopes_do_not_inherit_or_accept_foreign_writes_after_scenario_selection
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
     assert save(env, record, state(), field=config.FIELD_ID).status_code == 200
-    env.client.post('/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
+    post_valid_mutation(env.client, '/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_name': 'Independent financing'})
     scenario = next(s for s in list_scenarios('decision-user', record.project_id) if not s.is_base_case)
-    env.client.post('/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
+    post_valid_mutation(env.client, '/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_id': scenario.scenario_id})
     ws = get_workspace_state('decision-user', record.project_id)
     selected_scope = config.scope_for_workspace(ws)
@@ -239,7 +241,7 @@ def test_cross_owner_protected_reference_and_unrelated_project_are_isolated(env)
     save(env, record, state(), field=config.FIELD_ID)
     assert config.SNAPSHOT_KEY not in get_workspace_state('decision-user', other.project_id).draft_snapshot
     env.client.cookies.set(COOKIE_NAME, create_session_token(user_id='f3-other-owner', username='admin'))
-    response = env.client.post('/v2/workbook/update', data=dict(project=record.project_code,
+    response = post_valid_mutation(env.client, '/v2/workbook/update', data=dict(project=record.project_code,
         field_id=config.FIELD_ID, value=state(), sheet_id='debt', **tokens(page.text)))
     assert response.status_code == 404
 
@@ -249,10 +251,10 @@ def test_selected_scope_changes_invalidate_pre_selection_cas_token(env):
     from app.persistence.scenarios_repository import list_scenarios
     record = env.create()
     page = env.client.get('/v2/workbook', params={'project': record.project_code})
-    env.client.post('/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
+    post_valid_mutation(env.client, '/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_name': 'Concurrent selection'})
     scenario = next(s for s in list_scenarios('decision-user', record.project_id) if not s.is_base_case)
-    env.client.post('/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
+    post_valid_mutation(env.client, '/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_id': scenario.scenario_id})
     before = get_workspace_state('decision-user', record.project_id)
     save(env, record, state(), field=config.FIELD_ID, stale_tokens=tokens(page.text))

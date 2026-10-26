@@ -9,7 +9,7 @@
    Context: trust_pack dict (sections with explicit AVAILABLE/UNAVAILABLE
    state), project_code, project_editable, ws.
 #}
-{% from "partials/field_editor.html" import render_field %}
+{% from "partials/field_editor.html" import render_field with context %}
 
 <style>
   .v2-trust-section { border: 1px solid var(--border, #e3e6ea); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; max-width: 100%; overflow-x: auto; }
@@ -216,6 +216,7 @@
     {% if trust_pack.export.state == 'AVAILABLE' %}
       <form method="post" action="/v2/workbook/export" class="v2-trust-export-form"
             data-testid="trust-pack-export-form">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['workbook-export'] }}">
         <input type="hidden" name="project" value="{{ project_code }}">
         <button type="submit" class="btn btn-ghost"
                 data-testid="trust-pack-export-btn">Download institutional XLSX</button>

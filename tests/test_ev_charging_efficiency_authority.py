@@ -18,6 +18,8 @@ runtime: revenue unchanged, grid purchase and B.08 grow by exactly 94/92.
 
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import re
 
 import pytest
@@ -200,7 +202,7 @@ def test_efficiency_form_edit_causality_end_to_end(ev_wc):
 
     # HTMX save through the real endpoint: 94 → 92
     form["value"] = "92"
-    resp = client.post("/v2/workbook/update", data=form, cookies=cookies,
+    resp = post_valid_mutation(client, "/v2/workbook/update", data=form, cookies=cookies,
                        headers={"HX-Request": "true"}, follow_redirects=False)
     assert resp.status_code == 200, resp.text[:400]
 

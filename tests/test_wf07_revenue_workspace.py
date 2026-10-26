@@ -1,5 +1,7 @@
 """Real authorized Save / Scenario / Run / Last Run export acceptance."""
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 import copy
 import json
@@ -59,10 +61,10 @@ def test_contract_save_reload_scenario_run_and_immutable_export(env, monkeypatch
     assert "multistream_config_json" in baseline["scenario_revenue_input"]
     assert 'data-testid="revenue-contracts-audit"' in page().text
     assert baseline["total_revenue_keur"] > 0
-    created = env.client.post("/v2/workbook/scenarios/create", data={**project, "scenario_name": "Contract alternative"})
+    created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={**project, "scenario_name": "Contract alternative"})
     assert created.status_code == 200
     sc = next(s for s in list_scenarios(owner, record.project_id) if not s.is_base_case)
-    selected = env.client.post("/v2/workbook/scenarios/select", data={**project, "scenario_id": sc.scenario_id})
+    selected = post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={**project, "scenario_id": sc.scenario_id})
     assert selected.status_code == 200
     original_draft = copy.deepcopy(ws().draft_snapshot)
     different = copy.deepcopy(payload)
@@ -162,7 +164,7 @@ def test_selected_scenario_contracts_reject_legacy_price_edits_and_old_selection
     record = env.create()
     project = {"project": record.project_code}
     base_page = env.client.get("/v2/workbook", params=project).text
-    created = env.client.post("/v2/workbook/scenarios/create", data={**project, "scenario_name": "Explicit contracts"})
+    created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={**project, "scenario_name": "Explicit contracts"})
     assert created.status_code == 200
     ws = get_workspace_state("decision-user", record.project_id)
     pi = WorkbookService.build_draft_input_set_from_workspace(ws).to_projectinputs()
@@ -176,7 +178,7 @@ def test_selected_scenario_contracts_reject_legacy_price_edits_and_old_selection
     before = get_workspace_state("decision-user", record.project_id)
     assert not before.draft_snapshot.get(SNAPSHOT_KEY)
     page = env.client.get("/v2/workbook", params=project).text
-    rejected = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"},
+    rejected = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
         data={**project, **tokens(page), "sheet_id": "revenue", "field_id": "revenue.ppa.base_tariff", "value": "123"})
     assert rejected.status_code == 200
     assert "workbook-field-error" in rejected.headers.get("HX-Trigger", "")

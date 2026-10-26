@@ -1,5 +1,7 @@
 """F2 atomic configuration, canonical economics and authorized lifecycle acceptance."""
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 from dataclasses import replace
 import json
@@ -83,7 +85,7 @@ def save(env, record, raw, *, field=FIELD_ID, stale_tokens=None):
             from app.workbook.financing_csrf import issue_token
             csrf['csrf_token'] = issue_token(
                 SimpleNamespace(cookies=env.client.cookies, state=SimpleNamespace()), record.project_code)
-    return env.client.post('/v2/workbook/update', headers={'HX-Request': 'true'}, data=dict(
+    return post_valid_mutation(env.client, '/v2/workbook/update', headers={'HX-Request': 'true'}, data=dict(
         project=record.project_code, field_id=field, value=raw, sheet_id='debt',
         **csrf,
         **(stale_tokens or tokens(page.text))))
@@ -233,7 +235,7 @@ def test_cross_owner_rejection_and_get_does_not_execute_solver(env, monkeypatch)
     assert page.status_code == 200 and 'bankability-workspace' in page.text
     assert save(env, record, config(lender_case='P_50')).status_code == 200
     env.client.cookies.set(COOKIE_NAME, create_session_token(user_id='f2-other-owner', username='admin'))
-    response = env.client.post('/v2/workbook/update', data=dict(project=record.project_code,
+    response = post_valid_mutation(env.client, '/v2/workbook/update', data=dict(project=record.project_code,
         field_id=FIELD_ID, value=config(lender_case='P90-10y'), sheet_id='debt', **tokens(page.text)))
     assert response.status_code == 404
 
@@ -251,11 +253,11 @@ def test_first_save_after_scenario_selection_preserves_scenario_payload(env):
     from app.persistence.scenarios_repository import list_scenarios, get_scenario
     record = env.create()
     env.client.get('/v2/workbook', params={'project': record.project_code})
-    response = env.client.post('/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
+    response = post_valid_mutation(env.client, '/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_name': 'F2 alternate'})
     assert response.status_code == 200
     sc = next(s for s in list_scenarios('decision-user', record.project_id) if not s.is_base_case)
-    response = env.client.post('/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
+    response = post_valid_mutation(env.client, '/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_id': sc.scenario_id})
     assert response.status_code == 200
     original = get_scenario(sc.scenario_id, 'decision-user')

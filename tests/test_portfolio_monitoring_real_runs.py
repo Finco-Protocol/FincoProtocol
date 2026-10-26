@@ -1,4 +1,6 @@
 """Portfolio core evidence from actual canonical Run commits in disposable SQLite."""
+from tests.model_mutation_csrf import post_valid_mutation
+
 from dataclasses import asdict, replace
 
 import pytest
@@ -253,7 +255,7 @@ def test_real_base_and_child_runs_are_not_double_counted_or_promoted(penv):
     record = penv.create()
     run(penv, record)
     base = history(record)[0]
-    response = penv.client.post("/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
+    response = post_valid_mutation(penv.client, "/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
         data={"project": record.project_code, "scenario_name": "Portfolio child"})
     assert response.status_code == 200
     scenario = next(s for s in list_scenarios(user_id=USER, project_id=record.project_id) if s.scenario_name == "Portfolio child")

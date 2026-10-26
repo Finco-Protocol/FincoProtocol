@@ -5,6 +5,8 @@ formula and unresolved-scenario data never enter scalar Apply; reconciliation ne
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import html
 import re
 
@@ -150,7 +152,7 @@ def test_slice_ticket_tampered_foreign_project_and_wrong_kind_are_refused(env):
 
 def test_scenario_cas_a_ticket_for_one_scenario_cannot_review_or_apply_in_another(env):
     project = env.create("solar")
-    env.client.post("/v2/workbook/scenarios/create", data={"project": project.project_code, "scenario_name": "Upside"})
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": project.project_code, "scenario_name": "Upside"})
     upside_id = ws_of(project).active_scenario_id
     assessed, reviewed = reviewed_slice(env, project, "upside")
     ticket, approved_ticket = hidden(reviewed, "preview_ticket"), None
@@ -159,7 +161,7 @@ def test_scenario_cas_a_ticket_for_one_scenario_cannot_review_or_apply_in_anothe
     # the user switches to a different scenario (the Base Case) before the ticket is used
     scenarios = re.findall(r'name="scenario_id" value="([^"]+)"', env.client.get("/v2/workbook", params={"project": project.project_code}).text)
     other = next(s for s in scenarios if s != upside_id)
-    assert env.client.post("/v2/workbook/scenarios/select", data={"project": project.project_code, "scenario_id": other}).status_code in (200, 303)
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={"project": project.project_code, "scenario_id": other}).status_code in (200, 303)
     assert ws_of(project).active_scenario_id == other
     before = evidence(project)
     stale_review = review_slice(env, project, slice_ticket(assessed, "upside"))

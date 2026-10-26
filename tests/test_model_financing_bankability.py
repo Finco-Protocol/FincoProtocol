@@ -1,6 +1,8 @@
 """Workflow B acceptance over typed inputs and immutable Last Run evidence."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 from dataclasses import replace
@@ -230,7 +232,7 @@ def test_percent_save_persists_existing_contract_and_rejects_invalid(client, pro
     record = projects[kind]
     for raw, accepted in (("5.50", True), ("21", False), ("-1", False), ("nan", False), ("abc", False)):
         v, h = tokens(record)
-        response = client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data={
+        response = post_valid_mutation(client, "/v2/workbook/update", headers={"HX-Request": "true"}, data={
             "project": record.project_code, "sheet_id": "debt", "field_id": "debt.senior.interest_rate_pct",
             "value": raw, "workbook_version": v, "content_hash": h})
         assert response.status_code == 200, response.text[:400]

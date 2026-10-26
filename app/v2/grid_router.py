@@ -133,7 +133,9 @@ def _cell_verdicts(record, cells: list[GridCell]) -> list[dict[str, Any]]:
 @router.post("/workbook/grid/validate")
 async def grid_validate(body: GridValidateRequest, request: Request,
                         _: None = Depends(require_v2_active)):
-    if not validate_csrf_token(body.csrf_token):
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not (validate_csrf_token(body.csrf_token) or
+            validate_mutation_token(request, body.project, body.csrf_token, "grid-save")):
         return _json({"ok": False, "code": "CSRF_INVALID"}, 403)
     resolved = _resolve(request, body.project)
     if isinstance(resolved, JSONResponse):
@@ -147,12 +149,14 @@ async def grid_validate(body: GridValidateRequest, request: Request,
 async def grid_save(body: GridSaveRequest, request: Request,
                     _: None = Depends(require_v2_active)):
     """Atomic batch Save over the C0 canonical writer.  Never runs the model."""
-    if not validate_csrf_token(body.csrf_token):
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, body.project, body.csrf_token, "grid-save"):
         return _json({"ok": False, "code": "CSRF_INVALID"}, 403)
     resolved = _resolve(request, body.project)
     if isinstance(resolved, JSONResponse):
         return resolved
     user, record, owner, ws = resolved
+
 
     # Per-cell attribution BEFORE the transaction; the writer repeats every check atomically.
     verdicts = _cell_verdicts(record, body.cells)
@@ -248,7 +252,8 @@ async def grid_cost_lines_save(
         MAX_BATCH_LINES, CostBatchConflictError, CostBatchInvalidError, CostLineEdit, update_cost_lines_batch)
     from app.v2.opex_commands import OpexProtectedReferenceError, OpexStaleIdentityError, OpexVersionMismatchError
 
-    if not validate_csrf_token(csrf_token):
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, csrf_token, "grid-cost-lines-save"):
         return _json({"ok": False, "code": "CSRF_INVALID"}, 403)
     if sheet not in ("capex", "opex"):
         return _json({"ok": False, "code": "SHEET_UNKNOWN"}, 404)
@@ -256,6 +261,7 @@ async def grid_cost_lines_save(
     if isinstance(resolved, JSONResponse):
         return resolved
     user, record, owner, ws = resolved
+
 
     try:
         lines = _COST_LINES.validate_json(payload)

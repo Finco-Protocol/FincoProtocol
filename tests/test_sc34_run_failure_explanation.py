@@ -5,6 +5,8 @@ nothing is moved for the user. What changes is that the user is told, in plain l
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -40,7 +42,7 @@ class P:
 
     def set_horizon(self, years):
         ch, wv = self.ident()
-        r = self.c.post("/v2/workbook/update", headers=H, data={"project": self.rec.project_code, "sheet_id": "project_setup", "field_id": HORIZON,
+        r = post_valid_mutation(self.c, "/v2/workbook/update", headers=H, data={"project": self.rec.project_code, "sheet_id": "project_setup", "field_id": HORIZON,
                                                                "value": str(years), "content_hash": ch, "workbook_version": wv})
         assert r.status_code == 200, r.text
         return r

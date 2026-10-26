@@ -15,6 +15,8 @@ single editable input saves exclusively through the existing canonical
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -85,7 +87,7 @@ def bootstrap(env, code: str):
 def save_cit(env, body: dict, value: str):
     body = dict(body)
     body["cells"] = [{"field_id": CIT, "value": value}]
-    return env.client.post("/v2/workbook/grid/save", json=body)
+    return post_valid_mutation(env.client, "/v2/workbook/grid/save", json=body)
 
 
 def grid_tokens(page_text: str) -> dict:

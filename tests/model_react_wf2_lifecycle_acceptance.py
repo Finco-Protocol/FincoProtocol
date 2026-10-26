@@ -542,6 +542,7 @@ def seed_capex_line(context, base, record, label):
     group = costs["line_management"]["eligible_groups"][0]["code"]
     added = context.request.post(f"{base}/v2/capex/line/add", form={
         "project": record.project_code, "parent_category_code": group, "label": label, "amount_keur": "10", "notes": "",
+        "csrf_token": costs["line_management"]["csrf_tokens"]["add"],
         "workbook_version": costs["save"]["workbook_version"], "content_hash": costs["save"]["content_hash"]})
     assert added.ok
 

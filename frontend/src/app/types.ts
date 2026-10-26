@@ -299,6 +299,7 @@ export interface CostLinesPayload {
   };
   /** WF-React-2: canonical line-management routes (add / deactivate / reactivate). */
   line_management: {
+    csrf_tokens: Record<string, string>;
     add: { url: string; group_field: string };
     deactivate: { url: string };
     reactivate: { url: string };
@@ -341,7 +342,7 @@ export interface RunsPayload {
   run_contract: { url: string; method: string; csrf_token: string; note: string };
   /** WF-React-2: read-only canonical export entry points. */
   exports?: {
-    last_run: { url: string; method: string; authority: string; available: boolean; unavailable_reason: string; note: string };
+    last_run: { url: string; method: string; csrf_token: string; authority: string; available: boolean; unavailable_reason: string; note: string };
     historical: { url: string; query: string[]; note: string };
   };
 }
@@ -363,8 +364,8 @@ export interface ScenarioOverridesPayload {
   fields: ScenarioOverrideFieldPayload[];
   unsupported_override_keys: string[];
   mutations: {
-    update: { url: string; fields: string[] };
-    remove: { url: string; fields: string[] };
+    update: { url: string; csrf_token: string; fields: string[] };
+    remove: { url: string; csrf_token: string; fields: string[] };
     note: string;
   };
 }
@@ -422,10 +423,10 @@ export interface ScenariosPayload {
   active_scenario_name: string | null;
   scenarios: ScenarioRecordPayload[];
   mutations: {
-    create: { url: string; fields: string[] };
-    select: { url: string; fields: string[] };
-    rename: { url: string; fields: string[] };
-    archive: { url: string; fields: string[] };
+    create: { url: string; csrf_token: string; fields: string[] };
+    select: { url: string; csrf_token: string; fields: string[] };
+    rename: { url: string; csrf_token: string; fields: string[] };
+    archive: { url: string; csrf_token: string; fields: string[] };
     note: string;
   };
 }

@@ -6,6 +6,8 @@ that STALE / NOT_RUN / scenario states are labelled from canonical authorities.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -133,7 +135,7 @@ def test_unsaved_change_makes_the_run_stale_and_unbinds_thresholds(env, runs):
     user, rec, _ = runs["solar"]
     page = _get(env, user, rec).text
     h, v = _tokens(page)
-    r = env.client.post("/v2/workbook/update", data={
+    r = post_valid_mutation(env.client, "/v2/workbook/update", data={
         "field_id": "project_setup.technical.p50_hours", "value": "1234", "project": rec.project_code,
         "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"},
         cookies=env.cookie(user), headers={"HX-Request": "true"})
@@ -152,7 +154,7 @@ def test_scenarios_mode_lists_own_runs_and_labels_missing_ones(env):
     rec = _project(env, user, "generic_solar_reference", "Q3 scenarios")
     _run(env, user, rec)
     c, ck = env.client, env.cookie(user)
-    r = c.post("/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": "Upside"},
+    r = post_valid_mutation(c, "/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": "Upside"},
                cookies=ck, headers={"HX-Request": "true"})
     assert r.status_code == 200
     html = _get(env, user, rec).text
@@ -202,13 +204,13 @@ def test_post_run_post_save_and_scenario_oob_panels_carry_q3(env):
     assert 'data-q3-state="CURRENT"' in oob and "Scenarios workspace" in oob
     assert _checks(oob) == _checks(_get(env, user, rec).text) and len(_checks(oob)) == 30
     h, v = _tokens(_get(env, user, rec).text)
-    save = env.client.post("/v2/workbook/update", data={
+    save = post_valid_mutation(env.client, "/v2/workbook/update", data={
         "field_id": "project_setup.technical.p50_hours", "value": "1301", "project": rec.project_code,
         "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"}, cookies=ck, headers={"HX-Request": "true"})
     oob = _oob_panel(save.text)
     assert 'data-q3-state="STALE"' in oob and "RUN_THRESHOLD_NOT_BOUND" in oob
     h, v = _tokens(_get(env, user, rec).text)
-    created = env.client.post("/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": "OOB"},
+    created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": "OOB"},
                               cookies=ck, headers={"HX-Request": "true"})
     if 'id="model-smart-panel"' in created.text:
         oob = _oob_panel(created.text)

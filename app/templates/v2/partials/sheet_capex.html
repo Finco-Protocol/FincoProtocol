@@ -26,7 +26,7 @@
     has_runtime          bool
     field_error          str
 #}
-{% from "partials/field_editor.html" import render_field %}
+{% from "partials/field_editor.html" import render_field with context %}
 {% from "partials/_money_format.html" import grouped_keur %}
 {# Macro: shortest exact text for an editable number (no thousands separators, no trailing zeros) #}
 {% macro plain_num(v) -%}
@@ -90,6 +90,7 @@
   <form class="v2-inactive-line-form" hx-post="/v2/capex/line/reactivate"
         hx-target="#v2-sheet-capex" hx-swap="outerHTML"
         data-testid="capex-inactive-row-{{ ln.sub_line_id }}">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['capex-reactivate'] }}">
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="sub_line_id" value="{{ ln.sub_line_id }}">
     <input type="hidden" name="row_version" value="{{ ln.row_version }}">
@@ -129,6 +130,7 @@
       data-fc-row autocomplete="off"
       hx-post="/v2/capex/line/update" hx-target="this" hx-swap="outerHTML"
       hx-select="#{{ rid }}" hx-select-oob="{{ oob_ids }}">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['capex-update'] }}">
   <input type="hidden" name="project" value="{{ project_code }}">
   <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
   <input type="hidden" name="row_version" value="{{ line.row_version }}">
@@ -154,11 +156,11 @@
     <button type="button" class="v2-cost-action v2-capex-duplicate-btn"
             hx-post="/v2/capex/line/add" hx-include="closest form" hx-target="#v2-sheet-capex"
             hx-swap="outerHTML" hx-select="#v2-sheet-capex" hx-select-oob="unset"
-            hx-vals='{{ {"parent_category_code": line.parent_code, "label": (line.name ~ " (copy)")} | tojson | forceescape }}'
+            hx-vals='{{ {"parent_category_code": line.parent_code, "label": (line.name ~ " (copy)"), "csrf_token": mutation_csrf_tokens["capex-add"]} | tojson | forceescape }}'
             title="Duplicate line" aria-label="Duplicate {{ shown_code }}"
             data-testid="duplicate-{{ line.code }}">⧉</button>
     <button type="button" class="v2-capex-deactivate-btn v2-cost-action"
-            hx-post="/v2/capex/line/deactivate" hx-include="closest form" hx-target="#v2-sheet-capex"
+            hx-post="/v2/capex/line/deactivate" hx-vals='{{ {"csrf_token": mutation_csrf_tokens["capex-deactivate"]} | tojson | forceescape }}' hx-include="closest form" hx-target="#v2-sheet-capex"
             hx-swap="outerHTML" hx-select="#v2-sheet-capex" hx-select-oob="unset"
             title="Deactivate line (excluded from totals; can be reactivated)"
             aria-label="Deactivate {{ shown_code }}"
@@ -184,6 +186,7 @@
       hx-target="#v2-sheet-capex"
       hx-swap="outerHTML"
       data-testid="add-row-form-{{ group_code }}">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['capex-add'] }}">
   <input type="hidden" name="project" value="{{ project_code }}">
   <input type="hidden" name="parent_category_code" value="{{ group_code }}">
   <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
@@ -208,7 +211,7 @@
 {%- endfor -%}
 {%- set capex_oob_ids = capex_oob | join(",") -%}
 
-<div id="v2-sheet-capex" data-sheet="capex"
+<div id="v2-sheet-capex" data-cost-csrf="{{ mutation_csrf_tokens['grid-cost-lines-save'] }}" data-sheet="capex"
      data-fc-grid="capex" data-fc-scroll-container data-cost-grid="capex">
 
   <p class="v2-capex-profile-link"><a data-testid="capex-profile-link" href="/v2/capex/spending-profiles?project={{ project_code | urlencode }}">Monthly spending-profile planner (preview, save to Working Copy; applies on the next Run)</a></p>
@@ -252,7 +255,8 @@
   {% endif %}
 
   {# ── Summary totals bar ──────────────────────────────────────────── #}
-  <div class="v2-sheet-section-heading"><span>CAPEX Summary</span><small>Reference-scaled totals and unit cost</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
+  <div class="v2-sheet-section-heading"><span>CAPEX Summary</span><small>Reference-scaled totals and unit cost</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['reference-seed-reset'] }}"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
   <div id="capex-totals-region" class="v2-capex-totals-bar" data-testid="capex-totals-bar">
     <div class="v2-capex-total-item">
       <span class="v2-capex-total-label">Hard CAPEX</span>
@@ -383,6 +387,7 @@
           {% endif %}
           {% if project_editable and cl %}
             <form class="v2-field-form v2-contingency-form" method="post" action="/v2/capex/contingency" data-testid="capex-contingency-form">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['capex-contingency'] }}">
               <input type="hidden" name="project" value="{{ project_code }}">
               <input type="hidden" name="kind" value="capex">
               <input type="hidden" name="workbook_version" value="{{ workbook_version }}">

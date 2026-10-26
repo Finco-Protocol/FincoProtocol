@@ -9,6 +9,8 @@ charging terminology); pixel overflow is covered by the CI browser ring.
 
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from html.parser import HTMLParser
 
 import pytest
@@ -187,7 +189,7 @@ def test_ev_capex_rendered_form_first_and_second_htmx_edit(ev_working_copy):
 
     first_delta = 17.0
     form["amount_keur"] = str(line.amount_keur + first_delta)
-    resp = client.post("/v2/capex/line/update", data=form, cookies=cookies,
+    resp = post_valid_mutation(client, "/v2/capex/line/update", data=form, cookies=cookies,
                        headers={"HX-Request": "true"}, follow_redirects=False)
     assert resp.status_code == 200, resp.text[:500]
     after = get_active_sub_lines_for_project(ev_working_copy.project_id)
@@ -202,7 +204,7 @@ def test_ev_capex_rendered_form_first_and_second_htmx_edit(ev_working_copy):
     assert second_form["content_hash"] != form["content_hash"]
     second_delta = 11.0
     second_form["amount_keur"] = str(line.amount_keur + first_delta + second_delta)
-    resp2 = client.post("/v2/capex/line/update", data=second_form, cookies=cookies,
+    resp2 = post_valid_mutation(client, "/v2/capex/line/update", data=second_form, cookies=cookies,
                         headers={"HX-Request": "true"}, follow_redirects=False)
     assert resp2.status_code == 200, resp2.text[:500]
     after2 = get_active_sub_lines_for_project(ev_working_copy.project_id)
@@ -241,7 +243,7 @@ def test_ev_opex_rendered_form_edits(ev_working_copy):
     assert {"project", "sub_line_id", "row_version", "workbook_version",
             "content_hash", "label", "amount_keur"}.issubset(form)
     form["amount_keur"] = str(opex_line.amount_keur + 5.0)
-    resp = client.post("/v2/opex/line/update", data=form, cookies=cookies,
+    resp = post_valid_mutation(client, "/v2/opex/line/update", data=form, cookies=cookies,
                        headers={"HX-Request": "true"}, follow_redirects=False)
     assert resp.status_code == 200, resp.text[:500]
     after = get_opex(ev_working_copy.project_id)
@@ -251,7 +253,7 @@ def test_ev_opex_rendered_form_edits(ev_working_copy):
     second_form = _rendered_form_values(resp.text, "/v2/opex/line/update", opex_line.sub_line_id)
     assert second_form["content_hash"] != form["content_hash"]
     second_form["amount_keur"] = str(opex_line.amount_keur + 9.0)
-    resp2 = client.post("/v2/opex/line/update", data=second_form, cookies=cookies,
+    resp2 = post_valid_mutation(client, "/v2/opex/line/update", data=second_form, cookies=cookies,
                         headers={"HX-Request": "true"}, follow_redirects=False)
     assert resp2.status_code == 200, resp2.text[:500]
     after2 = get_opex(ev_working_copy.project_id)

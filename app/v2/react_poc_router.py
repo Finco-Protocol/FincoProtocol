@@ -32,7 +32,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import generate_csrf_token, resolve_request_session
+from app.auth import resolve_request_session
+from app.workbook.mutation_csrf import mutation_token
 from app.utils.workbook_flag import env_flag
 from app.workbook.registry import WORKBOOK
 
@@ -43,7 +44,7 @@ router = APIRouter()
 #: about it through the bootstrap payload.
 CIT_FIELD_ID = "tax.assumptions.cit_rate_pct"
 
-REACT_ASSET_VERSION = "ux01-v1"
+REACT_ASSET_VERSION = "rc-sec-mutation-v1"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates", "v2"))
@@ -181,7 +182,7 @@ async def react_poc_bootstrap(request: Request, project: str):
                          "scenario_id": context.workspace.active_scenario_id,
                          "scenario_name": context.workspace.active_scenario_name},
             "field": _field_projection(context.draft_inputs, editable=not is_protected_reference(record)),
-            "csrf_token": generate_csrf_token(),
+            "csrf_token": mutation_token(request, project, "grid-save"),
             "freshness": {"state": context.freshness.state.value,
                           "basis": context.freshness.source,
                           "has_runtime": context.freshness.has_runtime,

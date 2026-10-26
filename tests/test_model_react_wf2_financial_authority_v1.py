@@ -13,6 +13,8 @@ writers the React client uses leave the model's financial authority intact:
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import pytest
 
 from tests.test_model_react_wf2_projections_v1 import STRANGER, OWNER, costlines, cas, env  # noqa: F401
@@ -57,7 +59,7 @@ def shared_numeric_field(env, record):
 
 def via_registry_writer(env, record, field, value):
     tokens = env.client.get("/v2/model-react/fields/project_setup", params={"project": record.project_code}).json()["save"]
-    response = env.client.post("/v2/workbook/update", data={
+    response = post_valid_mutation(env.client, "/v2/workbook/update", data={
         "project": record.project_code, "field_id": field["field_id"], "value": value, "sheet_id": "project_setup",
         "workbook_version": tokens["workbook_version"], "content_hash": tokens["content_hash"],
         "csrf_token": tokens["csrf_token"]}, follow_redirects=False)
@@ -102,7 +104,7 @@ def test_cost_line_management_scenarios_overrides_and_export_never_create_or_alt
 
     capex = costlines(env, record, "capex")
     group = capex["line_management"]["eligible_groups"][0]["code"]
-    assert env.client.post("/v2/capex/line/add", data={
+    assert post_valid_mutation(env.client, "/v2/capex/line/add", data={
         "project": record.project_code, "parent_category_code": group, "label": "financial authority probe",
         "amount_keur": "100", "notes": "", **cas(capex)}, follow_redirects=False).status_code == 303
     stale = env.client.get("/v2/model-react/statements", params={"project": record.project_code}).json()
@@ -110,14 +112,14 @@ def test_cost_line_management_scenarios_overrides_and_export_never_create_or_alt
         "the committed results are the prior Run's, untouched by the new line"
     exported = env.client.get("/v2/model-react/runs", params={"project": record.project_code}).json()["exports"]["last_run"]
     assert exported["available"] is True, exported["unavailable_reason"]
-    export = env.client.post("/v2/workbook/export", data={"project": record.project_code})
+    export = post_valid_mutation(env.client, "/v2/workbook/export", data={"project": record.project_code})
     assert export.status_code == 200 and export.content[:2] == b"PK", export.text[:600]
-    created = env.client.post("/v2/workbook/scenarios/create", data={
+    created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={
         "project": record.project_code, "scenario_name": "authority scenario"}, follow_redirects=False)
     assert created.status_code == 303
     listing = env.client.get("/v2/model-react/scenarios", params={"project": record.project_code}).json()
     child = next(s for s in listing["scenarios"] if s["name"] == "authority scenario")
-    assert env.client.post("/v2/workbook/scenarios/update-overrides", data={
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", data={
         "project": record.project_code, "scenario_id": child["scenario_id"], "tariff_eur_mwh": "90"},
         follow_redirects=False).status_code == 303
     assert env.client.get("/v2/model-react/scenario-compare", params={
@@ -126,7 +128,7 @@ def test_cost_line_management_scenarios_overrides_and_export_never_create_or_alt
     runs_payload = env.client.get("/v2/model-react/runs", params={"project": record.project_code}).json()
     assert runs_payload["exports"]["last_run"]["available"] is False
     assert "active scenario" in runs_payload["exports"]["last_run"]["unavailable_reason"]
-    assert env.client.post("/v2/workbook/export", data={"project": record.project_code}).status_code == 400
+    assert post_valid_mutation(env.client, "/v2/workbook/export", data={"project": record.project_code}).status_code == 400
     assert history(env, record) == before_rows, "committed Run History is immutable under every non-Run action"
     # the active scenario is now the new child with no committed Run of its own: it never borrows the Base Run
     assert workspace(env, record)["freshness"]["state"] == "NOT_RUN"
@@ -141,12 +143,12 @@ def test_scenario_overrides_stay_isolated_between_scenarios_and_from_the_working
     base_snapshot = workspace(env, record)["workbook"]["composite_hash"]
     ids = {}
     for name in ("isolation A", "isolation B"):
-        assert env.client.post("/v2/workbook/scenarios/create", data={
+        assert post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={
             "project": record.project_code, "scenario_name": name}, follow_redirects=False).status_code == 303
     listing = env.client.get("/v2/model-react/scenarios", params={"project": record.project_code}).json()
     for s in listing["scenarios"]:
         ids[s["name"]] = s["scenario_id"]
-    assert env.client.post("/v2/workbook/scenarios/update-overrides", data={
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", data={
         "project": record.project_code, "scenario_id": ids["isolation A"], "tariff_eur_mwh": "88"},
         follow_redirects=False).status_code == 303
 
@@ -184,17 +186,17 @@ def test_protected_reference_refuses_every_mutation_the_react_editors_can_send(e
     before = workspace(env, record)["workbook"]["composite_hash"]
 
     refusals = [
-        env.client.post("/v2/workbook/update", data={
+        post_valid_mutation(env.client, "/v2/workbook/update", data={
             "project": record.project_code, "field_id": row["field_id"], "value": "1", "sheet_id": "project_setup",
             "workbook_version": fields["save"]["workbook_version"], "content_hash": fields["save"]["content_hash"],
             "csrf_token": fields["save"]["csrf_token"]}, follow_redirects=False),
-        env.client.post("/v2/capex/line/add", data={
+        post_valid_mutation(env.client, "/v2/capex/line/add", data={
             "project": record.project_code, "parent_category_code": group, "label": "x", "amount_keur": "1",
             "notes": "", **cas(capex)}, follow_redirects=False),
         env.client.post("/v2/workbook/revenue/contracts", data={
             "project": record.project_code, "csrf_token": revenue["csrf_token"], "content_hash": revenue["content_hash"],
             "contracts": "{}", "action": "save"}, follow_redirects=False),
-        env.client.post("/v2/workbook/scenarios/create", data={
+        post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={
             "project": record.project_code, "scenario_name": "should not exist"}, follow_redirects=False),
     ]
     labels = ["registry field", "capex line", "revenue contracts", "scenario create"]

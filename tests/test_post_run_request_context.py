@@ -3,6 +3,8 @@
 Wall-clock thresholds belong to the paired benchmark, not these tests.
 """
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
@@ -314,7 +316,7 @@ def test_scenario_switch_during_render_restores_correct_run_and_legacy_base(stat
     cookies = {COOKIE_NAME: create_session_token(user_id=pr.user_id, username="admin")}
     try:
         with TestClient(main_web.app) as client:
-            response = client.post("/v2/workbook/scenarios/create", cookies=cookies,
+            response = post_valid_mutation(client, "/v2/workbook/scenarios/create", cookies=cookies,
                 headers={"HX-Request": "true"},
                 data={"project": pr.project_code, "scenario_name": "Context Scenario"})
             assert response.status_code == 200

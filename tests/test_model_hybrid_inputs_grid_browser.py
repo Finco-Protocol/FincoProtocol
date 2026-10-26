@@ -595,20 +595,31 @@ def test_grid_cannot_silently_overwrite_a_write_made_by_the_legacy_editor(make):
     s.open_grid()
     _edit(s, EFF, "91")                                   # staged in the grid, not saved
     assert s.staged() == 1
+    editor = s.page.locator(f'.v2-field-row[data-field-id="{EFF}"] form[hx-post="/v2/workbook/update"]')
+    assert editor.count() == 1
+    assert editor.get_attribute("hx-post") == "/v2/workbook/update"
+    assert editor.locator('input[name="project"]').input_value() == s.rec.project_code
+    assert editor.locator('input[name="field_id"]').input_value() == EFF
+    controls = editor.locator('input[type="hidden"][name="csrf_token"]')
+    assert controls.count() == 1
+    csrf_token = controls.input_value()
+    assert csrf_token
     # another editor writes the same field through the legacy single-field endpoint (same CAS authority)
     status = s.page.evaluate(
-        """async ([project, field]) => {
+        """async ([project, field, csrfToken]) => {
             const f = document.querySelector('#v2-canonical-run-form');
             const body = new URLSearchParams({project, field_id: field, value: '93', sheet_id: 'revenue',
+                csrf_token: csrfToken,
                 workbook_version: f.querySelector('[name=workbook_version]').value,
                 content_hash: f.querySelector('[name=content_hash]').value});
             const r = await fetch('/v2/workbook/update', {method: 'POST', credentials: 'same-origin',
                 headers: {'HX-Request': 'true', 'Content-Type': 'application/x-www-form-urlencoded'}, body});
             return r.status;
-        }""", [s.rec.project_code, EFF])
+        }""", [s.rec.project_code, EFF, csrf_token])
     assert status == 200
     assert s.persisted(EFF) == 93.0
     assert s.staged() == 1
+    assert float(s.cell(EFF).input_value()) == 91.0
     s.page.keyboard.press("Control+S")
     s.page.wait_for_timeout(1500)
     assert s.persisted(EFF) == 93.0, "the stale staged value must NOT overwrite the newer write"
@@ -616,6 +627,7 @@ def test_grid_cannot_silently_overwrite_a_write_made_by_the_legacy_editor(make):
         "stale" in s.page.locator("[data-ig-msg]").inner_text().lower() or \
         "nothing was saved" in s.page.locator("[data-ig-msg]").inner_text().lower()
     assert s.staged() == 1, "the user's staged edit is kept, never lost silently"
+    assert float(s.cell(EFF).input_value()) == 91.0
 
 
 def test_save_pressed_right_after_enter_waits_for_the_validator_instead_of_refusing(make):

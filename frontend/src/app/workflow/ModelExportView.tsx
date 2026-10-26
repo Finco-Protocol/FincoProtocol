@@ -44,7 +44,7 @@ export function ModelExportView({ project, freshness, legacyUrl, refreshKey = 0 
   const download = async () => {
     setBusy(true);
     setStatus(null);
-    const result = await downloadLastRunWorkbook(project);
+    const result = await downloadLastRunWorkbook(project, exports.last_run.csrf_token);
     setBusy(false);
     setStatus(result.ok
       ? { tone: "ok", text: `Downloaded ${result.filename} (${result.bytes.toLocaleString()} bytes) from the last committed Run.` }

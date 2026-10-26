@@ -1,6 +1,8 @@
 """RC-5 / S7-01 + S7-10: Run artifact integrity vs proven effective-input application; duplicate Rename prevention."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import copy
 from types import SimpleNamespace
 
@@ -113,7 +115,7 @@ def test_run_without_a_scenario_applied_nothing_and_unreadable_evidence_fails_cl
 # ── real Solar / Wind Runs: recorded at commit, in the certificate payload, historical Runs untouched ─────────────────────
 
 def _create(env, record, name):
-    return env.client.post("/v2/workbook/scenarios/create", headers=HX, data={"project": record.project_code, "scenario_name": name})
+    return post_valid_mutation(env.client, "/v2/workbook/scenarios/create", headers=HX, data={"project": record.project_code, "scenario_name": name})
 
 
 def _child(record, name=None):
@@ -142,7 +144,7 @@ def test_real_runs_record_evidence_and_certificate_separates_integrity_from_effe
     _create(env, record, "Upside")
     child = _child(record)
     value = round(_tariff(base_ws) * 1.12, 4)
-    assert env.client.post("/v2/workbook/scenarios/update-overrides", headers=HX, data={
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", headers=HX, data={
         "project": record.project_code, "scenario_id": child.scenario_id, "tariff_eur_mwh": str(value)}).status_code == 200
     run(env, record)
     committed = _ws_now(record)
@@ -156,7 +158,7 @@ def test_real_runs_record_evidence_and_certificate_separates_integrity_from_effe
     tampered["effective_input_evidence"]["status"] = NOT_APPLICABLE
     assert _canonical_json_bytes(tampered) != _canonical_json_bytes(cert)
     # Editing the override afterwards never rewrites what the committed Run proved.
-    assert env.client.post("/v2/workbook/scenarios/update-overrides", headers=HX, data={
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", headers=HX, data={
         "project": record.project_code, "scenario_id": child.scenario_id, "tariff_eur_mwh": str(value + 3)}).status_code == 200
     assert _ws_now(record).last_runtime_summary["effective_input_evidence"] == block
     assert build_certificate_payload(_ws_now(record))["effective_input_evidence"]["overrides_at_run"] == {"tariff_eur_mwh": value}
@@ -170,7 +172,7 @@ def test_pre_rc5_run_resolves_from_its_own_scenario_record_and_is_never_rewritte
     _create(env, record, "Upside")
     child = _child(record)
     value = round(_tariff(base_ws) * 1.1, 4)
-    env.client.post("/v2/workbook/scenarios/update-overrides", headers=HX, data={
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", headers=HX, data={
         "project": record.project_code, "scenario_id": child.scenario_id, "tariff_eur_mwh": str(value)})
     run(env, record)
     ws = _ws_now(record)
@@ -205,7 +207,7 @@ def test_certificate_fragment_states_integrity_and_effectiveness_separately():
 # ── S7-10: duplicate Rename prevention inside the repository transaction ─────────────────────────────────────────────────
 
 def _rename(env, record, scenario, name):
-    return env.client.post("/v2/workbook/scenarios/rename", headers=HX, data={
+    return post_valid_mutation(env.client, "/v2/workbook/scenarios/rename", headers=HX, data={
         "project": record.project_code, "scenario_id": scenario.scenario_id, "new_name": name})
 
 
@@ -244,7 +246,7 @@ def test_rename_ignores_archived_base_and_other_project_names(env):
     draft = _child(one, "Draft")
     assert _rename(env, one, draft, "Upside").status_code == 409
     up = _child(one, "Upside")
-    assert env.client.post("/v2/workbook/scenarios/archive", headers=HX, data={
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/archive", headers=HX, data={
         "project": one.project_code, "scenario_id": up.scenario_id}).status_code == 200
     assert _rename(env, one, draft, "Upside").status_code == 200       # an archived name is reusable
     assert _names(two) == ["Upside"]                                   # a clash in another project is irrelevant

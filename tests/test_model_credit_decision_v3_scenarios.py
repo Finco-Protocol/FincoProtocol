@@ -2,6 +2,8 @@
 committed canonical Runs (second ring; shares the helpers of the first real-run module)."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import json
@@ -170,11 +172,11 @@ def test_multiple_scenarios_keep_their_own_run_identities_and_history_is_immutab
     record = cenv.create("solar")
     run(cenv, record)
     base = last(record)
-    created = cenv.client.post("/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
+    created = post_valid_mutation(cenv.client, "/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
                                data={"project": record.project_code, "scenario_name": "Revenue downside"})
     assert created.status_code == 200
     scenario = next(s for s in list_scenarios(user_id=USER, project_id=record.project_id) if s.scenario_name == "Revenue downside")
-    over = cenv.client.post("/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
+    over = post_valid_mutation(cenv.client, "/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
                             data={"project": record.project_code, "scenario_id": scenario.scenario_id, "tariff_eur_mwh": "40"})
     assert over.status_code == 200
     run(cenv, record)

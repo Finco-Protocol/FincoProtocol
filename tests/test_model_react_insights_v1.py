@@ -5,6 +5,8 @@ Canonical existing Run/Save fixtures create private SQLite histories for each te
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from dataclasses import asdict
 import json
 import sqlite3
@@ -180,13 +182,13 @@ def test_scenarios_compare_only_their_own_committed_run_and_require_explicit_sel
     record = insights.create("solar")
     run(insights, record)
     base = last(record)
-    assert insights.client.post("/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
+    assert post_valid_mutation(insights.client, "/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
         data={"project": record.project_code, "scenario_name": "Revenue downside"}).status_code == 200
     scenario = next(s for s in list_scenarios(user_id=USER, project_id=record.project_id) if s.scenario_name == "Revenue downside")
     index = insights.client.get(INDEX, params={"project": record.project_code})
     assert index.status_code == 200
     assert "No committed Run exists for this scenario." in index.text
-    assert insights.client.post("/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
+    assert post_valid_mutation(insights.client, "/v2/workbook/scenarios/update-overrides", headers={"HX-Request": "true"},
         data={"project": record.project_code, "scenario_id": scenario.scenario_id, "tariff_eur_mwh": "40"}).status_code == 200
     run(insights, record)
     down = last(record)

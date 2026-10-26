@@ -6,6 +6,7 @@ no mocked finance output, artificial comparison or external customer files.
 from __future__ import annotations
 
 from tests.run_clone_csrf import post_valid_csrf
+from tests.browser_model_mutation import rendered_form_token
 
 import re
 import socket
@@ -127,6 +128,7 @@ def test_q4_finding_preview_confirm_select_run_compare(browser, app_server, kind
             saved = ctx.request.post(f"{root}/v2/workbook/update",
                 headers={"HX-Request": "true"},
                 form={"project": code, "field_id": "debt.senior.gearing_pct",
+                      "csrf_token": rendered_form_token(ctx.request, root, code, "/v2/workbook/update", field_id="debt.senior.gearing_pct"),
                       "value": "65", "sheet_id": "debt",
                       "content_hash": h, "workbook_version": v})
             assert saved.status == 200
@@ -191,7 +193,8 @@ def test_q4_finding_preview_confirm_select_run_compare(browser, app_server, kind
         selection = ctx.request.post(
             f"{root}/v2/workbook/scenarios/select",
             headers={"HX-Request": "true"},
-            form={"project": code, "scenario_id": child.scenario_id},
+            form={"project": code, "scenario_id": child.scenario_id,
+                  "csrf_token": rendered_form_token(ctx.request, root, code, "/v2/workbook/scenarios/select")},
         )
         assert selection.status == 200
         assert get_workspace_state(OWNER, project.project_id).active_scenario_id == child.scenario_id
@@ -211,7 +214,8 @@ def test_q4_finding_preview_confirm_select_run_compare(browser, app_server, kind
         return_base = ctx.request.post(
             f"{root}/v2/workbook/scenarios/select",
             headers={"HX-Request": "true"},
-            form={"project": code, "scenario_id": base.scenario_id},
+            form={"project": code, "scenario_id": base.scenario_id,
+                  "csrf_token": rendered_form_token(ctx.request, root, code, "/v2/workbook/scenarios/select")},
         )
         assert return_base.status == 200
         returned = get_workspace_state(OWNER, project.project_id)

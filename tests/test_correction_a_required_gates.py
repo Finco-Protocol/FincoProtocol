@@ -15,6 +15,8 @@ DO NOT add network calls. DO NOT touch financial_engine or finco_core.
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import json
 import sqlite3
 from dataclasses import replace
@@ -380,8 +382,7 @@ class TestMwRescalingHttpPath:
         cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="admin")}
 
         client = TestClient(main_web.app, raise_server_exceptions=True)
-        resp = client.post(
-            "/v2/workbook/update",
+        resp = post_valid_mutation(client, "/v2/workbook/update",
             data={
                 "field_id": "project_setup.technical.capacity_mw",
                 "value": str(new_mw),
@@ -449,8 +450,7 @@ class TestMwRescalingHttpPath:
         from app.auth import COOKIE_NAME, create_session_token
         cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="admin")}
         client = TestClient(main_web.app, raise_server_exceptions=True)
-        client.post(
-            "/v2/workbook/update",
+        post_valid_mutation(client, "/v2/workbook/update",
             data={
                 "field_id": "project_setup.technical.capacity_mw",
                 "value": "128.0",
@@ -480,8 +480,7 @@ class TestMwRescalingHttpPath:
         from app.auth import COOKIE_NAME, create_session_token
         cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="admin")}
         client = TestClient(main_web.app, raise_server_exceptions=True)
-        client.post(
-            "/v2/workbook/update",
+        post_valid_mutation(client, "/v2/workbook/update",
             data={
                 "field_id": "project_setup.technical.capacity_mw",
                 "value": "96.0",
@@ -558,8 +557,7 @@ class TestGenericWorkingCopyLineEditingHttp:
         assert {"project", "sub_line_id", "row_version", "workbook_version", "content_hash", "label", "amount_keur"}.issubset(capex_form)
         capex_new_amount = capex_line.amount_keur + 17.0
         capex_form["amount_keur"] = str(capex_new_amount)
-        response = client.post(
-            "/v2/capex/line/update",
+        response = post_valid_mutation(client, "/v2/capex/line/update",
             data=capex_form,
             cookies=cookies,
             headers={"HX-Request": "true"},
@@ -594,8 +592,7 @@ class TestGenericWorkingCopyLineEditingHttp:
         assert capex_second_form["content_hash"] != capex_form["content_hash"]
         capex_second_delta = 11.0
         capex_second_form["amount_keur"] = str(capex_new_amount + capex_second_delta)
-        response = client.post(
-            "/v2/capex/line/update", data=capex_second_form, cookies=cookies,
+        response = post_valid_mutation(client, "/v2/capex/line/update", data=capex_second_form, cookies=cookies,
             headers={"HX-Request": "true"}, follow_redirects=False,
         )
         assert response.status_code == 200, response.text[:500]
@@ -627,8 +624,7 @@ class TestGenericWorkingCopyLineEditingHttp:
         assert {"project", "sub_line_id", "row_version", "workbook_version", "content_hash", "label", "amount_keur", "inflation_pct"}.issubset(opex_form)
         opex_new_amount = opex_line.amount_keur + 9.0
         opex_form["amount_keur"] = str(opex_new_amount)
-        response = client.post(
-            "/v2/opex/line/update",
+        response = post_valid_mutation(client, "/v2/opex/line/update",
             data=opex_form,
             cookies=cookies,
             headers={"HX-Request": "true"},
@@ -655,8 +651,7 @@ class TestGenericWorkingCopyLineEditingHttp:
         assert opex_second_form["content_hash"] != opex_form["content_hash"]
         opex_second_delta = 5.0
         opex_second_form["amount_keur"] = str(opex_new_amount + opex_second_delta)
-        response = client.post(
-            "/v2/opex/line/update", data=opex_second_form, cookies=cookies,
+        response = post_valid_mutation(client, "/v2/opex/line/update", data=opex_second_form, cookies=cookies,
             headers={"HX-Request": "true"}, follow_redirects=False,
         )
         assert response.status_code == 200, response.text[:500]
@@ -740,8 +735,7 @@ class TestReferenceSeedResetRoute:
         from app.auth import COOKIE_NAME, create_session_token
         cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="admin")}
         client = TestClient(main_web.app, raise_server_exceptions=True)
-        resp = client.post(
-            "/v2/reference-seed/reset",
+        resp = post_valid_mutation(client, "/v2/reference-seed/reset",
             data={"project": record.project_code},
             cookies=cookies,
             follow_redirects=False,
@@ -785,8 +779,7 @@ class TestReferenceSeedResetRoute:
         from app.auth import COOKIE_NAME, create_session_token
         cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="admin")}
         client = TestClient(main_web.app, raise_server_exceptions=True)
-        client.post(
-            "/v2/reference-seed/reset",
+        post_valid_mutation(client, "/v2/reference-seed/reset",
             data={"project": record.project_code},
             cookies=cookies,
             follow_redirects=False,
@@ -811,8 +804,7 @@ class TestReferenceSeedResetRoute:
         from app.auth import COOKIE_NAME, create_session_token
         cookies = {COOKIE_NAME: create_session_token(user_id="gate-user", username="admin")}
         client = TestClient(main_web.app, raise_server_exceptions=True)
-        resp = client.post(
-            "/v2/reference-seed/reset",
+        resp = post_valid_mutation(client, "/v2/reference-seed/reset",
             data={"project": "generic_solar_reference-reference"},
             cookies=cookies,
             follow_redirects=False,

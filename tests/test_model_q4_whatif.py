@@ -1,6 +1,8 @@
 """Q4 safety and integration checks. Real Solar/Wind lifecycle remains a release gate."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 from unittest.mock import patch
@@ -179,7 +181,7 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     if not get_workspace_state(user, record.project_id).draft_snapshot.get("gearing_pct"):
         page = c.get(url, cookies=cookie(user))
         h, v = identity(page.text)
-        updated = c.post("/v2/workbook/update", data={
+        updated = post_valid_mutation(c, "/v2/workbook/update", data={
             "field_id": "debt.senior.gearing_pct",
             "value": "65", "project": record.project_code,
             "workbook_version": v, "content_hash": h, "sheet_id": "debt",
@@ -210,7 +212,7 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     page_before_edit = c.get(url, cookies=cookie(user)).text
     h, v = identity(page_before_edit)
     original_hours = float(ws0.draft_snapshot["p50_hours"])
-    changed = c.post("/v2/workbook/update", data={
+    changed = post_valid_mutation(c, "/v2/workbook/update", data={
         "field_id": "project_setup.technical.p50_hours",
         "value": str(original_hours + 1), "project": record.project_code,
         "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"},
@@ -285,7 +287,7 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
         params={"project": record.project_code, "scenario_id": sid}, cookies=cookie(user))
     assert "NOT_RUN" in no_run.text
 
-    chosen = c.post("/v2/workbook/scenarios/select",
+    chosen = post_valid_mutation(c, "/v2/workbook/scenarios/select",
         data={"project": record.project_code, "scenario_id": sid},
         cookies=cookie(user), headers={"HX-Request": "true"})
     assert chosen.status_code == 200
@@ -349,7 +351,7 @@ def test_q4_solar_target_dscr_real_engine_effective_change(q4_http):
     # Source-proven explicit scalar; no model default or inferred value.
     ws = get_workspace_state(owner, project.project_id)
     if not ws.draft_snapshot.get("target_dscr"):
-        response = client.post("/v2/workbook/update", cookies=cookies(owner),
+        response = post_valid_mutation(client, "/v2/workbook/update", cookies=cookies(owner),
             headers={"HX-Request": "true"}, data=dict(
                 project=project.project_code, field_id="debt.senior.target_dscr",
                 value="1.20", sheet_id="debt", **_fields()))
@@ -374,7 +376,7 @@ def test_q4_solar_target_dscr_real_engine_effective_change(q4_http):
                  if x.scenario_name == "DSCR-adjusted Q4")
     assert child.overrides == {"target_dscr": candidate}
     previous_history = tuple(get_run_history(owner, project.project_id))
-    selected = client.post("/v2/workbook/scenarios/select", cookies=cookies(owner),
+    selected = post_valid_mutation(client, "/v2/workbook/scenarios/select", cookies=cookies(owner),
         headers={"HX-Request": "true"},
         data={"project": project.project_code, "scenario_id": child.scenario_id})
     assert selected.status_code == 200

@@ -32,7 +32,7 @@
     UNRESOLVED  — authority unavailable; corresponding scalar control is
       fail-closed / locked regardless of protection state.
 #}
-{% from "partials/field_editor.html" import render_field %}
+{% from "partials/field_editor.html" import render_field with context %}
 {% from "partials/_money_format.html" import grouped_keur %}
 
 {% macro placeholder_row(label) %}

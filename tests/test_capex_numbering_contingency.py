@@ -2,6 +2,8 @@
 C.13 / B.13 contingency percentage authority."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import dataclasses
 import math
 
@@ -378,7 +380,7 @@ class TestContingencyRoute:
         from app.persistence.projects_repository import get_project_by_id
         client, cookies = self._client()
         wv, h = _hash("cap-user", solar_copy)
-        r = client.post("/v2/capex/contingency", cookies=cookies, follow_redirects=False, data={
+        r = post_valid_mutation(client, "/v2/capex/contingency", cookies=cookies, follow_redirects=False, data={
             "project": solar_copy.project_code, "kind": "capex", "contingency_pct": "5",
             "workbook_version": wv, "content_hash": h})
         assert r.status_code == 303, r.text
@@ -390,7 +392,7 @@ class TestContingencyRoute:
     def test_invalid_pct_rejected_422(self, solar_copy):
         client, cookies = self._client()
         wv, h = _hash("cap-user", solar_copy)
-        r = client.post("/v2/capex/contingency", cookies=cookies, follow_redirects=False, data={
+        r = post_valid_mutation(client, "/v2/capex/contingency", cookies=cookies, follow_redirects=False, data={
             "project": solar_copy.project_code, "kind": "capex", "contingency_pct": "101",
             "workbook_version": wv, "content_hash": h})
         assert r.status_code == 422
@@ -398,7 +400,7 @@ class TestContingencyRoute:
     def test_stale_hash_conflict(self, solar_copy):
         client, cookies = self._client()
         wv, _ = _hash("cap-user", solar_copy)
-        r = client.post("/v2/capex/contingency", cookies=cookies, follow_redirects=False, data={
+        r = post_valid_mutation(client, "/v2/capex/contingency", cookies=cookies, follow_redirects=False, data={
             "project": solar_copy.project_code, "kind": "capex", "contingency_pct": "5",
             "workbook_version": wv, "content_hash": "stale"})
         assert r.status_code == 409

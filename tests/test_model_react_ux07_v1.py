@@ -3,6 +3,8 @@ revenue editor surface.  All mutations stay on the canonical form routes;
 the compare projection is assumption-level and never computes KPIs."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from types import SimpleNamespace
 
 import pytest
@@ -61,7 +63,7 @@ def test_scenario_compare_reports_assumption_differences_not_kpis(env, monkeypat
     flag_on(monkeypatch)
     record = env.create()
     # create a scenario through the canonical form route, then override one field
-    created = env.client.post("/v2/workbook/scenarios/create",
+    created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create",
                               data={"project": record.project_code, "scenario_name": "Downside"})
     assert created.status_code in (200, 303)
     scenarios = env.client.get("/v2/model-react/scenarios", params={"project": record.project_code}).json()

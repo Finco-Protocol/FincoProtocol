@@ -56,6 +56,7 @@
           hx-post="/v2/workbook/update"
           hx-target="{{ hx_target }}"
           hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{ mutation_csrf_tokens['workbook-update'] }}">
       <input type="hidden" name="sheet_id"         value="{{ sheet_id }}">
       <input type="hidden" name="field_id"          value="{{ f.field_id }}">
       <input type="hidden" name="project"           value="{{ project_code }}">

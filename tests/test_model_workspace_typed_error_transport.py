@@ -135,7 +135,10 @@ def _identity(record):
 
 def _post(client, record, path, field_id, value, *, content_hash=None):
     version, current = _identity(record)
-    return client.post(
+    # Only the general endpoint adopted SEC-02; slice1 keeps its released contract.
+    from tests.model_mutation_csrf import post_valid_mutation
+    post = (lambda url, **kwargs: post_valid_mutation(client, url, **kwargs)) if path == GENERAL else client.post
+    return post(
         path,
         data={"field_id": field_id, "value": value, "project": record.project_code,
               "workbook_version": version, "content_hash": content_hash or current,

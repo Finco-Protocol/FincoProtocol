@@ -1,6 +1,8 @@
 """Excel migration V3 journeys through the real routes: assess -> scenario slice -> review -> Apply -> Run -> reconcile."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from decimal import Decimal
 
 import pytest
@@ -78,7 +80,7 @@ def test_full_journey_assess_review_apply_run_reconcile_comparable(env):
 def test_real_scenario_workflow_targets_the_new_scenario_and_leaves_base_untouched(env):
     project = env.create("solar")
     base_before = evidence(project)
-    created = env.client.post("/v2/workbook/scenarios/create", data={"project": project.project_code, "scenario_name": "Upside"})
+    created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": project.project_code, "scenario_name": "Upside"})
     assert created.status_code in (200, 303)
     ws = ws_of(project)
     assert ws.active_scenario_id and ws.active_scenario_name == "Upside"
@@ -89,7 +91,7 @@ def test_real_scenario_workflow_targets_the_new_scenario_and_leaves_base_untouch
     assert float(value(project, "opex.lines.insurance")) == pytest.approx(38.0)             # the Upside column
     assert ws.dirty
     # the applied evidence is bound to the scenario that received the writes
-    sw = env.client.post("/v2/workbook/scenarios/select", data={"project": project.project_code, "scenario_id": ws.active_scenario_id})
+    sw = post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={"project": project.project_code, "scenario_id": ws.active_scenario_id})
     assert sw.status_code in (200, 303)
     assert base_before[0] != ws.draft_snapshot
 

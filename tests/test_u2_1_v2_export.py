@@ -36,6 +36,8 @@ No DB writes (except audit trail via record_export mock).
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -656,7 +658,10 @@ def _get_test_client():
     from fastapi import FastAPI
     app = FastAPI()
     app.include_router(router, prefix="/v2")
-    return TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, raise_server_exceptions=False)
+    from app.auth import COOKIE_NAME, create_session_token
+    client.cookies.set(COOKIE_NAME, create_session_token(user_id="user-http", username="export-unit-fixture"))
+    return client
 
 
 def _mock_user(user_id="user-http"):
@@ -698,7 +703,7 @@ def test_http_route_case_a_clean_run_200():
         ),
         patch("app.persistence.repository.record_export", return_value=None),
     ):
-        resp = client.post("/v2/workbook/export", data={"project": "http_proj"})
+        resp = post_valid_mutation(client, "/v2/workbook/export", data={"project": "http_proj"})
 
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith(
@@ -741,7 +746,7 @@ def test_http_route_case_b_dirty_after_run_200():
         ),
         patch("app.persistence.repository.record_export", return_value=None),
     ):
-        resp = client.post("/v2/workbook/export", data={"project": "http_proj"})
+        resp = post_valid_mutation(client, "/v2/workbook/export", data={"project": "http_proj"})
 
     assert resp.status_code == 200
 
@@ -785,7 +790,7 @@ def test_http_route_case_c_scenario_lineage_200():
         ),
         patch("app.persistence.repository.record_export", return_value=None),
     ):
-        resp = client.post("/v2/workbook/export", data={"project": "http_proj"})
+        resp = post_valid_mutation(client, "/v2/workbook/export", data={"project": "http_proj"})
 
     assert resp.status_code == 200
 
@@ -820,7 +825,7 @@ def test_http_route_case_d_no_run_400():
             side_effect=ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: no run"),
         ),
     ):
-        resp = client.post("/v2/workbook/export", data={"project": "http_proj"})
+        resp = post_valid_mutation(client, "/v2/workbook/export", data={"project": "http_proj"})
 
     assert resp.status_code == 400
     assert "text/html" in resp.headers.get("content-type", "")
@@ -837,7 +842,7 @@ def test_http_route_case_e_cross_user_isolation_404():
             return_value=(None, None),
         ),
     ):
-        resp = client.post("/v2/workbook/export", data={"project": "other_users_project"})
+        resp = post_valid_mutation(client, "/v2/workbook/export", data={"project": "other_users_project"})
 
     assert resp.status_code == 404
     assert "text/html" in resp.headers.get("content-type", "")
@@ -854,7 +859,7 @@ def test_http_route_case_f_nonexistent_project_404():
             return_value=(None, None),
         ),
     ):
-        resp = client.post("/v2/workbook/export", data={"project": "does_not_exist"})
+        resp = post_valid_mutation(client, "/v2/workbook/export", data={"project": "does_not_exist"})
 
     assert resp.status_code == 404
 
@@ -871,7 +876,7 @@ def test_http_route_case_g_xss_input_no_echo():
             return_value=(None, None),
         ),
     ):
-        resp = client.post("/v2/workbook/export", data={"project": xss_payload})
+        resp = post_valid_mutation(client, "/v2/workbook/export", data={"project": xss_payload})
 
     assert resp.status_code == 404
     # Raw XSS payload must not appear verbatim in the response body (F04 fix).
@@ -1626,7 +1631,7 @@ def test_f05_audit_uses_project_record_project_code():
             side_effect=_capture_record_export,
         ),
     ):
-        resp = client.post("/v2/workbook/export", data={"project": "my_wind_farm_2026"})
+        resp = post_valid_mutation(client, "/v2/workbook/export", data={"project": "my_wind_farm_2026"})
 
     assert resp.status_code == 200
     assert len(record_export_calls) == 1, f"Expected 1 record_export call, got {len(record_export_calls)}"

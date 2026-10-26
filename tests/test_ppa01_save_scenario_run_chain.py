@@ -6,6 +6,8 @@ closed with nothing persisted and the previous committed Run intact. Solar and W
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import copy
 import json
 import re
@@ -92,9 +94,9 @@ def test_save_reload_scenario_run_history_stale_current_chain(env, kind):
     _reconcile(frozen, years, base_book)                                     # 9 Run History retains the committed economic evidence
     assert "CURRENT" in _page(flow)
     # 6 child scenario override never mutates Base
-    assert env.client.post("/v2/workbook/scenarios/create", data={**flow.project, "scenario_name": "Alt"}).status_code == 200
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={**flow.project, "scenario_name": "Alt"}).status_code == 200
     scenario = next(s for s in list_scenarios(OWNER, flow.record.project_id) if not s.is_base_case)
-    assert env.client.post("/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": scenario.scenario_id}).status_code == 200
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": scenario.scenario_id}).status_code == 200
     alt_book = _book(flow, _levels(flow, 100.0, -0.4), basis="OBSERVED")
     assert _save_revenue(flow, alt_book).status_code == 200
     assert json.loads(get_scenario(scenario.scenario_id, OWNER).overrides[SNAPSHOT_KEY]) == alt_book

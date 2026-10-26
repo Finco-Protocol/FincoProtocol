@@ -6,6 +6,8 @@ reference, no model execution, Last Run left intact and classified STALE).
 """
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 import re
 
 import pytest
@@ -88,7 +90,7 @@ def test_validate_is_a_dry_run_with_typed_verdicts(env):
 def test_save_is_one_atomic_batch_and_never_runs_the_model(env):
     c = env["client"]
     ws0 = get_workspace_state(OWNER, env["rec"].project_id)
-    res = c.post("/v2/workbook/grid/save", json=_save_body(env, GOOD))
+    res = post_valid_mutation(c, "/v2/workbook/grid/save", json=_save_body(env, GOOD))
     assert res.status_code == 200, res.text
     out = res.json()
     assert out["ok"] and out["model_executed"] is False
@@ -104,7 +106,7 @@ def test_save_is_one_atomic_batch_and_never_runs_the_model(env):
 def test_one_invalid_cell_rolls_back_the_whole_batch(env):
     c = env["client"]
     before = _draft(env)
-    res = c.post("/v2/workbook/grid/save", json=_save_body(env, GOOD + [("project_setup.technical.horizon_years", "-5")]))
+    res = post_valid_mutation(c, "/v2/workbook/grid/save", json=_save_body(env, GOOD + [("project_setup.technical.horizon_years", "-5")]))
     assert res.status_code == 422
     body = res.json()
     assert body["code"] == "GRID_VALIDATION_FAILED"
@@ -114,21 +116,21 @@ def test_one_invalid_cell_rolls_back_the_whole_batch(env):
 
 def test_stale_hash_replay_and_scenario_mismatch_are_rejected_without_writes(env):
     c = env["client"]
-    assert c.post("/v2/workbook/grid/save", json=_save_body(env, GOOD)).status_code == 200
+    assert post_valid_mutation(c, "/v2/workbook/grid/save", json=_save_body(env, GOOD)).status_code == 200
     after = _draft(env)
-    replay = c.post("/v2/workbook/grid/save", json=_save_body(env, [("revenue.ppa.base_tariff", "60")]))
+    replay = post_valid_mutation(c, "/v2/workbook/grid/save", json=_save_body(env, [("revenue.ppa.base_tariff", "60")]))
     assert replay.status_code == 409 and replay.json()["reload"] is True
     assert _draft(env) == after
-    fresh_hash = c.post("/v2/workbook/grid/save", json=_save_body(env, [("revenue.ppa.base_tariff", "60")])).status_code
+    fresh_hash = post_valid_mutation(c, "/v2/workbook/grid/save", json=_save_body(env, [("revenue.ppa.base_tariff", "60")])).status_code
     assert fresh_hash == 409
     wrong_scenario = _save_body(env, [("revenue.ppa.base_tariff", "61")])
     wrong_scenario["scenario_id"] = "not-the-active-scenario"
-    assert c.post("/v2/workbook/grid/save", json=wrong_scenario).status_code in (409, 422)
+    assert post_valid_mutation(c, "/v2/workbook/grid/save", json=wrong_scenario).status_code in (409, 422)
     assert _draft(env) == after
 
 
 def test_cascade_fields_are_refused_in_a_batch(env):
-    res = env["client"].post("/v2/workbook/grid/save", json=_save_body(env, [("project_setup.technical.capacity_mw", "50")]))
+    res = post_valid_mutation(env["client"], "/v2/workbook/grid/save", json=_save_body(env, [("project_setup.technical.capacity_mw", "50")]))
     assert res.status_code == 422
     assert "CASCADE" in res.text.upper() or "FIELD_INVALID" in res.text
 
@@ -156,7 +158,7 @@ def test_protected_reference_is_never_writable(env):
     assert 'data-editable="false"' in ref_page.text
     body = _save_body(env, GOOD)
     body["project"] = "generic_solar_reference-reference"
-    assert c.post("/v2/workbook/grid/save", json=body).status_code in (403, 404)
+    assert post_valid_mutation(c, "/v2/workbook/grid/save", json=body).status_code in (403, 404)
 
 
 def test_body_bounds_are_enforced(env):

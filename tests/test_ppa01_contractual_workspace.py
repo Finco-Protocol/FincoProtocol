@@ -1,5 +1,7 @@
 """Dated PPA Save/Scenario/Run/history integration, without a second financial writer."""
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 import copy
 from datetime import date
@@ -31,9 +33,9 @@ def test_dated_contract_save_stale_run_scenario_and_history(env, kind):
     before = copy.deepcopy(get_run_history(OWNER, flow.record.project_id))
     page = env.client.get('/v2/workbook', params=flow.project)
     assert 'CURRENT' in page.text and 'data-calendar-preview' in page.text
-    assert env.client.post('/v2/workbook/scenarios/create', data={**flow.project, 'scenario_name':'Dated alternative'}).status_code == 200
+    assert post_valid_mutation(env.client, '/v2/workbook/scenarios/create', data={**flow.project, 'scenario_name':'Dated alternative'}).status_code == 200
     child = next(s for s in list_scenarios(OWNER,flow.record.project_id) if not s.is_base_case)
-    assert env.client.post('/v2/workbook/scenarios/select', data={**flow.project,'scenario_id':child.scenario_id}).status_code == 200
+    assert post_valid_mutation(env.client, '/v2/workbook/scenarios/select', data={**flow.project,'scenario_id':child.scenario_id}).status_code == 200
     alt = book(pi,kind,dated(terms(),op[-1].end_date.isoformat()),rate=0)
     assert _save_revenue(flow,alt).status_code == 200
     assert json.loads(flow.ws().draft_snapshot['rev_multistream_config_json']) == raw

@@ -182,17 +182,19 @@ def violations(sources: dict[str, str], *, check_pin: bool = True) -> list[str]:
 def current_rc_sec_csrf_successor_valid(*, repo=None) -> bool:
     root = Path(repo) if repo is not None else ROOT
     try:
-        sources = {name: (root / name).read_text(encoding="utf-8") for name in BLOBS}
-        if violations(sources):
-            return False
+        # Historical authority is immutable, not silently repinned to the fix.
         for path, blob in BLOBS.items():
-            pinned = subprocess.run(["git", "rev-parse", f"{SOURCE_HEAD}:{path}"],
-                                    cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+            pinned = subprocess.check_output(["git", "rev-parse", f"{SOURCE_HEAD}:{path}"], cwd=root).decode().strip()
             if pinned != blob:
                 return False
-        subprocess.run(["git", "merge-base", "--is-ancestor", SOURCE_HEAD, "HEAD"],
-                       cwd=root, check=True, capture_output=True)
-        return True
-    except (OSError, subprocess.SubprocessError, SyntaxError, ValueError,
-            TypeError, UnicodeError, AttributeError):
+        subprocess.run(["git", "merge-base", "--is-ancestor", SOURCE_HEAD, "HEAD"], cwd=root, check=True, capture_output=True)
+        sources = {name: (root / name).read_text(encoding="utf-8") for name in BLOBS}
+        if not violations(sources):
+            return True
+        # Only the exact separately reviewed security successor may admit a
+        # changed router; it retains the released Run/Clone structure/binding.
+        from tests.model_mutation_security_successor import current_mutation_successor_valid
+        return current_mutation_successor_valid(repo=root)
+    except (OSError, subprocess.SubprocessError, SyntaxError, ValueError, TypeError,
+            UnicodeError, AttributeError, ImportError):
         return False

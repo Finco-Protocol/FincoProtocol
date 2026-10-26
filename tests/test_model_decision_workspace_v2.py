@@ -1,6 +1,8 @@
 """Workflow D authority, typed deltas, capability and render contracts."""
 from __future__ import annotations
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 
 import json
@@ -165,7 +167,7 @@ def test_merchant_invalid_save_rejected_without_write(env, curve):
     record = env.create()
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     before = get_workspace_state("decision-user", record.project_id)
-    response = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data={
+    response = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data={
         "project": record.project_code, "sheet_id": "revenue", "field_id": "revenue.merchant.price_curve_json",
         "value": json.dumps(curve), **tokens(page.text)})
     assert response.status_code == 200  # existing HTMX field-error transport
@@ -180,14 +182,14 @@ def test_merchant_valid_canonical_save_reload_and_stale_cas(env):
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
     payload = {"project": record.project_code, "sheet_id": "revenue", "field_id": "revenue.merchant.price_curve_json",
                "value": '[{"year":2031,"price_eur_mwh":81},{"year":2030,"price_eur_mwh":80}]', **tokens(page.text)}
-    response = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=payload)
+    response = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=payload)
     assert response.status_code == 200
     reload = env.client.get("/v2/workbook", params={"project": record.project_code})
     assert reload.status_code == 200
     stored = get_workspace_state("decision-user", record.project_id)
     assert json.loads(stored.draft_snapshot["rev_merchant_price_curve_json"])[0]["price_eur_mwh"] == 81
     before = stored
-    conflict = env.client.post("/v2/workbook/update", headers={"HX-Request": "true"}, data=payload)
+    conflict = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=payload)
     assert conflict.status_code == 200  # CAS rejection is transported for HTMX swap
     assert "workbook-field-error" in conflict.headers.get("HX-Trigger", "")
     assert "Draft changed since page loaded" in conflict.text
@@ -199,7 +201,7 @@ def test_compare_deduplicates_and_uses_base_as_reference_and_is_read_only(env):
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
     for name in ("Upside", "Downside"):
-        response = env.client.post("/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
+        response = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", headers={"HX-Request": "true"},
                                   data={"project": record.project_code, "scenario_name": name})
         assert response.status_code == 200
     scenarios = list_scenarios("decision-user", record.project_id)

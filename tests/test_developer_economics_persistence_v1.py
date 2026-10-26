@@ -4,6 +4,8 @@ Real authorized Save / Scenario / Run / History acceptance on neutral Solar and 
 financial figure is compared with the existing canonical calculator; nothing here re-implements one.
 """
 
+from tests.model_mutation_csrf import post_valid_mutation
+
 from tests.run_clone_csrf import post_valid_csrf
 import copy
 import json
@@ -369,9 +371,9 @@ def test_developer_cash_flows_do_not_enter_sponsor_ledgers(env):
 def _child(flow):
     from app.persistence.scenarios_repository import list_scenarios
     env = flow.env
-    assert env.client.post("/v2/workbook/scenarios/create", data={**flow.project, "scenario_name": "Alt"}).status_code == 200
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={**flow.project, "scenario_name": "Alt"}).status_code == 200
     sc = next(s for s in list_scenarios(OWNER, flow.record.project_id) if not s.is_base_case)
-    assert env.client.post("/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": sc.scenario_id}).status_code == 200
+    assert post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": sc.scenario_id}).status_code == 200
     return sc
 
 
@@ -402,7 +404,7 @@ def test_child_scenario_inherits_overrides_and_resets(env):
     assert "developer_economics_json" not in get_scenario(sc.scenario_id, OWNER).overrides
     assert read_committed_evidence(flow.run())["developer_fee_keur"] == 100.0
     # Base cannot "inherit" from nothing
-    env.client.post("/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": ""})
+    post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={**flow.project, "scenario_id": ""})
 
 
 # ─────────────────────── failure, corruption, history ───────────────────────

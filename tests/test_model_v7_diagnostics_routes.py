@@ -1,4 +1,6 @@
 """Real authorized snapshots: lazy exclusion, exact findings and no financial writes."""
+from tests.model_mutation_csrf import post_valid_mutation
+
 import json
 import re
 from unittest import mock
@@ -81,7 +83,7 @@ def test_save_invalidates_without_full_projection_and_preserves_run(env):
     before = get_workspace_state(owner, rec.project_id)
     h, v = q3._tokens(q3._get(env, owner, rec).text)
     with mock.patch('app.v2.diagnostics_projection.build_diagnostics', side_effect=AssertionError('Save must not evaluate periods')) as projection:
-        saved = env.client.post('/v2/workbook/update', data={'project':rec.project_code,
+        saved = post_valid_mutation(env.client, '/v2/workbook/update', data={'project':rec.project_code,
             'field_id':'project_setup.technical.p50_hours', 'value':'1501', 'sheet_id':'project_setup',
             'content_hash':h, 'workbook_version':v}, cookies=env.cookie(owner), headers={'HX-Request':'true'})
     projection.assert_not_called()

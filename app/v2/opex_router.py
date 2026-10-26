@@ -186,6 +186,10 @@ async def opex_line_add(
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "opex-add"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     is_htmx = request.headers.get("HX-Request") == "true"
 
     try:
@@ -245,6 +249,10 @@ async def opex_line_update(
         project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "opex-update"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
@@ -306,6 +314,10 @@ async def opex_line_deactivate(
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "opex-deactivate"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
+
     is_htmx = request.headers.get("HX-Request") == "true"
 
     try:
@@ -355,6 +367,10 @@ async def opex_line_reactivate(
         project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "opex-reactivate"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
@@ -406,6 +422,10 @@ async def opex_line_reorder(
         project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project, (await request.form()).get("csrf_token"), "opex-reorder"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
