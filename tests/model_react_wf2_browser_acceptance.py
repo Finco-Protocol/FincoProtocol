@@ -1,4 +1,9 @@
-"""WF-React-2 — real-Chromium acceptance of the editable model workflows.
+"""WF-React-2 — real-Chromium acceptance bodies for the editable model workflows.
+
+Not collected by pytest: executed through the thin wrappers in
+``tests/test_model_workspace_consolidation_browser.py`` (the existing mandatory
+Chromium role and its Playwright fixture lifecycle), like the WF-React-1
+acceptance bodies.  No module-level skip lives here.
 
 Drives the integrated React workspace over the real server: guided inputs,
 CAPEX/OPEX line management, the guided PPA editor, the financing editor,
@@ -7,8 +12,6 @@ Save/Run separation, scenarios and overrides, export, negative controls
 input) and the 1440/900/390 layouts.  Every Save is checked to leave the
 committed Run History untouched; only the explicit Run action adds a Run.
 
-Not wired into any CI selection: run locally with
-``python -m pytest tests/test_model_react_wf2_browser_acceptance.py``.
 """
 from __future__ import annotations
 
@@ -16,12 +19,7 @@ import json
 import os
 import re
 
-import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed in this workflow")
-
-from tests.test_workflow_c_browser_v1 import browser, live_server  # noqa: F401,E402
-from tests.test_model_react_poc_browser_acceptance import make_session, react_enabled  # noqa: F401,E402
+from tests.model_react_wf1_browser_acceptance import make_session
 
 SHOTS = os.environ.get("WF2_SCREENSHOT_DIR", "")
 
@@ -51,7 +49,7 @@ def bar(page):
     return page.locator("[data-workflow-bar='true']")
 
 
-def test_workflow_bar_and_sections_render_without_errors(browser, react_enabled):
+def check_workflow_bar_and_sections_render_without_errors(browser, react_enabled):
     context, page, record, errors = make_session(browser, react_enabled, "wf2-smoke-user")
     try:
         open_workspace(page, react_enabled, record)
@@ -122,7 +120,7 @@ def history_count(context, base, record):
 # ── the supported end-to-end path ────────────────────────────────────────────
 
 
-def test_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explicit(browser, react_enabled):
+def check_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explicit(browser, react_enabled):
     context, page, record, errors = make_session(browser, react_enabled, "wf2-e2e-user")
     base = react_enabled
     try:
@@ -225,7 +223,7 @@ def test_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explici
         page.get_by_label("New scenario name").fill("WF2 downside")
         page.get_by_role("button", name="Create scenario").click()
         wait_status(page, "ok", "created", "[data-scenario-workspace='true']")
-        assert "WF2 downside" in page.locator("[data-active-scenario-banner='true']").inner_text()
+        page.wait_for_function("""() => document.querySelector("[data-active-scenario-banner='true']").innerText.includes('WF2 downside')""")
         assert history_count(context, base, record) == 0, "creating a scenario never runs the model"
         page.get_by_role("button", name="Edit overrides of WF2 downside").click()
         override = page.locator("[data-override-editor='WF2 downside']")
@@ -304,7 +302,7 @@ def ppa_panel(page):
     return panel
 
 
-def test_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser, react_enabled):
+def check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser, react_enabled):
     context, page, record, errors = make_session(browser, react_enabled, "wf2-ppa-user")
     base = react_enabled
     try:
@@ -406,7 +404,7 @@ def collect_posts(page, fragment):
     return seen
 
 
-def test_stale_cas_cannot_overwrite_and_keeps_the_draft(browser, react_enabled):
+def check_stale_cas_cannot_overwrite_and_keeps_the_draft(browser, react_enabled):
     context, page, record, errors = make_session(browser, react_enabled, "wf2-stale-user")
     base = react_enabled
     try:
@@ -434,7 +432,7 @@ def test_stale_cas_cannot_overwrite_and_keeps_the_draft(browser, react_enabled):
         context.close()
 
 
-def test_rejected_csrf_token_changes_nothing_and_keeps_the_draft(browser, react_enabled):
+def check_rejected_csrf_token_changes_nothing_and_keeps_the_draft(browser, react_enabled):
     context, page, record, errors = make_session(browser, react_enabled, "wf2-csrf-user")
     base = react_enabled
     try:
@@ -470,8 +468,7 @@ def test_rejected_csrf_token_changes_nothing_and_keeps_the_draft(browser, react_
         context.close()
 
 
-@pytest.mark.parametrize("scenario", ["field-save", "cost-add", "run"])
-def test_unknown_outcomes_are_reconciled_never_retried(browser, react_enabled, scenario):
+def check_unknown_outcomes_are_reconciled_never_retried(browser, react_enabled, scenario):
     context, page, record, errors = make_session(browser, react_enabled, f"wf2-unknown-{scenario}")
     base = react_enabled
     try:
@@ -510,7 +507,7 @@ def test_unknown_outcomes_are_reconciled_never_retried(browser, react_enabled, s
         context.close()
 
 
-def test_protected_reference_workspace_is_read_only_in_every_editor(browser, react_enabled):
+def check_protected_reference_workspace_is_read_only_in_every_editor(browser, react_enabled):
     context, page, record, errors = make_session(browser, react_enabled, "wf2-protected-user")
     base = react_enabled
     try:
@@ -545,7 +542,7 @@ def test_protected_reference_workspace_is_read_only_in_every_editor(browser, rea
 # ── scenarios: isolation, selection never runs ───────────────────────────────
 
 
-def test_scenario_selection_compare_and_overrides_are_isolated_and_never_run(browser, react_enabled):
+def check_scenario_selection_compare_and_overrides_are_isolated_and_never_run(browser, react_enabled):
     context, page, record, errors = make_session(browser, react_enabled, "wf2-scenario-user")
     base = react_enabled
     try:
@@ -588,8 +585,7 @@ def test_scenario_selection_compare_and_overrides_are_isolated_and_never_run(bro
 # ── responsive layouts ───────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("width,height", [(1440, 900), (900, 1000), (390, 844)])
-def test_editable_sections_fit_desktop_tablet_and_mobile(browser, react_enabled, width, height):
+def check_editable_sections_fit_desktop_tablet_and_mobile(browser, react_enabled, width, height):
     context, page, record, errors = make_session(browser, react_enabled, f"wf2-resp-{width}")
     base = react_enabled
     try:
