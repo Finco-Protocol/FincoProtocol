@@ -13,6 +13,7 @@ from typing import Any, Mapping, Optional
 
 RECOVERY_CODE = "WORKING_COPY_RECOVERY_REQUIRED"
 _MAX_ISSUES = 25
+_PAGE_HANDLED_PREFIXES = ("QUARTERLY_",)
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,10 @@ def diagnose_draft(snapshot: Mapping[str, Any]) -> Optional[DraftRecovery]:
             break
         except (SnapshotInputError, ArithmeticError, ValueError) as exc:
             message = str(exc) or type(exc).__name__
+            if message.split(":", 1)[0].startswith(_PAGE_HANDLED_PREFIXES):
+                # A typed scope refusal (RC-7B 3/3 selection) is rendered in place by the existing pages and
+                # refused by the Run; it is not an unreadable draft and must keep its own handling.
+                break
             key = _leading_key(message, known) if isinstance(exc, SnapshotInputError) else None
             if key is None or key in seen:
                 issues.append(RecoveryIssue(

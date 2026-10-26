@@ -26,3 +26,18 @@ Failing tests: `tests/test_model_mutation_security_successor.py::test_exact_impl
 | Run commit / history | No | Parity run shows one history row per Run, identical to main |
 | Implicit Run after Save or recovery | No | recovery and R-1 refusal never run; Chromium check: 0 Runs |
 | Canonical Run endpoint | Unchanged | no new orchestration path |
+
+
+## EXACT-PATH AUTHORIZATION REQUEST (Correction A) — nothing below has been applied
+
+No existing explicit owner authorization naming these paths was found in the instructions, so no protected path was changed in this correction.
+
+**Disclosure.** The already-pushed commit `8422adbe` modified one protected test file, `tests/test_fin_val_b1_capex_save_integrity.py`, without such an authorization: it (1) changed the expected OPEX bound `opex.lines.om_preventive` from `(None, None)` to `(0, None)`, (2) replaced the assertion that a negative OPEX value is accepted by one that it is refused, (3) replaced the assertion that a stored invalid draft yields HTTP 500 by the recovery-page assertion (the stored value is still asserted byte-identical), and (4) renamed `test_residual_capacity_overflow_never_yields_a_plausible_value`. Items 1–3 follow directly from the three contracts this PR changes by design (E-class OPEX bound, SC-3, R-1) and none weakens a negative assertion; item 4 breaks CI V3. Please either **ratify** items 1–3 or instruct their reversal.
+
+| # | Path | Exact minimum change requested |
+|---|---|---|
+| 1 | `tests/test_fin_val_b1_capex_save_integrity.py` | restore the original function name `test_residual_capacity_overflow_never_yields_a_plausible_value` (one line; patch `PROPOSED_B1_NODE_RESTORE.patch`), body unchanged apart from keeping the new stronger assertions (draft byte-identical, explicit refusal text, page readable) and a docstring saying the legacy defect is now prevented; plus ratification of the three edits above |
+| 2 | `tests/model_mutation_security_successor.py` | additive `FINVAL_B2C1_SUCCESSORS` mapping of exactly the six paths listed above to their final blob hashes, admitted in `violations()` in addition to (never instead of) the original pins; `SOURCE_HEAD`, the 112 `BLOBS`, `ROUTES`, `TOKEN_MODULE`, browser layers and ancestry checks untouched; blob values to be filled only after the evidence freeze |
+| 3 | `tests/test_model_mutation_security_successor.py` | additive tests: the map covers exactly those six paths; each differs from its historical pin; one byte of drift in any mapped path fails; the token module and operation gates stay byte-pinned; wrong operation still fails |
+
+Also pending, **not** a protected path but a scope decision: authorization to implement the single-transaction capacity Save described in `R1_CAPACITY_FINITE_ATOMICITY_REPORT.md` (files `app/persistence/workspace_repository.py`, `app/services/reference_seed_service.py`, `app/workbook/update_service.py`).

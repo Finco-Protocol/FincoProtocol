@@ -596,3 +596,26 @@ class TestOpexAuthority:
         base = total_opex(None)
         assert total_opex("opex.lines.site_maintenance") == base          # replaced by the seeded line items
         assert total_opex("opex.lines.security") > base                   # appended item reaches the Run
+
+
+class TestRecoveryGateDoesNotPreemptTypedScopeRefusals:
+    """The recovery gate must not take over conditions the pages already handle in place (RC-7B 3/3 selection)."""
+
+    def test_typed_quarterly_refusal_is_not_an_unreadable_draft(self, monkeypatch):
+        from app import input_adapter
+        from app.workbook.draft_recovery import diagnose_draft
+
+        def refuse(snapshot):
+            raise input_adapter.SnapshotInputError("QUARTERLY_FINANCING_STRUCTURE_MISMATCH: recorded structure not carried")
+        monkeypatch.setattr(input_adapter, "build_projectinputs_from_snapshot", refuse)
+        assert diagnose_draft({"capex_epc_contract_keur": "1"}) is None
+
+    def test_an_unknown_non_quarterly_error_is_still_reported_and_not_repairable(self, monkeypatch):
+        from app import input_adapter
+        from app.workbook.draft_recovery import diagnose_draft
+
+        def refuse(snapshot):
+            raise input_adapter.SnapshotInputError("SOMETHING_ELSE: unreadable")
+        monkeypatch.setattr(input_adapter, "build_projectinputs_from_snapshot", refuse)
+        recovery = diagnose_draft({})
+        assert recovery is not None and recovery.issues and not recovery.issues[0].repairable
