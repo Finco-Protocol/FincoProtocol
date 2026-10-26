@@ -1,33 +1,25 @@
-# D-029 concurrency and fault injection results
+# D-029 concurrency and fault-injection results (real HTTP route, real engine, real SQLite)
 
-Executed isolated ledger suite: **34 passed**. Evidence uses disposable real SQLite WAL and actual history
-payload validation/cursor append with clearly synthetic empty financial outputs; no fake financial result is served.
+All in `tests/test_d029_run_idempotency_http.py` unless stated. Each asserts engine executions, history rows and Last Run.
 
-| Boundary | Executed evidence | Scope |
-|---|---|---|
-| Sequential repeat / mismatch | same reservation; typed binding/fingerprint refusal | Ledger |
-| Five spawned processes, independent connections | one claim, one history ID/row | Ledger + real history writer |
-| Alive expired A, takeover B | stale A refused before AND after B commit | Two OS processes, real SQL fence |
-| Reservation/precommit/postcommit process exit | durable reservation / rolled back writes / original committed ID | Real abrupt process exits |
-| Failed finalization / injected precommit crash | no committed phantom history | Transaction fault injection |
-| Missing unique constraint or fence trigger | explicit schema refusal, zero new claim | Negative controls |
-| Incompatible migration schema | new DDL objects rolled back on refusal | Migration transaction |
-| Second start on RUNNING reservation | no additional execution permit | Ledger |
-| Wrong history identity / no transaction | finalization refused | Ledger |
-| New key / same inputs | independent deliberate intent | Ledger |
-| Older replay after newer key | original history ID, no extra row | Reconciliation helper |
-| Missing history | HISTORY_UNAVAILABLE, committed key remains closed | Fault-injected read loss |
-| Busy writer | no reservation/false success; later legitimate acquisition | SQLite contention |
-| Terminal failure classes | no history pointer, same key closed, new key available | Ledger |
-
-Current-main canonical baseline additionally covers real Save-during-Run CAS, stale CAS, admission 429,
-postcommit response loss, wrong/missing/session-invalid Run CSRF, protected reference refusal and injected
-engine timeout/failure. These do not yet prove their combination with idempotency-enabled HTTP.
-
-Still required after #383: five independent ASGI application workers with same-key real financial Run,
-all live disconnect boundaries, financial refusal/final CAS combined with ledger, no-key compatibility,
-real React/Legacy exact-ID replay, original Last Run/certificate preservation, and full browser-role acceptance.
-No unexecuted case is marked PASS. Commands and counts are in the local test and exact-head reports.
+| Case | Result |
+|---|---|
+| Same key twice | 1 engine run, 1 history row, replay returns the original `history_id` / `runtime_snapshot_id` |
+| 5 concurrent OS processes, same key | exactly 1 COMMITTED, others IN_PROGRESS/REPLAYED, 1 engine run (counter file), 1 history row |
+| Real uvicorn server, 2 workers, 5 client processes | same |
+| Lost response, then retry | REPLAYED, 1 run |
+| Restart (schema cache + executor reset) | REPLAYED from the durable ledger |
+| Replay after edit / newer Run | original history row returned; Last Run never overwritten |
+| Conflicting binding, same key | CONFLICT 409, no run |
+| Different keys | released admission/CAS; every committed intent bound to its own history row |
+| Fault in `finalize_cursor` / history append (before COMMIT) | everything rolled back: no history, Last Run unchanged, intent FAILED, terminal |
+| Crash after COMMIT before response | intent COMMITTED, retry REPLAYED |
+| Stale owner (lease expired, takeover) | fenced: no history, Last Run unchanged, new owner's claim untouched |
+| Expired active intent | typed EXPIRED, nothing runs |
+| Missing / malformed / foreign history | HISTORY_UNAVAILABLE, never recalculated, foreign id never returned |
+| Schema corruption | RUN_INTENT_SCHEMA_INVALID, engine never starts |
+| Security | CSRF missing/forged/contradictory/cross-session, cross-actor (404), cross-project, protected reference, invalid UUID |
+| Real Chromium (7 cases in the mandatory consolidation role) | React 4 + Legacy 3, all pass locally; includes a genuine committed edit before resuming the original intent |
 
 ## Status boundary
 
