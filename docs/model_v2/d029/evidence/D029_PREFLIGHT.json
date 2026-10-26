@@ -1,0 +1,58 @@
+{
+  "base": "8944aca351ef89c81a8a9bf715ab352629c35624",
+  "base_tree": "3448aeb245ff118fde0907541dfe40ace42a86d8",
+  "merged_dependencies": {
+    "381": {
+      "mergeCommit": {
+        "oid": "8944aca351ef89c81a8a9bf715ab352629c35624"
+      },
+      "mergedAt": "2026-10-26T13:25:06Z",
+      "state": "MERGED"
+    },
+    "382": {
+      "mergeCommit": {
+        "oid": "8a821b0b852a8547dd99abfeef801be623f7c941"
+      },
+      "mergedAt": "2026-10-26T12:29:01Z",
+      "state": "MERGED"
+    }
+  },
+  "observed_main": "8944aca351ef89c81a8a9bf715ab352629c35624",
+  "observed_main_tree": "3448aeb245ff118fde0907541dfe40ace42a86d8",
+  "pr383": {
+    "baseRefOid": "8944aca351ef89c81a8a9bf715ab352629c35624",
+    "headRefName": "feat/fin-val-b2-c1-recovery-finite-opex-authority",
+    "headRefOid": "8422adbeca843ada3fb6f476ce06b1ef7b519e99",
+    "isDraft": true,
+    "number": 383,
+    "state": "OPEN"
+  },
+  "pr383_changed_paths": [
+    "app/input_adapter.py",
+    "app/services/reference_seed_service.py",
+    "app/templates/v2/partials/sheet_opex.html",
+    "app/templates/v2/workbook_recovery.html",
+    "app/v2/input_grid_projection.py",
+    "app/v2/opex_authority.py",
+    "app/v2/react_workspace_router.py",
+    "app/v2/router.py",
+    "app/workbook/draft_recovery.py",
+    "app/workbook/registry.py",
+    "app/workbook/update_service.py",
+    "docs/model_v2/fin_val_b2_c1/CAPEX_DUPLICATE_COMPONENT_ROOT_CAUSE.md",
+    "docs/model_v2/fin_val_b2_c1/FINANCIAL_OWNER_DECISION_REGISTER.md",
+    "docs/model_v2/fin_val_b2_c1/OPEX_FIELD_TO_ENGINE_AUTHORITY_MATRIX.md",
+    "docs/model_v2/fin_val_b2_c1/OPEX_FINANCIAL_IMPACT_REGRESSION.md",
+    "docs/model_v2/fin_val_b2_c1/R1_CAPACITY_FINITE_ATOMICITY_REPORT.md",
+    "docs/model_v2/fin_val_b2_c1/SC3_WORKING_COPY_RECOVERY_REPORT.md",
+    "docs/model_v2/fin_val_b2_c1/SECURITY_GOVERNANCE_AND_D029_CONFLICT_MATRIX.md",
+    "frontend/src/app/RecoveryPanel.tsx",
+    "frontend/src/app/WorkspaceView.tsx",
+    "frontend/src/app/api.ts",
+    "frontend/src/app/types.ts",
+    "static/react/finco-react.js",
+    "tests/test_fin_val_b1_capex_save_integrity.py",
+    "tests/test_fin_val_b2_c1_recovery_finite_opex.py"
+  ],
+  "supplied_zip_sha256": "22f0514df11c16a5a8afa8055c6c9255595296481733f86af00a09136fbcb645"
+}

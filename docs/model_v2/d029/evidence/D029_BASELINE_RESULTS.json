@@ -1,0 +1,135 @@
+[
+  {
+    "case": "single",
+    "engine_entries": 1,
+    "history_delta": 1,
+    "real_engine_completed": 1,
+    "response_statuses": [
+      200
+    ],
+    "transport_error": null
+  },
+  {
+    "case": "sequential",
+    "engine_entries": 2,
+    "history_delta": 2,
+    "real_engine_completed": 2,
+    "response_statuses": [
+      200,
+      200
+    ],
+    "transport_error": null
+  },
+  {
+    "case": "concurrent",
+    "engine_entries": 2,
+    "history_delta": 2,
+    "real_engine_completed": 2,
+    "response_statuses": [
+      200,
+      200
+    ],
+    "transport_error": null
+  },
+  {
+    "case": "save-during-run",
+    "engine_entries": 1,
+    "history_delta": 0,
+    "real_engine_completed": 1,
+    "response_statuses": [
+      200,
+      200
+    ],
+    "transport_error": null
+  },
+  {
+    "case": "stale-cas",
+    "engine_entries": 0,
+    "history_delta": 0,
+    "real_engine_completed": 0,
+    "response_statuses": [
+      200,
+      200
+    ],
+    "transport_error": null
+  },
+  {
+    "case": "missing-csrf",
+    "engine_entries": 0,
+    "history_delta": 0,
+    "real_engine_completed": 0,
+    "response_statuses": [
+      403
+    ],
+    "transport_error": null
+  },
+  {
+    "case": "cross-session",
+    "engine_entries": 0,
+    "history_delta": 0,
+    "real_engine_completed": 0,
+    "response_statuses": [
+      403
+    ],
+    "transport_error": null
+  },
+  {
+    "case": "busy",
+    "engine_entries": 1,
+    "history_delta": 1,
+    "real_engine_completed": 1,
+    "response_statuses": [
+      429,
+      200
+    ],
+    "transport_error": null
+  },
+  {
+    "case": "lost-response",
+    "engine_entries": 1,
+    "history_delta": 1,
+    "real_engine_completed": 1,
+    "response_statuses": [],
+    "transport_error": "ReadError"
+  },
+  {
+    "case": "unknown-outcome",
+    "engine_entries": 1,
+    "history_delta": 0,
+    "real_engine_completed": 1,
+    "response_statuses": [
+      200
+    ],
+    "transport_error": null
+  },
+  {
+    "all_table_digests_unchanged": true,
+    "case": "wrong-csrf",
+    "engine_entries": 0,
+    "fault_injection": false,
+    "history_delta": 0,
+    "response_statuses": [
+      403
+    ]
+  },
+  {
+    "all_table_digests_unchanged": true,
+    "case": "protected-reference",
+    "engine_entries": 0,
+    "fault_injection": false,
+    "history_delta": 0,
+    "response_statuses": [
+      200
+    ]
+  },
+  {
+    "all_table_digests_unchanged": true,
+    "case": "engine-failure",
+    "engine_entries": 1,
+    "fault_injection": true,
+    "history_delta": 0,
+    "response_statuses": [
+      200
+    ]
+  }
+]

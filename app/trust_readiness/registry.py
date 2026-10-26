@@ -619,6 +619,23 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
         tables=("model_run_history",),
     ),
     DataStoreEntry(
+        "data.run_intents", "Run idempotency intents (D-029)", "SQLite database",
+        "actor_id (workspace owner), project_id",
+        "One row per client Run intent: a UUID, one-way digests of the submitted binding and the "
+        "frozen effective inputs, the intent state and, once committed, the history_id it is "
+        "bound to. No financial results, no credentials and no tokens.", False,
+        "Not automatically deleted: a database trigger refuses DELETE. Retention is an open "
+        "owner decision; until it is approved rows are kept so a committed intent can always be "
+        "reconciled to its exact history row.",
+        "No deletion path exists. Rows are small and are removed only by an approved, "
+        "explicitly authorized retention procedure.", False,
+        S.REQUIRES_OPERATIONAL_CONTROLS,
+        (_code("app/persistence/run_intent_repository.py", "CREATE TABLE IF NOT EXISTS model_run_intents"),),
+        "Intent rows of a deleted or disposed project are retained until the retention "
+        "decision is made; they carry identifiers and digests only.",
+        tables=("model_run_intents",),
+    ),
+    DataStoreEntry(
         "data.backups", "Database backups", "Files on the host (default under the data directory)",
         "whole database", "A full copy of every table above.", True,
         "Automatic backups: the newest 10 are kept. Manual and pre-restore safety backups are "

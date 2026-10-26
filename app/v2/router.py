@@ -2841,6 +2841,50 @@ def _engine_failure_message(exc: BaseException) -> str:
     return "Engine run failed — please try again or contact support."
 
 
+def _run_intent_response(request: Request, decision, is_htmx: bool, project: str, outcome: "str | None" = None,
+                         existing: "Any | None" = None):
+    """Typed D-029 outcome for a submitted ``run_intent_id`` (never used without one).
+
+    JSON clients (``Accept: application/json``) get the typed payload directly; HTMX gets a 200 banner
+    fragment plus ``X-Finco-Run-Outcome``; other form posts keep the redirect contract.  ``existing`` is the
+    released response for a failure after reservation: its body/status are kept, the typed headers are added.
+    """
+    from app.services import run_intent_service as _ri
+
+    kind = outcome or decision.kind
+    typed_headers = _ri.headers(decision, outcome)
+    if "application/json" in (request.headers.get("accept") or ""):
+        return JSONResponse(_ri.payload(decision, outcome), status_code=_ri.STATUS[kind], headers=typed_headers)
+    if existing is not None:
+        for name, value in typed_headers.items():
+            existing.headers[name] = value
+        return existing
+    message = decision.message or kind
+    if is_htmx:
+        if kind == "REPLAYED":
+            # The page that sent this Run is stale (its response was lost): reload the persisted workbook.
+            typed_headers["HX-Refresh"] = "true"
+        banner_html = _templates.get_template("partials/_v2_status_banner.html").render({
+            "ws_dirty": True, "has_runtime": False, "field_error": message, "flash_error": "", "run_failure": None})
+        return HTMLResponse(content='<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>",
+                            headers=typed_headers)
+    if kind in ("COMMITTED", "REPLAYED"):
+        return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303, headers=typed_headers)
+    return RedirectResponse(url=f"/v2/workbook?project={project}&v2_err={urllib.parse.quote_plus(message)}",
+                            status_code=303, headers=typed_headers)
+
+
+def _ri_stamp_committed(response, committed):
+    """A response produced AFTER the atomic commit must still say COMMITTED (the Run is durable): the client
+    consumes the intent on a terminal outcome, so a post-commit rendering failure must never read as FAILED."""
+    if committed is None:
+        return response
+    from app.services import run_intent_service as _ri
+    for name, value in _ri.headers(committed).items():
+        response.headers[name] = value
+    return response
+
+
 @router.post("/workbook/run")
 async def v2_workbook_run(
     request: Request,
@@ -2849,6 +2893,7 @@ async def v2_workbook_run(
     workbook_version: str = Form(...),
     csrf_token: str = Form(default=""),
     run_csrf_token: str = Form(default=""),
+    run_intent_id: str = Form(default=""),
     _: None = Depends(require_v2_active),
 ):
     """V2 Run endpoint — canonical engine orchestration for Workbook V2.
@@ -2944,6 +2989,21 @@ async def v2_workbook_run(
     if (csrf_token and run_csrf_token and csrf_token != run_csrf_token) or not validate_csrf_token(extract_bound_token(
             request, project, csrf_token or run_csrf_token, purpose="workbook-run-v1")):
         return JSONResponse({"error": "Invalid or missing CSRF token"}, status_code=403)
+
+    # ── D-029: optional Run intent (idempotency).  An intent id is NOT authorization: access, ownership and the
+    # purpose-bound Run CSRF above already passed, the protected-reference refusal precedes any ledger lookup, and a
+    # known key is reconciled by its ORIGINAL submitted binding before today's CAS/Last Run is consulted. ─────────── #
+    from app.services import run_intent_service as _ri
+    _ri_decision = None
+    _ri_reservation = None
+    if run_intent_id.strip():
+        _ri_decision = _ri.decide(
+            actor_id=workspace_owner, project_id=project_record.project_id, run_intent_id=run_intent_id.strip(),
+            workbook_version=workbook_version, content_hash=content_hash,
+            protected_reference=is_protected_reference(project_record),
+            refused_message="This is a protected reference model and cannot be run. Create a working copy to run the model.")
+        if _ri_decision.terminal:
+            return _run_intent_response(request, _ri_decision, is_htmx, project)
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
@@ -3266,6 +3326,15 @@ async def v2_workbook_run(
     except (ValueError, TypeError) as exc:
         msg = str(exc)
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+    # D-029: freeze the fingerprint from the SAME effective inputs, take the durable claim and permit execution.
+    # Only the unique acquirer reaches the engine; any other state is returned as a typed outcome.
+    if _ri_decision is not None:
+        _ri_decision, _ri_reservation = _ri.reserve_and_start(
+            _ri_decision.intent, _ri.effective_identity(
+                override, composite_hash=content_hash, scenario_id=active_scenario_id,
+                runtime_project_key=runtime_project_key, scenario_overrides=_scenario_overrides_for_fold))
+        if _ri_decision.terminal:
+            return _run_intent_response(request, _ri_decision, is_htmx, project)
     # P0-A: the calculation runs in the bounded model executor (worker process), never on the
     # event loop. The final CAS (v2_atomic_run_commit, step 12) is unchanged and runs only after
     # the calculation returns, so a stale calculation still fails closed.
@@ -3286,28 +3355,43 @@ async def v2_workbook_run(
         _stage_mark("model_completed")
     except ModelExecutionBusy:
         # BUSY != CALCULATION_FAILED: nothing ran, nothing changed, safe to retry.
+        # With an intent the attempt is terminal (ADMISSION_REFUSED): a deliberate retry uses a NEW key.
+        _ri.mark_failed(_ri_reservation, "ADMISSION_REFUSED")
         if is_htmx:
             busy = _htmx_error(BUSY_MESSAGE, ws)
             busy.status_code = 429
             busy.headers["Retry-After"] = "5"
             busy.headers["X-Finco-Model-Busy"] = "1"
+            if _ri_decision is not None:
+                return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED", existing=busy)
             return busy
-        return JSONResponse({"state": "MODEL_EXECUTION_BUSY", "message": BUSY_MESSAGE},
-                            status_code=429, headers={"Retry-After": "5"})
+        busy_json = JSONResponse({"state": "MODEL_EXECUTION_BUSY", "message": BUSY_MESSAGE},
+                                 status_code=429, headers={"Retry-After": "5"})
+        if _ri_decision is not None:
+            return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED", existing=busy_json)
+        return busy_json
     except (ModelExecutionTimeout, ModelExecutionFailed) as exc:
         import logging
         logging.getLogger(__name__).error("v2_workbook_run: executor failure or timeout")
         msg = "The calculation could not be completed. Nothing was saved; please retry."
+        _ri.mark_failed(_ri_reservation, "ENGINE_TIMEOUT" if isinstance(exc, ModelExecutionTimeout) else "ENGINE_FAILED")
         from app.v2.run_failure_explanation import explain_run_failure
-        return (_htmx_error(msg, ws, explain_run_failure(exc, message=msg, ws=ws, kind="EXECUTION_ERROR"))
-                if is_htmx else _non_htmx_error(msg))
+        _ri_failure = (_htmx_error(msg, ws, explain_run_failure(exc, message=msg, ws=ws, kind="EXECUTION_ERROR"))
+                       if is_htmx else _non_htmx_error(msg))
+        if _ri_decision is not None:
+            return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED", existing=_ri_failure)
+        return _ri_failure
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("v2_workbook_run: engine failure")
         msg = _engine_failure_message(exc)
+        _ri.mark_failed(_ri_reservation, "ENGINE_FAILED")
         from app.v2.run_failure_explanation import explain_run_failure
-        return (_htmx_error(msg, ws, explain_run_failure(exc, message=msg, ws=ws, pis=pis_draft))
-                if is_htmx else _non_htmx_error(msg))
+        _ri_failure = (_htmx_error(msg, ws, explain_run_failure(exc, message=msg, ws=ws, pis=pis_draft))
+                       if is_htmx else _non_htmx_error(msg))
+        if _ri_decision is not None:
+            return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED", existing=_ri_failure)
+        return _ri_failure
 
     # ── Step 11b: enrich runtime_summary with derivation evidence ────────────── #
     # result["kpis"] is the raw engine KPI dict.  Derivation evidence is a
@@ -3363,7 +3447,11 @@ async def v2_workbook_run(
                 })
         except (ValueError, TypeError, KeyError) as exc:
             msg = f"Investor evidence could not be reconciled: {exc}. No Run was committed."
-            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+            _ri.mark_failed(_ri_reservation, "FINANCIAL_REFUSED")
+            _ri_failure = _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+            if _ri_decision is not None:
+                return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED", existing=_ri_failure)
+            return _ri_failure
     if "developer_economics" in result:
         from app.model_v2.developer_evidence import bind as bind_developer_evidence
         _kpis_enriched["developer_economics"] = bind_developer_evidence(
@@ -3409,6 +3497,7 @@ async def v2_workbook_run(
             active_scenario_name=active_scenario_name,
             last_runtime_scenario_id=active_scenario_id,
             ran_at=ran_at,
+            run_intent=_ri_reservation,
         )
         _stage_mark("persistence_completed")
     except V2RunCommitConflictError:
@@ -3416,8 +3505,14 @@ async def v2_workbook_run(
             "Workbook changed while the engine was running — values refreshed. "
             "Please run again."
         )
+        _ri.mark_failed(_ri_reservation, "FINAL_CAS_CONFLICT")
+        if _ri_decision is not None and "application/json" in (request.headers.get("accept") or ""):
+            return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED")
         if not is_htmx:
-            return _non_htmx_error(msg)
+            _ri_cas_failure = _non_htmx_error(msg)
+            if _ri_decision is not None:
+                return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED", existing=_ri_cas_failure)
+            return _ri_cas_failure
         # Re-fetch workspace to get the current hash for the run controls.
         ws_conflict = get_workspace_state(
             user_id=workspace_owner, project_id=project_record.project_id
@@ -3454,12 +3549,19 @@ async def v2_workbook_run(
         conflict_controls_oob = (
             '<div id="v2-run-controls" hx-swap-oob="true">' + conflict_controls_html + "</div>"
         )
+        if _ri_decision is not None:
+            return HTMLResponse(content=conflict_banner_oob + "\n" + conflict_controls_oob,
+                                headers=_ri.headers(_ri_decision, "FAILED"))
         return HTMLResponse(content=conflict_banner_oob + "\n" + conflict_controls_oob)
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("v2_workbook_run: persistence failure")
         msg = "Run completed but could not be saved — please try again."
-        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        _ri.mark_failed(_ri_reservation, "FINANCIAL_REFUSED")
+        _ri_failure = _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        if _ri_decision is not None:
+            return _run_intent_response(request, _ri_decision, is_htmx, project, outcome="FAILED", existing=_ri_failure)
+        return _ri_failure
 
     # ── Step 12b: persist KPIs to ScenarioRecord.last_run_summary ────────── #
     # This is the UI-3B per-scenario runtime isolation contract.
@@ -3530,17 +3632,23 @@ async def v2_workbook_run(
                 "project=%s", project
             )
 
+    # ── D-029: the intent was finalized INSIDE the commit transaction; read back its exact immutable history id.
+    # The committed truth is reported to JSON/form clients even if the HTMX projection below cannot be rebuilt. ──── #
+    _ri_committed = _ri.committed_decision(_ri_decision.intent) if _ri_decision is not None else None
+    if _ri_committed is not None and (not is_htmx or "application/json" in (request.headers.get("accept") or "")):
+        return _run_intent_response(request, _ri_committed, is_htmx, project)
+
     # ── Step 13–14: project from the persisted RuntimeResult ──────────────── #
     ws_fresh = ws_committed or get_workspace_state(
         user_id=workspace_owner, project_id=project_record.project_id
     )
     if ws_fresh is None:
         msg = "Run committed but workspace could not be reloaded."
-        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+        return _ri_stamp_committed(_htmx_error(msg) if is_htmx else _non_htmx_error(msg), _ri_committed)
     rr = WorkbookService.get_runtime_result(ws_fresh)
     if rr is None:
         msg = "Run committed but the persisted RuntimeResult could not be reconstructed."
-        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+        return _ri_stamp_committed(_htmx_error(msg) if is_htmx else _non_htmx_error(msg), _ri_committed)
 
     # ── Step 15: HTMX response ────────────────────────────────────────────── #
     if not is_htmx:
@@ -3566,11 +3674,13 @@ async def v2_workbook_run(
     except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
         # The Run remains committed. Do not emit a mixed CURRENT response or
         # overwrite a concurrent scenario's evidence; existing GET reconciles.
-        return HTMLResponse(
+        return _ri_stamp_committed(HTMLResponse(
             "Run saved. Workspace changed while updating the view; reload the workbook.",
-            status_code=409)
+            status_code=409), _ri_committed)
     _stage_mark("response_generated")
     log_run_stages(project_type=project_record.project_type, origin="v2_workbook_run")
+    if _ri_committed is not None:
+        return HTMLResponse(content=combined, headers=_ri.headers(_ri_committed))
     return HTMLResponse(content=combined)
 
 

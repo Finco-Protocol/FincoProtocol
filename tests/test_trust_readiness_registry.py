@@ -1095,13 +1095,56 @@ def _f35b_csrf_registry(original):
     return original.replace(F35B_CSRF_OLD, F35B_CSRF_NEW, 1)
 
 
+# ── D-029 (PR #384): bounded additive Trust successor ─────────────────────────────────────────
+# The ONLY newly admitted registry difference is the reviewed `data.run_intents` data-store entry
+# (the Run-intent ledger table), inserted at one exact position. It is verified from the exact merged
+# main baseline text, never by accepting "whatever the current file says"; every earlier historical
+# layer above (WF-05, Revenue V2, F4, demo retention, F3.5-B, RC-1, M4) is untouched and still
+# applies to the text this transformation starts from.
+D029_TRUST_MAIN = "36edeeb5d9a14749fdfafcd3b60a0d384cac73ba"
+D029_TRUST_MAIN_REGISTRY_BLOB = "32a6bcb86516ff4d1ee8b1dc90191fdb57c5dc2d"
+D029_TRUST_REGISTRY_BLOB = "99ff83825e6bef013be9411235d2d77345f78b02"
+D029_RUN_INTENTS_ANCHOR = '    DataStoreEntry(\n        "data.backups", "Database backups",'
+D029_RUN_INTENTS_ENTRY = '''    DataStoreEntry(
+        "data.run_intents", "Run idempotency intents (D-029)", "SQLite database",
+        "actor_id (workspace owner), project_id",
+        "One row per client Run intent: a UUID, one-way digests of the submitted binding and the "
+        "frozen effective inputs, the intent state and, once committed, the history_id it is "
+        "bound to. No financial results, no credentials and no tokens.", False,
+        "Not automatically deleted: a database trigger refuses DELETE. Retention is an open "
+        "owner decision; until it is approved rows are kept so a committed intent can always be "
+        "reconciled to its exact history row.",
+        "No deletion path exists. Rows are small and are removed only by an approved, "
+        "explicitly authorized retention procedure.", False,
+        S.REQUIRES_OPERATIONAL_CONTROLS,
+        (_code("app/persistence/run_intent_repository.py", "CREATE TABLE IF NOT EXISTS model_run_intents"),),
+        "Intent rows of a deleted or disposed project are retained until the retention "
+        "decision is made; they carry identifiers and digests only.",
+        tables=("model_run_intents",),
+    ),
+'''
+
+
+def _d029_registry(original: str) -> str:
+    if original.count(D029_RUN_INTENTS_ANCHOR) != 1 or "data.run_intents" in original:
+        raise ValueError("D-029 insertion point missing, duplicated or already applied")
+    return original.replace(D029_RUN_INTENTS_ANCHOR, D029_RUN_INTENTS_ENTRY + D029_RUN_INTENTS_ANCHOR, 1)
+
+
+def _registry_with_d029(base_registry: str):
+    """The reviewed registry texts for a historical base: unchanged, or plus the one D-029 entry."""
+    return (base_registry.strip(), _d029_registry(base_registry).strip())
+
+
 def _registry_matches_history(original):
     current = _read_current("app/trust_readiness/registry.py").strip()
     if current == original:
         return True
     try:
         f35b = _f35b_csrf_registry(original)
-        accepted = (f35b.strip(), _m4_registry(f35b).strip())   # RC-1 text, then the reviewed M4 successor
+        m4 = _m4_registry(f35b)
+        # RC-1 text, the reviewed M4 successor, and each of them plus the one reviewed D-029 entry.
+        accepted = (f35b.strip(), m4.strip(), _d029_registry(f35b).strip(), _d029_registry(m4).strip())
     except ValueError:
         return False
     return current in accepted and (_current_f35b_csrf_authorized() or _current_rc1_integration_authorized())
@@ -1701,7 +1744,9 @@ def _rc1_post_merge_violations(f) -> list[str]:
             if f["blobs"].get(path) not in (expected, *RC1_SUCCESSOR_BLOBS.get(path, ())):
                 problems.append(f"{path}: not an exact reviewed blob")
         base_registry = _f35b_csrf_registry(f["registry_base"]).strip()
-        if f["registry_current"].strip() not in (base_registry, _m4_registry(base_registry)):
+        reviewed = (base_registry, _m4_registry(base_registry)) \
+            + _registry_with_d029(base_registry)[1:] + _registry_with_d029(_m4_registry(base_registry))[1:]
+        if f["registry_current"].strip() not in reviewed:
             problems.append("Trust registry is not the reviewed text")
         if frozenset(f["call_sites"]) not in (F4_CSRF_CALL_SITES, M4_CALL_SITES):
             problems.append("CSRF validation call sites differ from the reviewed inventory")
@@ -1799,3 +1844,83 @@ def test_post_merge_missing_git_history_is_not_an_authorization(monkeypatch):
         raise subprocess.CalledProcessError(1, ["git", *args])
     monkeypatch.setattr(sys.modules[__name__], "_git", unavailable)
     assert not _current_rc1_post_merge_authorized()
+
+
+# ── D-029 Trust successor: proof and negatives ───────────────────────────────────────────────
+
+def test_d029_trust_successor_exact_baseline_and_exact_new_content():
+    base = _git("show", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py")
+    assert _git("rev-parse", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py") == D029_TRUST_MAIN_REGISTRY_BLOB
+    current = _read_current("app/trust_readiness/registry.py")
+    assert _git("hash-object", "--path=app/trust_readiness/registry.py", "app/trust_readiness/registry.py") == D029_TRUST_REGISTRY_BLOB
+    assert current.strip() == _d029_registry(base).strip()        # main + exactly the reviewed entry, nothing else
+    removed = [l for l in __import__("difflib").unified_diff(base.splitlines(), current.splitlines(), lineterm="", n=0)
+               if l.startswith("-") and not l.startswith("---")]
+    assert removed == [], "the D-029 successor may only ADD lines"
+    assert _registry_matches_history(_f4_csrf_registry(_demo_retention_registry(
+        _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py"))))
+    assert _rc1_post_merge_violations(_rc1_collect_post()) == []
+
+
+def test_d029_trust_entry_makes_only_accurate_retention_claims():
+    entry = D029_RUN_INTENTS_ENTRY
+    assert "data.run_intents" in entry and "model_run_intents" in entry
+    assert "Not automatically deleted" in entry and "trigger refuses DELETE" in entry
+    for misleading in ("automatically deleted after", "24 hour", "24h", "purged", "expire", "TTL", "certified", "encrypted"):
+        assert misleading not in entry, misleading
+    assert "No financial results, no credentials and no tokens" in entry
+    from app.trust_readiness import registry as live
+    item = next(d for d in live.DATA_STORES if d.key == "data.run_intents")
+    assert "open owner decision" in item.retention_rule and "trigger refuses DELETE" in item.retention_rule
+    assert item.automatic_deletion is False and item.may_contain_user_text is False
+    assert item.tables == ("model_run_intents",)
+    assert any(e.path == "app/persistence/run_intent_repository.py" for e in item.evidence)
+
+
+def test_d029_trust_successor_does_not_weaken_historical_layers():
+    base = _git("show", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py")
+    d029 = _d029_registry(base)
+    for sentence in (F4_CSRF_NEW, F35B_CSRF_NEW, M4_CSRF_NEW):
+        assert d029.count(sentence) == 1 or sentence not in base
+    # historical constants and snapshots stay the exact originals
+    assert len(DEMO_RETENTION_BLOBS) >= 10 and F4_CSRF_BLOBS["app/trust_readiness/registry.py"] == "ea39361e3f48ffe2588e5f451afd405e19a1651f"
+    assert CSRF_EXACT_BLOBS["app/trust_readiness/registry.py"] == "a246863f7c8b206828da06a0a9003dd96acc69c9"
+    assert DEMO_RETENTION_BLOBS["app/trust_readiness/registry.py"] == "4a53ea61846feaa52fad3e3f19acad0a00d78753"
+
+
+def _mutated_current_registry(monkeypatch, mutate):
+    text = mutate(_read_current("app/trust_readiness/registry.py"))
+    assert text != _read_current("app/trust_readiness/registry.py")
+    real = _read_current
+    monkeypatch.setattr(__import__(__name__, fromlist=["_read_current"]), "_read_current",
+                        lambda path: text if path == "app/trust_readiness/registry.py" else real(path))
+    return text
+
+
+@pytest.mark.parametrize("name, mutate", (
+    ("unrelated edit", lambda t: t + "\n# unreviewed\n"),
+    ("historical entry removed", lambda t: t.replace('"data.backups", "Database backups"', '"data.backups_removed", "Database backups"', 1)),
+    ("misleading retention claim", lambda t: t.replace("Not automatically deleted: a database trigger refuses DELETE.", "Automatically deleted after 24 hours.", 1)),
+    ("altered security statement", lambda t: t.replace("CSRF tokens protect the login form", "CSRF tokens protect everything but the login form", 1)),
+    ("entry duplicated", lambda t: t.replace(D029_RUN_INTENTS_ENTRY, D029_RUN_INTENTS_ENTRY * 2, 1)),
+    ("entry moved", lambda t: t.replace(D029_RUN_INTENTS_ENTRY, "", 1).replace(
+        '    DataStoreEntry(\n        "data.logs"', D029_RUN_INTENTS_ENTRY + '    DataStoreEntry(\n        "data.logs"', 1)),
+    ("entry softened", lambda t: t.replace("No financial results, no credentials and no tokens.", "Contains financial results.", 1)),
+))
+def test_d029_trust_successor_rejects_arbitrary_registry_drift(monkeypatch, name, mutate):
+    _mutated_current_registry(monkeypatch, mutate)
+    base = _git("show", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py")
+    assert _read_current("app/trust_readiness/registry.py").strip() != _d029_registry(base).strip(), name
+    old_chain = _f4_csrf_registry(_demo_retention_registry(_git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py")))
+    assert not _registry_matches_history(old_chain), name
+    facts = dict(_rc1_collect_post())
+    facts["registry_current"] = _read_current("app/trust_readiness/registry.py")
+    assert _rc1_post_merge_violations(facts), name
+
+
+def test_d029_successor_refuses_a_second_application_or_a_missing_anchor():
+    base = _git("show", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py")
+    with pytest.raises(ValueError):
+        _d029_registry(_d029_registry(base))
+    with pytest.raises(ValueError):
+        _d029_registry(base.replace(D029_RUN_INTENTS_ANCHOR, "", 1))

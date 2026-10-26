@@ -963,6 +963,10 @@ def v2_atomic_run_commit(
     # workbook composite hash remains the canonical input identity; the
     # V2 composition hash is never promoted to a run identity.
     model_v2_run_binding: "Mapping[str, Any] | None" = None,
+    # D-029: optional durable Run-intent reservation.  When supplied, the
+    # ownership fence is verified INSIDE this exclusive transaction and the
+    # intent is bound to the single history row appended here, before COMMIT.
+    run_intent: "Any | None" = None,
 ) -> "WorkspaceStateRecord":
     """Atomic V2 run commit: final CAS + promote draft → saved + clear dirty.
 
@@ -1021,6 +1025,14 @@ def v2_atomic_run_commit(
                 f"found {identity.composite_hash[:8]}…). "
                 "Please run again."
             )
+
+        # D-029: fence the reservation before any financial write.  A lost or
+        # expired owner raises and the generic handler rolls everything back.
+        if run_intent is not None:
+            from app.persistence.run_intent_repository import (
+                require_owner_cursor as _require_run_intent_owner,
+            )
+            _require_run_intent_owner(cur, run_intent)
 
         # Promote draft → saved; clear dirty.
         draft_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
@@ -1282,7 +1294,14 @@ def v2_atomic_run_commit(
             integrity_evidence=integrity_evidence or {},
             replay_metadata=replay_metadata,
         )
-        _append_history(cur, _history_payload)
+        _history_id = _append_history(cur, _history_payload)
+        if run_intent is not None:
+            # D-029: bind the intent to this exact history row in the SAME
+            # transaction, before COMMIT.  No post-commit finalization exists.
+            from app.persistence.run_intent_repository import (
+                finalize_cursor as _finalize_run_intent,
+            )
+            _finalize_run_intent(cur, run_intent, _history_id)
         conn.execute("COMMIT")
 
         cur.execute(

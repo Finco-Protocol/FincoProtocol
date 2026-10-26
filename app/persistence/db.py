@@ -413,6 +413,11 @@ def _init_schema(conn):
         " ON model_run_history(user_id, project_id, ran_at DESC, history_id DESC)"
     )
     conn.commit()
+    # D-029: durable Run idempotency ledger. Additive and repeatable; the
+    # install serialises concurrent initialisers with BEGIN IMMEDIATE and
+    # verify_schema fails closed on a corrupted or foreign preexisting table.
+    from app.persistence.run_intent_repository import ensure_schema as _ensure_run_intents
+    _ensure_run_intents(conn)
 
 
 def _backfill_reference_roles(conn) -> None:
