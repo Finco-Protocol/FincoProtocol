@@ -125,6 +125,16 @@ BLOBS={
 }
 CONSUMERS={'app/v2/react_poc_router.py', 'app/v2/opex_router.py', 'app/v2/grid_router.py', 'app/v2/router.py', 'app/v2/capex_router.py', 'app/v2/post_run_ui.py', 'app/v2/react_workspace_router.py'}
 TOKEN_MODULE="app/workbook/mutation_csrf.py"
+# Correction C admits exact reviewed browser-only changes. The original SOURCE_HEAD
+# and all 112 BLOBS above remain immutable and independently verified.
+BROWSER_CORRECTION_PATH="tests/model_mutation_cookie_policy_acceptance.py"
+BROWSER_CORRECTION_SOURCE_HEAD="afd8597f99964bb212866764c2e6f961e6e9f7fa"
+BROWSER_CORRECTION_PARENT="d1a15b47c0999df7de4ef55df22f81f4bb0013a7"
+BROWSER_CORRECTION_BLOB="878ca6771db323681c3cd49ec77cf7e149244e94"
+PPA_CORRECTION_PATH="tests/model_react_wf2_browser_acceptance.py"
+PPA_CORRECTION_SOURCE_HEAD="cd3910debeaaa64c763600dd821608c8867b3009"
+PPA_CORRECTION_PARENT="afd8597f99964bb212866764c2e6f961e6e9f7fa"
+PPA_CORRECTION_BLOB="34a1be8ae3e3fbd165115ff13a2888b2fb602c39"
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -159,12 +169,21 @@ def _reject(gate,code):
             or any(isinstance(a,ast.Constant) and a.value==code for a in value.args))
 
 
+def _browser_layers():
+    return {
+        BROWSER_CORRECTION_PATH:(BROWSER_CORRECTION_SOURCE_HEAD,BROWSER_CORRECTION_PARENT,BROWSER_CORRECTION_BLOB),
+        PPA_CORRECTION_PATH:(PPA_CORRECTION_SOURCE_HEAD,PPA_CORRECTION_PARENT,PPA_CORRECTION_BLOB),
+    }
+
+
 def violations(sources,*,check_pin=True):
     errors=[];trees={}
     for path,expected in BLOBS.items():
         text=sources.get(path)
         if not isinstance(text,str):errors.append(path+": missing source");continue
-        if check_pin and git_blob(text)!=expected:errors.append(path+": unreviewed blob")
+        layer=_browser_layers().get(path)
+        admitted={expected,layer[2]} if layer else {expected}
+        if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):
             try:trees[path]=ast.parse(text)
             except (SyntaxError,ValueError):errors.append(path+": unparsable source")
@@ -229,5 +248,14 @@ def current_mutation_successor_valid(*,repo=None):
         pinned={line.split("\t",1)[1]:line.split("\t",1)[0].split()[2] for line in listing.splitlines()}
         if any(pinned.get(p)!=blob for p,blob in BLOBS.items()):return False
         subprocess.run(["git","merge-base","--is-ancestor",SOURCE_HEAD,"HEAD"],cwd=root,check=True,capture_output=True)
+        def read_git(*args):
+            return subprocess.check_output(["git",*args],cwd=root,stderr=subprocess.PIPE).decode("utf-8").strip()
+        for path,(source,parent,blob) in _browser_layers().items():
+            if git_blob(sources[path])!=blob:continue
+            if read_git("rev-parse",source+"^:"+path)!=BLOBS[path]:return False
+            if read_git("rev-list","--parents","-n","1",source).split()!=[source,parent]:return False
+            if read_git("rev-parse",source+":"+path)!=blob:return False
+            if read_git("diff-tree","--no-commit-id","--name-only","-r",source).splitlines()!=[path]:return False
+            subprocess.run(["git","merge-base","--is-ancestor",source,"HEAD"],cwd=root,check=True,capture_output=True)
         return True
     except (OSError,subprocess.SubprocessError,SyntaxError,ValueError,TypeError,UnicodeError,AttributeError):return False

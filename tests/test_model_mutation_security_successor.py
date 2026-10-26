@@ -1,5 +1,7 @@
 """Independent strict successor negatives; no activation/Financial Owner assertion."""
 import pytest
+import ast
+import subprocess
 from tests import model_mutation_security_successor as S
 from tests import rc_sec_csrf_successor as historical
 
@@ -28,3 +30,25 @@ def test_missing_history_fails_closed(tmp_path):
     for path,text in SOURCES.items():
         target=tmp_path/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_text(text,encoding="utf-8")
     assert not S.current_mutation_successor_valid(repo=tmp_path)
+
+
+def test_browser_layer_preserves_all_original_pins_and_historical_contract():
+    original=subprocess.check_output(["git","show","6b779fb52f918ec079995924df3198269d09786e:tests/model_mutation_security_successor.py"],cwd=S.ROOT).decode("utf-8")
+    tree=ast.parse(original)
+    old={n.targets[0].id:ast.literal_eval(n.value) for n in tree.body
+         if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ("SOURCE_HEAD","BLOBS")}
+    assert S.SOURCE_HEAD==old["SOURCE_HEAD"]=="1800bf6092af650f18aa6ae70e9df221797090fd"
+    assert S.BLOBS==old["BLOBS"] and len(S.BLOBS)==112
+    historical_sources=dict(SOURCES)
+    assert set(S._browser_layers())=={"tests/model_mutation_cookie_policy_acceptance.py","tests/model_react_wf2_browser_acceptance.py"}
+    for path in S._browser_layers():
+        historical_sources[path]=subprocess.check_output(
+            ["git","show",S.SOURCE_HEAD+":"+path],cwd=S.ROOT).decode("utf-8")
+    assert S.violations(historical_sources)==[]
+
+
+@pytest.mark.parametrize("attribute",["BROWSER_CORRECTION_SOURCE_HEAD","BROWSER_CORRECTION_PARENT","BROWSER_CORRECTION_BLOB",
+                                      "PPA_CORRECTION_SOURCE_HEAD","PPA_CORRECTION_PARENT","PPA_CORRECTION_BLOB"])
+def test_browser_layer_wrong_source_parent_or_blob_fails_closed(monkeypatch,attribute):
+    monkeypatch.setattr(S,attribute,"0"*40)
+    assert not S.current_mutation_successor_valid()
