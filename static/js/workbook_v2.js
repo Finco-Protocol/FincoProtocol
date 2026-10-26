@@ -401,6 +401,7 @@
       }
       if (_runQueued) {
         _runQueued = false;
+        if (window.v2RunIntent) window.v2RunIntent.discardUnbound();
         _setRunBtnState(null, false);
       }
     }
@@ -435,6 +436,7 @@
     }
     if (_runQueued) {
       _runQueued = false;
+      if (window.v2RunIntent) window.v2RunIntent.discardUnbound();
       _setRunBtnState(null, false);
     }
   });
@@ -447,6 +449,7 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       _runQueued = true;
+      if (window.v2RunIntent) window.v2RunIntent.begin(form);
       _setRunBtnState('Saving changes…', true);
       _submitAllPendingForms();
     }
@@ -459,10 +462,171 @@
     if (_hasPendingOrSaving()) {
       event.preventDefault();
       _runQueued = true;
+      if (window.v2RunIntent) window.v2RunIntent.begin(elt);
       _setRunBtnState('Saving changes…', true);
       _submitAllPendingForms();
     }
   });
+}());
+
+// ── D-029: Run intent (idempotency) for the Legacy/HTMX Run ───────────────
+// ONE logical Run = ONE UUIDv4.  The id is minted when the user presses Run (before any queued
+// save), is bound to the content hash / workbook version actually transmitted, and is KEPT through
+// pending-save queueing, lost responses, OOB refreshes of the run controls and a page reload.  Every
+// resubmission re-sends the ORIGINAL id and binding, so the server returns the original committed
+// result instead of calculating again.  A terminal typed outcome (X-Finco-Run-Outcome) consumes it.
+// Storage is bounded (one record per project, 24 h, <= 20 records) and never holds tokens or results.
+(function () {
+  if (window.__v2RunIntentInitialised) return;
+  window.__v2RunIntentInitialised = true;
+
+  var PREFIX = 'finco.legacy-run-intent.v1:';
+  var TTL_MS = 24 * 60 * 60 * 1000;
+  var MAX_RECORDS = 20;
+  var UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  var HASH = /^[0-9a-f]{64}$/;
+  var TERMINAL = ['COMMITTED', 'REPLAYED', 'FAILED', 'CONFLICT', 'INVALID', 'REFUSED', 'HISTORY_UNAVAILABLE'];
+  var memory = {};
+  var unboundProject = null;
+  var inFlightProject = null;
+
+  function store() { try { return window.localStorage; } catch (e) { return null; } }
+  function read(key) {
+    var s = store();
+    try { if (s) return s.getItem(key); } catch (e) { /* memory fallback */ }
+    return Object.prototype.hasOwnProperty.call(memory, key) ? memory[key] : null;
+  }
+  function write(key, value) {
+    var s = store();
+    try { if (s) { s.setItem(key, value); return; } } catch (e) { /* quota / blocked */ }
+    memory[key] = value;
+  }
+  function remove(key) {
+    try { var s = store(); if (s) s.removeItem(key); } catch (e) { /* ignore */ }
+    delete memory[key];
+  }
+  function keys() {
+    var out = [], s = store();
+    try { if (s) for (var i = 0; i < s.length; i += 1) { var k = s.key(i); if (k && k.indexOf(PREFIX) === 0) out.push(k); } } catch (e) { /* ignore */ }
+    Object.keys(memory).forEach(function (k) { if (out.indexOf(k) < 0) out.push(k); });
+    return out;
+  }
+  function valid(rec, now) {
+    if (!rec || typeof rec !== 'object') return false;
+    if (typeof rec.id !== 'string' || !UUID_V4.test(rec.id)) return false;
+    if (rec.contentHash !== '' && !(typeof rec.contentHash === 'string' && HASH.test(rec.contentHash))) return false;
+    if (typeof rec.workbookVersion !== 'string' || rec.workbookVersion.length > 256) return false;
+    return typeof rec.createdAt === 'number' && rec.createdAt <= now + 60000 && now - rec.createdAt < TTL_MS;
+  }
+  function prune(now) {
+    var live = [];
+    keys().forEach(function (key) {
+      try {
+        var rec = JSON.parse(read(key) || 'null');
+        if (valid(rec, now)) live.push({ key: key, createdAt: rec.createdAt }); else remove(key);
+      } catch (e) { remove(key); }
+    });
+    live.sort(function (a, b) { return b.createdAt - a.createdAt; }).slice(MAX_RECORDS).forEach(function (r) { remove(r.key); });
+  }
+  function load(project) {
+    var key = PREFIX + project;
+    try {
+      var rec = JSON.parse(read(key) || 'null');
+      if (valid(rec, Date.now())) return rec;
+    } catch (e) { /* corrupt */ }
+    remove(key);
+    return null;
+  }
+  function newId() {
+    var c = window.crypto;
+    if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    if (!c || typeof c.getRandomValues !== 'function') return null;
+    var b = c.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    var h = Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+  }
+  function projectOf(form) {
+    var p = form && form.querySelector ? form.querySelector('input[name="project"]') : null;
+    return p ? p.value : '';
+  }
+  function ensure(project) {
+    var rec = load(project);
+    if (rec) return rec;
+    var id = newId();
+    if (!id || !project) return null;
+    rec = { id: id, contentHash: '', workbookVersion: '', createdAt: Date.now() };
+    prune(rec.createdAt);
+    write(PREFIX + project, JSON.stringify(rec));
+    return rec;
+  }
+  function refreshLabel() {
+    document.querySelectorAll('.v2-run-form').forEach(function (form) {
+      var rec = load(projectOf(form));
+      var label = form.querySelector('.v2-run-label');
+      var resume = !!(rec && rec.contentHash);
+      form.setAttribute('data-run-intent-pending', resume ? 'true' : 'false');
+      if (label) label.textContent = resume ? 'Resume Run' : 'Run Model';
+    });
+  }
+
+  window.v2RunIntent = {
+    // The user pressed Run while edits are still saving: fix the logical Run's id NOW (binding follows at dispatch).
+    begin: function (form) { var project = projectOf(form); if (ensure(project)) unboundProject = project; },
+    // A queued Run that never reached the server (a save failed) leaves nothing to reconcile.
+    discardUnbound: function () {
+      if (!unboundProject) return;
+      var rec = load(unboundProject);
+      if (rec && !rec.contentHash) remove(PREFIX + unboundProject);
+      unboundProject = null;
+    },
+    pending: function (project) { var rec = load(project); return rec && rec.contentHash ? rec : null; }
+  };
+
+  // Attach the id and the ORIGINAL binding to every Run transmission (form submit and htmx.ajax queued dispatch).
+  document.body.addEventListener('htmx:configRequest', function (event) {
+    var elt = event.detail && event.detail.elt;
+    if (!elt || !elt.classList || !elt.classList.contains('v2-run-form')) return;
+    var params = event.detail.parameters || {};
+    var project = params.project || projectOf(elt);
+    var rec = ensure(project);
+    if (!rec) return;                                   // no secure random: keep the released (keyless) behaviour
+    if (!rec.contentHash) {                             // first transmission: bind the id to what is actually sent
+      if (!HASH.test(params.content_hash || '') || !params.workbook_version) return;
+      rec.contentHash = params.content_hash;
+      rec.workbookVersion = String(params.workbook_version);
+      write(PREFIX + project, JSON.stringify(rec));
+    }
+    inFlightProject = project;
+    params.run_intent_id = rec.id;
+    params.content_hash = rec.contentHash;              // never today's hash: reconcile by the original binding
+    params.workbook_version = rec.workbookVersion;
+    unboundProject = null;
+  });
+
+  // A typed terminal outcome (or a definitive pre-ledger answer) consumes the intent; anything ambiguous keeps it.
+  document.body.addEventListener('htmx:afterRequest', function (event) {
+    var detail = event.detail || {};
+    // The requesting form may already be replaced by the OOB refresh of the run controls, so identify the
+    // request by its path and the project it was configured with, not by the (possibly detached) element.
+    var requestPath = detail.pathInfo && detail.pathInfo.requestPath;
+    if (requestPath !== '/v2/workbook/run') return;
+    var sent = detail.requestConfig && detail.requestConfig.parameters;
+    var project = (sent && sent.project) || inFlightProject;
+    if (!project) return;
+    var xhr = detail.xhr;
+    var outcome = null;
+    try { outcome = xhr && xhr.getResponseHeader ? xhr.getResponseHeader('X-Finco-Run-Outcome') : null; } catch (e) { outcome = null; }
+    var status = xhr ? xhr.status : 0;
+    var consume;
+    if (outcome) consume = TERMINAL.indexOf(outcome) >= 0;
+    else consume = status > 0 && status < 500;          // no typed header: 4xx/2xx never reserved; 5xx / lost = ambiguous
+    if (consume) remove(PREFIX + project);
+    refreshLabel();
+  });
+  document.addEventListener('DOMContentLoaded', refreshLabel);
+  document.body.addEventListener('htmx:afterSettle', refreshLabel);
+  refreshLabel();
 }());
 
 // ── FS: period selector and inner tab functions ───────────────────────────

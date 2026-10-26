@@ -1,0 +1,54 @@
+{
+  "app/persistence/db.py": {
+    "base": "76476f975cb9e32815627014e0eeb94f7219cce4",
+    "current": "76476f975cb9e32815627014e0eeb94f7219cce4"
+  },
+  "app/persistence/run_intent_repository.py": {
+    "base": null,
+    "current": "6de642ebf5918cee1ecfdc31aaa29c8cb51b85ac"
+  },
+  "app/persistence/workspace_repository.py": {
+    "base": "ac0f9eb2727da70706f4c81f2566d060af5786f3",
+    "current": "ac0f9eb2727da70706f4c81f2566d060af5786f3"
+  },
+  "app/services/run_intent_service.py": {
+    "base": null,
+    "current": "e3efe3eb9cff78035b218689136afb802e61104b"
+  },
+  "app/templates/v2/partials/_v2_run_controls.html": {
+    "base": "d2acf115020a6235850a2b7fc7f7a4327189c82d",
+    "current": "d2acf115020a6235850a2b7fc7f7a4327189c82d"
+  },
+  "app/v2/router.py": {
+    "base": "cbff734453400269589d9fcc5cec702cbc239b55",
+    "current": "cbff734453400269589d9fcc5cec702cbc239b55"
+  },
+  "frontend/src/app/api.ts": {
+    "base": "122206891a68f8bb99eb0937efba2556d5e514ca",
+    "current": "122206891a68f8bb99eb0937efba2556d5e514ca"
+  },
+  "frontend/src/app/workflow/WorkflowBar.tsx": {
+    "base": "79b440dfe40cc558660fd5a8149724b5f6502332",
+    "current": "79b440dfe40cc558660fd5a8149724b5f6502332"
+  },
+  "static/js/workbook_v2.js": {
+    "base": "7657a6227601de3518514cd1ebef3c7eb3d20a9f",
+    "current": "7657a6227601de3518514cd1ebef3c7eb3d20a9f"
+  },
+  "tests/d029_baseline_probe.py": {
+    "base": null,
+    "current": "a1076064ac47d108eb67b12fca673d9eeb91fd8a"
+  },
+  "tests/model_mutation_security_successor.py": {
+    "base": "639629fe7b7fc43113005b74db62a1753863b869",
+    "current": "639629fe7b7fc43113005b74db62a1753863b869"
+  },
+  "tests/rc_sec_csrf_successor.py": {
+    "base": "01377b7038d866f71ba07a03ac5bbb45dcdef6a7",
+    "current": "01377b7038d866f71ba07a03ac5bbb45dcdef6a7"
+  },
+  "tests/test_d029_run_intent_ledger.py": {
+    "base": null,
+    "current": "f05d42faa47e812dc3deea639ef46d237874d7f9"
+  }
+}

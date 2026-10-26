@@ -196,35 +196,48 @@ export interface RunModelArgs {
   csrfToken: string;
   runUrl: string;
   project: string;
-  contentHash: string;
-  workbookVersion: string;
+  /** D-029: the Run intent.  `contentHash` / `workbookVersion` are the ORIGINAL submitted binding,
+   *  re-sent unchanged on every retry of the same intent. */
+  intent: { id: string; contentHash: string; workbookVersion: string };
 }
 
+/** Typed server outcomes (`outcome` of the JSON body). */
+export type RunOutcome =
+  | "COMMITTED" | "REPLAYED" | "IN_PROGRESS" | "FAILED" | "CONFLICT" | "HISTORY_UNAVAILABLE"
+  | "INVALID" | "EXPIRED" | "REFUSED" | "UNAVAILABLE";
+
 export type RunModelResult =
-  | { ok: true }
-  | { ok: false; message: string }
+  /** The server committed (or had already committed) this exact intent and the exact history row was verified. */
+  | { ok: true; outcome: "COMMITTED" | "REPLAYED"; historyId: string; snapshotId: string }
+  /** Definitive refusal / failure.  `retain` is true only when the same intent may still be resubmitted. */
+  | { ok: false; outcome: RunOutcome | "REJECTED"; message: string; retain: boolean }
+  /** Ambiguous: the intent MUST be kept and retried with its original binding (never a fresh key). */
   | { kind: "unknown"; message: string };
 
-/** Run initiation through the EXISTING canonical `/v2/workbook/run` route.
- *  The user presses Run explicitly; Save never triggers this.  Success answers a
- *  303 redirect to the workbook (followed); a user-safe failure redirects with
- *  `?v2_err=`.  A lost connection is UNKNOWN — the Run may or may not have
- *  committed — so the caller must reconcile from the workspace snapshot and
- *  never blind-retry an ambiguous financial mutation. */
-export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
-  // Correction A (UX-07 workstream A): a followed redirect that lands on a 200
-  // HTML page is NOT proof of a committed Run.  Success is established only by
-  // the canonical redirect contract AND fresh persisted Run History evidence:
-  // the committed-history count must grow after a clean redirect.
-  const runsUrl = `/v2/model-react/runs?project=${encodeURIComponent(args.project)}`;
-  const before = await getJson<RunsPayload>(runsUrl);
-  const beforeCount = before.ok === true ? before.runs.length : null;
+interface RunIntentBody {
+  ok?: unknown; outcome?: unknown; history_id?: unknown; runtime_snapshot_id?: unknown; message?: unknown;
+}
 
+const RUN_OUTCOMES: readonly string[] = [
+  "COMMITTED", "REPLAYED", "IN_PROGRESS", "FAILED", "CONFLICT", "HISTORY_UNAVAILABLE",
+  "INVALID", "EXPIRED", "REFUSED", "UNAVAILABLE",
+];
+
+/** Run initiation through the EXISTING canonical `/v2/workbook/run` route.
+ *
+ *  The user presses Run explicitly; Save never triggers this.  The request carries the Run intent
+ *  (`run_intent_id`) and asks for the typed JSON outcome.  The result is established ONLY by the
+ *  server's typed outcome plus the EXACT `history_id` / `runtime_snapshot_id` found in the persisted
+ *  Run History — never by counting history rows.  A lost connection or any response that is not a
+ *  recognised typed outcome is UNKNOWN: the caller keeps the intent and retries with the original
+ *  binding, which the server reconciles without running the model a second time. */
+export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
   const body = new URLSearchParams({
     project: args.project,
-    content_hash: args.contentHash,
-    workbook_version: args.workbookVersion,
+    content_hash: args.intent.contentHash,
+    workbook_version: args.intent.workbookVersion,
     csrf_token: args.csrfToken,
+    run_intent_id: args.intent.id,
   });
   let response: Response;
   try {
@@ -232,45 +245,74 @@ export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
       method: "POST",
       credentials: "same-origin",
       redirect: "follow",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: body.toString(),
     });
   } catch {
     return {
       kind: "unknown",
       message: "The Run outcome is UNKNOWN: the connection failed before a definitive response. "
-        + "Reload the workspace to reconcile the persisted Last Run before running again — never re-run blindly.",
+        + "Press Run again to resume the same Run — the server will return its original result without recalculating.",
     };
   }
   if (response.status === 403) {
-    return { ok: false, message: "Run was rejected before execution. Reload the workspace to refresh session authorization." };
+    return { ok: false, outcome: "REJECTED", retain: false,
+      message: "Run was rejected before execution. Reload the workspace to refresh session authorization." };
   }
-  const outcome = classifyFormPostOutcome(response, "/v2/workbook");
-  if (outcome.kind === "login") {
-    return { ok: false, message: "Your session has expired — sign in again. No Run was started." };
-  }
-  if (outcome.kind === "error-redirect") {
-    return { ok: false, message: outcome.v2Err };
-  }
-  if (outcome.kind === "other") {
+  const typed = await readTypedOutcome(response);
+  if (typed === null) {
+    // Not a typed outcome: the pre-ledger redirect contract (validation, stale CAS, expired session) or an opaque error.
+    const outcome = classifyFormPostOutcome(response, "/v2/workbook");
+    if (outcome.kind === "login") {
+      return { ok: false, outcome: "REJECTED", retain: false, message: "Your session has expired — sign in again. No Run was started." };
+    }
+    if (outcome.kind === "error-redirect") {
+      return { ok: false, outcome: "REJECTED", retain: false, message: outcome.v2Err };
+    }
     return {
       kind: "unknown",
-      message: `The Run outcome is UNKNOWN: the server redirected to an unexpected destination (${outcome.finalPath}). `
-        + "Reload the workspace to reconcile the persisted Last Run before running again.",
+      message: `The Run outcome is UNKNOWN (HTTP ${response.status}). Press Run again to resume the same Run, `
+        + "or reload the workspace to reconcile the persisted Last Run.",
     };
   }
-  // Clean canonical success redirect.  Reconcile against persisted evidence:
-  // the committed Run History must show a NEW entry, otherwise the outcome is
-  // UNKNOWN (never success).
-  const after = await getJson<RunsPayload>(runsUrl);
-  if (after.ok === true && beforeCount !== null && after.runs.length > beforeCount) {
-    return { ok: true };
+  const message = typeof typed.message === "string" && typed.message ? typed.message : "";
+  switch (typed.outcome) {
+    case "COMMITTED":
+    case "REPLAYED": {
+      const historyId = typeof typed.history_id === "string" ? typed.history_id : "";
+      const snapshotId = typeof typed.runtime_snapshot_id === "string" ? typed.runtime_snapshot_id : "";
+      if (!historyId || !snapshotId) {
+        return { ok: false, outcome: "HISTORY_UNAVAILABLE", retain: false,
+          message: "The server reported a committed Run without its history record. Reload to reconcile; the model was not recalculated." };
+      }
+      // Exact reconciliation: the very row the server named must exist in the persisted history.
+      const runs = await getJson<RunsPayload>(`/v2/model-react/runs?project=${encodeURIComponent(args.project)}`);
+      const row = runs.ok === true ? runs.runs.find((r) => r.history_id === historyId) : undefined;
+      if (row && row.runtime_snapshot_id === snapshotId) {
+        return { ok: true, outcome: typed.outcome, historyId, snapshotId };
+      }
+      return { ok: false, outcome: "HISTORY_UNAVAILABLE", retain: false,
+        message: "The Run was committed but its history record could not be read back. Reload to reconcile; it was not recalculated." };
+    }
+    case "IN_PROGRESS":
+      return { kind: "unknown", message: message || "This Run is still in progress. Press Run again shortly to resume it." };
+    case "EXPIRED":
+    case "UNAVAILABLE":
+      return { kind: "unknown", message: message || "The Run outcome could not be confirmed. Press Run again to resume, or reload." };
+    default:
+      return { ok: false, outcome: typed.outcome, retain: false, message: message || `Run ${typed.outcome.toLowerCase()}.` };
   }
-  return {
-    kind: "unknown",
-    message: "The Run outcome is UNKNOWN: the canonical redirect arrived but the persisted Run History "
-      + "could not confirm a new committed Run. Reload the workspace to reconcile — do not re-run blindly.",
-  };
+}
+
+async function readTypedOutcome(response: Response): Promise<(RunIntentBody & { outcome: RunOutcome }) | null> {
+  if (!(response.headers.get("content-type") ?? "").includes("application/json")) return null;
+  try {
+    const body = (await response.json()) as RunIntentBody;
+    if (typeof body.outcome === "string" && RUN_OUTCOMES.includes(body.outcome)) {
+      return body as RunIntentBody & { outcome: RunOutcome };
+    }
+  } catch { /* malformed JSON is not a typed outcome */ }
+  return null;
 }
 
 export type HistoryRow = RunHistoryEntry;

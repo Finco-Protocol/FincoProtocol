@@ -709,3 +709,27 @@ def test_mvp_internal_path_with_financial_intelligence(browser, react_enabled, k
 def test_mvp_responsive_insights_and_touch_targets(browser, react_enabled):
     from tests.model_react_mvp_acceptance import check_responsive_insights_and_touch_targets
     check_responsive_insights_and_touch_targets(browser, react_enabled)
+
+
+# ── D-029: Run intent (idempotency), React + Legacy ────────────────────────────────────
+# Bodies in tests/model_d029_run_intent_browser_acceptance.py (no module-level skip there).
+
+@pytest.mark.parametrize('check', [
+    'check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit',
+    'check_react_lost_response_survives_reload_and_resumes_the_original_run',
+    'check_react_resume_after_the_draft_changed_never_runs_against_the_new_draft',
+    'check_react_typed_outcomes_keep_or_consume_the_intent',
+])
+def test_d029_react_run_intent_acceptance(browser, react_enabled, check):
+    import tests.model_d029_run_intent_browser_acceptance as d029
+    getattr(d029, check)(browser, react_enabled)
+
+
+@pytest.mark.parametrize('check', [
+    'check_legacy_run_carries_a_uuid_and_consumes_it_on_commit',
+    'check_legacy_lost_response_reload_and_oob_refresh_keep_the_same_run',
+    'check_legacy_queued_run_after_pending_save_keeps_one_key_and_the_saved_binding',
+])
+def test_d029_legacy_run_intent_acceptance(browser, live_server, check):
+    import tests.model_d029_run_intent_browser_acceptance as d029
+    getattr(d029, check)(browser, live_server)

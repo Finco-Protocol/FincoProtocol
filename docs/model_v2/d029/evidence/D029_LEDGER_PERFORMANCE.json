@@ -1,0 +1,33 @@
+{
+  "history_and_finalize_commit_ms": {
+    "max": 16.8549,
+    "median": 11.2128,
+    "n": 40,
+    "p95": 15.8943
+  },
+  "lookup_ms": {
+    "max": 9.5232,
+    "median": 5.1764,
+    "n": 40,
+    "p95": 8.2432
+  },
+  "reconcile_ms": {
+    "max": 14.0594,
+    "median": 7.6612,
+    "n": 40,
+    "p95": 12.8506
+  },
+  "reservation_ms": {
+    "max": 19.7936,
+    "median": 10.5364,
+    "n": 40,
+    "p95": 14.311
+  },
+  "scope": "Windows local SQLite WAL, 40 synthetic persistence-only iterations; no engine/HTTP latency claim",
+  "start_ms": {
+    "max": 22.518,
+    "median": 12.1594,
+    "n": 40,
+    "p95": 16.2219
+  }
+}
