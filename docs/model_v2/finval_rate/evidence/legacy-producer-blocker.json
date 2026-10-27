@@ -1,0 +1,9 @@
+{
+  "source_path": "main_web.py",
+  "source_blob": "95a56ae694996049e94e4f24d7501b0de1bf5b52",
+  "interest_rate_pct": "0.055",
+  "unit": null,
+  "outcome": "REFUSED",
+  "error": "INTEREST_RATE_UNIT_UNVERIFIED: explicit human_percent_v1 provenance required",
+  "error_type": "SnapshotInputError"
+}

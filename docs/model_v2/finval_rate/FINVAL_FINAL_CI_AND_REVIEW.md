@@ -23,6 +23,7 @@ Each row is an actual execution record. Some batches overlap, so rows must not b
 | ev-rate-final.xml | 53 | 0 | 0 |
 | financial-security.xml | 313 | 0 | 0 |
 | governance.xml | 186 | 0 | 0 |
+| local-acceptance.xml | 1114 | 0 | 0 |
 | native-identity.xml | 0 | 0 | 10 |
 | provenance-fixtures.xml | 22 | 0 | 0 |
 | rate-and-b2.xml | 120 | 0 | 0 |
@@ -49,4 +50,10 @@ No diff to `financial_engine/`, `finco_core/`, React components/bundles, solvers
 4. Resume the single governed PR workflow when directed, run exact-head hosted CI and approved-toolchain native identity, and obtain independent financial/security review.
 5. Treat SHL timing as a separate governed design mission and sponsor-return display changes as Overnight B work. This branch changes neither economics nor SHL formulas.
 
-Committed XML evidence copies normalize trailing whitespace only; raw execution artifacts remain in the delivered evidence package. Test outcomes and numeric payloads are unchanged.
+## Final consolidated result
+
+**1,114 passed, zero failed** in the final 40-module acceptance batch; exact tested subject `4a721ec166e5a81308fa69fd7d8a124b9b18887f`, tree `45173b61928adc05f774147510586e9ca55df7b7`, initial worktree clean. See `evidence/local-acceptance.xml` and `local-acceptance-source.json`. Existing real-Chromium selection: **20 passed**. Additional rate-specific Chromium proof: four successful vertical Save/reload/typed-rate chains, eight screenshots, no implicit Runs. Local native checks: **10 skipped** due approved-toolchain mismatch, not passes.
+
+Subsequent report/evidence commits do not change application/test bytes; the delivered manifest records final review HEAD/tree and compares every application/test blob with the consolidated tested subject. This is local execution evidence, not hosted exact-head PR CI. The branch remains local and PR handling remains deferred.
+
+The legacy producer blocker is independently executed in `evidence/legacy-producer-blocker.json`: `main_web.py` still emits 0.055 with no unit marker. It is rejected by the new provenance guard; no old record is reinterpreted or repaired. Separate exact-path authorization was requested and is pending at this report's completion.

@@ -60,3 +60,9 @@ The SEC-02 successor adds exactly one new router blob; every original 112-pin ma
 ## Limits
 
 The newer canonical Working Copy path is corrected. Older unversioned records and `main_web.py` producers remain a rollout blocker requiring an exact-path/record owner disposition. The Financial Owner clarified that work should continue isolated and PR handling be revisited later; no new PR, push, hosted CI, merge or deployment is claimed. Local source/tree evidence and all final test outcomes are in `FINVAL_FINAL_CI_AND_REVIEW.md` and the evidence manifest.
+
+## Final consolidated execution and actual Chromium rate proof
+
+The final 40-module local batch passed **1,114 tests, zero failures**, in 695.21 seconds on committed code subject `4a721ec166e5a81308fa69fd7d8a124b9b18887f` / tree `45173b61928adc05f774147510586e9ca55df7b7`. The worktree was clean at execution start. Earlier failures are retained only as reproduction/development evidence; the final batch includes the corrected fixtures and all 44 rate-contract tests plus 24 numerical/history tests.
+
+Independent Chromium Save/reload proof also covers every vertical: fresh Solar/Wind editable 5.5 and DC/EV 6; enter 0.056, Save, reload, displayed API 0.056%, typed ratio 0.00056, history remains empty. Eight actual screenshots and per-vertical observations are in `evidence/browser-rate-proof/`. This closes the original browser-to-typed reproduction chain without React component changes.

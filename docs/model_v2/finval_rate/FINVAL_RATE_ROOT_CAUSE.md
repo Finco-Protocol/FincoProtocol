@@ -62,3 +62,7 @@ Unversioned snapshots are not guessed from value, template name or closeness to 
 `main_web._project_baseline_snapshot` is an additional legacy producer of unversioned ratio-like scalars. It is outside the five authorized application paths and is **not changed**. Its saved snapshots require a separately authorized producer/provenance correction before release. The isolated V2 legacy form over corrected Working Copies is tested separately from that older creation path.
 
 This deliberate compatibility boundary is an activation blocker. Do not deploy the candidate into an existing database without an explicit historical-record and producer disposition.
+
+## Construction financing and actual pricing consumption
+
+H-1 `financial_engine/financing/generic_product_policy.py` derives construction all-in pricing from the first explicit typed senior rate when available, then from the explicit flat mode, and only then the declared legacy all-in value. Explicit construction-financing inputs remain authoritative. The corrected scalar therefore reaches the existing senior schedule and the policy's typed construction pricing path; no IDC formula or pricing-policy rewrite is introduced. The independent period-interest evidence verifies actual engine consumption rather than only API/display agreement.
