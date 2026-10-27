@@ -11,11 +11,11 @@ Like WF-09 and RC-7B each is admitted ONLY while its own exact content and struc
   * the module is byte-identical to the reviewed blob pinned below (any edit fails closed until re-reviewed);
   * the single POST handler authenticates the session first, then applies ONE explicit
     ``if ... not validate_csrf_token(extract_bound_token(..., purpose=PURPOSE))`` gate that answers 403, BEFORE project resolution,
-    demo rate limit, fence read, field validation and every writer (the token is a JSON field, so the body is parsed first and
+    demo rate limit, field validation and every writer (the token is a JSON field, so the body is parsed first and
     refused as 400 on any shape error without touching state);
   * the token is the signed, session-and-resource-bound one under its own purpose;
-  * persistence is reached ONLY through the named writer(s) — the durable request-id claim and the canonical creator/CAS writer —
-    each called exactly once, from the POST handler, in the reviewed order (fence read, validation, claim, writer);
+  * persistence is reached ONLY through the named writer(s) — the canonical request-keyed creator / the CAS writer —
+    each called exactly once, from the POST handler, in the reviewed order (validation, demo limiter, keyed creator);
   * every other route is a GET; no SQL, cursor, workspace-writer or Run-recording reference.
 
 This is a REVIEW PROPOSAL.  It does not authorise a merge; the independent reviewer must still approve it and re-pin a module if it
@@ -35,17 +35,17 @@ COMMON_FORBIDDEN = (".execute(", "get_cursor", "INSERT", "UPDATE ", "DELETE ", "
 # LITERAL REVIEW PINS of each module's git blob (not computed at runtime from a mutable baseline).
 SPECS = {
     "app/v2/react_new_project.py": {
-        "blob": "aa30da89fada5f9616666927b62ba4351acd5ceb",
+        "blob": "5abdb46a4704277a895d256a434f7a6f510206c1",
         "handler": "react_new_project_create", "path": "/model-react/new-project/create",
         "reads": [("react_new_project_options", "get", "/model-react/new-project/options"),
                   ("react_new_project_preview", "get", "/model-react/new-project/preview"),
                   ("react_new_project_status", "get", "/model-react/new-project/status")],
         "auth": "_gate", "gate_token": "body.request_id",
-        "later": {"demo rate limit": "check_demo_rate_limit", "fence read": "_observed", "field validation": "_validate",
-                  "durable claim": "claim", "creation writer": "create_reference_seeded_project", "idempotency stamp": "update_project_record"},
-        # the durable claim is decided after every refusal path and strictly BEFORE the canonical creator; the stamp is last
-        "order": ("_observed", "_validate", "check_demo_rate_limit", "claim", "create_reference_seeded_project", "update_project_record"),
-        "writers": ("claim", "create_reference_seeded_project", "update_project_record"),
+        "later": {"field validation": "_validate", "demo rate limit": "check_demo_rate_limit",
+                  "atomic keyed creator": "create_reference_seeded_project_once"},
+        # every refusal path precedes the single canonical, request-keyed creator (the request identity is committed by its own row write)
+        "order": ("_validate", "check_demo_rate_limit", "create_reference_seeded_project_once"),
+        "writers": ("create_reference_seeded_project_once",),
         "forbidden": COMMON_FORBIDDEN + ("run_project",),
     },
     "app/v2/react_goal_seek.py": {

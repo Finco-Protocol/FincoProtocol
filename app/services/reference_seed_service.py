@@ -293,6 +293,40 @@ def create_reference_seeded_project(
     *, user_id: str, template_source: str, requested_name: str, capacity_mw: float,
     country_market: str | None = None,
 ):
+    """Clone and scale a canonical cloneable reference (see ``_create_reference_seeded_project``)."""
+    return _create_reference_seeded_project(
+        user_id=user_id, template_source=template_source, requested_name=requested_name, capacity_mw=capacity_mw,
+        country_market=country_market)[0]
+
+
+def create_reference_seeded_project_once(
+    *, user_id: str, template_source: str, requested_name: str, capacity_mw: float,
+    country_market: str | None = None, create_request_id: str, purpose: str = "",
+):
+    """Idempotent create keyed on ``(user_id, create_request_id)``; returns ``(record, outcome)``.
+
+    The request identity is committed by the same INSERT that creates the project row and is unique per user in the database, so
+    one request id creates at most one project across any number of workers.  ``outcome``: ``created`` | ``replayed`` (finished
+    earlier) | ``in_progress`` (another worker is creating it, or it was interrupted less than the lease ago — nothing is written)
+    | ``abandoned`` (an interrupted create was archived; the id stays consumed).  A different set of inputs under one id raises
+    :class:`app.services.project_library_service.CreateRequestConflict`.  The project becomes ``COMPLETE`` only inside the transaction
+    that writes its CAPEX/OPEX seed lines, so a finished request is never a partially seeded project.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(json.dumps(
+        [template_source, requested_name.strip(), float(capacity_mw), (country_market or "").strip().upper()],
+        separators=(",", ":")).encode("utf-8")).hexdigest()[:32]
+    return _create_reference_seeded_project(
+        user_id=user_id, template_source=template_source, requested_name=requested_name, capacity_mw=capacity_mw,
+        country_market=country_market,
+        create_request={"request_id": create_request_id, "params_digest": digest, "purpose": purpose})
+
+
+def _create_reference_seeded_project(
+    *, user_id: str, template_source: str, requested_name: str, capacity_mw: float,
+    country_market: str | None = None, create_request: dict | None = None,
+):
     """Clone and scale a canonical cloneable reference into a working copy.
 
     ``country_market`` is real project-location metadata selected from the
@@ -317,9 +351,15 @@ def create_reference_seeded_project(
     pi = _reference_inputs(template_source)
     reference_capacity = float(pi.technical.capacity_mw)
     ratio = float(capacity_mw) / reference_capacity
-    record = _pls.create_working_copy(
-        user_id=user_id, source_reference_id=reference.project_id,
-        requested_name=requested_name.strip())
+    if create_request is None:      # the unkeyed path calls the public service exactly as before
+        record, outcome = _pls.create_working_copy(
+            user_id=user_id, source_reference_id=reference.project_id,
+            requested_name=requested_name.strip()), "created"
+    else:
+        record, outcome = _pls._create_working_copy(
+            user_id, reference.project_id, requested_name.strip(), create_request)
+    if outcome != "created":
+        return record, outcome
     ws = get_workspace_state(user_id, record.project_id)
     if ws is None:
         raise RuntimeError("Working-copy workspace was not initialized.")
@@ -380,6 +420,8 @@ def create_reference_seeded_project(
 
     profile = snapshot["_reference_seed_profile"]
     with get_cursor() as cur:
+        if create_request is not None:
+            cur.execute("BEGIN IMMEDIATE")      # seed lines + the COMPLETE flag land together or not at all
         technology = _TECHNOLOGY_BY_TEMPLATE_SOURCE.get(template_source)
         if technology is None:
             raise ValueError(f"Unsupported seed technology for {template_source!r}.")
@@ -451,7 +493,19 @@ def create_reference_seeded_project(
                         "allocation_weight": float(child.weight),
                     },
                 )
-    return record
+        if create_request is not None:
+            cur.execute(
+                "UPDATE projects SET replay_metadata_json=json_set(replay_metadata_json, '$.create_request.state', 'COMPLETE') "
+                "WHERE project_id=? AND json_extract(replay_metadata_json, '$.create_request.state')='CREATING'",
+                (record.project_id,))
+            if cur.rowcount != 1:       # abandoned meanwhile: roll the seed lines back rather than complete an archived project
+                raise RuntimeError("The create request is no longer in progress; the seed was rolled back.")
+            cur.execute("COMMIT")
+    if create_request is not None:
+        from app.persistence.projects_repository import find_project_by_create_request
+
+        record = find_project_by_create_request(user_id, create_request["request_id"]) or record
+    return record, "created"
 
 
 def restore_reference_seed_technical_authority(inputs: Any, snapshot: dict[str, Any]) -> Any:

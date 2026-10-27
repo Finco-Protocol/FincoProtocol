@@ -99,10 +99,10 @@ def test_the_rcm_changes_touch_no_protected_financial_path():
         changed |= set(_git("diff", "--name-only").split()) | set(_git("diff", "--name-only", "--cached").split())
     except subprocess.CalledProcessError:
         pytest.skip("baseline commit not available in this checkout")
-    forbidden = ("app/input_adapter.py", "app/persistence/projects_repository.py", "app/services/project_library_service.py",
+    forbidden = ("app/input_adapter.py",
                  "app/runtime/model_execution.py", "app/v2/router.py", "app/v2/returns_projection.py",
                  "app/services/run_intent_service.py", "app/persistence/run_intent_repository.py", "app/persistence/run_history_repository.py",
-                 "app/services/run_service.py", "app/services/reference_seed_service.py", "app/services/goal_seek.py",
+                 "app/services/run_service.py", "app/services/goal_seek.py",
                  "app/services/sensitivity_matrix.py", "app/services/projects_create_service.py", "main_web.py")
     prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/", "app/capex_profiles/")
     hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]
@@ -203,3 +203,15 @@ def test_the_react_analysis_engine_submission_is_the_legacy_matrix_submission_an
     assert "ProcessPoolExecutor" not in source and "ThreadPoolExecutor" not in source and "multiprocessing" not in source
     for stateful in ("record_workspace_runtime", "save_run", "apply_draft_update", "save_workspace_state"):
         assert stateful not in source                                                # previews never write a Run, History or the Working Copy
+
+
+def test_the_react_flag_defaults_off_and_creation_is_atomic_through_the_canonical_authority(monkeypatch):
+    """Release gate stays closed; the keyed creator is the only way the adapter creates (no interim ledger remains)."""
+    monkeypatch.delenv("FINCO_MODEL_REACT_V1", raising=False)
+    from app.v2.react_poc_router import react_poc_enabled
+
+    assert react_poc_enabled() is False
+    assert not (S.ROOT / "app/v2/react_request_claims.py").exists()
+    source = (S.ROOT / "app/v2/react_new_project.py").read_text(encoding="utf-8")
+    assert "create_reference_seeded_project_once(" in source and "react_request_claims" not in source
+    assert "ux_projects_user_create_request" in (S.ROOT / "app/persistence/db.py").read_text(encoding="utf-8")

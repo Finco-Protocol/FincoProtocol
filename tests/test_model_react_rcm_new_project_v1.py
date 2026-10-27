@@ -202,7 +202,7 @@ def test_create_makes_exactly_one_owned_unprotected_not_run_working_copy(env):
     response = env.client.post(f"{BASE}/create", json=env.body(opts, name="  RCM   Solar One  "))
     assert response.status_code == 200
     payload = response.json()
-    assert payload["ok"] and payload["replayed"] is False and payload["idempotency_recorded"] is True
+    assert payload["ok"] and payload["replayed"] is False
     assert payload["project"]["freshness"] == "NOT_RUN" and payload["project"]["name"] == "RCM Solar One"
     rows = env.mine()
     assert len(rows) == 1 and env.mine(STRANGER) == []
@@ -210,7 +210,8 @@ def test_create_makes_exactly_one_owned_unprotected_not_run_working_copy(env):
     assert record.project_code == payload["project"]["code"] and record.user_id == OWNER
     assert getattr(record, "project_role", "working_copy") != "reference"
     assert not getattr(record, "is_protected", False) and not getattr(record, "is_readonly", False)
-    assert record.replay_metadata["react_new_project"]["request_id"] == opts["request_id"]
+    claim = record.replay_metadata["create_request"]            # committed by the same INSERT as the project row, COMPLETE with its seed
+    assert claim["request_id"] == opts["request_id"] and claim["state"] == "COMPLETE" and claim["purpose"] == "react-new-project-v1"
     shell = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()
     assert shell["ok"] and shell["freshness"]["state"] == "NOT_RUN" and shell["freshness"]["has_runtime"] is False
     assert shell["project"]["protected_reference"] is False and shell["vertical"]["key"] == "solar"
@@ -220,7 +221,7 @@ def test_create_makes_exactly_one_owned_unprotected_not_run_working_copy(env):
     assert not any(p["code"] == record.project_code for p in library["references"])
 
 
-def test_stamping_preserves_the_working_copy_identity_and_the_seed_snapshot(env):
+def test_the_request_identity_preserves_the_working_copy_identity_and_the_seed_snapshot(env):
     from app.persistence.workspace_repository import get_workspace_state
     from app.services.reference_seed_service import create_reference_seeded_project
 
@@ -241,9 +242,10 @@ def test_double_submit_and_replay_never_create_a_second_project(env):
     opts = env.options()
     first = env.client.post(f"{BASE}/create", json=env.body(opts)).json()
     second = env.client.post(f"{BASE}/create", json=env.body(opts)).json()
-    third = env.client.post(f"{BASE}/create", json=env.body(opts, name="A different name")).json()
-    assert first["replayed"] is False and second["replayed"] is True and third["replayed"] is True
-    assert first["project"]["code"] == second["project"]["code"] == third["project"]["code"]
+    third = env.client.post(f"{BASE}/create", json=env.body(opts, name="A different name"))
+    assert first["replayed"] is False and second["replayed"] is True
+    assert first["project"]["code"] == second["project"]["code"]
+    assert third.status_code == 409 and third.json()["code"] == "REQUEST_ID_REUSED"                 # same id, other inputs: never a new project
     assert len(env.mine()) == 1
 
 
@@ -274,13 +276,13 @@ def test_a_server_failure_is_reported_as_unknown_never_as_not_created(env, monke
     def boom(**_kw):
         raise RuntimeError("connection lost after a partial write")
 
-    monkeypatch.setattr(seed, "create_reference_seeded_project", boom)
+    monkeypatch.setattr(seed, "create_reference_seeded_project_once", boom)
     opts = env.options()
     response = env.client.post(f"{BASE}/create", json=env.body(opts))
     assert response.status_code == 500 and response.json()["code"] == "CREATE_OUTCOME_UNKNOWN"
     assert "Result unknown" in response.json()["message"]
     status = env.client.get(f"{BASE}/status", params={"request_id": opts["request_id"]}).json()
-    assert status == {"ok": True, "created": False, "conclusive": False, "state": "FAILED"}
+    assert status == {"ok": True, "created": False, "conclusive": False, "state": "NONE"}
 
 
 def test_status_reconciles_a_created_request_and_is_owner_scoped(env):

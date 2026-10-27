@@ -37,6 +37,7 @@ change is the file location.
 """
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
@@ -125,6 +126,37 @@ def list_project_records(
         cur.execute(query, tuple(params))
         from app.persistence.records import ProjectRecord
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
+
+
+# ── Atomic create-request identity ───────────────────────────────────────────
+# A create request id is committed in the SAME INSERT as the project row (inside ``replay_metadata.create_request``); the partial
+# unique index ``ux_projects_user_create_request`` makes a second project for one (user, request id) impossible.  The state is
+# CREATING until the seed has fully landed, then COMPLETE (flipped inside the seed's own transaction); an interrupted CREATING row
+# older than the lease is archived as ABANDONED so it can never be mistaken for a finished project.
+CREATE_REQUEST_KEY = "create_request"
+CREATE_CREATING, CREATE_COMPLETE, CREATE_ABANDONED = "CREATING", "COMPLETE", "ABANDONED"
+_CREATE_STATE_SQL = "json_extract(replay_metadata_json, '$.create_request.state')"
+_CREATE_ID_SQL = ("(CASE WHEN json_valid(replay_metadata_json) THEN "
+                  "json_extract(replay_metadata_json, '$.create_request.request_id') END)")
+
+
+def find_project_by_create_request(user_id: str, request_id: str) -> "Optional[ProjectRecord]":
+    with get_cursor() as cur:
+        cur.execute(f"SELECT * FROM projects WHERE user_id=? AND {_CREATE_ID_SQL}=?", (user_id, request_id))
+        row = cur.fetchone()
+    from app.persistence.records import ProjectRecord
+    return ProjectRecord.from_row(row) if row else None
+
+
+def abandon_stale_create(user_id: str, project_id: str, *, created_before: str, now: str) -> bool:
+    """Compare-and-set CREATING -> ABANDONED (and archive) for a create interrupted before ``created_before``; True when this call won."""
+    with get_cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET archived=1, updated_at=?, "
+            "replay_metadata_json=json_set(replay_metadata_json, '$.create_request.state', 'ABANDONED') "
+            f"WHERE user_id=? AND project_id=? AND {_CREATE_STATE_SQL}='CREATING' AND created_at < ?",
+            (now, user_id, project_id, created_before))
+        return cur.rowcount == 1
 
 
 # Sentinel user_id for system-owned reference projects.
@@ -443,6 +475,7 @@ def save_project(
     source_project_id: Any = _UNSET,                # Project Library — preserved on update when omitted
     project_stage: Any = _UNSET,                    # Model V2 metadata — preserved on update when omitted
     model_perspective: Any = _UNSET,                # Model V2 metadata — preserved on update when omitted
+    insert_only: bool = False,                      # create paths: never upsert onto an existing (user, project_code) row
 ) -> "ProjectRecord":
     now = _now_utc()
     governance_state = governance_state or {}
@@ -464,6 +497,8 @@ def save_project(
             (user_id, project_code),
         )
         existing = cur.fetchone()
+        if existing and insert_only:
+            raise sqlite3.IntegrityError("UNIQUE constraint failed: projects.user_id, projects.project_code")
         if existing:
             project_id = existing["project_id"]
             created_at = _from_iso(existing["created_at"])

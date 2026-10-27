@@ -34,10 +34,10 @@ def _free_port() -> int:
 
 
 class Server:
-    def __init__(self, db_path: str, log: Path, crash_at: str = ""):
+    def __init__(self, db_path: str, log: Path, crash_at: str = "", lease: str = ""):
         self.port = _free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        env = {**os.environ, "FINCO_DB_PATH": db_path, "FINCO_MODEL_REACT_V1": "1", "RCM_CRASH_AT": crash_at,
+        env = {**os.environ, "FINCO_DB_PATH": db_path, "FINCO_MODEL_REACT_V1": "1", "RCM_CRASH_AT": crash_at, "RCM_LEASE_SECONDS": lease,
                "PYTHONPATH": str(ROOT), "FINCO_MODEL_EXECUTION_MODE": "thread"}
         self._log = open(log, "wb")
         self.proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "tests.rcm_multiproc_app:app", "--host", "127.0.0.1",
@@ -87,8 +87,8 @@ def cluster(tmp_path_factory):
     ensure_reference_models()                      # the shared reference rows exist before any worker races on them
     servers: list[Server] = []
 
-    def spawn(crash_at: str = "") -> Server:
-        server = Server(path, folder / f"server-{len(servers)}.log", crash_at)
+    def spawn(crash_at: str = "", lease: str = "") -> Server:
+        server = Server(path, folder / f"server-{len(servers)}.log", crash_at, lease)
         servers.append(server)
         server.wait_ready(_cookie("rcm-mp-readiness"))
         return server
@@ -121,15 +121,22 @@ def _projects(user_id: str) -> list:
     return list_project_records(user_id=user_id, include_archived=True)
 
 
-def _claim_rows(user_id: str) -> list[tuple]:
+def _requests(user_id: str) -> list[tuple]:
+    """(request id, state, project code, seed line count) of every request-keyed project of the user, straight from the database."""
     conn = sqlite3.connect(db.DB_PATH)
     try:
-        return conn.execute("SELECT request_id, state, project_code FROM react_request_claims WHERE user_id = ?", (user_id,)).fetchall()
-    except sqlite3.OperationalError as exc:          # the ledger table is created lazily by the first claim in any process
-        assert "no such table" in str(exc)
-        return []
+        rows = conn.execute("SELECT json_extract(replay_metadata_json, '$.create_request.request_id'), "
+                            "json_extract(replay_metadata_json, '$.create_request.state'), project_code, project_id FROM projects "
+                            "WHERE user_id = ? AND json_extract(replay_metadata_json, '$.create_request.request_id') IS NOT NULL", (user_id,)).fetchall()
+        return [(rid, state, code, conn.execute("SELECT (SELECT COUNT(*) FROM capex_sub_lines WHERE project_id=?) + "
+                                                "(SELECT COUNT(*) FROM opex_sub_lines WHERE project_id=?)", (pid, pid)).fetchone()[0])
+                for rid, state, code, pid in rows]
     finally:
         conn.close()
+
+
+def _status(server: Server, cookies: dict, request_id: str) -> dict:
+    return httpx.get(f"{server.url}{BASE}/status", params={"request_id": request_id}, cookies=cookies, timeout=30).json()
 
 
 def test_a_token_issued_by_one_process_is_valid_in_another_and_a_bad_one_is_refused_everywhere(cluster):
@@ -140,7 +147,7 @@ def test_a_token_issued_by_one_process_is_valid_in_another_and_a_bad_one_is_refu
         for server in cluster.healthy:
             response = _post(server, cookies, _body(opts, csrf_token=tampered))
             assert response.status_code == 403 and response.json()["code"] == "CSRF_INVALID"
-    assert _projects(uid) == [] and _claim_rows(uid) == []                     # a refused token never claims, never writes
+    assert _projects(uid) == []                                                  # a refused token never writes anything
     other_session = _post(second, _cookie("rcm-mp-csrf-other"), _body(opts))      # token is bound to the issuing session
     assert other_session.status_code == 403
     ok = _post(second, cookies, _body(opts))                                      # issued by process 1, accepted by process 2
@@ -162,18 +169,34 @@ def test_simultaneous_posts_of_one_request_id_across_three_processes_create_exac
     payloads = [r.json() for r in responses]
     created = [p for p in payloads if p.get("ok") and p.get("replayed") is False]
     assert len(created) == 1, payloads
-    # every other request was fenced: a replay of the finished project, or an honest "unknown" while the winner was in flight
-    for response, payload in zip(responses, payloads):
+    for response, payload in zip(responses, payloads):                            # every other request was fenced by the database
         if payload in created:
             continue
         assert (response.status_code == 200 and payload["replayed"] is True and payload["project"]["code"] == created[0]["project"]["code"]) \
             or (response.status_code == 503 and payload["code"] == "CREATE_IN_FLIGHT_OR_UNKNOWN"), payload
     assert len(_projects(uid)) == 1
-    assert _claim_rows(uid) == [(opts["request_id"], "DONE", created[0]["project"]["code"])]
-    for server in cluster.healthy:                                              # settled: every process now replays the same project
+    rows = _requests(uid)
+    assert len(rows) == 1 and rows[0][1] == "COMPLETE" and rows[0][2] == created[0]["project"]["code"] and rows[0][3] > 0
+    for server in cluster.healthy:                                                # settled: every process replays the same project
         again = _post(server, cookies, body).json()
         assert again["replayed"] is True and again["project"]["code"] == created[0]["project"]["code"]
     assert len(_projects(uid)) == 1
+
+
+def test_many_different_requests_with_one_name_across_processes_all_succeed_with_distinct_codes(cluster):
+    uid, cookies = "rcm-mp-names", _cookie("rcm-mp-names")
+    jobs = [_body(_options(cluster.healthy[n % 3], cookies), name="Same name") for n in range(6)]
+    gate = threading.Barrier(len(jobs))
+
+    def fire(index: int):
+        gate.wait()
+        return _post(cluster.healthy[(index + 1) % 3], cookies, jobs[index])
+
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        responses = list(pool.map(fire, range(len(jobs))))
+    assert [r.status_code for r in responses] == [200] * len(jobs), [r.text for r in responses]
+    codes = {r.json()["project"]["code"] for r in responses}
+    assert len(codes) == len(jobs) and len(_projects(uid)) == len(jobs)          # a code race between requests is re-planned, never an overwrite
 
 
 def test_replay_after_a_lost_response_returns_the_same_project_from_another_process(cluster):
@@ -183,48 +206,58 @@ def test_replay_after_a_lost_response_returns_the_same_project_from_another_proc
     body = _body(opts)
     sent = _post(first, cookies, body)                  # the client "never sees" this response
     assert sent.status_code == 200
-    status = httpx.get(f"{second.url}{BASE}/status", params={"request_id": opts["request_id"]}, cookies=cookies, timeout=30).json()
+    status = _status(second, cookies, opts["request_id"])
     assert status["created"] is True and status["conclusive"] is True and status["project"]["code"] == sent.json()["project"]["code"]
-    replay = _post(third, cookies, _body(opts, name="Edited after the lost response", capacity_mw=77.0)).json()
+    replay = _post(third, cookies, body).json()
     assert replay["replayed"] is True and replay["project"]["code"] == sent.json()["project"]["code"]
+    conflict = _post(second, cookies, _body(opts, name="Edited after the lost response", capacity_mw=77.0))
+    assert conflict.status_code == 409 and conflict.json()["code"] == "REQUEST_ID_REUSED"      # the same id never takes new inputs
     assert len(_projects(uid)) == 1 and _projects(uid)[0].project_name == "RCM multi-process"
 
 
-def test_a_process_that_dies_after_the_write_but_before_finishing_the_claim_never_allows_a_duplicate(cluster):
-    uid, cookies = "rcm-mp-crash1", _cookie("rcm-mp-crash1")
-    doomed = cluster.spawn("after_create_before_finish")
+@pytest.mark.parametrize("crash_at,lines_expected", [("after_row", 0), ("mid_seed_lines", 0)])
+def test_a_process_dying_mid_create_leaves_one_creating_project_that_no_retry_duplicates_and_that_is_later_abandoned(cluster, crash_at, lines_expected):
+    uid = f"rcm-mp-{crash_at.replace('_', '')}"
+    cookies = _cookie(uid)
+    doomed = cluster.spawn(crash_at)
     opts = _options(doomed, cookies)
     body = _body(opts)
     with pytest.raises(httpx.HTTPError):
         _post(doomed, cookies, body)                    # the process died: no response at all
     doomed.proc.wait(timeout=30)
     assert doomed.proc.returncode == 137
-    assert len(_projects(uid)) == 1 and _claim_rows(uid) == [(opts["request_id"], "CLAIMED", None)]
-    for server in cluster.healthy:                      # replay storm against the surviving processes
+    rows = _requests(uid)
+    assert rows == [(opts["request_id"], "CREATING", rows[0][2], lines_expected)]     # the row exists; the seed is all-or-nothing: none landed
+    for server in cluster.healthy:                      # a retry storm against the surviving processes, inside the lease
         response = _post(server, cookies, body)
         assert response.status_code == 503 and response.json()["code"] == "CREATE_IN_FLIGHT_OR_UNKNOWN"
-        status = httpx.get(f"{server.url}{BASE}/status", params={"request_id": opts["request_id"]}, cookies=cookies, timeout=30).json()
+        status = _status(server, cookies, opts["request_id"])
         assert status["created"] is False and status["conclusive"] is False and status["state"] == "IN_FLIGHT_OR_UNKNOWN"
-    assert len(_projects(uid)) == 1 and _claim_rows(uid) == [(opts["request_id"], "CLAIMED", None)]      # never overwritten, never retried
-    fresh = _options(cluster.healthy[0], cookies)                                # a NEW request id is a deliberate, separate create
-    assert _post(cluster.healthy[1], cookies, _body(fresh)).json()["replayed"] is False and len(_projects(uid)) == 2
+    assert len(_projects(uid)) == 1 and _requests(uid)[0][1] == "CREATING"
+    reaper = cluster.spawn(lease="0")                   # a worker whose lease has elapsed archives it; the id stays consumed
+    consumed = _post(reaper, cookies, body)
+    assert consumed.status_code == 503 and consumed.json()["code"] == "REQUEST_ID_CONSUMED"
+    assert _requests(uid)[0][1] == "ABANDONED" and _projects(uid)[0].archived is True
+    assert _post(cluster.healthy[0], cookies, body).json()["code"] == "REQUEST_ID_CONSUMED"
+    assert _status(cluster.healthy[1], cookies, opts["request_id"])["state"] == "ABANDONED"
+    fresh = _post(cluster.healthy[2], cookies, _body(_options(cluster.healthy[0], cookies)))        # a NEW id is a deliberate new create
+    assert fresh.json()["replayed"] is False and len(_projects(uid)) == 2
 
 
-def test_a_process_that_dies_after_finishing_the_claim_but_before_the_stamp_still_replays_the_project(cluster):
-    uid, cookies = "rcm-mp-crash2", _cookie("rcm-mp-crash2")
-    doomed = cluster.spawn("after_finish_before_stamp")
+def test_a_process_dying_after_the_project_is_complete_but_before_responding_still_replays_it(cluster):
+    uid, cookies = "rcm-mp-beforeresponse", _cookie("rcm-mp-beforeresponse")
+    doomed = cluster.spawn("before_response")
     opts = _options(doomed, cookies)
     body = _body(opts)
     with pytest.raises(httpx.HTTPError):
         _post(doomed, cookies, body)
     doomed.proc.wait(timeout=30)
     assert doomed.proc.returncode == 137
-    projects = _projects(uid)
-    assert len(projects) == 1 and (projects[0].replay_metadata or {}).get("react_new_project") is None       # no stamp was written
-    assert _claim_rows(uid) == [(opts["request_id"], "DONE", projects[0].project_code)]
+    rows = _requests(uid)
+    assert len(rows) == 1 and rows[0][1] == "COMPLETE" and rows[0][3] > 0
     for server in cluster.healthy:
         replay = _post(server, cookies, body).json()
-        assert replay["replayed"] is True and replay["project"]["code"] == projects[0].project_code
+        assert replay["replayed"] is True and replay["project"]["code"] == rows[0][2]
     assert len(_projects(uid)) == 1
 
 
@@ -246,34 +279,29 @@ def test_users_are_isolated_across_processes(cluster):
         list(pool.map(fire, range(6)))
     for uid, cookies, body in jobs:
         assert len(_projects(uid)) == 1
-        assert [row[0] for row in _claim_rows(uid)] == [body["request_id"]]
+        assert [row[0] for row in _requests(uid)] == [body["request_id"]]
         for other_uid, other_cookies, _ in jobs:
             if other_uid != uid:                         # another user's cookie can neither replay nor observe the request
                 assert _post(cluster.healthy[0], other_cookies, body).status_code == 403
-                status = httpx.get(f"{cluster.healthy[0].url}{BASE}/status", params={"request_id": body["request_id"]},
-                                   cookies=other_cookies, timeout=30).json()
+                status = _status(cluster.healthy[0], other_cookies, body["request_id"])
                 assert status["created"] is False and "project" not in status
     assert sum(len(_projects(uid)) for uid in users) == 3
 
 
-def test_the_demo_project_budget_holds_across_processes(cluster):
+def test_the_demo_project_budget_is_read_from_the_database_by_every_process(cluster):
     from app.auth import DEMO_RATE_LIMITS
 
     limit = DEMO_RATE_LIMITS["project_create"][0]
     uid, cookies = "demo_rcmmpbudget", _cookie("demo_rcmmpbudget", demo=True)
-    jobs = [_body(_options(cluster.healthy[n % 3], cookies), name=f"Budget {n}") for n in range(limit + 4)]
-    gate = threading.Barrier(len(jobs))
-
-    def fire(index: int):
-        gate.wait()
-        return _post(cluster.healthy[index % 3], cookies, jobs[index])
-
-    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-        responses = list(pool.map(fire, range(len(jobs))))
-    codes = sorted(r.status_code for r in responses)
-    assert codes.count(200) == limit and codes.count(429) == len(jobs) - limit, codes
-    assert len(_projects(uid)) == limit                 # each process's own in-memory limiter would have admitted more
-    assert all(r.json()["retry_after"] > 0 for r in responses if r.status_code == 429)
+    for n in range(limit):                                # sequential, spread over the processes: no process counts them in memory
+        response = _post(cluster.healthy[n % 3], cookies, _body(_options(cluster.healthy[n % 3], cookies), name=f"Budget {n}"))
+        assert response.status_code == 200, response.text
+    for server in cluster.healthy:
+        blocked = _post(server, cookies, _body(_options(server, cookies), name="Over budget"))
+        assert blocked.status_code == 429 and blocked.json()["retry_after"] > 0
+    assert len(_projects(uid)) == limit
+    first = _requests(uid)[0][0]                           # a replay of an existing request still costs nothing
+    assert _post(cluster.healthy[0], cookies, _body({"request_id": first, "csrf_token": _options(cluster.healthy[0], cookies)["csrf_token"]})).status_code == 403
 
 
 def test_release_closed_unknown_and_extra_source_fields_create_nothing_in_any_process(cluster):
@@ -286,4 +314,4 @@ def test_release_closed_unknown_and_extra_source_fields_create_nothing_in_any_pr
         # a protected reference (or any other project) can never be named as a source: the body forbids extra fields
         response = _post(server, cookies, {**_body(opts), "source_project_id": "any"})
         assert response.status_code == 400 and response.json()["code"] == "BODY_INVALID"
-    assert _projects(uid) == [] and _claim_rows(uid) == []
+    assert _projects(uid) == [] and _requests(uid) == []

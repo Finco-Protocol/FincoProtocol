@@ -48,7 +48,7 @@ def test_structural_drift_is_rejected_even_when_the_pin_is_ignored(path, name, m
     assert S.violations(path, mutated, check_pin=False), name
 
 
-@pytest.mark.parametrize("path,writer", [(NP, "update_project_record"), (GS, "apply_draft_update")])
+@pytest.mark.parametrize("path,writer", [(NP, "create_reference_seeded_project_once"), (GS, "apply_draft_update")])
 def test_a_writer_call_before_the_gate_is_rejected(path, writer):
     gate = "    if not _REQUEST_ID.match(body.request_id) or not validate_csrf_token(" if path == NP else "    if not validate_csrf_token("
     assert gate in SOURCES[path]
@@ -57,23 +57,20 @@ def test_a_writer_call_before_the_gate_is_rejected(path, writer):
 
 
 def test_each_canonical_writer_is_referenced_exactly_where_reviewed():
-    assert len(re.findall(r"\bcreate_reference_seeded_project\(", SOURCES[NP])) == 1
-    assert len(re.findall(r"\bupdate_project_record\(", SOURCES[NP])) == 1
+    assert len(re.findall(r"\bcreate_reference_seeded_project_once\(", SOURCES[NP])) == 1
+    assert not re.search(r"\b(update_project_record|create_reference_seeded_project|save_project|claim)\(", SOURCES[NP])
     assert len(re.findall(r"\bapply_draft_update\(", SOURCES[GS])) == 1
 
 
-def test_the_new_project_claim_must_precede_the_creator_and_follow_every_refusal():
+def test_the_keyed_creator_must_follow_every_refusal_path():
     source = SOURCES[NP]
-    claim_call = "        won = claims.claim(user.user_id, body.request_id, PURPOSE, rate_limit=budget)"
-    assert claim_call in source
-    assert S.violations(NP, source.replace(claim_call, "        won = claims.Claim(True, claims.CLAIMED)"), check_pin=False)       # claim removed
-    create = "        record = create_reference_seeded_project("
-    assert create in source
-    early = "        create_reference_seeded_project(user_id='x', template_source='t', requested_name='n', capacity_mw=1.0)\n"
-    assert S.violations(NP, source.replace("    try:\n        won = claims.claim", early + "    try:\n        won = claims.claim", 1), check_pin=False)  # writer first
-    # claim before the field validation: a refused request would burn its id
-    assert S.violations(NP, source.replace("    normalised, errors = _validate(body.model_dump())", "    claims.claim('u', 'r', PURPOSE)\n    normalised, errors = _validate(body.model_dump())", 1),
-                        check_pin=False)
+    creator = "        record, outcome = create_reference_seeded_project_once("
+    assert creator in source
+    early = "    create_reference_seeded_project_once(user_id='x', template_source='t', requested_name='n', capacity_mw=1.0, create_request_id='r')\n"
+    anchor = "    normalised, errors = _validate(body.model_dump())"
+    assert anchor in source
+    assert S.violations(NP, source.replace(anchor, early + anchor, 1), check_pin=False)                  # creator before validation
+    assert S.violations(NP, source.replace("create_reference_seeded_project_once(", "create_reference_seeded_project(", 1), check_pin=False)  # unkeyed writer
 
 
 def test_the_goal_seek_token_must_stay_bound_to_the_offered_candidate():

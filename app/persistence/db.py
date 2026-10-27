@@ -131,6 +131,13 @@ def _init_schema(conn):
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_user_code ON projects(user_id, project_code)"
     )
+    # Atomic create-request identity: the request id lives in the project row's own replay metadata (written by the same INSERT
+    # that creates the project), and this partial unique index lets the database refuse a second project for one (user, request).
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_user_create_request ON projects(user_id, "
+        "(CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END)) "
+        "WHERE (CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END) IS NOT NULL"
+    )
 
     conn.execute(
         """
