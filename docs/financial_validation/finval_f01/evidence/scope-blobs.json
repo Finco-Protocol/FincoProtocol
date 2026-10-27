@@ -89,7 +89,7 @@
     {
       "path": "tests/model_mutation_security_successor.py",
       "before_blob": "4f5077c22b837e730ea0b2c2a57412eb1150d8a4",
-      "after_blob": "33d7b4b9d313385573000bbbaff0164ec89602ab",
+      "after_blob": "992c4aae6ef1b43797f4e5b3591993a7938b1c18",
       "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
     },
     {

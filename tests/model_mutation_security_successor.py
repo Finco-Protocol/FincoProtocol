@@ -271,7 +271,7 @@ def _browser_layers():
 
 
 # F01 complete rate contract; historical layers above are immutable.
-FINVAL_F01_COMPLETE_SUCCESSORS={'app/v2/router.py': '2ec6b05a7d730e1034348da632d37efc6bfa9c3b', 'app/v2/grid_router.py': '0d1ab6c05b7d4f53f9d4a341818e107969bcccc0'}
+FINVAL_F01_COMPLETE_SUCCESSORS={'app/v2/router.py': '2ec6b05a7d730e1034348da632d37efc6bfa9c3b', 'app/v2/grid_router.py': '0d1ab6c05b7d4f53f9d4a341818e107969bcccc0', 'tests/test_u2_2_returns_surface.py': 'afb64327e1032071ebf254dfe19b1e094e0b6fd0'}
 
 
 def violations(sources,*,check_pin=True):
