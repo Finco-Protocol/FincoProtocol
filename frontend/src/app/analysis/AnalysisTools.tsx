@@ -2,12 +2,14 @@ import { useState, type ReactNode } from "react";
 import "../../styles/rcm-analysis.css";
 import { GoalSeekPanel } from "./GoalSeekPanel";
 import { SensitivityPanel } from "./SensitivityPanel";
+import { RunsWorkspace } from "../runs/RunsWorkspace";
 
-export type AnalysisTool = "overview" | "sensitivity" | "goal-seek";
+export type AnalysisTool = "overview" | "sensitivity" | "goal-seek" | "runs";
 const TOOLS: ReadonlyArray<{ id: AnalysisTool; label: string }> = [
   { id: "overview", label: "Last Run charts" },
   { id: "sensitivity", label: "Sensitivity" },
   { id: "goal-seek", label: "Goal Seek" },
+  { id: "runs", label: "Run history & compare" },
 ];
 
 function toolFromUrl(): AnalysisTool {
@@ -50,6 +52,9 @@ export function AnalysisTools({ project, protectedReference, workbookHash, onApp
         {tool === "goal-seek" && (protectedReference
           ? <section className="rx-card" data-goal-seek-state="PROTECTED"><h2>Goal Seek — tender pricing</h2><p className="rx-empty" role="status" data-goal-seek-unavailable="true">Reference models are read-only. Create a working copy to solve a tariff.</p></section>
           : <GoalSeekPanel project={project} workbookHash={workbookHash} onApplied={onApplied} />)}
+        {tool === "runs" && (protectedReference
+          ? <section className="rx-card" data-runs-state="PROTECTED"><h2>Run history &amp; compare</h2><p className="rx-empty" role="status" data-runs-unavailable="true">Reference models are read-only. Create a working copy to review its committed Run history.</p></section>
+          : <RunsWorkspace project={project} workbookHash={workbookHash} />)}
       </div>
     </div>
   );

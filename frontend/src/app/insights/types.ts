@@ -2,7 +2,7 @@
 export interface RunIdentity {
   history_id: string; snapshot_id: string; scenario_id: string | null; scenario: string;
   ran_at: string; composite_hash: string; engine_version: string | null;
-  workbook_version?: string | null; state: string;
+  workbook_version?: string | null; state: string; runtime_origin?: string | null;
 }
 export interface RunReference { identity: RunIdentity; links: Record<string, string> }
 export interface Metric {
@@ -60,7 +60,7 @@ export interface HistoryPayload {
   scenarios: { scenario_id: string | null; name: string; is_base_case: boolean;
     committed_run: { history_id: string; snapshot_id: string; scenario_id: string | null } | null;
     availability: string; reason: string }[];
-  history_limit: number; scenarios_complete: boolean; scenarios_omitted: number;
+  history_limit: number; history_limit_reached?: boolean; scenarios_complete: boolean; scenarios_omitted: number;
 }
 export interface ComparisonRow {
   key: string; label: string; fmt: string; values: string[]; deltas: string[];

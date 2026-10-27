@@ -1324,3 +1324,10 @@ router.include_router(_analysis_router)
 router.include_router(_goal_seek_router)
 router.include_router(_financing_router)
 router.include_router(_investors_router)
+
+
+# ───────────────────────────── RC-UX: React adapters (single aggregator) ─────────────────────────────
+# Run compare, CAPEX studio, import workspace, reporting: read-only / canonical-writer adapters registered in app/v2/react_rcux.py.
+from app.v2.react_rcux import router as _rcux_router  # noqa: E402
+
+router.include_router(_rcux_router)

@@ -34,7 +34,8 @@ def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitte
     assert len(S.BLOBS) == 112 and S.SOURCE_HEAD == "1800bf6092af650f18aa6ae70e9df221797090fd"
     for path, blob in LAYER.items():
         assert path in S.BLOBS and len(blob) == 40 and blob not in _earlier(path)          # a NEW reviewed state, never a repin
-        assert S.git_blob(SOURCES[path]) == blob
+        # strict: exactly the RC-M state, or - only for a path the separately reviewed RC-UX layer also covers - exactly that later state
+        assert S.git_blob(SOURCES[path]) == S.RC_UX_SUCCESSORS.get(path, blob)
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
@@ -68,7 +69,7 @@ def test_layer_is_additive_and_no_historical_pin_line_was_removed():
 def test_the_workspace_router_changes_only_by_the_adapter_includes():
     """The pinned router gained exactly one block that mounts the five adapter modules (their own files hold the behaviour)."""
     source = SOURCES["app/v2/react_workspace_router.py"]
-    tail = source[source.index("# ───────────────────────────── RC-M: React adapters"):]
+    tail = source[source.index("# ───────────────────────────── RC-M: React adapters"):source.index("# ───────────────────────────── RC-UX: React adapters")]
     assert re.findall(r"^router\.include_router\((\w+)\)$", tail, flags=re.M) == [
         "_new_project_router", "_analysis_router", "_goal_seek_router", "_financing_router", "_investors_router"]
     assert re.findall(r"^from app\.v2\.(\w+) import router as (\w+)", tail, flags=re.M) == [

@@ -60,7 +60,7 @@ def test_finval_b2c1_successor_is_exactly_six_additive_paths_and_keeps_every_ori
         "app/v2/router.py","frontend/src/app/WorkspaceView.tsx","frontend/src/app/types.ts","static/react/finco-react.js"}
     for path,blob in S.FINVAL_B2C1_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40 and blob!=S.BLOBS[path]
-        assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path),S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path)}   # current source = an admitted reviewed successor
+        assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path),S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path),S.RC_UX_SUCCESSORS.get(path)}   # current source = an admitted reviewed successor
     assert S.TOKEN_MODULE not in S.FINVAL_B2C1_SUCCESSORS
 
 @pytest.mark.parametrize("path",["app/templates/v2/partials/sheet_opex.html","app/v2/react_workspace_router.py","app/v2/router.py",
@@ -109,7 +109,7 @@ def test_d029_layer_is_exactly_three_additive_paths_and_keeps_every_original_and
     for path,blob in S.D029_RUN_INTENT_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40
         assert blob!=S.BLOBS[path] and blob!=S.FINVAL_B2C1_SUCCESSORS.get(path)   # a NEW reviewed state, never a repin
-        assert S.git_blob(SOURCES[path]) in {blob,S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path)}   # D-029 state, or the later Overnight B successor
+        assert S.git_blob(SOURCES[path]) in {blob,S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path),S.RC_UX_SUCCESSORS.get(path)}   # D-029 state, or the later Overnight B successor
     assert S.TOKEN_MODULE not in S.D029_RUN_INTENT_SUCCESSORS
 
 
@@ -175,7 +175,7 @@ def test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_a
     import re
     path="tests/test_model_workspace_consolidation_browser.py"
     source=SOURCES[path]
-    assert S.git_blob(source)==S.RC_M_SUCCESSORS[path]                       # strict: exactly the latest reviewed state of the role file
+    assert S.git_blob(source)==S.RC_UX_SUCCESSORS.get(path,S.RC_M_SUCCESSORS[path])                       # strict: exactly the latest reviewed state of the role file
     for name in ("check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit",
                  "check_react_lost_response_survives_reload_and_resumes_the_original_run",
                  "check_react_resume_after_the_draft_changed_never_runs_against_the_new_draft",

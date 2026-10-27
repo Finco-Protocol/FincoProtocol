@@ -194,6 +194,17 @@ RC_M_SUCCESSORS={
     "tests/test_model_workspace_consolidation_browser.py":"cf8dbfe39e31a4718a0af2da458ae919ca8a7fab",
 }
 
+# RC-UX Completion V1: the next exact, additive layer on top of RC-M.  Every earlier layer stays immutable and individually admitted.  The paths
+# are the pinned surfaces RC-UX touches: the adapter mount (one include of app/v2/react_rcux.py), the workspace view (only when RC-UX mounts a
+# component there) and the rebuilt React bundle.  All RC-UX behaviour lives in NEW unpinned files proven by tests/test_model_react_rcux_*.py and
+# tests/test_rcux_governance.py.  Blobs are recomputed from the committed sources by the pin refresh and asserted by tests/test_rcux_governance.py.
+RC_UX_SUCCESSORS={
+    "app/v2/react_workspace_router.py":"588ddb783212392a8a7eda86e3f89c5f46b91342",
+    "static/react/finco-react.css":"fa709105a9692d364045eee323caafeec5a6e308",
+    "static/react/finco-react.js":"0337b9e8478a11fc6d38b4d767561de25c804f6e",
+    "tests/test_model_workspace_consolidation_browser.py":"5421faf31bb20ac16f8dbf10847d29e97f11d1bb",
+}
+
 # FIN-VAL F01: exact additive projection-only successor; historical layers
 # above remain individually admitted. No CSRF, CAS or Run gate is changed.
 FINVAL_RATE_SUCCESSORS={
@@ -302,6 +313,7 @@ def violations(sources,*,check_pin=True):
         if path in D029_RUN_INTENT_SUCCESSORS:admitted=admitted|{D029_RUN_INTENT_SUCCESSORS[path]}
         if path in REACT_MVP_CORRECTION_SUCCESSORS:admitted=admitted|{REACT_MVP_CORRECTION_SUCCESSORS[path]}
         if path in RC_M_SUCCESSORS:admitted=admitted|{RC_M_SUCCESSORS[path]}
+        if path in RC_UX_SUCCESSORS:admitted=admitted|{RC_UX_SUCCESSORS[path]}
         if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if path in FINVAL_F01_COMPLETE_SUCCESSORS:admitted=admitted|{FINVAL_F01_COMPLETE_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")

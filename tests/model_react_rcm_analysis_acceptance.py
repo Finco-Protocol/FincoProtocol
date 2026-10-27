@@ -103,7 +103,7 @@ def test_analysis_hub_keeps_the_last_run_view_and_adds_the_two_tools(live_server
     context, page, record, errors = an_session("rcm-an-hub")
     page.goto(f"{live_server}/v2/model-react/{record.project_code}#analysis")
     page.wait_for_selector("[data-analysis-tools='true']")
-    assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Last Run charts", "Sensitivity", "Goal Seek"]
+    assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Last Run charts", "Sensitivity", "Goal Seek", "Run history & compare"]
     assert page.locator("[data-analysis-view='true']").count() == 1          # the existing analysis is still the first tab
     page.locator("[data-analysis-tab='sensitivity']").click()
     page.wait_for_selector("[data-sensitivity-panel='true']")

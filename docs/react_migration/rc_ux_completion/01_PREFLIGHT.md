@@ -14,13 +14,14 @@ All values below were read from GitHub / the checked-out tree in this session, n
 * Build: `npm ci && npm run build` succeeds on main (102 modules). Bundle is committed under `static/react/` and version-hashed
   (`REACT_ASSET_VERSION`), so any frontend change requires rebuilding and committing the bundle.
 
-## 3. Original audits — NOT AVAILABLE
-* `FINCO_Legacy_React_Audit_2026-10-27.zip`, `04_DETAILED_FUNCTIONAL_GAP_REGISTER.csv` and the Audit B acceptance document are **not in the
-  repository, not on the session filesystem and not retrievable through the GitHub tools** (searched file names and content for
-  `Legacy_React_Audit`, `GAP-R14…R28`, `DETAILED_FUNCTIONAL_GAP`). The only trace is the RC-M register, which already records GAP-R14…R28 as BLOCKED.
-* Consequence: GAP-R14…R28 and every Audit B P0/P1/P2 item remain **BLOCKED** in `RC_UX_MASTER_GAP_REGISTER.csv`. Nothing was reconstructed.
-  **Required from the owner:** the two audit artifacts. Closure of "every audit gap" (Definition of Done §1) is impossible until they are supplied.
-* Work proceeds on independently verifiable requirements from the RC-UX prompt (rows `RCUX-*`).
+## 3. Original audits — SUPPLIED by the Financial Owner after the first checkpoint
+Received mid-session and stored under `audit_inputs/` (hashes in `SUPPLIED_ARCHIVE_SHA256.txt`):
+* **Audit A** `FINCO_Legacy_React_Audit_2026-10-27.zip` — `04_DETAILED_FUNCTIONAL_GAP_REGISTER.csv` (29 rows incl. GAP-R14a; repo head audited `6f10f392`).
+  Three rows (GAP-R11, R12, R27) are column-shifted in the supplied CSV (unquoted commas); they were recovered from the audit's own prose
+  (`05_DETAILED_GAP_ANALYSIS.md`, `10_TECHNICAL_CAUSE_MAPPING.md`, `12_REMEDIATION_ROADMAP.md`) and are marked as such in the register.
+* **Audit B** `FINCO_REACT_MVP_AUDIT_PART_1/PART_2.zip` — F01–F06, G01, U01–U03 (audited main `6f10f392`; Part 2 repeats the four Markdown reports byte-identically and carries the remaining evidence files).
+* The earlier RC-M register mapped GAP-R7…R28 by inference and is **wrong for several IDs** (e.g. real R14 = Compare Projects, R15 = diagnostics heatmap, R16 = OPEX Y1–Y30, R20 = period revenue preview, R21 = Year-0 toggle, R18 = rate display). `RC_UX_MASTER_GAP_REGISTER.csv` now uses the audit's own IDs and text. Earlier "BLOCKED" rows are resolved.
+* Both audits predate #388, #389 and #390: every item was re-checked against the base `f79e251` before being given a status. Items not yet verified stay OPEN.
 
 ## 4. Feature flags / capability registry
 * `FINCO_MODEL_REACT_V1` gates all `/v2/model-react/*` adapters. Vertical tiers: Solar, Wind = PILOT_CANDIDATE; Data Center, EV Charging = PREVIEW;
