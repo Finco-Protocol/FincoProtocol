@@ -46,7 +46,7 @@ tests/test_finval_rate_contract.py:17: AssertionError</failure></testcase><testc
         result=_resolve_user_inputs(project_type='Solar',base_inputs=pi,interest_rate_pct=human)
 &gt;       assert senior_rate_authority(result)[1] == pytest.approx(ratio,abs=1e-17)
 E       assert 0.055 == 0.00055 ± 1.0e-17
-E         
+E
 E         comparison failed
 E         Obtained: 0.055
 E         Expected: 0.00055 ± 1.0e-17
@@ -61,7 +61,7 @@ tests/test_finval_rate_contract.py:23: AssertionError</failure></testcase><testc
         # User percentages, including sub-one percentages, are never multiplied by 100 for display.
 &gt;       assert row['display_value']==f'{human:.3f}'.rstrip('0').rstrip('.')+'%'
 E       AssertionError: assert '5.60%' == '0.056%'
-E         
+E
 E         - 0.056%
 E         + 5.60%
 
@@ -75,7 +75,7 @@ tests/test_finval_rate_contract.py:31: AssertionError</failure></testcase><testc
         # User percentages, including sub-one percentages, are never multiplied by 100 for display.
 &gt;       assert row['display_value']==f'{human:.3f}'.rstrip('0').rstrip('.')+'%'
 E       AssertionError: assert '56.00%' == '0.56%'
-E         
+E
 E         - 0.56%
 E         + 56.00%
 
@@ -89,7 +89,7 @@ tests/test_finval_rate_contract.py:31: AssertionError</failure></testcase><testc
         # User percentages, including sub-one percentages, are never multiplied by 100 for display.
 &gt;       assert row['display_value']==f'{human:.3f}'.rstrip('0').rstrip('.')+'%'
 E       AssertionError: assert '5.60%' == '5.6%'
-E         
+E
 E         - 5.6%
 E         + 5.60%
 E         ?    +
@@ -104,7 +104,7 @@ tests/test_finval_rate_contract.py:31: AssertionError</failure></testcase><testc
         # User percentages, including sub-one percentages, are never multiplied by 100 for display.
 &gt;       assert row['display_value']==f'{human:.3f}'.rstrip('0').rstrip('.')+'%'
 E       AssertionError: assert '9.00%' == '9%'
-E         
+E
 E         - 9%
 E         + 9.00%
 

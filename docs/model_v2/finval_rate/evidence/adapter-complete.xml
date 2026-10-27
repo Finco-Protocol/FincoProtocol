@@ -3,7 +3,7 @@
         seeded working copy at any capacity (template_source-driven base)."""
         from app.input_adapter import build_projectinputs_from_snapshot
         from finco_core.opex.projections import opex_item_amount_at_year
-    
+
         for capacity in (5.0, 8.0):
             anchor = (960.0 + ev.electricity_expense_keur(5.0, 1)) * capacity / 5.0
             snap = {
@@ -20,17 +20,17 @@
 &gt;           out = build_projectinputs_from_snapshot(snap)
                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests/test_ev_charging_catalogue_seed.py:124: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_ev_charging_catalogue_seed.py:124:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'capacity_mw': '5.0', 'cod_date': '2031-01-01', 'construction_months': '12', 'country_market': 'XE', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -47,14 +47,14 @@ app/input_adapter.py:54: SnapshotInputError</failure></testcase><testcase classn
         reference 6 % is NOT applied and the live total correctly equals the anchor."""
         snapshot, anchor, _pi = _wind_reference_snapshot()
         snapshot["opex_insurance_y1_keur"] = "999.0"  # B.06 override, engine-effective
-    
+
         from app import contingency_authority as _ca
         monkeypatch.setattr(_ca, "resolve_pct", lambda meta, ov, kind: (6.0, "project") if kind == "opex" else (None, "reference_amount"))
 &gt;       ctx = _build_ctx(snapshot)
               ^^^^^^^^^^^^^^^^^^^^
 
-tests/test_f06_opex_display_authority.py:114: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_f06_opex_display_authority.py:114:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_f06_opex_display_authority.py:90: in _build_ctx
     return _build_opex_vm_ctx(_fake_project_record(), pis)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -75,13 +75,13 @@ app/workbook/input_set.py:593: in to_projectinputs
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'active_project': 'generic_wind_reference-baseline', 'capacity_factor': '34.25', 'capacity_mw': '48.0', 'cod_date': '2031-09-01', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -92,12 +92,12 @@ E           app.input_adapter.SnapshotInputError: INTEREST_RATE_UNIT_UNVERIFIED:
 app/input_adapter.py:54: SnapshotInputError</failure></testcase><testcase classname="tests.test_f06_opex_display_authority" name="test_summary_field_displays_live_vm_total_not_stale_anchor" time="0.001"><failure message="app.input_adapter.SnapshotInputError: INTEREST_RATE_UNIT_UNVERIFIED: explicit human_percent_v1 provenance required">def test_summary_field_displays_live_vm_total_not_stale_anchor():
         snapshot, _anchor, _pi = _wind_reference_snapshot()
         snapshot["opex_insurance_y1_keur"] = "999.0"
-    
+
 &gt;       ctx = _build_ctx(snapshot)
               ^^^^^^^^^^^^^^^^^^^^
 
-tests/test_f06_opex_display_authority.py:130: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_f06_opex_display_authority.py:130:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_f06_opex_display_authority.py:90: in _build_ctx
     return _build_opex_vm_ctx(_fake_project_record(), pis)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -118,13 +118,13 @@ app/workbook/input_set.py:593: in to_projectinputs
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'active_project': 'generic_wind_reference-baseline', 'capacity_factor': '34.25', 'capacity_mw': '48.0', 'cod_date': '2031-09-01', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -136,12 +136,12 @@ app/input_adapter.py:54: SnapshotInputError</failure></testcase><testcase classn
         """KPI strip, grand-total row and the summary field must show one number."""
         snapshot, _anchor, _pi = _wind_reference_snapshot()
         snapshot["opex_insurance_y1_keur"] = "999.0"
-    
+
 &gt;       ctx = _build_ctx(snapshot)
               ^^^^^^^^^^^^^^^^^^^^
 
-tests/test_f06_opex_display_authority.py:143: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_f06_opex_display_authority.py:143:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_f06_opex_display_authority.py:90: in _build_ctx
     return _build_opex_vm_ctx(_fake_project_record(), pis)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -162,13 +162,13 @@ app/workbook/input_set.py:593: in to_projectinputs
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'active_project': 'generic_wind_reference-baseline', 'capacity_factor': '34.25', 'capacity_mw': '48.0', 'cod_date': '2031-09-01', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -185,8 +185,8 @@ app/input_adapter.py:54: SnapshotInputError</failure></testcase><testcase classn
 &gt;       ctx = _build_ctx(snapshot)
               ^^^^^^^^^^^^^^^^^^^^
 
-tests/test_f06_opex_display_authority.py:155: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_f06_opex_display_authority.py:155:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_f06_opex_display_authority.py:90: in _build_ctx
     return _build_opex_vm_ctx(_fake_project_record(), pis)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -207,13 +207,13 @@ app/workbook/input_set.py:593: in to_projectinputs
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'active_project': 'generic_wind_reference-baseline', 'capacity_factor': '34.25', 'capacity_mw': '48.0', 'cod_date': '2031-09-01', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -226,8 +226,8 @@ app/input_adapter.py:54: SnapshotInputError</failure></testcase><testcase classn
 &gt;       ctx = _build_ctx(snapshot)
               ^^^^^^^^^^^^^^^^^^^^
 
-tests/test_f06_opex_display_authority.py:167: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_f06_opex_display_authority.py:167:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_f06_opex_display_authority.py:90: in _build_ctx
     return _build_opex_vm_ctx(_fake_project_record(), pis)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -248,13 +248,13 @@ app/workbook/input_set.py:593: in to_projectinputs
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'active_project': 'generic_wind_reference-baseline', 'capacity_factor': '34.25', 'capacity_mw': '48.0', 'cod_date': '2031-09-01', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -268,11 +268,11 @@ app/input_adapter.py:54: SnapshotInputError</failure></testcase><testcase classn
         snapshot, anchor, _pi = _wind_reference_snapshot()
         from app.workbook.input_set import ProjectInputSet
         pis = ProjectInputSet.from_snapshot(snapshot)
-    
+
 &gt;       _build_ctx(snapshot)
 
-tests/test_f06_opex_display_authority.py:185: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_f06_opex_display_authority.py:185:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_f06_opex_display_authority.py:90: in _build_ctx
     return _build_opex_vm_ctx(_fake_project_record(), pis)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -293,13 +293,13 @@ app/workbook/input_set.py:593: in to_projectinputs
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'active_project': 'generic_wind_reference-baseline', 'capacity_factor': '34.25', 'capacity_mw': '48.0', 'cod_date': '2031-09-01', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -312,22 +312,22 @@ app/input_adapter.py:54: SnapshotInputError</failure></testcase><testcase classn
         still carry the per-line override (the display fix must not touch it)."""
         snapshot, _anchor, _pi = _wind_reference_snapshot()
         snapshot["opex_insurance_y1_keur"] = "999.0"
-    
+
         from app.input_adapter import build_projectinputs_from_snapshot
 &gt;       effective = build_projectinputs_from_snapshot(dict(snapshot))
                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests/test_f06_opex_display_authority.py:199: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_f06_opex_display_authority.py:199:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'active_project': 'generic_wind_reference-baseline', 'capacity_factor': '34.25', 'capacity_mw': '48.0', 'cod_date': '2031-09-01', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -340,27 +340,27 @@ app/input_adapter.py:54: SnapshotInputError</failure></testcase><testcase classn
         boundary, into the engine) but never into the persisted anchor — the
         second divergence class this finding covers."""
         from datetime import datetime, timezone
-    
+
         from app.persistence.opex_sub_lines import OpexSubLine
         from app.ui.opex_view_model import build_opex_view_model
-    
+
         snapshot, anchor, _pi = _wind_reference_snapshot()
         from app.input_adapter import build_projectinputs_from_snapshot
         from app.ui.project_context import build_project_context_for_record
 &gt;       effective = build_projectinputs_from_snapshot(dict(snapshot))
                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests/test_f06_opex_display_authority.py:219: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_f06_opex_display_authority.py:219:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'active_project': 'generic_wind_reference-baseline', 'capacity_factor': '34.25', 'capacity_mw': '48.0', 'cod_date': '2031-09-01', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -374,8 +374,8 @@ app/input_adapter.py:54: SnapshotInputError</failure></testcase><testcase classn
 &gt;       ctx = _build_ctx(_wind_reference_snapshot()[0])
               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests/test_f06_opex_display_authority.py:261: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_f06_opex_display_authority.py:261:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_f06_opex_display_authority.py:90: in _build_ctx
     return _build_opex_vm_ctx(_fake_project_record(), pis)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -396,13 +396,13 @@ app/workbook/input_set.py:593: in to_projectinputs
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1348: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'active_project': 'generic_wind_reference-baseline', 'capacity_factor': '34.25', 'capacity_mw': '48.0', 'cod_date': '2031-09-01', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """

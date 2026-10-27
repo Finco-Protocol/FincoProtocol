@@ -48,3 +48,5 @@ No diff to `financial_engine/`, `finco_core/`, React components/bundles, solvers
 3. Resolve the legacy producer's exact-path scope before treating the correction as covering every application creation path.
 4. Resume the single governed PR workflow when directed, run exact-head hosted CI and approved-toolchain native identity, and obtain independent financial/security review.
 5. Treat SHL timing as a separate governed design mission and sponsor-return display changes as Overnight B work. This branch changes neither economics nor SHL formulas.
+
+Committed XML evidence copies normalize trailing whitespace only; raw execution artifacts remain in the delivered evidence package. Test outcomes and numeric payloads are unchanged.

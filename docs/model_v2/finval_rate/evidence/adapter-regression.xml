@@ -2,20 +2,20 @@
 &gt;       pi_94, elec_94 = _resolve()
                          ^^^^^^^^^^
 
-tests/test_ev_charging_driver_authority.py:190: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_ev_charging_driver_authority.py:190:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_ev_charging_driver_authority.py:70: in _resolve
     out = build_projectinputs_from_snapshot(snapshot)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1336: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'capacity_mw': '5', 'cod_date': '2031-01-01', 'construction_months': '12', 'country_market': 'XE', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -27,20 +27,20 @@ app/input_adapter.py:41: SnapshotInputError</failure></testcase><testcase classn
 &gt;       _, elec_12 = _resolve()
                      ^^^^^^^^^^
 
-tests/test_ev_charging_driver_authority.py:209: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_ev_charging_driver_authority.py:209:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_ev_charging_driver_authority.py:70: in _resolve
     out = build_projectinputs_from_snapshot(snapshot)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1336: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'capacity_mw': '5', 'cod_date': '2031-01-01', 'construction_months': '12', 'country_market': 'XE', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -52,20 +52,20 @@ app/input_adapter.py:41: SnapshotInputError</failure></testcase><testcase classn
 &gt;       _, elec_2 = _resolve()
                     ^^^^^^^^^^
 
-tests/test_ev_charging_driver_authority.py:218: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_ev_charging_driver_authority.py:218:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_ev_charging_driver_authority.py:70: in _resolve
     out = build_projectinputs_from_snapshot(snapshot)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1336: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'capacity_mw': '5', 'cod_date': '2031-01-01', 'construction_months': '12', 'country_market': 'XE', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -77,20 +77,20 @@ app/input_adapter.py:41: SnapshotInputError</failure></testcase><testcase classn
 &gt;       pi, elec = _resolve()
                    ^^^^^^^^^^
 
-tests/test_ev_charging_driver_authority.py:235: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_ev_charging_driver_authority.py:235:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_ev_charging_driver_authority.py:70: in _resolve
     out = build_projectinputs_from_snapshot(snapshot)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1336: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'capacity_mw': '5', 'cod_date': '2031-01-01', 'construction_months': '12', 'country_market': 'XE', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
@@ -103,20 +103,20 @@ app/input_adapter.py:41: SnapshotInputError</failure></testcase><testcase classn
 &gt;       pi, _ = _resolve({"tariff_eur_mwh": "999", "ev_charging_price_eur_kwh": "0.45"})
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests/test_ev_charging_driver_authority.py:251: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_ev_charging_driver_authority.py:251:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests/test_ev_charging_driver_authority.py:70: in _resolve
     out = build_projectinputs_from_snapshot(snapshot)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/input_adapter.py:1336: in build_projectinputs_from_snapshot
     assert_rate_unit(snapshot)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 snapshot = {'capacity_mw': '5', 'cod_date': '2031-01-01', 'construction_months': '12', 'country_market': 'XE', ...}
 
     def assert_rate_unit(snapshot: dict) -&gt; None:
         """No implicit reinterpretation of an unversioned or forged saved rate.
-    
+
         Historical records need an owner-reviewed provenance decision; this does
         not migrate them, rewrite historical Runs, or substitute factory pricing.
         """
