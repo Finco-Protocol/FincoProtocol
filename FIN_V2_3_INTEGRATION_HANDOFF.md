@@ -125,3 +125,8 @@ kernel change is included.
 
 Independent financial review remains pending. No self-approval, merge, deployment,
 historical migration or production/release activation was performed.
+
+
+## Correction A: merged #390 dependency (27 October 2026)
+
+The proposed integration tree inherits accepted main `1f25903e7ed0bb8142f4e9f40d7eade58a746bf5` as a normal merge parent, with exact #390 Senior debt evidence assembled before FIN-V2-3 financial core valuation. The reporting union preserves original lender evidence and sponsor/valuation sections. Seven nonoverlapping #390 files are pinned by exact Git blob in the FIN-V2-3 scope guard; every unexpected path still refuses. All historical counts above are evidence from the PRE-INTEGRATION source and do not attest this merged tree. Combined numerical/browser/native/CI acceptance and independent financial review remain PENDING. Do not merge/deploy or self-approve.

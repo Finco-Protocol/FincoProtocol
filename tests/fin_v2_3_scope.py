@@ -12,6 +12,18 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = '128bf0c2b79af56985326543132cc806ff7f001c'
 MANIFEST = 'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json'
 PROTECTED = ('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'main_web.py')
+# Accepted, already-merged #390 dependency; exact SHA-1 Git blob checks, not a scope exemption.
+INTEGRATION_MAIN = '1f25903e7ed0bb8142f4e9f40d7eade58a746bf5'
+INTEGRATED_DEPENDENCIES = {
+    'app/run_integrity/senior_debt_evidence.py': 'f9e0caefd74d86c368ae2b74cef2cfc035b937b1',
+    'docs/financial_validation/finv2_c1_fix_1a/README.md': 'f420d28ec3c136324433ee262d018ed6f4d48aef',
+    'docs/financial_validation/finv2_c1_fix_1a/dump_payload_digest.py': '23b45371d883109cfa80503cff9f87873d33cd58',
+    'docs/financial_validation/finv2_c1_fix_1a/payload_digest_branch.json': 'ebd1bdb25b801fb3c7f1e99dea96e3b7905c0e26',
+    'docs/financial_validation/finv2_c1_fix_1a/payload_digest_main_128bf0c.json': 'ebd1bdb25b801fb3c7f1e99dea96e3b7905c0e26',
+    'docs/financial_validation/finv2_c1_fix_1a/reference_evidence_four_verticals.json': '5963517f28a1e0ae0a5b8b08124b0572268a9638',
+    'tests/test_senior_debt_evidence_c1_fix_1a.py': '8fedb33e1daef62b5488b92a6539b0a19fd37866'
+}
+
 OWNED_PATHS = frozenset(('.github/workflows/fin_v2_3_oracle.yml', 'app/api/project_runner.py', 'app/export/financial_core_reporting.py', 'app/export/institutional_reporting_v3.py', 'app/export/run_evidence.py', 'app/input_adapter.py', 'app/services/clean_presentation_adapter.py', 'app/services/financial_core_evidence.py', 'app/services/financial_goal_seek.py', 'app/services/goal_seek.py', 'app/services/ic_report_service.py', 'app/services/sensitivity_execution.py', 'app/v2/router.py', 'app/workbook/financial_core_config.py', 'app/workbook/registry.py', 'app/workbook/update_service.py', 'financial_engine/adapters/project_inputs.py', 'financial_engine/shl/timing_contract.py', 'financial_engine/valuation/loan_life.py', 'financial_engine/valuation/model.py', 'financial_engine/valuation/sponsor.py', 'finco_core/inputs/_models.py', 'finco_core/inputs/serialization.py', 'finco_core/inputs/shl_timing.py', 'finco_core/inputs/valuation.py', 'tests/fin_v2_3_oracle.py', 'tests/fin_v2_3_scope.py', 'tests/fin_v2_3_support.py', 'tests/finance_integrity_governance.py', 'tests/finval_f01_scope.py', 'tests/fixtures/fin_v2_3_baseline.json', 'tests/model_mutation_security_successor.py', 'tests/model_react_mvp_acceptance.py', 'tests/model_react_overnight_b_acceptance.py', 'tests/quarterly_candidate_recognition.py', 'tests/test_ci_acceptance.py', 'tests/test_fin_v2_3_contracts.py', 'tests/test_fin_v2_3_goal_seek.py', 'tests/test_fin_v2_3_lifecycle.py', 'tests/test_fin_v2_3_numerical.py', 'tests/test_fin_v2_3_scope.py', 'tests/test_finval_rate_successor.py', 'tests/test_model_mutation_security_successor.py', 'tests/test_model_react_overnight_b_governance.py', 'tests/test_model_workspace_productivity_v1.py', 'tests/test_tax_wf10_candidate.py', 'tests/test_v11_stage3_successor.py', 'tests/v11_stage3_successor.py', 'tools/fin_v2_3_oracle_workbook.py'))
 
 
@@ -41,9 +53,11 @@ def valid(repo=None,ref=None):
     if set(pins) != OWNED_PATHS:return False
     try:
         _git(root,'merge-base','--is-ancestor',BASE,ref or 'HEAD')
+        _git(root,'merge-base','--is-ancestor',INTEGRATION_MAIN,ref or 'HEAD')
+        if any(_blob(_read(root,p,ref))!=expected for p,expected in INTEGRATED_DEPENDENCIES.items()):return False
         if any(_blob(_read(root,p,ref))!=expected for p,expected in pins.items()):return False
         changed=_git(root,'diff','--name-only',BASE,*([ref] if ref else []),'--').decode().splitlines()
-        if any(p not in pins and not p.startswith('docs/financial_validation/fin_v2_3/')
+        if any(p not in pins and p not in INTEGRATED_DEPENDENCIES and not p.startswith('docs/financial_validation/fin_v2_3/')
                and p != 'FIN_V2_3_INTEGRATION_HANDOFF.md' for p in changed):return False
         # Detect an untracked protected source as well as modifications/deletions.
         if ref is None:

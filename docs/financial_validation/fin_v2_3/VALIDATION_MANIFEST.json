@@ -27,7 +27,7 @@
     "NATIVE_IDENTITY.xml": "77acd70ec0d4ff12c330c0afd3af31242dda90af179226864e6c1a4da4190bb9",
     "ORACLE_COMMITTED_INPUTS.json.gz": "5d902485a474d764e30e68e5cee039db28538182b55952614fa5d0c125333f4d",
     "ORACLE_RECONCILIATION.json": "7372d27d35e8fd601787c29bea12a9b6aca95515eddf9cfc01051029fc543970",
-    "SOURCE_SUCCESSOR.json": "c5ca35025ccc259227e26e50b12cd90ea6face4acc5a2e13b9905e337e460238",
+    "SOURCE_SUCCESSOR.json": null,
     "WORKER_GOAL_REGRESSION.xml": "5f5ca4944544b0ef6ba745d3add0afaf5810902f8dcccd26cc6bb5a9d2a62523",
     "CI_SUCCESSOR_GOVERNANCE.xml": "ac3af36e8e554f635075030779eeca9b0726b747eafc857bcf8f236c7312f307",
     "TAX_CANDIDATE_REGRESSION.xml": "84b396f27c7d7bad975357c6d180fc9d1c6391bfc3ae1dcf675be9f676adced1",
@@ -69,5 +69,12 @@
     "tax_passed": 97,
     "passed": 204,
     "skipped": 0
+  },
+  "integration_correction": {
+    "status": "PENDING_EXACT_HEAD_REGRESSION",
+    "accepted_main_sha": "1f25903e7ed0bb8142f4e9f40d7eade58a746bf5",
+    "source_manifest_git_blob": "930f931146b121b9d958720dead7d0a5571e7cbe",
+    "prior_test_counts": "HISTORICAL_FROM_PRE_INTEGRATION_HEAD_ONLY",
+    "reason": "No recalculated source-manifest SHA256 or combined numerical and browser acceptance until new exact-head verification"
   }
 }

@@ -213,6 +213,60 @@ def _debt_summary(periods: Sequence[dict]) -> dict:
             "n": len(periods)}
 
 
+def _write_senior_debt_evidence(cur, ledger: _Ledger, rs: dict) -> None:
+    """FIN-V2-C1-FIX-1a: maturity vs payoff, binding constraint and DSCR bases, exactly as recorded with the Run.
+
+    Runs committed before this evidence existed show NOT_RECORDED; nothing is rebuilt or inferred.
+    """
+    from app.run_integrity.senior_debt_evidence import STATUS_RECORDED, project_senior_debt_evidence
+    S = SHEET_LENDER
+    e = project_senior_debt_evidence(rs)
+    cur.section("1b. Senior debt maturity, payoff and sizing-limit evidence (read-only; recorded with the Run)")
+    if e.get("status") != STATUS_RECORDED:
+        cur.note(f"{e.get('status')}: {e.get('reason')}", warn=True)
+    rp, sz = e.get("repayment") or {}, e.get("sizing") or {}
+    dscr = e.get("dscr") or {}
+    ds, dr = dscr.get("sizing") or {}, dscr.get("reported") or {}
+    src = "financing_evidence.senior_debt_evidence"
+    rows = _rows(ledger, S, [
+        ("Contractual repayment start (period index / date)",
+         f"{rp['contractual_repayment_start_period_index']} / {rp['contractual_repayment_start_date']}" if rp else None,
+         src + ".repayment", "Model period index and period start", None),
+        ("Contractual maturity (period index / date)",
+         f"{rp['contractual_maturity_period_index']} / {rp['contractual_maturity_date']}" if rp else None,
+         src + ".repayment", "Last period in which principal can be repaid", None),
+        ("Actual loan extinguishment (period index / date)",
+         (f"{rp['actual_payoff_period_index']} / {rp['actual_payoff_date']}" if rp.get("actual_payoff_period_index") is not None
+          else rp.get("payoff_status")) if rp else None,
+         src + ".repayment", "Period in which the Senior balance reaches zero", None),
+        ("Maturity minus extinguishment (periods / days)",
+         f"{rp['periods_maturity_minus_payoff']} / {rp['days_maturity_minus_payoff']}" if rp.get("periods_maturity_minus_payoff") is not None else None,
+         src + ".repayment", rp.get("payoff_status") or "", None),
+        ("Binding sizing constraint (engine)", sz.get("binding_constraint"), src + ".sizing",
+         f"Nature: {sz.get('limiting_nature') or NOT_AVAILABLE}; early payoff: {sz.get('payoff_explanation') or NOT_AVAILABLE}", None),
+        ("DSCR debt capacity (funded-pass diagnostic)", number(sz.get("dscr_debt_capacity_keur")), src + ".sizing",
+         "Capacity if only the DSCR budget limited the loan; the loan is the minimum of this and the gearing capacity", KEUR_FULL_FORMAT),
+        ("DSCR debt capacity (standalone capacity pass)", number(sz.get("dscr_debt_capacity_standalone_pass_keur")), src + ".sizing",
+         "Separate DSCR-only pass, as reported in section 1; may differ slightly from the funded-pass value", KEUR_FULL_FORMAT),
+        ("Gearing debt capacity (sizing evidence)", number(sz.get("gearing_debt_capacity_keur")), src + ".sizing",
+         "Capacity if only the gearing cap limited the loan", KEUR_FULL_FORMAT),
+        ("Limiting row(s) for DSCR capacity (period index)",
+         ", ".join(str(r["period_index"]) for r in sz.get("limiting_rows") or []) or (None if not sz else "none (gearing sets the amount)"),
+         src + ".sizing.limiting_rows",
+         "Rows where the DSCR budget covers interest only (no amortisation headroom)", None),
+        ("Sizing DSCR target / basis", ds.get("target_dscr"), src + ".dscr.sizing",
+         f"{ds.get('basis') or NOT_AVAILABLE}; requested yield scenario {ds.get('production_yield_scenario_requested') or NOT_AVAILABLE}", None),
+        ("Minimum realised sizing-case DSCR", number(ds.get("min_realised_dscr")), src + ".dscr.sizing", ds.get("definition") or "", None),
+        ("Reported DSCR basis", dr.get("basis"), src + ".dscr.reported", dr.get("production_basis") or "", None),
+        ("Minimum reported DSCR", number(dr.get("min_dscr")), src + ".dscr.reported", dr.get("definition") or "", None),
+        ("Sizing case differs from base case", dscr.get("bank_case_distinct_from_base_case"), src + ".dscr",
+         "False = the requested sizing case produced the same CFADS as the base case for this Run", None),
+    ])
+    cur.kv(rows)
+    cur.note("Loan life for any future LLCR is an Owner-defined convention: both contractual maturity and actual "
+             "extinguishment are recorded above. No LLCR is computed here.")
+
+
 def _write_lender(wb: Workbook, ev: RunEvidence, ledger: _Ledger) -> None:
     sh = wb.create_sheet(SHEET_LENDER)
     cur = V2._Cursor(sh, ev, "Lender Overview -- senior debt, coverage and reserves",
@@ -238,6 +292,7 @@ def _write_lender(wb: Workbook, ev: RunEvidence, ledger: _Ledger) -> None:
         ("Terminal balloon permitted", sd_int.get("permit_terminal_balloon"), "integrity senior_debt",
          "Engine policy flag as persisted", None),
     ]))
+    _write_senior_debt_evidence(cur, ledger, rs)
     periods = ev.schedule_periods("debt_schedule")
     d = _debt_summary(periods)
     sched_note = (f"Sum over {d['principal'][1]} of {d['n']} persisted periods; each period value is rounded to 2 dp"

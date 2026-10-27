@@ -35,3 +35,8 @@ Until FIN-V2-2 is present, actual/contractual extended coverage and rolling LLCR
 return `DEBT_EVIDENCE_NOT_AVAILABLE`; existing C2 first-opening LLCR and PLCR
 remain separately available under a configured policy. The isolated tests use
 canonical schedule fixtures; the spreadsheet uses exact-source test composition.
+
+
+## Correction A integration reconciliation (27 October 2026)
+
+Accepted FIN-V2-2 / #390 main `1f25903e7ed0bb8142f4e9f40d7eade58a746bf5` is a merge parent. Both overlapping paths have explicit combined semantics: `project_runner.py` records `senior_debt_evidence` FIRST, then calls `attach_financial_core` (which consumes the recorded loan-life candidates); `institutional_reporting_v3.py` writes both the #390 lender evidence and FIN-V2-3 valuation. All seven other #390 additions are verified exact-blobs, with a one-byte/missing-path negative test and rejection of unreviewed extra sources. The original F01 ancestor and historical FIN-V2-3 parent blob inventory are unchanged; manifest pins for the four intentionally modified source/test files are updated. #388/#392 are not integrated. Hosted verification is PENDING.

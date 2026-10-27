@@ -46,3 +46,32 @@ def test_native_and_historical_financial_authorities_are_not_rewritten():
     for path in paths:
         before=subprocess.check_output(['git','show',F.BASE+':'+path],cwd=F.ROOT)
         assert (F.ROOT/path).read_bytes()==before
+
+
+@pytest.mark.parametrize('path', sorted(F.INTEGRATED_DEPENDENCIES))
+def test_integrated_pr390_dependency_rejects_one_byte_and_missing_path(path, monkeypatch):
+    assert F.valid()
+    original = F._read
+    def mutated(root, p, ref):
+        data = original(root, p, ref)
+        return data + b'\n' if p == path else data
+    monkeypatch.setattr(F, '_read', mutated)
+    assert not F.valid()
+    def missing(root, p, ref):
+        if p == path:
+            raise FileNotFoundError(path)
+        return original(root, p, ref)
+    monkeypatch.setattr(F, '_read', missing)
+    assert not F.valid()
+
+
+def test_extra_path_outside_integrated_exact_cohort_is_rejected(monkeypatch):
+    assert F.valid()
+    original = F._git
+    def added_path(root, *args):
+        data = original(root, *args)
+        if args[:3] == ('diff', '--name-only', F.BASE):
+            return data + b'financial_engine/unreviewed_new_authority.py\n'
+        return data
+    monkeypatch.setattr(F, '_git', added_path)
+    assert not F.valid()
