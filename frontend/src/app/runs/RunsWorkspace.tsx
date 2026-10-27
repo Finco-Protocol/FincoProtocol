@@ -4,6 +4,7 @@ import { fetchInsightsHistory } from "../insights";
 import type { HistoryPayload } from "../insights";
 import { CompareWorkspace } from "./CompareWorkspace";
 import { RunHistoryList } from "./RunHistoryList";
+import { friendlyMessage } from "../productLanguage";
 
 /** Analysis > Run history & compare (RC-UX B2 / B3).  Read-only over the committed Run History: list, filter, sort, select up to three
  *  Runs and compare them.  The selection is local view state; it never selects a scenario, saves or runs. */
@@ -22,7 +23,7 @@ export function RunsWorkspace({ project, workbookHash }: { project: string; work
         setHistory(result);
         const known = new Set(result.history.map((r) => r.identity.history_id));
         setSelected((current) => current.filter((id) => known.has(id)));
-      } else setError(result.message || result.code);
+      } else setError(friendlyMessage(result.code, result.message));
     }).catch(() => { /* effect cancelled */ });
     return () => controller.abort();
   }, [project, workbookHash]);

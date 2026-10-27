@@ -18,8 +18,8 @@ const PLAIN_BY_FIELD: Record<string, string> = {
   "debt.senior.gearing_pct": "Senior debt as a share of the funding need.",
   "debt.senior.target_dscr": "Target debt service cover, as a multiple. If the detailed financing schedule sets cover period by period, this control is locked and the schedule controls it.",
   "debt.senior.interest_rate_pct": "All-in senior interest rate. If the detailed financing schedule sets the rate, this control is locked: the interest rate is controlled by the detailed financing schedule.",
-  "debt.bankability.configuration": "Detailed bankability settings. They have their own editor in the legacy workbook and are not edited as free text here.",
-  "debt.financing.instruments": "Senior facility structure, including a second senior facility. It has its own editor in the legacy workbook; the Run uses only the selected scenario's scope.",
+  "debt.bankability.configuration": "Detailed bankability settings. Edit them in the Bankability tab; they are not edited as free text here.",
+  "debt.financing.instruments": "Senior facility structure, including a second senior facility. Editing it is not available yet; the Run uses only the selected scenario's scope.",
 };
 
 export function plainFieldHelp(fieldId: string, helpText: string | null | undefined): FieldHelp {
@@ -37,4 +37,4 @@ export const BINDING_PLAIN: Record<string, string> = {
   partial: "Shown for reference. It is not a direct input to the calculation, so it cannot be edited here.",
 };
 
-export const STRUCTURED_PLAIN = "Detailed configuration with its own editor in the legacy workbook. It is not edited as free text here.";
+export const STRUCTURED_PLAIN = "Detailed configuration. It is not edited as free text here.";

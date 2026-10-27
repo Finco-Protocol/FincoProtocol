@@ -4,6 +4,7 @@ import { copyTsv, downloadCsv } from "../analysis/shared";
 import { useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock, WorkflowDialog } from "../workflow/workflowShared";
 import { encodeSpec, fetchCapexPreview, fetchCapexProfiles, saveCapexProfile } from "./api";
 import type { CapexPlan, CapexProfiles, Draft, DraftRow } from "./types";
+import { friendlyMessage } from "../productLanguage";
 
 const SHAPE_LABEL: Record<string, string> = {
   UNIFORM: "Uniform", FRONT_LOADED: "Front-loaded", BACK_LOADED: "Back-loaded", EXPLICIT: "Explicit % per month", MILESTONE: "Milestone (one month)",
@@ -45,7 +46,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
     const mine = ++load.current;
     const result = await fetchCapexProfiles(project);
     if (mine !== load.current) return null;
-    if (!result.ok) { setLoadError(result.message || result.code); return null; }
+    if (!result.ok) { setLoadError(friendlyMessage(result.code, result.message)); return null; }
     setLoadError(""); setData(result);
     if (!keepDraft) { setDraft(draftFromSaved(result)); setHistory([]); setPlan(null); }
     return result;
@@ -103,8 +104,8 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
       && expected.every((k) => fresh.saved.rows[k]?.shape === draft[k].shape);
     if (verified) {
       setStatus({ tone: "ok", text: action === "reset"
-        ? "Saved profile removed and verified in the fresh projection. The Last Run is now STALE; the model was not run."
-        : "Profile saved and verified in the fresh projection. The Last Run is now STALE: run the model to apply it. The model was not run." });
+        ? "Saved profile removed and verified in the fresh projection. The the results are now outdated; the model was not run."
+        : "Profile saved and verified in the fresh projection. The the results are now outdated: run the model to apply it. The model was not run." });
       onSaved();
     } else {
       setLocked(true);
@@ -125,7 +126,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
       <h2>CAPEX spending profile <span className="rcm-badge">PREVIEW IS NOT A RESULT</span></h2>
       <p className="rx-note" data-capex-binding={binding.saved ? (binding.bound ? "bound" : "unbound") : "none"}>
         {!binding.saved && "No monthly profile is saved: the Run uses the existing per-category construction timing."}
-        {binding.saved && binding.bound && `A profile for ${binding.items} item${binding.items === 1 ? "" : "s"} is saved in the Working Copy. The next Run places those items on the monthly timeline; funding, IDC and Total Uses are then recomputed by the canonical engine.`}
+        {binding.saved && binding.bound && `A profile for ${binding.items} item${binding.items === 1 ? "" : "s"} is saved in the project. The next Run places those items on the monthly timeline; funding, IDC and Total Uses are then recomputed by the canonical engine.`}
         {binding.saved && !binding.bound && `A saved profile exists but cannot be applied (${binding.code}). The Run will refuse to execute until it is corrected or removed.`}
       </p>
       {data.saved.error && <p className="rx-status rx-status-error" role="alert">The stored profile document is invalid: {data.saved.error}</p>}
@@ -180,7 +181,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
                           onChange={(e) => change(item.item_key, { milestone: e.target.value.replace(/[^0-9]/g, "") })} />
                       </label>
                     )}
-                    {row.shape !== "EXPLICIT" && row.shape !== "MILESTONE" && <span className="rx-note">{row.shape ? "Computed by the canonical contract." : "—"}</span>}
+                    {row.shape !== "EXPLICIT" && row.shape !== "MILESTONE" && <span className="rx-note">{row.shape ? "Calculated from the chosen shape." : "—"}</span>}
                   </td>
                 </tr>
               );
@@ -199,7 +200,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
           {busy === "preview" ? "Computing…" : "Preview monthly allocation (nothing saved)"}
         </button>
         <button type="button" className="rx-button" data-capex-save="true" disabled={readOnly || busy !== "" || dirtyCount === 0} onClick={() => void save("save")}>
-          Save profile to the Working Copy{dirtyCount ? ` (${dirtyCount} item${dirtyCount === 1 ? "" : "s"} changed)` : ""}
+          Save profile to the project{dirtyCount ? ` (${dirtyCount} item${dirtyCount === 1 ? "" : "s"} changed)` : ""}
         </button>
         {(binding.saved || data.saved.error) && (
           <button type="button" className="rx-button rx-button-secondary" data-capex-remove="true" disabled={readOnly || busy !== ""} onClick={() => setDialog("reset")}>Remove saved profile</button>
@@ -270,7 +271,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
       </div>
 
       {dialog === "reset" && (
-        <WorkflowDialog title="Remove the saved profile?" description="The monthly profile is removed from the Working Copy. The Last Run becomes STALE; the model is not run, and the next Run returns to the default per-category timing."
+        <WorkflowDialog title="Remove the saved profile?" description="The monthly profile is removed from the project. The the results become outdated; the model is not run, and the next Run returns to the default per-category timing."
           confirmLabel="Remove profile" danger busy={busy !== ""} onConfirm={() => void save("reset")} onCancel={() => setDialog(null)} />
       )}
     </section>

@@ -77,7 +77,7 @@ export function CostLineManager({ project, data, onChanged }: Props) {
       onChanged();
     } else {
       setLocked(true);
-      setStatus({ tone: "conflict", text: "The add outcome is UNKNOWN: the canonical redirect arrived but the fresh projection could not confirm the new line. Reload to reconcile before adding again - an immediate retry could create a duplicate." });
+      setStatus({ tone: "conflict", text: "The add outcome is UNKNOWN: the server answered but the saved project could not confirm the new line. Reload to reconcile before adding again - an immediate retry could create a duplicate." });
     }
   }
 

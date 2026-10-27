@@ -177,9 +177,9 @@ function StatementTable({
       }
     }}
   >
-    <span id="fm-sw-grid-help" className="fm-sr-only">Only the active statement value is in the page Tab order. Use the arrow keys to move between values; press Enter to {dataOrigin === "canonical-run" ? "show the canonical source" : "open the source navigation reference"}. Tab leaves the table.</span>
+    <span id="fm-sw-grid-help" className="fm-sr-only">Only the active statement value is in the page Tab order. Use the arrow keys to move between values; press Enter to {dataOrigin === "canonical-run" ? "show the source" : "open the source navigation reference"}. Tab leaves the table.</span>
     <table className="fm-sw-table">
-      <caption className="fm-sr-only">{sheet.title}, {dataOrigin === "synthetic-demo" ? "fixed synthetic example rows" : dataOrigin === "canonical-run" ? "persisted Run rows" : dataOrigin === "caller-provided" ? "supplied rows" : "unavailable rows"}, {view === "annual" ? "annual" : "model periods"}.{dataOrigin === "canonical-run" ? ` Values in ${unit} unless a row states another unit.` : " Illustrative financial statement with selected sample rows."}</caption>
+      <caption className="fm-sr-only">{sheet.title}, {dataOrigin === "synthetic-demo" ? "fixed synthetic example rows" : dataOrigin === "canonical-run" ? "saved Run rows" : dataOrigin === "caller-provided" ? "supplied rows" : "unavailable rows"}, {view === "annual" ? "annual" : "model periods"}.{dataOrigin === "canonical-run" ? ` Values in ${unit} unless a row states another unit.` : " Illustrative financial statement with selected sample rows."}</caption>
       <thead>
         {view === "annual" ? <tr><th scope="col">Statement line · {dataOrigin === "canonical-run" ? unit : sheet.unit}</th><th scope="colgroup" colSpan={periods.length}>Operating years</th></tr> :
           <tr><th scope="col">Statement line · {dataOrigin === "canonical-run" ? unit : sheet.unit}</th>{visiblePeriodBands.map((band, index) => {
@@ -255,9 +255,9 @@ function StatementTable({
               <th scope="row" className="fm-sw-trace-cell" colSpan={periods.length + 1}>
                 <div className="fm-sw-trace">
                   <div className="fm-sw-trace-copy">
-                    <strong>CANONICAL SOURCE · {item.label} · {periods[tracePeriod]}</strong>
-                    <span className="fm-sw-trace-code">{displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision, numericValues?.[periodIndexes[tracePeriod]])} {rowUnit} · persisted value {statementCellText(values[periodIndexes[tracePeriod]])} {canonicalUnitText(item, sheet)}</span>
-                    <span>Statement: {sheet.title} · persisted Run {runIdentityText(runId)}. Unit conversion and rounding are display-only.</span>
+                    <strong>SOURCE · {item.label} · {periods[tracePeriod]}</strong>
+                    <span className="fm-sw-trace-code">{displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision, numericValues?.[periodIndexes[tracePeriod]])} {rowUnit} · saved value {statementCellText(values[periodIndexes[tracePeriod]])} {canonicalUnitText(item, sheet)}</span>
+                    <span>Statement: {sheet.title} · saved Run {runIdentityText(runId)}. Unit conversion and rounding are display-only.</span>
                   </div>
                   <button className="fm-sw-trace-close" type="button" onClick={() => setTraceId(null)}>Close</button>
                 </div>
@@ -401,10 +401,10 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
           <div>
             <div className="fm-eyebrow" data-statement-project-code={project.id}>{project.id} · Financial statements</div>
             <h1 className="fm-sw-title">Statement workbook</h1>
-            <div className="fm-sw-subtitle" data-statement-project-name={project.name}>{project.name} <span aria-hidden="true">·</span> {project.technology} <span aria-hidden="true">·</span> {dataOrigin === "canonical-run" ? `Persisted Run · canonical unit ${sheetUnitLabel(visibleSheets[0]?.unit)}` : "Illustrative EUR model view"}</div>
+            <div className="fm-sw-subtitle" data-statement-project-name={project.name}>{project.name} <span aria-hidden="true">·</span> {project.technology} <span aria-hidden="true">·</span> {dataOrigin === "canonical-run" ? `Saved Run · unit ${sheetUnitLabel(visibleSheets[0]?.unit)}` : "Illustrative EUR model view"}</div>
             <div className="fm-sw-tags">
               {dataOrigin === "synthetic-demo" && <span className="fm-sw-tag fm-sw-tag--demo">FIXED SYNTHETIC EXAMPLE</span>}
-              {dataOrigin === "canonical-run" && <span className="fm-sw-tag" data-statement-origin="canonical-run">Persisted Run values</span>}
+              {dataOrigin === "canonical-run" && <span className="fm-sw-tag" data-statement-origin="canonical-run">Saved Run values</span>}
               {dataOrigin === "caller-provided" && <span className="fm-sw-tag">Source not provided</span>}
               {dataOrigin === "unavailable" && <span className="fm-sw-tag">Statement not available</span>}
               {dataOrigin === "canonical-run"
@@ -413,21 +413,21 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
                   <span className="fm-sw-tag">Calculations are not available here</span></>}
             </div>
           </div>
-            <div className="fm-sw-run" aria-label={dataOrigin === "canonical-run" ? "Persisted Run status" : "Illustrative results status"}
+            <div className="fm-sw-run" aria-label={dataOrigin === "canonical-run" ? "Saved Run status" : "Illustrative results status"}
               data-run-freshness={runStatus.freshness}
               data-check-status={runStatus.integrity}
               data-model-version={runStatus.engine}>
             <span>{status.label}</span><strong>{dataOrigin === "canonical-run" ? <RunIdentityLabel snapshotId={status.runId === "Not supplied" ? null : status.runId} /> : status.runId}</strong>
             <span className="fm-sw-tag">{status.freshness === "current" ? "Up to date" : status.freshness === "stale" ? "Earlier results shown" : status.freshness === "not run" ? "No results yet" : "Update status unavailable"}</span>
-            <span className="fm-sw-tag">{dataOrigin === "canonical-run" ? runStatus.integrity : /not[- ]evaluated/i.test(runStatus.integrity) ? "Review status not assessed" : "Review status supplied"}</span>
-            <span className="fm-sw-tag">{dataOrigin === "canonical-run" ? `Engine: ${status.engineVersion || "identity unavailable"}` : /unknown|not connected/i.test(runStatus.engine) ? "Calculation details not supplied" : "Calculation details supplied"}</span>
+            <span className="fm-sw-tag">{dataOrigin === "canonical-run" ? runStatus.integrity.replace(/^Integrity:\s*PASS$/i, "Model checks: passed").replace(/^Integrity\b/i, "Model checks") : /not[- ]evaluated/i.test(runStatus.integrity) ? "Review status not assessed" : "Review status supplied"}</span>
+            {dataOrigin !== "canonical-run" && <span className="fm-sw-tag">{/unknown|not connected/i.test(runStatus.engine) ? "Calculation details not supplied" : "Calculation details supplied"}</span>}
           </div>
         </header>
 
         <div className="fm-sw-warning" role="note">
-          <strong>{dataOrigin === "canonical-run" ? "Persisted Run statements." : "Display-only workbook."}</strong>{" "}
+          <strong>{dataOrigin === "canonical-run" ? "Saved Run statements." : "Display-only workbook."}</strong>{" "}
           {dataOrigin === "canonical-run"
-            ? "Every figure is the value persisted by the Run, in its canonical unit. Changing units or precision only re-expresses those values; nothing is recalculated in the browser."
+            ? "Every figure is the value saved by the Run, in its own unit. Changing units or precision only re-expresses those values; nothing is recalculated in the browser."
             : dataOrigin === "synthetic-demo"
             ? "Fixed illustrative values are not linked to inputs and do not recalculate. Calculation status is unavailable in this preview. These independent examples are not complete financial statements or reconciled across sheets."
             : dataOrigin === "caller-provided"
@@ -494,7 +494,7 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
                 const activeRow = rows.find(item => item.id === traceId);
                 const activeValue = activeRow?.[view] ?? [];
                 const address = `${String.fromCharCode(66 + tracePeriod)}${Math.max(2, rows.findIndex(item => item.id === traceId) + 2)}`;
-                const origin = dataOrigin === "synthetic-demo" ? "fixed synthetic reference" : dataOrigin === "canonical-run" ? "persisted Run value" : dataOrigin === "caller-provided" ? "caller-provided display value" : "unavailable";
+                const origin = dataOrigin === "synthetic-demo" ? "fixed synthetic reference" : dataOrigin === "canonical-run" ? "saved Run value" : dataOrigin === "caller-provided" ? "caller-provided display value" : "unavailable";
                 return `${address} · ${activeRow?.label || "Selected line"} · ${statementCellText(activeValue[tracePeriod])} ${activeRow ? canonicalUnitText(activeRow, activeSheet) : activeSheet.unit} · ${origin}`;
               })() : dataOrigin === "synthetic-demo" ? "Select a cell to open its synthetic trace" : "Select a cell to inspect its display value"}
             </span>
@@ -548,7 +548,7 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
           </div>}
           <div className="fm-sw-subbar">
             <span><strong>{displayedSheet.title}</strong> · Display units: {unit} · formatting only</span>
-            <span>{view === "annual" ? `Annual view · ${visibleAnnualPeriods[0]}–${visibleAnnualPeriods.at(-1)}` : dataOrigin === "canonical-run" ? `Model periods · ${visibleModelPeriods.length} persisted periods` : "Selected model periods · not a full time series"}</span>
+            <span>{view === "annual" ? `Annual view · ${visibleAnnualPeriods[0]}–${visibleAnnualPeriods.at(-1)}` : dataOrigin === "canonical-run" ? `Model periods · ${visibleModelPeriods.length} model periods` : "Selected model periods · not a full time series"}</span>
           </div>
           <div className="fm-sw-subbar">
             <span id="fm-sw-scroll-help">Scroll periods horizontally · Focus table and use ← / →</span>
@@ -581,8 +581,8 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
         </section>
         {dataOrigin === "canonical-run"
           ? <footer className="fm-sw-footnote" data-statement-notes="true">
-            <span><strong>{displayedSheet.title}:</strong> {activeSheet.note || "As persisted by the Run."}</span>
-            {activeSheet.unavailable && activeSheet.unavailable.length > 0 && <span>Not persisted by this Run: {activeSheet.unavailable.join(", ")}</span>}
+            <span><strong>{displayedSheet.title}:</strong> {activeSheet.note || "As saved by the Run."}</span>
+            {activeSheet.unavailable && activeSheet.unavailable.length > 0 && <span>Not available in this Run: {activeSheet.unavailable.join(", ")}</span>}
           </footer>
           : <footer className="fm-sw-footnote">
           <span><strong>Example coverage:</strong> selected statement lines and periods only; this is not a complete model time series.</span>

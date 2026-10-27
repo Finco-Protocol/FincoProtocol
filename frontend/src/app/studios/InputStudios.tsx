@@ -26,7 +26,7 @@ export function InputStudios({ project, protectedReference, reloadKey, onSaved }
         </div>
       )}
       {studio === "capex-profile" && (protectedReference
-        ? <p className="rx-empty" role="status" data-capex-unavailable="true">Reference models are read-only. Create a working copy to plan a CAPEX spending profile.</p>
+        ? <p className="rx-empty" role="status" data-capex-unavailable="true">Templates are read-only. Start a project from this template to plan a CAPEX spending profile.</p>
         : <CapexStudio project={project} reloadKey={reloadKey} onSaved={onSaved} />)}
     </section>
   );

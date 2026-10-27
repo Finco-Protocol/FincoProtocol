@@ -95,7 +95,7 @@ def _context(request: Request, user, record, ws, owner):
 
 def _last_run(raw: dict[str, Any]) -> dict[str, Any]:
     if not raw.get("available"):
-        return {"available": False, "note": "No committed Run exists for this Working Copy."}
+        return {"available": False, "note": "This project has not been run yet."}
     su = raw.get("sources_uses") or {}
     keys = ("base_project_capex_keur", "capitalized_idc_keur", "commitment_fee_keur", "structuring_fee_keur", "initial_dsra_funding_keur",
             "total_uses_keur", "total_sources_keur")
@@ -103,7 +103,7 @@ def _last_run(raw: dict[str, Any]) -> dict[str, Any]:
             "sources_uses": {k: (None if su.get(k) is None else {"value": su.get(k), "display": _amount(su.get(k))}) for k in keys},
             "periods": [{"period": p.get("period"), "uses": _amount(p.get("uses")), "sources": _amount(p.get("sources")),
                          "difference": _amount(p.get("difference"))} for p in raw.get("periods") or []],
-            "basis": "Committed Run evidence, shown as persisted. It is the Run that last executed, not the draft below."}
+            "basis": "Results of the last Run, shown as saved. They are not the draft below."}
 
 
 @router.get("/model-react/capex/profiles")
@@ -133,7 +133,7 @@ async def react_capex_profiles(request: Request, project: str = ""):
         "save": {"url": "/v2/capex/spending-profiles/save", "csrf_token": ctx["csrf_token"], "content_hash": ctx["content_hash"],
                  "scenario_id": ws.active_scenario_id or ""},
         "semantics": {"save_runs_the_model": False, "preview_is_a_result": False,
-                      "idc_and_sources_uses": "Computed by the canonical engine at Run. They are not estimated by this studio."},
+                      "idc_and_sources_uses": "Calculated by the model when you run it. They are not estimated here."},
     })
 
 

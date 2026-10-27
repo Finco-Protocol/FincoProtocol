@@ -14,6 +14,7 @@ import { CostLinesView, DiagnosticsView, RunsView, TrustView } from "./ux040506V
 import { FinancialInsights } from "./insights";
 import { InputsJumpNav, SaveScopeGuide, type InputsJump } from "./InputsGuide";
 import { InputStudios } from "./studios/InputStudios";
+import { FriendlyError, resultStatus, RESULT_STATUS_HELP } from "./productLanguage";
 import { RunIdentityLabel } from "./runIdentity";
 import { VerticalScopeBanner } from "./VerticalScope";
 import "../styles/rc-react-mvp.css";
@@ -33,37 +34,41 @@ function sectionFromHash(): Section {
   return isWorkspaceSection(raw) ? raw : "overview";
 }
 
-/** Chip text for the shell: the persisted Run state of this Working Copy. */
-const RUN_CHIP: Record<string, string> = { CURRENT: "CURRENT RUN", STALE: "STALE RUN", NOT_RUN: "NOT RUN" };
+/** Chip text for the shell: whether the saved results match the project as it is saved now. */
+const RUN_CHIP: Record<string, string> = { CURRENT: "RESULTS UP TO DATE", STALE: "RESULTS OUTDATED", NOT_RUN: "NOT RUN YET" };
 
 function FreshnessBadge({ state }: { state: string }) {
   const cls = state === "CURRENT" ? "rx-badge rx-badge-ok"
     : state === "STALE" ? "rx-badge rx-badge-stale" : "rx-badge";
-  return <span className={cls} data-freshness={state}>{state === "NOT_RUN" ? "NOT RUN" : state}</span>;
+  return <span className={cls} data-freshness={state}>{resultStatus(state)}</span>;
 }
 
 function StatusRow({ workspace }: { workspace: WorkspacePayload }) {
   const identity = workspace.identity;
   return (
     <div className="rx-card" aria-labelledby="rx-status-heading" data-workspace-status="true">
-      <h2 id="rx-status-heading">Working Copy status</h2>
+      <h2 id="rx-status-heading">Project status</h2>
       <div className="rx-badges" data-working-copy-hash={workspace.workbook.composite_hash}>
         <FreshnessBadge state={workspace.freshness.state} />
-        <span className="rx-badge" data-integrity={workspace.integrity?.status ?? "UNAVAILABLE"}>
-          Integrity: {workspace.integrity?.status ?? "UNAVAILABLE"}
-        </span>
-        <span className="rx-badge" data-engine-currency={workspace.engine.currency ?? "ENGINE_IDENTITY_UNKNOWN"}>
-          Engine: {workspace.engine.currency === "CURRENT_ENGINE" ? "current"
-            : workspace.engine.currency === "ENGINE_SUPERSEDED" ? "superseded" : "identity unknown"}
-        </span>
       </div>
+      <p className="rx-note" data-status-help="true">{RESULT_STATUS_HELP[workspace.freshness.state] ?? ""}</p>
       <p className="rx-run-identity" data-run-state={workspace.freshness.state}>
         {identity
-          ? <>Last Run: <RunIdentityLabel snapshotId={identity.snapshot_id} />{" · "}scenario {identity.scenario_proven ? identity.scenario : "UNAVAILABLE"}</>
-          : "No persisted Run yet. Use the Run model button above to run the model; saving never runs it."}
+          ? <>Last Run: <RunIdentityLabel snapshotId={identity.snapshot_id} />{" · "}scenario {identity.scenario_proven ? identity.scenario : "not available"}</>
+          : "No Run yet. Use Run model above to calculate results; saving never runs the model."}
       </p>
       <p className="rx-note">Active scenario: {workspace.workbook.scenario_name || "Base Case"}</p>
       <VerticalScopeBanner vertical={workspace.vertical} />
+      <details className="rx-advanced" data-advanced-details="true">
+        <summary>Advanced details · audit trail</summary>
+        <dl className="rcm-facts">
+          <div><dt>Model checks</dt><dd data-integrity={workspace.integrity?.status ?? "UNAVAILABLE"}>{workspace.integrity?.status === "PASS" ? "Passed" : workspace.integrity?.status ?? "Not available"}</dd></div>
+          <div><dt>Calculation engine</dt><dd data-engine-currency={workspace.engine.currency ?? "ENGINE_IDENTITY_UNKNOWN"}>{workspace.engine.currency === "CURRENT_ENGINE" ? "Current version"
+            : workspace.engine.currency === "ENGINE_SUPERSEDED" ? "Superseded version" : "Version not recorded"}</dd></div>
+          <div><dt>Saved inputs version</dt><dd className="fm-mono" style={{ overflowWrap: "anywhere" }}>{workspace.workbook.composite_hash}</dd></div>
+          {identity && <div><dt>Last Run record</dt><dd className="fm-mono" style={{ overflowWrap: "anywhere" }}>{identity.snapshot_id}</dd></div>}
+        </dl>
+      </details>
     </div>
   );
 }
@@ -75,7 +80,7 @@ function StatementIdentityConflict({ workspace, statements }: { workspace: Works
       <p>
         The statements returned belong to <strong>{statements.project.name}</strong>, not to{" "}
         <strong>{workspace.project.name}</strong>. Nothing is shown so that figures are never read under the wrong project.
-        Reload the workspace; if this persists, open the project again from the Project Library.
+        Reload the page; if this persists, open the project again from My Projects.
       </p>
     </section>
   );
@@ -83,7 +88,6 @@ function StatementIdentityConflict({ workspace, statements }: { workspace: Works
 
 interface WorkspaceViewProps {
   project: string;
-  legacyUrl: string;
   onNavigateToLibrary: () => void;
 }
 
@@ -93,7 +97,7 @@ export function WorkspaceView(props: WorkspaceViewProps) {
   return <DirtyProvider><WorkspaceViewInner {...props} /></DirtyProvider>;
 }
 
-function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: WorkspaceViewProps) {
+function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps) {
   const confirmIfDirty = useLeaveGuard();
   const [section, setSection] = useState<Section>(sectionFromHash);
   const sectionRef = useRef<Section>(section);
@@ -278,7 +282,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
       if (response.ok) {
         return {
           kind: "unknown",
-          message: "The Save result is UNKNOWN: the response was not a readable canonical verdict. The server may have committed this Save. Reload to reconcile before saving again.",
+          message: "We could not confirm the Save: the response was not readable. The server may have committed this Save. Reload to reconcile before saving again.",
         };
       }
       if (b.cells && Array.isArray(b.cells)) {
@@ -295,10 +299,10 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
     return (
       <main className="rx-page" role="main">
         <section className="rx-card" data-workspace-state={error.code}>
-          <h2>Workspace unavailable</h2>
-          <p className="rx-empty" role="alert">{error.message || error.code}</p>
-          <p><a className="rx-legacy-link" href={legacyUrl}>Open the legacy workbook</a> ·{" "}
-            <button type="button" className="rx-button rx-button-secondary" onClick={onNavigateToLibrary}>Back to Project Library</button>
+          <h2>This project is unavailable</h2>
+          <FriendlyError code={error.code} message={error.message} />
+          <p>
+            <button type="button" className="rx-button rx-button-secondary" onClick={onNavigateToLibrary}>Back to My Projects</button>
           </p>
         </section>
       </main>
@@ -322,13 +326,13 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
           <div>
             <p className="rx-brand">FINCO Protocol · Model</p>
             <h1 className="rx-title">{workspaceHeading(workspace)}
-              {workspace.project.protected_reference && <span className="rx-badge">REFERENCE · READ ONLY</span>}
+              {workspace.project.protected_reference && <span className="rx-badge">TEMPLATE · READ ONLY</span>}
             </h1>
           </div>
           <nav aria-label="Workspace navigation">
-            <a className="rx-legacy-link" href={legacyUrl}>Legacy workbook ↗</a>
+            <a className="rx-legacy-link" href="/v2/model-react/" data-nav-my-projects="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(onNavigateToLibrary); }}>My Projects</a>
             {" · "}
-            <a className="rx-legacy-link" href="#library" onClick={(e) => { e.preventDefault(); confirmIfDirty(onNavigateToLibrary); }}>Project Library</a>
+            <a className="rx-legacy-link" href="/v2/model-react/#new-project" data-nav-new-project-workspace="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(() => { window.location.href = "/v2/model-react/#new-project"; }); }}>New Project</a>
           </nav>
         </header>
         <WorkspaceNav active={section} onNavigate={navigate} />
@@ -376,10 +380,10 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
                   reloadKey={dataVersion} onSaved={afterMutation} />
               </div>
             </>
-            : <p className="rx-boot-loading" role="status">Loading the canonical input grid…</p>
+            : <p className="rx-boot-loading" role="status">Loading the project assumptions…</p>
         )}
         {section === "financing" && (
-          <FinancingStudio project={project} reloadKey={dataVersion} onSaved={afterMutation} legacyUrl={legacyUrl} />
+          <FinancingStudio project={project} reloadKey={dataVersion} onSaved={afterMutation} />
         )}
         {section === "scenarios" && (
           <ScenarioWorkspace project={project} freshness={workspace.freshness.state}
@@ -394,7 +398,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
             : <>
               {statements.state === "STALE" && (
                 <p className="rx-banner rx-banner-stale" role="status" data-stale-banner="true">
-                  STALE — the Working Copy changed after the persisted Last Run. The statements
+                  Results outdated — the project changed after the last Run. The statements
                   are the prior Run&rsquo;s values; they are not the current inputs.
                 </p>
               )}
@@ -407,7 +411,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
                 />
               </div>
             </>
-            : <p className="rx-boot-loading" role="status">Loading the persisted statements…</p>
+            : <p className="rx-boot-loading" role="status">Loading the statements…</p>
         )}
         {section === "results" && (
           statements
@@ -417,9 +421,9 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
               <VerticalScopeBanner vertical={workspace.vertical} />
               <FinancialResults payload={statements} page="results" />
               <RunsView project={project} />
-              <ModelExportView project={project} freshness={workspace.freshness.state} legacyUrl={legacyUrl} />
+              <ModelExportView project={project} freshness={workspace.freshness.state} />
             </div>
-            : <p className="rx-boot-loading" role="status">Loading the persisted results…</p>
+            : <p className="rx-boot-loading" role="status">Loading the results…</p>
         )}
         {section === "analysis" && (
           <AnalysisTools project={project} protectedReference={Boolean(workspace.project.protected_reference)}
@@ -432,11 +436,11 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
               : <>
                 <VerticalScopeBanner vertical={workspace.vertical} />
                 <p className="rx-note" data-analysis-scope="last-run">
-                  Charts below show the Working Copy&rsquo;s Last Run. Credit intelligence further down reads only the committed Runs you select explicitly.
+                  Charts below show the project&rsquo;s Last Run. Credit intelligence further down reads only the committed Runs you select explicitly.
                 </p>
                 <FinancialResults payload={statements} page="analysis" />
               </>
-              : <p className="rx-boot-loading" role="status">Loading the persisted analysis…</p>}
+              : <p className="rx-boot-loading" role="status">Loading the analysis…</p>}
             <div data-financial-insights="true">
               <FinancialInsights project={project} />
             </div>
@@ -447,7 +451,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
         <footer className="rx-footer">
           <p className="rx-note">
             Figures are read from this project&rsquo;s saved Run and workspace records; the browser
-            never calculates financial results. The classic workbook remains available.
+            never calculates financial results.
           </p>
         </footer>
       </div>

@@ -13,8 +13,10 @@ from tests import model_mutation_security_successor as S
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_UX_SUCCESSORS
 BASE = "f79e251903621c1a5c88501d51d6971960b612d3"       # main containing #388, the RC-UX branch point
-ALLOWED = {"app/v2/react_workspace_router.py", "frontend/src/app/WorkspaceView.tsx", "static/react/finco-react.css", "static/react/finco-react.js",
-           "tests/test_model_workspace_consolidation_browser.py", "frontend/src/app/workflow/workflowShared.tsx"}
+#: RC-UX may re-pin only React presentation surfaces: the adapter mount, the workspace view, the rebuilt bundle, the React views and the browser
+#: acceptance bodies.  A security, CSRF, financial or governance test can never enter this layer.
+ALLOWED = re.compile(r"^(app/v2/react_[a-z_]+\.py|frontend/src/.+\.(ts|tsx|css)|static/react/finco-react\.(js|css)|"
+                     r"tests/model_react_[a-z0-9_]+_acceptance\.py|tests/test_model_workspace_consolidation_browser\.py)$")
 
 
 def _git(*args):
@@ -22,7 +24,8 @@ def _git(*args):
 
 
 def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned():
-    assert set(LAYER) <= ALLOWED and "static/react/finco-react.js" in LAYER
+    assert all(ALLOWED.match(path) for path in LAYER), [p for p in LAYER if not ALLOWED.match(p)]
+    assert "static/react/finco-react.js" in LAYER
     for path, blob in LAYER.items():
         assert path in S.BLOBS and len(blob) == 40 and re.fullmatch(r"[0-9a-f]{40}", blob)
         assert blob not in {S.BLOBS[path], S.RC_M_SUCCESSORS.get(path)}                # a NEW reviewed state, never a repin
@@ -112,7 +115,7 @@ def test_the_rcux_adapters_are_read_only_and_issue_no_mutation_authority_of_thei
 
 # ── RC-UX browser acceptance rides the EXISTING mandatory consolidation role (same pattern as RC-M) ─────────────────────────────
 ROLE = "tests/test_model_workspace_consolidation_browser.py"
-ACCEPTANCE = ("tests/model_react_rcux_runs_acceptance.py", "tests/model_react_rcux_capex_acceptance.py")
+ACCEPTANCE = ("tests/model_react_rcux_runs_acceptance.py", "tests/model_react_rcux_capex_acceptance.py", "tests/model_react_rcux_product_acceptance.py")
 
 
 def test_the_consolidation_role_imports_exactly_the_rcux_acceptance_modules_and_adds_no_wrapper_of_its_own():

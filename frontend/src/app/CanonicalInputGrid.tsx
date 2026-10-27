@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { labelWithUnit } from "./fieldLabel";
 import type { GridCategoryPayload, GridRowPayload, GridSectionPayload, InputsPayload } from "./types";
 import { useDirtyTotal, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
+import { plain } from "./productLanguage";
 
 export type GridSaveOutcome =
   | { kind: "saved"; contentHash: string; runState: string }
@@ -130,8 +131,8 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
         setDrafts({});
         setStatus("saved");
         setMessage(outcome.runState === "STALE"
-          ? "Saved. The Working Copy is now newer than the persisted Last Run (STALE); nothing was re-run."
-          : "Saved. The persisted Last Run is unchanged and was not re-run.");
+          ? "Saved. The project changed after the last Run (results outdated); nothing was re-run."
+          : "Saved. The last Run is unchanged and was not re-run.");
         break;
       case "stale":
         setUnresolved("input-grid", true);
@@ -176,8 +177,8 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
       </p>
       {(protectedRef || payload.grid.editable === false) && (
         <p className="rx-note" role="note">
-          This project is a protected reference and is read-only. Create a working copy
-          in the Project Library to edit it.
+          This project is a read-only template. Start a project from this template
+          (New Project → Start from a template) to edit it.
         </p>
       )}
       <div className="rx-toolbar-compact">
@@ -232,7 +233,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
                     return (
                       <tr key={`${row.code}:${row.field_id}`} data-grid-row={row.field_id || row.code} data-row-state={state}
                           className={activeCode === rowKey ? "rx-active" : undefined}>
-                        <th scope="row" className="rx-rowhead">{row.label}</th>
+                        <th scope="row" className="rx-rowhead">{plain(row.label)}</th>
                         <td>
                           {editableRow ? (
                             <input
@@ -245,7 +246,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
                               readOnly={locked}
                               aria-readonly={locked || undefined}
                               data-locked={locked ? "true" : "false"}
-                              aria-label={labelWithUnit(row.label, row.unit)}
+                              aria-label={labelWithUnit(plain(row.label), row.unit)}
                               data-field-id={row.field_id}
                               data-grid-cell={row.field_id || row.code}
                               ref={(el) => {

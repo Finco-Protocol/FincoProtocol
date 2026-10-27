@@ -10,7 +10,7 @@ type Outcome = { kind: "strip"; result: StripResult } | { kind: "matrix"; result
 
 const FAILURE_TEXT: Record<string, string> = {
   MODEL_BUSY: "The model engine is busy. Wait a moment and run again.",
-  MATRIX_CONTEXT_CHANGED: "The Working Copy changed while the analysis was running, so the result was discarded. Run it again.",
+  MATRIX_CONTEXT_CHANGED: "The project changed while the analysis was running, so the result was discarded. Run it again.",
 };
 
 function levelsText(driver: DriverInfo | undefined, size: 3 | 5): string {
@@ -84,10 +84,10 @@ export function SensitivityPanel({ project, workbookHash }: { project: string; w
         <h2 id="rcm-sens-title">Sensitivity analysis</h2>
         <p className="rx-empty" role="alert" data-sensitivity-unavailable="true">
           {failure.code === "MATRIX_PROTECTED_REFERENCE"
-            ? "Reference models are read-only. Create a working copy to run a sensitivity analysis."
+            ? "Templates are read-only. Start a project from this template to run a sensitivity analysis."
             : failure.message || "Sensitivity analysis is not available for this project."}
         </p>
-        <p className="rx-note">NOT RELEASED for this project. The classic workbook&rsquo;s Sensitivity sheet remains available.</p>
+        <p className="rx-note">Sensitivity analysis is not available for this project type yet.</p>
       </section>
     );
   }
@@ -101,7 +101,7 @@ export function SensitivityPanel({ project, workbookHash }: { project: string; w
       <h2 id="rcm-sens-title">Sensitivity analysis <span className="rcm-badge" data-ephemeral-badge="true">NOT A RUN · NOT SAVED</span></h2>
       <TierNote vertical={catalog.vertical} />
       <p className="rx-note" data-sensitivity-basis="true">
-        Each point is a full canonical engine run on the <strong>saved Working Copy</strong> with only the chosen driver(s) shocked. Nothing is interpolated,
+        Each point is a full model run on the <strong>saved project</strong> with only the chosen driver(s) shocked. Nothing is interpolated,
         saved or recorded in Run History. Maximum {catalog.limits.max_cells} points per matrix.
       </p>
       {unsaved > 0 && (
@@ -170,7 +170,7 @@ export function SensitivityPanel({ project, workbookHash }: { project: string; w
           {busy && <button type="button" className="rx-button rx-button-secondary" data-sens-cancel="true" onClick={cancel}>Cancel</button>}
         </div>
       </form>
-      {busy && <p className="rx-note" role="status" data-sens-progress="true">Running canonical engine evaluations — this can take a little while. Nothing is saved.</p>}
+      {busy && <p className="rx-note" role="status" data-sens-progress="true">Running model evaluations — this can take a little while. Nothing is saved.</p>}
       {error && (
         <p className="rx-status rx-status-error" role="alert" data-sens-error={error.code}>
           {error.message}
@@ -181,7 +181,7 @@ export function SensitivityPanel({ project, workbookHash }: { project: string; w
         <div className="rcm-result" data-sens-result={outcome.kind} data-result-outdated={outdated}>
           {outdated && (
             <p className="rx-banner rx-banner-stale" role="status" data-outdated-banner="true">
-              OUTDATED — the Working Copy changed after this analysis was computed. Run it again to analyse the current inputs.
+              OUTDATED — the project changed after this analysis was computed. Run it again to analyse the current inputs.
             </p>
           )}
           {outcome.kind === "strip" ? <StripTable result={outcome.result} /> : <MatrixTable result={outcome.result} />}
@@ -194,7 +194,7 @@ export function SensitivityPanel({ project, workbookHash }: { project: string; w
 function RunFooter({ run, provenance }: { run: StripResult["run"]; provenance: string }) {
   return (
     <p className="rx-note" data-run-footer="true">
-      {run.evaluations} canonical evaluation{run.evaluations === 1 ? "" : "s"} · {run.seconds}s · basis: {run.scenario} · Working Copy {run.basis_hash}… ·
+      {run.evaluations} model evaluation{run.evaluations === 1 ? "" : "s"} · {run.seconds}s · basis: {run.scenario} · saved version {run.basis_hash}… ·
       {" "}computed now, not a committed Run. {provenance}
     </p>
   );

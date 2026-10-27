@@ -143,12 +143,12 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
   return (
     <section className="fm-card fm-section wf-section" aria-label="Scenario management" data-scenario-workspace="true">
       <div className="fm-card-title"><h2>Scenarios</h2><span>selecting or editing a scenario never runs the model</span></div>
-      {protectedRef && <div className="fm-banner" role="note"><span className="fm-demo-label">PROTECTED REFERENCE</span><span className="fm-banner-copy">References have a single immutable case. Create a Working Copy to manage scenarios.</span></div>}
+      {protectedRef && <div className="fm-banner" role="note"><span className="fm-demo-label">READ-ONLY TEMPLATE</span><span className="fm-banner-copy">References have a single immutable case. Start a project from this template to manage scenarios.</span></div>}
       {locked && <div className="fm-banner" role="alert"><span className="fm-demo-label">RECONCILE</span><span className="fm-banner-copy">The last scenario action could not be confirmed. Reload the workspace before changing scenarios again.</span></div>}
       <StatusNote status={status} />
       <p className="fm-info-note" data-active-scenario-banner="true">
         Active scenario: <strong>{data.active_scenario_name || "Base Case"}</strong>. Its Last Run is <strong data-active-freshness={freshness}>{freshness === "NOT_RUN" ? "NOT RUN" : freshness}</strong>.
-        Edits in Inputs, Financing and Revenue are saved to the Working Copy.
+        Edits in Inputs, Financing and Revenue are saved to the project.
       </p>
       <div className="wf-table-wrap">
         <table className="fm-table">
@@ -250,7 +250,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
       )}
       {dialog?.kind === "reset" && (
         <WorkflowDialog title={`Remove the ${dialog.label} override?`} confirmLabel="Remove override" danger busy={busy}
-          description={`"${dialog.scenario.name}" will inherit the Working Copy value again. The persisted Run history is unchanged and the model is not run.`}
+          description={`"${dialog.scenario.name}" will inherit the project value again. The saved Run history is unchanged and the model is not run.`}
           onCancel={() => setDialog(null)}
           onConfirm={() => {
             const { scenario, fieldId } = dialog;
@@ -274,7 +274,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
               setBusy(false);
               const row = fresh.ok === true ? fresh.fields.find((f) => f.field_id === fieldId) : undefined;
               if (row && !row.overridden) {
-                setStatus({ tone: "ok", text: `Override removed; "${scenario.name}" inherits the Working Copy value. Verified. No Run was started.` });
+                setStatus({ tone: "ok", text: `Override removed; "${scenario.name}" inherits the project value. Verified. No Run was started.` });
                 read.reload();
                 onDataChanged();
                 setOverrideRefresh((n) => n + 1);
@@ -301,7 +301,7 @@ function OverrideBoundary({ supported }: { supported?: Array<{ field_id: string;
         {supported.length
           ? <>A scenario can override {supported.length === 1 ? "this assumption" : `these ${supported.length} assumptions`}: {supported.map((f) => labelWithUnit(f.label, f.unit)).join(", ")}.</>
           : "A scenario cannot currently override any assumption."}
-        {" "}Every other assumption is inherited from the Working Copy and cannot differ between scenarios, even if it can be edited in Inputs.
+        {" "}Every other assumption is inherited from the project and cannot differ between scenarios, even if it can be edited in Inputs.
       </p>
     </div>
   );
@@ -369,7 +369,7 @@ function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
       <StatusNote status={local} />
       <div className="wf-table-wrap">
         <table className="fm-table">
-          <thead><tr><th scope="col">Assumption</th><th scope="col">Working Copy</th><th scope="col">Scenario value</th><th scope="col">Source</th><th scope="col">Actions</th></tr></thead>
+          <thead><tr><th scope="col">Assumption</th><th scope="col">Project value</th><th scope="col">Scenario value</th><th scope="col">Source</th><th scope="col">Actions</th></tr></thead>
           <tbody>
             {data.fields.map((f) => {
               const current = drafts[f.field_id] ?? (f.overridden ? String(f.override_value ?? "") : "");

@@ -49,7 +49,7 @@ export function parseRunSnapshotId(snapshotId: string | null | undefined): Parse
 /** Plain-text form of the same contract (tables, accessible names, exports). */
 export function runIdentityText(snapshotId: string | null | undefined): string {
   const id = (snapshotId ?? "").trim();
-  if (!id) return "No persisted Run";
+  if (!id) return "No saved Run";
   const parsed = parseRunSnapshotId(id);
   return parsed ? `${parsed.label}${parsed.suffix ? ` · ${parsed.suffix}` : ""}` : id;
 }
@@ -84,7 +84,7 @@ interface RunIdentityProps {
  */
 export function RunIdentityLabel({ snapshotId, historyId, ranAt }: RunIdentityProps) {
   const id = (snapshotId ?? "").trim();
-  if (!id) return <span className="rx-run-id" data-run-identity="">No persisted Run</span>;
+  if (!id) return <span className="rx-run-id" data-run-identity="">No saved Run</span>;
   const parsed = parseRunSnapshotId(id);
   const history = (historyId ?? "").trim();
   return (
@@ -92,7 +92,7 @@ export function RunIdentityLabel({ snapshotId, historyId, ranAt }: RunIdentityPr
       {parsed ? (
         <>
           <time dateTime={parsed.iso} className="rx-run-time">{parsed.label}</time>
-          {parsed.suffix && <>{" "}<span className="rx-run-suffix" title="Canonical sub-second part of the Run identifier">· {parsed.suffix}</span></>}
+          {parsed.suffix && <>{" "}<span className="rx-run-suffix" title="Sub-second part of the Run identifier">· {parsed.suffix}</span></>}
         </>
       ) : (
         <code className="rx-run-raw">{id}</code>

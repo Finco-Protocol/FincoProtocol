@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { copyTsv, downloadCsv } from "../analysis/shared";
 import { runIdentityText } from "../runIdentity";
+import { dataSourceLabel, resultStatus, runStateLabel } from "../productLanguage";
 import { fetchCompare } from "./api";
 import type { CashflowSeries, ComparePayload, CompareRow } from "./types";
 
@@ -9,7 +10,7 @@ type DeltaMode = "abs" | "pct" | "both";
 const stateChip = (state: string) => (state.includes("CURRENT") ? "rcm-chip ok" : state.includes("STALE") ? "rcm-chip warn" : "rcm-chip");
 const cell = (v: number | null, unit: string) => (v === null ? "—" : unit === "x" ? `${v.toFixed(2)}x` : v.toLocaleString("en-GB", { maximumFractionDigits: 0 }));
 
-/** Compare two or three explicitly selected COMMITTED Runs.  Everything shown is persisted Run evidence formatted by the server;
+/** Compare two or three explicitly selected COMMITTED Runs.  Everything shown is saved Run evidence formatted by the server;
  *  the first Run is the reference.  A metric a Run did not persist stays "—" / "not available" — never zero.  No Run is started. */
 export function CompareWorkspace({ project, historyIds, workbookHash, onClear }: {
   project: string; historyIds: string[]; workbookHash: string; onClear: () => void;
@@ -54,13 +55,13 @@ export function CompareWorkspace({ project, historyIds, workbookHash, onClear }:
   return (
     <section className="rx-card" aria-label="Run comparison" data-compare-state={busy ? "LOADING" : error ? "ERROR" : matching ? "READY" : "IDLE"}>
       <h2>Compare Runs <span className="rcm-badge">COMMITTED EVIDENCE · READ-ONLY</span></h2>
-      <p className="rx-note">Comparing {historyIds.length} committed Runs. Nothing here saves, runs or changes the Working Copy; a metric a Run did not persist is shown as unavailable.</p>
+      <p className="rx-note">Comparing {historyIds.length} committed Runs. Nothing here saves, runs or changes the project; a metric a Run did not persist is shown as unavailable.</p>
       <div className="rcm-table-actions"><button type="button" className="rx-button rx-button-secondary" data-compare-clear="true" onClick={onClear}>Clear selection</button></div>
       {busy && <p className="rx-note" role="status" data-compare-loading="true">Reading the selected committed evidence…</p>}
       {error && <p className="rx-status rx-status-error" role="alert" data-compare-error={error.code}>{error.message}</p>}
       {matching && payload && (
         <>
-          <p className="rx-note" data-compare-freshness={payload.working_copy.freshness}>Working Copy: {payload.working_copy.freshness}. {payload.semantics.basis}</p>
+          <p className="rx-note" data-compare-freshness={payload.working_copy.freshness}>Project results: {resultStatus(payload.working_copy.freshness)}. {payload.semantics.basis}</p>
           <div className="rcm-modes" role="group" aria-label="Change display">
             {([["abs", "Absolute"], ["pct", "Percent"], ["both", "Both"]] as const).map(([id, label]) => (
               <button key={id} type="button" className={`rcm-mode${mode === id ? " active" : ""}`} aria-pressed={mode === id} data-delta-mode={id} onClick={() => setMode(id)}>{label}</button>
@@ -73,17 +74,17 @@ export function CompareWorkspace({ project, historyIds, workbookHash, onClear }:
           <p className="rcm-scroll-hint" aria-hidden="true">Swipe or scroll sideways for more columns →</p>
           <div className="rcm-scroll" tabIndex={0} role="region" aria-label="KPI comparison (scrolls horizontally)">
             <table className="rcm-table" data-compare-table="true">
-              <caption className="rx-note">Persisted KPIs and supporting evidence · {payload.project.name}</caption>
+              <caption className="rx-note">Saved KPIs and supporting evidence · {payload.project.name}</caption>
               <thead>
                 <tr><th scope="col" className="rcm-sticky">Metric</th><th scope="col" className="rcm-left">Unit</th>
                   {payload.columns.map((c, i) => (
                     <th scope="col" key={c.history_id} data-compare-column={c.history_id}>
                       {i === 0 ? "Reference · " : ""}{c.scenario}
                       <span className="rcm-unit">{runIdentityText(c.snapshot_id)}</span>
-                      <span className={stateChip(c.state)}>{c.state}</span>
+                      <span className={stateChip(c.state)}>{runStateLabel(c.state)}</span>
                     </th>
                   ))}
-                  <th scope="col" className="rcm-left">Source</th></tr>
+                  <th scope="col" className="rcm-left">Data source</th></tr>
               </thead>
               <tbody>
                 {rows.map((r: CompareRow) => (
@@ -98,7 +99,7 @@ export function CompareWorkspace({ project, historyIds, workbookHash, onClear }:
                         {i > 0 && (mode === "pct" || mode === "both") && <span className="rcm-delta" data-pct-delta="true">Δ% {r.pct_deltas[i]}</span>}
                       </td>
                     ))}
-                    <td className="rcm-input-cell" style={{ whiteSpace: "normal" }}>{r.source}{r.reason ? ` — ${r.reason}` : ""}</td>
+                    <td className="rcm-input-cell" style={{ whiteSpace: "normal" }} title={r.source}>{dataSourceLabel(r.source)}{r.reason ? ` — ${r.reason}` : ""}</td>
                   </tr>
                 ))}
               </tbody>
@@ -120,7 +121,7 @@ export function CompareWorkspace({ project, historyIds, workbookHash, onClear }:
                   <thead><tr><th scope="col" className="rcm-sticky">Period</th><th scope="col" className="rcm-left">Date</th>
                     {payload.columns.map((c) => <th scope="col" key={c.history_id}>{c.scenario}<span className="rcm-unit">{series.unit}</span></th>)}</tr></thead>
                   <tbody>
-                    <tr className="is-base" data-cashflow-total="true"><th scope="row" className="rcm-sticky">Total (sum of persisted periods)</th><td />
+                    <tr className="is-base" data-cashflow-total="true"><th scope="row" className="rcm-sticky">Total (sum of model periods)</th><td />
                       {series.runs.map((r) => <td key={r.history_id}>{r.available ? (r.total === null ? "n/a (ratio)" : cell(r.total, series.unit)) : "—"}</td>)}</tr>
                     {series.periods.map((p, i) => (
                       <tr key={p}><th scope="row" className="rcm-sticky">{p}</th><td className="rcm-input-cell">{series.dates[i] || "—"}</td>
@@ -147,7 +148,7 @@ function AssumptionBlock({ payload }: { payload: ComparePayload }) {
     <div data-assumptions="true">
       <p className="rcm-status-line">
         <span className={`rcm-chip ${a.composite_hash_equal ? "ok" : "warn"}`} data-composite-equal={String(a.composite_hash_equal)}>
-          {a.composite_hash_equal ? "Identical composite input hash" : "Composite input hashes differ"}
+          {a.composite_hash_equal ? "The saved inputs are identical" : "The saved inputs differ between these Runs"}
         </span>
       </p>
       {a.scenario_overrides.length > 0 && (
@@ -168,7 +169,7 @@ function AssumptionBlock({ payload }: { payload: ComparePayload }) {
           {payload.columns.map((c) => (
             <div key={c.history_id} data-provenance={c.history_id}>
               <dt>{c.scenario}</dt>
-              <dd>Run {c.history_id}<br />Snapshot {c.snapshot_id}<br />Composite {c.composite_hash || "unavailable"}<br />Engine {c.engine_version ?? "unavailable"} · Workbook {c.workbook_version ?? "unavailable"}</dd>
+              <dd>Run {c.history_id}<br />Run record {c.snapshot_id}<br />Saved inputs version {c.composite_hash || "not recorded"}<br />Model version {c.engine_version ?? "not recorded"}</dd>
             </div>
           ))}
         </dl>

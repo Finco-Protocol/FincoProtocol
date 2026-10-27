@@ -12,6 +12,7 @@ import type {
   StatementSheetId,
   StatementWorkbookSnapshot,
 } from "../finco/_workbook/statementContract";
+import { plain } from "./productLanguage";
 
 const SHEET_IDS: StatementSheetId[] = ["pl", "balance", "cashflow", "cfads", "debt", "sponsor"];
 
@@ -39,6 +40,8 @@ export function toStatementSnapshot(payload: StatementsPayload): StatementWorkbo
       // The persisted "sponsor" destination is the Run's distribution waterfall;
       // label it for what it contains (sponsor cash flows are shown in Results).
       label: sheet.id === "sponsor" ? "Distributions" : sheet.label,
+      note: sheet.note ? plain(sheet.note) : sheet.note,
+      unavailable: sheet.unavailable ? sheet.unavailable.map((u) => plain(u)) : sheet.unavailable,
       rows: sheet.rows.map(toStatementRow),
     }));
   return {

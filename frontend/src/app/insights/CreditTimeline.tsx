@@ -7,7 +7,7 @@ function rowUnit(kind: string) { return kind === 'keur' ? 'kEUR' : kind === 'x' 
 
 export function CreditTimeline({ project, run, timeline }: { project: string; run: RunReference; timeline: Timeline }) {
   const chartId = useId();
-  if (!timeline.available) return <section className="fi-panel"><h3>Credit timeline</h3><p>{timeline.reason || 'Persisted period evidence unavailable.'}</p></section>;
+  if (!timeline.available) return <section className="fi-panel"><h3>Credit timeline</h3><p>{timeline.reason || 'Period results are not available.'}</p></section>;
   return <section className="fi-panel"><h3>Credit timeline</h3>
     <p>Committed model periods · {run.identity.history_id}. Annual presentation unavailable: no authoritative annual mapping.</p>
     <p>{timeline.basis}</p>
@@ -22,14 +22,14 @@ export function CreditTimeline({ project, run, timeline }: { project: string; ru
           {geometry.segments.map((segment, index) => <polyline key={index} points={segment.map(point => `${point.x},${point.y}`).join(' ')} className="fi-line" />)}
           {geometry.points.map((point, index) => point ? <circle key={index} cx={point.x} cy={point.y} r="3" className="fi-point">
             <title>{`${timeline.columns[index]?.date || `Period ${timeline.columns[index]?.index}`} · ${evidenceDisplay(point.value, row.cells[index].d, rowUnit(row.kind))} ${evidenceUnitLabel(point.value, row.cells[index].d, rowUnit(row.kind))}`}</title>
-          </circle> : <text key={index} x={24 + index / Math.max(1, row.cells.length - 1) * 592} y="145" textAnchor="middle" className="fi-gap"><title>Unavailable persisted value</title>×</text>)}
+          </circle> : <text key={index} x={24 + index / Math.max(1, row.cells.length - 1) * 592} y="145" textAnchor="middle" className="fi-gap"><title>Unavailable value</title>×</text>)}
         </svg>
         <div className="fi-chart-axis"><span>{timeline.columns[0]?.date || `Period ${timeline.columns[0]?.index ?? 'unavailable'}`}</span>
           <span>{timeline.columns[timeline.columns.length - 1]?.date || `Period ${timeline.columns[timeline.columns.length - 1]?.index ?? 'unavailable'}`}</span></div>
       </figure>;
     })}</div>
     <div className="fi-table-scroll" tabIndex={0} role="region" aria-label="Credit timeline data table">
-      <table id={`${chartId}-table`}><caption>Persisted credit timeline · {run.identity.history_id}</caption>
+      <table id={`${chartId}-table`}><caption>Credit timeline · {run.identity.history_id}</caption>
         <thead><tr><th scope="col">Metric / unit</th>{timeline.columns.map(column => <th scope="col" key={column.index}>
           Period {column.index}<br />{column.date || 'Date unavailable'}</th>)}</tr></thead>
         <tbody>{timeline.rows.map(row => <tr key={row.key}><th scope="row">{row.label}<br /><small>{rowUnit(row.kind)}</small></th>

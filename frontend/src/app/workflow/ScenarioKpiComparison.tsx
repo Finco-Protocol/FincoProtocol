@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { HistoricalRunSelector, ScenarioComparison, fetchInsights, fetchInsightsHistory } from "../insights";
 import type { HistoryPayload, InsightsPayload } from "../insights";
 import "../insights/insights.css";
+import { friendlyMessage } from "../productLanguage";
 
 export function ScenarioKpiComparison({ project }: { project: string }) {
   const [history, setHistory] = useState<HistoryPayload | null>(null);
@@ -26,7 +27,7 @@ export function ScenarioKpiComparison({ project }: { project: string }) {
     setHistory(null); setSelected([]); setPayload(null); setRequest(null); setError("");
     void fetchInsightsHistory(project, controller.signal).then((result) => {
       if (controller.signal.aborted) return;
-      if (result.ok) setHistory(result); else setError(result.message || result.code);
+      if (result.ok) setHistory(result); else setError(friendlyMessage(result.code, result.message));
     }).catch(() => { /* effect cancelled */ });
     return () => controller.abort();
   }, [project]);
@@ -37,7 +38,7 @@ export function ScenarioKpiComparison({ project }: { project: string }) {
     setBusy(true); setPayload(null); setError("");
     void fetchInsights(project, request.ids, controller.signal).then((result) => {
       if (controller.signal.aborted) return;
-      if (result.ok) setPayload(result); else setError(result.message || result.code);
+      if (result.ok) setPayload(result); else setError(friendlyMessage(result.code, result.message));
       setBusy(false);
     }).catch(() => { if (!controller.signal.aborted) { setError("Committed Run evidence could not be read."); setBusy(false); } });
     return () => controller.abort();
@@ -50,7 +51,7 @@ export function ScenarioKpiComparison({ project }: { project: string }) {
 
   return (
     <section className="fm-card fm-section fi-insights" aria-label="Committed Run KPI comparison" data-kpi-compare="committed-runs">
-      <div className="fm-card-title"><h3>Scenario KPI comparison (committed Runs)</h3><span>read-only · persisted evidence only</span></div>
+      <div className="fm-card-title"><h3>Scenario KPI comparison (committed Runs)</h3><span>read-only · saved Run results only</span></div>
       <p className="fm-info-note" role="note">
         Compares the results of committed Runs you select, one to three. It does not use the active scenario, runs nothing and calculates nothing
         in the browser. A scenario&rsquo;s saved assumptions (above) are not its committed Run results; a scenario without a committed Run shows none.

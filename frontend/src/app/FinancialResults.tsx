@@ -8,9 +8,10 @@ import {
   classifyRowUnit, plotValue, resolveRowFormat, sheetUnitLabel,
   type DisplayUnit, type RowFormat, type UnitSource,
 } from "./units";
+import { plain } from "./productLanguage";
 
 // Canonical presentation of the persisted Run.  Every figure on this page is a
-// server-formatted value read from the project's persisted Run (statements,
+// server-formatted value read from the project's saved Run (statements,
 // returns metrics, distribution and sponsor tables).  The browser performs
 // display-unit conversion, rounding, ordering and chart scaling ONLY - it never
 // derives a financial result.  A value the Run did not persist stays visibly
@@ -42,8 +43,8 @@ interface PeriodTableModel {
 }
 
 const STATE_TEXT: Record<string, string> = {
-  CURRENT: "CURRENT · persisted Last Run",
-  STALE: "STALE · prior persisted Run",
+  CURRENT: "CURRENT · last Run",
+  STALE: "STALE · prior saved Run",
   NOT_RUN: "NOT RUN",
   UNAVAILABLE: "UNAVAILABLE",
 };
@@ -138,7 +139,7 @@ function UnitControls({ unit, precision, onUnit, onPrecision }: {
           {[0, 1, 2, 3].map((item) => <option key={item} value={item}>{item === 1 ? "1 decimal" : `${item} decimals`}</option>)}
         </select>
       </label>
-      <span className="rx-note">Canonical values are in kEUR; units and precision change the display only.</span>
+      <span className="rx-note">Values are held in kEUR; units and precision change the display only.</span>
     </div>
   );
 }
@@ -170,7 +171,7 @@ const metricDisplay = formatMetricDisplay;
 function MetricCards({ payload, unit, precision }: { payload: StatementsPayload; unit: DisplayUnit; precision: number }) {
   const metrics = payload.results.metrics;
   if (!metrics.length) {
-    return <p className="rx-empty" role="status" data-metrics-state="unavailable">This Run persisted no key financial metrics.</p>;
+    return <p className="rx-empty" role="status" data-metrics-state="unavailable">This Run has no key financial metrics.</p>;
   }
   const groups = METRIC_GROUPS.map((group) => ({ ...group, items: [] as typeof metrics }));
   for (const metric of metrics) {
@@ -196,7 +197,7 @@ function MetricCards({ payload, unit, precision }: { payload: StatementsPayload;
                 <div className="rx-live-kpi-label">{metric.label}</div>
                 <div className="rx-live-kpi-value">{metric.available ? metricDisplay(metric.display, unit, precision) : "Not available"}</div>
                 <div className="rx-live-kpi-source">
-                  {metric.available ? meaningOf(metric.label) : `Not produced by this Run: ${metric.source}`}
+                  {metric.available ? meaningOf(metric.label) : `Not available in this Run: ${plain(metric.source).replace(/^Not saved by the (.*)$/i, "the $1 does not provide it")}`}
                 </div>
               </div>
             ))}
@@ -249,7 +250,7 @@ function PeriodTable({ model, unit, precision }: { model: PeriodTableModel; unit
     return (
       <section className="rx-live-card" data-period-table={model.id} data-table-state="unavailable">
         <h3>{model.title}</h3>
-        <p className="rx-empty" role="status">{model.note || "This Run did not persist this series."}</p>
+        <p className="rx-empty" role="status">{plain(model.note) || "This Run has no such series."}</p>
       </section>
     );
   }
@@ -286,7 +287,7 @@ function PeriodTable({ model, unit, precision }: { model: PeriodTableModel; unit
           </tbody>
         </table>
       </div>
-      {model.note && <p className="rx-note">{model.note}</p>}
+      {model.note && <p className="rx-note">{plain(model.note)}</p>}
       {model.technical && (
         <details className="rx-live-tech"><summary>Technical source</summary><p className="rx-note">{model.technical}</p></details>
       )}
@@ -428,7 +429,7 @@ function useModels(payload: StatementsPayload) {
     const operating: PeriodTableModel = {
       id: "operating-performance",
       title: "Operating performance and cash flow (annual)",
-      source: "Persisted Run · Profit & Loss and Cash Flow statements",
+      source: "Saved Run · Profit & Loss and Cash Flow statements",
       periods: annual,
       rows: [
         ...statementRows(payload, "pl", [["revenues_keur", "Revenue"], ["operating_expenses_keur"], ["ebit_keur"], ["net_income_keur"]], "annual"),
@@ -436,33 +437,33 @@ function useModels(payload: StatementsPayload) {
           ["ebitda_cash_keur", "EBITDA (cash)"], ["fcf_banks_keur", "CFADS (cash flow available for debt service)"],
           ["senior_total_ds_keur", "Senior debt service"], ["fcf_for_distribution_keur"]], "annual"),
       ],
-      note: "Annual values are the Run's persisted annual statement columns; no totals are computed in the browser.",
+      note: "Annual values are the Run's annual statement columns; no totals are computed in the browser.",
     };
     const sponsorTable: PeriodTableModel = {
       id: "sponsor-cash-flow",
       title: "Sponsor cash flow",
-      source: sponsor?.title ? `Persisted Run · ${sponsor.title}` : "Persisted Run · sponsor schedule",
+      source: sponsor?.title ? `Saved Run · ${sponsor.title}` : "Saved Run · sponsor schedule",
       periods: columnLabels(sponsor),
       rows: tableRows(sponsor, [
         "share_capital_contribution_keur", "share_premium_contribution_keur", "additional_equity_contribution_keur",
         "shl_principal_receipt_keur", "shl_cash_interest_receipt_keur", "legal_equity_distribution_keur"], "Sponsor cash flows"),
-      note: payload.results.sponsor_source ? "Sponsor cash flows exactly as the Run persisted them." : "The Run did not persist a sponsor cash-flow schedule.",
+      note: payload.results.sponsor_source ? "Sponsor cash flows exactly as the Run saved them." : "The Run has no sponsor cash-flow schedule.",
       technical: payload.results.sponsor_source ? `Source: ${payload.results.sponsor_source}` : undefined,
     };
     const waterfall: PeriodTableModel = {
       id: "distribution-waterfall",
       title: "Distribution waterfall",
-      source: distributions?.title ? `Persisted Run · ${distributions.title}` : "Persisted Run · distributions",
+      source: distributions?.title ? `Saved Run · ${distributions.title}` : "Saved Run · distributions",
       periods: columnLabels(distributions),
       rows: tableRows(distributions, ["cf_after_reserves_keur", "distribution_keur", "dsra_balance_keur"], "Distribution waterfall"),
-      note: payload.results.distribution_source ? "Distribution waterfall exactly as the Run persisted it." : "The Run did not persist a distribution waterfall.",
+      note: payload.results.distribution_source ? "Distribution waterfall exactly as the Run saved it." : "The Run has no distribution waterfall.",
       technical: payload.results.distribution_source ? `Source: ${payload.results.distribution_source}` : undefined,
     };
     const debtSheet = sheetOf(payload, "debt");
     const debt: PeriodTableModel = {
       id: "debt-summary",
       title: "Debt summary (model periods)",
-      source: "Persisted Run · Debt schedule",
+      source: "Saved Run · Debt schedule",
       periods: model,
       rows: debtSheet ? debtSheet.rows.map((row) => ({
         key: `debt.${row.id}`, label: row.label, texts: row.model,
@@ -470,38 +471,38 @@ function useModels(payload: StatementsPayload) {
         ...classified(row.label, row.unit ?? undefined, debtSheet.unit),
         source: `${debtSheet.title} · ${row.label}`,
       })) : [],
-      note: debtSheet?.note || "This Run persisted no debt schedule.",
+      note: debtSheet?.note || "This Run has no debt schedule.",
     };
     const cfadsRows = statementRows(payload, "cfads", [["cfads_keur", "CFADS"], ["senior_service_keur", "Senior debt service"], ["dscr", "DSCR"]], "model");
 
     const charts: ChartModel[] = [
       {
         id: "revenue-opex", title: "Revenue and operating performance (annual)",
-        source: "Persisted Run · Profit & Loss", periods: annual,
+        source: "Saved Run · Profit & Loss", periods: annual,
         series: statementRows(payload, "pl", [["revenues_keur", "Revenue"], ["operating_expenses_keur", "Operating expenses"], ["ebit_keur", "EBIT"]], "annual")
           .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: index === 2 ? "line" as const : "bar" as const })),
       },
       {
         id: "ebitda-cash", title: "EBITDA and operating cash flow",
-        source: "Persisted Run · Cash Flow (PF waterfall)", periods: model,
+        source: "Saved Run · Cash Flow (PF waterfall)", periods: model,
         series: statementRows(payload, "cashflow", [["ebitda_cash_keur", "EBITDA (cash)"], ["revenue_cash_keur", "Revenue cash"], ["opex_cash_keur", "Operating cash costs"]], "model")
           .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: index === 0 ? "bar" as const : "line" as const })),
       },
       {
         id: "cfads-debt-service", title: "CFADS and debt service",
-        source: "Persisted Run · CFADS", periods: model,
+        source: "Saved Run · CFADS", periods: model,
         series: cfadsRows.filter((row) => row.key !== "cfads.dscr")
           .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: index === 0 ? "bar" as const : "line" as const })),
       },
       {
         id: "dscr", title: "Debt service coverage ratio (DSCR)",
-        source: "Persisted Run · CFADS", periods: model,
+        source: "Saved Run · CFADS", periods: model,
         series: cfadsRows.filter((row) => row.key === "cfads.dscr")
           .map((row) => ({ key: row.key, label: "DSCR", texts: row.texts, values: row.values, format: { kind: "ratio" } as RowFormat, kind: "line" as const })),
       },
       {
         id: "debt-balance", title: "Debt balance and service",
-        source: "Persisted Run · Debt schedule", periods: model,
+        source: "Saved Run · Debt schedule", periods: model,
         series: (debtSheet?.rows ?? []).filter((row) => /closing|service/i.test(row.id))
           .map((row) => ({ key: `debt.${row.id}`, label: row.label, texts: row.model,
             values: row.model_v && row.model_v.length === row.model.length ? row.model_v : undefined,
@@ -509,13 +510,13 @@ function useModels(payload: StatementsPayload) {
       },
       {
         id: "distributions", title: "Distributions and cash after reserves",
-        source: "Persisted Run · Distribution waterfall", periods: columnLabels(distributions),
+        source: "Saved Run · Distribution waterfall", periods: columnLabels(distributions),
         series: waterfall.rows.filter((row) => !/dsra/i.test(row.key))
           .map((row, index) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: index === 1 ? "bar" as const : "line" as const })),
       },
       {
         id: "sponsor-cash-flow-chart", title: "Sponsor cash flow",
-        source: "Persisted Run · Sponsor cash flows", periods: columnLabels(sponsor),
+        source: "Saved Run · Sponsor cash flows", periods: columnLabels(sponsor),
         series: sponsorTable.rows.filter((row) => /legal_equity_distribution|additional_equity|shl_cash_interest/.test(row.key))
           .map((row) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values, format: row.format, kind: /legal_equity/.test(row.key) ? "bar" as const : "line" as const })),
       },
@@ -541,8 +542,8 @@ export function FinancialResults({ payload, page }: { payload: StatementsPayload
         <RunContext payload={payload} />
         <p className="rx-empty" role="status">
           {state === "NOT_RUN"
-            ? "No persisted Run exists for this Working Copy, so there are no results to show. Run the model to produce them; nothing is estimated here."
-            : payload.message || "The persisted Run evidence could not be projected. Nothing is estimated."}
+            ? "No saved Run exists for this project, so there are no results to show. Run the model to produce them; nothing is estimated here."
+            : payload.message || "The saved Run evidence could not be projected. Nothing is estimated."}
         </p>
       </section>
     );
@@ -556,8 +557,8 @@ export function FinancialResults({ payload, page }: { payload: StatementsPayload
           <h2>{heading} — {payload.project.name}</h2>
           <p className="rx-note">
             {page === "results"
-              ? `Key financial metrics, operating performance and sponsor returns from the persisted Run. Canonical unit: ${sheetUnitLabel(payload.snapshot.sheets[0]?.unit)}.`
-              : "Time-series charts and debt and equity summaries from the same persisted Run."}
+              ? `Key financial metrics, operating performance and sponsor returns from the saved Run. Unit: ${sheetUnitLabel(payload.snapshot.sheets[0]?.unit)}.`
+              : "Time-series charts and debt and equity summaries from the same saved Run."}
           </p>
         </div>
         <UnitControls unit={unit} precision={precision} onUnit={setUnit} onPrecision={setPrecision} />
@@ -565,7 +566,7 @@ export function FinancialResults({ payload, page }: { payload: StatementsPayload
       <RunContext payload={payload} />
       {stale && (
         <p className="rx-banner rx-banner-stale" role="status" data-stale-banner="true">
-          STALE — the Working Copy changed after the persisted Last Run. These are the prior Run&rsquo;s values, not the current inputs.
+          Results outdated — the project changed after the last Run. These are the prior Run&rsquo;s values, not the current inputs.
         </p>
       )}
       {page === "results" ? (
@@ -575,7 +576,7 @@ export function FinancialResults({ payload, page }: { payload: StatementsPayload
             <MetricCards payload={payload} unit={unit} precision={precision} />
             <LenderMetrics payload={payload} unit={unit} precision={precision} />
             <p className="rx-note" data-dscr-note="true">
-              The year-by-year DSCR series is shown in Analysis, as persisted. Credit indicators for committed Runs you select are in Analysis → Financial intelligence.
+              The year-by-year DSCR series is shown in Analysis, as saved. Credit indicators for committed Runs you select are in Analysis → Financial intelligence.
             </p>
             <p className="rx-note" data-analysis-link="true">
               <a href="#analysis">Open deeper financial analysis and credit intelligence</a> · <a href="#scenarios">Compare committed scenario Runs</a>

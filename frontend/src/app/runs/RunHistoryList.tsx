@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { runIdentityText } from "../runIdentity";
+import { resultStatus, runStateLabel } from "../productLanguage";
 import { historicalExportUrl } from "../workflow/workflowApi";
 import type { HistoryPayload, RunReference } from "../insights";
 
@@ -45,9 +46,9 @@ export function RunHistoryList({ project, history, workbookHash, selected, onSel
     <section className="rx-card" aria-label="Run history" data-run-history-list="true">
       <h2>Run history <span className="rcm-badge">IMMUTABLE EVIDENCE</span></h2>
       <p className="rx-note">
-        Committed Runs of this project, newest evidence first. Historical Runs never change; Save and Run are separate. Working Copy:
-        {" "}<strong data-working-copy-freshness={history.working_copy.freshness}>{history.working_copy.freshness}</strong>
-        {" · "}<a href="#inputs" data-open-working-copy="true">Open the Working Copy inputs</a>.
+        Committed Runs of this project, newest evidence first. Historical Runs never change; Save and Run are separate. Project results:
+        {" "}<strong data-working-copy-freshness={history.working_copy.freshness}>{resultStatus(history.working_copy.freshness)}</strong>
+        {" · "}<a href="#inputs" data-open-working-copy="true">Open the project inputs</a>.
       </p>
       <div className="rcm-controls" role="search" aria-label="Filter Runs">
         <label className="rcm-field">Search
@@ -62,7 +63,7 @@ export function RunHistoryList({ project, history, workbookHash, selected, onSel
         <label className="rcm-field">State
           <select value={state} data-run-filter-state="true" onChange={(e) => setState(e.target.value)}>
             <option value={STATE_ALL}>All states</option>
-            {states.map((s) => <option key={s} value={s}>{s}</option>)}
+            {states.map((s) => <option key={s} value={s}>{runStateLabel(s)}</option>)}
           </select>
         </label>
         <label className="rcm-field">Order
@@ -101,23 +102,22 @@ export function RunHistoryList({ project, history, workbookHash, selected, onSel
                   </td>
                   <td className="rcm-left">{runIdentityText(i.snapshot_id)}<span className="rcm-delta">{i.ran_at}</span></td>
                   <td className="rcm-left">{i.scenario}</td>
-                  <td className="rcm-left"><span className={chipClass(i.state)}>{i.state}</span>
-                    {matches && <span className="rcm-tag" data-matches-working-copy="true" title="This Run's composite input hash equals the current Working Copy. It is still a historical Run.">MATCHES WORKING COPY</span>}
+                  <td className="rcm-left"><span className={chipClass(i.state)}>{runStateLabel(i.state)}</span>
+                    {matches && <span className="rcm-tag" data-matches-working-copy="true" title="This Run used exactly the inputs the project has saved now. It is still an earlier Run.">SAME INPUTS AS NOW</span>}
                   </td>
                   <td className="rcm-left">{i.engine_version ?? "unavailable"}<span className="rcm-delta">workbook {i.workbook_version ?? "unavailable"}</span></td>
                   <td className="rcm-left">
                     <details><summary>Provenance</summary>
                       <dl className="rcm-facts">
-                        <div><dt>Run History id</dt><dd>{i.history_id}</dd></div>
-                        <div><dt>Snapshot id</dt><dd>{i.snapshot_id}</dd></div>
-                        <div><dt>Composite input hash</dt><dd style={{ overflowWrap: "anywhere" }}>{i.composite_hash || "unavailable"}</dd></div>
+                        <div><dt>Run reference</dt><dd>{i.history_id}</dd></div>
+                        <div><dt>Run record</dt><dd>{i.snapshot_id}</dd></div>
+                        <div><dt>Saved inputs version</dt><dd style={{ overflowWrap: "anywhere" }}>{i.composite_hash || "unavailable"}</dd></div>
                         <div><dt>Origin</dt><dd>{i.runtime_origin ?? "unavailable"}</dd></div>
                       </dl>
                     </details>
                   </td>
                   <td className="rcm-left">
                     <a href={historicalExportUrl(project, i.history_id)} data-run-export={i.history_id}>Download XLSX</a>
-                    {" · "}<a href={r.links.statements} target="_blank" rel="noopener noreferrer" data-run-statements={i.history_id}>Statements (classic view)</a>
                   </td>
                 </tr>
               );

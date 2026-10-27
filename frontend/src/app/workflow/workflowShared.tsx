@@ -7,6 +7,7 @@ import {
 } from "react";
 import "../../styles/wf-react-2.css";
 import { splitLabelUnit } from "../fieldLabel";
+import { friendlyMessage } from "../productLanguage";
 
 export type Tone = "ok" | "error" | "conflict";
 export interface StatusMessage { tone: Tone; text: string }
@@ -223,7 +224,7 @@ export function useCanonicalRead<T>(
       if (!live) return;
       if (!result || (result as { ok?: unknown }).ok !== true) {
         const failure = result as Failure;
-        setState({ state: "error", message: failure?.message || failure?.code || "The server refused this read." });
+        setState({ state: "error", message: friendlyMessage(failure?.code, failure?.message, "This could not be loaded right now. Nothing was changed.") });
       } else {
         setState({ state: "ready", data: result as T });
       }
@@ -245,7 +246,7 @@ export function UnavailableNote({ message, onRetry }: { message: string; onRetry
   );
 }
 
-export function LoadingNote({ label = "Loading canonical data…" }: { label?: string }) {
+export function LoadingNote({ label = "Loading…" }: { label?: string }) {
   return <p className="fm-info-note" role="status">{label}</p>;
 }
 

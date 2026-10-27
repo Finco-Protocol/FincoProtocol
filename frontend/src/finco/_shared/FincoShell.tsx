@@ -114,7 +114,7 @@ export function Shell({ children, crumb = "Project library", mainContentId = "fm
         <div className="fm-brand">
           <div className="fm-mark">FM</div>
           <div className="fm-brand-name">FINCO <span style={{ fontWeight: 500 }}>MODEL</span></div>
-          <div className="fm-brand-caption">Renewable project finance</div>
+          <div className="fm-brand-caption">Project finance modelling</div>
         </div>
         <div className="fm-top-right">
           <span className={live ? "fm-live-label" : "fm-demo-label"} data-origin-chip={dataOrigin}>{originText}</span>
@@ -125,7 +125,7 @@ export function Shell({ children, crumb = "Project library", mainContentId = "fm
       </header>
       <nav className="fm-workspace-bar" aria-label="Project breadcrumb">
         {live
-          ? <><a href={libraryHref ?? "/v2/model-react/"}>Project Library</a><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span>
+          ? <><a href={libraryHref ?? "/v2/model-react/"} data-nav-my-projects-crumb="true">My Projects</a><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span>
             <a className="rcm-nav-new-project" href="/v2/model-react/#new-project" data-nav-new-project="true">+ New Project</a></>
           : <><a href={`${fincoBasePath()}ProjectLibrary`}>Portfolio</a><span aria-hidden="true">/</span><strong>Renewables</strong><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span></>}
       </nav>

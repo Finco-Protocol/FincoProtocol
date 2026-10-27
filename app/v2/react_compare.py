@@ -131,8 +131,8 @@ def build_kpi_rows(entries, identities) -> list[dict[str, Any]]:
                  "values": [NA] * len(entries), "raw_values": [None] * len(entries), "abs_deltas": [NA] * len(entries),
                  "pct_deltas": [NA] * len(entries), "pct_raw": [None] * len(entries),
                  "availability": ["not_available"] * len(entries),
-                 "source": "No approved persisted PLCR projection",
-                 "reason": "PLCR authority is not available in the committed Run evidence."})
+                 "source": "PLCR is not available",
+                 "reason": "PLCR is not available in the saved Run results."})
     return rows
 
 
@@ -191,8 +191,8 @@ def build_cashflow(entries) -> dict[str, Any]:
                        "source": ".".join(path) + ".periods." + field, "periods": ordered, "dates": dates,
                        "calendar_mismatch": mismatch, "runs": out_runs})
     return {"axis": "model period index", "series": series,
-            "note": "Persisted period values of each committed Run, aligned by model period. Totals are plain sums of the persisted periods; "
-                    "a period a Run does not carry stays empty, never zero."}
+            "note": "Period values of each saved Run, aligned by model period. Totals are plain sums of the periods shown; "
+                    "a period a Run does not have stays empty, never zero."}
 
 
 def build_assumption_differences(entries) -> dict[str, Any]:
@@ -230,9 +230,9 @@ def build_assumption_differences(entries) -> dict[str, Any]:
             "scenario_overrides": overrides,
             "capex_lines": table("capex_rows", "sub_line_id", "parent_category_code", "amount_keur"),
             "opex_lines": table("opex_rows", "sub_line_id", "parent_group_code", "amount_keur"),
-            "limitation": "A committed Run stores its composite input hash, scenario overrides and CAPEX / OPEX line amounts only. "
-                          "Any other input difference cannot be itemised from Run evidence; differing composite hashes still prove the "
-                          "full input sets were not identical."}
+            "limitation": "A saved Run records its inputs version, scenario overrides and CAPEX / OPEX line amounts only. "
+                          "Any other input difference cannot be itemised from a Run; a different inputs version still proves the "
+                          "inputs were not identical."}
 
 
 @router.get("/model-react/compare")
@@ -273,8 +273,8 @@ async def react_compare(request: Request, project: str = ""):
             "cashflow": build_cashflow(entries),
             "assumptions": build_assumption_differences(entries),
             "semantics": {"read_only": True, "is_a_run": False,
-                          "basis": "Immutable committed Run evidence only. The first selected Run is the reference; "
-                                   "a metric a Run did not persist is shown as unavailable, never as zero."},
+                          "basis": "Saved Run results only. The first selected Run is the reference; "
+                                   "a metric a Run does not have is shown as unavailable, never as zero."},
         }
     except (ValueError, TypeError, AttributeError, KeyError):
         return _error("RUN_EVIDENCE_UNAVAILABLE", 422, "Selected committed evidence could not be projected.")

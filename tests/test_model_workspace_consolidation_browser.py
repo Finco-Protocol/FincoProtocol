@@ -832,3 +832,4 @@ from tests.model_react_rcm_themes_acceptance import *  # noqa: E402,F401,F403
 # executed by this existing mandatory role, so no collection-time skip is introduced.
 from tests.model_react_rcux_runs_acceptance import *  # noqa: E402,F401,F403
 from tests.model_react_rcux_capex_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcux_product_acceptance import *  # noqa: E402,F401,F403

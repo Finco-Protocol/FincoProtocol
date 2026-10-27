@@ -47,13 +47,13 @@ export function AnalysisTools({ project, protectedReference, workbookHash, onApp
       <div id="rcm-tool-panel" role="tabpanel" aria-labelledby={`rcm-tab-${tool}`}>
         {tool === "overview" && overview}
         {tool === "sensitivity" && (protectedReference
-          ? <section className="rx-card" data-sensitivity-state="PROTECTED"><h2>Sensitivity analysis</h2><p className="rx-empty" role="status" data-sensitivity-unavailable="true">Reference models are read-only. Create a working copy to run a sensitivity analysis.</p></section>
+          ? <section className="rx-card" data-sensitivity-state="PROTECTED"><h2>Sensitivity analysis</h2><p className="rx-empty" role="status" data-sensitivity-unavailable="true">Templates are read-only. Start a project from this template to run a sensitivity analysis.</p></section>
           : <SensitivityPanel project={project} workbookHash={workbookHash} />)}
         {tool === "goal-seek" && (protectedReference
-          ? <section className="rx-card" data-goal-seek-state="PROTECTED"><h2>Goal Seek — tender pricing</h2><p className="rx-empty" role="status" data-goal-seek-unavailable="true">Reference models are read-only. Create a working copy to solve a tariff.</p></section>
+          ? <section className="rx-card" data-goal-seek-state="PROTECTED"><h2>Goal Seek — tender pricing</h2><p className="rx-empty" role="status" data-goal-seek-unavailable="true">Templates are read-only. Start a project from this template to solve a tariff.</p></section>
           : <GoalSeekPanel project={project} workbookHash={workbookHash} onApplied={onApplied} />)}
         {tool === "runs" && (protectedReference
-          ? <section className="rx-card" data-runs-state="PROTECTED"><h2>Run history &amp; compare</h2><p className="rx-empty" role="status" data-runs-unavailable="true">Reference models are read-only. Create a working copy to review its committed Run history.</p></section>
+          ? <section className="rx-card" data-runs-state="PROTECTED"><h2>Run history &amp; compare</h2><p className="rx-empty" role="status" data-runs-unavailable="true">Templates are read-only. Start a project from this template to review its committed Run history.</p></section>
           : <RunsWorkspace project={project} workbookHash={workbookHash} />)}
       </div>
     </div>

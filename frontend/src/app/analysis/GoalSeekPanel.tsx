@@ -7,7 +7,7 @@ import type { AdapterFailure, GoalSeekApplied, GoalSeekCatalog, GoalSeekPreview 
 
 const FAILURE_TEXT: Record<string, string> = {
   MODEL_BUSY: "The model engine is busy. Wait a moment and solve again.",
-  CONTEXT_CHANGED: "The Working Copy changed while the solve was running, so the result was discarded. Solve again.",
+  CONTEXT_CHANGED: "The project changed while the solve was running, so the result was discarded. Solve again.",
 };
 
 /** Analysis > Goal Seek (tender pricing): solve the tariff that reaches a target return.  The solve is a PREVIEW — it never
@@ -76,9 +76,9 @@ export function GoalSeekPanel({ project, workbookHash, onApplied }: { project: s
       <section className="rx-card" data-goal-seek-state={failure.code} aria-labelledby="rcm-gs-title">
         <h2 id="rcm-gs-title">Goal Seek — tender pricing</h2>
         <p className="rx-empty" role="alert" data-goal-seek-unavailable="true">
-          {failure.code === "PROTECTED_REFERENCE" ? "Reference models are read-only. Create a working copy to solve a tariff." : failure.message || "Goal Seek is not available for this project."}
+          {failure.code === "PROTECTED_REFERENCE" ? "Templates are read-only. Start a project from this template to solve a tariff." : failure.message || "Goal Seek is not available for this project."}
         </p>
-        <p className="rx-note">NOT RELEASED for this project. The classic workbook&rsquo;s Goal Seek sheet remains available.</p>
+        <p className="rx-note">Goal Seek is not available for this project type yet.</p>
       </section>
     );
   }
@@ -93,7 +93,7 @@ export function GoalSeekPanel({ project, workbookHash, onApplied }: { project: s
       <h2 id="rcm-gs-title">Goal Seek — tender pricing <span className="rcm-badge">PREVIEW · NOT APPLIED</span></h2>
       <TierNote vertical={catalog.vertical} />
       <p className="rx-note">
-        Find the {catalog.variable?.label.toLowerCase() ?? "tariff"} that reaches a target return. The solver runs the canonical engine on the <strong>saved Working Copy</strong>{" "}
+        Find the {catalog.variable?.label.toLowerCase() ?? "tariff"} that reaches a target return. The solver runs the model on the <strong>saved project</strong>{" "}
         (at most {catalog.budgets.max_model_evaluations} model evaluations). A solve changes nothing until you press Apply; Apply makes the Last Run STALE and you Run deliberately.
       </p>
       {!catalog.available ? (
@@ -115,14 +115,14 @@ export function GoalSeekPanel({ project, workbookHash, onApplied }: { project: s
           </div>
         </form>
       )}
-      {busy && <p className="rx-note" role="status" data-gs-progress="true">Solving with the canonical engine — nothing is saved.</p>}
+      {busy && <p className="rx-note" role="status" data-gs-progress="true">Solving with the model — nothing is saved.</p>}
       {error && <p className="rx-status rx-status-error" role="alert" data-gs-error={error.code}>{error.message}</p>}
 
       {result && preview && (
         <div className="rcm-result" data-gs-result={result.status} data-gs-preview="true">
           <p className="rcm-status-line">
             <span className={`rcm-chip ${result.solved ? "ok" : "warn"}`} data-gs-status="true">{result.status.replace(/_/g, " ")}</span>
-            <span className="rcm-badge" data-gs-committed="false">PREVIEW — Working Copy unchanged</span>
+            <span className="rcm-badge" data-gs-committed="false">PREVIEW — project unchanged</span>
           </p>
           <p data-gs-message="true">{result.message}</p>
           <dl className="rcm-facts">
@@ -139,15 +139,15 @@ export function GoalSeekPanel({ project, workbookHash, onApplied }: { project: s
 
           {preview.apply && (
             <div className="rcm-apply" data-gs-apply-box="true">
-              {outdated && <p className="rx-banner rx-banner-stale" role="status" data-outdated-banner="true">The Working Copy changed after this solve. Solve again before applying.</p>}
+              {outdated && <p className="rx-banner rx-banner-stale" role="status" data-outdated-banner="true">The project changed after this solve. Solve again before applying.</p>}
               {blocked && <p className="rx-status rx-status-conflict" role="status" data-gs-blocked="true">
                 Apply is disabled while this workspace has {unsaved > 0 ? `${unsaved} unsaved edit${unsaved === 1 ? "" : "s"}` : "a change in progress"} — Save or discard first, then solve again.</p>}
               {!confirming ? (
                 <button type="button" className="rx-button" data-gs-apply="true" disabled={outdated || blocked || applying || Boolean(applyIssue && applyIssue.kind === "unknown")}
-                        onClick={() => setConfirming(true)}>Apply to Working Copy…</button>
+                        onClick={() => setConfirming(true)}>Apply to project…</button>
               ) : (
                 <div role="group" aria-label="Confirm apply" className="rcm-confirm" data-gs-confirm="true">
-                  <p>Write <strong>{result.solved_display}</strong> to the Working Copy tariff? The Last Run becomes STALE; nothing is run.</p>
+                  <p>Write <strong>{result.solved_display}</strong> to the project tariff? The the results become outdated; nothing is run.</p>
                   <button type="button" className="rx-button" data-gs-confirm-apply="true" disabled={applying} aria-busy={applying} onClick={() => void confirmApply()}>{applying ? "Applying…" : "Confirm apply"}</button>{" "}
                   <button type="button" className="rx-button rx-button-secondary" disabled={applying} onClick={() => setConfirming(false)}>Cancel</button>
                 </div>

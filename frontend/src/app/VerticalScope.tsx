@@ -15,7 +15,7 @@ const TIER_TEXT: Record<VerticalScope["pilot_tier"], { badge: string; lead: (nam
   },
   RELEASE_CLOSED: {
     badge: "RELEASE CLOSED",
-    lead: (name) => `${name} is not released for Working Copy Runs.`,
+    lead: (name) => `${name} is not released for Runs yet.`,
   },
   UNCLASSIFIED: { badge: "SCOPE UNCONFIRMED", lead: () => "The release scope of this project type could not be confirmed. Do not rely on its results for a pilot." },
 };

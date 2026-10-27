@@ -144,7 +144,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
       setLocked(true);
       setStatus({ tone: "conflict", text: result.message });
     } else if (result.ok) {
-      setStatus({ tone: "ok", text: `${field.label} saved and ${result.verified ? "verified in the fresh projection" : "accepted"}. The Last Run is now STALE; the model was not run.` });
+      setStatus({ tone: "ok", text: `${field.label} saved and ${result.verified ? "verified in the fresh projection" : "accepted"}. The the results are now outdated; the model was not run.` });
       setDrafts((prev) => { const next = { ...prev }; delete next[field.field_id]; return next; });
       read.reload();
       onSaved?.();
@@ -168,7 +168,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
         <span className="rx-save-scope" data-save-scope={sheet}><strong>Saves:</strong> one field at a time</span>
         {dirtyCount > 0 && <span className="wf-dirty" data-unsaved={dirtyCount}>{dirtyCount} unsaved</span>}
       </div>
-      {protectedRef && <div className="fm-banner" role="note"><span className="fm-demo-label">PROTECTED REFERENCE</span><span className="fm-banner-copy">Read-only. Create a Working Copy to edit.</span></div>}
+      {protectedRef && <div className="fm-banner" role="note"><span className="fm-demo-label">READ-ONLY TEMPLATE</span><span className="fm-banner-copy">Read-only. Start a project from this template to edit.</span></div>}
       {locked && <div className="fm-banner" role="alert"><span className="fm-demo-label">RECONCILE</span><span className="fm-banner-copy">The last save outcome is unknown. Reload the workspace before saving again.</span></div>}
       <StatusNote status={status} />
       {sections.map((section) => (

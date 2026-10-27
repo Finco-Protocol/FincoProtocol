@@ -22,8 +22,8 @@ export function SponsorSchedules({ run }: { run: InsightRun }) {
   ];
   return <>{schedules.map(schedule => <details className="fi-evidence" key={schedule.title}>
     <summary>{schedule.title}</summary><p>Run {run.identity.history_id} · {schedule.source || 'Source unavailable'} · monetary values in kEUR</p>
-    {!schedule.rows.length ? <p>No persisted period evidence available.</p> : <div className="fi-table-scroll" tabIndex={0} role="region" aria-label={schedule.title}>
-      <table><caption>{schedule.title} · persisted model periods · kEUR</caption><thead><tr><th scope="col">Persisted period</th><th scope="col">Persisted date</th>
+    {!schedule.rows.length ? <p>No period results are available.</p> : <div className="fi-table-scroll" tabIndex={0} role="region" aria-label={schedule.title}>
+      <table><caption>{schedule.title} · model periods · kEUR</caption><thead><tr><th scope="col">Model period</th><th scope="col">Date</th>
         {schedule.fields.map(([key, label]) => <th scope="col" key={key}>{label}</th>)}</tr></thead>
         <tbody>{schedule.rows.map((row, index) => <tr key={index}><th scope="row">{typeof row.period === 'number' ? row.period : 'Period unavailable'}</th>
           <td>{typeof row.date === 'string' ? row.date : 'Date unavailable'}</td>
