@@ -27,7 +27,7 @@ def test_the_classifier_rejects_staging_and_every_same_host_classic_route(target
 
 @pytest.mark.parametrize("target", [
     "", "#inputs", "#", "/v2/model-react/", "/v2/model-react", "/v2/model-react/PRJ-1", "/v2/model-react/PRJ-1?analysis=runs#analysis",
-    "https://app.example.test/v2/model-react/PRJ-1#results", "PRJ-2", "mailto:support@example.test",
+    "https://app.example.test/v2/model-react/PRJ-1#results", "PRJ-2", "mailto:", "tel:+385000",
     "/v2/workbook/export?project=P", "/v2/workbook/run-history/export?project=P&history_id=h",
 ])
 def test_the_classifier_accepts_react_destinations_hash_links_and_the_two_export_downloads(target):
