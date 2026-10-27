@@ -77,6 +77,41 @@ VALIDATED_TARGETS_SOURCE = ('("Linux", "x86_64", "cpython", (3, 13))', '("Linux"
 # no activation path: these sources must never reference the Stage 3 package, except exactly the owner-released release surface
 ACTIVATION_SURFACES = ("app/", "main_web.py", "deploy/", ".github/", "tools/", "Dockerfile", "docker-compose.yml")
 
+# FIN-VAL F01 CI V3 reconciliation (Financial Owner authorization, 2026-10-27).
+# This is NOT a released activation surface. The sole acceptance-only exception
+# requires the exact reviewed Git blob AND independent test-only semantics.
+# All other workflows and even a one-byte mutation continue to fail closed.
+F01_TEST_ONLY_WORKFLOW = ".github/workflows/finval_f01_acceptance.yml"
+F01_TEST_ONLY_BLOB = "8b7b49a49583fc33c48d60cc55bd88ea9e88ef8d"
+
+
+def _exact_f01_nonactivation_workflow(path: str, ref: str, root) -> bool:
+    if path != F01_TEST_ONLY_WORKFLOW or blob(path, ref, repo=root) != F01_TEST_ONLY_BLOB:
+        return False
+    raw = _show_bytes(ref, path, root)
+    if raw is None:
+        return False
+    # Require actual read-only test execution and non-root/offline native
+    # verification. In particular, the native directory stat command does
+    # NOT constitute V11 activation. Exact identity disallows any extra step.
+    required = (
+        b"name: FIN-VAL F01 Financial Acceptance\n",
+        b"permissions:\n  contents: read\n",
+        b"persist-credentials: false",
+        b"python -m pytest ",
+        b"docker run --rm --network none",
+        b"test \"$(id -u)\" -ne 0",
+        b"actions/upload-artifact@",
+    )
+    forbidden = (
+        b"contents: write", b"actions: write", b"id-token: write",
+        b"FINCO_NATIVE_V11_RUN", b"Stage3Config", b"stage3_run",
+        b"deploy/", b"secrets.", b"gh release", b"docker push",
+        b"environment: production", b"environment: staging",
+    )
+    return all(item in raw for item in required) and not any(item in raw for item in forbidden)
+
+
 _CACHE: dict = {}
 
 
@@ -219,7 +254,9 @@ def v11_violations(*, repo=None, ref: str = "HEAD") -> list[str]:
         surfaces = _git("grep", "-l", "-e", "native_v11", "-e", "Stage3Config", "-e", "stage3_run", head, "--",
                         *ACTIVATION_SURFACES, repo=root)
         # git grep <rev>: lines are "<rev>:<path>"; no match -> exit 1 -> None
-        unreleased = {line.split(":", 1)[-1] for line in (surfaces or "").splitlines()} - released
+        observed = {line.split(":", 1)[-1] for line in (surfaces or "").splitlines()}
+        unreleased = {path for path in observed - released
+                      if not _exact_f01_nonactivation_workflow(path, head, root)}
         if unreleased:
             bad.append(f"V11_STAGE3_ACTIVATION_SURFACE: {sorted(unreleased)}")
         tracked = _git("ls-tree", "-r", "--name-only", head, "--", "financial_engine/native_v11/", "financial_engine/native_v10/",

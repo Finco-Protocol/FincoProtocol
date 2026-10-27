@@ -1,0 +1,511 @@
+{
+  "baseRefName": "main",
+  "files": [
+    {
+      "path": ".github/workflows/finval_f01_acceptance.yml",
+      "additions": 48,
+      "deletions": 0
+    },
+    {
+      "path": "app/input_adapter.py",
+      "additions": 83,
+      "deletions": 20
+    },
+    {
+      "path": "app/persistence/projects_repository.py",
+      "additions": 12,
+      "deletions": 6
+    },
+    {
+      "path": "app/persistence/workspace_repository.py",
+      "additions": 19,
+      "deletions": 6
+    },
+    {
+      "path": "app/services/project_library_service.py",
+      "additions": 48,
+      "deletions": 0
+    },
+    {
+      "path": "app/templates/partials/inputs_section.html",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "app/templates/partials/sheet_senior_debt.html",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "app/templates/partials/workspace_shell.html",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "app/v2/grid_router.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "app/v2/router.py",
+      "additions": 28,
+      "deletions": 6
+    },
+    {
+      "path": "app/workbook/update_service.py",
+      "additions": 16,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/FINANCIAL_OWNER_SCOPE_MANIFEST.md",
+      "additions": 44,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/FINVAL_F01_ACCEPTANCE.md",
+      "additions": 34,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/FINVAL_F01_CI_AND_REVIEW.md",
+      "additions": 20,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/FINVAL_F01_ROOT_CAUSE.md",
+      "additions": 30,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/RC_M_INTEGRATION.md",
+      "additions": 9,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/acceptance-matrix.json",
+      "additions": 250,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser.xml",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/data_center-0.056.png",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/data_center-5.60.png",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/data_center.json",
+      "additions": 14,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/ev_charging-0.056.png",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/ev_charging-5.60.png",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/ev_charging.json",
+      "additions": 14,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/solar-0.056.png",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/solar-5.60.png",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/solar.json",
+      "additions": 14,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/wind-0.056.png",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/wind-5.60.png",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/browser/wind.json",
+      "additions": 14,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/creation-and-persistence.xml",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/data_center-history-False.json",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/data_center-history-True.json",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/data_center-rate-0.056.json",
+      "additions": 105,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/data_center-rate-0.56.json",
+      "additions": 194,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/data_center-rate-5.6.json",
+      "additions": 194,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/data_center-rate-9.0.json",
+      "additions": 105,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/ev_charging-history-False.json",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/ev_charging-history-True.json",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/ev_charging-rate-0.056.json",
+      "additions": 178,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/ev_charging-rate-0.56.json",
+      "additions": 178,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/ev_charging-rate-5.6.json",
+      "additions": 178,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/ev_charging-rate-9.0.json",
+      "additions": 178,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-data_center-0.056.json",
+      "additions": 19,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-data_center-0.56.json",
+      "additions": 3841,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-data_center-5.6.json",
+      "additions": 3841,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-data_center-9.0.json",
+      "additions": 19,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-ev_charging-0.056.json",
+      "additions": 3625,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-ev_charging-0.56.json",
+      "additions": 3625,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-ev_charging-5.6.json",
+      "additions": 3625,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-ev_charging-9.0.json",
+      "additions": 3625,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-solar-0.056.json",
+      "additions": 4551,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-solar-0.56.json",
+      "additions": 4551,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-solar-5.6.json",
+      "additions": 4551,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-solar-9.0.json",
+      "additions": 4551,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-wind-0.056.json",
+      "additions": 4977,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-wind-0.56.json",
+      "additions": 4977,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-wind-5.6.json",
+      "additions": 4977,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/http-wind-9.0.json",
+      "additions": 4977,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/solar-history-False.json",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/solar-history-True.json",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/solar-rate-0.056.json",
+      "additions": 230,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/solar-rate-0.56.json",
+      "additions": 230,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/solar-rate-5.6.json",
+      "additions": 230,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/solar-rate-9.0.json",
+      "additions": 230,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/wind-history-False.json",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/wind-history-True.json",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/wind-rate-0.056.json",
+      "additions": 242,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/wind-rate-0.56.json",
+      "additions": 242,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/wind-rate-5.6.json",
+      "additions": 242,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/financial/wind-rate-9.0.json",
+      "additions": 129,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/governance.xml",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/lifecycle.xml",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/live-main-reproduction.json",
+      "additions": 14,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native-final.xml",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-data_center-0.056.json",
+      "additions": 80,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-data_center-0.56.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-data_center-5.6.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-data_center-9.0.json",
+      "additions": 86,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-data_center-None.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-ev_charging-0.056.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-ev_charging-0.56.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-ev_charging-5.6.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-ev_charging-9.0.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-ev_charging-None.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-solar-0.056.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-solar-0.56.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-solar-5.6.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-solar-9.0.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-solar-None.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-wind-0.056.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-wind-0.56.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-wind-5.6.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-wind-9.0.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/native/native-wind-None.json",
+      "additions": 98,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/preflight.json",
+      "additions": 34,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/rate-complete.xml",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/reproduce_live_main.py",
+      "additions": 26,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/evidence/scope-blobs.json",
+      "additions": 174,
+      "deletions": 0
+    },
+    {
+      "path": "docs/financial_validation/finval_f01/rc_m_rate_contract.json",
+      "additions": 82,
+      "deletions": 0
+    }
+  ],
+  "headRefOid": "45bd6849cb4a8b93a105e3d7d313823c5bd50545",
+  "isDraft": true,
+  "number": 389,
+  "reviews": [],
+  "state": "OPEN",
+  "url": "https://github.com/Finco-Protocol/FincoProtocol/pull/389"
+}

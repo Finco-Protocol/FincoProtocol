@@ -177,6 +177,11 @@ REACT_MVP_CORRECTION_SUCCESSORS={
     "tests/test_model_workspace_consolidation_browser.py":"6f91b8c9376ba65c27aab34ea39651cef351b2e9",
 }
 
+# FIN-VAL F01: exact additive projection-only successor; historical layers
+# above remain individually admitted. No CSRF, CAS or Run gate is changed.
+FINVAL_RATE_SUCCESSORS={
+    "app/v2/router.py":"8fe930c5a1ac876de0d3a98fff689f34af646a68",
+}
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -265,6 +270,10 @@ def _browser_layers():
     }
 
 
+# F01 complete rate contract; historical layers above are immutable.
+FINVAL_F01_COMPLETE_SUCCESSORS={'app/v2/router.py': '2ec6b05a7d730e1034348da632d37efc6bfa9c3b', 'app/v2/grid_router.py': '0d1ab6c05b7d4f53f9d4a341818e107969bcccc0', 'tests/test_u2_2_returns_surface.py': 'afb64327e1032071ebf254dfe19b1e094e0b6fd0'}
+
+
 def violations(sources,*,check_pin=True):
     errors=[];trees={}
     for path,expected in BLOBS.items():
@@ -275,6 +284,8 @@ def violations(sources,*,check_pin=True):
         if path in FINVAL_B2C1_SUCCESSORS:admitted=admitted|{FINVAL_B2C1_SUCCESSORS[path]}
         if path in D029_RUN_INTENT_SUCCESSORS:admitted=admitted|{D029_RUN_INTENT_SUCCESSORS[path]}
         if path in REACT_MVP_CORRECTION_SUCCESSORS:admitted=admitted|{REACT_MVP_CORRECTION_SUCCESSORS[path]}
+        if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
+        if path in FINVAL_F01_COMPLETE_SUCCESSORS:admitted=admitted|{FINVAL_F01_COMPLETE_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):
             try:trees[path]=ast.parse(text)

@@ -496,6 +496,16 @@ def _ensure_reference_workspace_and_scenario(record, defn: dict) -> None:
     snapshot = _compute_baseline_snapshot(defn["project_type"], defn["template_source"])
 
     ws = get_workspace_state(record.user_id, record.project_id)
+    if ws is not None:
+        # FIN-VAL: reference reconciliation is NOT a rate-unit migration.
+        # Preserve existing source pricing/provenance byte-for-byte; only a
+        # NEW Working Copy receives the new canonical rate contract below.
+        from app.input_adapter import RATE_UNIT_KEY
+        for key in ("interest_rate_pct", RATE_UNIT_KEY):
+            if key in ws.draft_snapshot:
+                snapshot[key] = ws.draft_snapshot[key]
+            else:
+                snapshot.pop(key, None)
     if ws is None:
         save_workspace_state(
             user_id=record.user_id,
@@ -614,6 +624,44 @@ def create_working_copy(
     src_ws = get_workspace_state(source.user_id, source.project_id)
     snapshot = (src_ws.saved_snapshot if src_ws else source.baseline_snapshot) or {}
     snapshot = dict(snapshot)
+    # New-copy normalization is allowed ONLY by an explicit unit contract,
+    # or the closed, immutable canonical factory-reference producer contract.
+    # Template name or numeric magnitude alone is not provenance.
+    if source.template_source in {
+        "generic_solar_reference", "generic_wind_reference",
+        "generic_data_center_reference", "generic_ev_charging_reference",
+    }:
+        from app.persistence.projects_repository import _compute_baseline_snapshot
+        from app.input_adapter import RATE_UNIT_KEY, RATE_UNIT, assert_rate_unit, RateUnitProvenanceError
+        rate_seed = _compute_baseline_snapshot(source.project_type, source.template_source)
+        source_unit = snapshot.get(RATE_UNIT_KEY)
+        if source_unit is not None:
+            assert_rate_unit(snapshot)
+            origin_contract = RATE_UNIT
+        else:
+            definition = next((d for d in _REFERENCE_DEFINITIONS
+                               if d["template_source"] == source.template_source), None)
+            producer = source.replay_metadata or {}
+            old_rate = str(float(rate_seed["interest_rate_pct"]) / 100.0)
+            proven = (definition is not None
+                      and source.project_code == definition["project_code"]
+                      and source.project_origin == "factory_template"
+                      and producer.get("reference") is True
+                      and producer.get("factory") == definition["factory"]
+                      and str(source.baseline_snapshot.get("interest_rate_pct")) == old_rate
+                      and str(snapshot.get("interest_rate_pct")) == old_rate)
+            if not proven:
+                raise RateUnitProvenanceError(
+                    "RATE_UNIT_PROVENANCE_AMBIGUOUS: source does not match the trusted immutable "
+                    "factory-reference ratio contract. No copy or conversion was made.")
+            snapshot["interest_rate_pct"] = rate_seed["interest_rate_pct"]
+            origin_contract = "canonical_factory_reference_ratio_v0"
+        snapshot[RATE_UNIT_KEY] = RATE_UNIT
+        snapshot["_finval_interest_rate_origin"] = {
+            "version": 1, "source_contract": origin_contract,
+            "source_project_id": source.project_id,
+            "template_source": source.template_source,
+        }
     snapshot["project_origin"] = "user_created"
     snapshot["project_name"] = display_name
     snapshot["active_project"] = project_code

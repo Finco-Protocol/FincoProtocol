@@ -60,7 +60,8 @@ def test_every_earlier_admitted_blob_remains_individually_admitted(path):
 def test_router_and_csrf_token_module_are_not_in_the_layer_and_keep_their_pins():
     assert "app/v2/router.py" not in LAYER and S.TOKEN_MODULE not in LAYER
     assert S.git_blob(SOURCES["app/v2/router.py"]) in {S.BLOBS["app/v2/router.py"], S.FINVAL_B2C1_SUCCESSORS["app/v2/router.py"],
-                                                       S.D029_RUN_INTENT_SUCCESSORS["app/v2/router.py"]}
+                                                       S.D029_RUN_INTENT_SUCCESSORS["app/v2/router.py"], S.FINVAL_RATE_SUCCESSORS["app/v2/router.py"],
+                                                       S.FINVAL_F01_COMPLETE_SUCCESSORS["app/v2/router.py"]}
     assert S.git_blob(SOURCES[S.TOKEN_MODULE]) == S.BLOBS[S.TOKEN_MODULE]
 
 
@@ -105,4 +106,9 @@ def test_the_correction_changes_no_protected_financial_path_since_the_baseline()
                  "app/persistence/run_intent_repository.py", "app/persistence/run_history_repository.py", "app/services/run_service.py")
     prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/")
     hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]
+    # F01 is an independently authorized successor, attributed only when all
+    # exact source blobs and the current-main ancestry are present.
+    from tests import finval_f01_scope as F01
+    if F01.valid():
+        hits = [p for p in hits if p not in F01.SOURCES]
     assert hits == [], hits

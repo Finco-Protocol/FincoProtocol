@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="15.280" timestamp="2026-10-27T09:44:16.812250+00:00" hostname="d9b7aec2b2ee"><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_workbook_opens_in_libreoffice" time="14.713" /></testsuite></testsuites>

@@ -272,6 +272,7 @@ def test_workbook_route_renders_returns_and_preserves_cross_user_isolation():
         "total_capex_keur": 45000.0,
         "gearing_pct": 65.0,
         "interest_rate_pct": 6.0,
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": 15,
         "target_dscr": 1.3,
     }
@@ -607,6 +608,7 @@ def test_f01_scenario_select_oob_replaces_returns_fragment():
         "total_capex_keur": 45000.0,
         "gearing_pct": 65.0,
         "interest_rate_pct": 6.0,
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": 15,
         "target_dscr": 1.3,
     }

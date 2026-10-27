@@ -82,7 +82,7 @@
           </tr>
           <tr data-fc-row="true">
             <td>Interest Rate (%)</td>
-            <td data-fc-cell="true" data-fc-addr="seniordebt!interest_rate_pct" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.interest_rate_pct }}"><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="interest_rate_pct" inputmode="decimal" aria-label="Draft interest rate percentage" /></td>
+            <td data-fc-cell="true" data-fc-addr="seniordebt!interest_rate_pct" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.interest_rate_pct * 100 }}"><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="interest_rate_pct" inputmode="decimal" aria-label="Draft interest rate percentage" /></td>
             <td>All-in rate applied to senior balance.</td>
           </tr>
           <tr data-fc-row="true">
@@ -123,7 +123,7 @@
             data-fc-cell="true" data-fc-addr="seniordebt!interest_rate_summary"
             data-fc-kind="text" data-fc-editable="false"
             data-fc-raw="{{ project_ctx.interest_rate_pct }}">
-        {{ "%.2f"|format(project_ctx.interest_rate_pct * 100) }}% p.a.
+        {{ "%.12g"|format(project_ctx.interest_rate_pct * 100) }}% p.a.
       </span>
     </div>
     {% if project_ctx.senior_base_rate_pct or project_ctx.senior_margin_bps %}

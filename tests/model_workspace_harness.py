@@ -65,7 +65,8 @@ def sheet_fields(sheet_id: str, values: Optional[dict[str, Any]] = None) -> list
     from app.workbook.input_set import ProjectInputSet
     from app.workbook.registry import WORKBOOK
 
-    pis = ProjectInputSet.from_snapshot({}, workbook=WORKBOOK)
+    pis = ProjectInputSet.from_snapshot({"_finval_interest_rate_unit": "human_percent_v1"}, workbook=WORKBOOK)
+    # Fresh synthetic presentation fixture declares its unit; no historical row is labeled.
     rows = _build_sheet_fields(sheet_id, pis)
     for row in rows:
         if values and row["field_id"] in values:

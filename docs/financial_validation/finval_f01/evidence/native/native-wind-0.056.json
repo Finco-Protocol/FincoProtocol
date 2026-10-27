@@ -1,0 +1,98 @@
+{
+  "off": {
+    "verdict": "FEASIBLE",
+    "error": null,
+    "digests": {
+      "financial_digest": "940f4b10429ebd9681db0c3b76d69fe10a01b04e9525941d7550a5f8896aacc6",
+      "full_digest": "7e0f7c7298c07c12f2b0ab4ef85c13f932ce3952a6047597e84543d7cccfb7dd",
+      "integrity": "PASS",
+      "integrity_digest": "1da54abc57386becc39938f6b42388a271ed45cc0f6d7ce7e6af32a1800b0b7a",
+      "final_checks": "8763dc67c925c280955f80cfd53ff91df979df80dd3c011ab92dab115025b311"
+    },
+    "seconds": 2.3187867279993952,
+    "v10": {
+      "native_solves": 0,
+      "native_finalisations": 0,
+      "native_tax_evaluations": 0,
+      "stage2_native_calls": 0,
+      "declines": {},
+      "loader_reason": null,
+      "build_id": null
+    },
+    "s3": {
+      "native_models": 0,
+      "native_shl_fixed_points": 0,
+      "native_plain": 0,
+      "native_full_tax": 0,
+      "native_solves": 0,
+      "native_tax_evaluations": 0,
+      "declines": {},
+      "loader_reason": null,
+      "build_id": null
+    }
+  },
+  "v10_s12": {
+    "verdict": "FEASIBLE",
+    "error": null,
+    "digests": {
+      "financial_digest": "940f4b10429ebd9681db0c3b76d69fe10a01b04e9525941d7550a5f8896aacc6",
+      "full_digest": "7e0f7c7298c07c12f2b0ab4ef85c13f932ce3952a6047597e84543d7cccfb7dd",
+      "integrity": "PASS",
+      "integrity_digest": "1da54abc57386becc39938f6b42388a271ed45cc0f6d7ce7e6af32a1800b0b7a",
+      "final_checks": "8763dc67c925c280955f80cfd53ff91df979df80dd3c011ab92dab115025b311"
+    },
+    "seconds": 1.3392176480047056,
+    "v10": {
+      "native_solves": 292,
+      "native_finalisations": 146,
+      "native_tax_evaluations": 2336,
+      "stage2_native_calls": 295,
+      "declines": {},
+      "loader_reason": null,
+      "build_id": "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434"
+    },
+    "s3": {
+      "native_models": 0,
+      "native_shl_fixed_points": 0,
+      "native_plain": 0,
+      "native_full_tax": 0,
+      "native_solves": 0,
+      "native_tax_evaluations": 0,
+      "declines": {},
+      "loader_reason": null,
+      "build_id": null
+    }
+  },
+  "s12_s3": {
+    "verdict": "FEASIBLE",
+    "error": null,
+    "digests": {
+      "financial_digest": "940f4b10429ebd9681db0c3b76d69fe10a01b04e9525941d7550a5f8896aacc6",
+      "full_digest": "7e0f7c7298c07c12f2b0ab4ef85c13f932ce3952a6047597e84543d7cccfb7dd",
+      "integrity": "PASS",
+      "integrity_digest": "1da54abc57386becc39938f6b42388a271ed45cc0f6d7ce7e6af32a1800b0b7a",
+      "final_checks": "8763dc67c925c280955f80cfd53ff91df979df80dd3c011ab92dab115025b311"
+    },
+    "seconds": 0.5933558819961036,
+    "v10": {
+      "native_solves": 0,
+      "native_finalisations": 0,
+      "native_tax_evaluations": 0,
+      "stage2_native_calls": 171,
+      "declines": {},
+      "loader_reason": null,
+      "build_id": null
+    },
+    "s3": {
+      "native_models": 84,
+      "native_shl_fixed_points": 42,
+      "native_plain": 42,
+      "native_full_tax": 168,
+      "native_solves": 292,
+      "native_tax_evaluations": 2752,
+      "declines": {},
+      "loader_reason": null,
+      "build_id": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344"
+    }
+  }
+}

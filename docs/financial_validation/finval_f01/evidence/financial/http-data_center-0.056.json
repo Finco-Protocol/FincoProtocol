@@ -1,0 +1,19 @@
+{
+  "kind": "data_center",
+  "human_pct": 0.056,
+  "outcome": "FAILED",
+  "effective_input_changes_from_existing_run_folds": [
+    "opex"
+  ],
+  "independent_interest_oracle": {
+    "status": "REFUSED",
+    "reason_code": "PR8_CLEAN_ENGINE_FAIL_CLOSED",
+    "detail": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: G2A_FIXED_SOURCES_EXCEED_TOTAL_PROJECT_USES: funding excess=3169.529490977 kEUR",
+    "rate_pct": 0.05600000000000001,
+    "typed_ratio": 0.0005600000000000001
+  },
+  "history_rows": 0,
+  "persisted_debt_schedule": {},
+  "persisted_financial_statements": {},
+  "persisted_summary": {}
+}

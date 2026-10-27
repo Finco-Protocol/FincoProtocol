@@ -1,0 +1,16 @@
+{
+  "head": "45bd6849cb4a8b93a105e3d7d313823c5bd50545",
+  "tree": "935c0c8b88d06af145b0bd1d9d7b55e8243dee9b",
+  "broad_regression": {
+    "passed": 1165,
+    "failed": 1,
+    "failed_node": "tests/test_model_react_overnight_b_governance.py::test_the_correction_changes_no_protected_financial_path_since_the_baseline",
+    "reason": "The long-lived pytest process loaded the F01 map before the additive workflow was finalized; it correctly refused that not-yet-registered path. No financial/source/runtime regression failed."
+  },
+  "final_exact_source_rerun": {
+    "passed": 14,
+    "failed": 0,
+    "junit": "final-scope.xml",
+    "note": "Fresh process loads the finalized exact-blob scope and all negatives. No financial source changed during the broad regression."
+  }
+}
