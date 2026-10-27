@@ -200,9 +200,11 @@ RC_M_SUCCESSORS={
 # tests/test_rcux_governance.py.  Blobs are recomputed from the committed sources by the pin refresh and asserted by tests/test_rcux_governance.py.
 RC_UX_SUCCESSORS={
     "app/v2/react_workspace_router.py":"588ddb783212392a8a7eda86e3f89c5f46b91342",
+    "frontend/src/app/WorkspaceView.tsx":"d9ef2b8a2c7757a536a99318f733d91195473d7f",
     "static/react/finco-react.css":"fa709105a9692d364045eee323caafeec5a6e308",
-    "static/react/finco-react.js":"0337b9e8478a11fc6d38b4d767561de25c804f6e",
-    "tests/test_model_workspace_consolidation_browser.py":"5421faf31bb20ac16f8dbf10847d29e97f11d1bb",
+    "static/react/finco-react.js":"b54ab1e0e3b68436b7af2edb315716c9920b83d8",
+    "tests/test_model_workspace_consolidation_browser.py":"2bb6b953560bb31dea14899284f7df0bc3638abd",
+    "frontend/src/app/workflow/workflowShared.tsx":"63cd82285d9f3449e36f4670adfe105931a8c5b0",
 }
 
 # FIN-VAL F01: exact additive projection-only successor; historical layers

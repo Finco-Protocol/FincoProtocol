@@ -126,7 +126,7 @@ ROLE = "tests/test_model_workspace_consolidation_browser.py"
 
 
 def test_the_consolidation_role_imports_exactly_the_five_acceptance_modules_and_adds_no_wrapper_of_its_own():
-    tail = SOURCES[ROLE][SOURCES[ROLE].index("# RC-M integrated React acceptance"):]
+    tail = SOURCES[ROLE][SOURCES[ROLE].index("# RC-M integrated React acceptance"):SOURCES[ROLE].index("# RC-UX Completion V1")]
     assert re.findall(r"^from (tests\.\w+) import (\*|rcm_react_flag)", tail, flags=re.M) == [
         ("tests.model_react_rcm_support", "rcm_react_flag")] + [(f"tests.model_react_rcm_{lane}_acceptance", "*") for lane in ACCEPTANCE]
     assert tail.count("def ") == 0 and "importorskip" not in tail and "mark.skip" not in tail     # imports only: no function, no skip

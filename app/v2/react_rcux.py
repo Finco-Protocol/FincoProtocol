@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.v2.react_capex import router as _capex_router
 from app.v2.react_compare import router as _compare_router
 
 router = APIRouter()
 router.include_router(_compare_router)
+router.include_router(_capex_router)
 
-RCUX_ADAPTERS = ("react_compare",)
+RCUX_ADAPTERS = ("react_capex", "react_compare")

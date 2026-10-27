@@ -14,7 +14,7 @@ SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_UX_SUCCESSORS
 BASE = "f79e251903621c1a5c88501d51d6971960b612d3"       # main containing #388, the RC-UX branch point
 ALLOWED = {"app/v2/react_workspace_router.py", "frontend/src/app/WorkspaceView.tsx", "static/react/finco-react.css", "static/react/finco-react.js",
-           "tests/test_model_workspace_consolidation_browser.py"}
+           "tests/test_model_workspace_consolidation_browser.py", "frontend/src/app/workflow/workflowShared.tsx"}
 
 
 def _git(*args):
@@ -40,7 +40,7 @@ def test_one_byte_of_drift_in_a_layer_path_fails_closed(path):
 @pytest.mark.parametrize("path", sorted(LAYER))
 def test_the_rc_m_state_of_each_layer_path_remains_individually_admitted(path):
     changed = dict(SOURCES)
-    blob = S.RC_M_SUCCESSORS[path]
+    blob = S.RC_M_SUCCESSORS.get(path, S.BLOBS[path])                                  # the state before RC-UX
     changed[path] = subprocess.check_output(["git", "cat-file", "blob", blob], cwd=S.ROOT).decode("utf-8")
     assert not [e for e in S.violations(changed) if e.startswith(path + ": unreviewed")]
 
@@ -98,3 +98,40 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
+
+
+# ── RC-UX adapters: read-only, no state-changing route, no token issuance of their own ──────────────────────────────────────────
+def test_the_rcux_adapters_are_read_only_and_issue_no_mutation_authority_of_their_own():
+    from app.v2 import react_rcux
+    for module in react_rcux.RCUX_ADAPTERS:
+        text = (S.ROOT / "app/v2" / f"{module}.py").read_text(encoding="utf-8")
+        assert not re.search(r"@router\.(post|put|patch|delete)\(", text), module
+        assert "validate_csrf_token(" not in text and "mutation_token(" not in text and "validate_mutation_token(" not in text, module
+        assert not re.search(r"\b(apply_draft_update|save_profiles|save_agreement|create_reference_seeded_project|update_project_record|apply_batch_draft_update)\(", text), module
+
+
+# ── RC-UX browser acceptance rides the EXISTING mandatory consolidation role (same pattern as RC-M) ─────────────────────────────
+ROLE = "tests/test_model_workspace_consolidation_browser.py"
+ACCEPTANCE = ("tests/model_react_rcux_runs_acceptance.py", "tests/model_react_rcux_capex_acceptance.py")
+
+
+def test_the_consolidation_role_imports_exactly_the_rcux_acceptance_modules_and_adds_no_wrapper_of_its_own():
+    tail = SOURCES[ROLE][SOURCES[ROLE].index("# RC-UX Completion V1"):]
+    modules = re.findall(r"^from (tests\.\w+) import \*", tail, flags=re.M)
+    assert modules == [m.removesuffix(".py").replace("/", ".") for m in ACCEPTANCE]
+    assert tail.count("def ") == 0 and "importorskip" not in tail and "mark.skip" not in tail
+
+
+@pytest.mark.parametrize("path", ACCEPTANCE)
+def test_each_rcux_acceptance_module_is_not_collected_alone_exports_exactly_its_tests_and_has_no_skip(path):
+    import ast
+
+    file = S.ROOT / path
+    assert not file.name.startswith("test_")
+    source = file.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    exported = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and n.targets[0].id == "__all__")
+    tests = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")]
+    assert sorted(exported) == sorted(tests) and len(set(exported)) == len(exported)
+    for forbidden in ("importorskip", "pytest.skip", "mark.skip", "skipif", "xfail", "autouse", "from playwright", "import playwright"):
+        assert forbidden not in source, forbidden

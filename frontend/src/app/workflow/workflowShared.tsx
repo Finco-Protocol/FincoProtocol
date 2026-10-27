@@ -30,6 +30,7 @@ export function describeDirtyKey(key: string): string {
   if (key.startsWith("sheet-tax")) return "Tax and depreciation";
   if (key.startsWith("sheet-debt")) return "Financing";
   if (key.startsWith("cost-")) return "CAPEX & OPEX";
+  if (key === "capex-profile") return "CAPEX spending profile";
   if (key === "revenue-ppa") return "Revenue & PPA";
   if (key.startsWith("scenario-")) return "Scenarios";
   return key;

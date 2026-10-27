@@ -13,6 +13,7 @@ import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
 import { CostLinesView, DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
 import { FinancialInsights } from "./insights";
 import { InputsJumpNav, SaveScopeGuide, type InputsJump } from "./InputsGuide";
+import { InputStudios } from "./studios/InputStudios";
 import { RunIdentityLabel } from "./runIdentity";
 import { VerticalScopeBanner } from "./VerticalScope";
 import "../styles/rc-react-mvp.css";
@@ -369,6 +370,10 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
                     onSaved={afterMutation}
                   />
                 )}
+              </div>
+              <div id="wf-inputs-studios" tabIndex={-1}>
+                <InputStudios project={project} protectedReference={Boolean(workspace.project.protected_reference)}
+                  reloadKey={dataVersion} onSaved={afterMutation} />
               </div>
             </>
             : <p className="rx-boot-loading" role="status">Loading the canonical input grid…</p>
