@@ -836,7 +836,7 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
             "deactivate": {"url": f"/v2/{sheet}/line/deactivate"},
             "reactivate": {"url": f"/v2/{sheet}/line/reactivate"},
             "eligible_groups": eligible_groups,
-            "csrf_note": "Line changes are protected: another change made in the meantime is never overwritten.",
+            "csrf_note": "Line requests require session/project/operation-bound CSRF, composite CAS and row versions.",
         },
     })
 
@@ -1054,7 +1054,7 @@ async def react_trust(request: Request, project: str):
             "state": "DEFERRED" if has_run else "UNAVAILABLE",
             "reason": "EXPLICIT_REFERENCE_REGRESSION_REQUIRED" if has_run else "COMMITTED_LAST_RUN_REQUIRED",
             "authority": "REFERENCE_REGRESSION_CHECK",
-            "scope": "Reference regression only; it is not a validation of this project or its Run.",
+            "scope": "Pinned canonical reference regression only; not validation of this Working Copy or its Run.",
             "load_url": f"/v2/workbook/trust/validation?{query}" if has_run else None,
             "not_verify": True,
         }

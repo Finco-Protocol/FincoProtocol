@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 import pytest
 
 from tests.model_react_mvp_acceptance import explicit_run
+from tests.rcux_navigation_contract import DOWNLOAD_PATHS, REACT_PREFIX, TARGETS_JS, violation  # noqa: F401  (the pure contract, shared with the source test)
 from tests.model_react_wf1_browser_acceptance import open_section, run_canonical
 from tests.model_react_wf2_lifecycle_acceptance import CIT_CELL, DISCARD, SAVE, STAY, dialog, stage_cit, wait_dirty
 
@@ -44,49 +45,6 @@ SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_
 SECTIONS = ("overview", "inputs", "statements", "financing", "results", "scenarios", "analysis", "diagnostics", "trust")
 KINDS = ("solar", "wind", "data_center", "ev_charging")
 THEMES = ("FINCO default", "Slate & Teal", "High-Contrast")
-REACT_PREFIX = "/v2/model-react"
-#: File downloads (an attachment: the page stays where it is) are not screens.  Nothing else outside ``/v2/model-react`` is allowed.
-DOWNLOAD_PATHS = ("/v2/workbook/export", "/v2/workbook/run-history/export")
-
-#: Every user-visible navigation target of the current DOM.
-TARGETS_JS = """() => {
-  const out = [];
-  const add = (kind, el, target) => out.push({kind, target: target || '', text: (el.innerText || el.getAttribute('aria-label') || '').trim().slice(0, 60),
-                                              download: el.hasAttribute('download'), blank: el.getAttribute('target') || ''});
-  document.querySelectorAll('a[href]').forEach(el => add('a', el, el.getAttribute('href')));
-  document.querySelectorAll('area[href]').forEach(el => add('area', el, el.getAttribute('href')));
-  document.querySelectorAll('form[action]').forEach(el => add('form', el, el.getAttribute('action')));
-  document.querySelectorAll('button[formaction], input[formaction]').forEach(el => add('formaction', el, el.getAttribute('formaction')));
-  document.querySelectorAll('iframe[src], frame[src], embed[src], object[data]').forEach(el => add('frame', el, el.getAttribute('src') || el.getAttribute('data')));
-  document.querySelectorAll('[data-href], [data-url], [data-link]').forEach(el => add('data', el, el.getAttribute('data-href') || el.getAttribute('data-url') || el.getAttribute('data-link')));
-  document.querySelectorAll('meta[http-equiv]').forEach(el => { if (/refresh/i.test(el.getAttribute('http-equiv'))) add('meta-refresh', el, el.getAttribute('content')); });
-  return out;
-}"""
-
-
-def violation(target: str, *, page_url: str, download: bool = False) -> str | None:
-    """Why this target is a Legacy / classic / external navigation, or None if it stays inside React."""
-    raw = (target or "").strip()
-    if not raw or raw.startswith("#"):
-        return None
-    parsed = urlparse(urljoin(page_url, raw))
-    here = urlparse(page_url)
-    if parsed.scheme in ("mailto", "tel"):
-        return None
-    if parsed.scheme not in ("http", "https"):
-        return f"scheme {parsed.scheme or '?'}: {raw}"
-    if "staging.finco.one" in parsed.netloc.lower() or "staging.finco.one" in raw.lower():
-        return f"staging host: {raw}"
-    if parsed.netloc != here.netloc:
-        return f"external host: {raw}"
-    path = parsed.path
-    if path == REACT_PREFIX or path.startswith(REACT_PREFIX + "/"):
-        return None
-    if path in DOWNLOAD_PATHS:
-        return None
-    return f"same-host classic route {path}: {raw}"
-
-
 def audit(page, label: str, seen: dict[str, int] | None = None) -> list[dict]:
     items = page.evaluate(TARGETS_JS)
     bad = [f"[{i['kind']}] {i['text']!r} -> {why}" for i in items if (why := violation(i["target"], page_url=page.url, download=i["download"]))]

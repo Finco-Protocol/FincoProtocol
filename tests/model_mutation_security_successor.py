@@ -199,7 +199,7 @@ RC_M_SUCCESSORS={
 # component there) and the rebuilt React bundle.  All RC-UX behaviour lives in NEW unpinned files proven by tests/test_model_react_rcux_*.py and
 # tests/test_rcux_governance.py.  Blobs are recomputed from the committed sources by the pin refresh and asserted by tests/test_rcux_governance.py.
 RC_UX_SUCCESSORS={
-    "app/v2/react_workspace_router.py":"0dc741e340e1db918e4d2cc4b26467bc1514dd39",
+    "app/v2/react_workspace_router.py":"dab743e38301d9504909ef73693cb83deeca3dd2",
     "frontend/src/app/FinancialResults.tsx":"9047ea4e3a97a5d5fa6983bba2bfaa1ac99ec3d2",
     "frontend/src/app/WorkspaceView.tsx":"53eddcf668a523d36db3ff15115e7f0c391ee909",
     "frontend/src/app/workflow/ModelExportView.tsx":"a912911cd95d1dc68dd8280bad7ebcfa718506c4",

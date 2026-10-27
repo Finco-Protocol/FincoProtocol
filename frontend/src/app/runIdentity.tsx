@@ -80,7 +80,7 @@ interface RunIdentityProps {
 
 /**
  * The Run identity of one committed Run.  Renders nothing invented: an empty
- * snapshot id is "No persisted Run".
+ * snapshot id is "No saved Run".
  */
 export function RunIdentityLabel({ snapshotId, historyId, ranAt }: RunIdentityProps) {
   const id = (snapshotId ?? "").trim();

@@ -30,19 +30,58 @@ OWNED_PATHS = frozenset((
     'app/v2/react_whatif.py',
     'app/v2/react_workspace_router.py',
     'tests/fin_v2_rcux_scope.py',
+    'tests/rcux_navigation_contract.py',        # the pure navigation classifier: byte-pinned, so the React-only rule cannot be loosened unreviewed
     'tests/test_fin_v2_rcux_scope.py',
 ))
 
-#: Presentation surfaces admitted by pattern (never an ``app/``, engine, persistence, workbook, export, CSRF or CI path).
-PRESENTATION = re.compile(
-    r'^(frontend/src/.+\.(ts|tsx|css|mjs)'
-    r'|static/react/finco-react\.(js|css)'
-    r'|tests/model_react_[a-z0-9_]+_acceptance\.py'
-    r'|tests/test_model_react_rcux_[a-z0-9_]+\.py'
-    r'|tests/test_model_react_poc_browser_acceptance\.py'
-    r'|tests/test_rcux_[a-z_]+\.py'
-    r'|tests/test_model_workspace_consolidation_browser\.py'
-    r'|docs/react_migration/rc_ux_completion/.+)$')
+#: Reviewed test / bundle files, admitted by EXACT path (no pattern): a new RC-UX test, acceptance or helper module is not admitted until its path is
+#: added here, in the same reviewed change as the module itself.  Their bytes are additionally pinned file-by-file in ``RC_UX_SUCCESSORS``
+#: (``tests/model_mutation_security_successor.py``) wherever the original protected layers covered them.
+PRESENTATION_FILES = frozenset((
+    'static/react/finco-react.css',
+    'static/react/finco-react.js',
+    'tests/model_react_rcm_analysis_acceptance.py',
+    'tests/model_react_rcm_financing_acceptance.py',
+    'tests/model_react_rcm_new_project_acceptance.py',
+    'tests/model_react_rcm_themes_acceptance.py',
+    'tests/model_react_rcux_capex_acceptance.py',
+    'tests/model_react_rcux_import_acceptance.py',
+    'tests/model_react_rcux_navigation_acceptance.py',
+    'tests/model_react_rcux_product_acceptance.py',
+    'tests/model_react_rcux_runs_acceptance.py',
+    'tests/model_react_rcux_whatif_acceptance.py',
+    'tests/model_react_wf1_browser_acceptance.py',
+    'tests/model_react_wf2_browser_acceptance.py',
+    'tests/model_react_wf2_lifecycle_acceptance.py',
+    'tests/react_run_identity.py',
+    'tests/test_model_react_overnight_b_v1.py',
+    'tests/test_model_react_poc_browser_acceptance.py',
+    'tests/test_model_react_rcux_capex_v1.py',
+    'tests/test_model_react_rcux_compare_v1.py',
+    'tests/test_model_react_rcux_import_v1.py',
+    'tests/test_model_react_rcux_projects_v1.py',
+    'tests/test_model_react_rcux_trust_v1.py',
+    'tests/test_model_react_rcux_whatif_v1.py',
+    'tests/test_model_react_ux040506_v1.py',
+    'tests/test_model_workspace_consolidation_browser.py',
+    'tests/test_rcux_governance.py',
+    'tests/test_rcux_navigation_source.py',
+    'docs/react_migration/rc_ux_completion/handover/tools/build_register.py',
+    'docs/react_migration/rc_ux_completion/handover/tools/refresh_pins.py',
+))
+#: The only patterns: the React frontend source tree and the RC-UX documents (never a Python file).
+_PATTERN = re.compile(r'^(frontend/src/.+\.(ts|tsx|css|mjs)|docs/react_migration/rc_ux_completion/.+\.(md|csv|txt|json))$')
+
+
+class _Presentation:
+    """``PRESENTATION.match(path)``: an exact reviewed file, or the frontend source tree / RC-UX documents by pattern."""
+
+    @staticmethod
+    def match(path):
+        return path in PRESENTATION_FILES or bool(_PATTERN.match(path))
+
+
+PRESENTATION = _Presentation()
 
 
 def _git(root, *args):

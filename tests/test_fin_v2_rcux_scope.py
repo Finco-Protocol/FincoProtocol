@@ -19,7 +19,7 @@ def test_the_owned_protected_sources_are_exactly_the_read_only_react_adapters_an
     assert {p for p in F.OWNED_PATHS if p.startswith('app/')} == {
         'app/v2/react_capex.py', 'app/v2/react_compare.py', 'app/v2/react_import.py', 'app/v2/react_projects.py', 'app/v2/react_rcux.py',
         'app/v2/react_trust.py', 'app/v2/react_whatif.py', 'app/v2/react_workspace_router.py'}
-    assert {p for p in F.OWNED_PATHS if not p.startswith('app/')} == {'tests/fin_v2_rcux_scope.py', 'tests/test_fin_v2_rcux_scope.py'}
+    assert {p for p in F.OWNED_PATHS if not p.startswith('app/')} == {'tests/fin_v2_rcux_scope.py', 'tests/rcux_navigation_contract.py', 'tests/test_fin_v2_rcux_scope.py'}
 
 
 @pytest.mark.parametrize('path', sorted(F.OWNED_PATHS - {'tests/test_fin_v2_rcux_scope.py'}))
@@ -61,15 +61,29 @@ def test_manifest_cannot_add_or_drop_a_source_path(monkeypatch):
 @pytest.mark.parametrize('path', ['app/v2/router.py', 'app/input_adapter.py', 'app/api/project_runner.py', 'app/v2/react_new_project.py',
                                   'app/v2/react_goal_seek.py', 'app/workbook/registry.py', 'financial_engine/dsra/target.py',
                                   'finco_core/inputs/shl_timing.py', '.github/workflows/ci_public_job.yml', 'main_web.py',
-                                  'tests/test_fin_v2_r1_scope.py', 'static/react/other.js', 'frontend/package.json'])
-def test_the_presentation_pattern_never_admits_a_protected_or_unrelated_path(path):
+                                  'tests/test_fin_v2_r1_scope.py', 'static/react/other.js', 'frontend/package.json',
+                                  # a future / unreviewed module is NOT admitted by name pattern: it must be added to PRESENTATION_FILES explicitly
+                                  'tests/rcux_other_helper.py', 'tests/test_rcux_unreviewed.py', 'tests/model_react_future_acceptance.py',
+                                  'tests/test_model_react_rcux_future_v1.py', 'tests/test_model_react_new_unreviewed_v1.py', 'tests/react_other.py',
+                                  'docs/react_migration/rc_ux_completion/handover/tools/evil.py', 'docs/react_migration/rc_ux_completion/x.py',
+                                  'frontend/src/evil.py'])
+def test_the_presentation_set_never_admits_a_protected_unreviewed_or_future_python_module(path):
     assert not F.PRESENTATION.match(path) and path not in F.OWNED_PATHS
+
+
+def test_every_exactly_admitted_file_exists_and_none_is_a_protected_namespace():
+    for path in F.PRESENTATION_FILES:
+        assert (F.ROOT / path).is_file(), path
+        assert not path.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/')) and path != 'main_web.py', path
+    assert 'tests/rcux_navigation_contract.py' in F.OWNED_PATHS and 'tests/test_rcux_navigation_source.py' in F.PRESENTATION_FILES
+    assert F.matches('tests/rcux_navigation_contract.py', (F.ROOT / 'tests/rcux_navigation_contract.py').read_bytes())
+    assert not F.matches('tests/rcux_navigation_contract.py', (F.ROOT / 'tests/rcux_navigation_contract.py').read_bytes() + b'\n')
 
 
 @pytest.mark.parametrize('path', ['frontend/src/app/WorkspaceView.tsx', 'static/react/finco-react.js', 'tests/model_react_rcux_runs_acceptance.py',
                                   'tests/test_model_react_rcux_compare_v1.py', 'tests/test_model_react_poc_browser_acceptance.py',
-                                  'docs/react_migration/rc_ux_completion/README.md'])
-def test_the_presentation_pattern_admits_the_reviewed_react_surfaces(path):
+                                  'tests/react_run_identity.py', 'docs/react_migration/rc_ux_completion/README.md'])
+def test_the_presentation_set_admits_the_reviewed_react_surfaces(path):
     assert F.PRESENTATION.match(path)
 
 

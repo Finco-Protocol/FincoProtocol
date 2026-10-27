@@ -10,8 +10,9 @@
     "app/v2/react_rcux.py": "1a308304dacc61dd510c4f9134fa67cf4de41b19",
     "app/v2/react_trust.py": "16e0fa90f0a3bedeb8e4bc7a76235c8b9f1452a7",
     "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
-    "app/v2/react_workspace_router.py": "0dc741e340e1db918e4d2cc4b26467bc1514dd39",
-    "tests/fin_v2_rcux_scope.py": "29ee1d43a354489901e799ecdb59f3666bca5bff",
-    "tests/test_fin_v2_rcux_scope.py": "ff7d6432174b711e323a7bb0ab2ffa344aa9f106"
+    "app/v2/react_workspace_router.py": "dab743e38301d9504909ef73693cb83deeca3dd2",
+    "tests/fin_v2_rcux_scope.py": "e23dbc861a3fa227c2c7c878883e7b380dc1505b",
+    "tests/rcux_navigation_contract.py": "9d367d03bf619c4c3243048c824798103f1f516b",
+    "tests/test_fin_v2_rcux_scope.py": "892341c92f5ca4d20b4a4c75e41f8c3696f21911"
   }
 }

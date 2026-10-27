@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.model_react_rcux_navigation_acceptance import DOWNLOAD_PATHS, REACT_PREFIX, TARGETS_JS, violation
+from tests.rcux_navigation_contract import DOWNLOAD_PATHS, REACT_PREFIX, TARGETS_JS, violation
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = "https://app.example.test/v2/model-react/PRJ-1#trust"

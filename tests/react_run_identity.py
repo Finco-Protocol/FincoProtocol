@@ -37,7 +37,7 @@ def text(snapshot_id):
     """What the UI prints for this Run (identical to runIdentityText in the frontend)."""
     parsed = parse(snapshot_id)
     if not (snapshot_id or "").strip():
-        return "No persisted Run"
+        return "No saved Run"
     if parsed is None:
         return snapshot_id.strip()
     return parsed["label"] + (f" · {parsed['suffix']}" if parsed["suffix"] else "")
