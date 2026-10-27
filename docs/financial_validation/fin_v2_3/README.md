@@ -55,7 +55,7 @@ NEGATIVE_AND_GOAL.xml records subsequent focused source/Goal Seek controls.
 Final exact-head results are recorded in the integration handoff/CI evidence.
 The normal retired Model V2 scope skips are not new financial test skips.
 
-FIN_V2_3_INDEPENDENT_ORACLE.xlsx contains 25 sheets and 4,548 formulas across
+The generated FIN_V2_3_INDEPENDENT_ORACLE.xlsx contains 25 sheets and 4,548 formulas across
 8 disposable committed working-copy Runs and 48 metric comparisons. Maximum
 absolute monetary difference is 1.1641532182693481e-10 kEUR. BASE CFADS is rebuilt
 from full-precision persisted statement components. BANK CFADS, debt balances,
@@ -64,6 +64,11 @@ engine-derived inputs and are explicitly labelled. The workbook contains
 independent Decimal formula caches and recalculates in Excel. Excel numeric
 serialization has 15-digit precision; JSON evidence remains full precision.
 No LibreOffice/Excel application recalculation was available in this environment.
+Repository safety forbids tracked spreadsheet binaries. The dedicated
+`FIN-V2-3 Independent Oracle Artifact` workflow replays the committed frozen
+inputs without invoking FINCO, then publishes the workbook, input JSON,
+reconciliation and exact-source attestation as a GitHub Actions artifact named
+`fin-v2-3-oracle-<head SHA>`. The scanner policy remains unchanged.
 
 The isolated branch intentionally refuses actual/rolling debt-bound valuation
 without FIN-V2-2's `SENIOR_DEBT_EVIDENCE_V1`. Its pure mathematics is tested on

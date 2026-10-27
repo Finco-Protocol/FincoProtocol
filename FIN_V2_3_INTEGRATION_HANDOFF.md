@@ -51,6 +51,9 @@ Historical absence is `NOT_PERSISTED`; nothing is backfilled.
 Artifacts and replay instructions are in
 `docs/financial_validation/fin_v2_3/README.md`. All fixtures use synthetic projects
 and disposable databases; source references and historical Runs are preserved.
+The Excel binary is published as the exact-head GitHub Actions artifact
+`fin-v2-3-oracle-<head SHA>`; it is not tracked because repository safety forbids
+spreadsheet binaries. The source-safety policy is unchanged.
 
 ## Exact integration order and overlaps
 
