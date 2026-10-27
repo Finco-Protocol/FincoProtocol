@@ -15,6 +15,7 @@ from tools.ci_v3_phase_compare import control_report,phase_map,native_cases
 from tools.ci_v3_pytest_config import semantic_plugin_profile
 from tools.ci_v3_real_contract import outcome
 from tools.ci_v3_hosted_transport import GitHub,extract_archive
+from tools.ci_v3_calibrate import STEADY_STATE_CONTRACT,evaluate
 
 REPO='Finco-Protocol/FincoProtocol'
 BASE_HEAD='e96561a220fc6adeb85587eb01d61745a922ab41'
@@ -168,7 +169,7 @@ def worker(project,out,planfolder,index):
  require(type(index) is int and 0 <= index < plan['plan']['worker_count'],'worker index outside plan')
  require(sha('runtime-image.tar.gz')==plan['image_archive_sha256'],'runtime transfer bytes')
  subprocess.run(['docker','load','--input','runtime-image.tar.gz'],check=True)
- request={'mode':'worker','worker':f'worker-{index}','context':context(),'inventory':plan['inventory'],'owned_modules':[m for m,w in plan['plan']['module_workers'].items() if w==f'worker-{index}'],'target_calibration':{'ceiling_s':.6,'statistic':'maximum','samples':3}}
+ request={'mode':'worker','worker':f'worker-{index}','context':context(),'inventory':plan['inventory'],'owned_modules':[m for m,w in plan['plan']['module_workers'].items() if w==f'worker-{index}'],'target_calibration':dict(STEADY_STATE_CONTRACT)}
  child,proc=observe_container(request,out/'execution',project,plan['image'],5400,built_image=True)
  write_json(out/'process.json',proc);write_json(out/'binding.json',{'context':context(),'worker':index,'plan_sha256':sha(planfolder/'plan.json'),'image':plan['image']})
  import shutil
@@ -274,7 +275,7 @@ def verify_data(planfolder,workers):
   owned={n for n in expected if data['plan']['module_workers'][n.split('::')[0]]==f'worker-{index}'}
   require(set(r['selected'])==owned and len(r['selected'])==len(owned) and Counter(r['deselected'])==Counter(expected-owned),'ownership loss/duplicate')
   require(r['environment']==data['collection_environment'] and semantic_plugin_profile(r['plugin_registrations'])==data['collection_plugins'],'worker environment/plugins drift')
-  calibration=read_json(folder/'execution/child/calibration.json');require(calibration['context']==context() and calibration['meets_test_assumption'] and len(calibration['samples_s'])>=3 and max(calibration['samples_s'])<=.6,'target calibration failed')
+  calibration=read_json(folder/'execution/child/calibration.json');require(calibration['context']==context() and calibration.get('contract')==STEADY_STATE_CONTRACT and calibration['meets_test_assumption'] is True and evaluate(calibration['samples_s'],STEADY_STATE_CONTRACT)['meets_test_assumption'] is True,'target calibration failed')
   phases=phase_map(r);native=native_cases((folder/'execution/child/native.xml').read_bytes(),r)
   require(not set(seen)&set(phases),'duplicate execution')
   for n,v in phases.items():

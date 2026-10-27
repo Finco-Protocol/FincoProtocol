@@ -4,6 +4,7 @@ import json,os,shutil,subprocess
 from pathlib import Path
 import pytest,yaml
 from tools import ci_v3_production as prod
+from tools.ci_v3_calibrate import STEADY_STATE_CONTRACT
 from tools.ci_v3_schema import ContractError,read_json,write_json
 from tools.ci_v3_pytest_config import semantic_plugin_profile
 ROOT=Path(__file__).resolve().parents[1]
@@ -102,16 +103,23 @@ def evidence(real_tiny,tmp_path,monkeypatch):
   write_json(folder/'binding.json',{'context':ctx,'worker':i,'plan_sha256':prod.sha(plan/'plan.json'),'image':image})
   # Synthetic process receipt ONLY; actual subreaper/container tests are separate.
   write_json(folder/'process.json',{'normal_successful_exit':True,'container_removed':True,'source_bytes_unchanged':True,'descendant_cleanup':{'cleanup_verified':True,'survivors_observed':[],'survivors_remaining':[]}})
-  write_json(folder/'execution/child/calibration.json',{'context':ctx,'meets_test_assumption':True,'samples_s':[.1,.2,.3]})
+  write_json(folder/'execution/child/calibration.json',{'context':ctx,'contract':dict(STEADY_STATE_CONTRACT),'meets_test_assumption':True,'samples_s':[.1,.2,.3]})
   workers.append(folder)
  return plan,workers
+
+def test_cache_cold_first_sample_with_healthy_steady_state_is_accepted(evidence):
+ plan,workers=evidence
+ for folder,samples in zip(workers,([.610031006,.217968788,.222495816],[.801908379,.255256116,.251828227],[.704152905,.243172698,.242377088])):
+  q=read_json(folder/'execution/child/calibration.json');q['samples_s']=samples;write_json(folder/'execution/child/calibration.json',q)
+ assert prod.verify_data(plan,workers)['workers']==3
+
 
 def test_complete_real_original_nodes_phases_native_outcomes(evidence):
  result=prod.verify_data(*evidence)
  assert result['original_nodes']==6 and result['workers']==3 and result['cleanup_verified']
  assert result['baseline_is_current_source'] is False
 
-@pytest.mark.parametrize('attack',['missing-phase','phase-reason','native-byte','source','environment','ownership','cleanup','calibration','plan-pin'])
+@pytest.mark.parametrize('attack',['missing-phase','phase-reason','native-byte','source','environment','ownership','cleanup','calibration','calibration-cold-gross','calibration-contract-swapped','calibration-verdict-forged','calibration-missing-contract','plan-pin'])
 def test_partial_or_changed_execution_never_turns_green(evidence,attack):
  plan,workers=evidence;folder=workers[0];p=folder/'execution/child/adapter.json';r=read_json(p)
  if attack=='missing-phase':r['phases'].pop()
@@ -124,6 +132,14 @@ def test_partial_or_changed_execution_never_turns_green(evidence,attack):
   q=read_json(folder/'process.json');q['descendant_cleanup']['survivors_observed']=[{'pid':9}];write_json(folder/'process.json',q)
  elif attack=='calibration':
   q=read_json(folder/'execution/child/calibration.json');q['samples_s']=[.1,.2,.7];write_json(folder/'execution/child/calibration.json',q)
+ elif attack=='calibration-cold-gross':        # a first start beyond the explicit cold-start ceiling is still refused
+  q=read_json(folder/'execution/child/calibration.json');q['samples_s']=[1.9,.2,.2];write_json(folder/'execution/child/calibration.json',q)
+ elif attack=='calibration-contract-swapped':  # a receipt produced under a looser, unapproved contract is refused
+  q=read_json(folder/'execution/child/calibration.json');q['contract']={**STEADY_STATE_CONTRACT,'ceiling_s':.9};q['samples_s']=[.1,.8,.8];write_json(folder/'execution/child/calibration.json',q)
+ elif attack=='calibration-verdict-forged':    # the recorded verdict is never trusted over the raw samples
+  q=read_json(folder/'execution/child/calibration.json');q['samples_s']=[.2,.9,.9];q['meets_test_assumption']=True;write_json(folder/'execution/child/calibration.json',q)
+ elif attack=='calibration-missing-contract':
+  q=read_json(folder/'execution/child/calibration.json');q.pop('contract');write_json(folder/'execution/child/calibration.json',q)
  else:
   q=read_json(folder/'binding.json');q['plan_sha256']='f'*64;write_json(folder/'binding.json',q)
  write_json(p,r)

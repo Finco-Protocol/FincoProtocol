@@ -49,14 +49,13 @@ def main():
         receipt=prepare_frontend(Path(request["project"]))
         if receipt is not None:write_json(directory / "frontend-runtime.json",receipt)
     if request.get("target_calibration") is not None:
-        from tools.ci_v3_calibrate import worker_cold_start_s, verdict
+        from tools.ci_v3_calibrate import approved_contract, evaluate, worker_cold_start_s
         contract = request["target_calibration"]
-        if contract.get("ceiling_s") != .6 or contract.get("statistic") != "maximum":
+        if not approved_contract(contract):
             raise ValueError("unapproved calibration contract")
         median, samples = worker_cold_start_s(request["project"], repeats=contract["samples"])
         calibration = {"context": request["context"], "samples_s": samples,
-                       "median_s": median, "acceptance_statistic": "maximum",
-                       **verdict(max(samples))}
+                       "median_s": median, **evaluate(samples, contract)}
         write_json(directory / "calibration.json", calibration)
         if not calibration["meets_test_assumption"]:
             return 124  # no full test execution on a failed target calibration
