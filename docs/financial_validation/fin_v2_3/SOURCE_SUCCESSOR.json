@@ -29,12 +29,14 @@
     "finco_core/inputs/shl_timing.py": "928398d65635c3df99d0490eaf12d1cea009bed5",
     "finco_core/inputs/valuation.py": "2187c56f4f4278124e3053b286be22d9c5eddd72",
     "tests/fin_v2_3_oracle.py": "984dfdca5540823d877f098bbc6ae09a8a3034c1",
-    "tests/fin_v2_3_scope.py": "770fb43070cc2cd1247bd1f3f8b07efbb54fd2f1",
+    "tests/fin_v2_3_scope.py": "b6c440f1b0c0a8ef8181149168a05b062755baea",
     "tests/fin_v2_3_support.py": "3de18886aacb0331d8e9d6b1f4c254d96ccfe771",
     "tests/finance_integrity_governance.py": "a0c7ed25ad789efa748b913bb831e6210b02b453",
     "tests/finval_f01_scope.py": "0361d4a0ab85336247ea77616398657260ebcab7",
     "tests/fixtures/fin_v2_3_baseline.json": "b7943a658eb39b0ac1b355dcca60c32f2ce44258",
     "tests/model_mutation_security_successor.py": "18945d7587d4dea8acabae1da02d56a309c3f26a",
+    "tests/model_react_mvp_acceptance.py": "44be4e608236a43a20fa50e07b8462b899e7cf00",
+    "tests/model_react_overnight_b_acceptance.py": "9e2763c3103c366d5a24eaebb660324dc9af09be",
     "tests/quarterly_candidate_recognition.py": "67477f29d4a607bf897e375bf1f26175bef7546b",
     "tests/test_ci_acceptance.py": "f8a999fb8f3bdc9d3a1718cf23de0a62625d64b1",
     "tests/test_fin_v2_3_contracts.py": "35eb371c887a0f2fbcd2e231e25aaf8dc1bb64b4",
@@ -44,7 +46,8 @@
     "tests/test_fin_v2_3_scope.py": "28ae26c5ba5894bdee390f23a11f60a55acfda15",
     "tests/test_finval_rate_successor.py": "8bcca31bf473a2160a2ae13f2c0ffb421c6e3e99",
     "tests/test_model_mutation_security_successor.py": "f2345c24e352ad27c3259fc47aab3c115de4a792",
-    "tests/test_model_react_overnight_b_governance.py": "843bcafeefffa39e7bdc3a1f0b244717b5af53fa",
+    "tests/test_model_react_overnight_b_governance.py": "bd0325214f74d2f8dc790466f706cf9430e93e09",
+    "tests/test_tax_wf10_candidate.py": "005e76fc029fb01fbe80d602dedb0246404bf468",
     "tests/test_v11_stage3_successor.py": "666aa96420237d310f9498de3293dd07867c86a7",
     "tests/v11_stage3_successor.py": "506d8af73594936f4c3c78f84cbd1607b7c06019",
     "tools/fin_v2_3_oracle_workbook.py": "423b5d512c470995147adc8a233a28d18f4c0796"
@@ -94,6 +97,9 @@
     "tests/test_model_react_overnight_b_governance.py": "b143deaef9929324927f6b23d86b79c95dc0c842",
     "tests/test_v11_stage3_successor.py": "f33d1a54a4aa59fdc0b29ffc6b1046ddbe18b66c",
     "tests/v11_stage3_successor.py": "09f85eabd103f3eb07d760102c55b9217f16e64c",
-    "tools/fin_v2_3_oracle_workbook.py": null
+    "tools/fin_v2_3_oracle_workbook.py": null,
+    "tests/model_react_mvp_acceptance.py": "10885eab163fa556c42e4f27fb3814e0bd442640",
+    "tests/model_react_overnight_b_acceptance.py": "7358b14d051e4c09a2273cac5afbd683f8b0b86a",
+    "tests/test_tax_wf10_candidate.py": "2e17ed02aa7952aefe962e7dc75e0017bde417d5"
   }
 }

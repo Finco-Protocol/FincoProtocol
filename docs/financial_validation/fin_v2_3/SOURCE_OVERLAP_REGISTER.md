@@ -3,7 +3,7 @@
 Inspected main: `128bf0c2b79af56985326543132cc806ff7f001c`.
 FIN-V2-2 PR #390: `842fedadd57f33d87e73ed5d231f451977889bf8`.
 RC-M PR #388: last rechecked OPEN/DRAFT at
-`9ac495c83a64b326d6074d2ea2150f112778a5f7` (advanced from the initially inspected
+`425b6f397b6b8ca24670cae002ac6b1b4dbfdee5` (advanced from the initially inspected
 `248d9112f275626fe10ef7fe5615b2b00e38c887`). Exact current path overlaps are
 `tests/finval_f01_scope.py`, `tests/model_mutation_security_successor.py`,
 `tests/test_model_mutation_security_successor.py` and

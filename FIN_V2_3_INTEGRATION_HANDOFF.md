@@ -6,14 +6,20 @@ Source content: the exact finite cohort in
 `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json`.
 Financial implementation checkpoint: `fb1ed365a5671eae527b95f9a9e2ffce765d00d7`.
 Source PR: https://github.com/Finco-Protocol/FincoProtocol/pull/391 (OPEN/DRAFT).
-The publication includes a documentation/evidence-only successor. Its exact
+The publication includes evidence and CI compatibility corrections. Its exact
 checkout HEAD is attested in the oracle artifact's `source.json`; required
 exact-head status is authoritative at the PR's Checks tab. Source pins identify
 the complete current implementation independently of documentation commits.
 The final compatibility correction preserves the legacy sensitivity response
 shape when no financing regime evidence exists; real canonical candidates still
 carry the new regime markers. Existing execution/Goal Seek regression: 81 PASS;
-focused worker/new Goal Seek checks: 10 PASS. No old assertions were changed.
+focused worker/new Goal Seek checks: 10 PASS. Existing worker assertions remain unchanged.
+Browser acceptance waits for the actual canonical Run response and its page
+refresh, and for the complete canonical history row count. The stale-draft
+reload/retry remains bounded to the existing single definitive refusal; unknown
+Run outcomes fail without a new attempt. Existing economic, identity and
+security assertions are preserved. Historical browser source pins remain
+unchanged; the new helpers require the complete exact-source cohort.
 Integration requires all final exact-head checks to pass; independent financial
 review remains pending.
 
@@ -81,7 +87,7 @@ spreadsheet binaries. The source-safety policy is unchanged.
    retain all existing debt evidence; no duplicate Senior diagnostics are added.
 5. Union the two institutional reporting additions. Preserve FIN-V2-2's Senior
    lender section and FIN-V2-3's appended valuation section.
-6. RC-M #388 was last rechecked at `9ac495c83a64b326d6074d2ea2150f112778a5f7`
+6. RC-M #388 was last rechecked at `425b6f397b6b8ca24670cae002ac6b1b4dbfdee5`
    (OPEN/DRAFT). It consumes the typed policy/evidence/Goal Seek contracts and renders rates,
    statuses, source labels, metric units and Total Sponsor priority. This branch
    does not modify its React sources or bundles.

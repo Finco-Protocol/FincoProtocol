@@ -57,6 +57,13 @@ their checksums and implementation SHA. Final exact-head results are authoritati
 in PR #391 Checks and the exact-head oracle artifact source attestation.
 The normal retired Model V2 scope skips are not new financial test skips.
 
+CI compatibility corrections preserve the legacy worker response when no regime
+evidence exists and synchronize browser acceptance with the actual canonical
+Run response, page refresh and complete history projection. No assertion of
+economic values, Run identity or security behavior is removed. Unknown Run
+outcomes do not trigger a new attempt; the existing single stale-CAS reload
+remains bounded. Browser helper changes have additive exact-cohort source pins.
+
 The generated FIN_V2_3_INDEPENDENT_ORACLE.xlsx contains 25 sheets and 4,548 formulas across
 8 disposable committed working-copy Runs and 48 metric comparisons. Maximum
 absolute monetary difference is 1.1641532182693481e-10 kEUR. BASE CFADS is rebuilt
