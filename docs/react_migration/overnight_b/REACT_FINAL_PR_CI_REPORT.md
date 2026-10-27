@@ -1,6 +1,6 @@
 # Final PR / CI report — React Institutional Model MVP correction (Overnight B)
 
-Verdict: **READY FOR INDEPENDENT REACT REVIEW** (exact-head CI green on `6f0c5b61`, §6). No merge, deployment, release activation or self-approval.
+Verdict: **READY FOR INDEPENDENT REACT REVIEW** (exact-head CI green on `052252f1`, §6). No merge, deployment, release activation or self-approval.
 
 ## 1. Identity
 
@@ -8,8 +8,8 @@ Verdict: **READY FOR INDEPENDENT REACT REVIEW** (exact-head CI green on `6f0c5b6
 |---|---|
 | Repository / branch | `Finco-Protocol/FincoProtocol` · `claude/wonderful-clarke-tiswep` (one integrated correction branch) |
 | Baseline | main `6f10f3927b33a5715ac6313da200d0f96c023524`, tree `62e70c3bfda7a91280c8c16acc89eeef9f780d6b` (unchanged `origin/main` at PR time) |
-| PR tested head / tree | `6f0c5b61a3849fd9ea0c8d176d33af6516e78754` / `5dce5965a6f41b5e6af5c9dcc2f58383b5662aa6` (§6); a later documentation-only commit records these numbers |
-| History rules | no rebase, squash, cherry-pick or force push; no merge from main was needed (main did not move) |
+| PR tested head / tree | `052252f1f335f10b7801a50110a7b4ad61d434b5` / `3f0cdd1dce8c87470115103dd8f59200b0c3ed4d` (§6); a later documentation-only commit records these numbers |
+| History rules | no rebase, squash, cherry-pick or force push; one normal forward merge of `origin/main` was needed late (PR #387, §6) |
 | Coordination with Overnight A | at start and before the push no Overnight A branch existed on the remote (no branch ahead of main touching React/financing); `app/v2/router.py` is untouched, so no conflict is possible |
 | Open PRs at start | 17, none touching `frontend/`, `static/react`, `react_workspace_router.py` or the React tests (dependabot, performance V8/V9, RC-7, yield) |
 
@@ -70,17 +70,18 @@ audit archives not available; two pre-existing test issues recorded above; no li
 
 ## 6. Exact-head CI
 
-Final tested head: **`6f0c5b61a3849fd9ea0c8d176d33af6516e78754`**, tree **`5dce5965a6f41b5e6af5c9dcc2f58383b5662aa6`** (PR
-[Finco-Protocol/FincoProtocol#386](https://github.com/Finco-Protocol/FincoProtocol/pull/386), draft). A later commit adds only this section's
-final numbers (documentation); it changes no tested file.
+Final tested head: **`052252f1f335f10b7801a50110a7b4ad61d434b5`**, tree **`3f0cdd1dce8c87470115103dd8f59200b0c3ed4d`** (PR
+[Finco-Protocol/FincoProtocol#386](https://github.com/Finco-Protocol/FincoProtocol/pull/386), draft), which includes a **normal forward merge of
+`origin/main` `8d9cccc7` (PR #387, executor recovery)**; no rebase, squash or force push. A later commit adds only this section's final
+numbers (documentation).
 
-| Workflow (run `40451332…`) | Result on `6f0c5b61` |
+| Workflow on `052252f1` | Result |
 |---|---|
-| Protocol UI Browser Acceptance (`…409`) → `mandatory-browser-evidence`, all six isolated browser roles | **success** — consolidation role **106 passed**; other roles 101 / 23 / 34 / 2 passed |
-| Public Safety and Model Smoke (`…426`) → source-safety, route, plan, worker-0…4, aggregate, tests, mandatory-evidence (`sequential` skipped by design) | **success** |
-| PR Compile and Safety Gate (`…408`) | **success** |
-| Governance Full History (`…410`) | **success** |
-| Dependency Security Audit (`…429`) | **success** |
+| Protocol UI Browser Acceptance → `mandatory-browser-evidence` (six isolated roles; consolidation role 106 nodes) | **success** |
+| Public Safety and Model Smoke (`40456108383`) → source-safety, route, plan, worker-0…4, aggregate, tests, mandatory-evidence (`sequential` skipped by design) | **success** |
+| PR Compile and Safety Gate | **success** |
+| Governance Full History | **success** |
+| Dependency Security Audit | **success** |
 
 Head history and what each run showed (nothing skipped, disabled, quarantined or re-run to obtain green; no empty commit; no CI file changed):
 
@@ -89,7 +90,9 @@ Head history and what each run showed (nothing skipped, disabled, quarantined or
 | `77920b6b` (first PR head) | Browser Acceptance **failed** (1 node); Public Safety superseded | `test_d029_react_run_intent_acceptance[check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit]`: a null-unsafe wait in the D-029 test helper racing the post-Run page reload (also failed once on unmodified main locally). Fixed by null-safe waits (same semantics) |
 | `37a9d291` (+ `8f9753b3` docs) | all five workflows **green** | — |
 | `70638f3b` (independent-review fixes, §6b) | Browser Acceptance **failed** (4 nodes, the new compact-Inputs check) | a *new test step* read the staged-edit badge synchronously (passes locally, races on the runner). Fixed by polling (`wait_for`) |
-| `6f0c5b61` | all five workflows **green** | final tested head |
+| `6f0c5b61` | all five workflows **green** | superseded only because main moved |
+| `5f832314` (docs-only) | Browser Acceptance **failed**: `MERGE_TREE_GATE_FAILED: DIFFERENT TREES … normal main synchronization and fresh exact-head CI are required` | `main` had advanced (PR #387, executor recovery), so the head tree no longer equalled the merge-result tree. Fixed by a normal forward merge of `origin/main` (disjoint paths, no conflicts) and fresh exact-head CI; the protected-path scope guard now diffs from the merge-base so main's reviewed changes are not attributed to this branch |
+| `052252f1` (merge + guard fix) | all five workflows **green** | final tested head |
 
 ## 6b. Independent review of the diff (`/code-review high`, forked reviewer, 10 findings) and dispositions
 
