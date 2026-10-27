@@ -15,7 +15,7 @@ import {
 } from "./api";
 import type { PersistedIntegrity } from "./types";
 import { RunIdentityLabel } from "./runIdentity";
-import { friendlyMessage } from "./productLanguage";
+import { friendlyMessage, plain } from "./productLanguage";
 import { CostLineManager } from "./workflow/CostLineManager";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 
@@ -270,18 +270,18 @@ export function DiagnosticsView({ project }: { project: string }) {
   return (
     <section className="fm-card fm-section" aria-label="Model checks and diagnostics">
       <div className="fm-card-title"><h2>Model checks &amp; diagnostics</h2><span>evaluated from the committed Last Run</span></div>
-      <p className="fm-info-note" role="note">{notClaims}</p>
+      <p className="fm-info-note" role="note">{plain(notClaims)}</p>
       <IntegrityEvidence integrity={data.integrity} />
-      <p className="fm-info-note"><strong>Run state: {String(insight.run_state ?? data.run_state)}</strong> · {String(insight.context_note ?? "")}</p>
+      <p className="fm-info-note"><strong>Run state: {String(insight.run_state ?? data.run_state)}</strong> · {plain(String(insight.context_note ?? ""))}</p>
       <div className="fm-table-wrap">
         <table className="fm-table">
           <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
           <tbody>
             {checks.map((check, index) => (
               <tr key={String(check.check_id ?? index)}>
-                <td>{String(check.label ?? check.check_id ?? index)}</td>
+                <td>{plain(String(check.label ?? check.check_id ?? index))}</td>
                 <td>{String(check.status ?? "—")}</td>
-                <td>{String(check.note ?? check.message ?? "—")}</td>
+                <td>{plain(String(check.note ?? check.message ?? "—"))}</td>
               </tr>
             ))}
             {!checks.length && <tr><td colSpan={3}><span role="status">{String(diagnostics.message ?? "No diagnostics were evaluated for this Run state.")}</span></td></tr>}
@@ -289,7 +289,7 @@ export function DiagnosticsView({ project }: { project: string }) {
         </table>
       </div>
       <p className="fm-info-note">Diagnostics state: {readable(diagnostics.state)} · {checks.length} reported checks</p>
-      <p className="fm-info-note">Evidence identity: {readable(diagnostics.identity)}</p>
+      <details className="rx-tech-details" data-diagnostics-audit="true"><summary>Advanced details / Audit trail</summary><p className="fm-info-note">Evidence identity: {readable(diagnostics.identity)}</p></details>
     </section>
   );
 }
