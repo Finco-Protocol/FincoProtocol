@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import StatementWorkbook from "../finco/_workbook/StatementWorkbook";
 import { Shell } from "../finco/_shared/FincoShell";
+import { AnalysisTools } from "./analysis/AnalysisTools";
 import { workspaceHeading } from "./adapters";
 import { fetchInputs, fetchStatements, fetchWorkspace } from "./api";
 import { RecoveryPanel } from "./RecoveryPanel";
@@ -415,6 +416,9 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
             : <p className="rx-boot-loading" role="status">Loading the persisted results…</p>
         )}
         {section === "analysis" && (
+          <AnalysisTools project={project} protectedReference={Boolean(workspace.project.protected_reference)}
+            workbookHash={workspace.workbook.composite_hash} onApplied={afterMutation}
+            overview={(
           <div data-analysis-view="true" data-analysis-state={statements?.state ?? "LOADING"}>
             {statements
               ? statementsConflict
@@ -431,6 +435,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
               <FinancialInsights project={project} />
             </div>
           </div>
+            )} />
         )}
         </div>
         <footer className="rx-footer">
