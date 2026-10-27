@@ -39,7 +39,7 @@ def context(env, record):
 
 
 def preview(env, record, data, *, name="plan.csv", token=None, headers=HDR, project=None):
-    ctx = context(env, record)
+    ctx = {"csrf_token": token} if token else context(env, record)
     return env.client.post(PREVIEW, params={"project": record.project_code}, headers=headers,
                            data={"project": project or record.project_code, "csrf_token": token or ctx["csrf_token"], "encoding": "utf-8-sig"},
                            files={"upload": (name, io.BytesIO(data), "text/csv")})
@@ -182,7 +182,8 @@ def test_apply_is_the_canonical_batch_writer_marks_results_stale_and_never_runs(
 
 def test_another_users_project_is_not_reachable(imp):
     record = imp.create("solar")
+    owner_token = context(imp, record)["csrf_token"]
     from app.auth import COOKIE_NAME, create_session_token
     imp.client.cookies.set(COOKIE_NAME, create_session_token(user_id="intruder", username="admin"))
     assert imp.client.get(CONTEXT, params={"project": record.project_code}).status_code == 404
-    assert preview(imp, record, tsv((FIELD, "1", ""))).status_code in (401, 404)
+    assert preview(imp, record, tsv((FIELD, "1", "")), token=owner_token).status_code in (401, 404)

@@ -130,18 +130,35 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
 
 
 # ── RC-UX adapters: read-only, no state-changing route, no token issuance of their own ──────────────────────────────────────────
+#: The single, narrowly pinned exception: the import adapter's three POST routes delegate to the UNCHANGED Legacy handlers (which keep their own CSRF
+#: validation, ownership/protected-reference refusal, size limits and canonical writer); the adapter holds no writer, SQL, token validator or engine reference.
+IMPORT_MODULE = "react_import"
+IMPORT_POSTS = ["/model-react/import/preview", "/model-react/import/confirm", "/model-react/import/apply"]
+IMPORT_DELEGATES = ["model_input_import_preview", "model_input_import_confirm", "model_input_import_apply"]
+
+
 def test_the_rcux_adapters_are_read_only_and_issue_no_mutation_authority_of_their_own():
     from app.v2 import react_rcux
     for module in react_rcux.RCUX_ADAPTERS:
         text = (S.ROOT / "app/v2" / f"{module}.py").read_text(encoding="utf-8")
-        assert not re.search(r"@router\.(post|put|patch|delete)\(", text), module
+        posts = re.findall(r'@router\.(?:post|put|patch|delete)\("([^"]+)"', text)
+        assert posts == (IMPORT_POSTS if module == IMPORT_MODULE else []), module
         assert "validate_csrf_token(" not in text and "mutation_token(" not in text and "validate_mutation_token(" not in text, module
         assert not re.search(r"\b(apply_draft_update|save_profiles|save_agreement|create_reference_seeded_project|update_project_record|apply_batch_draft_update)\(", text), module
 
 
+def test_the_import_adapter_delegates_every_state_change_to_the_unchanged_legacy_handlers_and_nothing_else():
+    text = (S.ROOT / "app/v2/react_import.py").read_text(encoding="utf-8")
+    assert re.findall(r"await import_router\.(\w+)\(", text) == IMPORT_DELEGATES
+    assert not re.search(r"\b(sqlite3|execute\(|INSERT |UPDATE |DELETE |commit\(|save_project|WorkbookUpdateService\(|financial_engine|finco_core|run_project)", text)
+    # the Legacy handlers themselves are not part of this PR (the workbook/import authority is unchanged)
+    assert _git("diff", "--name-only", MAIN, "HEAD", "--", "app/v2/import_router.py", "app/model_import").strip() == ""
+
+
 # ── RC-UX browser acceptance rides the EXISTING mandatory consolidation role (same pattern as RC-M) ─────────────────────────────
 ROLE = "tests/test_model_workspace_consolidation_browser.py"
-ACCEPTANCE = ("tests/model_react_rcux_runs_acceptance.py", "tests/model_react_rcux_capex_acceptance.py", "tests/model_react_rcux_product_acceptance.py", "tests/model_react_rcux_whatif_acceptance.py")
+ACCEPTANCE = ("tests/model_react_rcux_runs_acceptance.py", "tests/model_react_rcux_capex_acceptance.py", "tests/model_react_rcux_product_acceptance.py", "tests/model_react_rcux_whatif_acceptance.py",
+              "tests/model_react_rcux_import_acceptance.py")
 
 
 def test_the_consolidation_role_imports_exactly_the_rcux_acceptance_modules_and_adds_no_wrapper_of_its_own():

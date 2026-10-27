@@ -207,10 +207,10 @@ RC_UX_SUCCESSORS={
     "frontend/src/app/workflow/ScenarioWorkspace.tsx":"f5f199c98ff96fa5f2ba83e65953c99ff502ee8a",
     "frontend/src/app/workflow/workflowShared.tsx":"50aef516d139ac0a909e6059974095c62a487b21",
     "static/react/finco-react.css":"fc2415879da3ca64da1a4f67ba31cae616ecacd7",
-    "static/react/finco-react.js":"06288879d4eaec79f3b14b782c82b1561ce6cff0",
+    "static/react/finco-react.js":"7cc4d71c6f48277338a8ff644c13507d1a79e143",
     "tests/model_react_mvp_acceptance.py":"e085043916748497a32fdcf9bb429234885f367a",
     "tests/model_react_wf2_browser_acceptance.py":"4ca9487e898620ff7b614a94ba88150f6cdb7696",
-    "tests/test_model_workspace_consolidation_browser.py":"1eb8ea40f65ef0d13059ebd78055f91b2f4ce95f",
+    "tests/test_model_workspace_consolidation_browser.py":"24dc4e7edc1d82fabe93fb9d75f4b57c2e6aa0c1",
 }
 
 # FIN-VAL F01: exact additive projection-only successor; historical layers

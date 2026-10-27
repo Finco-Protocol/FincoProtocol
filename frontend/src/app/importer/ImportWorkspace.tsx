@@ -50,6 +50,7 @@ export function ImportWorkspace({ project, protectedReference, onSaved }: { proj
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const loadContext = () => {
+    if (protectedReference) return;      // templates are read-only: no request is made for a project that can never be imported into
     void fetchImportContext(project).then((r) => { if (r.ok) { setCtx(r); setCtxError(null); } else setCtxError(r); });
   };
   useEffect(loadContext, [project]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -178,7 +179,7 @@ export function ImportWorkspace({ project, protectedReference, onSaved }: { proj
             <button type="button" className="rx-button rx-button-secondary" data-import-clear="true" onClick={clearAll}>Clear selection</button>
             <span className="rx-note" data-import-selected="true" role="status">{selected} selected</span>
           </div>
-          <div className="fi-table-scroll" tabIndex={0} role="region" aria-label="Rows found in the file">
+          <div className="rcm-scroll" tabIndex={0} role="region" aria-label="Rows found in the file">
             <table className="fm-table" data-import-table="true">
               <thead><tr><th scope="col">Import</th><th scope="col">In your file</th><th scope="col">Value</th><th scope="col">Unit in file</th><th scope="col">Goes to</th><th scope="col">Now in project</th><th scope="col">Status</th></tr></thead>
               <tbody>
@@ -229,7 +230,7 @@ export function ImportWorkspace({ project, protectedReference, onSaved }: { proj
             {confirmed.unchecked_count > 0 ? ` ${confirmed.unchecked_count} other row${confirmed.unchecked_count === 1 ? " is" : "s are"} ignored.` : ""}
             {" "}Saving makes your results out of date (STALE) until you run the model again. Nothing is calculated now.
           </p>
-          <div className="fi-table-scroll" tabIndex={0} role="region" aria-label="Values to be saved">
+          <div className="rcm-scroll" tabIndex={0} role="region" aria-label="Values to be saved">
             <table className="fm-table" data-import-approved="true">
               <thead><tr><th scope="col">Assumption</th><th scope="col">Now</th><th scope="col">After import</th><th scope="col">From your file</th></tr></thead>
               <tbody>
@@ -262,7 +263,7 @@ export function ImportWorkspace({ project, protectedReference, onSaved }: { proj
             {result.applied_count} assumption{result.applied_count === 1 ? "" : "s"} saved to this project{result.skipped_count > 0 ? `; ${result.skipped_count} row${result.skipped_count === 1 ? " was" : "s were"} not imported` : ""}.
             {" "}{result.semantics.note} Your results are now out of date (STALE).
           </p>
-          <div className="fi-table-scroll" tabIndex={0} role="region" aria-label="Saved values">
+          <div className="rcm-scroll" tabIndex={0} role="region" aria-label="Saved values">
             <table className="fm-table" data-import-saved="true">
               <thead><tr><th scope="col">Assumption</th><th scope="col">Before</th><th scope="col">Saved</th></tr></thead>
               <tbody>

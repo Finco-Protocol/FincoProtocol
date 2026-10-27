@@ -7,7 +7,7 @@
     "app/v2/react_compare.py": "ccfbc96ff5dece97d7acca2b95a0742d68d44166",
     "app/v2/react_import.py": "bd92b43f0f30bf9b68bcde0ef78fe6df8d75cbe3",
     "app/v2/react_projects.py": "19fdff7af2dee3d6cb3e276a2cb2952490ed2012",
-    "app/v2/react_rcux.py": "3669b5f262b2a6e8324e63edf19d9de0e184b52e",
+    "app/v2/react_rcux.py": "a6b67ef685b06f65db34d3d707794010990a00a0",
     "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
     "app/v2/react_workspace_router.py": "0dc741e340e1db918e4d2cc4b26467bc1514dd39",
     "tests/fin_v2_rcux_scope.py": "df06b0ad42c86a01308ca7c7a1d1e2b740807967",
