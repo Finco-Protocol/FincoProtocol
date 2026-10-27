@@ -1,0 +1,82 @@
+{
+  "name": "FINVAL_F01_RATE_CONTRACT",
+  "version": 1,
+  "field_id": "debt.senior.interest_rate_pct",
+  "snapshot_key": "interest_rate_pct",
+  "snapshot_unit_key": "_finval_interest_rate_unit",
+  "snapshot_unit": "human_percent_v1",
+  "canonical_unit": "human_percent",
+  "engine_boundary": "validated_human_percent / 100.0 exactly once",
+  "range": {
+    "minimum": 0,
+    "maximum": 20,
+    "finite": true,
+    "booleans_allowed": false
+  },
+  "examples": [
+    {
+      "input": 0.056,
+      "saved_human_pct": 0.056,
+      "engine_ratio": 0.00056
+    },
+    {
+      "input": 0.56,
+      "saved_human_pct": 0.56,
+      "engine_ratio": 0.0056
+    },
+    {
+      "input": 5.6,
+      "saved_human_pct": 5.6,
+      "engine_ratio": 0.056
+    },
+    {
+      "input": 9.0,
+      "saved_human_pct": 9.0,
+      "engine_ratio": 0.09
+    }
+  ],
+  "read": {
+    "endpoint": "GET /v2/model-react/fields/debt?project={code}",
+    "field_rate_contract": {
+      "version": 1,
+      "unit": "human_percent_v1",
+      "status": "VERIFIED",
+      "code": null
+    }
+  },
+  "single_save": {
+    "endpoint": "POST /v2/workbook/update",
+    "encoding": "form",
+    "required": [
+      "project",
+      "field_id",
+      "value",
+      "content_hash",
+      "workbook_version",
+      "csrf_token"
+    ],
+    "error_header": "X-Finco-Error-Code",
+    "error_code": "RATE_UNIT_PROVENANCE_AMBIGUOUS",
+    "existing_html_and_hx_envelope_preserved": true
+  },
+  "batch_save": {
+    "endpoint": "POST /v2/workbook/grid/save",
+    "encoding": "json",
+    "required": [
+      "project",
+      "cells",
+      "content_hash",
+      "workbook_version",
+      "csrf_token",
+      "scenario_id"
+    ],
+    "ambiguity_example": {
+      "ok": false,
+      "code": "RATE_UNIT_PROVENANCE_AMBIGUOUS"
+    }
+  },
+  "stale": "Retain existing stale/CAS envelope; refetch server state and require a deliberate user edit; never retry with a substituted hash.",
+  "create_clone": "Server establishes unit + source lineage. A client marker is not proof for an existing historical row. Existing create adapter payloads unchanged; obtain canonical field data and save explicit edits under returned CAS/CSRF.",
+  "ambiguity_remediation": "Create a verified Working Copy or request owner-reviewed provenance repair. No automatic migration.",
+  "save_runs_model": false
+}

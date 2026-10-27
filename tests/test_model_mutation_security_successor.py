@@ -60,7 +60,7 @@ def test_finval_b2c1_successor_is_exactly_six_additive_paths_and_keeps_every_ori
         "app/v2/router.py","frontend/src/app/WorkspaceView.tsx","frontend/src/app/types.ts","static/react/finco-react.js"}
     for path,blob in S.FINVAL_B2C1_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40 and blob!=S.BLOBS[path]
-        assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path),S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path)}   # current source = an admitted reviewed successor
+        assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path),S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path)}   # current source = an admitted reviewed successor
     assert S.TOKEN_MODULE not in S.FINVAL_B2C1_SUCCESSORS
 
 @pytest.mark.parametrize("path",["app/templates/v2/partials/sheet_opex.html","app/v2/react_workspace_router.py","app/v2/router.py",
@@ -109,7 +109,7 @@ def test_d029_layer_is_exactly_three_additive_paths_and_keeps_every_original_and
     for path,blob in S.D029_RUN_INTENT_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40
         assert blob!=S.BLOBS[path] and blob!=S.FINVAL_B2C1_SUCCESSORS.get(path)   # a NEW reviewed state, never a repin
-        assert S.git_blob(SOURCES[path]) in {blob,S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path)}   # D-029 state, or the later Overnight B successor
+        assert S.git_blob(SOURCES[path]) in {blob,S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path)}   # D-029 state, or the later Overnight B successor
     assert S.TOKEN_MODULE not in S.D029_RUN_INTENT_SUCCESSORS
 
 

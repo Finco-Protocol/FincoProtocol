@@ -486,6 +486,12 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 "help_text": fspec.description or "",
                 # Proven Assumption Register path (exact engine_path claim) or None.
                 "register_path": register_path_for_field(fspec.field_id),
+                **({"rate_contract": {
+                    "version": 1, "unit": "human_percent_v1",
+                    "status": "VERIFIED" if pis.snapshot_origin.get("_finval_interest_rate_unit") == "human_percent_v1" else "AMBIGUOUS",
+                    "code": None if pis.snapshot_origin.get("_finval_interest_rate_unit") == "human_percent_v1" else "RATE_UNIT_PROVENANCE_AMBIGUOUS",
+                    "remediation": "Create a verified Working Copy or request owner-reviewed provenance repair.",
+                }} if fspec.field_id == "debt.senior.interest_rate_pct" else {}),
             })
     # EV Charging (V1): presentation-only label/visibility adapter.
     from app.v2.ev_labels import apply_ev_presentation
@@ -2653,8 +2659,14 @@ async def v2_workbook_update(
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
             resp = _htmx_error(pis, str(exc))
-            return _add_field_error_trigger(resp, field_id, str(exc), exc.error_class)
-        return _redirect_with_error(str(exc))
+            resp = _add_field_error_trigger(resp, field_id, str(exc), exc.error_class)
+        else:
+            resp = _redirect_with_error(str(exc))
+        from app.input_adapter import rate_unit_error_code
+        code = rate_unit_error_code(exc)
+        if code:
+            resp.headers["X-Finco-Error-Code"] = code
+        return resp
 
     # Success path — reload workspace and assemble composite identity consistently
     # so the re-rendered sheet carries a hash over the full post-mutation state.

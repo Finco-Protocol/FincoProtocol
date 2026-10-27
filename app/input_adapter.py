@@ -51,11 +51,55 @@ def assert_rate_unit(snapshot: dict) -> None:
     not migrate them, rewrite historical Runs, or substitute factory pricing.
     """
     if snapshot.get(RATE_UNIT_KEY) != RATE_UNIT:
-        raise SnapshotInputError("INTEREST_RATE_UNIT_UNVERIFIED: explicit human_percent_v1 provenance required")
+        raise RateUnitProvenanceError(
+            "INTEREST_RATE_UNIT_UNVERIFIED: explicit human_percent_v1 provenance required. "
+            "Create a verified Working Copy or request an owner-reviewed provenance repair; "
+            "no historical value was converted.")
 
 
 class SnapshotInputError(ValueError):
     """Raised when a saved user-project snapshot cannot build runtime inputs."""
+
+
+class RateUnitProvenanceError(SnapshotInputError):
+    """Typed ambiguity at a persisted financial input boundary."""
+    code = "RATE_UNIT_PROVENANCE_AMBIGUOUS"
+
+
+def preserve_rate_provenance(existing: dict, incoming: dict) -> dict:
+    """Legacy full-form saves retain a verified contract; clients cannot upgrade history.
+
+    Call under the persistence writer's lock, with the current stored snapshot.
+    This does not infer units or change values in unversioned historical rows.
+    """
+    result = dict(incoming)
+    old_unit = existing.get(RATE_UNIT_KEY)
+    new_unit = result.get(RATE_UNIT_KEY)
+    if old_unit == RATE_UNIT:
+        if new_unit not in (None, "", RATE_UNIT):
+            assert_rate_unit(result)
+        result[RATE_UNIT_KEY] = RATE_UNIT
+        origin = existing.get("_finval_interest_rate_origin")
+        if origin is not None:
+            if result.get("_finval_interest_rate_origin", origin) != origin:
+                raise RateUnitProvenanceError("Rate source lineage cannot be replaced by a form Save.")
+            result["_finval_interest_rate_origin"] = origin
+    elif new_unit:
+        if str(existing.get("interest_rate_pct", "")).strip():
+            raise RateUnitProvenanceError(
+                "Existing interest-rate provenance is ambiguous. Create a verified Working Copy "
+                "or request an owner-reviewed provenance repair; Save cannot label historical values.")
+        assert_rate_unit(result)
+    return result
+
+
+def rate_unit_error_code(exc) -> Optional[str]:
+    """Expose typed provenance failures through existing writer envelopes."""
+    while exc is not None:
+        if isinstance(exc, RateUnitProvenanceError):
+            return exc.code
+        exc = exc.__cause__
+    return None
 
 
 # Map of domain field paths → (getter, setter) for clean replacement
@@ -190,7 +234,7 @@ def _set_financing_interest_rate(proj: "ProjectInputs", value: float) -> "Projec
     rate_cfg = fin.senior_debt_interest_config
     schedule = list(getattr(
         rate_cfg.rate_schedule, "explicit_all_in_rates", None) or [])
-    mode, _, _ = senior_rate_authority(proj)
+    mode, uniform_ratio, _ = senior_rate_authority(proj)
     if mode == "CALIBRATED":
         # R8/N02: passive materialisation of a calibrated working copy must
         # NEVER break and must never let the scalar overwrite the typed
@@ -199,6 +243,8 @@ def _set_financing_interest_rate(proj: "ProjectInputs", value: float) -> "Projec
         # the Debt sheet projects the schedule as the authority).
         return proj
     all_in = value / 100.0  # single % -> ratio conversion boundary
+    if uniform_ratio == all_in:
+        return proj  # exact same typed authority; no auxiliary-state rewrite
     new_schedule = tuple(all_in for _ in schedule)
     new_rate_cfg = dc_replace(
         rate_cfg,
@@ -939,13 +985,9 @@ def _resolve_user_inputs(
     if gearing_pct is not None:
         proj = _set_financing_gearing(proj, gearing_pct)
     if interest_rate_pct is not None:
-        interest_rate_pct = _validated_rate_percent(interest_rate_pct)
-        # Scalar UI/schema values are human percentages, never decimal ratios.
-        # Preserve an identical typed flat schedule without changing auxiliary
-        # base/margin fields; this is an exact economic identity, not a unit guess.
-        mode, ratio, _ = senior_rate_authority(proj)
-        if mode != "FLAT" or float(interest_rate_pct) != ratio * 100.0:
-            proj = _set_financing_interest_rate(proj, interest_rate_pct)
+        # One known unit, one conversion boundary. No resolver-level dual-unit
+        # comparison, tolerance, or identity heuristic is admissible.
+        proj = _set_financing_interest_rate(proj, interest_rate_pct)
     if tenor_years is not None:
         proj = _set_financing_tenor(proj, tenor_years)
     if target_dscr is not None:

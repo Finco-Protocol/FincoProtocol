@@ -1,0 +1,19 @@
+{
+  "kind": "data_center",
+  "human_pct": 9.0,
+  "outcome": "FAILED",
+  "effective_input_changes_from_existing_run_folds": [
+    "opex"
+  ],
+  "independent_interest_oracle": {
+    "status": "REFUSED",
+    "reason_code": "PR8_CLEAN_ENGINE_FAIL_CLOSED",
+    "detail": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9807.288823047207 kEUR remains at maturity period_index=43",
+    "rate_pct": 9.0,
+    "typed_ratio": 0.09
+  },
+  "history_rows": 0,
+  "persisted_debt_schedule": {},
+  "persisted_financial_statements": {},
+  "persisted_summary": {}
+}

@@ -1,0 +1,86 @@
+{
+  "off": {
+    "verdict": "REJECTED",
+    "error": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9807.288823047207 kEUR remains at maturity period_index=43",
+    "digests": null,
+    "seconds": 0.07864097000128822,
+    "v10": {
+      "native_solves": 0,
+      "native_finalisations": 0,
+      "native_tax_evaluations": 0,
+      "stage2_native_calls": 0,
+      "declines": {},
+      "loader_reason": null,
+      "build_id": null
+    },
+    "s3": {
+      "native_models": 0,
+      "native_shl_fixed_points": 0,
+      "native_plain": 0,
+      "native_full_tax": 0,
+      "native_solves": 0,
+      "native_tax_evaluations": 0,
+      "declines": {},
+      "loader_reason": null,
+      "build_id": null
+    }
+  },
+  "v10_s12": {
+    "verdict": "REJECTED",
+    "error": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9807.288823047207 kEUR remains at maturity period_index=43",
+    "digests": null,
+    "seconds": 0.05142133500339696,
+    "v10": {
+      "native_solves": 20,
+      "native_finalisations": 2,
+      "native_tax_evaluations": 78,
+      "stage2_native_calls": 14,
+      "declines": {
+        "STAGE2:KERNEL_STATUS_1": 2
+      },
+      "loader_reason": null,
+      "build_id": "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434"
+    },
+    "s3": {
+      "native_models": 0,
+      "native_shl_fixed_points": 0,
+      "native_plain": 0,
+      "native_full_tax": 0,
+      "native_solves": 0,
+      "native_tax_evaluations": 0,
+      "declines": {},
+      "loader_reason": null,
+      "build_id": null
+    }
+  },
+  "s12_s3": {
+    "verdict": "REJECTED",
+    "error": "CleanProductionRunUnavailable: PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9807.288823047207 kEUR remains at maturity period_index=43",
+    "digests": null,
+    "seconds": 0.05100310600391822,
+    "v10": {
+      "native_solves": 16,
+      "native_finalisations": 0,
+      "native_tax_evaluations": 52,
+      "stage2_native_calls": 18,
+      "declines": {
+        "STAGE2:KERNEL_STATUS_1": 4
+      },
+      "loader_reason": null,
+      "build_id": "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434"
+    },
+    "s3": {
+      "native_models": 4,
+      "native_shl_fixed_points": 2,
+      "native_plain": 4,
+      "native_full_tax": 12,
+      "native_solves": 20,
+      "native_tax_evaluations": 106,
+      "declines": {
+        "ADMISSION_EXCEPTION:ValueError:SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9807.288823047207 kEUR remains at maturity period_index=43": 2
+      },
+      "loader_reason": null,
+      "build_id": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344"
+    }
+  }
+}
