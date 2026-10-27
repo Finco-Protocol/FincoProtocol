@@ -114,4 +114,7 @@ def test_the_correction_changes_no_protected_financial_path_since_the_baseline()
     # F01 is an independently authorized successor, attributed only when all exact source blobs and the current-main ancestry are present.
     if F01.valid():
         hits = [p for p in hits if p not in F01.SOURCES]
+    # Reviewed FIN-V2 source cohorts (exact blobs, tests/fin_v2_cohorts.py) are attributed to their own reviewed successor, never to this correction.
+    from tests.fin_v2_cohorts import matches as fin_v2_cohort_matches
+    hits = [p for p in hits if not fin_v2_cohort_matches(p)]
     assert hits == [], hits
