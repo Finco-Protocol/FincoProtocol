@@ -131,14 +131,6 @@ def _init_schema(conn):
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_user_code ON projects(user_id, project_code)"
     )
-    # Atomic create-request identity: the request id lives in the project row's own replay metadata (written by the same INSERT
-    # that creates the project), and this partial unique index lets the database refuse a second project for one (user, request).
-    conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_user_create_request ON projects(user_id, "
-        "(CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END)) "
-        "WHERE (CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END) IS NOT NULL"
-    )
-
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS scenarios (
@@ -300,6 +292,14 @@ def _init_schema(conn):
     _ensure_column(conn, "projects", "archived", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "projects", "is_readonly", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "projects", "full_inputs_json", "TEXT")
+
+    # Atomic create-request identity (created AFTER the projects columns are ensured, so a legacy database migrates first): the request id lives in the project row's own replay metadata (written by the same INSERT
+    # that creates the project), and this partial unique index lets the database refuse a second project for one (user, request).
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_user_create_request ON projects(user_id, "
+        "(CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END)) "
+        "WHERE (CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END) IS NOT NULL"
+    )
     # Project Library (PR: project-library-reference-working-copies)
     _ensure_column(conn, "projects", "project_role", "TEXT NOT NULL DEFAULT 'user_project'")
     _ensure_column(conn, "projects", "is_protected", "INTEGER NOT NULL DEFAULT 0")

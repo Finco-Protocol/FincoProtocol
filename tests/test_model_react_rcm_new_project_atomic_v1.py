@@ -284,3 +284,24 @@ def test_release_closed_and_unknown_technologies_commit_nothing(env):
         assert _post(env, opts, technology=technology).status_code == 422
         assert find_project_by_create_request(OWNER, opts["request_id"]) is None
     assert env.mine() == []
+
+
+def test_a_legacy_database_gains_the_request_index_only_after_its_columns_are_migrated(tmp_path, monkeypatch):
+    """The projects table of an old database has no ``replay_metadata_json`` column yet: it is added first, then the unique index is created."""
+    path = str(tmp_path / "legacy.db")
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE projects (project_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, project_code TEXT, project_name TEXT, "
+                 "created_at TEXT, updated_at TEXT)")
+    conn.execute("INSERT INTO projects VALUES ('p1', 'u', 'code-1', 'One', '2026', '2026')")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(db, "DB_PATH", path)
+    db._reset_schema_cache_for_tests()
+    db.init_db()
+    conn = sqlite3.connect(path)
+    try:
+        assert "replay_metadata_json" in {row[1] for row in conn.execute("PRAGMA table_info(projects)")}
+        assert "ux_projects_user_create_request" in {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+        assert conn.execute("SELECT replay_metadata_json FROM projects").fetchone()[0] == "{}"           # the legacy row is untouched
+    finally:
+        conn.close()
