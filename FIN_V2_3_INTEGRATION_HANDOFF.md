@@ -4,8 +4,14 @@ Branch: `feat/fin-v2-3-financial-core`.
 Main/base: `128bf0c2b79af56985326543132cc806ff7f001c`.
 Source content: the exact finite cohort in
 `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json`.
-Publication HEAD and exact-head CI: pending the cohesive draft PR push.
-Disposition: **CORRECTION REQUIRED until exact-head hosted checks pass**.
+Implementation HEAD: `fb1ed365a5671eae527b95f9a9e2ffce765d00d7`.
+Source PR: https://github.com/Finco-Protocol/FincoProtocol/pull/391 (OPEN/DRAFT).
+The publication includes a documentation/evidence-only successor. Its exact
+checkout HEAD is attested in the oracle artifact's `source.json`; required
+exact-head status is authoritative at the PR's Checks tab. Source pins identify
+the unchanged implementation independently of documentation commits.
+Integration requires all final exact-head checks to pass; independent financial
+review remains pending.
 
 ## Completed scope
 
@@ -32,13 +38,13 @@ Historical absence is `NOT_PERSISTED`; nothing is backfilled.
 
 ## Acceptance evidence
 
-- Complete feature/negative/source selection at implementation commit
-  `b5eb8b5d5823732e32a0f45a6c1e18ee0afbadb3`: 129 PASS; subsequent
-  authority/drift guards have focused validation.
+- Sealed financial/F3 selection: **153 PASS**, zero skips.
 - Final lifecycle/Goal Seek/source selection: 64 PASS.
 - Existing V10/V11 identity selection: 54 PASS, zero skips, approved GCC13 image.
-- Initial reconciled focused governance selection: 203 PASS. Committed-head full
-  governance and hosted CI remain pending at this documentation checkpoint.
+- Sealed full governance selection: **1,016 PASS / 10 existing retired-scope
+  skips**. Repository-binding/successor negatives: 216 PASS. Recognition is bound
+  to the repository under test, including synthetic tampering repositories.
+- Local public repository safety scan: PASS. Existing scanner policy is unchanged.
 - Existing reference economic/schedule float identity: 29,620 exact `float.hex()`
   paths across Solar/Wind/Data Center/EV Charging; no tolerance substitution.
 - Independent workbook: 8 committed synthetic Runs, 48 metric comparisons,
@@ -51,6 +57,8 @@ Historical absence is `NOT_PERSISTED`; nothing is backfilled.
 Artifacts and replay instructions are in
 `docs/financial_validation/fin_v2_3/README.md`. All fixtures use synthetic projects
 and disposable databases; source references and historical Runs are preserved.
+Checksums, source implementation SHA and result counts are in
+`docs/financial_validation/fin_v2_3/VALIDATION_MANIFEST.json`.
 The Excel binary is published as the exact-head GitHub Actions artifact
 `fin-v2-3-oracle-<head SHA>`; it is not tracked because repository safety forbids
 spreadsheet binaries. The source-safety policy is unchanged.
@@ -69,7 +77,8 @@ spreadsheet binaries. The source-safety policy is unchanged.
    retain all existing debt evidence; no duplicate Senior diagnostics are added.
 5. Union the two institutional reporting additions. Preserve FIN-V2-2's Senior
    lender section and FIN-V2-3's appended valuation section.
-6. RC-M consumes the typed policy/evidence/Goal Seek contracts and renders rates,
+6. RC-M #388 was last rechecked at `9ac495c83a64b326d6074d2ea2150f112778a5f7`
+   (OPEN/DRAFT). It consumes the typed policy/evidence/Goal Seek contracts and renders rates,
    statuses, source labels, metric units and Total Sponsor priority. This branch
    does not modify its React sources or bundles.
 7. Resolve shared hunks additively, issue a combined exact-source successor, and

@@ -1,0 +1,33 @@
+{
+  "implementation_head": "fb1ed365a5671eae527b95f9a9e2ffce765d00d7",
+  "base": "128bf0c2b79af56985326543132cc806ff7f001c",
+  "financial_f3": {
+    "passed": 153,
+    "skipped": 0
+  },
+  "native_identity": {
+    "passed": 54,
+    "skipped": 0
+  },
+  "governance": {
+    "passed": 1016,
+    "skipped": 10,
+    "skip_authority": "Existing retired Model V2 active-scope marker tests"
+  },
+  "oracle": {
+    "committed_synthetic_runs": 8,
+    "metric_comparisons": 48,
+    "maximum_absolute_monetary_difference_keur": 1.1641532182693481e-10
+  },
+  "public_safety_local": "PASS",
+  "artifact_workflow": ".github/workflows/fin_v2_3_oracle.yml",
+  "artifacts": {
+    "FINANCIAL_ACCEPTANCE.xml": "b6aecd39af6ac64c68e73393bae1710ad8f622215c68eeaa9fd247d8ef67cd76",
+    "FULL_GOVERNANCE.xml": "7c64fd155e558a04223c02c710ec1dd0499c97c59862c63b701c5dc5d62a6493",
+    "REPOSITORY_BINDING.xml": "8206a53b93e88becbc18f09f00c3f1a431a798d4a5ac53f4e447bd06196fac1c",
+    "NATIVE_IDENTITY.xml": "77acd70ec0d4ff12c330c0afd3af31242dda90af179226864e6c1a4da4190bb9",
+    "ORACLE_COMMITTED_INPUTS.json.gz": "5d902485a474d764e30e68e5cee039db28538182b55952614fa5d0c125333f4d",
+    "ORACLE_RECONCILIATION.json": "7372d27d35e8fd601787c29bea12a9b6aca95515eddf9cfc01051029fc543970",
+    "SOURCE_SUCCESSOR.json": "c0f75a3ac1a21fb324ff4add38864f23d6994282529fef3977306c549c0d7987"
+  }
+}

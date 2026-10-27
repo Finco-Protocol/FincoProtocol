@@ -50,9 +50,11 @@ existing economic/result floats exactly unchanged. Decimal(50) oracles verify
 Project NPV, both LLCR horizons, every rolling observation, PLCR, Sponsor NPV and
 dated Sponsor/Pure Equity XIRR, including BASE/BANK and periodic/ACT conventions.
 
-FINANCIAL_ACCEPTANCE.xml records the initial complete 81-test feature selection;
-NEGATIVE_AND_GOAL.xml records subsequent focused source/Goal Seek controls.
-Final exact-head results are recorded in the integration handoff/CI evidence.
+FINANCIAL_ACCEPTANCE.xml records the sealed 153-test financial/F3 selection;
+FULL_GOVERNANCE.xml records 1,016 PASS and 10 existing retired-scope skips.
+NATIVE_IDENTITY.xml records 54 PASS without skips. VALIDATION_MANIFEST.json seals
+their checksums and implementation SHA. Final exact-head results are authoritative
+in PR #391 Checks and the exact-head oracle artifact source attestation.
 The normal retired Model V2 scope skips are not new financial test skips.
 
 The generated FIN_V2_3_INDEPENDENT_ORACLE.xlsx contains 25 sheets and 4,548 formulas across
