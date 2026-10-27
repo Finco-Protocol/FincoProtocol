@@ -1,0 +1,864 @@
+{
+ "source": "public-ci-v3-worker-N artifacts, execution/child/calibration.json and process.json; Public Safety and Model Smoke runs; collected 2026-10-27",
+ "legacy_contract": "maximum of all 3 samples <= 0.600 s",
+ "rows": [
+  {
+   "run": "40513286161",
+   "head": "248d9112",
+   "branch_kind": "pr388",
+   "worker": "worker-4",
+   "samples_s": [
+    0.333,
+    0.305,
+    0.311
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40513286161",
+   "head": "248d9112",
+   "branch_kind": "pr388",
+   "worker": "worker-3",
+   "samples_s": [
+    0.325,
+    0.307,
+    0.301
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40513286161",
+   "head": "248d9112",
+   "branch_kind": "pr388",
+   "worker": "worker-0",
+   "samples_s": [
+    0.32,
+    0.303,
+    0.308
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40513286161",
+   "head": "248d9112",
+   "branch_kind": "pr388",
+   "worker": "worker-1",
+   "samples_s": [
+    0.317,
+    0.302,
+    0.304
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40513286161",
+   "head": "248d9112",
+   "branch_kind": "pr388",
+   "worker": "worker-2",
+   "samples_s": [
+    0.303,
+    0.196,
+    0.195
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40491672946",
+   "head": "0ee2f5ec",
+   "branch_kind": "pr388",
+   "worker": "worker-4",
+   "samples_s": [
+    0.337,
+    0.346,
+    0.316
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40491672946",
+   "head": "0ee2f5ec",
+   "branch_kind": "pr388",
+   "worker": "worker-3",
+   "samples_s": [
+    0.314,
+    0.298,
+    0.297
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40491672946",
+   "head": "0ee2f5ec",
+   "branch_kind": "pr388",
+   "worker": "worker-2",
+   "samples_s": [
+    0.243,
+    0.228,
+    0.226
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40491672946",
+   "head": "0ee2f5ec",
+   "branch_kind": "pr388",
+   "worker": "worker-0",
+   "samples_s": [
+    0.312,
+    0.3,
+    0.3
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40491672946",
+   "head": "0ee2f5ec",
+   "branch_kind": "pr388",
+   "worker": "worker-1",
+   "samples_s": [
+    0.342,
+    0.254,
+    0.255
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40505312580",
+   "head": "128bf0c2",
+   "branch_kind": "main",
+   "worker": "worker-4",
+   "samples_s": [
+    0.342,
+    0.317,
+    0.317
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40505312580",
+   "head": "128bf0c2",
+   "branch_kind": "main",
+   "worker": "worker-1",
+   "samples_s": [
+    0.199,
+    0.192,
+    0.184
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40505312580",
+   "head": "128bf0c2",
+   "branch_kind": "main",
+   "worker": "worker-3",
+   "samples_s": [
+    0.26,
+    0.251,
+    0.248
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40505312580",
+   "head": "128bf0c2",
+   "branch_kind": "main",
+   "worker": "worker-0",
+   "samples_s": [
+    0.25,
+    0.237,
+    0.239
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40505312580",
+   "head": "128bf0c2",
+   "branch_kind": "main",
+   "worker": "worker-2",
+   "samples_s": [
+    0.25,
+    0.236,
+    0.236
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40499195653",
+   "head": "f2ce5d6a",
+   "branch_kind": "f01",
+   "worker": "worker-3",
+   "samples_s": [
+    0.318,
+    0.298,
+    0.3
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40499195653",
+   "head": "f2ce5d6a",
+   "branch_kind": "f01",
+   "worker": "worker-0",
+   "samples_s": [
+    0.322,
+    0.303,
+    0.308
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40499195653",
+   "head": "f2ce5d6a",
+   "branch_kind": "f01",
+   "worker": "worker-2",
+   "samples_s": [
+    0.217,
+    0.206,
+    0.19
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40499195653",
+   "head": "f2ce5d6a",
+   "branch_kind": "f01",
+   "worker": "worker-1",
+   "samples_s": [
+    0.318,
+    0.302,
+    0.301
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40499195653",
+   "head": "f2ce5d6a",
+   "branch_kind": "f01",
+   "worker": "worker-4",
+   "samples_s": [
+    0.229,
+    0.208,
+    0.212
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40487284039",
+   "head": "035b73a1",
+   "branch_kind": "f01",
+   "worker": "worker-0",
+   "samples_s": [
+    0.315,
+    0.298,
+    0.298
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40487284039",
+   "head": "035b73a1",
+   "branch_kind": "f01",
+   "worker": "worker-1",
+   "samples_s": [
+    0.328,
+    0.306,
+    0.312
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40487284039",
+   "head": "035b73a1",
+   "branch_kind": "f01",
+   "worker": "worker-2",
+   "samples_s": [
+    0.32,
+    0.301,
+    0.312
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40487284039",
+   "head": "035b73a1",
+   "branch_kind": "f01",
+   "worker": "worker-3",
+   "samples_s": [
+    0.327,
+    0.308,
+    0.302
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40487284039",
+   "head": "035b73a1",
+   "branch_kind": "f01",
+   "worker": "worker-4",
+   "samples_s": [
+    0.259,
+    0.242,
+    0.242
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40478422312",
+   "head": "45bd6849",
+   "branch_kind": "f01",
+   "worker": "worker-3",
+   "samples_s": [
+    0.328,
+    0.315,
+    0.314
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40478422312",
+   "head": "45bd6849",
+   "branch_kind": "f01",
+   "worker": "worker-2",
+   "samples_s": [
+    0.332,
+    0.307,
+    0.304
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40478422312",
+   "head": "45bd6849",
+   "branch_kind": "f01",
+   "worker": "worker-4",
+   "samples_s": [
+    0.241,
+    0.22,
+    0.229
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40478422312",
+   "head": "45bd6849",
+   "branch_kind": "f01",
+   "worker": "worker-0",
+   "samples_s": [
+    0.343,
+    0.324,
+    0.331
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40478422312",
+   "head": "45bd6849",
+   "branch_kind": "f01",
+   "worker": "worker-1",
+   "samples_s": [
+    0.249,
+    0.236,
+    0.238
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40463817978",
+   "head": "cf7056de",
+   "branch_kind": "main",
+   "worker": "worker-3",
+   "samples_s": [
+    0.254,
+    0.24,
+    0.239
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40463817978",
+   "head": "cf7056de",
+   "branch_kind": "main",
+   "worker": "worker-0",
+   "samples_s": [
+    0.351,
+    0.328,
+    0.338
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40463817978",
+   "head": "cf7056de",
+   "branch_kind": "main",
+   "worker": "worker-1",
+   "samples_s": [
+    0.35,
+    0.337,
+    0.34
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40463817978",
+   "head": "cf7056de",
+   "branch_kind": "main",
+   "worker": "worker-2",
+   "samples_s": [
+    0.322,
+    0.301,
+    0.306
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40463817978",
+   "head": "cf7056de",
+   "branch_kind": "main",
+   "worker": "worker-4",
+   "samples_s": [
+    0.228,
+    0.211,
+    0.228
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40459556441",
+   "head": "0d405b27",
+   "branch_kind": "other",
+   "worker": "worker-2",
+   "samples_s": [
+    0.231,
+    0.21,
+    0.21
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40459556441",
+   "head": "0d405b27",
+   "branch_kind": "other",
+   "worker": "worker-3",
+   "samples_s": [
+    0.231,
+    0.216,
+    0.225
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40459556441",
+   "head": "0d405b27",
+   "branch_kind": "other",
+   "worker": "worker-4",
+   "samples_s": [
+    0.324,
+    0.305,
+    0.308
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40459556441",
+   "head": "0d405b27",
+   "branch_kind": "other",
+   "worker": "worker-1",
+   "samples_s": [
+    0.324,
+    0.299,
+    0.3
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40459556441",
+   "head": "0d405b27",
+   "branch_kind": "other",
+   "worker": "worker-0",
+   "samples_s": [
+    0.372,
+    0.358,
+    0.346
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40456108383",
+   "head": "052252f1",
+   "branch_kind": "other",
+   "worker": "worker-0",
+   "samples_s": [
+    0.261,
+    0.25,
+    0.255
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40456108383",
+   "head": "052252f1",
+   "branch_kind": "other",
+   "worker": "worker-4",
+   "samples_s": [
+    0.291,
+    0.268,
+    0.268
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40456108383",
+   "head": "052252f1",
+   "branch_kind": "other",
+   "worker": "worker-2",
+   "samples_s": [
+    0.275,
+    0.262,
+    0.26
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40456108383",
+   "head": "052252f1",
+   "branch_kind": "other",
+   "worker": "worker-3",
+   "samples_s": [
+    0.321,
+    0.299,
+    0.3
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40456108383",
+   "head": "052252f1",
+   "branch_kind": "other",
+   "worker": "worker-1",
+   "samples_s": [
+    0.22,
+    0.22,
+    0.201
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40454686337",
+   "head": "8d9cccc7",
+   "branch_kind": "main",
+   "worker": "worker-3",
+   "samples_s": [
+    0.346,
+    0.325,
+    0.322
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40454686337",
+   "head": "8d9cccc7",
+   "branch_kind": "main",
+   "worker": "worker-0",
+   "samples_s": [
+    0.315,
+    0.308,
+    0.299
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40454686337",
+   "head": "8d9cccc7",
+   "branch_kind": "main",
+   "worker": "worker-4",
+   "samples_s": [
+    0.318,
+    0.306,
+    0.303
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40454686337",
+   "head": "8d9cccc7",
+   "branch_kind": "main",
+   "worker": "worker-2",
+   "samples_s": [
+    0.325,
+    0.311,
+    0.308
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40454686337",
+   "head": "8d9cccc7",
+   "branch_kind": "main",
+   "worker": "worker-1",
+   "samples_s": [
+    0.313,
+    0.298,
+    0.297
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40451332426",
+   "head": "6f0c5b61",
+   "branch_kind": "other",
+   "worker": "worker-4",
+   "samples_s": [
+    0.324,
+    0.308,
+    0.308
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40451332426",
+   "head": "6f0c5b61",
+   "branch_kind": "other",
+   "worker": "worker-3",
+   "samples_s": [
+    0.297,
+    0.265,
+    0.275
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40451332426",
+   "head": "6f0c5b61",
+   "branch_kind": "other",
+   "worker": "worker-1",
+   "samples_s": [
+    0.24,
+    0.222,
+    0.22
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40451332426",
+   "head": "6f0c5b61",
+   "branch_kind": "other",
+   "worker": "worker-0",
+   "samples_s": [
+    0.322,
+    0.304,
+    0.299
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40451332426",
+   "head": "6f0c5b61",
+   "branch_kind": "other",
+   "worker": "worker-2",
+   "samples_s": [
+    0.317,
+    0.3,
+    0.298
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40522709690",
+   "head": "9ac495c8",
+   "branch_kind": "pr388",
+   "worker": "worker-4",
+   "samples_s": [
+    0.253,
+    0.239,
+    0.26
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40522709690",
+   "head": "9ac495c8",
+   "branch_kind": "pr388",
+   "worker": "worker-2",
+   "samples_s": [
+    0.32,
+    0.302,
+    0.299
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40522709690",
+   "head": "9ac495c8",
+   "branch_kind": "pr388",
+   "worker": "worker-0",
+   "samples_s": [
+    0.324,
+    0.308,
+    0.3
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40522709690",
+   "head": "9ac495c8",
+   "branch_kind": "pr388",
+   "worker": "worker-3",
+   "samples_s": [
+    0.704,
+    0.243,
+    0.242
+   ],
+   "legacy_verdict": "REFUSED",
+   "os_exit_code": "124"
+  },
+  {
+   "run": "40522709690",
+   "head": "9ac495c8",
+   "branch_kind": "pr388",
+   "worker": "worker-1",
+   "samples_s": [
+    0.802,
+    0.255,
+    0.252
+   ],
+   "legacy_verdict": "REFUSED",
+   "os_exit_code": "124"
+  },
+  {
+   "run": "40534725665",
+   "head": "54453418",
+   "branch_kind": "pr388-merge",
+   "worker": "worker-0",
+   "samples_s": [
+    0.61,
+    0.218,
+    0.222
+   ],
+   "legacy_verdict": "REFUSED",
+   "os_exit_code": "124"
+  },
+  {
+   "run": "40525714183",
+   "head": "f19e3103",
+   "branch_kind": "fin-v2-3",
+   "worker": "worker-3",
+   "samples_s": [
+    0.327,
+    0.31,
+    0.307
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40525714183",
+   "head": "f19e3103",
+   "branch_kind": "fin-v2-3",
+   "worker": "worker-4",
+   "samples_s": [
+    0.206,
+    0.202,
+    0.197
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  },
+  {
+   "run": "40525714183",
+   "head": "f19e3103",
+   "branch_kind": "fin-v2-3",
+   "worker": "worker-2",
+   "samples_s": [
+    0.248,
+    0.236,
+    0.235
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40525714183",
+   "head": "f19e3103",
+   "branch_kind": "fin-v2-3",
+   "worker": "worker-0",
+   "samples_s": [
+    0.357,
+    0.323,
+    0.32
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "1"
+  },
+  {
+   "run": "40525714183",
+   "head": "f19e3103",
+   "branch_kind": "fin-v2-3",
+   "worker": "worker-1",
+   "samples_s": [
+    0.353,
+    0.334,
+    0.333
+   ],
+   "legacy_verdict": "ok",
+   "os_exit_code": "0"
+  }
+ ]
+}

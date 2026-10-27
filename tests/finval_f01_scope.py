@@ -8,6 +8,10 @@ SOURCES={'app/input_adapter.py': '2db97ac44180d6e78c147dcfffb5daddb585c36f', 'ap
 # F01 path stays pinned to its F01 blob; any other byte of any path is still refused.
 SUCCESSORS={'app/v2/router.py': 'cd5091083433dab5aeb493d9be201919d5a14e42'}
 
+# RC-M atomic request-keyed creation (docs/react_migration/rc_m_integrated/atomic_create/): the only reviewed successor blobs of the F01-pinned
+# creation files.  Admitted ONLY as an exact alternative to the F01 blob of the same path; any other drift still fails.
+ATOMIC_CREATE_SUCCESSORS={'app/persistence/projects_repository.py': '8e9be46fee9b257756c18bd698252792d67bb01f', 'app/services/project_library_service.py': '1e60506e9d2f0ba0c1260e0471914d5c95063e53'}
+
 def valid(repo=ROOT, sources=None):
     try:
         subprocess.run(["git","merge-base","--is-ancestor",BASE,"HEAD"],cwd=repo,check=True,capture_output=True)
@@ -16,6 +20,6 @@ def valid(repo=ROOT, sources=None):
             data=actual[path]
             if isinstance(data,str): data=data.encode()
             got=subprocess.check_output(["git","hash-object","--stdin"],input=data,cwd=repo).decode().strip()
-            if got!=expected and got!=SUCCESSORS.get(path):return False
+            if got not in {expected,SUCCESSORS.get(path),ATOMIC_CREATE_SUCCESSORS.get(path)}:return False
         return True
     except (OSError, KeyError, subprocess.CalledProcessError):return False

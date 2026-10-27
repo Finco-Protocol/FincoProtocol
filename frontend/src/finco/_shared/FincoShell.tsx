@@ -125,7 +125,8 @@ export function Shell({ children, crumb = "Project library", mainContentId = "fm
       </header>
       <nav className="fm-workspace-bar" aria-label="Project breadcrumb">
         {live
-          ? <><a href={libraryHref ?? "/v2/model-react/"}>Project Library</a><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span></>
+          ? <><a href={libraryHref ?? "/v2/model-react/"}>Project Library</a><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span>
+            <a className="rcm-nav-new-project" href="/v2/model-react/#new-project" data-nav-new-project="true">+ New Project</a></>
           : <><a href={`${fincoBasePath()}ProjectLibrary`}>Portfolio</a><span aria-hidden="true">/</span><strong>Renewables</strong><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span></>}
       </nav>
       {!live && <div className="fm-notice">Design prototype • No live calculations or backend connection</div>}

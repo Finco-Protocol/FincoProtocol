@@ -1,0 +1,448 @@
+{
+  "ok": true,
+  "vertical": {
+    "key": "solar",
+    "public_name": "Solar",
+    "pilot_tier": "PILOT_CANDIDATE",
+    "limitations": [
+      "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration.",
+      "Portfolio-level analysis remains experimental relative to the core single-project engine."
+    ]
+  },
+  "drivers": [
+    {
+      "key": "capex",
+      "label": "CAPEX",
+      "unit": "%",
+      "mode": "pct",
+      "default_levels": [
+        {
+          "value": -20,
+          "label": "\u221220 %"
+        },
+        {
+          "value": -10,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0,
+          "label": "Base"
+        },
+        {
+          "value": 10,
+          "label": "+10 %"
+        },
+        {
+          "value": 20,
+          "label": "+20 %"
+        }
+      ],
+      "default_levels_3": [
+        {
+          "value": -10,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0.0,
+          "label": "Base"
+        },
+        {
+          "value": 10,
+          "label": "+10 %"
+        }
+      ],
+      "max_abs_level": 50
+    },
+    {
+      "key": "opex",
+      "label": "OPEX",
+      "unit": "%",
+      "mode": "pct",
+      "default_levels": [
+        {
+          "value": -20,
+          "label": "\u221220 %"
+        },
+        {
+          "value": -10,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0,
+          "label": "Base"
+        },
+        {
+          "value": 10,
+          "label": "+10 %"
+        },
+        {
+          "value": 20,
+          "label": "+20 %"
+        }
+      ],
+      "default_levels_3": [
+        {
+          "value": -10,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0.0,
+          "label": "Base"
+        },
+        {
+          "value": 10,
+          "label": "+10 %"
+        }
+      ],
+      "max_abs_level": 50
+    },
+    {
+      "key": "tariff",
+      "label": "PPA / Tariff price",
+      "unit": "%",
+      "mode": "pct",
+      "default_levels": [
+        {
+          "value": -20,
+          "label": "\u221220 %"
+        },
+        {
+          "value": -10,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0,
+          "label": "Base"
+        },
+        {
+          "value": 10,
+          "label": "+10 %"
+        },
+        {
+          "value": 20,
+          "label": "+20 %"
+        }
+      ],
+      "default_levels_3": [
+        {
+          "value": -10,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0.0,
+          "label": "Base"
+        },
+        {
+          "value": 10,
+          "label": "+10 %"
+        }
+      ],
+      "max_abs_level": 50
+    },
+    {
+      "key": "merchant_price",
+      "label": "Merchant price",
+      "unit": "%",
+      "mode": "pct",
+      "default_levels": [
+        {
+          "value": -20,
+          "label": "\u221220 %"
+        },
+        {
+          "value": -10,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0,
+          "label": "Base"
+        },
+        {
+          "value": 10,
+          "label": "+10 %"
+        },
+        {
+          "value": 20,
+          "label": "+20 %"
+        }
+      ],
+      "default_levels_3": [
+        {
+          "value": -10,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0.0,
+          "label": "Base"
+        },
+        {
+          "value": 10,
+          "label": "+10 %"
+        }
+      ],
+      "max_abs_level": 50
+    },
+    {
+      "key": "generation",
+      "label": "Yield (P50 hours)",
+      "unit": "%",
+      "mode": "pct",
+      "default_levels": [
+        {
+          "value": -10,
+          "label": "\u221210 %"
+        },
+        {
+          "value": -5,
+          "label": "\u22125 %"
+        },
+        {
+          "value": 0,
+          "label": "Base"
+        },
+        {
+          "value": 5,
+          "label": "+5 %"
+        },
+        {
+          "value": 10,
+          "label": "+10 %"
+        }
+      ],
+      "default_levels_3": [
+        {
+          "value": -5,
+          "label": "\u22125 %"
+        },
+        {
+          "value": 0.0,
+          "label": "Base"
+        },
+        {
+          "value": 5,
+          "label": "+5 %"
+        }
+      ],
+      "max_abs_level": 30
+    },
+    {
+      "key": "interest_rate",
+      "label": "Senior interest rate",
+      "unit": "bps",
+      "mode": "abs",
+      "default_levels": [
+        {
+          "value": -200,
+          "label": "\u2212200 bps"
+        },
+        {
+          "value": -100,
+          "label": "\u2212100 bps"
+        },
+        {
+          "value": 0,
+          "label": "Base"
+        },
+        {
+          "value": 100,
+          "label": "+100 bps"
+        },
+        {
+          "value": 200,
+          "label": "+200 bps"
+        }
+      ],
+      "default_levels_3": [
+        {
+          "value": -100,
+          "label": "\u2212100 bps"
+        },
+        {
+          "value": 0.0,
+          "label": "Base"
+        },
+        {
+          "value": 100,
+          "label": "+100 bps"
+        }
+      ],
+      "max_abs_level": 500
+    },
+    {
+      "key": "gearing",
+      "label": "Senior gearing",
+      "unit": "pp",
+      "mode": "abs",
+      "default_levels": [
+        {
+          "value": -10,
+          "label": "\u221210 pp"
+        },
+        {
+          "value": -5,
+          "label": "\u22125 pp"
+        },
+        {
+          "value": 0,
+          "label": "Base"
+        },
+        {
+          "value": 5,
+          "label": "+5 pp"
+        },
+        {
+          "value": 10,
+          "label": "+10 pp"
+        }
+      ],
+      "default_levels_3": [
+        {
+          "value": -5,
+          "label": "\u22125 pp"
+        },
+        {
+          "value": 0.0,
+          "label": "Base"
+        },
+        {
+          "value": 5,
+          "label": "+5 pp"
+        }
+      ],
+      "max_abs_level": 20
+    }
+  ],
+  "metrics": [
+    {
+      "key": "project_irr",
+      "label": "Project IRR",
+      "unit": "%",
+      "fmt": "pct",
+      "note": ""
+    },
+    {
+      "key": "equity_irr",
+      "label": "Pure Equity IRR",
+      "unit": "%",
+      "fmt": "pct",
+      "note": ""
+    },
+    {
+      "key": "sponsor_irr",
+      "label": "Total Sponsor IRR",
+      "unit": "%",
+      "fmt": "pct",
+      "note": ""
+    },
+    {
+      "key": "min_dscr",
+      "label": "Min DSCR",
+      "unit": "x",
+      "fmt": "ratio",
+      "note": ""
+    },
+    {
+      "key": "avg_dscr",
+      "label": "Avg DSCR",
+      "unit": "x",
+      "fmt": "ratio",
+      "note": ""
+    },
+    {
+      "key": "min_llcr",
+      "label": "Min LLCR",
+      "unit": "x",
+      "fmt": "ratio",
+      "note": "only when the run produces an LLCR"
+    },
+    {
+      "key": "target_dscr",
+      "label": "Target DSCR",
+      "unit": "x",
+      "fmt": "ratio",
+      "note": ""
+    },
+    {
+      "key": "senior_debt_keur",
+      "label": "Senior Debt",
+      "unit": "kEUR",
+      "fmt": "keur",
+      "note": ""
+    },
+    {
+      "key": "total_capex_keur",
+      "label": "Total CAPEX",
+      "unit": "kEUR",
+      "fmt": "keur",
+      "note": ""
+    },
+    {
+      "key": "total_revenue_keur",
+      "label": "Total Revenue",
+      "unit": "kEUR",
+      "fmt": "keur",
+      "note": ""
+    },
+    {
+      "key": "total_ebitda_keur",
+      "label": "Total EBITDA",
+      "unit": "kEUR",
+      "fmt": "keur",
+      "note": ""
+    },
+    {
+      "key": "sponsor_moic",
+      "label": "Total Sponsor MOIC",
+      "unit": "x",
+      "fmt": "ratio",
+      "note": ""
+    },
+    {
+      "key": "pure_equity_moic",
+      "label": "Pure Equity MOIC",
+      "unit": "x",
+      "fmt": "ratio",
+      "note": ""
+    },
+    {
+      "key": "equity_npv_keur",
+      "label": "Equity NPV",
+      "unit": "kEUR",
+      "fmt": "keur",
+      "note": "only when a valuation basis is configured"
+    },
+    {
+      "key": "project_npv_keur",
+      "label": "Project NPV",
+      "unit": "kEUR",
+      "fmt": "keur",
+      "note": "only when a valuation basis is configured"
+    }
+  ],
+  "strip_columns": [
+    "project_irr",
+    "equity_irr",
+    "sponsor_irr",
+    "min_dscr",
+    "avg_dscr",
+    "min_llcr",
+    "project_npv_keur",
+    "equity_npv_keur",
+    "sponsor_moic"
+  ],
+  "limits": {
+    "strip_points": 5,
+    "grid_sizes": [
+      3,
+      5
+    ],
+    "max_cells": 25,
+    "max_evaluations": 49
+  },
+  "semantics": {
+    "ephemeral": true,
+    "writes_nothing": true,
+    "is_a_run": false,
+    "basis": "The Working Copy draft (or the selected scenario) as saved on the server \u2014 not the last Run."
+  }
+}

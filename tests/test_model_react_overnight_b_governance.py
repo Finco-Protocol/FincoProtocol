@@ -36,7 +36,9 @@ def test_layer_is_exactly_twelve_additive_paths_and_every_current_source_is_admi
     for path, blob in LAYER.items():
         assert path in S.BLOBS and len(blob) == 40
         assert blob not in {S.BLOBS[path], S.FINVAL_B2C1_SUCCESSORS.get(path), S.D029_RUN_INTENT_SUCCESSORS.get(path)}   # a NEW reviewed state
-        assert S.git_blob(SOURCES[path]) == blob
+        # strict equality, as before: the current source is exactly the Overnight B state, or — only for a path the separately reviewed
+        # RC-M layer also covers — exactly that later pinned state (never "either one")
+        assert S.git_blob(SOURCES[path]) == S.RC_M_SUCCESSORS.get(path, blob)
     assert S.violations(SOURCES) == []
     assert S.current_mutation_successor_valid()
 
@@ -106,10 +108,11 @@ def test_the_correction_changes_no_protected_financial_path_since_the_baseline()
                  "app/v2/router.py", "app/v2/react_poc_router.py", "app/v2/returns_projection.py", "app/services/run_intent_service.py",
                  "app/persistence/run_intent_repository.py", "app/persistence/run_history_repository.py", "app/services/run_service.py")
     prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/")
-    hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]
-    # F01 is an independently authorized successor, attributed only when all
-    # exact source blobs and the current-main ancestry are present.
+    # A path is excepted ONLY when the separately reviewed RC-M layer pins its exact current blob (and tests/test_rcm_governance.py
+    # proves the change itself, e.g. the router differs from main only by the content-derived asset version).
+    hits = [p for p in changed if (p in forbidden and p not in S.RC_M_SUCCESSORS) or p.startswith(prefixes)]
     from tests import finval_f01_scope as F01
+    # F01 is an independently authorized successor, attributed only when all exact source blobs and the current-main ancestry are present.
     if F01.valid():
         hits = [p for p in hits if p not in F01.SOURCES]
     assert hits == [], hits

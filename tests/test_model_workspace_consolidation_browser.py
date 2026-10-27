@@ -815,3 +815,14 @@ def test_onb_scenario_override_boundary_matches_the_canonical_capability(browser
 def test_onb_every_theme_keeps_the_corrected_surfaces_legible(browser, react_enabled):
     from tests.model_react_overnight_b_acceptance import check_every_theme_keeps_the_corrected_surfaces_legible
     check_every_theme_keeps_the_corrected_surfaces_legible(browser, react_enabled)
+
+
+# RC-M integrated React acceptance (New Project wizard, Analysis, Financing, Investors, all-theme legibility).
+# The bodies live in non-collected modules (each ``__all__`` lists its tests and fixture), so the mandatory consolidation role
+# executes them with its own fail-closed inventory / JUnit verifier and no collection-time skip is introduced.
+from tests.model_react_rcm_support import rcm_react_flag  # noqa: E402,F401
+from tests.model_react_rcm_new_project_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcm_analysis_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcm_financing_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcm_investors_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcm_themes_acceptance import *  # noqa: E402,F401,F403

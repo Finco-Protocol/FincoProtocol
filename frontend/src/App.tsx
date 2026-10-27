@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { readHostConfig, type HostConfig } from "./api/client";
 import { LibraryView } from "./app/LibraryView";
+import { NewProjectWizard } from "./app/newProject/NewProjectWizard";
+import { isWizardHash } from "./app/newProject/api";
 import { ThemeProvider } from "./finco/_shared/ThemeSelector";
 import { WorkspaceView } from "./app/WorkspaceView";
 import "./styles/rx-mvp-correction.css";
@@ -51,6 +53,13 @@ function ModelApp({ host }: { host: HTMLElement }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [nonce, setNonce] = useState(0);
+  // RC-M: `#new-project` on the Library route opens the New Project wizard (a real link, so Back/Forward work).
+  const [wizardOpen, setWizardOpen] = useState(() => isWizardHash(window.location.hash));
+  useEffect(() => {
+    const sync = () => setWizardOpen(isWizardHash(window.location.hash));
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
 
   useEffect(() => {
     if (!config) {
@@ -87,6 +96,16 @@ function ModelApp({ host }: { host: HTMLElement }) {
           legacyUrl={config.legacyUrl}
           onNavigateToLibrary={() => { window.location.href = "/v2/model-react/"; }}
         />
+      </ThemeProvider>
+    );
+  }
+  if (wizardOpen) {
+    return (
+      <ThemeProvider host={host}>
+        <NewProjectWizard onCancel={() => {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+          setWizardOpen(false);
+        }} />
       </ThemeProvider>
     );
   }

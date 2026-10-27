@@ -1,0 +1,50 @@
+/* RC-M Lane C — Financing Studio (presentation only; theme tokens inherited). */
+.rcm-fin h3, .rcm-fin .rcm-h3 { margin: 0 0 6px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 1rem; }
+.rcm-h4 { margin: 14px 0 6px; font-size: .9rem; }
+.rcm-badge-input { color: var(--navy, #183e63); border-color: var(--navy, #183e63); background: var(--surface-blue, #edf3f8); }
+.rcm-badge-derived { color: var(--muted, #526374); border-color: var(--line, #dce3e9); background: var(--paper, #f4f6f7); }
+.rcm-callout { border: 1px solid var(--line, #dce3e9); background: var(--paper, #f4f6f7); padding: 8px 12px; }
+.rcm-callout p { margin: 4px 0 0; font-size: 12px; color: var(--muted, #526374); }
+.rcm-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 12px; }
+.rcm-grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 12px; }
+.rcm-fieldset { border: 1px solid var(--line, #dce3e9); margin: 12px 0; padding: 8px 12px 12px; min-width: 0; }
+.rcm-fieldset legend { font-weight: 700; font-size: 12px; padding: 0 6px; color: var(--navy, #183e63); }
+.rcm-fieldset:disabled { opacity: .85; }
+.rcm-fieldset .rcm-field select, .rcm-fieldset .rcm-field input { min-width: 0; }
+.rcm-grid-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.rcm-table td input {
+  width: 100%; min-width: 84px; box-sizing: border-box; padding: 4px 6px; font: inherit; text-align: right; font-variant-numeric: tabular-nums;
+  border: 1px solid var(--line, #dce3e9); background: var(--surface, #fff); color: var(--ink, #182b43);
+}
+.rcm-table td input:disabled { background: var(--paper, #f4f6f7); color: var(--muted, #526374); }
+.rcm-table td input:focus-visible { outline: 2px solid var(--fo-brand-500, #3b6ff6); outline-offset: -1px; }
+.rcm-table tbody tr:focus-within th, .rcm-table tbody tr:focus-within td { background: var(--surface-blue, #edf3f8); }
+.rcm-actions-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.rcm-problems { margin: 8px 0; padding-left: 22px; }
+.rcm-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 8px; margin: 8px 0; }
+.rcm-facts > div, .rcm-metric { border: 1px solid var(--line, #dce3e9); background: var(--paper, #f4f6f7); padding: 7px 10px; }
+.rcm-facts dt { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted, #526374); font-weight: 700; }
+.rcm-facts dd { margin: 2px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rcm-reason { display: block; font-weight: 400; font-size: 10px; color: var(--muted, #526374); white-space: normal; }
+.rcm-closed { margin: 4px 0 0; padding-left: 20px; font-size: 12px; color: var(--muted, #526374); }
+.rcm-facilities { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.rcm-facility { border: 1px solid var(--line, #dce3e9); padding: 8px 12px; background: var(--surface, #fff); min-width: 0; overflow-x: auto; overflow-wrap: anywhere; }
+.rcm-draws { max-width: 420px; }
+.rcm-su td.rcm-left { white-space: normal; }
+
+@media (max-width: 820px) {
+  .rcm-fieldset .rcm-field select, .rcm-fieldset .rcm-field input, .rcm-actions-row .rx-button, .rcm-grid-actions .rx-button { min-height: 44px; }
+  .rcm-table td input { min-height: 44px; }
+  .rcm-actions-row .rx-button { flex: 1 1 140px; }
+}
+
+.rcm-check { display: flex; align-items: center; gap: 8px; min-height: 36px; font-weight: 600; }
+.rcm-check input { width: 20px; height: 20px; flex: 0 0 auto; margin: 0; }
+@media (max-width: 820px) { .rcm-check { min-height: 44px; } }
+.rcm-details { margin-top: 8px; }
+.rcm-details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+.rcm-table td[colspan] { text-align: left; }
+
+/* Narrow screens: no financing panel may widen the page, whatever the platform font (long words wrap, tables scroll inside their card). */
+.rcm-fin { min-width: 0; overflow-wrap: anywhere; }
+.rcm-fin .rcm-closed li, .rcm-fin .rx-note, .rcm-fin .rcm-facts dd { overflow-wrap: anywhere; }

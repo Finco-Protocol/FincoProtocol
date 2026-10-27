@@ -1,0 +1,65 @@
+{
+  "ok": true,
+  "preview_only": true,
+  "committed": false,
+  "is_a_run": false,
+  "vertical": {
+    "key": "solar",
+    "public_name": "Solar",
+    "pilot_tier": "PILOT_CANDIDATE",
+    "limitations": [
+      "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration.",
+      "Portfolio-level analysis remains experimental relative to the core single-project engine."
+    ]
+  },
+  "result": {
+    "status": "SOLVED",
+    "solved": true,
+    "message": "Solved: tariff 53.05 EUR/MWh achieves Project IRR 12.2708%.",
+    "target_metric": "project_irr",
+    "target_metric_label": "Project IRR",
+    "target_value": 0.12269999999999999,
+    "target_display": "12.27%",
+    "variable": {
+      "key": "ppa_base_tariff",
+      "label": "Tariff / Revenue Price",
+      "unit": "EUR/MWh",
+      "field_id": "revenue.ppa.base_tariff"
+    },
+    "started_from": 50.0,
+    "started_from_display": "50.00 EUR/MWh",
+    "solved_input_value": 53.046875,
+    "solved_display": "53.05 EUR/MWh",
+    "delta_display": "+3.05 EUR/MWh",
+    "variance_display": "+6.1%",
+    "achieved_metric_value": 0.12270771839158601,
+    "achieved_display": "12.2708%",
+    "absolute_target_error": 7.718391586017392e-06,
+    "error_display": "0.0008 pp",
+    "iterations": 7,
+    "model_evaluations": 13,
+    "expansions": 0,
+    "lower_bound": 10.0,
+    "upper_bound": 150.0,
+    "bracket_lower": 53.046875,
+    "bracket_upper": 53.046875
+  },
+  "budgets": {
+    "max_iterations": 60,
+    "max_model_evaluations": 40,
+    "target_tolerance": 0.0001,
+    "bracket_lower_fraction": 0.2,
+    "bracket_upper_multiple": 3.0,
+    "bracket_max_expansions": 2
+  },
+  "apply": {
+    "field_id": "revenue.ppa.base_tariff",
+    "value": "53.046875",
+    "content_hash": "<redacted>",
+    "workbook_version": "2.3.0",
+    "target_metric": "project_irr",
+    "target_value": "12.27",
+    "csrf_token": "<redacted>"
+  },
+  "provenance": "Every candidate is the original run_project on the saved Working Copy with only the tariff replaced; nothing was saved and no Run was recorded."
+}

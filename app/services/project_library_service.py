@@ -564,12 +564,114 @@ def _init_reference_workspace(record, project_inputs, snapshot: dict, defn: dict
 # Working copy creation
 # ---------------------------------------------------------------------------
 
+CREATE_INCOMPLETE_LEASE_SECONDS = 300
+
+
+class CreateRequestConflict(ValueError):
+    """The same create request id was reused with different inputs."""
+
+
+class _NameCollision(Exception):
+    """Internal: another request took the chosen project code first; nothing was written, so the whole create can be re-planned."""
+
+
+class _AlreadyCreated(Exception):
+    """Internal: this request id is already committed; carries the ``(record, outcome)`` to return."""
+
+
+def _observe_create_request(user_id: str, create_request: dict):
+    """(record, outcome) for an already-committed request id, else None.  Reads and the stale-abandon CAS only — never creates."""
+    from datetime import timedelta
+
+    from app.persistence.projects_repository import (
+        CREATE_ABANDONED, CREATE_COMPLETE, CREATE_REQUEST_KEY, abandon_stale_create, find_project_by_create_request,
+    )
+
+    record = find_project_by_create_request(user_id, create_request["request_id"])
+    if record is None:
+        return None
+    meta = (record.replay_metadata or {}).get(CREATE_REQUEST_KEY) or {}
+    if meta.get("params_digest") != create_request["params_digest"]:
+        raise CreateRequestConflict("This request id was already used with different inputs.")
+    state = meta.get("state")
+    if state == CREATE_COMPLETE:
+        return record, "replayed"
+    if state == CREATE_ABANDONED:
+        return record, "abandoned"
+    now = _now_utc()
+    cutoff = (now - timedelta(seconds=CREATE_INCOMPLETE_LEASE_SECONDS)).isoformat()
+    if abandon_stale_create(user_id, record.project_id, created_before=cutoff, now=now.isoformat()):
+        return find_project_by_create_request(user_id, create_request["request_id"]), "abandoned"
+    return record, "in_progress"
+
+
+def _clone_metadata(source, now, create_request: Optional[dict]) -> dict:
+    metadata = {
+        "cloned_from_project_id": source.project_id,
+        "cloned_from_project_code": source.project_code,
+        "cloned_at": now.isoformat(),
+    }
+    if create_request is not None:
+        from app.persistence.projects_repository import CREATE_CREATING, CREATE_REQUEST_KEY
+
+        metadata[CREATE_REQUEST_KEY] = {
+            "request_id": create_request["request_id"], "params_digest": create_request["params_digest"],
+            "purpose": create_request.get("purpose", ""), "state": CREATE_CREATING}
+    return metadata
+
+
+def _insert_working_copy_row(user_id: str, create_request: Optional[dict], **row):
+    """``save_project`` for the new row.  With a create request, a unique-index refusal that is THIS request already committed
+    (another worker won the INSERT) is reported as ``_AlreadyCreated`` instead of an error; any other refusal propagates."""
+    import sqlite3
+
+    if create_request is None:
+        return save_project(user_id=user_id, **row)
+    try:
+        return save_project(user_id=user_id, insert_only=True, **row)     # a keyed create is INSERT-only: it can never overwrite a row
+    except sqlite3.IntegrityError:
+        observed = _observe_create_request(user_id, create_request)
+        if observed is None:
+            raise _NameCollision()       # a different request took this project code between our check and our INSERT: nothing written
+        raise _AlreadyCreated(observed)
+
+
 def create_working_copy(
     user_id: str,
     source_reference_id: str,
     requested_name: Optional[str] = None,
 ) -> "ProjectRecord":
+    """Clone a reference project into a new user-owned working copy (see ``_create_working_copy``)."""
+    return _create_working_copy(user_id, source_reference_id, requested_name)[0]
+
+
+def _create_working_copy(
+    user_id: str,
+    source_reference_id: str,
+    requested_name: Optional[str] = None,
+    create_request: Optional[dict] = None,
+) -> "tuple[ProjectRecord, str]":
+    for _attempt in range(5):
+        try:
+            return _create_working_copy_steps(user_id, source_reference_id, requested_name, create_request)
+        except _AlreadyCreated as already:
+            return already.args[0]
+        except _NameCollision:
+            continue                      # re-plan: the colliding project now exists, so the next unique name differs
+    raise RuntimeError("Could not allocate a unique project code for the create request.")
+
+
+def _create_working_copy_steps(
+    user_id: str,
+    source_reference_id: str,
+    requested_name: Optional[str] = None,
+    create_request: Optional[dict] = None,
+) -> "tuple[ProjectRecord, str]":
     """Clone a reference project into a new user-owned working copy.
+
+    ``create_request`` = ``{"request_id", "params_digest", "purpose"}`` makes the create idempotent: the request identity is part of
+    the project row's own INSERT (unique per user), so at most one project exists per (user, request id) across any number of
+    workers.  Returns ``(record, outcome)``: ``created`` | ``replayed`` | ``in_progress`` | ``abandoned``.
 
     Steps:
     1. Authorize: source must be a valid reference (project_role='reference').
@@ -583,6 +685,11 @@ def create_working_copy(
         list_project_records,
         get_project_by_code,
     )
+
+    if create_request is not None:
+        observed = _observe_create_request(user_id, create_request)
+        if observed is not None:
+            return observed
 
     # Step 1 — verify source is a canonical reference
     source = get_project_by_id(source_reference_id)
@@ -667,8 +774,8 @@ def create_working_copy(
     snapshot["active_project"] = project_code
 
     now = _now_utc()
-    record = save_project(
-        user_id=user_id,
+    record = _insert_working_copy_row(
+        user_id, create_request,
         project_code=project_code,
         project_name=display_name,
         source_project_template=source.template_source or source.source_project_template,
@@ -681,11 +788,7 @@ def create_working_copy(
         project_role="working_copy",
         source_project_id=source.project_id,
         governance_state={"g20": "BLOCKED", "r99_r102": "NOT_APPROVED", "lender_ready": False},
-        replay_metadata={
-            "cloned_from_project_id": source.project_id,
-            "cloned_from_project_code": source.project_code,
-            "cloned_at": now.isoformat(),
-        },
+        replay_metadata=_clone_metadata(source, now, create_request),
     )
 
     # Step 5 — initialize independent workspace + scenario
@@ -710,7 +813,7 @@ def create_working_copy(
         record.governance_state,
     )
 
-    return record
+    return record, "created"
 
 
 def _unique_project_name(user_id: str, base_name: str) -> tuple[str, str]:

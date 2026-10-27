@@ -261,6 +261,9 @@ def test_concurrent_runs_keep_their_own_configuration_and_evidence():
 ACTIVATED_SITES = {
     "app/v2/router.py": 2, "app/api/router.py": 1, "app/services/goal_seek.py": 1, "app/v2/sensitivity_matrix_router.py": 1,
     "app/api/v1/model_router.py": 1,
+    # RC-M React Analysis (strip and matrix previews): the SAME activated(run_matrix_points) submission as the Legacy matrix router
+    # (shape proven identical in tests/test_rcm_governance.py); it is the only submission in that module.
+    "app/v2/react_analysis.py": 1,
 }
 ENGINE_CALLABLES = {"run_project", "run_sensitivity_points", "_run_points", "run_matrix_points", "build_run_response_data"}
 PROCESS_SUBMIT = {"run_model_process", "_run_proc", "run_model_process_sync"}

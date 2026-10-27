@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "normalised": {
+    "name": "Contract Solar",
+    "technology": "solar",
+    "country": "XA",
+    "capacity_mw": 25.0
+  },
+  "effective": {
+    "capacity_mw": 25.0,
+    "capacity_label": "Installed capacity (MW)",
+    "reference_capacity_mw": 64.0,
+    "scale_ratio": 0.390625,
+    "total_capex_keur": 12890.625,
+    "total_capex_display": "12,891",
+    "opex_y1_keur": 148.4375,
+    "opex_y1_display": "148",
+    "country": "XA",
+    "country_label": "Generic / World \u2014 Solar (XA)",
+    "tax_template": "Generic Tax Template",
+    "timeline": {
+      "financial_close": "2030-01-01",
+      "construction_months": 14,
+      "cod_date": "2031-03-01",
+      "horizon_years": 25
+    }
+  },
+  "vertical": {
+    "key": "solar",
+    "public_name": "Solar",
+    "runnable": true,
+    "pilot_tier": "PILOT_CANDIDATE",
+    "limitations": [
+      "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration.",
+      "Portfolio-level analysis remains experimental relative to the core single-project engine."
+    ],
+    "status_note": ""
+  },
+  "writes_nothing": true
+}
