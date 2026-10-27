@@ -115,6 +115,9 @@ def attach_financial_core(payload, clean_run):
     # the dependency is intentionally absent; extended debt metrics fail closed.
     evidence = build_financial_core_evidence(clean_run, finance.get("senior_debt_evidence"))
     finance[EVIDENCE_KEY] = evidence
+    if evidence["shl_timing"]["issues"]:
+        payload["messages"] = list(payload.get("messages") or []) + [
+            "SHL_MATURITY_NOT_AT_MODEL_END: the absolute SHL maturity differs from the current model end; review the explicit timing contract."]
     payload["valuation_summary"] = evidence["valuation_summary"]
     for key in ("llcr_contractual_maturity", "llcr_actual_repayment", "llcr_at_first_senior_opening",
                 "min_rolling_llcr", "plcr", "sponsor_npv_keur"):

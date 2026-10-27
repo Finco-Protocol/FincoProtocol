@@ -32,8 +32,9 @@ Historical absence is `NOT_PERSISTED`; nothing is backfilled.
 
 ## Acceptance evidence
 
-- Initial full feature selection: 81 PASS; final added missing-policy/XIRR edge
-  cases and source controls have separate JUnit evidence.
+- Complete feature/negative/source selection at implementation commit
+  `b5eb8b5d5823732e32a0f45a6c1e18ee0afbadb3`: 129 PASS; subsequent
+  authority/drift guards have focused validation.
 - Final lifecycle/Goal Seek/source selection: 64 PASS.
 - Existing V10/V11 identity selection: 54 PASS, zero skips, approved GCC13 image.
 - Initial reconciled focused governance selection: 203 PASS. Committed-head full

@@ -64,7 +64,12 @@ def calculate_loan_life_coverage(model, policy, debt_evidence, senior_terminal):
             or policy.denominator_basis is not CoverageDenominatorBasis.SENIOR_OPENING_BALANCE
             or policy.calculation_date_policy is not CoverageCalculationDatePolicy.FIRST_SENIOR_PERIOD_OPENING):
         return LoanLifeCoverage(LoanLifeStatus.UNSUPPORTED_CASHFLOW_AUTHORITY, "Explicit raw selected CFADS and Senior opening required; reserves excluded")
-    if not isinstance(debt_evidence, dict) or debt_evidence.get("schema_version") != "SENIOR_DEBT_EVIDENCE_V1" or debt_evidence.get("status") != "RECORDED":
+    if not isinstance(policy.rolling_loan_life, LoanLifeConvention):
+        return LoanLifeCoverage(LoanLifeStatus.INVALID_DISCOUNT_POLICY, "Explicit supported rolling loan-life convention required")
+    if (not isinstance(debt_evidence, dict)
+            or debt_evidence.get("schema_version") != "SENIOR_DEBT_EVIDENCE_V1"
+            or debt_evidence.get("authority") != "CANONICAL_SENIOR_DEBT_RESULT_READ_ONLY_PROJECTION"
+            or debt_evidence.get("status") != "RECORDED"):
         return LoanLifeCoverage(LoanLifeStatus.DEBT_EVIDENCE_NOT_AVAILABLE, "FIN-V2-2 maturity/payoff contract required")
     try:
         boundaries = debt_evidence["llcr_inputs"]["loan_life_end_candidates"]

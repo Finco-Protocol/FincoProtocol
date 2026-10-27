@@ -33,7 +33,8 @@ def isolated_debt_contract(clean_run):
     candidates = [i for i, b in zip(s.period_indices, s.senior_debt_opening_keur) if b > 1e-4]
     actual = candidates[-1]
     maturity = g.return_summary.terminal.senior.contractual_maturity_period_index
-    return {"schema_version": "SENIOR_DEBT_EVIDENCE_V1", "status": "RECORDED", "llcr_inputs": {
+    return {"schema_version": "SENIOR_DEBT_EVIDENCE_V1", "status": "RECORDED",
+        "authority": "CANONICAL_SENIOR_DEBT_RESULT_READ_ONLY_PROJECTION", "llcr_inputs": {
         "loan_life_end_candidates": {"contractual_maturity_period_index": maturity,
              "contractual_maturity_date": by_index[maturity].period_end.isoformat(),
              "actual_payoff_period_index": actual, "actual_payoff_date": by_index[actual].period_end.isoformat()}}}

@@ -71,6 +71,9 @@ def test_absolute_drift_is_visible_and_economics_not_reinterpreted():
     core=build_financial_core_evidence(run)
     assert core['shl_timing']['issues']==['SHL_MATURITY_NOT_AT_MODEL_END']
     assert core['shl_timing']['maturity_period_index']==pi.financing.shl_maturity_period_index
+    from app.api.project_runner import run_project
+    payload=run_project('Solar','Base',project_inputs_override=pi)
+    assert any('SHL_MATURITY_NOT_AT_MODEL_END' in str(message) for message in payload['messages'])
 
 
 def test_missing_policy_no_senior_negative_cfads_and_bad_debt_authority():
@@ -81,6 +84,8 @@ def test_missing_policy_no_senior_negative_cfads_and_bad_debt_authority():
     debt=isolated_debt_contract(run)
     assert calculate_loan_life_coverage(m,None,debt,t).status.value=='NOT_CONFIGURED'
     assert calculate_loan_life_coverage(m,policy,None,t).status.value=='DEBT_EVIDENCE_NOT_AVAILABLE'
+    ambiguous=copy.deepcopy(debt);ambiguous['authority']='AMBIGUOUS'
+    assert calculate_loan_life_coverage(m,policy,ambiguous,t).status.value=='DEBT_EVIDENCE_NOT_AVAILABLE'
     assert calculate_loan_life_coverage(replace(m,senior_debt=None),policy,debt,t).status.value=='NOT_APPLICABLE_NO_SENIOR'
     invalid=copy.deepcopy(debt);invalid['llcr_inputs']['loan_life_end_candidates']['actual_payoff_date']='1900-01-01'
     assert calculate_loan_life_coverage(m,policy,invalid,t).status.value=='DEBT_EVIDENCE_MISMATCH'
