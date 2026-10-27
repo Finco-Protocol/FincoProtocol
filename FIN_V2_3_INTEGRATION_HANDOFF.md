@@ -4,12 +4,16 @@ Branch: `feat/fin-v2-3-financial-core`.
 Main/base: `128bf0c2b79af56985326543132cc806ff7f001c`.
 Source content: the exact finite cohort in
 `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json`.
-Implementation HEAD: `fb1ed365a5671eae527b95f9a9e2ffce765d00d7`.
+Financial implementation checkpoint: `fb1ed365a5671eae527b95f9a9e2ffce765d00d7`.
 Source PR: https://github.com/Finco-Protocol/FincoProtocol/pull/391 (OPEN/DRAFT).
 The publication includes a documentation/evidence-only successor. Its exact
 checkout HEAD is attested in the oracle artifact's `source.json`; required
 exact-head status is authoritative at the PR's Checks tab. Source pins identify
-the unchanged implementation independently of documentation commits.
+the complete current implementation independently of documentation commits.
+The final compatibility correction preserves the legacy sensitivity response
+shape when no financing regime evidence exists; real canonical candidates still
+carry the new regime markers. Existing execution/Goal Seek regression: 81 PASS;
+focused worker/new Goal Seek checks: 10 PASS. No old assertions were changed.
 Integration requires all final exact-head checks to pass; independent financial
 review remains pending.
 

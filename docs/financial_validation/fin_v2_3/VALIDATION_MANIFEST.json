@@ -1,5 +1,4 @@
 {
-  "implementation_head": "fb1ed365a5671eae527b95f9a9e2ffce765d00d7",
   "base": "128bf0c2b79af56985326543132cc806ff7f001c",
   "financial_f3": {
     "passed": 153,
@@ -28,6 +27,16 @@
     "NATIVE_IDENTITY.xml": "77acd70ec0d4ff12c330c0afd3af31242dda90af179226864e6c1a4da4190bb9",
     "ORACLE_COMMITTED_INPUTS.json.gz": "5d902485a474d764e30e68e5cee039db28538182b55952614fa5d0c125333f4d",
     "ORACLE_RECONCILIATION.json": "7372d27d35e8fd601787c29bea12a9b6aca95515eddf9cfc01051029fc543970",
-    "SOURCE_SUCCESSOR.json": "c0f75a3ac1a21fb324ff4add38864f23d6994282529fef3977306c549c0d7987"
-  }
+    "SOURCE_SUCCESSOR.json": "ddc5eab8b64f0481257cda4f0d9c06d94197d09d1aafee5fa5da60c4a65c87f9",
+    "WORKER_GOAL_REGRESSION.xml": "5f5ca4944544b0ef6ba745d3add0afaf5810902f8dcccd26cc6bb5a9d2a62523"
+  },
+  "worker_goal_legacy_regression": {
+    "passed": 81,
+    "skipped": 0
+  },
+  "focused_worker_new_goal": {
+    "passed": 10,
+    "skipped": 0
+  },
+  "financial_implementation_checkpoint": "fb1ed365a5671eae527b95f9a9e2ffce765d00d7"
 }
