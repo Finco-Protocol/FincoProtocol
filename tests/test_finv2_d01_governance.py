@@ -12,6 +12,8 @@ from tests import finval_f01_scope as F01
 from tests import model_mutation_security_successor as S
 
 BASELINE = "128bf0c2"             # main after merged PR #389 (F01)
+D01_SOURCE_HEAD = "f951174b8f55d25b758a3acae3d331cbdd30da8c"        # the reviewed FIN-V2-D01/D02 source head (PR #392)
+FIN_V2_3_SOURCE_HEAD = "65a04560592d84daf6439c0dc09a34456f5707a3"   # the reviewed FIN-V2-3 source head (PR #391)
 ROUTER = "app/v2/router.py"
 HANDLER = "v2_scenario_sensitivity_run"
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
@@ -29,6 +31,26 @@ def _base():
         return BASELINE
 
 
+def _is_ancestor(commit):
+    return subprocess.run(["git", "merge-base", "--is-ancestor", commit, "HEAD"], cwd=S.ROOT, capture_output=True).returncode == 0
+
+
+def _composed_parent_router():
+    """The router this change is applied on top of. Standalone: main at the merge-base. Integrated with the separately reviewed FIN-V2-3 PR: that PR's
+    reviewed router (its changes are attributed to its own exact-blob cohort, never to this change)."""
+    if _is_ancestor(FIN_V2_3_SOURCE_HEAD):
+        return _git("show", FIN_V2_3_SOURCE_HEAD + ":" + ROUTER)
+    return _git("show", _base() + ":" + ROUTER)
+
+
+def _cohort_matches(path, source):
+    try:
+        from tests.fin_v2_cohorts import matches
+    except ImportError:
+        return False
+    return matches(path, source)
+
+
 def _blob_source(blob):
     return subprocess.check_output(["git", "cat-file", "blob", blob], cwd=S.ROOT).decode("utf-8")
 
@@ -39,7 +61,8 @@ def test_layer_is_exactly_one_additive_path_and_the_current_router_is_admitted()
     assert len(blob) == 40 and blob == F01.SUCCESSORS[ROUTER]
     assert blob not in {S.BLOBS[ROUTER], S.FINVAL_B2C1_SUCCESSORS[ROUTER], S.D029_RUN_INTENT_SUCCESSORS[ROUTER],
                         S.FINVAL_RATE_SUCCESSORS[ROUTER], S.FINVAL_F01_COMPLETE_SUCCESSORS[ROUTER]}    # a NEW reviewed state
-    assert S.git_blob(SOURCES[ROUTER]) == blob
+    # the D01 state, or — once the separately reviewed FIN-V2-3 changes are integrated — the exact composed router pinned by the cohort registry
+    assert S.git_blob(SOURCES[ROUTER]) == blob or _cohort_matches(ROUTER, SOURCES[ROUTER])
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
     assert F01.valid()
 
@@ -70,7 +93,7 @@ def test_f01_scope_keeps_every_other_path_pinned_to_its_f01_blob():
 
 
 def test_the_router_change_is_confined_to_the_one_driver_sensitivity_handler():
-    base = ast.parse(_git("show", _base() + ":" + ROUTER))
+    base = ast.parse(_composed_parent_router())
     now = ast.parse(SOURCES[ROUTER])
 
     def top(tree):
@@ -85,7 +108,7 @@ def test_the_router_change_is_confined_to_the_one_driver_sensitivity_handler():
 def test_d029_run_order_csrf_gates_and_protected_reference_guard_are_unchanged():
     assert S.d029_run_order_violations(SOURCES[ROUTER]) == []
     base_sources = dict(SOURCES)
-    base_sources[ROUTER] = _git("show", _base() + ":" + ROUTER)
+    base_sources[ROUTER] = _composed_parent_router()
     assert S.d029_run_order_violations(base_sources[ROUTER]) == []
     old, new = ast.parse(base_sources[ROUTER]), ast.parse(SOURCES[ROUTER])
     gate_calls = lambda tree: sorted(ast.dump(n) for n in ast.walk(tree)
@@ -104,10 +127,12 @@ PROTECTED_UNTOUCHED = (
 
 @pytest.mark.parametrize("path", PROTECTED_UNTOUCHED)
 def test_protected_financial_and_react_sources_are_byte_identical_to_main(path):
-    assert _git("rev-parse", _base() + ":" + path).strip() == S.git_blob((S.ROOT / path).read_text(encoding="utf-8"))
+    current = (S.ROOT / path).read_text(encoding="utf-8")
+    # identical to main, or exactly the bytes another reviewed cohort pins (never an unreviewed change)
+    assert _git("rev-parse", _base() + ":" + path).strip() == S.git_blob(current) or _cohort_matches(path, current)
 
 
 def test_no_engine_native_react_or_frontend_path_is_touched_by_this_change():
     changed = set(_git("diff", "--name-only", _base()).split()) | set(_git("ls-files", "--others", "--exclude-standard").split())
     forbidden = ("financial_engine/", "finco_core/", "domain/", "frontend/", "static/react/", ".github/")
-    assert [p for p in changed if p.startswith(forbidden) or p.startswith("app/v2/react_")] == []
+    assert [p for p in changed if (p.startswith(forbidden) or p.startswith("app/v2/react_")) and not _cohort_matches(p, None)] == []
