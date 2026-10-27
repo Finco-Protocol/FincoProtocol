@@ -1,7 +1,6 @@
 # Final PR / CI report — React Institutional Model MVP correction (Overnight B)
 
-Status: **READY FOR INDEPENDENT REACT REVIEW** *(subject to the exact-head CI results recorded in §6; this report is updated after
-CI completes)*. No merge, deployment, release activation or self-approval.
+Verdict: **READY FOR INDEPENDENT REACT REVIEW** (exact-head CI green on `37a9d291`, §6). No merge, deployment, release activation or self-approval.
 
 ## 1. Identity
 
@@ -9,7 +8,7 @@ CI completes)*. No merge, deployment, release activation or self-approval.
 |---|---|
 | Repository / branch | `Finco-Protocol/FincoProtocol` · `claude/wonderful-clarke-tiswep` (one integrated correction branch) |
 | Baseline | main `6f10f3927b33a5715ac6313da200d0f96c023524`, tree `62e70c3bfda7a91280c8c16acc89eeef9f780d6b` (unchanged `origin/main` at PR time) |
-| PR head / tree | recorded in §6 after push (a report cannot contain its own commit hash) |
+| PR tested head / tree | `37a9d291d660f1d9b1e6ba2ed7a6b61bdfaf8d5b` / `f4e641d6e4586ac37f8ac1c5c8cd1c1cee7f2217` (§6); a later documentation-only commit adds §6 itself |
 | History rules | no rebase, squash, cherry-pick or force push; no merge from main was needed (main did not move) |
 | Coordination with Overnight A | at start and before the push no Overnight A branch existed on the remote (no branch ahead of main touching React/financing); `app/v2/router.py` is untouched, so no conflict is possible |
 | Open PRs at start | 17, none touching `frontend/`, `static/react`, `react_workspace_router.py` or the React tests (dependabot, performance V8/V9, RC-7, yield) |
@@ -71,7 +70,23 @@ audit archives not available; two pre-existing test issues recorded above; no li
 
 ## 6. Exact-head CI
 
-CI_SECTION_PLACEHOLDER
+Tested head: **`37a9d291d660f1d9b1e6ba2ed7a6b61bdfaf8d5b`**, tree **`f4e641d6e4586ac37f8ac1c5c8cd1c1cee7f2217`** (PR [Finco-Protocol/FincoProtocol#386](https://github.com/Finco-Protocol/FincoProtocol/pull/386), draft). Parent `77920b6b14c3c0e29c3df0ff1c097f45e4b68551`.
+The commit that adds this section is documentation-only and follows the tested head.
+
+| Workflow (run) | Result on `37a9d291` |
+|---|---|
+| Protocol UI Browser Acceptance (`40443138907`) → `mandatory-browser-evidence`, all six isolated browser roles | **success** — consolidation role **106 passed**; other roles 101 / 23 / 34 / 2 passed |
+| Public Safety and Model Smoke (`40443139210`) → source-safety, route, plan, worker-0…4, aggregate, tests, mandatory-evidence (`sequential` skipped by design) | **success** |
+| PR Compile and Safety Gate (`40443138911`) | **success** |
+| Governance Full History (`40443138913`) | **success** |
+| Dependency Security Audit (`40443138883`) | **success** |
+
+First head `77920b6b`: Governance, Dependency Audit and Compile/Safety were green; **Protocol UI Browser Acceptance failed** on one node,
+`test_d029_react_run_intent_acceptance[check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit]` (`wait_for_function … reading 'disabled'`).
+That node had also failed once on unmodified main locally. Root cause: a null-unsafe wait in the test helper racing the post-Run page reload
+(`REACT_BROWSER_ACCEPTANCE.md`). Fixed in the same PR by making the seven waits null-safe (no assertion/timeout/node-id change); the remaining
+`77920b6b` Public Safety run was superseded (cancelled) by the new push. No test was skipped, disabled, quarantined or re-run to obtain green; no empty commit; no CI file changed.
+
 
 ## 7. Reviewer guide (fast path)
 
