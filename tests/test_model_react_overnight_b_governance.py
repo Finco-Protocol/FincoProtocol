@@ -90,7 +90,13 @@ def test_consolidation_browser_original_node_ids_and_the_seven_d029_wrappers_are
 
 def test_the_correction_changes_no_protected_financial_path_since_the_baseline():
     try:
-        changed = set(_git("diff", "--name-only", BASELINE, "HEAD").split())
+        # Only what THIS branch changed: relative to the merge-base with main, so a normal forward merge of newer main
+        # commits (which carry other owners' reviewed changes) is not attributed to this correction.
+        try:
+            base = _git("merge-base", "HEAD", "origin/main").strip()
+        except subprocess.CalledProcessError:
+            base = BASELINE
+        changed = set(_git("diff", "--name-only", base, "HEAD").split())
         changed |= set(_git("diff", "--name-only").split()) | set(_git("diff", "--name-only", "--cached").split())
     except subprocess.CalledProcessError:
         pytest.skip("baseline commit not available in this checkout")
