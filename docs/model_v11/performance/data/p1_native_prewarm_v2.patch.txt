@@ -1,27 +1,3 @@
-From 9814435959549585e794ec89b7882762e2995f71 Mon Sep 17 00:00:00 2001
-From: Claude <noreply@anthropic.com>
-Date: Tue, 27 Oct 2026 00:23:55 +0000
-Subject: [PATCH] perf(runtime): worker-start native readiness via existing
- V10/V11 loaders (P1)
-
-Each model worker now calls the existing approved loader entry points
-(get_native / get_stage2 / get_stage3) at start, for exactly the stages the
-Run-time activation settings enable, so library/ABI/build-ID/source
-authentication is paid at worker start instead of by the first user Run.
-Initializer-based: replacement workers get it too. No project is executed,
-no admission decision is made, per-Run activation, kill switches and pins
-are unchanged. A failed verification is evicted from the loader's per-process
-cache so the first Run retries exactly as before. Readiness is recorded per
-confirmed worker PID; the state is complete only when every confirmed PID
-reported every configured stage ready. FINCO_MODEL_EXECUTION_NATIVE_PREWARM=off
-disables the step.
-
-Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01BX8XMi5Hh9zBVF6eAxqrZ6
----
- app/runtime/model_execution.py | 99 +++++++++++++++++++++++++++++++++-
- 1 file changed, 98 insertions(+), 1 deletion(-)
-
 diff --git a/app/runtime/model_execution.py b/app/runtime/model_execution.py
 index b926e487..785ad620 100644
 --- a/app/runtime/model_execution.py
@@ -203,6 +179,3 @@ index b926e487..785ad620 100644
          pool.shutdown(wait=False, cancel_futures=True)
          LOG.warning("model_execution process pool retired generation=%s", self._pool_generation)
          return True
--- 
-2.43.0
-
