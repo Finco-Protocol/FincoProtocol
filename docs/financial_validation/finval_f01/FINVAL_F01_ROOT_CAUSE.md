@@ -28,3 +28,5 @@ Magnitude never proves units. Exact factory-value equality is used only inside a
 The old resolver's percent-or-ratio identity shortcut is removed. The setter may preserve the exact same typed object only **after** known human percent is converted once and equals the existing uniform typed ratio. This preserves unchanged factory auxiliary state without accepting a second unit. `margin_bps`, bankability percentage curves and engine ratio vectors retain their distinct contracts.
 
 Before/after exact blobs and scope reasons: [manifest](FINANCIAL_OWNER_SCOPE_MANIFEST.md). Numeric engine policy, equations, native kernels, golden outputs and CSRF/CAS/ownership/Run intent controls are unchanged.
+
+Correction A additionally proves and closes the supplied-hash reconciliation defect and direct saved-snapshot converter unit bypass. See [Correction A](FINVAL_F01_CORRECTION_A.md) for red/green tests, invariants, non-root native recovery and RC-M boundaries.

@@ -55,6 +55,31 @@ def _draft_content_hash(draft_snapshot: dict) -> str:
     raw = json.dumps(draft_snapshot or {}, sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(raw.encode()).hexdigest()
 
+
+class RateContractHashError(ValueError):
+    """A supplied V2 snapshot hash does not bind the reconciled rate contract."""
+    code = "RATE_UNIT_CONTENT_HASH_MISMATCH"
+
+
+def _rate_coherent_draft_hash(snapshot: dict, supplied: Optional[str]) -> str:
+    """Legacy fallback or verified PIS hash, evaluated after reconciliation.
+
+    This hint is the documented plain ProjectInputSet hash, not the modern
+    atomic writer's composite CAS token. Those writers retain their own
+    cursor-bound composite identity calculation unchanged.
+    """
+    if supplied is not None and snapshot.get("interest_rate_pct") not in (None, ""):
+        from app.input_adapter import assert_rate_unit
+        from app.workbook.input_set import ProjectInputSet
+        assert_rate_unit(snapshot)
+        expected = ProjectInputSet.from_snapshot(snapshot).content_hash
+        if supplied != expected:
+            raise RateContractHashError(
+                "RATE_UNIT_CONTENT_HASH_MISMATCH: supplied snapshot hash does not bind "
+                "the saved rate value and provenance. Reload the verified snapshot before Save.")
+        return expected
+    return supplied or _draft_content_hash(snapshot)
+
 if TYPE_CHECKING:
     from app.model_v2.persistence import ModelV2WorkingState
     from app.persistence.records import ScenarioRecord, WorkspaceStateRecord
@@ -380,7 +405,6 @@ def save_workspace_state(
         merged_replay_metadata = dict(existing.replay_metadata or {})
         merged_replay_metadata.update(replay_metadata)
         replay_metadata = merged_replay_metadata
-        _dch = v2_draft_content_hash or _draft_content_hash(draft_snapshot or {})
         _model_v2_json = _model_v2_state_json(
             model_v2_working_state, existing.model_v2_working_state_json)
         if run_history_payload is not None:
@@ -409,7 +433,7 @@ def save_workspace_state(
                     json.loads(rate_row[0] or "{}"), draft_snapshot or {})
                 saved_snapshot = preserve_rate_provenance(
                     json.loads(rate_row[1] or "{}"), saved_snapshot or {})
-                _dch = v2_draft_content_hash or _draft_content_hash(draft_snapshot)
+            _dch = _rate_coherent_draft_hash(draft_snapshot or {}, v2_draft_content_hash)
             cur.execute(
                 """
                 UPDATE workspace_states
@@ -507,7 +531,7 @@ def save_workspace_state(
                     _to_json(last_tax_schedule or {}),
                     _to_json(last_distribution_schedule or {}),
                     _to_json(last_sponsor_schedule or {}),
-                    v2_draft_content_hash or _draft_content_hash(draft_snapshot or {}),
+                    _rate_coherent_draft_hash(draft_snapshot or {}, v2_draft_content_hash),
                     int(dirty),
                     _to_json(governance_state),
                     _to_json(replay_metadata),

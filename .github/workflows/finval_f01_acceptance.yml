@@ -32,14 +32,35 @@ jobs:
           FINVAL_BROWSER_EVIDENCE_DIR: evidence/browser
           FINVAL_EVIDENCE_DIR: evidence/financial
         run: |
-          python -m pytest tests/finval_f01_browser_acceptance.py tests/test_finval_f01_complete.py tests/test_finval_f01_http_lifecycle.py tests/test_finval_f01_creation.py tests/test_finval_rate_contract.py tests/test_finval_rate_run_acceptance.py tests/test_finval_f01_scope.py tests/test_finval_rate_successor.py -q -rs --junitxml=evidence/financial-browser.xml
+          python -m pytest tests/finval_f01_browser_acceptance.py tests/test_finval_f01_complete.py tests/test_finval_f01_http_lifecycle.py tests/test_finval_f01_creation.py tests/test_finval_f01_hash_integrity.py tests/test_finval_f01_fixture_integrity.py tests/test_finval_rate_contract.py tests/test_finval_rate_run_acceptance.py tests/test_finval_f01_scope.py tests/test_finval_rate_successor.py -q -rs --junitxml=evidence/financial-browser.xml
+      - name: Require all four browser cases and no skipped financial acceptance
+        run: |
+          python - <<'PYCODE'
+          import xml.etree.ElementTree as E
+          cases=list(E.parse('evidence/financial-browser.xml').getroot().iter('testcase'))
+          assert cases and all(c.find('skipped') is None and c.find('failure') is None and c.find('error') is None for c in cases)
+          assert len([c for c in cases if c.get('classname','').endswith('finval_f01_browser_acceptance')]) == 4
+          PYCODE
       - name: Build unchanged approved native environment
         run: docker build -f docs/ci_v3/phase4/runtime/Dockerfile -t finval-f01-native .
+      - name: Verify non-root checkout and native package ownership
+        run: |
+          id
+          test "$(id -u)" -ne 0
+          stat --format '%u:%g %a %n' . financial_engine/native_v10 financial_engine/native_v11
+          docker image inspect finval-f01-native --format '{{.Config.User}}'
       - name: Twenty exact Python V10 V11 cases with edited rates
         run: |
           mkdir -p evidence/native
-          chmod -R a+rwX evidence
-          docker run --rm --network none --mount type=bind,src="$PWD",dst=/subject -w /subject -e PYTHONPYCACHEPREFIX=/tmp/f01-pycache -e FINVAL_EVIDENCE_DIR=/subject/evidence/native finval-f01-native python -m pytest tests/test_finval_f01_native_identity.py -q -rs --junitxml=evidence/native.xml
+          docker run --rm --network none --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/subject -w /subject -e PYTHONPYCACHEPREFIX=/tmp/f01-pycache -e FINVAL_EVIDENCE_DIR=/subject/evidence/native finval-f01-native python -m pytest tests/test_finval_f01_native_identity.py -q -rs --junitxml=evidence/native.xml
+      - name: Require twenty native cases without skips
+        run: |
+          python - <<'PYCODE'
+          import xml.etree.ElementTree as E
+          cases=list(E.parse('evidence/native.xml').getroot().iter('testcase'))
+          assert len(cases)==20
+          assert all(c.find('skipped') is None and c.find('failure') is None and c.find('error') is None for c in cases)
+          PYCODE
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

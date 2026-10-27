@@ -1016,6 +1016,7 @@ def _build_persisted_run_for_p13(project_key: str = "generic_solar_reference") -
         "opex_y1_keur": str(opex_y1),
         "total_capex_keur": str(pi.capex.total_capex),
         "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": str(pi.financing.senior_tenor_years),
         "target_dscr": str(pi.financing.target_dscr),
     }
@@ -1224,6 +1225,7 @@ def test_last_run_validation_immutable_after_working_copy_edit():
         "opex_y1_keur": str(opex_y1),
         "total_capex_keur": str(pi.capex.total_capex),
         "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": str(pi.financing.senior_tenor_years),
         "target_dscr": str(pi.financing.target_dscr),
     }
@@ -1387,6 +1389,7 @@ def _build_persisted_run_for_p13_wind() -> "tuple[object, object, str]":
         "opex_y1_keur": str(opex_y1),
         "total_capex_keur": str(pi.capex.total_capex),
         "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": str(pi.financing.senior_tenor_years),
         "target_dscr": str(pi.financing.target_dscr),
     }

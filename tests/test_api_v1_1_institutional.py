@@ -98,6 +98,7 @@ def _build_persisted_run(project_type: str = "Solar"):
         "opex_y1_keur": str(opex_y1),
         "total_capex_keur": str(pi.capex.total_capex),
         "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": str(pi.financing.senior_tenor_years),
         "target_dscr": str(pi.financing.target_dscr),
         "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
@@ -367,6 +368,7 @@ def test_corr_a_no_run_returns_unavailable(client):
         "opex_y1_keur": "1000",
         "total_capex_keur": str(pi.capex.total_capex),
         "interest_rate_pct": "5.0",
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": "15",
         "target_dscr": "1.2",
         "tariff_eur_mwh": "60.0",

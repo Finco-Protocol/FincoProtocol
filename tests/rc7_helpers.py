@@ -44,6 +44,7 @@ def create_project(kind: str, uid: str | None = None, suffix: str = ""):
         "opex_y1_keur": str(sum(i.y1_amount_keur for i in pi.opex)),
         "total_capex_keur": str(pi.capex.total_capex),
         "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "_finval_interest_rate_unit": "human_percent_v1",  # known factory rate, expressed in percent
         "tenor_years": str(pi.financing.senior_tenor_years), "target_dscr": str(pi.financing.target_dscr),
     }
     pr = create_project_record(user_id=uid, project_code=code, project_name=f"RC7 {kind}{suffix}",

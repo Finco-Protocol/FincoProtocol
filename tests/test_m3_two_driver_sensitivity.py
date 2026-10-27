@@ -289,7 +289,7 @@ def test_interest_rate_and_gearing_use_canonical_field_inputs_and_commute(env):
     for (i, j), text in va.items():                 # transposed grid: identical numbers, ordering irrelevant
         assert vb[(j, i)] == text
     pis, _pi, _f = _canonical_pi(record)
-    rate0 = float(pis.values["debt.senior.interest_rate_pct"]) * 100.0        # seeded snapshot value is a RATIO
+    rate0 = float(pis.values["debt.senior.interest_rate_pct"])  # verified seed is human percent
     gear0 = float(pis.values["debt.senior.gearing_pct"])
     oracle = _oracle(record, "Solar", [], field_overrides={"debt.senior.interest_rate_pct": rate0 + 1.0,
                                                            "debt.senior.gearing_pct": gear0 - 5.0})

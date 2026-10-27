@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="142" time="90.076" timestamp="2026-10-27T09:39:28.138247+00:00" hostname="d9b7aec2b2ee"><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_real_run_export_contains_run_bound_sheets[solar]" time="2.518" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_sources_uses_reconcile_and_match_persisted_evidence[solar]" time="0.770" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_flow_totals_equal_persisted_values_and_senior_principal_reconciles[solar]" time="0.775" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_existing_statement_sheets_total_only_flows[solar]" time="0.814" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_tax_sheet_does_not_fabricate_zero_totals[solar]" time="0.773" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_debt_consistency_checks_pass_on_real_runs[solar]" time="1.630" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_workbooks_open_without_corruption[solar]" time="4.227" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_wide_schedules_are_usable[solar]" time="0.781" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_period_labels_use_actual_dates_and_no_quarter_names[solar]" time="0.819" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_covenant_compliance_is_never_declared[solar]" time="1.111" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_real_run_export_contains_run_bound_sheets[wind]" time="2.553" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_sources_uses_reconcile_and_match_persisted_evidence[wind]" time="0.818" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_flow_totals_equal_persisted_values_and_senior_principal_reconciles[wind]" time="0.833" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_existing_statement_sheets_total_only_flows[wind]" time="0.874" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_tax_sheet_does_not_fabricate_zero_totals[wind]" time="0.815" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_debt_consistency_checks_pass_on_real_runs[wind]" time="1.623" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_workbooks_open_without_corruption[wind]" time="1.137" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_wide_schedules_are_usable[wind]" time="0.801" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_period_labels_use_actual_dates_and_no_quarter_names[wind]" time="0.799" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_covenant_compliance_is_never_declared[wind]" time="1.103" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_real_run_export_contains_run_bound_sheets[ev]" time="0.733" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_sources_uses_reconcile_and_match_persisted_evidence[ev]" time="0.696" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_flow_totals_equal_persisted_values_and_senior_principal_reconciles[ev]" time="0.715" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_existing_statement_sheets_total_only_flows[ev]" time="0.711" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_tax_sheet_does_not_fabricate_zero_totals[ev]" time="0.641" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_debt_consistency_checks_pass_on_real_runs[ev]" time="1.410" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_workbooks_open_without_corruption[ev]" time="1.032" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_wide_schedules_are_usable[ev]" time="0.709" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_period_labels_use_actual_dates_and_no_quarter_names[ev]" time="0.698" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_covenant_compliance_is_never_declared[ev]" time="0.977" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_real_run_export_contains_run_bound_sheets[data_center]" time="1.392" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_sources_uses_reconcile_and_match_persisted_evidence[data_center]" time="0.727" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_flow_totals_equal_persisted_values_and_senior_principal_reconciles[data_center]" time="0.721" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_existing_statement_sheets_total_only_flows[data_center]" time="0.712" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_tax_sheet_does_not_fabricate_zero_totals[data_center]" time="0.813" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_debt_consistency_checks_pass_on_real_runs[data_center]" time="1.492" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_workbooks_open_without_corruption[data_center]" time="1.073" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_wide_schedules_are_usable[data_center]" time="0.721" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_period_labels_use_actual_dates_and_no_quarter_names[data_center]" time="0.727" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_covenant_compliance_is_never_declared[data_center]" time="0.980" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Senior closing balance-Stock]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Cumulative senior draw-Stock]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[DSRA balance-Stock]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Closing tax losses-Stock]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Opening tax losses-Stock]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Retained earnings (closing)-Stock]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Cash-Stock]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[DSCR-Ratio]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Reported DSCR-Ratio]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Annual rate-Ratio]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Senior principal-Flow]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Senior interest-Flow]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Cash tax-Flow]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Corporate tax cash-Flow]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Fiscal reintegration-Flow]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Revenue cash-Flow]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Tax losses used-Flow]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Senior draw-Flow]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_flow_classification[Share capital draw-Flow]" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_stock_and_ratio_rows_are_never_summed" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_missing_is_not_zero_and_explicit_zero_is_kept" time="0.054" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_legacy_run_without_evidence_reports_not_available_and_builds" time="0.050" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_debt_consistency_detects_a_broken_persisted_schedule" time="0.053" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_working_copy_edit_marks_last_run_stale_without_changing_numbers" time="0.532" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_historical_run_export_is_immutable_after_edit_and_later_run" time="1.111" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_historical_export_matches_stored_history_row_exactly" time="0.214" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_equivalent_source_snapshots_produce_byte_identical_workbooks" time="1.992" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_last_run_history_row_state_follows_existing_semantics" time="0.241" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_owner_and_project_isolation" time="0.857" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_exports_execute_no_engine" time="0.761" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_reporting_modules_import_no_engine" time="0.020" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_workbook_opens_in_libreoffice" time="0.164"><failure message="FileNotFoundError: [Errno 2] No such file or directory: 'soffice'">two_runs = {'before': {'history_export': ExportResponse(bytes_data=b'PK\x03\x04\x14\x00\x00\x00\x08\x00\x00\x00!\x004\xb2\x90\x85...ed=False, source_project_id=None, project_stage=None, model_perspective=None), 'snap_a': '20261027T093937081283Z', ...}
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-43/test_workbook_opens_in_libreof0')
+
+    @pytest.mark.skipif(shutil.which("soffice") is None, reason="LibreOffice not installed")
+    def test_workbook_opens_in_libreoffice(two_runs, tmp_path):
+        export = _export_history(two_runs["pr"], two_runs["uid"], two_runs["entry_a"].history_id)
+        src = tmp_path / "in" / "run.xlsx"
+        src.parent.mkdir()
+        src.write_bytes(export.bytes_data)
+        out = tmp_path / "out"
+&gt;       proc = subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(out), str(src)],
+                              capture_output=True, timeout=240, env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"})
+
+tests/test_rc7_institutional_reporting_v2.py:492: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py:548: in run
+    with Popen(*popenargs, **kwargs) as process:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py:1026: in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;Popen: returncode: 255 args: ['soffice', '--headless', '--convert-to', 'pdf...&gt;
+args = ['soffice', '--headless', '--convert-to', 'pdf', '--outdir', '/tmp/pytest-of-agent/pytest-43/test_workbook_opens_in_libreof0/out', ...]
+executable = b'soffice', preexec_fn = None, close_fds = True, pass_fds = ()
+cwd = None
+env = {'HOME': '/tmp/pytest-of-agent/pytest-43/test_workbook_opens_in_libreof0', 'PATH': '/usr/bin:/bin'}
+startupinfo = None, creationflags = 0, shell = False, p2cread = -1
+p2cwrite = -1, c2pread = 11, c2pwrite = 12, errread = 13, errwrite = 14
+restore_signals = True, gid = None, gids = None, uid = None, umask = -1
+start_new_session = False, process_group = -1
+
+    def _execute_child(self, args, executable, preexec_fn, close_fds,
+                       pass_fds, cwd, env,
+                       startupinfo, creationflags, shell,
+                       p2cread, p2cwrite,
+                       c2pread, c2pwrite,
+                       errread, errwrite,
+                       restore_signals,
+                       gid, gids, uid, umask,
+                       start_new_session, process_group):
+        """Execute program (POSIX version)"""
+    
+        if isinstance(args, (str, bytes)):
+            args = [args]
+        elif isinstance(args, os.PathLike):
+            if shell:
+                raise TypeError('path-like args is not allowed when '
+                                'shell is true')
+            args = [args]
+        else:
+            args = list(args)
+    
+        if shell:
+            # On Android the default shell is at '/system/bin/sh'.
+            unix_shell = ('/system/bin/sh' if
+                      hasattr(sys, 'getandroidapilevel') else '/bin/sh')
+            args = [unix_shell, "-c"] + args
+            if executable:
+                args[0] = executable
+    
+        if executable is None:
+            executable = args[0]
+    
+        sys.audit("subprocess.Popen", executable, args, cwd, env)
+    
+        if (_USE_POSIX_SPAWN
+                and os.path.dirname(executable)
+                and preexec_fn is None
+                and not close_fds
+                and not pass_fds
+                and cwd is None
+                and (p2cread == -1 or p2cread &gt; 2)
+                and (c2pwrite == -1 or c2pwrite &gt; 2)
+                and (errwrite == -1 or errwrite &gt; 2)
+                and not start_new_session
+                and process_group == -1
+                and gid is None
+                and gids is None
+                and uid is None
+                and umask &lt; 0):
+            self._posix_spawn(args, executable, env, restore_signals,
+                              p2cread, p2cwrite,
+                              c2pread, c2pwrite,
+                              errread, errwrite)
+            return
+    
+        orig_executable = executable
+    
+        # For transferring possible exec failure from child to parent.
+        # Data format: "exception name:hex errno:description"
+        # Pickle is not used; it is complex and involves memory allocation.
+        errpipe_read, errpipe_write = os.pipe()
+        # errpipe_write must not be in the standard io 0, 1, or 2 fd range.
+        low_fds_to_close = []
+        while errpipe_write &lt; 3:
+            low_fds_to_close.append(errpipe_write)
+            errpipe_write = os.dup(errpipe_write)
+        for low_fd in low_fds_to_close:
+            os.close(low_fd)
+        try:
+            try:
+                # We must avoid complex work that could involve
+                # malloc or free in the child process to avoid
+                # potential deadlocks, thus we do all this here.
+                # and pass it to fork_exec()
+    
+                if env is not None:
+                    env_list = []
+                    for k, v in env.items():
+                        k = os.fsencode(k)
+                        if b'=' in k:
+                            raise ValueError("illegal environment variable name")
+                        env_list.append(k + b'=' + os.fsencode(v))
+                else:
+                    env_list = None  # Use execv instead of execve.
+                executable = os.fsencode(executable)
+                if os.path.dirname(executable):
+                    executable_list = (executable,)
+                else:
+                    # This matches the behavior of os._execvpe().
+                    executable_list = tuple(
+                        os.path.join(os.fsencode(dir), executable)
+                        for dir in os.get_exec_path(env))
+                fds_to_keep = set(pass_fds)
+                fds_to_keep.add(errpipe_write)
+                self.pid = _fork_exec(
+                        args, executable_list,
+                        close_fds, tuple(sorted(map(int, fds_to_keep))),
+                        cwd, env_list,
+                        p2cread, p2cwrite, c2pread, c2pwrite,
+                        errread, errwrite,
+                        errpipe_read, errpipe_write,
+                        restore_signals, start_new_session,
+                        process_group, gid, gids, uid, umask,
+                        preexec_fn, _USE_VFORK)
+                self._child_created = True
+            finally:
+                # be sure the FD is closed no matter what
+                os.close(errpipe_write)
+    
+            self._close_pipe_fds(p2cread, p2cwrite,
+                                 c2pread, c2pwrite,
+                                 errread, errwrite)
+    
+            # Wait for exec to fail or succeed; possibly raising an
+            # exception (limited in size)
+            errpipe_data = bytearray()
+            while True:
+                part = os.read(errpipe_read, 50000)
+                errpipe_data += part
+                if not part or len(errpipe_data) &gt; 50000:
+                    break
+        finally:
+            # be sure the FD is closed no matter what
+            os.close(errpipe_read)
+    
+        if errpipe_data:
+            try:
+                pid, sts = os.waitpid(self.pid, 0)
+                if pid == self.pid:
+                    self._handle_exitstatus(sts)
+                else:
+                    self.returncode = sys.maxsize
+            except ChildProcessError:
+                pass
+    
+            try:
+                exception_name, hex_errno, err_msg = (
+                        errpipe_data.split(b':', 2))
+                # The encoding here should match the encoding
+                # written in by the subprocess implementations
+                # like _posixsubprocess
+                err_msg = err_msg.decode()
+            except ValueError:
+                exception_name = b'SubprocessError'
+                hex_errno = b'0'
+                err_msg = 'Bad exception data from child: {!r}'.format(
+                              bytes(errpipe_data))
+            child_exception_type = getattr(
+                    builtins, exception_name.decode('ascii'),
+                    SubprocessError)
+            if issubclass(child_exception_type, OSError) and hex_errno:
+                errno_num = int(hex_errno, 16)
+                if err_msg == "noexec:chdir":
+                    err_msg = ""
+                    # The error must be from chdir(cwd).
+                    err_filename = cwd
+                elif err_msg == "noexec":
+                    err_msg = ""
+                    err_filename = None
+                else:
+                    err_filename = orig_executable
+                if errno_num != 0:
+                    err_msg = os.strerror(errno_num)
+                if err_filename is not None:
+&gt;                   raise child_exception_type(errno_num, err_msg, err_filename)
+E                   FileNotFoundError: [Errno 2] No such file or directory: 'soffice'
+
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py:1955: FileNotFoundError</failure></testcase><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_long_text_wraps_and_rows_are_tall_enough" time="0.333" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_half_year_data_is_never_labelled_quarterly" time="0.000" /><testcase classname="tests.test_rc7_institutional_reporting_v2" name="test_future_frequency_metadata_is_read_not_assumed" time="0.011" /><testcase classname="tests.test_rc_reporting_v3" name="test_last_run_package_has_the_v3_front_section_right_after_the_guide[solar]" time="0.850" /><testcase classname="tests.test_rc_reporting_v3" name="test_historical_package_is_the_v3_package_for_every_vertical[solar]" time="0.253" /><testcase classname="tests.test_rc_reporting_v3" name="test_v3_sheet_set_is_a_superset_of_v2_and_v2_still_builds[solar]" time="0.526" /><testcase classname="tests.test_rc_reporting_v3" name="test_report_contents_links_to_existing_sheets_and_guide_lists_v3_sheets[solar]" time="0.877" /><testcase classname="tests.test_rc_reporting_v3" name="test_print_and_navigation_settings[solar]" time="0.795" /><testcase classname="tests.test_rc_reporting_v3" name="test_executive_overview_values_equal_the_persisted_run[solar]" time="0.811" /><testcase classname="tests.test_rc_reporting_v3" name="test_lender_overview_ties_to_sources_uses_debt_and_reserve_evidence[solar]" time="0.801" /><testcase classname="tests.test_rc_reporting_v3" name="test_terminal_and_maturity_evidence_is_read_from_the_persisted_terminal_state[solar]" time="0.799" /><testcase classname="tests.test_rc_reporting_v3" name="test_every_reported_metric_has_exactly_one_known_evidence_class[solar]" time="0.787" /><testcase classname="tests.test_rc_reporting_v3" name="test_no_covenant_compliance_or_recommendation_is_declared[solar]" time="0.785" /><testcase classname="tests.test_rc_reporting_v3" name="test_period_basis_and_construction_columns_follow_persisted_metadata[solar]" time="0.775" /><testcase classname="tests.test_rc_reporting_v3" name="test_last_run_package_has_the_v3_front_section_right_after_the_guide[wind]" time="0.840" /><testcase classname="tests.test_rc_reporting_v3" name="test_historical_package_is_the_v3_package_for_every_vertical[wind]" time="0.352" /><testcase classname="tests.test_rc_reporting_v3" name="test_v3_sheet_set_is_a_superset_of_v2_and_v2_still_builds[wind]" time="0.537" /><testcase classname="tests.test_rc_reporting_v3" name="test_report_contents_links_to_existing_sheets_and_guide_lists_v3_sheets[wind]" time="0.807" /><testcase classname="tests.test_rc_reporting_v3" name="test_print_and_navigation_settings[wind]" time="0.806" /><testcase classname="tests.test_rc_reporting_v3" name="test_executive_overview_values_equal_the_persisted_run[wind]" time="0.828" /><testcase classname="tests.test_rc_reporting_v3" name="test_lender_overview_ties_to_sources_uses_debt_and_reserve_evidence[wind]" time="0.817" /><testcase classname="tests.test_rc_reporting_v3" name="test_terminal_and_maturity_evidence_is_read_from_the_persisted_terminal_state[wind]" time="0.810" /><testcase classname="tests.test_rc_reporting_v3" name="test_every_reported_metric_has_exactly_one_known_evidence_class[wind]" time="0.902" /><testcase classname="tests.test_rc_reporting_v3" name="test_no_covenant_compliance_or_recommendation_is_declared[wind]" time="0.849" /><testcase classname="tests.test_rc_reporting_v3" name="test_period_basis_and_construction_columns_follow_persisted_metadata[wind]" time="0.812" /><testcase classname="tests.test_rc_reporting_v3" name="test_last_run_package_has_the_v3_front_section_right_after_the_guide[ev]" time="0.796" /><testcase classname="tests.test_rc_reporting_v3" name="test_historical_package_is_the_v3_package_for_every_vertical[ev]" time="0.223" /><testcase classname="tests.test_rc_reporting_v3" name="test_v3_sheet_set_is_a_superset_of_v2_and_v2_still_builds[ev]" time="0.529" /><testcase classname="tests.test_rc_reporting_v3" name="test_report_contents_links_to_existing_sheets_and_guide_lists_v3_sheets[ev]" time="0.743" /><testcase classname="tests.test_rc_reporting_v3" name="test_print_and_navigation_settings[ev]" time="0.784" /><testcase classname="tests.test_rc_reporting_v3" name="test_executive_overview_values_equal_the_persisted_run[ev]" time="0.749" /><testcase classname="tests.test_rc_reporting_v3" name="test_lender_overview_ties_to_sources_uses_debt_and_reserve_evidence[ev]" time="0.748" /><testcase classname="tests.test_rc_reporting_v3" name="test_terminal_and_maturity_evidence_is_read_from_the_persisted_terminal_state[ev]" time="0.734" /><testcase classname="tests.test_rc_reporting_v3" name="test_every_reported_metric_has_exactly_one_known_evidence_class[ev]" time="0.712" /><testcase classname="tests.test_rc_reporting_v3" name="test_no_covenant_compliance_or_recommendation_is_declared[ev]" time="0.735" /><testcase classname="tests.test_rc_reporting_v3" name="test_period_basis_and_construction_columns_follow_persisted_metadata[ev]" time="0.736" /><testcase classname="tests.test_rc_reporting_v3" name="test_last_run_package_has_the_v3_front_section_right_after_the_guide[data_center]" time="0.752" /><testcase classname="tests.test_rc_reporting_v3" name="test_historical_package_is_the_v3_package_for_every_vertical[data_center]" time="0.225" /><testcase classname="tests.test_rc_reporting_v3" name="test_v3_sheet_set_is_a_superset_of_v2_and_v2_still_builds[data_center]" time="0.523" /><testcase classname="tests.test_rc_reporting_v3" name="test_report_contents_links_to_existing_sheets_and_guide_lists_v3_sheets[data_center]" time="0.730" /><testcase classname="tests.test_rc_reporting_v3" name="test_print_and_navigation_settings[data_center]" time="0.727" /><testcase classname="tests.test_rc_reporting_v3" name="test_executive_overview_values_equal_the_persisted_run[data_center]" time="0.730" /><testcase classname="tests.test_rc_reporting_v3" name="test_lender_overview_ties_to_sources_uses_debt_and_reserve_evidence[data_center]" time="0.776" /><testcase classname="tests.test_rc_reporting_v3" name="test_terminal_and_maturity_evidence_is_read_from_the_persisted_terminal_state[data_center]" time="0.790" /><testcase classname="tests.test_rc_reporting_v3" name="test_every_reported_metric_has_exactly_one_known_evidence_class[data_center]" time="0.791" /><testcase classname="tests.test_rc_reporting_v3" name="test_no_covenant_compliance_or_recommendation_is_declared[data_center]" time="0.764" /><testcase classname="tests.test_rc_reporting_v3" name="test_period_basis_and_construction_columns_follow_persisted_metadata[data_center]" time="0.741" /><testcase classname="tests.test_rc_reporting_v3" name="test_missing_evidence_is_not_available_never_zero_and_explicit_zero_is_kept" time="0.158" /><testcase classname="tests.test_rc_reporting_v3" name="test_current_stale_and_historical_disclosures" time="1.971" /><testcase classname="tests.test_rc_reporting_v3" name="test_historical_report_is_immune_to_later_working_copy_edit_and_newer_run" time="1.162" /><testcase classname="tests.test_rc_reporting_v3" name="test_deterministic_historical_export" time="1.578" /><testcase classname="tests.test_rc_reporting_v3" name="test_owner_and_project_boundaries_on_the_service" time="0.028" /><testcase classname="tests.test_rc_reporting_v3" name="test_route_downloads_the_snapshot_bound_package_for_the_owner" time="0.819" /><testcase classname="tests.test_rc_reporting_v3" name="test_route_boundaries_and_fail_closed_behaviour" time="0.119" /><testcase classname="tests.test_rc_reporting_v3" name="test_reporting_and_route_execute_no_engine" time="1.052" /><testcase classname="tests.test_rc_reporting_v3" name="test_v3_module_imports_no_engine_or_persistence_writer" time="0.008" /><testcase classname="tests.test_rc_reporting_v3" name="test_export_does_not_touch_persisted_run_records_or_fingerprints" time="1.074" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_only_unit_declarations_changed_no_old_assertion_or_value[tests/test_api_v1_1_institutional.py]" time="0.006" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_only_unit_declarations_changed_no_old_assertion_or_value[tests/test_p1_2_xlsx_export_reconciliation.py]" time="0.006" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_only_unit_declarations_changed_no_old_assertion_or_value[tests/test_p1_3_institutional_validation.py]" time="0.006" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_only_unit_declarations_changed_no_old_assertion_or_value[tests/test_p1_4_ev_reconciliation.py]" time="0.005" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_only_unit_declarations_changed_no_old_assertion_or_value[tests/test_u2_2_returns_surface.py]" time="0.005" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_only_unit_declarations_changed_no_old_assertion_or_value[tests/test_public_surface_hygiene.py]" time="0.005" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_only_unit_declarations_changed_no_old_assertion_or_value[tests/test_ev_charging_catalogue_seed.py]" time="0.005" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_only_unit_declarations_changed_no_old_assertion_or_value[tests/test_ev_charging_driver_authority.py]" time="0.005" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_only_unit_declarations_changed_no_old_assertion_or_value[tests/rc7_helpers.py]" time="0.004" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_old_dom_golden_is_unchanged_and_harness_only_declares_fresh_units" time="0.004" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_authority_mock_has_only_its_missing_unit_added" time="0.005" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_sensitivity_oracle_removes_only_the_documented_old_ratio_conversion" time="0.004" /><testcase classname="tests.test_finval_f01_fixture_integrity" name="test_opex_factory_fixture_keeps_the_same_financial_rate" time="0.003" /></testsuite></testsuites>

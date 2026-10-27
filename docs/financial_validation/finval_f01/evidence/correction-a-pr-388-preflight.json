@@ -1,0 +1,371 @@
+{
+  "baseRefName": "main",
+  "files": [
+    {
+      "path": "app/v2/react_analysis.py",
+      "additions": 288,
+      "deletions": 0
+    },
+    {
+      "path": "app/v2/react_financing.py",
+      "additions": 104,
+      "deletions": 0
+    },
+    {
+      "path": "app/v2/react_goal_seek.py",
+      "additions": 383,
+      "deletions": 0
+    },
+    {
+      "path": "app/v2/react_investors.py",
+      "additions": 114,
+      "deletions": 0
+    },
+    {
+      "path": "app/v2/react_new_project.py",
+      "additions": 351,
+      "deletions": 0
+    },
+    {
+      "path": "app/v2/react_workspace_router.py",
+      "additions": 16,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/00_EXECUTIVE_README.md",
+      "additions": 45,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/01_LIVE_GITHUB_PREFLIGHT.md",
+      "additions": 27,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/02_PARITY_GAP_REGISTER.csv",
+      "additions": 29,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/03_PROJECT_WIZARD_AND_CREATION_CONTRACT.md",
+      "additions": 56,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/04_ANALYSIS_SENSITIVITY_GOALSEEK_PARITY.md",
+      "additions": 53,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/05_FINANCING_AND_INVESTOR_AUTHORITY.md",
+      "additions": 42,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/08_OPEN_OWNER_AUTHORIZATIONS.md",
+      "additions": 58,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/financing_studio.json",
+      "additions": 3134,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/goal_seek_apply.json",
+      "additions": 10,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/goal_seek_apply_stale_refusal.json",
+      "additions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/goal_seek_catalog.json",
+      "additions": 53,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/goal_seek_solve_preview.json",
+      "additions": 65,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/investors_agreement.json",
+      "additions": 118,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/new_project_create_201_equivalent.json",
+      "additions": 13,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/new_project_create_replay.json",
+      "additions": 12,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/new_project_options.json",
+      "additions": 351,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/new_project_preview.json",
+      "additions": 40,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/new_project_preview_invalid.json",
+      "additions": 22,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/new_project_status.json",
+      "additions": 13,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/sensitivity_catalog.json",
+      "additions": 448,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/sensitivity_matrix_tariff_capex_irr.json",
+      "additions": 751,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/sensitivity_refusal_no_header.json",
+      "additions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "docs/react_migration/rc_m_integrated/api_contracts/sensitivity_strip_tariff.json",
+      "additions": 546,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/App.tsx",
+      "additions": 19,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/LibraryView.tsx",
+      "additions": 13,
+      "deletions": 4
+    },
+    {
+      "path": "frontend/src/app/WorkspaceView.tsx",
+      "additions": 7,
+      "deletions": 1
+    },
+    {
+      "path": "frontend/src/app/analysis/AnalysisTools.tsx",
+      "additions": 56,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/analysis/GoalSeekPanel.tsx",
+      "additions": 173,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/analysis/SensitivityPanel.tsx",
+      "additions": 283,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/analysis/analysisApi.ts",
+      "additions": 77,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/analysis/shared.tsx",
+      "additions": 43,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/analysis/types.ts",
+      "additions": 92,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/financing/BankabilityEditor.tsx",
+      "additions": 268,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/financing/FinancingStudio.tsx",
+      "additions": 81,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/financing/FinancingViews.tsx",
+      "additions": 147,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/financing/InvestorsPanel.tsx",
+      "additions": 212,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/financing/financingApi.ts",
+      "additions": 18,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/financing/serializeAgreement.ts",
+      "additions": 34,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/financing/serializeBankability.ts",
+      "additions": 108,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/financing/types.ts",
+      "additions": 92,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/newProject/NewProjectWizard.tsx",
+      "additions": 337,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/newProject/api.ts",
+      "additions": 123,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/app/newProject/types.ts",
+      "additions": 94,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/finco/_shared/FincoShell.tsx",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "frontend/src/styles/rcm-analysis.css",
+      "additions": 71,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/styles/rcm-financing.css",
+      "additions": 46,
+      "deletions": 0
+    },
+    {
+      "path": "frontend/src/styles/rcm-new-project.css",
+      "additions": 94,
+      "deletions": 0
+    },
+    {
+      "path": "static/react/finco-react.css",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "static/react/finco-react.js",
+      "additions": 15,
+      "deletions": 12
+    },
+    {
+      "path": "tests/model_mutation_security_successor.py",
+      "additions": 14,
+      "deletions": 0
+    },
+    {
+      "path": "tests/rcm_adapter_csrf_successor.py",
+      "additions": 145,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_mutation_security_successor.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/test_model_react_overnight_b_governance.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "tests/test_model_react_rcm_analysis_browser.py",
+      "additions": 373,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_react_rcm_financing_browser.py",
+      "additions": 368,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_react_rcm_financing_v1.py",
+      "additions": 248,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_react_rcm_goal_seek_v1.py",
+      "additions": 304,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_react_rcm_investors_browser.py",
+      "additions": 256,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_react_rcm_investors_v1.py",
+      "additions": 234,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_react_rcm_new_project_browser.py",
+      "additions": 386,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_react_rcm_new_project_v1.py",
+      "additions": 324,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_react_rcm_sensitivity_v1.py",
+      "additions": 254,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_model_react_rcm_themes_browser.py",
+      "additions": 106,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_rcm_adapter_csrf_successor.py",
+      "additions": 61,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_rcm_governance.py",
+      "additions": 118,
+      "deletions": 0
+    },
+    {
+      "path": "tests/test_trust_readiness_controls.py",
+      "additions": 4,
+      "deletions": 0
+    }
+  ],
+  "headRefOid": "634fdf609e1309ed0959f9b21502fefd68f43f43",
+  "isDraft": true,
+  "number": 388,
+  "reviews": [],
+  "state": "OPEN",
+  "url": "https://github.com/Finco-Protocol/FincoProtocol/pull/388"
+}

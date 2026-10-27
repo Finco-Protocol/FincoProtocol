@@ -84,11 +84,12 @@ def preserve_rate_provenance(existing: dict, incoming: dict) -> dict:
             if result.get("_finval_interest_rate_origin", origin) != origin:
                 raise RateUnitProvenanceError("Rate source lineage cannot be replaced by a form Save.")
             result["_finval_interest_rate_origin"] = origin
-    elif new_unit:
-        if str(existing.get("interest_rate_pct", "")).strip():
+    elif str(existing.get("interest_rate_pct", "")).strip():
+        if new_unit or result.get("interest_rate_pct") != existing.get("interest_rate_pct"):
             raise RateUnitProvenanceError(
                 "Existing interest-rate provenance is ambiguous. Create a verified Working Copy "
-                "or request an owner-reviewed provenance repair; Save cannot label historical values.")
+                "or request an owner-reviewed provenance repair; Save cannot change or label it.")
+    elif new_unit:
         assert_rate_unit(result)
     return result
 
@@ -1075,6 +1076,10 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
 
     C2B2: canonical rev_* keys win over legacy keys when both present.
     """
+    # This converter is also called directly by the legacy seeded Run
+    # adapter. A persisted snapshot must prove its unit at either entry.
+    if snapshot.get("interest_rate_pct") not in (None, ""):
+        assert_rate_unit(snapshot)
     # Canonical key wins over legacy when both present (C2B2).
     # Strict: non-empty invalid values raise SnapshotInputError; absent/empty → None (use legacy).
     _canonical_tariff = _snapshot_float_strict(snapshot, "rev_ppa_base_tariff", non_negative=True)

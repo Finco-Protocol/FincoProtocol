@@ -1,18 +1,18 @@
 {
   "baseline": "cf7056de4078ca66afcf52265a9bacafe35586f7",
-  "authorization": "Financial Owner prompt FINCO PROTOCOL \u2014 FIN-VAL F01, 2026-10-27, sections 2/5/6",
+  "authorization": "Financial Owner FINCO PROTOCOL \u2014 FIN-VAL F01 and PR #389 / CORRECTION A, supplied 2026-10-27; exact paths + necessary F01-only transitive work.",
   "paths": [
     {
       "path": ".github/workflows/finval_f01_acceptance.yml",
       "before_blob": "NEW",
-      "after_blob": "efcc152343a635a955e8d1536fbfaa7898653cc4",
+      "after_blob": "8b7b49a49583fc33c48d60cc55bd88ea9e88ef8d",
       "reason": "Add exact-head financial/browser/native evidence without changing existing CI V3, worker, native or security policy."
     },
     {
       "path": "app/input_adapter.py",
       "before_blob": "c01628520440e52337255dc049613790805df180",
-      "after_blob": "1397661dc5047e56548f08a334061e7d20b155e5",
-      "reason": "Explicit finite human percent contract, typed ambiguity and once-only schedule conversion; preserve verified form provenance."
+      "after_blob": "2db97ac44180d6e78c147dcfffb5daddb585c36f",
+      "reason": "Known human percent; once-only conversion; immutable lineage/ambiguous-rate guard and direct saved-snapshot entry validation."
     },
     {
       "path": "app/persistence/projects_repository.py",
@@ -23,8 +23,8 @@
     {
       "path": "app/persistence/workspace_repository.py",
       "before_blob": "0355b82a7434b1cab4c08d74ceac307c1b597cbb",
-      "after_blob": "fff6e05752857f21141e7672642c8b777297319f",
-      "reason": "Revalidate rate authority under CAS lock; preserve legacy contract and value in one transaction."
+      "after_blob": "3dbcd861d363d1c3f3ef1ff148f0ecae173612f7",
+      "reason": "Rate authority under atomic CAS; Legacy provenance/value/hash transaction, typed post-reconciliation hash validation for UPDATE and INSERT."
     },
     {
       "path": "app/services/project_library_service.py",
@@ -83,13 +83,31 @@
     {
       "path": "tests/finval_f01_scope.py",
       "before_blob": "NEW",
-      "after_blob": "2b84d5efa52fa2cd788b280e957ede34c41ef509",
+      "after_blob": "ea5eb76459063f326546eab61943beeaeae567dd",
       "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
     },
     {
       "path": "tests/model_mutation_security_successor.py",
       "before_blob": "4f5077c22b837e730ea0b2c2a57412eb1150d8a4",
       "after_blob": "33d7b4b9d313385573000bbbaff0164ec89602ab",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/model_workspace_harness.py",
+      "before_blob": "2393c451a7c66e46ca87a0e6744ec5016d623a62",
+      "after_blob": "8dd583ea8313909119eaff297f307dae65968961",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/rc7_helpers.py",
+      "before_blob": "83f04491613e8dc25d6f5c83c6f80259c2312781",
+      "after_blob": "cf7228f1c82ca35e18d600868ab14271cea5e97f",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/test_api_v1_1_institutional.py",
+      "before_blob": "250881d58a2e1200878c829527e09c220f0a2071",
+      "after_blob": "eedbebbdb15c8501b2c468276837c42ac397262b",
       "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
     },
     {
@@ -113,13 +131,25 @@
     {
       "path": "tests/test_finval_f01_complete.py",
       "before_blob": "NEW",
-      "after_blob": "861613b520f60edd222ba2842fe288b5143a3ce6",
+      "after_blob": "84c72f53238d560c3524f64e63c48e69908f783b",
       "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
     },
     {
       "path": "tests/test_finval_f01_creation.py",
       "before_blob": "NEW",
       "after_blob": "3b87611e79209b6bba66dfaa2d29d0889f0cb3ef",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/test_finval_f01_fixture_integrity.py",
+      "before_blob": "NEW",
+      "after_blob": "04827a4937520ccc6f466c18dcbb6795eb00543c",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/test_finval_f01_hash_integrity.py",
+      "before_blob": "NEW",
+      "after_blob": "b2da277c74b45d5ebd51e2aba8b04d9bcc72a8c0",
       "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
     },
     {
@@ -159,6 +189,12 @@
       "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
     },
     {
+      "path": "tests/test_m3_two_driver_sensitivity.py",
+      "before_blob": "ae9506d5fd806079f06a277508e6b08fd4d24366",
+      "after_blob": "e2fc12e413e07940da8a31c467a2a5fb7e77fdcc",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
       "path": "tests/test_model_mutation_security_successor.py",
       "before_blob": "9449a0d448040b4b3cdc6f7ac89d7846e42dc74d",
       "after_blob": "1df9f984311df59a84ca8450619c24b9d343eb02",
@@ -168,6 +204,42 @@
       "path": "tests/test_model_react_overnight_b_governance.py",
       "before_blob": "2d3816587a60fd99fea383c19f87a86019d7b6e4",
       "after_blob": "b143deaef9929324927f6b23d86b79c95dc0c842",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/test_model_workspace_productivity_v1.py",
+      "before_blob": "528f4f025896b2b74236c3742cbd1396dd1cf832",
+      "after_blob": "2fc27ce47d450672627cbbe3ea2ebb5a261b7c62",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/test_p1_2_xlsx_export_reconciliation.py",
+      "before_blob": "3385cd3a0678cbd7e1df5c74f028a5365294931e",
+      "after_blob": "e0f13914e79af15f7348f11fc126c74bd9faaf53",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/test_p1_3_institutional_validation.py",
+      "before_blob": "f4a87eb196da9d6aa4977fadaf2823f767760beb",
+      "after_blob": "ae2109e38a5bd41cc208d2bb47cc976daa9df40e",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/test_p1_4_ev_reconciliation.py",
+      "before_blob": "b7ea302fd8466d2e279b97d83140d11771730b68",
+      "after_blob": "5c256d1a99247c937f150a7df51dae9c4ea412b4",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/test_public_surface_hygiene.py",
+      "before_blob": "549f5c27f12ac0730a099935e49926cf569c4580",
+      "after_blob": "cd5903e497736ca7467e92fe9781e35371fd5e40",
+      "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
+    },
+    {
+      "path": "tests/test_u2_2_returns_surface.py",
+      "before_blob": "54661f059c38018c3c224c17a16ee95d5b1b0da9",
+      "after_blob": "afb64327e1032071ebf254dfe19b1e094e0b6fd0",
       "reason": "Additive rate-only acceptance or exact-blob successor; historical assertions/pins preserved except explicitly documented defective rate fixtures."
     }
   ]

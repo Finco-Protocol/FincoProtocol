@@ -72,6 +72,12 @@ def test_ambiguous_projection_is_safe_read_and_save_is_typed_failure(env):
     result=env.client.post('/v2/workbook/update',headers={'HX-Request':'true'},data={'project':rec.project_code,'field_id':RATE_FIELD,'value':'.056','csrf_token':save['csrf_token'],'content_hash':save['content_hash'],'workbook_version':save['workbook_version']})
     assert result.headers['X-Finco-Error-Code']=='RATE_UNIT_PROVENANCE_AMBIGUOUS'
     assert _snapshot(rec)==before
+    page=env.client.get('/v2/workbook',params={'project':rec.project_code})
+    assert page.status_code==200 and 'workbook-recovery-page' in page.text
+    assert 'owner-reviewed provenance repair' in page.text
+    history=env.client.get('/v2/workbook/run-history',params={'project':rec.project_code})
+    assert history.status_code==200
+    assert _snapshot(rec)==before
 
 
 def test_form_cannot_upgrade_or_replace_persisted_provenance():
@@ -107,3 +113,13 @@ def test_legacy_full_snapshot_write_preserves_contract_and_refuses_client_relabe
     before=row()
     with pytest.raises(RateUnitProvenanceError):persist(ws.draft_snapshot,ws.saved_snapshot)
     assert row()==before
+
+
+def test_direct_snapshot_converter_cannot_bypass_saved_unit_authority():
+    from app.persistence.projects_repository import _compute_baseline_snapshot
+    from app.input_adapter import _snapshot_to_dict
+    snap=_compute_baseline_snapshot('Solar','generic_solar_reference')
+    snap.pop(RATE_UNIT_KEY)
+    before=copy.deepcopy(snap)
+    with pytest.raises(RateUnitProvenanceError):_snapshot_to_dict(snap)
+    assert snap==before
