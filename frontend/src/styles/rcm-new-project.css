@@ -12,11 +12,13 @@ a.rx-button { display: inline-flex; align-items: center; text-decoration: none; 
 
 /* Library / global navigation entry point */
 .rcm-new-project-cta { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* inherits the bar's own link colours in every theme (the green theme paints light text on a dark bar): no explicit
+   background or colour here, only a currentColor outline that follows whatever the theme chose */
 .fm-workspace-bar .rcm-nav-new-project {
-  margin-left: auto; font-weight: 700; color: var(--navy, var(--fo-brand-600, #1a56db));
-  border: 1px solid var(--line, #dce3e9); padding: 2px 10px; background: var(--surface, #fff); text-decoration: none;
+  margin-left: auto; font-weight: 700; color: inherit; background: transparent;
+  border: 1px solid currentColor; padding: 2px 10px; text-decoration: none;
 }
-.fm-workspace-bar .rcm-nav-new-project:hover, .fm-workspace-bar .rcm-nav-new-project:focus-visible { border-color: var(--navy, #183e63); }
+.fm-workspace-bar .rcm-nav-new-project:hover, .fm-workspace-bar .rcm-nav-new-project:focus-visible { text-decoration: underline; }
 .rcm-lib-head-actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 
 /* wizard */
@@ -37,7 +39,7 @@ a.rx-button { display: inline-flex; align-items: center; text-decoration: none; 
 .rcm-steps li.done .rcm-step-num::after { font-size: 11px; }
 .rcm-step-compact { display: none; margin: 0 0 8px; font-size: 12px; font-weight: 700; color: var(--navy, #183e63); }
 
-.rcm-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 10px 0; }
+.rcm-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 10px; margin: 10px 0; }
 .rcm-card {
   display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 10px 12px; min-height: 92px;
   border: 1px solid var(--line, #dce3e9); background: var(--surface, #fff); color: var(--ink, #182b43); font: inherit; cursor: pointer;
@@ -66,7 +68,7 @@ a.rx-button { display: inline-flex; align-items: center; text-decoration: none; 
 .rcm-field .rx-input { width: 100%; max-width: none; box-sizing: border-box; }
 .rcm-field .rx-input[aria-invalid="true"] { border-color: var(--fo-red-700, #b91c1c); }
 
-.rcm-defs { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin: 10px 0 0; }
+.rcm-defs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 10px; margin: 10px 0 0; }
 .rcm-defs div { border: 1px solid var(--line, #dce3e9); padding: 8px 12px; background: var(--paper, #f4f6f7); }
 .rcm-defs dt { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted, #526374); font-weight: 700; }
 .rcm-defs dd { margin: 2px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }

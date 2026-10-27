@@ -1311,12 +1311,16 @@ async def react_scenario_overrides(request: Request, project: str, scenario_id: 
 
 
 # ───────────────────────────── RC-M: React adapters (own modules) ─────────────────────────────
-# New Project wizard, Sensitivity and Goal Seek: authenticated JSON adapters over the canonical creation, sensitivity-matrix and
-# goal-seek authorities (no new authority).  Each lives in its own module, so this pinned file changes by exactly these includes.
+# New Project wizard, Sensitivity, Goal Seek, Financing Studio and Investors: authenticated JSON adapters over the canonical creation, sensitivity-matrix,
+# goal-seek and Debt-sheet authorities (no new authority).  Each lives in its own module, so this pinned file changes by exactly these includes.
 from app.v2.react_analysis import router as _analysis_router  # noqa: E402
+from app.v2.react_financing import router as _financing_router  # noqa: E402
 from app.v2.react_goal_seek import router as _goal_seek_router  # noqa: E402
+from app.v2.react_investors import router as _investors_router  # noqa: E402
 from app.v2.react_new_project import router as _new_project_router  # noqa: E402
 
 router.include_router(_new_project_router)
 router.include_router(_analysis_router)
 router.include_router(_goal_seek_router)
+router.include_router(_financing_router)
+router.include_router(_investors_router)

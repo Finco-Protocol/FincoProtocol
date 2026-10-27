@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import StatementWorkbook from "../finco/_workbook/StatementWorkbook";
 import { Shell } from "../finco/_shared/FincoShell";
 import { AnalysisTools } from "./analysis/AnalysisTools";
+import { FinancingStudio } from "./financing/FinancingStudio";
 import { workspaceHeading } from "./adapters";
 import { fetchInputs, fetchStatements, fetchWorkspace } from "./api";
 import { RecoveryPanel } from "./RecoveryPanel";
@@ -373,7 +374,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
             : <p className="rx-boot-loading" role="status">Loading the canonical input grid…</p>
         )}
         {section === "financing" && (
-          <SheetFieldsEditor project={project} sheet="debt" title="Debt & Equity financing" reloadKey={dataVersion} onSaved={afterMutation} />
+          <FinancingStudio project={project} reloadKey={dataVersion} onSaved={afterMutation} legacyUrl={legacyUrl} />
         )}
         {section === "scenarios" && (
           <ScenarioWorkspace project={project} freshness={workspace.freshness.state}

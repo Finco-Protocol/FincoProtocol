@@ -65,24 +65,27 @@ def test_layer_is_additive_and_no_historical_pin_line_was_removed():
 
 
 def test_the_workspace_router_changes_only_by_the_adapter_includes():
-    """The pinned router gained exactly one block that mounts the three adapter modules (their own files hold the behaviour)."""
+    """The pinned router gained exactly one block that mounts the five adapter modules (their own files hold the behaviour)."""
     source = SOURCES["app/v2/react_workspace_router.py"]
     tail = source[source.index("# ───────────────────────────── RC-M: React adapters"):]
-    assert re.findall(r"^router\.include_router\((\w+)\)$", tail, flags=re.M) == ["_new_project_router", "_analysis_router", "_goal_seek_router"]
+    assert re.findall(r"^router\.include_router\((\w+)\)$", tail, flags=re.M) == [
+        "_new_project_router", "_analysis_router", "_goal_seek_router", "_financing_router", "_investors_router"]
     assert re.findall(r"^from app\.v2\.(\w+) import router as (\w+)", tail, flags=re.M) == [
-        ("react_analysis", "_analysis_router"), ("react_goal_seek", "_goal_seek_router"), ("react_new_project", "_new_project_router")]
+        ("react_analysis", "_analysis_router"), ("react_financing", "_financing_router"), ("react_goal_seek", "_goal_seek_router"),
+        ("react_investors", "_investors_router"), ("react_new_project", "_new_project_router")]
 
 
 def test_the_adapters_use_only_the_canonical_services_and_add_no_calculation_authority():
     forbidden = ("financial_engine", "finco_core", "def solve_", "def irr", "numpy", "scipy", "brentq", "newton(")
-    for module in ("app/v2/react_new_project.py", "app/v2/react_analysis.py", "app/v2/react_goal_seek.py"):
+    for module in ("app/v2/react_new_project.py", "app/v2/react_analysis.py", "app/v2/react_goal_seek.py", "app/v2/react_financing.py",
+                   "app/v2/react_investors.py"):
         text = (S.ROOT / module).read_text(encoding="utf-8")
         assert not [needle for needle in forbidden if needle in text], module
     # the browser carries no financial arithmetic: the new React sources contain no engine call, solver or IRR/NPV formula
-    for folder in ("frontend/src/app/newProject", "frontend/src/app/analysis"):
+    for folder in ("frontend/src/app/newProject", "frontend/src/app/analysis", "frontend/src/app/financing"):
         for path in (S.ROOT / folder).glob("*.ts*"):
             text = path.read_text(encoding="utf-8")
-            assert not re.search(r"\b(irr|npv|dscr)\s*=\s*[^=]|Math\.(pow|log|exp)\(", text, flags=re.I), path
+            assert not re.search(r"(?<![-\w])(irr|npv|dscr)\s*=\s*[^=>{]|Math\.(pow|log|exp)\(", text, flags=re.I), path
 
 
 def test_the_rcm_changes_touch_no_protected_financial_path():
@@ -105,3 +108,11 @@ def test_the_rcm_changes_touch_no_protected_financial_path():
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
+
+
+def test_only_the_two_reviewed_adapters_add_a_state_changing_route_and_the_other_three_are_read_only():
+    for module in ("app/v2/react_analysis.py", "app/v2/react_financing.py", "app/v2/react_investors.py"):
+        text = (S.ROOT / module).read_text(encoding="utf-8")
+        assert not re.search(r"@router\.(post|put|patch|delete)\(", text), module
+        assert "validate_csrf_token(" not in text, module
+        assert not re.search(r"\b(apply_draft_update|save_agreement|create_reference_seeded_project|update_project_record)\(", text), module

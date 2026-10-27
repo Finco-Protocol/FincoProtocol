@@ -184,10 +184,10 @@ REACT_MVP_CORRECTION_SUCCESSORS={
 # NEW unpinned files whose security behaviour is proven by tests/test_model_react_rcm_*_v1.py and tests/test_rcm_adapter_csrf_successor.py.  Owner authorization for these
 # presentation/adapter-layer paths is the RC-M task statement's, recorded as relayed in docs/react_migration/rc_m_integrated/.
 RC_M_SUCCESSORS={
-    "app/v2/react_workspace_router.py":"f57aff388deb91911cac741e9dc9982986d754ba",
-    "frontend/src/app/WorkspaceView.tsx":"5d5413ee5edb0ee54e441f8fca8026678da2ddae",
-    "static/react/finco-react.css":"109a30ddd553d6bd945b5fc974181ad5cdfbb405",
-    "static/react/finco-react.js":"5f9ddf823d01fddcd76e54f6abef931ee3ffaa7a",
+    "app/v2/react_workspace_router.py":"e81224a5cd64ab23f94c885437af63a0a6da2f64",
+    "frontend/src/app/WorkspaceView.tsx":"1f5e9756b527e8e5b9ca8d15e1d261c93a8f26a6",
+    "static/react/finco-react.css":"add7ddc5f4c3cc2abf3c348eb3b7eca8f415151c",
+    "static/react/finco-react.js":"1bdc8b0f899f773f14ec2c2692c942392b0cecc5",
 }
 
 ROUTES={
