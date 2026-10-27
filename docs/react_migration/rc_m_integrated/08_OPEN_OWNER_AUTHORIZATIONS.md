@@ -21,6 +21,8 @@ protected financial path. None of these paths is a rate-contract, seed, Clone, S
 | `tests/test_model_workspace_consolidation_browser.py` | `6f91b8c9376ba65c27aab34ea39651cef351b2e9` (Overnight B state) | **import-only tail**: one shared fixture import and five star-imports of non-collected acceptance modules; no `def`, no skip | security-governance reviewer + CI owner |
 | `tests/test_model_react_overnight_b_governance.py` | `2d381658…` | the strict equality `current == layer blob` is **kept**; it now reads `== RC_M_SUCCESSORS.get(path, blob)` (exactly the latest pinned state, never "either one") | security-governance reviewer |
 | `tests/test_model_mutation_security_successor.py` | `9449a0d4…` | FIN-VAL / D-029 membership sets additionally admit the RC-M blob of the same path; the D-029 wrapper test now asserts **strict equality** with the RC-M blob of the role file | security-governance reviewer |
+| `tools/ci_v3_production.py` + `docs/model_v2/d029/evidence/D029_CI_V3_OUTCOME_RECONCILIATION.json` | (D-029 reviewed set) | the Trust-scope reviewed set gains exactly one path, `tests/test_trust_readiness_controls.py`, **pinned to its exact blob**; negative tests for a drifted/missing blob and a dropped path | CI/security-governance reviewer |
+| `tests/test_native_activation.py`, `tests/test_model_rc7_capex_binding_surfaces.py` | (existing inventories) | one exact entry each: `app/v2/react_analysis.py` (same `activated(run_matrix_points)` submission as the Legacy matrix router) and `app/v2/react_goal_seek.py` (BINDS the CAPEX profile) — each with a proof test | security-governance reviewer |
 | `tests/test_trust_readiness_controls.py` | `635b95b5c9ac280153ae5933bc8d0c11fa80b8ec` | the CSRF-inventory test admits the two new CSRF-bound POST modules **only while** `tests/rcm_adapter_csrf_successor.py` holds (exact blob + AST structure, including the fence-then-claim-then-write order) | security-governance reviewer |
 
 `tests/rcm_adapter_csrf_successor.py` is a **review proposal, not an approval**. Every historical pin line is still present (asserted by
@@ -37,22 +39,14 @@ environment (no Playwright) the collection-skip counters are identical to `main`
 collecting both trees with Playwright blocked), so the CI-V3 reviewed-reconciliation contract is **not** triggered and no reconciliation
 authority is requested. If the CI owner prefers a dedicated role instead, that is a `.github/` + verifier change this task does not authorize.
 
-## 3. Atomic, exactly-once project creation — prepared and tested; applied after #389 merges (release gate closed)
+## 3. Atomic, exactly-once project creation — integrated after F01 (flag still default OFF)
 
-**Live in this PR (interim).** The React create is fenced across server processes by a durable claim ledger (`app/v2/react_request_claims.py`, table created lazily by that new
-module, one atomic `INSERT OR IGNORE` on `(user_id, request_id, purpose)` decided *before* the canonical creator runs). Proven with separate OS processes
-(`tests/test_model_react_rcm_new_project_multiprocess_v1.py`). It is **not exactly-once**: the project rows and the claim are two writes, a crash between them orphans a project and the id
-stays "unknown", and the canonical seeded creation itself is several writes (also true of Legacy `/projects/create`, which is unkeyed). **New Project is therefore not production-ready**
-and the flag `FINCO_MODEL_REACT_V1` stays default OFF.
-
-**Prepared, not applied (`atomic_create/`).** The durable, transactional guarantee is implemented *through the canonical creation authority* (no second project writer): the request identity is
-committed by the same single INSERT as the project row under a partial unique index; the project is `COMPLETE` only inside the transaction that writes its seed lines; keyed creates are
-INSERT-only (the pre-existing upsert in `save_project` let two concurrent same-name creates overwrite each other); an interrupted create past its lease is archived and its id stays
-consumed. It is tested single-process with a crash injected at every step, with three real server processes (`os._exit` after the row, inside the seed transaction and after completion),
-with mutation checks, and on the **#389 head** (patch applies cleanly; RC-M merged onto it conflicts only in the three pinned-governance files; F01's own suites still pass). It is held back
-because `projects_repository.py` and `project_library_service.py` are changed by #389 and pinned by blob in `tests/finval_f01_scope.py`; applying now would race that branch. The post-merge
-steps (merge main, `git apply`, admit the two new blobs as exact alternatives in the F01 scope pin, re-pin the adapter, re-run the F01/rate-unit acceptance) are in `atomic_create/README.md`.
-`tests/test_rcm_atomic_create_patch.py` keeps the preparation from rotting. **The release gate stays closed until the patch is applied and its tests pass on the merged tree.**
+FIN-VAL F01 (#389) is on `main` (`128bf0c2`), so the request-keyed creation prepared against its head is applied (details and proof in `atomic_create/README.md`): the request identity is committed by the
+project row's own INSERT under a partial unique index; the project is `COMPLETE` only inside the transaction that writes its seed lines; keyed creates are INSERT-only; an interrupted create past its lease is archived
+and its id stays consumed; same id with other inputs → 409; nothing is retried automatically. It runs through the canonical creation authority (no second project writer). The two F01-pinned creation files
+(`projects_repository.py`, `project_library_service.py`) are admitted by `tests/finval_f01_scope.py` only as exact alternatives (`ATOMIC_CREATE_SUCCESSORS`). The interim adapter-level ledger is removed.
+Remaining limits, stated plainly: the canonical seeded create is still several SQLite writes (now detectable and fenced, not one transaction); the unkeyed Legacy `/projects/create` is not keyed; the demo budget
+is a read-then-create check. New Project remains behind `FINCO_MODEL_REACT_V1` (default OFF) and this is not a production authorization.
 
 ## 4. Stale-bundle cache — resolved by a content-derived version (nothing deployed)
 
@@ -82,13 +76,13 @@ candidate (project, field, value, Working Copy identity, workbook version) and p
 **Request:** an owner decision whether to protect the Legacy routes (a one-line `validate_mutation_token` gate each, with the new operation names added to the
 mutation inventory) — a separate, reviewed change.
 
-## 7. F01 (interest-rate unit contract, PR #389) — separate gate; **not integrated**
+## 7. F01 (interest-rate unit contract, PR #389) — integrated
 
-#389 is an open Draft (head `d53400a634bbaed8013c545dfa74b35991b9f436`, not merged) and owns `human_percent_v1` and its persistence. RC-M does **not** reimplement it: no rate default, no
-unit conversion and no schedule override exists in the React code, and no rate-dependent parity (Sensitivity or Goal Seek against a rate-bearing financing authority, 0.056 % / 0.56 % /
-5.60 % / 9.00 % Wizard → Financing → Save → Reload → Run) is claimed. A trial merge of the RC-M branch onto the #389 head conflicts only in three pinned-governance files (see
-`atomic_create/README.md`); the React sources auto-merge. After #389 merges: synchronize with the verified new `main`, preserve all React changes, adopt `human_percent_v1`, run the four-rate matrix
-through the wizard-created Working Copy, then revalidate Sensitivity and Goal Seek. D-029 (Run intent) is likewise untouched and separately gated.
+`main` `128bf0c2` (F01 merged) was merged into this branch with an ordinary merge commit; the only conflicts were the three pinned-governance files, resolved by keeping BOTH the F01 successor layers and the RC-M layer.
+No F01 source was overwritten and no rate conversion is implemented in React or in the adapters. Verified (`tests/test_model_react_rcm_f01_rate_matrix_v1.py`, 22 tests): a wizard-created Working Copy carries `human_percent_v1`;
+Wizard → Create → Open → Financing → Save → Reload → Run for Solar, Wind, Data Center and EV Charging at 0.056 % → 0.00056, 0.56 % → 0.0056, 5.60 % → 0.056, 9.00 % → 0.09 (the effective rate reaching the canonical Run is read from F01's
+`senior_rate_authority`); an honest model refusal is typed and leaves no history row; the Sensitivity strip/matrix (including the interest-rate driver, which moves the effective rate vector — preserved unchanged) and Goal Seek previews write
+no Run, history or Working Copy change. Ambiguous historical copies stay fail-closed (F01's own suites pass on the integrated tree). D-029 (Run intent) is untouched.
 
 ## 8. Missing audit inputs
 

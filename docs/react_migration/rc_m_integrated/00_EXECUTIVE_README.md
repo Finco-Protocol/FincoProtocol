@@ -3,10 +3,9 @@
 **Branch:** `claude/new-session-6o4z8l` · **Base:** `main` `cf7056de4078ca66afcf52265a9bacafe35586f7` (PR #386 and #387 merged) · **Status:** Draft, for independent review.
 No merge, deployment, activation of a release-closed feature, or self-approval was performed.
 
-**Release posture (Correction B):** the React workspace is behind `FINCO_MODEL_REACT_V1` (default OFF) and nothing here authorizes production use. **New Project is not
-production-ready**: cross-worker duplicates are fenced by an adapter-level ledger, but exactly-once creation at the canonical writer is prepared, tested and held until FIN-VAL
-F01 (#389) merges (`atomic_create/README.md`, `08_…` item 3). Interest-rate unit behaviour belongs to F01 and is not reimplemented. The deployed bundle is cache-busted by a
-content hash (`REACT_ASSET_VERSION`), not by hand.
+**Release posture (Correction C):** the React workspace is behind `FINCO_MODEL_REACT_V1` (default OFF) and nothing here authorizes production use. FIN-VAL F01 (#389) is merged and integrated: the wizard creates through the
+canonical, request-keyed creation authority (atomic request identity, `human_percent_v1` rate contract preserved; `atomic_create/README.md`, `08_…` items 3 and 7). The deployed bundle is cache-busted by a content hash
+(`REACT_ASSET_VERSION`). Independent review remains required.
 
 ## What this delivers
 
