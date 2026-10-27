@@ -10,8 +10,8 @@ import type { FinancingStudioPayload } from "./types";
 
 type Tab = "overview" | "terms" | "bankability" | "facilities" | "sources-uses" | "investors";
 const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
-  { id: "overview", label: "Overview" },
   { id: "terms", label: "Debt terms" },
+  { id: "overview", label: "Overview" },
   { id: "bankability", label: "Bankability" },
   { id: "facilities", label: "Senior facilities" },
   { id: "sources-uses", label: "Sources & uses" },
@@ -20,7 +20,8 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
 
 function tabFromUrl(): Tab {
   const raw = new URLSearchParams(window.location.search).get("financing");
-  return TABS.some((t) => t.id === raw) ? (raw as Tab) : "overview";
+  // "Debt terms" is the default so the existing financing editor is what opens with the section (unchanged entry behaviour)
+  return TABS.some((t) => t.id === raw) ? (raw as Tab) : "terms";
 }
 
 /** Financing workspace: an overview, the scalar debt terms (existing editor), the typed bankability editor, the Two-Senior
@@ -43,15 +44,12 @@ export function FinancingStudio({ project, reloadKey, onSaved, legacyUrl }: {
   function choose(next: Tab) {
     setTab(next);
     const url = new URL(window.location.href);
-    if (next === "overview") url.searchParams.delete("financing"); else url.searchParams.set("financing", next);
+    if (next === "terms") url.searchParams.delete("financing"); else url.searchParams.set("financing", next);
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
-  if (error && !studio) return <UnavailableNote message={error.message || "The financing view is unavailable. The classic workbook remains authoritative."} onRetry={() => setNonce((n) => n + 1)} />;
-  if (!studio) return <LoadingNote label="Loading the financing view…" />;
-
   return (
-    <div data-financing-studio="true" data-financing-tab={tab} data-financing-freshness={studio.freshness}>
+    <div data-financing-studio="true" data-financing-tab={tab} data-financing-freshness={studio?.freshness ?? "LOADING"}>
       <div className="rcm-tabs" role="tablist" aria-label="Financing sections">
         {TABS.map((t) => (
           <button key={t.id} type="button" role="tab" id={`rcm-fin-tab-${t.id}`} aria-selected={tab === t.id} aria-controls="rcm-fin-panel"
@@ -64,14 +62,18 @@ export function FinancingStudio({ project, reloadKey, onSaved, legacyUrl }: {
         ))}
       </div>
       <div id="rcm-fin-panel" role="tabpanel" aria-labelledby={`rcm-fin-tab-${tab}`}>
-        {tab === "overview" && <OverviewView studio={studio} />}
+        {/* Debt terms never waits for the studio read: it is the section's original editor and opens immediately */}
         {tab === "terms" && <SheetFieldsEditor project={project} sheet="debt" title="Debt & Equity financing" reloadKey={reloadKey} onSaved={onSaved} />}
-        {tab === "bankability" && (
+        {tab !== "terms" && !studio && (error
+          ? <UnavailableNote message={error.message || "The financing view is unavailable. The classic workbook remains authoritative."} onRetry={() => setNonce((n) => n + 1)} />
+          : <LoadingNote label="Loading the financing view…" />)}
+        {studio && tab === "overview" && <OverviewView studio={studio} />}
+        {studio && tab === "bankability" && (
           <BankabilityEditor project={project} view={studio.bankability} editable={studio.editable} identityHash={studio.identity.content_hash}
                              onSaved={() => { onSaved(); setNonce((n) => n + 1); }} onChanged={() => setNonce((n) => n + 1)} />
         )}
-        {tab === "facilities" && <CapitalStackView studio={studio} legacyUrl={legacyUrl} />}
-        {tab === "sources-uses" && <SourcesUsesPanel studio={studio} />}
+        {studio && tab === "facilities" && <CapitalStackView studio={studio} legacyUrl={legacyUrl} />}
+        {studio && tab === "sources-uses" && <SourcesUsesPanel studio={studio} />}
         {tab === "investors" && <InvestorsPanel project={project} reloadKey={reloadKey} onSaved={() => { onSaved(); setNonce((n) => n + 1); }} />}
       </div>
     </div>

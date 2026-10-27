@@ -187,7 +187,7 @@ RC_M_SUCCESSORS={
     "app/v2/react_workspace_router.py":"e81224a5cd64ab23f94c885437af63a0a6da2f64",
     "frontend/src/app/WorkspaceView.tsx":"1f5e9756b527e8e5b9ca8d15e1d261c93a8f26a6",
     "static/react/finco-react.css":"add7ddc5f4c3cc2abf3c348eb3b7eca8f415151c",
-    "static/react/finco-react.js":"1bdc8b0f899f773f14ec2c2692c942392b0cecc5",
+    "static/react/finco-react.js":"b99bf91af211fe4139ec4215ac50c61a12876e83",
 }
 
 ROUTES={

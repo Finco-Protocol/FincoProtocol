@@ -13,7 +13,7 @@ authority** plus a compact React UI. No financial formula, solver, default or wr
 | GAP-R1 | **+ New Project** 4-step wizard (Library CTA and global navigation) | `create_reference_seeded_project` (the service Legacy `/projects/create` uses for the Solar/Wind/Data Center/EV references) | one CSRF-bound create; exactly one working copy |
 | GAP-R2 | **Analysis › Sensitivity**: one-driver 5-point table and 3×3 / 5×5 matrix | `sensitivity_matrix` service + `run_matrix_points` (original `run_project` in the bounded executor) | none — ephemeral, not a Run |
 | GAP-R3 | **Analysis › Goal Seek**: PREVIEW solve, explicit *Apply to Working Copy* | `goal_seek.solve_tariff_for_metric`; `WorkbookUpdateService.apply_draft_update` (composite-hash CAS) | Apply only; CSRF-bound; Last Run becomes STALE, never run |
-| GAP-R5 | **Financing studio**: overview, Debt terms (existing editor), **typed Bankability editor**, Senior facilities (read-only), Sources & uses | Legacy Debt-sheet context (`_build_debt_ctx`), `bankability_config`, `build_sources_uses_projection` | the canonical per-field writer `/v2/workbook/update` (no new endpoint) |
+| GAP-R5 | **Financing studio**: Debt terms (existing editor, opens first), overview, **typed Bankability editor**, Senior facilities (read-only), Sources & uses, Investors | Legacy Debt-sheet context (`_build_debt_ctx`), `bankability_config`, `build_sources_uses_projection` | the canonical per-field writer `/v2/workbook/update` (no new endpoint) |
 | GAP-R6 | **Investors & sponsor**: typed common-equity holders and paid-in capital, Run-bound evidence, read-only SHL facts | F4 `save_agreement`, `validate_evidence`, `build_sponsor_view` | the canonical F4 route (CAS + version CAS) |
 
 ## Architectural choices

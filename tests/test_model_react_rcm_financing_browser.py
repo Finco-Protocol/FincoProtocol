@@ -134,10 +134,10 @@ def captured_value(body: str) -> str:
 
 # ── structure ──────────────────────────────────────────────────────────────
 
-def test_financing_workspace_has_the_five_sections_with_authority_and_closed_structures_stated(live_server, session):
+def test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated(live_server, session):
     context, page, record, errors = session("rcm-fin-struct")
     open_tab(page, live_server, record.project_code, "overview")
-    assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Overview", "Debt terms", "Bankability", "Senior facilities", "Sources & uses"]
+    assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Debt terms", "Overview", "Bankability", "Senior facilities", "Sources & uses", "Investors & sponsor"]
     assert page.locator("[data-senior-pricing='FLAT']").count() == 1 and page.locator("[data-senior-dscr='FLAT_SCALAR']").count() == 1
     closed = page.locator("[data-financing-closed='true']").inner_text()
     for needle in ("Junior / subordinated", "Mezzanine / PIK", "Third or further senior", "Floating-rate"):
