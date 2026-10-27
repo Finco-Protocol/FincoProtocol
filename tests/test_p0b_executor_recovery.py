@@ -326,3 +326,59 @@ def test_shutdown_during_recovery_leaves_no_orphan_and_no_new_pool():
     assert not any(alive(p) for p in seen), "orphan model worker survived shutdown"
     assert isinstance(stragglers, list)
     assert_accounting(ex)
+
+
+# ── structural guard: the preserved admission/lifecycle gates and the recovery invariants stay in the source ─────────────────
+import ast
+from pathlib import Path
+
+EXECUTOR_SOURCE = Path(me.__file__)
+
+
+def executor_violations(source: str) -> list[str]:
+    """Independent of any byte pin: drift that removes a preserved gate or a recovery invariant is reported."""
+    errors: list[str] = []
+    tree = ast.parse(source)
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "ModelExecutor")
+    fn = {n.name: n for n in cls.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    text = {name: ast.unparse(node) for name, node in fn.items()}
+
+    def need(name: str, *needles: str) -> None:
+        for needle in needles:
+            if name not in text or needle not in text[name]:
+                errors.append(f"{name}: missing {needle!r}")
+
+    need("_admit", "self._gate.acquire(blocking=False)", "raise ModelExecutionBusy()")      # non-blocking admission, typed Busy
+    need("_finish", "self._gate.release()")                                                    # slot released when the work ends
+    need("_submit", "self._admit()", "self._pool_locked(kind)", "except BrokenProcessPool", "self._retire_process_pool(pool)",
+         "raise ModelExecutionFailed() from None", "self._gate.release()")
+    if text.get("_submit", "").count("pool.submit(") != 2:                                     # one process, one thread submission
+        errors.append("_submit: submission sites changed (no resubmission is allowed)")
+    need("_retire_process_pool", "self._process_pool is not pool", "pool.shutdown(wait=False, cancel_futures=True)")
+    need("_translate", "getattr(future, 'finco_pool', None)", "return ModelExecutionFailed()")
+    need("_pool_locked", "self._closed", "len(recent) >= MAX_POOL_RETIREMENTS")
+    need("shutdown", "self._closed = True", "cancel_futures=True")
+    need("shutdown_and_join", "self._closed = True")
+    need("_await", "asyncio.wait_for", "raise ModelExecutionTimeout() from None", "self._translate(exc, future)")
+    return errors
+
+
+def test_real_executor_keeps_every_preserved_gate_and_recovery_invariant():
+    assert executor_violations(EXECUTOR_SOURCE.read_text(encoding="utf-8")) == []
+
+
+@pytest.mark.parametrize("old,new", [
+    ("self._gate.acquire(blocking=False)", "self._gate.acquire()"),                           # admission became blocking
+    ("raise ModelExecutionBusy()", "pass"),                                                   # Busy contract removed
+    ("            self._retire_process_pool(pool)\n            with self._lock:\n                self._active -= 1",
+     "            with self._lock:\n                self._active -= 1"),                       # submit-time break no longer invalidates
+    ("if self._process_pool is not pool:", "if False:"),                                      # retirement no longer per generation
+    ("self._retire_process_pool(getattr(future, \"finco_pool\", None))", "self._retire_process_pool(self._process_pool)"),
+    ("pool.shutdown(wait=False, cancel_futures=True)\n        LOG.warning", "LOG.warning"),     # old pool would stay usable
+    ("if self._closed:\n                    raise ModelExecutionFailed()", "if False:\n                    raise ModelExecutionFailed()"),
+    ("len(recent) >= MAX_POOL_RETIREMENTS", "False"),                                         # unbounded replacement
+])
+def test_drift_or_removed_gate_is_reported_without_any_byte_pin(old, new):
+    source = EXECUTOR_SOURCE.read_text(encoding="utf-8")
+    assert old in source, old
+    assert executor_violations(source.replace(old, new, 1)), old
