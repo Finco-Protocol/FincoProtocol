@@ -111,10 +111,19 @@ def _metric_json(metric) -> dict[str, Any]:
     return {"key": metric.key, "label": metric.label}
 
 
-def _metrics() -> list[dict[str, Any]]:
+def _supported_metrics() -> dict:
+    """The canonical targets this adapter may serve.
+
+    The adapter converts the user's percent target with ``/ 100``, which is only correct for ratio-unit (IRR) metrics. The canonical Goal Seek also
+    offers non-ratio targets (DSCR multiple, NPV kEUR); serving them here would silently mis-scale the value, so they are refused as unknown until a
+    React review adds explicit unit handling."""
     from app.services.goal_seek import GOAL_SEEK_METRICS
 
-    return [_metric_json(m) for m in GOAL_SEEK_METRICS.values()]
+    return {key: metric for key, metric in GOAL_SEEK_METRICS.items() if metric.unit == "ratio"}
+
+
+def _metrics() -> list[dict[str, Any]]:
+    return [_metric_json(m) for m in _supported_metrics().values()]
 
 
 def _current_tariff(record, ws) -> tuple[Optional[float], Any, Any]:
@@ -234,7 +243,7 @@ async def react_goal_seek_solve(request: Request, project: str, target_metric: s
     runtime_key = _RUNTIME_KEYS.get(project_type)
     if variable is None or runtime_key is None:
         return _fail(422, "INVALID_REQUEST", f"Project type {project_type!r} has no supported scalar revenue-price solve variable in V1 (supported: solar, wind).")
-    metric = resolve_metric(target_metric)
+    metric = _supported_metrics().get(str(target_metric or "").strip())
     if metric is None:
         return _fail(422, "INVALID_REQUEST", "Unknown target metric. Supported: Project IRR, Pure Equity IRR, Total Sponsor IRR.")
     try:

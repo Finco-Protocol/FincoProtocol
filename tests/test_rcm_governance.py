@@ -29,6 +29,10 @@ def _earlier(path):
             S.REACT_MVP_CORRECTION_SUCCESSORS.get(path)} - {None}
 
 
+RCM_BASE = "1f25903e7ed0bb8142f4e9f40d7eade58a746bf5"       # main immediately before PR #388
+RCM_HEAD = "6aaaaa586d42a3354b653661f5813e6819cb990c"       # the last reviewed RC-M head (merged into main as f79e2519)
+
+
 def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitted():
     assert set(LAYER) == EXPECTED
     assert len(S.BLOBS) == 112 and S.SOURCE_HEAD == "1800bf6092af650f18aa6ae70e9df221797090fd"
@@ -172,8 +176,7 @@ def test_the_flag_fixture_is_not_autouse_so_it_cannot_leak_into_the_other_role_t
 def test_the_asset_router_differs_from_main_only_by_the_content_derived_cache_buster():
     """Correction B: ``react_poc_router.py`` may change ONLY to derive ``REACT_ASSET_VERSION`` from the bundle bytes."""
     try:
-        base = _git("merge-base", "HEAD", "origin/main").strip()
-        original = _git("show", f"{base}:app/v2/react_poc_router.py")
+        original = _git("show", f"{RCM_BASE}:app/v2/react_poc_router.py")        # the pre-RC-M state, independent of what main has become since
     except subprocess.CalledProcessError:
         pytest.skip("baseline commit not available in this checkout")
     current = SOURCES["app/v2/react_poc_router.py"]
