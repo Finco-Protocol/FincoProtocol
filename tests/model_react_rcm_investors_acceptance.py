@@ -2,6 +2,10 @@
 
 Serializer parity with the Legacy F4 editor is asserted byte for byte; the Save/Reload/Run chain, refusals, a lost response and the
 read-only reference state are exercised against the real server.  Screenshots: ``$RCM_SCREENSHOT_DIR`` / ``rcm-investors-*.png``.
+
+
+Not collected by pytest: ``tests/test_model_workspace_consolidation_browser.py`` (the existing mandatory Chromium role) imports the
+tests and fixtures below and supplies ``live_server`` / ``browser`` / ``rcm_react_flag``.  No module-level skip lives here.
 """
 from __future__ import annotations
 
@@ -12,25 +16,22 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
 from tests.model_react_wf1_browser_acceptance import run_canonical
 
+__all__ = (
+    "test_react_and_legacy_editors_send_byte_identical_agreement_documents",
+    "test_save_reload_run_gives_run_bound_evidence_and_the_same_numbers_as_the_adapter",
+    "test_an_ownership_total_other_than_100_is_refused_by_the_server_and_nothing_changes",
+    "test_a_lost_save_response_is_unknown_never_retried_and_committed_once",
+    "test_reference_models_are_read_only",
+    "test_the_panel_fits_every_viewport",
+    "inv_session",
+)
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR", "")
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _react_flag():
-    old = os.environ.get("FINCO_MODEL_REACT_V1")
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
-    yield
-    if old is None:
-        os.environ.pop("FINCO_MODEL_REACT_V1", None)
-    else:
-        os.environ["FINCO_MODEL_REACT_V1"] = old
-
-
 @pytest.fixture
-def session(live_server, browser):
+def inv_session(live_server, browser, rcm_react_flag):
     from app.auth import COOKIE_NAME, create_session_token
     from app.services.reference_seed_service import create_reference_seeded_project
 
@@ -97,8 +98,8 @@ PARITY = {"id": "AGR-PARITY", "holders": [("INV-A", "60", "1000"), ("INV-B", "40
           "contributions": [("INV-A", "2031-03-01", "60.5"), ("INV-B", "2031-03-01", "40")]}
 
 
-def test_react_and_legacy_editors_send_byte_identical_agreement_documents(live_server, session):
-    context, page, record, errors = session("rcm-inv-parity")
+def test_react_and_legacy_editors_send_byte_identical_agreement_documents(live_server, inv_session):
+    context, page, record, errors = inv_session("rcm-inv-parity")
     bodies = []
     page.route("**/v2/workbook/investor/agreement", lambda route: (bodies.append(route.request.post_data), route.abort())
                if route.request.method == "POST" else route.continue_())
@@ -143,8 +144,8 @@ def test_react_and_legacy_editors_send_byte_identical_agreement_documents(live_s
     assert json.loads(react["agreement"][0])["investors"][0]["ownership_fraction"] == 0.6
 
 
-def test_save_reload_run_gives_run_bound_evidence_and_the_same_numbers_as_the_adapter(live_server, session):
-    context, page, record, errors = session("rcm-inv-flow")
+def test_save_reload_run_gives_run_bound_evidence_and_the_same_numbers_as_the_adapter(live_server, inv_session):
+    context, page, record, errors = inv_session("rcm-inv-flow")
     run_canonical(context, live_server, record.project_code)
     funding = api(context, live_server, record.project_code)["funding"]
     assert funding
@@ -188,8 +189,8 @@ def test_save_reload_run_gives_run_bound_evidence_and_the_same_numbers_as_the_ad
     assert unexpected(errors) == []
 
 
-def test_an_ownership_total_other_than_100_is_refused_by_the_server_and_nothing_changes(live_server, session):
-    context, page, record, errors = session("rcm-inv-refuse")
+def test_an_ownership_total_other_than_100_is_refused_by_the_server_and_nothing_changes(live_server, inv_session):
+    context, page, record, errors = inv_session("rcm-inv-refuse")
     open_panel(page, live_server, record.project_code)
     before = draft_of(record)
     page.fill("[data-inv='agreement_id']", "AGR-BAD")
@@ -204,8 +205,8 @@ def test_an_ownership_total_other_than_100_is_refused_by_the_server_and_nothing_
     assert unexpected(errors, allow=(422,)) == []
 
 
-def test_a_lost_save_response_is_unknown_never_retried_and_committed_once(live_server, session):
-    context, page, record, errors = session("rcm-inv-lost")
+def test_a_lost_save_response_is_unknown_never_retried_and_committed_once(live_server, inv_session):
+    context, page, record, errors = inv_session("rcm-inv-lost")
     calls = []
 
     def lose(route):
@@ -228,11 +229,11 @@ def test_a_lost_save_response_is_unknown_never_retried_and_committed_once(live_s
     assert unexpected(errors, net=("ERR_CONNECTION_RESET",)) == []
 
 
-def test_reference_models_are_read_only(live_server, session):
+def test_reference_models_are_read_only(live_server, inv_session):
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.services.project_library_service import ensure_reference_models
 
-    context, page, record, errors = session("rcm-inv-ref")
+    context, page, record, errors = inv_session("rcm-inv-ref")
     ensure_reference_models()
     ref = get_reference_by_template_source("generic_solar_reference")
     open_panel(page, live_server, ref.project_code)
@@ -242,8 +243,8 @@ def test_reference_models_are_read_only(live_server, session):
 
 
 @pytest.mark.parametrize("width", [320, 390, 768, 1440])
-def test_the_panel_fits_every_viewport(live_server, session, width):
-    context, page, record, errors = session(f"rcm-inv-resp-{width}", width=width, height=900)
+def test_the_panel_fits_every_viewport(live_server, inv_session, width):
+    context, page, record, errors = inv_session(f"rcm-inv-resp-{width}", width=width, height=900)
     run_canonical(context, live_server, record.project_code)
     open_panel(page, live_server, record.project_code)
     add_holder(page, 0, "INV-A", "100", "500")

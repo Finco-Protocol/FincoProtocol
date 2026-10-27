@@ -26,8 +26,9 @@
   only), current tariff, the solver budgets (≤ 60 iterations, ≤ 40 model evaluations, 0.01 pp tolerance), the CAS binding.
 * `GET …/solve` — **PREVIEW**: candidate tariff, movement, achieved metric, target error, iterations, evaluations, explored range, typed status
   (`SOLVED`, `TARGET_ALREADY_MET`, unreachable/invalid/failed → no Apply). Mutates nothing; never a Run; discarded if the identity changed.
-* `POST …/apply` — **the only write**: body validated (`extra=forbid`), CSRF signed over session + project (`react-goal-seek-apply-v1`) checked
-  before project resolution, then protected-reference gate, the solve-variable field allow-list, finite positive value, and
+* `POST …/apply` — **the only write**: body validated (`extra=forbid`), CSRF signed over the session and the **exact candidate the server offered**
+  (project, field, value, Working Copy composite hash, workbook version; purpose `react-goal-seek-apply-v1`) checked before project resolution — a changed
+  value, field, hash, version or project, or a token issued to another session, is `403` before any state is read for a write — then protected-reference gate, the solve-variable field allow-list, finite positive value, and
   `WorkbookUpdateService.apply_draft_update` with the composite-hash and workbook-version CAS. Returns the new hash and the **actual** freshness
   state. Stale hash/version → 409 with "NOT applied"; an exception after the writer may have run → `APPLY_OUTCOME_UNKNOWN` (500).
 * UI: an explicit two-step *Apply to Working Copy…* → *Confirm apply*; disabled while this workspace has unsaved edits or a change in progress;
@@ -46,6 +47,18 @@
 | UI figures are the canonical figures | Chromium compares every displayed KPI cell with the adapter response for the same request |
 
 Samples: `api_contracts/sensitivity_*.json`, `goal_seek_*.json`.
+
+## Review of the two state-changing paths' neighbours (`tests/test_model_react_rcm_goal_seek_review_v1.py`)
+
+* **Apply never reuses a stale candidate.** After a solve, a later Working Copy edit (canonical writer), a scenario create + select (the composite identity includes the
+  active scenario), or a contract taking ownership of the price each make the old binding fail with `409 STALE_CONTENT`; the later state is kept and the tariff unchanged.
+  A fresh solve on a contract-owned price offers no Apply (422). A validly signed but forged candidate (zero hash, other field, `nan`, negative, bogus version) still
+  stops at the writer's own barriers (`409`/`422`) — the token and the CAS are independent.
+* **The preview has no side effects**: Working Copy, saved snapshot, Last Run id, Run History and scenarios are compared before/after. Apply records no Run.
+* **Expensive GETs spend engine capacity last.** Strip, matrix and solve refuse without the React header (400), without a session (401), for a non-owner or unknown
+  project (404) and for a protected reference *before* the executor is reached (a counting stub proves zero calls). A busy engine answers once with `429 MODEL_BUSY`
+  (`Retry-After: 5`) after exactly one executor attempt — the server never retries — and nothing changes.
+* Apply is **not** a privileged action: it writes the same single tariff field the ordinary per-field editor can write, through the same CAS writer.
 
 ## Limits
 

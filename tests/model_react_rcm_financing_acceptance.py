@@ -3,6 +3,10 @@
 Real server, synthetic users.  The decisive check is serializer parity: the React typed editor and the Legacy bankability form,
 driven with the same values, send byte-identical configuration documents to the canonical writer.  Screenshots go to
 ``$RCM_SCREENSHOT_DIR`` as ``rcm-financing-*.png``.
+
+
+Not collected by pytest: ``tests/test_model_workspace_consolidation_browser.py`` (the existing mandatory Chromium role) imports the
+tests and fixtures below and supplies ``live_server`` / ``browser`` / ``rcm_react_flag``.  No module-level skip lives here.
 """
 from __future__ import annotations
 
@@ -14,26 +18,27 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
 from tests.model_react_wf1_browser_acceptance import run_canonical
 
+__all__ = (
+    "test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated",
+    "test_react_and_legacy_editors_send_byte_identical_configuration_documents",
+    "test_bankability_save_reads_back_and_makes_the_last_run_stale_without_running",
+    "test_obviously_invalid_input_is_stopped_before_any_request_and_the_server_still_validates",
+    "test_a_changed_working_copy_is_refused_and_nothing_is_overwritten",
+    "test_a_lost_save_response_is_unknown_never_retried_and_applied_once",
+    "test_reference_models_show_the_bankability_view_read_only",
+    "test_period_grid_supports_arrow_navigation_and_tsv_paste_as_drafts",
+    "test_senior_facilities_and_sources_uses_show_the_canonical_evidence",
+    "test_every_financing_tab_fits_the_viewport",
+    "fin_session",
+)
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR", "")
 FIELD = "debt.bankability.configuration"
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _react_flag():
-    old = os.environ.get("FINCO_MODEL_REACT_V1")
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
-    yield
-    if old is None:
-        os.environ.pop("FINCO_MODEL_REACT_V1", None)
-    else:
-        os.environ["FINCO_MODEL_REACT_V1"] = old
-
-
 @pytest.fixture
-def session(live_server, browser):
+def fin_session(live_server, browser, rcm_react_flag):
     from app.auth import COOKIE_NAME, create_session_token
     from app.services.reference_seed_service import create_reference_seeded_project
 
@@ -134,8 +139,8 @@ def captured_value(body: str) -> str:
 
 # ── structure ──────────────────────────────────────────────────────────────
 
-def test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated(live_server, session):
-    context, page, record, errors = session("rcm-fin-struct")
+def test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated(live_server, fin_session):
+    context, page, record, errors = fin_session("rcm-fin-struct")
     open_tab(page, live_server, record.project_code, "overview")
     assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Debt terms", "Overview", "Bankability", "Senior facilities", "Sources & uses", "Investors & sponsor"]
     assert page.locator("[data-senior-pricing='FLAT']").count() == 1 and page.locator("[data-senior-dscr='FLAT_SCALAR']").count() == 1
@@ -159,8 +164,8 @@ def test_financing_workspace_has_the_six_sections_with_authority_and_closed_stru
 
 # ── serializer parity with the Legacy editor ───────────────────────────────
 
-def test_react_and_legacy_editors_send_byte_identical_configuration_documents(live_server, session):
-    context, page, record, errors = session("rcm-fin-parity")
+def test_react_and_legacy_editors_send_byte_identical_configuration_documents(live_server, fin_session):
+    context, page, record, errors = fin_session("rcm-fin-parity")
     n = len(studio(context, live_server, record.project_code)["bankability"]["periods"])
     assert n >= 10
     # Legacy form
@@ -196,8 +201,8 @@ def test_react_and_legacy_editors_send_byte_identical_configuration_documents(li
 
 # ── real Save, read-back, STALE ────────────────────────────────────────────
 
-def test_bankability_save_reads_back_and_makes_the_last_run_stale_without_running(live_server, session):
-    context, page, record, errors = session("rcm-fin-save")
+def test_bankability_save_reads_back_and_makes_the_last_run_stale_without_running(live_server, fin_session):
+    context, page, record, errors = fin_session("rcm-fin-save")
     run_canonical(context, live_server, record.project_code)
     n = len(studio(context, live_server, record.project_code)["bankability"]["periods"])
     open_tab(page, live_server, record.project_code, "bankability")
@@ -231,8 +236,8 @@ def test_bankability_save_reads_back_and_makes_the_last_run_stale_without_runnin
     assert unexpected(errors) == []
 
 
-def test_obviously_invalid_input_is_stopped_before_any_request_and_the_server_still_validates(live_server, session):
-    context, page, record, errors = session("rcm-fin-invalid")
+def test_obviously_invalid_input_is_stopped_before_any_request_and_the_server_still_validates(live_server, fin_session):
+    context, page, record, errors = fin_session("rcm-fin-invalid")
     posts = []
     page.on("request", lambda r: posts.append(r.url) if r.method == "POST" and r.url.endswith("/v2/workbook/update") else None)
     open_tab(page, live_server, record.project_code, "bankability")
@@ -254,8 +259,8 @@ def test_obviously_invalid_input_is_stopped_before_any_request_and_the_server_st
     assert posts == []
 
 
-def test_a_changed_working_copy_is_refused_and_nothing_is_overwritten(live_server, session):
-    context, page, record, errors = session("rcm-fin-stale")
+def test_a_changed_working_copy_is_refused_and_nothing_is_overwritten(live_server, fin_session):
+    context, page, record, errors = fin_session("rcm-fin-stale")
     open_tab(page, live_server, record.project_code, "bankability")
     page.select_option("[data-bank='day_count']", "act_365")
     # another writer changes the draft after this view loaded (canonical route, valid CAS)
@@ -271,8 +276,8 @@ def test_a_changed_working_copy_is_refused_and_nothing_is_overwritten(live_serve
     assert unexpected(errors) == []
 
 
-def test_a_lost_save_response_is_unknown_never_retried_and_applied_once(live_server, session):
-    context, page, record, errors = session("rcm-fin-lost")
+def test_a_lost_save_response_is_unknown_never_retried_and_applied_once(live_server, fin_session):
+    context, page, record, errors = fin_session("rcm-fin-lost")
     open_tab(page, live_server, record.project_code, "bankability")
     calls = []
 
@@ -293,11 +298,11 @@ def test_a_lost_save_response_is_unknown_never_retried_and_applied_once(live_ser
     assert unexpected(errors, net=("ERR_CONNECTION_RESET",)) == []
 
 
-def test_reference_models_show_the_bankability_view_read_only(live_server, session):
+def test_reference_models_show_the_bankability_view_read_only(live_server, fin_session):
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.services.project_library_service import ensure_reference_models
 
-    context, page, record, errors = session("rcm-fin-ref")
+    context, page, record, errors = fin_session("rcm-fin-ref")
     ensure_reference_models()
     ref = get_reference_by_template_source("generic_solar_reference")
     open_tab(page, live_server, ref.project_code, "bankability")
@@ -308,8 +313,8 @@ def test_reference_models_show_the_bankability_view_read_only(live_server, sessi
 
 # ── Excel-like grid ────────────────────────────────────────────────────────
 
-def test_period_grid_supports_arrow_navigation_and_tsv_paste_as_drafts(live_server, session):
-    context, page, record, errors = session("rcm-fin-grid")
+def test_period_grid_supports_arrow_navigation_and_tsv_paste_as_drafts(live_server, fin_session):
+    context, page, record, errors = fin_session("rcm-fin-grid")
     open_tab(page, live_server, record.project_code, "bankability")
     page.select_option("[data-bank='targets_mode']", "periods")
     page.select_option("[data-bank='rates_mode']", "periods")
@@ -331,8 +336,8 @@ def test_period_grid_supports_arrow_navigation_and_tsv_paste_as_drafts(live_serv
 
 # ── read-only evidence tabs ────────────────────────────────────────────────
 
-def test_senior_facilities_and_sources_uses_show_the_canonical_evidence(live_server, session):
-    context, page, record, errors = session("rcm-fin-evidence")
+def test_senior_facilities_and_sources_uses_show_the_canonical_evidence(live_server, fin_session):
+    context, page, record, errors = fin_session("rcm-fin-evidence")
     open_tab(page, live_server, record.project_code, "sources-uses")
     assert page.locator("[data-su-empty='true']").count() == 1                      # NOT_RUN: nothing is estimated
     run_canonical(context, live_server, record.project_code)
@@ -354,8 +359,8 @@ def test_senior_facilities_and_sources_uses_show_the_canonical_evidence(live_ser
 
 
 @pytest.mark.parametrize("width", [320, 390, 768, 1440])
-def test_every_financing_tab_fits_the_viewport(live_server, session, width):
-    context, page, record, errors = session(f"rcm-fin-resp-{width}", width=width, height=900)
+def test_every_financing_tab_fits_the_viewport(live_server, fin_session, width):
+    context, page, record, errors = fin_session(f"rcm-fin-resp-{width}", width=width, height=900)
     run_canonical(context, live_server, record.project_code)
     for tab in ("overview", "bankability", "facilities", "sources-uses"):
         open_tab(page, live_server, record.project_code, tab)

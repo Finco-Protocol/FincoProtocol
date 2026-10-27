@@ -248,22 +248,61 @@ def test_apply_equals_the_legacy_apply_on_a_twin_project(with_sensitivity):
     assert {k: v for k, v in a.items() if k not in volatile} == {k: v for k, v in b.items() if k not in volatile}   # identical draft state
 
 
-@pytest.mark.parametrize("mutate,code,status", [
-    (lambda r, b: {"csrf_token": ""}, "CSRF_INVALID", 403),
-    (lambda r, b: {"csrf_token": b["csrf_token"][:-4] + "0000"}, "CSRF_INVALID", 403),
-    (lambda r, b: {"project": "other-project"}, "CSRF_INVALID", 403),                      # token is bound to the project
-    (lambda r, b: {"content_hash": "0" * 64}, "STALE_CONTENT", 409),
-    (lambda r, b: {"field_id": "debt.senior.gearing_pct"}, "FIELD_NOT_PERMITTED", 422),
-    (lambda r, b: {"value": "nan"}, "VALUE_INVALID", 422),
-    (lambda r, b: {"value": "-3"}, "VALUE_INVALID", 422),
-    (lambda r, b: {"workbook_version": "bogus"}, "VERSION_MISMATCH", 409),
+def _session_request(env):
+    return SimpleNamespace(cookies=dict(env.client.cookies), state=SimpleNamespace())
+
+
+def _signed(env, record, binding, **over):
+    """A body whose token is VALID for exactly the (possibly forged) candidate it carries — the writer's own barriers must still hold."""
+    from app.v2.react_goal_seek import PURPOSE, _candidate
+    from app.workbook.financing_csrf import issue_token
+
+    body = apply_body(record, binding, **over)
+    body["csrf_token"] = issue_token(_session_request(env), _candidate(body["project"], body["field_id"], body["value"],
+                                                                      body["content_hash"], body["workbook_version"]), purpose=PURPOSE)
+    return body
+
+
+@pytest.mark.parametrize("mutate", [
+    {"csrf_token": ""},
+    {"project": "other-project"},                          # the token is bound to the offered candidate, project included
+    {"content_hash": "0" * 64},
+    {"field_id": "debt.senior.gearing_pct"},
+    {"value": "123.456"},                                  # a value the server never offered
+    {"workbook_version": "bogus"},
 ])
-def test_apply_refusals_leave_the_working_copy_unchanged(with_sensitivity, mutate, code, status):
+def test_a_tampered_candidate_is_refused_before_any_state_is_touched(with_sensitivity, mutate):
     env = with_sensitivity
     record = env.create()
     binding, _ = solved_binding(env, record)
     before = state(record)
-    response = env.client.post(f"{BASE}/apply", json=apply_body(record, binding, **mutate(record, binding)))
+    response = env.client.post(f"{BASE}/apply", json=apply_body(record, binding, **mutate))
+    assert response.status_code == 403 and response.json()["code"] == "CSRF_INVALID", response.text
+    assert state(record) == before
+
+
+def test_a_truncated_token_is_refused(with_sensitivity):
+    env = with_sensitivity
+    record = env.create()
+    binding, _ = solved_binding(env, record)
+    before = state(record)
+    response = env.client.post(f"{BASE}/apply", json=apply_body(record, binding, csrf_token=binding["csrf_token"][:-4] + "0000"))
+    assert response.status_code == 403 and response.json()["code"] == "CSRF_INVALID" and state(record) == before
+
+
+@pytest.mark.parametrize("mutate,code,status", [
+    ({"content_hash": "0" * 64}, "STALE_CONTENT", 409),
+    ({"field_id": "debt.senior.gearing_pct"}, "FIELD_NOT_PERMITTED", 422),
+    ({"value": "nan"}, "VALUE_INVALID", 422),
+    ({"value": "-3"}, "VALUE_INVALID", 422),
+    ({"workbook_version": "bogus"}, "VERSION_MISMATCH", 409),
+])
+def test_the_writer_barriers_hold_even_for_a_validly_signed_forged_candidate(with_sensitivity, mutate, code, status):
+    env = with_sensitivity
+    record = env.create()
+    binding, _ = solved_binding(env, record)
+    before = state(record)
+    response = env.client.post(f"{BASE}/apply", json=_signed(env, record, binding, **mutate))
     assert response.status_code == status and response.json()["code"] == code, response.text
     assert state(record) == before
 

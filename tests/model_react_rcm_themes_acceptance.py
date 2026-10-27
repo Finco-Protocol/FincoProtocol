@@ -1,6 +1,10 @@
 """RC-M — every new surface stays legible (WCAG AA text contrast, no page overflow) in every selectable theme.
 
 Uses the same contrast probe as the Overnight B theme acceptance.  Disabled controls are exempt, as in WCAG.
+
+
+Not collected by pytest: ``tests/test_model_workspace_consolidation_browser.py`` (the existing mandatory Chromium role) imports the
+tests and fixtures below and supplies ``live_server`` / ``browser`` / ``rcm_react_flag``.  No module-level skip lives here.
 """
 from __future__ import annotations
 
@@ -8,26 +12,15 @@ import os
 
 import pytest
 
-from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
 from tests.model_react_overnight_b_acceptance import CONTRAST_JS, THEMES
 from tests.model_react_wf1_browser_acceptance import run_canonical
 
+__all__ = ("test_new_surfaces_are_legible_in_every_theme",)
 TEXT = ("h1,h2,h3,h4,label,p,li,button:not(:disabled),a,th,td,dt,dd,legend,summary,"
         "select:not(:disabled),input:not(:disabled):not([type=checkbox])")
 SELECTOR = ", ".join(f"{scope} :is({TEXT})" for scope in (".rcm-wizard", ".rcm-analysis", ".rcm-fin")) + \
     ", .rcm-tabs button, .rcm-new-project-cta, .fm-workspace-bar a, .rcm-tag, .rcm-badge, .rcm-chip"
 HDR = {"X-Finco-React-Request": "1"}
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _react_flag():
-    old = os.environ.get("FINCO_MODEL_REACT_V1")
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
-    yield
-    if old is None:
-        os.environ.pop("FINCO_MODEL_REACT_V1", None)
-    else:
-        os.environ["FINCO_MODEL_REACT_V1"] = old
 
 
 def check(page, label):
@@ -38,7 +31,7 @@ def check(page, label):
     assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1"), f"{label}: horizontal page scroll"
 
 
-def test_new_surfaces_are_legible_in_every_theme(live_server, browser):
+def test_new_surfaces_are_legible_in_every_theme(live_server, browser, rcm_react_flag):
     from app.auth import COOKIE_NAME, create_session_token
     from app.services.reference_seed_service import create_reference_seeded_project
 

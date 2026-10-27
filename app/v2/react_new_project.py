@@ -20,12 +20,15 @@ factory); Storage/BESS and any other release-closed vertical is refused; nothing
 ambiguous Create is never retried by this module — the client reconciles by request id and otherwise
 fails closed to "refresh the Library".
 
-Idempotency (documented limit): the request id is stamped into the new project's ``replay_metadata`` with
-the canonical ``update_project_record`` AFTER the project exists.  A replay of the same request id then
-returns the existing project instead of creating another.  A crash in the window between the two writes
-leaves a project without a stamp; that outcome is reported to the client as *unknown* (never as "not
-created").  A fully atomic idempotent create needs a change to the protected creation writers and is an
-owner-gated item (docs/react_migration/rc_m_integrated/08_OPEN_OWNER_AUTHORIZATIONS.md).
+Idempotency: a durable claim ledger (``app.v2.react_request_claims``, one atomic claim row keyed on ``(user, request id)`` in the shared
+database) is decided BEFORE the canonical writer runs, so simultaneous POSTs of one request id — also across separate server
+processes — produce at most one working copy.  The claim is finished with the project code afterwards and the request id is also
+stamped into the project's ``replay_metadata`` as a secondary reconciliation aid.  A crash after the claim leaves it ``CLAIMED``:
+every later request with that id reports an *unknown* outcome (503) and creates nothing; a claim is never reclaimed, overwritten
+or retried automatically.  Limits, stated plainly: the project row and the claim are two writes, not one transaction, and the
+Legacy ``/projects/create`` is not fenced.  Exactly-once at the writer needs a change to the protected creation writers and is an
+owner-gated item (docs/react_migration/rc_m_integrated/08_OPEN_OWNER_AUTHORIZATIONS.md).  This surface is therefore NOT labelled
+production-ready.
 
 Feature flag: the same ``FINCO_MODEL_REACT_V1`` gate as the rest of the React workspace.
 """
@@ -33,7 +36,6 @@ from __future__ import annotations
 
 import math
 import re
-import threading
 from typing import Any, Optional
 
 from fastapi import APIRouter, Request
@@ -41,6 +43,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.auth import check_demo_rate_limit, resolve_request_session, validate_csrf_token
+from app.v2 import react_request_claims as claims
 from app.v2.react_poc_router import react_poc_enabled
 from app.workbook.financing_csrf import extract_bound_token, issue_token
 
@@ -69,20 +72,8 @@ _CAPACITY_LABEL = {
     "ev_charging": "Charging capacity (MW)",
 }
 
-_locks_guard = threading.Lock()
-_request_locks: dict[str, threading.Lock] = {}
-
-
 def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:
     return JSONResponse(payload, status_code=status, headers={"Cache-Control": "no-store"})
-
-
-def _lock_for(request_id: str) -> threading.Lock:
-    with _locks_guard:
-        if len(_request_locks) > 512:   # bounded: drop idle locks only
-            for key in [k for k, v in _request_locks.items() if not v.locked()]:
-                _request_locks.pop(key, None)
-        return _request_locks.setdefault(request_id, threading.Lock())
 
 
 class CreateBody(BaseModel):
@@ -258,12 +249,22 @@ async def react_new_project_preview(request: Request, name: str = "", technology
                   "vertical": cap, "writes_nothing": True})
 
 
-def _existing_for_request(user_id: str, request_id: str):
+def _stamped_project(user_id: str, request_id: str):
+    """Secondary reconciliation: a project of this user whose ``replay_metadata`` carries the request id."""
     from app.persistence.projects_repository import list_project_records
 
     for record in list_project_records(user_id=user_id, include_archived=True):
         stamp = (getattr(record, "replay_metadata", None) or {}).get(REQUEST_STAMP_KEY)
         if isinstance(stamp, dict) and stamp.get("request_id") == request_id:
+            return record
+    return None
+
+
+def _project_by_code(user_id: str, code: str):
+    from app.persistence.projects_repository import list_project_records
+
+    for record in list_project_records(user_id=user_id, include_archived=True):
+        if record.project_code == code:
             return record
     return None
 
@@ -275,6 +276,20 @@ def _project_payload(record) -> dict[str, Any]:
             "workspace_url": f"/v2/model-react/{record.project_code}", "freshness": "NOT_RUN"}
 
 
+def _observed(user_id: str, request_id: str, state: claims.Claim | None):
+    """Map an existing claim (or the legacy stamp) to ``(kind, project record | None)``; never writes."""
+    if state is None:
+        record = _stamped_project(user_id, request_id)
+        return ("done", record) if record is not None else ("none", None)
+    if state.state == claims.DONE:
+        record = _project_by_code(user_id, state.project_code or "")
+        return ("done", record) if record is not None else ("done_missing", None)
+    if state.state == claims.FAILED:
+        return "failed", None
+    record = _stamped_project(user_id, request_id)      # claimed, not finished: the secondary stamp can still prove the outcome
+    return ("done", record) if record is not None else ("in_flight_or_unknown", None)
+
+
 @router.get("/model-react/new-project/status")
 async def react_new_project_status(request: Request, request_id: str = ""):
     user, refused = _gate(request)
@@ -282,11 +297,29 @@ async def react_new_project_status(request: Request, request_id: str = ""):
         return refused
     if not _REQUEST_ID.match(request_id or ""):
         return _json({"ok": False, "code": "REQUEST_ID_INVALID"}, 422)
-    record = _existing_for_request(user.user_id, request_id)
-    if record is None:
-        # Absence is NOT proof that no project will appear (an in-flight request may still commit).
-        return _json({"ok": True, "created": False, "conclusive": False})
-    return _json({"ok": True, "created": True, "conclusive": True, "project": _project_payload(record)})
+    try:
+        kind, record = _observed(user.user_id, request_id, claims.lookup(user.user_id, request_id, PURPOSE))
+    except Exception:  # noqa: BLE001 - fail closed: reconciliation unavailable is an unknown outcome, never "not created"
+        return _json({"ok": False, "code": "STATUS_UNAVAILABLE"}, 503)
+    if kind == "done":
+        return _json({"ok": True, "created": True, "conclusive": True, "project": _project_payload(record)})
+    # Absence is NOT proof that no project will appear (an in-flight request may still commit), and a claimed or failed
+    # request id is unknown by construction: only a recorded project is conclusive.
+    return _json({"ok": True, "created": False, "conclusive": False, "state": kind.upper()})
+
+
+_UNKNOWN_MESSAGE = "Result unknown — refresh the Library before trying again."
+
+
+def _fenced(kind: str, record):
+    """The HTTP outcome of a request id that has already been claimed; creates nothing."""
+    if kind == "done":
+        return _json({"ok": True, "replayed": True, "project": _project_payload(record)})
+    if kind == "done_missing":
+        return _json({"ok": False, "code": "CREATE_OUTCOME_UNKNOWN", "message": _UNKNOWN_MESSAGE}, 503)
+    if kind == "failed":
+        return _json({"ok": False, "code": "REQUEST_ID_CONSUMED", "message": _UNKNOWN_MESSAGE}, 503)
+    return _json({"ok": False, "code": "CREATE_IN_FLIGHT_OR_UNKNOWN", "message": _UNKNOWN_MESSAGE}, 503)
 
 
 @router.post("/model-react/new-project/create")
@@ -307,45 +340,81 @@ async def react_new_project_create(request: Request):
             extract_bound_token(request, body.request_id, body.csrf_token, purpose=PURPOSE)):
         return _json({"ok": False, "code": "CSRF_INVALID"}, 403)
 
+    # Read-only fence check first: a request id that was already claimed never reaches the writer, whatever the body says.
+    try:
+        kind, record = _observed(user.user_id, body.request_id, claims.lookup(user.user_id, body.request_id, PURPOSE))
+    except Exception:  # noqa: BLE001 - the fence is unreadable: fail closed before any write
+        return _json({"ok": False, "code": "CREATE_UNAVAILABLE", "message": "Nothing was created. Try again shortly."}, 503)
+    if kind != "none":
+        return _fenced(kind, record)
+
+    normalised, errors = _validate(body.model_dump())
+    if errors:
+        return _json({"ok": False, "code": "VALIDATION_FAILED", "errors": errors}, 422)
+    cap = _capability(normalised["technology"])
+    if cap["pilot_tier"] != "PILOT_CANDIDATE" and not body.acknowledge_preview:
+        return _json({"ok": False, "code": "PREVIEW_ACKNOWLEDGEMENT_REQUIRED",
+                      "message": "This technology is a PREVIEW with narrower validation. Acknowledge the limitations to continue."}, 409)
+
+    budget = None
     if getattr(user, "is_demo", False):
         allowed, retry_after = check_demo_rate_limit(user.user_id, "project_create")
         if not allowed:
             return _json({"ok": False, "code": "RATE_LIMITED", "retry_after": retry_after}, 429)
+        from app.auth import DEMO_RATE_LIMITS
+        budget = DEMO_RATE_LIMITS["project_create"]       # the same budget, additionally enforced durably across workers
 
-    with _lock_for(body.request_id):
-        replay = _existing_for_request(user.user_id, body.request_id)
-        if replay is not None:
-            return _json({"ok": True, "replayed": True, "project": _project_payload(replay)})
-
-        normalised, errors = _validate(body.model_dump())
-        if errors:
-            return _json({"ok": False, "code": "VALIDATION_FAILED", "errors": errors}, 422)
-        cap = _capability(normalised["technology"])
-        if cap["pilot_tier"] != "PILOT_CANDIDATE" and not body.acknowledge_preview:
-            return _json({"ok": False, "code": "PREVIEW_ACKNOWLEDGEMENT_REQUIRED",
-                          "message": "This technology is a PREVIEW with narrower validation. Acknowledge the limitations to continue."}, 409)
-
-        from app.services.reference_seed_service import create_reference_seeded_project
-
+    try:
+        won = claims.claim(user.user_id, body.request_id, PURPOSE, rate_limit=budget)
+    except Exception:  # noqa: BLE001 - no claim, no write
+        return _json({"ok": False, "code": "CREATE_UNAVAILABLE", "message": "Nothing was created. Try again shortly."}, 503)
+    if won.rate_limited:
+        return _json({"ok": False, "code": "RATE_LIMITED", "retry_after": won.retry_after}, 429)
+    if not won.won:                       # another worker (or an earlier attempt) holds this request id
         try:
-            record = create_reference_seeded_project(
-                user_id=user.user_id, template_source=_TECHNOLOGIES[normalised["technology"]][0],
-                requested_name=normalised["name"], capacity_mw=normalised["capacity_mw"],
-                country_market=normalised["country"])
-        except ValueError as exc:
-            return _json({"ok": False, "code": "CREATE_REFUSED", "message": str(exc)}, 400)
-        except Exception:  # noqa: BLE001 - partial writes are possible: never claim "not created"
-            return _json({"ok": False, "code": "CREATE_OUTCOME_UNKNOWN",
-                          "message": "Result unknown — refresh the Library before trying again."}, 500)
+            kind, record = _observed(user.user_id, body.request_id, won)
+        except Exception:  # noqa: BLE001
+            kind, record = "in_flight_or_unknown", None
+        return _fenced(kind, record)
 
-        stamped = True
-        try:
-            from app.persistence.projects_repository import update_project_record
+    from app.services.reference_seed_service import create_reference_seeded_project
 
-            replay_metadata = dict(getattr(record, "replay_metadata", None) or {})
-            replay_metadata[REQUEST_STAMP_KEY] = {"request_id": body.request_id, "adapter": PURPOSE}
-            stamped = update_project_record(user_id=user.user_id, project_code=record.project_code,
-                                            replay_metadata=replay_metadata) is not None
-        except Exception:  # noqa: BLE001 - the project exists; only its idempotency stamp is missing
-            stamped = False
-        return _json({"ok": True, "replayed": False, "idempotency_recorded": stamped, "project": _project_payload(record)})
+    try:
+        record = create_reference_seeded_project(
+            user_id=user.user_id, template_source=_TECHNOLOGIES[normalised["technology"]][0],
+            requested_name=normalised["name"], capacity_mw=normalised["capacity_mw"],
+            country_market=normalised["country"])
+    except ValueError as exc:
+        _record_failure(user.user_id, body.request_id, "CREATE_REFUSED")
+        return _json({"ok": False, "code": "CREATE_REFUSED", "message": str(exc)}, 400)
+    except Exception:  # noqa: BLE001 - partial writes are possible: never claim "not created"
+        _record_failure(user.user_id, body.request_id, "CREATE_OUTCOME_UNKNOWN")
+        return _json({"ok": False, "code": "CREATE_OUTCOME_UNKNOWN", "message": _UNKNOWN_MESSAGE}, 500)
+
+    recorded = _record_done(user.user_id, body.request_id, record.project_code)
+    stamped = True
+    try:
+        from app.persistence.projects_repository import update_project_record
+
+        replay_metadata = dict(getattr(record, "replay_metadata", None) or {})
+        replay_metadata[REQUEST_STAMP_KEY] = {"request_id": body.request_id, "adapter": PURPOSE}
+        stamped = update_project_record(user_id=user.user_id, project_code=record.project_code,
+                                        replay_metadata=replay_metadata) is not None
+    except Exception:  # noqa: BLE001 - the project exists; only the secondary stamp is missing
+        stamped = False
+    return _json({"ok": True, "replayed": False, "idempotency_recorded": recorded, "stamp_recorded": stamped,
+                  "project": _project_payload(record)})
+
+
+def _record_done(user_id: str, request_id: str, project_code: str) -> bool:
+    try:
+        return claims.finish(user_id, request_id, PURPOSE, project_code)
+    except Exception:  # noqa: BLE001 - the claim stays CLAIMED (unknown for replays); the project exists
+        return False
+
+
+def _record_failure(user_id: str, request_id: str, code: str) -> None:
+    try:
+        claims.fail(user_id, request_id, PURPOSE, code)
+    except Exception:  # noqa: BLE001 - the claim stays CLAIMED, which already means "unknown"
+        pass

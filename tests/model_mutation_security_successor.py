@@ -188,6 +188,8 @@ RC_M_SUCCESSORS={
     "frontend/src/app/WorkspaceView.tsx":"1f5e9756b527e8e5b9ca8d15e1d261c93a8f26a6",
     "static/react/finco-react.css":"add7ddc5f4c3cc2abf3c348eb3b7eca8f415151c",
     "static/react/finco-react.js":"b99bf91af211fe4139ec4215ac50c61a12876e83",
+    # the existing mandatory Chromium role now also imports the RC-M acceptance bodies (additive tail only; no collection-time skip)
+    "tests/test_model_workspace_consolidation_browser.py":"cf8dbfe39e31a4718a0af2da458ae919ca8a7fab",
 }
 
 ROUTES={

@@ -13,7 +13,7 @@ Endpoints:
 * ``GET  /model-react/analysis/goal-seek/catalog`` — metrics, solve variable, current tariff, budgets and availability.
 * ``GET  /model-react/analysis/goal-seek/solve``   — PREVIEW only (read-only, ephemeral): the candidate tariff and its numerical
   evidence.  It never mutates the Working Copy, never writes Run History / Last Run and is never presented as committed.
-* ``POST /model-react/analysis/goal-seek/apply``   — the only write; session + signed project-bound CSRF + CAS.  It makes the
+* ``POST /model-react/analysis/goal-seek/apply``   — the only write; session + signed CSRF bound to the exact offered candidate + CAS.  It makes the
   Last Run STALE (the Run is a separate, deliberate action).
 
 The solve spends executor capacity, so it requires the ``X-Finco-React-Request: 1`` header (not sendable cross-site without a CORS
@@ -21,6 +21,7 @@ preflight).  Feature flag: ``FINCO_MODEL_REACT_V1``.
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 from dataclasses import replace as dc_replace
@@ -300,8 +301,20 @@ async def react_goal_seek_solve(request: Request, project: str, target_metric: s
         payload["apply"] = {"field_id": result.solve_field_id, "value": repr(float(result.solved_input_value)),
                             "content_hash": content_after or content_before, "workbook_version": workbook_version,
                             "target_metric": metric.key, "target_value": str(target_pct),
-                            "csrf_token": issue_token(request, record.project_code, purpose=PURPOSE)}
+                            "csrf_token": issue_token(
+                                request, _candidate(record.project_code, result.solve_field_id, repr(float(result.solved_input_value)),
+                                                    content_after or content_before, workbook_version), purpose=PURPOSE)}
     return _json(payload)
+
+
+def _candidate(project: str, field_id: str, value: str, content_hash: str, workbook_version: str) -> str:
+    """The CSRF resource: the exact candidate the server offered (project, field, value, Working Copy identity, workbook version).
+
+    The token is therefore valid only for the one solve result it was issued with: a changed value, a different project, a later
+    Working Copy or scenario (different composite hash) or another workbook version is refused (403) before any state is read
+    for a write.  The canonical composite-hash CAS in the writer remains the second, independent freshness barrier.
+    """
+    return json.dumps([project, field_id, value, content_hash, workbook_version], separators=(",", ":"))
 
 
 class ApplyBody(BaseModel):
@@ -326,7 +339,8 @@ async def react_goal_seek_apply(request: Request):
         body = ApplyBody.model_validate(await request.json())
     except (ValidationError, ValueError, TypeError):
         return _json({"ok": False, "code": "BODY_INVALID"}, 400)
-    if not validate_csrf_token(extract_bound_token(request, body.project, body.csrf_token, purpose=PURPOSE)):
+    if not validate_csrf_token(extract_bound_token(request, _candidate(body.project, body.field_id, body.value, body.content_hash,
+                                                                  body.workbook_version), body.csrf_token, purpose=PURPOSE)):
         return _json({"ok": False, "code": "CSRF_INVALID"}, 403)
 
     from app.persistence.projects_repository import resolve_accessible_project

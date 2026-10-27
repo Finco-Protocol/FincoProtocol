@@ -280,7 +280,7 @@ def test_a_server_failure_is_reported_as_unknown_never_as_not_created(env, monke
     assert response.status_code == 500 and response.json()["code"] == "CREATE_OUTCOME_UNKNOWN"
     assert "Result unknown" in response.json()["message"]
     status = env.client.get(f"{BASE}/status", params={"request_id": opts["request_id"]}).json()
-    assert status == {"ok": True, "created": False, "conclusive": False}
+    assert status == {"ok": True, "created": False, "conclusive": False, "state": "FAILED"}
 
 
 def test_status_reconciles_a_created_request_and_is_owner_scoped(env):

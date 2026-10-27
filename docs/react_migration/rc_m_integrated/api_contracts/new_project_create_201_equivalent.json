@@ -9,5 +9,6 @@
     "template_source": "generic_solar_reference",
     "workspace_url": "/v2/model-react/contract-solar",
     "freshness": "NOT_RUN"
-  }
+  },
+  "stamp_recorded": true
 }

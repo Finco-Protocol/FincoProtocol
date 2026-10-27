@@ -11,10 +11,11 @@ Like WF-09 and RC-7B each is admitted ONLY while its own exact content and struc
   * the module is byte-identical to the reviewed blob pinned below (any edit fails closed until re-reviewed);
   * the single POST handler authenticates the session first, then applies ONE explicit
     ``if ... not validate_csrf_token(extract_bound_token(..., purpose=PURPOSE))`` gate that answers 403, BEFORE project resolution,
-    demo rate limit, replay lookup, field validation and every writer (the token is a JSON field, so the body is parsed first and
+    demo rate limit, fence read, field validation and every writer (the token is a JSON field, so the body is parsed first and
     refused as 400 on any shape error without touching state);
   * the token is the signed, session-and-resource-bound one under its own purpose;
-  * persistence is reached ONLY through the named canonical writer(s), each called exactly once, from the POST handler;
+  * persistence is reached ONLY through the named writer(s) — the durable request-id claim and the canonical creator/CAS writer —
+    each called exactly once, from the POST handler, in the reviewed order (fence read, validation, claim, writer);
   * every other route is a GET; no SQL, cursor, workspace-writer or Run-recording reference.
 
 This is a REVIEW PROPOSAL.  It does not authorise a merge; the independent reviewer must still approve it and re-pin a module if it
@@ -34,23 +35,26 @@ COMMON_FORBIDDEN = (".execute(", "get_cursor", "INSERT", "UPDATE ", "DELETE ", "
 # LITERAL REVIEW PINS of each module's git blob (not computed at runtime from a mutable baseline).
 SPECS = {
     "app/v2/react_new_project.py": {
-        "blob": "2f8fe135a19a2f027b38bd3fe85fdd2ede6794df",
+        "blob": "aa30da89fada5f9616666927b62ba4351acd5ceb",
         "handler": "react_new_project_create", "path": "/model-react/new-project/create",
         "reads": [("react_new_project_options", "get", "/model-react/new-project/options"),
                   ("react_new_project_preview", "get", "/model-react/new-project/preview"),
                   ("react_new_project_status", "get", "/model-react/new-project/status")],
         "auth": "_gate", "gate_token": "body.request_id",
-        "later": {"demo rate limit": "check_demo_rate_limit", "replay lookup": "_existing_for_request", "field validation": "_validate",
-                  "creation writer": "create_reference_seeded_project", "idempotency stamp": "update_project_record"},
-        "writers": ("create_reference_seeded_project", "update_project_record"),
+        "later": {"demo rate limit": "check_demo_rate_limit", "fence read": "_observed", "field validation": "_validate",
+                  "durable claim": "claim", "creation writer": "create_reference_seeded_project", "idempotency stamp": "update_project_record"},
+        # the durable claim is decided after every refusal path and strictly BEFORE the canonical creator; the stamp is last
+        "order": ("_observed", "_validate", "check_demo_rate_limit", "claim", "create_reference_seeded_project", "update_project_record"),
+        "writers": ("claim", "create_reference_seeded_project", "update_project_record"),
         "forbidden": COMMON_FORBIDDEN + ("run_project",),
     },
     "app/v2/react_goal_seek.py": {
-        "blob": "fd1e8173ec3d9a962f9246eba78b12401fd9d070",
+        "blob": "4cf820e813f6da18893948b0c9a4a31afefc42b7",
         "handler": "react_goal_seek_apply", "path": "/model-react/analysis/goal-seek/apply",
         "reads": [("react_goal_seek_catalog", "get", "/model-react/analysis/goal-seek/catalog"),
                   ("react_goal_seek_solve", "get", "/model-react/analysis/goal-seek/solve")],
-        "auth": "resolve_request_session", "gate_token": "body.project",
+        "auth": "resolve_request_session",
+        "gate_token": "_candidate(body.project, body.field_id, body.value, body.content_hash, body.workbook_version)",
         "later": {"project resolution": "resolve_accessible_project", "workspace read": "get_workspace_state",
                   "canonical CAS writer": "apply_draft_update"},
         "writers": ("apply_draft_update",),
@@ -122,6 +126,9 @@ def violations(path: str, source: str, *, check_pin: bool = True) -> list[str]:
             nodes = _calls(fn, name)
             if not nodes or any(n.lineno < check.lineno for n in nodes):
                 errors.append(f"CSRF check must precede the {label}")
+        firsts = [min((n.lineno for n in _calls(fn, name)), default=0) for name in spec.get("order", ())]
+        if firsts and (0 in firsts or firsts != sorted(firsts) or len(set(firsts)) != len(firsts)):
+            errors.append("handler step order differs from the reviewed fence-then-claim-then-write order")
         for writer in spec["writers"]:
             elsewhere = any(len(_calls(f, writer)) for name, f in fns.items() if name != spec["handler"])
             sync_elsewhere = any(len(_calls(f, writer)) for f in tree.body if isinstance(f, ast.FunctionDef))

@@ -3,6 +3,10 @@
 Runs against the real server (main_web) with synthetic users.  Every figure the wizard shows is compared with the
 server's own canonical reads; nothing is asserted from hard-coded financial values.  Screenshots go to
 ``$RCM_SCREENSHOT_DIR`` (when set) as ``rcm-*.png``.
+
+
+Not collected by pytest: ``tests/test_model_workspace_consolidation_browser.py`` (the existing mandatory Chromium role) imports the
+tests and fixtures below and supplies ``live_server`` / ``browser`` / ``rcm_react_flag``.  No module-level skip lives here.
 """
 from __future__ import annotations
 
@@ -12,26 +16,29 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
 
+__all__ = (
+    "test_new_project_is_prominent_in_the_library_and_the_global_navigation",
+    "test_the_global_navigation_link_opens_the_wizard_from_a_workspace",
+    "test_pilot_candidate_wizard_creates_exactly_one_not_run_working_copy",
+    "test_wizard_created_and_directly_created_projects_have_identical_effective_inputs",
+    "test_preview_vertical_needs_an_explicit_acknowledgement",
+    "test_double_clicking_create_creates_one_project",
+    "test_a_lost_response_after_commit_is_reconciled_without_a_second_project",
+    "test_a_lost_request_fails_closed_without_a_retry_control_and_survives_reload",
+    "test_an_expired_security_token_is_refused_and_nothing_is_created",
+    "test_keyboard_only_flow_reaches_review",
+    "test_every_step_fits_the_viewport_with_usable_touch_targets",
+    "test_wizard_renders_in_every_selectable_theme",
+    "np_session",
+)
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR", "")
 VIEWPORTS = (320, 390, 768, 1440)
 NEW = "#new-project"
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _react_flag():
-    old = os.environ.get("FINCO_MODEL_REACT_V1")
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
-    yield
-    if old is None:
-        os.environ.pop("FINCO_MODEL_REACT_V1", None)
-    else:
-        os.environ["FINCO_MODEL_REACT_V1"] = old
-
-
 @pytest.fixture
-def session(live_server, browser):
+def np_session(live_server, browser, rcm_react_flag):
     from app.auth import COOKIE_NAME, create_session_token
 
     contexts = []
@@ -118,8 +125,8 @@ def wait_workspace(page, base, project_pattern=None):
 
 # ── entry points ───────────────────────────────────────────────────────────
 
-def test_new_project_is_prominent_in_the_library_and_the_global_navigation(live_server, session):
-    context, page, errors = session("rcm-entry")
+def test_new_project_is_prominent_in_the_library_and_the_global_navigation(live_server, np_session):
+    context, page, errors = np_session("rcm-entry")
     page.goto(f"{live_server}/v2/model-react/")
     cta = page.locator("[data-new-project-cta='true']")
     cta.wait_for()
@@ -137,12 +144,12 @@ def test_new_project_is_prominent_in_the_library_and_the_global_navigation(live_
     assert errors == []
 
 
-def test_the_global_navigation_link_opens_the_wizard_from_a_workspace(live_server, session):
+def test_the_global_navigation_link_opens_the_wizard_from_a_workspace(live_server, np_session):
     from app.services.reference_seed_service import create_reference_seeded_project
 
     uid = "rcm-nav"
     record = create_reference_seeded_project(user_id=uid, template_source="generic_solar_reference", requested_name="RCM nav", capacity_mw=20.0)
-    context, page, errors = session(uid)
+    context, page, errors = np_session(uid)
     page.goto(f"{live_server}/v2/model-react/{record.project_code}")
     page.wait_for_selector("[data-nav-new-project='true']")
     page.locator("[data-nav-new-project='true']").click()
@@ -154,9 +161,9 @@ def test_the_global_navigation_link_opens_the_wizard_from_a_workspace(live_serve
 # ── Solar / Wind end to end ────────────────────────────────────────────────
 
 @pytest.mark.parametrize("key,label,country", [("solar", "Solar", "XA"), ("wind", "Wind", "XB")])
-def test_pilot_candidate_wizard_creates_exactly_one_not_run_working_copy(live_server, session, key, label, country):
+def test_pilot_candidate_wizard_creates_exactly_one_not_run_working_copy(live_server, np_session, key, label, country):
     uid = f"rcm-{key}"
-    context, page, errors = session(uid)
+    context, page, errors = np_session(uid)
     options = context.request.get(f"{live_server}/v2/model-react/new-project/options").json()
     canon = {t["key"]: t for t in options["technologies"]}[key]
     open_wizard(page, live_server)
@@ -207,12 +214,12 @@ def test_pilot_candidate_wizard_creates_exactly_one_not_run_working_copy(live_se
     assert unexpected(errors, allow=(422,)) == []          # the one 422 is the deliberately invalid step 2
 
 
-def test_wizard_created_and_directly_created_projects_have_identical_effective_inputs(live_server, session):
+def test_wizard_created_and_directly_created_projects_have_identical_effective_inputs(live_server, np_session):
     from app.persistence.workspace_repository import get_workspace_state
     from app.services.reference_seed_service import create_reference_seeded_project
 
     uid = "rcm-parity"
-    context, page, errors = session(uid)
+    context, page, errors = np_session(uid)
     open_wizard(page, live_server)
     go_to_review(page, "solar", "RCM Parity Wizard", capacity=33, country="DE")
     page.locator("[data-wizard-create]").click()
@@ -230,9 +237,9 @@ def test_wizard_created_and_directly_created_projects_have_identical_effective_i
 # ── preview verticals ──────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("key", ["data_center", "ev_charging"])
-def test_preview_vertical_needs_an_explicit_acknowledgement(live_server, session, key):
+def test_preview_vertical_needs_an_explicit_acknowledgement(live_server, np_session, key):
     uid = f"rcm-{key}"
-    context, page, errors = session(uid)
+    context, page, errors = np_session(uid)
     open_wizard(page, live_server)
     pick(page, key)
     assert page.locator(f"[data-tech-card='{key}'] [data-tier]").get_attribute("data-tier") == "PREVIEW"
@@ -250,9 +257,9 @@ def test_preview_vertical_needs_an_explicit_acknowledgement(live_server, session
 
 # ── duplicate / lost-response safety ───────────────────────────────────────
 
-def test_double_clicking_create_creates_one_project(live_server, session):
+def test_double_clicking_create_creates_one_project(live_server, np_session):
     uid = "rcm-double"
-    context, page, errors = session(uid)
+    context, page, errors = np_session(uid)
     posts = []
     page.on("request", lambda r: posts.append(r.url) if r.method == "POST" and r.url.endswith("/new-project/create") else None)
     open_wizard(page, live_server)
@@ -265,9 +272,9 @@ def test_double_clicking_create_creates_one_project(live_server, session):
     assert errors == []
 
 
-def test_a_lost_response_after_commit_is_reconciled_without_a_second_project(live_server, session):
+def test_a_lost_response_after_commit_is_reconciled_without_a_second_project(live_server, np_session):
     uid = "rcm-lost-after"
-    context, page, errors = session(uid)
+    context, page, errors = np_session(uid)
     calls = []
 
     def lose_response(route):
@@ -284,9 +291,9 @@ def test_a_lost_response_after_commit_is_reconciled_without_a_second_project(liv
     assert errors == [] or all("Failed to load resource" in e for e in errors)
 
 
-def test_a_lost_request_fails_closed_without_a_retry_control_and_survives_reload(live_server, session):
+def test_a_lost_request_fails_closed_without_a_retry_control_and_survives_reload(live_server, np_session):
     uid = "rcm-lost-before"
-    context, page, errors = session(uid)
+    context, page, errors = np_session(uid)
     calls = []
     page.route("**/new-project/create", lambda route: (calls.append(1), route.abort("connectionreset")))
     open_wizard(page, live_server)
@@ -311,9 +318,9 @@ def test_a_lost_request_fails_closed_without_a_retry_control_and_survives_reload
     assert projects_of(uid) == []
 
 
-def test_an_expired_security_token_is_refused_and_nothing_is_created(live_server, session):
+def test_an_expired_security_token_is_refused_and_nothing_is_created(live_server, np_session):
     uid = "rcm-csrf"
-    context, page, errors = session(uid)
+    context, page, errors = np_session(uid)
     open_wizard(page, live_server)
     go_to_review(page, "solar", "RCM Csrf")
 
@@ -333,8 +340,8 @@ def test_an_expired_security_token_is_refused_and_nothing_is_created(live_server
 
 # ── keyboard, responsive and themes ────────────────────────────────────────
 
-def test_keyboard_only_flow_reaches_review(live_server, session):
-    context, page, errors = session("rcm-keyboard")
+def test_keyboard_only_flow_reaches_review(live_server, np_session):
+    context, page, errors = np_session("rcm-keyboard")
     open_wizard(page, live_server)
     page.locator("[data-tech-card='solar']").focus()
     page.keyboard.press("Space")
@@ -350,8 +357,8 @@ def test_keyboard_only_flow_reaches_review(live_server, session):
 
 
 @pytest.mark.parametrize("width", VIEWPORTS)
-def test_every_step_fits_the_viewport_with_usable_touch_targets(live_server, session, width):
-    context, page, errors = session(f"rcm-resp-{width}", width=width, height=900)
+def test_every_step_fits_the_viewport_with_usable_touch_targets(live_server, np_session, width):
+    context, page, errors = np_session(f"rcm-resp-{width}", width=width, height=900)
     page.goto(f"{live_server}/v2/model-react/")
     page.wait_for_selector("[data-library-view='true']")
     no_page_overflow(page)
@@ -374,8 +381,8 @@ def test_every_step_fits_the_viewport_with_usable_touch_targets(live_server, ses
 
 
 @pytest.mark.parametrize("theme", ["g-forest-green-white", "b-slate-teal", "d-high-contrast"])
-def test_wizard_renders_in_every_selectable_theme(live_server, session, theme):
-    context, page, errors = session(f"rcm-theme-{theme}")
+def test_wizard_renders_in_every_selectable_theme(live_server, np_session, theme):
+    context, page, errors = np_session(f"rcm-theme-{theme}")
     open_wizard(page, live_server)
     page.evaluate("t => document.getElementById('finco-react-root').setAttribute('data-fm-theme', t)", theme)
     pick(page, "solar")

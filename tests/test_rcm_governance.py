@@ -1,4 +1,4 @@
-"""RC-M — additive successor layer for the four pinned paths the React adapters changed, and the protected-path scope guard.
+"""RC-M — additive successor layer for the five pinned paths the React adapters changed, and the protected-path scope guard.
 
 Strict negatives only; no activation or Financial-Owner assertion.  The layer lives in ``tests/model_mutation_security_successor.py``
 (``RC_M_SUCCESSORS``) next to the original, FIN-VAL, D-029 and Overnight B layers.
@@ -12,7 +12,8 @@ from tests import model_mutation_security_successor as S
 
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_M_SUCCESSORS
-EXPECTED = {"app/v2/react_workspace_router.py", "frontend/src/app/WorkspaceView.tsx", "static/react/finco-react.css", "static/react/finco-react.js"}
+EXPECTED = {"app/v2/react_workspace_router.py", "frontend/src/app/WorkspaceView.tsx", "static/react/finco-react.css", "static/react/finco-react.js",
+            "tests/test_model_workspace_consolidation_browser.py"}
 
 
 def _git(*args):
@@ -28,7 +29,7 @@ def _earlier(path):
             S.REACT_MVP_CORRECTION_SUCCESSORS.get(path)} - {None}
 
 
-def test_layer_is_exactly_four_additive_paths_and_the_current_sources_are_admitted():
+def test_layer_is_exactly_five_additive_paths_and_the_current_sources_are_admitted():
     assert set(LAYER) == EXPECTED
     assert len(S.BLOBS) == 112 and S.SOURCE_HEAD == "1800bf6092af650f18aa6ae70e9df221797090fd"
     for path, blob in LAYER.items():
@@ -116,3 +117,48 @@ def test_only_the_two_reviewed_adapters_add_a_state_changing_route_and_the_other
         assert not re.search(r"@router\.(post|put|patch|delete)\(", text), module
         assert "validate_csrf_token(" not in text, module
         assert not re.search(r"\b(apply_draft_update|save_agreement|create_reference_seeded_project|update_project_record)\(", text), module
+
+
+# ── RC-M browser acceptance rides the EXISTING mandatory consolidation role ─────────────────────────────────────────────────
+ACCEPTANCE = {lane: f"tests/model_react_rcm_{lane}_acceptance.py" for lane in ("new_project", "analysis", "financing", "investors", "themes")}
+ROLE = "tests/test_model_workspace_consolidation_browser.py"
+
+
+def test_the_consolidation_role_imports_exactly_the_five_acceptance_modules_and_adds_no_wrapper_of_its_own():
+    tail = SOURCES[ROLE][SOURCES[ROLE].index("# RC-M integrated React acceptance"):]
+    assert re.findall(r"^from (tests\.\w+) import (\*|rcm_react_flag)", tail, flags=re.M) == [
+        ("tests.model_react_rcm_support", "rcm_react_flag")] + [(f"tests.model_react_rcm_{lane}_acceptance", "*") for lane in ACCEPTANCE]
+    assert tail.count("def ") == 0 and "importorskip" not in tail and "mark.skip" not in tail     # imports only: no function, no skip
+
+
+@pytest.mark.parametrize("lane", sorted(ACCEPTANCE))
+def test_each_acceptance_module_is_not_collected_alone_exports_exactly_its_tests_and_has_no_skip(lane):
+    import ast
+
+    path = S.ROOT / ACCEPTANCE[lane]
+    assert not path.name.startswith("test_")                                 # pytest never collects it on its own
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    exported = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and n.targets[0].id == "__all__")
+    tests = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")]
+    fixtures = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and any("fixture" in ast.unparse(d) for d in n.decorator_list)]
+    assert sorted(exported) == sorted(tests + fixtures) and len(set(exported)) == len(exported)
+    for forbidden in ("importorskip", "pytest.skip", "mark.skip", "skipif", "xfail", "playwright import", "autouse"):
+        assert forbidden not in source, forbidden
+    # nothing but the role may need a browser at import time
+    assert "from playwright" not in source and "import playwright" not in source
+
+
+def test_every_acceptance_test_name_is_unique_across_the_role_and_the_five_modules():
+    import ast
+
+    names: list[str] = []
+    for path in [ROLE, *ACCEPTANCE.values()]:
+        tree = ast.parse((S.ROOT / path).read_text(encoding="utf-8"))
+        names += [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")]
+    assert len(names) == len(set(names))
+
+
+def test_the_flag_fixture_is_not_autouse_so_it_cannot_leak_into_the_other_role_tests():
+    source = (S.ROOT / "tests/model_react_rcm_support.py").read_text(encoding="utf-8")
+    assert "autouse" not in source and "@pytest.fixture\ndef rcm_react_flag" in source

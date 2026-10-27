@@ -2,6 +2,10 @@
 
 Real server, synthetic users.  Every figure the UI shows is compared with the adapter's own canonical read and, for the write path,
 with the persisted Working Copy and the committed Run.  Screenshots go to ``$RCM_SCREENSHOT_DIR`` as ``rcm-analysis-*.png``.
+
+
+Not collected by pytest: ``tests/test_model_workspace_consolidation_browser.py`` (the existing mandatory Chromium role) imports the
+tests and fixtures below and supplies ``live_server`` / ``browser`` / ``rcm_react_flag``.  No module-level skip lives here.
 """
 from __future__ import annotations
 
@@ -12,26 +16,31 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
 from tests.model_react_wf1_browser_acceptance import run_canonical
 
+__all__ = (
+    "test_analysis_hub_keeps_the_last_run_view_and_adds_the_two_tools",
+    "test_five_point_tariff_sensitivity_shows_the_canonical_results_and_writes_nothing",
+    "test_csv_download_is_the_displayed_table",
+    "test_two_driver_matrix_renders_nine_cells_with_threshold_labels",
+    "test_matrix_5x5_runs_twenty_five_points",
+    "test_busy_engine_is_reported_once_and_never_retried_automatically",
+    "test_cancel_stops_a_running_analysis_and_shows_no_result",
+    "test_reference_models_cannot_run_sensitivity_or_goal_seek",
+    "test_sensitivity_and_goal_seek_fit_every_viewport",
+    "test_goal_seek_preview_apply_stale_then_deliberate_run",
+    "test_goal_seek_unreachable_target_is_typed_and_offers_no_apply",
+    "test_goal_seek_invalid_target_and_missing_target_are_refused_before_any_engine_work",
+    "test_a_lost_apply_response_is_unknown_never_retried_and_applied_once",
+    "test_a_stale_binding_is_refused_and_the_working_copy_is_kept",
+    "an_session",
+)
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR", "")
 HDR = {"X-Finco-React-Request": "1"}
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _react_flag():
-    old = os.environ.get("FINCO_MODEL_REACT_V1")
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
-    yield
-    if old is None:
-        os.environ.pop("FINCO_MODEL_REACT_V1", None)
-    else:
-        os.environ["FINCO_MODEL_REACT_V1"] = old
-
-
 @pytest.fixture
-def session(live_server, browser):
+def an_session(live_server, browser, rcm_react_flag):
     from app.auth import COOKIE_NAME, create_session_token
     from app.services.reference_seed_service import create_reference_seeded_project
 
@@ -90,8 +99,8 @@ def draft_of(record):
 
 # ── Sensitivity ────────────────────────────────────────────────────────────
 
-def test_analysis_hub_keeps_the_last_run_view_and_adds_the_two_tools(live_server, session):
-    context, page, record, errors = session("rcm-an-hub")
+def test_analysis_hub_keeps_the_last_run_view_and_adds_the_two_tools(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-hub")
     page.goto(f"{live_server}/v2/model-react/{record.project_code}#analysis")
     page.wait_for_selector("[data-analysis-tools='true']")
     assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Last Run charts", "Sensitivity", "Goal Seek"]
@@ -108,8 +117,8 @@ def test_analysis_hub_keeps_the_last_run_view_and_adds_the_two_tools(live_server
     assert errors == []
 
 
-def test_five_point_tariff_sensitivity_shows_the_canonical_results_and_writes_nothing(live_server, session):
-    context, page, record, errors = session("rcm-an-strip")
+def test_five_point_tariff_sensitivity_shows_the_canonical_results_and_writes_nothing(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-strip")
     before = draft_of(record)
     open_tool(page, live_server, record.project_code, "sensitivity")
     assert "NOT A RUN" in page.locator("[data-ephemeral-badge='true']").inner_text()
@@ -132,8 +141,8 @@ def test_five_point_tariff_sensitivity_shows_the_canonical_results_and_writes_no
     assert errors == []
 
 
-def test_csv_download_is_the_displayed_table(live_server, session, tmp_path):
-    context, page, record, errors = session("rcm-an-csv")
+def test_csv_download_is_the_displayed_table(live_server, an_session, tmp_path):
+    context, page, record, errors = an_session("rcm-an-csv")
     open_tool(page, live_server, record.project_code, "sensitivity")
     page.locator("[data-sens-run='true']").click()
     page.wait_for_selector("[data-strip-table='true']", timeout=240000)
@@ -146,8 +155,8 @@ def test_csv_download_is_the_displayed_table(live_server, session, tmp_path):
     assert errors == []
 
 
-def test_two_driver_matrix_renders_nine_cells_with_threshold_labels(live_server, session):
-    context, page, record, errors = session("rcm-an-matrix")
+def test_two_driver_matrix_renders_nine_cells_with_threshold_labels(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-matrix")
     open_tool(page, live_server, record.project_code, "sensitivity")
     page.locator("[data-sens-mode='matrix']").click()
     page.select_option("[data-sens-driver-a='true']", "tariff")
@@ -170,8 +179,8 @@ def test_two_driver_matrix_renders_nine_cells_with_threshold_labels(live_server,
     assert errors == []
 
 
-def test_matrix_5x5_runs_twenty_five_points(live_server, session):
-    context, page, record, errors = session("rcm-an-matrix5")
+def test_matrix_5x5_runs_twenty_five_points(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-matrix5")
     open_tool(page, live_server, record.project_code, "sensitivity")
     page.locator("[data-sens-mode='matrix']").click()
     page.select_option("[data-sens-grid='true']", "5")
@@ -182,8 +191,8 @@ def test_matrix_5x5_runs_twenty_five_points(live_server, session):
     assert errors == []
 
 
-def test_busy_engine_is_reported_once_and_never_retried_automatically(live_server, session):
-    context, page, record, errors = session("rcm-an-busy")
+def test_busy_engine_is_reported_once_and_never_retried_automatically(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-busy")
     calls = []
 
     def busy(route):
@@ -201,8 +210,8 @@ def test_busy_engine_is_reported_once_and_never_retried_automatically(live_serve
     assert unexpected(errors, allow=(429,)) == []
 
 
-def test_cancel_stops_a_running_analysis_and_shows_no_result(live_server, session):
-    context, page, record, errors = session("rcm-an-cancel")
+def test_cancel_stops_a_running_analysis_and_shows_no_result(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-cancel")
     page.route("**/analysis/sensitivity/strip*", lambda route: None)        # never answered: the request hangs
     open_tool(page, live_server, record.project_code, "sensitivity")
     page.locator("[data-sens-run='true']").click()
@@ -213,11 +222,11 @@ def test_cancel_stops_a_running_analysis_and_shows_no_result(live_server, sessio
     assert page.locator("[data-sens-run='true']").is_enabled() and page.locator("[data-strip-table='true']").count() == 0
 
 
-def test_reference_models_cannot_run_sensitivity_or_goal_seek(live_server, session):
+def test_reference_models_cannot_run_sensitivity_or_goal_seek(live_server, an_session):
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.services.project_library_service import ensure_reference_models
 
-    context, page, record, errors = session("rcm-an-ref")
+    context, page, record, errors = an_session("rcm-an-ref")
     ensure_reference_models()
     ref = get_reference_by_template_source("generic_solar_reference")
     page.goto(f"{live_server}/v2/model-react/{ref.project_code}#analysis")
@@ -231,8 +240,8 @@ def test_reference_models_cannot_run_sensitivity_or_goal_seek(live_server, sessi
 
 
 @pytest.mark.parametrize("width", [320, 390, 768, 1440])
-def test_sensitivity_and_goal_seek_fit_every_viewport(live_server, session, width):
-    context, page, record, errors = session(f"rcm-an-resp-{width}", width=width, height=900)
+def test_sensitivity_and_goal_seek_fit_every_viewport(live_server, an_session, width):
+    context, page, record, errors = an_session(f"rcm-an-resp-{width}", width=width, height=900)
     open_tool(page, live_server, record.project_code, "sensitivity")
     page.locator("[data-sens-run='true']").click()
     page.wait_for_selector("[data-strip-table='true']", timeout=240000)
@@ -264,8 +273,8 @@ def solve_in_ui(page, target):
     page.wait_for_selector("[data-gs-result]", timeout=300000)
 
 
-def test_goal_seek_preview_apply_stale_then_deliberate_run(live_server, session):
-    context, page, record, errors = session("rcm-an-gs")
+def test_goal_seek_preview_apply_stale_then_deliberate_run(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-gs")
     run_canonical(context, live_server, record.project_code)                       # a committed Run exists -> CURRENT
     open_tool(page, live_server, record.project_code, "goal-seek")
     target = round(base_irr_pct(context, live_server, record) + 0.5, 2)
@@ -305,8 +314,8 @@ def test_goal_seek_preview_apply_stale_then_deliberate_run(live_server, session)
     assert errors == []
 
 
-def test_goal_seek_unreachable_target_is_typed_and_offers_no_apply(live_server, session):
-    context, page, record, errors = session("rcm-an-gs-unreach")
+def test_goal_seek_unreachable_target_is_typed_and_offers_no_apply(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-gs-unreach")
     open_tool(page, live_server, record.project_code, "goal-seek")
     solve_in_ui(page, 95)
     assert page.locator("[data-gs-status='true']").inner_text() != "SOLVED"
@@ -314,8 +323,8 @@ def test_goal_seek_unreachable_target_is_typed_and_offers_no_apply(live_server, 
     assert errors == []
 
 
-def test_goal_seek_invalid_target_and_missing_target_are_refused_before_any_engine_work(live_server, session):
-    context, page, record, errors = session("rcm-an-gs-invalid")
+def test_goal_seek_invalid_target_and_missing_target_are_refused_before_any_engine_work(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-gs-invalid")
     open_tool(page, live_server, record.project_code, "goal-seek")
     assert page.locator("[data-gs-solve='true']").is_disabled()                      # no target, no solve
     page.locator("[data-gs-target='true']").fill("abc")
@@ -325,8 +334,8 @@ def test_goal_seek_invalid_target_and_missing_target_are_refused_before_any_engi
     assert unexpected(errors, allow=(422,)) == []
 
 
-def test_a_lost_apply_response_is_unknown_never_retried_and_applied_once(live_server, session):
-    context, page, record, errors = session("rcm-an-gs-lost")
+def test_a_lost_apply_response_is_unknown_never_retried_and_applied_once(live_server, an_session):
+    context, page, record, errors = an_session("rcm-an-gs-lost")
     open_tool(page, live_server, record.project_code, "goal-seek")
     target = round(base_irr_pct(context, live_server, record) + 0.5, 2)
     solve_in_ui(page, target)
@@ -350,9 +359,9 @@ def test_a_lost_apply_response_is_unknown_never_retried_and_applied_once(live_se
     assert page.locator("[data-gs-applied='true']").count() == 0
 
 
-def test_a_stale_binding_is_refused_and_the_working_copy_is_kept(live_server, session):
+def test_a_stale_binding_is_refused_and_the_working_copy_is_kept(live_server, an_session):
     """The Working Copy changes (another tab) between the solve and the Apply: the CAS refuses and nothing is overwritten."""
-    context, page, record, errors = session("rcm-an-gs-stale")
+    context, page, record, errors = an_session("rcm-an-gs-stale")
     open_tool(page, live_server, record.project_code, "goal-seek")
     target = round(base_irr_pct(context, live_server, record) + 0.5, 2)
     solve_in_ui(page, target)

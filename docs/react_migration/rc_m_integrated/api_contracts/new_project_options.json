@@ -118,227 +118,23 @@
   "countries": [
     {
       "code": "XA",
-      "label": "Generic / World \u2014 Solar (XA)"
+      "label": "Generic / World — Solar (XA)"
     },
     {
       "code": "XB",
-      "label": "Generic / World \u2014 Wind (XB)"
+      "label": "Generic / World — Wind (XB)"
     },
     {
       "code": "XC",
-      "label": "Generic / World \u2014 Storage (XC)"
+      "label": "Generic / World — Storage (XC)"
     },
     {
       "code": "XD",
-      "label": "Generic / World \u2014 Data Center (XD)"
+      "label": "Generic / World — Data Center (XD)"
     },
     {
       "code": "XE",
-      "label": "Generic / World \u2014 EV Charging (XE)"
-    },
-    {
-      "code": "AT",
-      "label": "Austria (AT)"
-    },
-    {
-      "code": "BE",
-      "label": "Belgium (BE)"
-    },
-    {
-      "code": "BG",
-      "label": "Bulgaria (BG)"
-    },
-    {
-      "code": "CA",
-      "label": "Canada (CA)"
-    },
-    {
-      "code": "CL",
-      "label": "Chile (CL)"
-    },
-    {
-      "code": "CN",
-      "label": "China (CN)"
-    },
-    {
-      "code": "CY",
-      "label": "Cyprus (CY)"
-    },
-    {
-      "code": "CZ",
-      "label": "Czechia (CZ)"
-    },
-    {
-      "code": "DK",
-      "label": "Denmark (DK)"
-    },
-    {
-      "code": "DE",
-      "label": "Germany (DE)"
-    },
-    {
-      "code": "ES",
-      "label": "Spain (ES)"
-    },
-    {
-      "code": "EE",
-      "label": "Estonia (EE)"
-    },
-    {
-      "code": "FI",
-      "label": "Finland (FI)"
-    },
-    {
-      "code": "FR",
-      "label": "France (FR)"
-    },
-    {
-      "code": "GB",
-      "label": "United Kingdom (GB)"
-    },
-    {
-      "code": "GR",
-      "label": "Greece (GR)"
-    },
-    {
-      "code": "HR",
-      "label": "Croatia (HR)"
-    },
-    {
-      "code": "HU",
-      "label": "Hungary (HU)"
-    },
-    {
-      "code": "IE",
-      "label": "Ireland (IE)"
-    },
-    {
-      "code": "IN",
-      "label": "India (IN)"
-    },
-    {
-      "code": "IS",
-      "label": "Iceland (IS)"
-    },
-    {
-      "code": "IL",
-      "label": "Israel (IL)"
-    },
-    {
-      "code": "IT",
-      "label": "Italy (IT)"
-    },
-    {
-      "code": "JP",
-      "label": "Japan (JP)"
-    },
-    {
-      "code": "KR",
-      "label": "South Korea (KR)"
-    },
-    {
-      "code": "LT",
-      "label": "Lithuania (LT)"
-    },
-    {
-      "code": "LU",
-      "label": "Luxembourg (LU)"
-    },
-    {
-      "code": "LV",
-      "label": "Latvia (LV)"
-    },
-    {
-      "code": "ME",
-      "label": "Montenegro (ME)"
-    },
-    {
-      "code": "MK",
-      "label": "North Macedonia (MK)"
-    },
-    {
-      "code": "MX",
-      "label": "Mexico (MX)"
-    },
-    {
-      "code": "NL",
-      "label": "Netherlands (NL)"
-    },
-    {
-      "code": "NO",
-      "label": "Norway (NO)"
-    },
-    {
-      "code": "NZ",
-      "label": "New Zealand (NZ)"
-    },
-    {
-      "code": "PL",
-      "label": "Poland (PL)"
-    },
-    {
-      "code": "PT",
-      "label": "Portugal (PT)"
-    },
-    {
-      "code": "RO",
-      "label": "Romania (RO)"
-    },
-    {
-      "code": "RS",
-      "label": "Serbia (RS)"
-    },
-    {
-      "code": "SA",
-      "label": "Saudi Arabia (SA)"
-    },
-    {
-      "code": "SG",
-      "label": "Singapore (SG)"
-    },
-    {
-      "code": "SI",
-      "label": "Slovenia (SI)"
-    },
-    {
-      "code": "SK",
-      "label": "Slovakia (SK)"
-    },
-    {
-      "code": "SE",
-      "label": "Sweden (SE)"
-    },
-    {
-      "code": "CH",
-      "label": "Switzerland (CH)"
-    },
-    {
-      "code": "TR",
-      "label": "T\u00fcrkiye (TR)"
-    },
-    {
-      "code": "AE",
-      "label": "United Arab Emirates (AE)"
-    },
-    {
-      "code": "US",
-      "label": "United States (US)"
-    },
-    {
-      "code": "ZA",
-      "label": "South Africa (ZA)"
-    },
-    {
-      "code": "AR",
-      "label": "Argentina (AR)"
-    },
-    {
-      "code": "AU",
-      "label": "Australia (AU)"
-    },
-    {
-      "code": "BR",
-      "label": "Brazil (BR)"
+      "label": "Generic / World — EV Charging (XE)"
     }
   ],
   "bounds": {
@@ -347,5 +143,6 @@
     "name_max_length": 80
   },
   "request_id": "<32-hex request id>",
-  "csrf_token": "<redacted>"
+  "csrf_token": "<redacted>",
+  "countries_note": "Public evidence sample: only the generic market profiles are shown; the runtime catalogue is unchanged and is served by the endpoint."
 }
