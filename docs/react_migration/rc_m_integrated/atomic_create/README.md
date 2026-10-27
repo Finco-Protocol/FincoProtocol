@@ -23,7 +23,11 @@ production-ready**; the release gate (`FINCO_MODEL_REACT_V1`, default OFF) stays
 
 * On the RC-M tree + patch: 62 New Project tests (33 contract + 19 atomic + 10 multi-process) pass; mutation checks: a non-unique request index fails the two-worker test and the direct-INSERT test; removing
   the seed transaction fails 12 atomic tests.
-* The creation-related regression (132 test files that reference the creation authority) was run on the patched tree — result in `07_TEST_REPORT.md`.
+* The creation-related regression (132 test files that reference the creation authority, 3,867 tests) on the patched tree: 3,863 passed, 3 skipped, 4 failed. Of the four, `test_api_b04_placeholders_not_links` also fails on
+  unmodified `main` (not RC-M's); `test_clone_unexpected_error_{htmx,non_htmx}_returns_500_with_safe_body` caught a real defect of the first patch draft (the keyed refactor made the unkeyed seeded path bypass the public
+  `create_working_copy` that those tests replace) — fixed: the unkeyed path calls the public service exactly as before, and both tests pass; `test_the_correction_changes_no_protected_financial_path_since_the_baseline` fails only
+  on the main-based tree because the patch changes `projects_repository.py`, which that Overnight B guard lists — on a tree that carries #389 the same guard attributes the file through `finval_f01_scope` (admitted by step 3 below),
+  which is how the scratch merge passed it.
 * On **#389 head `d53400a6`**: the four source hunks `git apply --check` cleanly; a merge of the RC-M branch onto that head conflicts only in three pinned-governance files
   (`tests/model_mutation_security_successor.py`, `tests/test_model_mutation_security_successor.py`, `tests/test_model_react_overnight_b_governance.py`; resolved mechanically by keeping both
   successor layers); with the patch applied, F01's own scope/creation/complete/fixture/hash tests, the RC-M governance and the 62 New Project tests pass — **except** four governance

@@ -249,7 +249,7 @@ index b93c23b4..e7c52f4f 100644
  
  def _unique_project_name(user_id: str, base_name: str) -> tuple[str, str]:
 diff --git a/app/services/reference_seed_service.py b/app/services/reference_seed_service.py
-index 9f8dbe73..c29fbefe 100644
+index 9f8dbe73..e7f9f3af 100644
 --- a/app/services/reference_seed_service.py
 +++ b/app/services/reference_seed_service.py
 @@ -292,6 +292,40 @@ def create_seeded_working_copy(user_id: str, source_reference_id: str,
@@ -293,21 +293,26 @@ index 9f8dbe73..c29fbefe 100644
  ):
      """Clone and scale a canonical cloneable reference into a working copy.
  
-@@ -317,9 +351,10 @@ def create_reference_seeded_project(
+@@ -317,9 +351,15 @@ def create_reference_seeded_project(
      pi = _reference_inputs(template_source)
      reference_capacity = float(pi.technical.capacity_mw)
      ratio = float(capacity_mw) / reference_capacity
 -    record = _pls.create_working_copy(
 -        user_id=user_id, source_reference_id=reference.project_id,
 -        requested_name=requested_name.strip())
-+    record, outcome = _pls._create_working_copy(
-+        user_id, reference.project_id, requested_name.strip(), create_request)
++    if create_request is None:      # the unkeyed path calls the public service exactly as before
++        record, outcome = _pls.create_working_copy(
++            user_id=user_id, source_reference_id=reference.project_id,
++            requested_name=requested_name.strip()), "created"
++    else:
++        record, outcome = _pls._create_working_copy(
++            user_id, reference.project_id, requested_name.strip(), create_request)
 +    if outcome != "created":
 +        return record, outcome
      ws = get_workspace_state(user_id, record.project_id)
      if ws is None:
          raise RuntimeError("Working-copy workspace was not initialized.")
-@@ -380,6 +415,8 @@ def create_reference_seeded_project(
+@@ -380,6 +420,8 @@ def create_reference_seeded_project(
  
      profile = snapshot["_reference_seed_profile"]
      with get_cursor() as cur:
@@ -316,7 +321,7 @@ index 9f8dbe73..c29fbefe 100644
          technology = _TECHNOLOGY_BY_TEMPLATE_SOURCE.get(template_source)
          if technology is None:
              raise ValueError(f"Unsupported seed technology for {template_source!r}.")
-@@ -451,7 +488,19 @@ def create_reference_seeded_project(
+@@ -451,7 +493,19 @@ def create_reference_seeded_project(
                          "allocation_weight": float(child.weight),
                      },
                  )

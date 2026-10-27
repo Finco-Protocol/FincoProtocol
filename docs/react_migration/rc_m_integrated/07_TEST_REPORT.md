@@ -32,6 +32,10 @@ Focused run of these plus the pinned governance suites (`test_model_mutation_sec
 * Interim ledger: forcing every claim to win makes **5 of 8** multi-process tests fail (race, both crash tests, isolation, demo budget).
 * Prepared atomic create: a non-unique request index fails the two-worker test and the direct-INSERT test; removing the seed transaction fails 12 atomic tests.
 
+* Prepared atomic create (not applied; `atomic_create/README.md`): regression of the 132 test files that reference the creation authority on the patched tree — 3,863 passed, 3 skipped, 4 failed; one failure is
+  pre-existing on `main`, one is an artefact of the main-based guard (attributed through the F01 scope pin on a tree carrying #389), and two exposed a real defect of the first draft (the unkeyed seeded path bypassed the public
+  `create_working_copy`), which was fixed and re-tested (75 passed in the affected files).
+
 ## Collection governance
 
 Collecting the whole `tests/` tree with Chromium's driver blocked (as in the CI plan environment): `main` 20,085 tests / 66 collection skips; this branch 20,306 tests / **66 collection skips, identical list**.
