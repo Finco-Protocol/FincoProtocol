@@ -53,3 +53,10 @@ Failure behaviour is unchanged: the child returns 124 before importing pytest, n
 * 1.8 s is a judgement anchored on the data above, not a measured guarantee; the evidence is 66 calibrations on one runner class. It can be tightened by the CI owner once more hosted samples exist.
 * The legacy `tools/ci_v3_calibrate.py` command-line record (pilot admission) keeps the all-samples maximum; only the production aggregate uses v2.
 * Nothing here certifies the hosted target runner or changes any financial, native, source-identity, review or security control.
+
+## Survivor diagnostics (integration)
+
+The probe's "calibration left surviving descendants" check is unchanged and still a hard failure. Its message now names every survivor (pid, state, parent, command line,
+read from `/proc` before the kill) at probe exit and after the kill, so a recurrence is attributable. Background: one hosted worker (PR #393, run 40548432605) raised it
+before any calibration sample was written while the container-level cleanup receipt was clean; it did not reproduce in 350 local probes (idle and under CPU load), and the
+original message recorded no process identity, so the survivor could not be identified.

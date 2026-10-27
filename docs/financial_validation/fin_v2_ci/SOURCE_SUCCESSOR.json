@@ -1,0 +1,11 @@
+{
+  "schema_version": "FIN_V2_CI_DIAGNOSTICS_EXACT_SOURCE_V1",
+  "base": "f79e251903621c1a5c88501d51d6971960b612d3",
+  "authorization": "Financial Owner assigned FIN-V2 integration prompt (standing authorization for in-scope CI corrections); diagnostics only, the calibration survivor check is unchanged. Self-generated exact blobs: a review proposal, not an approval.",
+  "source_blobs": {
+    "tests/fin_v2_ci_scope.py": "d160e4e49c1a93430efaeb8d358cdc9eabc8b8b4",
+    "tests/test_ci_v3_calibration_contract_v2.py": "0e6235aaf81c5fdf46c528538a70b7e8a74cc61b",
+    "tests/test_fin_v2_ci_scope.py": "936475bce158b555c0a25ec3984f3b70d089b9a8",
+    "tools/ci_v3_calibrate.py": "ee50936a2063bba35352cd3f56c980864ea95dfb"
+  }
+}
