@@ -1,0 +1,355 @@
+{
+ "data_center": {
+  "authority": "CANONICAL_SENIOR_DEBT_RESULT_READ_ONLY_PROJECTION",
+  "dscr": {
+   "bank_case_distinct_from_base_case": false,
+   "max_abs_bank_minus_base_cfads_keur": 0.0,
+   "reported": {
+    "avg_dscr": 1.3087595779124754,
+    "basis": "BASE_CASE_CFADS",
+    "cfads_series": "tax_and_cfads.cfads_keur",
+    "definition": "base_cfads / senior_debt_service per period",
+    "min_dscr": 1.3,
+    "min_period_index": 4,
+    "periods_counted": 17,
+    "production_basis": "technical.operating_hours_p50 (base-case production)"
+   },
+   "sizing": {
+    "avg_realised_dscr": 1.3087595779124754,
+    "basis": "BANK_SIZING_CASE_CFADS",
+    "cfads_series": "debt_sizing.bank_cfads_keur",
+    "definition": "bank_cfads / senior_debt_service per period",
+    "min_realised_dscr": 1.3,
+    "min_realised_period_index": 4,
+    "periods_counted": 17,
+    "production_yield_scenario_requested": "P90-10y",
+    "target_dscr": 1.3
+   }
+  },
+  "llcr_inputs": {
+   "llcr_ratio": null,
+   "llcr_status": "NOT_COMPUTED_BY_THIS_EVIDENCE",
+   "loan_life_end_candidates": {
+    "actual_payoff_date": "2040-06-30",
+    "actual_payoff_period_index": 20,
+    "contractual_maturity_date": "2043-12-31",
+    "contractual_maturity_period_index": 27
+   },
+   "note": "Loan life for LLCR is an Owner-defined convention; both candidates are recorded."
+  },
+  "project_type": "data_center",
+  "repayment": {
+   "actual_payoff_date": "2040-06-30",
+   "actual_payoff_period_index": 20,
+   "contractual_maturity_date": "2043-12-31",
+   "contractual_maturity_period_index": 27,
+   "contractual_repayment_start_date": "2032-01-01",
+   "contractual_repayment_start_period_index": 4,
+   "days_maturity_minus_payoff": 1279,
+   "first_principal_date": "2032-06-30",
+   "first_principal_period_index": 4,
+   "index_axis": "MODEL_PERIOD_INDEX",
+   "payoff_status": "EXTINGUISHED_BEFORE_CONTRACTUAL_MATURITY",
+   "periods_maturity_minus_payoff": 7,
+   "tolerance_keur": 0.0001
+  },
+  "schema_version": "SENIOR_DEBT_EVIDENCE_V1",
+  "sizing": {
+   "binding_constraint": "DSCR",
+   "binding_constraint_source": "SENIOR_DEBT_RESULT.binding_constraint / SolverDiagnostics",
+   "binding_from_capacities": "DSCR",
+   "binding_label_consistent": true,
+   "capacity_difference_keur": 76919.42215804552,
+   "debt_equals_binding_capacity": true,
+   "debt_size_keur": 58410.96179501392,
+   "debt_sizing_mode": "flat_dscr_sculpted",
+   "dscr_capacity_pass_difference_keur": 0.0,
+   "dscr_debt_capacity_basis": "SOLVER_DIAGNOSTICS_FUNDED_PASS (used in the sizing minimum)",
+   "dscr_debt_capacity_keur": 58410.96179501392,
+   "dscr_debt_capacity_standalone_basis": "PROJECT_FINANCING_RESULT DSCR-only capacity pass (as in financing_evidence.bankability)",
+   "dscr_debt_capacity_standalone_pass_keur": 58410.96179501392,
+   "gearing_basis_keur": 208200.5906970145,
+   "gearing_capacity_project_result_keur": 135330.38395305944,
+   "gearing_debt_capacity_basis": "SOLVER_DIAGNOSTICS (eligible project cost x maximum gearing)",
+   "gearing_debt_capacity_keur": 135330.38395305944,
+   "gearing_ratio": 0.65,
+   "limiting_context": {
+    "first_amortising_period_after_limit": 6,
+    "limiting_bank_cfads_keur": 2328.2736612021854,
+    "limiting_to_peak_cfads_ratio": 0.298399319838265,
+    "window_peak_bank_cfads_keur": 7802.543459094108,
+    "window_peak_period_index": 27
+   },
+   "limiting_nature": "RAMP_UP_INTEREST_COVERAGE",
+   "limiting_rows": [
+    {
+     "bank_cfads_keur": 2328.2736612021854,
+     "bank_sizing_dscr": 1.3,
+     "debt_service_keur": 1790.9797393862964,
+     "interest_keur": 1790.9797393862964,
+     "opening_balance_keur": 58401.5132408575,
+     "period_end_date": "2032-12-31",
+     "period_index": 5,
+     "principal_keur": 0.0
+    }
+   ],
+   "payoff_explanation": "ZERO_AMORTISATION_ROWS_LIMIT_CAPACITY_LATER_DSCR_BUDGET_RETIRES_DEBT_EARLY",
+   "solver_converged": true,
+   "solver_termination_reason": "CONVERGED"
+  },
+  "status": "RECORDED",
+  "units": "kEUR"
+ },
+ "ev_charging": {
+  "authority": "CANONICAL_SENIOR_DEBT_RESULT_READ_ONLY_PROJECTION",
+  "dscr": {
+   "bank_case_distinct_from_base_case": false,
+   "max_abs_bank_minus_base_cfads_keur": 0.0,
+   "reported": {
+    "avg_dscr": 7.838384807439935,
+    "basis": "BASE_CASE_CFADS",
+    "cfads_series": "tax_and_cfads.cfads_keur",
+    "definition": "base_cfads / senior_debt_service per period",
+    "min_dscr": 1.299999999979685,
+    "min_period_index": 15,
+    "periods_counted": 15,
+    "production_basis": "technical.operating_hours_p50 (base-case production)"
+   },
+   "sizing": {
+    "avg_realised_dscr": 7.838384807439935,
+    "basis": "BANK_SIZING_CASE_CFADS",
+    "cfads_series": "debt_sizing.bank_cfads_keur",
+    "definition": "bank_cfads / senior_debt_service per period",
+    "min_realised_dscr": 1.299999999979685,
+    "min_realised_period_index": 15,
+    "periods_counted": 15,
+    "production_yield_scenario_requested": "P90-10y",
+    "target_dscr": 1.3
+   }
+  },
+  "llcr_inputs": {
+   "llcr_ratio": null,
+   "llcr_status": "NOT_COMPUTED_BY_THIS_EVIDENCE",
+   "loan_life_end_candidates": {
+    "actual_payoff_date": "2038-06-30",
+    "actual_payoff_period_index": 16,
+    "contractual_maturity_date": "2040-12-31",
+    "contractual_maturity_period_index": 21
+   },
+   "note": "Loan life for LLCR is an Owner-defined convention; both candidates are recorded."
+  },
+  "project_type": "ev_charging",
+  "repayment": {
+   "actual_payoff_date": "2038-06-30",
+   "actual_payoff_period_index": 16,
+   "contractual_maturity_date": "2040-12-31",
+   "contractual_maturity_period_index": 21,
+   "contractual_repayment_start_date": "2031-01-01",
+   "contractual_repayment_start_period_index": 2,
+   "days_maturity_minus_payoff": 915,
+   "first_principal_date": "2031-06-30",
+   "first_principal_period_index": 2,
+   "index_axis": "MODEL_PERIOD_INDEX",
+   "payoff_status": "EXTINGUISHED_BEFORE_CONTRACTUAL_MATURITY",
+   "periods_maturity_minus_payoff": 5,
+   "tolerance_keur": 0.0001
+  },
+  "schema_version": "SENIOR_DEBT_EVIDENCE_V1",
+  "sizing": {
+   "binding_constraint": "GEARING",
+   "binding_constraint_source": "SENIOR_DEBT_RESULT.binding_constraint / SolverDiagnostics",
+   "binding_from_capacities": "GEARING",
+   "binding_label_consistent": true,
+   "capacity_difference_keur": 2047.2200857635553,
+   "debt_equals_binding_capacity": true,
+   "debt_size_keur": 6477.352578925075,
+   "debt_sizing_mode": "flat_dscr_sculpted",
+   "dscr_capacity_pass_difference_keur": 0.0,
+   "dscr_debt_capacity_basis": "SOLVER_DIAGNOSTICS_FUNDED_PASS (used in the sizing minimum)",
+   "dscr_debt_capacity_keur": 8524.57266468863,
+   "dscr_debt_capacity_standalone_basis": "PROJECT_FINANCING_RESULT DSCR-only capacity pass (as in financing_evidence.bankability)",
+   "dscr_debt_capacity_standalone_pass_keur": 8524.57266468863,
+   "gearing_basis_keur": 9965.157813730884,
+   "gearing_capacity_project_result_keur": 6477.352578925075,
+   "gearing_debt_capacity_basis": "SOLVER_DIAGNOSTICS (eligible project cost x maximum gearing)",
+   "gearing_debt_capacity_keur": 6477.352578925075,
+   "gearing_ratio": 0.65,
+   "limiting_context": null,
+   "limiting_nature": "GEARING_CAP",
+   "limiting_rows": [],
+   "payoff_explanation": "GEARING_CAP_BELOW_DSCR_CAPACITY_SCULPTED_BUDGET_RETIRES_DEBT_EARLY",
+   "solver_converged": true,
+   "solver_termination_reason": "CONVERGED"
+  },
+  "status": "RECORDED",
+  "units": "kEUR"
+ },
+ "solar": {
+  "authority": "CANONICAL_SENIOR_DEBT_RESULT_READ_ONLY_PROJECTION",
+  "dscr": {
+   "bank_case_distinct_from_base_case": true,
+   "max_abs_bank_minus_base_cfads_keur": 232.05924740294586,
+   "reported": {
+    "avg_dscr": 1.2794568182222124,
+    "basis": "BASE_CASE_CFADS",
+    "cfads_series": "tax_and_cfads.cfads_keur",
+    "definition": "base_cfads / senior_debt_service per period",
+    "min_dscr": 1.2486484160399178,
+    "min_period_index": 6,
+    "periods_counted": 22,
+    "production_basis": "technical.operating_hours_p50 (base-case production)"
+   },
+   "sizing": {
+    "avg_realised_dscr": 1.2034825569232215,
+    "basis": "BANK_SIZING_CASE_CFADS",
+    "cfads_series": "debt_sizing.bank_cfads_keur",
+    "definition": "bank_cfads / senior_debt_service per period",
+    "min_realised_dscr": 1.1999999999999997,
+    "min_realised_period_index": 3,
+    "periods_counted": 22,
+    "production_yield_scenario_requested": "P90-10y",
+    "target_dscr": 1.2
+   }
+  },
+  "llcr_inputs": {
+   "llcr_ratio": null,
+   "llcr_status": "NOT_COMPUTED_BY_THIS_EVIDENCE",
+   "loan_life_end_candidates": {
+    "actual_payoff_date": "2041-12-31",
+    "actual_payoff_period_index": 24,
+    "contractual_maturity_date": "2045-12-31",
+    "contractual_maturity_period_index": 32
+   },
+   "note": "Loan life for LLCR is an Owner-defined convention; both candidates are recorded."
+  },
+  "project_type": "solar",
+  "repayment": {
+   "actual_payoff_date": "2041-12-31",
+   "actual_payoff_period_index": 24,
+   "contractual_maturity_date": "2045-12-31",
+   "contractual_maturity_period_index": 32,
+   "contractual_repayment_start_date": "2031-03-01",
+   "contractual_repayment_start_period_index": 3,
+   "days_maturity_minus_payoff": 1461,
+   "first_principal_date": "2031-06-30",
+   "first_principal_period_index": 3,
+   "index_axis": "MODEL_PERIOD_INDEX",
+   "payoff_status": "EXTINGUISHED_BEFORE_CONTRACTUAL_MATURITY",
+   "periods_maturity_minus_payoff": 8,
+   "tolerance_keur": 0.0001
+  },
+  "schema_version": "SENIOR_DEBT_EVIDENCE_V1",
+  "sizing": {
+   "binding_constraint": "GEARING",
+   "binding_constraint_source": "SENIOR_DEBT_RESULT.binding_constraint / SolverDiagnostics",
+   "binding_from_capacities": "GEARING",
+   "binding_label_consistent": true,
+   "capacity_difference_keur": 9254.764811192734,
+   "debt_equals_binding_capacity": true,
+   "debt_size_keur": 26983.331676476686,
+   "debt_sizing_mode": "flat_dscr_sculpted",
+   "dscr_capacity_pass_difference_keur": 6.0197288048802875,
+   "dscr_debt_capacity_basis": "SOLVER_DIAGNOSTICS_FUNDED_PASS (used in the sizing minimum)",
+   "dscr_debt_capacity_keur": 36238.09648766942,
+   "dscr_debt_capacity_standalone_basis": "PROJECT_FINANCING_RESULT DSCR-only capacity pass (as in financing_evidence.bankability)",
+   "dscr_debt_capacity_standalone_pass_keur": 36244.1162164743,
+   "gearing_basis_keur": 35977.77556863558,
+   "gearing_capacity_project_result_keur": 26983.331676476686,
+   "gearing_debt_capacity_basis": "SOLVER_DIAGNOSTICS (eligible project cost x maximum gearing)",
+   "gearing_debt_capacity_keur": 26983.331676476686,
+   "gearing_ratio": 0.75,
+   "limiting_context": null,
+   "limiting_nature": "GEARING_CAP",
+   "limiting_rows": [],
+   "payoff_explanation": "GEARING_CAP_BELOW_DSCR_CAPACITY_SCULPTED_BUDGET_RETIRES_DEBT_EARLY",
+   "solver_converged": true,
+   "solver_termination_reason": "CONVERGED"
+  },
+  "status": "RECORDED",
+  "units": "kEUR"
+ },
+ "wind": {
+  "authority": "CANONICAL_SENIOR_DEBT_RESULT_READ_ONLY_PROJECTION",
+  "dscr": {
+   "bank_case_distinct_from_base_case": true,
+   "max_abs_bank_minus_base_cfads_keur": 544.2632624712605,
+   "reported": {
+    "avg_dscr": 1.609913973905885,
+    "basis": "BASE_CASE_CFADS",
+    "cfads_series": "tax_and_cfads.cfads_keur",
+    "definition": "base_cfads / senior_debt_service per period",
+    "min_dscr": 1.2799924364193862,
+    "min_period_index": 6,
+    "periods_counted": 20,
+    "production_basis": "technical.operating_hours_p50 (base-case production)"
+   },
+   "sizing": {
+    "avg_realised_dscr": 1.458551842223374,
+    "basis": "BANK_SIZING_CASE_CFADS",
+    "cfads_series": "debt_sizing.bank_cfads_keur",
+    "definition": "bank_cfads / senior_debt_service per period",
+    "min_realised_dscr": 1.2,
+    "min_realised_period_index": 4,
+    "periods_counted": 20,
+    "production_yield_scenario_requested": "P90-10y",
+    "target_dscr": 1.2
+   }
+  },
+  "llcr_inputs": {
+   "llcr_ratio": null,
+   "llcr_status": "NOT_COMPUTED_BY_THIS_EVIDENCE",
+   "loan_life_end_candidates": {
+    "actual_payoff_date": "2041-06-30",
+    "actual_payoff_period_index": 23,
+    "contractual_maturity_date": "2046-06-30",
+    "contractual_maturity_period_index": 33
+   },
+   "note": "Loan life for LLCR is an Owner-defined convention; both candidates are recorded."
+  },
+  "project_type": "wind",
+  "repayment": {
+   "actual_payoff_date": "2041-06-30",
+   "actual_payoff_period_index": 23,
+   "contractual_maturity_date": "2046-06-30",
+   "contractual_maturity_period_index": 33,
+   "contractual_repayment_start_date": "2031-09-01",
+   "contractual_repayment_start_period_index": 4,
+   "days_maturity_minus_payoff": 1826,
+   "first_principal_date": "2031-12-31",
+   "first_principal_period_index": 4,
+   "index_axis": "MODEL_PERIOD_INDEX",
+   "payoff_status": "EXTINGUISHED_BEFORE_CONTRACTUAL_MATURITY",
+   "periods_maturity_minus_payoff": 10,
+   "tolerance_keur": 0.0001
+  },
+  "schema_version": "SENIOR_DEBT_EVIDENCE_V1",
+  "sizing": {
+   "binding_constraint": "GEARING",
+   "binding_constraint_source": "SENIOR_DEBT_RESULT.binding_constraint / SolverDiagnostics",
+   "binding_from_capacities": "GEARING",
+   "binding_label_consistent": true,
+   "capacity_difference_keur": 18166.24733843193,
+   "debt_equals_binding_capacity": true,
+   "debt_size_keur": 36505.15795948399,
+   "debt_sizing_mode": "flat_dscr_sculpted",
+   "dscr_capacity_pass_difference_keur": 0.0,
+   "dscr_debt_capacity_basis": "SOLVER_DIAGNOSTICS_FUNDED_PASS (used in the sizing minimum)",
+   "dscr_debt_capacity_keur": 54671.405297915924,
+   "dscr_debt_capacity_standalone_basis": "PROJECT_FINANCING_RESULT DSCR-only capacity pass (as in financing_evidence.bankability)",
+   "dscr_debt_capacity_standalone_pass_keur": 54671.405297915924,
+   "gearing_basis_keur": 48673.54394597866,
+   "gearing_capacity_project_result_keur": 36505.15795948399,
+   "gearing_debt_capacity_basis": "SOLVER_DIAGNOSTICS (eligible project cost x maximum gearing)",
+   "gearing_debt_capacity_keur": 36505.15795948399,
+   "gearing_ratio": 0.75,
+   "limiting_context": null,
+   "limiting_nature": "GEARING_CAP",
+   "limiting_rows": [],
+   "payoff_explanation": "GEARING_CAP_BELOW_DSCR_CAPACITY_SCULPTED_BUDGET_RETIRES_DEBT_EARLY",
+   "solver_converged": true,
+   "solver_termination_reason": "CONVERGED"
+  },
+  "status": "RECORDED",
+  "units": "kEUR"
+ }
+}
