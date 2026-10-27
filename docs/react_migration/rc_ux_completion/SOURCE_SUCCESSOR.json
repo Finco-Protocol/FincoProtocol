@@ -15,6 +15,6 @@
     "app/v2/react_workspace_router.py": "dab743e38301d9504909ef73693cb83deeca3dd2",
     "tests/fin_v2_rcux_scope.py": "36010fc8f02d78b2ed471ecb493df0dec1f6c8da",
     "tests/rcux_navigation_contract.py": "9d367d03bf619c4c3243048c824798103f1f516b",
-    "tests/test_fin_v2_rcux_scope.py": "00a0b754be1e7683e51caaf9f59f993391cfd048"
+    "tests/test_fin_v2_rcux_scope.py": "255bf4746c9ee37aa94ab2033e11fb8944b91b85"
   }
 }

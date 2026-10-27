@@ -109,3 +109,24 @@ def test_extra_path_outside_every_registered_cohort_is_rejected(monkeypatch):
 def test_a_non_ancestor_base_is_rejected(monkeypatch):
     monkeypatch.setattr(F, 'BASE', '0' * 40)
     assert not F.valid() and not F.exact_blobs_ok()
+
+
+def test_every_new_react_or_rcux_module_in_the_tree_is_explicitly_admitted_tracked_or_not():
+    """Catches the 'new module not yet admitted' mistake BEFORE it is committed (an untracked file is invisible to the git-diff based composite).
+
+    A module that did not exist at the accepted parent and that sits where RC-UX work lives must be named in OWNED_PATHS / PRESENTATION_FILES, or be
+    admitted by another registered cohort.  Pre-existing modules (the RC-M / WF adapters) are not RC-UX's to claim and are skipped.
+    """
+    import re
+    import subprocess
+    names = re.compile(r'^(tests/(test_model_react_.+|model_react_.+|test_rcux_.+|rcux_.+|test_fin_v2_rcux_.+|fin_v2_rcux_.+|react_.+)\.py|app/v2/react_.+\.py)$')
+    admitted = F.PRESENTATION_FILES | F.OWNED_PATHS
+
+    def existed_at_parent(path):
+        return subprocess.run(['git', 'cat-file', '-e', F.BASE + ':' + path], cwd=F.ROOT, capture_output=True).returncode == 0
+
+    present = {p.relative_to(F.ROOT).as_posix() for p in list((F.ROOT / 'tests').glob('*.py')) + list((F.ROOT / 'app/v2').glob('react_*.py'))}
+    others = [m for m in C.cohorts() if m is not F]
+    unadmitted = sorted(p for p in present if names.match(p) and p not in admitted and not existed_at_parent(p)
+                        and not any(m.allowed_path(p, F.ROOT, None) for m in others))
+    assert unadmitted == [], unadmitted
