@@ -17,7 +17,7 @@ Exact-head hosted CI is **not** in this file; it is in `09_EXACT_HEAD_EVIDENCE_A
 | `test_rcm_governance.py` | 28 | six-path additive successor layer, exact-change proof for the asset router, consolidation import tail, acceptance modules not collected / no skip / unique names, protected-path guard |
 | `test_rcm_adapter_csrf_successor.py` | 28 | exact-blob + AST proof of the two CSRF-bound POST modules incl. fence-then-claim-then-write order and candidate-bound token; structural negatives |
 | `test_rcm_asset_version.py` | 6 | content-derived cache-buster (see `08` item 4) |
-| `test_rcm_ci_v3_collection_governance.py` | 6 | the CI V3 reconciliation gate still refuses added/removed/changed collection skips and removed nodes; no RC-M module has a collection-time skip |
+| `test_ci_v3_rcm_collection_governance.py` | 6 | the CI V3 reconciliation gate still refuses added/removed/changed collection skips and removed nodes; no RC-M module has a collection-time skip |
 | `test_rcm_atomic_create_patch.py` | 3 | the prepared atomic-create patch still applies; release gate closed |
 
 Focused run of these plus the pinned governance suites (`test_model_mutation_security_successor`, `test_model_react_overnight_b_governance`, `test_trust_readiness_controls`, `test_ci_acceptance`,

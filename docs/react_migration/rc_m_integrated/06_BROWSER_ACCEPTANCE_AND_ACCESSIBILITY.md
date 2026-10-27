@@ -6,7 +6,7 @@ The five RC-M Chromium suites are **non-collected acceptance modules** (`tests/m
 exports listed in each module's `__all__`) imported at the tail of `tests/test_model_workspace_consolidation_browser.py` — the **existing mandatory `consolidation`
 role** of `.github/workflows/protocol_ui_browser.yml`. They therefore run under that role's fail-closed verifier (`tools/ci_browser_job.py::validate_consolidation`: every
 collected node executed and passed, JUnit equals collection, screenshots present) with **no workflow, inventory or threshold change**, and no module-level skip exists in
-any RC-M test module (`tests/test_rcm_governance.py`, `tests/test_rcm_ci_v3_collection_governance.py`). Collection became 106 → 165 nodes (59 new); in the plan
+any RC-M test module (`tests/test_rcm_governance.py`, `tests/test_ci_v3_rcm_collection_governance.py`). Collection became 106 → 165 nodes (59 new); in the plan
 environment, where Chromium is unavailable, the collection-skip inventory is identical to `main`.
 
 Local run of the whole role, Python 3.12, real Chromium, thread execution mode as in CI: **165 passed, 0 failed, 0 skipped in 781 s** (the 106 pre-existing nodes included),

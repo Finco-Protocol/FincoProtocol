@@ -178,3 +178,28 @@ def test_the_asset_router_differs_from_main_only_by_the_content_derived_cache_bu
     restored = restored[:start] + 'REACT_ASSET_VERSION = "rc-sec-mutation-v1"\n\n' + base_dir_line + restored[end:]
     assert restored == original
     assert 'REACT_ASSET_VERSION = bundle_version()' in current and "hashlib.sha256" in current
+
+
+def test_the_react_analysis_engine_submission_is_the_legacy_matrix_submission_and_the_only_one():
+    """Correction C: native activation / bounded-worker parity of the Analysis previews (proof beside the exact activation inventory)."""
+    import ast
+
+    def shape(path):
+        tree = ast.parse((S.ROOT / path).read_text(encoding="utf-8"))
+        sites = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", None)) == "native_result":
+                inner = node.args[0]
+                assert isinstance(inner, ast.Await)
+                call = inner.value
+                activated = call.args[0]
+                sites.append((ast.unparse(call.func), ast.unparse(activated.func), ast.unparse(activated.args[0]), ast.unparse(call.args[1])))
+        return sites
+
+    legacy, react = shape("app/v2/sensitivity_matrix_router.py"), shape("app/v2/react_analysis.py")
+    assert legacy == react == [("run_model_process", "activated", "svc.run_matrix_points", "svc.RUNTIME_KEYS[vertical]")]
+    source = (S.ROOT / "app/v2/react_analysis.py").read_text(encoding="utf-8")
+    assert source.count("run_model_process(") == 1                                  # the bounded executor is the only way an engine batch starts
+    assert "ProcessPoolExecutor" not in source and "ThreadPoolExecutor" not in source and "multiprocessing" not in source
+    for stateful in ("record_workspace_runtime", "save_run", "apply_draft_update", "save_workspace_state"):
+        assert stateful not in source                                                # previews never write a Run, History or the Working Copy
