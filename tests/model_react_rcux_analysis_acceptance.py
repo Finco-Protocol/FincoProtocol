@@ -19,6 +19,9 @@ __all__ = (
     "test_rcux_diagnostics_heatmap_fits_every_viewport",
     "test_rcux_opex_projection_studio_shows_the_server_projection_and_nothing_else",
     "test_rcux_opex_projection_fits_every_viewport",
+    "test_rcux_compare_projects_compares_only_my_projects_and_marks_an_unrun_project_unavailable",
+    "test_rcux_compare_projects_deep_link_refresh_back_and_tenant_isolation",
+    "test_rcux_compare_projects_fits_every_viewport",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -195,4 +198,89 @@ def test_rcux_opex_projection_fits_every_viewport(live_server, an_session, width
     box = page.locator("[data-opex-projection='ready'] .rcm-scroll").bounding_box()
     assert box["x"] >= -1 and box["x"] + box["width"] <= width + 1
     _shot(page, f"opex-projection-{width}")
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def _second_project(uid, kind="wind"):
+    from app.services.reference_seed_service import create_reference_seeded_project
+    return create_reference_seeded_project(user_id=uid, template_source=f"generic_{kind}_reference", requested_name=f"Compare {kind}", capacity_mw=18.0)
+
+
+def _compare_api(context, base, *codes):
+    query = "&".join(f"code={c}" for c in codes)
+    response = context.request.get(f"{base}/v2/model-react/compare-projects?{query}")
+    assert response.ok, response.text()[:300]
+    return response.json()
+
+
+def test_rcux_compare_projects_compares_only_my_projects_and_marks_an_unrun_project_unavailable(live_server, an_session):
+    uid = "rcux-cmp-a"
+    context, page, record, errors = an_session(uid)
+    other = _second_project(uid)
+    run_canonical(context, live_server, record.project_code)
+    api = _compare_api(context, live_server, record.project_code, other.project_code)
+    page.goto(f"{live_server}/v2/model-react/")
+    page.wait_for_selector("[data-compare-projects-cta='true']", timeout=60000)
+    page.locator("[data-compare-projects-cta='true']").click()
+    page.wait_for_selector("[data-compare-projects='true']", timeout=60000)
+    assert page.url.endswith("#compare-projects")
+    picks = [e.get_attribute("data-compare-pick") for e in page.locator("[data-compare-pick]").all()]
+    assert sorted(picks) == sorted([record.project_code, other.project_code])                  # no template appears as a project
+    page.locator(f"[data-compare-pick='{record.project_code}']").check()
+    page.locator(f"[data-compare-pick='{other.project_code}']").check()
+    page.wait_for_function("() => document.querySelectorAll('[data-compare-col]').length === 2", timeout=60000)
+    ran = next(c for c in api["columns"] if c["code"] == record.project_code)
+    for key in ("project_irr", "min_dscr", "total_capex_keur"):
+        assert page.locator(f"[data-compare-cell='{key}:{record.project_code}']").inner_text().strip() == ran["metrics"].get(key, "—")
+    assert page.locator(f"[data-compare-cell='project_irr:{other.project_code}']").inner_text().strip() == "—"          # never zero
+    assert page.locator(f"[data-compare-unavailable='{other.project_code}']").count() == 1
+    assert page.locator(f"a[data-compare-open='{record.project_code}']").get_attribute("href") == f"/v2/model-react/{record.project_code}#results"
+    page.select_option("[data-compare-sort]", "project_irr")
+    page.wait_for_function(f"() => document.querySelector('[data-compare-col]')?.getAttribute('data-compare-col') === '{record.project_code}'", timeout=30000)
+    first = page.locator("[data-compare-col]").first.get_attribute("data-compare-col")
+    assert first == record.project_code                                                                                  # the project with a value ranks first
+    _shot(page, "compare-projects-1440")
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_compare_projects_deep_link_refresh_back_and_tenant_isolation(live_server, an_session):
+    uid = "rcux-cmp-b"
+    context, page, record, errors = an_session(uid)
+    from app.services.reference_seed_service import create_reference_seeded_project
+    stranger_record = create_reference_seeded_project(user_id="rcux-cmp-stranger", template_source="generic_data_center_reference",
+                                                      requested_name="Zzz Stranger Only Project", capacity_mw=12.0)
+    assert stranger_record.project_code != record.project_code
+    run_canonical(context, live_server, record.project_code)
+    page.goto(f"{live_server}/v2/model-react/?compare={record.project_code}&compare={stranger_record.project_code}#compare-projects")
+    page.reload()
+    page.wait_for_selector("[data-compare-table='true']", timeout=60000)
+    assert page.locator("[data-compare-col]").count() == 1                                                               # the stranger's project is not mine
+    assert page.locator("[data-compare-left-out='NOT_FOUND']").count() == 1
+    assert stranger_record.project_code not in page.locator("[data-compare-picker]").inner_text()
+    page.goto(f"{live_server}/v2/model-react/")
+    page.wait_for_selector("[data-compare-projects-cta='true']", timeout=60000)
+    page.locator("[data-compare-projects-cta='true']").click()
+    page.wait_for_selector("[data-compare-projects='true']", timeout=60000)
+    page.go_back()
+    page.wait_for_selector("[data-compare-projects-cta='true']", timeout=60000)                                          # Back returns to My Projects
+    page.go_forward()
+    page.wait_for_selector("[data-compare-projects='true']", timeout=60000)
+    page.locator("[data-compare-back]").click()
+    page.wait_for_selector("[data-compare-projects-cta='true']", timeout=60000)
+    assert errors == [e for e in errors if "Failed to load resource" in e]
+
+
+@__import__("pytest").mark.parametrize("width", [320, 390, 768, 1440])
+def test_rcux_compare_projects_fits_every_viewport(live_server, an_session, width):
+    uid = f"rcux-cmp-v{width}"
+    context, page, record, errors = an_session(uid, width=width, height=900)
+    other = _second_project(uid)
+    run_canonical(context, live_server, record.project_code)
+    page.goto(f"{live_server}/v2/model-react/?compare={record.project_code}&compare={other.project_code}#compare-projects")
+    page.reload()
+    page.wait_for_selector("[data-compare-table='true']", timeout=60000)
+    assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1"), "horizontal page scroll"
+    box = page.locator("[data-compare-table]").locator("xpath=ancestor::div[contains(@class,'rcm-scroll')][1]").bounding_box()
+    assert box["x"] >= -1 and box["x"] + box["width"] <= width + 1
+    _shot(page, f"compare-projects-{width}")
     assert [e for e in errors if "Failed to load resource" not in e] == []

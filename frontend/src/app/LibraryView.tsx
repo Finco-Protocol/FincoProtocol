@@ -85,6 +85,7 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
           <div className="rcux-actions">
             <a className="rx-button rcm-new-project-cta" href="/v2/model-react/#new-project" data-new-project-cta="true"
                onClick={(e) => go(e, () => newProject())}>+ New Project</a>
+            <a className="rx-button rx-button-secondary" href="/v2/model-react/#compare-projects" data-compare-projects-cta="true">Compare projects</a>
             <a className="rx-button rx-button-secondary" href="/v2/model-react/#new-project/template" data-choose-template-cta="true"
                onClick={(e) => go(e, () => newProject("/template"))}>Choose a template</a>
           </div>
