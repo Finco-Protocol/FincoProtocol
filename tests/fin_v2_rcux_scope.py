@@ -39,7 +39,7 @@ PRESENTATION = re.compile(
     r'|static/react/finco-react\.(js|css)'
     r'|tests/model_react_[a-z0-9_]+_acceptance\.py'
     r'|tests/test_model_react_rcux_[a-z0-9_]+\.py'
-    r'|tests/test_rcux_governance\.py'
+    r'|tests/test_rcux_[a-z_]+\.py'
     r'|tests/test_model_workspace_consolidation_browser\.py'
     r'|docs/react_migration/rc_ux_completion/.+)$')
 

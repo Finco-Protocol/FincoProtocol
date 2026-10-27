@@ -16,7 +16,7 @@
     "tests/test_finv2_d01_rate_shock_authority.py": "f76e7a75dbbe77bf4b7012d5ac727deddcf186a0",
     "tests/test_finv2_d01_routes_and_matrix.py": "c169ade1bd3cd2a156fedc8a237dacfe53347dcf",
     "tests/test_finval_rate_successor.py": "d731a912b8e97d6f014d113816b69290c6e13056",
-    "tests/test_model_mutation_security_successor.py": "2fed22e7ce39133ae69abed702cca51a26bd146d",
+    "tests/test_model_mutation_security_successor.py": "863ceced1dfe1ffc8d7458975853730517214dae",
     "tests/test_model_react_overnight_b_governance.py": "db407b4ba8831b78bf0fa3c0c855ff04ee79f9a4",
     "tests/test_p1_dc_sensitivity_semantics.py": "9d2af1d65df26e563a26d551c617c6afb6c47be1",
     "tests/test_rcm_governance.py": "1a7bd81725a863485b9cf0365efcd3a7b40dc3f8"

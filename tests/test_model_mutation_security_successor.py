@@ -217,6 +217,11 @@ def test_d029_browser_original_node_ids_are_preserved():
         "test_onb_returns_lender_metrics_and_vertical_scope_are_truthful",
         "test_onb_scenario_override_boundary_matches_the_canonical_capability",
         "test_onb_every_theme_keeps_the_corrected_surfaces_legible"]
-    # every original line is still present, in order: the change is purely additive
+    # every original line is still present, in order: the change is purely additive — except the ONE contract-replay assertion that pinned the
+    # classic Trust link, which Addendum A (React-only navigation) replaces by exactly the three React-evidence lines below
+    addendum_a={'        assert page.get_by_role("link", name="Explicitly run reference regression (separate evidence)").get_attribute("href") == "/v2/workbook/trust/validation?project=p"':
+        ['        # Addendum A: the evidence is requested from React (an explicit button, never a link to a classic page) and nothing runs on load',
+         '        assert page.locator("[data-trust-load=\'validation\']").is_enabled() and page.locator("[data-trust-load=\'certificate\']").is_enabled()',
+         '        assert page.locator("section[aria-label=\'Trust and integrity evidence\'] a[href*=\'/v2/workbook\']").count() == 0']}
     it=iter(current.splitlines())
-    assert all(any(line==cur for cur in it) for line in base.splitlines())
+    assert all(any(line==cur for cur in it) for line in (x for line in base.splitlines() for x in addendum_a.get(line,[line])))
