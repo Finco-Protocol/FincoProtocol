@@ -5611,11 +5611,34 @@ async def v2_scenario_sensitivity_run(
         if base_val is not None:
             field_id = field_id_fallback  # use whichever field_id is populated
 
+    # FIN-V2-D01: the interest driver shocks the EFFECTIVE Senior all-in rate through the shared rate-shock authority
+    # (typed vector, human_percent_v1 boundary).  A rate that cannot be shocked faithfully is refused BEFORE any model
+    # execution (calibrated schedule, bankability-owned rates, ambiguous historical unit): never a flat "result".
+    _rate_plan = None
+    if driver == "interest_rate":
+        from app.services.rate_shock import RateShockRefusal as _RateRefusal, plan_one_driver_rate_points as _plan_rate
+        try:
+            _rate_plan = _plan_rate(pis_base, spec["steps"])
+        except _RateRefusal as _refusal:
+            from html import escape as _esc
+            return HTMLResponse(
+                content=('<div class="v2-sens-refusal" role="alert" data-testid="sensitivity-refused" data-status="REFUSED" '
+                         'data-code="' + _esc(_refusal.code) + '"><strong>Sensitivity not run.</strong> '
+                         + _esc(str(_refusal)) + '</div>'),
+                headers={"X-Finco-Sensitivity-Outcome": "REFUSED", "X-Finco-Sensitivity-Code": _refusal.code})
+        base_val = _rate_plan[0]["original_pct"]
+
     results: list[dict] = []
-    for step, step_label in zip(spec["steps"], spec["step_labels"]):
+    for _step_index, (step, step_label) in enumerate(zip(spec["steps"], spec["step_labels"])):
         # Each iteration works from a fresh pis_base — never accumulates, never mutates.
         try:
-            if spec["mode"] == "pct_multiplier":
+            if _rate_plan is not None:
+                if _rate_plan[_step_index]["refusal"] is not None:
+                    results.append({"label": step_label, "status": "FAILED",
+                                    "error": str(_rate_plan[_step_index]["refusal"])[:120], "kpis": {}})
+                    continue
+                new_val: object = _rate_plan[_step_index]["new_value"]
+            elif spec["mode"] == "pct_multiplier":
                 if base_val is not None:
                     try:
                         new_val: object = float(base_val) * (1.0 + step)
@@ -5654,6 +5677,10 @@ async def v2_scenario_sensitivity_run(
 
             # Causal chain: base PIS → driver override → ProjectInputs → CAPEX/OPEX scenario fold → engine
             pi_override = WorkbookService.to_projectinputs(pis_sens)
+            if _rate_plan is not None and new_val is not None:
+                from app.services.rate_shock import effective_senior_rate_percent as _eff_rate
+                if abs(_eff_rate(pi_override) - float(new_val)) > 1e-9:
+                    raise ValueError("RATE_SHOCK_NOT_APPLIED: the effective Senior rate does not equal the requested shocked rate")
             folded_capex = _apply_capex(
                 pi_override.capex,
                 project_id=project_record.project_id,

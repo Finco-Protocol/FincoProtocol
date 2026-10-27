@@ -71,7 +71,9 @@ class TestVerticalDriverCapability:
         })
         assert supported_sensitivity_drivers("Solar") == renewable_set
         assert supported_sensitivity_drivers("Wind") == renewable_set
-        assert supported_sensitivity_drivers("EV Charging") == renewable_set
+        # FIN-V2-D02: the EV adapter pins the PPA/merchant price schedules and plant availability, so those three drivers
+        # were inert (a flat result presented as valid); EV offers only drivers that change its authoritative economic input.
+        assert supported_sensitivity_drivers("EV Charging") == renewable_set - {"ppa_price", "merchant_price", "availability"}
 
     def test_fail_closed_for_unsupported_dc_driver(self):
         for driver in FORBIDDEN_DC_DRIVERS:

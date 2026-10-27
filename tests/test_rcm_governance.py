@@ -95,12 +95,9 @@ def test_the_adapters_use_only_the_canonical_services_and_add_no_calculation_aut
 
 def test_the_rcm_changes_touch_no_protected_financial_path():
     try:
-        try:
-            base = _git("merge-base", "HEAD", "origin/main").strip()
-        except subprocess.CalledProcessError:
-            base = "cf7056de4078ca66afcf52265a9bacafe35586f7"
-        changed = set(_git("diff", "--name-only", base, "HEAD").split())
-        changed |= set(_git("diff", "--name-only").split()) | set(_git("diff", "--name-only", "--cached").split())
+        # The RC-M delivery is the immutable range main-before-#388 .. last reviewed RC-M head (both are ancestors of every later main);
+        # a moving merge-base would attribute later, separately reviewed work to RC-M once #388 is merged.
+        changed = set(_git("diff", "--name-only", RCM_BASE, RCM_HEAD).split())
     except subprocess.CalledProcessError:
         pytest.skip("baseline commit not available in this checkout")
     forbidden = ("app/input_adapter.py",

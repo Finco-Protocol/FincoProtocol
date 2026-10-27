@@ -10,6 +10,8 @@ import io
 from dataclasses import replace, fields
 from typing import Any, Optional
 
+from app.services.rate_shock import RateShockRefusal, apply_rate_shock_bps, rate_shock_evidence
+
 # Shock type registry (key -> human label, unit)
 SHOCK_REGISTRY: dict[str, tuple[str, str]] = {
     "capex": ("CAPEX", "%"),
@@ -89,8 +91,8 @@ class UnsupportedSensitivityDriverError(ValueError):
 #     economically meaningless for an IT-load capacity business and are
 #     FORBIDDEN for Data Center.
 #   - Solar/Wind/EV Charging keep their existing driver sets unchanged.
-#   - EV Charging shares the renewable driver set (its revenue model is
-#     energy-throughput based on the same technical fields).
+#   - EV Charging offers only the drivers that reach its authoritative economics
+#     (FIN-V2-D02; see the EV entry below).
 _VERTICAL_SENSITIVITY_DRIVERS: dict[str, frozenset[str]] = {
     "solar": frozenset({
         "capex", "opex", "ppa_price", "merchant_price", "yield",
@@ -106,10 +108,15 @@ _VERTICAL_SENSITIVITY_DRIVERS: dict[str, frozenset[str]] = {
         "capex", "opex", "dc_service_price", "dc_occupancy", "dc_it_mw",
         "dc_pue", "dc_electricity_price", "interest_rate", "tax_rate",
     }),
-    # EV Charging: energy-throughput revenue on the same technical fields.
+    # EV Charging (FIN-V2-D02): revenue is an energy-throughput schedule built by the EV runtime adapter
+    # (``app.ev_charging_economics.apply_ev_charging_runtime_adapter``): ``first_merchant_operating_period_index = 0``
+    # (no PPA volume) and an explicit per-calendar-year price schedule that overrides the merchant curve.  A ``ppa_price``
+    # or ``merchant_price`` shock therefore changes a field the engine never reads (proved: revenue delta 0.0), and
+    # ``availability`` is informational (EFLH are net of availability; the adapter pins it at 1.0, so +x% clamps to no
+    # change and -x% moves revenue without the derived electricity cost).  None of the three is offered.  ``yield`` moves
+    # the stabilised EFLH AND the derived electricity procurement cost together (see ``_scale_ev_energy_dependent_opex``).
     "ev_charging": frozenset({
-        "capex", "opex", "ppa_price", "merchant_price", "yield",
-        "availability", "interest_rate", "tax_rate",
+        "capex", "opex", "yield", "interest_rate", "tax_rate",
     }),
 }
 
@@ -232,13 +239,86 @@ CONTRACTED_PRICE_SHOCK_REFUSAL = (
     "shown as a flat result. To test price risk, change the contracted prices in the Revenue contracts (or a scenario's contracts) and run the model.")
 
 
+class InactiveShockDriver(ValueError):
+    """The requested driver does not reach the project's authoritative economics (FIN-V2-D01/D02)."""
+
+    code = "SHOCK_DRIVER_INACTIVE"
+
+    def __init__(self, detail: str):
+        super().__init__(f"{self.code}: {detail}")
+
+
+class ShockNotApplied(ValueError):
+    """A non-zero shock left the typed inputs unchanged; it is refused, never reported as a flat result."""
+
+    code = "SHOCK_NOT_APPLIED"
+
+    def __init__(self, shock_type: str, level_pct: float):
+        super().__init__(f"{self.code}: {shock_type} {level_pct:+g} did not change the model inputs")
+
+
+def _ppa_price_is_active(revenue: Any) -> bool:
+    """A PPA tariff shock reaches revenue only when the PPA carries volume for at least one operating period."""
+    return (
+        float(getattr(revenue, "ppa_production_share", 0.0) or 0.0) > 0.0
+        and float(getattr(revenue, "ppa_term_years", 0.0) or 0.0) > 0.0
+        and getattr(revenue, "first_merchant_operating_period_index", None) != 0
+    )
+
+
+class EVRuntimeAuthorityUnavailable(ValueError):
+    """The project handed to an EV sensitivity is not an EV-adapted project (it would be shocked on the wrong economics)."""
+
+    code = "EV_RUNTIME_AUTHORITY_UNAVAILABLE"
+
+    def __init__(self, detail: str):
+        super().__init__(f"{self.code}: {detail}")
+
+
+def assert_ev_runtime_authority(proj: Any) -> None:
+    """An EV vertical must run on EV-adapted inputs: all-merchant calendar price schedule + derived electricity line.
+
+    Guards the factory fallback of the legacy resolver (an unresolved project code falls back to the Wind reference),
+    which would otherwise be sensitised under an EV label with Wind economics.
+    """
+    revenue = proj.revenue
+    if (getattr(revenue, "first_merchant_operating_period_index", None) != 0
+            or not getattr(revenue, "market_prices_by_calendar_year_eur_mwh", ())
+            or not any(str(getattr(o, "name", "")) == "Electricity Procurement" for o in proj.opex)):
+        raise EVRuntimeAuthorityUnavailable(
+            "the resolved inputs are not the EV Charging runtime authority; no sensitivity was run")
+
+
+def _scale_ev_energy_dependent_opex(proj: Any, factor: float) -> Any:
+    """EV yield shock: purchased energy scales with delivered energy (``delivered / efficiency * price``).
+
+    The EV runtime adapter derives the ``Electricity Procurement`` OPEX line from the same full-load hours that drive
+    revenue, so scaling hours alone would cut revenue and leave the electricity bill untouched (an overstated downside).
+    Every hour in the ramp scales by ``factor`` -> y1 amount and every step amount scale by ``factor``.  Identity with
+    re-running the adapter on factor-scaled EFLH drivers is pinned in ``tests/test_finv2_d01_d02_sensitivity_surfaces.py``.
+    """
+    items = tuple(proj.opex)
+    if not any(str(getattr(o, "name", "")) == "Electricity Procurement" for o in items):
+        raise InactiveShockDriver("EV yield authority unavailable: no Electricity Procurement line to keep consistent")
+    scaled = tuple(
+        replace(
+            o,
+            y1_amount_keur=o.y1_amount_keur * factor,
+            step_changes=tuple((year, amount * factor) for year, amount in o.step_changes),
+        ) if str(getattr(o, "name", "")) == "Electricity Procurement" else o
+        for o in items
+    )
+    return replace(proj, opex=scaled)
+
+
 def _apply_shock(proj: Any, shock_type: str, level_pct: float,
-                 dc_drivers: Any | None = None) -> Any:
+                 dc_drivers: Any | None = None, vertical: str | None = None) -> Any:
     """Return a new ProjectInputs with the given shock applied.
 
     level_pct is a signed percentage: +10.0 = +10%, -5.0 = -5%.
-    For interest_rate shock the level is treated as basis-point change:
-    level_pct=10.0 → +10 bps added to base_rate.
+    For interest_rate shock the level is a basis-point change applied to the effective Senior all-in rate vector
+    (``app.services.rate_shock``): 5.5 % with level 100.0 -> 6.5 %.  A shock that cannot be applied faithfully raises
+    a typed refusal instead of returning an unchanged model.
     """
     factor = 1.0 + level_pct / 100.0
 
@@ -264,6 +344,10 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float,
     elif shock_type == "ppa_price":
         if getattr(proj.revenue, "multistream_config_json", ""):
             raise ValueError("REVENUE_V2_SENSITIVITY_UNSUPPORTED: " + CONTRACTED_PRICE_SHOCK_REFUSAL)
+        if level_pct != 0.0 and not _ppa_price_is_active(proj.revenue):
+            raise InactiveShockDriver(
+                "ppa_price: this project's PPA carries no volume (zero share/term or merchant from the first period), "
+                "so a tariff shock would change nothing")
         return replace(
             proj,
             revenue=replace(proj.revenue, ppa_base_tariff=proj.revenue.ppa_base_tariff * factor),
@@ -272,6 +356,10 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float,
     elif shock_type == "merchant_price":
         if getattr(proj.revenue, "multistream_config_json", ""):
             raise ValueError("REVENUE_V2_SENSITIVITY_UNSUPPORTED: " + CONTRACTED_PRICE_SHOCK_REFUSAL)
+        if level_pct != 0.0 and getattr(proj.revenue, "market_prices_by_calendar_year_eur_mwh", ()):
+            raise InactiveShockDriver(
+                "merchant_price: an explicit per-calendar-year price schedule overrides the merchant curve, so scaling "
+                "the curve would change nothing")
         orig = proj.revenue.market_prices_curve
         if orig:
             new_curve = tuple(v * factor for v in orig)
@@ -279,16 +367,25 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float,
                 proj,
                 revenue=replace(proj.revenue, market_prices_curve=new_curve),
             )
+        if level_pct != 0.0:
+            raise InactiveShockDriver("merchant_price: the project has no merchant price curve to shock")
         return proj
 
     elif shock_type == "yield":
-        return replace(
+        shocked = replace(
             proj,
             technical=replace(
                 proj.technical,
                 operating_hours_p50=proj.technical.operating_hours_p50 * factor,
             ),
         )
+        if resolve_vertical(vertical) == "ev_charging":
+            # The EV adapter pins the P90-10y lender hours to the stabilised EFLH, so they move together.
+            shocked = replace(shocked, technical=replace(
+                shocked.technical,
+                operating_hours_p90_10y=shocked.technical.operating_hours_p90_10y * factor))
+            shocked = _scale_ev_energy_dependent_opex(shocked, factor)
+        return shocked
 
     elif shock_type == "availability":
         new_avail = min(1.0, max(0.0, proj.technical.plant_availability * factor))
@@ -298,13 +395,9 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float,
         )
 
     elif shock_type == "interest_rate":
-        # level_pct treated as basis points (e.g. +10.0 → +10 bps)
-        delta_rate = level_pct / 10_000.0
-        new_base = max(0.0, proj.financing.base_rate + delta_rate)
-        return replace(
-            proj,
-            financing=replace(proj.financing, base_rate=new_base),
-        )
+        # FIN-V2-D01: level_pct is basis points on the EFFECTIVE Senior all-in rate vector.  ``financing.base_rate`` is
+        # auxiliary state under an explicit all-in schedule and was never read by the engine (proved inert).
+        return apply_rate_shock_bps(proj, level_pct)
 
     elif shock_type == "tax_rate":
         new_rate = max(0.0, min(1.0, proj.tax.corporate_rate * factor))
@@ -405,6 +498,8 @@ def run_sensitivity(
                 and dc_drivers is None
             ):
                 raise DCDriverContextRequiredError(shock_type)
+        if resolve_vertical(vertical) == "ev_charging":
+            assert_ev_runtime_authority(proj)
     """Run full sensitivity matrix.
 
     Returns:
@@ -422,7 +517,12 @@ def run_sensitivity(
     for stype in shock_types:
         for level in shock_levels:
             try:
-                shocked_proj = _apply_shock(proj, stype, level, dc_drivers)
+                shocked_proj = _apply_shock(proj, stype, level, dc_drivers, vertical)
+                if level != 0 and shocked_proj == proj:
+                    # FIN-V2-D01: an unapplied shock is refused, never reported as a valid flat KPI row.
+                    raise ShockNotApplied(stype, level)
+                evidence = (rate_shock_evidence(proj, shocked_proj, level)
+                            if stype == "interest_rate" and level != 0 else None)
                 shocked_kpis = _run_once(shocked_proj)
                 deltas = {
                     k: (shocked_kpis[k] - base_kpis[k])
@@ -440,6 +540,8 @@ def run_sensitivity(
                     "kpis": shocked_kpis,
                     "deltas": deltas,
                     "error": str(exc),
+                    "error_code": getattr(exc, "code", None),
+                    "evidence": None,
                 })
                 continue
             rows.append({
@@ -449,6 +551,8 @@ def run_sensitivity(
                 "kpis": shocked_kpis,
                 "deltas": deltas,
                 "error": None,
+                "error_code": None,
+                "evidence": evidence,
             })
 
     return {
