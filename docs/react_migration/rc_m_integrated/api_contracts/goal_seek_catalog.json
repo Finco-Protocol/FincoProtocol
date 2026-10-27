@@ -1,0 +1,53 @@
+{
+  "ok": true,
+  "available": true,
+  "reason": "",
+  "vertical": {
+    "key": "solar",
+    "public_name": "Solar",
+    "pilot_tier": "PILOT_CANDIDATE",
+    "limitations": [
+      "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration.",
+      "Portfolio-level analysis remains experimental relative to the core single-project engine."
+    ]
+  },
+  "metrics": [
+    {
+      "key": "project_irr",
+      "label": "Project IRR"
+    },
+    {
+      "key": "pure_equity_irr",
+      "label": "Pure Equity IRR"
+    },
+    {
+      "key": "total_sponsor_irr",
+      "label": "Total Sponsor IRR"
+    }
+  ],
+  "variable": {
+    "key": "ppa_base_tariff",
+    "label": "Tariff / Revenue Price",
+    "unit": "EUR/MWh",
+    "field_id": "revenue.ppa.base_tariff"
+  },
+  "current_tariff": 50.0,
+  "budgets": {
+    "max_iterations": 60,
+    "max_model_evaluations": 40,
+    "target_tolerance": 0.0001,
+    "bracket_lower_fraction": 0.2,
+    "bracket_upper_multiple": 3.0,
+    "bracket_max_expansions": 2
+  },
+  "binding": {
+    "content_hash": "<redacted>",
+    "workbook_version": "2.3.0"
+  },
+  "semantics": {
+    "preview_only": true,
+    "writes_nothing": true,
+    "is_a_run": false,
+    "basis": "The Working Copy as saved on the server (unsaved edits in this browser are not included)."
+  }
+}

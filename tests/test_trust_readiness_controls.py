@@ -304,6 +304,10 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
     rc_sec_valid = current_rc_sec_csrf_successor_valid()
     if rc_sec_valid:
         expected = expected | {RC_SEC_ROUTER}
+    # RC-M: each React adapter's single CSRF-bound POST route (New Project create, Goal Seek apply) is recognised ONLY while its
+    # exact reviewed content and structure hold (tests/rcm_adapter_csrf_successor.py); any edit or structural drift is rejected.
+    from tests.rcm_adapter_csrf_successor import ROUTERS as RCM_ROUTERS, current_rcm_adapter_valid
+    expected = expected | {router for router in RCM_ROUTERS if current_rcm_adapter_valid(router)}
     # SEC-01/02 adds one canonical token validator module only when its exact
     # reviewed source/callers and immutable ancestry hold. Historical inventories
     # and every prior successor remain intact.

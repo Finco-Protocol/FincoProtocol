@@ -15,6 +15,7 @@ from tools.ci_v3_phase_compare import control_report,phase_map,native_cases
 from tools.ci_v3_pytest_config import semantic_plugin_profile
 from tools.ci_v3_real_contract import outcome
 from tools.ci_v3_hosted_transport import GitHub,extract_archive
+from tools.ci_v3_calibrate import STEADY_STATE_CONTRACT,evaluate
 
 REPO='Finco-Protocol/FincoProtocol'
 BASE_HEAD='e96561a220fc6adeb85587eb01d61745a922ab41'
@@ -168,7 +169,7 @@ def worker(project,out,planfolder,index):
  require(type(index) is int and 0 <= index < plan['plan']['worker_count'],'worker index outside plan')
  require(sha('runtime-image.tar.gz')==plan['image_archive_sha256'],'runtime transfer bytes')
  subprocess.run(['docker','load','--input','runtime-image.tar.gz'],check=True)
- request={'mode':'worker','worker':f'worker-{index}','context':context(),'inventory':plan['inventory'],'owned_modules':[m for m,w in plan['plan']['module_workers'].items() if w==f'worker-{index}'],'target_calibration':{'ceiling_s':.6,'statistic':'maximum','samples':3}}
+ request={'mode':'worker','worker':f'worker-{index}','context':context(),'inventory':plan['inventory'],'owned_modules':[m for m,w in plan['plan']['module_workers'].items() if w==f'worker-{index}'],'target_calibration':dict(STEADY_STATE_CONTRACT)}
  child,proc=observe_container(request,out/'execution',project,plan['image'],5400,built_image=True)
  write_json(out/'process.json',proc);write_json(out/'binding.json',{'context':context(),'worker':index,'plan_sha256':sha(planfolder/'plan.json'),'image':plan['image']})
  import shutil
@@ -196,7 +197,12 @@ D029_BLOBS={'app/trust_readiness/registry.py':'99ff83825e6bef013be9411235d2d7734
  'docs/readiness/02_data_handling.md':'330db9c4ae6cd6c8349aad4a1d0c632010e6c1e4',
  'docs/readiness/06_retention_and_deletion.md':'a155b44b47ce3cbe22239e6a65635d666e0f3dac'}
 D029_TRUST_PATHS=('app/trust_readiness','docs/readiness','tests/test_trust_readiness_*.py','tools/render_readiness_docs.py','app/templates/trust','static/trust_readiness.css')
-D029_TRUST_CHANGED=frozenset({'app/trust_readiness/registry.py','docs/readiness/02_data_handling.md','docs/readiness/06_retention_and_deletion.md','tests/test_trust_readiness_registry.py'})
+D029_TRUST_CHANGED=frozenset({'app/trust_readiness/registry.py','docs/readiness/02_data_handling.md','docs/readiness/06_retention_and_deletion.md','tests/test_trust_readiness_registry.py',
+ 'tests/test_trust_readiness_controls.py'})
+# RC-M (PR #388, Financial Owner's standing authorization, Correction B): the Trust-scope CSRF-inventory test gained ONE additive line that admits the two
+# React adapters' CSRF-bound POST modules while their exact reviewed content holds (tests/rcm_adapter_csrf_successor.py).  The file is therefore part of
+# the reviewed Trust-scope set, but only as this EXACT blob: any other edit of it still fails this gate until it is re-reviewed.
+D029_TRUST_CHANGED_BLOBS={'tests/test_trust_readiness_controls.py':'cd5b3114d9a11ca4507667a099bb853573d056d3'}
 _D='tests/test_trust_readiness_registry.py::'
 D029_EVIDENCE_NODES=tuple(_D+n for n in (
  'test_generated_documents_are_up_to_date','test_csrf_registry_correction_is_only_the_two_approved_sentences',
@@ -210,11 +216,11 @@ D029_RECORD='docs/model_v2/d029/evidence/D029_CI_V3_OUTCOME_RECONCILIATION.json'
 def d029_expected_record():
  return {'authorization':'Financial Owner, PR #384 Correction C (relayed in the PR thread)','node':D029_NODE,
   'transition':{'from':'SKIPPED','reason':D029_SKIP_REASON,'to':'PASSED'},'scope':'single node; no other historical outcome may change',
-  'main':D029_MAIN,'main_blobs':D029_MAIN_BLOBS,'current_blobs':D029_BLOBS,
+  'main':D029_MAIN,'main_blobs':D029_MAIN_BLOBS,'current_blobs':{**D029_BLOBS,**D029_TRUST_CHANGED_BLOBS},
   'trust_scope_changed_paths':sorted(D029_TRUST_CHANGED),'required_passing_nodes':list(D029_EVIDENCE_NODES)}
 
 def d029_source_facts():
- facts={'record':read_json(D029_RECORD),'blobs':{p:git('rev-parse','HEAD:'+p) for p in D029_BLOBS}}
+ facts={'record':read_json(D029_RECORD),'blobs':{p:git('rev-parse','HEAD:'+p) for p in {**D029_BLOBS,**D029_TRUST_CHANGED_BLOBS}}}
  facts['main_blobs']={p:git('rev-parse',D029_MAIN+':'+p) for p in D029_MAIN_BLOBS}
  git('merge-base','--is-ancestor',D029_MAIN,'HEAD')
  facts['changed']=frozenset(git('diff','--name-only',D029_MAIN,'HEAD','--',*D029_TRUST_PATHS).splitlines())
@@ -231,7 +237,7 @@ def d029_transition_problems(node,old_phases,old_native,new_phases,new_native,fa
   if shape(new_phases)!=[('setup','passed',None),('call','passed',None),('teardown','passed',None)] or outcome(new_phases)['status']!='passed':problems.append('current execution is not three passed phases')
   if tuple(new_native)[0]!='passed':problems.append('current native JUnit does not confirm PASSED')
   if facts['record']!=d029_expected_record():problems.append('reconciliation record differs from the reviewed constants')
-  if facts['blobs']!=D029_BLOBS:problems.append('Trust sources are not the exact reviewed blobs')
+  if facts['blobs']!={**D029_BLOBS,**D029_TRUST_CHANGED_BLOBS}:problems.append('Trust sources are not the exact reviewed blobs')
   if facts['main_blobs']!=D029_MAIN_BLOBS:problems.append('Trust baseline is not the pinned main')
   if facts['changed']!=D029_TRUST_CHANGED:problems.append('Trust-scope diff differs from the reviewed set')
   for ev in D029_EVIDENCE_NODES:
@@ -269,7 +275,7 @@ def verify_data(planfolder,workers):
   owned={n for n in expected if data['plan']['module_workers'][n.split('::')[0]]==f'worker-{index}'}
   require(set(r['selected'])==owned and len(r['selected'])==len(owned) and Counter(r['deselected'])==Counter(expected-owned),'ownership loss/duplicate')
   require(r['environment']==data['collection_environment'] and semantic_plugin_profile(r['plugin_registrations'])==data['collection_plugins'],'worker environment/plugins drift')
-  calibration=read_json(folder/'execution/child/calibration.json');require(calibration['context']==context() and calibration['meets_test_assumption'] and len(calibration['samples_s'])>=3 and max(calibration['samples_s'])<=.6,'target calibration failed')
+  calibration=read_json(folder/'execution/child/calibration.json');require(calibration['context']==context() and calibration.get('contract')==STEADY_STATE_CONTRACT and calibration['meets_test_assumption'] is True and evaluate(calibration['samples_s'],STEADY_STATE_CONTRACT)['meets_test_assumption'] is True,'target calibration failed')
   phases=phase_map(r);native=native_cases((folder/'execution/child/native.xml').read_bytes(),r)
   require(not set(seen)&set(phases),'duplicate execution')
   for n,v in phases.items():

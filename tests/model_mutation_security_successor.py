@@ -177,6 +177,23 @@ REACT_MVP_CORRECTION_SUCCESSORS={
     "tests/test_model_workspace_consolidation_browser.py":"6f91b8c9376ba65c27aab34ea39651cef351b2e9",
 }
 
+# RC-M (integrated React migration parity) admits exact reviewed successors of the four pinned paths the React adapters had to
+# change: the workspace router (one additive block including the new ``react_new_project`` / ``react_analysis`` / ``react_goal_seek``
+# adapter modules), ``WorkspaceView.tsx`` (the Analysis hub mounts the Sensitivity and Goal Seek tools around the unchanged Last Run
+# view) and the rebuilt React bundle (JS and CSS).  Additive: every earlier layer above stays immutable and individually verified; the adapter modules themselves are
+# NEW unpinned files whose security behaviour is proven by tests/test_model_react_rcm_*_v1.py and tests/test_rcm_adapter_csrf_successor.py.  Owner authorization for these
+# presentation/adapter-layer paths is the RC-M task statement's, recorded as relayed in docs/react_migration/rc_m_integrated/.
+RC_M_SUCCESSORS={
+    "app/v2/react_workspace_router.py":"e81224a5cd64ab23f94c885437af63a0a6da2f64",
+    "frontend/src/app/WorkspaceView.tsx":"1f5e9756b527e8e5b9ca8d15e1d261c93a8f26a6",
+    "static/react/finco-react.css":"4c119cdff91c2bcb2cb751ac9668acce7a66607c",
+    "static/react/finco-react.js":"37852f40afdcb3c141005a5cd2694ea4e435ead8",
+    # Correction B: the bundle cache-buster is derived from the shipped bytes (REACT_ASSET_VERSION); no other line of the router changed
+    "app/v2/react_poc_router.py":"81e38521b31c9c31d0fa2b174c42bf4df1bce8af",
+    # the existing mandatory Chromium role now also imports the RC-M acceptance bodies (additive tail only; no collection-time skip)
+    "tests/test_model_workspace_consolidation_browser.py":"cf8dbfe39e31a4718a0af2da458ae919ca8a7fab",
+}
+
 # FIN-VAL F01: exact additive projection-only successor; historical layers
 # above remain individually admitted. No CSRF, CAS or Run gate is changed.
 FINVAL_RATE_SUCCESSORS={
@@ -284,6 +301,7 @@ def violations(sources,*,check_pin=True):
         if path in FINVAL_B2C1_SUCCESSORS:admitted=admitted|{FINVAL_B2C1_SUCCESSORS[path]}
         if path in D029_RUN_INTENT_SUCCESSORS:admitted=admitted|{D029_RUN_INTENT_SUCCESSORS[path]}
         if path in REACT_MVP_CORRECTION_SUCCESSORS:admitted=admitted|{REACT_MVP_CORRECTION_SUCCESSORS[path]}
+        if path in RC_M_SUCCESSORS:admitted=admitted|{RC_M_SUCCESSORS[path]}
         if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if path in FINVAL_F01_COMPLETE_SUCCESSORS:admitted=admitted|{FINVAL_F01_COMPLETE_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
