@@ -961,7 +961,14 @@ def _collect_form_snapshot(form) -> dict:
         # Must be collected here so saved_norm and current_norm both contain it.
         "currency",
     ]
-    return {field: form.get(field, "") for field in fields}
+    snapshot = {field: form.get(field, "") for field in fields}
+    # Explicitly preserve the server-rendered contract through legacy form
+    # collection; absent historical provenance is never synthesized here.
+    from app.input_adapter import RATE_UNIT_KEY, assert_rate_unit
+    if form.get(RATE_UNIT_KEY):
+        snapshot[RATE_UNIT_KEY] = form.get(RATE_UNIT_KEY)
+        assert_rate_unit(snapshot)
+    return snapshot
 
 
 def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
@@ -1008,7 +1015,8 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
                 "total_capex_keur": str(project_inputs.capex.total_capex),
                 "opex_y1_keur": str(sum(item.y1_amount_keur for item in project_inputs.opex)),
                 "target_dscr": str(project_inputs.financing.target_dscr),
-                "interest_rate_pct": str(project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000),
+                "interest_rate_pct": str((project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000) * 100.0),
+            "_finval_interest_rate_unit": "human_percent_v1",
                 "tenor_years": str(project_inputs.financing.senior_tenor_years),
                 "cod_date": str(project_inputs.info.cod_date),
                 "construction_months": str(project_inputs.info.construction_months),
@@ -1037,7 +1045,8 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
                 "opex_y1_keur": str(sum(item.y1_amount_keur for item in project_inputs.opex)),
                 "gearing_pct": str((getattr(project_inputs.financing, "gearing_ratio", 0.0) or 0.0) * 100),
                 "target_dscr": str(project_inputs.financing.target_dscr),
-                "interest_rate_pct": str(project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000),
+                "interest_rate_pct": str((project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000) * 100.0),
+            "_finval_interest_rate_unit": "human_percent_v1",
                 "tenor_years": str(project_inputs.financing.senior_tenor_years),
                 "cod_date": str(project_inputs.info.cod_date),
                 "construction_months": str(project_inputs.info.construction_months),
@@ -1066,7 +1075,8 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
                 "opex_y1_keur": str(sum(item.y1_amount_keur for item in project_inputs.opex)),
                 "gearing_pct": str((getattr(project_inputs.financing, "gearing_ratio", 0.0) or 0.0) * 100),
                 "target_dscr": str(project_inputs.financing.target_dscr),
-                "interest_rate_pct": str(project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000),
+                "interest_rate_pct": str((project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000) * 100.0),
+            "_finval_interest_rate_unit": "human_percent_v1",
                 "tenor_years": str(project_inputs.financing.senior_tenor_years),
                 "cod_date": str(project_inputs.info.cod_date),
                 "construction_months": str(project_inputs.info.construction_months),
@@ -1094,7 +1104,8 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
                 "opex_y1_keur": str(sum(item.y1_amount_keur for item in project_inputs.opex)),
                 "gearing_pct": str((getattr(project_inputs.financing, "gearing_ratio", 0.0) or 0.0) * 100),
                 "target_dscr": str(project_inputs.financing.target_dscr),
-                "interest_rate_pct": str(project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000),
+                "interest_rate_pct": str((project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000) * 100.0),
+            "_finval_interest_rate_unit": "human_percent_v1",
                 "tenor_years": str(project_inputs.financing.senior_tenor_years),
                 "cod_date": str(project_inputs.info.cod_date),
                 "construction_months": str(project_inputs.info.construction_months),
@@ -1126,7 +1137,8 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
             "opex_y1_keur": str(sum(item.y1_amount_keur for item in project_inputs.opex)),
             "gearing_pct": str((getattr(project_inputs.financing, "gearing_ratio", 0.0) or 0.0) * 100),
             "target_dscr": str(project_inputs.financing.target_dscr),
-            "interest_rate_pct": str(project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000),
+            "interest_rate_pct": str((project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000) * 100.0),
+            "_finval_interest_rate_unit": "human_percent_v1",
             "tenor_years": str(project_inputs.financing.senior_tenor_years),
             "cod_date": str(project_inputs.info.cod_date),
             "construction_months": str(project_inputs.info.construction_months),
@@ -1135,6 +1147,14 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
             "ppa_term_years": str(int(project_inputs.revenue.ppa_term_years)),
         }
     )
+    if canonical_type == "EV Charging":
+        # This legacy fallback predates the EV serializer. Rate authority must
+        # still come from the identified EV factory, never the Wind fallback.
+        from app.project_factories import create_generic_ev_charging_reference
+        rate_inputs = create_generic_ev_charging_reference()
+        baseline["interest_rate_pct"] = str(
+            (rate_inputs.financing.base_rate + rate_inputs.financing.margin_bps / 10_000) * 100.0)
+        baseline["_finval_interest_rate_unit"] = "human_percent_v1"
     return baseline
 
 

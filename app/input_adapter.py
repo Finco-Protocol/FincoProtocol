@@ -27,8 +27,80 @@ if TYPE_CHECKING:
     from domain.inputs import ProjectInputs
 
 
+RATE_UNIT_KEY = "_finval_interest_rate_unit"
+RATE_UNIT = "human_percent_v1"
+
+
+def _validated_rate_percent(value) -> float:
+    import math
+    if isinstance(value, bool):
+        raise ValueError("Interest rate must be a finite human percentage between 0 and 20")
+    try:
+        rate = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Interest rate must be a finite human percentage between 0 and 20") from exc
+    if not math.isfinite(rate) or not 0 <= rate <= 20:
+        raise ValueError("Interest rate must be a finite human percentage between 0 and 20")
+    return rate
+
+
+def assert_rate_unit(snapshot: dict) -> None:
+    """No implicit reinterpretation of an unversioned or forged saved rate.
+
+    Historical records need an owner-reviewed provenance decision; this does
+    not migrate them, rewrite historical Runs, or substitute factory pricing.
+    """
+    if snapshot.get(RATE_UNIT_KEY) != RATE_UNIT:
+        raise RateUnitProvenanceError(
+            "INTEREST_RATE_UNIT_UNVERIFIED: explicit human_percent_v1 provenance required. "
+            "Create a verified Working Copy or request an owner-reviewed provenance repair; "
+            "no historical value was converted.")
+
+
 class SnapshotInputError(ValueError):
     """Raised when a saved user-project snapshot cannot build runtime inputs."""
+
+
+class RateUnitProvenanceError(SnapshotInputError):
+    """Typed ambiguity at a persisted financial input boundary."""
+    code = "RATE_UNIT_PROVENANCE_AMBIGUOUS"
+
+
+def preserve_rate_provenance(existing: dict, incoming: dict) -> dict:
+    """Legacy full-form saves retain a verified contract; clients cannot upgrade history.
+
+    Call under the persistence writer's lock, with the current stored snapshot.
+    This does not infer units or change values in unversioned historical rows.
+    """
+    result = dict(incoming)
+    old_unit = existing.get(RATE_UNIT_KEY)
+    new_unit = result.get(RATE_UNIT_KEY)
+    if old_unit == RATE_UNIT:
+        if new_unit not in (None, "", RATE_UNIT):
+            assert_rate_unit(result)
+        result[RATE_UNIT_KEY] = RATE_UNIT
+        origin = existing.get("_finval_interest_rate_origin")
+        if origin is not None:
+            if result.get("_finval_interest_rate_origin", origin) != origin:
+                raise RateUnitProvenanceError("Rate source lineage cannot be replaced by a form Save.")
+            result["_finval_interest_rate_origin"] = origin
+    elif str(existing.get("interest_rate_pct", "")).strip():
+        if new_unit or result.get("interest_rate_pct") != existing.get("interest_rate_pct"):
+            raise RateUnitProvenanceError(
+                "Existing interest-rate provenance is ambiguous. Create a verified Working Copy "
+                "or request an owner-reviewed provenance repair; Save cannot change or label it.")
+    elif new_unit:
+        assert_rate_unit(result)
+    return result
+
+
+def rate_unit_error_code(exc) -> Optional[str]:
+    """Expose typed provenance failures through existing writer envelopes."""
+    while exc is not None:
+        if isinstance(exc, RateUnitProvenanceError):
+            return exc.code
+        exc = exc.__cause__
+    return None
 
 
 # Map of domain field paths → (getter, setter) for clean replacement
@@ -158,11 +230,12 @@ def _set_financing_interest_rate(proj: "ProjectInputs", value: float) -> "Projec
     ``assert_debt_scalar_edit_allowed``; the check is repeated here so no
     code path can silently write a decorative value.
     """
+    value = _validated_rate_percent(value)
     fin = proj.financing
     rate_cfg = fin.senior_debt_interest_config
     schedule = list(getattr(
         rate_cfg.rate_schedule, "explicit_all_in_rates", None) or [])
-    mode, _, _ = senior_rate_authority(proj)
+    mode, uniform_ratio, _ = senior_rate_authority(proj)
     if mode == "CALIBRATED":
         # R8/N02: passive materialisation of a calibrated working copy must
         # NEVER break and must never let the scalar overwrite the typed
@@ -171,6 +244,8 @@ def _set_financing_interest_rate(proj: "ProjectInputs", value: float) -> "Projec
         # the Debt sheet projects the schedule as the authority).
         return proj
     all_in = value / 100.0  # single % -> ratio conversion boundary
+    if uniform_ratio == all_in:
+        return proj  # exact same typed authority; no auxiliary-state rewrite
     new_schedule = tuple(all_in for _ in schedule)
     new_rate_cfg = dc_replace(
         rate_cfg,
@@ -911,25 +986,9 @@ def _resolve_user_inputs(
     if gearing_pct is not None:
         proj = _set_financing_gearing(proj, gearing_pct)
     if interest_rate_pct is not None:
-        # V4-1: when using a seeded base, skip the interest-rate override if
-        # the supplied value matches the factory all-in rate within 0.1 bps.
-        # _set_financing_interest_rate expects a percentage (5.75 for 5.75%)
-        # but the form path sends a decimal (0.0575) — this dual-format check
-        # handles both without altering the existing percentage contract.
-        _skip_rate = False
-        if base_inputs is not None:
-            _base_all_in = (
-                base_inputs.financing.base_rate
-                + base_inputs.financing.margin_bps / 10_000
-            )
-            _v = float(interest_rate_pct)
-            # Accept either percentage (5.75) or decimal (0.0575) form
-            _skip_rate = (
-                abs(_v - _base_all_in) < 0.00001
-                or abs(_v / 100.0 - _base_all_in) < 0.00001
-            )
-        if not _skip_rate:
-            proj = _set_financing_interest_rate(proj, interest_rate_pct)
+        # One known unit, one conversion boundary. No resolver-level dual-unit
+        # comparison, tolerance, or identity heuristic is admissible.
+        proj = _set_financing_interest_rate(proj, interest_rate_pct)
     if tenor_years is not None:
         proj = _set_financing_tenor(proj, tenor_years)
     if target_dscr is not None:
@@ -1017,6 +1076,10 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
 
     C2B2: canonical rev_* keys win over legacy keys when both present.
     """
+    # This converter is also called directly by the legacy seeded Run
+    # adapter. A persisted snapshot must prove its unit at either entry.
+    if snapshot.get("interest_rate_pct") not in (None, ""):
+        assert_rate_unit(snapshot)
     # Canonical key wins over legacy when both present (C2B2).
     # Strict: non-empty invalid values raise SnapshotInputError; absent/empty → None (use legacy).
     _canonical_tariff = _snapshot_float_strict(snapshot, "rev_ppa_base_tariff", non_negative=True)
@@ -1326,6 +1389,11 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     user inputs produce exactly equal ProjectInputs
     and exactly equal KPIs.
     """
+    # FIN-VAL: persisted scalar pricing requires explicit provenance. Fresh
+    # schema inputs already have the documented human-percent contract.
+    if snapshot.get("interest_rate_pct") not in (None, ""):
+        assert_rate_unit(snapshot)
+
     # Validate required fields (preserve SnapshotInputError
     # behavior).  gearing_pct is excluded from the "must be non-empty"
     # check because the engine handles None gearing gracefully (DSCR-

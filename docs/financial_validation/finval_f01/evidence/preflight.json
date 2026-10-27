@@ -1,0 +1,34 @@
+{
+  "main": "cf7056de4078ca66afcf52265a9bacafe35586f7",
+  "main_tree": "ba03a27692ca7bf47fb0170fd4fd5822f34ae4aa",
+  "branch": "fix/finval-f01-complete",
+  "head": "43338e69d50cd9f44ac02f9a18dabe834e7c6fce",
+  "tree": "38e72ff1f064381280b7ae0d249278849264c7e9",
+  "merge_base": "cf7056de4078ca66afcf52265a9bacafe35586f7",
+  "ahead_behind": "0\t6",
+  "main_blobs": {
+    "app/input_adapter.py": "c01628520440e52337255dc049613790805df180",
+    "app/persistence/projects_repository.py": "1fe389fe6bb2abf5eb0edb01fb3026924e77a243",
+    "app/v2/router.py": "37f18a0e35c0e0a9ede5d71a0f9dfc906a68c7c2",
+    "app/services/project_library_service.py": "b93c23b427c1d24d3a3ea3e65a4e42128dba06c0",
+    "app/workbook/update_service.py": "df4d5e04695de697fbf1ffb8a14d8ed86a0ebd27",
+    "app/persistence/workspace_repository.py": "0355b82a7434b1cab4c08d74ceac307c1b597cbb",
+    "main_web.py": "95a56ae694996049e94e4f24d7501b0de1bf5b52",
+    "app/templates/partials/workspace_shell.html": "4efa017f876cb9bb595ca1e2d52df93f9e12b68d",
+    "app/templates/partials/sheet_senior_debt.html": "01be072e77fcad7debd7d20332fddd22236d1212",
+    "tests/test_model_react_overnight_b_governance.py": "2d3816587a60fd99fea383c19f87a86019d7b6e4"
+  },
+  "pre_extension_blobs": {
+    "app/input_adapter.py": "87b66f5c8ed01e9477e6d439377b68bb2c12a3ad",
+    "app/persistence/projects_repository.py": "c398ead784c5d6a12113e110a1f28aaa75ec237e",
+    "app/v2/router.py": "8fe930c5a1ac876de0d3a98fff689f34af646a68",
+    "app/services/project_library_service.py": "88d7480d9ffdc28bf5522ca3a1e6f7872a20809a",
+    "app/workbook/update_service.py": "2e39aca488df085662afb9b8e8f808ec304ae10c",
+    "app/persistence/workspace_repository.py": "0355b82a7434b1cab4c08d74ceac307c1b597cbb",
+    "main_web.py": "95a56ae694996049e94e4f24d7501b0de1bf5b52",
+    "app/templates/partials/workspace_shell.html": "4efa017f876cb9bb595ca1e2d52df93f9e12b68d",
+    "app/templates/partials/sheet_senior_debt.html": "01be072e77fcad7debd7d20332fddd22236d1212",
+    "tests/test_model_react_overnight_b_governance.py": "2d3816587a60fd99fea383c19f87a86019d7b6e4"
+  },
+  "diff": "M\tapp/input_adapter.py\nM\tapp/persistence/projects_repository.py\nM\tapp/services/project_library_service.py\nM\tapp/v2/router.py\nM\tapp/workbook/update_service.py\nA\tdocs/model_v2/finval_rate/FINVAL_EXISTING_RECORD_IMPACT.md\nA\tdocs/model_v2/finval_rate/FINVAL_FINAL_CI_AND_REVIEW.md\nA\tdocs/model_v2/finval_rate/FINVAL_RATE_IMPLEMENTATION_AND_PARITY.md\nA\tdocs/model_v2/finval_rate/FINVAL_RATE_ROOT_CAUSE.md\nA\tdocs/model_v2/finval_rate/FINVAL_RATE_UNIT_CONTRACT.md\nA\tdocs/model_v2/finval_rate/FINVAL_SHL_TIMING_INVESTIGATION.md\nA\tdocs/model_v2/finval_rate/FINVAL_SPONSOR_RETURN_SEMANTICS.md\nA\tdocs/model_v2/finval_rate/evidence/adapter-complete.xml\nA\tdocs/model_v2/finval_rate/evidence/adapter-regression.xml\nA\tdocs/model_v2/finval_rate/evidence/baseline-rate.xml\nA\tdocs/model_v2/finval_rate/evidence/browser-final.xml\nA\tdocs/model_v2/finval_rate/evidence/browser-rate-proof/data_center-initial.png\nA\tdocs/model_v2/finval_rate/evidence/browser-rate-proof/data_center-saved-reloaded.png\nA\tdocs/model_v2/finval_rate/evidence/browser-rate-proof/ev_charging-initial.png\nA\tdocs/model_v2/finval_rate/evidence/browser-rate-proof/ev_charging-saved-reloaded.png\nA\tdocs/model_v2/finval_rate/evidence/browser-rate-proof/observations.json\nA\tdocs/model_v2/finval_rate/evidence/browser-rate-proof/solar-initial.png\nA\tdocs/model_v2/finval_rate/evidence/browser-rate-proof/solar-saved-reloaded.png\nA\tdocs/model_v2/finval_rate/evidence/browser-rate-proof/wind-initial.png\nA\tdocs/model_v2/finval_rate/evidence/browser-rate-proof/wind-saved-reloaded.png\nA\tdocs/model_v2/finval_rate/evidence/browser.xml\nA\tdocs/model_v2/finval_rate/evidence/environment.json\nA\tdocs/model_v2/finval_rate/evidence/ev-rate-final.xml\nA\tdocs/model_v2/finval_rate/evidence/final-main-check.json\nA\tdocs/model_v2/finval_rate/evidence/financial-security.xml\nA\tdocs/model_v2/finval_rate/evidence/financial/data_center-history-False.json\nA\tdocs/model_v2/finval_rate/evidence/financial/data_center-history-True.json\nA\tdocs/model_v2/finval_rate/evidence/financial/data_center-rate-0.056.json\nA\tdocs/model_v2/finval_rate/evidence/financial/data_center-rate-0.56.json\nA\tdocs/model_v2/finval_rate/evidence/financial/data_center-rate-5.6.json\nA\tdocs/model_v2/finval_rate/evidence/financial/data_center-rate-9.0.json\nA\tdocs/model_v2/finval_rate/evidence/financial/ev_charging-history-False.json\nA\tdocs/model_v2/finval_rate/evidence/financial/ev_charging-history-True.json\nA\tdocs/model_v2/finval_rate/evidence/financial/ev_charging-rate-0.056.json\nA\tdocs/model_v2/finval_rate/evidence/financial/ev_charging-rate-0.56.json\nA\tdocs/model_v2/finval_rate/evidence/financial/ev_charging-rate-5.6.json\nA\tdocs/model_v2/finval_rate/evidence/financial/ev_charging-rate-9.0.json\nA\tdocs/model_v2/finval_rate/evidence/financial/solar-history-False.json\nA\tdocs/model_v2/finval_rate/evidence/financial/solar-history-True.json\nA\tdocs/model_v2/finval_rate/evidence/financial/solar-rate-0.056.json\nA\tdocs/model_v2/finval_rate/evidence/financial/solar-rate-0.56.json\nA\tdocs/model_v2/finval_rate/evidence/financial/solar-rate-5.6.json\nA\tdocs/model_v2/finval_rate/evidence/financial/solar-rate-9.0.json\nA\tdocs/model_v2/finval_rate/evidence/financial/wind-history-False.json\nA\tdocs/model_v2/finval_rate/evidence/financial/wind-history-True.json\nA\tdocs/model_v2/finval_rate/evidence/financial/wind-rate-0.056.json\nA\tdocs/model_v2/finval_rate/evidence/financial/wind-rate-0.56.json\nA\tdocs/model_v2/finval_rate/evidence/financial/wind-rate-5.6.json\nA\tdocs/model_v2/finval_rate/evidence/financial/wind-rate-9.0.json\nA\tdocs/model_v2/finval_rate/evidence/governance.xml\nA\tdocs/model_v2/finval_rate/evidence/legacy-producer-blocker.json\nA\tdocs/model_v2/finval_rate/evidence/local-acceptance-pre-bootstrap.xml\nA\tdocs/model_v2/finval_rate/evidence/local-acceptance-source.json\nA\tdocs/model_v2/finval_rate/evidence/local-acceptance.xml\nA\tdocs/model_v2/finval_rate/evidence/native-identity.xml\nA\tdocs/model_v2/finval_rate/evidence/preflight.json\nA\tdocs/model_v2/finval_rate/evidence/provenance-fixtures.xml\nA\tdocs/model_v2/finval_rate/evidence/rate-contract-final.xml\nA\tdocs/model_v2/finval_rate/evidence/rate-final.xml\nA\tdocs/model_v2/finval_rate/evidence/reference-preservation-final.xml\nA\tdocs/model_v2/finval_rate/evidence/shl-timing.json\nA\tdocs/model_v2/finval_rate/evidence/sponsor-semantics.json\nM\ttests/model_mutation_security_successor.py\nM\ttests/test_ev_charging_catalogue_seed.py\nM\ttests/test_ev_charging_driver_authority.py\nM\ttests/test_f06_opex_display_authority.py\nA\ttests/test_finval_rate_contract.py\nA\ttests/test_finval_rate_run_acceptance.py\nA\ttests/test_finval_rate_successor.py\nM\ttests/test_model_mutation_security_successor.py"
+}

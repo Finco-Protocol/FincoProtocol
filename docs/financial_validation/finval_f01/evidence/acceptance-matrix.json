@@ -1,0 +1,250 @@
+[
+  {
+    "kind": "solar",
+    "human_percent": 0.056,
+    "engine_ratio": 0.0005600000000000001,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "capex",
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "solar",
+    "human_percent": 0.56,
+    "engine_ratio": 0.005600000000000001,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "capex",
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "solar",
+    "human_percent": 5.6,
+    "engine_ratio": 0.055999999999999994,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "capex",
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "solar",
+    "human_percent": 9.0,
+    "engine_ratio": 0.09,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "capex",
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "wind",
+    "human_percent": 0.056,
+    "engine_ratio": 0.0005600000000000001,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "capex",
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "wind",
+    "human_percent": 0.56,
+    "engine_ratio": 0.005600000000000001,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "capex",
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "wind",
+    "human_percent": 5.6,
+    "engine_ratio": 0.055999999999999994,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "capex",
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "wind",
+    "human_percent": 9.0,
+    "engine_ratio": 0.09,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "capex",
+      "opex"
+    ],
+    "direct_20mw_clean": "REFUSED",
+    "direct_20mw_reason": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9032.890315327104 kEUR remains at maturity period_index=57",
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "data_center",
+    "human_percent": 0.056,
+    "engine_ratio": 0.0005600000000000001,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "FAILED",
+    "http_history_rows": 0,
+    "existing_run_fold_changes": [
+      "opex"
+    ],
+    "direct_20mw_clean": "REFUSED",
+    "direct_20mw_reason": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: G2A_FIXED_SOURCES_EXCEED_TOTAL_PROJECT_USES: funding excess=3169.529490977 kEUR",
+    "native_full_factory": "REJECTED",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "data_center",
+    "human_percent": 0.56,
+    "engine_ratio": 0.005600000000000001,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "data_center",
+    "human_percent": 5.6,
+    "engine_ratio": 0.055999999999999994,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "data_center",
+    "human_percent": 9.0,
+    "engine_ratio": 0.09,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "FAILED",
+    "http_history_rows": 0,
+    "existing_run_fold_changes": [
+      "opex"
+    ],
+    "direct_20mw_clean": "REFUSED",
+    "direct_20mw_reason": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 9807.288823047207 kEUR remains at maturity period_index=43",
+    "native_full_factory": "REJECTED",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "ev_charging",
+    "human_percent": 0.056,
+    "engine_ratio": 0.0005600000000000001,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "ev_charging",
+    "human_percent": 0.56,
+    "engine_ratio": 0.005600000000000001,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "ev_charging",
+    "human_percent": 5.6,
+    "engine_ratio": 0.055999999999999994,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  },
+  {
+    "kind": "ev_charging",
+    "human_percent": 9.0,
+    "engine_ratio": 0.09,
+    "seed_clone_save_reload": "PASS (single and batch)",
+    "http_run": "COMMITTED",
+    "http_history_rows": 1,
+    "existing_run_fold_changes": [
+      "opex"
+    ],
+    "direct_20mw_clean": "OK",
+    "direct_20mw_reason": null,
+    "native_full_factory": "FEASIBLE",
+    "native_exact_identity": true
+  }
+]

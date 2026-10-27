@@ -111,6 +111,7 @@ def test_opex_summary_total_displays_institutional_precision():
         "tariff_eur_mwh": "55", "ppa_term_years": "10", "cod_date": "2031-01-01",
         "construction_months": "12", "horizon_years": "20",
         "interest_rate_pct": "5.5", "tenor_years": "15", "target_dscr": "1.2",
+        "_finval_interest_rate_unit": "human_percent_v1",  # explicitly authored 5.5% fixture
         "gearing_pct": "75", "opex_y1_keur": "380", "total_capex_keur": "33000",
         "scenario": "Base",
     }

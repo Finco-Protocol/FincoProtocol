@@ -1,0 +1,30 @@
+{
+  "host_uid": 1000,
+  "host_gid": 1000,
+  "source_directories": {
+    ".": {
+      "uid": 1000,
+      "gid": 1000,
+      "mode": "0o700"
+    },
+    "financial_engine/native_v10": {
+      "uid": 1000,
+      "gid": 1000,
+      "mode": "0o700"
+    },
+    "financial_engine/native_v11": {
+      "uid": 1000,
+      "gid": 1000,
+      "mode": "0o700"
+    }
+  },
+  "runtime": {
+    "image_id": "sha256:cdbd30aa4d0f5fc9c56efdba6f706194b5a8ab2f0190c8f686d7c9de648b29c2",
+    "declared_user": "1000:1000"
+  },
+  "executed_identity_and_toolchain": [
+    "uid=1000(ubuntu) gid=1000(ubuntu) groups=1000(ubuntu)",
+    "Python 3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+    "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0"
+  ]
+}

@@ -237,7 +237,7 @@ class TestTypedFieldClassification:
         monkeypatch.setattr(repo, "v2_atomic_draft_update", _no_db)
         with pytest.raises(FieldValidationError) as caught:
             WorkbookUpdateService.apply_draft_update(
-                ws=SimpleNamespace(user_id="u", project_id="p", draft_snapshot={}),
+                ws=SimpleNamespace(user_id="u", project_id="p", draft_snapshot={"_finval_interest_rate_unit": "human_percent_v1"}),
                 field_id="debt.senior.interest_rate_pct", raw_value="5.0",
                 content_hash="h", workbook_version=WORKBOOK.version,
                 project_record=SimpleNamespace(project_code="demo"))

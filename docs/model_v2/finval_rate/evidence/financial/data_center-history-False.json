@@ -1,0 +1,31 @@
+{
+  "runs": [
+    {
+      "history_id": "d109aed480824089985f384f2731f419",
+      "project_code": "b2-data-center",
+      "runtime_snapshot_id": "20261027T004105.133278+0000",
+      "runtime_origin": "v2_run",
+      "ran_at": "2026-10-27T00:41:05.133287+00:00",
+      "engine_version": "clean_senior_debt_v0",
+      "workbook_version": "2.3.0",
+      "active_scenario_id": null,
+      "active_scenario_name": null,
+      "last_runtime_scenario_id": null,
+      "composite_hash": "154ef1ed6b28dd24685e6b109ae932bbc46ac7ad4100e7a4372ebb760ca7bf61"
+    },
+    {
+      "history_id": "be50349962cc4877a1c7f433382ddec1",
+      "project_code": "b2-data-center",
+      "runtime_snapshot_id": "20261027T004101.064363+0000",
+      "runtime_origin": "v2_run",
+      "ran_at": "2026-10-27T00:41:01.064371+00:00",
+      "engine_version": "clean_senior_debt_v0",
+      "workbook_version": "2.3.0",
+      "active_scenario_id": null,
+      "active_scenario_name": null,
+      "last_runtime_scenario_id": null,
+      "composite_hash": "bb5f57d2917b0858236cf18f71fc03c04e10054a42d616496eca72acee484754"
+    }
+  ],
+  "snapshot_rate": "0.56"
+}

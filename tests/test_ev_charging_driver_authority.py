@@ -22,6 +22,7 @@ BASE_SNAPSHOT = {
     "operating_hours_p50": "2000", "p50_hours": "2000", "tariff_eur_mwh": "400",
     "ppa_term_years": "20", "opex_y1_keur": "2680", "total_capex_keur": "9000",
     "target_dscr": "1.3", "gearing_pct": "65", "interest_rate_pct": "6",
+    "_finval_interest_rate_unit": "human_percent_v1",  # explicit 6% fixture; no economic change
     "tenor_years": "10", "construction_months": "12", "horizon_years": "20",
     "cod_date": "2031-01-01", "country_market": "XE", "scenario": "Base",
 }

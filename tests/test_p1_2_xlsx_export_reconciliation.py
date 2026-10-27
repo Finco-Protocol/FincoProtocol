@@ -917,6 +917,7 @@ def _build_persisted_export_for_test() -> "tuple[bytes, object, object, str]":
         "opex_y1_keur": str(opex_y1),
         "total_capex_keur": str(pi.capex.total_capex),
         "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": str(pi.financing.senior_tenor_years),
         "target_dscr": str(pi.financing.target_dscr),
     }
@@ -1429,6 +1430,7 @@ def test_xlsx_no_manual_run_state_sql_fixture():
         "opex_y1_keur": str(opex_y1),
         "total_capex_keur": str(pi.capex.total_capex),
         "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": str(pi.financing.senior_tenor_years),
         "target_dscr": str(pi.financing.target_dscr),
     }
@@ -1616,6 +1618,7 @@ def test_xlsx_engine_version_not_export_time():
         "opex_y1_keur": str(opex_y1),
         "total_capex_keur": str(pi.capex.total_capex),
         "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "_finval_interest_rate_unit": "human_percent_v1",  # authored human-percent fixture
         "tenor_years": str(pi.financing.senior_tenor_years),
         "target_dscr": str(pi.financing.target_dscr),
     }

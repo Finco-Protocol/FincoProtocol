@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.717" timestamp="2026-10-27T09:41:41.042196+00:00" hostname="d9b7aec2b2ee"><testcase classname="tests.test_finval_f01_complete" name="test_direct_snapshot_converter_cannot_bypass_saved_unit_authority" time="0.009"><failure message="Failed: DID NOT RAISE &lt;class 'app.input_adapter.RateUnitProvenanceError'&gt;">def test_direct_snapshot_converter_cannot_bypass_saved_unit_authority():
+        from app.persistence.projects_repository import _compute_baseline_snapshot
+        from app.input_adapter import _snapshot_to_dict
+        snap=_compute_baseline_snapshot('Solar','generic_solar_reference')
+        snap.pop(RATE_UNIT_KEY)
+        before=copy.deepcopy(snap)
+&gt;       with pytest.raises(RateUnitProvenanceError):_snapshot_to_dict(snap)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE &lt;class 'app.input_adapter.RateUnitProvenanceError'&gt;
+
+tests/test_finval_f01_complete.py:124: Failed</failure></testcase></testsuite></testsuites>

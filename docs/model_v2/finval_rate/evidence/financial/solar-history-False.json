@@ -1,0 +1,31 @@
+{
+  "runs": [
+    {
+      "history_id": "9f19d51c4f4c41fa854b8457092f6041",
+      "project_code": "b2-solar",
+      "runtime_snapshot_id": "20261027T004054.992400+0000",
+      "runtime_origin": "v2_run",
+      "ran_at": "2026-10-27T00:40:54.992410+00:00",
+      "engine_version": "clean_senior_debt_v0",
+      "workbook_version": "2.3.0",
+      "active_scenario_id": null,
+      "active_scenario_name": null,
+      "last_runtime_scenario_id": null,
+      "composite_hash": "689862c0294ceace83bfd507820cd45949a9c68a86c2bcaef874b0f221faf45b"
+    },
+    {
+      "history_id": "9ee92e6e8f0141b0b5dcfd044192b17d",
+      "project_code": "b2-solar",
+      "runtime_snapshot_id": "20261027T004053.537119+0000",
+      "runtime_origin": "v2_run",
+      "ran_at": "2026-10-27T00:40:53.537129+00:00",
+      "engine_version": "clean_senior_debt_v0",
+      "workbook_version": "2.3.0",
+      "active_scenario_id": null,
+      "active_scenario_name": null,
+      "last_runtime_scenario_id": null,
+      "composite_hash": "b481630988a5577c672a2a6a29c8e058e2793851c79dac365478c77227034d12"
+    }
+  ],
+  "snapshot_rate": "0.56"
+}

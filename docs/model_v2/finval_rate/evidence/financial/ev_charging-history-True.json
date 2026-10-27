@@ -1,0 +1,31 @@
+{
+  "runs": [
+    {
+      "history_id": "db236d7c9b5447f2a04fa360005a2f56",
+      "project_code": "b2-ev-charging",
+      "runtime_snapshot_id": "20261027T004115.208392+0000",
+      "runtime_origin": "v2_run",
+      "ran_at": "2026-10-27T00:41:15.208401+00:00",
+      "engine_version": "clean_senior_debt_v0",
+      "workbook_version": "2.3.0",
+      "active_scenario_id": null,
+      "active_scenario_name": null,
+      "last_runtime_scenario_id": null,
+      "composite_hash": "f8da65b533567884384da9864c27f271166ff4e11168d1e6a5402ea8cb251219"
+    },
+    {
+      "history_id": "6acb09583d084c309f97e74a911e2115",
+      "project_code": "b2-ev-charging",
+      "runtime_snapshot_id": "20261027T004114.574052+0000",
+      "runtime_origin": "v2_run",
+      "ran_at": "2026-10-27T00:41:14.574063+00:00",
+      "engine_version": "clean_senior_debt_v0",
+      "workbook_version": "2.3.0",
+      "active_scenario_id": null,
+      "active_scenario_name": null,
+      "last_runtime_scenario_id": null,
+      "composite_hash": "c254e7322a559bb7d61ad8643018831aaa380b2816587149320daa847d60bbbd"
+    }
+  ],
+  "snapshot_rate": "0.56"
+}

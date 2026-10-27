@@ -435,13 +435,23 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 option_labels: dict = COUNTRY_CODE_TO_LABEL
             else:
                 option_labels = {}
-            # For PCT-type read-only fields stored as fractions (e.g. 0.055), provide
-            # display_value so the template can show "5.50%" without mutating the stored value.
-            if field_type == "pct" and value is not None and not fspec.options:
+            # Interest scalar contract is human percent, including sub-1%
+            # values. Never infer a representation from numeric magnitude.
+            if fspec.field_id == "debt.senior.interest_rate_pct":
+                from app.input_adapter import RATE_UNIT_KEY, RATE_UNIT
+                if pis.snapshot_origin.get(RATE_UNIT_KEY) != RATE_UNIT:
+                    binding_label = "partial"
+                    display_value = "UNVERIFIED RATE UNIT — owner provenance review required"
+                elif value is not None:
+                    display_value = f"{float(value):.12g}%"
+                else:
+                    display_value = value
+            elif field_type == "pct" and value is not None and not fspec.options:
+                # Other percentage fields retain their existing presentation.
                 try:
                     v = float(value)
                     display_v = v * 100 if 0.0 < abs(v) < 1.0 else v
-                    display_value: object = f"{display_v:.2f}%"
+                    display_value = f"{display_v:.2f}%"
                 except (TypeError, ValueError):
                     display_value = value
             else:
@@ -476,6 +486,12 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 "help_text": fspec.description or "",
                 # Proven Assumption Register path (exact engine_path claim) or None.
                 "register_path": register_path_for_field(fspec.field_id),
+                **({"rate_contract": {
+                    "version": 1, "unit": "human_percent_v1",
+                    "status": "VERIFIED" if pis.snapshot_origin.get("_finval_interest_rate_unit") == "human_percent_v1" else "AMBIGUOUS",
+                    "code": None if pis.snapshot_origin.get("_finval_interest_rate_unit") == "human_percent_v1" else "RATE_UNIT_PROVENANCE_AMBIGUOUS",
+                    "remediation": "Create a verified Working Copy or request owner-reviewed provenance repair.",
+                }} if fspec.field_id == "debt.senior.interest_rate_pct" else {}),
             })
     # EV Charging (V1): presentation-only label/visibility adapter.
     from app.v2.ev_labels import apply_ev_presentation
@@ -2643,8 +2659,14 @@ async def v2_workbook_update(
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
             resp = _htmx_error(pis, str(exc))
-            return _add_field_error_trigger(resp, field_id, str(exc), exc.error_class)
-        return _redirect_with_error(str(exc))
+            resp = _add_field_error_trigger(resp, field_id, str(exc), exc.error_class)
+        else:
+            resp = _redirect_with_error(str(exc))
+        from app.input_adapter import rate_unit_error_code
+        code = rate_unit_error_code(exc)
+        if code:
+            resp.headers["X-Finco-Error-Code"] = code
+        return resp
 
     # Success path — reload workspace and assemble composite identity consistently
     # so the re-rendered sheet carries a hash over the full post-mutation state.

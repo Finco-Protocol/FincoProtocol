@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.200" timestamp="2026-10-27T09:28:30.453978+00:00" hostname="d9b7aec2b2ee"><testcase classname="tests.test_finval_f01_hash_integrity" name="test_stale_supplied_hash_is_typed_refusal_and_rolls_back_every_column[omitted0]" time="0.619"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">env = namespace(client=&lt;starlette.testclient.TestClient object at 0x7fec0d119340&gt;, create=&lt;function env.&lt;locals&gt;.create at 0...of-agent/pytest-37/test_stale_supplied_hash_is_ty0/b2.db', app=&lt;fastapi.applications.FastAPI object at 0x7fec0db42cc0&gt;)
+omitted = ('_finval_interest_rate_unit',)
+
+    @pytest.mark.parametrize('omitted',[(RATE_UNIT_KEY,),('_finval_interest_rate_origin',),(RATE_UNIT_KEY,'_finval_interest_rate_origin'),()])
+    def test_stale_supplied_hash_is_typed_refusal_and_rolls_back_every_column(env,omitted):
+        rec=env.create();_prime(env,rec);ws=_ws(rec)
+        draft={**ws.draft_snapshot,'interest_rate_pct':'.056'}
+        for key in omitted:draft.pop(key,None)
+        hint=ProjectInputSet.from_snapshot(draft).content_hash if omitted else '0'*64
+        before=row(env,rec)
+&gt;       with pytest.raises(ValueError,match='RATE_UNIT_CONTENT_HASH_MISMATCH') as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_finval_f01_hash_integrity.py:26: Failed</failure></testcase></testsuite></testsuites>

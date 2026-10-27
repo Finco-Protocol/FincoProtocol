@@ -29,6 +29,9 @@
   <input type="hidden" name="opex_y1_keur" value="{{ form_data.get('opex_y1_keur', '') }}" />
   <input type="hidden" name="gearing_pct" value="{{ form_data.get('gearing_pct', '') }}" />
   <input type="hidden" name="target_dscr" value="{{ form_data.get('target_dscr', '') }}" />
+  {% if form_data.get('_finval_interest_rate_unit') %}
+  <input type="hidden" name="_finval_interest_rate_unit" value="{{ form_data.get('_finval_interest_rate_unit') }}" />
+  {% endif %}
   <input type="hidden" name="interest_rate_pct" value="{{ form_data.get('interest_rate_pct', '') }}" />
   <input type="hidden" name="tenor_years" value="{{ form_data.get('tenor_years', '') }}" />
   <input type="hidden" name="cod_date" value="{{ form_data.get('cod_date', '') }}" />

@@ -180,7 +180,8 @@ async def grid_save(body: GridSaveRequest, request: Request,
     except ProtectedReferenceError:
         return _json({"ok": False, "code": "PROTECTED_REFERENCE"}, 403)
     except FieldValidationError as exc:
-        return _json({"ok": False, "code": "FIELD_INVALID", "message": str(exc),
+        from app.input_adapter import rate_unit_error_code
+        return _json({"ok": False, "code": rate_unit_error_code(exc) or "FIELD_INVALID", "message": str(exc),
                       "error_class": exc.error_class.value if exc.error_class else None}, 422)
     except (BatchApplyError, UnknownFieldError, NonEditableFieldError) as exc:
         return _json({"ok": False, "code": getattr(exc, "code", type(exc).__name__),
