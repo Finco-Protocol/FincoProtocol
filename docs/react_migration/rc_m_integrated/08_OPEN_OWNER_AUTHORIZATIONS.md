@@ -88,3 +88,13 @@ no Run, history or Working Copy change. Ambiguous historical copies stay fail-cl
 
 The two audit archives and `04_DETAILED_FUNCTIONAL_GAP_REGISTER.csv` were not available, so no previous baseline is promoted and GAP-R14…R28 not named in the task
 text are marked BLOCKED in the register. No statement of "all gaps", a percentage, complete Legacy parity or production authorization is made anywhere in this set.
+
+## 9. CI V3 hosted cold-start readiness (Correction D) — open, CI-owner decision only if it recurs
+
+Two of five workers on head `9ac495c8` (run 40522709690) refused at the unchanged 0.600 s maximum-of-three cold-start gate (0.802 s / 0.704 s; exit 124, pytest never started). The probe's inputs are byte-identical to `main`; across 60 hosted worker starts on 12 heads the first-sample median is 0.318 s
+and only these two exceed 0.6 s (`PR388_CALIBRATION_EVIDENCE.md`). This PR changes nothing in the gate and certifies nothing. **If a later wave on this PR refuses again, a separately reviewed CI performance-contract proposal is needed** (e.g. measure after the image load completes, or define the contract on a
+percentile with a bounded retry that retains every raw sample). That is a CI-owner change; it is not requested here and not done here.
+
+## 10. SQLite migration order — closed
+
+The create-request unique index is created after the columns it reads; duplicate pre-existing identities fail closed with a diagnostic and are never recorded as migrated (`atomic_create/README.md`, `PR388_CORRECTION_D_ROOT_CAUSE.md`). Hosted worker-0 evidence on `9ac495c8`.
