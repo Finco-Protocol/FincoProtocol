@@ -81,7 +81,7 @@ def test_my_projects_lists_only_own_editable_projects_with_real_business_fields(
     assert by["Beta Wind"]["technology"]["label"] == "Onshore Wind" and by["Beta Wind"]["country"]["code"] == "XB"     # the creator stores the template's default market when none is chosen
     ws = get_workspace_state(OWNER, solar.project_id)
     assert datetime.fromisoformat(a["last_updated"]) == max(ws.updated_at, solar.updated_at)                 # the real saved activity time
-    assert a["last_run"] == {"available": False, "at": None} and a["has_runs"] is False
+    assert a["last_run"] == {"available": False, "at": None, "snapshot_id": None} and a["has_runs"] is False
     assert a["freshness"] == "NOT_RUN" and a["status"] == "Not run yet"
     assert a["links"]["open"] == f"/v2/model-react/{solar.project_code}" and a["links"]["run_history"].endswith("?analysis=runs#analysis")
     assert foreign.project_code not in json.dumps(data)

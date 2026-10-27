@@ -55,7 +55,18 @@ export const RESULT_STATUS_HELP: Record<string, string> = {
 
 /** Business wording for stable internal error codes.  Codes are preserved in the technical details and in tests. */
 const FRIENDLY: Array<[RegExp, string]> = [
-  [/CAS|VERSION_MISMATCH|CONFLICT|STALE_PREVIEW|SELECT_BASE_FIRST|SCENARIO_SWITCH/i, "This project was changed elsewhere. Reload the latest version before saving."],
+  [/Q4_REQUIRES_Q1_COMMITTED_FINDING|Q4_FINDING_RUN_ID_CHANGED/i, "Run the model first: a What-if starts from the findings of a saved Run."],
+  [/Q4_SELECT_BASE_FIRST|Q4_SCENARIO_SWITCH_CONFLICT/i, "Select the Base Case scenario first, then try again."],
+  [/Q4_SCENARIO_NAME_CONFLICT/i, "A scenario with this name already exists. Choose another name."],
+  [/Q4_SCENARIO_NAME_INVALID/i, "Enter a scenario name of up to 80 characters."],
+  [/Q4_VALUE_INVALID|Q4_NONFINITE_VALUE|Q4_FINANCIAL_INPUT_REJECTED/i, "Enter a valid value for this assumption."],
+  [/Q4_DSCR_SCHEDULE_LOCKED/i, "The target DSCR is controlled by a period schedule and cannot be changed here."],
+  [/Q4_F3_COMPETING_SENIOR_EDITOR/i, "A two-tranche senior structure is active; its terms cannot be changed here."],
+  [/Q4_VERTICAL_NOT_ENABLED/i, "What-if is available for Solar and Wind projects only."],
+  [/Q4_CONFIRMATION_INVALID_OR_EXPIRED/i, "This confirmation has expired. Prepare the What-if again."],
+  [/Q4_CONFIRMATION_REPLAYED/i, "This confirmation was already used."],
+  [/Q4_INPUT_TOO_LONG/i, "A value is too long."],
+  [/(^|_)CAS(_|$)|VERSION_MISMATCH|CONFLICT|STALE_PREVIEW|SELECT_BASE_FIRST|SCENARIO_SWITCH/i, "This project was changed elsewhere. Reload the latest version before saving."],
   [/CSRF|TOKEN/i, "Your session security check expired. Reload the page and try again — nothing was changed."],
   [/AUTH_REQUIRED|UNAUTHORI[SZ]ED|SESSION/i, "Your session has expired. Sign in again — nothing was changed."],
   [/INVALID_COD|RELATIVE_PERIOD|OUTSIDE_TIMELINE|DATE_OUTSIDE/i, "The selected date is outside the project's supported financing timeline. Choose a date within the available period."],

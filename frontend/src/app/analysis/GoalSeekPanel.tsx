@@ -147,7 +147,7 @@ export function GoalSeekPanel({ project, workbookHash, onApplied }: { project: s
                         onClick={() => setConfirming(true)}>Apply to project…</button>
               ) : (
                 <div role="group" aria-label="Confirm apply" className="rcm-confirm" data-gs-confirm="true">
-                  <p>Write <strong>{result.solved_display}</strong> to the project tariff? The the results become outdated; nothing is run.</p>
+                  <p>Write <strong>{result.solved_display}</strong> to the project tariff? The results become out of date; nothing is run.</p>
                   <button type="button" className="rx-button" data-gs-confirm-apply="true" disabled={applying} aria-busy={applying} onClick={() => void confirmApply()}>{applying ? "Applying…" : "Confirm apply"}</button>{" "}
                   <button type="button" className="rx-button rx-button-secondary" disabled={applying} onClick={() => setConfirming(false)}>Cancel</button>
                 </div>

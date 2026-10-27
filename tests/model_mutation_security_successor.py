@@ -200,15 +200,17 @@ RC_M_SUCCESSORS={
 # tests/test_rcux_governance.py.  Blobs are recomputed from the committed sources by the pin refresh and asserted by tests/test_rcux_governance.py.
 RC_UX_SUCCESSORS={
     "app/v2/react_workspace_router.py":"0dc741e340e1db918e4d2cc4b26467bc1514dd39",
-    "frontend/src/app/FinancialResults.tsx":"24170bfa287bd0faf03b47d4cff0f60491b8d6b1",
+    "frontend/src/app/FinancialResults.tsx":"9047ea4e3a97a5d5fa6983bba2bfaa1ac99ec3d2",
     "frontend/src/app/WorkspaceView.tsx":"53eddcf668a523d36db3ff15115e7f0c391ee909",
     "frontend/src/app/workflow/ModelExportView.tsx":"a912911cd95d1dc68dd8280bad7ebcfa718506c4",
     "frontend/src/app/workflow/ScenarioKpiComparison.tsx":"46166fed77b58ac5e0e1730c8f1150053b774bc7",
     "frontend/src/app/workflow/ScenarioWorkspace.tsx":"f5f199c98ff96fa5f2ba83e65953c99ff502ee8a",
     "frontend/src/app/workflow/workflowShared.tsx":"50aef516d139ac0a909e6059974095c62a487b21",
     "static/react/finco-react.css":"fc2415879da3ca64da1a4f67ba31cae616ecacd7",
-    "static/react/finco-react.js":"f0045cac13338ff1cffe2a833981aed768fa2b8c",
-    "tests/test_model_workspace_consolidation_browser.py":"bb40a63fbd09cdf534efa4e210c9ec4a6bb83622",
+    "static/react/finco-react.js":"e0c04c73c3657506da21e55c3b564b06dee4fef7",
+    "tests/model_react_mvp_acceptance.py":"00ca3b95423acac1e93d2e5727c847117772f160",
+    "tests/model_react_wf2_browser_acceptance.py":"4ca9487e898620ff7b614a94ba88150f6cdb7696",
+    "tests/test_model_workspace_consolidation_browser.py":"1eb8ea40f65ef0d13059ebd78055f91b2f4ce95f",
 }
 
 # FIN-VAL F01: exact additive projection-only successor; historical layers
@@ -392,7 +394,7 @@ def current_mutation_successor_valid(*,repo=None):
             return subprocess.check_output(["git",*args],cwd=root,stderr=subprocess.PIPE).decode("utf-8").strip()
         for path,(source,parent,blob) in _browser_layers().items():
             # provenance is verified while the layer's blob OR a later admitted successor of the path is current
-            if git_blob(sources[path]) not in {blob,REACT_MVP_CORRECTION_SUCCESSORS.get(path)}:continue
+            if git_blob(sources[path]) not in {blob,REACT_MVP_CORRECTION_SUCCESSORS.get(path),RC_UX_SUCCESSORS.get(path)}:continue
             if read_git("rev-parse",source+"^:"+path)!=BLOBS[path]:return False
             if read_git("rev-list","--parents","-n","1",source).split()!=[source,parent]:return False
             if read_git("rev-parse",source+":"+path)!=blob:return False

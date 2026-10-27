@@ -352,7 +352,7 @@ def test_senior_facilities_and_sources_uses_show_the_canonical_evidence(live_ser
     page.wait_for_selector("[data-capital-stack='true']")
     stack = studio(context, live_server, record.project_code)["capital_stack"]
     assert page.locator("[data-facility]").count() == len(stack["rows"]) >= 1
-    assert "NOT RELEASED" in page.locator("[data-stack-editor-state='not-released']").inner_text()
+    assert "not available yet" in page.locator("[data-stack-editor-state='not-released']").inner_text()
     assert page.locator("[data-capital-stack='true'] .rcm-closed li").count() == len(stack["unsupported"]) == 6
     shot(page, "facilities-1440")
     assert unexpected(errors) == []

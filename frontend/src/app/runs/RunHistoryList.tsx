@@ -50,6 +50,25 @@ export function RunHistoryList({ project, history, workbookHash, selected, onSel
         {" "}<strong data-working-copy-freshness={history.working_copy.freshness}>{resultStatus(history.working_copy.freshness)}</strong>
         {" · "}<a href="#inputs" data-open-working-copy="true">Open the project inputs</a>.
       </p>
+      {(() => {
+        const base = history.scenarios.find((x) => x.is_base_case && x.committed_run);
+        const others = history.scenarios.filter((x) => !x.is_base_case && x.committed_run);
+        if (!base || !others.length) return null;
+        return (
+          <div className="rcm-controls" aria-label="Quick compare">
+            <label className="rcm-field">Compare the Base Case with a scenario
+              <select value="" data-quick-compare="true" onChange={(e) => {
+                const scenario = others.find((x) => x.scenario_id === e.target.value);
+                if (scenario?.committed_run && base.committed_run) onSelect([base.committed_run.history_id, scenario.committed_run.history_id]);
+              }}>
+                <option value="">Choose a scenario…</option>
+                {others.map((x) => <option key={x.scenario_id ?? x.name} value={x.scenario_id ?? ""}>{x.name}</option>)}
+              </select>
+            </label>
+            <p className="rx-note">Uses the latest Run of each. Scenario results are never mixed with another scenario&rsquo;s.</p>
+          </div>
+        );
+      })()}
       <div className="rcm-controls" role="search" aria-label="Filter Runs">
         <label className="rcm-field">Search
           <input value={text} placeholder="scenario, Run id, snapshot, hash" data-run-filter-text="true" onChange={(e) => setText(e.target.value)} />

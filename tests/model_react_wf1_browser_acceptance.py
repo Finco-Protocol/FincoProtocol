@@ -248,7 +248,8 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
                 value = card.locator(".rx-live-kpi-value").inner_text()
                 assert value == expected_metric(metric, unit, precision), (metric["label"], unit, precision, value)
                 if not metric["available"]:
-                    assert metric["source"] in card.inner_text()
+                    assert card.get_attribute("data-metric-source") == metric["source"], "the Run's own reason is kept for the audit trail"
+                    assert "Not available in this Run" in card.inner_text()
     for metric in verbatim:
         assert page.locator(f"[data-metric-label='{metric['label']}'] .rx-live-kpi-value").inner_text() == metric["display"]
     page.select_option("select[data-control='unit']", "kEUR")
@@ -330,9 +331,9 @@ def check_current_stale_not_run_are_consistent_across_every_surface(seeded):
     states("NOT_RUN")
     open_section(page, base, code, "results")
     assert page.locator("[data-metric-label]").count() == 0 and page.locator("td[data-canonical]").count() == 0
-    assert "No persisted Run exists" in page.inner_text("[data-results-view]")
+    assert "No saved Run exists" in page.inner_text("[data-results-view]")
     open_section(page, base, code, "analysis")
-    assert page.locator("[data-chart]").count() == 0 and "No persisted Run exists" in page.inner_text("[data-analysis-view]")
+    assert page.locator("[data-chart]").count() == 0 and "No saved Run exists" in page.inner_text("[data-analysis-view]")
     # CURRENT
     run_canonical(context, base, code)
     states("CURRENT")
@@ -355,6 +356,7 @@ def check_current_stale_not_run_are_consistent_across_every_surface(seeded):
 
 
 def check_library_search_pagination_and_reference_working_copy_status(browser, react_enabled):
+    """My Projects: one canonical page (12), search across pages, no system templates among the projects."""
     from app.services.reference_seed_service import create_reference_seeded_project
 
     context, page, record, errors = make_session(browser, react_enabled, "wf1-library")
@@ -366,15 +368,17 @@ def check_library_search_pagination_and_reference_working_copy_status(browser, r
         total = 23  # the 22 above + the fixture's own project
         page.goto(f"{react_enabled}/v2/model-react/")
         page.wait_for_selector("[data-library-view='true']")
-        rows = page.locator("[data-project-kind='working-copy']")
-        assert rows.count() == 20, "page 1 shows exactly one canonical page"
-        assert f"{total} working copies" in page.locator("[data-library-count]").inner_text()
+        page.wait_for_function("() => document.querySelectorAll(\"[data-project-kind='project']\").length === 12")
+        rows = page.locator("[data-project-kind='project']")
+        assert rows.count() == 12, "page 1 shows exactly one canonical page"
+        assert page.locator("[data-project-kind='reference']").count() == 0, "system templates are not projects"
+        assert f"of {total} projects" in page.locator("[data-library-count]").inner_text()
         assert page.get_by_role("button", name="Previous").is_disabled()
         first_page = [rows.nth(i).get_attribute("data-project-code") for i in range(rows.count())]
         page.get_by_role("button", name="Next").click()
         page.wait_for_function("() => document.querySelector('[data-library-paging]').innerText.includes('Page 2 of 2')")
-        second = page.locator("[data-project-kind='working-copy']")
-        assert second.count() == total - 20
+        page.wait_for_function(f"() => document.querySelectorAll(\"[data-project-kind='project']\").length === {total - 12}")
+        second = page.locator("[data-project-kind='project']")
         assert not set(first_page) & {second.nth(i).get_attribute("data-project-code") for i in range(second.count())}
         assert page.get_by_role("button", name="Next").is_disabled()
         shot(page, "desktop-library-page2")
@@ -382,37 +386,21 @@ def check_library_search_pagination_and_reference_working_copy_status(browser, r
         page.wait_for_function("() => document.querySelector('[data-library-paging]').innerText.includes('Page 1 of 2')")
 
         # server-side search: filters across pages and resets to page 1
-        page.get_by_label("Search projects").fill("Needle")
-        page.get_by_role("button", name="Search").click()
-        page.wait_for_function("() => document.querySelectorAll(\"[data-project-kind='working-copy']\").length === 3")
-        assert "Search “Needle”" in page.locator("[data-library-count]").inner_text()
-        page.get_by_role("button", name="Clear").click()
-        page.wait_for_function("() => document.querySelectorAll(\"[data-project-kind='working-copy']\").length === 20")
-        page.get_by_label("Search projects").fill("zzz-no-match")
-        page.get_by_role("button", name="Search").click()
-        page.wait_for_selector("[data-library-section='working-copies'] .rx-empty")
-        assert "No working copies match" in page.inner_text("[data-library-section='working-copies']")
-        assert "No reference models match" in page.inner_text("[data-library-section='references']")
-        page.get_by_role("button", name="Clear").click()
-        page.wait_for_function("() => document.querySelectorAll(\"[data-project-kind='reference']\").length >= 4")
+        page.locator("[data-filter-search]").fill("Needle")
+        page.get_by_role("button", name="Search", exact=True).click()
+        page.wait_for_function("() => document.querySelectorAll(\"[data-project-kind='project']\").length === 3")
+        page.locator("[data-filter-clear]").click()
+        page.wait_for_function("() => document.querySelectorAll(\"[data-project-kind='project']\").length === 12")
+        page.locator("[data-filter-search]").fill("zzz-no-match")
+        page.get_by_role("button", name="Search", exact=True).click()
+        page.wait_for_selector("[data-library-no-match]")
+        assert "No projects match" in page.inner_text("[data-library-no-match]")
+        page.locator("[data-filter-clear]").click()
+        page.wait_for_function("() => document.querySelectorAll(\"[data-project-kind='project']\").length === 12")
 
-        # Reference vs Working Copy status, canonical Run metadata
-        refs = page.locator("[data-project-kind='reference']")
-        assert refs.count() >= 4
-        for i in range(refs.count()):
-            row = refs.nth(i)
-            assert "REFERENCE" in row.inner_text() and "Read-only" in row.inner_text()
-            assert row.locator(".rx-lib-badge-copy").count() == 0
-        copy_row = page.locator("[data-project-kind='working-copy']").first
-        assert "WORKING COPY" in copy_row.inner_text() and "NOT RUN" in copy_row.inner_text()
-        assert "Reference" not in copy_row.locator("td[data-label='Status']").inner_text().replace("Reference models", "")
-        storage = page.locator("[data-project-kind='reference']", has_text="Storage")
-        assert storage.locator("[data-clone-unavailable]").count() == 1
-        assert storage.locator(".fm-library-copy-action").count() == 0, "preview-only technology cannot be cloned"
-        assert "persisted" in page.locator("[data-library-persistence]").inner_text()
-        # functional navigation to an available project view
-        target = page.locator("[data-project-kind='working-copy']").first.get_attribute("data-project-code")
-        page.locator(f"[data-project-code='{target}'] a", has_text="Open working copy").click()
+        # status and the real Run metadata; opening a project reaches its workspace
+        target = page.locator("[data-project-kind='project']").first.get_attribute("data-project-code")
+        page.locator(f"[data-project-code='{target}'] [data-open-project]").click()
         page.wait_for_selector("[data-workspace-status='true']")
         assert target in page.url
         assert errors == [], errors

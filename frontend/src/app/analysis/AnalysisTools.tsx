@@ -3,12 +3,14 @@ import "../../styles/rcm-analysis.css";
 import { GoalSeekPanel } from "./GoalSeekPanel";
 import { SensitivityPanel } from "./SensitivityPanel";
 import { RunsWorkspace } from "../runs/RunsWorkspace";
+import { WhatIfPanel } from "../whatif/WhatIfPanel";
 
-export type AnalysisTool = "overview" | "sensitivity" | "goal-seek" | "runs";
+export type AnalysisTool = "overview" | "sensitivity" | "goal-seek" | "whatif" | "runs";
 const TOOLS: ReadonlyArray<{ id: AnalysisTool; label: string }> = [
   { id: "overview", label: "Last Run charts" },
   { id: "sensitivity", label: "Sensitivity" },
   { id: "goal-seek", label: "Goal Seek" },
+  { id: "whatif", label: "What-if" },
   { id: "runs", label: "Run history & compare" },
 ];
 
@@ -52,6 +54,9 @@ export function AnalysisTools({ project, protectedReference, workbookHash, onApp
         {tool === "goal-seek" && (protectedReference
           ? <section className="rx-card" data-goal-seek-state="PROTECTED"><h2>Goal Seek — tender pricing</h2><p className="rx-empty" role="status" data-goal-seek-unavailable="true">Templates are read-only. Start a project from this template to solve a tariff.</p></section>
           : <GoalSeekPanel project={project} workbookHash={workbookHash} onApplied={onApplied} />)}
+        {tool === "whatif" && (protectedReference
+          ? <section className="rx-card" data-whatif-state="PROTECTED"><h2>What-if</h2><p className="rx-empty" role="status" data-whatif-unavailable="protected">Templates are read-only. Start a project from this template to try a What-if.</p></section>
+          : <WhatIfPanel project={project} onCreated={onApplied} />)}
         {tool === "runs" && (protectedReference
           ? <section className="rx-card" data-runs-state="PROTECTED"><h2>Run history &amp; compare</h2><p className="rx-empty" role="status" data-runs-unavailable="true">Templates are read-only. Start a project from this template to review its committed Run history.</p></section>
           : <RunsWorkspace project={project} workbookHash={workbookHash} />)}

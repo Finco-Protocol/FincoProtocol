@@ -48,7 +48,7 @@ export function validateSheetField(field: SheetFieldPayload, value: string): str
 
 interface Props {
   project: string;
-  sheet: "project_setup" | "debt";
+  sheet: "project_setup" | "debt" | "revenue";
   title: string;
   /** Called after a verified Save so the workspace refreshes its Run freshness. */
   onSaved?: () => void;
@@ -144,7 +144,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
       setLocked(true);
       setStatus({ tone: "conflict", text: result.message });
     } else if (result.ok) {
-      setStatus({ tone: "ok", text: `${field.label} saved and ${result.verified ? "verified in the fresh projection" : "accepted"}. The the results are now outdated; the model was not run.` });
+      setStatus({ tone: "ok", text: `${field.label} saved and ${result.verified ? "verified in the fresh projection" : "accepted"}. The results are now out of date (STALE); the model was not run.` });
       setDrafts((prev) => { const next = { ...prev }; delete next[field.field_id]; return next; });
       read.reload();
       onSaved?.();

@@ -193,7 +193,7 @@ function MetricCards({ payload, unit, precision }: { payload: StatementsPayload;
             {group.items.map((metric) => (
               <div key={metric.label} className={`rx-live-kpi${metric.available ? "" : " rx-live-kpi-unavailable"}`}
                 data-metric-label={metric.label} data-metric-available={metric.available ? "true" : "false"}
-                data-metric-canonical={metric.display}>
+                data-metric-canonical={metric.display} data-metric-source={metric.available ? undefined : metric.source}>
                 <div className="rx-live-kpi-label">{metric.label}</div>
                 <div className="rx-live-kpi-value">{metric.available ? metricDisplay(metric.display, unit, precision) : "Not available"}</div>
                 <div className="rx-live-kpi-source">

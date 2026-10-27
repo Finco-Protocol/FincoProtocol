@@ -56,13 +56,38 @@ def test_no_historical_layer_was_edited_by_rc_ux():
             assert blob in original_source and path in original_source, (name, path)       # the pin line exists verbatim at the base
 
 
-def test_the_workspace_router_gains_exactly_one_rcux_include_and_nothing_else_changes_in_the_rcm_block():
+#: The ONLY wording changes RC-UX made inside the pinned router: display strings shown to financial users (Addendum B product language).
+#: No key, number, route, token or logic changed; the test rebuilds the current file from the #388 router and these pairs exactly.
+ROUTER_WORDING = (
+    ("This metric is not persisted by the committed Run.", "This metric is not available in the saved Run."),
+    ("This Run persisted no such statement.", "This Run has no such statement."),
+    ("This Run persisted no debt schedule.", "This Run has no debt schedule."),
+    ("No facility schedule persisted.", "No facility schedule is available for this Run."),
+    ("The persisted Run evidence could not be projected; nothing is estimated.", "The saved Run results could not be displayed; nothing is estimated."),
+    ("Line requests require session/project/operation-bound CSRF, composite CAS and row versions.",
+     "Line changes are protected: another change made in the meantime is never overwritten."),
+    ('"note": "Exports the inputs and results of the last committed Run, "\n                                 "not the current Working Copy edits."}',
+     '"note": "Exports the inputs and results of the last Run, "\n                                 "not edits made since."}'),
+    ("Pinned canonical reference regression only; not validation of this Working Copy or its Run.",
+     "Reference regression only; it is not a validation of this project or its Run."),
+    ('"note": "The Working Copy side shows no Run of its own. Each committed Run is "\n                                          "shown against the scenario it was committed under; see Run history."}}',
+     '"note": "The project itself has no Run of its own. Each Run is "\n                                          "shown against the scenario it was run under; see Run history."}}'),
+    ('"note": "Run initiation stays on the canonical route; success redirects "\n                                 "(303) to the workbook, failures redirect with ?v2_err=. "\n                                 "Save NEVER triggers a Run."},',
+     '"note": "Saving never runs the model; a Run starts only when you press Run model."},'),
+    ('"base": {"label": f"Working Copy / {ws.active_scenario_name or \'Base Case\'}",', '"base": {"label": f"Project / {ws.active_scenario_name or \'Base Case\'}",'),
+)
+
+
+def test_the_workspace_router_changes_only_by_the_one_rcux_include_and_reviewed_wording():
     source = SOURCES["app/v2/react_workspace_router.py"]
     tail = source[source.index("# ───────────────────────────── RC-UX: React adapters"):]
     assert re.findall(r"^router\.include_router\((\w+)\)$", tail, flags=re.M) == ["_rcux_router"]
     assert re.findall(r"^from app\.v2\.(\w+) import router as (\w+)", tail, flags=re.M) == [("react_rcux", "_rcux_router")]
-    base = _git("show", f"{BASE}:app/v2/react_workspace_router.py")
-    assert source.startswith(base.rstrip("\n"))                                       # purely additive over the #388 router
+    rebuilt = _git("show", f"{BASE}:app/v2/react_workspace_router.py")
+    for old, new in ROUTER_WORDING:
+        assert rebuilt.count(old) == 1, old
+        rebuilt = rebuilt.replace(old, new)
+    assert source == rebuilt.rstrip("\n") + "\n\n\n" + tail.rstrip("\n") + "\n"
 
 
 def test_the_rcux_aggregator_lists_exactly_the_adapter_modules_it_mounts():
@@ -115,7 +140,7 @@ def test_the_rcux_adapters_are_read_only_and_issue_no_mutation_authority_of_thei
 
 # ── RC-UX browser acceptance rides the EXISTING mandatory consolidation role (same pattern as RC-M) ─────────────────────────────
 ROLE = "tests/test_model_workspace_consolidation_browser.py"
-ACCEPTANCE = ("tests/model_react_rcux_runs_acceptance.py", "tests/model_react_rcux_capex_acceptance.py", "tests/model_react_rcux_product_acceptance.py")
+ACCEPTANCE = ("tests/model_react_rcux_runs_acceptance.py", "tests/model_react_rcux_capex_acceptance.py", "tests/model_react_rcux_product_acceptance.py", "tests/model_react_rcux_whatif_acceptance.py")
 
 
 def test_the_consolidation_role_imports_exactly_the_rcux_acceptance_modules_and_adds_no_wrapper_of_its_own():
@@ -135,6 +160,7 @@ def test_each_rcux_acceptance_module_is_not_collected_alone_exports_exactly_its_
     tree = ast.parse(source)
     exported = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and n.targets[0].id == "__all__")
     tests = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")]
-    assert sorted(exported) == sorted(tests) and len(set(exported)) == len(exported)
+    fixtures = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and any("fixture" in ast.unparse(d) for d in n.decorator_list)]
+    assert sorted(exported) == sorted(tests + fixtures) and len(set(exported)) == len(exported)
     for forbidden in ("importorskip", "pytest.skip", "mark.skip", "skipif", "xfail", "autouse", "from playwright", "import playwright"):
         assert forbidden not in source, forbidden

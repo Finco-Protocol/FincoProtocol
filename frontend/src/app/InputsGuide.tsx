@@ -32,6 +32,7 @@ const SCOPES: ReadonlyArray<{ editor: string; saves: string; control: string }> 
   { editor: "CAPEX line items", saves: "All edited CAPEX lines together, all or none.", control: "Save staged lines (CAPEX)" },
   { editor: "OPEX line items", saves: "All edited OPEX lines together, all or none.", control: "Save staged lines (OPEX)" },
   { editor: "Revenue & PPA contracts", saves: "The whole contract list.", control: "Save contracts" },
+  { editor: "Revenue assumptions (Studios)", saves: "One field at a time.", control: "Save beside the edited field" },
   { editor: "CAPEX spending profile", saves: "The monthly profile of the CAPEX items, all or none.", control: "Save profile to the project" },
   { editor: "Financing", saves: "One field at a time (Financing section).", control: "Save beside the edited field" },
   { editor: "Scenario overrides", saves: "One override at a time (Scenarios section).", control: "Save beside the override" },

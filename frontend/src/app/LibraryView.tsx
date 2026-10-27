@@ -7,6 +7,7 @@ import { Shell } from "../finco/_shared/FincoShell";
 import { fetchMyProjects } from "./library/api";
 import { NO_FILTERS, type MyProjects, type ProjectCard, type ProjectFilters } from "./library/types";
 import { FriendlyError } from "./productLanguage";
+import { RunIdentityLabel } from "./runIdentity";
 
 const EDITED = [["", "Any time"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"]] as const;
 const STATUSES = [["", "Any status"], ["not_run", "Not run yet"], ["current", "Results up to date"], ["outdated", "Results outdated"]] as const;
@@ -158,13 +159,15 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
                 {data.projects.map((p) => (
                   <article key={p.code} className="rcux-project" data-project-code={p.code} data-project-kind="project" data-run-state={p.freshness}>
                     <h3><a href={p.links.open} aria-label={`Open project ${p.name}`} onClick={(e) => go(e, () => onOpenProject(p.code))}>{p.name}</a></h3>
-                    <div><span className={statusClass(p.freshness)} data-project-status={p.freshness}>{p.status}</span>{p.archived && <span className="rcux-status"> Archived</span>}</div>
+                    <div><span className={statusClass(p.freshness)} data-project-status={p.freshness} data-run-state={p.freshness}>{p.status}</span>{p.archived && <span className="rcux-status"> Archived</span>}</div>
                     <dl>
-                      <dt>Technology</dt><dd data-field="technology">{p.technology.label}{p.technology.pilot_tier === "PREVIEW" && <span className="rx-note"> · preview</span>}</dd>
+                      <dt>Technology</dt><dd data-field="technology">{p.technology.label}{p.technology.pilot_tier === "PREVIEW" && <span className="rx-note" data-vertical-tier="PREVIEW"> · Preview technology — narrower validation than Solar and Wind</span>}</dd>
                       <dt>Country / market</dt><dd data-field="country">{p.country.label ?? "—"}</dd>
                       <dt>{p.capacity_label}</dt><dd data-field="capacity">{capacityText(p)}</dd>
                       <dt>Last updated</dt><dd data-field="last-updated" title={p.last_updated ?? undefined}>{formatSaved(p.last_updated)}</dd>
-                      <dt>Last Run</dt><dd data-field="last-run" title={p.last_run.at ?? undefined}>{p.last_run.available ? formatSaved(p.last_run.at) : "Not run yet"}</dd>
+                      <dt>Last Run</dt><dd data-field="last-run" title={p.last_run.at ?? undefined}>{p.last_run.available
+                        ? <>{formatSaved(p.last_run.at)}{p.last_run.snapshot_id && <> · <RunIdentityLabel snapshotId={p.last_run.snapshot_id} /></>}</>
+                        : "Not run yet"}</dd>
                     </dl>
                     <div className="rcux-project-links">
                       <a href={p.links.open} data-open-project={p.code} onClick={(e) => go(e, () => onOpenProject(p.code))}>Open project →</a>

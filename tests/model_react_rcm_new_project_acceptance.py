@@ -77,7 +77,7 @@ def projects_of(uid):
 
 
 def open_wizard(page, base):
-    page.goto(f"{base}/v2/model-react/{NEW}")
+    page.goto(f"{base}/v2/model-react/{NEW}/new")
     page.wait_for_selector("[data-new-project-wizard='true']")
 
 
@@ -131,8 +131,8 @@ def test_new_project_is_prominent_in_the_library_and_the_global_navigation(live_
     cta = page.locator("[data-new-project-cta='true']")
     cta.wait_for()
     assert cta.inner_text().strip() == "+ New Project"
-    # the existing working-copy action stays, and stays distinct
-    assert page.locator("button:has-text('Create working copy')").count() >= 1
+    # the second start (a template) is offered next to it, and system templates are not listed as projects
+    assert page.locator("[data-choose-template-cta='true']").count() == 1
     assert page.locator("[data-nav-new-project='true']").count() == 1
     shot(page, "library-1440")
     cta.click()

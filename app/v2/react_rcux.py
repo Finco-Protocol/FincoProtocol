@@ -11,10 +11,12 @@ from fastapi import APIRouter
 from app.v2.react_capex import router as _capex_router
 from app.v2.react_compare import router as _compare_router
 from app.v2.react_projects import router as _projects_router
+from app.v2.react_whatif import router as _whatif_router
 
 router = APIRouter()
 router.include_router(_compare_router)
 router.include_router(_capex_router)
 router.include_router(_projects_router)
+router.include_router(_whatif_router)
 
-RCUX_ADAPTERS = ("react_capex", "react_compare", "react_projects")
+RCUX_ADAPTERS = ("react_capex", "react_compare", "react_projects", "react_whatif")

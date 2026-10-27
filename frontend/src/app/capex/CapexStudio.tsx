@@ -104,8 +104,8 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
       && expected.every((k) => fresh.saved.rows[k]?.shape === draft[k].shape);
     if (verified) {
       setStatus({ tone: "ok", text: action === "reset"
-        ? "Saved profile removed and verified in the fresh projection. The the results are now outdated; the model was not run."
-        : "Profile saved and verified in the fresh projection. The the results are now outdated: run the model to apply it. The model was not run." });
+        ? "Saved profile removed and verified in the fresh projection. The results are now out of date (STALE); the model was not run."
+        : "Profile saved and verified in the fresh projection. The results are now out of date (STALE): run the model to apply it. The model was not run." });
       onSaved();
     } else {
       setLocked(true);
@@ -271,7 +271,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
       </div>
 
       {dialog === "reset" && (
-        <WorkflowDialog title="Remove the saved profile?" description="The monthly profile is removed from the project. The the results become outdated; the model is not run, and the next Run returns to the default per-category timing."
+        <WorkflowDialog title="Remove the saved profile?" description="The monthly profile is removed from the project. The results become out of date; the model is not run, and the next Run returns to the default per-category timing."
           confirmLabel="Remove profile" danger busy={busy !== ""} onConfirm={() => void save("reset")} onCancel={() => setDialog(null)} />
       )}
     </section>

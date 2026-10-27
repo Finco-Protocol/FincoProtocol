@@ -169,10 +169,10 @@ def check_navigation_with_unsaved_edits_asks_and_keeps_the_draft(browser, react_
         page.wait_for_function("() => window.location.hash === '#inputs'")
         assert page.locator(CIT_CELL).input_value() == draft
 
-        # legacy workbook link and both Project Library links
-        for locator in (page.get_by_role("link", name=re.compile("Legacy workbook")),
-                        page.locator("header.rx-header").get_by_role("link", name="Project Library"),
-                        page.locator("nav[aria-label='Project breadcrumb']").get_by_role("link", name="Project Library")):
+        # both My Projects links (the Legacy workbook link no longer exists: navigation is React-only)
+        assert page.get_by_role("link", name=re.compile("Legacy workbook")).count() == 0
+        for locator in (page.locator("header.rx-header").get_by_role("link", name="My Projects"),
+                        page.locator("nav[aria-label='Project breadcrumb']").get_by_role("link", name="My Projects")):
             before = page.url
             locator.first.click()
             dialog(page).get_by_role("button", name=STAY).click()
@@ -193,7 +193,7 @@ def check_navigation_with_unsaved_edits_asks_and_keeps_the_draft(browser, react_
 
         # discarding to leave through a link really leaves
         stage_cit(page, draft)
-        page.locator("header.rx-header").get_by_role("link", name="Project Library").click()
+        page.locator("header.rx-header").get_by_role("link", name="My Projects").click()
         dialog(page).get_by_role("button", name=DISCARD).click()
         page.wait_for_url(re.compile(r"/v2/model-react/?$"))
         assert history_count(context, base, record) == 0
@@ -652,7 +652,7 @@ def check_pending_mutations_cannot_escape_their_reconciliation_contract(browser,
                 wait_status(page, "conflict", None, "[data-workflow-bar='true']")
             else:
                 page.wait_for_function("() => document.querySelector(\"[data-workflow-bar='true']\").dataset.pendingKeys.includes('run')")
-            library = page.locator("header.rx-header").get_by_role("link", name="Project Library")
+            library = page.locator("header.rx-header").get_by_role("link", name="My Projects")
             library.click()
             dialog(page).get_by_role("button", name=STAY).click()
             assert "/v2/model-react/" in page.url and urlsplit(page.url).path.endswith(record.project_code)

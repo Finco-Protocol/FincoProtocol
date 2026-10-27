@@ -5,7 +5,7 @@ export interface ProjectCard {
   technology: { key: string; label: string; pilot_tier: string };
   country: { code: string | null; label: string | null };
   capacity_mw: number | null; capacity_label: string;
-  last_updated: string | null; last_run: { available: boolean; at: string | null }; has_runs: boolean;
+  last_updated: string | null; last_run: { available: boolean; at: string | null; snapshot_id: string | null }; has_runs: boolean;
   freshness: string; status: string; archived: boolean;
   links: { open: string; scenarios: string; run_history: string };
 }

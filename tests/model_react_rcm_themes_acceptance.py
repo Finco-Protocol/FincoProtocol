@@ -54,7 +54,7 @@ def test_new_surfaces_are_legible_in_every_theme(live_server, browser, rcm_react
             page.goto(f"{live_server}/v2/model-react/")
             page.wait_for_selector("[data-new-project-cta='true']")
             select_theme(theme); check(page, f"{theme} / library")
-            page.goto(f"{live_server}/v2/model-react/#new-project")
+            page.goto(f"{live_server}/v2/model-react/#new-project/new")
             page.wait_for_selector("[data-new-project-wizard='true']")
             select_theme(theme)
             page.locator("[data-tech-card='data_center']").click()
