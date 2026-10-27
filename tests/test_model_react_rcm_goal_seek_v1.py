@@ -113,27 +113,20 @@ def test_protected_reference_is_refused(env):
 
 
 @pytest.mark.parametrize("params,message", [
-    ({"target_metric": "min_dscr", "target_value": "9"}, "Unknown target metric"),
-    ({"target_metric": "project_irr", "target_value": "abc"}, "not a valid number"),
-    ({"target_metric": "project_irr", "target_value": "nan"}, "not a valid number"),
-    ({"target_metric": "project_irr", "target_value": ""}, "not a valid number"),
+    # The first four cases are the historical cases with their exact historical pytest ids and parameters (CI V3 refuses removed or repurposed original
+    # nodes). Explicit ids lock them against any later insertion or reordering. The two NPV cases are additions with their own ids.
+    pytest.param({"target_metric": "min_dscr", "target_value": "9"}, "Unknown target metric", id="params0-Unknown target metric"),
+    pytest.param({"target_metric": "project_irr", "target_value": "abc"}, "not a valid number", id="params1-not a valid number"),
+    pytest.param({"target_metric": "project_irr", "target_value": "nan"}, "not a valid number", id="params2-not a valid number"),
+    pytest.param({"target_metric": "project_irr", "target_value": ""}, "not a valid number", id="params3-not a valid number"),
+    pytest.param({"target_metric": "project_npv", "target_value": "9"}, "Unknown target metric", id="nonratio-project-npv-refused"),
+    pytest.param({"target_metric": "sponsor_npv", "target_value": "9"}, "Unknown target metric", id="nonratio-sponsor-npv-refused"),
 ])
 def test_invalid_solve_requests_are_typed_422_and_change_nothing(env, params, message):
     record = env.create()
     before = state(record)
     response = call(env.client, "solve", project=record.project_code, **params)
     assert response.status_code == 422 and message in response.json()["message"]
-    assert state(record) == before
-
-
-@pytest.mark.parametrize("metric", ["min_dscr", "project_npv", "sponsor_npv"])
-def test_non_ratio_canonical_targets_are_refused_as_unknown_and_change_nothing(env, metric):
-    """The canonical Goal Seek offers DSCR (multiple) and NPV (kEUR) targets; this adapter converts a percent target with /100 and so serves ratio-unit targets only.
-    (A separate test, not extra parameters of the test above: the original node ids of that test must not shift.)"""
-    record = env.create()
-    before = state(record)
-    response = call(env.client, "solve", project=record.project_code, target_metric=metric, target_value="9")
-    assert response.status_code == 422 and "Unknown target metric" in response.json()["message"]
     assert state(record) == before
 
 
@@ -362,3 +355,17 @@ def test_the_catalog_serves_only_ratio_unit_targets_so_no_percent_conversion_can
     assert set(served) == {key for key, metric in GOAL_SEEK_METRICS.items() if metric.unit == "ratio"}
     assert {"min_dscr", "project_npv", "sponsor_npv"} <= set(GOAL_SEEK_METRICS) - set(served)      # the canonical service offers them; this adapter does not
     assert [item["key"] for item in module._metrics()] == list(served)
+
+
+def test_the_original_parametrized_identities_and_meanings_are_locked():
+    """Original-node identity (CI V3 plan gate): ids AND parameter meanings of the four historical cases never change; only the NPV refusals are additions."""
+    marks = [m for m in test_invalid_solve_requests_are_typed_422_and_change_nothing.pytestmark if m.name == "parametrize"]
+    cases = marks[0].args[1]
+    assert [(c.id, c.values[0]["target_metric"], c.values[0]["target_value"], c.values[1]) for c in cases[:4]] == [
+        ("params0-Unknown target metric", "min_dscr", "9", "Unknown target metric"),
+        ("params1-not a valid number", "project_irr", "abc", "not a valid number"),
+        ("params2-not a valid number", "project_irr", "nan", "not a valid number"),
+        ("params3-not a valid number", "project_irr", "", "not a valid number"),
+    ]
+    assert [(c.id, c.values[0]["target_metric"]) for c in cases[4:]] == [("nonratio-project-npv-refused", "project_npv"),
+                                                                        ("nonratio-sponsor-npv-refused", "sponsor_npv")]
