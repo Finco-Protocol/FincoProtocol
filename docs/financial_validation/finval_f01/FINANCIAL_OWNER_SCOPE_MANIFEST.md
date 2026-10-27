@@ -66,7 +66,7 @@ Preserved F01 workflow: `.github/workflows/finval_f01_acceptance.yml` original a
 | Governance path | Before exact blob | New exact blob | Reviewed change |
 |---|---|---|---|
 | `tests/v11_stage3_successor.py` | `cf51845fc00a919b332d4814903fe4ad16cf868d` | `09f85eabd103f3eb07d760102c55b9217f16e64c` | Add exclusively exact-blob, semantic, read-only test workflow recognition; native activation detection stays fail-closed |
-| `tests/test_v11_stage3_successor.py` | `459b8cbb67f661933c648f7eba24d70d15da5260` | `c3ac53df8c8fe58f42a060f8f2587a2136041b03` | Positive exact-workflow test plus seven synthetic negative mutations (byte, deploy, native enable, write, OIDC, release and unrelated workflow) |
+| `tests/test_v11_stage3_successor.py` | `459b8cbb67f661933c648f7eba24d70d15da5260` | `f33d1a54a4aa59fdc0b29ffc6b1046ddbe18b66c` | Positive exact-workflow test plus seven synthetic negative mutations (byte, deploy, native enable, write, OIDC, release and unrelated workflow) |
 
 The exact F01 workflow verifies non-root native source ownership and offline native test identity. It mentions `financial_engine/native_v11` as a filesystem path; this is not an activation command. The previously existing V11 scanner treated this read-only path check as an activation surface, which blocked V11S3 recognition and propagated to historical F3/M7/RC3/RC7/ODR/V10/WF04/WF07 governance. All 37 failures passed on exact main `cf7056de`, then failed on #389 `035b73a1`. This is a narrow successor of test-only recognition, not approval/activation/release of V11. All historical pins and release decision records remain byte-identical.
 
