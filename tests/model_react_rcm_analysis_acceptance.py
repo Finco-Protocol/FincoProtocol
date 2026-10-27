@@ -35,7 +35,7 @@ __all__ = (
     "test_a_stale_binding_is_refused_and_the_working_copy_is_kept",
     "an_session",
 )
-SHOTS = os.environ.get("RCM_SCREENSHOT_DIR", "")
+SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")      # CI: the role's uploaded screenshot folder
 HDR = {"X-Finco-React-Request": "1"}
 
 

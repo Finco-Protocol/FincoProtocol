@@ -32,7 +32,7 @@ __all__ = (
     "test_wizard_renders_in_every_selectable_theme",
     "np_session",
 )
-SHOTS = os.environ.get("RCM_SCREENSHOT_DIR", "")
+SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")      # CI: the role's uploaded screenshot folder
 VIEWPORTS = (320, 390, 768, 1440)
 NEW = "#new-project"
 

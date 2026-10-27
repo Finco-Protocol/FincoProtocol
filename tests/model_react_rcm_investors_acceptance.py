@@ -27,7 +27,7 @@ __all__ = (
     "test_the_panel_fits_every_viewport",
     "inv_session",
 )
-SHOTS = os.environ.get("RCM_SCREENSHOT_DIR", "")
+SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")      # CI: the role's uploaded screenshot folder
 
 
 @pytest.fixture

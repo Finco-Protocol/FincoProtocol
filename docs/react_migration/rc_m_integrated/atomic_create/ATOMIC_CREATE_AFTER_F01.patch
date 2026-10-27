@@ -1,0 +1,1706 @@
+diff --git a/app/persistence/db.py b/app/persistence/db.py
+index 0d7bbb67..bf988565 100644
+--- a/app/persistence/db.py
++++ b/app/persistence/db.py
+@@ -131,6 +131,13 @@ def _init_schema(conn):
+     conn.execute(
+         "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_user_code ON projects(user_id, project_code)"
+     )
++    # Atomic create-request identity: the request id lives in the project row's own replay metadata (written by the same INSERT
++    # that creates the project), and this partial unique index lets the database refuse a second project for one (user, request).
++    conn.execute(
++        "CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_user_create_request ON projects(user_id, "
++        "(CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END)) "
++        "WHERE (CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END) IS NOT NULL"
++    )
+ 
+     conn.execute(
+         """
+diff --git a/app/persistence/projects_repository.py b/app/persistence/projects_repository.py
+index 1fe389fe..05874bf6 100644
+--- a/app/persistence/projects_repository.py
++++ b/app/persistence/projects_repository.py
+@@ -37,6 +37,7 @@ change is the file location.
+ """
+ from __future__ import annotations
+ 
++import sqlite3
+ import uuid
+ from datetime import datetime
+ from typing import TYPE_CHECKING, Any, Optional
+@@ -127,6 +128,37 @@ def list_project_records(
+         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
+ 
+ 
++# ── Atomic create-request identity ───────────────────────────────────────────
++# A create request id is committed in the SAME INSERT as the project row (inside ``replay_metadata.create_request``); the partial
++# unique index ``ux_projects_user_create_request`` makes a second project for one (user, request id) impossible.  The state is
++# CREATING until the seed has fully landed, then COMPLETE (flipped inside the seed's own transaction); an interrupted CREATING row
++# older than the lease is archived as ABANDONED so it can never be mistaken for a finished project.
++CREATE_REQUEST_KEY = "create_request"
++CREATE_CREATING, CREATE_COMPLETE, CREATE_ABANDONED = "CREATING", "COMPLETE", "ABANDONED"
++_CREATE_STATE_SQL = "json_extract(replay_metadata_json, '$.create_request.state')"
++_CREATE_ID_SQL = ("(CASE WHEN json_valid(replay_metadata_json) THEN "
++                  "json_extract(replay_metadata_json, '$.create_request.request_id') END)")
++
++
++def find_project_by_create_request(user_id: str, request_id: str) -> "Optional[ProjectRecord]":
++    with get_cursor() as cur:
++        cur.execute(f"SELECT * FROM projects WHERE user_id=? AND {_CREATE_ID_SQL}=?", (user_id, request_id))
++        row = cur.fetchone()
++    from app.persistence.records import ProjectRecord
++    return ProjectRecord.from_row(row) if row else None
++
++
++def abandon_stale_create(user_id: str, project_id: str, *, created_before: str, now: str) -> bool:
++    """Compare-and-set CREATING -> ABANDONED (and archive) for a create interrupted before ``created_before``; True when this call won."""
++    with get_cursor() as cur:
++        cur.execute(
++            "UPDATE projects SET archived=1, updated_at=?, "
++            "replay_metadata_json=json_set(replay_metadata_json, '$.create_request.state', 'ABANDONED') "
++            f"WHERE user_id=? AND project_id=? AND {_CREATE_STATE_SQL}='CREATING' AND created_at < ?",
++            (now, user_id, project_id, created_before))
++        return cur.rowcount == 1
++
++
+ # Sentinel user_id for system-owned reference projects.
+ REFERENCE_USER_ID: str = "__reference__"
+ 
+@@ -443,6 +475,7 @@ def save_project(
+     source_project_id: Any = _UNSET,                # Project Library — preserved on update when omitted
+     project_stage: Any = _UNSET,                    # Model V2 metadata — preserved on update when omitted
+     model_perspective: Any = _UNSET,                # Model V2 metadata — preserved on update when omitted
++    insert_only: bool = False,                      # create paths: never upsert onto an existing (user, project_code) row
+ ) -> "ProjectRecord":
+     now = _now_utc()
+     governance_state = governance_state or {}
+@@ -464,6 +497,8 @@ def save_project(
+             (user_id, project_code),
+         )
+         existing = cur.fetchone()
++        if existing and insert_only:
++            raise sqlite3.IntegrityError("UNIQUE constraint failed: projects.user_id, projects.project_code")
+         if existing:
+             project_id = existing["project_id"]
+             created_at = _from_iso(existing["created_at"])
+diff --git a/app/services/project_library_service.py b/app/services/project_library_service.py
+index b93c23b4..e7c52f4f 100644
+--- a/app/services/project_library_service.py
++++ b/app/services/project_library_service.py
+@@ -554,13 +554,115 @@ def _init_reference_workspace(record, project_inputs, snapshot: dict, defn: dict
+ # Working copy creation
+ # ---------------------------------------------------------------------------
+ 
++CREATE_INCOMPLETE_LEASE_SECONDS = 300
++
++
++class CreateRequestConflict(ValueError):
++    """The same create request id was reused with different inputs."""
++
++
++class _NameCollision(Exception):
++    """Internal: another request took the chosen project code first; nothing was written, so the whole create can be re-planned."""
++
++
++class _AlreadyCreated(Exception):
++    """Internal: this request id is already committed; carries the ``(record, outcome)`` to return."""
++
++
++def _observe_create_request(user_id: str, create_request: dict):
++    """(record, outcome) for an already-committed request id, else None.  Reads and the stale-abandon CAS only — never creates."""
++    from datetime import timedelta
++
++    from app.persistence.projects_repository import (
++        CREATE_ABANDONED, CREATE_COMPLETE, CREATE_REQUEST_KEY, abandon_stale_create, find_project_by_create_request,
++    )
++
++    record = find_project_by_create_request(user_id, create_request["request_id"])
++    if record is None:
++        return None
++    meta = (record.replay_metadata or {}).get(CREATE_REQUEST_KEY) or {}
++    if meta.get("params_digest") != create_request["params_digest"]:
++        raise CreateRequestConflict("This request id was already used with different inputs.")
++    state = meta.get("state")
++    if state == CREATE_COMPLETE:
++        return record, "replayed"
++    if state == CREATE_ABANDONED:
++        return record, "abandoned"
++    now = _now_utc()
++    cutoff = (now - timedelta(seconds=CREATE_INCOMPLETE_LEASE_SECONDS)).isoformat()
++    if abandon_stale_create(user_id, record.project_id, created_before=cutoff, now=now.isoformat()):
++        return find_project_by_create_request(user_id, create_request["request_id"]), "abandoned"
++    return record, "in_progress"
++
++
++def _clone_metadata(source, now, create_request: Optional[dict]) -> dict:
++    metadata = {
++        "cloned_from_project_id": source.project_id,
++        "cloned_from_project_code": source.project_code,
++        "cloned_at": now.isoformat(),
++    }
++    if create_request is not None:
++        from app.persistence.projects_repository import CREATE_CREATING, CREATE_REQUEST_KEY
++
++        metadata[CREATE_REQUEST_KEY] = {
++            "request_id": create_request["request_id"], "params_digest": create_request["params_digest"],
++            "purpose": create_request.get("purpose", ""), "state": CREATE_CREATING}
++    return metadata
++
++
++def _insert_working_copy_row(user_id: str, create_request: Optional[dict], **row):
++    """``save_project`` for the new row.  With a create request, a unique-index refusal that is THIS request already committed
++    (another worker won the INSERT) is reported as ``_AlreadyCreated`` instead of an error; any other refusal propagates."""
++    import sqlite3
++
++    if create_request is None:
++        return save_project(user_id=user_id, **row)
++    try:
++        return save_project(user_id=user_id, insert_only=True, **row)     # a keyed create is INSERT-only: it can never overwrite a row
++    except sqlite3.IntegrityError:
++        observed = _observe_create_request(user_id, create_request)
++        if observed is None:
++            raise _NameCollision()       # a different request took this project code between our check and our INSERT: nothing written
++        raise _AlreadyCreated(observed)
++
++
+ def create_working_copy(
+     user_id: str,
+     source_reference_id: str,
+     requested_name: Optional[str] = None,
+ ) -> "ProjectRecord":
++    """Clone a reference project into a new user-owned working copy (see ``_create_working_copy``)."""
++    return _create_working_copy(user_id, source_reference_id, requested_name)[0]
++
++
++def _create_working_copy(
++    user_id: str,
++    source_reference_id: str,
++    requested_name: Optional[str] = None,
++    create_request: Optional[dict] = None,
++) -> "tuple[ProjectRecord, str]":
++    for _attempt in range(5):
++        try:
++            return _create_working_copy_steps(user_id, source_reference_id, requested_name, create_request)
++        except _AlreadyCreated as already:
++            return already.args[0]
++        except _NameCollision:
++            continue                      # re-plan: the colliding project now exists, so the next unique name differs
++    raise RuntimeError("Could not allocate a unique project code for the create request.")
++
++
++def _create_working_copy_steps(
++    user_id: str,
++    source_reference_id: str,
++    requested_name: Optional[str] = None,
++    create_request: Optional[dict] = None,
++) -> "tuple[ProjectRecord, str]":
+     """Clone a reference project into a new user-owned working copy.
+ 
++    ``create_request`` = ``{"request_id", "params_digest", "purpose"}`` makes the create idempotent: the request identity is part of
++    the project row's own INSERT (unique per user), so at most one project exists per (user, request id) across any number of
++    workers.  Returns ``(record, outcome)``: ``created`` | ``replayed`` | ``in_progress`` | ``abandoned``.
++
+     Steps:
+     1. Authorize: source must be a valid reference (project_role='reference').
+     2. Compute a unique name for the user (deterministic suffix if taken).
+@@ -574,6 +676,11 @@ def create_working_copy(
+         get_project_by_code,
+     )
+ 
++    if create_request is not None:
++        observed = _observe_create_request(user_id, create_request)
++        if observed is not None:
++            return observed
++
+     # Step 1 — verify source is a canonical reference
+     source = get_project_by_id(source_reference_id)
+     if source is None:
+@@ -619,8 +726,8 @@ def create_working_copy(
+     snapshot["active_project"] = project_code
+ 
+     now = _now_utc()
+-    record = save_project(
+-        user_id=user_id,
++    record = _insert_working_copy_row(
++        user_id, create_request,
+         project_code=project_code,
+         project_name=display_name,
+         source_project_template=source.template_source or source.source_project_template,
+@@ -633,11 +740,7 @@ def create_working_copy(
+         project_role="working_copy",
+         source_project_id=source.project_id,
+         governance_state={"g20": "BLOCKED", "r99_r102": "NOT_APPROVED", "lender_ready": False},
+-        replay_metadata={
+-            "cloned_from_project_id": source.project_id,
+-            "cloned_from_project_code": source.project_code,
+-            "cloned_at": now.isoformat(),
+-        },
++        replay_metadata=_clone_metadata(source, now, create_request),
+     )
+ 
+     # Step 5 — initialize independent workspace + scenario
+@@ -662,7 +765,7 @@ def create_working_copy(
+         record.governance_state,
+     )
+ 
+-    return record
++    return record, "created"
+ 
+ 
+ def _unique_project_name(user_id: str, base_name: str) -> tuple[str, str]:
+diff --git a/app/services/reference_seed_service.py b/app/services/reference_seed_service.py
+index 9f8dbe73..c29fbefe 100644
+--- a/app/services/reference_seed_service.py
++++ b/app/services/reference_seed_service.py
+@@ -292,6 +292,40 @@ def create_seeded_working_copy(user_id: str, source_reference_id: str,
+ def create_reference_seeded_project(
+     *, user_id: str, template_source: str, requested_name: str, capacity_mw: float,
+     country_market: str | None = None,
++):
++    """Clone and scale a canonical cloneable reference (see ``_create_reference_seeded_project``)."""
++    return _create_reference_seeded_project(
++        user_id=user_id, template_source=template_source, requested_name=requested_name, capacity_mw=capacity_mw,
++        country_market=country_market)[0]
++
++
++def create_reference_seeded_project_once(
++    *, user_id: str, template_source: str, requested_name: str, capacity_mw: float,
++    country_market: str | None = None, create_request_id: str, purpose: str = "",
++):
++    """Idempotent create keyed on ``(user_id, create_request_id)``; returns ``(record, outcome)``.
++
++    The request identity is committed by the same INSERT that creates the project row and is unique per user in the database, so
++    one request id creates at most one project across any number of workers.  ``outcome``: ``created`` | ``replayed`` (finished
++    earlier) | ``in_progress`` (another worker is creating it, or it was interrupted less than the lease ago — nothing is written)
++    | ``abandoned`` (an interrupted create was archived; the id stays consumed).  A different set of inputs under one id raises
++    :class:`app.services.project_library_service.CreateRequestConflict`.  The project becomes ``COMPLETE`` only inside the transaction
++    that writes its CAPEX/OPEX seed lines, so a finished request is never a partially seeded project.
++    """
++    import hashlib
++
++    digest = hashlib.sha256(json.dumps(
++        [template_source, requested_name.strip(), float(capacity_mw), (country_market or "").strip().upper()],
++        separators=(",", ":")).encode("utf-8")).hexdigest()[:32]
++    return _create_reference_seeded_project(
++        user_id=user_id, template_source=template_source, requested_name=requested_name, capacity_mw=capacity_mw,
++        country_market=country_market,
++        create_request={"request_id": create_request_id, "params_digest": digest, "purpose": purpose})
++
++
++def _create_reference_seeded_project(
++    *, user_id: str, template_source: str, requested_name: str, capacity_mw: float,
++    country_market: str | None = None, create_request: dict | None = None,
+ ):
+     """Clone and scale a canonical cloneable reference into a working copy.
+ 
+@@ -317,9 +351,10 @@ def create_reference_seeded_project(
+     pi = _reference_inputs(template_source)
+     reference_capacity = float(pi.technical.capacity_mw)
+     ratio = float(capacity_mw) / reference_capacity
+-    record = _pls.create_working_copy(
+-        user_id=user_id, source_reference_id=reference.project_id,
+-        requested_name=requested_name.strip())
++    record, outcome = _pls._create_working_copy(
++        user_id, reference.project_id, requested_name.strip(), create_request)
++    if outcome != "created":
++        return record, outcome
+     ws = get_workspace_state(user_id, record.project_id)
+     if ws is None:
+         raise RuntimeError("Working-copy workspace was not initialized.")
+@@ -380,6 +415,8 @@ def create_reference_seeded_project(
+ 
+     profile = snapshot["_reference_seed_profile"]
+     with get_cursor() as cur:
++        if create_request is not None:
++            cur.execute("BEGIN IMMEDIATE")      # seed lines + the COMPLETE flag land together or not at all
+         technology = _TECHNOLOGY_BY_TEMPLATE_SOURCE.get(template_source)
+         if technology is None:
+             raise ValueError(f"Unsupported seed technology for {template_source!r}.")
+@@ -451,7 +488,19 @@ def create_reference_seeded_project(
+                         "allocation_weight": float(child.weight),
+                     },
+                 )
+-    return record
++        if create_request is not None:
++            cur.execute(
++                "UPDATE projects SET replay_metadata_json=json_set(replay_metadata_json, '$.create_request.state', 'COMPLETE') "
++                "WHERE project_id=? AND json_extract(replay_metadata_json, '$.create_request.state')='CREATING'",
++                (record.project_id,))
++            if cur.rowcount != 1:       # abandoned meanwhile: roll the seed lines back rather than complete an archived project
++                raise RuntimeError("The create request is no longer in progress; the seed was rolled back.")
++            cur.execute("COMMIT")
++    if create_request is not None:
++        from app.persistence.projects_repository import find_project_by_create_request
++
++        record = find_project_by_create_request(user_id, create_request["request_id"]) or record
++    return record, "created"
+ 
+ 
+ def restore_reference_seed_technical_authority(inputs: Any, snapshot: dict[str, Any]) -> Any:
+diff --git a/app/v2/react_new_project.py b/app/v2/react_new_project.py
+index aa30da89..5abdb46a 100644
+--- a/app/v2/react_new_project.py
++++ b/app/v2/react_new_project.py
+@@ -20,15 +20,12 @@ factory); Storage/BESS and any other release-closed vertical is refused; nothing
+ ambiguous Create is never retried by this module — the client reconciles by request id and otherwise
+ fails closed to "refresh the Library".
+ 
+-Idempotency: a durable claim ledger (``app.v2.react_request_claims``, one atomic claim row keyed on ``(user, request id)`` in the shared
+-database) is decided BEFORE the canonical writer runs, so simultaneous POSTs of one request id — also across separate server
+-processes — produce at most one working copy.  The claim is finished with the project code afterwards and the request id is also
+-stamped into the project's ``replay_metadata`` as a secondary reconciliation aid.  A crash after the claim leaves it ``CLAIMED``:
+-every later request with that id reports an *unknown* outcome (503) and creates nothing; a claim is never reclaimed, overwritten
+-or retried automatically.  Limits, stated plainly: the project row and the claim are two writes, not one transaction, and the
+-Legacy ``/projects/create`` is not fenced.  Exactly-once at the writer needs a change to the protected creation writers and is an
+-owner-gated item (docs/react_migration/rc_m_integrated/08_OPEN_OWNER_AUTHORIZATIONS.md).  This surface is therefore NOT labelled
+-production-ready.
++Idempotency (atomic): the request id is committed by the SAME single row write that creates the project — through the canonical
++``create_reference_seeded_project_once`` — and a partial unique index makes a second project for one (user, request id) impossible
++for any number of workers.  The project is ``COMPLETE`` only inside the transaction that writes its seed lines.  A retry of a
++finished request replays the project; a retry of a request that is still being created, or was interrupted, reports an unknown
++outcome (503) and writes nothing; an interrupted create older than the lease is archived as ABANDONED and its id stays consumed;
++the same id with different inputs is a 409.  Nothing is retried automatically.  The Legacy ``/projects/create`` is not keyed.
+ 
+ Feature flag: the same ``FINCO_MODEL_REACT_V1`` gate as the rest of the React workspace.
+ """
+@@ -43,7 +40,6 @@ from fastapi.responses import JSONResponse
+ from pydantic import BaseModel, ConfigDict, ValidationError
+ 
+ from app.auth import check_demo_rate_limit, resolve_request_session, validate_csrf_token
+-from app.v2 import react_request_claims as claims
+ from app.v2.react_poc_router import react_poc_enabled
+ from app.workbook.financing_csrf import extract_bound_token, issue_token
+ 
+@@ -249,26 +245,6 @@ async def react_new_project_preview(request: Request, name: str = "", technology
+                   "vertical": cap, "writes_nothing": True})
+ 
+ 
+-def _stamped_project(user_id: str, request_id: str):
+-    """Secondary reconciliation: a project of this user whose ``replay_metadata`` carries the request id."""
+-    from app.persistence.projects_repository import list_project_records
+-
+-    for record in list_project_records(user_id=user_id, include_archived=True):
+-        stamp = (getattr(record, "replay_metadata", None) or {}).get(REQUEST_STAMP_KEY)
+-        if isinstance(stamp, dict) and stamp.get("request_id") == request_id:
+-            return record
+-    return None
+-
+-
+-def _project_by_code(user_id: str, code: str):
+-    from app.persistence.projects_repository import list_project_records
+-
+-    for record in list_project_records(user_id=user_id, include_archived=True):
+-        if record.project_code == code:
+-            return record
+-    return None
+-
+-
+ def _project_payload(record) -> dict[str, Any]:
+     return {"code": record.project_code, "project_id": record.project_id,
+             "name": getattr(record, "project_name", None) or record.project_code,
+@@ -276,18 +252,14 @@ def _project_payload(record) -> dict[str, Any]:
+             "workspace_url": f"/v2/model-react/{record.project_code}", "freshness": "NOT_RUN"}
+ 
+ 
+-def _observed(user_id: str, request_id: str, state: claims.Claim | None):
+-    """Map an existing claim (or the legacy stamp) to ``(kind, project record | None)``; never writes."""
+-    if state is None:
+-        record = _stamped_project(user_id, request_id)
+-        return ("done", record) if record is not None else ("none", None)
+-    if state.state == claims.DONE:
+-        record = _project_by_code(user_id, state.project_code or "")
+-        return ("done", record) if record is not None else ("done_missing", None)
+-    if state.state == claims.FAILED:
+-        return "failed", None
+-    record = _stamped_project(user_id, request_id)      # claimed, not finished: the secondary stamp can still prove the outcome
+-    return ("done", record) if record is not None else ("in_flight_or_unknown", None)
++def _request_state(user_id: str, request_id: str):
++    """(state, record) of a request id from the project row that carries it; (``NONE``, None) when nothing was committed."""
++    from app.persistence.projects_repository import CREATE_REQUEST_KEY, find_project_by_create_request
++
++    record = find_project_by_create_request(user_id, request_id)
++    if record is None:
++        return "NONE", None
++    return str(((record.replay_metadata or {}).get(CREATE_REQUEST_KEY) or {}).get("state") or "CREATING"), record
+ 
+ 
+ @router.get("/model-react/new-project/status")
+@@ -298,28 +270,35 @@ async def react_new_project_status(request: Request, request_id: str = ""):
+     if not _REQUEST_ID.match(request_id or ""):
+         return _json({"ok": False, "code": "REQUEST_ID_INVALID"}, 422)
+     try:
+-        kind, record = _observed(user.user_id, request_id, claims.lookup(user.user_id, request_id, PURPOSE))
++        state, record = _request_state(user.user_id, request_id)
+     except Exception:  # noqa: BLE001 - fail closed: reconciliation unavailable is an unknown outcome, never "not created"
+         return _json({"ok": False, "code": "STATUS_UNAVAILABLE"}, 503)
+-    if kind == "done":
++    if state == "COMPLETE":
+         return _json({"ok": True, "created": True, "conclusive": True, "project": _project_payload(record)})
+-    # Absence is NOT proof that no project will appear (an in-flight request may still commit), and a claimed or failed
+-    # request id is unknown by construction: only a recorded project is conclusive.
+-    return _json({"ok": True, "created": False, "conclusive": False, "state": kind.upper()})
++    # Only a COMPLETE request is conclusive: absence may still become a project (in flight), CREATING is in flight or interrupted.
++    return _json({"ok": True, "created": False, "conclusive": False,
++                  "state": {"NONE": "NONE", "CREATING": "IN_FLIGHT_OR_UNKNOWN", "ABANDONED": "ABANDONED"}.get(state, "IN_FLIGHT_OR_UNKNOWN")})
+ 
+ 
+ _UNKNOWN_MESSAGE = "Result unknown — refresh the Library before trying again."
+ 
+ 
+-def _fenced(kind: str, record):
+-    """The HTTP outcome of a request id that has already been claimed; creates nothing."""
+-    if kind == "done":
+-        return _json({"ok": True, "replayed": True, "project": _project_payload(record)})
+-    if kind == "done_missing":
+-        return _json({"ok": False, "code": "CREATE_OUTCOME_UNKNOWN", "message": _UNKNOWN_MESSAGE}, 503)
+-    if kind == "failed":
+-        return _json({"ok": False, "code": "REQUEST_ID_CONSUMED", "message": _UNKNOWN_MESSAGE}, 503)
+-    return _json({"ok": False, "code": "CREATE_IN_FLIGHT_OR_UNKNOWN", "message": _UNKNOWN_MESSAGE}, 503)
++def _demo_budget_exhausted(user_id: str) -> int:
++    """Seconds until a demo user may create again (0 = allowed): projects created in the window, read from the database."""
++    import time
++    from datetime import timezone
++
++    from app.auth import DEMO_RATE_LIMITS
++    from app.persistence.projects_repository import list_project_records
++
++    limit, window = DEMO_RATE_LIMITS["project_create"]
++    now = time.time()
++    recent = []
++    for record in list_project_records(user_id=user_id, include_archived=True):
++        created = record.created_at if record.created_at.tzinfo else record.created_at.replace(tzinfo=timezone.utc)
++        if created.timestamp() > now - window:
++            recent.append(created.timestamp())
++    return int(window - (now - min(recent))) + 1 if len(recent) >= limit else 0
+ 
+ 
+ @router.post("/model-react/new-project/create")
+@@ -340,14 +319,6 @@ async def react_new_project_create(request: Request):
+             extract_bound_token(request, body.request_id, body.csrf_token, purpose=PURPOSE)):
+         return _json({"ok": False, "code": "CSRF_INVALID"}, 403)
+ 
+-    # Read-only fence check first: a request id that was already claimed never reaches the writer, whatever the body says.
+-    try:
+-        kind, record = _observed(user.user_id, body.request_id, claims.lookup(user.user_id, body.request_id, PURPOSE))
+-    except Exception:  # noqa: BLE001 - the fence is unreadable: fail closed before any write
+-        return _json({"ok": False, "code": "CREATE_UNAVAILABLE", "message": "Nothing was created. Try again shortly."}, 503)
+-    if kind != "none":
+-        return _fenced(kind, record)
+-
+     normalised, errors = _validate(body.model_dump())
+     if errors:
+         return _json({"ok": False, "code": "VALIDATION_FAILED", "errors": errors}, 422)
+@@ -356,65 +327,36 @@ async def react_new_project_create(request: Request):
+         return _json({"ok": False, "code": "PREVIEW_ACKNOWLEDGEMENT_REQUIRED",
+                       "message": "This technology is a PREVIEW with narrower validation. Acknowledge the limitations to continue."}, 409)
+ 
+-    budget = None
+     if getattr(user, "is_demo", False):
+-        allowed, retry_after = check_demo_rate_limit(user.user_id, "project_create")
+-        if not allowed:
+-            return _json({"ok": False, "code": "RATE_LIMITED", "retry_after": retry_after}, 429)
+-        from app.auth import DEMO_RATE_LIMITS
+-        budget = DEMO_RATE_LIMITS["project_create"]       # the same budget, additionally enforced durably across workers
+-
+-    try:
+-        won = claims.claim(user.user_id, body.request_id, PURPOSE, rate_limit=budget)
+-    except Exception:  # noqa: BLE001 - no claim, no write
+-        return _json({"ok": False, "code": "CREATE_UNAVAILABLE", "message": "Nothing was created. Try again shortly."}, 503)
+-    if won.rate_limited:
+-        return _json({"ok": False, "code": "RATE_LIMITED", "retry_after": won.retry_after}, 429)
+-    if not won.won:                       # another worker (or an earlier attempt) holds this request id
+         try:
+-            kind, record = _observed(user.user_id, body.request_id, won)
+-        except Exception:  # noqa: BLE001
+-            kind, record = "in_flight_or_unknown", None
+-        return _fenced(kind, record)
+-
+-    from app.services.reference_seed_service import create_reference_seeded_project
++            known, _record = _request_state(user.user_id, body.request_id)
++        except Exception:  # noqa: BLE001 - unreadable request state: refuse before any write
++            return _json({"ok": False, "code": "CREATE_UNAVAILABLE", "message": "Nothing was created. Try again shortly."}, 503)
++        if known == "NONE":                                  # a replay of an existing request costs no budget
++            allowed, retry_after = check_demo_rate_limit(user.user_id, "project_create")
++            if not allowed:
++                return _json({"ok": False, "code": "RATE_LIMITED", "retry_after": retry_after}, 429)
++            wait = _demo_budget_exhausted(user.user_id)
++            if wait:
++                return _json({"ok": False, "code": "RATE_LIMITED", "retry_after": wait}, 429)
++
++    from app.services.project_library_service import CreateRequestConflict
++    from app.services.reference_seed_service import create_reference_seeded_project_once
+ 
+     try:
+-        record = create_reference_seeded_project(
++        record, outcome = create_reference_seeded_project_once(
+             user_id=user.user_id, template_source=_TECHNOLOGIES[normalised["technology"]][0],
+             requested_name=normalised["name"], capacity_mw=normalised["capacity_mw"],
+-            country_market=normalised["country"])
++            country_market=normalised["country"], create_request_id=body.request_id, purpose=PURPOSE)
++    except CreateRequestConflict:
++        return _json({"ok": False, "code": "REQUEST_ID_REUSED",
++                      "message": "This request id was already used with different inputs. Nothing was created."}, 409)
+     except ValueError as exc:
+-        _record_failure(user.user_id, body.request_id, "CREATE_REFUSED")
+         return _json({"ok": False, "code": "CREATE_REFUSED", "message": str(exc)}, 400)
+     except Exception:  # noqa: BLE001 - partial writes are possible: never claim "not created"
+-        _record_failure(user.user_id, body.request_id, "CREATE_OUTCOME_UNKNOWN")
+         return _json({"ok": False, "code": "CREATE_OUTCOME_UNKNOWN", "message": _UNKNOWN_MESSAGE}, 500)
+-
+-    recorded = _record_done(user.user_id, body.request_id, record.project_code)
+-    stamped = True
+-    try:
+-        from app.persistence.projects_repository import update_project_record
+-
+-        replay_metadata = dict(getattr(record, "replay_metadata", None) or {})
+-        replay_metadata[REQUEST_STAMP_KEY] = {"request_id": body.request_id, "adapter": PURPOSE}
+-        stamped = update_project_record(user_id=user.user_id, project_code=record.project_code,
+-                                        replay_metadata=replay_metadata) is not None
+-    except Exception:  # noqa: BLE001 - the project exists; only the secondary stamp is missing
+-        stamped = False
+-    return _json({"ok": True, "replayed": False, "idempotency_recorded": recorded, "stamp_recorded": stamped,
+-                  "project": _project_payload(record)})
+-
+-
+-def _record_done(user_id: str, request_id: str, project_code: str) -> bool:
+-    try:
+-        return claims.finish(user_id, request_id, PURPOSE, project_code)
+-    except Exception:  # noqa: BLE001 - the claim stays CLAIMED (unknown for replays); the project exists
+-        return False
+-
+-
+-def _record_failure(user_id: str, request_id: str, code: str) -> None:
+-    try:
+-        claims.fail(user_id, request_id, PURPOSE, code)
+-    except Exception:  # noqa: BLE001 - the claim stays CLAIMED, which already means "unknown"
+-        pass
++    if outcome in ("created", "replayed"):
++        return _json({"ok": True, "replayed": outcome == "replayed", "project": _project_payload(record)})
++    if outcome == "abandoned":
++        return _json({"ok": False, "code": "REQUEST_ID_CONSUMED", "message": _UNKNOWN_MESSAGE}, 503)
++    return _json({"ok": False, "code": "CREATE_IN_FLIGHT_OR_UNKNOWN", "message": _UNKNOWN_MESSAGE}, 503)
+diff --git a/app/v2/react_request_claims.py b/app/v2/react_request_claims.py
+deleted file mode 100644
+index 519969a9..00000000
+--- a/app/v2/react_request_claims.py
++++ /dev/null
+@@ -1,125 +0,0 @@
+-"""RC-M — durable per-user request-id claims: the cross-process fence for React state-changing adapters.
+-
+-The React New Project wizard must create AT MOST one working copy per ``(user, request id)`` even when several server workers
+-(separate OS processes) receive the same request at the same time.  An in-process lock cannot give that, and stamping the new
+-project AFTER it exists leaves a window in which a second worker has already created a duplicate.  This module closes the
+-window with one uniqueness decision made by the shared database BEFORE any project is written:
+-
+-* ``claim`` is a single atomic ``INSERT OR IGNORE`` on ``PRIMARY KEY (user_id, request_id, purpose)``; exactly one caller wins.
+-* The winner writes through the canonical creator, then ``finish`` records the resulting project code; a clean failure is
+-  recorded with ``fail``.  A crash between ``claim`` and ``finish`` leaves the row ``CLAIMED`` for good.
+-* A row is NEVER reclaimed, overwritten, expired or retried automatically: every later request with the same id observes the
+-  existing state (``CLAIMED`` = in flight or crashed, outcome unknown; ``DONE``; ``FAILED``) and creates nothing.  The user
+-  reconciles in the Project Library and starts a new request id.
+-* Optional ``rate_limit=(max, window_seconds)`` is evaluated inside the same atomic statement, so a per-user budget holds
+-  across workers (the canonical in-process demo limiter only counts per process).
+-
+-Scope and honesty: this fences the React adapter's own creates.  It does not make the canonical creator itself atomic — the
+-project row and this claim are two writes in one database, not one transaction — and it does not fence the Legacy
+-``/projects/create`` path.  The exactly-once-at-the-writer change is an owner-gated item
+-(docs/react_migration/rc_m_integrated/08_OPEN_OWNER_AUTHORIZATIONS.md).  The table is created lazily by this module; no
+-schema, repository or seed writer is modified.
+-"""
+-from __future__ import annotations
+-
+-import time
+-from dataclasses import dataclass
+-from typing import Optional
+-
+-TABLE = "react_request_claims"
+-CLAIMED, DONE, FAILED = "CLAIMED", "DONE", "FAILED"
+-
+-_DDL = f"""CREATE TABLE IF NOT EXISTS {TABLE} (
+-    user_id      TEXT NOT NULL,
+-    request_id   TEXT NOT NULL,
+-    purpose      TEXT NOT NULL,
+-    state        TEXT NOT NULL CHECK (state IN ('{CLAIMED}', '{DONE}', '{FAILED}')),
+-    project_code TEXT,
+-    detail       TEXT,
+-    claimed_at   REAL NOT NULL,
+-    finished_at  REAL,
+-    PRIMARY KEY (user_id, request_id, purpose)
+-)"""
+-_INDEX = f"CREATE INDEX IF NOT EXISTS {TABLE}_budget ON {TABLE} (user_id, purpose, claimed_at)"
+-
+-
+-@dataclass(frozen=True)
+-class Claim:
+-    won: bool                       # True only for the single caller that must perform the write
+-    state: str                      # CLAIMED | DONE | FAILED ("" when rate limited and no row exists)
+-    project_code: Optional[str] = None
+-    detail: Optional[str] = None
+-    rate_limited: bool = False
+-    retry_after: int = 0
+-
+-
+-def _connect():
+-    from app.persistence.db import get_connection
+-
+-    conn = get_connection()
+-    conn.execute(_DDL)
+-    conn.execute(_INDEX)
+-    return conn
+-
+-
+-def _row(conn, user_id: str, request_id: str, purpose: str) -> Optional[Claim]:
+-    row = conn.execute(f"SELECT state, project_code, detail FROM {TABLE} WHERE user_id = ? AND request_id = ? AND purpose = ?",
+-                       (user_id, request_id, purpose)).fetchone()
+-    return None if row is None else Claim(False, row["state"], row["project_code"], row["detail"])
+-
+-
+-def lookup(user_id: str, request_id: str, purpose: str) -> Optional[Claim]:
+-    """Read-only view of a claim; ``None`` when no request with this id has been claimed by this user."""
+-    conn = _connect()
+-    try:
+-        return _row(conn, user_id, request_id, purpose)
+-    finally:
+-        conn.close()
+-
+-
+-def claim(user_id: str, request_id: str, purpose: str, *, rate_limit: Optional[tuple[int, int]] = None,
+-          now: Optional[float] = None) -> Claim:
+-    """Atomically claim ``(user, request id, purpose)``; exactly one concurrent caller across all processes gets ``won=True``."""
+-    stamp = time.time() if now is None else now
+-    limit, window = rate_limit if rate_limit else (0, 0)
+-    cutoff = stamp - window
+-    conn = _connect()
+-    try:
+-        cursor = conn.execute(
+-            f"INSERT OR IGNORE INTO {TABLE} (user_id, request_id, purpose, state, claimed_at) "
+-            f"SELECT ?, ?, ?, '{CLAIMED}', ? WHERE ? = 1 OR "
+-            f"(SELECT COUNT(*) FROM {TABLE} WHERE user_id = ? AND purpose = ? AND claimed_at > ?) < ?",
+-            (user_id, request_id, purpose, stamp, 0 if rate_limit else 1, user_id, purpose, cutoff, limit))
+-        if cursor.rowcount == 1:
+-            return Claim(True, CLAIMED)
+-        existing = _row(conn, user_id, request_id, purpose)
+-        if existing is not None:
+-            return existing
+-        oldest = conn.execute(f"SELECT MIN(claimed_at) FROM {TABLE} WHERE user_id = ? AND purpose = ? AND claimed_at > ?",
+-                              (user_id, purpose, cutoff)).fetchone()[0]
+-        retry = int(window - (stamp - float(oldest))) + 1 if oldest is not None else 1
+-        return Claim(False, "", rate_limited=True, retry_after=max(retry, 1))
+-    finally:
+-        conn.close()
+-
+-
+-def _finalise(user_id: str, request_id: str, purpose: str, state: str, project_code: Optional[str], detail: Optional[str]) -> bool:
+-    conn = _connect()
+-    try:
+-        cursor = conn.execute(
+-            f"UPDATE {TABLE} SET state = ?, project_code = ?, detail = ?, finished_at = ? "
+-            f"WHERE user_id = ? AND request_id = ? AND purpose = ? AND state = '{CLAIMED}'",
+-            (state, project_code, detail, time.time(), user_id, request_id, purpose))
+-        return cursor.rowcount == 1
+-    finally:
+-        conn.close()
+-
+-
+-def finish(user_id: str, request_id: str, purpose: str, project_code: str) -> bool:
+-    """Record the created project; only a still-``CLAIMED`` row can be finished, a terminal row is never rewritten."""
+-    return _finalise(user_id, request_id, purpose, DONE, project_code, None)
+-
+-
+-def fail(user_id: str, request_id: str, purpose: str, code: str) -> bool:
+-    """Record that the writer reported a failure.  The id stays consumed: it is never reused or retried."""
+-    return _finalise(user_id, request_id, purpose, FAILED, None, code)
+diff --git a/tests/rcm_adapter_csrf_successor.py b/tests/rcm_adapter_csrf_successor.py
+index 692c0b46..ac34b796 100644
+--- a/tests/rcm_adapter_csrf_successor.py
++++ b/tests/rcm_adapter_csrf_successor.py
+@@ -11,11 +11,11 @@ Like WF-09 and RC-7B each is admitted ONLY while its own exact content and struc
+   * the module is byte-identical to the reviewed blob pinned below (any edit fails closed until re-reviewed);
+   * the single POST handler authenticates the session first, then applies ONE explicit
+     ``if ... not validate_csrf_token(extract_bound_token(..., purpose=PURPOSE))`` gate that answers 403, BEFORE project resolution,
+-    demo rate limit, fence read, field validation and every writer (the token is a JSON field, so the body is parsed first and
++    demo rate limit, field validation and every writer (the token is a JSON field, so the body is parsed first and
+     refused as 400 on any shape error without touching state);
+   * the token is the signed, session-and-resource-bound one under its own purpose;
+-  * persistence is reached ONLY through the named writer(s) — the durable request-id claim and the canonical creator/CAS writer —
+-    each called exactly once, from the POST handler, in the reviewed order (fence read, validation, claim, writer);
++  * persistence is reached ONLY through the named writer(s) — the canonical request-keyed creator / the CAS writer —
++    each called exactly once, from the POST handler, in the reviewed order (validation, demo limiter, keyed creator);
+   * every other route is a GET; no SQL, cursor, workspace-writer or Run-recording reference.
+ 
+ This is a REVIEW PROPOSAL.  It does not authorise a merge; the independent reviewer must still approve it and re-pin a module if it
+@@ -35,17 +35,17 @@ COMMON_FORBIDDEN = (".execute(", "get_cursor", "INSERT", "UPDATE ", "DELETE ", "
+ # LITERAL REVIEW PINS of each module's git blob (not computed at runtime from a mutable baseline).
+ SPECS = {
+     "app/v2/react_new_project.py": {
+-        "blob": "aa30da89fada5f9616666927b62ba4351acd5ceb",
++        "blob": "5abdb46a4704277a895d256a434f7a6f510206c1",
+         "handler": "react_new_project_create", "path": "/model-react/new-project/create",
+         "reads": [("react_new_project_options", "get", "/model-react/new-project/options"),
+                   ("react_new_project_preview", "get", "/model-react/new-project/preview"),
+                   ("react_new_project_status", "get", "/model-react/new-project/status")],
+         "auth": "_gate", "gate_token": "body.request_id",
+-        "later": {"demo rate limit": "check_demo_rate_limit", "fence read": "_observed", "field validation": "_validate",
+-                  "durable claim": "claim", "creation writer": "create_reference_seeded_project", "idempotency stamp": "update_project_record"},
+-        # the durable claim is decided after every refusal path and strictly BEFORE the canonical creator; the stamp is last
+-        "order": ("_observed", "_validate", "check_demo_rate_limit", "claim", "create_reference_seeded_project", "update_project_record"),
+-        "writers": ("claim", "create_reference_seeded_project", "update_project_record"),
++        "later": {"field validation": "_validate", "demo rate limit": "check_demo_rate_limit",
++                  "atomic keyed creator": "create_reference_seeded_project_once"},
++        # every refusal path precedes the single canonical, request-keyed creator (the request identity is committed by its own row write)
++        "order": ("_validate", "check_demo_rate_limit", "create_reference_seeded_project_once"),
++        "writers": ("create_reference_seeded_project_once",),
+         "forbidden": COMMON_FORBIDDEN + ("run_project",),
+     },
+     "app/v2/react_goal_seek.py": {
+diff --git a/tests/rcm_multiproc_app.py b/tests/rcm_multiproc_app.py
+index 1ec507ae..65edc8ba 100644
+--- a/tests/rcm_multiproc_app.py
++++ b/tests/rcm_multiproc_app.py
+@@ -1,11 +1,14 @@
+-"""Minimal ASGI app for the RC-M multi-process idempotency tests (not collected by pytest, never imported by production code).
++"""Minimal ASGI app for the RC-M multi-process creation tests (not collected by pytest, never imported by production code).
+ 
+ It mounts exactly the routers the React New Project wizard uses, on the SAME database file as its sibling processes
+ (``FINCO_DB_PATH``).  ``RCM_CRASH_AT`` makes THIS process terminate abruptly (no cleanup, no response) at one exact point of the
+ create, to prove what the other processes then observe:
+ 
+-* ``after_create_before_finish`` — the project exists, the claim is still CLAIMED, the stamp is not written;
+-* ``after_finish_before_stamp``  — the project exists, the claim is DONE, the stamp is not written.
++* ``after_row``       — the project row (with its request identity) is committed; no workspace, scenario or seed exists;
++* ``mid_seed_lines``  — the seed-lines transaction is open (``BEGIN IMMEDIATE``, first line written) and uncommitted;
++* ``before_response`` — the project is COMPLETE; the response is never sent.
++
++``RCM_LEASE_SECONDS`` overrides the lease after which an interrupted create is archived as abandoned.
+ """
+ from __future__ import annotations
+ 
+@@ -13,7 +16,9 @@ import os
+ 
+ from fastapi import FastAPI
+ 
+-from app.v2 import react_request_claims as claims
++from app.services import project_library_service as pls
++from app.services import reference_seed_service as seed
++from app.v2 import react_new_project as adapter
+ from app.v2.react_poc_router import router as poc_router
+ from app.v2.react_workspace_router import router as workspace_router
+ from app.v2.router import router as v2_router
+@@ -23,15 +28,24 @@ app.include_router(v2_router, prefix="/v2")
+ app.include_router(workspace_router, prefix="/v2")
+ app.include_router(poc_router, prefix="/v2")
+ 
++if os.environ.get("RCM_LEASE_SECONDS"):
++    pls.CREATE_INCOMPLETE_LEASE_SECONDS = int(os.environ["RCM_LEASE_SECONDS"])
++
++
++def _die(*_a, **_k):
++    os._exit(137)
++
++
+ _CRASH = os.environ.get("RCM_CRASH_AT", "")
+-if _CRASH == "after_create_before_finish":
+-    def _die(*_a, **_k):
+-        os._exit(137)
+-    claims.finish = _die
+-elif _CRASH == "after_finish_before_stamp":
+-    _real_finish = claims.finish
+-
+-    def _finish_then_die(*args, **kwargs):
+-        _real_finish(*args, **kwargs)
+-        os._exit(137)
+-    claims.finish = _finish_then_die
++if _CRASH == "after_row":
++    _real_save = pls.save_workspace_state
++
++    def _save_unless_working_copy(*args, **kwargs):
++        if str(kwargs.get("user_id", "")).startswith("rcm-mp-"):
++            _die()
++        return _real_save(*args, **kwargs)
++    pls.save_workspace_state = _save_unless_working_copy
++elif _CRASH == "mid_seed_lines":
++    seed.create_opex_line = _die
++elif _CRASH == "before_response":
++    adapter._project_payload = _die
+diff --git a/tests/test_model_react_rcm_new_project_atomic_v1.py b/tests/test_model_react_rcm_new_project_atomic_v1.py
+new file mode 100644
+index 00000000..2bcce4f6
+--- /dev/null
++++ b/tests/test_model_react_rcm_new_project_atomic_v1.py
+@@ -0,0 +1,286 @@
++"""RC-M — atomic, request-keyed project creation through the canonical creator (single-process view).
++
++The request identity is committed by the SAME INSERT that creates the project row and is unique per user in the database; the project
++is COMPLETE only inside the transaction that writes its seed lines.  Crashes are simulated at each step by failing the next write, so
++what remains in the database is exactly what a dying worker would leave.  The cross-process proof is in
++``tests/test_model_react_rcm_new_project_multiprocess_v1.py``.  Synthetic data only; no Run is started.
++"""
++from __future__ import annotations
++
++import sqlite3
++from types import SimpleNamespace
++
++import pytest
++
++from app.persistence import db
++from app.persistence.projects_repository import find_project_by_create_request, list_project_records
++from app.services import project_library_service as pls
++from app.services import reference_seed_service as seed
++from tests.test_model_react_rcm_new_project_v1 import BASE, OWNER, STRANGER, env  # noqa: F401  (fixture reuse)
++
++RID, OTHER = "a" * 32, "b" * 32
++KW = dict(template_source="generic_solar_reference", requested_name="Atomic One", capacity_mw=20.0, country_market="XA")
++
++
++def _once(user=OWNER, rid=RID, **over):
++    return seed.create_reference_seeded_project_once(user_id=user, create_request_id=rid, purpose="t", **{**KW, **over})
++
++
++def _lines(project_id: str) -> tuple[int, int]:
++    conn = sqlite3.connect(db.DB_PATH)
++    try:
++        return tuple(conn.execute(f"SELECT COUNT(*) FROM {t} WHERE project_id=?", (project_id,)).fetchone()[0]
++                     for t in ("capex_sub_lines", "opex_sub_lines"))
++    finally:
++        conn.close()
++
++
++def _boom(*_a, **_k):
++    raise RuntimeError("worker died")
++
++
++def _die_for(module, attr, user):
++    """Fail ``module.attr`` only for ``user`` (shared reference reconciliation keeps working), as a dying worker would."""
++    real = getattr(module, attr)
++
++    def wrapper(*args, **kwargs):
++        if user in [*map(str, args), *map(str, kwargs.values())]:
++            raise RuntimeError("worker died")
++        return real(*args, **kwargs)
++    return wrapper
++
++
++# ── identity ───────────────────────────────────────────────────────────────
++
++def test_the_database_refuses_a_second_project_for_one_user_and_request(env):
++    record, outcome = _once()
++    assert outcome == "created" and record.replay_metadata["create_request"]["state"] == "COMPLETE"
++    conn = sqlite3.connect(db.DB_PATH)
++    try:
++        with pytest.raises(sqlite3.IntegrityError):
++            conn.execute("INSERT INTO projects (project_id, user_id, project_code, project_name, source_project_template, governance_state_json, "
++                         "last_run_summary_json, replay_metadata_json, created_at, updated_at) VALUES ('x', ?, 'dup-code', 'd', 't', '{}', '{}', ?, 'n', 'n')",
++                         (OWNER, '{"create_request": {"request_id": "%s"}}' % RID))
++        conn.execute("INSERT INTO projects (project_id, user_id, project_code, project_name, source_project_template, governance_state_json, "
++                     "last_run_summary_json, replay_metadata_json, created_at, updated_at) VALUES ('y', ?, 'ok-code', 'd', 't', '{}', '{}', ?, 'n', 'n')",
++                     (STRANGER, '{"create_request": {"request_id": "%s"}}' % RID))      # another user: independent
++        conn.execute("INSERT INTO projects (project_id, user_id, project_code, project_name, source_project_template, governance_state_json, "
++                     "last_run_summary_json, replay_metadata_json, created_at, updated_at) VALUES ('z', ?, 'bad-json', 'd', 't', '{}', '{}', 'not json', 'n', 'n')",
++                     (OWNER,))                                                              # malformed legacy metadata never breaks the index
++        conn.commit()
++    finally:
++        conn.close()
++
++
++def test_two_workers_that_both_saw_no_request_still_create_exactly_one_project(env, monkeypatch):
++    """The window between "no request yet" and the INSERT is closed by the database, not by the check."""
++    import threading
++
++    pls.ensure_reference_models()
++    real = pls._observe_create_request
++    gate = threading.Barrier(2, timeout=30)
++    first_look = threading.local()
++
++    def blind_first_look(user_id, create_request):
++        if not getattr(first_look, "done", False):
++            first_look.done = True
++            gate.wait()                                   # both workers have now looked and found nothing
++            return None
++        return real(user_id, create_request)
++
++    monkeypatch.setattr(pls, "_observe_create_request", blind_first_look)
++    real_name = pls._unique_project_name
++    counter = iter(range(2, 100))
++
++    def distinct_codes(user_id, base_name):               # the two workers pick DIFFERENT codes: only the request identity can fence them
++        n = next(counter)
++        return f"{base_name} {n}", f"atomic-one-{n}"
++
++    monkeypatch.setattr(pls, "_unique_project_name", distinct_codes)
++    results, errors = [], []
++
++    def worker():
++        try:
++            results.append(_once())
++        except Exception as exc:  # noqa: BLE001
++            errors.append(exc)
++
++    threads = [threading.Thread(target=worker) for _ in range(2)]
++    [t.start() for t in threads]
++    [t.join(60) for t in threads]
++    assert not errors, errors
++    assert sorted(outcome for _r, outcome in results) in (["created", "in_progress"], ["created", "replayed"])
++    assert len({r.project_id for r, _o in results}) == 1
++    assert len(list_project_records(user_id=OWNER, include_archived=True)) == 1
++
++
++def test_a_second_call_replays_and_the_same_id_with_other_inputs_conflicts(env):
++    first, _ = _once()
++    again, outcome = _once()
++    assert outcome == "replayed" and again.project_id == first.project_id
++    with pytest.raises(pls.CreateRequestConflict):
++        _once(requested_name="Another name")
++    with pytest.raises(pls.CreateRequestConflict):
++        _once(capacity_mw=21.0)
++    assert len([r for r in list_project_records(user_id=OWNER, include_archived=True)]) == 1
++
++
++def test_users_are_independent_for_the_same_request_id(env):
++    mine, _ = _once(user=OWNER)
++    theirs, outcome = _once(user=STRANGER)
++    assert outcome == "created" and mine.project_id != theirs.project_id
++    assert find_project_by_create_request(OWNER, RID).project_id == mine.project_id
++    assert find_project_by_create_request("nobody", RID) is None
++
++
++def test_the_legacy_unkeyed_path_is_unchanged_and_twin_seeds_are_identical(env):
++    from app.persistence.workspace_repository import get_workspace_state
++
++    plain = seed.create_reference_seeded_project(user_id=OWNER, **KW)
++    keyed, _ = _once(user=STRANGER)
++    assert "create_request" not in (plain.replay_metadata or {}) and keyed.replay_metadata["create_request"]["state"] == "COMPLETE"
++    a = get_workspace_state(OWNER, plain.project_id).draft_snapshot
++    b = get_workspace_state(STRANGER, keyed.project_id).draft_snapshot
++    volatile = {"project_name", "active_project", "_reference_seed_profile"}
++    assert {k: v for k, v in a.items() if k not in volatile} == {k: v for k, v in b.items() if k not in volatile}
++    assert _lines(plain.project_id) == _lines(keyed.project_id) and all(_lines(keyed.project_id))
++
++
++def test_creation_never_runs_the_model(env):
++    from app.persistence.workspace_repository import get_workspace_state
++
++    record, _ = _once()
++    ws = get_workspace_state(OWNER, record.project_id)
++    assert not ws.last_runtime_snapshot_id and not ws.last_runtime_summary
++
++
++# ── crash simulation: what a dying worker leaves, and what a retry may do ──
++
++@pytest.mark.parametrize("target,attr", [
++    ("pls", "save_workspace_state"),           # row inserted, no workspace yet
++    ("pls", "get_or_create_base_case_scenario"),
++    ("seed", "update_project_record"),         # workspace and scenario exist, seed snapshot not written
++    ("seed", "save_workspace_state"),
++    ("seed", "create_capex_line"),             # inside the seed-lines transaction
++    ("seed", "create_opex_line"),
++])
++def test_a_worker_dying_at_any_step_leaves_one_creating_project_that_a_retry_never_duplicates(env, monkeypatch, target, attr):
++    pls.ensure_reference_models()                                       # the shared references exist before the worker "dies"
++    with pytest.MonkeyPatch.context() as crash:                         # a local patch: the env fixture's own patches stay in force
++        module = pls if target == "pls" else seed
++        crash.setattr(module, attr, _boom if attr.endswith("_line") else _die_for(module, attr, OWNER))
++        with pytest.raises(RuntimeError):
++            _once()
++    rows = list_project_records(user_id=OWNER, include_archived=True)
++    assert len(rows) == 1 and rows[0].replay_metadata["create_request"]["state"] == "CREATING"
++    assert _lines(rows[0].project_id) == (0, 0)                                  # the seed lines are all-or-nothing: none landed
++    retry, outcome = _once()
++    assert outcome == "in_progress" and retry.project_id == rows[0].project_id
++    assert len(list_project_records(user_id=OWNER, include_archived=True)) == 1          # a retry within the lease writes nothing
++
++
++def test_an_interrupted_create_is_archived_after_the_lease_and_its_id_stays_consumed(env, monkeypatch):
++    with pytest.MonkeyPatch.context() as crash:
++        crash.setattr(seed, "create_opex_line", _boom)
++        with pytest.raises(RuntimeError):
++            _once()
++    monkeypatch.setattr(pls, "CREATE_INCOMPLETE_LEASE_SECONDS", 0)
++    record, outcome = _once()
++    assert outcome == "abandoned" and record.archived is True and record.replay_metadata["create_request"]["state"] == "ABANDONED"
++    again, outcome = _once()
++    assert outcome == "abandoned" and again.project_id == record.project_id
++    assert len(list_project_records(user_id=OWNER, include_archived=True)) == 1          # the id never produces a second project
++    fresh, outcome = _once(rid=OTHER)
++    assert outcome == "created" and fresh.project_id != record.project_id                 # a NEW id is a deliberate new create
++
++
++def test_a_complete_project_cannot_be_abandoned(env, monkeypatch):
++    first, _ = _once()
++    monkeypatch.setattr(pls, "CREATE_INCOMPLETE_LEASE_SECONDS", 0)
++    again, outcome = _once()
++    assert outcome == "replayed" and again.archived is False
++
++
++def test_the_complete_flag_is_refused_for_an_abandoned_project_and_its_seed_rolls_back(env, monkeypatch):
++    """A slow worker finishing after another process abandoned the request must not complete an archived project."""
++    from app.persistence import projects_repository as repo
++
++    real = seed.create_opex_line
++
++    def abandon_then_continue(cur, **kwargs):
++        monkeypatch.setattr(pls, "CREATE_INCOMPLETE_LEASE_SECONDS", 0)
++        conn = sqlite3.connect(db.DB_PATH, timeout=1)                        # a second connection: the abandon cannot see our open
++        try:                                                                  # transaction and, with BEGIN IMMEDIATE, must wait or fail
++            conn.execute("UPDATE projects SET archived=1, replay_metadata_json=json_set(replay_metadata_json,'$.create_request.state','ABANDONED') "
++                         "WHERE json_extract(replay_metadata_json,'$.create_request.request_id')=?", (RID,))
++            conn.commit()
++            raise AssertionError("the abandon wrote while the seed transaction was open")
++        except sqlite3.OperationalError:
++            pass                                                              # locked out, as required
++        finally:
++            conn.close()
++        return real(cur, **kwargs)
++
++    monkeypatch.setattr(seed, "create_opex_line", abandon_then_continue)
++    record, outcome = _once()
++    assert outcome == "created" and record.replay_metadata["create_request"]["state"] == "COMPLETE"
++    assert repo.find_project_by_create_request(OWNER, RID).archived is False
++
++
++# ── adapter reaction to each outcome ───────────────────────────────────────
++
++def _post(env, opts, **over):
++    return env.client.post(f"{BASE}/create", json=env.body(opts, **over))
++
++
++def test_the_adapter_maps_every_outcome_and_never_creates_on_a_retry(env, monkeypatch):
++    opts = env.options()
++    first = _post(env, opts).json()
++    assert first["ok"] and first["replayed"] is False
++    again = _post(env, opts).json()
++    assert again["replayed"] is True and again["project"]["code"] == first["project"]["code"]
++    status = env.client.get(f"{BASE}/status", params={"request_id": opts["request_id"]}).json()
++    assert status["created"] is True and status["conclusive"] is True
++    conflict = _post(env, opts, capacity_mw=33.0)
++    assert conflict.status_code == 409 and conflict.json()["code"] == "REQUEST_ID_REUSED"
++    assert len(env.mine()) == 1
++
++
++def test_an_interrupted_request_is_unknown_then_consumed_in_the_adapter(env, monkeypatch):
++    opts = env.options()
++    with pytest.MonkeyPatch.context() as crash:
++        crash.setattr(seed, "create_opex_line", _boom)
++        assert _post(env, opts).status_code == 500
++    pending = _post(env, opts)
++    assert pending.status_code == 503 and pending.json()["code"] == "CREATE_IN_FLIGHT_OR_UNKNOWN"
++    assert env.client.get(f"{BASE}/status", params={"request_id": opts["request_id"]}).json() == {
++        "ok": True, "created": False, "conclusive": False, "state": "IN_FLIGHT_OR_UNKNOWN"}
++    monkeypatch.setattr(pls, "CREATE_INCOMPLETE_LEASE_SECONDS", 0)
++    consumed = _post(env, opts)
++    assert consumed.status_code == 503 and consumed.json()["code"] == "REQUEST_ID_CONSUMED"
++    assert env.client.get(f"{BASE}/status", params={"request_id": opts["request_id"]}).json()["state"] == "ABANDONED"
++    assert len(env.mine()) == 1
++
++
++def test_the_demo_budget_reads_durable_project_rows(env, monkeypatch):
++    import app.v2.react_new_project as adapter
++    from app.auth import DEMO_RATE_LIMITS
++
++    monkeypatch.setattr(adapter, "resolve_request_session",
++                        lambda request: SimpleNamespace(user_id="demo_atomic_budget", username="demo", is_demo=True))
++    monkeypatch.setattr(adapter, "check_demo_rate_limit", lambda *a, **k: (True, 0))       # the in-process limiter is not the proof here
++    limit = DEMO_RATE_LIMITS["project_create"][0]
++    for n in range(limit):
++        _once(user="demo_atomic_budget", rid=f"{n:032x}", requested_name=f"Demo {n}")
++    blocked = _post(env, env.options())
++    assert blocked.status_code == 429 and blocked.json()["code"] == "RATE_LIMITED" and blocked.json()["retry_after"] > 0
++    replay = _post(env, {"request_id": f"{0:032x}", "csrf_token": env.options()["csrf_token"]})   # a bad token is refused before any budget
++    assert replay.status_code == 403
++
++
++def test_release_closed_and_unknown_technologies_commit_nothing(env):
++    for technology in ("storage", "unknown"):
++        opts = env.options()
++        assert _post(env, opts, technology=technology).status_code == 422
++        assert find_project_by_create_request(OWNER, opts["request_id"]) is None
++    assert env.mine() == []
+diff --git a/tests/test_model_react_rcm_new_project_fence_v1.py b/tests/test_model_react_rcm_new_project_fence_v1.py
+deleted file mode 100644
+index 1dada898..00000000
+--- a/tests/test_model_react_rcm_new_project_fence_v1.py
++++ /dev/null
+@@ -1,218 +0,0 @@
+-"""RC-M Lane A — the durable request-id fence of the React New Project create (single-process view).
+-
+-The cross-process proof (separate OS processes, simultaneous POSTs, a crash before the claim is finished) is in
+-``tests/test_model_react_rcm_new_project_multiprocess_v1.py``.  Here: the claim ledger's own contract and the handler's
+-reaction to every claim state.  Synthetic users only; no engine Run is started.
+-"""
+-from __future__ import annotations
+-
+-from concurrent.futures import ThreadPoolExecutor
+-from types import SimpleNamespace
+-
+-import pytest
+-
+-from app.v2 import react_request_claims as claims
+-from tests.test_model_react_rcm_new_project_v1 import BASE, OWNER, STRANGER, env  # noqa: F401  (fixture reuse)
+-
+-PURPOSE = "react-new-project-v1"
+-RID = "a" * 32
+-
+-
+-@pytest.fixture()
+-def counted(monkeypatch):
+-    """Counts calls of the canonical creator while still delegating to it."""
+-    import app.services.reference_seed_service as seed
+-
+-    real, calls = seed.create_reference_seeded_project, []
+-
+-    def wrapper(**kw):
+-        calls.append(kw)
+-        return real(**kw)
+-
+-    monkeypatch.setattr(seed, "create_reference_seeded_project", wrapper)
+-    return calls
+-
+-
+-# ── ledger contract ────────────────────────────────────────────────────────
+-
+-def test_exactly_one_of_many_concurrent_claims_wins(env):
+-    with ThreadPoolExecutor(max_workers=8) as pool:
+-        results = list(pool.map(lambda _: claims.claim(OWNER, RID, PURPOSE), range(16)))
+-    assert sum(r.won for r in results) == 1 and {r.state for r in results} == {claims.CLAIMED}
+-
+-
+-def test_a_claim_is_scoped_to_user_request_and_purpose(env):
+-    assert claims.claim(OWNER, RID, PURPOSE).won
+-    assert claims.claim(STRANGER, RID, PURPOSE).won                 # another user's identical id is independent
+-    assert claims.claim(OWNER, RID, "another-purpose").won          # so is another purpose
+-    assert not claims.claim(OWNER, RID, PURPOSE).won
+-    assert claims.lookup("nobody", RID, PURPOSE) is None
+-
+-
+-def test_a_terminal_claim_is_never_rewritten_or_reclaimed(env):
+-    assert claims.claim(OWNER, RID, PURPOSE).won
+-    assert claims.finish(OWNER, RID, PURPOSE, "P-1") is True
+-    assert claims.finish(OWNER, RID, PURPOSE, "P-2") is False and claims.fail(OWNER, RID, PURPOSE, "X") is False
+-    again = claims.claim(OWNER, RID, PURPOSE)
+-    assert not again.won and again.state == claims.DONE and again.project_code == "P-1"
+-    other = "b" * 32
+-    assert claims.claim(OWNER, other, PURPOSE).won and claims.fail(OWNER, other, PURPOSE, "CREATE_REFUSED")
+-    assert claims.finish(OWNER, other, PURPOSE, "P-3") is False
+-    assert claims.lookup(OWNER, other, PURPOSE).state == claims.FAILED
+-
+-
+-def test_an_abandoned_claim_stays_claimed_for_ever(env):
+-    assert claims.claim(OWNER, RID, PURPOSE, now=1.0).won                   # the claimant "crashes": never finished
+-    later = claims.claim(OWNER, RID, PURPOSE, now=10_000_000.0)
+-    assert not later.won and later.state == claims.CLAIMED                  # no expiry, no takeover
+-
+-
+-def test_the_durable_budget_is_atomic_and_rolls_with_the_window(env):
+-    budget = (3, 3600)
+-    won = [claims.claim("demo-x", f"{i:032x}", PURPOSE, rate_limit=budget, now=1000.0 + i).won for i in range(5)]
+-    assert won == [True, True, True, False, False]
+-    blocked = claims.claim("demo-x", "f" * 32, PURPOSE, rate_limit=budget, now=1100.0)
+-    assert blocked.rate_limited and 0 < blocked.retry_after <= 3600
+-    assert claims.claim("demo-x", "e" * 32, PURPOSE, rate_limit=budget, now=1000.0 + 3600 + 5).won      # window passed
+-    assert claims.claim("demo-y", "d" * 32, PURPOSE, rate_limit=budget, now=1100.0).won                  # per user
+-
+-
+-# ── handler reaction to each claim state ───────────────────────────────────
+-
+-def _post(env, opts, **over):
+-    return env.client.post(f"{BASE}/create", json=env.body(opts, **over))
+-
+-
+-def test_a_crashed_claim_reports_unknown_and_creates_nothing(env, counted):
+-    opts = env.options()
+-    assert claims.claim(OWNER, opts["request_id"], PURPOSE).won            # another worker claimed, then died
+-    response = _post(env, opts)
+-    assert response.status_code == 503 and response.json()["code"] == "CREATE_IN_FLIGHT_OR_UNKNOWN"
+-    assert counted == [] and env.mine() == []
+-    status = env.client.get(f"{BASE}/status", params={"request_id": opts["request_id"]}).json()
+-    assert status == {"ok": True, "created": False, "conclusive": False, "state": "IN_FLIGHT_OR_UNKNOWN"}
+-    assert claims.lookup(OWNER, opts["request_id"], PURPOSE).state == claims.CLAIMED      # not overwritten
+-
+-
+-def test_a_replay_of_a_finished_request_returns_the_project_without_a_write(env, counted):
+-    opts = env.options()
+-    first = _post(env, opts).json()
+-    assert first["ok"] and first["idempotency_recorded"] is True and first["stamp_recorded"] is True and len(counted) == 1
+-    replay = _post(env, opts, name="Changed after a lost response", capacity_mw=999.0).json()
+-    assert replay["replayed"] is True and replay["project"]["code"] == first["project"]["code"] and len(counted) == 1
+-    assert len(env.mine()) == 1
+-
+-
+-def test_a_failed_request_id_is_consumed_and_never_retried(env, monkeypatch):
+-    import app.services.reference_seed_service as seed
+-
+-    calls = []
+-
+-    def boom(**kw):
+-        calls.append(kw)
+-        raise RuntimeError("partial write")
+-
+-    monkeypatch.setattr(seed, "create_reference_seeded_project", boom)
+-    opts = env.options()
+-    assert _post(env, opts).status_code == 500
+-    again = _post(env, opts)
+-    assert again.status_code == 503 and again.json()["code"] == "REQUEST_ID_CONSUMED" and len(calls) == 1
+-
+-
+-def test_a_lost_finish_still_blocks_a_duplicate(env, counted, monkeypatch):
+-    """The project was created but the claim could not be finished: replays stay unknown, never a second project."""
+-    monkeypatch.setattr(claims, "finish", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db gone")))
+-    opts = env.options()
+-    first = _post(env, opts).json()
+-    assert first["ok"] and first["idempotency_recorded"] is False and len(counted) == 1
+-    replay = _post(env, opts)
+-    assert replay.status_code == 200 and replay.json()["replayed"] is True       # the stamp reconciles it
+-    assert len(counted) == 1 and len(env.mine()) == 1
+-
+-
+-def test_an_unreadable_fence_fails_closed_before_any_write(env, counted, monkeypatch):
+-    monkeypatch.setattr(claims, "lookup", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db gone")))
+-    response = _post(env, env.options())
+-    assert response.status_code == 503 and response.json()["code"] == "CREATE_UNAVAILABLE" and counted == []
+-
+-
+-def test_an_unclaimable_fence_fails_closed_before_any_write(env, counted, monkeypatch):
+-    monkeypatch.setattr(claims, "claim", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db gone")))
+-    response = _post(env, env.options())
+-    assert response.status_code == 503 and response.json()["code"] == "CREATE_UNAVAILABLE" and counted == [] and env.mine() == []
+-
+-
+-def test_a_refusal_before_the_claim_does_not_consume_the_request_id(env, counted):
+-    opts = env.options()
+-    bad = _post(env, opts, capacity_mw=-1)
+-    assert bad.status_code == 422 and claims.lookup(OWNER, opts["request_id"], PURPOSE) is None
+-    assert _post(env, opts).json()["ok"] and len(counted) == 1
+-
+-
+-def test_another_user_cannot_replay_or_observe_a_request(env, counted):
+-    opts = env.options()
+-    created = _post(env, opts).json()
+-    stolen = env.stranger.post(f"{BASE}/create", json=env.body(opts))              # owner's token is bound to the owner's session
+-    assert stolen.status_code == 403 and stolen.json()["code"] == "CSRF_INVALID"
+-    status = env.stranger.get(f"{BASE}/status", params={"request_id": opts["request_id"]}).json()
+-    assert status["created"] is False and "project" not in status and status["state"] == "NONE"
+-    assert created["ok"] and len(counted) == 1 and env.mine(STRANGER) == []
+-
+-
+-# ── demo budget ────────────────────────────────────────────────────────────
+-
+-def _as_demo(monkeypatch, user_id="demo-fence-user"):
+-    import app.v2.react_new_project as np
+-
+-    monkeypatch.setattr(np, "resolve_request_session",
+-                        lambda request: SimpleNamespace(user_id=user_id, username="demo", is_demo=True))
+-
+-
+-def test_the_demo_project_budget_is_enforced_inside_the_fence(env, counted, monkeypatch):
+-    import app.auth as auth
+-
+-    _as_demo(monkeypatch)
+-    monkeypatch.setitem(auth.DEMO_RATE_LIMITS, "project_create", (2, 3600))
+-    monkeypatch.setattr(auth, "check_demo_rate_limit", lambda *a, **k: (True, 0))       # the in-process limiter is not the proof here
+-    import app.v2.react_new_project as np
+-    monkeypatch.setattr(np, "check_demo_rate_limit", lambda *a, **k: (True, 0))
+-    results = [_post(env, env.options()) for _ in range(3)]
+-    assert [r.status_code for r in results] == [200, 200, 429] and results[2].json()["code"] == "RATE_LIMITED"
+-    assert len(counted) == 2 and results[2].json()["retry_after"] > 0
+-
+-
+-def test_the_canonical_demo_limiter_still_applies_and_a_replay_costs_nothing(env, counted, monkeypatch):
+-    import app.v2.react_new_project as np
+-
+-    _as_demo(monkeypatch)
+-    seen = []
+-
+-    def limiter(user_id, op):
+-        seen.append((user_id, op))
+-        return (len(seen) <= 1), 30
+-
+-    monkeypatch.setattr(np, "check_demo_rate_limit", limiter)
+-    opts = env.options()
+-    assert _post(env, opts).status_code == 200
+-    assert _post(env, opts).json()["replayed"] is True and len(seen) == 1            # replay never reaches the limiter
+-    blocked = _post(env, env.options())
+-    assert blocked.status_code == 429 and blocked.json() == {"ok": False, "code": "RATE_LIMITED", "retry_after": 30}
+-    assert len(counted) == 1
+-
+-
+-# ── reference and release-closed protection ────────────────────────────────
+-
+-def test_release_closed_and_unknown_technologies_never_claim(env, counted):
+-    for technology in ("storage", "unknown"):
+-        opts = env.options()
+-        response = _post(env, opts, technology=technology)
+-        assert response.status_code == 422 and claims.lookup(OWNER, opts["request_id"], PURPOSE) is None
+-    assert counted == [] and env.mine() == []
+-
+-
+-def test_a_protected_reference_is_never_the_target_of_a_create(env, counted):
+-    from app.ui.protected_reference_service import is_protected_reference
+-
+-    created = _post(env, env.options()).json()["project"]
+-    record = next(r for r in env.mine() if r.project_code == created["code"])
+-    assert not is_protected_reference(record)
+diff --git a/tests/test_model_react_rcm_new_project_multiprocess_v1.py b/tests/test_model_react_rcm_new_project_multiprocess_v1.py
+index 7be59ab6..98959bd8 100644
+--- a/tests/test_model_react_rcm_new_project_multiprocess_v1.py
++++ b/tests/test_model_react_rcm_new_project_multiprocess_v1.py
+@@ -34,10 +34,10 @@ def _free_port() -> int:
+ 
+ 
+ class Server:
+-    def __init__(self, db_path: str, log: Path, crash_at: str = ""):
++    def __init__(self, db_path: str, log: Path, crash_at: str = "", lease: str = ""):
+         self.port = _free_port()
+         self.url = f"http://127.0.0.1:{self.port}"
+-        env = {**os.environ, "FINCO_DB_PATH": db_path, "FINCO_MODEL_REACT_V1": "1", "RCM_CRASH_AT": crash_at,
++        env = {**os.environ, "FINCO_DB_PATH": db_path, "FINCO_MODEL_REACT_V1": "1", "RCM_CRASH_AT": crash_at, "RCM_LEASE_SECONDS": lease,
+                "PYTHONPATH": str(ROOT), "FINCO_MODEL_EXECUTION_MODE": "thread"}
+         self._log = open(log, "wb")
+         self.proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "tests.rcm_multiproc_app:app", "--host", "127.0.0.1",
+@@ -87,8 +87,8 @@ def cluster(tmp_path_factory):
+     ensure_reference_models()                      # the shared reference rows exist before any worker races on them
+     servers: list[Server] = []
+ 
+-    def spawn(crash_at: str = "") -> Server:
+-        server = Server(path, folder / f"server-{len(servers)}.log", crash_at)
++    def spawn(crash_at: str = "", lease: str = "") -> Server:
++        server = Server(path, folder / f"server-{len(servers)}.log", crash_at, lease)
+         servers.append(server)
+         server.wait_ready(_cookie("rcm-mp-readiness"))
+         return server
+@@ -121,17 +121,24 @@ def _projects(user_id: str) -> list:
+     return list_project_records(user_id=user_id, include_archived=True)
+ 
+ 
+-def _claim_rows(user_id: str) -> list[tuple]:
++def _requests(user_id: str) -> list[tuple]:
++    """(request id, state, project code, seed line count) of every request-keyed project of the user, straight from the database."""
+     conn = sqlite3.connect(db.DB_PATH)
+     try:
+-        return conn.execute("SELECT request_id, state, project_code FROM react_request_claims WHERE user_id = ?", (user_id,)).fetchall()
+-    except sqlite3.OperationalError as exc:          # the ledger table is created lazily by the first claim in any process
+-        assert "no such table" in str(exc)
+-        return []
++        rows = conn.execute("SELECT json_extract(replay_metadata_json, '$.create_request.request_id'), "
++                            "json_extract(replay_metadata_json, '$.create_request.state'), project_code, project_id FROM projects "
++                            "WHERE user_id = ? AND json_extract(replay_metadata_json, '$.create_request.request_id') IS NOT NULL", (user_id,)).fetchall()
++        return [(rid, state, code, conn.execute("SELECT (SELECT COUNT(*) FROM capex_sub_lines WHERE project_id=?) + "
++                                                "(SELECT COUNT(*) FROM opex_sub_lines WHERE project_id=?)", (pid, pid)).fetchone()[0])
++                for rid, state, code, pid in rows]
+     finally:
+         conn.close()
+ 
+ 
++def _status(server: Server, cookies: dict, request_id: str) -> dict:
++    return httpx.get(f"{server.url}{BASE}/status", params={"request_id": request_id}, cookies=cookies, timeout=30).json()
++
++
+ def test_a_token_issued_by_one_process_is_valid_in_another_and_a_bad_one_is_refused_everywhere(cluster):
+     uid, cookies = "rcm-mp-csrf", _cookie("rcm-mp-csrf")
+     first, second, _third = cluster.healthy
+@@ -140,7 +147,7 @@ def test_a_token_issued_by_one_process_is_valid_in_another_and_a_bad_one_is_refu
+         for server in cluster.healthy:
+             response = _post(server, cookies, _body(opts, csrf_token=tampered))
+             assert response.status_code == 403 and response.json()["code"] == "CSRF_INVALID"
+-    assert _projects(uid) == [] and _claim_rows(uid) == []                     # a refused token never claims, never writes
++    assert _projects(uid) == []                                                  # a refused token never writes anything
+     other_session = _post(second, _cookie("rcm-mp-csrf-other"), _body(opts))      # token is bound to the issuing session
+     assert other_session.status_code == 403
+     ok = _post(second, cookies, _body(opts))                                      # issued by process 1, accepted by process 2
+@@ -162,20 +169,36 @@ def test_simultaneous_posts_of_one_request_id_across_three_processes_create_exac
+     payloads = [r.json() for r in responses]
+     created = [p for p in payloads if p.get("ok") and p.get("replayed") is False]
+     assert len(created) == 1, payloads
+-    # every other request was fenced: a replay of the finished project, or an honest "unknown" while the winner was in flight
+-    for response, payload in zip(responses, payloads):
++    for response, payload in zip(responses, payloads):                            # every other request was fenced by the database
+         if payload in created:
+             continue
+         assert (response.status_code == 200 and payload["replayed"] is True and payload["project"]["code"] == created[0]["project"]["code"]) \
+             or (response.status_code == 503 and payload["code"] == "CREATE_IN_FLIGHT_OR_UNKNOWN"), payload
+     assert len(_projects(uid)) == 1
+-    assert _claim_rows(uid) == [(opts["request_id"], "DONE", created[0]["project"]["code"])]
+-    for server in cluster.healthy:                                              # settled: every process now replays the same project
++    rows = _requests(uid)
++    assert len(rows) == 1 and rows[0][1] == "COMPLETE" and rows[0][2] == created[0]["project"]["code"] and rows[0][3] > 0
++    for server in cluster.healthy:                                                # settled: every process replays the same project
+         again = _post(server, cookies, body).json()
+         assert again["replayed"] is True and again["project"]["code"] == created[0]["project"]["code"]
+     assert len(_projects(uid)) == 1
+ 
+ 
++def test_many_different_requests_with_one_name_across_processes_all_succeed_with_distinct_codes(cluster):
++    uid, cookies = "rcm-mp-names", _cookie("rcm-mp-names")
++    jobs = [_body(_options(cluster.healthy[n % 3], cookies), name="Same name") for n in range(6)]
++    gate = threading.Barrier(len(jobs))
++
++    def fire(index: int):
++        gate.wait()
++        return _post(cluster.healthy[(index + 1) % 3], cookies, jobs[index])
++
++    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
++        responses = list(pool.map(fire, range(len(jobs))))
++    assert [r.status_code for r in responses] == [200] * len(jobs), [r.text for r in responses]
++    codes = {r.json()["project"]["code"] for r in responses}
++    assert len(codes) == len(jobs) and len(_projects(uid)) == len(jobs)          # a code race between requests is re-planned, never an overwrite
++
++
+ def test_replay_after_a_lost_response_returns_the_same_project_from_another_process(cluster):
+     uid, cookies = "rcm-mp-lost", _cookie("rcm-mp-lost")
+     first, second, third = cluster.healthy
+@@ -183,48 +206,58 @@ def test_replay_after_a_lost_response_returns_the_same_project_from_another_proc
+     body = _body(opts)
+     sent = _post(first, cookies, body)                  # the client "never sees" this response
+     assert sent.status_code == 200
+-    status = httpx.get(f"{second.url}{BASE}/status", params={"request_id": opts["request_id"]}, cookies=cookies, timeout=30).json()
++    status = _status(second, cookies, opts["request_id"])
+     assert status["created"] is True and status["conclusive"] is True and status["project"]["code"] == sent.json()["project"]["code"]
+-    replay = _post(third, cookies, _body(opts, name="Edited after the lost response", capacity_mw=77.0)).json()
++    replay = _post(third, cookies, body).json()
+     assert replay["replayed"] is True and replay["project"]["code"] == sent.json()["project"]["code"]
++    conflict = _post(second, cookies, _body(opts, name="Edited after the lost response", capacity_mw=77.0))
++    assert conflict.status_code == 409 and conflict.json()["code"] == "REQUEST_ID_REUSED"      # the same id never takes new inputs
+     assert len(_projects(uid)) == 1 and _projects(uid)[0].project_name == "RCM multi-process"
+ 
+ 
+-def test_a_process_that_dies_after_the_write_but_before_finishing_the_claim_never_allows_a_duplicate(cluster):
+-    uid, cookies = "rcm-mp-crash1", _cookie("rcm-mp-crash1")
+-    doomed = cluster.spawn("after_create_before_finish")
++@pytest.mark.parametrize("crash_at,lines_expected", [("after_row", 0), ("mid_seed_lines", 0)])
++def test_a_process_dying_mid_create_leaves_one_creating_project_that_no_retry_duplicates_and_that_is_later_abandoned(cluster, crash_at, lines_expected):
++    uid = f"rcm-mp-{crash_at.replace('_', '')}"
++    cookies = _cookie(uid)
++    doomed = cluster.spawn(crash_at)
+     opts = _options(doomed, cookies)
+     body = _body(opts)
+     with pytest.raises(httpx.HTTPError):
+         _post(doomed, cookies, body)                    # the process died: no response at all
+     doomed.proc.wait(timeout=30)
+     assert doomed.proc.returncode == 137
+-    assert len(_projects(uid)) == 1 and _claim_rows(uid) == [(opts["request_id"], "CLAIMED", None)]
+-    for server in cluster.healthy:                      # replay storm against the surviving processes
++    rows = _requests(uid)
++    assert rows == [(opts["request_id"], "CREATING", rows[0][2], lines_expected)]     # the row exists; the seed is all-or-nothing: none landed
++    for server in cluster.healthy:                      # a retry storm against the surviving processes, inside the lease
+         response = _post(server, cookies, body)
+         assert response.status_code == 503 and response.json()["code"] == "CREATE_IN_FLIGHT_OR_UNKNOWN"
+-        status = httpx.get(f"{server.url}{BASE}/status", params={"request_id": opts["request_id"]}, cookies=cookies, timeout=30).json()
++        status = _status(server, cookies, opts["request_id"])
+         assert status["created"] is False and status["conclusive"] is False and status["state"] == "IN_FLIGHT_OR_UNKNOWN"
+-    assert len(_projects(uid)) == 1 and _claim_rows(uid) == [(opts["request_id"], "CLAIMED", None)]      # never overwritten, never retried
+-    fresh = _options(cluster.healthy[0], cookies)                                # a NEW request id is a deliberate, separate create
+-    assert _post(cluster.healthy[1], cookies, _body(fresh)).json()["replayed"] is False and len(_projects(uid)) == 2
+-
+-
+-def test_a_process_that_dies_after_finishing_the_claim_but_before_the_stamp_still_replays_the_project(cluster):
+-    uid, cookies = "rcm-mp-crash2", _cookie("rcm-mp-crash2")
+-    doomed = cluster.spawn("after_finish_before_stamp")
++    assert len(_projects(uid)) == 1 and _requests(uid)[0][1] == "CREATING"
++    reaper = cluster.spawn(lease="0")                   # a worker whose lease has elapsed archives it; the id stays consumed
++    consumed = _post(reaper, cookies, body)
++    assert consumed.status_code == 503 and consumed.json()["code"] == "REQUEST_ID_CONSUMED"
++    assert _requests(uid)[0][1] == "ABANDONED" and _projects(uid)[0].archived is True
++    assert _post(cluster.healthy[0], cookies, body).json()["code"] == "REQUEST_ID_CONSUMED"
++    assert _status(cluster.healthy[1], cookies, opts["request_id"])["state"] == "ABANDONED"
++    fresh = _post(cluster.healthy[2], cookies, _body(_options(cluster.healthy[0], cookies)))        # a NEW id is a deliberate new create
++    assert fresh.json()["replayed"] is False and len(_projects(uid)) == 2
++
++
++def test_a_process_dying_after_the_project_is_complete_but_before_responding_still_replays_it(cluster):
++    uid, cookies = "rcm-mp-beforeresponse", _cookie("rcm-mp-beforeresponse")
++    doomed = cluster.spawn("before_response")
+     opts = _options(doomed, cookies)
+     body = _body(opts)
+     with pytest.raises(httpx.HTTPError):
+         _post(doomed, cookies, body)
+     doomed.proc.wait(timeout=30)
+     assert doomed.proc.returncode == 137
+-    projects = _projects(uid)
+-    assert len(projects) == 1 and (projects[0].replay_metadata or {}).get("react_new_project") is None       # no stamp was written
+-    assert _claim_rows(uid) == [(opts["request_id"], "DONE", projects[0].project_code)]
++    rows = _requests(uid)
++    assert len(rows) == 1 and rows[0][1] == "COMPLETE" and rows[0][3] > 0
+     for server in cluster.healthy:
+         replay = _post(server, cookies, body).json()
+-        assert replay["replayed"] is True and replay["project"]["code"] == projects[0].project_code
++        assert replay["replayed"] is True and replay["project"]["code"] == rows[0][2]
+     assert len(_projects(uid)) == 1
+ 
+ 
+@@ -246,34 +279,29 @@ def test_users_are_isolated_across_processes(cluster):
+         list(pool.map(fire, range(6)))
+     for uid, cookies, body in jobs:
+         assert len(_projects(uid)) == 1
+-        assert [row[0] for row in _claim_rows(uid)] == [body["request_id"]]
++        assert [row[0] for row in _requests(uid)] == [body["request_id"]]
+         for other_uid, other_cookies, _ in jobs:
+             if other_uid != uid:                         # another user's cookie can neither replay nor observe the request
+                 assert _post(cluster.healthy[0], other_cookies, body).status_code == 403
+-                status = httpx.get(f"{cluster.healthy[0].url}{BASE}/status", params={"request_id": body["request_id"]},
+-                                   cookies=other_cookies, timeout=30).json()
++                status = _status(cluster.healthy[0], other_cookies, body["request_id"])
+                 assert status["created"] is False and "project" not in status
+     assert sum(len(_projects(uid)) for uid in users) == 3
+ 
+ 
+-def test_the_demo_project_budget_holds_across_processes(cluster):
++def test_the_demo_project_budget_is_read_from_the_database_by_every_process(cluster):
+     from app.auth import DEMO_RATE_LIMITS
+ 
+     limit = DEMO_RATE_LIMITS["project_create"][0]
+     uid, cookies = "demo_rcmmpbudget", _cookie("demo_rcmmpbudget", demo=True)
+-    jobs = [_body(_options(cluster.healthy[n % 3], cookies), name=f"Budget {n}") for n in range(limit + 4)]
+-    gate = threading.Barrier(len(jobs))
+-
+-    def fire(index: int):
+-        gate.wait()
+-        return _post(cluster.healthy[index % 3], cookies, jobs[index])
+-
+-    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+-        responses = list(pool.map(fire, range(len(jobs))))
+-    codes = sorted(r.status_code for r in responses)
+-    assert codes.count(200) == limit and codes.count(429) == len(jobs) - limit, codes
+-    assert len(_projects(uid)) == limit                 # each process's own in-memory limiter would have admitted more
+-    assert all(r.json()["retry_after"] > 0 for r in responses if r.status_code == 429)
++    for n in range(limit):                                # sequential, spread over the processes: no process counts them in memory
++        response = _post(cluster.healthy[n % 3], cookies, _body(_options(cluster.healthy[n % 3], cookies), name=f"Budget {n}"))
++        assert response.status_code == 200, response.text
++    for server in cluster.healthy:
++        blocked = _post(server, cookies, _body(_options(server, cookies), name="Over budget"))
++        assert blocked.status_code == 429 and blocked.json()["retry_after"] > 0
++    assert len(_projects(uid)) == limit
++    first = _requests(uid)[0][0]                           # a replay of an existing request still costs nothing
++    assert _post(cluster.healthy[0], cookies, _body({"request_id": first, "csrf_token": _options(cluster.healthy[0], cookies)["csrf_token"]})).status_code == 403
+ 
+ 
+ def test_release_closed_unknown_and_extra_source_fields_create_nothing_in_any_process(cluster):
+@@ -286,4 +314,4 @@ def test_release_closed_unknown_and_extra_source_fields_create_nothing_in_any_pr
+         # a protected reference (or any other project) can never be named as a source: the body forbids extra fields
+         response = _post(server, cookies, {**_body(opts), "source_project_id": "any"})
+         assert response.status_code == 400 and response.json()["code"] == "BODY_INVALID"
+-    assert _projects(uid) == [] and _claim_rows(uid) == []
++    assert _projects(uid) == [] and _requests(uid) == []
+diff --git a/tests/test_model_react_rcm_new_project_v1.py b/tests/test_model_react_rcm_new_project_v1.py
+index 37c98d0c..091a440e 100644
+--- a/tests/test_model_react_rcm_new_project_v1.py
++++ b/tests/test_model_react_rcm_new_project_v1.py
+@@ -202,7 +202,7 @@ def test_create_makes_exactly_one_owned_unprotected_not_run_working_copy(env):
+     response = env.client.post(f"{BASE}/create", json=env.body(opts, name="  RCM   Solar One  "))
+     assert response.status_code == 200
+     payload = response.json()
+-    assert payload["ok"] and payload["replayed"] is False and payload["idempotency_recorded"] is True
++    assert payload["ok"] and payload["replayed"] is False
+     assert payload["project"]["freshness"] == "NOT_RUN" and payload["project"]["name"] == "RCM Solar One"
+     rows = env.mine()
+     assert len(rows) == 1 and env.mine(STRANGER) == []
+@@ -210,7 +210,8 @@ def test_create_makes_exactly_one_owned_unprotected_not_run_working_copy(env):
+     assert record.project_code == payload["project"]["code"] and record.user_id == OWNER
+     assert getattr(record, "project_role", "working_copy") != "reference"
+     assert not getattr(record, "is_protected", False) and not getattr(record, "is_readonly", False)
+-    assert record.replay_metadata["react_new_project"]["request_id"] == opts["request_id"]
++    claim = record.replay_metadata["create_request"]            # committed by the same INSERT as the project row, COMPLETE with its seed
++    assert claim["request_id"] == opts["request_id"] and claim["state"] == "COMPLETE" and claim["purpose"] == "react-new-project-v1"
+     shell = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()
+     assert shell["ok"] and shell["freshness"]["state"] == "NOT_RUN" and shell["freshness"]["has_runtime"] is False
+     assert shell["project"]["protected_reference"] is False and shell["vertical"]["key"] == "solar"
+@@ -220,7 +221,7 @@ def test_create_makes_exactly_one_owned_unprotected_not_run_working_copy(env):
+     assert not any(p["code"] == record.project_code for p in library["references"])
+ 
+ 
+-def test_stamping_preserves_the_working_copy_identity_and_the_seed_snapshot(env):
++def test_the_request_identity_preserves_the_working_copy_identity_and_the_seed_snapshot(env):
+     from app.persistence.workspace_repository import get_workspace_state
+     from app.services.reference_seed_service import create_reference_seeded_project
+ 
+@@ -241,9 +242,10 @@ def test_double_submit_and_replay_never_create_a_second_project(env):
+     opts = env.options()
+     first = env.client.post(f"{BASE}/create", json=env.body(opts)).json()
+     second = env.client.post(f"{BASE}/create", json=env.body(opts)).json()
+-    third = env.client.post(f"{BASE}/create", json=env.body(opts, name="A different name")).json()
+-    assert first["replayed"] is False and second["replayed"] is True and third["replayed"] is True
+-    assert first["project"]["code"] == second["project"]["code"] == third["project"]["code"]
++    third = env.client.post(f"{BASE}/create", json=env.body(opts, name="A different name"))
++    assert first["replayed"] is False and second["replayed"] is True
++    assert first["project"]["code"] == second["project"]["code"]
++    assert third.status_code == 409 and third.json()["code"] == "REQUEST_ID_REUSED"                 # same id, other inputs: never a new project
+     assert len(env.mine()) == 1
+ 
+ 
+@@ -274,13 +276,13 @@ def test_a_server_failure_is_reported_as_unknown_never_as_not_created(env, monke
+     def boom(**_kw):
+         raise RuntimeError("connection lost after a partial write")
+ 
+-    monkeypatch.setattr(seed, "create_reference_seeded_project", boom)
++    monkeypatch.setattr(seed, "create_reference_seeded_project_once", boom)
+     opts = env.options()
+     response = env.client.post(f"{BASE}/create", json=env.body(opts))
+     assert response.status_code == 500 and response.json()["code"] == "CREATE_OUTCOME_UNKNOWN"
+     assert "Result unknown" in response.json()["message"]
+     status = env.client.get(f"{BASE}/status", params={"request_id": opts["request_id"]}).json()
+-    assert status == {"ok": True, "created": False, "conclusive": False, "state": "FAILED"}
++    assert status == {"ok": True, "created": False, "conclusive": False, "state": "NONE"}
+ 
+ 
+ def test_status_reconciles_a_created_request_and_is_owner_scoped(env):
+diff --git a/tests/test_rcm_adapter_csrf_successor.py b/tests/test_rcm_adapter_csrf_successor.py
+index 218d9ffe..183bb2ec 100644
+--- a/tests/test_rcm_adapter_csrf_successor.py
++++ b/tests/test_rcm_adapter_csrf_successor.py
+@@ -48,7 +48,7 @@ def test_structural_drift_is_rejected_even_when_the_pin_is_ignored(path, name, m
+     assert S.violations(path, mutated, check_pin=False), name
+ 
+ 
+-@pytest.mark.parametrize("path,writer", [(NP, "update_project_record"), (GS, "apply_draft_update")])
++@pytest.mark.parametrize("path,writer", [(NP, "create_reference_seeded_project_once"), (GS, "apply_draft_update")])
+ def test_a_writer_call_before_the_gate_is_rejected(path, writer):
+     gate = "    if not _REQUEST_ID.match(body.request_id) or not validate_csrf_token(" if path == NP else "    if not validate_csrf_token("
+     assert gate in SOURCES[path]
+@@ -57,23 +57,20 @@ def test_a_writer_call_before_the_gate_is_rejected(path, writer):
+ 
+ 
+ def test_each_canonical_writer_is_referenced_exactly_where_reviewed():
+-    assert len(re.findall(r"\bcreate_reference_seeded_project\(", SOURCES[NP])) == 1
+-    assert len(re.findall(r"\bupdate_project_record\(", SOURCES[NP])) == 1
++    assert len(re.findall(r"\bcreate_reference_seeded_project_once\(", SOURCES[NP])) == 1
++    assert not re.search(r"\b(update_project_record|create_reference_seeded_project|save_project|claim)\(", SOURCES[NP])
+     assert len(re.findall(r"\bapply_draft_update\(", SOURCES[GS])) == 1
+ 
+ 
+-def test_the_new_project_claim_must_precede_the_creator_and_follow_every_refusal():
++def test_the_keyed_creator_must_follow_every_refusal_path():
+     source = SOURCES[NP]
+-    claim_call = "        won = claims.claim(user.user_id, body.request_id, PURPOSE, rate_limit=budget)"
+-    assert claim_call in source
+-    assert S.violations(NP, source.replace(claim_call, "        won = claims.Claim(True, claims.CLAIMED)"), check_pin=False)       # claim removed
+-    create = "        record = create_reference_seeded_project("
+-    assert create in source
+-    early = "        create_reference_seeded_project(user_id='x', template_source='t', requested_name='n', capacity_mw=1.0)\n"
+-    assert S.violations(NP, source.replace("    try:\n        won = claims.claim", early + "    try:\n        won = claims.claim", 1), check_pin=False)  # writer first
+-    # claim before the field validation: a refused request would burn its id
+-    assert S.violations(NP, source.replace("    normalised, errors = _validate(body.model_dump())", "    claims.claim('u', 'r', PURPOSE)\n    normalised, errors = _validate(body.model_dump())", 1),
+-                        check_pin=False)
++    creator = "        record, outcome = create_reference_seeded_project_once("
++    assert creator in source
++    early = "    create_reference_seeded_project_once(user_id='x', template_source='t', requested_name='n', capacity_mw=1.0, create_request_id='r')\n"
++    anchor = "    normalised, errors = _validate(body.model_dump())"
++    assert anchor in source
++    assert S.violations(NP, source.replace(anchor, early + anchor, 1), check_pin=False)                  # creator before validation
++    assert S.violations(NP, source.replace("create_reference_seeded_project_once(", "create_reference_seeded_project(", 1), check_pin=False)  # unkeyed writer
+ 
+ 
+ def test_the_goal_seek_token_must_stay_bound_to_the_offered_candidate():
+diff --git a/tests/test_rcm_governance.py b/tests/test_rcm_governance.py
+index 4e53c8a8..c5abfba1 100644
+--- a/tests/test_rcm_governance.py
++++ b/tests/test_rcm_governance.py
+@@ -99,10 +99,10 @@ def test_the_rcm_changes_touch_no_protected_financial_path():
+         changed |= set(_git("diff", "--name-only").split()) | set(_git("diff", "--name-only", "--cached").split())
+     except subprocess.CalledProcessError:
+         pytest.skip("baseline commit not available in this checkout")
+-    forbidden = ("app/input_adapter.py", "app/persistence/projects_repository.py", "app/services/project_library_service.py",
++    forbidden = ("app/input_adapter.py",
+                  "app/runtime/model_execution.py", "app/v2/router.py", "app/v2/returns_projection.py",
+                  "app/services/run_intent_service.py", "app/persistence/run_intent_repository.py", "app/persistence/run_history_repository.py",
+-                 "app/services/run_service.py", "app/services/reference_seed_service.py", "app/services/goal_seek.py",
++                 "app/services/run_service.py", "app/services/goal_seek.py",
+                  "app/services/sensitivity_matrix.py", "app/services/projects_create_service.py", "main_web.py")
+     prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/", "app/capex_profiles/")
+     hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]

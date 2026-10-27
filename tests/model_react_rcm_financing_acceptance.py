@@ -33,7 +33,7 @@ __all__ = (
     "test_every_financing_tab_fits_the_viewport",
     "fin_session",
 )
-SHOTS = os.environ.get("RCM_SCREENSHOT_DIR", "")
+SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")      # CI: the role's uploaded screenshot folder
 FIELD = "debt.bankability.configuration"
 
 

@@ -24,4 +24,14 @@ Verified live through the GitHub API at the start of this session (2026-10-27) a
   statement was supplied); findings were therefore reproduced against the live code and in real Chromium. `GAP-R*` rows not named in the
   task text cannot be re-derived here — see the register.
 
-Exact-head CI for the final PR head is recorded in `09_RC_M_INTEGRATION_CI_AND_FINAL_REVIEW.md`.
+## Correction B preflight (live, 2026-10-27)
+
+| Item | Value |
+|---|---|
+| `main` | unchanged: HEAD `cf7056de4078ca66afcf52265a9bacafe35586f7`, tree `ba03a27692ca7bf47fb0170fd4fd5822f34ae4aa` |
+| PR #388 | open **Draft**, remote head `634fdf609e1309ed0959f9b21502fefd68f43f43`, base `cf7056de`, 72 changed files at that head, `mergeable_state: unstable` (red checks), no reviews, no review threads |
+| PR #389 (FIN-VAL F01) | open **Draft**, head `d53400a634bbaed8013c545dfa74b35991b9f436`, 234 changed files, **not merged**; it changes `projects_repository.py`, `project_library_service.py`, `app/v2/router.py`, `update_service.py`, `input_adapter.py` and pins their exact blobs in `tests/finval_f01_scope.py` |
+| Confirmed red checks on `634fdf60` | `compile-and-safety`, `source-safety`, `safety-and-smoke / plan` and the dependent `aggregate`, `tests`, `mandatory-evidence`; green: `route`, `mandatory-browser-evidence`, `authoritative-history`, `dependency-audit` |
+| Correction commits | local, not yet pushed at the time of writing; the pushed head and its exact-head CI are in `09_EXACT_HEAD_EVIDENCE_AND_FINAL_REVIEW.md` |
+
+Exact-head CI for the final PR head is recorded in `09_EXACT_HEAD_EVIDENCE_AND_FINAL_REVIEW.md`.

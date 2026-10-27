@@ -3,6 +3,11 @@
 **Branch:** `claude/new-session-6o4z8l` · **Base:** `main` `cf7056de4078ca66afcf52265a9bacafe35586f7` (PR #386 and #387 merged) · **Status:** Draft, for independent review.
 No merge, deployment, activation of a release-closed feature, or self-approval was performed.
 
+**Release posture (Correction B):** the React workspace is behind `FINCO_MODEL_REACT_V1` (default OFF) and nothing here authorizes production use. **New Project is not
+production-ready**: cross-worker duplicates are fenced by an adapter-level ledger, but exactly-once creation at the canonical writer is prepared, tested and held until FIN-VAL
+F01 (#389) merges (`atomic_create/README.md`, `08_…` item 3). Interest-rate unit behaviour belongs to F01 and is not reimplemented. The deployed bundle is cache-busted by a
+content hash (`REACT_ASSET_VERSION`), not by hand.
+
 ## What this delivers
 
 Four React capabilities that the Legacy→React audit named as P1 gaps, each a thin, authenticated adapter over an **existing canonical
@@ -37,6 +42,12 @@ authority** plus a compact React UI. No financial formula, solver, default or wr
 Before: React could open and run working copies but could not create a project, analyse sensitivity, solve a tariff, edit
 bankability terms or define investors — each sent the user back to the classic workbook. After: each is a React workflow with the same
 server authority, explicit PREVIEW / NOT A RUN / STALE labelling, and the unchanged Save ≠ Run separation.
+
+## Evidence map
+
+`06_BROWSER_ACCEPTANCE_AND_ACCESSIBILITY.md` (real Chromium, mandatory role) · `07_TEST_REPORT.md` (every suite, counts, mutation checks) ·
+`08_OPEN_OWNER_AUTHORIZATIONS.md` (governance successors, atomic-create plan, findings) · `09_EXACT_HEAD_EVIDENCE_AND_FINAL_REVIEW.md` (exact-head CI and verdict).
+No statement here claims that all audited gaps are closed, a coverage percentage, or complete Legacy parity.
 
 ## Not delivered (see `02_PARITY_GAP_REGISTER.csv` and `08_OPEN_OWNER_AUTHORIZATIONS.md`)
 

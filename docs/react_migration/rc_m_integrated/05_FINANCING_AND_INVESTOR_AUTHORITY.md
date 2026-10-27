@@ -32,8 +32,8 @@
 
 ## Acceptance evidence
 
-`tests/test_model_react_rcm_financing_v1.py` (28), `tests/test_model_react_rcm_financing_browser.py` (13), `tests/test_model_react_rcm_investors_v1.py` (17),
-`tests/test_model_react_rcm_investors_browser.py` (9). Highlights: studio view equals `build_view`; a typed configuration saved through the canonical route is
+`tests/test_model_react_rcm_financing_v1.py` (28), `tests/model_react_rcm_financing_acceptance.py` (13 nodes, run inside the mandatory consolidation role), `tests/test_model_react_rcm_investors_v1.py` (17),
+`tests/model_react_rcm_investors_acceptance.py` (9 nodes, same role). Highlights: studio view equals `build_view`; a typed configuration saved through the canonical route is
 read back exactly and the Last Run goes STALE without a Run; a period rate schedule locks the scalar rate (`WORKING_CONFIG`); investor evidence equals the
 Legacy investor workspace for the same agreement and 60/40 ownership splits the same canonical receipts exactly 60/40.
 
