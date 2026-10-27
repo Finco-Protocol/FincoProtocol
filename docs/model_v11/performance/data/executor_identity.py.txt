@@ -1,0 +1,54 @@
+"""Financial identity through the real process executor: P1 on vs off vs direct in-process, per arm and asset."""
+import dataclasses, json, os, sys
+TREE, OUT = sys.argv[1], sys.argv[2]
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, TREE); sys.path.insert(1, HERE); os.chdir(TREE)
+V10 = "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434"; V11 = "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344"
+BASE = {"PYTHONDONTWRITEBYTECODE": "1", "FINCO_RLIVE_WARMING_ENABLED": "0", "FINCO_MODEL_EXECUTION_CONCURRENCY": "2",
+        "FINCO_NATIVE_V10_KILL_SWITCH_FILE": "/nonexistent/k10", "FINCO_NATIVE_V11_KILL_SWITCH_FILE": "/nonexistent/k11"}
+ARMS = {"canonical": {"FINCO_NATIVE_V10_RUN": "off", "FINCO_NATIVE_V11_RUN": "off"},
+        "v10_s12": {"FINCO_NATIVE_V10_RUN": "stage1+2", "FINCO_NATIVE_V10_RUN_BUILD_ID": V10, "FINCO_NATIVE_V11_RUN": "off"},
+        "v10_v11": {"FINCO_NATIVE_V10_RUN": "stage1+2", "FINCO_NATIVE_V10_RUN_BUILD_ID": V10, "FINCO_NATIVE_V11_RUN": "on", "FINCO_NATIVE_V11_RUN_BUILD_ID": V11}}
+NAMES = {"solar": "Generic Solar Reference", "wind": "Generic Wind Reference", "dc": "Generic Data Center Reference", "ev": "Generic EV Charging Reference"}
+def perturb(pi, k):
+    items = [dataclasses.replace(it, y1_amount_keur=it.y1_amount_keur * (1 + 1e-6 * k)) if i == 0 else it for i, it in enumerate(pi.opex)]
+    return dataclasses.replace(pi, opex=type(pi.opex)(items))
+if __name__ == "__main__":
+    os.environ.update(BASE)
+    from app import project_factories as pf
+    from app.api.project_runner import run_project
+    from app.runtime import model_execution as me, native_activation as na
+    import p1_bench_worker as w
+    factories = {"solar": pf.create_generic_solar_reference, "wind": pf.create_generic_wind_reference,
+                 "dc": pf.create_generic_data_center_reference, "ev": pf.create_generic_ev_charging_reference}
+    results, mismatches = [], 0
+    for asset, factory in factories.items():
+        base = factory()
+        for arm, env in ARMS.items():
+            os.environ.update({k: v for k, v in env.items()})
+            for k in ("FINCO_NATIVE_V10_RUN_BUILD_ID", "FINCO_NATIVE_V11_RUN_BUILD_ID"):
+                if k not in env: os.environ.pop(k, None)
+            fn = na.NativeActivatedRun(run_project, na.run_config(), na.v11_run_config()) if (na.run_config() or na.v11_run_config()) else None
+            wrap = run_project if fn is None else fn
+            outs = {}
+            for variant in ("direct", "on", "off"):
+                runs = []
+                if variant == "direct":
+                    import app.services.production_financial_authority as pfa
+                    for k in (1, 2, 3):
+                        pfa._POLICY_RUN_CACHE.clear()      # the in-process policy memo would otherwise serve a previous arm's result
+                        runs.append(w.timed_run(wrap, NAMES[asset], "Base", perturb(base, k)))
+                else:
+                    os.environ["FINCO_MODEL_EXECUTION_NATIVE_PREWARM"] = variant
+                    ex = me.ModelExecutor(me.ModelExecutionConfig(2, "process", 300)); me.reset_model_executor_for_tests(ex); st = ex.warm_up()
+                    for k in (1, 2, 3): runs.append(ex.run_process_sync(w.timed_run, wrap, NAMES[asset], "Base", perturb(base, k)))
+                    outs[variant + "_state"] = st.get("native_prewarm", "n/a"); ex.shutdown_and_join()
+                outs[variant] = runs
+            for i in range(3):
+                d = {v: (outs[v][i]["digest"], outs[v][i]["v11_models"], json.dumps(outs[v][i]["v11_declines"], sort_keys=True), outs[v][i]["v10_stage2"], json.dumps(outs[v][i]["v10_declines"], sort_keys=True)) for v in ("direct", "on", "off")}
+                same = len(set(d.values())) == 1
+                mismatches += (not same)
+                results.append({"asset": asset, "arm": arm, "input": i + 1, "identical": same, "digest": d["direct"][0][:16], "v11_models": d["direct"][1], "v10_stage2": d["direct"][3], "prewarm_states": [outs["on_state"], outs["off_state"]]})
+            print(asset, arm, "identical" if all(r["identical"] for r in results[-3:]) else "MISMATCH", flush=True)
+    json.dump({"mismatches": mismatches, "n": len(results), "rows": results}, open(OUT, "w"), indent=1)
+    print("TOTAL", len(results), "mismatches", mismatches)

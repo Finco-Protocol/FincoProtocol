@@ -1,0 +1,77 @@
+"""P1 stop/go benchmark: first Run per NEW worker PID, warm Runs, startup, RSS, CPU, cold replacement pool.
+usage: p1_bench.py TREE ASSET LIFECYCLES OUT.json [variants=on,off]   (variant = FINCO_MODEL_EXECUTION_NATIVE_PREWARM)"""
+import dataclasses, json, os, signal, statistics, sys, time
+TREE, ASSET, N, OUT = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+VARIANTS = (sys.argv[5] if len(sys.argv) > 5 else "on,off").split(",")
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, TREE); sys.path.insert(1, HERE); os.chdir(TREE)
+os.environ.update({"PYTHONDONTWRITEBYTECODE": "1", "FINCO_RLIVE_WARMING_ENABLED": "0",
+                   "FINCO_NATIVE_V10_RUN": "stage1+2", "FINCO_NATIVE_V10_RUN_BUILD_ID": "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434",
+                   "FINCO_NATIVE_V11_RUN": "on", "FINCO_NATIVE_V11_RUN_BUILD_ID": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344",
+                   "FINCO_NATIVE_V10_KILL_SWITCH_FILE": "/nonexistent/k10", "FINCO_NATIVE_V11_KILL_SWITCH_FILE": "/nonexistent/k11",
+                   "FINCO_MODEL_EXECUTION_CONCURRENCY": "2"})
+NAMES = {"solar": "Generic Solar Reference", "wind": "Generic Wind Reference", "dc": "Generic Data Center Reference", "ev": "Generic EV Charging Reference"}
+
+def rss_mb(pid):
+    try:
+        for line in open(f"/proc/{pid}/status"):
+            if line.startswith("VmRSS"): return int(line.split()[1]) / 1024
+    except OSError: return None
+
+def cpu_s(pid):
+    try:
+        f = open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split(); return (int(f[11]) + int(f[12])) / os.sysconf("SC_CLK_TCK")
+    except OSError: return None
+
+def perturb(pi, k):
+    items = [dataclasses.replace(it, y1_amount_keur=it.y1_amount_keur * (1 + 1e-6 * k)) if i == 0 else it for i, it in enumerate(pi.opex)]
+    return dataclasses.replace(pi, opex=type(pi.opex)(items))
+
+if __name__ == "__main__":
+    import threading
+    from app import project_factories as pf
+    from app.api.project_runner import run_project
+    from app.runtime import model_execution as me, native_activation as na
+    import p1_bench_worker as w
+    base = {"solar": pf.create_generic_solar_reference, "wind": pf.create_generic_wind_reference,
+            "dc": pf.create_generic_data_center_reference, "ev": pf.create_generic_ev_charging_reference}[ASSET]()
+    fn = na.NativeActivatedRun(run_project, na.run_config(), na.v11_run_config())
+    k = [0]
+    def nxt():
+        k[0] += 1; return perturb(base, k[0])
+    rows = []
+    for life in range(N):
+        order = VARIANTS if life % 2 == 0 else VARIANTS[::-1]
+        for variant in order:
+            os.environ["FINCO_MODEL_EXECUTION_NATIVE_PREWARM"] = variant
+            ex = me.ModelExecutor(me.ModelExecutionConfig(2, "process", 300)); me.reset_model_executor_for_tests(ex)
+            t0 = time.perf_counter(); state = ex.warm_up(); startup = time.perf_counter() - t0
+            pids = state["warm_pids"]
+            rec = {"variant": variant, "life": life, "startup_s": startup, "warm_state": {k2: state[k2] for k2 in ("warm", "warm_workers") if k2 in state},
+                   "native_prewarm": state.get("native_prewarm"), "rss_mb_after_warm": [rss_mb(p) for p in pids], "cpu_s_after_warm": [cpu_s(p) for p in pids]}
+            # first Run on each of the two NEW worker PIDs (run both concurrently so each worker serves exactly one)
+            res = [None, None]
+            def go(i):
+                t = time.perf_counter()
+                r = ex.run_process_sync(w.timed_run, fn, NAMES[ASSET], "Base", nxt())
+                r["roundtrip"] = time.perf_counter() - t; res[i] = r
+            ths = [threading.Thread(target=go, args=(i,)) for i in range(2)]; [t.start() for t in ths]; [t.join() for t in ths]
+            rec["first_runs"] = res
+            warm = []
+            for _ in range(4):
+                t = time.perf_counter(); r = ex.run_process_sync(w.timed_run, fn, NAMES[ASSET], "Base", nxt()); r["roundtrip"] = time.perf_counter() - t; warm.append(r)
+            rec["warm_runs"] = warm
+            rec["rss_mb_after_runs"] = [rss_mb(p) for p in pids]
+            # cold replacement pool: kill the idle workers, one failed call retires the generation, the next Run is on NEW pids
+            for p in pids:
+                try: os.kill(p, signal.SIGKILL)
+                except ProcessLookupError: pass
+            time.sleep(0.8)
+            try: ex.run_process_sync(w.timed_run, fn, NAMES[ASSET], "Base", nxt()); rec["recovery_first_call"] = "unexpected-success"
+            except Exception as exc: rec["recovery_first_call"] = type(exc).__name__
+            t = time.perf_counter(); r = ex.run_process_sync(w.timed_run, fn, NAMES[ASSET], "Base", nxt()); r["roundtrip"] = time.perf_counter() - t
+            rec["replacement_first_run"] = r
+            rec["leaked_gate"] = ex.stats()["active"]
+            ex.shutdown_and_join(); rows.append(rec)
+        print(ASSET, life, flush=True)
+        json.dump({"asset": ASSET, "rows": rows}, open(OUT, "w"))

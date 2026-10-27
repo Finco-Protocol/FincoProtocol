@@ -45,6 +45,12 @@ MAX_CONCURRENCY = 8
 DEFAULT_TIMEOUT_SECONDS = 180
 MAX_TIMEOUT_SECONDS = 900
 RETRY_AFTER_SECONDS = 5
+# Pool-replacement bound (P0): a worker pool is replaced only on demand (the next deliberately submitted
+# calculation), never automatically. This circuit breaker additionally refuses to create a further replacement
+# while MAX_POOL_RETIREMENTS pools were already retired within POOL_RETIREMENT_WINDOW_SECONDS, so a worker that
+# dies on every start cannot turn demand into an unbounded spawn loop.
+MAX_POOL_RETIREMENTS = 8
+POOL_RETIREMENT_WINDOW_SECONDS = 60.0
 
 BUSY_CODE = "MODEL_EXECUTION_BUSY"
 BUSY_MESSAGE = "Calculation capacity is currently busy. Please retry."
@@ -213,7 +219,14 @@ class ModelExecutor:
         self.config = config or ModelExecutionConfig.from_env()
         self._gate = threading.BoundedSemaphore(self.config.concurrency)
         self._lock = threading.Lock()
+        # Lock order: _pool_lock -> _lock (never the reverse). _pool_lock guards pool selection, submission,
+        # retirement and the generation counter, so a pool can never be retired between being chosen and used.
+        self._pool_lock = threading.Lock()
         self._process_pool: ProcessPoolExecutor | None = None
+        self._pool_generation = 0                       # generation of the CURRENT process pool (0 = none yet)
+        self._pools_created = 0
+        self._retirements: deque[float] = deque(maxlen=MAX_POOL_RETIREMENTS)
+        self._closed = False
         self._thread_pool: ThreadPoolExecutor | None = None
         self._active = 0
         self._counters = {"admitted": 0, "busy_rejected": 0, "completed": 0, "failed": 0, "timed_out": 0}
@@ -278,6 +291,7 @@ class ModelExecutor:
         started = time.monotonic()
         workers = max(1, self.config.concurrency)
         confirmed_pids: set[int] = set()
+        pool = None
         try:
             pool = self._pool("process")
             versions: set[str] = set()
@@ -295,11 +309,19 @@ class ModelExecutor:
                 if len(confirmed_pids) >= workers:
                     break
             warm = len(confirmed_pids) >= workers
-            with self._lock:
-                self._warm = warm
-                self._warm_workers = len(confirmed_pids)
-                self._warm_pids = tuple(sorted(confirmed_pids))
-                self._warmup_duration_s = round(time.monotonic() - started, 3)
+            with self._pool_lock:
+                # Publish readiness only for the generation that was actually probed: a pool retired meanwhile
+                # must not leave the PIDs of destroyed workers recorded as warm.
+                current = self._process_pool is pool
+                with self._lock:
+                    self._warmup_duration_s = round(time.monotonic() - started, 3)
+                    if current:
+                        self._warm = warm
+                        self._warm_workers = len(confirmed_pids)
+                        self._warm_pids = tuple(sorted(confirmed_pids))
+            if not current:
+                warm = False
+                LOG.warning("model_execution prewarm discarded: the probed pool was retired meanwhile")
             if warm:
                 LOG.info(
                     "model_execution prewarm complete confirmed_workers=%s "
@@ -312,10 +334,11 @@ class ModelExecutor:
         except Exception as exc:  # noqa: BLE001 — never block startup on prewarm
             with self._lock:
                 self._warm = False
-                self._warm_workers = len(confirmed_pids)
+                self._warm_workers = 0
+                self._warm_pids = ()
                 self._warmup_duration_s = round(time.monotonic() - started, 3)
             LOG.warning("model_execution prewarm failed — first Run will warm lazily: %s", exc)
-            self._discard_broken_process_pool()
+            self._retire_process_pool(pool)
         return self.warm_state()
 
     def warm_state(self) -> dict:
@@ -335,33 +358,83 @@ class ModelExecutor:
 
     # ── pools ─────────────────────────────────────────────────────────────────────────
     def _pool(self, kind: str):
-        with self._lock:
-            if kind == "process" and self.config.mode == "process":
-                if self._process_pool is None:
-                    self._process_pool = ProcessPoolExecutor(
-                        max_workers=self.config.concurrency,
-                        mp_context=multiprocessing.get_context("spawn"), initializer=_worker_init)
-                return self._process_pool
-            if self._thread_pool is None:
-                self._thread_pool = ThreadPoolExecutor(
-                    max_workers=self.config.concurrency, thread_name_prefix="finco-model")
-            return self._thread_pool
+        with self._pool_lock:
+            return self._pool_locked(kind)
 
-    def _discard_broken_process_pool(self) -> None:
-        with self._lock:
-            pool, self._process_pool = self._process_pool, None
-        if pool is not None:
-            pool.shutdown(wait=False, cancel_futures=True)
+    def _pool_locked(self, kind: str):
+        """The pool for ``kind``; the caller holds ``_pool_lock``. Creates at most ONE process pool per generation."""
+        if kind == "process" and self.config.mode == "process":
+            if self._process_pool is None:
+                if self._closed:
+                    raise ModelExecutionFailed()
+                now = time.monotonic()
+                recent = [t for t in self._retirements if now - t < POOL_RETIREMENT_WINDOW_SECONDS]
+                if len(recent) >= MAX_POOL_RETIREMENTS:
+                    LOG.error("model_execution pool replacement refused: %s pools retired within %.0fs",
+                              len(recent), POOL_RETIREMENT_WINDOW_SECONDS)
+                    raise ModelExecutionFailed()
+                self._process_pool = ProcessPoolExecutor(
+                    max_workers=self.config.concurrency,
+                    mp_context=multiprocessing.get_context("spawn"), initializer=_worker_init)
+                self._pool_generation += 1
+                self._pools_created += 1
+            return self._process_pool
+        if self._thread_pool is None:
+            self._thread_pool = ThreadPoolExecutor(
+                max_workers=self.config.concurrency, thread_name_prefix="finco-model")
+        return self._thread_pool
+
+    def _retire_process_pool(self, pool) -> bool:
+        """Invalidate EXACTLY ``pool`` (identity, not 'whatever is current'); True only for the call that retired it.
+
+        A generation is retired once: concurrent failures that observed the same broken pool find it already
+        replaced and do nothing, and a newer healthy pool is never discarded. Warm evidence belongs to the retired
+        generation and is cleared with it. The old pool is shut down after it was unpublished, so it can accept
+        no further submission."""
+        if pool is None:
+            return False
+        with self._pool_lock:
+            if self._process_pool is not pool:
+                return False
+            self._process_pool = None
+            self._retirements.append(time.monotonic())
+            with self._lock:
+                self._warm = False
+                self._warm_workers = 0
+                self._warm_pids = ()
+        pool.shutdown(wait=False, cancel_futures=True)
+        LOG.warning("model_execution process pool retired generation=%s", self._pool_generation)
+        return True
+
+    def _discard_broken_process_pool(self, pool=None) -> None:
+        """Retire ``pool`` (default: the current pool at call time; internal callers always pass their own)."""
+        if pool is None:
+            with self._pool_lock:
+                pool = self._process_pool
+        self._retire_process_pool(pool)
 
     def _submit(self, kind: str, fn: Callable[..., Any], args: tuple, kwargs: dict) -> Future:
         self._admit()
         started = time.monotonic()
+        pool = None
         try:
-            pool = self._pool(kind)
-            if pool is self._process_pool:
-                future = pool.submit(_process_entry, fn, args, kwargs)
-            else:
-                future = pool.submit(fn, *args, **kwargs)
+            with self._pool_lock:
+                # chosen and used under one lock: the pool cannot be retired in between
+                pool = self._pool_locked(kind)
+                if pool is self._process_pool:
+                    future = pool.submit(_process_entry, fn, args, kwargs)
+                else:
+                    future = pool.submit(fn, *args, **kwargs)
+                future.finco_pool = pool
+        except BrokenProcessPool:
+            # submit() raised BEFORE the call was queued: nothing ran, nothing is retried. The broken
+            # generation is invalidated so the NEXT deliberately submitted calculation gets a fresh pool.
+            self._retire_process_pool(pool)
+            with self._lock:
+                self._active -= 1
+                self._counters["failed"] += 1
+            self._gate.release()
+            raise ModelExecutionFailed() from None
         except BaseException:
             with self._lock:
                 self._active -= 1
@@ -371,9 +444,10 @@ class ModelExecutor:
         future.add_done_callback(lambda f, s=started: self._finish(s, f))
         return future
 
-    def _translate(self, exc: BaseException) -> BaseException:
+    def _translate(self, exc: BaseException, future: Future | None = None) -> BaseException:
         if isinstance(exc, BrokenProcessPool):
-            self._discard_broken_process_pool()
+            # retire the generation this future was submitted to, not whatever pool is current now
+            self._retire_process_pool(getattr(future, "finco_pool", None))
             return ModelExecutionFailed()
         return exc
 
@@ -518,7 +592,7 @@ class ModelExecutor:
                 self._counters["timed_out"] += 1
             raise ModelExecutionTimeout() from None
         except BaseException as exc:  # noqa: BLE001
-            raise self._translate(exc) from None
+            raise self._translate(exc, future) from None
 
     def admit_inline(self):
         """Admission only, for plain ``def`` routes whose work touches request-bound state (DB).
@@ -558,7 +632,7 @@ class ModelExecutor:
             # released by the done-callback when it finishes; the result is simply discarded.
             raise
         except BaseException as exc:  # noqa: BLE001
-            raise self._translate(exc) from None
+            raise self._translate(exc, future) from None
 
     # ── observability / lifecycle ─────────────────────────────────────────────────────
     def stats(self) -> dict:
@@ -572,6 +646,8 @@ class ModelExecutor:
                 "warm": self._warm,
                 "warm_workers": self._warm_workers,
                 "warmup_duration_s": self._warmup_duration_s,
+                "pool_generation": self._pool_generation,
+                "pools_created": self._pools_created,
                 "native_shadow": self._native_shadow_stats(),
             }
 
@@ -583,7 +659,8 @@ class ModelExecutor:
                 "disabled_reason": self._shadow_disabled_reason, "retired": len(self._shadow_retired)}
 
     def shutdown(self) -> None:
-        with self._lock:
+        with self._pool_lock:
+            self._closed = True
             process, thread = self._process_pool, self._thread_pool
             self._process_pool = self._thread_pool = None
         for pool in (process, thread):
@@ -605,7 +682,8 @@ class ModelExecutor:
         (a test fixture may do this, a production request path never does) and reported.
         Returns descriptions of workers that did not end on their own.
         """
-        with self._lock:
+        with self._pool_lock:
+            self._closed = True
             process, thread = self._process_pool, self._thread_pool
             self._process_pool = self._thread_pool = None
         procs = list(getattr(process, "_processes", {}).values()) if process is not None else []

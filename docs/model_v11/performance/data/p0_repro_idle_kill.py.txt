@@ -1,0 +1,24 @@
+import os, signal, sys, time
+sys.path.insert(0, os.getcwd())
+os.environ["FINCO_RLIVE_WARMING_ENABLED"] = "0"
+from app.runtime.model_execution import ModelExecutor, ModelExecutionConfig, ModelExecutionFailed
+
+def attempt(ex, label):
+    try:
+        pid = ex.run_process_sync(os.getpid)
+        print(f"  {label}: OK worker pid={pid}")
+        return pid
+    except ModelExecutionFailed:
+        print(f"  {label}: ModelExecutionFailed  stats={ {k: ex.stats()[k] for k in ('active','failed','completed')} } warm={ex.warm_state()['warm']} warm_pids={ex.warm_state()['warm_pids']}")
+        return None
+
+if __name__ == "__main__":
+    ex = ModelExecutor(ModelExecutionConfig(concurrency=1, mode="process", timeout_seconds=60))
+    print("warm_up:", ex.warm_up())
+    pid = attempt(ex, "run 0 (healthy)")
+    print(f"killing idle worker {pid}")
+    os.kill(pid, signal.SIGKILL); time.sleep(1.5)
+    for i in range(1, 4):
+        attempt(ex, f"run {i} after idle kill")
+    print("warm_state after kill:", ex.warm_state())
+    ex.shutdown_and_join()
