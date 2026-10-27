@@ -78,12 +78,11 @@ export function ModelExportView({ project, freshness, legacyUrl, refreshKey = 0 
       <p className="wf-group-head">Historical Runs</p>
       <div className="wf-table-wrap">
         <table className="fm-table">
-          <thead><tr><th scope="col">Run</th><th scope="col">Ran at</th><th scope="col">Scenario</th><th scope="col"><span className="fm-sr-only">Download</span></th></tr></thead>
+          <thead><tr><th scope="col">Run</th><th scope="col">Scenario</th><th scope="col"><span className="fm-sr-only">Download</span></th></tr></thead>
           <tbody>
             {data.runs.map((run) => (
               <tr key={run.history_id ?? run.runtime_snapshot_id}>
                 <td><RunIdentityLabel snapshotId={run.runtime_snapshot_id} historyId={run.history_id} ranAt={run.ran_at} /></td>
-                <td className="fm-mono">{run.ran_at ?? "—"}</td>
                 <td>{run.active_scenario_name ?? "Base Case"}</td>
                 <td>{run.history_id
                   ? <a className="fm-btn" href={historicalExportUrl(project, run.history_id)} download
@@ -91,7 +90,7 @@ export function ModelExportView({ project, freshness, legacyUrl, refreshKey = 0 
                   : "—"}</td>
               </tr>
             ))}
-            {!data.runs.length && <tr><td colSpan={4}><span role="status">NOT RUN - no committed Run to export.</span></td></tr>}
+            {!data.runs.length && <tr><td colSpan={3}><span role="status">NOT RUN - no committed Run to export.</span></td></tr>}
           </tbody>
         </table>
       </div>

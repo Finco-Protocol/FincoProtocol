@@ -19,7 +19,7 @@ Verdict: **READY FOR INDEPENDENT REACT REVIEW** (exact-head CI green on `37a9d29
 
 | File | sha256 |
 |---|---|
-| `static/react/finco-react.js` | `301ad55e64db0c2fb47cb95a6aedbf514464d1d0f589e1410838fdbe447dc1da` |
+| `static/react/finco-react.js` | `09abafa9de8a0e0f7480ec93d25da004ff7c0cbc7885834a4970369ca6825428` |
 | `static/react/finco-react.css` | `477a5debb4d7e983c9aa1cc41d3cfff6988f46ad38e1e81ca0c1052b607e96bc` |
 
 At baseline a clean build reproduced the committed bundle byte-for-byte (`5e18dd63…98e`, `c85745c4…3844`), so the diff is exactly the source change.
@@ -30,15 +30,15 @@ Twelve pinned paths changed; each is admitted by the additive `REACT_MVP_CORRECT
 
 | Path | Baseline blob (main) | Successor blob (this PR) |
 |---|---|---|
-| `app/v2/react_workspace_router.py` | `aee8e13815cc02f3e7ae43c57925aa6679515719` | `3dbaca19742773486e0223efcd2b3bf7ab87d328` |
-| `frontend/src/app/FinancialResults.tsx` | `99126471e6e8f9ea8cee8030b11ffe09673821f1` | `8264e2e06cf859f439f133c96c2fdeea7963ea23` |
-| `frontend/src/app/WorkspaceView.tsx` | `5e14876224a9444151aa57b243291dbb98b2891e` | `c84f5494b7a44675c023c989bb8434de69cbe711` |
+| `app/v2/react_workspace_router.py` | `aee8e13815cc02f3e7ae43c57925aa6679515719` | `db088accc730f3364dad347d1bb523e2463e1bbe` |
+| `frontend/src/app/FinancialResults.tsx` | `99126471e6e8f9ea8cee8030b11ffe09673821f1` | `69b7123f25d511f57797bba76004c653bcdaeab4` |
+| `frontend/src/app/WorkspaceView.tsx` | `5e14876224a9444151aa57b243291dbb98b2891e` | `eed73f37765f55ada26fe4bcb937c857d6e92dda` |
 | `frontend/src/app/types.ts` | `d5077405dd2c316fe3ee006250287d11835382f4` | `0a4eff084f0d49e4e9eb2608c687f11c00c11060` |
-| `frontend/src/app/workflow/ModelExportView.tsx` | `0f86be3903b0086bbcd297de7edc9e9efd40f528` | `2f5f06d918f03384ad6aeaa5027de2ffd25e1c38` |
+| `frontend/src/app/workflow/ModelExportView.tsx` | `0f86be3903b0086bbcd297de7edc9e9efd40f528` | `d4534de001d7d3cf89206905156c519d8b51c4b5` |
 | `frontend/src/app/workflow/ScenarioWorkspace.tsx` | `324922d117639cce8c7ec94cd7129ec67b15f5fb` | `7ec94910f41d3e727084671823c5739d480700da` |
 | `frontend/src/app/workflow/workflowShared.tsx` | `52f1aa62c4a19091cc5d868aa3bd5c55f7206c54` | `6de23ad7c469c0ba197697dda10afe494426751a` |
 | `static/react/finco-react.css` | `b260d8d0fda3b271efbd29d48ed8ee442e7a6d2a` | `adbc32f079ee5a77cf3bf1228a8b46d76f0245dd` |
-| `static/react/finco-react.js` | `907cfa53e07c78e03cd12dd537a806832dfeb7e8` | `0f36ebe61a8feeb6cd27a1deee76c99b6d282e8b` |
+| `static/react/finco-react.js` | `907cfa53e07c78e03cd12dd537a806832dfeb7e8` | `0f85e69fd9b3a398d82d61b95243ccfd46d4b9d2` |
 | `tests/model_react_mvp_acceptance.py` | `525dce2ca34c5fa8744f5d7e4e63100b1611af48` | `10885eab163fa556c42e4f27fb3814e0bd442640` |
 | `tests/model_react_wf2_browser_acceptance.py` | `34a1be8ae3e3fbd165115ff13a2888b2fb602c39` | `ce6d7f5e2c5fc6f4fe9a985b2b4724011889511f` |
 | `tests/test_model_workspace_consolidation_browser.py` | `f1a762a4f7bbfca34e8e93c74fbba3042d970665` | `6f91b8c9376ba65c27aab34ea39651cef351b2e9` |
@@ -56,7 +56,7 @@ Twelve pinned paths changed; each is admitted by the additive `REACT_MVP_CORRECT
 |---|---|
 | Mandatory consolidation browser file | **106 passed** (80 existing + 26 new), 0 failed/skipped, 533 s |
 | New browser nodes | 26 `test_onb_*` (4 identity verticals + hostile query + switching + fail-visible + two-Runs + comparison + save-scope + scalar save + 4 compact-Inputs + protected + navigation + 3 typography + 4 truth + boundary + themes) |
-| New Python tests | `test_model_react_overnight_b_v1.py` (16: Run-identity contract incl. Python↔TypeScript parity, label/unit, source rules, vertical scope, lender metrics) and `test_model_react_overnight_b_governance.py` (successor layer, drift negatives, scope guard) |
+| New Python tests | `test_model_react_overnight_b_v1.py` (19: Run-identity contract incl. Python↔TypeScript parity, label/unit, source rules, vertical scope, lender metrics) and `test_model_react_overnight_b_governance.py` (successor layer, drift negatives, scope guard) |
 | React/router/governance Python batch | 642 passed, 2 skipped (+ the exceptions below) |
 | Trust-readiness suites | 180 passed (full-history clone); identical failures on unmodified main with a shallow clone |
 | `tests/test_model_react_poc_browser_acceptance.py` | 2 failed — **identical on unmodified main** (canonical Run "Draft changed since page loaded"); not in any CI browser role |
@@ -71,7 +71,7 @@ audit archives not available; two pre-existing test issues recorded above; no li
 ## 6. Exact-head CI
 
 Tested head: **`37a9d291d660f1d9b1e6ba2ed7a6b61bdfaf8d5b`**, tree **`f4e641d6e4586ac37f8ac1c5c8cd1c1cee7f2217`** (PR [Finco-Protocol/FincoProtocol#386](https://github.com/Finco-Protocol/FincoProtocol/pull/386), draft). Parent `77920b6b14c3c0e29c3df0ff1c097f45e4b68551`.
-The commit that adds this section is documentation-only and follows the tested head.
+The commits that add §6 / §6b follow the tested head (documentation, and the review fixes described in §6b, which are re-tested — see the note at the end of §6b).
 
 | Workflow (run) | Result on `37a9d291` |
 |---|---|
@@ -87,6 +87,24 @@ That node had also failed once on unmodified main locally. Root cause: a null-un
 (`REACT_BROWSER_ACCEPTANCE.md`). Fixed in the same PR by making the seven waits null-safe (no assertion/timeout/node-id change); the remaining
 `77920b6b` Public Safety run was superseded (cancelled) by the new push. No test was skipped, disabled, quarantined or re-run to obtain green; no empty commit; no CI file changed.
 
+
+
+## 6b. Independent review of the diff (`/code-review high`, forked reviewer, 10 findings) and dispositions
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | CAPEX/OPEX jump request replayed on every Inputs re-mount (`lastRequest` started at 0) | **Fixed** (`useRef(requestNonce)`); asserted in `check_inputs_are_compact…` (jump OPEX → Statements → Inputs reopens on CAPEX) |
+| 2 | Lender NPV cards ignored the unit/precision controls | **Fixed** (`metricDisplay`); asserted with `mEUR` selection + source guard |
+| 3 | Vertical tier hardcoded in the router; substring matching (`solar_storage` ⇒ solar) | **Match fixed**: exact normalised type / `generic_<key>_reference` only, otherwise `UNCLASSIFIED` (new test). The pilot-tier map stays in the router **on purpose**: it is the Financial Owner's stated posture, not a registry fact, and `app/product_capability.py` is outside the authorized scope — listed as an owner decision |
+| 4 | `serializ\b` regex never matched | **Fixed** (`serializ\w*`) |
+| 5 | Unavailable metric card shows the source text | **Kept**: for an unavailable metric the backend's `source` *is* the reason ("Not persisted by the canonical clean sponsor schedule") and an existing pinned-intent test asserts it; the provenance list under "Technical source" is a separate disclosure |
+| 6 | Vertical banner only on Overview/Results | **Fixed**: also on Statements and Analysis (asserted for every vertical) |
+| 7 | Reference-project snapshot ids (`canonical_last_run__<template>__<ts>Z`) printed raw; Run picker lost the time | **Fixed**: parser accepts that stamp (Python↔TypeScript parity test includes it); Run picker falls back to `ran_at` for unparseable ids |
+| 8 | Staged grid edits could be hidden by collapsing a section | **Fixed**: a section with unsaved edits cannot collapse and its summary shows "N unsaved edits" (asserted) |
+| 9 | Successor layer is self-attested; the validator and earlier asserts were relaxed | **Acknowledged, not changed**: this is the repository's established successor mechanism (FIN-VAL, D-029 did the same); the relaxation is exactly "current blob ∈ admitted layers", every earlier blob stays individually admitted, original pins are untouched. It needs a security-owner confirmation (owner decision #1) |
+| 10 | Export "Historical Runs" repeated the time | **Fixed** (column removed; asserted) |
+
+The fixes were pushed in a follow-up commit; the successor-layer blobs were regenerated for the changed pinned files and the governance suite re-run (182 passed).
 
 ## 7. Reviewer guide (fast path)
 

@@ -148,13 +148,24 @@ _PILOT_TIER = {"solar": "PILOT_CANDIDATE", "wind": "PILOT_CANDIDATE",
 
 
 def _vertical_scope(record) -> dict[str, Any]:
-    """The project's vertical, read from the canonical product-capability registry (never hardcoded claims)."""
+    """The project's vertical, read from the canonical product-capability registry (never hardcoded claims).
+
+    Matching is exact on the normalised project type or on the reference-template name; a type that merely
+    *contains* a registry key (for example a combined "solar + storage" type) is NOT assumed to be that vertical.
+    """
+    import re
+
     from app.product_capability import PRODUCT_CAPABILITIES, as_api_dict
 
-    haystack = " ".join(str(getattr(record, attr, "") or "").lower().replace(" ", "_").replace("-", "_")
-                        for attr in ("project_type", "template_source"))
+    def norm(value: Any) -> str:
+        return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+    project_type, template = norm(getattr(record, "project_type", "")), norm(getattr(record, "template_source", ""))
+    aliases = {"bess": "storage"}
     for cap in PRODUCT_CAPABILITIES:
-        if cap.product_area == "model" and cap.key in haystack:
+        if cap.product_area != "model":
+            continue
+        if aliases.get(project_type, project_type) == cap.key or template == f"generic_{cap.key}_reference":
             data = as_api_dict(cap)
             return {"key": cap.key, "public_name": cap.public_name, "registry_status": data["status"],
                     "runnable": cap.runnable, "pilot_tier": _PILOT_TIER.get(cap.key, "UNCLASSIFIED"),

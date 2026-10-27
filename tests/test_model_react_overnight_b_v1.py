@@ -29,6 +29,7 @@ SNAPSHOTS = [
     "20261027T004939+0000",             # no fraction
     "20261027T235959.000001Z",
     "20261027T010203.5+0200",
+    "canonical_last_run__generic_solar_reference__20261027T004939123456Z",   # protected reference Run stamp
     "snapshot-contract-123",            # not canonical: shown verbatim, never shortened
     "20261301T004939.1+0000",           # impossible month: not canonical
     "",
@@ -42,6 +43,7 @@ def test_the_truncated_snapshot_prefix_is_not_an_identity_but_the_presented_iden
     assert py.text(a) == "2026-10-27 00:49:39 UTC · 123456"
     assert py.text("20261027T004939+0000") == "2026-10-27 00:49:39 UTC"
     assert py.text("20261027T010203.5+0200") == "2026-10-27 01:02:03 UTC+02:00 · 5"
+    assert py.text("canonical_last_run__generic_solar_reference__20261027T004939123456Z") == "2026-10-27 00:49:39 UTC · 123456"
     assert py.text("snapshot-contract-123") == "snapshot-contract-123"
     assert py.text("") == "No persisted Run"
 
@@ -171,3 +173,24 @@ def test_cost_line_boundary_note_is_accurate_and_the_authority_flag_is_unchanged
     source = (ROOT / "app/v2/react_workspace_router.py").read_text(encoding="utf-8")
     assert "out of this PR's scope" not in source
     assert "edited and saved in the" in source and '"capex_opex_editable": False' in source
+
+
+def test_a_combined_or_unknown_project_type_is_not_assumed_to_be_a_released_vertical():
+    from app.v2.react_workspace_router import _vertical_scope
+
+    for record in (_record(project_type="Solar + Storage", template_source="custom_solar_storage"),
+                   _record(project_type="Solar PV Plus", template_source="")):
+        scope = _vertical_scope(record)
+        assert scope["pilot_tier"] == "UNCLASSIFIED" and scope["key"] == ""
+    assert _vertical_scope(_record(project_type="BESS"))["key"] == "storage"
+
+
+def test_lender_metric_cards_honour_the_selected_display_unit_and_precision():
+    source = (APP / "FinancialResults.tsx").read_text(encoding="utf-8")
+    assert "<LenderMetrics payload={payload} unit={unit} precision={precision} />" in source
+    assert "metricDisplay(row.display, unit, precision)" in source
+
+
+def test_a_jump_request_older_than_the_mount_is_never_replayed():
+    source = (APP / "ux040506Views.tsx").read_text(encoding="utf-8")
+    assert "useRef(requestNonce)" in source and "useRef(0);" not in source.split("lastRequest")[1].split("\n")[0]

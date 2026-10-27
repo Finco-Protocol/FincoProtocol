@@ -8,7 +8,7 @@
 /** What to show for one field: a visible plain hint and, when different, the raw registry note. */
 export interface FieldHelp { hint?: string; technical?: string }
 
-const TECHNICAL_SIGNS = /\b(R\d+\/N\d+|PARTIAL|CAS|inputs_section|data-grid-source|input_adapter|adapter|ProjectInputs|ScenarioRunner|typed|period-rate|snapshot|authority|serializ|canonical (adapter|Run)|scalar IS|workspace-draft)\b/i;
+const TECHNICAL_SIGNS = /\b(R\d+\/N\d+|PARTIAL|CAS|inputs_section|data-grid-source|input_adapter|adapter|ProjectInputs|ScenarioRunner|typed|period-rate|snapshot|authority|serializ\w*|canonical (adapter|Run)|scalar IS|workspace-draft)\b/i;
 
 const PLAIN_BY_FIELD: Record<string, string> = {
   "project_setup.identity.country_market": "Market code: XA, XB or XC for the generic reference markets, or the two-letter ISO country code of a real market.",

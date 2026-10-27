@@ -163,15 +163,15 @@ D029_RUN_INTENT_SUCCESSORS={
 # original blobs.  Owner authorization for exactly these presentation-level paths was given in the Overnight B task statement
 # (Financial Owner scope, section 0) and is recorded in docs/react_migration/overnight_b/, not independently verified here.
 REACT_MVP_CORRECTION_SUCCESSORS={
-    "app/v2/react_workspace_router.py":"3dbaca19742773486e0223efcd2b3bf7ab87d328",
-    "frontend/src/app/FinancialResults.tsx":"8264e2e06cf859f439f133c96c2fdeea7963ea23",
-    "frontend/src/app/WorkspaceView.tsx":"c84f5494b7a44675c023c989bb8434de69cbe711",
+    "app/v2/react_workspace_router.py":"db088accc730f3364dad347d1bb523e2463e1bbe",
+    "frontend/src/app/FinancialResults.tsx":"69b7123f25d511f57797bba76004c653bcdaeab4",
+    "frontend/src/app/WorkspaceView.tsx":"eed73f37765f55ada26fe4bcb937c857d6e92dda",
     "frontend/src/app/types.ts":"0a4eff084f0d49e4e9eb2608c687f11c00c11060",
-    "frontend/src/app/workflow/ModelExportView.tsx":"2f5f06d918f03384ad6aeaa5027de2ffd25e1c38",
+    "frontend/src/app/workflow/ModelExportView.tsx":"d4534de001d7d3cf89206905156c519d8b51c4b5",
     "frontend/src/app/workflow/ScenarioWorkspace.tsx":"7ec94910f41d3e727084671823c5739d480700da",
     "frontend/src/app/workflow/workflowShared.tsx":"6de23ad7c469c0ba197697dda10afe494426751a",
     "static/react/finco-react.css":"adbc32f079ee5a77cf3bf1228a8b46d76f0245dd",
-    "static/react/finco-react.js":"0f36ebe61a8feeb6cd27a1deee76c99b6d282e8b",
+    "static/react/finco-react.js":"0f85e69fd9b3a398d82d61b95243ccfd46d4b9d2",
     "tests/model_react_mvp_acceptance.py":"10885eab163fa556c42e4f27fb3814e0bd442640",
     "tests/model_react_wf2_browser_acceptance.py":"ce6d7f5e2c5fc6f4fe9a985b2b4724011889511f",
     "tests/test_model_workspace_consolidation_browser.py":"6f91b8c9376ba65c27aab34ea39651cef351b2e9",

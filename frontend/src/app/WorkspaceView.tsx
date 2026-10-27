@@ -392,6 +392,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
                 </p>
               )}
               <div data-statements-view="true" data-statements-state={statements.state}>
+                <VerticalScopeBanner vertical={workspace.vertical} />
                 <StatementWorkbook
                   projectIdentity={{ code: workspace.project.code, name: workspace.project.name, type: workspace.project.project_type }}
                   snapshot={statements.state === "NOT_RUN" || statements.state === "UNAVAILABLE" ? null : toStatementSnapshot(statements)}
@@ -419,6 +420,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
               ? statementsConflict
               ? <StatementIdentityConflict workspace={workspace} statements={statements} />
               : <>
+                <VerticalScopeBanner vertical={workspace.vertical} />
                 <p className="rx-note" data-analysis-scope="last-run">
                   Charts below show the Working Copy&rsquo;s Last Run. Credit intelligence further down reads only the committed Runs you select explicitly.
                 </p>

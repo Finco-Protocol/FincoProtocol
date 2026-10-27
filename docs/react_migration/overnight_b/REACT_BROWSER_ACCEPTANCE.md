@@ -10,7 +10,8 @@ Harness: the repository's existing mandatory browser role — `tests/test_model_
 | Run | Result |
 |---|---|
 | Baseline, unmodified main, selected React subset (before any change) | 42 passed, **1 failed** (`test_d029_react_run_intent_acceptance[check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit]`: `Page.wait_for_function … reading 'disabled'`); the same node then passed 4/4 alone on the same tree → pre-existing ordering race, not caused by this work |
-| **Final, whole consolidation file, this PR's tree** | **106 passed, 0 failed, 0 skipped** in 533 s (80 pre-existing nodes + 26 new `test_onb_*`; JUnit `final-browser.xml`) |
+| **Whole consolidation file on the first PR tree** | **106 passed, 0 failed, 0 skipped** in 533 s (80 pre-existing nodes + 26 new `test_onb_*`; JUnit `final-browser.xml`) |
+| After the review fixes (§6b of the final report), whole file | 102 passed, 4 failed — all four were a strict-mode ambiguity in a **new test step** (two buttons named "Discard staged edits"); the step was scoped to the grid's button and the 4 nodes passed on re-run (the other 102 nodes, incl. all D-029 and every other `test_onb_*`, passed). The exact-head CI run records the whole file again |
 | The 7 D-029 Chromium nodes (4 React + 3 Legacy) | all passed, unchanged |
 | Negative control: the 26 new nodes against the **original** `main` bundle | 24 failed, 2 passed (the two that pass assert behaviour that was already correct: scalar Save persistence and protected-reference read-only); i.e. the new tests are not vacuous |
 

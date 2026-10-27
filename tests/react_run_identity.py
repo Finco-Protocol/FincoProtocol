@@ -12,18 +12,23 @@ import re
 from datetime import datetime
 
 _SHAPE = re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{4})?$")
+# protected reference Runs: canonical_last_run__<template>__<UTC time with microseconds, no separators>Z
+_REFERENCE = re.compile(r"^canonical_last_run__[A-Za-z0-9_]+__(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{1,9})?Z$")
 
 
 def parse(snapshot_id):
-    match = _SHAPE.match((snapshot_id or "").strip())
+    raw = (snapshot_id or "").strip()
+    reference = _REFERENCE.match(raw)
+    match = reference or _SHAPE.match(raw)
     if not match:
         return None
-    y, mo, d, h, mi, s, fraction, zone = match.groups()
+    groups = match.groups()
+    y, mo, d, h, mi, s, fraction = groups[:7]
+    zone = "Z" if reference else (groups[7] or "")
     try:
         datetime(int(y), int(mo), int(d), int(h), int(mi), int(s))      # an impossible instant is not canonical
     except ValueError:
         return None
-    zone = zone or ""
     zone_text = "UTC" if zone in ("", "Z", "+0000", "-0000") else f"UTC{zone[:3]}:{zone[3:]}"
     return {"label": f"{y}-{mo}-{d} {h}:{mi}:{s} {zone_text}", "suffix": fraction or ""}
 

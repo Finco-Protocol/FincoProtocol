@@ -158,6 +158,9 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
   const readOnlyGrid = protectedRef || payload.grid.editable === false;
   const defaultOpen = (counts: Record<RowState, number>) => counts.editable > 0 || readOnlyGrid;
   const isOpen = (id: string, counts: Record<RowState, number>) => opened[id] ?? defaultOpen(counts);
+  // A section holding unsaved edits can neither collapse nor hide them: Save writes every staged cell, so each must stay visible.
+  const stagedIn = (section: GridSectionPayload) => section.categories.reduce((sum, category) => sum
+    + category.rows.filter((row) => dirtyCodes.includes(row.field_id || row.code)).length, 0);
 
   return (
     <section className="rx-card" aria-labelledby="rx-grid-heading" data-input-grid="canonical">
@@ -185,9 +188,10 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
       </div>
       {sections.map(({ section, counts }, sectionIndex) => (
         <details key={section.section_id} className="rx-input-section" data-grid-section={section.section_id}
-          open={isOpen(section.section_id, counts)}
+          open={isOpen(section.section_id, counts) || stagedIn(section) > 0}
           onToggle={(event) => {
             const open = (event.currentTarget as HTMLDetailsElement).open;
+            if (!open && stagedIn(section) > 0) { (event.currentTarget as HTMLDetailsElement).open = true; return; }
             setOpened((prev) => (prev[section.section_id] === open ? prev : { ...prev, [section.section_id]: open }));
           }}>
           <summary>
@@ -198,6 +202,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
               {counts.derived > 0 && `${counts.derived} derived`}
               {counts.derived > 0 && counts.unavailable > 0 && " · "}
               {counts.unavailable > 0 && `${counts.unavailable} not editable here`}
+              {stagedIn(section) > 0 && <strong className="rx-staged-count" data-staged-in-section={stagedIn(section)}> · {stagedIn(section)} unsaved edit{stagedIn(section) === 1 ? "" : "s"}</strong>}
             </span>
           </summary>
           <div className="rx-statement rx-input-scroll">

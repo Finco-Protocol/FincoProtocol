@@ -218,7 +218,7 @@ function MetricCards({ payload, unit, precision }: { payload: StatementsPayload;
  * does not publish is explicitly unavailable: never zero, never a proxy.  Nothing here claims
  * that full lender-grade metrics are supported.
  */
-function LenderMetrics({ payload }: { payload: StatementsPayload }) {
+function LenderMetrics({ payload, unit, precision }: { payload: StatementsPayload; unit: DisplayUnit; precision: number }) {
   const rows = payload.results.lender_metrics ?? [];
   if (!rows.length) return null;
   return (
@@ -229,7 +229,7 @@ function LenderMetrics({ payload }: { payload: StatementsPayload }) {
           <div key={row.key} className={`rx-live-kpi${row.available ? "" : " rx-live-kpi-unavailable"}`}
             data-lender-metric={row.key} data-lender-metric-available={row.available ? "true" : "false"}>
             <div className="rx-live-kpi-label">{row.label}</div>
-            <div className="rx-live-kpi-value">{row.available && row.display ? row.display : "Not available"}</div>
+            <div className="rx-live-kpi-value">{row.available && row.display ? metricDisplay(row.display, unit, precision) : "Not available"}</div>
             <div className="rx-live-kpi-source">{row.available ? "Published by this Run." : row.reason}</div>
           </div>
         ))}
@@ -573,7 +573,7 @@ export function FinancialResults({ payload, page }: { payload: StatementsPayload
           <section className="rx-live-section" aria-labelledby="rx-key-metrics">
             <h3 id="rx-key-metrics">Key financial metrics</h3>
             <MetricCards payload={payload} unit={unit} precision={precision} />
-            <LenderMetrics payload={payload} />
+            <LenderMetrics payload={payload} unit={unit} precision={precision} />
             <p className="rx-note" data-dscr-note="true">
               The year-by-year DSCR series is shown in Analysis, as persisted. Credit indicators for committed Runs you select are in Analysis → Financial intelligence.
             </p>

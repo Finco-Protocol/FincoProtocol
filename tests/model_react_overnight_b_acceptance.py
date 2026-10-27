@@ -250,6 +250,7 @@ def check_two_runs_in_the_same_hour_are_distinguishable_everywhere(browser, base
         assert export.locator("[data-run-identity]").first.get_attribute("data-run-identity") == a
         for row_id, (snapshot, _text) in shown.items():
             assert export.locator(f"[data-run-identity='{snapshot}']").count() >= 1
+        assert "Ran at" not in export.inner_text(), "the Run label already carries the time"
         open_section(page, base, record.project_code, "scenarios")
         evidence = page.locator("[data-scenario-row]", has=page.locator("text=Base Case")).first.locator("[data-run-evidence]")
         assert evidence.locator("[data-run-identity]").get_attribute("data-run-identity") in (a, b)
@@ -405,6 +406,21 @@ def check_inputs_are_compact_complete_and_navigable(browser, base, kind, width, 
             page.locator(f"[data-inputs-jump] [data-jump-label='{label}']").click()
             assert page.locator(f"#{target}").bounding_box()["y"] < 900 + 50
             assert page.evaluate("id => document.activeElement && document.activeElement.id", target) == target
+        # a section holding an unsaved edit cannot be collapsed and says so on its summary
+        first_cell = page.locator("details.rx-input-section[open] [data-grid-cell]").first
+        section_of_cell = first_cell.locator("xpath=ancestor::details[contains(@class,'rx-input-section')]")
+        first_cell.fill("7")
+        section_of_cell.locator("summary").click()
+        assert section_of_cell.evaluate("d => d.open") is True, "a section with a staged edit stays open"
+        assert section_of_cell.locator("[data-staged-in-section]").count() == 1
+        page.locator("#wf-inputs-grid [data-discard='true']").click()
+        # the OPEX jump request is not replayed when Inputs is entered again later
+        page.locator("[data-inputs-jump] [data-jump-label='OPEX']").click()
+        page.wait_for_function("() => /OPEX line below/.test(document.querySelector(\"[data-save-scope='cost-lines']\")?.innerText)")
+        page.locator("[data-workspace-nav] a", has_text="Statements").click()
+        page.locator("[data-workspace-nav] a", has_text="Inputs").click()
+        settle_inputs(page)
+        assert "CAPEX line below" in page.locator("[data-save-scope='cost-lines']").inner_text(), "Inputs re-opens on CAPEX, not on a past click"
         page.locator("[data-inputs-jump] [data-jump-label='Financing']").click()
         page.wait_for_selector("[data-sheet-editor='debt']")
         assert page.url.endswith("#financing")
@@ -585,6 +601,14 @@ def check_returns_lender_metrics_and_vertical_scope_are_truthful(browser, base, 
         for limitation in vertical["limitations"]:
             assert banner.locator("li", has_text=limitation[:40]).count() == 1
         shot(page, f"results-{kind}")
+        for section in ("statements", "analysis"):                     # the caveat follows the user to every results surface
+            open_section(page, base, record.project_code, section)
+            assert page.locator("[data-vertical]").first.get_attribute("data-pilot-tier") == vertical["pilot_tier"], section
+        open_section(page, base, record.project_code, "results")
+        page.select_option("select[data-control='unit']", "mEUR")        # lender money metrics follow the unit control
+        for metric in lender:
+            if metric["available"] and metric["display"] and re.search(r"(kEUR|EUR)$", metric["display"]):
+                assert page.locator(f"[data-lender-metric='{metric['key']}'] .rx-live-kpi-value").inner_text().endswith("mEUR"), metric
         # the Project Library carries the same release tier next to the project's type
         page.goto(f"{base}/v2/model-react/")
         page.wait_for_selector("[data-library-view='true']")

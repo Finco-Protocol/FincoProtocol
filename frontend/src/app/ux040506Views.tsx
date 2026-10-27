@@ -90,7 +90,7 @@ export function CostLinesView({ project, reloadKey = 0, onMutated, requestedShee
     if (next !== sheet) confirmIfDirty(() => setSheet(next), { ignore: (key) => !key.startsWith("cost-") });
   };
 
-  const lastRequest = useRef(0);
+  const lastRequest = useRef(requestNonce);          // a request that predates this mount is already history, not a new click
   useEffect(() => {
     if (!requestedSheet || requestNonce === lastRequest.current) return;
     lastRequest.current = requestNonce;

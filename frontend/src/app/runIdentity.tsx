@@ -14,6 +14,8 @@
 import { useState } from "react";
 
 const SNAPSHOT_SHAPE = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{4})?$/;
+// Protected reference Runs are stamped `canonical_last_run__<template>__<UTC time with microseconds, no separators>Z`.
+const REFERENCE_SHAPE = /^canonical_last_run__[A-Za-z0-9_]+__(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{1,9})?Z$/;
 
 export interface ParsedRunIdentity {
   /** `2026-10-27 00:49:39 UTC` (the zone is the one the identifier states). */
@@ -26,9 +28,11 @@ export interface ParsedRunIdentity {
 
 /** Parses the canonical snapshot id; null when it does not have the canonical shape. */
 export function parseRunSnapshotId(snapshotId: string | null | undefined): ParsedRunIdentity | null {
-  const match = SNAPSHOT_SHAPE.exec((snapshotId ?? "").trim());
+  const text = (snapshotId ?? "").trim();
+  const reference = REFERENCE_SHAPE.exec(text);
+  const match = reference ?? SNAPSHOT_SHAPE.exec(text);
   if (!match) return null;
-  const [, y, mo, d, h, mi, s, fraction = "", zone = ""] = match;
+  const [, y, mo, d, h, mi, s, fraction = "", zone = reference ? "Z" : ""] = match;
   const calendar = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)));
   if (calendar.getUTCFullYear() !== Number(y) || calendar.getUTCMonth() !== Number(mo) - 1 || calendar.getUTCDate() !== Number(d)
     || Number(h) > 23 || Number(mi) > 59 || Number(s) > 59) return null;
