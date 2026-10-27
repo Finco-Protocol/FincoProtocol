@@ -234,7 +234,13 @@ _ps_calendar = _section("calendar", "Operating & Debt Frequency", _PS, order=3, 
        scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
        editable=True, description="Empty = released 6/6. RC-7B matched 3/3 is release-closed pending independent financial review.")
 ])
-_SHEET_PROJECT_SETUP = _sheet(_PS, "Project Setup", [_ps_identity, _ps_technical, _ps_bess, _ps_calendar], icon="⚙️", order=0)
+_ps_financial_core = _section("financial_core", "Valuation and SHL contract", _PS, order=4, fields=[
+    _f("debt.valuation.configuration", "Valuation and SHL timing policy", "financial_core_config_json",
+       FieldType.TEXT, _PS, "financial_core", engine_path="valuation",
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED,
+       description="FIN-V2-3 versioned policy. Explicit human-percent rates, Financial Owner authority, dates, CFADS case and SHL timing; absent rates stay NOT_CONFIGURED.")
+])
+_SHEET_PROJECT_SETUP = _sheet(_PS, "Project Setup", [_ps_identity, _ps_technical, _ps_bess, _ps_calendar, _ps_financial_core], icon="⚙️", order=0)
 
 
 # ---------------------------------------------------------------------------

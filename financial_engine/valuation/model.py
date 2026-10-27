@@ -221,6 +221,9 @@ def calculate_project_npv(project_return, policy: ProjectValuationPolicy | None)
             cashflows=dated,
             annual_discount_rate=policy.annual_discount_rate,
             convention=policy.discount_convention,
+            periodic_rate_conversion=policy.periodic_rate_conversion,
+            periods_per_year=policy.periods_per_year,
+            first_cashflow_timing=policy.first_cashflow_timing,
         )
     except _DiscountError as exc:
         status = {

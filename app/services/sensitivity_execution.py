@@ -31,7 +31,8 @@ def run_sensitivity_points(project_type: str, project_inputs: Sequence[Any]) -> 
     for pi in project_inputs:
         try:
             result = run_project(project_type, "Base", project_inputs_override=pi)
-            outputs.append({"kpis": dict(result.get("kpis", {}))})
+            outputs.append({"kpis": dict(result.get("kpis", {})),
+                "regime": (result.get("financing_evidence", {}).get("financial_core_v1", {}).get("goal_seek_regime"))})
         except Exception as exc:  # noqa: BLE001 - one failed point must not abort the grid
             outputs.append({"error": str(exc)[:120]})
     return outputs

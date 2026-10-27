@@ -562,6 +562,9 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         "construction_funding": _fin_json(_asdict(_fund)),
     }
     # RC-7B: the committed Run records its own operating calendar (quarterly only;
+    from app.services.financial_core_evidence import attach_financial_core
+    attach_financial_core(payload, clean_run)
+    # RC-7B calendar metadata follows the additive valuation block.
     # every 6/6 evidence payload is unchanged and absence means 6/6).
     from app.workbook.quarterly_frequency_config import run_evidence as _calendar_evidence
     payload["financing_evidence"].update(_calendar_evidence(clean_run.project_inputs))

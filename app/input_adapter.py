@@ -1538,6 +1538,8 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     # disabled is the neutral None; malformed or economically invalid payloads fail closed.
     from app.workbook.developer_economics_config import SNAPSHOT_KEY as DEV_KEY, apply_config as apply_developer
     result = apply_developer(result, snapshot.get(DEV_KEY))
+    from app.workbook.financial_core_config import SNAPSHOT_KEY as FIN_KEY, apply_config as apply_financial_core
+    result = apply_financial_core(result, snapshot.get(FIN_KEY))
     # RC-7B: an explicit 3/3 operating/debt frequency selection (release-closed).
     # Absent/empty is the released 6/6 contract and returns the same object.
     from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY as Q_KEY, apply_config as apply_quarterly

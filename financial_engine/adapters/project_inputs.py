@@ -491,6 +491,9 @@ def _build_shareholder_loan_model_input_from_project_inputs(
     construction_dcf = float(construction_dcf_raw)
 
     maturity = getattr(financing, "shl_maturity_period_index", None)
+    from financial_engine.shl.timing_contract import resolve_shl_timing
+    resolved_start, maturity = resolve_shl_timing(
+        financing, periods, senior_debt_maturity_period_index)
     if (
         maturity is None
         and method == SHLRepaymentMethod.BULLET
@@ -506,7 +509,7 @@ def _build_shareholder_loan_model_input_from_project_inputs(
             "do not infer maturity from model horizon"
         )
 
-    repayment_start = getattr(financing, "shl_principal_eligibility_start_period", None)
+    repayment_start = resolved_start
     if repayment_start is None and method == SHLRepaymentMethod.BULLET:
         repayment_start = maturity
     if repayment_start is None:

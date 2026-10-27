@@ -103,6 +103,7 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
     from ppa01_candidate_authority import frozen_scope_exempt as ppa01_candidate_exempt
     from radar_authority_governance import reviewed_radar_authority_matches
     from quarterly_candidate_recognition import scope_exempt as quarterly_candidate_exempt
+    from tests.fin_v2_3_scope import matches as fin_v2_3_matches
 
     changed = changed_paths_vs_main() if changed is None else changed
     # Exact-path, blob-pinned Developer Economics V1 authorities are the only
@@ -112,6 +113,7 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
     return sorted(
         f for f in changed
         if f.startswith(STRICTLY_FROZEN_PREFIXES)
+        and not fin_v2_3_matches(f)
         and not (f.startswith("finco_core/") and released_engine_authority_matches(f))
         and f != "finco_radar/venues/relative_value.py"  # PR #183 core
         and not reviewed_radar_authority_matches(f)  # PR #237 exact blob

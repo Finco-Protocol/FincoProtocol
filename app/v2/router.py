@@ -5930,7 +5930,7 @@ async def v2_workbook_goal_seek_run(
             "apply": None,
             "request": request,
         })
-    target_fraction = target_pct / 100.0
+    target_fraction = target_pct / 100.0 if metric.unit == "ratio" else target_pct
 
     # ── Canonical input construction (mirrors the canonical Run path) ─────── #
     pis_draft = WorkbookService.build_draft_input_set_from_workspace(ws)

@@ -608,6 +608,12 @@ def build_clean_sponsor_schedule(clean_run) -> dict:
             {
                 "period": wp.period_index,
                 "date": wp.cashflow_date.isoformat() if wp.cashflow_date else None,
+                "contract_version": "SPONSOR_PERIOD_EVIDENCE_V1",
+                "axis_kind": "CONSTRUCTION" if wp.is_construction else "OPERATING",
+                "shl_cash_contribution_keur": wp.shl_cash_contribution_keur,
+                "shl_pik_keur": wp.shl_pik_keur,
+                "pure_equity_net_cashflow_keur": wp.pure_equity_net_cashflow_keur,
+                "total_sponsor_net_cashflow_keur": wp.total_sponsor_net_cashflow_keur,
                 "share_capital_contribution_keur": wp.share_capital_contribution_keur,
                 "share_premium_contribution_keur": wp.share_premium_contribution_keur,
                 "other_committed_equity_contribution_keur": (
@@ -622,7 +628,11 @@ def build_clean_sponsor_schedule(clean_run) -> dict:
             }
         )
     return {
+        "contract_version": "SPONSOR_PERIOD_EVIDENCE_V1",
+        "funding_date_convention": "FINANCIAL_CLOSE_LUMP_FUNDING",
+        "balance_recognition_convention": "CANONICAL_SHL_SCHEDULE_SEPARATE_FROM_SPONSOR_CASH_DATING",
         "periods": periods_out,
+        "loan_balance_periods": _shl_balance_evidence(clean_run),
         "summary": {
             "total_legal_equity_contributed_keur": (
                 g2c.total_legal_equity_contributed_keur
@@ -659,3 +669,25 @@ def build_clean_sponsor_schedule(clean_run) -> dict:
 def unavailable_fields_manifest() -> dict:
     """Machine-readable manifest of fields the clean runtime does not provide."""
     return dict(_UNAVAILABLE_FIELDS)
+
+
+def _shl_balance_evidence(clean_run):
+    """Exact loan recognition vector on its own actual dated calendar.
+
+    Sponsor cash can be funded at FC before loan recognition. Numeric indices
+    of construction cash columns and model rows are deliberately not joined.
+    """
+    model = clean_run.g2c_result.financing_result.project_model_result
+    shl = model.shareholder_loan
+    if shl is None:
+        return []
+    period_by_index = {p.period_index: p for p in model.periods}
+    vectors = (shl.period_indices, shl.shl_opening_keur, shl.shl_drawdown_keur,
+               shl.shl_pik_interest_keur, shl.shl_principal_keur, shl.shl_closing_keur)
+    if len({len(v) for v in vectors}) != 1:
+        raise ValueError("SPONSOR_SHL_BALANCE_AXIS_MISMATCH")
+    return [{"date": period_by_index[i].period_end.isoformat(),
+             "axis_kind": "OPERATING" if period_by_index[i].is_operation else "CONSTRUCTION",
+             "shl_opening_keur": opening, "shl_draw_keur": draw, "shl_pik_keur": pik,
+             "shl_principal_keur": principal, "shl_closing_keur": closing}
+            for i, opening, draw, pik, principal, closing in zip(*vectors)]

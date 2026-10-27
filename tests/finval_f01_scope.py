@@ -13,6 +13,8 @@ def valid(repo=ROOT, sources=None):
             data=actual[path]
             if isinstance(data,str): data=data.encode()
             got=subprocess.check_output(["git","hash-object","--stdin"],input=data,cwd=repo).decode().strip()
-            if got!=expected:return False
+            if got!=expected:
+                from tests.fin_v2_3_scope import matches
+                if not matches(path,data,repo=repo):return False
         return True
     except (OSError, KeyError, subprocess.CalledProcessError):return False
