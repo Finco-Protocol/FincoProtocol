@@ -47,7 +47,8 @@ def _blob(data):
     return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
 
 
-def valid(repo=None,ref=None):
+def exact_blobs_ok(repo=None,ref=None):
+    """History, the integrated #390 dependency and every owned byte: the pin set equals the owned set and each pin is the exact Git blob."""
     root=Path(repo) if repo is not None else ROOT
     data=manifest(root,ref);pins=data.get('source_blobs',{})
     if set(pins) != OWNED_PATHS:return False
@@ -56,17 +57,38 @@ def valid(repo=None,ref=None):
         _git(root,'merge-base','--is-ancestor',INTEGRATION_MAIN,ref or 'HEAD')
         if any(_blob(_read(root,p,ref))!=expected for p,expected in INTEGRATED_DEPENDENCIES.items()):return False
         if any(_blob(_read(root,p,ref))!=expected for p,expected in pins.items()):return False
+        # No extra native/source activation surface can be hidden in this cohort.
+        return not any(p.startswith(('financial_engine/native_v10/','financial_engine/native_v11/')) for p in pins)
+    except (OSError,ValueError,subprocess.CalledProcessError):return False
+
+
+def allowed_path(path,repo=None,ref=None):
+    pins=manifest(repo,ref).get('source_blobs',{})
+    return (path in pins or path in INTEGRATED_DEPENDENCIES or path.startswith('docs/financial_validation/fin_v2_3/')
+            or path=='FIN_V2_3_INTEGRATION_HANDOFF.md')
+
+
+def _other_cohort_allows(path,root,ref):
+    """A path owned by ANOTHER registered reviewed cohort (tests/fin_v2_cohorts.py) is that cohort's exact-blob responsibility."""
+    try:
+        from tests.fin_v2_cohorts import cohorts
+    except ImportError:return False
+    return any(m.__name__!=__name__ and m.allowed_path(path,root,ref) for m in cohorts())
+
+
+def valid(repo=None,ref=None):
+    root=Path(repo) if repo is not None else ROOT
+    if not exact_blobs_ok(root,ref):return False
+    pins=manifest(root,ref).get('source_blobs',{})
+    try:
         # Compare with the accepted RC-M integration parent, not the historical F01 base.
-        # Every FIN-V2-3-owned change must still match an exact cohort blob.
+        # Every changed path must match an exact cohort blob of this cohort or of another registered reviewed cohort.
         changed=_git(root,'diff','--name-only',INTEGRATION_MAIN,*([ref] if ref else []),'--').decode().splitlines()
-        if any(p not in pins and p not in INTEGRATED_DEPENDENCIES and not p.startswith('docs/financial_validation/fin_v2_3/')
-               and p != 'FIN_V2_3_INTEGRATION_HANDOFF.md' for p in changed):return False
+        if any(not allowed_path(p,root,ref) and not _other_cohort_allows(p,root,ref) for p in changed):return False
         # Detect an untracked protected source as well as modifications/deletions.
         if ref is None:
             untracked=_git(root,'ls-files','--others','--exclude-standard','--',*PROTECTED).decode().splitlines()
-            if any(p not in pins for p in untracked):return False
-        # No extra native/source activation surface can be hidden in this cohort.
-        if any(p.startswith(('financial_engine/native_v10/','financial_engine/native_v11/')) for p in pins):return False
+            if any(p not in pins and not _other_cohort_allows(p,root,ref) for p in untracked):return False
         return True
     except (OSError,ValueError,subprocess.CalledProcessError):return False
 

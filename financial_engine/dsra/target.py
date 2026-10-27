@@ -37,6 +37,15 @@ class DsraTargetPolicy(Enum):
     PEAK_FORWARD_DEBT_SERVICE_MONTHS = "peak_forward_debt_service_months"
 
 
+# Calculation versions (FIN-V2-R1). The two schedule policies below, and the FIXED_AMOUNT scalar, are the
+# HISTORICAL contracts "forward_shortcut_v0" / "static_v0" and are preserved bit-for-bit: the forward
+# target is ``next_period_service * coverage_months * periods_per_year / 12``, which is exact only for
+# whole-period coverage of equal future service. The calendar-based, date-aware requirement lives in
+# ``financial_engine.dsra.forward_coverage`` (FORWARD_CALENDAR_COVERAGE_V1) and is selected through
+# ``financial_engine.dsra.reserve_authority``; this builder never dispatches to it.
+SHORTCUT_POLICY_VERSION = "forward_shortcut_v0"
+STATIC_POLICY_VERSION = "static_v0"
+
 # Policies whose per-period target is a schedule built from the final Senior DS.
 SCHEDULE_TARGET_POLICIES = frozenset({
     DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,

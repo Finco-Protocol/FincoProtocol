@@ -312,7 +312,7 @@ def violations(sources,*,check_pin=True):
         if check_pin and git_blob(text) not in admitted:
             # FIN-V2-3: admit ONLY the exact independently pinned financial
             # source under the full merged #388/#390 ancestor contract.
-            from tests.fin_v2_3_scope import matches as fin_v2_3_matches
+            from tests.fin_v2_cohorts import matches as fin_v2_3_matches
             if fin_v2_3_matches(path,text):admitted=admitted|{git_blob(text)}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):

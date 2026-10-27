@@ -60,7 +60,7 @@ def test_finval_b2c1_successor_is_exactly_six_additive_paths_and_keeps_every_ori
         "app/v2/router.py","frontend/src/app/WorkspaceView.tsx","frontend/src/app/types.ts","static/react/finco-react.js"}
     for path,blob in S.FINVAL_B2C1_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40 and blob!=S.BLOBS[path]
-        from tests.fin_v2_3_scope import matches
+        from tests.fin_v2_cohorts import matches
         assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path),S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.FINV2_D01_SENSITIVITY_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path)} or matches(path,SOURCES[path])   # RC-M and FIN-V2-3 exact successors only
     assert S.TOKEN_MODULE not in S.FINVAL_B2C1_SUCCESSORS
 
@@ -110,7 +110,7 @@ def test_d029_layer_is_exactly_three_additive_paths_and_keeps_every_original_and
     for path,blob in S.D029_RUN_INTENT_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40
         assert blob!=S.BLOBS[path] and blob!=S.FINVAL_B2C1_SUCCESSORS.get(path)   # a NEW reviewed state, never a repin
-        from tests.fin_v2_3_scope import matches
+        from tests.fin_v2_cohorts import matches
         assert S.git_blob(SOURCES[path]) in {blob,S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.FINV2_D01_SENSITIVITY_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path)} or matches(path,SOURCES[path])   # all additive layers strictly gated
     assert S.TOKEN_MODULE not in S.D029_RUN_INTENT_SUCCESSORS
 

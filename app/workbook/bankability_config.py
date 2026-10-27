@@ -7,6 +7,8 @@ from math import isfinite
 
 FIELD_ID = "debt.bankability.configuration"
 SNAPSHOT_KEY = "bankability_config_json"
+from financial_engine.dsra.reserve_authority import GATED_EDITOR_MODES as GATED_RESERVE_MODES
+
 KEYS = {"version", "sizing_mode", "lender_case", "targets", "target_scalar", "rates_pct", "day_count", "fees", "reserve"}
 
 
@@ -68,6 +70,9 @@ def parse_config(raw):
     if reserve is not None:
         if not isinstance(reserve, dict) or set(reserve) != {"mode", "months", "requirement_keur", "commitment_keur", "fee_pct"}:
             raise ValueError("Invalid reserve configuration keys.")
+        from financial_engine.dsra.reserve_authority import selection_from_editor
+        if reserve["mode"] in GATED_RESERVE_MODES:
+            selection_from_editor(reserve)  # typed ReserveAuthorityError (a ValueError): gated, never persisted
         if reserve["mode"] not in ("none", "automatic_peak", "cash_fixed", "dsrf"):
             raise ValueError("Unsupported reserve policy.")
         months = reserve["months"]
@@ -192,16 +197,32 @@ def apply_config(pi, raw, *, project_type=None):
             raise ValueError("Automatic peak requires the existing generic auto-reserve authority.")
         support = {"none": DebtServiceReserveSupportMode.NONE, "automatic_peak": DebtServiceReserveSupportMode.NONE,
             "cash_fixed": DebtServiceReserveSupportMode.CASH_DSRA, "dsrf": DebtServiceReserveSupportMode.DSRF}[mode]
+        # FIN-V2-R1 R0: state the requested policy explicitly. "automatic_peak" is realised by the H-1
+        # generic financing policy from the NONE + months + no-policy signature; the guard below refuses
+        # any selection whose resulting inputs would not carry the same policy (never a silent NONE).
+        from financial_engine.dsra.reserve_authority import assert_selection_realised, selection_from_editor
+        requested = selection_from_editor(reserve)
         fin = replace(fin, dsra_support_mode=support, dsra_months=reserve["months"],
             dsra_target_policy=None if mode == "automatic_peak" else "fixed_amount",
             debt_service_reserve_requirement_keur=reserve["requirement_keur"],
             dsrf_commitment_keur=reserve["commitment_keur"], dsrf_commitment_fee_rate_pa=reserve["fee_pct"] / 100,
             dsrf_fee_expires_at_senior_maturity=True)
     result = replace(pi, financing=fin)
+    if reserve is not None:
+        assert_selection_realised(requested, result.financing, result.capex)
     # Validate the existing financial boundary without solving or materializing new costs.
     from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
     resolve_cash_dsra_requirement_keur(result)
     return result
+
+
+def _reserve_selection_view(pi):
+    from financial_engine.dsra.reserve_authority import CALENDAR_V1_GATE, ReserveAuthorityError, classify_financing
+    try:
+        return {"effective": classify_financing(pi.financing, pi.capex).to_dict(),
+            "gated_modes": sorted(GATED_RESERVE_MODES), "gate_reason": CALENDAR_V1_GATE}
+    except ReserveAuthorityError as exc:
+        return {"effective": None, "reason_code": exc.code, "detail": exc.detail}
 
 
 def build_view(pi, raw, *, project_type=None):
@@ -225,6 +246,7 @@ def build_view(pi, raw, *, project_type=None):
         "renewable": project_type in ("Solar", "Wind"), "mode": fin.debt_sizing_mode.value,
         "day_count": fin.senior_debt_interest_config.day_count.value, "fees_editable": fees_editable(pi),
         "reserve_editable": not pi.capex.reserve_accounts_keur,
+        "reserve_selection": _reserve_selection_view(pi),
         "automatic_reserve": fin.dsra_support_mode.value == "NONE",
         "fees": {"commitment_pct": fin.commitment_fee * 100, "structuring_pct": fin.structuring_fee * 100,
             "arrangement_pct": fin.arrangement_fee * 100},

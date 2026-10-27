@@ -54,12 +54,12 @@ def test_authority_mock_has_only_its_missing_unit_added():
     new='ws=SimpleNamespace(user_id="u", project_id="p", draft_snapshot={"_finval_interest_rate_unit": "human_percent_v1"}),\n                field_id="debt.senior.interest_rate_pct"'
     assert baseline(path).count(old)==1
     original = baseline(path).replace(old,new)
-    from tests.fin_v2_3_scope import matches
+    from tests.fin_v2_cohorts import matches
     actual = (ROOT/path).read_text()
     assert matches(path, actual)
     historical = '        assert set(actual) == set(golden["hashes"]) | financing_additions\n'
     assert original.count(historical)==1
-    approved_valuation_extension = "        # FIN-V2-3 adds one explicitly configured policy field. Its two\n        # presentations are separately hash-locked; all historical DOM hashes\n        # and the exact CSRF/read-only checks above remain unchanged.\n        from tests.fin_v2_3_scope import matches\n        assert matches(\"app/workbook/registry.py\")\n        valuation_additions = {\n            \"project_setup|editable|debt.valuation.configuration\": \"74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b\",\n            \"project_setup|protected|debt.valuation.configuration\": \"4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186\",\n        }\n        assert {key: actual[key] for key in valuation_additions} == valuation_additions\n"
+    approved_valuation_extension = "        # FIN-V2-3 adds one explicitly configured policy field. Its two\n        # presentations are separately hash-locked; all historical DOM hashes\n        # and the exact CSRF/read-only checks above remain unchanged.\n        from tests.fin_v2_cohorts import matches\n        assert matches(\"app/workbook/registry.py\")\n        valuation_additions = {\n            \"project_setup|editable|debt.valuation.configuration\": \"74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b\",\n            \"project_setup|protected|debt.valuation.configuration\": \"4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186\",\n        }\n        assert {key: actual[key] for key in valuation_additions} == valuation_additions\n"
     extended = '        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions)\n'
     assert actual == original.replace(historical, approved_valuation_extension + extended)
 

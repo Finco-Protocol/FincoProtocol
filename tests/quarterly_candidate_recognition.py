@@ -74,8 +74,8 @@ def candidate_blobs(*, repo=None, ref: str = "HEAD", fetcher=None) -> dict:
     if state == "V10":
         return v10.v10_candidate_authorities()
     if state == "V11S3":
-        from tests.fin_v2_3_scope import protected_blobs
-        return {**v11.v11_candidate_authorities(), **protected_blobs(repo,ref)}
+        from tests.fin_v2_cohorts import protected_blobs
+        return {**v11.v11_candidate_authorities(), **protected_blobs(repo, ref)}
     return {}
 
 
@@ -94,6 +94,6 @@ def current_expected_blob(path: str, historical_pin, *, repo=None, ref: str = "H
 
 
 def without_superseded(paths, *, repo=None, ref: str = "HEAD", fetcher=None) -> list[str]:
-    from tests.fin_v2_3_scope import matches
+    from tests.fin_v2_cohorts import matches
     return [p for p in paths if not superseded(p, repo=repo, ref=ref, fetcher=fetcher)
-            and not matches(p,repo=repo)]
+            and not matches(p, repo=repo)]

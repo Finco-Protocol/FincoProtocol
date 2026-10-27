@@ -231,10 +231,9 @@ def _assert_frozen_financial_namespace_authority(root, *, baseline="origin/main"
     # An unchanged baseline remains valid; any release diff must be the complete reviewed slice.
     if not protected:
         return
-    # FIN-V2-3: recognize only its complete, exact source cohort against the
-    # verified main parent. No historical release slice or pin is rewritten.
-    from tests.fin_v2_3_scope import valid as fin_v2_3_valid, protected_blobs as fin_v2_3_blobs
-    if fin_v2_3_valid(root, ref=head) and protected == set(fin_v2_3_blobs(root, ref=head)):
+    # Reviewed FIN-V2 cohorts: recognise only their complete, exact source cohort against the verified main parent.
+    from tests.fin_v2_cohorts import valid as fin_v2_valid, protected_blobs as fin_v2_blobs
+    if fin_v2_valid(root, ref=head) and protected == set(fin_v2_blobs(root, ref=head)):
         return
     # Revenue V2 Correction C: exact one-path, one-content successor authority.
     # Keep F3.5-A's complete historical release slice and pins untouched.

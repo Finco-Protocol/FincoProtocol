@@ -110,7 +110,7 @@ def test_the_rcm_changes_touch_no_protected_financial_path():
     # FIN-V2-3 is a separately authorized, finite financial source successor.
     # Every admitted path must match the exact owner-reviewed cohort and its
     # merged RC-M parent; arbitrary financial/native/CI drift still fails.
-    from tests.fin_v2_3_scope import matches as fin_v2_3_matches
+    from tests.fin_v2_cohorts import matches as fin_v2_3_matches
     hits = [p for p in hits if not fin_v2_3_matches(p)]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]

@@ -332,7 +332,7 @@ class TestDenseLayoutPreservesContract:
         # FIN-V2-3 adds one explicitly configured policy field. Its two
         # presentations are separately hash-locked; all historical DOM hashes
         # and the exact CSRF/read-only checks above remain unchanged.
-        from tests.fin_v2_3_scope import matches
+        from tests.fin_v2_cohorts import matches
         assert matches("app/workbook/registry.py")
         valuation_additions = {
             "project_setup|editable|debt.valuation.configuration": "74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b",

@@ -11,7 +11,7 @@ def test_exactly_one_projection_successor_and_historical_layers_unchanged():
     sources={p:(S.ROOT/p).read_text() for p in S.BLOBS}
     assert S.violations(sources)==[]
     for path,blob in S.FINVAL_RATE_SUCCESSORS.items():
-        from tests.fin_v2_3_scope import matches
+        from tests.fin_v2_cohorts import matches
         assert S.git_blob(sources[path]) in {blob,S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.FINV2_D01_SENSITIVITY_SUCCESSORS.get(path)} or matches(path,sources[path])
         changed=dict(sources);changed[path]+='\n'
         assert S.violations(changed)
