@@ -1,0 +1,5 @@
+{
+  "ok": false,
+  "code": "STALE_CONTENT",
+  "message": "The Working Copy changed since the solve \u2014 the solved tariff was NOT applied (atomic safety). Run Goal Seek again on the current draft."
+}

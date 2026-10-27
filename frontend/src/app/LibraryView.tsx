@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import "../finco/_group.css";
 import "../styles/finco-live.css";
+import "../styles/rcm-new-project.css";
 import { Shell } from "../finco/_shared/FincoShell";
 import { createWorkingCopy, fetchLibrary, isCloneUnknown } from "./api";
 import { RunIdentityLabel } from "./runIdentity";
@@ -130,9 +131,17 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
             <p className="rx-brand">FINCO Protocol · Model</p>
             <h1 className="rx-title">Project Library</h1>
           </div>
-          <nav aria-label="Classic interface">
-            <a className="rx-legacy-link" href="/">FINCO home ↗</a>
-          </nav>
+          <div className="rcm-lib-head-actions">
+            <a className="rx-button rcm-new-project-cta" href="/v2/model-react/#new-project" data-new-project-cta="true"
+               onClick={(event) => {
+                 if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                 event.preventDefault();
+                 window.location.hash = "new-project";
+               }}>+ New Project</a>
+            <nav aria-label="Classic interface">
+              <a className="rx-legacy-link" href="/">FINCO home ↗</a>
+            </nav>
+          </div>
         </header>
         <p className="rx-note" data-library-persistence="true">
           Working copies are saved to your account on the server and can be reopened from any session.
@@ -168,7 +177,7 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
           <section className="rx-card" aria-labelledby="rx-lib-working" data-library-section="working-copies">
             <h2 id="rx-lib-working">Your working copies</h2>
             {library.projects.length === 0
-              ? <p className="rx-empty" role="status">{search ? "No working copies match this search." : "You have no working copies yet. Create one from a reference model below."}</p>
+              ? <p className="rx-empty" role="status">{search ? "No working copies match this search." : "You have no working copies yet. Start with + New Project, or create a copy of a reference model below."}</p>
               : (
                 <table className="rx-lib-table">
                   <thead><tr><th>Project</th><th>Type</th><th>Status</th><th>Last Run</th><th>Actions</th></tr></thead>

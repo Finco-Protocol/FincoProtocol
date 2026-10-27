@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "replayed": true,
+  "project": {
+    "code": "contract-solar",
+    "project_id": "96f02ade3a8644ce",
+    "name": "Contract Solar",
+    "template_source": "generic_solar_reference",
+    "workspace_url": "/v2/model-react/contract-solar",
+    "freshness": "NOT_RUN"
+  }
+}

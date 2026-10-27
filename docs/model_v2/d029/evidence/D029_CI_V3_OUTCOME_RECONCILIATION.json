@@ -3,7 +3,8 @@
   "current_blobs": {
     "app/trust_readiness/registry.py": "99ff83825e6bef013be9411235d2d77345f78b02",
     "docs/readiness/02_data_handling.md": "330db9c4ae6cd6c8349aad4a1d0c632010e6c1e4",
-    "docs/readiness/06_retention_and_deletion.md": "a155b44b47ce3cbe22239e6a65635d666e0f3dac"
+    "docs/readiness/06_retention_and_deletion.md": "a155b44b47ce3cbe22239e6a65635d666e0f3dac",
+    "tests/test_trust_readiness_controls.py": "cd5b3114d9a11ca4507667a099bb853573d056d3"
   },
   "main": "36edeeb5d9a14749fdfafcd3b60a0d384cac73ba",
   "main_blobs": {
@@ -37,6 +38,7 @@
     "app/trust_readiness/registry.py",
     "docs/readiness/02_data_handling.md",
     "docs/readiness/06_retention_and_deletion.md",
+    "tests/test_trust_readiness_controls.py",
     "tests/test_trust_readiness_registry.py"
   ]
 }

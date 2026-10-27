@@ -1,0 +1,751 @@
+{
+  "ok": true,
+  "kind": "matrix",
+  "vertical": {
+    "key": "solar",
+    "public_name": "Solar",
+    "pilot_tier": "PILOT_CANDIDATE",
+    "limitations": [
+      "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration.",
+      "Portfolio-level analysis remains experimental relative to the core single-project engine."
+    ]
+  },
+  "matrix": {
+    "metric": {
+      "key": "project_irr",
+      "label": "Project IRR",
+      "unit": "%",
+      "fmt": "pct"
+    },
+    "driver_a": {
+      "key": "tariff",
+      "label": "PPA / Tariff price",
+      "unit": "%",
+      "levels": [
+        {
+          "value": -10.0,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0.0,
+          "label": "Base"
+        },
+        {
+          "value": 10.0,
+          "label": "+10 %"
+        }
+      ]
+    },
+    "driver_b": {
+      "key": "capex",
+      "label": "CAPEX",
+      "unit": "%",
+      "levels": [
+        {
+          "value": -10.0,
+          "label": "\u221210 %"
+        },
+        {
+          "value": 0.0,
+          "label": "Base"
+        },
+        {
+          "value": 10.0,
+          "label": "+10 %"
+        }
+      ]
+    },
+    "base": {
+      "status": "OK",
+      "raw": 0.11767978038866954,
+      "reason": "",
+      "display": "11.77%"
+    },
+    "threshold": {
+      "raw": 0.09,
+      "display": "9.00%",
+      "comparator": ">=",
+      "origin": "User-provided for this analysis; not a lender covenant or FINCO-authorised threshold."
+    },
+    "cells": [
+      {
+        "i": 0,
+        "j": 0,
+        "level_a": -10.0,
+        "level_b": -10.0,
+        "label_a": "\u221210 %",
+        "label_b": "\u221210 %",
+        "status": "OK",
+        "reason": "",
+        "raw": 0.1212767689029633,
+        "display": "12.13%",
+        "delta": 0.0035969885142937558,
+        "delta_display": "+0.36 pp",
+        "delta_pct": null,
+        "threshold_status": "PASS",
+        "inputs": {
+          "A": {
+            "field_id": "revenue.ppa.base_tariff",
+            "original": 50.0,
+            "shocked": 45.0,
+            "driver": "tariff",
+            "label": "PPA / Tariff price",
+            "level": -10.0,
+            "unit": "%",
+            "text": "PPA / Tariff price: 50 \u2192 45"
+          },
+          "B": {
+            "factor": 0.9,
+            "driver": "capex",
+            "label": "CAPEX",
+            "level": -10.0,
+            "unit": "%",
+            "text": "CAPEX: \u00d7 0.9000 on the model inputs"
+          }
+        },
+        "is_base": false
+      },
+      {
+        "i": 1,
+        "j": 0,
+        "level_a": 0.0,
+        "level_b": -10.0,
+        "label_a": "Base",
+        "label_b": "\u221210 %",
+        "status": "OK",
+        "reason": "",
+        "raw": 0.13024966894296178,
+        "display": "13.02%",
+        "delta": 0.012569888554292238,
+        "delta_display": "+1.26 pp",
+        "delta_pct": null,
+        "threshold_status": "PASS",
+        "inputs": {
+          "A": {
+            "driver": "tariff",
+            "label": "PPA / Tariff price",
+            "level": 0.0,
+            "unit": "%",
+            "text": "PPA / Tariff price: base (unchanged)"
+          },
+          "B": {
+            "factor": 0.9,
+            "driver": "capex",
+            "label": "CAPEX",
+            "level": -10.0,
+            "unit": "%",
+            "text": "CAPEX: \u00d7 0.9000 on the model inputs"
+          }
+        },
+        "is_base": false
+      },
+      {
+        "i": 2,
+        "j": 0,
+        "level_a": 10.0,
+        "level_b": -10.0,
+        "label_a": "+10 %",
+        "label_b": "\u221210 %",
+        "status": "OK",
+        "reason": "",
+        "raw": 0.13954346992719963,
+        "display": "13.95%",
+        "delta": 0.021863689538530087,
+        "delta_display": "+2.19 pp",
+        "delta_pct": null,
+        "threshold_status": "PASS",
+        "inputs": {
+          "A": {
+            "field_id": "revenue.ppa.base_tariff",
+            "original": 50.0,
+            "shocked": 55.00000000000001,
+            "driver": "tariff",
+            "label": "PPA / Tariff price",
+            "level": 10.0,
+            "unit": "%",
+            "text": "PPA / Tariff price: 50 \u2192 55"
+          },
+          "B": {
+            "factor": 0.9,
+            "driver": "capex",
+            "label": "CAPEX",
+            "level": -10.0,
+            "unit": "%",
+            "text": "CAPEX: \u00d7 0.9000 on the model inputs"
+          }
+        },
+        "is_base": false
+      },
+      {
+        "i": 0,
+        "j": 1,
+        "level_a": -10.0,
+        "level_b": 0.0,
+        "label_a": "\u221210 %",
+        "label_b": "Base",
+        "status": "OK",
+        "reason": "",
+        "raw": 0.10965108806923843,
+        "display": "10.97%",
+        "delta": -0.00802869231943111,
+        "delta_display": "-0.80 pp",
+        "delta_pct": null,
+        "threshold_status": "PASS",
+        "inputs": {
+          "A": {
+            "field_id": "revenue.ppa.base_tariff",
+            "original": 50.0,
+            "shocked": 45.0,
+            "driver": "tariff",
+            "label": "PPA / Tariff price",
+            "level": -10.0,
+            "unit": "%",
+            "text": "PPA / Tariff price: 50 \u2192 45"
+          },
+          "B": {
+            "driver": "capex",
+            "label": "CAPEX",
+            "level": 0.0,
+            "unit": "%",
+            "text": "CAPEX: base (unchanged)"
+          }
+        },
+        "is_base": false
+      },
+      {
+        "i": 1,
+        "j": 1,
+        "level_a": 0.0,
+        "level_b": 0.0,
+        "label_a": "Base",
+        "label_b": "Base",
+        "status": "OK",
+        "reason": "",
+        "raw": 0.11767978038866954,
+        "display": "11.77%",
+        "delta": 0.0,
+        "delta_display": "+0.00 pp",
+        "delta_pct": null,
+        "threshold_status": "PASS",
+        "inputs": {
+          "A": {
+            "driver": "tariff",
+            "label": "PPA / Tariff price",
+            "level": 0.0,
+            "unit": "%",
+            "text": "PPA / Tariff price: base (unchanged)"
+          },
+          "B": {
+            "driver": "capex",
+            "label": "CAPEX",
+            "level": 0.0,
+            "unit": "%",
+            "text": "CAPEX: base (unchanged)"
+          }
+        },
+        "is_base": true
+      },
+      {
+        "i": 2,
+        "j": 1,
+        "level_a": 10.0,
+        "level_b": 0.0,
+        "label_a": "+10 %",
+        "label_b": "Base",
+        "status": "OK",
+        "reason": "",
+        "raw": 0.12598347499979323,
+        "display": "12.60%",
+        "delta": 0.008303694611123694,
+        "delta_display": "+0.83 pp",
+        "delta_pct": null,
+        "threshold_status": "PASS",
+        "inputs": {
+          "A": {
+            "field_id": "revenue.ppa.base_tariff",
+            "original": 50.0,
+            "shocked": 55.00000000000001,
+            "driver": "tariff",
+            "label": "PPA / Tariff price",
+            "level": 10.0,
+            "unit": "%",
+            "text": "PPA / Tariff price: 50 \u2192 55"
+          },
+          "B": {
+            "driver": "capex",
+            "label": "CAPEX",
+            "level": 0.0,
+            "unit": "%",
+            "text": "CAPEX: base (unchanged)"
+          }
+        },
+        "is_base": false
+      },
+      {
+        "i": 0,
+        "j": 2,
+        "level_a": -10.0,
+        "level_b": 10.0,
+        "label_a": "\u221210 %",
+        "label_b": "+10 %",
+        "status": "OK",
+        "reason": "",
+        "raw": 0.09974285280405419,
+        "display": "9.97%",
+        "delta": -0.017936927584615348,
+        "delta_display": "-1.79 pp",
+        "delta_pct": null,
+        "threshold_status": "PASS",
+        "inputs": {
+          "A": {
+            "field_id": "revenue.ppa.base_tariff",
+            "original": 50.0,
+            "shocked": 45.0,
+            "driver": "tariff",
+            "label": "PPA / Tariff price",
+            "level": -10.0,
+            "unit": "%",
+            "text": "PPA / Tariff price: 50 \u2192 45"
+          },
+          "B": {
+            "factor": 1.1,
+            "driver": "capex",
+            "label": "CAPEX",
+            "level": 10.0,
+            "unit": "%",
+            "text": "CAPEX: \u00d7 1.1000 on the model inputs"
+          }
+        },
+        "is_base": false
+      },
+      {
+        "i": 1,
+        "j": 2,
+        "level_a": 0.0,
+        "level_b": 10.0,
+        "label_a": "Base",
+        "label_b": "+10 %",
+        "status": "OK",
+        "reason": "",
+        "raw": 0.10701319712117097,
+        "display": "10.70%",
+        "delta": -0.010666583267498572,
+        "delta_display": "-1.07 pp",
+        "delta_pct": null,
+        "threshold_status": "PASS",
+        "inputs": {
+          "A": {
+            "driver": "tariff",
+            "label": "PPA / Tariff price",
+            "level": 0.0,
+            "unit": "%",
+            "text": "PPA / Tariff price: base (unchanged)"
+          },
+          "B": {
+            "factor": 1.1,
+            "driver": "capex",
+            "label": "CAPEX",
+            "level": 10.0,
+            "unit": "%",
+            "text": "CAPEX: \u00d7 1.1000 on the model inputs"
+          }
+        },
+        "is_base": false
+      },
+      {
+        "i": 2,
+        "j": 2,
+        "level_a": 10.0,
+        "level_b": 10.0,
+        "label_a": "+10 %",
+        "label_b": "+10 %",
+        "status": "OK",
+        "reason": "",
+        "raw": 0.11452181982946445,
+        "display": "11.45%",
+        "delta": -0.0031579605592050863,
+        "delta_display": "-0.32 pp",
+        "delta_pct": null,
+        "threshold_status": "PASS",
+        "inputs": {
+          "A": {
+            "field_id": "revenue.ppa.base_tariff",
+            "original": 50.0,
+            "shocked": 55.00000000000001,
+            "driver": "tariff",
+            "label": "PPA / Tariff price",
+            "level": 10.0,
+            "unit": "%",
+            "text": "PPA / Tariff price: 50 \u2192 55"
+          },
+          "B": {
+            "factor": 1.1,
+            "driver": "capex",
+            "label": "CAPEX",
+            "level": 10.0,
+            "unit": "%",
+            "text": "CAPEX: \u00d7 1.1000 on the model inputs"
+          }
+        },
+        "is_base": false
+      }
+    ],
+    "rows": [
+      [
+        {
+          "i": 0,
+          "j": 0,
+          "level_a": -10.0,
+          "level_b": -10.0,
+          "label_a": "\u221210 %",
+          "label_b": "\u221210 %",
+          "status": "OK",
+          "reason": "",
+          "raw": 0.1212767689029633,
+          "display": "12.13%",
+          "delta": 0.0035969885142937558,
+          "delta_display": "+0.36 pp",
+          "delta_pct": null,
+          "threshold_status": "PASS",
+          "inputs": {
+            "A": {
+              "field_id": "revenue.ppa.base_tariff",
+              "original": 50.0,
+              "shocked": 45.0,
+              "driver": "tariff",
+              "label": "PPA / Tariff price",
+              "level": -10.0,
+              "unit": "%",
+              "text": "PPA / Tariff price: 50 \u2192 45"
+            },
+            "B": {
+              "factor": 0.9,
+              "driver": "capex",
+              "label": "CAPEX",
+              "level": -10.0,
+              "unit": "%",
+              "text": "CAPEX: \u00d7 0.9000 on the model inputs"
+            }
+          },
+          "is_base": false
+        },
+        {
+          "i": 1,
+          "j": 0,
+          "level_a": 0.0,
+          "level_b": -10.0,
+          "label_a": "Base",
+          "label_b": "\u221210 %",
+          "status": "OK",
+          "reason": "",
+          "raw": 0.13024966894296178,
+          "display": "13.02%",
+          "delta": 0.012569888554292238,
+          "delta_display": "+1.26 pp",
+          "delta_pct": null,
+          "threshold_status": "PASS",
+          "inputs": {
+            "A": {
+              "driver": "tariff",
+              "label": "PPA / Tariff price",
+              "level": 0.0,
+              "unit": "%",
+              "text": "PPA / Tariff price: base (unchanged)"
+            },
+            "B": {
+              "factor": 0.9,
+              "driver": "capex",
+              "label": "CAPEX",
+              "level": -10.0,
+              "unit": "%",
+              "text": "CAPEX: \u00d7 0.9000 on the model inputs"
+            }
+          },
+          "is_base": false
+        },
+        {
+          "i": 2,
+          "j": 0,
+          "level_a": 10.0,
+          "level_b": -10.0,
+          "label_a": "+10 %",
+          "label_b": "\u221210 %",
+          "status": "OK",
+          "reason": "",
+          "raw": 0.13954346992719963,
+          "display": "13.95%",
+          "delta": 0.021863689538530087,
+          "delta_display": "+2.19 pp",
+          "delta_pct": null,
+          "threshold_status": "PASS",
+          "inputs": {
+            "A": {
+              "field_id": "revenue.ppa.base_tariff",
+              "original": 50.0,
+              "shocked": 55.00000000000001,
+              "driver": "tariff",
+              "label": "PPA / Tariff price",
+              "level": 10.0,
+              "unit": "%",
+              "text": "PPA / Tariff price: 50 \u2192 55"
+            },
+            "B": {
+              "factor": 0.9,
+              "driver": "capex",
+              "label": "CAPEX",
+              "level": -10.0,
+              "unit": "%",
+              "text": "CAPEX: \u00d7 0.9000 on the model inputs"
+            }
+          },
+          "is_base": false
+        }
+      ],
+      [
+        {
+          "i": 0,
+          "j": 1,
+          "level_a": -10.0,
+          "level_b": 0.0,
+          "label_a": "\u221210 %",
+          "label_b": "Base",
+          "status": "OK",
+          "reason": "",
+          "raw": 0.10965108806923843,
+          "display": "10.97%",
+          "delta": -0.00802869231943111,
+          "delta_display": "-0.80 pp",
+          "delta_pct": null,
+          "threshold_status": "PASS",
+          "inputs": {
+            "A": {
+              "field_id": "revenue.ppa.base_tariff",
+              "original": 50.0,
+              "shocked": 45.0,
+              "driver": "tariff",
+              "label": "PPA / Tariff price",
+              "level": -10.0,
+              "unit": "%",
+              "text": "PPA / Tariff price: 50 \u2192 45"
+            },
+            "B": {
+              "driver": "capex",
+              "label": "CAPEX",
+              "level": 0.0,
+              "unit": "%",
+              "text": "CAPEX: base (unchanged)"
+            }
+          },
+          "is_base": false
+        },
+        {
+          "i": 1,
+          "j": 1,
+          "level_a": 0.0,
+          "level_b": 0.0,
+          "label_a": "Base",
+          "label_b": "Base",
+          "status": "OK",
+          "reason": "",
+          "raw": 0.11767978038866954,
+          "display": "11.77%",
+          "delta": 0.0,
+          "delta_display": "+0.00 pp",
+          "delta_pct": null,
+          "threshold_status": "PASS",
+          "inputs": {
+            "A": {
+              "driver": "tariff",
+              "label": "PPA / Tariff price",
+              "level": 0.0,
+              "unit": "%",
+              "text": "PPA / Tariff price: base (unchanged)"
+            },
+            "B": {
+              "driver": "capex",
+              "label": "CAPEX",
+              "level": 0.0,
+              "unit": "%",
+              "text": "CAPEX: base (unchanged)"
+            }
+          },
+          "is_base": true
+        },
+        {
+          "i": 2,
+          "j": 1,
+          "level_a": 10.0,
+          "level_b": 0.0,
+          "label_a": "+10 %",
+          "label_b": "Base",
+          "status": "OK",
+          "reason": "",
+          "raw": 0.12598347499979323,
+          "display": "12.60%",
+          "delta": 0.008303694611123694,
+          "delta_display": "+0.83 pp",
+          "delta_pct": null,
+          "threshold_status": "PASS",
+          "inputs": {
+            "A": {
+              "field_id": "revenue.ppa.base_tariff",
+              "original": 50.0,
+              "shocked": 55.00000000000001,
+              "driver": "tariff",
+              "label": "PPA / Tariff price",
+              "level": 10.0,
+              "unit": "%",
+              "text": "PPA / Tariff price: 50 \u2192 55"
+            },
+            "B": {
+              "driver": "capex",
+              "label": "CAPEX",
+              "level": 0.0,
+              "unit": "%",
+              "text": "CAPEX: base (unchanged)"
+            }
+          },
+          "is_base": false
+        }
+      ],
+      [
+        {
+          "i": 0,
+          "j": 2,
+          "level_a": -10.0,
+          "level_b": 10.0,
+          "label_a": "\u221210 %",
+          "label_b": "+10 %",
+          "status": "OK",
+          "reason": "",
+          "raw": 0.09974285280405419,
+          "display": "9.97%",
+          "delta": -0.017936927584615348,
+          "delta_display": "-1.79 pp",
+          "delta_pct": null,
+          "threshold_status": "PASS",
+          "inputs": {
+            "A": {
+              "field_id": "revenue.ppa.base_tariff",
+              "original": 50.0,
+              "shocked": 45.0,
+              "driver": "tariff",
+              "label": "PPA / Tariff price",
+              "level": -10.0,
+              "unit": "%",
+              "text": "PPA / Tariff price: 50 \u2192 45"
+            },
+            "B": {
+              "factor": 1.1,
+              "driver": "capex",
+              "label": "CAPEX",
+              "level": 10.0,
+              "unit": "%",
+              "text": "CAPEX: \u00d7 1.1000 on the model inputs"
+            }
+          },
+          "is_base": false
+        },
+        {
+          "i": 1,
+          "j": 2,
+          "level_a": 0.0,
+          "level_b": 10.0,
+          "label_a": "Base",
+          "label_b": "+10 %",
+          "status": "OK",
+          "reason": "",
+          "raw": 0.10701319712117097,
+          "display": "10.70%",
+          "delta": -0.010666583267498572,
+          "delta_display": "-1.07 pp",
+          "delta_pct": null,
+          "threshold_status": "PASS",
+          "inputs": {
+            "A": {
+              "driver": "tariff",
+              "label": "PPA / Tariff price",
+              "level": 0.0,
+              "unit": "%",
+              "text": "PPA / Tariff price: base (unchanged)"
+            },
+            "B": {
+              "factor": 1.1,
+              "driver": "capex",
+              "label": "CAPEX",
+              "level": 10.0,
+              "unit": "%",
+              "text": "CAPEX: \u00d7 1.1000 on the model inputs"
+            }
+          },
+          "is_base": false
+        },
+        {
+          "i": 2,
+          "j": 2,
+          "level_a": 10.0,
+          "level_b": 10.0,
+          "label_a": "+10 %",
+          "label_b": "+10 %",
+          "status": "OK",
+          "reason": "",
+          "raw": 0.11452181982946445,
+          "display": "11.45%",
+          "delta": -0.0031579605592050863,
+          "delta_display": "-0.32 pp",
+          "delta_pct": null,
+          "threshold_status": "PASS",
+          "inputs": {
+            "A": {
+              "field_id": "revenue.ppa.base_tariff",
+              "original": 50.0,
+              "shocked": 55.00000000000001,
+              "driver": "tariff",
+              "label": "PPA / Tariff price",
+              "level": 10.0,
+              "unit": "%",
+              "text": "PPA / Tariff price: 50 \u2192 55"
+            },
+            "B": {
+              "factor": 1.1,
+              "driver": "capex",
+              "label": "CAPEX",
+              "level": 10.0,
+              "unit": "%",
+              "text": "CAPEX: \u00d7 1.1000 on the model inputs"
+            }
+          },
+          "is_base": false
+        }
+      ]
+    ],
+    "brackets": [],
+    "counts": {
+      "OK": 9,
+      "FAILED": 0,
+      "UNAVAILABLE": 0
+    },
+    "threshold_counts": {
+      "PASS": 9,
+      "FAIL": 0,
+      "UNAVAILABLE": 0,
+      "NOT_SET": 0
+    }
+  },
+  "run": {
+    "evaluations": 9,
+    "cells": 9,
+    "seconds": 18.99,
+    "base_reused_from_zero_cell": true,
+    "scenario": "Base Case",
+    "scenario_id": "",
+    "basis_hash": "679ecb5a2665",
+    "ephemeral": true,
+    "writes_nothing": true,
+    "is_a_run": false,
+    "completed": 9,
+    "failed": 0,
+    "unavailable": 0
+  },
+  "provenance": "Each cell is the original run_project result with BOTH shocks applied to the inputs; single-driver deltas are never added and nothing was saved."
+}

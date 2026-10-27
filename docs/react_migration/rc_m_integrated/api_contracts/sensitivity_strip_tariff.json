@@ -1,0 +1,546 @@
+{
+  "ok": true,
+  "kind": "strip",
+  "vertical": {
+    "key": "solar",
+    "public_name": "Solar",
+    "pilot_tier": "PILOT_CANDIDATE",
+    "limitations": [
+      "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration.",
+      "Portfolio-level analysis remains experimental relative to the core single-project engine."
+    ]
+  },
+  "driver": {
+    "key": "tariff",
+    "label": "PPA / Tariff price",
+    "unit": "%",
+    "mode": "pct",
+    "default_levels": [
+      {
+        "value": -20,
+        "label": "\u221220 %"
+      },
+      {
+        "value": -10,
+        "label": "\u221210 %"
+      },
+      {
+        "value": 0,
+        "label": "Base"
+      },
+      {
+        "value": 10,
+        "label": "+10 %"
+      },
+      {
+        "value": 20,
+        "label": "+20 %"
+      }
+    ],
+    "default_levels_3": [
+      {
+        "value": -10,
+        "label": "\u221210 %"
+      },
+      {
+        "value": 0.0,
+        "label": "Base"
+      },
+      {
+        "value": 10,
+        "label": "+10 %"
+      }
+    ],
+    "max_abs_level": 50
+  },
+  "levels": [
+    {
+      "value": -20.0,
+      "label": "\u221220 %"
+    },
+    {
+      "value": -10.0,
+      "label": "\u221210 %"
+    },
+    {
+      "value": 0.0,
+      "label": "Base"
+    },
+    {
+      "value": 10.0,
+      "label": "+10 %"
+    },
+    {
+      "value": 20.0,
+      "label": "+20 %"
+    }
+  ],
+  "columns": [
+    {
+      "key": "project_irr",
+      "label": "Project IRR",
+      "unit": "%",
+      "fmt": "pct"
+    },
+    {
+      "key": "equity_irr",
+      "label": "Pure Equity IRR",
+      "unit": "%",
+      "fmt": "pct"
+    },
+    {
+      "key": "sponsor_irr",
+      "label": "Total Sponsor IRR",
+      "unit": "%",
+      "fmt": "pct"
+    },
+    {
+      "key": "min_dscr",
+      "label": "Min DSCR",
+      "unit": "x",
+      "fmt": "ratio"
+    },
+    {
+      "key": "avg_dscr",
+      "label": "Avg DSCR",
+      "unit": "x",
+      "fmt": "ratio"
+    },
+    {
+      "key": "min_llcr",
+      "label": "Min LLCR",
+      "unit": "x",
+      "fmt": "ratio"
+    },
+    {
+      "key": "project_npv_keur",
+      "label": "Project NPV",
+      "unit": "kEUR",
+      "fmt": "keur"
+    },
+    {
+      "key": "equity_npv_keur",
+      "label": "Equity NPV",
+      "unit": "kEUR",
+      "fmt": "keur"
+    },
+    {
+      "key": "sponsor_moic",
+      "label": "Total Sponsor MOIC",
+      "unit": "x",
+      "fmt": "ratio"
+    }
+  ],
+  "rows": [
+    {
+      "index": 0,
+      "level": -20.0,
+      "label": "\u221220 %",
+      "is_base": false,
+      "status": "OK",
+      "reason": "",
+      "input": {
+        "text": "PPA / Tariff price: 50 \u2192 40",
+        "original": 50.0,
+        "shocked": 40.0,
+        "unit": "%"
+      },
+      "values": {
+        "project_irr": {
+          "raw": 0.10190487055479469,
+          "display": "10.19%",
+          "delta": -0.015774909833874848,
+          "delta_display": "-1.58 pp"
+        },
+        "equity_irr": {
+          "raw": 0.2738682877157684,
+          "display": "27.39%",
+          "delta": -0.06850824540403239,
+          "delta_display": "-6.85 pp"
+        },
+        "sponsor_irr": {
+          "raw": 0.14655165279043508,
+          "display": "14.66%",
+          "delta": -0.021639990395844966,
+          "delta_display": "-2.16 pp"
+        },
+        "min_dscr": {
+          "raw": 1.1504128582876931,
+          "display": "1.15x",
+          "delta": -0.12464905239974078,
+          "delta_display": "-0.125x"
+        },
+        "avg_dscr": {
+          "raw": 1.3971936978665913,
+          "display": "1.40x",
+          "delta": 0.04675593581462145,
+          "delta_display": "+0.047x"
+        },
+        "min_llcr": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "project_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "equity_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "sponsor_moic": {
+          "raw": 8.620118002773761,
+          "display": "8.62x",
+          "delta": -1.27383750951096,
+          "delta_display": "-1.274x"
+        }
+      }
+    },
+    {
+      "index": 1,
+      "level": -10.0,
+      "label": "\u221210 %",
+      "is_base": false,
+      "status": "OK",
+      "reason": "",
+      "input": {
+        "text": "PPA / Tariff price: 50 \u2192 45",
+        "original": 50.0,
+        "shocked": 45.0,
+        "unit": "%"
+      },
+      "values": {
+        "project_irr": {
+          "raw": 0.10965108806923843,
+          "display": "10.97%",
+          "delta": -0.00802869231943111,
+          "delta_display": "-0.80 pp"
+        },
+        "equity_irr": {
+          "raw": 0.3080236567862049,
+          "display": "30.80%",
+          "delta": -0.03435287633359585,
+          "delta_display": "-3.44 pp"
+        },
+        "sponsor_irr": {
+          "raw": 0.15669971467946142,
+          "display": "15.67%",
+          "delta": -0.011491928506818627,
+          "delta_display": "-1.15 pp"
+        },
+        "min_dscr": {
+          "raw": 1.1389278504614997,
+          "display": "1.14x",
+          "delta": -0.13613406022593422,
+          "delta_display": "-0.136x"
+        },
+        "avg_dscr": {
+          "raw": 1.3219455830832851,
+          "display": "1.32x",
+          "delta": -0.028492178968684723,
+          "delta_display": "-0.028x"
+        },
+        "min_llcr": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "project_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "equity_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "sponsor_moic": {
+          "raw": 9.224661254524795,
+          "display": "9.22x",
+          "delta": -0.6692942577599261,
+          "delta_display": "-0.669x"
+        }
+      }
+    },
+    {
+      "index": 2,
+      "level": 0.0,
+      "label": "Base",
+      "is_base": true,
+      "status": "OK",
+      "reason": "",
+      "input": {
+        "text": "PPA / Tariff price: base (unchanged)",
+        "original": null,
+        "shocked": null,
+        "unit": "%"
+      },
+      "values": {
+        "project_irr": {
+          "raw": 0.11767978038866954,
+          "display": "11.77%",
+          "delta": 0.0,
+          "delta_display": "+0.00 pp"
+        },
+        "equity_irr": {
+          "raw": 0.34237653311980076,
+          "display": "34.24%",
+          "delta": 0.0,
+          "delta_display": "+0.00 pp"
+        },
+        "sponsor_irr": {
+          "raw": 0.16819164318628005,
+          "display": "16.82%",
+          "delta": 0.0,
+          "delta_display": "+0.00 pp"
+        },
+        "min_dscr": {
+          "raw": 1.275061910687434,
+          "display": "1.28x",
+          "delta": 0.0,
+          "delta_display": "+0.000x"
+        },
+        "avg_dscr": {
+          "raw": 1.3504377620519699,
+          "display": "1.35x",
+          "delta": 0.0,
+          "delta_display": "+0.000x"
+        },
+        "min_llcr": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "project_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "equity_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "sponsor_moic": {
+          "raw": 9.893955512284721,
+          "display": "9.89x",
+          "delta": 0.0,
+          "delta_display": "+0.000x"
+        }
+      }
+    },
+    {
+      "index": 3,
+      "level": 10.0,
+      "label": "+10 %",
+      "is_base": false,
+      "status": "OK",
+      "reason": "",
+      "input": {
+        "text": "PPA / Tariff price: 50 \u2192 55",
+        "original": 50.0,
+        "shocked": 55.00000000000001,
+        "unit": "%"
+      },
+      "values": {
+        "project_irr": {
+          "raw": 0.12598347499979323,
+          "display": "12.60%",
+          "delta": 0.008303694611123694,
+          "delta_display": "+0.83 pp"
+        },
+        "equity_irr": {
+          "raw": 0.3836349108612034,
+          "display": "38.36%",
+          "delta": 0.04125837774140262,
+          "delta_display": "+4.13 pp"
+        },
+        "sponsor_irr": {
+          "raw": 0.17896066459061166,
+          "display": "17.90%",
+          "delta": 0.010769021404331613,
+          "delta_display": "+1.08 pp"
+        },
+        "min_dscr": {
+          "raw": 1.2782271561001626,
+          "display": "1.28x",
+          "delta": 0.0031652454127286678,
+          "delta_display": "+0.003x"
+        },
+        "avg_dscr": {
+          "raw": 1.3406580993113353,
+          "display": "1.34x",
+          "delta": -0.009779662740634576,
+          "delta_display": "-0.010x"
+        },
+        "min_llcr": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "project_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "equity_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "sponsor_moic": {
+          "raw": 10.366987211698241,
+          "display": "10.37x",
+          "delta": 0.47303169941351975,
+          "delta_display": "+0.473x"
+        }
+      }
+    },
+    {
+      "index": 4,
+      "level": 20.0,
+      "label": "+20 %",
+      "is_base": false,
+      "status": "OK",
+      "reason": "",
+      "input": {
+        "text": "PPA / Tariff price: 50 \u2192 60",
+        "original": 50.0,
+        "shocked": 60.0,
+        "unit": "%"
+      },
+      "values": {
+        "project_irr": {
+          "raw": 0.13455167992526318,
+          "display": "13.46%",
+          "delta": 0.01687189953659364,
+          "delta_display": "+1.69 pp"
+        },
+        "equity_irr": {
+          "raw": 0.4273312053203642,
+          "display": "42.73%",
+          "delta": 0.08495467220056346,
+          "delta_display": "+8.50 pp"
+        },
+        "sponsor_irr": {
+          "raw": 0.190397780020097,
+          "display": "19.04%",
+          "delta": 0.022206136833816947,
+          "delta_display": "+2.22 pp"
+        },
+        "min_dscr": {
+          "raw": 1.2810866781901191,
+          "display": "1.28x",
+          "delta": 0.006024767502685213,
+          "delta_display": "+0.006x"
+        },
+        "avg_dscr": {
+          "raw": 1.328456777540257,
+          "display": "1.33x",
+          "delta": -0.02198098451171293,
+          "delta_display": "-0.022x"
+        },
+        "min_llcr": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "project_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "equity_npv_keur": {
+          "raw": null,
+          "display": "\u2014",
+          "delta": null,
+          "delta_display": "\u2014"
+        },
+        "sponsor_moic": {
+          "raw": 10.825614336990297,
+          "display": "10.83x",
+          "delta": 0.9316588247055755,
+          "delta_display": "+0.932x"
+        }
+      }
+    }
+  ],
+  "base": {
+    "status": "OK",
+    "reason": "",
+    "values": {
+      "project_irr": {
+        "raw": 0.11767978038866954,
+        "display": "11.77%"
+      },
+      "equity_irr": {
+        "raw": 0.34237653311980076,
+        "display": "34.24%"
+      },
+      "sponsor_irr": {
+        "raw": 0.16819164318628005,
+        "display": "16.82%"
+      },
+      "min_dscr": {
+        "raw": 1.275061910687434,
+        "display": "1.28x"
+      },
+      "avg_dscr": {
+        "raw": 1.3504377620519699,
+        "display": "1.35x"
+      },
+      "min_llcr": {
+        "raw": null,
+        "display": "\u2014"
+      },
+      "project_npv_keur": {
+        "raw": null,
+        "display": "\u2014"
+      },
+      "equity_npv_keur": {
+        "raw": null,
+        "display": "\u2014"
+      },
+      "sponsor_moic": {
+        "raw": 9.893955512284721,
+        "display": "9.89x"
+      }
+    }
+  },
+  "counts": {
+    "OK": 5,
+    "FAILED": 0,
+    "UNAVAILABLE": 0
+  },
+  "run": {
+    "evaluations": 5,
+    "cells": 5,
+    "seconds": 11.86,
+    "base_reused_from_zero_cell": true,
+    "scenario": "Base Case",
+    "scenario_id": "",
+    "basis_hash": "679ecb5a2665",
+    "ephemeral": true,
+    "writes_nothing": true,
+    "is_a_run": false
+  },
+  "provenance": "Each row is the original run_project result for the Working Copy draft with only this driver shocked; nothing is interpolated and nothing was saved."
+}

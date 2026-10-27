@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "applied": true,
+  "field_id": "revenue.ppa.base_tariff",
+  "value": "53.046875",
+  "content_hash": "<redacted>",
+  "workbook_version": "2.3.0",
+  "run_state": "STALE",
+  "message": "Applied to the Working Copy. The Last Run is now STALE \u2014 press Run to make it canonical. Goal Seek candidate runs never wrote Run History or Last Run."
+}

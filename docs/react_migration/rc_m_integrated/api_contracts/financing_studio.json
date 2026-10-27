@@ -1,0 +1,3134 @@
+{
+  "ok": true,
+  "project": {
+    "code": "contract-solar",
+    "protected_reference": false
+  },
+  "editable": true,
+  "freshness": "CURRENT",
+  "identity": {
+    "content_hash": "<redacted>",
+    "workbook_version": "2.3.0",
+    "scenario_id": null,
+    "scenario_name": null
+  },
+  "save": {
+    "field_id": "debt.bankability.configuration",
+    "tokens_from": "/v2/model-react/fields/debt"
+  },
+  "bankability": {
+    "available": true,
+    "config": {},
+    "lender": "P90-10y",
+    "renewable": true,
+    "mode": "flat_dscr_sculpted",
+    "day_count": "act_360",
+    "fees_editable": true,
+    "reserve_editable": true,
+    "automatic_reserve": false,
+    "fees": {
+      "commitment_pct": 1.05,
+      "structuring_pct": 1.0,
+      "arrangement_pct": 0.0
+    },
+    "periods": [
+      {
+        "number": 1,
+        "index": 3,
+        "start": "2031-03-01",
+        "end": "2031-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 2,
+        "index": 4,
+        "start": "2031-06-30",
+        "end": "2031-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 3,
+        "index": 5,
+        "start": "2031-12-31",
+        "end": "2032-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 4,
+        "index": 6,
+        "start": "2032-06-30",
+        "end": "2032-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 5,
+        "index": 7,
+        "start": "2032-12-31",
+        "end": "2033-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 6,
+        "index": 8,
+        "start": "2033-06-30",
+        "end": "2033-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 7,
+        "index": 9,
+        "start": "2033-12-31",
+        "end": "2034-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 8,
+        "index": 10,
+        "start": "2034-06-30",
+        "end": "2034-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 9,
+        "index": 11,
+        "start": "2034-12-31",
+        "end": "2035-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 10,
+        "index": 12,
+        "start": "2035-06-30",
+        "end": "2035-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 11,
+        "index": 13,
+        "start": "2035-12-31",
+        "end": "2036-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 12,
+        "index": 14,
+        "start": "2036-06-30",
+        "end": "2036-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 13,
+        "index": 15,
+        "start": "2036-12-31",
+        "end": "2037-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 14,
+        "index": 16,
+        "start": "2037-06-30",
+        "end": "2037-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 15,
+        "index": 17,
+        "start": "2037-12-31",
+        "end": "2038-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 16,
+        "index": 18,
+        "start": "2038-06-30",
+        "end": "2038-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 17,
+        "index": 19,
+        "start": "2038-12-31",
+        "end": "2039-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 18,
+        "index": 20,
+        "start": "2039-06-30",
+        "end": "2039-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 19,
+        "index": 21,
+        "start": "2039-12-31",
+        "end": "2040-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 20,
+        "index": 22,
+        "start": "2040-06-30",
+        "end": "2040-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 21,
+        "index": 23,
+        "start": "2040-12-31",
+        "end": "2041-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 22,
+        "index": 24,
+        "start": "2041-06-30",
+        "end": "2041-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 23,
+        "index": 25,
+        "start": "2041-12-31",
+        "end": "2042-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 24,
+        "index": 26,
+        "start": "2042-06-30",
+        "end": "2042-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 25,
+        "index": 27,
+        "start": "2042-12-31",
+        "end": "2043-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 26,
+        "index": 28,
+        "start": "2043-06-30",
+        "end": "2043-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 27,
+        "index": 29,
+        "start": "2043-12-31",
+        "end": "2044-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 28,
+        "index": 30,
+        "start": "2044-06-30",
+        "end": "2044-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 29,
+        "index": 31,
+        "start": "2044-12-31",
+        "end": "2045-06-30",
+        "target": 1.2,
+        "rate_pct": 5.5
+      },
+      {
+        "number": 30,
+        "index": 32,
+        "start": "2045-06-30",
+        "end": "2045-12-31",
+        "target": 1.2,
+        "rate_pct": 5.5
+      }
+    ],
+    "scalar_target": 1.2
+  },
+  "senior_pricing_mode": "FLAT",
+  "senior_dscr_mode": "FLAT_SCALAR",
+  "debt_actual_senior_keur_display": "10,554.85 kEUR",
+  "debt_actual_gearing_pct_display": "75.00%",
+  "financing_evidence": {
+    "metrics": [
+      {
+        "label": "Actual sized Senior debt",
+        "value": 10554.850671146429,
+        "display": "10,554.85 kEUR",
+        "source": "RuntimeResult.runtime_summary.senior_debt_keur",
+        "reason": ""
+      },
+      {
+        "label": "Actual gearing (Last Run)",
+        "value": 0.75,
+        "display": "75.00%",
+        "source": "RuntimeResult.runtime_summary.actual_gearing_pct",
+        "reason": ""
+      },
+      {
+        "label": "Gearing cap (Last Run)",
+        "value": 0.75,
+        "display": "75.00%",
+        "source": "RuntimeResult.runtime_summary.gearing_cap_pct",
+        "reason": ""
+      },
+      {
+        "label": "Target DSCR (Last Run)",
+        "value": 1.2,
+        "display": "1.20x",
+        "source": "RuntimeResult.debt_schedule.summary.target_dscr",
+        "reason": ""
+      },
+      {
+        "label": "Minimum DSCR",
+        "value": 1.28,
+        "display": "1.28x",
+        "source": "RuntimeResult.debt_schedule.summary.actual_min_dscr",
+        "reason": ""
+      },
+      {
+        "label": "Average DSCR",
+        "value": 1.36,
+        "display": "1.36x",
+        "source": "RuntimeResult.debt_schedule.summary.actual_avg_dscr",
+        "reason": ""
+      },
+      {
+        "label": "Minimum LLCR",
+        "value": null,
+        "display": "Not available",
+        "source": "RuntimeResult.debt_schedule.summary.min_llcr",
+        "reason": "No LLCR value or typed unavailability reason is exposed in this persisted debt summary."
+      }
+    ],
+    "cash_rows": [
+      {
+        "period": 0,
+        "date": "2030-07-01",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 1,
+        "date": "2031-01-01",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 2,
+        "date": "2031-03-01",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 3,
+        "date": "2031-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 602.06,
+          "display": "602.06 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 447.41,
+          "display": "447.41 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 4,
+        "date": "2031-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 845.6,
+          "display": "845.60 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 656.93,
+          "display": "656.93 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 5,
+        "date": "2032-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 909.65,
+          "display": "909.65 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 675.97,
+          "display": "675.97 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 6,
+        "date": "2032-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 829.94,
+          "display": "829.94 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 649.9,
+          "display": "649.90 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 7,
+        "date": "2033-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 921.27,
+          "display": "921.27 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 684.57,
+          "display": "684.57 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 8,
+        "date": "2033-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 828.2,
+          "display": "828.20 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 647.56,
+          "display": "647.56 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 9,
+        "date": "2034-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 935.62,
+          "display": "935.62 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 695.21,
+          "display": "695.21 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 10,
+        "date": "2034-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 823.7,
+          "display": "823.70 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 643.13,
+          "display": "643.13 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 11,
+        "date": "2035-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 950.2,
+          "display": "950.20 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 706.01,
+          "display": "706.01 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 12,
+        "date": "2035-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 818.38,
+          "display": "818.38 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 638.01,
+          "display": "638.01 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 13,
+        "date": "2036-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 967.68,
+          "display": "967.68 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 718.97,
+          "display": "718.97 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 14,
+        "date": "2036-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 751.68,
+          "display": "751.68 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 581.96,
+          "display": "581.96 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 15,
+        "date": "2037-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 980.03,
+          "display": "980.03 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 728.12,
+          "display": "728.12 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 16,
+        "date": "2037-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 748.27,
+          "display": "748.27 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 578.17,
+          "display": "578.17 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 17,
+        "date": "2038-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 995.3,
+          "display": "995.30 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 739.43,
+          "display": "739.43 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 18,
+        "date": "2038-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 741.67,
+          "display": "741.67 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 571.95,
+          "display": "571.95 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 19,
+        "date": "2039-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1010.8,
+          "display": "1,010.80 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 750.91,
+          "display": "750.91 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 20,
+        "date": "2039-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 734.32,
+          "display": "734.32 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 565.09,
+          "display": "565.09 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 21,
+        "date": "2040-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1029.39,
+          "display": "1,029.39 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 764.69,
+          "display": "764.69 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 22,
+        "date": "2040-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 723.37,
+          "display": "723.37 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 555.48,
+          "display": "555.48 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 23,
+        "date": "2041-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1042.52,
+          "display": "1,042.52 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 774.41,
+          "display": "774.41 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 24,
+        "date": "2041-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 826.9,
+          "display": "826.90 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 357.43,
+          "display": "357.43 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 774.41,
+          "display": "774.41 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 25,
+        "date": "2042-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1205.27,
+          "display": "1,205.27 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 26,
+        "date": "2042-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 790.59,
+          "display": "790.59 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 27,
+        "date": "2043-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1224.09,
+          "display": "1,224.09 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 28,
+        "date": "2043-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 800.23,
+          "display": "800.23 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 29,
+        "date": "2044-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1246.65,
+          "display": "1,246.65 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 30,
+        "date": "2044-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 806.56,
+          "display": "806.56 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 31,
+        "date": "2045-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1262.6,
+          "display": "1,262.60 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 32,
+        "date": "2045-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 819.96,
+          "display": "819.96 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 33,
+        "date": "2046-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1282.3,
+          "display": "1,282.30 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 34,
+        "date": "2046-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 818.23,
+          "display": "818.23 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 35,
+        "date": "2047-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1302.31,
+          "display": "1,302.31 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 36,
+        "date": "2047-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 790.92,
+          "display": "790.92 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 37,
+        "date": "2048-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1326.31,
+          "display": "1,326.31 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 38,
+        "date": "2048-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 786.68,
+          "display": "786.68 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 39,
+        "date": "2049-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1343.27,
+          "display": "1,343.27 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 40,
+        "date": "2049-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 800.93,
+          "display": "800.93 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 41,
+        "date": "2050-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1364.22,
+          "display": "1,364.22 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 42,
+        "date": "2050-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 811.67,
+          "display": "811.67 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 43,
+        "date": "2051-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1385.5,
+          "display": "1,385.50 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 44,
+        "date": "2051-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 822.58,
+          "display": "822.58 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 45,
+        "date": "2052-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1411.02,
+          "display": "1,411.02 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 46,
+        "date": "2052-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 829.74,
+          "display": "829.74 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 47,
+        "date": "2053-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1429.06,
+          "display": "1,429.06 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 48,
+        "date": "2053-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 844.89,
+          "display": "844.89 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 49,
+        "date": "2054-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1451.35,
+          "display": "1,451.35 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 50,
+        "date": "2054-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 856.31,
+          "display": "856.31 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 51,
+        "date": "2055-06-30",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 1473.98,
+          "display": "1,473.98 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      },
+      {
+        "period": 52,
+        "date": "2055-12-31",
+        "cfads": {
+          "label": "CFADS to Senior",
+          "value": 869.67,
+          "display": "869.67 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.fcf_banks_keur",
+          "reason": ""
+        },
+        "service": {
+          "label": "Senior debt service cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.senior_total_ds_keur",
+          "reason": ""
+        },
+        "funding": {
+          "label": "DSRA funding cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_funding_keur",
+          "reason": ""
+        },
+        "release": {
+          "label": "DSRA release cash",
+          "value": 0.0,
+          "display": "0.00 kEUR",
+          "source": "RuntimeResult.financial_statements.pf_cash_waterfall.periods.dsra_release_keur",
+          "reason": ""
+        }
+      }
+    ],
+    "sizing_status": "Not available",
+    "sizing_reason": "Binding constraints and the sizing/sculpting verdict are not persisted in this presentation contract. Review financial integrity separately."
+  },
+  "reserve_view": {
+    "support": "No reserve support",
+    "target": "Fixed reserve requirement",
+    "months": 6,
+    "requirement": {
+      "label": "Configured reserve requirement",
+      "value": 0.0,
+      "display": "0.00 kEUR",
+      "source": "Working ProjectInputs.financing.debt_service_reserve_requirement_keur",
+      "reason": ""
+    },
+    "facility": {
+      "label": "Reserve facility commitment",
+      "value": 0.0,
+      "display": "0.00 kEUR",
+      "source": "Working ProjectInputs.financing.dsrf_commitment_keur",
+      "reason": ""
+    }
+  },
+  "sponsor_view": {
+    "mode": "Share capital, then shareholder loan",
+    "equity": [
+      {
+        "label": "Share capital",
+        "value": 500.0,
+        "display": "500.00 kEUR",
+        "source": "Working ProjectInputs.financing.share_capital_keur",
+        "reason": ""
+      },
+      {
+        "label": "Share premium",
+        "value": 0.0,
+        "display": "0.00 kEUR",
+        "source": "Working ProjectInputs.financing.share_premium_keur",
+        "reason": ""
+      },
+      {
+        "label": "Other equity before SHL",
+        "value": 0.0,
+        "display": "0.00 kEUR",
+        "source": "Working ProjectInputs.financing.other_equity_funding_before_shl_keur",
+        "reason": ""
+      }
+    ],
+    "other": [
+      {
+        "label": "Junior / other project funding",
+        "value": 0.0,
+        "display": "0.00 kEUR",
+        "source": "Working ProjectInputs.financing.junior_or_other_project_funding_keur",
+        "reason": ""
+      }
+    ],
+    "shl": [
+      {
+        "label": "SHL interest rate",
+        "value": 0.08,
+        "display": "8.00%",
+        "source": "Working ProjectInputs.financing.shl_rate",
+        "reason": ""
+      }
+    ],
+    "repayment": "Cash sweep",
+    "day_count": "Actual period days / calendar-year days",
+    "eligibility": 33,
+    "maturity": 52,
+    "returns": [
+      {
+        "label": "Pure Equity IRR",
+        "value": 0.36684683905854065,
+        "display": "36.68%",
+        "source": "RuntimeResult.runtime_summary.equity_irr",
+        "reason": ""
+      },
+      {
+        "label": "Total Sponsor IRR",
+        "value": 0.17456866229208087,
+        "display": "17.46%",
+        "source": "RuntimeResult.sponsor_schedule.summary.total_sponsor_xirr",
+        "reason": ""
+      },
+      {
+        "label": "Pure Equity MOIC",
+        "value": 57.95338243376443,
+        "display": "57.95x",
+        "source": "RuntimeResult.sponsor_schedule.summary.pure_equity_moic",
+        "reason": ""
+      },
+      {
+        "label": "Total Sponsor MOIC",
+        "value": 10.180131551525845,
+        "display": "10.18x",
+        "source": "RuntimeResult.sponsor_schedule.summary.total_sponsor_moic",
+        "reason": ""
+      }
+    ]
+  },
+  "senior_detail_rows": [
+    [
+      "Max. gearing cap",
+      "75.00%"
+    ],
+    [
+      "All-in interest rate",
+      "5.50%"
+    ],
+    [
+      "Base rate",
+      "3.00%"
+    ],
+    [
+      "Margin",
+      "250 bps"
+    ],
+    [
+      "Commitment fee",
+      "1.05%"
+    ],
+    [
+      "Arrangement fee",
+      "0.00%"
+    ],
+    [
+      "Structuring fee",
+      "1.00%"
+    ],
+    [
+      "Lock-up DSCR",
+      "1.10x"
+    ],
+    [
+      "Minimum LLCR",
+      "1.15x"
+    ],
+    [
+      "Amortization",
+      "sculpted"
+    ],
+    [
+      "DSRA coverage",
+      "6 months"
+    ]
+  ],
+  "senior_lock_reason": "",
+  "capital_stack": {
+    "available": true,
+    "status": "DRAFT",
+    "scope": "base",
+    "rows": [
+      {
+        "instrument_id": "senior-1f452b74ce3055058c6b8f4ae4f2503e",
+        "name": "Senior A",
+        "type": "Senior term loan",
+        "rank": "Senior \u00b7 pari passu",
+        "junior": false,
+        "editable": true,
+        "commitment_keur": 0.0,
+        "currency": "EUR",
+        "rate_type": "Fixed",
+        "rate_pct": 0.0,
+        "day_count": "Actual / 360",
+        "repayment_mode": "LEVEL_PRINCIPAL",
+        "repayment": "Level principal",
+        "grace_months": 0,
+        "maturity_date": "2035-12-31",
+        "draws": [
+          {
+            "date": "2030-01-01",
+            "amount_keur": 0.0
+          }
+        ],
+        "draws_total_keur": 0.0,
+        "upfront_pct": 0.0,
+        "commitment_fee_pct": 0.0,
+        "status": "DRAFT",
+        "executable": false,
+        "readiness": null
+      },
+      {
+        "instrument_id": "senior-60052a2fbe62503ba93da594fdf59184",
+        "name": "Senior B",
+        "type": "Senior term loan",
+        "rank": "Senior \u00b7 pari passu",
+        "junior": false,
+        "editable": true,
+        "commitment_keur": 0.0,
+        "currency": "EUR",
+        "rate_type": "Fixed",
+        "rate_pct": 0.0,
+        "day_count": "Actual / 360",
+        "repayment_mode": "LEVEL_PRINCIPAL",
+        "repayment": "Level principal",
+        "grace_months": 0,
+        "maturity_date": "2040-12-31",
+        "draws": [
+          {
+            "date": "2030-07-01",
+            "amount_keur": 0.0
+          }
+        ],
+        "draws_total_keur": 0.0,
+        "upfront_pct": 0.0,
+        "commitment_fee_pct": 0.0,
+        "status": "DRAFT",
+        "executable": false,
+        "readiness": null
+      }
+    ],
+    "working": {
+      "senior_commitments_keur": 0.0,
+      "junior_commitments_keur": 0,
+      "scheduled_draws_keur": 0.0,
+      "reconciled": true,
+      "facility_count": 2,
+      "junior_present": false
+    },
+    "last_run": null,
+    "run_state": "CURRENT",
+    "last_run_is_current": true,
+    "last_run_label": "LAST RUN \u00b7 CURRENT",
+    "unsupported": [
+      {
+        "name": "Junior / subordinated term loan",
+        "reason": "Junior financing is not released for execution; no proposal is calculated.",
+        "status": "UNSUPPORTED"
+      },
+      {
+        "name": "Mezzanine / PIK instrument",
+        "reason": "PIK and mezzanine accrual have no engine authority.",
+        "status": "UNSUPPORTED"
+      },
+      {
+        "name": "Third or further senior facility",
+        "reason": "Exactly two Senior term loans are supported.",
+        "status": "UNSUPPORTED"
+      },
+      {
+        "name": "Floating-rate / benchmark facility",
+        "reason": "Only fixed contractual cash interest is supported.",
+        "status": "UNSUPPORTED"
+      },
+      {
+        "name": "DSRA / debt service reserve facility",
+        "reason": "Reserve integration is not released; reserve support must be NONE.",
+        "status": "UNSUPPORTED"
+      },
+      {
+        "name": "Active shareholder loan alongside instruments",
+        "reason": "Residual funding is equity only in this mode.",
+        "status": "UNSUPPORTED"
+      }
+    ],
+    "debt_service_priority": "Pari passu between Senior facilities; no subordination configured.",
+    "release_enabled": true,
+    "junior_activation_closed": true,
+    "junior_policy": null
+  },
+  "multisenior": {
+    "available": true,
+    "active": false,
+    "scope": "base"
+  },
+  "sources_uses": {
+    "available": true,
+    "view": {
+      "run_kind": "LAST_RUN",
+      "freshness": "CURRENT",
+      "has_run": true,
+      "has_financing_evidence": true,
+      "legacy_financing": false,
+      "sources": [
+        {
+          "label": "Senior debt (actual sized)",
+          "value": 10554.850671146429,
+          "display": "10,554.85",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.senior_debt_keur",
+          "reason": ""
+        },
+        {
+          "label": "Junior / other project financing",
+          "value": 0.0,
+          "display": "0.00",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.junior_or_other_keur",
+          "reason": ""
+        },
+        {
+          "label": "Share capital and other equity (aggregate)",
+          "value": 500.0,
+          "display": "500.00",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.share_capital_and_other_equity_keur",
+          "reason": ""
+        },
+        {
+          "label": "Shareholder loan cash principal",
+          "value": 3018.2835570488096,
+          "display": "3,018.28",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.shareholder_loan_cash_keur",
+          "reason": ""
+        }
+      ],
+      "uses": [
+        {
+          "label": "Hard project CAPEX",
+          "value": 12890.625,
+          "display": "12,890.62",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.base_project_capex_keur",
+          "reason": ""
+        },
+        {
+          "label": "Capitalised IDC (incl. VAT IDC)",
+          "value": 212.60759497484042,
+          "display": "212.61",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.capitalized_idc_keur",
+          "reason": ""
+        },
+        {
+          "label": "Commitment fees (incl. VAT fees)",
+          "value": 89.93959728949585,
+          "display": "89.94",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.commitment_fee_keur",
+          "reason": ""
+        },
+        {
+          "label": "Structuring / bank fees",
+          "value": 105.54850671146428,
+          "display": "105.55",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.structuring_fee_keur",
+          "reason": ""
+        },
+        {
+          "label": "Other financing costs",
+          "value": 0.0,
+          "display": "0.00",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.other_financing_costs_keur",
+          "reason": ""
+        },
+        {
+          "label": "Initial cash DSRA funding",
+          "value": 774.4135292197532,
+          "display": "774.41",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.initial_dsra_funding_keur",
+          "reason": ""
+        },
+        {
+          "label": "Developer cost reimbursement",
+          "value": 0.0,
+          "display": "0.00",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.development_cost_reimbursement_keur",
+          "reason": ""
+        },
+        {
+          "label": "Developer fee",
+          "value": 0.0,
+          "display": "0.00",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.developer_fee_keur",
+          "reason": ""
+        },
+        {
+          "label": "Other project uses",
+          "value": 0.0,
+          "display": "0.00",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.other_uses_keur",
+          "reason": ""
+        }
+      ],
+      "working": [
+        {
+          "label": "Hard CAPEX input (not Total Project Uses)",
+          "value": null,
+          "display": "Unavailable",
+          "authority": "Current typed ProjectInputs.capex.hard_capex_keur",
+          "reason": "Not persisted in this evidence."
+        },
+        {
+          "label": "Requested gearing ratio",
+          "value": null,
+          "display": "Unavailable",
+          "authority": "Current typed ProjectInputs.financing.gearing_ratio",
+          "reason": "Not persisted in this evidence."
+        },
+        {
+          "label": "Configured senior amount (not sized debt)",
+          "value": null,
+          "display": "Unavailable",
+          "authority": "Current typed ProjectInputs.financing.senior_debt_amount_keur",
+          "reason": "Not persisted in this evidence."
+        },
+        {
+          "label": "Share capital configuration",
+          "value": null,
+          "display": "Unavailable",
+          "authority": "Current typed ProjectInputs.financing.share_capital_keur",
+          "reason": "Not persisted in this evidence."
+        },
+        {
+          "label": "Share premium configuration",
+          "value": null,
+          "display": "Unavailable",
+          "authority": "Current typed ProjectInputs.financing.share_premium_keur",
+          "reason": "Not persisted in this evidence."
+        },
+        {
+          "label": "Other committed equity configuration",
+          "value": null,
+          "display": "Unavailable",
+          "authority": "Current typed ProjectInputs.financing.other_equity_funding_before_shl_keur",
+          "reason": "Not persisted in this evidence."
+        },
+        {
+          "label": "Junior / other funding configuration",
+          "value": null,
+          "display": "Unavailable",
+          "authority": "Current typed ProjectInputs.financing.junior_or_other_project_funding_keur",
+          "reason": "Not persisted in this evidence."
+        },
+        {
+          "label": "SHL configured amount (not actual principal)",
+          "value": null,
+          "display": "Unavailable",
+          "authority": "Current typed ProjectInputs.financing.shl_amount_keur",
+          "reason": "Not persisted in this evidence."
+        }
+      ],
+      "bankability": [
+        {
+          "label": "Actual gearing (Last Run)",
+          "value": 0.75,
+          "display": "75.00%",
+          "authority": "RuntimeResult.runtime_summary.actual_gearing_pct",
+          "reason": ""
+        },
+        {
+          "label": "Gearing cap (Last Run)",
+          "value": 0.75,
+          "display": "75.00%",
+          "authority": "RuntimeResult.runtime_summary.gearing_cap_pct",
+          "reason": ""
+        },
+        {
+          "label": "DSCR target",
+          "value": 1.2,
+          "display": "1.20x",
+          "authority": "RuntimeResult.debt_schedule.summary.target_dscr",
+          "reason": ""
+        },
+        {
+          "label": "Minimum DSCR",
+          "value": 1.28,
+          "display": "1.28x",
+          "authority": "RuntimeResult.debt_schedule.summary.actual_min_dscr",
+          "reason": ""
+        },
+        {
+          "label": "Minimum LLCR",
+          "value": null,
+          "display": "Unavailable",
+          "authority": "RuntimeResult.debt_schedule.summary.min_llcr",
+          "reason": "Minimum LLCR not persisted."
+        },
+        {
+          "label": "DSCR debt capacity",
+          "value": 14184.585419625038,
+          "display": "14,184.59",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.bankability.dscr_debt_capacity_keur",
+          "reason": ""
+        },
+        {
+          "label": "Gearing debt capacity",
+          "value": 10554.850671146429,
+          "display": "10,554.85",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.bankability.gearing_debt_capacity_keur",
+          "reason": ""
+        },
+        {
+          "label": "Final sized Senior commitment",
+          "value": 10554.850671146429,
+          "display": "10,554.85",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.bankability.final_senior_commitment_keur",
+          "reason": ""
+        },
+        {
+          "label": "Binding Senior constraint",
+          "value": "GEARING",
+          "display": "GEARING",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.bankability.binding_senior_constraint",
+          "reason": ""
+        },
+        {
+          "label": "Gearing basis",
+          "value": 14073.134228195238,
+          "display": "14,073.13",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.bankability.gearing_basis_keur",
+          "reason": ""
+        },
+        {
+          "label": "Requested gearing cap (Run)",
+          "value": 0.75,
+          "display": "75.00%",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.bankability.gearing_ratio",
+          "reason": ""
+        },
+        {
+          "label": "Fixed-point iterations",
+          "value": 2.0,
+          "display": "2.00",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.bankability.fixed_point_iteration_count",
+          "reason": ""
+        },
+        {
+          "label": "Fixed-point convergence residual",
+          "value": 0.0,
+          "display": "0.00",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.bankability.fixed_point_maximum_difference_keur",
+          "reason": ""
+        }
+      ],
+      "total_sources": {
+        "label": "Total Sources",
+        "value": 14073.134228195238,
+        "display": "14,073.13",
+        "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.total_sources_keur",
+        "reason": ""
+      },
+      "total_uses": {
+        "label": "Total Uses",
+        "value": 14073.134228195238,
+        "display": "14,073.13",
+        "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.total_uses_keur",
+        "reason": ""
+      },
+      "residual": {
+        "label": "Funding Residual",
+        "value": 0.0,
+        "display": "0.00",
+        "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.difference_keur",
+        "reason": ""
+      },
+      "balance_status": "BALANCED",
+      "instrument_view": {
+        "equity": [
+          {
+            "label": "Share capital",
+            "value": 500.0,
+            "display": "500.00",
+            "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.share_capital_draw_keur",
+            "reason": ""
+          },
+          {
+            "label": "Share premium",
+            "value": 0.0,
+            "display": "0.00",
+            "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.share_premium_draw_keur",
+            "reason": ""
+          },
+          {
+            "label": "Other committed equity",
+            "value": 0.0,
+            "display": "0.00",
+            "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.other_committed_equity_draw_keur",
+            "reason": ""
+          },
+          {
+            "label": "Additional equity",
+            "value": 0.0,
+            "display": "0.00",
+            "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.additional_equity_draw_keur",
+            "reason": ""
+          }
+        ],
+        "shl": {
+          "label": "Shareholder loan cash",
+          "value": 3018.2835570488096,
+          "display": "3,018.28",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.shl_cash_draw_keur",
+          "reason": ""
+        },
+        "equity_checks": [
+          {
+            "label": "Equity construction ledger",
+            "status": "RECONCILED",
+            "aggregate": {
+              "label": "Share capital and other equity (aggregate)",
+              "value": 500.0,
+              "display": "500.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.share_capital_and_other_equity_keur",
+              "reason": ""
+            },
+            "instruments": {
+              "label": "Instrument ledgers",
+              "value": 500.0,
+              "display": "500.00",
+              "authority": "\u03a3 persisted instrument ledgers",
+              "reason": ""
+            },
+            "difference": {
+              "label": "Difference",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "instrument ledgers \u2212 aggregate",
+              "reason": ""
+            },
+            "contributors": [
+              [
+                "Share capital",
+                "500.00"
+              ],
+              [
+                "Share premium",
+                "0.00"
+              ],
+              [
+                "Other committed equity",
+                "0.00"
+              ],
+              [
+                "Additional equity",
+                "0.00"
+              ]
+            ]
+          },
+          {
+            "label": "Shareholder loan construction ledger",
+            "status": "RECONCILED",
+            "aggregate": {
+              "label": "Shareholder loan cash principal",
+              "value": 3018.2835570488096,
+              "display": "3,018.28",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.shareholder_loan_cash_keur",
+              "reason": ""
+            },
+            "instruments": {
+              "label": "Instrument ledgers",
+              "value": 3018.2835570488096,
+              "display": "3,018.28",
+              "authority": "\u03a3 persisted instrument ledgers",
+              "reason": ""
+            },
+            "difference": {
+              "label": "Difference",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "instrument ledgers \u2212 aggregate",
+              "reason": ""
+            },
+            "contributors": [
+              [
+                "SHL allocated to Uses",
+                "3,018.28"
+              ]
+            ]
+          }
+        ],
+        "capital_stack_link": true,
+        "available": false,
+        "mode": "AGGREGATE",
+        "instruments": [],
+        "checks": [
+          {
+            "label": "Equity construction ledger",
+            "status": "RECONCILED",
+            "aggregate": {
+              "label": "Share capital and other equity (aggregate)",
+              "value": 500.0,
+              "display": "500.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.share_capital_and_other_equity_keur",
+              "reason": ""
+            },
+            "instruments": {
+              "label": "Instrument ledgers",
+              "value": 500.0,
+              "display": "500.00",
+              "authority": "\u03a3 persisted instrument ledgers",
+              "reason": ""
+            },
+            "difference": {
+              "label": "Difference",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "instrument ledgers \u2212 aggregate",
+              "reason": ""
+            },
+            "contributors": [
+              [
+                "Share capital",
+                "500.00"
+              ],
+              [
+                "Share premium",
+                "0.00"
+              ],
+              [
+                "Other committed equity",
+                "0.00"
+              ],
+              [
+                "Additional equity",
+                "0.00"
+              ]
+            ]
+          },
+          {
+            "label": "Shareholder loan construction ledger",
+            "status": "RECONCILED",
+            "aggregate": {
+              "label": "Shareholder loan cash principal",
+              "value": 3018.2835570488096,
+              "display": "3,018.28",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.sources_uses.shareholder_loan_cash_keur",
+              "reason": ""
+            },
+            "instruments": {
+              "label": "Instrument ledgers",
+              "value": 3018.2835570488096,
+              "display": "3,018.28",
+              "authority": "\u03a3 persisted instrument ledgers",
+              "reason": ""
+            },
+            "difference": {
+              "label": "Difference",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "instrument ledgers \u2212 aggregate",
+              "reason": ""
+            },
+            "contributors": [
+              [
+                "SHL allocated to Uses",
+                "3,018.28"
+              ]
+            ]
+          }
+        ],
+        "status": "UNAVAILABLE",
+        "unavailable_reason": "Per-instrument funding is not persisted for this Run (single aggregate Senior sizing or a legacy Run). A commitment is not proof of funding drawn, so no instrument split is derived."
+      },
+      "construction_rows": [
+        {
+          "period": 1,
+          "date": "2030-06-30",
+          "fields": [
+            {
+              "label": "Project uses",
+              "value": 7973.769322546224,
+              "display": "7,973.77",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.project_cash_uses_keur",
+              "reason": ""
+            },
+            {
+              "label": "Senior draw",
+              "value": 4455.485765497415,
+              "display": "4,455.49",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.senior_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Junior draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.junior_or_other_main_funding_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Share capital draw",
+              "value": 500.0,
+              "display": "500.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.share_capital_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Share premium draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.share_premium_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Other equity draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.other_committed_equity_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Additional equity draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.additional_equity_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "SHL allocated to Uses",
+              "value": 3018.2835570488096,
+              "display": "3,018.28",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.shl_cash_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "SHL sponsor cash contribution",
+              "value": 3018.2835570488096,
+              "display": "3,018.28",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.sponsor_shl_cash_contribution_keur",
+              "reason": ""
+            },
+            {
+              "label": "Total period sources",
+              "value": 7973.769322546224,
+              "display": "7,973.77",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.total_sources_keur",
+              "reason": ""
+            },
+            {
+              "label": "Period residual",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.sources_uses_difference_keur",
+              "reason": ""
+            },
+            {
+              "label": "Cumulative uses",
+              "value": 7973.769322546224,
+              "display": "7,973.77",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.cumulative_project_cash_uses_keur",
+              "reason": ""
+            },
+            {
+              "label": "Cumulative sources",
+              "value": 7973.769322546224,
+              "display": "7,973.77",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.cumulative_total_sources_keur",
+              "reason": ""
+            },
+            {
+              "label": "Cumulative residual",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.cumulative_sources_uses_difference_keur",
+              "reason": ""
+            }
+          ]
+        },
+        {
+          "period": 2,
+          "date": "2030-12-31",
+          "fields": [
+            {
+              "label": "Project uses",
+              "value": 5236.106913734854,
+              "display": "5,236.11",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.project_cash_uses_keur",
+              "reason": ""
+            },
+            {
+              "label": "Senior draw",
+              "value": 5236.106913734854,
+              "display": "5,236.11",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.senior_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Junior draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.junior_or_other_main_funding_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Share capital draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.share_capital_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Share premium draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.share_premium_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Other equity draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.other_committed_equity_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Additional equity draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.additional_equity_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "SHL allocated to Uses",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.shl_cash_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "SHL sponsor cash contribution",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.sponsor_shl_cash_contribution_keur",
+              "reason": ""
+            },
+            {
+              "label": "Total period sources",
+              "value": 5236.106913734854,
+              "display": "5,236.11",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.total_sources_keur",
+              "reason": ""
+            },
+            {
+              "label": "Period residual",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.sources_uses_difference_keur",
+              "reason": ""
+            },
+            {
+              "label": "Cumulative uses",
+              "value": 13209.876236281078,
+              "display": "13,209.88",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.cumulative_project_cash_uses_keur",
+              "reason": ""
+            },
+            {
+              "label": "Cumulative sources",
+              "value": 13209.876236281078,
+              "display": "13,209.88",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.cumulative_total_sources_keur",
+              "reason": ""
+            },
+            {
+              "label": "Cumulative residual",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.cumulative_sources_uses_difference_keur",
+              "reason": ""
+            }
+          ]
+        },
+        {
+          "period": 3,
+          "date": "2031-02-28",
+          "fields": [
+            {
+              "label": "Project uses",
+              "value": 88.84446269472093,
+              "display": "88.84",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.project_cash_uses_keur",
+              "reason": ""
+            },
+            {
+              "label": "Senior draw",
+              "value": 88.84446269472093,
+              "display": "88.84",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.senior_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Junior draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.junior_or_other_main_funding_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Share capital draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.share_capital_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Share premium draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.share_premium_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Other equity draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.other_committed_equity_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "Additional equity draw",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.additional_equity_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "SHL allocated to Uses",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.shl_cash_draw_keur",
+              "reason": ""
+            },
+            {
+              "label": "SHL sponsor cash contribution",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.sponsor_shl_cash_contribution_keur",
+              "reason": ""
+            },
+            {
+              "label": "Total period sources",
+              "value": 88.84446269472093,
+              "display": "88.84",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.total_sources_keur",
+              "reason": ""
+            },
+            {
+              "label": "Period residual",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.sources_uses_difference_keur",
+              "reason": ""
+            },
+            {
+              "label": "Cumulative uses",
+              "value": 13298.720698975798,
+              "display": "13,298.72",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.cumulative_project_cash_uses_keur",
+              "reason": ""
+            },
+            {
+              "label": "Cumulative sources",
+              "value": 13298.720698975798,
+              "display": "13,298.72",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.cumulative_total_sources_keur",
+              "reason": ""
+            },
+            {
+              "label": "Cumulative residual",
+              "value": 0.0,
+              "display": "0.00",
+              "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.periods.cumulative_sources_uses_difference_keur",
+              "reason": ""
+            }
+          ]
+        }
+      ],
+      "construction_fields": [
+        "Project uses",
+        "Senior draw",
+        "Junior draw",
+        "Share capital draw",
+        "Share premium draw",
+        "Other equity draw",
+        "Additional equity draw",
+        "SHL allocated to Uses",
+        "SHL sponsor cash contribution",
+        "Total period sources",
+        "Period residual",
+        "Cumulative uses",
+        "Cumulative sources",
+        "Cumulative residual"
+      ],
+      "non_construction": {
+        "policy": "NON_CONSTRUCTION_FC_USES",
+        "uses": {
+          "label": "FC/COD Uses",
+          "value": 774.4135292194405,
+          "display": "774.41",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.non_construction_fc_use.uses_keur",
+          "reason": ""
+        },
+        "sources": {
+          "label": "FC/COD Sources",
+          "value": 774.4135292194389,
+          "display": "774.41",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.non_construction_fc_use.total_sources_keur",
+          "reason": ""
+        },
+        "residual": {
+          "label": "FC/COD Residual",
+          "value": -1.5916157281026244e-12,
+          "display": "-0.00",
+          "authority": "RuntimeResult.runtime_summary.financing_evidence.construction_funding.non_construction_fc_use.residual_keur",
+          "reason": ""
+        }
+      },
+      "construction_policy": "GENERIC_MVP_SPONSOR_FIRST_LINEAR_USES",
+      "integrity": "UNAVAILABLE",
+      "integrity_note": "Run Integrity and Sources & Uses balance are independent. CURRENT is an input freshness verdict, not a financial PASS.",
+      "funding_waterfall_reason": "Canonical construction allocations from the exact Run. SHL allocated to project Uses and sponsor SHL cash contribution are distinct timing concepts.",
+      "su_authority_gap": "FINANCING_F1_V1: full-precision canonical SourcesAndUses, debt capacity and funding allocations, bound atomically to this committed Run.",
+      "balance_write_gap": "Balance S&U is disabled: no approved atomic financing-stack update contract covers equity/SHL/source selection, owner authorization, protected references, workbook CAS, scenario identity and new-Run reconciliation.",
+      "sponsor_mode": "Not bound to historical run",
+      "integrity_codes": []
+    }
+  }
+}

@@ -19,6 +19,9 @@ BINDS = {
     "app/v2/router.py": "apply_snapshot_profiles",                     # Run, one-driver sensitivity, Goal Seek
     "app/services/sensitivity_matrix.py": "apply_snapshot_profiles",     # two-driver matrix (materialise_financing)
     "app/services/export_service.py": "refuse_unbound_surface",         # Last Run export refuses; working-preview export binds
+    # RC-M React Goal Seek: the same fold -> apply_snapshot_profiles -> engine order as the Legacy route, proven effective and equal to it in
+    # tests/test_model_react_rcm_capex_profile_v1.py (profile changes the solve; React == Legacy on a profiled Working Copy)
+    "app/v2/react_goal_seek.py": "apply_snapshot_profiles",
 }
 # files that fold CAPEX but never run the engine (definitions or display) - reviewed, not bound
 NO_ENGINE_RUN = {
