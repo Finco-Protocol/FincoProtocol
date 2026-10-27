@@ -113,7 +113,7 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
     return sorted(
         f for f in changed
         if f.startswith(STRICTLY_FROZEN_PREFIXES)
-        and not fin_v2_3_matches(f)
+        and not fin_v2_3_matches(f, repo=_governance.REPO)
         and not (f.startswith("finco_core/") and released_engine_authority_matches(f))
         and f != "finco_radar/venues/relative_value.py"  # PR #183 core
         and not reviewed_radar_authority_matches(f)  # PR #237 exact blob
