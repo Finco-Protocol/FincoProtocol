@@ -47,7 +47,10 @@ def alive(pid: int) -> bool:
 
 
 def kill_and_wait(pid: int) -> None:
-    os.kill(pid, signal.SIGKILL)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:             # already gone (e.g. the pool's own teardown): the goal state is reached
+        pass
     deadline = time.monotonic() + 10
     while alive(pid) and time.monotonic() < deadline:
         time.sleep(0.02)

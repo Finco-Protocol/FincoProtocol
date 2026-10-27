@@ -49,7 +49,10 @@ def kill_all(ex):
     pids = worker_pids(ex)
     assert pids, "no worker to kill"
     for pid in pids:
-        os.kill(pid, signal.SIGKILL)
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
     deadline = time.monotonic() + 10
     while any(os.path.exists(f"/proc/{p}") and "Z" not in open(f"/proc/{p}/stat").read().rsplit(")", 1)[1][:3] for p in pids) \
             and time.monotonic() < deadline:
