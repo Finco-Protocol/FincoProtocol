@@ -1,12 +1,14 @@
 import { useState } from "react";
 import "../../styles/rcm-analysis.css";
 import { CapexStudio } from "../capex/CapexStudio";
+import { ImportWorkspace } from "../importer/ImportWorkspace";
 import { SheetFieldsEditor } from "../workflow/SheetFieldsEditor";
 
-export type StudioId = "capex-profile" | "revenue-assumptions";
+export type StudioId = "capex-profile" | "revenue-assumptions" | "import";
 const STUDIOS: ReadonlyArray<{ id: StudioId; label: string }> = [
   { id: "capex-profile", label: "CAPEX spending profile" },
   { id: "revenue-assumptions", label: "Revenue assumptions" },
+  { id: "import", label: "Import from Excel / CSV" },
 ];
 
 /** Inputs > Studios (RC-UX): focused editors that sit beside the canonical grid, CAPEX / OPEX lines and Revenue & PPA contracts.  Each studio
@@ -18,7 +20,7 @@ export function InputStudios({ project, protectedReference, reloadKey, onSaved }
   return (
     <section className="rx-card" data-input-studios="true" aria-label="Input studios">
       <h2>Studios</h2>
-      <p className="rx-note">Focused editors for construction spending and revenue assumptions. Each saves on its own and never runs the model.</p>
+      <p className="rx-note">Focused editors for construction spending and revenue assumptions, and import from a spreadsheet. Each saves on its own and never runs the model.</p>
       {STUDIOS.length > 1 && (
         <div className="rcm-tabs" role="tablist" aria-label="Input studios">
           {STUDIOS.map((s) => (
@@ -36,6 +38,7 @@ export function InputStudios({ project, protectedReference, reloadKey, onSaved }
           <SheetFieldsEditor project={project} sheet="revenue" title="Revenue assumptions" reloadKey={reloadKey} onSaved={onSaved} />
         </div>
       )}
+      {studio === "import" && <ImportWorkspace project={project} protectedReference={protectedReference} onSaved={onSaved} />}
     </section>
   );
 }

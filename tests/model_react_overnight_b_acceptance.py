@@ -284,7 +284,7 @@ def check_scenario_comparison_and_results_refer_to_the_intended_run(browser, bas
         comparison.wait_for(timeout=30000)
         text = comparison.inner_text()
         assert earlier["history_id"] in text and run_text(earlier["runtime_snapshot_id"]) in text, "the comparison reads the selected Run"
-            assert comparison.locator(f"[data-snapshot-id='{earlier['runtime_snapshot_id']}']").count() == 1
+        assert comparison.locator(f"[data-snapshot-id='{earlier['runtime_snapshot_id']}']").count() == 1
         assert latest["history_id"] not in text, "and only the selected Run"
         assert errors == [], errors
     finally:
