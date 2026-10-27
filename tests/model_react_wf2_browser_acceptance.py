@@ -579,7 +579,7 @@ def check_scenario_selection_compare_and_overrides_are_isolated_and_never_run(br
         page.locator("[aria-label='Scenario assumption compare']").wait_for()
         assert "No assumption differences" in page.locator("[aria-label='Scenario assumption compare']").inner_text()
         page.get_by_role("button", name="Compare with scenario Case A").click()
-        page.wait_for_function("""() => document.querySelector("[aria-label='Scenario assumption compare']")?.innerText.includes('tariff_eur_mwh')""")
+        page.wait_for_function("""() => document.querySelector("[aria-label='Scenario assumption compare'] [data-compare-field='tariff_eur_mwh']")""")
         page.get_by_role("button", name="Select scenario Case A").click()
         page.wait_for_function("""() => document.querySelector("[data-active-scenario-banner='true']").innerText.includes('Case A')""")
         assert history_count(context, base, record) == 0, "selection, compare and overrides never run the model"

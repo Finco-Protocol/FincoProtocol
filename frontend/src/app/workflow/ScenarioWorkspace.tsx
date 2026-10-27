@@ -10,6 +10,8 @@
 import { useCallback, useMemo, useState } from "react";
 import { fetchScenarios } from "../api";
 import { fetchInsightsHistory } from "../insights";
+import { RunIdentityLabel } from "../runIdentity";
+import { labelWithUnit } from "../fieldLabel";
 import type { HistoryPayload } from "../insights";
 import type { ScenarioRecordPayload, ScenariosPayload } from "../types";
 import { ScenarioCompareView } from "../ux07ScenarioViews";
@@ -146,7 +148,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
       <StatusNote status={status} />
       <p className="fm-info-note" data-active-scenario-banner="true">
         Active scenario: <strong>{data.active_scenario_name || "Base Case"}</strong>. Its Last Run is <strong data-active-freshness={freshness}>{freshness === "NOT_RUN" ? "NOT RUN" : freshness}</strong>.
-        Edits in Inputs, Financing and Revenue apply to this scope.
+        Edits in Inputs, Financing and Revenue are saved to the Working Copy.
       </p>
       <div className="wf-table-wrap">
         <table className="fm-table">
@@ -161,7 +163,7 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
                   <td>{s.is_base_case ? "—" : s.override_count}</td>
                   <td data-run-evidence={run ? "AVAILABLE" : "UNAVAILABLE"}>
                     {runsRead.state !== "ready" ? "Unavailable"
-                      : run ? <><span className="fm-mono">{String(run.snapshot_id ?? "").slice(0, 12)}</span> · {run.ran_at ?? "time unavailable"}{s.active ? ` · ${freshness === "NOT_RUN" ? "NOT RUN" : freshness}` : " · historical"}</>
+                      : run ? <><RunIdentityLabel snapshotId={run.snapshot_id} historyId={run.history_id} ranAt={run.ran_at} />{s.active ? ` · ${freshness === "NOT_RUN" ? "NOT RUN" : freshness}` : " · historical"}</>
                         : "No committed Run"}
                   </td>
                   <td>
@@ -197,6 +199,8 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
           </tbody>
         </table>
       </div>
+
+      <OverrideBoundary supported={data.override_capability?.supported} />
 
       {!protectedRef && (
         <div className="wf-inline-form">
@@ -285,6 +289,24 @@ export function ScenarioWorkspace({ project, freshness, onScenarioChanged, onDat
   );
 }
 
+// ───────────────────────────── what a scenario can change ─────────────────────────────
+
+/** The assumptions a scenario may override, exactly as the canonical authority lists them. */
+function OverrideBoundary({ supported }: { supported?: Array<{ field_id: string; label: string; unit: string }> }) {
+  if (!supported) return null;
+  return (
+    <div className="rx-boundary" data-override-boundary="true" data-override-supported-count={supported.length}>
+      <p className="fm-info-note">
+        <strong>What a scenario can change.</strong>{" "}
+        {supported.length
+          ? <>A scenario can override {supported.length === 1 ? "this assumption" : `these ${supported.length} assumptions`}: {supported.map((f) => labelWithUnit(f.label, f.unit)).join(", ")}.</>
+          : "A scenario cannot currently override any assumption."}
+        {" "}Every other assumption is inherited from the Working Copy and cannot differ between scenarios, even if it can be edited in Inputs.
+      </p>
+    </div>
+  );
+}
+
 // ───────────────────────────── override editor ─────────────────────────────
 
 function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
@@ -342,7 +364,8 @@ function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
 
   return (
     <div className="fm-card fm-section wf-section" style={{ marginTop: 12 }} aria-label={`Overrides of ${data.scenario.name}`} data-override-editor={data.scenario.name}>
-      <div className="fm-card-title"><h3>Overrides - {data.scenario.name}</h3><span>only fields the canonical Run applies</span></div>
+      <div className="fm-card-title"><h3>Overrides - {data.scenario.name}</h3><span>only assumptions the model applies per scenario</span></div>
+      <p className="rx-save-scope" data-save-scope="scenario-override"><strong>Saves:</strong> one override at a time, with the Save beside it. Saving does not run the model.</p>
       <StatusNote status={local} />
       <div className="wf-table-wrap">
         <table className="fm-table">
@@ -352,7 +375,7 @@ function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
               const current = drafts[f.field_id] ?? (f.overridden ? String(f.override_value ?? "") : "");
               return (
                 <tr key={f.field_id} data-override-field={f.field_id} data-overridden={f.overridden}>
-                  <th scope="row">{f.label} <span className="wf-unit">({f.unit})</span></th>
+                  <th scope="row">{labelWithUnit(f.label, f.unit)}</th>
                   <td className="fm-mono">{f.base_value === null ? "—" : String(f.base_value)}</td>
                   <td>
                     <Field id={`wf-ov-${f.field_id}`} label={`${f.label} scenario value`} error={errors[f.field_id]}>
@@ -381,7 +404,7 @@ function OverrideEditor({ project, scenarioId, disabled, onChange, onReset }: {
         </table>
       </div>
       {data.unsupported_override_keys.length > 0 && (
-        <p className="fm-info-note" role="note">Stored overrides the Run does not apply (not shown as editable): {data.unsupported_override_keys.join(", ")}.</p>
+        <p className="fm-info-note" role="note">This scenario also holds stored overrides the model does not apply, so they are not editable here: {data.unsupported_override_keys.join(", ")}.</p>
       )}
       <p className="fm-info-note">{data.mutations.note}</p>
     </div>

@@ -7,6 +7,7 @@ import { MetricCards } from './MetricCards';
 import { SponsorSchedules } from './SponsorSchedules';
 import { ScenarioComparison } from './ScenarioComparison';
 import { evidenceDisplay, evidenceUnitLabel } from './presentation';
+import { runIdentityText } from '../runIdentity';
 import type { HistoryPayload, InsightsPayload, InsightRun, RunReference } from './types';
 import './insights.css';
 
@@ -22,7 +23,7 @@ export function HistoricalRunSelector({ history, selected, onChange, onRead, bus
         <input type="checkbox" checked={selected.includes(run.identity.history_id)}
           disabled={busy || (!selected.includes(run.identity.history_id) && selected.length >= maxRuns)}
           onChange={event => onChange(event.target.checked ? [...selected, run.identity.history_id] : selected.filter(id => id !== run.identity.history_id))} />
-        <span><strong>{run.identity.scenario}</strong> · {run.identity.ran_at} · {run.identity.state}<br />
+        <span><strong>{run.identity.scenario}</strong> · {runIdentityText(run.identity.snapshot_id)} · {run.identity.state}<br />
           <small>Run {run.identity.history_id} · Snapshot {run.identity.snapshot_id} · Engine {run.identity.engine_version || 'unavailable'} · Workbook {run.identity.workbook_version || 'unavailable'}</small></span>
       </label>)}
       {!history.history.length && <p>No committed Run evidence is available.</p>}

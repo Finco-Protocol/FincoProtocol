@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import "../finco/_group.css";
 import "../styles/finco-live.css";
 import type { CanonicalTable, StatementSheetPayload, StatementsPayload } from "./types";
+import { RunIdentityLabel } from "./runIdentity";
 import {
   DISPLAY_UNITS, formatFromCanonicalUnit, formatMetricDisplay, formatStatementCell, formatUnitLabel,
   classifyRowUnit, plotValue, resolveRowFormat, sheetUnitLabel,
@@ -36,6 +37,8 @@ interface PeriodTableModel {
   periods: string[];
   rows: PeriodRow[];
   note?: string;
+  /** Implementation-level source of the series: shown only behind a disclosure. */
+  technical?: string;
 }
 
 const STATE_TEXT: Record<string, string> = {
@@ -110,7 +113,7 @@ function RunContext({ payload }: { payload: StatementsPayload }) {
     <section className="rx-live-context" aria-label="Run context" data-run-context="true" data-run-state={state}>
       <div className={`rx-live-state rx-live-state-${state.toLowerCase()}`} data-run-state-label={state}>{STATE_TEXT[state] ?? state}</div>
       <dl>
-        <div><dt>Run</dt><dd>{identity ? <code>{identity}</code> : "No persisted Run"}</dd></div>
+        <div><dt>Run</dt><dd><RunIdentityLabel snapshotId={identity} /></dd></div>
         <div><dt>Ran</dt><dd>{results.ran_at || "unavailable"}</dd></div>
         <div><dt>Scenario</dt><dd>{results.scenario || "unavailable"}</dd></div>
         <div><dt>Engine</dt><dd>{status.engineVersion || "identity unavailable"}</dd></div>
@@ -148,6 +151,19 @@ const METRIC_GROUPS: ReadonlyArray<{ id: string; title: string; match: RegExp }>
   { id: "other", title: "Other metrics", match: /.*/ },
 ];
 
+/** What each persisted figure means, in finance language (matched on the canonical label). */
+const METRIC_MEANING: ReadonlyArray<{ match: RegExp; text: string }> = [
+  { match: /^project irr$/i, text: "Return on the project's cash flows before financing." },
+  { match: /pure equity irr/i, text: "Share-capital return: only the equity paid in and the dividends received on it." },
+  { match: /total sponsor irr/i, text: "Total sponsor return: share capital and shareholder-loan (SHL) cash flows together." },
+  { match: /moic/i, text: "Multiple of the sponsor capital invested, from the sponsor schedule." },
+  { match: /total equity invested/i, text: "Share capital contributed by the sponsor." },
+  { match: /total shl funded/i, text: "Shareholder-loan cash contributed by the sponsor." },
+  { match: /total sponsor distributions/i, text: "Distributions paid on share capital." },
+];
+
+const meaningOf = (label: string) => METRIC_MEANING.find((item) => item.match.test(label))?.text ?? "";
+
 /** Monetary KPI display text -> selected unit and precision (never touches ratios, IRR or percentages). */
 const metricDisplay = formatMetricDisplay;
 
@@ -165,6 +181,13 @@ function MetricCards({ payload, unit, precision }: { payload: StatementsPayload;
       {groups.filter((group) => group.items.length).map((group) => (
         <div key={group.id} className="rx-live-metric-group" data-metric-group={group.id}>
           <h3>{group.title}</h3>
+          {group.id === "returns" && (
+            <p className="rx-note" data-returns-explainer="true">
+              These returns measure different things and none is derived from another. Project IRR is before financing.
+              Pure Equity IRR is the share-capital return. Total Sponsor IRR is the return on all sponsor capital,
+              including shareholder-loan (SHL) flows, so it can differ materially from Pure Equity IRR.
+            </p>
+          )}
           <div className="rx-live-kpis">
             {group.items.map((metric) => (
               <div key={metric.label} className={`rx-live-kpi${metric.available ? "" : " rx-live-kpi-unavailable"}`}
@@ -173,13 +196,48 @@ function MetricCards({ payload, unit, precision }: { payload: StatementsPayload;
                 <div className="rx-live-kpi-label">{metric.label}</div>
                 <div className="rx-live-kpi-value">{metric.available ? metricDisplay(metric.display, unit, precision) : "Not available"}</div>
                 <div className="rx-live-kpi-source">
-                  {metric.available ? "Canonical source" : "Not persisted"}: {metric.source}
+                  {metric.available ? meaningOf(metric.label) : `Not produced by this Run: ${metric.source}`}
                 </div>
               </div>
             ))}
           </div>
         </div>
       ))}
+      <details className="rx-live-tech" data-metric-sources="true">
+        <summary>Technical source of each figure</summary>
+        <ul>
+          {metrics.map((metric) => <li key={metric.label}><strong>{metric.label}</strong>: <code>{metric.source}</code></li>)}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
+/**
+ * Lender and valuation metrics the committed Run did or did not publish.  A metric the Run
+ * does not publish is explicitly unavailable: never zero, never a proxy.  Nothing here claims
+ * that full lender-grade metrics are supported.
+ */
+function LenderMetrics({ payload }: { payload: StatementsPayload }) {
+  const rows = payload.results.lender_metrics ?? [];
+  if (!rows.length) return null;
+  return (
+    <div className="rx-live-metric-group" data-metric-group="lender" data-lender-metrics="true">
+      <h3>Lender and valuation metrics</h3>
+      <div className="rx-live-kpis">
+        {rows.map((row) => (
+          <div key={row.key} className={`rx-live-kpi${row.available ? "" : " rx-live-kpi-unavailable"}`}
+            data-lender-metric={row.key} data-lender-metric-available={row.available ? "true" : "false"}>
+            <div className="rx-live-kpi-label">{row.label}</div>
+            <div className="rx-live-kpi-value">{row.available && row.display ? row.display : "Not available"}</div>
+            <div className="rx-live-kpi-source">{row.available ? "Published by this Run." : row.reason}</div>
+          </div>
+        ))}
+      </div>
+      <p className="rx-note" data-lender-note="true">
+        Only metrics the committed Run publishes are shown. Any other lender metric stays unavailable; none is
+        estimated or replaced by zero. This is not a full set of lender-grade metrics.
+      </p>
     </div>
   );
 }
@@ -229,6 +287,9 @@ function PeriodTable({ model, unit, precision }: { model: PeriodTableModel; unit
         </table>
       </div>
       {model.note && <p className="rx-note">{model.note}</p>}
+      {model.technical && (
+        <details className="rx-live-tech"><summary>Technical source</summary><p className="rx-note">{model.technical}</p></details>
+      )}
     </section>
   );
 }
@@ -385,7 +446,8 @@ function useModels(payload: StatementsPayload) {
       rows: tableRows(sponsor, [
         "share_capital_contribution_keur", "share_premium_contribution_keur", "additional_equity_contribution_keur",
         "shl_principal_receipt_keur", "shl_cash_interest_receipt_keur", "legal_equity_distribution_keur"], "Sponsor cash flows"),
-      note: payload.results.sponsor_source ? `Source: ${payload.results.sponsor_source}` : "The Run did not persist a sponsor cash-flow schedule.",
+      note: payload.results.sponsor_source ? "Sponsor cash flows exactly as the Run persisted them." : "The Run did not persist a sponsor cash-flow schedule.",
+      technical: payload.results.sponsor_source ? `Source: ${payload.results.sponsor_source}` : undefined,
     };
     const waterfall: PeriodTableModel = {
       id: "distribution-waterfall",
@@ -393,7 +455,8 @@ function useModels(payload: StatementsPayload) {
       source: distributions?.title ? `Persisted Run · ${distributions.title}` : "Persisted Run · distributions",
       periods: columnLabels(distributions),
       rows: tableRows(distributions, ["cf_after_reserves_keur", "distribution_keur", "dsra_balance_keur"], "Distribution waterfall"),
-      note: payload.results.distribution_source ? `Source: ${payload.results.distribution_source}` : "The Run did not persist a distribution waterfall.",
+      note: payload.results.distribution_source ? "Distribution waterfall exactly as the Run persisted it." : "The Run did not persist a distribution waterfall.",
+      technical: payload.results.distribution_source ? `Source: ${payload.results.distribution_source}` : undefined,
     };
     const debtSheet = sheetOf(payload, "debt");
     const debt: PeriodTableModel = {
@@ -510,8 +573,9 @@ export function FinancialResults({ payload, page }: { payload: StatementsPayload
           <section className="rx-live-section" aria-labelledby="rx-key-metrics">
             <h3 id="rx-key-metrics">Key financial metrics</h3>
             <MetricCards payload={payload} unit={unit} precision={precision} />
+            <LenderMetrics payload={payload} />
             <p className="rx-note" data-dscr-note="true">
-              Minimum and average DSCR are not Last Run metrics here; the DSCR series is shown in Analysis as persisted, and credit indicators of an explicitly selected committed Run are in Analysis \u2192 Financial intelligence.
+              The year-by-year DSCR series is shown in Analysis, as persisted. Credit indicators for committed Runs you select are in Analysis → Financial intelligence.
             </p>
             <p className="rx-note" data-analysis-link="true">
               <a href="#analysis">Open deeper financial analysis and credit intelligence</a> · <a href="#scenarios">Compare committed scenario Runs</a>

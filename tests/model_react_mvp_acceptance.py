@@ -269,10 +269,11 @@ def check_internal_mvp_path_with_financial_intelligence(browser, react_enabled, 
         # per-scenario committed Run availability agrees with the canonical history (Base Case Run included)
         base_row = page.locator("[data-scenario-row]", has=page.locator("text=Base Case")).first
         assert base_row.locator("[data-run-evidence]").get_attribute("data-run-evidence") == "AVAILABLE"
-        assert base_run["runtime_snapshot_id"][:12] in base_row.locator("[data-run-evidence]").inner_text()
+        from tests.react_run_identity import text as run_text
+        assert run_text(base_run["runtime_snapshot_id"]) in base_row.locator("[data-run-evidence]").inner_text()
         scenario_row = page.locator("[data-scenario-row='MVP downside']")
         assert scenario_row.locator("[data-run-evidence]").get_attribute("data-run-evidence") == "AVAILABLE"
-        assert scenario_run["runtime_snapshot_id"][:12] in scenario_row.locator("[data-run-evidence]").inner_text()
+        assert run_text(scenario_run["runtime_snapshot_id"]) in scenario_row.locator("[data-run-evidence]").inner_text()
         assert panel.locator("[aria-label='Scenario KPI comparison']").count() == 0, "nothing is read before an explicit selection"
         for history_id in (base_history_id, scenario_history_id):
             panel.locator(f"label:has-text('{history_id}') input[type=checkbox]").check()

@@ -10,6 +10,9 @@ import { WorkspaceNav, isWorkspaceSection, type WorkspaceSection } from "./Works
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
 import { CostLinesView, DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
 import { FinancialInsights } from "./insights";
+import { InputsJumpNav, SaveScopeGuide, type InputsJump } from "./InputsGuide";
+import { RunIdentityLabel } from "./runIdentity";
+import { VerticalScopeBanner } from "./VerticalScope";
 import "../styles/rc-react-mvp.css";
 import { ModelExportView } from "./workflow/ModelExportView";
 import { PPAEditorView } from "./workflow/PPAEditorView";
@@ -21,11 +24,6 @@ import { isRecoveryPayload, type InputsPayload, type RecoveryPayload, type Reven
 import { fetchRevenueContracts } from "./api";
 
 type Section = WorkspaceSection;
-
-const INPUT_GROUPS: Array<[string, string]> = [
-  ["wf-inputs-setup", "Project setup"], ["wf-inputs-grid", "Assumption grid"], ["wf-inputs-costs", "CAPEX & OPEX"],
-  ["wf-inputs-revenue", "Revenue & PPA"],
-];
 
 function sectionFromHash(): Section {
   const raw = window.location.hash.replace("#", "");
@@ -58,11 +56,25 @@ function StatusRow({ workspace }: { workspace: WorkspacePayload }) {
       </div>
       <p className="rx-run-identity" data-run-state={workspace.freshness.state}>
         {identity
-          ? <>Last Run: snapshot <code>{identity.snapshot_id.slice(0, 12)}</code>{" · "}ran {identity.ran_at || "unavailable"}{" · "}scenario {identity.scenario_proven ? identity.scenario : "UNAVAILABLE"}</>
-          : "No persisted Run yet. Use the Run control in the Results section to run the model; saving never runs it."}
+          ? <>Last Run: <RunIdentityLabel snapshotId={identity.snapshot_id} />{" · "}scenario {identity.scenario_proven ? identity.scenario : "UNAVAILABLE"}</>
+          : "No persisted Run yet. Use the Run model button above to run the model; saving never runs it."}
       </p>
-      <p className="rx-note">Scenario: {workspace.workbook.scenario_name || "Base Case"} · Composite {workspace.workbook.composite_hash.slice(0, 12)}</p>
+      <p className="rx-note">Active scenario: {workspace.workbook.scenario_name || "Base Case"}</p>
+      <VerticalScopeBanner vertical={workspace.vertical} />
     </div>
+  );
+}
+
+function StatementIdentityConflict({ workspace, statements }: { workspace: WorkspacePayload; statements: StatementsPayload }) {
+  return (
+    <section className="rx-card" role="alert" data-statement-identity="conflict">
+      <h2>Statements do not match this project</h2>
+      <p>
+        The statements returned belong to <strong>{statements.project.name}</strong>, not to{" "}
+        <strong>{workspace.project.name}</strong>. Nothing is shown so that figures are never read under the wrong project.
+        Reload the workspace; if this persists, open the project again from the Project Library.
+      </p>
+    </section>
   );
 }
 
@@ -97,6 +109,8 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
   // Bumped after ANY committed change so every editor re-reads its CAS tokens;
   // unsaved drafts in other editors are reconciled, never silently rebased.
   const [dataVersion, setDataVersion] = useState(0);
+  // Which line-item sheet the CAPEX / OPEX jump links ask for (the editor itself guards unsaved edits).
+  const [costRequest, setCostRequest] = useState<{ sheet: "capex" | "opex"; nonce: number }>({ sheet: "capex", nonce: 0 });
 
   const loadWorkspace = useCallback(async () => {
     setError(null);
@@ -147,17 +161,6 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
   }, [afterMutation]);
 
   useEffect(() => {
-    if (!workspace) return;
-    // Keep the harvested readProjectContext() on canonical values.
-    const params = new URLSearchParams(window.location.search);
-    params.set("project", workspace.project.name);
-    params.set("projectId", workspace.project.code);
-    params.set("technology", workspace.project.project_type || workspace.project.template_source || "FINCO Model");
-    params.set("mode", workspace.project.protected_reference ? "reference" : "working-copy");
-    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
-  }, [workspace]);
-
-  useEffect(() => {
     if (section === "statements" && !statements) void loadStatements();
     if ((section === "results" || section === "analysis") && !statements) void loadStatements();
     if (section === "inputs" && !inputs && !recovery) void loadInputs();
@@ -203,6 +206,14 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
     event.preventDefault();
     event.stopPropagation();
     confirmIfDirty(() => window.location.assign(anchor.href));
+  };
+
+  const jumpWithinInputs = (jump: InputsJump) => {
+    if (jump.kind === "section" && jump.section) { navigate(jump.section as Section); return; }
+    if (jump.kind === "cost-sheet" && jump.sheet) setCostRequest((prev) => ({ sheet: jump.sheet!, nonce: prev.nonce + 1 }));
+    const target = document.getElementById(jump.id);
+    target?.scrollIntoView({ block: "start" });
+    target?.focus({ preventScroll: true });
   };
 
   const refreshAll = useCallback(() => {
@@ -295,6 +306,10 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
     return <main className="rx-page" role="main"><p className="rx-boot-loading" role="status">Loading the FINCO Model React workspace…</p></main>;
   }
 
+  // Statements carry their own project block; if it names a different project than the authorized
+  // workspace, nothing from it is shown (no cross-project data under the wrong identity).
+  const statementsConflict = Boolean(statements?.project?.code && statements.project.code !== workspace.project.code);
+
   return (
     <div style={{ display: "contents" }} onClickCapture={guardLinkClick} data-leave-guard="true">
     <Shell crumb={workspace.project.name} dataOrigin="canonical-run" mainContentId="rx-main-content"
@@ -330,10 +345,8 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
             ? <RecoveryPanel project={project} payload={recovery} onRepaired={refreshAll} />
             : inputs
             ? <>
-              <nav className="wf-jump" aria-label="Input groups" data-inputs-jump="true">
-                {INPUT_GROUPS.map(([id, label]) => <a key={id} href={`#${id}`} data-jump-target={id}
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); document.getElementById(id)?.scrollIntoView({ block: "start" }); document.getElementById(id)?.focus({ preventScroll: true }); }}>{label}</a>)}
-              </nav>
+              <InputsJumpNav onJump={jumpWithinInputs} />
+              <SaveScopeGuide />
               <div id="wf-inputs-setup" tabIndex={-1}>
                 <SheetFieldsEditor project={project} sheet="project_setup" title="Project setup" reloadKey={dataVersion} onSaved={afterMutation} />
               </div>
@@ -341,7 +354,8 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
                 <CanonicalInputGrid payload={inputs} busy={busy} onSave={saveCells} onRefresh={refreshAll} />
               </div>
               <div id="wf-inputs-costs" tabIndex={-1}>
-                <CostLinesView project={project} reloadKey={dataVersion} onMutated={afterMutation} />
+                <CostLinesView project={project} reloadKey={dataVersion} onMutated={afterMutation}
+                  requestedSheet={costRequest.sheet} requestNonce={costRequest.nonce} />
               </div>
               <div id="wf-inputs-revenue" tabIndex={-1}>
                 {revenuePayload && (
@@ -368,7 +382,9 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
         {section === "trust" && <TrustView project={project} />}
         {section === "statements" && (
           statements
-            ? <>
+            ? statementsConflict
+            ? <StatementIdentityConflict workspace={workspace} statements={statements} />
+            : <>
               {statements.state === "STALE" && (
                 <p className="rx-banner rx-banner-stale" role="status" data-stale-banner="true">
                   STALE — the Working Copy changed after the persisted Last Run. The statements
@@ -377,6 +393,7 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
               )}
               <div data-statements-view="true" data-statements-state={statements.state}>
                 <StatementWorkbook
+                  projectIdentity={{ code: workspace.project.code, name: workspace.project.name, type: workspace.project.project_type }}
                   snapshot={statements.state === "NOT_RUN" || statements.state === "UNAVAILABLE" ? null : toStatementSnapshot(statements)}
                   status={toStatementStatus(statements)}
                 />
@@ -386,7 +403,10 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
         )}
         {section === "results" && (
           statements
-            ? <div data-results-view="true" data-results-state={statements.state}>
+            ? statementsConflict
+            ? <StatementIdentityConflict workspace={workspace} statements={statements} />
+            : <div data-results-view="true" data-results-state={statements.state}>
+              <VerticalScopeBanner vertical={workspace.vertical} />
               <FinancialResults payload={statements} page="results" />
               <RunsView project={project} />
               <ModelExportView project={project} freshness={workspace.freshness.state} legacyUrl={legacyUrl} />
@@ -396,7 +416,9 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
         {section === "analysis" && (
           <div data-analysis-view="true" data-analysis-state={statements?.state ?? "LOADING"}>
             {statements
-              ? <>
+              ? statementsConflict
+              ? <StatementIdentityConflict workspace={workspace} statements={statements} />
+              : <>
                 <p className="rx-note" data-analysis-scope="last-run">
                   Charts below show the Working Copy&rsquo;s Last Run. Credit intelligence further down reads only the committed Runs you select explicitly.
                 </p>
@@ -411,8 +433,8 @@ function WorkspaceViewInner({ project, legacyUrl, onNavigateToLibrary }: Workspa
         </div>
         <footer className="rx-footer">
           <p className="rx-note">
-            Figures are read from this project&rsquo;s persisted Run and canonical workspace records;
-            the browser never calculates financial results. The classic workbook remains available.
+            Figures are read from this project&rsquo;s saved Run and workspace records; the browser
+            never calculates financial results. The classic workbook remains available.
           </p>
         </footer>
       </div>

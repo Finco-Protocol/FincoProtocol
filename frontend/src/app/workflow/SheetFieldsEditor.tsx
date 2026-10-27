@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSheetFields, saveWorkbookField } from "../api";
 import type { SheetFieldPayload, SheetFieldsPayload } from "../types";
 import { isIsoDate, parseStrictDecimal } from "./ModelWorkflowValidation";
+import { BINDING_PLAIN, STRUCTURED_PLAIN, plainFieldHelp } from "../plainCopy";
 import {
   Field, LoadingNote, StatusNote, UnavailableNote, useCanonicalRead, useReportDirty, useReportPending, useSingleFlight,
   useUnresolvedLock, type StatusMessage,
@@ -19,17 +20,13 @@ import {
 const NUMERIC = new Set(["float", "int", "keur", "pct", "bps", "years", "months", "mwh", "mw"]);
 const INTEGER = new Set(["int", "years", "months"]);
 
-const BINDING_REASON: Record<string, string> = {
-  "display-only": "Computed by the model - cannot be edited.",
-  "template-locked": "Frozen when the project was created.",
-  partial: "Partially wired to the engine - not editable here.",
-};
+const BINDING_REASON = BINDING_PLAIN;
 
 /** Structured configuration payloads owned by dedicated typed editors (Capital
  *  Stack proposal, bankability configuration).  They are stored as JSON documents;
  *  a free-text box would be raw JSON mutation, so they stay read-only here. */
 const STRUCTURED_PAYLOAD_FIELDS = new Set(["debt.financing.instruments", "debt.bankability.configuration"]);
-const STRUCTURED_REASON = "Structured configuration with its own typed editor in the legacy workbook. It is not edited as free text here.";
+const STRUCTURED_REASON = STRUCTURED_PLAIN;
 
 export function validateSheetField(field: SheetFieldPayload, value: string): string | null {
   const text = value.trim();
@@ -168,6 +165,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
     <section className="fm-card fm-section wf-section" aria-label={title} data-sheet-editor={sheet}>
       <div className="fm-card-title">
         <h2>{title}</h2>
+        <span className="rx-save-scope" data-save-scope={sheet}><strong>Saves:</strong> one field at a time</span>
         {dirtyCount > 0 && <span className="wf-dirty" data-unsaved={dirtyCount}>{dirtyCount} unsaved</span>}
       </div>
       {protectedRef && <div className="fm-banner" role="note"><span className="fm-demo-label">PROTECTED REFERENCE</span><span className="fm-banner-copy">Read-only. Create a Working Copy to edit.</span></div>}
@@ -183,12 +181,13 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
               const id = `wf-${sheet}-${field.field_id.replace(/[^a-z0-9]+/gi, "-")}`;
               const canEdit = editable(field);
               const dirty = drafts[field.field_id] !== undefined;
+              const help = plainFieldHelp(field.field_id, field.help_text);
               return (
                 <div key={field.field_id} data-field-binding={field.binding_label} data-dirty={dirty || undefined}>
                   <Field id={id} label={field.label} unit={field.unit ?? undefined} error={errors[field.field_id]}
-                         hint={canEdit ? field.help_text ?? undefined
+                         hint={canEdit ? help.hint
                            : STRUCTURED_PAYLOAD_FIELDS.has(field.field_id) ? STRUCTURED_REASON
-                             : BINDING_REASON[field.binding_label] ?? field.help_text ?? undefined}>
+                             : BINDING_REASON[field.binding_label] ?? help.hint}>
                     {(p) => canEdit ? (
                       field.field_type === "select" && field.options?.length ? (
                         <select {...p} className="fm-input" value={current} disabled={locked || inFlight !== null}
@@ -207,6 +206,9 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
                       <output {...p} className="fm-field-value">{field.display_value ?? field.value ?? "—"}</output>
                     )}
                   </Field>
+                  {help.technical && (
+                    <details className="rx-tech"><summary>Technical note</summary><p className="wf-hint">{help.technical}</p></details>
+                  )}
                   {canEdit && dirty && (
                     <div className="fm-toolbar">
                       <button type="button" className="fm-btn fm-btn-primary" disabled={locked || inFlight !== null}
@@ -223,7 +225,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
           </div>
         </div>
       ))}
-      <p className="fm-info-note">Each field saves on its own through the canonical writer (composite CAS; a stale value answers 409 and your draft stays). Computed, frozen and partially wired fields are never editable. Saving never runs the model.</p>
+      <p className="fm-info-note" data-save-scope-note={sheet}>Each field has its own Save and saves on its own. If another change was saved in the meantime, your edit is kept on screen and you are asked to reload before saving again. Calculated and fixed fields cannot be edited. Saving never runs the model.</p>
     </section>
   );
 }

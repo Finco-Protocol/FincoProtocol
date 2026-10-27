@@ -159,7 +159,7 @@
   color: #ffffff;
 }
 [data-fm-theme="g-forest-green-white"] .fm-topbar .fm-brand-caption {
-  color: #d7e8df;
+  color: #ffffff;
   border-left-color: rgba(255, 255, 255, 0.4);
 }
 [data-fm-theme="g-forest-green-white"] .fm-workspace-bar a {
@@ -185,7 +185,6 @@
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  opacity: 0.85;
 }
 .fm-theme-select-control {
   font: inherit;
@@ -202,3 +201,12 @@
   outline: 2px solid var(--blue, #35658b);
   outline-offset: 2px;
 }
+
+/* Overnight B (U/F visual consistency): the right-hand top-bar items inherited a body-text colour that is
+   unreadable on the green chrome.  They take the chrome's own ink in the green/white theme. */
+[data-fm-theme="g-forest-green-white"] .fm-topbar .fm-top-right { color: var(--fm-topbar-ink); }
+[data-fm-theme="g-forest-green-white"] .fm-topbar :is(.fm-live-label, .fm-demo-label) {
+  color: var(--fm-topbar-ink);
+  border-color: var(--fm-topbar-line);
+}
+[data-fm-theme="g-forest-green-white"] .fm-topbar .fm-mark { color: var(--fm-topbar-ink); border-color: var(--fm-mark-line); }

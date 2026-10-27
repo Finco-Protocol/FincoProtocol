@@ -155,6 +155,28 @@ D029_RUN_INTENT_SUCCESSORS={
     "static/react/finco-react.js":"907cfa53e07c78e03cd12dd537a806832dfeb7e8",    # Correction B: the seven real-Chromium D-029 wrappers the mandatory Browser Acceptance role executes (additive only).
     "tests/test_model_workspace_consolidation_browser.py":"f1a762a4f7bbfca34e8e93c74fbba3042d970665",
 }
+# React Institutional Model MVP correction (Overnight B) admits exact reviewed successors of the twelve pinned files the
+# presentation-level correction had to change: the React workspace router projections, six React sources, the rebuilt
+# React bundle (JS and CSS) and three acceptance files (the mandatory consolidation browser file gained only additive
+# ``test_onb_*`` wrappers).  Additive: every original pin, the FIN-VAL B2/C1 layer and the D-029 layer above stay immutable and
+# individually verified; ``app/v2/router.py`` and the CSRF token module are NOT in this layer and remain pinned to the D-029 /
+# original blobs.  Owner authorization for exactly these presentation-level paths was given in the Overnight B task statement
+# (Financial Owner scope, section 0) and is recorded in docs/react_migration/overnight_b/, not independently verified here.
+REACT_MVP_CORRECTION_SUCCESSORS={
+    "app/v2/react_workspace_router.py":"3dbaca19742773486e0223efcd2b3bf7ab87d328",
+    "frontend/src/app/FinancialResults.tsx":"8264e2e06cf859f439f133c96c2fdeea7963ea23",
+    "frontend/src/app/WorkspaceView.tsx":"c84f5494b7a44675c023c989bb8434de69cbe711",
+    "frontend/src/app/types.ts":"0a4eff084f0d49e4e9eb2608c687f11c00c11060",
+    "frontend/src/app/workflow/ModelExportView.tsx":"2f5f06d918f03384ad6aeaa5027de2ffd25e1c38",
+    "frontend/src/app/workflow/ScenarioWorkspace.tsx":"7ec94910f41d3e727084671823c5739d480700da",
+    "frontend/src/app/workflow/workflowShared.tsx":"6de23ad7c469c0ba197697dda10afe494426751a",
+    "static/react/finco-react.css":"adbc32f079ee5a77cf3bf1228a8b46d76f0245dd",
+    "static/react/finco-react.js":"0f36ebe61a8feeb6cd27a1deee76c99b6d282e8b",
+    "tests/model_react_mvp_acceptance.py":"10885eab163fa556c42e4f27fb3814e0bd442640",
+    "tests/model_react_wf2_browser_acceptance.py":"ce6d7f5e2c5fc6f4fe9a985b2b4724011889511f",
+    "tests/test_model_workspace_consolidation_browser.py":"6f91b8c9376ba65c27aab34ea39651cef351b2e9",
+}
+
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -252,6 +274,7 @@ def violations(sources,*,check_pin=True):
         admitted={expected,layer[2]} if layer else {expected}
         if path in FINVAL_B2C1_SUCCESSORS:admitted=admitted|{FINVAL_B2C1_SUCCESSORS[path]}
         if path in D029_RUN_INTENT_SUCCESSORS:admitted=admitted|{D029_RUN_INTENT_SUCCESSORS[path]}
+        if path in REACT_MVP_CORRECTION_SUCCESSORS:admitted=admitted|{REACT_MVP_CORRECTION_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):
             try:trees[path]=ast.parse(text)
@@ -321,7 +344,8 @@ def current_mutation_successor_valid(*,repo=None):
         def read_git(*args):
             return subprocess.check_output(["git",*args],cwd=root,stderr=subprocess.PIPE).decode("utf-8").strip()
         for path,(source,parent,blob) in _browser_layers().items():
-            if git_blob(sources[path])!=blob:continue
+            # provenance is verified while the layer's blob OR a later admitted successor of the path is current
+            if git_blob(sources[path]) not in {blob,REACT_MVP_CORRECTION_SUCCESSORS.get(path)}:continue
             if read_git("rev-parse",source+"^:"+path)!=BLOBS[path]:return False
             if read_git("rev-list","--parents","-n","1",source).split()!=[source,parent]:return False
             if read_git("rev-parse",source+":"+path)!=blob:return False

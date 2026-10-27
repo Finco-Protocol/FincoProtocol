@@ -9,6 +9,7 @@ import { useCallback, useState } from "react";
 import { fetchRuns } from "../api";
 import type { RunsPayload } from "../types";
 import { downloadLastRunWorkbook, historicalExportUrl } from "./workflowApi";
+import { RunIdentityLabel } from "../runIdentity";
 import {
   LoadingNote, StatusNote, UnavailableNote, useCanonicalRead, type StatusMessage,
 } from "./workflowShared";
@@ -59,7 +60,7 @@ export function ModelExportView({ project, freshness, legacyUrl, refreshKey = 0 
         <p className="fm-info-note">
           <strong>Last committed Run:</strong>{" "}
           {latest
-            ? <>snapshot <span className="fm-mono">{String(latest.runtime_snapshot_id ?? "").slice(0, 12)}</span> · ran {latest.ran_at ?? "time unavailable"} · scenario {latest.active_scenario_name ?? "Base Case"}</>
+            ? <><RunIdentityLabel snapshotId={latest.runtime_snapshot_id} historyId={latest.history_id} ranAt={latest.ran_at} /> · scenario {latest.active_scenario_name ?? "Base Case"}</>
             : "none"}
           {" · "}<strong>{freshness === "NOT_RUN" ? "NOT RUN" : freshness}</strong>
         </p>
@@ -77,13 +78,13 @@ export function ModelExportView({ project, freshness, legacyUrl, refreshKey = 0 
       <p className="wf-group-head">Historical Runs</p>
       <div className="wf-table-wrap">
         <table className="fm-table">
-          <thead><tr><th scope="col">Ran at</th><th scope="col">Scenario</th><th scope="col">Snapshot</th><th scope="col"><span className="fm-sr-only">Download</span></th></tr></thead>
+          <thead><tr><th scope="col">Run</th><th scope="col">Ran at</th><th scope="col">Scenario</th><th scope="col"><span className="fm-sr-only">Download</span></th></tr></thead>
           <tbody>
             {data.runs.map((run) => (
               <tr key={run.history_id ?? run.runtime_snapshot_id}>
+                <td><RunIdentityLabel snapshotId={run.runtime_snapshot_id} historyId={run.history_id} ranAt={run.ran_at} /></td>
                 <td className="fm-mono">{run.ran_at ?? "—"}</td>
                 <td>{run.active_scenario_name ?? "Base Case"}</td>
-                <td className="fm-mono">{String(run.runtime_snapshot_id ?? "").slice(0, 12) || "—"}</td>
                 <td>{run.history_id
                   ? <a className="fm-btn" href={historicalExportUrl(project, run.history_id)} download
                        aria-label={`Download the workbook of the Run committed ${run.ran_at ?? ""}`}>Download XLSX</a>

@@ -733,3 +733,85 @@ def test_d029_react_run_intent_acceptance(browser, react_enabled, check):
 def test_d029_legacy_run_intent_acceptance(browser, live_server, check):
     import tests.model_d029_run_intent_browser_acceptance as d029
     getattr(d029, check)(browser, live_server)
+
+
+# ── Overnight B: React Institutional Model MVP correction ───────────────────────────────────────────────
+# Bodies in tests/model_react_overnight_b_acceptance.py (no module-level skip there).  Additive: no existing node id changes.
+
+@pytest.mark.parametrize('kind', ['solar', 'wind', 'data_center', 'ev_charging'])
+def test_onb_statement_identity_is_the_authorized_project_in_every_vertical(browser, react_enabled, kind):
+    from tests.model_react_overnight_b_acceptance import check_statement_identity_is_the_authorized_project_in_every_vertical
+    check_statement_identity_is_the_authorized_project_in_every_vertical(browser, react_enabled, kind)
+
+
+def test_onb_hostile_or_stale_query_cannot_change_the_statement_identity(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_hostile_or_stale_query_cannot_change_the_statement_identity
+    check_hostile_or_stale_query_cannot_change_the_statement_identity(browser, react_enabled)
+
+
+def test_onb_switching_projects_never_carries_the_previous_statement_identity(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_switching_projects_never_carries_the_previous_statement_identity
+    check_switching_projects_never_carries_the_previous_statement_identity(browser, react_enabled)
+
+
+def test_onb_missing_or_conflicting_identity_fails_visibly(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_missing_or_conflicting_identity_fails_visibly
+    check_missing_or_conflicting_identity_fails_visibly(browser, react_enabled)
+
+
+def test_onb_two_runs_in_the_same_hour_are_distinguishable_everywhere(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_two_runs_in_the_same_hour_are_distinguishable_everywhere
+    check_two_runs_in_the_same_hour_are_distinguishable_everywhere(browser, react_enabled)
+
+
+def test_onb_scenario_comparison_and_results_refer_to_the_intended_run(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_scenario_comparison_and_results_refer_to_the_intended_run
+    check_scenario_comparison_and_results_refer_to_the_intended_run(browser, react_enabled)
+
+
+def test_onb_inputs_save_scope_language_is_accurate(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_inputs_save_scope_language_is_accurate_and_free_of_engineering_copy
+    check_inputs_save_scope_language_is_accurate_and_free_of_engineering_copy(browser, react_enabled)
+
+
+def test_onb_scalar_save_persists_after_reload_and_never_saves_another_editor(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_scalar_save_persists_after_reload_and_never_saves_another_editor
+    check_scalar_save_persists_after_reload_and_never_saves_another_editor(browser, react_enabled)
+
+
+@pytest.mark.parametrize('kind,width,limit', [('solar', 1440, 6000), ('solar', 390, 10000), ('data_center', 390, 8000), ('ev_charging', 320, 9000)])
+def test_onb_inputs_are_compact_complete_and_navigable(browser, react_enabled, kind, width, limit):
+    from tests.model_react_overnight_b_acceptance import check_inputs_are_compact_complete_and_navigable
+    check_inputs_are_compact_complete_and_navigable(browser, react_enabled, kind, width, limit)
+
+
+def test_onb_protected_reference_inputs_stay_visible_and_read_only(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_protected_reference_inputs_stay_visible_and_read_only
+    check_protected_reference_inputs_stay_visible_and_read_only(browser, react_enabled)
+
+
+def test_onb_workspace_navigation_is_discoverable_and_keyboard_operable(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_workspace_navigation_is_discoverable_keyboard_operable_and_never_overflows_the_page
+    check_workspace_navigation_is_discoverable_keyboard_operable_and_never_overflows_the_page(browser, react_enabled)
+
+
+@pytest.mark.parametrize('kind', ['solar', 'data_center', 'ev_charging'])
+def test_onb_labels_and_typography_have_no_duplicated_units_or_literal_escapes(browser, react_enabled, kind):
+    from tests.model_react_overnight_b_acceptance import check_labels_and_typography_have_no_duplicated_units_or_literal_escapes
+    check_labels_and_typography_have_no_duplicated_units_or_literal_escapes(browser, react_enabled, kind)
+
+
+@pytest.mark.parametrize('kind', ['solar', 'wind', 'data_center', 'ev_charging'])
+def test_onb_returns_lender_metrics_and_vertical_scope_are_truthful(browser, react_enabled, kind):
+    from tests.model_react_overnight_b_acceptance import check_returns_lender_metrics_and_vertical_scope_are_truthful
+    check_returns_lender_metrics_and_vertical_scope_are_truthful(browser, react_enabled, kind)
+
+
+def test_onb_scenario_override_boundary_matches_the_canonical_capability(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_scenario_override_boundary_matches_the_canonical_capability
+    check_scenario_override_boundary_matches_the_canonical_capability(browser, react_enabled)
+
+
+def test_onb_every_theme_keeps_the_corrected_surfaces_legible(browser, react_enabled):
+    from tests.model_react_overnight_b_acceptance import check_every_theme_keeps_the_corrected_surfaces_legible
+    check_every_theme_keeps_the_corrected_surfaces_legible(browser, react_enabled)

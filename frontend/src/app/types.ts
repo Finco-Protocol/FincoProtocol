@@ -56,10 +56,22 @@ export interface ProjectIdentity {
   protected_reference: boolean;
 }
 
+/** The project's vertical, from the canonical product-capability registry (absent on older payloads). */
+export interface VerticalScope {
+  key: string;
+  public_name: string;
+  registry_status: string;
+  runnable: boolean;
+  pilot_tier: "PILOT_CANDIDATE" | "PREVIEW" | "RELEASE_CLOSED" | "UNCLASSIFIED";
+  limitations: string[];
+  status_note: string;
+}
+
 export interface WorkspacePayload {
   ok: true;
   react_workspace: { version: string };
   project: ProjectIdentity;
+  vertical?: VerticalScope;
   workbook: { version: string; composite_hash: string; scenario_id: string | null; scenario_name: string | null };
   freshness: FreshnessProjection;
   identity: RunIdentity | null;
@@ -77,6 +89,8 @@ export interface LibraryProject {
   template_source: string;
   protected_reference: boolean;
   reference: boolean;
+  /** Release tier of the project's vertical (absent on older payloads). */
+  vertical?: { key: string; public_name: string; pilot_tier: VerticalScope["pilot_tier"] };
   last_run: { available: boolean; freshness: string; snapshot_id: string; ran_at: string } | null;
 }
 
@@ -133,6 +147,8 @@ export interface StatementRunStatusPayload {
 export interface ResultsPayload {
   available: boolean;
   metrics: Array<{ label: string; display: string; available: boolean; source: string }>;
+  /** Lender / valuation metrics the committed Run did or did not publish (absent on older payloads). */
+  lender_metrics?: Array<{ key: string; label: string; unit: string; available: boolean; display: string | null; reason: string }>;
   distributions: CanonicalTable | null;
   sponsor_table: CanonicalTable | null;
   sponsor_source: string | null;
@@ -156,7 +172,8 @@ export interface CanonicalTable {
 export interface StatementsPayload {
   ok: true;
   react_workspace: { version: string };
-  project: { code: string; name: string; protected_reference: boolean };
+  /** Corroborates the workspace identity; `code` / `project_type` are absent on older payloads. */
+  project: { code?: string; name: string; project_type?: string; protected_reference: boolean };
   state: "NOT_RUN" | "CURRENT" | "STALE" | "UNAVAILABLE";
   message: string;
   snapshot: {
@@ -449,6 +466,8 @@ export interface ScenariosPayload {
   active_scenario_id: string | null;
   active_scenario_name: string | null;
   scenarios: ScenarioRecordPayload[];
+  /** The assumptions a scenario can override (canonical authority); everything else inherits. Absent on older payloads. */
+  override_capability?: { supported: Array<{ field_id: string; label: string; unit: string }> };
   mutations: {
     create: { url: string; csrf_token: string; fields: string[] };
     select: { url: string; csrf_token: string; fields: string[] };
@@ -472,6 +491,8 @@ export interface ScenarioComparePayload {
   scenario: { label: string; scenario_id: string; archived: boolean; override_count: number; run_evidence: ScenarioRunEvidence } | null;
   differences: Array<{
     field_id: string;
+    label?: string | null;
+    unit?: string | null;
     base_value: unknown;
     scenario_value: unknown;
     explicitly_overridden: boolean;

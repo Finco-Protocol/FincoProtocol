@@ -150,7 +150,8 @@ export function CostLineManager({ project, data, onChanged }: Props) {
         </div>
       </div>
 
-      <div className="wf-table-wrap">
+      <div className="wf-table-wrap rx-lines-scroll rx-lines-scroll-short" role="region" tabIndex={0}
+           aria-label={`${sheet === "capex" ? "CAPEX" : "OPEX"} lines by group, scrollable`} data-lines-manager-scroll={sheet}>
         <table className="fm-table" aria-label={`${sheet === "capex" ? "CAPEX" : "OPEX"} lines by group`}>
           <thead><tr><th scope="col">Group</th><th scope="col">Line</th><th scope="col">Amount (k€)</th><th scope="col">State</th><th scope="col"><span className="fm-sr-only">Actions</span></th></tr></thead>
           <tbody>
@@ -171,7 +172,8 @@ export function CostLineManager({ project, data, onChanged }: Props) {
           </tbody>
         </table>
       </div>
-      <p className="fm-info-note">Deactivation is a reversible soft delete (no hard delete exists). Derived groups and read-only groups are refused by the server. {mgmt.csrf_note}</p>
+      <p className="fm-info-note">Deactivating a line keeps it for the record and can be undone with Reactivate; lines are never deleted. Calculated groups cannot be changed here. Adding, deactivating and reactivating a line each save immediately and never run the model.</p>
+      <details className="rx-tech"><summary>Technical note</summary><p className="wf-hint">{mgmt.csrf_note}</p></details>
       {retire && (
         <WorkflowDialog
           title={`Deactivate "${retire.label}"?`}
