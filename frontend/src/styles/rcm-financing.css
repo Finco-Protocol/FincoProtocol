@@ -27,8 +27,8 @@
 .rcm-facts dd { margin: 2px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 .rcm-reason { display: block; font-weight: 400; font-size: 10px; color: var(--muted, #526374); white-space: normal; }
 .rcm-closed { margin: 4px 0 0; padding-left: 20px; font-size: 12px; color: var(--muted, #526374); }
-.rcm-facilities { display: grid; gap: 12px; }
-.rcm-facility { border: 1px solid var(--line, #dce3e9); padding: 8px 12px; background: var(--surface, #fff); }
+.rcm-facilities { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.rcm-facility { border: 1px solid var(--line, #dce3e9); padding: 8px 12px; background: var(--surface, #fff); min-width: 0; overflow-x: auto; overflow-wrap: anywhere; }
 .rcm-draws { max-width: 420px; }
 .rcm-su td.rcm-left { white-space: normal; }
 
@@ -44,3 +44,7 @@
 .rcm-details { margin-top: 8px; }
 .rcm-details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .rcm-table td[colspan] { text-align: left; }
+
+/* Narrow screens: no financing panel may widen the page, whatever the platform font (long words wrap, tables scroll inside their card). */
+.rcm-fin { min-width: 0; overflow-wrap: anywhere; }
+.rcm-fin .rcm-closed li, .rcm-fin .rx-note, .rcm-fin .rcm-facts dd { overflow-wrap: anywhere; }

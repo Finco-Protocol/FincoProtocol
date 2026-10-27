@@ -108,6 +108,9 @@ def test_react_and_legacy_editors_send_byte_identical_agreement_documents(live_s
     page.wait_for_selector("[data-testid='f4-agreement-panel']", state="attached")
     page.evaluate("() => { const p = document.querySelector('[data-testid=\"f4-agreement-panel\"]'); p.open = true; p.dispatchEvent(new Event('toggle', {bubbles: false})); }")
     page.wait_for_selector(".f4-agreement-form", state="attached", timeout=30000)
+    # htmx binds the swapped-in form after its settle delay (``htmx-added`` is removed then); submitting earlier is a native post
+    page.wait_for_function("() => !document.querySelector('.htmx-added') && !!window.htmx", timeout=30000)
+    page.wait_for_timeout(100)
     page.evaluate("""(p) => {
       const form = document.querySelector('.f4-agreement-form');
       form.elements.agreement_id.value = p.id;

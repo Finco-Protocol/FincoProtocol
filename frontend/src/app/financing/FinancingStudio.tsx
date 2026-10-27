@@ -39,7 +39,10 @@ export function FinancingStudio({ project, reloadKey, onSaved, legacyUrl }: {
     const result = await fetchFinancingStudio(project);
     if (result.ok) { setStudio(result); setError(null); } else setError(result);
   }, [project]);
-  useEffect(() => { void load(); }, [load, reloadKey, nonce]);
+  // The studio read is heavy (the full Debt-sheet context); the default Debt terms tab and Investors use their own reads, so it is
+  // fetched only when a tab that shows it is open — the section's original editor then opens with exactly its original request timing.
+  const needsStudio = tab !== "terms" && tab !== "investors";
+  useEffect(() => { if (needsStudio) void load(); }, [load, reloadKey, nonce, needsStudio]);
 
   function choose(next: Tab) {
     setTab(next);

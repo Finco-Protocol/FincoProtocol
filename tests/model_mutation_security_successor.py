@@ -186,8 +186,8 @@ REACT_MVP_CORRECTION_SUCCESSORS={
 RC_M_SUCCESSORS={
     "app/v2/react_workspace_router.py":"e81224a5cd64ab23f94c885437af63a0a6da2f64",
     "frontend/src/app/WorkspaceView.tsx":"1f5e9756b527e8e5b9ca8d15e1d261c93a8f26a6",
-    "static/react/finco-react.css":"add7ddc5f4c3cc2abf3c348eb3b7eca8f415151c",
-    "static/react/finco-react.js":"b99bf91af211fe4139ec4215ac50c61a12876e83",
+    "static/react/finco-react.css":"4c119cdff91c2bcb2cb751ac9668acce7a66607c",
+    "static/react/finco-react.js":"37852f40afdcb3c141005a5cd2694ea4e435ead8",
     # Correction B: the bundle cache-buster is derived from the shipped bytes (REACT_ASSET_VERSION); no other line of the router changed
     "app/v2/react_poc_router.py":"81e38521b31c9c31d0fa2b174c42bf4df1bce8af",
     # the existing mandatory Chromium role now also imports the RC-M acceptance bodies (additive tail only; no collection-time skip)
