@@ -195,3 +195,37 @@ def test_foreign_actor_cannot_change_rate_or_unit(env):
             'content_hash':save['content_hash'],'workbook_version':save['workbook_version'],'csrf_token':save['csrf_token']},follow_redirects=False)
         assert response.status_code in (403,404)
     assert _snapshot(record)==before
+
+def test_old_reference_bootstrap_never_migrates_pricing_but_new_copy_is_canonical(env,monkeypatch):
+    from app.persistence import projects_repository as projects
+    from app.services import project_library_service as library
+    from app.persistence.db import get_connection
+    original=projects._compute_baseline_snapshot
+    def historical_seed(project_type,template_source):
+        snap=original(project_type,template_source)
+        if RATE_UNIT_KEY in snap:
+            snap['interest_rate_pct']=str(float(snap['interest_rate_pct'])/100)
+            snap.pop(RATE_UNIT_KEY)
+        return snap
+    # Construct an old database using an explicit historical fixture producer;
+    # no existing protected reference is modified by the fixture or correction.
+    with monkeypatch.context() as mp:
+        mp.setattr(projects,'_compute_baseline_snapshot',historical_seed)
+        library.ensure_reference_models()
+    def protected_rows():
+        with get_connection() as conn:
+            return {
+                'projects':[tuple(r) for r in conn.execute("SELECT * FROM projects WHERE user_id='__reference__' ORDER BY project_id")],
+                'workspaces':[tuple(r) for r in conn.execute("SELECT * FROM workspace_states WHERE user_id='__reference__' ORDER BY project_id")],
+                'scenarios':[tuple(r) for r in conn.execute("SELECT * FROM scenarios WHERE user_id='__reference__' ORDER BY scenario_id")],
+            }
+    before=protected_rows()
+    library.ensure_reference_models()
+    assert protected_rows()==before
+    for kind in KINDS:
+        rec=env.create(kind)
+        snap=_snapshot(rec)
+        assert snap[RATE_UNIT_KEY]==RATE_UNIT
+        pi=getattr(factories,'create_generic_'+kind+'_reference')()
+        assert float(snap['interest_rate_pct'])==senior_rate_authority(pi)[1]*100
+    assert protected_rows()==before

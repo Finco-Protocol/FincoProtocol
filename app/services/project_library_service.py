@@ -496,6 +496,16 @@ def _ensure_reference_workspace_and_scenario(record, defn: dict) -> None:
     snapshot = _compute_baseline_snapshot(defn["project_type"], defn["template_source"])
 
     ws = get_workspace_state(record.user_id, record.project_id)
+    if ws is not None:
+        # FIN-VAL: reference reconciliation is NOT a rate-unit migration.
+        # Preserve existing source pricing/provenance byte-for-byte; only a
+        # NEW Working Copy receives the new canonical rate contract below.
+        from app.input_adapter import RATE_UNIT_KEY
+        for key in ("interest_rate_pct", RATE_UNIT_KEY):
+            if key in ws.draft_snapshot:
+                snapshot[key] = ws.draft_snapshot[key]
+            else:
+                snapshot.pop(key, None)
     if ws is None:
         save_workspace_state(
             user_id=record.user_id,
