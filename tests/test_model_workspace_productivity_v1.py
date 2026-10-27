@@ -329,7 +329,17 @@ class TestDenseLayoutPreservesContract:
             "revenue|editable|revenue.multistream.contracts",
             "revenue|protected|revenue.multistream.contracts",
         }
-        assert set(actual) == set(golden["hashes"]) | financing_additions
+        # FIN-V2-3 adds one explicitly configured policy field. Its two
+        # presentations are separately hash-locked; all historical DOM hashes
+        # and the exact CSRF/read-only checks above remain unchanged.
+        from tests.fin_v2_3_scope import matches
+        assert matches("app/workbook/registry.py")
+        valuation_additions = {
+            "project_setup|editable|debt.valuation.configuration": "74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b",
+            "project_setup|protected|debt.valuation.configuration": "4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186",
+        }
+        assert {key: actual[key] for key in valuation_additions} == valuation_additions
+        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions)
         drifted = sorted(k for k, v in golden["hashes"].items() if actual[k] != v)
         assert not drifted, f"macro DOM identity drifted for: {drifted}"
 

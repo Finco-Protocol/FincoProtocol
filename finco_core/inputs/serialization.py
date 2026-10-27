@@ -62,7 +62,11 @@ from finco_core.inputs.accounting import (
     LegalReservePolicy,
 )
 from finco_core.inputs.bess import BessParams
+from finco_core.inputs.shl_timing import ShlTimingBasis
 from finco_core.inputs.valuation import (
+    SponsorValuationPolicy,
+    SponsorValuationDatePolicy,
+    LoanLifeConvention,
     CoverageCashflowBasis,
     CoverageCalculationDatePolicy,
     CoverageCfadsCase,
@@ -552,7 +556,19 @@ def _ser_valuation_policies(policies: ValuationPolicies) -> dict:
     project = policies.project
     coverage = policies.coverage
     return {
+        **({"policy_version": policies.policy_version} if policies.policy_version else {}),
+        **({"sponsor": {
+            "annual_discount_rate": policies.sponsor.annual_discount_rate,
+            "authority_label": policies.sponsor.authority_label,
+            "discount_convention": policies.sponsor.discount_convention.value,
+            "valuation_date_policy": policies.sponsor.valuation_date_policy.value,
+            "explicit_valuation_date": _ser_date(policies.sponsor.explicit_valuation_date),
+        }} if policies.sponsor else {}),
         "project": None if project is None else {
+            **({"periodic_rate_conversion": project.periodic_rate_conversion.value if project.periodic_rate_conversion else None,
+                "periods_per_year": project.periods_per_year,
+                "first_cashflow_timing": project.first_cashflow_timing.value if project.first_cashflow_timing else None}
+               if any(v is not None for v in (project.periodic_rate_conversion, project.periods_per_year, project.first_cashflow_timing)) else {}),
             "annual_discount_rate": project.annual_discount_rate,
             "valuation_date_policy": project.valuation_date_policy.value,
             "discount_convention": project.discount_convention.value,
@@ -560,6 +576,8 @@ def _ser_valuation_policies(policies: ValuationPolicies) -> dict:
             "explicit_valuation_date": _ser_date(project.explicit_valuation_date),
         },
         "coverage": None if coverage is None else {
+            **({"rolling_loan_life": coverage.rolling_loan_life.value}
+               if policies.policy_version or coverage.rolling_loan_life is not LoanLifeConvention.ACTUAL_REPAYMENT else {}),
             "annual_discount_rate": coverage.annual_discount_rate,
             "cfads_case": (
                 coverage.cfads_case.value if coverage.cfads_case is not None else None
@@ -600,6 +618,11 @@ def _deser_valuation_policies(payload: dict | None) -> ValuationPolicies:
     if project_payload is not None:
         explicit_date = project_payload.get("explicit_valuation_date")
         project = ProjectValuationPolicy(
+            periodic_rate_conversion=(PeriodicRateConversion(project_payload["periodic_rate_conversion"])
+                if project_payload.get("periodic_rate_conversion") else None),
+            periods_per_year=project_payload.get("periods_per_year"),
+            first_cashflow_timing=(PeriodicFirstCashflowTiming(project_payload["first_cashflow_timing"])
+                if project_payload.get("first_cashflow_timing") else None),
             annual_discount_rate=project_payload.get("annual_discount_rate"),
             valuation_date_policy=ValuationDatePolicy(
                 project_payload["valuation_date_policy"]
@@ -616,6 +639,7 @@ def _deser_valuation_policies(payload: dict | None) -> ValuationPolicies:
     if coverage_payload is not None:
         cfads_case = coverage_payload.get("cfads_case")
         coverage = DebtCoverageValuationPolicy(
+            rolling_loan_life=LoanLifeConvention(coverage_payload.get("rolling_loan_life", "ACTUAL_REPAYMENT")),
             annual_discount_rate=coverage_payload.get("annual_discount_rate"),
             cfads_case=CoverageCfadsCase(cfads_case) if cfads_case else None,
             calculation_date_policy=CoverageCalculationDatePolicy(
@@ -647,7 +671,16 @@ def _deser_valuation_policies(payload: dict | None) -> ValuationPolicies:
                 if coverage_payload.get("first_cashflow_timing") else None
             ),
         )
-    return ValuationPolicies(project=project, coverage=coverage)
+    sponsor_payload = payload.get("sponsor")
+    sponsor = None if sponsor_payload is None else SponsorValuationPolicy(
+        annual_discount_rate=sponsor_payload.get("annual_discount_rate"),
+        authority_label=sponsor_payload["authority_label"],
+        discount_convention=DiscountConvention(sponsor_payload["discount_convention"]),
+        valuation_date_policy=SponsorValuationDatePolicy(sponsor_payload["valuation_date_policy"]),
+        explicit_valuation_date=(date.fromisoformat(sponsor_payload["explicit_valuation_date"])
+                               if sponsor_payload.get("explicit_valuation_date") else None))
+    return ValuationPolicies(project=project, coverage=coverage, sponsor=sponsor,
+                             policy_version=payload.get("policy_version"))
 
 
 def _ser_accounting_policy_config(apc) -> "dict | None":
@@ -874,6 +907,8 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             ),
             "shl_principal_eligibility_start_period": fin.shl_principal_eligibility_start_period,
             "shl_maturity_period_index": fin.shl_maturity_period_index,
+            **({"shl_timing_basis": fin.shl_timing_basis.value}
+               if fin.shl_timing_basis.value != "ABSOLUTE_INDEX" else {}),
             "shl_fcf_waterfall_cash_schedule_keur": list(fin.shl_fcf_waterfall_cash_schedule_keur),
             "shl_fcf_waterfall_minimum_cash_retained_keur": fin.shl_fcf_waterfall_minimum_cash_retained_keur,
             "use_senior_sweep_cash_cap_for_shl": fin.use_senior_sweep_cash_cap_for_shl,
@@ -1302,6 +1337,8 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
             "shl_principal_eligibility_start_period"
         ),
         shl_maturity_period_index=fin_d.get("shl_maturity_period_index"),
+        shl_timing_basis=ShlTimingBasis(
+            fin_d.get("shl_timing_basis", "ABSOLUTE_INDEX")),
         shl_fcf_waterfall_cash_schedule_keur=tuple(
             fin_d.get("shl_fcf_waterfall_cash_schedule_keur", [])
         ),

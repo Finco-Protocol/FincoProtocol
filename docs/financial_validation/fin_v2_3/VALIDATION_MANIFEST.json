@@ -1,0 +1,102 @@
+{
+  "base": "128bf0c2b79af56985326543132cc806ff7f001c",
+  "financial_f3": {
+    "passed": 153,
+    "skipped": 0
+  },
+  "native_identity": {
+    "passed": 54,
+    "skipped": 0
+  },
+  "governance": {
+    "passed": 1016,
+    "skipped": 10,
+    "skip_authority": "Existing retired Model V2 active-scope marker tests"
+  },
+  "oracle": {
+    "committed_synthetic_runs": 8,
+    "metric_comparisons": 48,
+    "maximum_absolute_monetary_difference_keur": 1.1641532182693481e-10
+  },
+  "public_safety_local": "PASS",
+  "artifact_workflow": ".github/workflows/fin_v2_3_oracle.yml",
+  "artifacts": {
+    "FINANCIAL_ACCEPTANCE.xml": "b6aecd39af6ac64c68e73393bae1710ad8f622215c68eeaa9fd247d8ef67cd76",
+    "FULL_GOVERNANCE.xml": "7c64fd155e558a04223c02c710ec1dd0499c97c59862c63b701c5dc5d62a6493",
+    "REPOSITORY_BINDING.xml": "8206a53b93e88becbc18f09f00c3f1a431a798d4a5ac53f4e447bd06196fac1c",
+    "NATIVE_IDENTITY.xml": "77acd70ec0d4ff12c330c0afd3af31242dda90af179226864e6c1a4da4190bb9",
+    "ORACLE_COMMITTED_INPUTS.json.gz": "5d902485a474d764e30e68e5cee039db28538182b55952614fa5d0c125333f4d",
+    "ORACLE_RECONCILIATION.json": "7372d27d35e8fd601787c29bea12a9b6aca95515eddf9cfc01051029fc543970",
+    "SOURCE_SUCCESSOR.json": null,
+    "WORKER_GOAL_REGRESSION.xml": "5f5ca4944544b0ef6ba745d3add0afaf5810902f8dcccd26cc6bb5a9d2a62523",
+    "CI_SUCCESSOR_GOVERNANCE.xml": "ac3af36e8e554f635075030779eeca9b0726b747eafc857bcf8f236c7312f307",
+    "TAX_CANDIDATE_REGRESSION.xml": "84b396f27c7d7bad975357c6d180fc9d1c6391bfc3ae1dcf675be9f676adced1",
+    "BROWSER_NAVIGATION.xml": "f64592469e338e2ee34254c17717ffce0ed195781b5a3ebf674f9a42726ca4b9",
+    "BROWSER_CONSOLIDATION.xml": "5a2fa96e5af85fac04c9816818baaed8fdf201f054fde7e5ebc5468bf551418b",
+    "LAYOUT_TAX_REGRESSION.xml": "3bbd9c4e4441e740177119d34866adb1977eab918dc320437854c99b8d571b72"
+  },
+  "worker_goal_legacy_regression": {
+    "passed": 81,
+    "skipped": 0
+  },
+  "focused_worker_new_goal": {
+    "passed": 10,
+    "skipped": 0
+  },
+  "financial_implementation_checkpoint": "fb1ed365a5671eae527b95f9a9e2ffce765d00d7",
+  "ci_compatibility_source_checkpoint": "5f66eae25ea2decfb39247131280f28da3b51987",
+  "ci_successor_governance": {
+    "passed": 234,
+    "skipped": 0
+  },
+  "tax_candidate_regression": {
+    "passed": 97,
+    "skipped": 0
+  },
+  "browser_navigation_regression": {
+    "passed": 2,
+    "skipped": 0
+  },
+  "browser_consolidation": {
+    "passed": 106,
+    "skipped": 0,
+    "time_s": 337.3,
+    "source_checkpoint": "4ab372c40c78f364f86c5da6083aefbe2369df09",
+    "browser": "system Chromium 154.0.8037.57; Playwright 1.62.0; existing FINCO_TEST_CHROMIUM_PATH override"
+  },
+  "layout_tax_regression": {
+    "layout_passed": 107,
+    "tax_passed": 97,
+    "passed": 204,
+    "skipped": 0
+  },
+  "integration_correction": {
+    "status": "PENDING_CORRECTION_C_NEW_EXACT_HEAD_CI",
+    "accepted_main_sha": "f79e251903621c1a5c88501d51d6971960b612d3",
+    "source_manifest_git_blob": "6760c8bae1c3ae6d6685a7df264d7d74ce81761f",
+    "prior_test_counts": "HISTORICAL_FROM_PRE_INTEGRATION_HEAD_ONLY",
+    "reason": "No recalculated source-manifest SHA256 or combined numerical and browser acceptance until new exact-head verification",
+    "rc_m_merged_pr": 388,
+    "rc_m_merged_sha": "f79e251903621c1a5c88501d51d6971960b612d3",
+    "previous_worker0": {
+      "workflow_id": 40543293268,
+      "worker": 0,
+      "failed": 8,
+      "passed": 3510,
+      "skipped": 71,
+      "all_failures": "tests/test_fin_v2_3_lifecycle.py, 4 verticals x single/batch; actual status OK from approved #390 but isolated pre-#390 expectation DEBT_EVIDENCE_NOT_AVAILABLE"
+    },
+    "finite_governance_source_count": 51,
+    "financial_numerical_code_changes": false,
+    "new_negative_cases": "missing or altered real Senior maturity/payoff evidence fails closed; RC-M accepted main ancestry; exact source cohort one-byte/deletion refusal"
+  },
+  "f01_fixture_reconciliation": {
+    "status": "PENDING_NEW_EXACT_HEAD_CI",
+    "initial_failure_run": 40537734829,
+    "test": "tests/test_finval_f01_fixture_integrity.py::test_authority_mock_has_only_its_missing_unit_added",
+    "original_main_fixture_blob": "04827a4937520ccc6f466c18dcbb6795eb00543c",
+    "new_exact_fixture_blob": "309d8041d9354b16b938fb867586218d97261505",
+    "authorized_extra": "two fixed valuation DOM hashes in tests/test_model_workspace_productivity_v1.py",
+    "financial_numerical_changes": false
+  }
+}

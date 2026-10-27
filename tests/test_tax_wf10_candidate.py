@@ -855,7 +855,13 @@ class TestCase17CanonicalOutputsUnchanged:
              "app/model_v2/canonical_analytics.py"],
             cwd=str(REPO), capture_output=True, text=True)
         assert result.returncode == 0
-        assert result.stdout.strip() == "", result.stdout
+        # The independently Owner-authorized FIN-V2-3 source successor does
+        # not alter or activate this tax candidate. Admit only its complete
+        # exact committed cohort; every other released-engine change fails.
+        from tests.fin_v2_3_scope import matches
+        unreviewed = [path for path in result.stdout.splitlines()
+                      if not matches(path, repo=REPO, ref="HEAD")]
+        assert unreviewed == [], unreviewed
 
 
 # Correction A: independent precision and date-boundary regressions.

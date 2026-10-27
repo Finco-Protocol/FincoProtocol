@@ -114,6 +114,8 @@ def test_protected_reference_is_refused(env):
 
 @pytest.mark.parametrize("params,message", [
     ({"target_metric": "min_dscr", "target_value": "9"}, "Unknown target metric"),
+    ({"target_metric": "project_npv", "target_value": "9"}, "Unknown target metric"),     # non-ratio canonical targets are not served by this adapter
+    ({"target_metric": "sponsor_npv", "target_value": "9"}, "Unknown target metric"),
     ({"target_metric": "project_irr", "target_value": "abc"}, "not a valid number"),
     ({"target_metric": "project_irr", "target_value": "nan"}, "not a valid number"),
     ({"target_metric": "project_irr", "target_value": ""}, "not a valid number"),
@@ -131,7 +133,7 @@ def test_catalog_states_the_variable_budgets_and_binding_and_flags_unsupported_v
     body = call(env.client, "catalog", project=solar.project_code).json()
     assert body["ok"] and body["available"] and body["variable"]["field_id"] == FIELD
     from app.services.goal_seek import GOAL_SEEK_METRICS
-    assert [m["key"] for m in body["metrics"]] == list(GOAL_SEEK_METRICS) == ["project_irr", "pure_equity_irr", "total_sponsor_irr"]
+    assert [m["key"] for m in body["metrics"]] == [k for k, m in GOAL_SEEK_METRICS.items() if m.unit == "ratio"] == ["project_irr", "pure_equity_irr", "total_sponsor_irr"]
     assert body["current_tariff"] > 0 and body["budgets"]["max_model_evaluations"] == 40
     assert body["binding"]["content_hash"] and body["semantics"]["preview_only"] is True and body["semantics"]["is_a_run"] is False
     dc = env.create("data_center", capacity=10.0)
@@ -341,3 +343,13 @@ def test_apply_to_a_protected_reference_is_refused(env):
     assert response.status_code in (403, 409) and response.json()["code"] in ("PROTECTED_REFERENCE", "CSRF_INVALID")
     ws = get_workspace_state(reference.user_id, reference.project_id)
     assert ws is None or ws.draft_snapshot.get("rev_ppa_base_tariff") != "50"
+
+
+def test_the_catalog_serves_only_ratio_unit_targets_so_no_percent_conversion_can_mis_scale_a_value():
+    from app.services.goal_seek import GOAL_SEEK_METRICS
+    from app.v2 import react_goal_seek as module
+    served = module._supported_metrics()
+    assert served and all(metric.unit == "ratio" for metric in served.values())
+    assert set(served) == {key for key, metric in GOAL_SEEK_METRICS.items() if metric.unit == "ratio"}
+    assert {"min_dscr", "project_npv", "sponsor_npv"} <= set(GOAL_SEEK_METRICS) - set(served)      # the canonical service offers them; this adapter does not
+    assert [item["key"] for item in module._metrics()] == list(served)

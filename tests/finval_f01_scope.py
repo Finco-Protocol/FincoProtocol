@@ -17,6 +17,8 @@ def valid(repo=ROOT, sources=None):
             data=actual[path]
             if isinstance(data,str): data=data.encode()
             got=subprocess.check_output(["git","hash-object","--stdin"],input=data,cwd=repo).decode().strip()
-            if got not in {expected,ATOMIC_CREATE_SUCCESSORS.get(path)}:return False
+            if got not in {expected,ATOMIC_CREATE_SUCCESSORS.get(path)}:
+                from tests.fin_v2_3_scope import matches as financial_successor
+                if not financial_successor(path,data,repo=repo):return False
         return True
     except (OSError, KeyError, subprocess.CalledProcessError):return False

@@ -1,0 +1,22 @@
+{
+  "solar": {
+    "source_head": "128bf0c2b79af56985326543132cc806ff7f001c",
+    "float_paths": 7695,
+    "float_hex_sha256": "df026437f86949de9de61591e8b5644dd1cb8aff9f22de6289ed08d4e15fa98c"
+  },
+  "wind": {
+    "source_head": "128bf0c2b79af56985326543132cc806ff7f001c",
+    "float_paths": 8419,
+    "float_hex_sha256": "348f78421cb41770b6b9b4c8c6ccc6caa3f2fef577b7af160e5e35a659c94045"
+  },
+  "data_center": {
+    "source_head": "128bf0c2b79af56985326543132cc806ff7f001c",
+    "float_paths": 7322,
+    "float_hex_sha256": "9bc6ce5893e4477400bc5e40be461df1021c5cd0b98ae97a24bba702cc914509"
+  },
+  "ev_charging": {
+    "source_head": "128bf0c2b79af56985326543132cc806ff7f001c",
+    "float_paths": 6184,
+    "float_hex_sha256": "ac3cb4f7b8cd8e567dd739a08e696f0c8e0d40434b728ef839c9367298d88bc0"
+  }
+}
