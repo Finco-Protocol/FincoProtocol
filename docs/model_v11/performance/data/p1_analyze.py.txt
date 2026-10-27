@@ -1,0 +1,29 @@
+import json, math, random, statistics as st, sys
+random.seed(1)
+def boot(x, B=10000):
+    n=len(x); m=sorted(st.median([x[random.randrange(n)] for _ in range(n)]) for _ in range(B)); return m[int(.025*B)], m[int(.975*B)]
+def p95(x): s=sorted(x); return s[max(0, math.ceil(.95*len(s))-1)]
+for path in sys.argv[1:]:
+    d=json.load(open(path)); rows=d["rows"]; print("==", d["asset"], path.split("/")[-1])
+    for v in ("off","on"):
+        R=[r for r in rows if r["variant"]==v]
+        first=[x["wall"] for r in R for x in r["first_runs"]]
+        warm=[x["wall"] for r in R for x in r["warm_runs"]]
+        repl=[r["replacement_first_run"]["wall"] for r in R]
+        startup=[r["startup_s"] for r in R]
+        rss=[m for r in R for m in r["rss_mb_after_warm"] if m]; cpu=[c for r in R for c in r["cpu_s_after_warm"] if c is not None]
+        rss2=[m for r in R for m in r["rss_mb_after_runs"] if m]
+        print(f" {v:3s} n_life={len(R)} startup med {st.median(startup):.3f} p95 {p95(startup):.3f} | first-per-PID wall med {st.median(first):.3f} p95 {p95(first):.3f} (n={len(first)}) | warm med {st.median(warm):.3f} p95 {p95(warm):.3f} (n={len(warm)}) | replacement-first med {st.median(repl):.3f} | RSS warm {st.median(rss):.1f} MB, after runs {st.median(rss2):.1f} MB | worker CPU at ready {st.median(cpu):.2f}s | prewarm={set(r['native_prewarm'] for r in R)}")
+    off={r["life"]:r for r in rows if r["variant"]=="off"}; on={r["life"]:r for r in rows if r["variant"]=="on"}
+    L=sorted(set(off)&set(on))
+    d_first=[st.mean(x["wall"] for x in on[l]["first_runs"])-st.mean(x["wall"] for x in off[l]["first_runs"]) for l in L]
+    d_warm=[st.median(x["wall"] for x in on[l]["warm_runs"])-st.median(x["wall"] for x in off[l]["warm_runs"]) for l in L]
+    d_start=[on[l]["startup_s"]-off[l]["startup_s"] for l in L]
+    d_repl=[on[l]["replacement_first_run"]["wall"]-off[l]["replacement_first_run"]["wall"] for l in L]
+    for name,x in (("first-Run per new PID",d_first),("warm Run",d_warm),("startup (warm_up)",d_start),("replacement-pool first Run",d_repl)):
+        lo,hi=boot(x); print(f"   paired d(on-off) {name:28s} median {st.median(x):+.3f} s CI95 [{lo:+.3f},{hi:+.3f}] better in {sum(1 for v in x if v<0)}/{len(x)}")
+    models={(x["v11_models"], tuple(x["v11_declines"].items()), x["v10_stage2"]) for r in rows for x in r["first_runs"]+r["warm_runs"]}
+    dig={}
+    for r in rows:
+        for x in r["first_runs"]+r["warm_runs"]: dig.setdefault(x["digest"],0)
+    print("   counters:", models, "| leaked gate:", {r["leaked_gate"] for r in rows}, "| recovery first call:", {r["recovery_first_call"] for r in rows})
