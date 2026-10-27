@@ -61,7 +61,8 @@ def test_router_and_csrf_token_module_are_not_in_the_layer_and_keep_their_pins()
     assert "app/v2/router.py" not in LAYER and S.TOKEN_MODULE not in LAYER
     assert S.git_blob(SOURCES["app/v2/router.py"]) in {S.BLOBS["app/v2/router.py"], S.FINVAL_B2C1_SUCCESSORS["app/v2/router.py"],
                                                        S.D029_RUN_INTENT_SUCCESSORS["app/v2/router.py"], S.FINVAL_RATE_SUCCESSORS["app/v2/router.py"],
-                                                       S.FINVAL_F01_COMPLETE_SUCCESSORS["app/v2/router.py"]}
+                                                       S.FINVAL_F01_COMPLETE_SUCCESSORS["app/v2/router.py"],
+                                                       S.FINV2_D01_SENSITIVITY_SUCCESSORS["app/v2/router.py"]}
     assert S.git_blob(SOURCES[S.TOKEN_MODULE]) == S.BLOBS[S.TOKEN_MODULE]
 
 

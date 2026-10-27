@@ -273,6 +273,10 @@ def _browser_layers():
 # F01 complete rate contract; historical layers above are immutable.
 FINVAL_F01_COMPLETE_SUCCESSORS={'app/v2/router.py': '2ec6b05a7d730e1034348da632d37efc6bfa9c3b', 'app/v2/grid_router.py': '0d1ab6c05b7d4f53f9d4a341818e107969bcccc0', 'tests/test_u2_2_returns_surface.py': 'afb64327e1032071ebf254dfe19b1e094e0b6fd0'}
 
+# FIN-V2-D01 sensitivity truth: the one-driver interest sensitivity route applies the shared rate-shock authority.
+# Additive; every earlier layer stays admitted and no gate/binding of the route set is changed.
+FINV2_D01_SENSITIVITY_SUCCESSORS={'app/v2/router.py': 'cd5091083433dab5aeb493d9be201919d5a14e42'}
+
 
 def violations(sources,*,check_pin=True):
     errors=[];trees={}
@@ -286,6 +290,7 @@ def violations(sources,*,check_pin=True):
         if path in REACT_MVP_CORRECTION_SUCCESSORS:admitted=admitted|{REACT_MVP_CORRECTION_SUCCESSORS[path]}
         if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if path in FINVAL_F01_COMPLETE_SUCCESSORS:admitted=admitted|{FINVAL_F01_COMPLETE_SUCCESSORS[path]}
+        if path in FINV2_D01_SENSITIVITY_SUCCESSORS:admitted=admitted|{FINV2_D01_SENSITIVITY_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):
             try:trees[path]=ast.parse(text)
