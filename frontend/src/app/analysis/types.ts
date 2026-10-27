@@ -68,6 +68,10 @@ export interface GoalSeekCatalog {
   semantics: { preview_only: boolean; writes_nothing: boolean; is_a_run: boolean; basis: string };
 }
 
+/** One Goal Seek target and the unit the user types it in (declared by the server; the browser never converts a target). */
+export interface TypedGoalSeekTarget { key: string; label: string; unit: string; target_unit: "percent" | "multiple" | "keur"; input_label: string; example: string }
+export interface GoalSeekTargets { ok: true; metrics: TypedGoalSeekTarget[]; semantics: { explicit_unit_required: boolean; writes_nothing: boolean } }
+
 export interface GoalSeekApplyBinding {
   field_id: string; value: string; content_hash: string; workbook_version: string;
   target_metric: string; target_value: string; csrf_token: string;

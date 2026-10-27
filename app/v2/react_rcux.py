@@ -10,6 +10,7 @@ from fastapi import APIRouter
 
 from app.v2.react_capex import router as _capex_router
 from app.v2.react_compare import router as _compare_router
+from app.v2.react_goal_seek_targets import router as _goal_seek_targets_router
 from app.v2.react_import import router as _import_router
 from app.v2.react_projects import router as _projects_router
 from app.v2.react_trust import router as _trust_router
@@ -17,10 +18,11 @@ from app.v2.react_whatif import router as _whatif_router
 
 router = APIRouter()
 router.include_router(_compare_router)
+router.include_router(_goal_seek_targets_router)
 router.include_router(_import_router)
 router.include_router(_capex_router)
 router.include_router(_projects_router)
 router.include_router(_trust_router)
 router.include_router(_whatif_router)
 
-RCUX_ADAPTERS = ("react_capex", "react_compare", "react_import", "react_projects", "react_trust", "react_whatif")
+RCUX_ADAPTERS = ("react_capex", "react_compare", "react_goal_seek_targets", "react_import", "react_projects", "react_trust", "react_whatif")

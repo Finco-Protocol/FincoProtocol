@@ -5,14 +5,15 @@
   "source_blobs": {
     "app/v2/react_capex.py": "001ad8bb3f95a846d45955baf701b34637c3c09e",
     "app/v2/react_compare.py": "ccfbc96ff5dece97d7acca2b95a0742d68d44166",
+    "app/v2/react_goal_seek_targets.py": "d673cc3ecd807f033a2e1b694a059f0b56c7f104",
     "app/v2/react_import.py": "bd92b43f0f30bf9b68bcde0ef78fe6df8d75cbe3",
     "app/v2/react_projects.py": "19fdff7af2dee3d6cb3e276a2cb2952490ed2012",
-    "app/v2/react_rcux.py": "1a308304dacc61dd510c4f9134fa67cf4de41b19",
+    "app/v2/react_rcux.py": "1ed7b56dabf5912fbc02183d55317c2376035825",
     "app/v2/react_trust.py": "16e0fa90f0a3bedeb8e4bc7a76235c8b9f1452a7",
     "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
     "app/v2/react_workspace_router.py": "dab743e38301d9504909ef73693cb83deeca3dd2",
-    "tests/fin_v2_rcux_scope.py": "e23dbc861a3fa227c2c7c878883e7b380dc1505b",
+    "tests/fin_v2_rcux_scope.py": "26df6fb86e38492d2957d24350532c3ff5f39406",
     "tests/rcux_navigation_contract.py": "9d367d03bf619c4c3243048c824798103f1f516b",
-    "tests/test_fin_v2_rcux_scope.py": "892341c92f5ca4d20b4a4c75e41f8c3696f21911"
+    "tests/test_fin_v2_rcux_scope.py": "6df98e88edb96f7df727e89537e76c2950061515"
   }
 }

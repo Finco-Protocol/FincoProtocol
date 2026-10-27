@@ -23,6 +23,7 @@ PROTECTED = ('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 
 OWNED_PATHS = frozenset((
     'app/v2/react_capex.py',
     'app/v2/react_compare.py',
+    'app/v2/react_goal_seek_targets.py',
     'app/v2/react_import.py',
     'app/v2/react_projects.py',
     'app/v2/react_rcux.py',

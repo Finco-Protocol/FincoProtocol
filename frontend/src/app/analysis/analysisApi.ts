@@ -2,7 +2,7 @@
 // (a custom header a cross-site page cannot send without a CORS preflight).  The single write — Goal Seek Apply — is a JSON POST
 // with a signed, project-bound token.  Nothing here retries: a busy or ambiguous outcome is shown and the user decides.
 import type {
-  AdapterFailure, GoalSeekApplied, GoalSeekApplyBinding, GoalSeekCatalog, GoalSeekPreview, MatrixResult, SensitivityCatalog, StripResult,
+  AdapterFailure, GoalSeekApplied, GoalSeekApplyBinding, GoalSeekCatalog, GoalSeekPreview, GoalSeekTargets, MatrixResult, SensitivityCatalog, StripResult,
 } from "./types";
 
 const BASE = "/v2/model-react/analysis";
@@ -42,8 +42,11 @@ export const runMatrix = (
 
 export const fetchGoalSeekCatalog = (project: string) => read<GoalSeekCatalog>(`${BASE}/goal-seek/catalog?${q({ project })}`);
 
-export const solveGoalSeek = (a: { project: string; metric: string; target: string }, signal?: AbortSignal) =>
-  read<GoalSeekPreview>(`${BASE}/goal-seek/solve?${q({ project: a.project, target_metric: a.metric, target_value: a.target })}`, signal);
+export const fetchGoalSeekTargets = (project: string) => read<GoalSeekTargets>(`${BASE}/goal-seek/targets?${q({ project })}`);
+
+/** The target is sent in the unit the server declared for the metric (`percent` | `multiple` | `keur`); the server refuses a mismatch. */
+export const solveGoalSeek = (a: { project: string; metric: string; target: string; unit: string }, signal?: AbortSignal) =>
+  read<GoalSeekPreview>(`${BASE}/goal-seek/solve-typed?${q({ project: a.project, target_metric: a.metric, target_value: a.target, target_unit: a.unit })}`, signal);
 
 export type ApplyOutcome =
   | { kind: "applied"; applied: GoalSeekApplied }

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../../styles/rcm-analysis.css";
 import { useDirtyTotal } from "../workflow/workflowShared";
-import { applyGoalSeek, fetchGoalSeekCatalog, solveGoalSeek, type ApplyOutcome } from "./analysisApi";
+import { applyGoalSeek, fetchGoalSeekCatalog, fetchGoalSeekTargets, solveGoalSeek, type ApplyOutcome } from "./analysisApi";
 import { TierNote } from "./shared";
-import type { AdapterFailure, GoalSeekApplied, GoalSeekCatalog, GoalSeekPreview } from "./types";
+import type { AdapterFailure, GoalSeekApplied, GoalSeekCatalog, GoalSeekPreview, TypedGoalSeekTarget } from "./types";
 
 const FAILURE_TEXT: Record<string, string> = {
   MODEL_BUSY: "The model engine is busy. Wait a moment and solve again.",
@@ -15,6 +15,7 @@ const FAILURE_TEXT: Record<string, string> = {
  *  the model.  Save and Run stay separate, deliberate actions. */
 export function GoalSeekPanel({ project, workbookHash, onApplied }: { project: string; workbookHash: string; onApplied: () => void }) {
   const [catalog, setCatalog] = useState<GoalSeekCatalog | null>(null);
+  const [targets, setTargets] = useState<TypedGoalSeekTarget[] | null>(null);
   const [failure, setFailure] = useState<AdapterFailure | null>(null);
   const [metric, setMetric] = useState("project_irr");
   const [target, setTarget] = useState("");
@@ -36,22 +37,24 @@ export function GoalSeekPanel({ project, workbookHash, onApplied }: { project: s
       if (!live) return;
       if (result.ok) setCatalog(result); else setFailure(result);
     });
+    void fetchGoalSeekTargets(project).then((result) => { if (live && result.ok) setTargets(result.metrics); });
     return () => { live = false; abort.current?.abort(); };
   }, [project]);
 
+  const typed = targets?.find((t) => t.key === metric);
   const solve = useCallback(async () => {
-    if (!catalog || busy) return;
+    if (!catalog || !typed || busy) return;
     abort.current?.abort();
     const controller = new AbortController();
     abort.current = controller;
     const mine = ++sequence.current;
     setBusy(true); setError(null); setApplied(null); setApplyIssue(null); setConfirming(false);
-    const result = await solveGoalSeek({ project, metric, target: target.trim() }, controller.signal);
+    const result = await solveGoalSeek({ project, metric, target: target.trim(), unit: typed.target_unit }, controller.signal);
     if (mine !== sequence.current) return;
     setBusy(false);
     if (result.ok) setPreview(result);
     else { setPreview(null); setError({ code: result.code, message: FAILURE_TEXT[result.code] ?? result.message ?? "Goal Seek could not be run. Nothing was changed." }); }
-  }, [catalog, busy, project, metric, target]);
+  }, [catalog, typed, busy, project, metric, target]);
 
   async function confirmApply() {
     if (!preview?.apply || applyLock.current) return;
@@ -82,7 +85,7 @@ export function GoalSeekPanel({ project, workbookHash, onApplied }: { project: s
       </section>
     );
   }
-  if (!catalog) return <section className="rx-card"><p className="rx-boot-loading" role="status">Loading Goal Seek…</p></section>;
+  if (!catalog || !targets) return <section className="rx-card"><p className="rx-boot-loading" role="status">Loading Goal Seek…</p></section>;
 
   const outdated = Boolean(preview?.apply && workbookHash && preview.apply.content_hash && workbookHash !== preview.apply.content_hash);
   const blocked = unsaved > 0 || pendingKeys.length > 0;
@@ -101,12 +104,12 @@ export function GoalSeekPanel({ project, workbookHash, onApplied }: { project: s
       ) : (
         <form className="rcm-controls" onSubmit={(e) => { e.preventDefault(); void solve(); }} data-goal-seek-form="true">
           <label className="rcm-field">Target metric
-            <select value={metric} data-gs-metric="true" onChange={(e) => setMetric(e.target.value)}>
-              {catalog.metrics.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            <select value={metric} data-gs-metric="true" onChange={(e) => { setMetric(e.target.value); setTarget(""); setPreview(null); setError(null); }}>
+              {targets.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           </label>
-          <label className="rcm-field">Target (%)
-            <input value={target} inputMode="decimal" data-gs-target="true" placeholder="e.g. 8.5" onChange={(e) => setTarget(e.target.value)} />
+          <label className="rcm-field">{typed?.input_label ?? "Target"}
+            <input value={target} inputMode="decimal" data-gs-target="true" data-gs-target-unit={typed?.target_unit} placeholder={`e.g. ${typed?.example ?? ""}`} onChange={(e) => setTarget(e.target.value)} />
             <span className="rx-note">Starting {catalog.variable?.label}: {catalog.current_tariff?.toFixed(2)} {catalog.variable?.unit}</span>
           </label>
           <div className="rcm-controls-actions">
