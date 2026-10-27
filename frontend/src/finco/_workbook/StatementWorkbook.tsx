@@ -484,7 +484,7 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
                 params.set("statementShowInitial", next ? "1" : "0");
                 window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params}${window.location.hash}`);
               }}
-            >Initial period: {showInitialPeriod ? "shown" : "hidden"}</button>}
+            >Year 0 (initial period): {showInitialPeriod ? "shown" : "hidden"}</button>}
             <div className="fm-sw-expand-controls" aria-label="Statement row groups">
               <button type="button" className="fm-sw-scroll-btn" onClick={() => toggleAllGroups(true)}>Expand all</button>
               <button type="button" className="fm-sw-scroll-btn" onClick={() => toggleAllGroups(false)}>Collapse all</button>

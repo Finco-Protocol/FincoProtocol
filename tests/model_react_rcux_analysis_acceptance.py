@@ -22,6 +22,7 @@ __all__ = (
     "test_rcux_compare_projects_compares_only_my_projects_and_marks_an_unrun_project_unavailable",
     "test_rcux_compare_projects_deep_link_refresh_back_and_tenant_isolation",
     "test_rcux_compare_projects_fits_every_viewport",
+    "test_rcux_statements_year_zero_toggle_hides_exactly_the_first_model_period_and_changes_no_value",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -284,3 +285,29 @@ def test_rcux_compare_projects_fits_every_viewport(live_server, an_session, widt
     assert box["x"] >= -1 and box["x"] + box["width"] <= width + 1
     _shot(page, f"compare-projects-{width}")
     assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_statements_year_zero_toggle_hides_exactly_the_first_model_period_and_changes_no_value(live_server, an_session):
+    context, page, record, errors = an_session("rcux-year0")
+    run_canonical(context, live_server, record.project_code)
+    page.goto(f"{live_server}/v2/model-react/{record.project_code}#statements")
+    page.reload()
+    page.wait_for_selector("#fm-sw-view", timeout=60000)
+    assert page.locator(".fm-sw-period-toggle").count() == 0                                   # the annual view has no Year 0 column to hide
+    page.select_option("#fm-sw-view", "model")
+    toggle = page.locator(".fm-sw-period-toggle")
+    toggle.wait_for()
+    assert toggle.inner_text().startswith("Year 0 (initial period): shown") and toggle.get_attribute("aria-pressed") == "true"
+    header = lambda: [h.inner_text().strip() for h in page.locator("table thead tr").last.locator("th").all()]
+    row_values = lambda: [c.inner_text().strip() for c in page.locator("table tbody tr").first.locator("td").all()]
+    shown_header, shown_values = header(), row_values()
+    toggle.click()
+    assert toggle.inner_text().startswith("Year 0 (initial period): hidden") and toggle.get_attribute("aria-pressed") == "false"
+    hidden_header, hidden_values = header(), row_values()
+    assert hidden_header == [shown_header[0]] + shown_header[2:]                               # exactly the first period column is gone
+    assert hidden_values == shown_values[1:]                                                   # every remaining value is unchanged
+    assert "statementShowInitial=0" in page.url                                                # the choice is in the URL (refresh / link keeps it)
+    page.reload()
+    page.wait_for_selector("#fm-sw-view", timeout=60000)
+    assert page.locator(".fm-sw-period-toggle").inner_text().startswith("Year 0 (initial period): hidden")
+    assert errors == []
