@@ -58,3 +58,16 @@ No `frontend/`, `static/react/`, engine/native kernel, historical golden/pin, re
 Correction A scope details: `workspace_repository._rate_coherent_draft_hash` validates the documented optional plain-PIS hash after final rate metadata reconciliation, inside the UPDATE transaction (and before INSERT). `input_adapter.preserve_rate_provenance` also refuses changing a genuinely ambiguous stored rate, while retaining unrelated safe data without relabeling it. `_snapshot_to_dict` enforces the same unit guard for the direct legacy seeded caller. No ratio conversion or financial equation was added.
 
 Additional truth-preserving fixtures: `test_api_v1_1_institutional`, `test_p1_2_xlsx_export_reconciliation`, `test_p1_3_institutional_validation`, `test_p1_4_ev_reconciliation`, `test_u2_2_returns_surface`, `test_public_surface_hygiene` and `rc7_helpers` now identify their explicitly authored human-percent factory rates. `model_workspace_harness` identifies its fresh synthetic unit, preserving the original DOM golden. The productivity authority mock now supplies a verified unit so the existing calibrated-authority rejection remains the tested branch. The M3 sensitivity oracle removes its documented old ratio-to-percent multiplication because the seed is now already percent. No expected financial value/tolerance/assertion or historical golden is removed. `test_finval_f01_fixture_integrity` compares these precise transformations against the authenticated baseline and rejects any other assertion/value drift.
+
+## Correction C — exact-content V11 CI reconciliation (Owner-authorized, 2026-10-27)
+
+Preserved F01 workflow: `.github/workflows/finval_f01_acceptance.yml` original and final Git blob `8b7b49a49583fc33c48d60cc55bd88ea9e88ef8d`; no workflow permissions, run steps, native kernels or deployed behavior changed.
+
+| Governance path | Before exact blob | New exact blob | Reviewed change |
+|---|---|---|---|
+| `tests/v11_stage3_successor.py` | `cf51845fc00a919b332d4814903fe4ad16cf868d` | `09f85eabd103f3eb07d760102c55b9217f16e64c` | Add exclusively exact-blob, semantic, read-only test workflow recognition; native activation detection stays fail-closed |
+| `tests/test_v11_stage3_successor.py` | `459b8cbb67f661933c648f7eba24d70d15da5260` | `c3ac53df8c8fe58f42a060f8f2587a2136041b03` | Positive exact-workflow test plus seven synthetic negative mutations (byte, deploy, native enable, write, OIDC, release and unrelated workflow) |
+
+The exact F01 workflow verifies non-root native source ownership and offline native test identity. It mentions `financial_engine/native_v11` as a filesystem path; this is not an activation command. The previously existing V11 scanner treated this read-only path check as an activation surface, which blocked V11S3 recognition and propagated to historical F3/M7/RC3/RC7/ODR/V10/WF04/WF07 governance. All 37 failures passed on exact main `cf7056de`, then failed on #389 `035b73a1`. This is a narrow successor of test-only recognition, not approval/activation/release of V11. All historical pins and release decision records remain byte-identical.
+
+Hosted exact-head five-worker CI on this correction is REQUIRED. Do not promote READY or merge until green, with no unauthorized skips.

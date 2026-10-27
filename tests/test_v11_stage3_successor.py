@@ -202,6 +202,41 @@ def test_stage3_default_changed_to_candidate_is_rejected(repo, tmp_path, head):
     (".github/workflows/public_safety_and_smoke.yml", b"\n# native_v11\n"),
     ("tools/native_v10_release.py", b"\n# native_v11\n"),
 ])
+
+# F01 Correction C: a CI workflow listing the native_v11 directory for
+# read-only ownership checks is not an activation path. Its exact reviewed
+# content is recognized as test-only, and every mutation is rejected.
+def test_finval_f01_acceptance_is_exact_nonactivation_workflow(head):
+    path = V.F01_TEST_ONLY_WORKFLOW
+    assert V.blob(path) == V.F01_TEST_ONLY_BLOB
+    assert V._exact_f01_nonactivation_workflow(path, head, V.ROOT)
+    assert V.v11_violations() == []
+
+
+@pytest.mark.parametrize("name,append", [
+    ("one_byte", b"\n"),
+    ("native_enable", b"\nenv:\n  FINCO_NATIVE_V11_RUN: 'on'\n"),
+    ("deploy", b"\n  - run: ./deploy/scripts/release_native.sh\n"),
+    ("write_permission", b"\npermissions:\n  contents: write\n"),
+    ("elevated_oidc", b"\npermissions:\n  id-token: write\n"),
+    ("new_release_step", b"\n  - run: gh release create v0\n"),
+])
+def test_finval_f01_modified_workflow_is_unreleased_activation(repo, tmp_path, head, name, append):
+    path = V.F01_TEST_ONLY_WORKFLOW
+    altered = show(repo, head, path) + append
+    ref = mutate(repo, tmp_path, head, {path: altered})
+    assert not V._exact_f01_nonactivation_workflow(path, ref, repo), name
+    problems = assert_rejected(repo, ref, "V11_STAGE3_ACTIVATION_SURFACE")
+    assert any(path in problem for problem in problems)
+
+
+def test_f01_exception_never_whitelists_another_workflow(repo, tmp_path, head):
+    path = ".github/workflows/unapproved_v11_activation.yml"
+    ref = mutate(repo, tmp_path, head, {path: b"name: release\n# native_v11\n"})
+    assert not V._exact_f01_nonactivation_workflow(path, ref, repo)
+    assert_rejected(repo, ref, "V11_STAGE3_ACTIVATION_SURFACE")
+
+
 def test_an_activation_surface_referencing_stage3_is_rejected(repo, tmp_path, head, path, addition):
     ref = mutate(repo, tmp_path, head, {path: show(repo, head, path) + addition})
     assert_rejected(repo, ref, "V11_STAGE3_ACTIVATION_SURFACE")
