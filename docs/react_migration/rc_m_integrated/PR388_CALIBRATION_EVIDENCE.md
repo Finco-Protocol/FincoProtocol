@@ -21,13 +21,17 @@ Workers 1 and 3 are **readiness refusals, not pytest failures, not timeouts and 
 
 ## Is the PR the cause? — evidence
 
-1. **The probe does not execute anything this PR changes.** `_WORKER_PROBE` imports `tests/p0_exec_helpers.py` and `app.runtime.model_execution` and times one `ModelExecutor.run_process(helpers.add, 1, 1)`. On `main` and on this branch the parent loads the identical module set
+1. **The probe's measured path loads the same code on `main` and on this branch** (Correction F: child-level check added; the earlier parent-only statement is superseded). `_WORKER_PROBE` imports `tests/p0_exec_helpers.py` and `app.runtime.model_execution` and times one `ModelExecutor.run_process(helpers.add, 1, 1)`. On `main` and on this branch the parent loads the identical module set
    (4 modules: the two `app.runtime` modules, `app.runtime.model_execution` helpers and `p0_exec_helpers`; diff empty), and `git diff origin/main HEAD -- app/runtime tests/p0_exec_helpers.py tools/ci_v3_calibrate.py tools/ci_v3_real_child.py` is empty.
    The only `app/` change since the head on which all five workers met the gate (`248d9112`) is `app/persistence/db.py`, which the probe never imports.
 2. **Hosted population (60 worker calibrations, 12 heads: this branch, `main` pushes, F01 and unrelated PRs; `public_safety_and_smoke.yml`):** first-sample median 0.318 s, 58 of 60 at or below 0.372 s; the only two above 0.6 s are the two refusals above. On this branch: `0ee2f5ec` (5/5 met), `248d9112` (5/5 met, all ≤ 0.333 s), `9ac495c8` (3/5 met).
 3. **Local reproduction (Python 3.12, same probe function, 30 samples per tree, alternating):** `main` (`cf7056de`) median 0.350 / 0.349 s, max 0.486 / 0.484 s; this branch median 0.334 / 0.352 s, max 0.404 / 0.389 s. No difference attributable to the PR.
 4. **Cold page cache is the mechanism that reproduces the shape.** With the page cache dropped before each probe (`echo 3 > /proc/sys/vm/drop_caches`), the first sample rises by about 0.1 s while samples 2–3 stay at 0.31–0.39 s, identically on `main` (0.427–0.496 s) and on this branch (0.428–0.533 s). The hosted refusals show the same
    shape (first sample high, next two low) on a runner that had just loaded the container image; the hosted tail is larger because that disk is slower. This is consistent with — not a proof of — a first-use filesystem-cache effect on the hosted runner.
+
+## Superseded by Correction F
+
+The contract was changed in Correction F (`docs/ci_v3/phase4/CALIBRATION_CONTRACT_V2.md`): the unchanged 0.600 s maximum now applies to the samples after the first, the first sample has its own 1.8 s ceiling, all raw samples stay in the receipt, and the aggregate recomputes the verdict. A third refusal (worker 0 of run 40534725665, head `54453418`, samples 0.610 / 0.218 / 0.222 s) was recorded before that change. The paragraphs below describe the state at `9ac495c8`.
 
 ## What was **not** done (and why)
 

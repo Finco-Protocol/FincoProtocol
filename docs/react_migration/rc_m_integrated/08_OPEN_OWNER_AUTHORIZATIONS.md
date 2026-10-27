@@ -98,3 +98,8 @@ percentile with a bounded retry that retains every raw sample). That is a CI-own
 ## 10. SQLite migration order — closed
 
 The create-request unique index is created after the columns it reads; duplicate pre-existing identities fail closed with a diagnostic and are never recorded as migrated (`atomic_create/README.md`, `PR388_CORRECTION_D_ROOT_CAUSE.md`). Hosted worker-0 evidence on `9ac495c8`.
+
+## 11. CI V3 calibration contract v2 (Correction F) — proposal under review
+
+`docs/ci_v3/phase4/CALIBRATION_CONTRACT_V2.md`: threshold and statistic unchanged and applied to steady-state samples; a separate 1.8 s first-start ceiling; raw samples retained; verdict recomputed by the aggregate; negative tests prove slower start-up and forged receipts still fail.
+Authorized by the Financial Owner's standing authorization for in-scope corrections; **not independently reviewed**. If the reviewer prefers the legacy rule, reverting `STEADY_STATE_CONTRACT` in `tools/ci_v3_production.py` restores it (the legacy contract remains approved in `tools/ci_v3_calibrate.py`).
