@@ -1,0 +1,16 @@
+{
+  "schema_version": "RC_UX_EXACT_SOURCE_V1",
+  "base": "f79e251903621c1a5c88501d51d6971960b612d3",
+  "authorization": "Financial Owner assigned RC-UX Completion V1 (incl. Addenda A and B): in-scope React presentation, read-only adapters, governance successors; no merge, deployment, feature activation or financial-engine change. Self-generated exact blobs: a review proposal, not an approval.",
+  "source_blobs": {
+    "app/v2/react_capex.py": "001ad8bb3f95a846d45955baf701b34637c3c09e",
+    "app/v2/react_compare.py": "ccfbc96ff5dece97d7acca2b95a0742d68d44166",
+    "app/v2/react_import.py": "bd92b43f0f30bf9b68bcde0ef78fe6df8d75cbe3",
+    "app/v2/react_projects.py": "19fdff7af2dee3d6cb3e276a2cb2952490ed2012",
+    "app/v2/react_rcux.py": "3669b5f262b2a6e8324e63edf19d9de0e184b52e",
+    "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
+    "app/v2/react_workspace_router.py": "0dc741e340e1db918e4d2cc4b26467bc1514dd39",
+    "tests/fin_v2_rcux_scope.py": "df06b0ad42c86a01308ca7c7a1d1e2b740807967",
+    "tests/test_fin_v2_rcux_scope.py": "dfea7b8be8b79a93a8da7d08d4bb7d966e0fe8c2"
+  }
+}

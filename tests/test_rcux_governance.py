@@ -13,6 +13,7 @@ from tests import model_mutation_security_successor as S
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_UX_SUCCESSORS
 BASE = "f79e251903621c1a5c88501d51d6971960b612d3"       # main containing #388, the RC-UX branch point
+MAIN = "70bcf693bdb2547fc1c0e5af685835689eb44d3e"       # main containing the FIN-V2 Integration RC (#395): the accepted parent RC-UX is judged against
 #: RC-UX may re-pin only React presentation surfaces: the adapter mount, the workspace view, the rebuilt bundle, the React views and the browser
 #: acceptance bodies.  A security, CSRF, financial or governance test can never enter this layer.
 ALLOWED = re.compile(r"^(app/v2/react_[a-z_]+\.py|frontend/src/.+\.(ts|tsx|css)|static/react/finco-react\.(js|css)|"
@@ -112,7 +113,7 @@ def test_the_rcux_adapters_add_no_calculation_authority_and_never_import_the_eng
 
 def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     try:
-        changed = set(_git("diff", "--name-only", BASE, "HEAD").split())
+        changed = set(_git("diff", "--name-only", MAIN, "HEAD").split())
         changed |= set(_git("diff", "--name-only").split()) | set(_git("diff", "--name-only", "--cached").split())
     except subprocess.CalledProcessError:
         pytest.skip("baseline commit not available in this checkout")
