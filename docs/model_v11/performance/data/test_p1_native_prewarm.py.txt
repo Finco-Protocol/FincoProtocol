@@ -1,0 +1,166 @@
+"""P1 — worker-start native readiness (existing approved loaders only; no project executed; per-Run admission unchanged)."""
+from __future__ import annotations
+
+import os
+import sys
+
+import pytest
+
+import p0b_recovery_helpers as h
+from app.runtime import model_execution as me
+from app.runtime import native_activation as na
+
+
+@pytest.fixture(autouse=True)
+def _clean(monkeypatch):
+    for name in (na.ENV_RUN, na.ENV_BUILD_ID, na.ENV_V11_RUN, na.ENV_V11_BUILD_ID, me.ENV_NATIVE_PREWARM):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(na.ENV_KILL_SWITCH, "/nonexistent/k10")
+    monkeypatch.setenv(na.ENV_V11_KILL_SWITCH, "/nonexistent/k11")
+    yield
+    me.reset_model_executor_for_tests(None)
+
+
+class _Lib:
+    def __init__(self, build_id):
+        self.build_id = build_id
+
+
+def _patch_loaders(monkeypatch, calls, *, ok=True, build_id="b" * 64):
+    from financial_engine.native_v10 import loader, stage2
+    from financial_engine.native_v11 import stage3
+
+    def make(name):
+        def get(*a, **k):
+            calls.append(name)
+            return (_Lib(build_id), None) if ok else (None, "SIMULATED_FAILURE")
+        return get
+    monkeypatch.setattr(loader, "get_native", make("v10_stage1"))
+    monkeypatch.setattr(stage2, "get_stage2", make("v10_stage2"))
+    monkeypatch.setattr(stage3, "get_stage3", make("v11_stage3"))
+
+
+def test_off_modes_load_nothing_and_report_not_configured(monkeypatch):
+    calls: list = []
+    _patch_loaders(monkeypatch, calls)
+    result = me._native_prewarm()
+    assert calls == [] and result["state"] == "not_configured" and result["ready"] is False
+
+
+def test_each_mode_loads_exactly_the_stages_a_run_would_use(monkeypatch):
+    calls: list = []
+    _patch_loaders(monkeypatch, calls)
+    monkeypatch.setenv(na.ENV_RUN, "stage1")
+    assert me._native_prewarm()["state"] == "complete" and calls == ["v10_stage1"]
+    calls.clear()
+    monkeypatch.setenv(na.ENV_RUN, "stage1+2")
+    monkeypatch.setenv(na.ENV_V11_RUN, "on")
+    result = me._native_prewarm()
+    assert calls == ["v10_stage1", "v10_stage2", "v11_stage3"] and result["ready"] is True
+    calls.clear()
+    monkeypatch.setenv(na.ENV_RUN, "off")
+    assert me._native_prewarm()["state"] == "complete" and calls == ["v11_stage3"]
+
+
+def test_kill_switch_and_explicit_disable_load_nothing(monkeypatch, tmp_path):
+    calls: list = []
+    _patch_loaders(monkeypatch, calls)
+    monkeypatch.setenv(na.ENV_RUN, "stage1+2")
+    monkeypatch.setenv(na.ENV_V11_RUN, "on")
+    switch = tmp_path / "off"
+    switch.write_text("x")
+    monkeypatch.setenv(na.ENV_KILL_SWITCH, str(switch))
+    assert me._native_prewarm()["state"] == "not_configured" and calls == []
+    monkeypatch.setenv(na.ENV_KILL_SWITCH, "/nonexistent/k10")
+    monkeypatch.setenv(me.ENV_NATIVE_PREWARM, "off")
+    assert me._native_prewarm()["state"] == "disabled" and calls == []
+
+
+def test_loader_failure_is_reported_never_complete_and_never_raises(monkeypatch):
+    calls: list = []
+    _patch_loaders(monkeypatch, calls, ok=False)
+    monkeypatch.setenv(na.ENV_RUN, "stage1+2")
+    result = me._native_prewarm()
+    assert result["state"] == "failed" and result["ready"] is False
+    assert result["stages"]["v10_stage1"]["reason"] == "SIMULATED_FAILURE"
+    from financial_engine.native_v10 import loader
+
+    def boom(*a, **k):
+        raise RuntimeError("secret detail")
+    monkeypatch.setattr(loader, "get_native", boom)
+    result = me._native_prewarm()
+    assert result["state"] == "failed" and result["error"] == "RuntimeError" and "secret" not in str(result)
+
+
+def test_build_id_pin_mismatch_is_not_ready(monkeypatch):
+    _patch_loaders(monkeypatch, [], build_id="a" * 64)
+    monkeypatch.setenv(na.ENV_RUN, "stage1")
+    monkeypatch.setenv(na.ENV_BUILD_ID, "c" * 64)
+    result = me._native_prewarm()
+    assert result["ready"] is False and result["stages"]["v10_stage1"]["reason"] == "BUILD_ID_PIN_MISMATCH"
+    monkeypatch.setenv(na.ENV_BUILD_ID, "a" * 64)
+    assert me._native_prewarm()["ready"] is True
+
+
+def test_only_failed_loader_cache_entries_are_evicted(monkeypatch):
+    from financial_engine.native_v10 import loader
+    monkeypatch.setattr(loader, "_RESULT", {("k1", "m"): (None, "LOADER_X"), ("k2", "m"): (object(), None)})
+    me._evict_failed_native_result(loader, "_RESULT")
+    assert list(loader._RESULT) == [("k2", "m")]                  # a verified result is never touched
+
+
+def test_prewarm_never_executes_a_project(monkeypatch):
+    import app.api.project_runner as runner
+    monkeypatch.setattr(runner, "run_project", lambda *a, **k: pytest.fail("a project was executed during prewarm"))
+    _patch_loaders(monkeypatch, [])
+    monkeypatch.setenv(na.ENV_RUN, "stage1+2")
+    assert me._native_prewarm()["ready"] is True
+
+
+def _executor(concurrency=2):
+    ex = me.ModelExecutor(me.ModelExecutionConfig(concurrency, "process", 120))
+    me.reset_model_executor_for_tests(ex)
+    return ex
+
+
+def test_parent_state_is_cold_until_every_confirmed_pid_reports_complete(monkeypatch):
+    ex = _executor(2)
+    ex._warm = True                                                # noqa: SLF001
+    ex._native_by_pid = {1: {"state": "complete", "ready": True}, 2: {"state": "failed", "ready": False}}   # noqa: SLF001
+    assert ex.warm_state()["native_prewarm"] == "partial"
+    ex._native_by_pid[2] = {"state": "complete", "ready": True}   # noqa: SLF001
+    assert ex.warm_state()["native_prewarm"] == "complete"
+    ex._native_by_pid = {}                                         # noqa: SLF001
+    assert ex.warm_state()["native_prewarm"] == "cold"
+    ex._warm = False                                               # noqa: SLF001
+    ex._native_by_pid = {1: {"state": "complete", "ready": True}}  # noqa: SLF001
+    assert ex.warm_state()["native_prewarm"] == "cold"            # readiness without confirmed warm workers is never complete
+
+
+def test_real_workers_report_not_configured_when_native_is_off():
+    ex = _executor(2)
+    state = ex.warm_up()
+    assert state["warm"] is True and state["native_prewarm"] == "not_configured"
+    assert set(state["native_prewarm_pids"]) == {str(p) for p in state["warm_pids"]} and len(state["warm_pids"]) == 2
+
+
+@pytest.mark.usefixtures("stage3_artifacts")
+def test_real_workers_prewarm_native_per_distinct_pid_and_replacement_workers_too(monkeypatch):
+    import signal
+    import time
+    monkeypatch.setenv(na.ENV_RUN, "stage1+2")
+    monkeypatch.setenv(na.ENV_V11_RUN, "on")
+    ex = _executor(2)
+    state = ex.warm_up()
+    assert state["native_prewarm"] == "complete" and len(state["warm_pids"]) == 2
+    for report in state["native_prewarm_pids"].values():
+        assert set(report["stages"]) == {"v10_stage1", "v10_stage2", "v11_stage3"}
+    old = list(state["warm_pids"])
+    for pid in old:
+        os.kill(pid, signal.SIGKILL)
+    time.sleep(0.8)
+    with pytest.raises(me.ModelExecutionFailed):
+        ex.run_process_sync(h.worker_pid)
+    assert ex.warm_state()["native_prewarm"] == "cold" and ex.warm_state()["warm_pids"] == []   # destroyed workers are not warm
+    new_state = ex.warm_up()                                       # recovery workers are eligible for the same prewarm
+    assert new_state["native_prewarm"] == "complete" and not set(new_state["warm_pids"]) & set(old)

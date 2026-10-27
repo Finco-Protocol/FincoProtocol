@@ -1,0 +1,28 @@
+"""Importable (by spawned workers) timing wrapper around one real Model Run. Benchmark-only, outside the repository."""
+import hashlib, json, os, time
+
+
+def _norm(v):
+    if isinstance(v, float):
+        return ("f", v.hex())
+    if isinstance(v, dict):
+        return {str(k): _norm(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_norm(x) for x in v]
+    if v is None or isinstance(v, (str, int, bool)):
+        return v
+    return ("o", type(v).__name__, repr(v))
+
+
+def timed_run(fn, name, scenario, override):
+    c0, t0 = os.times(), time.perf_counter()
+    out = fn(name, scenario, project_inputs_override=override)       # NativeActivatedRun -> NativeRunOutcome
+    wall = time.perf_counter() - t0
+    c1 = os.times()
+    value = getattr(out, "value", out)
+    st3 = getattr(out, "stage3_stats", None) or {}
+    st10 = getattr(out, "stats", None) or {}
+    digest = hashlib.sha256(json.dumps(_norm(value), sort_keys=True, default=str).encode()).hexdigest()
+    return {"pid": os.getpid(), "wall": wall, "cpu": (c1.user + c1.system) - (c0.user + c0.system), "digest": digest,
+            "v11_models": st3.get("native_models"), "v11_declines": dict(st3.get("declines") or {}),
+            "v10_stage2": st10.get("stage2_native_calls"), "v10_declines": dict(st10.get("declines") or {})}

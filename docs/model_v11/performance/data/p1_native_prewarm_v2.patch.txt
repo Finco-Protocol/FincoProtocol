@@ -1,0 +1,181 @@
+diff --git a/app/runtime/model_execution.py b/app/runtime/model_execution.py
+index b926e487..785ad620 100644
+--- a/app/runtime/model_execution.py
++++ b/app/runtime/model_execution.py
+@@ -39,6 +39,7 @@ LOG = logging.getLogger("finco.model_execution")
+ ENV_CONCURRENCY = "FINCO_MODEL_EXECUTION_CONCURRENCY"
+ ENV_MODE = "FINCO_MODEL_EXECUTION_MODE"          # process (default) | thread (dev/test fallback)
+ ENV_TIMEOUT = "FINCO_MODEL_EXECUTION_TIMEOUT_SECONDS"
++ENV_NATIVE_PREWARM = "FINCO_MODEL_EXECUTION_NATIVE_PREWARM"   # "off" disables the worker-start native readiness step
+ 
+ DEFAULT_CONCURRENCY = 2
+ MAX_CONCURRENCY = 8
+@@ -180,9 +181,84 @@ ENV_NATIVE_SHADOW = "FINCO_NATIVE_V10_SHADOW"
+ NATIVE_SHADOW_SHUTDOWN_TIMEOUT_SECONDS = 30.0
+ 
+ 
++_NATIVE_PREWARM: dict | None = None      # this WORKER process's native readiness (set once, by _worker_init)
++
++
++def _evict_failed_native_result(module, cache_name: str) -> None:
++    """The V10/V11 loaders cache a FAILED verification for the life of the process. A failure observed at worker start
++    must not become permanent where the first Run would have verified afresh, so only failed entries are removed
++    (under the loader's own lock); a successful result is never touched and nothing is made admissible by this."""
++    lock, cache = getattr(module, "_LOCK", None), getattr(module, cache_name, None)
++    if lock is None or not isinstance(cache, dict):
++        return
++    with lock:
++        for key in [k for k, v in cache.items() if isinstance(v, tuple) and v and v[0] is None]:
++            cache.pop(key, None)
++
++
++def _native_prewarm() -> dict:
++    """Worker-side native readiness, executed in the worker PID that will serve Runs — NON-FINANCIAL.
++
++    Calls ONLY the existing approved loader entry points (``get_native`` / ``get_stage2`` / ``get_stage3``) for the
++    stages the Run-time activation settings would currently enable (kill switches and modes are read exactly as
++    ``native_activation`` reads them). Those loaders perform the library, ABI, build-ID and canonical-source
++    authentication checks, once per process; this moves that first-use cost from the first user Run to worker start.
++    No project is executed and no admission decision is made here: every Run still decides per call. Never raises."""
++    import time as _time
++
++    out: dict = {"configured": False, "ready": False, "stages": {}, "seconds": 0.0}
++    started = _time.perf_counter()
++    try:
++        if os.environ.get(ENV_NATIVE_PREWARM, "").strip().lower() == "off":
++            out["state"] = "disabled"
++            return out
++        from app.runtime import native_activation as na
++
++        v10, _r10 = na.setting()
++        v11, _r11 = na.v11_setting()
++        out["v10_mode"], out["v11_mode"] = v10, v11
++
++        def stage(name, loader_fn, module, cache_name, pin_env):
++            t0 = _time.perf_counter()
++            result, reason = loader_fn()
++            rec = {"ready": result is not None, "reason": reason, "seconds": round(_time.perf_counter() - t0, 4)}
++            if result is not None:
++                build_id = getattr(result, "build_id", None)
++                if build_id is None and isinstance(result, tuple):
++                    build_id = result[1]
++                rec["build_id"] = build_id
++                pin = (os.environ.get(pin_env) or "").strip() or None if pin_env else None
++                if pin and build_id != pin:
++                    rec["ready"], rec["reason"] = False, "BUILD_ID_PIN_MISMATCH"
++            else:
++                _evict_failed_native_result(module, cache_name)
++            out["stages"][name] = rec
++
++        if v10 != "off":
++            from financial_engine.native_v10 import loader
++            stage("v10_stage1", loader.get_native, loader, "_RESULT", na.ENV_BUILD_ID)
++            if v10 == "stage1+2":
++                from financial_engine.native_v10 import stage2
++                stage("v10_stage2", stage2.get_stage2, stage2, "_LIB", None)   # no separate Stage 2 pin exists
++        if v11 != "off":
++            from financial_engine.native_v11 import stage3
++            stage("v11_stage3", stage3.get_stage3, stage3, "_RESULT", na.ENV_V11_BUILD_ID)
++        out["configured"] = bool(out["stages"])
++        out["ready"] = out["configured"] and all(rec["ready"] for rec in out["stages"].values())
++        out["state"] = ("not_configured" if not out["configured"] else "complete" if out["ready"] else "failed")
++    except BaseException as exc:  # noqa: BLE001 - a prewarm problem must never break worker start
++        out["ready"], out["state"] = False, "failed"
++        out["error"] = type(exc).__name__
++    finally:
++        out["seconds"] = round(_time.perf_counter() - started, 4)
++    return out
++
++
+ def _worker_init() -> None:
+     """Warm the worker once: pay the import cost at pool start, not on the first request."""
++    global _NATIVE_PREWARM
+     import app.api.project_runner  # noqa: F401
++    _NATIVE_PREWARM = _native_prewarm()
+ 
+ 
+ def _worker_warmup_probe() -> dict:
+@@ -209,7 +285,8 @@ def _worker_warmup_probe() -> dict:
+     )
+     from financial_engine.version import ENGINE_VERSION
+ 
+-    return {"engine_version": ENGINE_VERSION, "warm": True, "pid": os.getpid()}
++    return {"engine_version": ENGINE_VERSION, "warm": True, "pid": os.getpid(),
++            "native": _NATIVE_PREWARM if _NATIVE_PREWARM is not None else {"state": "not_run", "ready": False}}
+ 
+ 
+ class ModelExecutor:
+@@ -235,6 +312,7 @@ class ModelExecutor:
+         self._warmup_duration_s: float | None = None
+         self._warm_workers: int = 0
+         self._warm_pids: tuple[int, ...] = ()
++        self._native_by_pid: dict[int, dict] = {}       # readiness reported by each CONFIRMED worker PID (this generation)
+         self._shadow_lock = threading.Lock()
+         self._shadow_transition = threading.Lock()     # serialises create / replace / stop (off the loop)
+         self._shadow_observer = None                    # app.runtime.native_shadow.ShadowObserver | None
+@@ -291,6 +369,7 @@ class ModelExecutor:
+         started = time.monotonic()
+         workers = max(1, self.config.concurrency)
+         confirmed_pids: set[int] = set()
++        native_by_pid: dict[int, dict] = {}
+         pool = None
+         try:
+             pool = self._pool("process")
+@@ -305,6 +384,7 @@ class ModelExecutor:
+                     pid = result.get("pid")
+                     if pid is not None:
+                         confirmed_pids.add(pid)
++                        native_by_pid[pid] = result.get("native") or {"state": "not_reported", "ready": False}
+                     versions.add(str(result.get("engine_version")))
+                 if len(confirmed_pids) >= workers:
+                     break
+@@ -319,6 +399,7 @@ class ModelExecutor:
+                         self._warm = warm
+                         self._warm_workers = len(confirmed_pids)
+                         self._warm_pids = tuple(sorted(confirmed_pids))
++                        self._native_by_pid = native_by_pid
+             if not current:
+                 warm = False
+                 LOG.warning("model_execution prewarm discarded: the probed pool was retired meanwhile")
+@@ -336,11 +417,23 @@ class ModelExecutor:
+                 self._warm = False
+                 self._warm_workers = 0
+                 self._warm_pids = ()
++                self._native_by_pid = {}
+                 self._warmup_duration_s = round(time.monotonic() - started, 3)
+             LOG.warning("model_execution prewarm failed — first Run will warm lazily: %s", exc)
+             self._retire_process_pool(pool)
+         return self.warm_state()
+ 
++    def _native_prewarm_state_locked(self) -> str:
++        """complete only when EVERY confirmed worker PID reported every configured stage ready; never optimistic."""
++        reports = list(self._native_by_pid.values())
++        if not self._warm or not reports:
++            return "cold"
++        if all(r.get("state") == "not_configured" for r in reports):
++            return "not_configured"
++        if all(r.get("state") == "disabled" for r in reports):
++            return "disabled"
++        return "complete" if all(r.get("state") == "complete" and r.get("ready") for r in reports) else "partial"
++
+     def warm_state(self) -> dict:
+         with self._lock:
+             return {
+@@ -349,6 +442,9 @@ class ModelExecutor:
+                 "warm_workers": self._warm_workers,
+                 "warm_pids": list(self._warm_pids),
+                 "warmup_duration_s": self._warmup_duration_s,
++                "native_prewarm": self._native_prewarm_state_locked(),
++                "native_prewarm_pids": {str(pid): {k: v for k, v in report.items() if k != "error"}
++                                        for pid, report in sorted(self._native_by_pid.items())},
+             }
+ 
+     @property
+@@ -402,6 +498,7 @@ class ModelExecutor:
+                 self._warm = False
+                 self._warm_workers = 0
+                 self._warm_pids = ()
++                self._native_by_pid = {}
+         pool.shutdown(wait=False, cancel_futures=True)
+         LOG.warning("model_execution process pool retired generation=%s", self._pool_generation)
+         return True
