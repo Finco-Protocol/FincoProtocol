@@ -36,7 +36,8 @@ def test_layer_is_exactly_twelve_additive_paths_and_every_current_source_is_admi
     for path, blob in LAYER.items():
         assert path in S.BLOBS and len(blob) == 40
         assert blob not in {S.BLOBS[path], S.FINVAL_B2C1_SUCCESSORS.get(path), S.D029_RUN_INTENT_SUCCESSORS.get(path)}   # a NEW reviewed state
-        assert S.git_blob(SOURCES[path]) == blob
+        # the current source is the Overnight B state or the later, separately reviewed RC-M successor of the same path
+        assert S.git_blob(SOURCES[path]) in {blob, S.RC_M_SUCCESSORS.get(path)}
     assert S.violations(SOURCES) == []
     assert S.current_mutation_successor_valid()
 
