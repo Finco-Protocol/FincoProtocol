@@ -1,0 +1,23 @@
+{
+  "schema_version": "FIN_V2_R1_EXACT_SOURCE_V1",
+  "base": "f79e251903621c1a5c88501d51d6971960b612d3",
+  "authorization": "Financial Owner assigned FIN-V2 integration prompt (standing authorization for in-scope source, governance and CI corrections); no merge, deployment, Reserve funding, DSRF/hybrid or waterfall activation. Self-generated exact blobs: a review proposal, not an approval.",
+  "source_blobs": {
+    "app/run_integrity/reserve_coverage_evidence.py": "1778d14efaea32ab44c3363f4c581ed3e74f4834",
+    "app/workbook/bankability_config.py": "149d7b52679e84e242695261004b6742b9f116f1",
+    "financial_engine/dsra/forward_coverage.py": "4d109a9a1e95282d6adf3a474e4b42f7273bd69d",
+    "financial_engine/dsra/reserve_authority.py": "569dbe5be70446ac8b7c6f8f1982de5366897f96",
+    "financial_engine/dsra/target.py": "f47ad9d561fd4f622fdea718584b7119e06771dc",
+    "tests/fin_v2_cohorts.py": "2e8406704cd00eb77cea7b3965d855a60c49823e",
+    "tests/fin_v2_r1_scope.py": "3576eedc76ba1d0b21dc4c15a617f1639398d82d",
+    "tests/finance_integrity_governance.py": "cd35de839d11d35d198634f7140ae980e7762e25",
+    "tests/quarterly_candidate_recognition.py": "8838d05e8988cddd06d5f805b3eed9685eb74066",
+    "tests/test_ci_acceptance.py": "5ff17455782fff2a5ddf7e93e55e963682197714",
+    "tests/test_fin_v2_r1_reserve_coverage.py": "925ceea8054f94063dd515068090c2ef9c7f4411",
+    "tests/test_fin_v2_r1_reserve_workspace.py": "8de076b60de62c7326987c932ec2139dcbf50fff",
+    "tests/test_fin_v2_r1_scope.py": "7dd9f42f00eb8a6f849ad29d5e565c2f924ce7c7",
+    "tests/test_tax_wf10_candidate.py": "a1efc13cd47804d1ff377e845e497c2dd81c7e72",
+    "tests/test_v11_stage3_successor.py": "9748d3fe5c3f3979575b89d65ef675f2d69e1dcf",
+    "tests/v11_stage3_successor.py": "3d6baf9968c00248fd69e8e43f2dc06c2c7db6cb"
+  }
+}

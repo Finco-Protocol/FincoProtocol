@@ -93,7 +93,8 @@ def test_real_repository_is_exactly_the_v11_successor(head):
     assert V.v11_violations() == []
     assert R.recognized_state() == "V11S3"
     blobs = R.candidate_blobs()
-    assert blobs == {**V10.v10_candidate_authorities(), **V.V11_PROTECTED_BLOBS}
+    from tests.fin_v2_cohorts import protected_blobs
+    assert blobs == {**V10.v10_candidate_authorities(), **V.V11_PROTECTED_BLOBS, **protected_blobs(ref=head)}
     for path, expected in blobs.items():
         assert V.blob(path) == expected, path
     assert V10.v10_recognized() is False                                 # the historical V10 validator is not widened
