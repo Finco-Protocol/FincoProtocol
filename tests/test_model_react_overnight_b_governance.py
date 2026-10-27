@@ -106,5 +106,7 @@ def test_the_correction_changes_no_protected_financial_path_since_the_baseline()
                  "app/v2/router.py", "app/v2/react_poc_router.py", "app/v2/returns_projection.py", "app/services/run_intent_service.py",
                  "app/persistence/run_intent_repository.py", "app/persistence/run_history_repository.py", "app/services/run_service.py")
     prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/")
-    hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]
+    # A path is excepted ONLY when the separately reviewed RC-M layer pins its exact current blob (and tests/test_rcm_governance.py
+    # proves the change itself, e.g. the router differs from main only by the content-derived asset version).
+    hits = [p for p in changed if (p in forbidden and p not in S.RC_M_SUCCESSORS) or p.startswith(prefixes)]
     assert hits == [], hits

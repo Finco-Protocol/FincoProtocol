@@ -1,4 +1,4 @@
-"""RC-M — additive successor layer for the five pinned paths the React adapters changed, and the protected-path scope guard.
+"""RC-M — additive successor layer for the six pinned paths the React adapters changed, and the protected-path scope guard.
 
 Strict negatives only; no activation or Financial-Owner assertion.  The layer lives in ``tests/model_mutation_security_successor.py``
 (``RC_M_SUCCESSORS``) next to the original, FIN-VAL, D-029 and Overnight B layers.
@@ -13,7 +13,7 @@ from tests import model_mutation_security_successor as S
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_M_SUCCESSORS
 EXPECTED = {"app/v2/react_workspace_router.py", "frontend/src/app/WorkspaceView.tsx", "static/react/finco-react.css", "static/react/finco-react.js",
-            "tests/test_model_workspace_consolidation_browser.py"}
+            "tests/test_model_workspace_consolidation_browser.py", "app/v2/react_poc_router.py"}
 
 
 def _git(*args):
@@ -29,7 +29,7 @@ def _earlier(path):
             S.REACT_MVP_CORRECTION_SUCCESSORS.get(path)} - {None}
 
 
-def test_layer_is_exactly_five_additive_paths_and_the_current_sources_are_admitted():
+def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitted():
     assert set(LAYER) == EXPECTED
     assert len(S.BLOBS) == 112 and S.SOURCE_HEAD == "1800bf6092af650f18aa6ae70e9df221797090fd"
     for path, blob in LAYER.items():
@@ -100,7 +100,7 @@ def test_the_rcm_changes_touch_no_protected_financial_path():
     except subprocess.CalledProcessError:
         pytest.skip("baseline commit not available in this checkout")
     forbidden = ("app/input_adapter.py", "app/persistence/projects_repository.py", "app/services/project_library_service.py",
-                 "app/runtime/model_execution.py", "app/v2/router.py", "app/v2/react_poc_router.py", "app/v2/returns_projection.py",
+                 "app/runtime/model_execution.py", "app/v2/router.py", "app/v2/returns_projection.py",
                  "app/services/run_intent_service.py", "app/persistence/run_intent_repository.py", "app/persistence/run_history_repository.py",
                  "app/services/run_service.py", "app/services/reference_seed_service.py", "app/services/goal_seek.py",
                  "app/services/sensitivity_matrix.py", "app/services/projects_create_service.py", "main_web.py")
@@ -162,3 +162,19 @@ def test_every_acceptance_test_name_is_unique_across_the_role_and_the_five_modul
 def test_the_flag_fixture_is_not_autouse_so_it_cannot_leak_into_the_other_role_tests():
     source = (S.ROOT / "tests/model_react_rcm_support.py").read_text(encoding="utf-8")
     assert "autouse" not in source and "@pytest.fixture\ndef rcm_react_flag" in source
+
+
+def test_the_asset_router_differs_from_main_only_by_the_content_derived_cache_buster():
+    """Correction B: ``react_poc_router.py`` may change ONLY to derive ``REACT_ASSET_VERSION`` from the bundle bytes."""
+    try:
+        base = _git("merge-base", "HEAD", "origin/main").strip()
+        original = _git("show", f"{base}:app/v2/react_poc_router.py")
+    except subprocess.CalledProcessError:
+        pytest.skip("baseline commit not available in this checkout")
+    current = SOURCES["app/v2/react_poc_router.py"]
+    restored = current.replace("import hashlib\n", "", 1)
+    start, end = restored.index("BASE_DIR = "), restored.index("_templates = ")
+    base_dir_line = restored[start:restored.index("\n", start) + 1]
+    restored = restored[:start] + 'REACT_ASSET_VERSION = "rc-sec-mutation-v1"\n\n' + base_dir_line + restored[end:]
+    assert restored == original
+    assert 'REACT_ASSET_VERSION = bundle_version()' in current and "hashlib.sha256" in current
