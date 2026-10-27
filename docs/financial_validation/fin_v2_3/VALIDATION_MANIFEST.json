@@ -73,8 +73,17 @@
   "integration_correction": {
     "status": "PENDING_EXACT_HEAD_REGRESSION",
     "accepted_main_sha": "1f25903e7ed0bb8142f4e9f40d7eade58a746bf5",
-    "source_manifest_git_blob": "930f931146b121b9d958720dead7d0a5571e7cbe",
+    "source_manifest_git_blob": "7ea86ef8be65e5e15470415b3b1b062dc20b1c48",
     "prior_test_counts": "HISTORICAL_FROM_PRE_INTEGRATION_HEAD_ONLY",
     "reason": "No recalculated source-manifest SHA256 or combined numerical and browser acceptance until new exact-head verification"
+  },
+  "f01_fixture_reconciliation": {
+    "status": "PENDING_NEW_EXACT_HEAD_CI",
+    "initial_failure_run": 40537734829,
+    "test": "tests/test_finval_f01_fixture_integrity.py::test_authority_mock_has_only_its_missing_unit_added",
+    "original_main_fixture_blob": "04827a4937520ccc6f466c18dcbb6795eb00543c",
+    "new_exact_fixture_blob": "309d8041d9354b16b938fb867586218d97261505",
+    "authorized_extra": "two fixed valuation DOM hashes in tests/test_model_workspace_productivity_v1.py",
+    "financial_numerical_changes": false
   }
 }

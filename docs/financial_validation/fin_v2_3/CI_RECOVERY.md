@@ -63,3 +63,10 @@ results; their guards remain unchanged.
 Final full hosted results are authoritative in Draft PR #391 Checks. This
 recovery does not authorize a merge, deployment or independent financial
 self-approval.
+
+
+## Correction B — F01 historical fixture integrity vs FIN-V2-3 exact DOM additions
+
+On post-#390 exact head `0bf3ba2e5ab49f235167f359fa8bc8d172d734de`, F01 financial/browser workflow `40537734829` ran 140 tests: 139 PASS, 1 FAIL. The sole failure is `test_authority_mock_has_only_its_missing_unit_added`: original F01 asserted the exact original productivity test source plus one interest-rate unit label, while FIN-V2-3 added exactly two reviewed valuation macro DOM hashes. This is a competing historical governance expectation, not an observed numerical regression.
+
+Correction B preserves F01's original baseline, original unit marker, original source comparison and all old DOM/security/hash tests. It admits a single *literal* FIN-V2-3 valuation assertion block with two reviewed exact hashes only when the entire repository-bound FIN-V2-3 cohort matches its exact source manifest. No wildcard, skip, changed old DOM golden, altered rate conversion or broadened source allowance. The protected F01 test is itself a new pinned owned path with its original #390/main parent SHA; the existing parametrized one-byte/missing-file negative test automatically covers it. Four-vertical browser 139 other tests passed previously; full new exact-head acceptance pending.
