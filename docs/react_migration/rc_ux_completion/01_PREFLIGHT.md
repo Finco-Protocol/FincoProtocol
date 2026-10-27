@@ -42,3 +42,10 @@ RC-UX therefore **never touches** `app/v2/router.py` and adds governance success
 
 ## 7. Protected rules honoured
 No edits to `financial_engine/`, `finco_core/`, `app/api/project_runner.py`, `app/input_adapter.py`, policy modules. New code = React presentation + new `app/v2/react_*` adapters.
+
+## 8. Governance defect found at preflight (fixed, narrowly)
+`tests/test_rcm_governance.py::test_the_asset_router_differs_from_main_only_by_the_content_derived_cache_buster` compared `react_poc_router.py`
+against the **merge-base with origin/main**. With #388 merged, the merge-base of any later branch already contains the content-derived
+`REACT_ASSET_VERSION`, so the test fails on an unchanged tree (reproduced on `f79e251`). Fix: compare against the pinned pre-#388 reference commit
+`cf7056de4078ca66afcf52265a9bacafe35586f7` (the baseline named in `08_OPEN_OWNER_AUTHORIZATIONS.md` item 1). The assertion body is unchanged; the pin is exact, not a
+blanket allowance. This file is also touched by #391 → expected additive merge conflict at FIN-V2 sync.

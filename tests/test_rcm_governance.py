@@ -166,8 +166,11 @@ def test_the_flag_fixture_is_not_autouse_so_it_cannot_leak_into_the_other_role_t
 
 def test_the_asset_router_differs_from_main_only_by_the_content_derived_cache_buster():
     """Correction B: ``react_poc_router.py`` may change ONLY to derive ``REACT_ASSET_VERSION`` from the bundle bytes."""
+    # Pinned to the reference main commit that preceded the cache-buster (08_OPEN_OWNER_AUTHORIZATIONS item 1).  A merge-base is
+    # not usable here: once #388 is on main the merge-base of any later branch already contains the derived version, so the
+    # comparison would no longer prove what the correction changed.
+    base = "cf7056de4078ca66afcf52265a9bacafe35586f7"
     try:
-        base = _git("merge-base", "HEAD", "origin/main").strip()
         original = _git("show", f"{base}:app/v2/react_poc_router.py")
     except subprocess.CalledProcessError:
         pytest.skip("baseline commit not available in this checkout")
