@@ -362,6 +362,13 @@ class WorkbookUpdateService:
             except ValueError as exc:
                 return FieldValidationResult(field_id=field_id, raw_value=raw_value,
                     typed_value=None, spec=spec, error=str(exc), error_class=FieldErrorClass.INVALID)
+        if field_id == "debt.valuation.configuration":
+            from app.workbook.financial_core_config import canonical_json
+            try:
+                typed = canonical_json(typed)
+            except ValueError as exc:
+                return FieldValidationResult(field_id=field_id, raw_value=raw_value,
+                    typed_value=None, spec=spec, error=str(exc), error_class=FieldErrorClass.INVALID)
         if field_id == "debt.bankability.configuration":
             from app.workbook.bankability_config import parse_config
             try:

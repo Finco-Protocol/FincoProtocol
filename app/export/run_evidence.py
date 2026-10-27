@@ -98,6 +98,17 @@ class RunEvidence:
         return fe if isinstance(fe, dict) else {}
 
     @property
+    def financial_core(self) -> dict:
+        from app.services.financial_core_evidence import from_runtime_summary
+        return from_runtime_summary(self.runtime_summary, snapshot_id=self.snapshot_id,
+                                    composite_hash=self.composite_hash)
+
+    @property
+    def sponsor_period_evidence_status(self) -> str:
+        return ("PERSISTED" if self.sponsor_schedule.get("contract_version") == "SPONSOR_PERIOD_EVIDENCE_V1"
+                else "NOT_PERSISTED")
+
+    @property
     def construction_periods(self) -> list[dict]:
         cf = self.financing_evidence.get("construction_funding")
         periods = cf.get("periods") if isinstance(cf, Mapping) else None

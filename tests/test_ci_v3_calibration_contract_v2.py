@@ -120,3 +120,31 @@ def test_a_real_measurement_has_the_expected_receipt_shape(tmp_path):
     record = evaluate(samples, STEADY_STATE_CONTRACT)
     assert len(samples) == 3 and record["first_start_s"] == samples[0] and record["steady_state_max_s"] == max(samples[1:])
     assert isinstance(record["meets_test_assumption"], bool) and record["contract"] == STEADY_STATE_CONTRACT
+
+
+# ── survivor diagnostics: the check stays strict, and a survivor is now attributable ─────────────────────────────
+
+def test_describe_group_members_reports_a_live_process_and_a_vanished_one():
+    sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        live, gone = cal.describe_group_members([sleeper.pid, 2 ** 22 + 7])
+    finally:
+        sleeper.kill()
+        sleeper.wait()
+    assert live["pid"] == sleeper.pid and live["state"] in {"S", "R", "D"} and "time.sleep" in live["cmdline"] and live["ppid"] > 0
+    assert gone == {"pid": 2 ** 22 + 7, "gone_before_inspection": True}
+
+
+def test_a_surviving_descendant_still_fails_the_calibration_and_is_named(monkeypatch, tmp_path):
+    sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        from tools import ci_v3_process_observer as observer
+        monkeypatch.setattr(observer, "posix_group_members", lambda group: [sleeper.pid])
+        with pytest.raises(RuntimeError, match="calibration left surviving descendants") as failure:
+            worker_cold_start_s(_project(tmp_path, 0), repeats=3)
+    finally:
+        sleeper.kill()
+        sleeper.wait()
+    detail = json.loads(str(failure.value).split("descendants: ", 1)[1])
+    assert detail["observed_at_probe_exit"][0]["pid"] == sleeper.pid and "time.sleep" in detail["observed_at_probe_exit"][0]["cmdline"]
+    assert detail["remaining_after_kill"][0]["pid"] == sleeper.pid

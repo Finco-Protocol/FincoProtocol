@@ -38,7 +38,8 @@ def test_layer_is_exactly_twelve_additive_paths_and_every_current_source_is_admi
         assert blob not in {S.BLOBS[path], S.FINVAL_B2C1_SUCCESSORS.get(path), S.D029_RUN_INTENT_SUCCESSORS.get(path)}   # a NEW reviewed state
         # strict equality, as before: the current source is exactly the Overnight B state, or — only for a path the separately reviewed
         # RC-M layer also covers — exactly that later pinned state (never "either one")
-        assert S.git_blob(SOURCES[path]) == S.RC_UX_SUCCESSORS.get(path, S.RC_M_SUCCESSORS.get(path, blob))
+        from tests.fin_v2_cohorts import matches as fin_v2_3_matches
+        assert S.git_blob(SOURCES[path]) == S.RC_UX_SUCCESSORS.get(path, S.RC_M_SUCCESSORS.get(path, blob)) or fin_v2_3_matches(path, SOURCES[path])   # or the exact FIN-V2-3 cohort state
     assert S.violations(SOURCES) == []
     assert S.current_mutation_successor_valid()
 
@@ -60,10 +61,12 @@ def test_every_earlier_admitted_blob_remains_individually_admitted(path):
 
 
 def test_router_and_csrf_token_module_are_not_in_the_layer_and_keep_their_pins():
+    from tests.fin_v2_cohorts import matches as fin_v2_3_matches
     assert "app/v2/router.py" not in LAYER and S.TOKEN_MODULE not in LAYER
     assert S.git_blob(SOURCES["app/v2/router.py"]) in {S.BLOBS["app/v2/router.py"], S.FINVAL_B2C1_SUCCESSORS["app/v2/router.py"],
                                                        S.D029_RUN_INTENT_SUCCESSORS["app/v2/router.py"], S.FINVAL_RATE_SUCCESSORS["app/v2/router.py"],
-                                                       S.FINVAL_F01_COMPLETE_SUCCESSORS["app/v2/router.py"]}
+                                                       S.FINVAL_F01_COMPLETE_SUCCESSORS["app/v2/router.py"],
+                                                       S.FINV2_D01_SENSITIVITY_SUCCESSORS["app/v2/router.py"]} or fin_v2_3_matches('app/v2/router.py',SOURCES['app/v2/router.py'])
     assert S.git_blob(SOURCES[S.TOKEN_MODULE]) == S.BLOBS[S.TOKEN_MODULE]
 
 
@@ -114,4 +117,7 @@ def test_the_correction_changes_no_protected_financial_path_since_the_baseline()
     # F01 is an independently authorized successor, attributed only when all exact source blobs and the current-main ancestry are present.
     if F01.valid():
         hits = [p for p in hits if p not in F01.SOURCES]
+    # Reviewed FIN-V2 source cohorts (exact blobs, tests/fin_v2_cohorts.py) are attributed to their own reviewed successor, never to this correction.
+    from tests.fin_v2_cohorts import matches as fin_v2_cohort_matches
+    hits = [p for p in hits if not fin_v2_cohort_matches(p)]
     assert hits == [], hits

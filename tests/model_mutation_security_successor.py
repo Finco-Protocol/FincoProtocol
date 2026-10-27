@@ -200,6 +200,7 @@ RC_M_SUCCESSORS={
 # tests/test_rcux_governance.py.  Blobs are recomputed from the committed sources by the pin refresh and asserted by tests/test_rcux_governance.py.
 RC_UX_SUCCESSORS={
     "app/v2/react_workspace_router.py":"0dc741e340e1db918e4d2cc4b26467bc1514dd39",
+    "app/v2/router.py":"8d6a26331e6160b69ad2cad687ae11abadf64a15",
     "frontend/src/app/FinancialResults.tsx":"9047ea4e3a97a5d5fa6983bba2bfaa1ac99ec3d2",
     "frontend/src/app/WorkspaceView.tsx":"53eddcf668a523d36db3ff15115e7f0c391ee909",
     "frontend/src/app/workflow/ModelExportView.tsx":"a912911cd95d1dc68dd8280bad7ebcfa718506c4",
@@ -207,8 +208,8 @@ RC_UX_SUCCESSORS={
     "frontend/src/app/workflow/ScenarioWorkspace.tsx":"f5f199c98ff96fa5f2ba83e65953c99ff502ee8a",
     "frontend/src/app/workflow/workflowShared.tsx":"50aef516d139ac0a909e6059974095c62a487b21",
     "static/react/finco-react.css":"fc2415879da3ca64da1a4f67ba31cae616ecacd7",
-    "static/react/finco-react.js":"e0c04c73c3657506da21e55c3b564b06dee4fef7",
-    "tests/model_react_mvp_acceptance.py":"00ca3b95423acac1e93d2e5727c847117772f160",
+    "static/react/finco-react.js":"06288879d4eaec79f3b14b782c82b1561ce6cff0",
+    "tests/model_react_mvp_acceptance.py":"e085043916748497a32fdcf9bb429234885f367a",
     "tests/model_react_wf2_browser_acceptance.py":"4ca9487e898620ff7b614a94ba88150f6cdb7696",
     "tests/test_model_workspace_consolidation_browser.py":"1eb8ea40f65ef0d13059ebd78055f91b2f4ce95f",
 }
@@ -309,6 +310,10 @@ def _browser_layers():
 # F01 complete rate contract; historical layers above are immutable.
 FINVAL_F01_COMPLETE_SUCCESSORS={'app/v2/router.py': '2ec6b05a7d730e1034348da632d37efc6bfa9c3b', 'app/v2/grid_router.py': '0d1ab6c05b7d4f53f9d4a341818e107969bcccc0', 'tests/test_u2_2_returns_surface.py': 'afb64327e1032071ebf254dfe19b1e094e0b6fd0'}
 
+# FIN-V2-D01 sensitivity truth: the one-driver interest sensitivity route applies the shared rate-shock authority.
+# Additive; every earlier layer stays admitted and no gate/binding of the route set is changed.
+FINV2_D01_SENSITIVITY_SUCCESSORS={'app/v2/router.py': 'cd5091083433dab5aeb493d9be201919d5a14e42'}
+
 
 def violations(sources,*,check_pin=True):
     errors=[];trees={}
@@ -324,6 +329,12 @@ def violations(sources,*,check_pin=True):
         if path in RC_UX_SUCCESSORS:admitted=admitted|{RC_UX_SUCCESSORS[path]}
         if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if path in FINVAL_F01_COMPLETE_SUCCESSORS:admitted=admitted|{FINVAL_F01_COMPLETE_SUCCESSORS[path]}
+        if path in FINV2_D01_SENSITIVITY_SUCCESSORS:admitted=admitted|{FINV2_D01_SENSITIVITY_SUCCESSORS[path]}
+        if check_pin and git_blob(text) not in admitted:
+            # FIN-V2-3: admit ONLY the exact independently pinned financial
+            # source under the full merged #388/#390 ancestor contract.
+            from tests.fin_v2_cohorts import matches as fin_v2_3_matches
+            if fin_v2_3_matches(path,text):admitted=admitted|{git_blob(text)}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):
             try:trees[path]=ast.parse(text)

@@ -58,6 +58,26 @@ class CoverageCalculationDatePolicy(str, Enum):
     FIRST_SENIOR_PERIOD_OPENING = "FIRST_SENIOR_PERIOD_OPENING"
 
 
+class LoanLifeConvention(str, Enum):
+    CONTRACTUAL_MATURITY = "CONTRACTUAL_MATURITY"
+    ACTUAL_REPAYMENT = "ACTUAL_REPAYMENT"
+
+
+class SponsorValuationDatePolicy(str, Enum):
+    FINANCIAL_CLOSE = "FINANCIAL_CLOSE"
+    EXPLICIT_DATE = "EXPLICIT_DATE"
+
+
+@dataclass(frozen=True)
+class SponsorValuationPolicy:
+    """Total Sponsor hurdle; quoted as an annual ratio, never inferred."""
+    annual_discount_rate: float | None
+    authority_label: str
+    discount_convention: DiscountConvention = DiscountConvention.ACT_365_FIXED
+    valuation_date_policy: SponsorValuationDatePolicy = SponsorValuationDatePolicy.FINANCIAL_CLOSE
+    explicit_valuation_date: date | None = None
+
+
 @dataclass(frozen=True)
 class ProjectValuationPolicy:
     """Explicit Project NPV authority; never inferred from financing terms."""
@@ -67,6 +87,9 @@ class ProjectValuationPolicy:
     discount_convention: DiscountConvention
     authority_label: str
     explicit_valuation_date: date | None = None
+    periodic_rate_conversion: PeriodicRateConversion | None = None
+    periods_per_year: int | None = None
+    first_cashflow_timing: PeriodicFirstCashflowTiming | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +107,7 @@ class DebtCoverageValuationPolicy:
     periodic_rate_conversion: PeriodicRateConversion | None = None
     periods_per_year: int | None = None
     first_cashflow_timing: PeriodicFirstCashflowTiming | None = None
+    rolling_loan_life: LoanLifeConvention = LoanLifeConvention.ACTUAL_REPAYMENT
 
 
 @dataclass(frozen=True)
@@ -92,3 +116,5 @@ class ValuationPolicies:
 
     project: ProjectValuationPolicy | None = None
     coverage: DebtCoverageValuationPolicy | None = None
+    sponsor: SponsorValuationPolicy | None = None
+    policy_version: str | None = None

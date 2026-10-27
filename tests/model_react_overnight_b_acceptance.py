@@ -212,7 +212,10 @@ def check_two_runs_in_the_same_hour_are_distinguishable_everywhere(browser, base
         assert run_text(a) in context_card.inner_text() and run_text(b) not in context_card.inner_text()
         # Run History: one row per committed Run, every row bound to its own history id and snapshot id
         rows = page.locator("[data-run-history-row]")
-        assert rows.count() == len(api(context, base, "runs", record.project_code)["runs"])
+        expected_count = len(api(context, base, "runs", record.project_code)["runs"])
+        page.wait_for_function("count => document.querySelectorAll('[data-run-history-row]').length === count",
+                               arg=expected_count)
+        assert rows.count() == expected_count
         shown = {}
         for index in range(rows.count()):
             row = rows.nth(index)

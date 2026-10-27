@@ -566,6 +566,8 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
     # block lives inside financing_evidence so it inherits the Run's run_binding.
     from app.run_integrity.senior_debt_evidence import EVIDENCE_KEY as _SD_KEY, build_from_clean_run as _sd_evidence
     payload["financing_evidence"][_SD_KEY] = _sd_evidence(clean_run, project_type=project_type)
+    from app.services.financial_core_evidence import attach_financial_core
+    attach_financial_core(payload, clean_run)
     # RC-7B: the committed Run records its own operating calendar (quarterly only;
     # every 6/6 evidence payload is unchanged and absence means 6/6).
     from app.workbook.quarterly_frequency_config import run_evidence as _calendar_evidence

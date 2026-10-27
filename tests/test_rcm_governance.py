@@ -29,6 +29,10 @@ def _earlier(path):
             S.REACT_MVP_CORRECTION_SUCCESSORS.get(path)} - {None}
 
 
+RCM_BASE = "1f25903e7ed0bb8142f4e9f40d7eade58a746bf5"       # main immediately before PR #388
+RCM_HEAD = "6aaaaa586d42a3354b653661f5813e6819cb990c"       # the last reviewed RC-M head (merged into main as f79e2519)
+
+
 def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitted():
     assert set(LAYER) == EXPECTED
     assert len(S.BLOBS) == 112 and S.SOURCE_HEAD == "1800bf6092af650f18aa6ae70e9df221797090fd"
@@ -92,12 +96,9 @@ def test_the_adapters_use_only_the_canonical_services_and_add_no_calculation_aut
 
 def test_the_rcm_changes_touch_no_protected_financial_path():
     try:
-        try:
-            base = _git("merge-base", "HEAD", "origin/main").strip()
-        except subprocess.CalledProcessError:
-            base = "cf7056de4078ca66afcf52265a9bacafe35586f7"
-        changed = set(_git("diff", "--name-only", base, "HEAD").split())
-        changed |= set(_git("diff", "--name-only").split()) | set(_git("diff", "--name-only", "--cached").split())
+        # The RC-M delivery is the immutable range main-before-#388 .. last reviewed RC-M head (both are ancestors of every later main);
+        # a moving merge-base would attribute later, separately reviewed work to RC-M once #388 is merged.
+        changed = set(_git("diff", "--name-only", RCM_BASE, RCM_HEAD).split())
     except subprocess.CalledProcessError:
         pytest.skip("baseline commit not available in this checkout")
     forbidden = ("app/input_adapter.py",
@@ -107,6 +108,11 @@ def test_the_rcm_changes_touch_no_protected_financial_path():
                  "app/services/sensitivity_matrix.py", "app/services/projects_create_service.py", "main_web.py")
     prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/", "app/capex_profiles/")
     hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]
+    # FIN-V2-3 is a separately authorized, finite financial source successor.
+    # Every admitted path must match the exact owner-reviewed cohort and its
+    # merged RC-M parent; arbitrary financial/native/CI drift still fails.
+    from tests.fin_v2_cohorts import matches as fin_v2_3_matches
+    hits = [p for p in hits if not fin_v2_3_matches(p)]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
@@ -167,12 +173,8 @@ def test_the_flag_fixture_is_not_autouse_so_it_cannot_leak_into_the_other_role_t
 
 def test_the_asset_router_differs_from_main_only_by_the_content_derived_cache_buster():
     """Correction B: ``react_poc_router.py`` may change ONLY to derive ``REACT_ASSET_VERSION`` from the bundle bytes."""
-    # Pinned to the reference main commit that preceded the cache-buster (08_OPEN_OWNER_AUTHORIZATIONS item 1).  A merge-base is
-    # not usable here: once #388 is on main the merge-base of any later branch already contains the derived version, so the
-    # comparison would no longer prove what the correction changed.
-    base = "cf7056de4078ca66afcf52265a9bacafe35586f7"
     try:
-        original = _git("show", f"{base}:app/v2/react_poc_router.py")
+        original = _git("show", f"{RCM_BASE}:app/v2/react_poc_router.py")        # the pre-RC-M state, independent of what main has become since
     except subprocess.CalledProcessError:
         pytest.skip("baseline commit not available in this checkout")
     current = SOURCES["app/v2/react_poc_router.py"]

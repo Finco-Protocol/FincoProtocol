@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+from urllib.parse import parse_qs, urlsplit
 
 from tests.model_react_wf1_browser_acceptance import make_session as _solar_session
 from tests.model_react_wf2_browser_acceptance import (
@@ -69,18 +70,35 @@ def wait_current(page, timeout=120000):
 
 
 def explicit_run(page):
-    """One explicit Run.  On a never-edited draft the canonical route may first answer 'Draft changed since page
-    loaded' (a pre-existing behaviour, also on pristine main): the user then reloads and presses Run again."""
-    page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled")
-    page.locator("[data-wf-run='true']").click()
-    page.wait_for_function("""() => { const b = document.querySelector("[data-workflow-bar='true']");
-        return b && (b.dataset.barFreshness === 'CURRENT' || /Draft changed|run again/i.test(b.innerText)); }""", timeout=180000)
-    if bar(page).get_attribute("data-bar-freshness") != "CURRENT":
-        page.reload()
-        page.wait_for_selector("[data-workflow-bar='true']")
+    """Await this Run's response and refreshed workspace, never an earlier CURRENT.
+
+    Preserve the existing single reload/retry for a definitive stale-draft refusal.
+    Unknown, rejected or failed executions must fail rather than create another Run.
+    """
+    for attempt in range(2):
         page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled")
-        page.locator("[data-wf-run='true']").click()
-    wait_current(page, 180000)
+        # A committed Run reloads the workspace. Waiting for that navigation
+        # also excludes any still-pending projection from a scenario switch.
+        with page.expect_navigation(wait_until="domcontentloaded", timeout=180000):
+            with page.expect_response(lambda r: r.request.method == "POST" and
+                                      urlsplit(r.url).path == "/v2/workbook/run", timeout=180000) as executed:
+                page.locator("[data-wf-run='true']").click()
+            response = executed.value
+            stale = response.status == 303
+            if stale:
+                message = parse_qs(urlsplit(response.headers.get("location", "")).query).get("v2_err", [""])[0]
+                assert attempt == 0 and message.startswith("Draft changed since page loaded"), (response.status, message)
+                wait_status(page, "error", "Draft changed", "[data-workflow-bar='true']")
+                page.reload()
+            else:
+                assert response.ok, response.status
+                outcome = response.json()
+                assert outcome.get("outcome") in {"COMMITTED", "REPLAYED"}, outcome
+        page.wait_for_selector("[data-workflow-bar='true']")
+        if not stale:
+            wait_current(page, 180000)
+            return
+    raise AssertionError("Run remained stale after the existing single reload/retry")
 
 
 def api(context, base, path):
