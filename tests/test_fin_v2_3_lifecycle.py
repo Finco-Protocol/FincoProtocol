@@ -61,7 +61,27 @@ def test_config_save_reload_run_history_export_is_frozen(env,kind,mode):
     ws=_ws(record)
     core=ws.last_runtime_summary['financing_evidence']['financial_core_v1']
     assert core['project_npv_keur'] is not None and core['sponsor_npv_keur'] is not None
-    assert core['loan_life_coverage']['status']=='DEBT_EVIDENCE_NOT_AVAILABLE'
+    # FIN-V2-2/#390 is now a real persisted, Run-bound authority. Its exact
+    # contractual and payoff indices must feed FIN-V2-3's discount engine;
+    # an OK string without matching values does NOT satisfy this test.
+    debt_evidence=ws.last_runtime_summary['financing_evidence']['senior_debt_evidence']
+    assert debt_evidence['schema_version']=='SENIOR_DEBT_EVIDENCE_V1'
+    assert debt_evidence['authority']=='CANONICAL_SENIOR_DEBT_RESULT_READ_ONLY_PROJECTION'
+    assert debt_evidence['status']=='RECORDED'
+    ends=debt_evidence['llcr_inputs']['loan_life_end_candidates']
+    llcr=core['loan_life_coverage']
+    assert llcr['status']=='OK'
+    assert llcr['contractual']['horizon_end_period_index']==ends['contractual_maturity_period_index']
+    assert llcr['contractual']['horizon_end_date']==ends['contractual_maturity_date']
+    assert llcr['actual_repayment']['horizon_end_period_index']==ends['actual_payoff_period_index']
+    assert llcr['actual_repayment']['horizon_end_date']==ends['actual_payoff_date']
+    assert llcr['contractual']['opening_senior_balance_keur']>0
+    assert llcr['actual_repayment']['opening_senior_balance_keur']>0
+    assert llcr['rolling'] and llcr['minimum']
+    assert llcr['minimum']['ratio']==min(point['ratio'] for point in llcr['rolling'])
+    assert core['llcr_contractual_maturity']==llcr['contractual']['ratio']
+    assert core['llcr_actual_repayment']==llcr['actual_repayment']['ratio']
+    assert core['min_rolling_llcr']==llcr['minimum']['ratio']
     assert core['valuation_policy']['policy_version']=='FIN_V2_3_POLICY_V1'
     assert ws.last_sponsor_schedule['contract_version']=='SPONSOR_PERIOD_EVIDENCE_V1'
     from app.persistence.run_history_repository import get_run_history_entry

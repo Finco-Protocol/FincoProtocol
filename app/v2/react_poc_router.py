@@ -25,6 +25,7 @@ second Run authority.  Nothing in this surface triggers a Run.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Any, Optional
 
@@ -44,9 +45,32 @@ router = APIRouter()
 #: about it through the bootstrap payload.
 CIT_FIELD_ID = "tax.assumptions.cit_rate_pct"
 
-REACT_ASSET_VERSION = "rc-sec-mutation-v1"
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ASSET_VERSION_BASE = "rc-sec-mutation-v1"
+_BUNDLE_FILES = ("finco-react.js", "finco-react.css")
+
+
+def bundle_version(directory: Optional[str] = None) -> str:
+    """Cache-buster derived from the BYTES of the shipped bundle (``/static/`` is served ``immutable``).
+
+    The host page (``Cache-Control: no-store``) requests ``finco-react.{js,css}?v=<this value>``; because the value changes
+    whenever either file changes, a browser can never pair an obsolete cached bundle with a newer backend contract.  An
+    unreadable file contributes a distinct marker, so the version still differs from any readable build.
+    """
+    root = directory or os.path.join(BASE_DIR, "static", "react")
+    digest = hashlib.sha256()
+    for name in _BUNDLE_FILES:
+        digest.update(name.encode("utf-8") + b"\0")
+        try:
+            with open(os.path.join(root, name), "rb") as stream:
+                digest.update(stream.read())
+        except OSError:
+            digest.update(b"<unreadable>")
+    return f"{_ASSET_VERSION_BASE}-{digest.hexdigest()[:12]}"
+
+
+REACT_ASSET_VERSION = bundle_version()
+
 _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates", "v2"))
 
 

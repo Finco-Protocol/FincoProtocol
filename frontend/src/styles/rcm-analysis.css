@@ -1,0 +1,71 @@
+/* RC-M Lane B — Analysis tools (Sensitivity, Goal Seek).  Uses the existing theme tokens (every selectable theme, including the
+   green/white one, inherits them); presentation only. */
+
+.rcm-tabs { display: flex; gap: 4px; margin: 0 0 12px; border-bottom: 1px solid var(--line, #dce3e9); overflow-x: auto; max-width: 100%; }
+.rcm-tab {
+  appearance: none; background: transparent; border: 1px solid transparent; border-bottom: 0; padding: 8px 14px; min-height: 36px;
+  font: inherit; font-weight: 600; color: var(--muted, #526374); cursor: pointer; white-space: nowrap;
+}
+.rcm-tab:hover { color: var(--navy, #183e63); }
+.rcm-tab.active { color: var(--navy, #183e63); background: var(--surface, #fff); border-color: var(--line, #dce3e9); margin-bottom: -1px; border-top: 2px solid var(--navy, #183e63); }
+.rcm-tab:focus-visible { outline: 2px solid var(--fo-brand-500, #3b6ff6); outline-offset: -2px; }
+
+.rcm-analysis h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rcm-badge { padding: 1px 8px; border: 1px solid var(--amber, #76511b); background: var(--amber-soft, #f6f0e4); color: var(--amber, #76511b); font-size: 10px; font-weight: 700; letter-spacing: .05em; }
+.rcm-tier-note { border-left: 3px solid var(--amber, #76511b); padding-left: 8px; }
+.rcm-modes { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.rcm-mode {
+  appearance: none; font: inherit; font-weight: 600; padding: 7px 12px; min-height: 36px; cursor: pointer;
+  border: 1px solid var(--line, #dce3e9); background: var(--surface, #fff); color: var(--ink, #182b43);
+}
+.rcm-mode.active { border: 2px solid var(--navy, #183e63); background: var(--surface-blue, #edf3f8); padding: 6px 11px; }
+.rcm-mode:focus-visible { outline: 2px solid var(--fo-brand-500, #3b6ff6); outline-offset: 2px; }
+
+.rcm-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 12px; align-items: start; margin: 8px 0; }
+.rcm-field { display: grid; gap: 4px; font-weight: 600; font-size: 13px; }
+.rcm-field select, .rcm-field input {
+  font: inherit; font-weight: 400; padding: 7px 9px; min-height: 36px; box-sizing: border-box; width: 100%;
+  border: 1px solid var(--line, #dce3e9); background: var(--surface, #fff); color: var(--ink, #182b43);
+}
+.rcm-controls-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; align-self: end; }
+
+.rcm-result { margin-top: 14px; border-top: 1px solid var(--line, #dce3e9); padding-top: 12px; }
+.rcm-h3 { margin: 0 0 8px; font-size: 1rem; }
+.rcm-table-actions { display: flex; gap: 8px; margin: 0 0 8px; flex-wrap: wrap; }
+.rcm-scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--line, #dce3e9); background: var(--surface, #fff); }
+.rcm-scroll:focus-visible { outline: 2px solid var(--fo-brand-500, #3b6ff6); outline-offset: 2px; }
+.rcm-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+.rcm-table th, .rcm-table td { padding: 6px 10px; border-bottom: 1px solid var(--line-soft, #e9edf0); text-align: right; white-space: nowrap; vertical-align: top; }
+.rcm-table thead th { background: var(--paper, #f4f6f7); color: var(--muted, #526374); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; position: sticky; top: 0; }
+.rcm-table .rcm-sticky { position: sticky; left: 0; text-align: left; background: var(--surface, #fff); box-shadow: 1px 0 0 var(--line, #dce3e9); z-index: 1; }
+.rcm-table thead .rcm-sticky { background: var(--paper, #f4f6f7); z-index: 2; }
+.rcm-table tr.is-base th, .rcm-table tr.is-base td, .rcm-table td.is-base { background: var(--surface-blue, #edf3f8); font-weight: 700; }
+.rcm-table .rcm-left, .rcm-table thead th.rcm-left { text-align: left; }
+.rcm-table .rcm-input-cell { text-align: left; color: var(--muted, #526374); }
+.rcm-table .rcm-na { text-align: left; color: var(--muted, #526374); white-space: normal; }
+.rcm-unit { display: block; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.rcm-delta { display: block; font-size: 10px; color: var(--muted, #526374); font-weight: 400; }
+.rcm-tag { display: inline-block; margin-left: 6px; padding: 0 5px; border: 1px solid var(--line, #dce3e9); font-size: 9px; font-weight: 700; letter-spacing: .04em; }
+.rcm-tag-bad { color: var(--fo-red-700, #b91c1c); border-color: currentColor; }
+.rcm-cell.st-failed, .rcm-cell.st-unavailable { white-space: normal; color: var(--muted, #526374); }
+
+.rcm-status-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 8px; }
+.rcm-chip { padding: 2px 8px; border: 1px solid var(--line, #dce3e9); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+.rcm-chip.ok { color: var(--green, #477661); border-color: var(--green, #477661); background: var(--green-soft, #eaf2ed); }
+.rcm-chip.warn { color: var(--amber, #76511b); border-color: var(--amber, #76511b); background: var(--amber-soft, #f6f0e4); }
+.rcm-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 8px; margin: 8px 0; }
+.rcm-facts div { border: 1px solid var(--line, #dce3e9); background: var(--paper, #f4f6f7); padding: 7px 10px; }
+.rcm-facts dt { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted, #526374); font-weight: 700; }
+.rcm-facts dd { margin: 2px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rcm-apply { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line, #dce3e9); }
+.rcm-confirm { border: 1px solid var(--navy, #183e63); padding: 10px 12px; background: var(--surface-blue, #edf3f8); }
+
+.rcm-scroll-hint { display: none; margin: 0 0 4px; font-size: 11px; color: var(--muted, #526374); }
+
+@media (max-width: 820px) {
+  .rcm-scroll-hint { display: block; }
+  .rcm-tab, .rcm-mode, .rcm-controls .rx-button, .rcm-apply .rx-button, .rcm-table-actions .rx-button { min-height: 44px; }
+  .rcm-field select, .rcm-field input { min-height: 44px; }
+  .rcm-controls { grid-template-columns: 1fr; }
+  .rcm-controls-actions .rx-button { flex: 1 1 140px; }
+}

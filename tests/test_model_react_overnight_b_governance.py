@@ -36,8 +36,9 @@ def test_layer_is_exactly_twelve_additive_paths_and_every_current_source_is_admi
     for path, blob in LAYER.items():
         assert path in S.BLOBS and len(blob) == 40
         assert blob not in {S.BLOBS[path], S.FINVAL_B2C1_SUCCESSORS.get(path), S.D029_RUN_INTENT_SUCCESSORS.get(path)}   # a NEW reviewed state
-        from tests.fin_v2_3_scope import matches
-        assert S.git_blob(SOURCES[path]) == blob or matches(path, SOURCES[path])
+        # strict equality, as before: the current source is exactly the Overnight B state, or — only for a path the separately reviewed
+        # RC-M layer also covers — exactly that later pinned state (never "either one")
+        assert S.git_blob(SOURCES[path]) == S.RC_M_SUCCESSORS.get(path, blob)
     assert S.violations(SOURCES) == []
     assert S.current_mutation_successor_valid()
 
@@ -59,11 +60,11 @@ def test_every_earlier_admitted_blob_remains_individually_admitted(path):
 
 
 def test_router_and_csrf_token_module_are_not_in_the_layer_and_keep_their_pins():
-    from tests.fin_v2_3_scope import matches
+    from tests.fin_v2_3_scope import matches as fin_v2_3_matches
     assert "app/v2/router.py" not in LAYER and S.TOKEN_MODULE not in LAYER
     assert S.git_blob(SOURCES["app/v2/router.py"]) in {S.BLOBS["app/v2/router.py"], S.FINVAL_B2C1_SUCCESSORS["app/v2/router.py"],
                                                        S.D029_RUN_INTENT_SUCCESSORS["app/v2/router.py"], S.FINVAL_RATE_SUCCESSORS["app/v2/router.py"],
-                                                       S.FINVAL_F01_COMPLETE_SUCCESSORS["app/v2/router.py"]} or matches('app/v2/router.py',SOURCES['app/v2/router.py'])
+                                                       S.FINVAL_F01_COMPLETE_SUCCESSORS["app/v2/router.py"]} or fin_v2_3_matches('app/v2/router.py',SOURCES['app/v2/router.py'])
     assert S.git_blob(SOURCES[S.TOKEN_MODULE]) == S.BLOBS[S.TOKEN_MODULE]
 
 
@@ -107,12 +108,15 @@ def test_the_correction_changes_no_protected_financial_path_since_the_baseline()
                  "app/v2/router.py", "app/v2/react_poc_router.py", "app/v2/returns_projection.py", "app/services/run_intent_service.py",
                  "app/persistence/run_intent_repository.py", "app/persistence/run_history_repository.py", "app/services/run_service.py")
     prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/")
-    hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]
-    # F01 is an independently authorized successor, attributed only when all
-    # exact source blobs and the current-main ancestry are present.
+    # A path is excepted ONLY when the separately reviewed RC-M layer pins its exact current blob (and tests/test_rcm_governance.py
+    # proves the change itself, e.g. the router differs from main only by the content-derived asset version).
+    hits = [p for p in changed if (p in forbidden and p not in S.RC_M_SUCCESSORS) or p.startswith(prefixes)]
     from tests import finval_f01_scope as F01
+    # F01 is an independently authorized successor, attributed only when all exact source blobs and the current-main ancestry are present.
     if F01.valid():
         hits = [p for p in hits if p not in F01.SOURCES]
-    from tests.fin_v2_3_scope import matches
-    hits = [p for p in hits if not matches(p)]
+    # FIN-V2-3 financial changes are allowed only on the exact immutable
+    # reviewed owner cohort. The original forbidden list remains unchanged.
+    from tests.fin_v2_3_scope import matches as fin_v2_3_matches
+    hits = [p for p in hits if not fin_v2_3_matches(p)]
     assert hits == [], hits

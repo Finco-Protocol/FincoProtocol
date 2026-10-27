@@ -70,8 +70,16 @@ def test_extra_path_outside_integrated_exact_cohort_is_rejected(monkeypatch):
     original = F._git
     def added_path(root, *args):
         data = original(root, *args)
-        if args[:3] == ('diff', '--name-only', F.BASE):
+        if args[:3] == ('diff', '--name-only', F.INTEGRATION_MAIN):
             return data + b'financial_engine/unreviewed_new_authority.py\n'
         return data
     monkeypatch.setattr(F, '_git', added_path)
+    assert not F.valid()
+
+
+def test_integration_parent_must_be_actual_merged_rcm_source(monkeypatch):
+    assert F.valid()
+    monkeypatch.setattr(F, "INTEGRATION_MAIN", F.BASE)
+    # Reverting to the historical base cannot silently accept the newly
+    # merged React source paths, which are outside FIN-V2-3's owned cohort.
     assert not F.valid()

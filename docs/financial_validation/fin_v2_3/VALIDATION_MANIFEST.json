@@ -71,11 +71,24 @@
     "skipped": 0
   },
   "integration_correction": {
-    "status": "PENDING_EXACT_HEAD_REGRESSION",
-    "accepted_main_sha": "1f25903e7ed0bb8142f4e9f40d7eade58a746bf5",
-    "source_manifest_git_blob": "7ea86ef8be65e5e15470415b3b1b062dc20b1c48",
+    "status": "PENDING_CORRECTION_C_NEW_EXACT_HEAD_CI",
+    "accepted_main_sha": "f79e251903621c1a5c88501d51d6971960b612d3",
+    "source_manifest_git_blob": "6760c8bae1c3ae6d6685a7df264d7d74ce81761f",
     "prior_test_counts": "HISTORICAL_FROM_PRE_INTEGRATION_HEAD_ONLY",
-    "reason": "No recalculated source-manifest SHA256 or combined numerical and browser acceptance until new exact-head verification"
+    "reason": "No recalculated source-manifest SHA256 or combined numerical and browser acceptance until new exact-head verification",
+    "rc_m_merged_pr": 388,
+    "rc_m_merged_sha": "f79e251903621c1a5c88501d51d6971960b612d3",
+    "previous_worker0": {
+      "workflow_id": 40543293268,
+      "worker": 0,
+      "failed": 8,
+      "passed": 3510,
+      "skipped": 71,
+      "all_failures": "tests/test_fin_v2_3_lifecycle.py, 4 verticals x single/batch; actual status OK from approved #390 but isolated pre-#390 expectation DEBT_EVIDENCE_NOT_AVAILABLE"
+    },
+    "finite_governance_source_count": 51,
+    "financial_numerical_code_changes": false,
+    "new_negative_cases": "missing or altered real Senior maturity/payoff evidence fails closed; RC-M accepted main ancestry; exact source cohort one-byte/deletion refusal"
   },
   "f01_fixture_reconciliation": {
     "status": "PENDING_NEW_EXACT_HEAD_CI",

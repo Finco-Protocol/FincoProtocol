@@ -90,3 +90,24 @@ def test_every_new_valuation_against_independent_decimal(reference, case, period
     oracle=npv([p.cashflow_date for p in project_rows], [p.net_unlevered_project_cashflow_keur for p in project_rows],
                configured.valuation.project.annual_discount_rate, project_rows[0].cashflow_date, periodic)
     assert core['project_npv_keur'] == pytest.approx(float(oracle), rel=1e-12)
+
+
+@pytest.mark.parametrize('kind', KINDS)
+def test_missing_or_tampered_senior_debt_contract_still_fails_closed(kind):
+    # A persisted positive Senior schedule is necessary but not sufficient.
+    # FIN-V2-3 must refuse missing/forged FIN-V2-2 maturity/payoff evidence;
+    # the integration test must never turn those cases into a false OK.
+    pi = getattr(pf, 'create_generic_' + kind + '_reference')()
+    configured = apply_config(pi, config_json())
+    run = run_clean_production(configured)
+    missing = build_financial_core_evidence(run, None)['loan_life_coverage']
+    assert missing['status'] == 'DEBT_EVIDENCE_NOT_AVAILABLE'
+    assert missing['contractual'] is None
+    correct = isolated_debt_contract(run)
+    positive = build_financial_core_evidence(run, correct)['loan_life_coverage']
+    assert positive['status'] == 'OK'
+    tampered = json.loads(json.dumps(correct))
+    tampered['llcr_inputs']['loan_life_end_candidates']['actual_payoff_date'] = '1900-01-01'
+    refused = build_financial_core_evidence(run, tampered)['loan_life_coverage']
+    assert refused['status'] == 'DEBT_EVIDENCE_MISMATCH'
+    assert refused['actual_repayment'] is None

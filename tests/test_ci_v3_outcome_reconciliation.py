@@ -100,6 +100,9 @@ def test_only_the_one_node_is_ever_reconciled():
 @pytest.mark.parametrize("mutate", (
     lambda f: {**f, "blobs": {**f["blobs"], "app/trust_readiness/registry.py": "0" * 40}},                  # unreviewed registry blob
     lambda f: {**f, "blobs": {**f["blobs"], "docs/readiness/02_data_handling.md": "0" * 40}},              # unreviewed generated document
+    lambda f: {**f, "blobs": {**f["blobs"], "tests/test_trust_readiness_controls.py": "0" * 40}},          # RC-M controls test edited beyond its reviewed blob
+    lambda f: {**f, "blobs": {k: v for k, v in f["blobs"].items() if k != "tests/test_trust_readiness_controls.py"}},   # reviewed blob missing
+    lambda f: {**f, "changed": f["changed"] - {"tests/test_trust_readiness_controls.py"}},                 # RC-M path dropped from the reviewed set
     lambda f: {**f, "main_blobs": {"app/trust_readiness/registry.py": "0" * 40}},                           # wrong pinned baseline
     lambda f: {**f, "changed": f["changed"] | {"app/trust_readiness/projection.py"}},                       # unrelated Trust change
     lambda f: {**f, "changed": f["changed"] | {"docs/readiness/07_authentication_and_tenant_audit.md"}},    # unrelated security/retention doc
