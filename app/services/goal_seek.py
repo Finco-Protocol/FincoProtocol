@@ -28,7 +28,7 @@ HARD RULES (mirroring the composition-layer contract):
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Awaitable, Callable, Optional, Sequence
 
@@ -54,6 +54,10 @@ class GoalSeekMetric:
     key: str
     kpi_key: str
     label: str
+    unit: str = "ratio"
+
+    def format_value(self, value: float) -> str:
+        return f"{value * 100:.4f}%" if self.unit == "ratio" else f"{value:.6f} {self.unit}"
 
 
 # All three metrics are computed by the single canonical G2C path for every
@@ -66,6 +70,9 @@ GOAL_SEEK_METRICS: dict[str, GoalSeekMetric] = {
     "pure_equity_irr": GoalSeekMetric("pure_equity_irr", "equity_irr", "Pure Equity IRR"),
     "total_sponsor_irr": GoalSeekMetric(
         "total_sponsor_irr", "total_sponsor_xirr", "Total Sponsor IRR"),
+    "min_dscr": GoalSeekMetric("min_dscr", "min_dscr", "Minimum BASE-case DSCR", "multiple"),
+    "project_npv": GoalSeekMetric("project_npv", "project_npv_keur", "Project NPV", "kEUR"),
+    "sponsor_npv": GoalSeekMetric("sponsor_npv", "sponsor_npv_keur", "Total Sponsor NPV", "kEUR"),
 }
 
 
@@ -159,7 +166,7 @@ class GoalSeekResult:
     solve_field_id: str               # canonical workbook field to apply
     target_metric: str                # metric request key
     target_metric_label: str
-    target_value: float               # FRACTION (0.08 == 8%)
+    target_value: float               # target_unit: ratio, multiple, or kEUR
     solved_input_value: Optional[float]
     achieved_metric_value: Optional[float]
     absolute_target_error: Optional[float]
@@ -172,6 +179,7 @@ class GoalSeekResult:
     started_from_value: float
     expansions: int = 0
     message: str = ""
+    target_unit: str = "ratio"
 
     @property
     def solved(self) -> bool:
@@ -230,17 +238,50 @@ async def solve_tariff_for_metric(
     non-success status ``NO_SOLUTION_IN_BOUNDS`` — never a raw exception and
     never a fabricated ``SOLVED``."""
     budget = {"evaluations": 0}
+    verify_financial_target = metric_key in ("min_dscr", "project_npv", "sponsor_npv", "total_sponsor_irr")
     try:
-        return await _solve_impl(
+        result = await _solve_impl(
             project_type=project_type, current_tariff=current_tariff,
             target_value=target_value, metric_key=metric_key,
             evaluate_batch=evaluate_batch, tolerance=tolerance,
-            max_iterations=max_iterations, max_evaluations=max_evaluations,
+            max_iterations=max_iterations, max_evaluations=max(1, max_evaluations - (3 if verify_financial_target else 0)),
             budget=budget)
+        if not verify_financial_target:
+            return result
+        if result.status not in (GoalSeekStatus.SOLVED.value, GoalSeekStatus.TARGET_ALREADY_MET.value):
+            return result
+        # Reserve three evaluations: canonical rerun plus a narrow bracket to
+        # check that the proposed root is stable inside its financing regime.
+        if budget["evaluations"] + 3 > max_evaluations:
+            raise _EvaluationBudgetExhausted()
+        solved = result.solved_input_value
+        delta = max(abs(solved) * TARIFF_EPSILON_FRACTION, 1e-7)
+        points = [max(0.0, solved - delta), solved, solved + delta]
+        budget["evaluations"] += 3
+        try:
+            verified = [_metric_at(v) for v in await evaluate_batch(points)]
+        except GoalSeekModelRunError as exc:
+            return replace(result, status=GoalSeekStatus.MODEL_RUN_FAILED.value,
+                           solved_input_value=None, message=str(exc), model_evaluations=budget["evaluations"])
+        get_regime = getattr(evaluate_batch, "regime_at", None)
+        regimes = [get_regime(t) for t in points] if get_regime else [None] * 3
+        stable = (len(verified) == 3 and all(v is not None for v in verified)
+                  and verified[1].hex() == float(result.achieved_metric_value).hex()
+                  and abs(verified[1] - target_value) <= tolerance
+                  and verified[0] <= verified[1] + MONOTONIC_EPSILON
+                  and verified[1] <= verified[2] + MONOTONIC_EPSILON
+                  and len({repr(r) for r in regimes}) == 1)
+        if not stable:
+            return replace(result, status=GoalSeekStatus.NON_MONOTONIC_TARGET.value,
+                solved_input_value=None, model_evaluations=budget["evaluations"],
+                message="Canonical verification refused: unavailable metric, target mismatch or financing regime switch near the root.")
+        return replace(result, achieved_metric_value=verified[1], model_evaluations=budget["evaluations"],
+                       absolute_target_error=abs(verified[1] - target_value))
     except _EvaluationBudgetExhausted:
         metric = resolve_metric(metric_key)
         variable = resolve_solve_variable(project_type)
         return GoalSeekResult(
+            target_unit=metric.unit if metric else "ratio",
             status=GoalSeekStatus.NO_SOLUTION_IN_BOUNDS.value,
             solve_variable=variable.key if variable else "ppa_base_tariff",
             solve_variable_label=variable.label if variable else "Tariff / Revenue Price",
@@ -286,6 +327,7 @@ async def _solve_impl(
 
     def _result(**kwargs: Any) -> GoalSeekResult:
         base = dict(
+            target_unit=metric.unit if metric else "ratio",
             solve_variable=variable.key if variable else "ppa_base_tariff",
             solve_variable_label=variable.label if variable else "Tariff / Revenue Price",
             solve_variable_unit=variable.unit if variable else "EUR/MWh",
@@ -441,10 +483,10 @@ async def _solve_impl(
                 # below the economically lowest tariff (zero) — cannot expand
                 return _result(
                     status=GoalSeekStatus.NO_SOLUTION_IN_BOUNDS.value,
-                    message=f"Target {target_value * 100:.4f}% is below the "
+                    message=f"Target {metric.format_value(target_value)} is below the "
                             "best achievable value within the allowed tariff "
                             f"bounds (at tariff 0 the metric is "
-                            f"{f0 * 100:.4f}%).",
+                            f"{metric.format_value(f0)}).",
                     lower_bound=min(ladder), upper_bound=max(ladder),
                     achieved_metric_value=f0,
                     absolute_target_error=abs(f0 - target_value),
@@ -461,9 +503,9 @@ async def _solve_impl(
             if expansions >= BRACKET_MAX_EXPANSIONS or lower <= 0.0 + 1e-12:
                 return _result(
                     status=GoalSeekStatus.NO_SOLUTION_IN_BOUNDS.value,
-                    message=(f"Target {target_value * 100:.4f}% is below the "
+                    message=(f"Target {metric.format_value(target_value)} is below the "
                              f"best (lowest) achievable value "
-                             f"{f_min * 100:.4f}% within the allowed tariff "
+                             f"{metric.format_value(f_min)} within the allowed tariff "
                              "bounds (the lower bound is already the economic "
                              "floor of 0)."),
                     lower_bound=min(ladder), upper_bound=max(ladder),
@@ -511,8 +553,8 @@ async def _solve_impl(
             if expansions >= BRACKET_MAX_EXPANSIONS:
                 return _result(
                     status=GoalSeekStatus.NO_SOLUTION_IN_BOUNDS.value,
-                    message=(f"Target {target_value * 100:.4f}% exceeds the "
-                             f"best achievable value {f_max * 100:.4f}% at "
+                    message=(f"Target {metric.format_value(target_value)} exceeds the "
+                             f"best achievable value {metric.format_value(f_max)} at "
                              f"the capped upper bound {upper:.2f} "
                              f"{variable.unit}; upper expansion is capped."),
                     lower_bound=min(ladder), upper_bound=max(ladder),
@@ -564,7 +606,8 @@ async def _solve_impl(
             expansions=expansions)
 
     t_lo, f_lo, t_hi, f_hi = bracket
-    tariff_eps = current_tariff * TARIFF_EPSILON_FRACTION
+    tariff_eps = current_tariff * (1e-12 if metric.key in (
+        "min_dscr", "project_npv", "sponsor_npv", "total_sponsor_irr") else TARIFF_EPSILON_FRACTION)
 
     # exact hits on bracket edges
     for t_edge, f_edge in ((t_lo, f_lo), (t_hi, f_hi)):
@@ -612,6 +655,17 @@ async def _solve_impl(
                 bracket_lower=lo, bracket_upper=hi,
                 iterations=iterations, model_evaluations=budget["evaluations"],
                 expansions=expansions)
+        if f_mid < f_lo_v - MONOTONIC_EPSILON or f_mid > f_hi_v + MONOTONIC_EPSILON:
+            return _result(status=GoalSeekStatus.NON_MONOTONIC_TARGET.value,
+                message="Metric left the monotonic bracket during canonical bisection.",
+                iterations=iterations, model_evaluations=budget["evaluations"])
+        regime_at = getattr(evaluate_batch, "regime_at", None)
+        if (regime_at and abs(f_mid-target_value)>tolerance
+                and hi-lo <= current_tariff*TARIFF_EPSILON_FRACTION
+                and regime_at(lo) != regime_at(hi)):
+            return _result(status=GoalSeekStatus.NON_MONOTONIC_TARGET.value,
+                message="Financing regime switches inside the unresolved root bracket; no reliable tariff is proposed.",
+                iterations=iterations, model_evaluations=budget["evaluations"])
         if abs(f_mid - target_value) < abs(best[1] - target_value):
             best = (mid, f_mid)
         if abs(f_mid - target_value) <= tolerance:
@@ -627,8 +681,9 @@ async def _solve_impl(
     error = abs(achieved - target_value)
     if error <= tolerance:
         status = GoalSeekStatus.SOLVED.value
+        displayed = metric.format_value(achieved)
         message = (f"Solved: tariff {solved_tariff:.2f} {variable.unit} "
-                   f"achieves {metric.label} {achieved * 100:.4f}%.")
+                   f"achieves {metric.label} {displayed}.")
     elif (hi - lo) <= tariff_eps:
         return _result(
             status=GoalSeekStatus.NON_MONOTONIC_TARGET.value,
@@ -690,6 +745,7 @@ def make_canonical_evaluator(
     :class:`GoalSeekModelRunError` (→ typed MODEL_RUN_FAILED).
     """
     from dataclasses import replace as _dc_replace
+    regimes = {}
 
     def _with_tariff(pi: Any, tariff: float) -> Any:
         if getattr(pi.revenue, "multistream_config_json", ""):
@@ -716,7 +772,8 @@ def make_canonical_evaluator(
         except (ModelExecutionFailed, ModelExecutionTimeout) as exc:
             raise GoalSeekModelRunError(str(exc)) from exc
         values: list[Optional[float]] = []
-        for out in outputs:
+        for tariff, out in zip(tariffs, outputs):
+            regimes[float(tariff)] = out.get("regime") if isinstance(out, dict) else None
             if not isinstance(out, dict) or "error" in out:
                 values.append(None)
                 continue
@@ -728,4 +785,5 @@ def make_canonical_evaluator(
             values.append(raw)
         return values
 
+    _evaluate.regime_at = lambda tariff: regimes.get(float(tariff))
     return _evaluate

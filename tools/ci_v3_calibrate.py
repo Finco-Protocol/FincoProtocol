@@ -85,6 +85,21 @@ def import_asyncio_ms():
     return int(subprocess.check_output([sys.executable, "-I", "-c", code], text=True, timeout=15).strip())
 
 
+def describe_group_members(pids):
+    """Who exactly survived: pid, state, parent and command line, read from /proc while the process still exists (diagnostic only; never a verdict)."""
+    described = []
+    for pid in pids:
+        record = {"pid": int(pid)}
+        try:
+            fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+            record["state"], record["ppid"] = fields[0], int(fields[1])
+            record["cmdline"] = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")[:160]
+        except (OSError, ValueError, IndexError):
+            record["gone_before_inspection"] = True
+        described.append(record)
+    return described
+
+
 def worker_cold_start_s(project, repeats=3, timeout_s=30):
     from tools.ci_v3_process_observer import posix_group_members
     if sys.platform != "linux":
@@ -100,6 +115,7 @@ def worker_cold_start_s(project, repeats=3, timeout_s=30):
             env={**{key: os.environ[key] for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS") if key in os.environ}, "PYTHONPATH": str(Path(project).resolve()), "PATH": "/usr/bin:/usr/local/bin", "HOME": "/tmp",
                  "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"})
         survivors = []
+        survivor_detail = []
         try:
             out, error = process.communicate(timeout=timeout_s)
             if process.returncode:
@@ -110,6 +126,7 @@ def worker_cold_start_s(project, repeats=3, timeout_s=30):
             values.append(sample)
         finally:
             survivors = posix_group_members(process.pid)
+            survivor_detail = describe_group_members(survivors) if survivors else []        # read BEFORE the kill removes the evidence
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
@@ -118,8 +135,11 @@ def worker_cold_start_s(project, repeats=3, timeout_s=30):
             deadline = time.monotonic() + 3
             while posix_group_members(process.pid) and time.monotonic() < deadline:
                 time.sleep(.02)
-            if survivors or posix_group_members(process.pid):
-                raise RuntimeError("calibration left surviving descendants")
+            remaining = posix_group_members(process.pid)
+            if survivors or remaining:
+                # Still a hard failure: nothing is excused or retried. The message names every survivor so a recurrence is attributable.
+                raise RuntimeError("calibration left surviving descendants: " + json.dumps(
+                    {"observed_at_probe_exit": survivor_detail, "remaining_after_kill": describe_group_members(remaining)}, sort_keys=True))
     return sorted(values)[len(values) // 2], values
 
 

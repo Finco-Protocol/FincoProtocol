@@ -1,0 +1,386 @@
+[
+  {
+    "kind": "solar",
+    "case": "BASE",
+    "metric": "llcr_contractual_maturity",
+    "oracle": 1.680773115058548,
+    "engine": 1.6807731150585492,
+    "difference": -1.1102230246251565e-15
+  },
+  {
+    "kind": "solar",
+    "case": "BASE",
+    "metric": "llcr_actual_repayment",
+    "oracle": 1.3558182803862655,
+    "engine": 1.3558182803862662,
+    "difference": -6.661338147750939e-16
+  },
+  {
+    "kind": "solar",
+    "case": "BASE",
+    "metric": "plcr",
+    "oracle": 2.4011557742999883,
+    "engine": 2.40115577429999,
+    "difference": -1.7763568394002505e-15
+  },
+  {
+    "kind": "solar",
+    "case": "BASE",
+    "metric": "min_rolling_llcr",
+    "oracle": 1.3553972126663858,
+    "engine": 1.3553972126663865,
+    "difference": -6.661338147750939e-16
+  },
+  {
+    "kind": "solar",
+    "case": "BASE",
+    "metric": "project_npv_keur",
+    "oracle": 12753.772407352923,
+    "engine": 12753.772407352892,
+    "difference": 3.092281986027956e-11
+  },
+  {
+    "kind": "solar",
+    "case": "BASE",
+    "metric": "sponsor_npv_keur",
+    "oracle": 6181.7122907803705,
+    "engine": 6181.712290780354,
+    "difference": 1.6370904631912708e-11
+  },
+  {
+    "kind": "solar",
+    "case": "BANK",
+    "metric": "llcr_contractual_maturity",
+    "oracle": 1.5269259810050062,
+    "engine": 1.5269259810050069,
+    "difference": -6.661338147750939e-16
+  },
+  {
+    "kind": "solar",
+    "case": "BANK",
+    "metric": "llcr_actual_repayment",
+    "oracle": 1.2333444654308479,
+    "engine": 1.2333444654308485,
+    "difference": -6.661338147750939e-16
+  },
+  {
+    "kind": "solar",
+    "case": "BANK",
+    "metric": "plcr",
+    "oracle": 2.173838610159695,
+    "engine": 2.173838610159696,
+    "difference": -8.881784197001252e-16
+  },
+  {
+    "kind": "solar",
+    "case": "BANK",
+    "metric": "min_rolling_llcr",
+    "oracle": 1.2333444654308479,
+    "engine": 1.2333444654308485,
+    "difference": -6.661338147750939e-16
+  },
+  {
+    "kind": "solar",
+    "case": "BANK",
+    "metric": "project_npv_keur",
+    "oracle": 12753.772407352923,
+    "engine": 12753.772407352892,
+    "difference": 3.092281986027956e-11
+  },
+  {
+    "kind": "solar",
+    "case": "BANK",
+    "metric": "sponsor_npv_keur",
+    "oracle": 6181.7122907803705,
+    "engine": 6181.712290780354,
+    "difference": 1.6370904631912708e-11
+  },
+  {
+    "kind": "wind",
+    "case": "BASE",
+    "metric": "llcr_contractual_maturity",
+    "oracle": 1.9179977656380405,
+    "engine": 1.917997765638042,
+    "difference": -1.5543122344752192e-15
+  },
+  {
+    "kind": "wind",
+    "case": "BASE",
+    "metric": "llcr_actual_repayment",
+    "oracle": 1.384049572273079,
+    "engine": 1.38404957227308,
+    "difference": -8.881784197001252e-16
+  },
+  {
+    "kind": "wind",
+    "case": "BASE",
+    "metric": "plcr",
+    "oracle": 2.896141929831649,
+    "engine": 2.8961419298316526,
+    "difference": -3.552713678800501e-15
+  },
+  {
+    "kind": "wind",
+    "case": "BASE",
+    "metric": "min_rolling_llcr",
+    "oracle": 1.384049572273079,
+    "engine": 1.38404957227308,
+    "difference": -8.881784197001252e-16
+  },
+  {
+    "kind": "wind",
+    "case": "BASE",
+    "metric": "project_npv_keur",
+    "oracle": 28065.339187005782,
+    "engine": 28065.339187005724,
+    "difference": 5.820766091346741e-11
+  },
+  {
+    "kind": "wind",
+    "case": "BASE",
+    "metric": "sponsor_npv_keur",
+    "oracle": 13450.114120354012,
+    "engine": 13450.11412035398,
+    "difference": 3.2741809263825417e-11
+  },
+  {
+    "kind": "wind",
+    "case": "BANK",
+    "metric": "llcr_contractual_maturity",
+    "oracle": 1.7377953647239415,
+    "engine": 1.7377953647239421,
+    "difference": -6.661338147750939e-16
+  },
+  {
+    "kind": "wind",
+    "case": "BANK",
+    "metric": "llcr_actual_repayment",
+    "oracle": 1.2565726298234925,
+    "engine": 1.2565726298234927,
+    "difference": -2.220446049250313e-16
+  },
+  {
+    "kind": "wind",
+    "case": "BANK",
+    "metric": "plcr",
+    "oracle": 2.6158429682012945,
+    "engine": 2.615842968201295,
+    "difference": -4.440892098500626e-16
+  },
+  {
+    "kind": "wind",
+    "case": "BANK",
+    "metric": "min_rolling_llcr",
+    "oracle": 1.2565726298234925,
+    "engine": 1.2565726298234927,
+    "difference": -2.220446049250313e-16
+  },
+  {
+    "kind": "wind",
+    "case": "BANK",
+    "metric": "project_npv_keur",
+    "oracle": 28065.339187005782,
+    "engine": 28065.339187005724,
+    "difference": 5.820766091346741e-11
+  },
+  {
+    "kind": "wind",
+    "case": "BANK",
+    "metric": "sponsor_npv_keur",
+    "oracle": 13450.114120354012,
+    "engine": 13450.11412035398,
+    "difference": 3.2741809263825417e-11
+  },
+  {
+    "kind": "data_center",
+    "case": "BASE",
+    "metric": "llcr_contractual_maturity",
+    "oracle": 1.8637219166799224,
+    "engine": 1.8637219166799233,
+    "difference": -8.881784197001252e-16
+  },
+  {
+    "kind": "data_center",
+    "case": "BASE",
+    "metric": "llcr_actual_repayment",
+    "oracle": 1.3478328676784694,
+    "engine": 1.34783286767847,
+    "difference": -6.661338147750939e-16
+  },
+  {
+    "kind": "data_center",
+    "case": "BASE",
+    "metric": "plcr",
+    "oracle": 2.7367108120128507,
+    "engine": 2.736710812012852,
+    "difference": -1.3322676295501878e-15
+  },
+  {
+    "kind": "data_center",
+    "case": "BASE",
+    "metric": "min_rolling_llcr",
+    "oracle": 1.334380878763428,
+    "engine": 1.3343808787634281,
+    "difference": -2.220446049250313e-16
+  },
+  {
+    "kind": "data_center",
+    "case": "BASE",
+    "metric": "project_npv_keur",
+    "oracle": -82744.43362767834,
+    "engine": -82744.43362767846,
+    "difference": 1.1641532182693481e-10
+  },
+  {
+    "kind": "data_center",
+    "case": "BASE",
+    "metric": "sponsor_npv_keur",
+    "oracle": -103927.19059507603,
+    "engine": -103927.19059507611,
+    "difference": 8.731149137020111e-11
+  },
+  {
+    "kind": "data_center",
+    "case": "BANK",
+    "metric": "llcr_contractual_maturity",
+    "oracle": 1.8637219166799224,
+    "engine": 1.8637219166799233,
+    "difference": -8.881784197001252e-16
+  },
+  {
+    "kind": "data_center",
+    "case": "BANK",
+    "metric": "llcr_actual_repayment",
+    "oracle": 1.3478328676784694,
+    "engine": 1.34783286767847,
+    "difference": -6.661338147750939e-16
+  },
+  {
+    "kind": "data_center",
+    "case": "BANK",
+    "metric": "plcr",
+    "oracle": 2.7367108120128507,
+    "engine": 2.736710812012852,
+    "difference": -1.3322676295501878e-15
+  },
+  {
+    "kind": "data_center",
+    "case": "BANK",
+    "metric": "min_rolling_llcr",
+    "oracle": 1.334380878763428,
+    "engine": 1.3343808787634281,
+    "difference": -2.220446049250313e-16
+  },
+  {
+    "kind": "data_center",
+    "case": "BANK",
+    "metric": "project_npv_keur",
+    "oracle": -82744.43362767834,
+    "engine": -82744.43362767846,
+    "difference": 1.1641532182693481e-10
+  },
+  {
+    "kind": "data_center",
+    "case": "BANK",
+    "metric": "sponsor_npv_keur",
+    "oracle": -103927.19059507603,
+    "engine": -103927.19059507611,
+    "difference": 8.731149137020111e-11
+  },
+  {
+    "kind": "ev",
+    "case": "BASE",
+    "metric": "llcr_contractual_maturity",
+    "oracle": 1.838131161863584,
+    "engine": 1.838131161863585,
+    "difference": -8.881784197001252e-16
+  },
+  {
+    "kind": "ev",
+    "case": "BASE",
+    "metric": "llcr_actual_repayment",
+    "oracle": 1.4352886781080982,
+    "engine": 1.4352886781080987,
+    "difference": -4.440892098500626e-16
+  },
+  {
+    "kind": "ev",
+    "case": "BASE",
+    "metric": "plcr",
+    "oracle": 3.0791695682947386,
+    "engine": 3.079169568294741,
+    "difference": -2.220446049250313e-15
+  },
+  {
+    "kind": "ev",
+    "case": "BASE",
+    "metric": "min_rolling_llcr",
+    "oracle": 1.4352886781080982,
+    "engine": 1.4352886781080987,
+    "difference": -4.440892098500626e-16
+  },
+  {
+    "kind": "ev",
+    "case": "BASE",
+    "metric": "project_npv_keur",
+    "oracle": 5990.220837050838,
+    "engine": 5990.220837050829,
+    "difference": 9.094947017729282e-12
+  },
+  {
+    "kind": "ev",
+    "case": "BASE",
+    "metric": "sponsor_npv_keur",
+    "oracle": 2950.41734750474,
+    "engine": 2950.4173475047337,
+    "difference": 6.366462912410498e-12
+  },
+  {
+    "kind": "ev",
+    "case": "BANK",
+    "metric": "llcr_contractual_maturity",
+    "oracle": 1.838131161863584,
+    "engine": 1.838131161863585,
+    "difference": -8.881784197001252e-16
+  },
+  {
+    "kind": "ev",
+    "case": "BANK",
+    "metric": "llcr_actual_repayment",
+    "oracle": 1.4352886781080982,
+    "engine": 1.4352886781080987,
+    "difference": -4.440892098500626e-16
+  },
+  {
+    "kind": "ev",
+    "case": "BANK",
+    "metric": "plcr",
+    "oracle": 3.0791695682947386,
+    "engine": 3.079169568294741,
+    "difference": -2.220446049250313e-15
+  },
+  {
+    "kind": "ev",
+    "case": "BANK",
+    "metric": "min_rolling_llcr",
+    "oracle": 1.4352886781080982,
+    "engine": 1.4352886781080987,
+    "difference": -4.440892098500626e-16
+  },
+  {
+    "kind": "ev",
+    "case": "BANK",
+    "metric": "project_npv_keur",
+    "oracle": 5990.220837050838,
+    "engine": 5990.220837050829,
+    "difference": 9.094947017729282e-12
+  },
+  {
+    "kind": "ev",
+    "case": "BANK",
+    "metric": "sponsor_npv_keur",
+    "oracle": 2950.41734750474,
+    "engine": 2950.4173475047337,
+    "difference": 6.366462912410498e-12
+  }
+]

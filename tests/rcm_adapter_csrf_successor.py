@@ -49,7 +49,7 @@ SPECS = {
         "forbidden": COMMON_FORBIDDEN + ("run_project",),
     },
     "app/v2/react_goal_seek.py": {
-        "blob": "4cf820e813f6da18893948b0c9a4a31afefc42b7",
+        "blob": "b5bf2d2a920f5b278f2a6a98dd64944e80869ceb",
         "handler": "react_goal_seek_apply", "path": "/model-react/analysis/goal-seek/apply",
         "reads": [("react_goal_seek_catalog", "get", "/model-react/analysis/goal-seek/catalog"),
                   ("react_goal_seek_solve", "get", "/model-react/analysis/goal-seek/solve")],

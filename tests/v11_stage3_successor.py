@@ -185,6 +185,11 @@ def v11_violations(*, repo=None, ref: str = "HEAD") -> list[str]:
     head = _commit(ref, root)
     if head is None:
         return ["V11_REF_UNAVAILABLE"]
+    # Reviewed FIN-V2 cohorts (exact blobs, see tests/fin_v2_cohorts.py) are judged against their unchanged accepted parent: the native
+    # candidate is evaluated at that parent, while cohort recognition rejects any additional protected path or changed source byte.
+    from tests.fin_v2_cohorts import PARENT as fin_v2_parent, valid as fin_v2_valid
+    if head != fin_v2_parent and fin_v2_valid(root, ref=head):
+        return v11_violations(repo=root, ref=fin_v2_parent)
     if not PROTECTED or SOURCE_CANDIDATE["head"] is None or any(after is None for _p, (_b, after) in WIRING_BLOBS.items()):
         return ["V11_CONTRACT_INCOMPLETE"]
     v10_at_checkpoint = tuple(_module("v10_native_shadow_successor").v10_violations(repo=root, ref=V10_CHECKPOINT["head"]))

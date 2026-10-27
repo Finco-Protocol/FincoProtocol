@@ -58,6 +58,8 @@ def build_exec_summary(
     rag_covenants = "green" if min_dscr and min_dscr >= 1.10 else ("amber" if min_dscr and min_dscr >= 1.05 else "red")
 
     return {
+        "authority_classification": "NONCANONICAL_LIVE_PREVIEW",
+        "institutional_reporting_status": "UNSUPPORTED_USE_COMMITTED_RUN_EVIDENCE",
         # Project
         "project_name": info.name,
         "company": info.company,
@@ -269,6 +271,8 @@ def export_report_xlsx(
     ws1["A1"].font = title_font
     ws1["A2"].value = f"Report date: {exec_s['report_date']} | Scenario: {scenario_name}"
     ws1["A2"].font = Font(italic=True, size=9, color="6B7280")
+    ws1["D1"].value = "NONCANONICAL LIVE PREVIEW — use frozen committed RunEvidence for institutional reporting"
+    ws1["D2"].value = "GENERIC_MVP_POLICY; formal covenant assessment unavailable"
 
     rows = [
         ("", ""),
@@ -516,6 +520,7 @@ def export_report_docx(
         section.right_margin = Cm(2.5)
 
     # Title
+    doc.add_paragraph("NONCANONICAL LIVE PREVIEW. Institutional use requires the frozen committed RunEvidence report. Generic tax policy only; no formal covenant assessment.")
     title_label = "Investment Committee Pack" if report_type == "ic" else "Credit Committee Pack"
     title = doc.add_heading(f"FINCO Protocol — {title_label}", level=0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER

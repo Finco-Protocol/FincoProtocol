@@ -40,7 +40,14 @@ def apply_lender_adjustments(proj: Any, adjustments: dict[str, float]) -> Any:
     adjustments: dict mapping LENDER_ADJUSTMENTS keys to values.
     Returns a new ProjectInputs with adjustments applied (frozen, no side effects).
     """
-    from app.services.sensitivity_service import _apply_shock
+    from app.services.sensitivity_service import ShockNotApplied, _apply_shock
+
+    def _applied(current: Any, shock_type: str, level: float) -> Any:
+        """FIN-V2-D01: a requested lender stress that changes nothing is refused, never run as a flat 'stressed' case."""
+        shocked = _apply_shock(current, shock_type, level)
+        if level != 0 and shocked == current:
+            raise ShockNotApplied(shock_type, level)
+        return shocked
 
     result = proj
 
@@ -54,27 +61,27 @@ def apply_lender_adjustments(proj: Any, adjustments: dict[str, float]) -> Any:
 
     # Yield haircut (applied on top of P90 or P50)
     if adjustments.get("yield_haircut", 0.0) != 0.0:
-        result = _apply_shock(result, "yield", -abs(adjustments["yield_haircut"]))
+        result = _applied(result, "yield", -abs(adjustments["yield_haircut"]))
 
     # PPA price haircut
     if adjustments.get("ppa_haircut", 0.0) != 0.0:
-        result = _apply_shock(result, "ppa_price", -abs(adjustments["ppa_haircut"]))
+        result = _applied(result, "ppa_price", -abs(adjustments["ppa_haircut"]))
 
     # Merchant price haircut
     if adjustments.get("merchant_haircut", 0.0) != 0.0:
-        result = _apply_shock(result, "merchant_price", -abs(adjustments["merchant_haircut"]))
+        result = _applied(result, "merchant_price", -abs(adjustments["merchant_haircut"]))
 
     # CAPEX contingency (upward only)
     if adjustments.get("capex_contingency", 0.0) != 0.0:
-        result = _apply_shock(result, "capex", abs(adjustments["capex_contingency"]))
+        result = _applied(result, "capex", abs(adjustments["capex_contingency"]))
 
     # OPEX contingency (upward only)
     if adjustments.get("opex_contingency", 0.0) != 0.0:
-        result = _apply_shock(result, "opex", abs(adjustments["opex_contingency"]))
+        result = _applied(result, "opex", abs(adjustments["opex_contingency"]))
 
     # Interest rate stress (basis points)
     if adjustments.get("interest_stress", 0.0) != 0.0:
-        result = _apply_shock(result, "interest_rate", adjustments["interest_stress"])
+        result = _applied(result, "interest_rate", adjustments["interest_stress"])
 
     # Inflation stress on opex inflation rates
     if adjustments.get("inflation_stress", 0.0) != 0.0:
@@ -87,7 +94,7 @@ def apply_lender_adjustments(proj: Any, adjustments: dict[str, float]) -> Any:
 
     # Availability stress (downward only)
     if adjustments.get("availability_stress", 0.0) != 0.0:
-        result = _apply_shock(result, "availability", -abs(adjustments["availability_stress"]))
+        result = _applied(result, "availability", -abs(adjustments["availability_stress"]))
 
     return result
 
@@ -106,6 +113,10 @@ def run_lender_case(
     from app.services.production_waterfall_seam import execute_production_waterfall
 
     shocked_proj = apply_lender_adjustments(proj, adjustments)
+    rate_stress_evidence = None
+    if adjustments.get("interest_stress", 0.0) != 0.0:
+        from app.services.rate_shock import rate_shock_evidence
+        rate_stress_evidence = rate_shock_evidence(proj, shocked_proj, adjustments["interest_stress"])
     # PR-8 correction pass: lender-case shocks execute through the ONE
     # shared production authority seam — clean G2C for clean-ready projects,
     # explicitly classified legacy for blocked projects. No legacy Base run
@@ -124,6 +135,7 @@ def run_lender_case(
         "periods": periods,
         "adjustment_summary": adjustment_summary,
         "project_inputs": shocked_proj,
+        "rate_stress_evidence": rate_stress_evidence,
     }
 
 

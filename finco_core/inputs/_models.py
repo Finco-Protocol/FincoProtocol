@@ -20,6 +20,7 @@ from typing import Optional, TYPE_CHECKING
 from finco_core.inputs.senior_rate_schedule import SeniorDebtInterestConfig
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
 from finco_core.inputs.valuation import ValuationPolicies
+from finco_core.inputs.shl_timing import ShlTimingBasis
 from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 
 from finco_core.inputs.accounting import AccountingPolicyConfig
@@ -960,6 +961,8 @@ class FinancingParams:
     # When non-empty, PRO_RATA draws SHL proportional to net Sponsor funding need per period.
     # Empty = DCF-based allocation (existing behavior when only calendar DCF is known).
     construction_period_uses_keur: tuple[float, ...] = ()
+    # Absent historical fields retain their absolute-index meaning.
+    shl_timing_basis: ShlTimingBasis = ShlTimingBasis.ABSOLUTE_INDEX
     shl_principal_eligibility_start_period: int | None = None
     shl_maturity_period_index: int | None = None
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()

@@ -1,0 +1,24 @@
+{
+  "schema_version": "FIN_V2_D01_D02_EXACT_SOURCE_V1",
+  "base": "f79e251903621c1a5c88501d51d6971960b612d3",
+  "authorization": "Financial Owner assigned FIN-V2 integration prompt (standing authorization for in-scope source, governance and CI corrections); no merge, deployment or release activation. Self-generated exact blobs of the reviewed PR #392 source at its integrated bytes: a review proposal, not an approval.",
+  "source_blobs": {
+    "app/services/lender_case_service.py": "60e15cb124a54078fd84b03ede6c2ab3e4cd9c36",
+    "app/services/rate_shock.py": "f21cc788f30cc078b7850a4a2ba451e53eddab0c",
+    "app/services/sensitivity_service.py": "4ea3a01fc0e3c193f1b07988638e02826a601f9b",
+    "app/v2/router.py": "8d6a26331e6160b69ad2cad687ae11abadf64a15",
+    "tests/fin_v2_d01_scope.py": "791cc59ed59b31a7cb642ab4e57377c0b64e6f67",
+    "tests/finval_f01_scope.py": "800dee25495e68c9f89456d87e1e95ccc3c6e72b",
+    "tests/model_mutation_security_successor.py": "314f90bb653c8c5af519ef2933f50115dc53132a",
+    "tests/test_fin_v2_d01_scope.py": "af61dcb73fd4ba7b6a9eec2d6a563195699c1fa5",
+    "tests/test_finv2_d01_d02_sensitivity_surfaces.py": "3423e8620f5f6bdf051b92480eb0ef616affa6e4",
+    "tests/test_finv2_d01_governance.py": "5d7f0057e8b69c1221f6c27d5c9d40faf9017b4d",
+    "tests/test_finv2_d01_rate_shock_authority.py": "f76e7a75dbbe77bf4b7012d5ac727deddcf186a0",
+    "tests/test_finv2_d01_routes_and_matrix.py": "c169ade1bd3cd2a156fedc8a237dacfe53347dcf",
+    "tests/test_finval_rate_successor.py": "d731a912b8e97d6f014d113816b69290c6e13056",
+    "tests/test_model_mutation_security_successor.py": "b0ba505809a811886907bf95f28d6dec2aea66c2",
+    "tests/test_model_react_overnight_b_governance.py": "b99c6dcf3fcb28106243dbab64b5d0afb62cfdb8",
+    "tests/test_p1_dc_sensitivity_semantics.py": "9d2af1d65df26e563a26d551c617c6afb6c47be1",
+    "tests/test_rcm_governance.py": "5927a31263f32cb2aa47b51f20cd99da031f0d02"
+  }
+}

@@ -129,10 +129,10 @@ def _write_executive(wb: Workbook, ev: RunEvidence, ledger: _Ledger) -> None:
     cur.section("2. Investment returns")
     cur.kv(_rows(ledger, S, [
         ("Project IRR", number(rs.get("project_irr")), "runtime_summary.project_irr", "Unlevered, pre-financing", PCT_FORMAT),
-        ("Share-capital (pure equity) IRR", number(rs.get("equity_irr")), "runtime_summary.equity_irr",
-         f"Status: {rs.get('share_capital_irr_status') or NOT_AVAILABLE}", PCT_FORMAT),
         ("Total Sponsor XIRR", number(rs.get("total_sponsor_xirr")), "runtime_summary.total_sponsor_xirr",
          f"Status: {rs.get('total_sponsor_xirr_status') or NOT_AVAILABLE}", PCT_FORMAT),
+        ("Share-capital (pure equity) IRR", number(rs.get("equity_irr")), "runtime_summary.equity_irr",
+         f"Secondary metric; status: {rs.get('share_capital_irr_status') or NOT_AVAILABLE}; denominator excludes SHL", PCT_FORMAT),
         ("Pure-equity multiple (MOIC)", number(sp.get("pure_equity_moic")), "sponsor_schedule.summary.pure_equity_moic",
          "Multiple of invested capital as persisted by the sponsor-returns authority", MULTIPLE_FORMAT),
         ("Project NPV", number(rs.get("project_npv_keur")), "runtime_summary.project_npv_keur",
@@ -509,6 +509,8 @@ def write_reporting_v3_sheets(wb: Workbook, ev: RunEvidence, *, v2_names: Sequen
     ledger = _Ledger()
     _write_executive(wb, ev, ledger)
     _write_lender(wb, ev, ledger)
+    from app.export.financial_core_reporting import write_financial_core
+    write_financial_core(wb, ev, ledger, _rows, SHEET_EXECUTIVE, SHEET_LENDER)
     _write_limits(wb, ev, ledger)
     _write_contents(wb, ev, [*wb.sheetnames])
     guide = wb.sheetnames.index(V2.SHEET_REPORT_GUIDE) if V2.SHEET_REPORT_GUIDE in wb.sheetnames else -1

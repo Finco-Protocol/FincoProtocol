@@ -75,6 +75,12 @@ def test_stream_guard_exemption_covers_only_allow_listed_engine_files():
     state = recognized_state()
     path_only = {"financial_engine/shl/production.py"} if state == "ODR" else \
         {"financial_engine/shl/production.py", "financial_engine/senior_debt/solver.py"} if state in ("V10", "V11S3") else set()
+    # A reviewed FIN-V2 cohort (exact blobs, tests/fin_v2_cohorts.py) may change an engine file that was already on the path-only allow-list
+    # (Reserve R1: financial_engine/dsra/target.py). That is an exact-blob recognition, never a new or content-free exemption.
+    from tests.fin_v2_cohorts import protected_blobs as fin_v2_cohort_blobs
+    pinned = lambda path: any(path in pins for pins in (
+        _governance.F3_2_4_FINANCING_AUTHORITIES, _governance.WF07_REVENUE_AUTHORITIES, _governance.F3_5_A_JUNIOR_AUTHORITIES))
+    path_only = path_only | {path for path in fin_v2_cohort_blobs() if path in APPROVED and approved_frozen_path(path) and not pinned(path)}
     for path in path_only:
         assert path in APPROVED and not any(path in pins for pins in (
             _governance.F3_2_4_FINANCING_AUTHORITIES, _governance.WF07_REVENUE_AUTHORITIES, _governance.F3_5_A_JUNIOR_AUTHORITIES))
