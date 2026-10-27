@@ -60,7 +60,7 @@ def test_finval_b2c1_successor_is_exactly_six_additive_paths_and_keeps_every_ori
         "app/v2/router.py","frontend/src/app/WorkspaceView.tsx","frontend/src/app/types.ts","static/react/finco-react.js"}
     for path,blob in S.FINVAL_B2C1_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40 and blob!=S.BLOBS[path]
-        assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path)}   # current source = an admitted reviewed successor
+        assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path),S.REACT_MVP_CORRECTION_SUCCESSORS.get(path)}   # current source = an admitted reviewed successor
     assert S.TOKEN_MODULE not in S.FINVAL_B2C1_SUCCESSORS
 
 @pytest.mark.parametrize("path",["app/templates/v2/partials/sheet_opex.html","app/v2/react_workspace_router.py","app/v2/router.py",
@@ -109,7 +109,7 @@ def test_d029_layer_is_exactly_three_additive_paths_and_keeps_every_original_and
     for path,blob in S.D029_RUN_INTENT_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40
         assert blob!=S.BLOBS[path] and blob!=S.FINVAL_B2C1_SUCCESSORS.get(path)   # a NEW reviewed state, never a repin
-        assert S.git_blob(SOURCES[path])==blob
+        assert S.git_blob(SOURCES[path]) in {blob,S.REACT_MVP_CORRECTION_SUCCESSORS.get(path)}   # D-029 state, or the later Overnight B successor
     assert S.TOKEN_MODULE not in S.D029_RUN_INTENT_SUCCESSORS
 
 
@@ -175,7 +175,7 @@ def test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_a
     import re
     path="tests/test_model_workspace_consolidation_browser.py"
     source=SOURCES[path]
-    assert S.git_blob(source)==S.D029_RUN_INTENT_SUCCESSORS[path]
+    assert S.git_blob(source) in {S.D029_RUN_INTENT_SUCCESSORS[path],S.REACT_MVP_CORRECTION_SUCCESSORS[path]}
     for name in ("check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit",
                  "check_react_lost_response_survives_reload_and_resumes_the_original_run",
                  "check_react_resume_after_the_draft_changed_never_runs_against_the_new_draft",
@@ -198,7 +198,23 @@ def test_d029_browser_original_node_ids_are_preserved():
     current=SOURCES[path]
     names=lambda text:re.findall(r"^def (test_\w+)\(",text,flags=re.M)
     assert set(names(base))<=set(names(current))
-    assert [n for n in names(current) if n not in names(base)]==["test_d029_react_run_intent_acceptance","test_d029_legacy_run_intent_acceptance"]
+    # additive only: the two D-029 wrappers, then the reviewed Overnight B (React MVP correction) wrappers — nothing else
+    assert [n for n in names(current) if n not in names(base)]==["test_d029_react_run_intent_acceptance","test_d029_legacy_run_intent_acceptance",
+        "test_onb_statement_identity_is_the_authorized_project_in_every_vertical",
+        "test_onb_hostile_or_stale_query_cannot_change_the_statement_identity",
+        "test_onb_switching_projects_never_carries_the_previous_statement_identity",
+        "test_onb_missing_or_conflicting_identity_fails_visibly",
+        "test_onb_two_runs_in_the_same_hour_are_distinguishable_everywhere",
+        "test_onb_scenario_comparison_and_results_refer_to_the_intended_run",
+        "test_onb_inputs_save_scope_language_is_accurate",
+        "test_onb_scalar_save_persists_after_reload_and_never_saves_another_editor",
+        "test_onb_inputs_are_compact_complete_and_navigable",
+        "test_onb_protected_reference_inputs_stay_visible_and_read_only",
+        "test_onb_workspace_navigation_is_discoverable_and_keyboard_operable",
+        "test_onb_labels_and_typography_have_no_duplicated_units_or_literal_escapes",
+        "test_onb_returns_lender_metrics_and_vertical_scope_are_truthful",
+        "test_onb_scenario_override_boundary_matches_the_canonical_capability",
+        "test_onb_every_theme_keeps_the_corrected_surfaces_legible"]
     # every original line is still present, in order: the change is purely additive
     it=iter(current.splitlines())
     assert all(any(line==cur for cur in it) for line in base.splitlines())

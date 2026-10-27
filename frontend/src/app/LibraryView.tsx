@@ -3,6 +3,7 @@ import "../finco/_group.css";
 import "../styles/finco-live.css";
 import { Shell } from "../finco/_shared/FincoShell";
 import { createWorkingCopy, fetchLibrary, isCloneUnknown } from "./api";
+import { RunIdentityLabel } from "./runIdentity";
 import type { LibraryPayload, LibraryProject } from "./types";
 
 const FRESHNESS_TEXT: Record<string, string> = { CURRENT: "CURRENT", STALE: "STALE", NOT_RUN: "NOT RUN" };
@@ -10,6 +11,14 @@ const FRESHNESS_TEXT: Record<string, string> = { CURRENT: "CURRENT", STALE: "STA
 /** Reference templates whose working-copy runtime is not available yet (legacy Library parity). */
 function cloneUnavailable(project: LibraryProject): boolean {
   return /storage|bess/i.test(`${project.template_source} ${project.project_type}`);
+}
+
+/** Preview / closed verticals say so next to their type, so no one reads them as pilot-ready. */
+function TierNote({ project }: { project: LibraryProject }) {
+  const tier = project.vertical?.pilot_tier;
+  if (tier === "PREVIEW") return <div className="rx-note" data-vertical-tier="PREVIEW" title="Validation coverage is narrower than Solar and Wind.">Preview vertical · narrower validation</div>;
+  if (tier === "RELEASE_CLOSED") return <div className="rx-note" data-vertical-tier="RELEASE_CLOSED">Not released for Runs</div>;
+  return null;
 }
 
 function projectKind(project: LibraryProject): string {
@@ -25,8 +34,7 @@ function RunCell({ project }: { project: LibraryProject }) {
   return (
     <span data-run-state={freshness}>
       <span className={`rx-lib-badge${freshness === "STALE" ? " rx-lib-badge-stale" : ""}`}>{FRESHNESS_TEXT[freshness] ?? freshness}</span>{" "}
-      {freshness === "STALE" ? "Prior Run " : "Run "}<code className="rx-lib-code">{run.snapshot_id || "id unavailable"}</code>
-      {run.ran_at && <><br /><span className="rx-note">{run.ran_at}</span></>}
+      {freshness === "STALE" ? "Prior Run " : "Run "}<RunIdentityLabel snapshotId={run.snapshot_id} ranAt={run.ran_at} />
     </span>
   );
 }
@@ -168,7 +176,7 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
                     {library.projects.map((project) => (
                       <tr key={project.code} data-project-code={project.code} data-project-kind="working-copy">
                         <td data-label="Project"><strong>{project.name}</strong><div className="rx-lib-code">{project.code}</div></td>
-                        <td data-label="Type">{projectKind(project)}{project.template_source && project.template_source !== project.project_type && <div className="rx-lib-code">Template: {project.template_source}</div>}</td>
+                        <td data-label="Type">{projectKind(project)}<TierNote project={project} />{project.template_source && project.template_source !== project.project_type && <div className="rx-lib-code">Template: {project.template_source}</div>}</td>
                         <td data-label="Status"><span className="rx-lib-badge rx-lib-badge-copy">WORKING COPY</span><div className="rx-note">Editable · saved on the server</div></td>
                         <td data-label="Last Run"><RunCell project={project} /></td>
                         <td data-label="Actions">
@@ -203,7 +211,7 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
                       return (
                         <tr key={project.code} data-project-code={project.code} data-project-kind="reference">
                           <td data-label="Reference"><strong>{project.name}</strong><div className="rx-lib-code">{project.code}</div></td>
-                          <td data-label="Type">{projectKind(project)}{blocked && <div className="rx-note">Preview-only technology</div>}</td>
+                          <td data-label="Type">{projectKind(project)}{blocked ? <div className="rx-note">Preview-only technology</div> : <TierNote project={project} />}</td>
                           <td data-label="Status"><span className="rx-lib-badge rx-lib-badge-reference">REFERENCE</span><div className="rx-note">Read-only · shared</div></td>
                           <td data-label="Last Run"><RunCell project={project} /></td>
                           <td data-label="Actions">

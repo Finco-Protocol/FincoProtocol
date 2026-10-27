@@ -11,6 +11,7 @@ creates a Run; only the explicit Run action does, and at most once per activatio
 from __future__ import annotations
 
 import re
+from urllib.parse import urlsplit
 
 from tests.model_react_wf1_browser_acceptance import make_session
 from tests.model_react_wf2_browser_acceptance import (
@@ -654,7 +655,7 @@ def check_pending_mutations_cannot_escape_their_reconciliation_contract(browser,
             library = page.locator("header.rx-header").get_by_role("link", name="Project Library")
             library.click()
             dialog(page).get_by_role("button", name=STAY).click()
-            assert "/v2/model-react/" in page.url and page.url.split("?")[0].endswith(record.project_code)
+            assert "/v2/model-react/" in page.url and urlsplit(page.url).path.endswith(record.project_code)
             assert run_button(page).is_disabled()
             page.wait_for_timeout(800)
             assert len(posts) == 1, posts

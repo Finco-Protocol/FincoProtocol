@@ -6,6 +6,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchScenarioCompare } from "./api";
+import { RunIdentityLabel } from "./runIdentity";
+import { labelWithUnit } from "./fieldLabel";
 
 type FetchState<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
@@ -48,11 +50,11 @@ export function ScenarioCompareView({ project, scenarioId }: { project: string; 
       </div>
       <div className="fm-table-wrap">
         <table className="fm-table">
-          <thead><tr><th>Field</th><th>{data.base.label}</th><th>{data.scenario?.label ?? "Scenario"}</th></tr></thead>
+          <thead><tr><th>Assumption</th><th>{data.base.label}</th><th>{data.scenario?.label ?? "Scenario"}</th></tr></thead>
           <tbody>
             {data.differences.map((d) => (
               <tr key={d.field_id}>
-                <td className="fm-mono">{d.field_id}</td>
+                <td title={d.field_id} data-compare-field={d.field_id}>{d.label ? labelWithUnit(d.label, d.unit) : d.field_id}</td>
                 <td>{d.base_value === null || d.base_value === undefined ? "—" : String(d.base_value)}</td>
                 <td>{d.scenario_value === null || d.scenario_value === undefined ? "—" : String(d.scenario_value)}</td>
               </tr>
@@ -64,11 +66,11 @@ export function ScenarioCompareView({ project, scenarioId }: { project: string; 
       {([
         ["Base", data.base.run_evidence],
         ["Scenario", data.scenario?.run_evidence],
-      ] as Array<[string, { state: string; snapshot_id?: string | null; ran_at?: string | null; note?: string } | undefined]>).map(([label, evidence]) => (
+      ] as Array<[string, { state: string; snapshot_id?: string | null; history_id?: string | null; ran_at?: string | null; note?: string } | undefined]>).map(([label, evidence]) => (
         <p key={label} className="fm-info-note" data-run-evidence-state={evidence?.state ?? "UNAVAILABLE"}>
           <strong>{label} Run evidence:</strong>{" "}
           {evidence?.state === "AVAILABLE"
-            ? <>committed Run <span className="fm-mono">{String(evidence.snapshot_id ?? "").slice(0, 12)}</span>{evidence.ran_at ? ` · ran ${evidence.ran_at}` : ""}</>
+            ? <>committed Run <RunIdentityLabel snapshotId={evidence.snapshot_id} historyId={evidence.history_id} ranAt={evidence.ran_at} /></>
             : <>UNAVAILABLE — {evidence?.note ?? "no committed Run exists for this side."}</>}
         </p>
       ))}

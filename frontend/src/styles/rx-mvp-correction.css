@@ -1,0 +1,131 @@
+/* Overnight B — React Institutional Model MVP correction (presentation only).
+   F03 Run identity · F04 Save scope · U01 Inputs layout · U03 responsive navigation ·
+   model-truth notes.  Uses the existing theme tokens (every theme, including the
+   green/white variant, inherits them); adds no theme and no new component framework. */
+
+/* ── U03 · responsive workspace navigation ───────────────────────────────── */
+
+.rx-nav-wrap { max-width: 100%; min-width: 0; }
+.rx-nav-box { position: relative; display: flex; align-items: stretch; max-width: 100%; min-width: 0; }
+.rx-nav-box > .fm-nav {
+  flex: 1 1 auto; min-width: 0; display: flex; overflow-x: auto; overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch; scrollbar-width: thin; max-width: 100%;
+}
+.rx-nav-box > .fm-nav a { flex: 0 0 auto; }
+.rx-nav-box::before, .rx-nav-box::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 28px; z-index: 1; pointer-events: none; opacity: 0; transition: opacity 0.12s;
+}
+.rx-nav-box::before { left: 32px; background: linear-gradient(90deg, var(--surface, #fbfcfc), transparent); }
+.rx-nav-box::after { right: 32px; background: linear-gradient(270deg, var(--surface, #fbfcfc), transparent); }
+.rx-nav-wrap[data-nav-overflow-left] .rx-nav-box::before, .rx-nav-wrap[data-nav-overflow-right] .rx-nav-box::after { opacity: 1; }
+.rx-nav-scroll {
+  flex: 0 0 32px; width: 32px; border: 0; padding: 0;
+  background: var(--surface-blue, #edf3f8); color: var(--navy, #183e63); font-size: 20px; line-height: 1; cursor: pointer;
+}
+.rx-nav-scroll[hidden] { display: none; }
+.rx-nav-position { display: none; margin: 2px 0 6px; font-size: 11px; color: var(--muted, #526374); }
+@media (max-width: 820px) {
+  .rx-nav-position { display: block; }
+  .rx-nav-box > .fm-nav a { min-height: 44px; }
+}
+@media (min-width: 821px) {
+  .rx-nav-scroll { display: none; }
+}
+
+/* ── F03 · Run identity ───────────────────────────────────────────────────── */
+
+.rx-run-id { display: inline; }
+.rx-run-time { font-variant-numeric: tabular-nums; }
+.rx-run-suffix { color: var(--muted, #526374); font-family: 'DM Mono', monospace; font-size: 0.9em; }
+.rx-run-raw { font-family: 'DM Mono', monospace; overflow-wrap: anywhere; }
+.rx-run-details { display: inline-block; font-size: 0.85em; }
+.rx-run-details > summary { cursor: pointer; color: var(--blue, #35658b); padding: 2px 6px; min-height: 24px; }
+.rx-run-full { display: grid; gap: 4px; padding: 6px 0; }
+.rx-run-full code { font-family: 'DM Mono', monospace; overflow-wrap: anywhere; }
+.rx-run-copy {
+  margin-left: 4px; padding: 2px 8px; border: 1px solid var(--line, #dce3e9); background: var(--surface, #fbfcfc);
+  color: var(--navy, #183e63); font-size: 11px; cursor: pointer;
+}
+@media (pointer: coarse), (max-width: 820px) {
+  .rx-run-details > summary, .rx-run-copy { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
+}
+
+/* ── F04 · Save scope ─────────────────────────────────────────────────────── */
+
+.rx-save-scope {
+  margin: 4px 0 8px; padding: 6px 10px; border-left: 3px solid var(--blue, #35658b);
+  background: var(--surface-blue, #edf3f8); color: var(--ink-soft, #40536a); font-size: 12px;
+}
+.fm-card-title > .rx-save-scope { margin: 0 8px; padding: 2px 8px; }
+.rx-save-guide { margin: 0 0 12px; border: 1px solid var(--line, #dce3e9); background: var(--surface, #fbfcfc); padding: 4px 12px; }
+.rx-save-guide > summary { cursor: pointer; font-weight: 600; padding: 6px 0; color: var(--navy, #183e63); }
+.rx-save-table th, .rx-save-table td { text-align: left; white-space: normal; vertical-align: top; }
+
+/* ── U01 · Inputs layout ──────────────────────────────────────────────────── */
+
+.wf-jump { position: sticky; top: 0; z-index: 3; background: var(--paper, #f4f6f7); }
+[id^="wf-inputs-"] { scroll-margin-top: 56px; }
+
+.rx-toolbar-compact { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.rx-input-section { border: 1px solid var(--line, #dce3e9); margin: 8px 0; background: var(--surface, #fbfcfc); }
+.rx-input-section > summary {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; cursor: pointer; padding: 8px 12px; list-style-position: inside;
+}
+.rx-input-section > summary h3 { display: inline; margin: 0; font-size: 0.95rem; }
+.rx-section-meta { color: var(--muted, #526374); font-size: 12px; }
+.rx-input-scroll { overflow-x: auto; padding: 0 8px 8px; }
+.rx-input-table { table-layout: fixed; width: 100%; min-width: 0; }
+.rx-input-table .rx-col-field { width: 38%; }
+.rx-input-table .rx-col-value { width: 20%; }
+.rx-input-table .rx-col-unit { width: 11%; }
+.rx-input-table .rx-col-status { width: 31%; }
+.rx-card .rx-input-table th, .rx-card .rx-input-table td { padding: 3px 8px; white-space: normal; overflow-wrap: anywhere; }
+.rx-card .rx-input-table td:nth-child(2) { text-align: right; }
+.rx-card .rx-input-table td:nth-child(3), .rx-card .rx-input-table .rx-status-cell { text-align: left; }
+.rx-input-table .rx-cat-row th { text-align: left; background: var(--surface-blue, #edf3f8); color: var(--ink-soft, #40536a); font-size: 12px; font-weight: 600; }
+.rx-input-table .rx-grid-input { width: 100%; max-width: 100%; text-align: right; }
+.rx-state { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.rx-state-editable { background: var(--green-soft, #eaf2ed); color: var(--green, #477661); }
+.rx-state-derived { background: var(--blue-soft, #e7eff5); color: var(--blue, #35658b); }
+.rx-state-unavailable { background: var(--amber-soft, #f6f0e4); color: var(--amber, #76511b); }
+.rx-state-reason { color: var(--muted, #526374); }
+
+@media (max-width: 640px) {
+  .rx-input-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .rx-input-table, .rx-input-table tbody { display: block; }
+  .rx-input-table tr:not(.rx-cat-row) {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 4px; border-bottom: 1px solid var(--line, #dce3e9);
+  }
+  .rx-input-table tr.rx-cat-row { display: block; }
+  .rx-input-table tr:not(.rx-cat-row) th { grid-column: 1 / -1; border: 0; padding: 0; text-align: left; }
+  .rx-input-table tr:not(.rx-cat-row) td { border: 0; padding: 0; }
+  .rx-input-table tr:not(.rx-cat-row) td:nth-child(2) { grid-column: 1; text-align: left; }
+  .rx-input-table tr:not(.rx-cat-row) td:nth-child(3) { grid-column: 2; align-self: center; }
+  .rx-input-table tr:not(.rx-cat-row) td:nth-child(4) { grid-column: 1 / -1; }
+}
+
+/* ── U02 · technical notes behind a disclosure ────────────────────────────── */
+
+.rx-tech { margin: 2px 0 4px; font-size: 12px; }
+.rx-tech > summary { cursor: pointer; color: var(--blue, #35658b); }
+.rx-live-tech { margin: 8px 0; font-size: 12px; }
+.rx-live-tech > summary { cursor: pointer; color: var(--blue, #35658b); }
+.rx-live-tech ul { margin: 6px 0 0; padding-left: 18px; }
+.rx-live-tech code { overflow-wrap: anywhere; }
+
+/* ── model truth ──────────────────────────────────────────────────────────── */
+
+.rx-vertical { margin: 8px 0; padding: 8px 12px; border-left: 3px solid var(--blue, #35658b); background: var(--surface-blue, #edf3f8); font-size: 13px; }
+.rx-vertical-preview { border-left-color: var(--amber, #76511b); background: var(--amber-soft, #f6f0e4); }
+.rx-vertical-release-closed, .rx-vertical-unclassified { border-left-color: var(--red, #a44f4b); background: var(--red-soft, #f8ecea); }
+.rx-vertical-limits { margin-top: 4px; }
+.rx-vertical-limits > summary { cursor: pointer; }
+.rx-boundary { margin: 8px 0; }
+
+/* CAPEX / OPEX line tables: compact rows in a labelled, keyboard-reachable scroll region (every control stays in the DOM). */
+.rx-lines-scroll { max-height: min(70vh, 620px); overflow: auto; border: 1px solid var(--line, #dce3e9); }
+.rx-lines-scroll-short { max-height: min(50vh, 360px); }
+.rx-lines-scroll thead th { position: sticky; top: 0; z-index: 1; background: var(--surface, #fbfcfc); }
+.rx-lines-scroll .fm-table th, .rx-lines-scroll .fm-table td { padding-block: 3px; }
+.rx-lines-scroll .fm-input { padding-block: 2px; }
+.rx-lines-scroll:focus-visible { outline: 2px solid var(--blue, #35658b); outline-offset: 1px; }

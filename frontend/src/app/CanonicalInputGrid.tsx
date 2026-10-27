@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
-import type { GridRowPayload, InputsPayload } from "./types";
+import { labelWithUnit } from "./fieldLabel";
+import type { GridCategoryPayload, GridRowPayload, GridSectionPayload, InputsPayload } from "./types";
 import { useDirtyTotal, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 
 export type GridSaveOutcome =
@@ -31,9 +32,37 @@ function flattenRows(payload: InputsPayload): GridRowPayload[] {
  * writer, composite CAS, CSRF, ≤50 cells).  Every Correction-A safeguard applies:
  * invalid values keep the typed draft, stale CAS blocks until reload, unknown
  * outcomes never claim success or failure, and saving never runs the model.
- * CAPEX/OPEX line items stay read-only navigation here (their canonical cost-line
- * batch writer is deliberately out of scope — C6).
+ * CAPEX/OPEX amounts are built from line items, so they are shown here as derived
+ * totals; the line items themselves are edited in the CAPEX / OPEX editors below.
+ *
+ * Layout (U01): one table per section with a single header, a group row only where a
+ * category has several rows, and sections that hold nothing editable collapsed by
+ * default.  Every editable cell stays in the DOM and in the tab order of an open section.
  */
+
+type RowState = "editable" | "derived" | "unavailable";
+
+const DERIVED_REASON = /sum of line items|calculated|linked to|derived|locked by the model|computed/i;
+
+function rowState(row: GridRowPayload, gridEditable: boolean): RowState {
+  if (row.editable && gridEditable) return "editable";
+  if (row.reason && DERIVED_REASON.test(row.reason)) return "derived";
+  if (!row.value && !row.reason) return "unavailable";
+  return row.reason ? "unavailable" : "derived";
+}
+
+const STATE_TEXT: Record<RowState, string> = { editable: "Editable", derived: "Derived", unavailable: "Not editable here" };
+
+function sectionCounts(section: GridSectionPayload, gridEditable: boolean) {
+  const counts: Record<RowState, number> = { editable: 0, derived: 0, unavailable: 0 };
+  for (const category of section.categories) for (const row of category.rows) counts[rowState(row, gridEditable)] += 1;
+  return counts;
+}
+
+/** A category row only adds information when it groups several rows or names something other than its single row. */
+function showsGroupRow(category: GridCategoryPayload): boolean {
+  return category.rows.length > 1 || (category.rows[0] !== undefined && category.rows[0].label.trim() !== category.label.trim());
+}
 export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: CanonicalInputGridProps) {
   const rows = useMemo(() => flattenRows(payload), [payload]);
   const [drafts, setDrafts] = useState<Draft>({});
@@ -122,15 +151,28 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
   }
 
   const editableCount = rows.filter((r) => r.editable && payload.grid.editable).length;
+  const sections = payload.grid.sections.map((section) => ({ section, counts: sectionCounts(section, payload.grid.editable) }));
+  // Sections with something to edit start open; purely derived ones start collapsed.  A read-only
+  // grid (protected reference) has nothing editable, so every section starts open: its values ARE the content.
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const readOnlyGrid = protectedRef || payload.grid.editable === false;
+  const defaultOpen = (counts: Record<RowState, number>) => counts.editable > 0 || readOnlyGrid;
+  const isOpen = (id: string, counts: Record<RowState, number>) => opened[id] ?? defaultOpen(counts);
+  // A section holding unsaved edits can neither collapse nor hide them: Save writes every staged cell, so each must stay visible.
+  const stagedIn = (section: GridSectionPayload) => section.categories.reduce((sum, category) => sum
+    + category.rows.filter((row) => dirtyCodes.includes(row.field_id || row.code)).length, 0);
 
   return (
     <section className="rx-card" aria-labelledby="rx-grid-heading" data-input-grid="canonical">
-      <h2 id="rx-grid-heading">Inputs — Working Copy grid</h2>
+      <h2 id="rx-grid-heading">Assumptions</h2>
+      <p className="rx-save-scope" data-save-scope="grid">
+        <strong>Saves:</strong> every edited cell below, together, with <em>Save staged cells</em>. All are saved or none.
+        Saving does not run the model.
+      </p>
       <p className="rx-note" data-grid-meta={payload.grid.content_hash.slice(0, 12)}>
-        {editableCount} editable scalar {editableCount === 1 ? "field" : "fields"}
-        {payload.grid.modified_since_run_count > 0 && ` · ${payload.grid.modified_since_run_count} modified since the Last Run`}
-        {" · "}
-        {payload.grid.baseline_note || "Edits save atomically through the canonical server authority; the model is never run."}
+        {editableCount} editable {editableCount === 1 ? "field" : "fields"}
+        {payload.grid.modified_since_run_count > 0 && ` · ${payload.grid.modified_since_run_count} changed since the last Run`}
+        {" · "}Derived values follow their line items or the model and cannot be typed over.
       </p>
       {(protectedRef || payload.grid.editable === false) && (
         <p className="rx-note" role="note">
@@ -138,82 +180,105 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
           in the Project Library to edit it.
         </p>
       )}
-      {payload.grid.sections.map((section) => (
-        <div key={section.section_id} data-grid-section={section.section_id}>
-          <h3 className="rx-section-title">{section.title}</h3>
-          {section.categories.map((category) => (
-            <div key={category.code} data-grid-category={category.code}>
-              <p className="rx-category">
-                {category.label}
-                {category.total_display ? ` — ${category.total_display}` : ""}
-              </p>
-              <div className="rx-statement" style={{ overflowX: "auto" }}>
-                <table ref={category === payload.grid.sections[0]?.categories[0] ? tableRef : undefined}
-                       className="rx-table rx-input-table" data-grid-table={section.section_id}>
-                  <thead>
-                    <tr>
-                      <th scope="col" className="rx-rowhead">Field</th>
-                      <th scope="col">Value</th>
-                      <th scope="col">Unit</th>
-                      <th scope="col">Status</th>
+      <div className="rx-toolbar-compact">
+        <button type="button" className="rx-button rx-button-secondary" data-grid-expand-all="true"
+          onClick={() => setOpened(Object.fromEntries(sections.map(({ section }) => [section.section_id, true])))}>Expand all sections</button>
+        <button type="button" className="rx-button rx-button-secondary" data-grid-collapse-derived="true"
+          onClick={() => setOpened(Object.fromEntries(sections.map(({ section, counts }) => [section.section_id, defaultOpen(counts)])))}>Show editable sections only</button>
+      </div>
+      {sections.map(({ section, counts }, sectionIndex) => (
+        <details key={section.section_id} className="rx-input-section" data-grid-section={section.section_id}
+          open={isOpen(section.section_id, counts) || stagedIn(section) > 0}
+          onToggle={(event) => {
+            const open = (event.currentTarget as HTMLDetailsElement).open;
+            if (!open && stagedIn(section) > 0) { (event.currentTarget as HTMLDetailsElement).open = true; return; }
+            setOpened((prev) => (prev[section.section_id] === open ? prev : { ...prev, [section.section_id]: open }));
+          }}>
+          <summary>
+            <h3 className="rx-section-title">{section.title}</h3>
+            <span className="rx-section-meta">
+              {counts.editable > 0 && `${counts.editable} editable`}
+              {counts.editable > 0 && (counts.derived + counts.unavailable) > 0 && " · "}
+              {counts.derived > 0 && `${counts.derived} derived`}
+              {counts.derived > 0 && counts.unavailable > 0 && " · "}
+              {counts.unavailable > 0 && `${counts.unavailable} not editable here`}
+              {stagedIn(section) > 0 && <strong className="rx-staged-count" data-staged-in-section={stagedIn(section)}> · {stagedIn(section)} unsaved edit{stagedIn(section) === 1 ? "" : "s"}</strong>}
+            </span>
+          </summary>
+          <div className="rx-statement rx-input-scroll">
+            <table ref={sectionIndex === 0 ? tableRef : undefined} className="rx-table rx-input-table" data-grid-table={section.section_id}>
+              <colgroup><col className="rx-col-field" /><col className="rx-col-value" /><col className="rx-col-unit" /><col className="rx-col-status" /></colgroup>
+              <thead>
+                <tr>
+                  <th scope="col" className="rx-rowhead">Field</th>
+                  <th scope="col">Value</th>
+                  <th scope="col">Unit</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              {section.categories.map((category) => (
+                <tbody key={category.code} data-grid-category={category.code}>
+                  {showsGroupRow(category) && (
+                    <tr className="rx-cat-row">
+                      <th scope="colgroup" colSpan={4}>{category.label}{category.total_display ? ` — ${category.total_display}` : ""}</th>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {category.rows.map((row) => {
-                      const rowKey = row.field_id || row.code;
-                      const staged = drafts[rowKey];
-                      const value = staged !== undefined ? staged : row.value;
-                      const editableRow = row.editable && payload.grid.editable;
-                      return (
-                        <tr key={`${row.code}:${row.field_id}`} data-grid-row={row.field_id || row.code}
-                            className={activeCode === rowKey ? "rx-active" : undefined}>
-                          <th scope="row" className="rx-rowhead">{row.label}</th>
-                          <td>
-                            {editableRow ? (
-                              <input
-                                className="rx-input rx-grid-input"
-                                type="text"
-                                inputMode="decimal"
-                                autoComplete="off"
-                                maxLength={payload.save.max_value_chars}
-                                value={value}
-                                readOnly={locked}
-                                aria-readonly={locked || undefined}
-                                data-locked={locked ? "true" : "false"}
-                                aria-label={`${row.label}${row.unit ? ` (${row.unit})` : ""}`}
-                                data-field-id={row.field_id}
-                                data-grid-cell={row.field_id || row.code}
-                                ref={(el) => {
-                                  if (rowKey === activeCode) activeCellRef.current = el;
-                                }}
-                                onFocus={() => setActiveCode(rowKey)}
-                                onChange={(e) => {
-                                  stage(rowKey, e.target.value);
-                                }}
-                              />
-                            ) : (
-                              <span data-locked-value={row.field_id || row.code} title={row.reason || "Read-only"}>{value || "—"}</span>
-                            )}
-                          </td>
-                          <td>{row.unit}</td>
-                          <td className="rx-note">
-                            {row.reason
-                              ? row.reason
-                              : row.modified_since_run
-                                ? `Modified since Last Run (was ${row.baseline || "—"})`
-                                : staged !== undefined && staged !== row.value
-                                  ? "Staged edit"
-                                  : ""}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
+                  )}
+                  {category.rows.map((row) => {
+                    const rowKey = row.field_id || row.code;
+                    const staged = drafts[rowKey];
+                    const value = staged !== undefined ? staged : row.value;
+                    const state = rowState(row, payload.grid.editable);
+                    const editableRow = state === "editable";
+                    return (
+                      <tr key={`${row.code}:${row.field_id}`} data-grid-row={row.field_id || row.code} data-row-state={state}
+                          className={activeCode === rowKey ? "rx-active" : undefined}>
+                        <th scope="row" className="rx-rowhead">{row.label}</th>
+                        <td>
+                          {editableRow ? (
+                            <input
+                              className="rx-input rx-grid-input"
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              maxLength={payload.save.max_value_chars}
+                              value={value}
+                              readOnly={locked}
+                              aria-readonly={locked || undefined}
+                              data-locked={locked ? "true" : "false"}
+                              aria-label={labelWithUnit(row.label, row.unit)}
+                              data-field-id={row.field_id}
+                              data-grid-cell={row.field_id || row.code}
+                              ref={(el) => {
+                                if (rowKey === activeCode) activeCellRef.current = el;
+                              }}
+                              onFocus={() => setActiveCode(rowKey)}
+                              onChange={(e) => {
+                                stage(rowKey, e.target.value);
+                              }}
+                            />
+                          ) : (
+                            <span data-locked-value={row.field_id || row.code} title={row.reason || "Read-only"}>{value || "—"}</span>
+                          )}
+                        </td>
+                        <td>{row.unit}</td>
+                        <td className="rx-note rx-status-cell">
+                          <span className={`rx-state rx-state-${state}`}>{STATE_TEXT[state]}</span>
+                          {row.reason
+                            ? <span className="rx-state-reason"> {row.reason}</span>
+                            : row.modified_since_run
+                              ? <span className="rx-state-reason"> Changed since Last Run (was {row.baseline || "—"})</span>
+                              : staged !== undefined && staged !== row.value
+                                ? <span className="rx-state-reason"> Staged edit</span>
+                                : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              ))}
+            </table>
+          </div>
+        </details>
       ))}
       <div className="rx-field-row" style={{ marginTop: "0.75rem" }}>
         <button

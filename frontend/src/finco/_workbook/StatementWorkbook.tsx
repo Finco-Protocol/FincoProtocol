@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { fincoBasePath, readProjectContext } from "../_shared/FincoShell";
+import { RunIdentityLabel, runIdentityText } from "../../app/runIdentity";
 import { preferredScrollBehavior } from "../_shared/motion";
 import { statementCellTabIndex, statementCellText, statementStatusText, type StatementFacilityId, type StatementRow, type StatementSheet, type StatementSheetId, type StatementViewId, type StatementWorkbookProps } from "./statementContract";
 import "./statements.css";
@@ -256,7 +257,7 @@ function StatementTable({
                   <div className="fm-sw-trace-copy">
                     <strong>CANONICAL SOURCE · {item.label} · {periods[tracePeriod]}</strong>
                     <span className="fm-sw-trace-code">{displayStatementValue(values[periodIndexes[tracePeriod]] || "—", format, unit, precision, numericValues?.[periodIndexes[tracePeriod]])} {rowUnit} · persisted value {statementCellText(values[periodIndexes[tracePeriod]])} {canonicalUnitText(item, sheet)}</span>
-                    <span>Statement: {sheet.title} · persisted Run {runId}. Unit conversion and rounding are display-only.</span>
+                    <span>Statement: {sheet.title} · persisted Run {runIdentityText(runId)}. Unit conversion and rounding are display-only.</span>
                   </div>
                   <button className="fm-sw-trace-close" type="button" onClick={() => setTraceId(null)}>Close</button>
                 </div>
@@ -283,8 +284,14 @@ function StatementTable({
   </div>;
 }
 
-export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, status }: StatementWorkbookProps) {
-  const project = readProjectContext();
+export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, status, projectIdentity }: StatementWorkbookProps) {
+  // A live canonical Run is identified ONLY by the authorized workspace identity passed in; the demo
+  // project context (URL / browser-session driven, with a demo fallback project) is never consulted for it.
+  const canonicalOrigin = (status.dataOrigin ?? "synthetic-demo") === "canonical-run";
+  const project = canonicalOrigin
+    ? { id: projectIdentity?.code?.trim() ?? "", name: projectIdentity?.name?.trim() ?? "", technology: projectIdentity?.type?.trim() || "Project type not set" }
+    : readProjectContext();
+  const identityMissing = canonicalOrigin && (!project.id || !project.name);
   const visibleSheets = snapshot?.sheets ?? [];
   const visibleAnnualPeriods = snapshot?.annualPeriods ?? [];
   const visibleModelPeriods = snapshot?.modelPeriods ?? [];
@@ -370,6 +377,15 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
     regionRef.current?.scrollBy({ left: direction * 240, behavior: preferredScrollBehavior() });
   }
 
+  if (identityMissing) {
+    return <section id="statement-workbook" tabIndex={-1} data-statement-identity="missing">
+      <div className="fm-sw-warning fm-sw-unavailable" role="alert">
+        <h2>Statement project identity unavailable</h2>
+        <p>The project these statements belong to could not be confirmed, so no statement is shown. Reload the workspace; no sample or placeholder project is substituted.</p>
+      </div>
+    </section>;
+  }
+
   if (!snapshot || visibleSheets.length === 0 || !activeSheet || !displayedSheet) {
     return <section id="statement-workbook" tabIndex={-1}>
       <div className="fm-sw-warning fm-sw-unavailable" role="status" aria-live="polite">
@@ -379,13 +395,13 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
     </section>;
   }
 
-  return <section id="statement-workbook" tabIndex={-1}>
+  return <section id="statement-workbook" tabIndex={-1} data-statement-project={canonicalOrigin ? project.id : undefined}>
       <section className="fm-sw" aria-label="Financial statement workbook">
         <header className="fm-sw-head">
           <div>
-            <div className="fm-eyebrow">{project.id} · Financial statements</div>
+            <div className="fm-eyebrow" data-statement-project-code={project.id}>{project.id} · Financial statements</div>
             <h1 className="fm-sw-title">Statement workbook</h1>
-            <div className="fm-sw-subtitle">{project.name} <span aria-hidden="true">·</span> {project.technology} <span aria-hidden="true">·</span> {dataOrigin === "canonical-run" ? `Persisted Run · canonical unit ${sheetUnitLabel(visibleSheets[0]?.unit)}` : "Illustrative EUR model view"}</div>
+            <div className="fm-sw-subtitle" data-statement-project-name={project.name}>{project.name} <span aria-hidden="true">·</span> {project.technology} <span aria-hidden="true">·</span> {dataOrigin === "canonical-run" ? `Persisted Run · canonical unit ${sheetUnitLabel(visibleSheets[0]?.unit)}` : "Illustrative EUR model view"}</div>
             <div className="fm-sw-tags">
               {dataOrigin === "synthetic-demo" && <span className="fm-sw-tag fm-sw-tag--demo">FIXED SYNTHETIC EXAMPLE</span>}
               {dataOrigin === "canonical-run" && <span className="fm-sw-tag" data-statement-origin="canonical-run">Persisted Run values</span>}
@@ -401,7 +417,7 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
               data-run-freshness={runStatus.freshness}
               data-check-status={runStatus.integrity}
               data-model-version={runStatus.engine}>
-            <span>{status.label}</span><strong>{status.runId}</strong>
+            <span>{status.label}</span><strong>{dataOrigin === "canonical-run" ? <RunIdentityLabel snapshotId={status.runId === "Not supplied" ? null : status.runId} /> : status.runId}</strong>
             <span className="fm-sw-tag">{status.freshness === "current" ? "Up to date" : status.freshness === "stale" ? "Earlier results shown" : status.freshness === "not run" ? "No results yet" : "Update status unavailable"}</span>
             <span className="fm-sw-tag">{dataOrigin === "canonical-run" ? runStatus.integrity : /not[- ]evaluated/i.test(runStatus.integrity) ? "Review status not assessed" : "Review status supplied"}</span>
             <span className="fm-sw-tag">{dataOrigin === "canonical-run" ? `Engine: ${status.engineVersion || "identity unavailable"}` : /unknown|not connected/i.test(runStatus.engine) ? "Calculation details not supplied" : "Calculation details supplied"}</span>

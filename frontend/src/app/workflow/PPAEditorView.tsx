@@ -278,8 +278,8 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
             }} />
         )}
         <p className="fm-info-note">
-          Validation authority: the canonical Revenue contract writer (typed stream rules, composite CAS, bound session token). Saving never
-          runs the model; changed contracts mark the Last Run STALE until you press Run.
+          Contracts are checked when you save. If a contract is rejected, nothing is saved and the message names the problem. Saving never
+          runs the model; changed contracts mark the Last Run STALE until you run again.
         </p>
       </>
     );

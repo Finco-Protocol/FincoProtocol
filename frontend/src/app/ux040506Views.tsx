@@ -13,6 +13,7 @@ import {
   saveCostLinesBatch,
 } from "./api";
 import type { PersistedIntegrity } from "./types";
+import { RunIdentityLabel } from "./runIdentity";
 import { CostLineManager } from "./workflow/CostLineManager";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 
@@ -65,7 +66,11 @@ function LoadingNote() {
 
 // ───────────────────────────── UX-04: CAPEX / OPEX line batches ─────────────────────────────
 
-export function CostLinesView({ project, reloadKey = 0, onMutated }: { project: string; reloadKey?: number; onMutated?: () => void }) {
+export function CostLinesView({ project, reloadKey = 0, onMutated, requestedSheet, requestNonce = 0 }: {
+  project: string; reloadKey?: number; onMutated?: () => void;
+  /** A jump link asking for one of the two line-item sheets (switching still asks before discarding staged edits). */
+  requestedSheet?: "capex" | "opex"; requestNonce?: number;
+}) {
   const [sheet, setSheet] = useState<"capex" | "opex">("capex");
   const fetcher = useCallback(() => fetchCostLines(project, sheet), [project, sheet]);
   const state = useCanonical(fetcher, [project, sheet]);
@@ -84,6 +89,14 @@ export function CostLinesView({ project, reloadKey = 0, onMutated }: { project: 
   const switchSheet = (next: "capex" | "opex") => {
     if (next !== sheet) confirmIfDirty(() => setSheet(next), { ignore: (key) => !key.startsWith("cost-") });
   };
+
+  const lastRequest = useRef(requestNonce);          // a request that predates this mount is already history, not a new click
+  useEffect(() => {
+    if (!requestedSheet || requestNonce === lastRequest.current) return;
+    lastRequest.current = requestNonce;
+    switchSheet(requestedSheet);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedSheet, requestNonce]);
 
   const saveBatch = () => singleFlight(runSaveBatch);
 
@@ -140,11 +153,16 @@ export function CostLinesView({ project, reloadKey = 0, onMutated }: { project: 
           <button type="button" className={`fm-btn ${sheet === "opex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "opex"} onClick={() => switchSheet("opex")}>OPEX</button>
         </span>
       </div>
+      <p className="rx-save-scope" data-save-scope="cost-lines">
+        <strong>Saves:</strong> every edited {sheet === "capex" ? "CAPEX" : "OPEX"} line below, together — all are saved or none.
+        {" "}{sheet === "capex" ? "OPEX" : "CAPEX"} lines are a separate editor with their own Save. Saving does not run the model.
+      </p>
       {data.project.protected_reference && <div className="fm-banner" role="note"><span className="fm-demo-label">PROTECTED REFERENCE</span><span className="fm-banner-copy">Read-only. Line items of a reference are immutable.</span></div>}
       {status && <div className="fm-info-note" role="status" data-tone={status.tone}>{status.text}</div>}
-      <div className="fm-table-wrap">
+      <div className="fm-table-wrap rx-lines-scroll" role="region" tabIndex={0}
+           aria-label={`${sheet === "capex" ? "CAPEX" : "OPEX"} line items, scrollable`} data-lines-scroll={sheet}>
         <table className="fm-table">
-          <thead><tr><th>Label</th><th>{sheet === "capex" ? "Amount (keur)" : "Amount (keur)"}</th>{sheet === "opex" && <th>Inflation %</th>}<th>Notes</th><th>State</th></tr></thead>
+          <thead><tr><th>Label</th><th>Amount (kEUR)</th>{sheet === "opex" && <th>Inflation %</th>}<th>Notes</th><th>State</th></tr></thead>
           <tbody>
             {data.lines.map((line) => {
               const stagedLine = staged[line.sub_line_id] || {};
@@ -169,7 +187,7 @@ export function CostLinesView({ project, reloadKey = 0, onMutated }: { project: 
         </button>
         <button type="button" className="fm-btn" disabled={inFlight || !stagedCount} onClick={() => setStaged({})}>Discard staged edits</button>
       </div>
-      <p className="fm-info-note">One atomic batch through the canonical writer: all lines persist or none; row versions are verified (409 on a concurrent change); the model is never run by a Save.</p>
+      <p className="fm-info-note">If someone else changed one of these lines in the meantime, nothing is saved and you are asked to reload before saving again. Saving never runs the model.</p>
       <CostLineManager key={sheet} project={project} data={data} onChanged={() => { state.retry(); onMutated?.(); }} />
     </section>
   );
@@ -187,18 +205,18 @@ export function RunsView({ project }: { project: string }) {
   return (
     <section className="fm-card fm-section" aria-label="Run history">
       <div className="fm-card-title"><h2>Run history</h2><span>immutable committed evidence</span></div>
-      <p id="run-contract-note" className="fm-info-note">Runs are started from the status bar through the existing <code>POST /v2/workbook/run</code> (composite CAS). Saving never starts a Run; a stale Working Copy refuses the Run instead of silently re-running old inputs.</p>
+      <p id="run-contract-note" className="fm-info-note">Runs are started with the Run model button in the bar at the top. Saving never starts a Run. If another change was saved since you loaded the page, the Run is refused until you reload, so old inputs are never run silently.</p>
       <div className="fm-table-wrap">
         <table className="fm-table">
-          <thead><tr><th>Ran at</th><th>Scenario</th><th>Origin</th><th>Engine</th><th>Identity</th></tr></thead>
+          <thead><tr><th>Run</th><th>Scenario</th><th>Origin</th><th>Engine</th><th>Working Copy version</th></tr></thead>
           <tbody>
             {historyRows.map((run, index) => (
               <tr key={run.history_id ?? index}>
-                <td className="fm-mono">{run.ran_at ?? "—"}</td>
+                <td data-run-history-row={run.history_id}><RunIdentityLabel snapshotId={run.runtime_snapshot_id} historyId={run.history_id} ranAt={run.ran_at} /></td>
                 <td>{run.active_scenario_name ?? run.active_scenario_id ?? "—"}</td>
-                <td>{run.runtime_origin ?? "—"}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{run.runtime_origin ?? "—"}</td>
                 <td>{run.engine_version ?? "—"}</td>
-                <td className="fm-mono">{run.composite_hash ?? "—"}<br /><span>Snapshot: {run.runtime_snapshot_id || "—"}</span></td>
+                <td className="fm-mono" style={{ overflowWrap: "anywhere" }}>{run.composite_hash ?? "—"}</td>
               </tr>
             ))}
             {!historyRows.length && <tr><td colSpan={5}><span role="status">NOT RUN — no committed Run exists for this project yet.</span></td></tr>}
@@ -210,6 +228,8 @@ export function RunsView({ project }: { project: string }) {
 }
 
 // ───────────────────────────── UX-06: diagnostics + trust ─────────────────────────────
+
+const asText = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value : null);
 
 function readable(value: unknown): string {
   if (value === null || value === undefined || value === "") return "Unavailable";
@@ -223,7 +243,7 @@ function IntegrityEvidence({ integrity }: { integrity: PersistedIntegrity | null
   return <section className="fm-card fm-section" aria-label="Current Run integrity">
     <div className="fm-card-title"><h3>Current Run integrity</h3><span>{integrity?.overall ?? "UNAVAILABLE"}</span></div>
     <p className="fm-info-note">Internal consistency of the committed Run only. This is separate from input freshness, reference regression, certificate signing and FINCO Verify.</p>
-    <p className="fm-info-note">Snapshot: <span className="fm-mono">{readable(integrity?.run_identity?.snapshot_id)}</span></p>
+    <p className="fm-info-note">Run: <RunIdentityLabel snapshotId={asText(integrity?.run_identity?.snapshot_id)} /></p>
     <p className="fm-info-note">Checks: {readable(integrity?.counts)}</p>
     {integrity?.checks?.length ? <div className="fm-table-wrap"><table className="fm-table">
       <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
@@ -280,7 +300,7 @@ export function TrustView({ project }: { project: string }) {
   const data = state.data;
   return (
     <section aria-label="Trust and integrity evidence">
-      <p className="fm-info-note">Run freshness: {data.run_state}. Snapshot: <span className="fm-mono">{readable(data.identity?.snapshot_id)}</span></p>
+      <p className="fm-info-note">Run freshness: {data.run_state}. Run: <RunIdentityLabel snapshotId={asText(data.identity?.snapshot_id)} /></p>
       <IntegrityEvidence integrity={data.integrity} />
       <section className="fm-card fm-section" aria-label="Reference regression evidence">
         <div className="fm-card-title"><h3>Reference regression evidence</h3><span>{data.validation.state}</span></div>

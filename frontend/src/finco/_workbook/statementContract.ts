@@ -56,7 +56,19 @@ export type StatementRunStatus = {
   dataOrigin?: "synthetic-demo" | "caller-provided" | "canonical-run" | "unavailable";
 };
 
+/** The authorized project the statements belong to (canonical workspace identity). */
+export type StatementProjectIdentity = {
+  code: string;
+  name: string;
+  /** Canonical project type label (e.g. "Wind"); empty when the project has none. */
+  type: string;
+};
+
 export type StatementWorkbookProps = {
+  /** REQUIRED when `status.dataOrigin` is `canonical-run`: the identity comes from the authorized
+   *  workspace, never from the URL.  Without it a canonical statement fails visibly.  Demo origins
+   *  keep reading the demo project context. */
+  projectIdentity?: StatementProjectIdentity;
   onSheetChange?: (id: string) => void;
   /** Presentation-only hook: opens the Insight explain dialog for a statement row.
    *  The caller owns all displayed values; this prop never supplies financial data. */

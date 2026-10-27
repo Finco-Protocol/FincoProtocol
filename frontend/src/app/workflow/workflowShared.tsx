@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import "../../styles/wf-react-2.css";
+import { splitLabelUnit } from "../fieldLabel";
 
 export type Tone = "ok" | "error" | "conflict";
 export interface StatusMessage { tone: Tone; text: string }
@@ -322,9 +323,10 @@ export function Field({ label, unit, error, hint, children, id }: {
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
   const describedBy = [error ? errorId : "", hint ? hintId : ""].filter(Boolean).join(" ") || undefined;
+  const shown = splitLabelUnit(label, unit);
   return (
     <div className="wf-field" data-invalid={error ? "true" : undefined}>
-      <label className="fm-field-label" htmlFor={id}>{label}{unit && <span className="wf-unit"> ({unit})</span>}</label>
+      <label className="fm-field-label" htmlFor={id}>{shown.label}{shown.unit && <span className="wf-unit"> ({shown.unit})</span>}</label>
       {children({ id, "aria-describedby": describedBy, "aria-invalid": error ? true : undefined })}
       {hint && <small id={hintId} className="wf-hint">{hint}</small>}
       {error && <small id={errorId} className="wf-error" role="alert">{error}</small>}

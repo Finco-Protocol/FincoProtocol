@@ -103,6 +103,8 @@ async def react_workspace_library(request: Request, search: str = "", page: int 
             "protected_reference": protected,
             "reference": protected,
         }
+        scope = _vertical_scope(record)
+        entry["vertical"] = {"key": scope["key"], "public_name": scope["public_name"], "pilot_tier": scope["pilot_tier"]}
         ws = get_workspace_state(record.user_id, record.project_id)
         last_run: dict[str, Any] | None = None
         if ws is not None:
@@ -112,7 +114,7 @@ async def react_workspace_library(request: Request, search: str = "", page: int 
                 last_run = {
                     "available": freshness.has_runtime,
                     "freshness": freshness.state.value,
-                    "snapshot_id": (getattr(ws, "last_runtime_snapshot_id", None) or "")[:12],
+                    "snapshot_id": getattr(ws, "last_runtime_snapshot_id", None) or "",
                     "ran_at": (getattr(ws, "last_runtime_at", None).isoformat()[:19].replace("T", " ")
                                if getattr(ws, "last_runtime_at", None) else ""),
                 }
@@ -134,6 +136,73 @@ async def react_workspace_library(request: Request, search: str = "", page: int 
         "clone_url": "/library/clone/{source_project_id}",
         "csrf_token": _issue_csrf_token(request, "", purpose="library-clone-v1"),
     })
+
+
+# ───────────────────────────── presentation helpers ─────────────────────────────
+
+# Pilot tier is the Financial Owner's stated release posture (Overnight B brief): Solar and Wind are the
+# institutional pilot candidates; Data Center and EV Charging are previews; Storage (BESS) stays closed.
+# It is presentation copy only: capability, runnable and limitations come from the canonical registry.
+_PILOT_TIER = {"solar": "PILOT_CANDIDATE", "wind": "PILOT_CANDIDATE",
+               "data_center": "PREVIEW", "ev_charging": "PREVIEW", "storage": "RELEASE_CLOSED"}
+
+
+def _vertical_scope(record) -> dict[str, Any]:
+    """The project's vertical, read from the canonical product-capability registry (never hardcoded claims).
+
+    Matching is exact on the normalised project type or on the reference-template name; a type that merely
+    *contains* a registry key (for example a combined "solar + storage" type) is NOT assumed to be that vertical.
+    """
+    import re
+
+    from app.product_capability import PRODUCT_CAPABILITIES, as_api_dict
+
+    def norm(value: Any) -> str:
+        return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+    project_type, template = norm(getattr(record, "project_type", "")), norm(getattr(record, "template_source", ""))
+    aliases = {"bess": "storage"}
+    for cap in PRODUCT_CAPABILITIES:
+        if cap.product_area != "model":
+            continue
+        if aliases.get(project_type, project_type) == cap.key or template == f"generic_{cap.key}_reference":
+            data = as_api_dict(cap)
+            return {"key": cap.key, "public_name": cap.public_name, "registry_status": data["status"],
+                    "runnable": cap.runnable, "pilot_tier": _PILOT_TIER.get(cap.key, "UNCLASSIFIED"),
+                    "limitations": data["limitations"], "status_note": data["status_note"]}
+    return {"key": "", "public_name": "", "registry_status": "UNKNOWN", "runnable": False,
+            "pilot_tier": "UNCLASSIFIED", "limitations": [], "status_note": ""}
+
+
+_LENDER_METRICS = ("min_dscr", "avg_dscr", "min_llcr", "project_npv_keur", "equity_npv_keur")
+
+
+def _lender_metrics(runtime_result) -> list[dict[str, Any]]:
+    """Which lender/valuation metrics the committed Run actually persisted.
+
+    Read through the same persisted-KPI view and catalog formatter the Run History uses; a metric the Run
+    did not persist is unavailable (never zero, never a proxy).  PLCR has no approved persisted projection.
+    """
+    unavailable_reason = "This metric is not persisted by the committed Run."
+    rows: list[dict[str, Any]] = []
+    try:
+        from app.v2.output_metric_projection import KPI_CATALOG, _apply_fmt, _safe_float
+        from app.v2.run_history_projection import _enriched_kpis
+
+        kpis = _enriched_kpis(runtime_result)
+        catalog = {entry[0]: entry for entry in KPI_CATALOG}
+        for key in _LENDER_METRICS:
+            _key, label, unit, fmt, _source = catalog[key]
+            raw = _safe_float(kpis.get(key))
+            rows.append({"key": key, "label": label, "unit": unit, "available": raw is not None,
+                         "display": _apply_fmt(raw, fmt) if raw is not None else None,
+                         "reason": "" if raw is not None else unavailable_reason})
+    except Exception:  # noqa: BLE001 - presentation adapter fails closed, never fabricates
+        rows = [{"key": key, "label": key, "unit": "", "available": False, "display": None,
+                 "reason": "Lender metrics could not be read from the committed Run."} for key in _LENDER_METRICS]
+    rows.append({"key": "plcr", "label": "PLCR", "unit": "x", "available": False, "display": None,
+                 "reason": "The model does not produce PLCR."})
+    return rows
 
 
 # ───────────────────────────── workspace shell ─────────────────────────────
@@ -168,6 +237,7 @@ async def react_workspace_shell(request: Request, project: str):
                         "project_type": getattr(record, "project_type", None) or "",
                         "template_source": getattr(record, "template_source", None) or "",
                         "protected_reference": is_protected_reference(record)},
+            "vertical": _vertical_scope(record),
             "workbook": {"version": context.identity.workbook_version,
                          "composite_hash": context.identity.composite_hash,
                          "scenario_id": context.workspace.active_scenario_id,
@@ -404,7 +474,8 @@ async def react_workspace_statements(request: Request, project: str):
             integrity_value = "UNAVAILABLE" if state != "NOT_RUN" else "not evaluated"
         status = {
             "label": "Last Run",
-            "runId": (identity.get("snapshot_id") or "")[:12] or "Not supplied",
+            # The FULL canonical snapshot id: presentation formats it (frontend runIdentity) and never truncates it.
+            "runId": identity.get("snapshot_id") or "Not supplied",
             "freshness": state.lower() if state in ("CURRENT", "STALE") else "not run",
             "integrity": integrity_value,
             "engineVersion": (identity.get("engine_version") or None) if isinstance(identity, Mapping) else None,
@@ -415,6 +486,7 @@ async def react_workspace_statements(request: Request, project: str):
             "react_workspace": {"version": REACT_WORKSPACE_VERSION},
             "project": {"code": record.project_code,
                         "name": getattr(record, "project_name", None) or record.project_code,
+                        "project_type": getattr(record, "project_type", None) or "",
                         "protected_reference": False},
             "state": outputs.get("state") or ("NOT_RUN" if state == "NOT_RUN" else "UNAVAILABLE"),
             "message": ("" if outputs.get("state") not in (None, "UNAVAILABLE")
@@ -423,6 +495,8 @@ async def react_workspace_statements(request: Request, project: str):
             "status": status,
             "results": {"available": bool(returns.get("available")),
                         "metrics": returns.get("metrics") or [],
+                        "lender_metrics": (_lender_metrics(context.runtime_result)
+                                           if context.runtime_result is not None and state != "NOT_RUN" else []),
                         "distributions": distributions,
                         "sponsor_table": returns.get("sponsor"),
                         "sponsor_source": returns.get("sponsor_source"),
@@ -555,8 +629,8 @@ async def react_workspace_inputs(request: Request, project: str):
                  "max_cells": 50,
                  "max_value_chars": 64},
         "cost_line_boundary": {
-            "note": "CAPEX/OPEX line items are NOT saved through the scalar grid writer; "
-                    "their canonical batch writer (grid/cost-lines/save) is out of this PR's scope.",
+            "note": "CAPEX and OPEX are built from line items. They are edited and saved in the "
+                    "CAPEX and OPEX line-item editors, not in this grid; the totals shown here follow those lines.",
             "capex_opex_editable": False,
         },
     })
@@ -1045,6 +1119,14 @@ async def react_scenarios(request: Request, project: str):
     except Exception:  # noqa: BLE001 - fail closed
         return _json({"ok": False, "code": "SCENARIOS_UNAVAILABLE",
                       "message": "Scenarios could not be read. Reload to refresh."}, 503)
+    from app.v2.scenario_presentation import OVERRIDE_EDITOR_FIELDS
+    from app.workbook.scenario_override_authority import supported_editor_fields
+
+    # What a scenario may actually override, read from the same canonical authority the override editor
+    # and the Run use.  Everything else inherits from the Working Copy.
+    supported_keys = set(supported_editor_fields())
+    override_capability = [{"field_id": key, "label": label, "unit": unit}
+                           for key, label, unit in OVERRIDE_EDITOR_FIELDS if key in supported_keys]
     scenarios = [{
         "scenario_id": r.scenario_id,
         "name": r.scenario_name,
@@ -1062,13 +1144,13 @@ async def react_scenarios(request: Request, project: str):
         "active_scenario_id": ws.active_scenario_id,
         "active_scenario_name": ws.active_scenario_name,
         "scenarios": scenarios,
+        "override_capability": {"supported": override_capability},
         "mutations": {
             "create": {"url": "/v2/workbook/scenarios/create", "csrf_token": mutation_token(request, project, "scenario-create"), "fields": ["project", "scenario_name"]},
             "select": {"url": "/v2/workbook/scenarios/select", "csrf_token": mutation_token(request, project, "scenario-select"), "fields": ["project", "scenario_id"]},
             "rename": {"url": "/v2/workbook/scenarios/rename", "csrf_token": mutation_token(request, project, "scenario-rename"), "fields": ["project", "scenario_id", "new_name"]},
             "archive": {"url": "/v2/workbook/scenarios/archive", "csrf_token": mutation_token(request, project, "scenario-archive"), "fields": ["project", "scenario_id"]},
-            "note": "Form routes of the canonical scenario authority. Creating or selecting a "
-                    "scenario NEVER starts a Run.",
+            "note": "Creating, selecting, renaming or archiving a scenario NEVER starts a Run.",
         },
     })
 
@@ -1112,6 +1194,9 @@ async def react_scenario_compare(request: Request, project: str, scenario_id: st
     overrides = dict(scenario.overrides or {}) if scenario is not None else {}
     effective = resolve_scenario_snapshot(base_snapshot, overrides)
 
+    from app.v2.scenario_presentation import OVERRIDE_EDITOR_FIELDS
+
+    editor_labels = {key: (label, unit) for key, label, unit in OVERRIDE_EDITOR_FIELDS}
     differences = []
     for key in sorted(SCENARIO_INPUT_FIELDS):
         base_value = base_snapshot.get(key)
@@ -1119,6 +1204,8 @@ async def react_scenario_compare(request: Request, project: str, scenario_id: st
         if scenario_value != base_value:
             differences.append({
                 "field_id": key,
+                "label": editor_labels[key][0] if key in editor_labels else None,
+                "unit": editor_labels[key][1] if key in editor_labels else None,
                 "base_value": _jsonable(base_value),
                 "scenario_value": _jsonable(scenario_value),
                 "explicitly_overridden": key in overrides,
@@ -1155,17 +1242,16 @@ async def react_scenario_compare(request: Request, project: str, scenario_id: st
         "base": {"label": f"Working Copy / {ws.active_scenario_name or 'Base Case'}",
                  "scenario_id": ws.active_scenario_id,
                  "run_evidence": {"state": "UNAVAILABLE",
-                                  "note": "Run history is attributed to the scenario it was committed "
-                                          "under; the Working Copy side does not borrow another case's "
-                                          "Last Run. Use the runs projection for the committed evidence."}},
+                                  "note": "The Working Copy side shows no Run of its own. Each committed Run is "
+                                          "shown against the scenario it was committed under; see Run history."}},
         "scenario": ({"label": scenario.scenario_name, "scenario_id": scenario.scenario_id,
                       "archived": bool(scenario.archived),
                       "override_count": len(overrides),
                       "run_evidence": scenario_run_evidence} if scenario is not None else None),
         "differences": differences,
         "kpi_compare": {"available": False,
-                        "reason": "Financial KPI deltas are not computed in the browser; "
-                                  "persisted statements/results projections carry the evidence."},
+                        "reason": "KPI differences between scenarios are not calculated here. Each scenario's "
+                                  "results come from its own committed Run; run the scenario to get them."},
     })
 
 
@@ -1218,7 +1304,7 @@ async def react_scenario_overrides(request: Request, project: str, scenario_id: 
         "mutations": {
             "update": {"url": "/v2/workbook/scenarios/update-overrides", "csrf_token": mutation_token(request, project, "scenario-update-overrides"), "fields": ["project", "scenario_id", "<field_id>"]},
             "remove": {"url": "/v2/workbook/scenarios/remove-override", "csrf_token": mutation_token(request, project, "scenario-remove-override"), "fields": ["project", "scenario_id", "field"]},
-            "note": "The canonical Run applies only the fields listed here; any other override is refused "
-                    "(SCENARIO_OVERRIDE_UNBOUND). Saving an override never runs the model.",
+            "note": "A scenario can override only the assumptions listed here; any other override is refused. "
+                    "Saving an override never runs the model.",
         },
     })

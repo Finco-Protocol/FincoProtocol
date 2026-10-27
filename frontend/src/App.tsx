@@ -3,6 +3,7 @@ import { readHostConfig, type HostConfig } from "./api/client";
 import { LibraryView } from "./app/LibraryView";
 import { ThemeProvider } from "./finco/_shared/ThemeSelector";
 import { WorkspaceView } from "./app/WorkspaceView";
+import "./styles/rx-mvp-correction.css";
 
 type Phase = "loading" | "error" | "ready";
 

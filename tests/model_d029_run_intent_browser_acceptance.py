@@ -83,7 +83,7 @@ def check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit(browser, react
         materialize(context, base, record)
         posts = record_run_posts(page)
         open_workspace(page, base, record, "overview")
-        page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled")
+        page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }")
         click_run(page)
         page.wait_for_selector("[data-workflow-bar='true'][data-bar-freshness='CURRENT']", timeout=120000)
         assert len(posts) == 1 and UUID_V4.match(posts[0]["run_intent_id"]), posts
@@ -91,10 +91,10 @@ def check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit(browser, react
         assert stored_intents(page) == [], "a committed Run consumes its intent"
         assert posts[0]["csrf_token"] not in storage_dump(page), "no token is ever stored"
         # the next deliberate Run uses a NEW key
-        page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled")
+        page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }")
         click_run(page)
-        page.wait_for_function("() => document.querySelector(\"[data-wf-run='true']\").textContent.includes('in progress')", timeout=15000)
-        page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled", timeout=120000)
+        page.wait_for_function("() => document.querySelector(\"[data-wf-run='true']\")?.textContent.includes('in progress')", timeout=15000)
+        page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }", timeout=120000)
         assert len(posts) == 2 and posts[1]["run_intent_id"] != posts[0]["run_intent_id"]
         assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:
@@ -108,7 +108,7 @@ def check_react_lost_response_survives_reload_and_resumes_the_original_run(brows
         materialize(context, base, record)
         posts = record_run_posts(page)
         open_workspace(page, base, record, "overview")
-        page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled")
+        page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }")
         lose_first_response(context)
         click_run(page)
         text = wait_status(page, "conflict", None, "[data-workflow-bar='true']")
@@ -151,7 +151,7 @@ def check_react_resume_after_the_draft_changed_never_runs_against_the_new_draft(
         materialize(context, base, record)
         posts = record_run_posts(page)
         open_workspace(page, base, record, "overview")
-        page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled")
+        page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }")
         lose_first_response(context)
         click_run(page)
         wait_status(page, "conflict", None, "[data-workflow-bar='true']")
@@ -200,7 +200,7 @@ def check_react_typed_outcomes_keep_or_consume_the_intent(browser, react_enabled
         materialize(context, base, record)
         posts = record_run_posts(page)
         open_workspace(page, base, record, "overview")
-        page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled")
+        page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }")
         mode = {"outcome": "IN_PROGRESS", "status": 409}
 
         def typed(route):
@@ -219,7 +219,7 @@ def check_react_typed_outcomes_keep_or_consume_the_intent(browser, react_enabled
         wait_status(page, "error", "typed FAILED", "[data-workflow-bar='true']")
         assert stored_intents(page) == [], "FAILED is terminal and consumes the intent"
         assert not page.locator("[data-wf-resume='true']").count()
-        page.wait_for_function("() => !document.querySelector(\"[data-wf-run='true']\").disabled")
+        page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }")
         mode.update(outcome="HISTORY_UNAVAILABLE", status=409)
         click_run(page)
         wait_status(page, "conflict", "typed HISTORY_UNAVAILABLE", "[data-workflow-bar='true']")

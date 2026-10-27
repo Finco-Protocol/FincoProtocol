@@ -106,7 +106,9 @@ def expect_display(canonical: str, base: str, shown: str, precision: int) -> str
 def check_product_truth_no_prototype_or_synthetic_content_in_any_section(seeded):
     context, page, record, errors, base = seeded
     run_canonical(context, base, record.project_code)
-    status = api(context, base, "workspace", record.project_code)["identity"]["snapshot_id"][:12]
+    from tests.react_run_identity import text as run_text
+    snapshot_id = api(context, base, "workspace", record.project_code)["identity"]["snapshot_id"]
+    status = run_text(snapshot_id)
     for section in SECTIONS:
         open_section(page, base, record.project_code, section)
         body = page.inner_text("body")
@@ -117,6 +119,7 @@ def check_product_truth_no_prototype_or_synthetic_content_in_any_section(seeded)
         shot(page, f"desktop-{section}")
     open_section(page, base, record.project_code, "results")
     assert status in page.inner_text("body"), "Results must show the persisted Run identity"
+    assert page.locator(f"[data-run-identity='{snapshot_id}']").count() >= 1, "the full canonical identifier is bound to the displayed Run"
     page.goto(f"{base}/v2/model-react/")
     page.wait_for_selector("[data-library-view='true']")
     body = page.inner_text("body")
@@ -214,7 +217,9 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
 
     open_section(page, base, record.project_code, "results")
     assert page.locator("[data-run-context]").get_attribute("data-run-state") == "CURRENT"
-    assert run_id in page.locator("[data-run-context]").inner_text()
+    from tests.react_run_identity import text as run_text
+    assert run_text(run_id) in page.locator("[data-run-context]").inner_text()
+    assert page.locator("[data-run-context] [data-run-identity]").get_attribute("data-run-identity") == run_id
     assert f"Integrity: {payload['status']['integrity']}" in page.locator("[data-results-view]").inner_text()
     # every metric card keeps the canonical source text separately (data-metric-canonical); monetary KPIs are
     # re-expressed through the selected unit/precision, everything else (IRR, MOIC, DSCR, %) is verbatim
@@ -276,7 +281,9 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
     # Analysis: same Run, charts carry canonical points, DSCR in x
     open_section(page, base, record.project_code, "analysis")
     assert page.locator("[data-run-context]").get_attribute("data-run-state") == "CURRENT"
-    assert run_id in page.locator("[data-run-context]").inner_text()
+    from tests.react_run_identity import text as run_text
+    assert run_text(run_id) in page.locator("[data-run-context]").inner_text()
+    assert page.locator("[data-run-context] [data-run-identity]").get_attribute("data-run-identity") == run_id
     chart = page.locator("[data-chart='revenue-opex']")
     assert chart.get_attribute("data-chart-state") == "available"
     bars = chart.locator("[data-series='pl.revenues_keur'] rect")
@@ -295,7 +302,9 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
         assert page.locator(f"[data-chart='{chart_id}']").count() == 1
     # Statements carry the same Run identity
     open_section(page, base, record.project_code, "statements")
-    assert run_id in page.locator("[data-run-freshness]").inner_text()
+    from tests.react_run_identity import text as run_text
+    assert run_text(run_id) in page.locator("[data-run-freshness]").inner_text()
+    assert page.locator("[data-run-freshness] [data-run-identity]").get_attribute("data-run-identity") == run_id
     assert errors == [], errors
 
 
