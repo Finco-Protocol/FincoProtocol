@@ -614,6 +614,18 @@ def create_working_copy(
     src_ws = get_workspace_state(source.user_id, source.project_id)
     snapshot = (src_ws.saved_snapshot if src_ws else source.baseline_snapshot) or {}
     snapshot = dict(snapshot)
+    # FIN-VAL: a NEW copy of an immutable canonical reference takes its scalar
+    # rate from the reviewed template authority, not an unversioned historical
+    # auxiliary scalar. This never writes to the source reference/workspace.
+    if source.template_source in {
+        "generic_solar_reference", "generic_wind_reference",
+        "generic_data_center_reference", "generic_ev_charging_reference",
+    }:
+        from app.persistence.projects_repository import _compute_baseline_snapshot
+        from app.input_adapter import RATE_UNIT_KEY, RATE_UNIT
+        rate_seed = _compute_baseline_snapshot(source.project_type, source.template_source)
+        snapshot["interest_rate_pct"] = rate_seed["interest_rate_pct"]
+        snapshot[RATE_UNIT_KEY] = RATE_UNIT
     snapshot["project_origin"] = "user_created"
     snapshot["project_name"] = display_name
     snapshot["active_project"] = project_code

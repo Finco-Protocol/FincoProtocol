@@ -395,6 +395,15 @@ class WorkbookUpdateService:
             raise FieldValidationError(validation.error, validation.error_class)
 
         try:
+            if validation.field_id == "debt.senior.interest_rate_pct":
+                from app.input_adapter import assert_rate_unit
+                try:
+                    assert_rate_unit(dict(pis.snapshot_origin))
+                except ValueError as exc:
+                    raise FieldValidationError(str(exc), FieldErrorClass.INVALID) from exc
+            # The unit marker is already part of snapshot_origin and is
+            # preserved by with_value. The atomic writer retains it in the
+            # SAME snapshot as the value; batch Save may not invent provenance.
             return pis.with_value(validation.field_id, validation.typed_value)
         except ProjectInputSetError as exc:
             raise WorkbookUpdateError(
@@ -484,6 +493,13 @@ class WorkbookUpdateService:
                         raise ValueError("Materialized CAPEX or explicit construction pricing owns fees; no competing fee override is permitted.")
                 except ValueError as exc:
                     raise FieldValidationError(str(exc)) from exc
+
+        if field_id == "debt.senior.interest_rate_pct":
+            from app.input_adapter import assert_rate_unit
+            try:
+                assert_rate_unit(dict(ws.draft_snapshot))
+            except ValueError as exc:
+                raise FieldValidationError(str(exc), FieldErrorClass.INVALID) from exc
 
         # --- R8/N02: Senior scalar authority gate (before ANY persistence) --
         # A source-calibrated non-uniform period schedule cannot honour a

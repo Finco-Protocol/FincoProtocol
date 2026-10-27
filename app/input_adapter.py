@@ -27,6 +27,33 @@ if TYPE_CHECKING:
     from domain.inputs import ProjectInputs
 
 
+RATE_UNIT_KEY = "_finval_interest_rate_unit"
+RATE_UNIT = "human_percent_v1"
+
+
+def _validated_rate_percent(value) -> float:
+    import math
+    if isinstance(value, bool):
+        raise ValueError("Interest rate must be a finite human percentage between 0 and 20")
+    try:
+        rate = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Interest rate must be a finite human percentage between 0 and 20") from exc
+    if not math.isfinite(rate) or not 0 <= rate <= 20:
+        raise ValueError("Interest rate must be a finite human percentage between 0 and 20")
+    return rate
+
+
+def assert_rate_unit(snapshot: dict) -> None:
+    """No implicit reinterpretation of an unversioned or forged saved rate.
+
+    Historical records need an owner-reviewed provenance decision; this does
+    not migrate them, rewrite historical Runs, or substitute factory pricing.
+    """
+    if snapshot.get(RATE_UNIT_KEY) != RATE_UNIT:
+        raise SnapshotInputError("INTEREST_RATE_UNIT_UNVERIFIED: explicit human_percent_v1 provenance required")
+
+
 class SnapshotInputError(ValueError):
     """Raised when a saved user-project snapshot cannot build runtime inputs."""
 
@@ -158,6 +185,7 @@ def _set_financing_interest_rate(proj: "ProjectInputs", value: float) -> "Projec
     ``assert_debt_scalar_edit_allowed``; the check is repeated here so no
     code path can silently write a decorative value.
     """
+    value = _validated_rate_percent(value)
     fin = proj.financing
     rate_cfg = fin.senior_debt_interest_config
     schedule = list(getattr(
@@ -911,24 +939,12 @@ def _resolve_user_inputs(
     if gearing_pct is not None:
         proj = _set_financing_gearing(proj, gearing_pct)
     if interest_rate_pct is not None:
-        # V4-1: when using a seeded base, skip the interest-rate override if
-        # the supplied value matches the factory all-in rate within 0.1 bps.
-        # _set_financing_interest_rate expects a percentage (5.75 for 5.75%)
-        # but the form path sends a decimal (0.0575) — this dual-format check
-        # handles both without altering the existing percentage contract.
-        _skip_rate = False
-        if base_inputs is not None:
-            _base_all_in = (
-                base_inputs.financing.base_rate
-                + base_inputs.financing.margin_bps / 10_000
-            )
-            _v = float(interest_rate_pct)
-            # Accept either percentage (5.75) or decimal (0.0575) form
-            _skip_rate = (
-                abs(_v - _base_all_in) < 0.00001
-                or abs(_v / 100.0 - _base_all_in) < 0.00001
-            )
-        if not _skip_rate:
+        interest_rate_pct = _validated_rate_percent(interest_rate_pct)
+        # Scalar UI/schema values are human percentages, never decimal ratios.
+        # Preserve an identical typed flat schedule without changing auxiliary
+        # base/margin fields; this is an exact economic identity, not a unit guess.
+        mode, ratio, _ = senior_rate_authority(proj)
+        if mode != "FLAT" or float(interest_rate_pct) != ratio * 100.0:
             proj = _set_financing_interest_rate(proj, interest_rate_pct)
     if tenor_years is not None:
         proj = _set_financing_tenor(proj, tenor_years)
@@ -1326,6 +1342,11 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     user inputs produce exactly equal ProjectInputs
     and exactly equal KPIs.
     """
+    # FIN-VAL: persisted scalar pricing requires explicit provenance. Fresh
+    # schema inputs already have the documented human-percent contract.
+    if snapshot.get("interest_rate_pct") not in (None, ""):
+        assert_rate_unit(snapshot)
+
     # Validate required fields (preserve SnapshotInputError
     # behavior).  gearing_pct is excluded from the "must be non-empty"
     # check because the engine handles None gearing gracefully (DSCR-

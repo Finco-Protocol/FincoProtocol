@@ -155,6 +155,11 @@ D029_RUN_INTENT_SUCCESSORS={
     "static/react/finco-react.js":"907cfa53e07c78e03cd12dd537a806832dfeb7e8",    # Correction B: the seven real-Chromium D-029 wrappers the mandatory Browser Acceptance role executes (additive only).
     "tests/test_model_workspace_consolidation_browser.py":"f1a762a4f7bbfca34e8e93c74fbba3042d970665",
 }
+# FIN-VAL F01: exact additive projection-only successor; historical layers
+# above remain individually admitted. No CSRF, CAS or Run gate is changed.
+FINVAL_RATE_SUCCESSORS={
+    "app/v2/router.py":"8fe930c5a1ac876de0d3a98fff689f34af646a68",
+}
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -252,6 +257,7 @@ def violations(sources,*,check_pin=True):
         admitted={expected,layer[2]} if layer else {expected}
         if path in FINVAL_B2C1_SUCCESSORS:admitted=admitted|{FINVAL_B2C1_SUCCESSORS[path]}
         if path in D029_RUN_INTENT_SUCCESSORS:admitted=admitted|{D029_RUN_INTENT_SUCCESSORS[path]}
+        if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):
             try:trees[path]=ast.parse(text)

@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="9" skipped="0" tests="13" time="1.013" timestamp="2026-10-27T00:32:07.900710+00:00" hostname="d9b7aec2b2ee"><testcase classname="tests.test_finval_rate_contract" name="test_new_baseline_rate_is_human_percent[solar-Solar]" time="0.031"><failure message="AssertionError: assert 0.055 == (0.055 * 100)&#10; +  where 0.055 = float('0.055')">kind = 'solar', project_type = 'Solar'
+
+    @pytest.mark.parametrize('kind,project_type',zip(KINDS,TYPES))
+    def test_new_baseline_rate_is_human_percent(kind,project_type):
+        pi=getattr(factories,'create_generic_'+kind+'_reference')()
+        snap=_compute_baseline_snapshot(project_type,'generic_'+kind+'_reference')
+&gt;       assert float(snap['interest_rate_pct']) == senior_rate_authority(pi)[1]*100
+E       AssertionError: assert 0.055 == (0.055 * 100)
+E        +  where 0.055 = float('0.055')
+
+tests/test_finval_rate_contract.py:17: AssertionError</failure></testcase><testcase classname="tests.test_finval_rate_contract" name="test_new_baseline_rate_is_human_percent[wind-Wind]" time="0.001"><failure message="AssertionError: assert 0.055 == (0.055 * 100)&#10; +  where 0.055 = float('0.055')">kind = 'wind', project_type = 'Wind'
+
+    @pytest.mark.parametrize('kind,project_type',zip(KINDS,TYPES))
+    def test_new_baseline_rate_is_human_percent(kind,project_type):
+        pi=getattr(factories,'create_generic_'+kind+'_reference')()
+        snap=_compute_baseline_snapshot(project_type,'generic_'+kind+'_reference')
+&gt;       assert float(snap['interest_rate_pct']) == senior_rate_authority(pi)[1]*100
+E       AssertionError: assert 0.055 == (0.055 * 100)
+E        +  where 0.055 = float('0.055')
+
+tests/test_finval_rate_contract.py:17: AssertionError</failure></testcase><testcase classname="tests.test_finval_rate_contract" name="test_new_baseline_rate_is_human_percent[data_center-Data Center]" time="0.001"><failure message="AssertionError: assert 0.06 == (0.06 * 100)&#10; +  where 0.06 = float('0.06')">kind = 'data_center', project_type = 'Data Center'
+
+    @pytest.mark.parametrize('kind,project_type',zip(KINDS,TYPES))
+    def test_new_baseline_rate_is_human_percent(kind,project_type):
+        pi=getattr(factories,'create_generic_'+kind+'_reference')()
+        snap=_compute_baseline_snapshot(project_type,'generic_'+kind+'_reference')
+&gt;       assert float(snap['interest_rate_pct']) == senior_rate_authority(pi)[1]*100
+E       AssertionError: assert 0.06 == (0.06 * 100)
+E        +  where 0.06 = float('0.06')
+
+tests/test_finval_rate_contract.py:17: AssertionError</failure></testcase><testcase classname="tests.test_finval_rate_contract" name="test_new_baseline_rate_is_human_percent[ev_charging-EV Charging]" time="0.001"><failure message="AssertionError: assert 0.06 == (0.06 * 100)&#10; +  where 0.06 = float('0.06')">kind = 'ev_charging', project_type = 'EV Charging'
+
+    @pytest.mark.parametrize('kind,project_type',zip(KINDS,TYPES))
+    def test_new_baseline_rate_is_human_percent(kind,project_type):
+        pi=getattr(factories,'create_generic_'+kind+'_reference')()
+        snap=_compute_baseline_snapshot(project_type,'generic_'+kind+'_reference')
+&gt;       assert float(snap['interest_rate_pct']) == senior_rate_authority(pi)[1]*100
+E       AssertionError: assert 0.06 == (0.06 * 100)
+E        +  where 0.06 = float('0.06')
+
+tests/test_finval_rate_contract.py:17: AssertionError</failure></testcase><testcase classname="tests.test_finval_rate_contract" name="test_explicit_human_percent_is_converted_once_even_if_equal_to_factory_ratio[0.055-0.00055]" time="0.001"><failure message="assert 0.055 == 0.00055 ± 1.0e-17&#10;  &#10;  comparison failed&#10;  Obtained: 0.055&#10;  Expected: 0.00055 ± 1.0e-17">human = 0.055, ratio = 0.00055
+
+    @pytest.mark.parametrize('human,ratio',[(.055,.00055),(.056,.00056),(.56,.0056),(5.6,.056),(9.,.09)])
+    def test_explicit_human_percent_is_converted_once_even_if_equal_to_factory_ratio(human,ratio):
+        pi=factories.create_generic_solar_reference()
+        result=_resolve_user_inputs(project_type='Solar',base_inputs=pi,interest_rate_pct=human)
+&gt;       assert senior_rate_authority(result)[1] == pytest.approx(ratio,abs=1e-17)
+E       assert 0.055 == 0.00055 ± 1.0e-17
+E         
+E         comparison failed
+E         Obtained: 0.055
+E         Expected: 0.00055 ± 1.0e-17
+
+tests/test_finval_rate_contract.py:23: AssertionError</failure></testcase><testcase classname="tests.test_finval_rate_contract" name="test_explicit_human_percent_is_converted_once_even_if_equal_to_factory_ratio[0.056-0.00056]" time="0.001" /><testcase classname="tests.test_finval_rate_contract" name="test_explicit_human_percent_is_converted_once_even_if_equal_to_factory_ratio[0.56-0.0056]" time="0.000" /><testcase classname="tests.test_finval_rate_contract" name="test_explicit_human_percent_is_converted_once_even_if_equal_to_factory_ratio[5.6-0.056]" time="0.000" /><testcase classname="tests.test_finval_rate_contract" name="test_explicit_human_percent_is_converted_once_even_if_equal_to_factory_ratio[9.0-0.09]" time="0.000" /><testcase classname="tests.test_finval_rate_contract" name="test_rate_display_has_no_magnitude_inference[0.056]" time="0.002"><failure message="AssertionError: assert '5.60%' == '0.056%'&#10;  &#10;  - 0.056%&#10;  + 5.60%">human = 0.056
+
+    @pytest.mark.parametrize('human',[.056,.56,5.6,9.])
+    def test_rate_display_has_no_magnitude_inference(human):
+        snap=_compute_baseline_snapshot('Solar','generic_solar_reference');snap['interest_rate_pct']=str(human)
+        row=next(r for r in _build_sheet_fields('debt',ProjectInputSet.from_snapshot(snap)) if r['field_id']=='debt.senior.interest_rate_pct')
+        assert row['value']==human
+        # User percentages, including sub-one percentages, are never multiplied by 100 for display.
+&gt;       assert row['display_value']==f'{human:.3f}'.rstrip('0').rstrip('.')+'%'
+E       AssertionError: assert '5.60%' == '0.056%'
+E         
+E         - 0.056%
+E         + 5.60%
+
+tests/test_finval_rate_contract.py:31: AssertionError</failure></testcase><testcase classname="tests.test_finval_rate_contract" name="test_rate_display_has_no_magnitude_inference[0.56]" time="0.001"><failure message="AssertionError: assert '56.00%' == '0.56%'&#10;  &#10;  - 0.56%&#10;  + 56.00%">human = 0.56
+
+    @pytest.mark.parametrize('human',[.056,.56,5.6,9.])
+    def test_rate_display_has_no_magnitude_inference(human):
+        snap=_compute_baseline_snapshot('Solar','generic_solar_reference');snap['interest_rate_pct']=str(human)
+        row=next(r for r in _build_sheet_fields('debt',ProjectInputSet.from_snapshot(snap)) if r['field_id']=='debt.senior.interest_rate_pct')
+        assert row['value']==human
+        # User percentages, including sub-one percentages, are never multiplied by 100 for display.
+&gt;       assert row['display_value']==f'{human:.3f}'.rstrip('0').rstrip('.')+'%'
+E       AssertionError: assert '56.00%' == '0.56%'
+E         
+E         - 0.56%
+E         + 56.00%
+
+tests/test_finval_rate_contract.py:31: AssertionError</failure></testcase><testcase classname="tests.test_finval_rate_contract" name="test_rate_display_has_no_magnitude_inference[5.6]" time="0.001"><failure message="AssertionError: assert '5.60%' == '5.6%'&#10;  &#10;  - 5.6%&#10;  + 5.60%&#10;  ?    +">human = 5.6
+
+    @pytest.mark.parametrize('human',[.056,.56,5.6,9.])
+    def test_rate_display_has_no_magnitude_inference(human):
+        snap=_compute_baseline_snapshot('Solar','generic_solar_reference');snap['interest_rate_pct']=str(human)
+        row=next(r for r in _build_sheet_fields('debt',ProjectInputSet.from_snapshot(snap)) if r['field_id']=='debt.senior.interest_rate_pct')
+        assert row['value']==human
+        # User percentages, including sub-one percentages, are never multiplied by 100 for display.
+&gt;       assert row['display_value']==f'{human:.3f}'.rstrip('0').rstrip('.')+'%'
+E       AssertionError: assert '5.60%' == '5.6%'
+E         
+E         - 5.6%
+E         + 5.60%
+E         ?    +
+
+tests/test_finval_rate_contract.py:31: AssertionError</failure></testcase><testcase classname="tests.test_finval_rate_contract" name="test_rate_display_has_no_magnitude_inference[9.0]" time="0.013"><failure message="AssertionError: assert '9.00%' == '9%'&#10;  &#10;  - 9%&#10;  + 9.00%">human = 9.0
+
+    @pytest.mark.parametrize('human',[.056,.56,5.6,9.])
+    def test_rate_display_has_no_magnitude_inference(human):
+        snap=_compute_baseline_snapshot('Solar','generic_solar_reference');snap['interest_rate_pct']=str(human)
+        row=next(r for r in _build_sheet_fields('debt',ProjectInputSet.from_snapshot(snap)) if r['field_id']=='debt.senior.interest_rate_pct')
+        assert row['value']==human
+        # User percentages, including sub-one percentages, are never multiplied by 100 for display.
+&gt;       assert row['display_value']==f'{human:.3f}'.rstrip('0').rstrip('.')+'%'
+E       AssertionError: assert '9.00%' == '9%'
+E         
+E         - 9%
+E         + 9.00%
+
+tests/test_finval_rate_contract.py:31: AssertionError</failure></testcase></testsuite></testsuites>
