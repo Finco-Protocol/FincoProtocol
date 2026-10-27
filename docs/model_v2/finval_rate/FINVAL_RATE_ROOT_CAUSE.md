@@ -66,3 +66,7 @@ This deliberate compatibility boundary is an activation blocker. Do not deploy t
 ## Construction financing and actual pricing consumption
 
 H-1 `financial_engine/financing/generic_product_policy.py` derives construction all-in pricing from the first explicit typed senior rate when available, then from the explicit flat mode, and only then the declared legacy all-in value. Explicit construction-financing inputs remain authoritative. The corrected scalar therefore reaches the existing senior schedule and the policy's typed construction pricing path; no IDC formula or pricing-policy rewrite is introduced. The independent period-interest evidence verifies actual engine consumption rather than only API/display agreement.
+
+## Bootstrap interaction closed inside authorized scope
+
+The existing reference workspace reconciler compares current factory snapshots with stored references. Merely changing a seed serializer would therefore be an implicit reference migration. The project-library correction preserves existing reference scalar/provenance fields before that comparison, while new Working Copies independently initialize the canonical rate contract. This exact interaction is covered by the new historical-reference preservation regression; the engine version constant is unchanged.

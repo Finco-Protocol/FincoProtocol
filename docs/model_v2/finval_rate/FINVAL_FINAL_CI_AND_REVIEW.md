@@ -19,11 +19,13 @@ Each row is an actual execution record. Some batches overlap, so rows must not b
 | adapter-complete.xml | 537 | 10 | 0 |
 | adapter-regression.xml | 161 | 5 | 0 |
 | baseline-rate.xml | 4 | 9 | 0 |
+| browser-final.xml | 20 | 0 | 0 |
 | browser.xml | 20 | 0 | 0 |
 | ev-rate-final.xml | 53 | 0 | 0 |
 | financial-security.xml | 313 | 0 | 0 |
 | governance.xml | 186 | 0 | 0 |
-| local-acceptance.xml | 1114 | 0 | 0 |
+| local-acceptance-pre-bootstrap.xml | 1114 | 0 | 0 |
+| local-acceptance.xml | 1115 | 0 | 0 |
 | native-identity.xml | 0 | 0 | 10 |
 | provenance-fixtures.xml | 22 | 0 | 0 |
 | rate-and-b2.xml | 120 | 0 | 0 |
@@ -31,6 +33,7 @@ Each row is an actual execution record. Some batches overlap, so rows must not b
 | rate-contract.xml | 32 | 4 | 0 |
 | rate-final.xml | 64 | 0 | 0 |
 | rate-run.xml | 21 | 3 | 0 |
+| reference-preservation-final.xml | 96 | 0 | 0 |
 
 - The baseline rate failures reproduce the original defect.
 - The first numerical matrix expected all valid rates to yield feasible projects; three failures exposed unchanged funding/SHL refusals. Final tests now require those exact refusals and record no fabricated result. No engine tolerance/golden change was used.
@@ -52,7 +55,7 @@ No diff to `financial_engine/`, `finco_core/`, React components/bundles, solvers
 
 ## Final consolidated result
 
-**1,114 passed, zero failed** in the final 40-module acceptance batch; exact tested subject `4a721ec166e5a81308fa69fd7d8a124b9b18887f`, tree `45173b61928adc05f774147510586e9ca55df7b7`, initial worktree clean. See `evidence/local-acceptance.xml` and `local-acceptance-source.json`. Existing real-Chromium selection: **20 passed**. Additional rate-specific Chromium proof: four successful vertical Save/reload/typed-rate chains, eight screenshots, no implicit Runs. Local native checks: **10 skipped** due approved-toolchain mismatch, not passes.
+**1,115 passed, zero failed** in the final 40-module acceptance batch; exact tested subject `4050c51d4b5337c93fffe6338a4092819850357b`, tree `90c54c9d88ed2d82914c297793d1662993db1be2`, initial worktree clean. See `evidence/local-acceptance.xml` and `local-acceptance-source.json`. Existing real-Chromium selection: **20 passed**. Additional rate-specific Chromium proof: four successful vertical Save/reload/typed-rate chains, eight screenshots, no implicit Runs. Local native checks: **10 skipped** due approved-toolchain mismatch, not passes.
 
 Subsequent report/evidence commits do not change application/test bytes; the delivered manifest records final review HEAD/tree and compares every application/test blob with the consolidated tested subject. This is local execution evidence, not hosted exact-head PR CI. The branch remains local and PR handling remains deferred.
 
