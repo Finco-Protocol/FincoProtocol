@@ -338,7 +338,7 @@ def check_current_stale_not_run_are_consistent_across_every_surface(seeded):
     run_canonical(context, base, code)
     states("CURRENT")
     open_section(page, base, code, "results")
-    assert "prior persisted Run" not in page.inner_text("[data-results-view]")
+    assert "prior saved Run" not in page.inner_text("[data-results-view]")
     assert page.locator("[data-stale-banner]").count() == 0
     # STALE after a Save
     open_section(page, base, code, "inputs")
@@ -348,7 +348,7 @@ def check_current_stale_not_run_are_consistent_across_every_surface(seeded):
     page.wait_for_selector("[data-save-state='saved']")
     states("STALE")
     open_section(page, base, code, "results")
-    assert "STALE · prior persisted Run" in page.inner_text("[data-results-view]")
+    assert "STALE · prior saved Run" in page.inner_text("[data-results-view]")
     assert page.locator("[data-stale-banner]").count() == 1
     open_section(page, base, code, "analysis")
     assert page.locator("[data-stale-banner]").count() == 1

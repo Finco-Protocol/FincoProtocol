@@ -36,7 +36,7 @@ export function TrustEvidence({ project, hasRun }: { project: string; hasRun: bo
     <>
       <section className="fm-card fm-section" aria-label="Reference regression evidence" data-trust-panel="validation">
         <div className="fm-card-title"><h3>Reference regression evidence</h3><span>{validation ? validation.state : hasRun ? "ON REQUEST" : "UNAVAILABLE"}</span></div>
-        <p className="fm-info-note">Reference regression only; it is not a validation of this project or its Run. It is not run by opening this page.</p>
+        <p className="fm-info-note">Reference regression only; it is not a validation of this project or its Run. A reference PASS is not validation of this project. It is not run by opening this page.</p>
         {hasRun
           ? <button type="button" className="fm-btn" data-trust-load="validation" disabled={busy !== ""} aria-busy={busy === "validation"} onClick={() => void load("validation")}>
               {busy === "validation" ? "Running the reference regression…" : validation ? "Run it again" : "Run the reference regression (separate evidence)"}

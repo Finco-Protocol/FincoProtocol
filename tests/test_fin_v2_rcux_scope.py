@@ -67,7 +67,8 @@ def test_the_presentation_pattern_never_admits_a_protected_or_unrelated_path(pat
 
 
 @pytest.mark.parametrize('path', ['frontend/src/app/WorkspaceView.tsx', 'static/react/finco-react.js', 'tests/model_react_rcux_runs_acceptance.py',
-                                  'tests/test_model_react_rcux_compare_v1.py', 'docs/react_migration/rc_ux_completion/README.md'])
+                                  'tests/test_model_react_rcux_compare_v1.py', 'tests/test_model_react_poc_browser_acceptance.py',
+                                  'docs/react_migration/rc_ux_completion/README.md'])
 def test_the_presentation_pattern_admits_the_reviewed_react_surfaces(path):
     assert F.PRESENTATION.match(path)
 

@@ -412,9 +412,9 @@ def test_results_distinguish_current_from_stale(browser, react_enabled):
         assert current_state in ("CURRENT", "STALE")
         body = page.locator("[data-results-view]").inner_text()
         if current_state == "CURRENT":
-            assert "CURRENT" in body and "prior persisted Run" not in body,                 "CURRENT must not be presented as stale"
+            assert "CURRENT" in body and "prior saved Run" not in body,                 "CURRENT must not be presented as stale"
         else:
-            assert "STALE" in body and "prior persisted Run" in body
+            assert "STALE" in body and "prior saved Run" in body
         # integrity tag shows the canonical verdict (evaluated), not a placeholder
         ws = context.request.get(f"{react_enabled}/v2/model-react/workspace?project={record.project_code}").json()
         if ws["integrity"] and ws["integrity"]["status"] != "UNAVAILABLE":

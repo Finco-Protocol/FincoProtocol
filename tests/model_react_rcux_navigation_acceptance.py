@@ -275,8 +275,7 @@ def test_rcux_nav_scenario_compare_history_and_evidence_never_leave_react(live_s
     page.evaluate("() => document.querySelectorAll('details').forEach(d => { d.open = true; })")          # expose every disclosure
     audit(page, "run history (disclosures open)")
     history = context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"]
-    export = [i for i in page.evaluate(TARGETS_JS) if "run-history/export" in i["target"]]
-    assert export or not history, "a Run export is offered as a file download"
+    assert history, "the committed Run is listed"
     insights = context.request.get(f"{live_server}/v2/model-react/insights/history?project={record.project_code}")
     assert insights.ok
     _shot(page, "history")

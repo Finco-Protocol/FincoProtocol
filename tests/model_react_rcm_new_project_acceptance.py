@@ -301,7 +301,7 @@ def test_a_lost_request_fails_closed_without_a_retry_control_and_survives_reload
     page.locator("[data-wizard-create]").click()
     unknown = page.locator("[data-create-unknown='true']")
     unknown.wait_for()
-    assert "Result unknown" in unknown.inner_text()
+    assert "could not confirm whether the project was created" in unknown.inner_text()
     assert page.locator("[data-wizard-create]").is_disabled()          # no blind retry
     assert page.locator("[data-refresh-library='true']").count() == 1
     assert len(calls) == 1 and projects_of(uid) == []
@@ -312,7 +312,7 @@ def test_a_lost_request_fails_closed_without_a_retry_control_and_survives_reload
     page.reload()                                                      # the identity reconciles the earlier request
     notice = page.locator("[data-previous-create='unknown']")
     notice.wait_for()
-    assert "earlier create request" in notice.inner_text()
+    assert "could not confirm whether your earlier project was created" in notice.inner_text()
     page.locator("[data-previous-create] button:has-text('Dismiss')").click()
     assert page.locator("[data-previous-create]").count() == 0 and page.url.endswith(NEW)
     assert projects_of(uid) == []

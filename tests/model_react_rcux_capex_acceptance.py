@@ -39,6 +39,7 @@ def _profiles(context, base, code):
 def _open(page, base, code):
     page.goto(f"{base}/v2/model-react/{code}#inputs")
     page.reload()                                                       # a same-URL goto is a hash navigation; reload re-reads every projection
+    page.locator("[data-studio-tab='capex-profile']").click()           # studios stay closed until chosen (compact Inputs)
     page.wait_for_selector("[data-capex-studio='ready']", timeout=60000)
 
 
@@ -188,6 +189,7 @@ def test_rcux_capex_reference_models_are_read_only(live_server, an_session):
     ensure_reference_models()
     ref = get_reference_by_template_source("generic_solar_reference")
     page.goto(f"{live_server}/v2/model-react/{ref.project_code}#inputs")
+    page.locator("[data-studio-tab='capex-profile']").click()
     page.wait_for_selector("[data-capex-unavailable='true']", timeout=60000)
     assert page.locator("[data-capex-studio]").count() == 0
     assert context.request.get(f"{live_server}/v2/model-react/capex/profiles?project={ref.project_code}").status in (200, 409)
