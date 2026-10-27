@@ -4,6 +4,7 @@
 // mutation posts to the existing canonical writer route, and a surface whose
 // backend contract is not established stays visibly gated — never fabricated.
 
+import { DiagnosticsInsights } from "./diagnostics/DiagnosticsInsights";
 import { TrustEvidence } from "./trust/TrustEvidence";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -289,6 +290,7 @@ export function DiagnosticsView({ project }: { project: string }) {
         </table>
       </div>
       <p className="fm-info-note">Diagnostics state: {readable(diagnostics.state)} · {checks.length} reported checks</p>
+      <DiagnosticsInsights diagnostics={diagnostics} />
       <details className="rx-tech-details" data-diagnostics-audit="true"><summary>Advanced details / Audit trail</summary><p className="fm-info-note">Evidence identity: {readable(diagnostics.identity)}</p></details>
     </section>
   );
