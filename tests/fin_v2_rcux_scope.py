@@ -26,6 +26,7 @@ OWNED_PATHS = frozenset((
     'app/v2/react_import.py',
     'app/v2/react_projects.py',
     'app/v2/react_rcux.py',
+    'app/v2/react_trust.py',
     'app/v2/react_whatif.py',
     'app/v2/react_workspace_router.py',
     'tests/fin_v2_rcux_scope.py',

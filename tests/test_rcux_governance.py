@@ -158,7 +158,8 @@ def test_the_import_adapter_delegates_every_state_change_to_the_unchanged_legacy
 # ── RC-UX browser acceptance rides the EXISTING mandatory consolidation role (same pattern as RC-M) ─────────────────────────────
 ROLE = "tests/test_model_workspace_consolidation_browser.py"
 ACCEPTANCE = ("tests/model_react_rcux_runs_acceptance.py", "tests/model_react_rcux_capex_acceptance.py", "tests/model_react_rcux_product_acceptance.py", "tests/model_react_rcux_whatif_acceptance.py",
-              "tests/model_react_rcux_import_acceptance.py")
+              "tests/model_react_rcux_import_acceptance.py",
+              "tests/model_react_rcux_navigation_acceptance.py")
 
 
 def test_the_consolidation_role_imports_exactly_the_rcux_acceptance_modules_and_adds_no_wrapper_of_its_own():

@@ -7,10 +7,11 @@
     "app/v2/react_compare.py": "ccfbc96ff5dece97d7acca2b95a0742d68d44166",
     "app/v2/react_import.py": "bd92b43f0f30bf9b68bcde0ef78fe6df8d75cbe3",
     "app/v2/react_projects.py": "19fdff7af2dee3d6cb3e276a2cb2952490ed2012",
-    "app/v2/react_rcux.py": "a6b67ef685b06f65db34d3d707794010990a00a0",
+    "app/v2/react_rcux.py": "1a308304dacc61dd510c4f9134fa67cf4de41b19",
+    "app/v2/react_trust.py": "16e0fa90f0a3bedeb8e4bc7a76235c8b9f1452a7",
     "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
     "app/v2/react_workspace_router.py": "0dc741e340e1db918e4d2cc4b26467bc1514dd39",
-    "tests/fin_v2_rcux_scope.py": "df06b0ad42c86a01308ca7c7a1d1e2b740807967",
-    "tests/test_fin_v2_rcux_scope.py": "dfea7b8be8b79a93a8da7d08d4bb7d966e0fe8c2"
+    "tests/fin_v2_rcux_scope.py": "45f4bf6a2171d1da1124f0ff8f9a9b6b74fe772e",
+    "tests/test_fin_v2_rcux_scope.py": "419e44a14d526b7b5bd2eaaa6034b3d4ffc53ac4"
   }
 }

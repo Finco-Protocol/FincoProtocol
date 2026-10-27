@@ -76,8 +76,9 @@ test('comparison displays canonical server deltas without browser subtraction', 
   const html = render(ui.ScenarioComparison, { payload });
   assert.match(html, /CANONICAL CHANGE/); assert.match(html, /hist-a/); assert.match(html, /hist-b/);
 });
-test('evidence links accept local canonical paths only', () => {
-  assert.equal(ui.evidenceHref('/v2/workbook?project=P'), '/v2/workbook?project=P');
+test('evidence links accept React destinations only, never a classic workbook route', () => {
+  assert.equal(ui.evidenceHref('/v2/model-react/P#analysis'), '/v2/model-react/P#analysis');
+  for (const legacy of ['/v2/workbook?project=P', '/v2/workbook/run-history/statements?project=P&history_id=h', '/library', '/projects/new']) assert.equal(ui.evidenceHref(legacy), undefined);
   for (const path of ['https://elsewhere.test', '//elsewhere.test', 'javascript:alert(1)', '/v2/\\elsewhere', '/v2/\nsecret']) assert.equal(ui.evidenceHref(path), undefined);
 });
 test('client is GET-only, uncached, explicit, and never substitutes a scenario for a history ID', async () => {

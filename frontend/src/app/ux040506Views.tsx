@@ -4,6 +4,7 @@
 // mutation posts to the existing canonical writer route, and a surface whose
 // backend contract is not established stays visibly gated — never fabricated.
 
+import { TrustEvidence } from "./trust/TrustEvidence";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchCostLines,
@@ -303,19 +304,7 @@ export function TrustView({ project }: { project: string }) {
     <section aria-label="Trust and integrity evidence">
       <p className="fm-info-note">Run freshness: {data.run_state}. Run: <RunIdentityLabel snapshotId={asText(data.identity?.snapshot_id)} /></p>
       <IntegrityEvidence integrity={data.integrity} />
-      <section className="fm-card fm-section" aria-label="Reference regression evidence">
-        <div className="fm-card-title"><h3>Reference regression evidence</h3><span>{data.validation.state}</span></div>
-        <p className="fm-info-note">{data.validation.scope}</p>
-        <p className="fm-info-note">Not executed by opening this page. A reference PASS is not validation of this project.</p>
-        {data.validation.load_url ? <a className="fm-btn" href={data.validation.load_url} target="_blank" rel="noopener noreferrer">Explicitly run reference regression (separate evidence)</a>
-          : <p className="fm-info-note">{data.validation.reason}</p>}
-      </section>
-      <section className="fm-card fm-section" aria-label="Run certificate">
-        <div className="fm-card-title"><h3>Run certificate</h3><span>{data.certificate.state}</span></div>
-        <p className="fm-info-note">{data.certificate.scope}</p>
-        {data.certificate.load_url ? <a className="fm-btn" href={data.certificate.load_url} target="_blank" rel="noopener noreferrer">Request certificate</a>
-          : <p className="fm-info-note">{data.certificate.reason}</p>}
-      </section>
+      <TrustEvidence project={project} hasRun={Boolean(data.validation.load_url || data.certificate.load_url)} />
       <p className="fm-info-note">No project validation was triggered by this read. Unavailable evidence stays unavailable; none of these sections imply FINCO Verify.</p>
     </section>
   );

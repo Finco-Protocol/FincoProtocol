@@ -31,10 +31,8 @@ TECH_LABEL = {"solar": "Solar PV", "wind": "Onshore Wind", "data_center": "Data 
 #: Words an ordinary screen must not show.  Established finance terms (DSCR, LLCR, IRR, NPV, PPA, CAPEX, OPEX ...) are deliberately absent.
 BANNED = re.compile(r"\b(canonical|scalar|composite hash|composite input|CAS|snapshot|native kernel|registry|reference seed|reference model|"
                     r"clone|legacy|classic|RuntimeResult|inputs_section|data-grid-source|fresh projection|working copy|persisted)\b", re.I)
-#: A file download (Run export) is not navigation to a classic screen.  The two Trust links below still open classic HTML fragments: they are
-#: the recorded, still-open part of Audit A GAP-R11 and are the only exceptions.
+#: A file download (Run export) is not navigation to a classic screen.  There is no other exception: the Trust evidence is a React view.
 LEGACY_HREF = re.compile(r"(/v2/workbook(?!/(run-history/)?export)|/projects/|/library|staging\.|/verify/|/credit-decision|/v2/capex/spending|/v2/import)")
-PENDING_GAP_R11 = ("/v2/workbook/trust/certificate", "/v2/workbook/trust/validation")
 import pytest as _pytest  # noqa: E402
 
 
@@ -309,7 +307,7 @@ def test_rcux_product_ordinary_screens_use_no_internal_terms_and_no_legacy_links
 
     def audit(label):
         text, links = _visible_text_and_links(page)
-        seen[label] = [text[max(0, m.start() - 45):m.end() + 45].replace("\n", " ⏎ ") for m in BANNED.finditer(text)] + [f"href:{h}" for h in links if h and LEGACY_HREF.search(h) and not h.startswith(PENDING_GAP_R11)]
+        seen[label] = [text[max(0, m.start() - 45):m.end() + 45].replace("\n", " ⏎ ") for m in BANNED.finditer(text)] + [f"href:{h}" for h in links if h and LEGACY_HREF.search(h)]
 
     _open_library(page, live_server)
     audit("my-projects")
