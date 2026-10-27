@@ -410,10 +410,13 @@ def check_inputs_are_compact_complete_and_navigable(browser, base, kind, width, 
         first_cell = page.locator("details.rx-input-section[open] [data-grid-cell]").first
         section_of_cell = first_cell.locator("xpath=ancestor::details[contains(@class,'rx-input-section')]")
         first_cell.fill("7")
+        section_of_cell.locator("[data-staged-in-section]").wait_for(timeout=10000)          # the badge renders one React tick after the edit
         section_of_cell.locator("summary").click()
+        page.wait_for_timeout(300)                                                          # the toggle handler re-opens the section
         assert section_of_cell.evaluate("d => d.open") is True, "a section with a staged edit stays open"
         assert section_of_cell.locator("[data-staged-in-section]").count() == 1
         page.locator("#wf-inputs-grid [data-discard='true']").click()
+        page.wait_for_function("() => !document.querySelector('[data-staged-in-section]')")
         # the OPEX jump request is not replayed when Inputs is entered again later
         page.locator("[data-inputs-jump] [data-jump-label='OPEX']").click()
         page.wait_for_function("() => /OPEX line below/.test(document.querySelector(\"[data-save-scope='cost-lines']\")?.innerText)")
@@ -608,7 +611,8 @@ def check_returns_lender_metrics_and_vertical_scope_are_truthful(browser, base, 
         page.select_option("select[data-control='unit']", "mEUR")        # lender money metrics follow the unit control
         for metric in lender:
             if metric["available"] and metric["display"] and re.search(r"(kEUR|EUR)$", metric["display"]):
-                assert page.locator(f"[data-lender-metric='{metric['key']}'] .rx-live-kpi-value").inner_text().endswith("mEUR"), metric
+                page.wait_for_function("key => (document.querySelector(`[data-lender-metric='${key}'] .rx-live-kpi-value`)?.innerText || '').endsWith('mEUR')",
+                                       arg=metric["key"], timeout=5000)
         # the Project Library carries the same release tier next to the project's type
         page.goto(f"{base}/v2/model-react/")
         page.wait_for_selector("[data-library-view='true']")
