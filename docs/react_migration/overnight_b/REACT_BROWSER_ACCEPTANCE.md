@@ -14,6 +14,14 @@ Harness: the repository's existing mandatory browser role — `tests/test_model_
 | The 7 D-029 Chromium nodes (4 React + 3 Legacy) | all passed, unchanged |
 | Negative control: the 26 new nodes against the **original** `main` bundle | 24 failed, 2 passed (the two that pass assert behaviour that was already correct: scalar Save persistence and protected-reference read-only); i.e. the new tests are not vacuous |
 
+**CI finding on the first PR head (`77920b6b`)**: the same D-029 node (`…check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit`) failed in
+the mandatory-browser-evidence job (`Page.wait_for_function: … reading 'disabled'`). Root cause (traced in source): after a successful Run the
+workspace calls `window.location.reload()` (`WorkflowBar` `onRan={refreshAll}`); the test's predicate
+`!document.querySelector("[data-wf-run='true']").disabled` throws when it happens to evaluate while the page is reloading (no bar yet).
+It is a null-unsafe wait in the **test helper**, not a product fault, and it already failed once on unmodified main. Fix (same PR, no
+weakening): the seven waits in `tests/model_d029_run_intent_browser_acceptance.py` are null-safe (`Boolean(run) && !run.disabled`; `?.textContent`) —
+identical semantics, no assertion, node id or timeout changed. All seven D-029 nodes pass after the change.
+
 Pre-existing node ids: none removed or renamed (`test_d029_browser_original_node_ids_are_preserved` + governance test). Existing tests whose
 assertions had to follow an intended UI change (node ids unchanged, intent kept or strengthened): Run identity text
 (`snapshot_id[:12]` → contract text + exact `data-run-identity` binding), scenario compare field cell (`tariff_eur_mwh` text →
