@@ -196,13 +196,6 @@ def test_stage3_default_changed_to_candidate_is_rejected(repo, tmp_path, head):
     assert "V11_STAGE3_DEFAULT_NOT_OFF" in problems and f"V11_BLOB_MISMATCH: {path}" in problems
 
 
-@pytest.mark.parametrize("path,addition", [
-    ("app/runtime/native_activation.py", b"\nfrom financial_engine.native_v11.config import Stage3Config\n"),
-    ("main_web.py", b"\n# stage3_run\n"),
-    (".github/workflows/public_safety_and_smoke.yml", b"\n# native_v11\n"),
-    ("tools/native_v10_release.py", b"\n# native_v11\n"),
-])
-
 # F01 Correction C: a CI workflow listing the native_v11 directory for
 # read-only ownership checks is not an activation path. Its exact reviewed
 # content is recognized as test-only, and every mutation is rejected.
@@ -236,6 +229,13 @@ def test_f01_exception_never_whitelists_another_workflow(repo, tmp_path, head):
     assert not V._exact_f01_nonactivation_workflow(path, ref, repo)
     assert_rejected(repo, ref, "V11_STAGE3_ACTIVATION_SURFACE")
 
+
+@pytest.mark.parametrize("path,addition", [
+    ("app/runtime/native_activation.py", b"\nfrom financial_engine.native_v11.config import Stage3Config\n"),
+    ("main_web.py", b"\n# stage3_run\n"),
+    (".github/workflows/public_safety_and_smoke.yml", b"\n# native_v11\n"),
+    ("tools/native_v10_release.py", b"\n# native_v11\n"),
+])
 
 def test_an_activation_surface_referencing_stage3_is_rejected(repo, tmp_path, head, path, addition):
     ref = mutate(repo, tmp_path, head, {path: show(repo, head, path) + addition})
