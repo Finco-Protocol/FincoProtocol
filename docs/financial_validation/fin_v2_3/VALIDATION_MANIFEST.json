@@ -27,12 +27,13 @@
     "NATIVE_IDENTITY.xml": "77acd70ec0d4ff12c330c0afd3af31242dda90af179226864e6c1a4da4190bb9",
     "ORACLE_COMMITTED_INPUTS.json.gz": "5d902485a474d764e30e68e5cee039db28538182b55952614fa5d0c125333f4d",
     "ORACLE_RECONCILIATION.json": "7372d27d35e8fd601787c29bea12a9b6aca95515eddf9cfc01051029fc543970",
-    "SOURCE_SUCCESSOR.json": "a8c4b53f44b152fbe620f53c3778b354cf08e0190d1eae256693407545c62b89",
+    "SOURCE_SUCCESSOR.json": "c5ca35025ccc259227e26e50b12cd90ea6face4acc5a2e13b9905e337e460238",
     "WORKER_GOAL_REGRESSION.xml": "5f5ca4944544b0ef6ba745d3add0afaf5810902f8dcccd26cc6bb5a9d2a62523",
-    "CI_SUCCESSOR_GOVERNANCE.xml": "ec10b2427ff8f94ff5d074fc0b27a0c58b0687ab2e7d4a82d3d4207f30500bcf",
+    "CI_SUCCESSOR_GOVERNANCE.xml": "ac3af36e8e554f635075030779eeca9b0726b747eafc857bcf8f236c7312f307",
     "TAX_CANDIDATE_REGRESSION.xml": "84b396f27c7d7bad975357c6d180fc9d1c6391bfc3ae1dcf675be9f676adced1",
     "BROWSER_NAVIGATION.xml": "f64592469e338e2ee34254c17717ffce0ed195781b5a3ebf674f9a42726ca4b9",
-    "BROWSER_CONSOLIDATION.xml": "5a2fa96e5af85fac04c9816818baaed8fdf201f054fde7e5ebc5468bf551418b"
+    "BROWSER_CONSOLIDATION.xml": "5a2fa96e5af85fac04c9816818baaed8fdf201f054fde7e5ebc5468bf551418b",
+    "LAYOUT_TAX_REGRESSION.xml": "3bbd9c4e4441e740177119d34866adb1977eab918dc320437854c99b8d571b72"
   },
   "worker_goal_legacy_regression": {
     "passed": 81,
@@ -43,9 +44,9 @@
     "skipped": 0
   },
   "financial_implementation_checkpoint": "fb1ed365a5671eae527b95f9a9e2ffce765d00d7",
-  "ci_compatibility_source_checkpoint": "4ab372c40c78f364f86c5da6083aefbe2369df09",
+  "ci_compatibility_source_checkpoint": "5f66eae25ea2decfb39247131280f28da3b51987",
   "ci_successor_governance": {
-    "passed": 233,
+    "passed": 234,
     "skipped": 0
   },
   "tax_candidate_regression": {
@@ -62,5 +63,11 @@
     "time_s": 337.3,
     "source_checkpoint": "4ab372c40c78f364f86c5da6083aefbe2369df09",
     "browser": "system Chromium 154.0.8037.57; Playwright 1.62.0; existing FINCO_TEST_CHROMIUM_PATH override"
+  },
+  "layout_tax_regression": {
+    "layout_passed": 107,
+    "tax_passed": 97,
+    "passed": 204,
+    "skipped": 0
   }
 }

@@ -1,6 +1,8 @@
 # Exact-source CI compatibility recovery
 
-Source checkpoint: `4ab372c40c78f364f86c5da6083aefbe2369df09`.
+Browser/production source checkpoint: `4ab372c40c78f364f86c5da6083aefbe2369df09`.
+Final CI compatibility source checkpoint: `5f66eae25ea2decfb39247131280f28da3b51987`.
+The subsequent test-only correction adds the two exact macro DOM row hashes.
 The complete current cohort and parent blobs are in SOURCE_SUCCESSOR.json.
 No historical pin map, scan rule, workflow selection or financial tolerance was
 relaxed. Final hosted checks must execute the publication HEAD; earlier green
@@ -13,6 +15,12 @@ checks do not substitute for them.
   new worker had also returned `regime: null`. The correction omits that optional
   member when no regime exists; canonical financial candidates retain it. The
   original failing test is unchanged and passes locally.
+- The same run, worker 0: the historical macro DOM inventory omitted the two
+  editable/protected presentations of `debt.valuation.configuration`. Its
+  additive successor records exactly those two new row keys and their exact
+  normalized SHA-256 hashes, gated by the complete source cohort. Every old
+  golden hash, normalization rule, CSRF/read-only assertion and DOM mutation
+  negative remains unchanged.
 - The same run, worker 2: the historical WF-10 tax candidate isolation guard
   rejected every changed financial engine path. Its additive successor admits
   only the complete FIN-V2-3 committed exact-source cohort, bound to the actual
@@ -39,14 +47,18 @@ individually admissible; one-byte drift remains rejected.
 
 - Original execution / Goal Seek regression: 81 passed, no skips.
 - Focused worker / new Goal Seek: 10 passed, no skips.
-- Committed source successor / security / browser governance: 233 passed,
-  no skips. Every one of the 48 owned paths has a one-byte/deletion negative.
-- WF-10 candidate: 97 passed, no skips.
+- Committed source successor / security / browser governance: 234 passed,
+  no skips. Every one of the 49 owned paths has a one-byte/deletion negative.
+- Final complete layout and WF-10 candidate selection: 204 passed, no skips
+  (107 layout and 97 tax tests).
 - Final exact-source responsive and history Chromium cases: 2 passed, no skips.
 - Complete final-source consolidation Chromium: 106 passed, no skips,
   337.30 seconds. BROWSER_CONSOLIDATION.xml records the complete result.
   The supported local system Chromium override uses Chromium 154.0.8037.57
   with Playwright 1.62.0; hosted CI retains its existing pinned browser setup.
+
+The old aggregate and mandatory proof correctly refused the failed worker
+results; their guards remain unchanged.
 
 Final full hosted results are authoritative in Draft PR #391 Checks. This
 recovery does not authorize a merge, deployment or independent financial
