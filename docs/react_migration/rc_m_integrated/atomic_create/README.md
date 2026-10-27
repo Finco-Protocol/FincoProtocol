@@ -28,6 +28,15 @@
 * Regression: the creation-related files (132) pass on the patched tree except one failure that also occurs on unmodified `main` (`test_api_b04_placeholders_not_links`); the two clone tests it initially
   broke exposed a real defect of the first draft (the unkeyed path bypassed `create_working_copy`), now fixed.
 
+## Legacy database migration order (Correction D)
+
+`ux_projects_user_create_request` reads `projects.replay_metadata_json`, so `_init_schema` (`app/persistence/db.py`) now creates it **after** `_ensure_column(projects, replay_metadata_json)` and `full_inputs_json`
+(it previously sat right after `idx_projects_user_code`, which broke the first connection to a database created before that column existed: `no such column: replay_metadata_json`). The statement itself is
+unchanged byte for byte (same partial unique expression, same predicate). A conflict in pre-existing data — two rows already sharing one `(user_id, create_request.request_id)` — fails closed: nothing is dropped
+or rewritten, the schema is not recorded as ready, every connection raises a `RuntimeError` with a query that lists the duplicates, and the retry succeeds once an operator resolves them.
+Tests: `tests/test_persistence_create_request_index_migration.py` (fresh DB / legacy DB / idempotency / database-level atomicity incl. concurrent processes / negatives: malformed and NULL metadata, duplicate identities,
+lock contention, interrupted migration + retry) and `tests/test_persistence_schema_once.py`; reverting the ordering fails six of them, including the original failing test.
+
 ## Known limits
 
 The canonical seeded create remains several writes in SQLite (the keyed path makes them detectable and fenced, not one transaction); the unkeyed Legacy `/projects/create` is not keyed; the demo budget is a

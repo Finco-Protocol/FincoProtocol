@@ -89,6 +89,8 @@ def _reset_schema_cache_for_tests() -> None:
 
 def _init_schema(conn):
     """Run schema creation on an open connection (idempotent)."""
+    import sqlite3
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS runs (
@@ -295,11 +297,22 @@ def _init_schema(conn):
 
     # Atomic create-request identity (created AFTER the projects columns are ensured, so a legacy database migrates first): the request id lives in the project row's own replay metadata (written by the same INSERT
     # that creates the project), and this partial unique index lets the database refuse a second project for one (user, request).
-    conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_user_create_request ON projects(user_id, "
-        "(CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END)) "
-        "WHERE (CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END) IS NOT NULL"
-    )
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_user_create_request ON projects(user_id, "
+            "(CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END)) "
+            "WHERE (CASE WHEN json_valid(replay_metadata_json) THEN json_extract(replay_metadata_json, '$.create_request.request_id') END) IS NOT NULL"
+        )
+    except sqlite3.IntegrityError as exc:
+        # Pre-existing rows already share one (user, create-request id). Nothing is dropped or rewritten and the schema is NOT recorded as ready:
+        # every connection keeps failing closed until an operator resolves the duplicate rows.
+        raise RuntimeError(
+            "schema migration blocked: more than one project row carries the same (user_id, replay_metadata.create_request.request_id), "
+            "so the unique index ux_projects_user_create_request cannot be created. No row was changed. Find the duplicates with: "
+            "SELECT user_id, json_extract(replay_metadata_json,'$.create_request.request_id') AS request_id, COUNT(*) FROM projects "
+            "WHERE json_valid(replay_metadata_json) AND request_id IS NOT NULL GROUP BY 1, 2 HAVING COUNT(*) > 1; "
+            "then resolve them deliberately (archive or re-key the superseded rows) and restart."
+        ) from exc
     # Project Library (PR: project-library-reference-working-copies)
     _ensure_column(conn, "projects", "project_role", "TEXT NOT NULL DEFAULT 'user_project'")
     _ensure_column(conn, "projects", "is_protected", "INTEGER NOT NULL DEFAULT 0")
