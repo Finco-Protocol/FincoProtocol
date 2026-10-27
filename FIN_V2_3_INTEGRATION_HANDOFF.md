@@ -20,6 +20,11 @@ reload/retry remains bounded to the existing single definitive refusal; unknown
 Run outcomes fail without a new attempt. Existing economic, identity and
 security assertions are preserved. Historical browser source pins remain
 unchanged; the new helpers require the complete exact-source cohort.
+CI compatibility source checkpoint: `4ab372c40c78f364f86c5da6083aefbe2369df09`.
+Additional successor/security/browser governance: 233 PASS; tax candidate: 97 PASS;
+final navigation/history browser cases: 2 PASS; complete final-source Chromium
+consolidation: 106 PASS, all without skips. Details: CI_RECOVERY.md in the review
+package.
 Integration requires all final exact-head checks to pass; independent financial
 review remains pending.
 
