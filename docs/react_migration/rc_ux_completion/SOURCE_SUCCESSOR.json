@@ -7,13 +7,14 @@
     "app/v2/react_compare.py": "ccfbc96ff5dece97d7acca2b95a0742d68d44166",
     "app/v2/react_goal_seek_targets.py": "d673cc3ecd807f033a2e1b694a059f0b56c7f104",
     "app/v2/react_import.py": "bd92b43f0f30bf9b68bcde0ef78fe6df8d75cbe3",
+    "app/v2/react_opex_projection.py": "e05508681b0d15fd9d18c0b0dea12963ed08e3a6",
     "app/v2/react_projects.py": "19fdff7af2dee3d6cb3e276a2cb2952490ed2012",
-    "app/v2/react_rcux.py": "1ed7b56dabf5912fbc02183d55317c2376035825",
+    "app/v2/react_rcux.py": "cab7beb254c4ee8eaab7fb583a5ea617239f1feb",
     "app/v2/react_trust.py": "16e0fa90f0a3bedeb8e4bc7a76235c8b9f1452a7",
     "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
     "app/v2/react_workspace_router.py": "dab743e38301d9504909ef73693cb83deeca3dd2",
-    "tests/fin_v2_rcux_scope.py": "5c91518bd48432ae90886e7f4c4638969744ea96",
+    "tests/fin_v2_rcux_scope.py": "36010fc8f02d78b2ed471ecb493df0dec1f6c8da",
     "tests/rcux_navigation_contract.py": "9d367d03bf619c4c3243048c824798103f1f516b",
-    "tests/test_fin_v2_rcux_scope.py": "6df98e88edb96f7df727e89537e76c2950061515"
+    "tests/test_fin_v2_rcux_scope.py": "00a0b754be1e7683e51caaf9f59f993391cfd048"
   }
 }

@@ -17,6 +17,8 @@ __all__ = (
     "test_rcux_diagnostics_score_coverage_and_period_heatmap_equal_the_server_projection",
     "test_rcux_diagnostics_without_a_run_shows_no_score_and_no_heatmap",
     "test_rcux_diagnostics_heatmap_fits_every_viewport",
+    "test_rcux_opex_projection_studio_shows_the_server_projection_and_nothing_else",
+    "test_rcux_opex_projection_fits_every_viewport",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -156,4 +158,41 @@ def test_rcux_diagnostics_heatmap_fits_every_viewport(live_server, an_session, w
     assert box["x"] >= -1 and box["x"] + box["width"] <= width + 1                       # the wide matrix scrolls inside its own region
     assert page.locator("[data-diagnostics-heatmap] .rcm-scroll").evaluate("(el) => el.scrollWidth > el.clientWidth") or width >= 1440
     _shot(page, f"diagnostics-heatmap-{width}")
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def _open_opex_projection(page, base, code):
+    page.goto(f"{base}/v2/model-react/{code}#inputs")
+    page.reload()
+    page.locator("[data-studio-tab='opex-projection']").click()
+    page.wait_for_selector("[data-opex-projection='ready']", timeout=60000)
+
+
+def test_rcux_opex_projection_studio_shows_the_server_projection_and_nothing_else(live_server, an_session):
+    context, page, record, errors = an_session("rcux-opex-proj")
+    api = context.request.get(f"{live_server}/v2/model-react/opex-projection?project={record.project_code}").json()
+    assert api["ok"]
+    _open_opex_projection(page, live_server, record.project_code)
+    assert page.locator("[data-opex-row]").count() == len(api["rows"]) + 2                    # 13 groups + contingency + total
+    assert page.locator("[data-opex-projection-table] thead th").count() == len(api["years"]) + 2
+    for row in api["rows"][:4]:
+        for year, value in list(zip(api["years"], row["values"]))[:3]:
+            shown = page.locator(f"[data-opex-cell='{row['code']}:{year}']").inner_text().strip()
+            assert shown == ("—" if value is None else f"{round(value):,}"), (row["code"], year, value, shown)
+    for year, value in zip(api["years"], api["totals"]["including_contingency"]):
+        assert page.locator(f"[data-opex-total='{year}']").inner_text().strip() == ("—" if value is None else f"{round(value):,}")
+    assert page.locator("[data-opex-y1]").inner_text().startswith(f"{round(api['kpis']['year1_total_keur']):,}")
+    assert "Not a Run result" in page.locator("[data-opex-projection='ready']").inner_text()
+    _shot(page, "opex-projection-1440")
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+@__import__("pytest").mark.parametrize("width", [320, 390, 768, 1440])
+def test_rcux_opex_projection_fits_every_viewport(live_server, an_session, width):
+    context, page, record, errors = an_session(f"rcux-opex-view-{width}", width=width, height=900)
+    _open_opex_projection(page, live_server, record.project_code)
+    assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1"), "horizontal page scroll"
+    box = page.locator("[data-opex-projection='ready'] .rcm-scroll").bounding_box()
+    assert box["x"] >= -1 and box["x"] + box["width"] <= width + 1
+    _shot(page, f"opex-projection-{width}")
     assert [e for e in errors if "Failed to load resource" not in e] == []

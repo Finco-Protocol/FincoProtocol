@@ -2,12 +2,14 @@ import { useState } from "react";
 import "../../styles/rcm-analysis.css";
 import { CapexStudio } from "../capex/CapexStudio";
 import { ImportWorkspace } from "../importer/ImportWorkspace";
+import { OpexProjection } from "../projection/OpexProjection";
 import { SheetFieldsEditor } from "../workflow/SheetFieldsEditor";
 
-export type StudioId = "capex-profile" | "revenue-assumptions" | "import";
+export type StudioId = "capex-profile" | "revenue-assumptions" | "opex-projection" | "import";
 const STUDIOS: ReadonlyArray<{ id: StudioId; label: string }> = [
   { id: "capex-profile", label: "CAPEX spending profile" },
   { id: "revenue-assumptions", label: "Revenue assumptions" },
+  { id: "opex-projection", label: "OPEX projection (Y1–Y30)" },
   { id: "import", label: "Import from Excel / CSV" },
 ];
 
@@ -40,6 +42,7 @@ export function InputStudios({ project, protectedReference, reloadKey, onSaved }
           <SheetFieldsEditor project={project} sheet="revenue" title="Revenue assumptions" reloadKey={reloadKey} onSaved={onSaved} />
         </div>
       )}
+      {studio === "opex-projection" && <OpexProjection project={project} reloadKey={reloadKey} />}
       {studio === "import" && <ImportWorkspace project={project} protectedReference={protectedReference} onSaved={onSaved} />}
     </section>
   );
