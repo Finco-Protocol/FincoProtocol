@@ -114,8 +114,6 @@ def test_protected_reference_is_refused(env):
 
 @pytest.mark.parametrize("params,message", [
     ({"target_metric": "min_dscr", "target_value": "9"}, "Unknown target metric"),
-    ({"target_metric": "project_npv", "target_value": "9"}, "Unknown target metric"),     # non-ratio canonical targets are not served by this adapter
-    ({"target_metric": "sponsor_npv", "target_value": "9"}, "Unknown target metric"),
     ({"target_metric": "project_irr", "target_value": "abc"}, "not a valid number"),
     ({"target_metric": "project_irr", "target_value": "nan"}, "not a valid number"),
     ({"target_metric": "project_irr", "target_value": ""}, "not a valid number"),
@@ -125,6 +123,17 @@ def test_invalid_solve_requests_are_typed_422_and_change_nothing(env, params, me
     before = state(record)
     response = call(env.client, "solve", project=record.project_code, **params)
     assert response.status_code == 422 and message in response.json()["message"]
+    assert state(record) == before
+
+
+@pytest.mark.parametrize("metric", ["min_dscr", "project_npv", "sponsor_npv"])
+def test_non_ratio_canonical_targets_are_refused_as_unknown_and_change_nothing(env, metric):
+    """The canonical Goal Seek offers DSCR (multiple) and NPV (kEUR) targets; this adapter converts a percent target with /100 and so serves ratio-unit targets only.
+    (A separate test, not extra parameters of the test above: the original node ids of that test must not shift.)"""
+    record = env.create()
+    before = state(record)
+    response = call(env.client, "solve", project=record.project_code, target_metric=metric, target_value="9")
+    assert response.status_code == 422 and "Unknown target metric" in response.json()["message"]
     assert state(record) == before
 
 
