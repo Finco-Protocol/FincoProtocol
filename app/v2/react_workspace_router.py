@@ -1308,3 +1308,15 @@ async def react_scenario_overrides(request: Request, project: str, scenario_id: 
                     "Saving an override never runs the model.",
         },
     })
+
+
+# ───────────────────────────── RC-M: React adapters (own modules) ─────────────────────────────
+# New Project wizard, Sensitivity and Goal Seek: authenticated JSON adapters over the canonical creation, sensitivity-matrix and
+# goal-seek authorities (no new authority).  Each lives in its own module, so this pinned file changes by exactly these includes.
+from app.v2.react_analysis import router as _analysis_router  # noqa: E402
+from app.v2.react_goal_seek import router as _goal_seek_router  # noqa: E402
+from app.v2.react_new_project import router as _new_project_router  # noqa: E402
+
+router.include_router(_new_project_router)
+router.include_router(_analysis_router)
+router.include_router(_goal_seek_router)
