@@ -210,7 +210,7 @@ RC_UX_SUCCESSORS={
     "static/react/finco-react.js":"d9c5fb8f4f0a700f35c8c660b7358688f0d016f1",
     "tests/model_react_mvp_acceptance.py":"e085043916748497a32fdcf9bb429234885f367a",
     "tests/model_react_wf2_browser_acceptance.py":"4ca9487e898620ff7b614a94ba88150f6cdb7696",
-    "tests/test_model_workspace_consolidation_browser.py":"cfe1272c9864256867bfbda03216dcab632dbd13",
+    "tests/test_model_workspace_consolidation_browser.py":"665ef4874260612c9687fafddc303aeae56e82af",
 }
 
 # FIN-VAL F01: exact additive projection-only successor; historical layers

@@ -35,7 +35,7 @@
     "tests/finance_integrity_governance.py": "cd35de839d11d35d198634f7140ae980e7762e25",
     "tests/finval_f01_scope.py": "800dee25495e68c9f89456d87e1e95ccc3c6e72b",
     "tests/fixtures/fin_v2_3_baseline.json": "b7943a658eb39b0ac1b355dcca60c32f2ce44258",
-    "tests/model_mutation_security_successor.py": "43a882214e2a620bee39210ff4c45129d1c286e8",
+    "tests/model_mutation_security_successor.py": "e159f6de258e333b5dbe68808a1034a0760e1ab1",
     "tests/model_react_mvp_acceptance.py": "e085043916748497a32fdcf9bb429234885f367a",
     "tests/model_react_overnight_b_acceptance.py": "f36d0c8079bd31f7dd885ea4f237eefed9624375",
     "tests/quarterly_candidate_recognition.py": "8838d05e8988cddd06d5f805b3eed9685eb74066",

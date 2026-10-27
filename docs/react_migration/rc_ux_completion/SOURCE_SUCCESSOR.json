@@ -12,7 +12,7 @@
     "app/v2/react_trust.py": "16e0fa90f0a3bedeb8e4bc7a76235c8b9f1452a7",
     "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
     "app/v2/react_workspace_router.py": "dab743e38301d9504909ef73693cb83deeca3dd2",
-    "tests/fin_v2_rcux_scope.py": "26df6fb86e38492d2957d24350532c3ff5f39406",
+    "tests/fin_v2_rcux_scope.py": "5c91518bd48432ae90886e7f4c4638969744ea96",
     "tests/rcux_navigation_contract.py": "9d367d03bf619c4c3243048c824798103f1f516b",
     "tests/test_fin_v2_rcux_scope.py": "6df98e88edb96f7df727e89537e76c2950061515"
   }
