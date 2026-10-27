@@ -1,0 +1,5 @@
+{
+  "ok": false,
+  "code": "REQUEST_HEADER_REQUIRED",
+  "message": "This analysis can only be started from the FINCO Model workspace. Nothing was changed."
+}

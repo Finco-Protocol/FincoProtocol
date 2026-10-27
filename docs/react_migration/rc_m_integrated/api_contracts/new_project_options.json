@@ -1,0 +1,351 @@
+{
+  "ok": true,
+  "technologies": [
+    {
+      "key": "solar",
+      "public_name": "Solar",
+      "runnable": true,
+      "pilot_tier": "PILOT_CANDIDATE",
+      "limitations": [
+        "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration.",
+        "Portfolio-level analysis remains experimental relative to the core single-project engine."
+      ],
+      "status_note": "",
+      "creatable": true,
+      "reason": "",
+      "preview_acknowledgement_required": false,
+      "template_source": "generic_solar_reference",
+      "default_country": "XA",
+      "capacity_label": "Installed capacity (MW)",
+      "default_capacity_mw": 64.0,
+      "timeline": {
+        "financial_close": "2030-01-01",
+        "construction_months": 14,
+        "cod_date": "2031-03-01",
+        "horizon_years": 25
+      }
+    },
+    {
+      "key": "wind",
+      "public_name": "Wind",
+      "runnable": true,
+      "pilot_tier": "PILOT_CANDIDATE",
+      "limitations": [
+        "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration.",
+        "Portfolio-level analysis remains experimental relative to the core single-project engine."
+      ],
+      "status_note": "",
+      "creatable": true,
+      "reason": "",
+      "preview_acknowledgement_required": false,
+      "template_source": "generic_wind_reference",
+      "default_country": "XB",
+      "capacity_label": "Installed capacity (MW)",
+      "default_capacity_mw": 48.0,
+      "timeline": {
+        "financial_close": "2030-01-01",
+        "construction_months": 20,
+        "cod_date": "2031-09-01",
+        "horizon_years": 27
+      }
+    },
+    {
+      "key": "data_center",
+      "public_name": "Data Center",
+      "runnable": true,
+      "pilot_tier": "PREVIEW",
+      "limitations": [
+        "Reference model uses a generic 20 MW IT-load configuration; real-asset specifics (colocation structures, hyperscaler contracts) are not represented.",
+        "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration."
+      ],
+      "status_note": "",
+      "creatable": true,
+      "reason": "",
+      "preview_acknowledgement_required": true,
+      "template_source": "generic_data_center_reference",
+      "default_country": "XD",
+      "capacity_label": "IT capacity (MW)",
+      "default_capacity_mw": 20.0,
+      "timeline": {
+        "financial_close": "2030-01-01",
+        "construction_months": 24,
+        "cod_date": "2032-01-01",
+        "horizon_years": 20
+      }
+    },
+    {
+      "key": "ev_charging",
+      "public_name": "EV Charging",
+      "runnable": true,
+      "pilot_tier": "PREVIEW",
+      "limitations": [
+        "Charging points are display metadata only; they do not drive modelled revenue.",
+        "Payment/network fees are a fixed amount rather than dynamically percentage-linked.",
+        "Availability is informational because equivalent full-load hours are net of availability.",
+        "Generic market profiles are illustrative; country-specific tax conclusions require an explicit reviewed policy configuration."
+      ],
+      "status_note": "",
+      "creatable": true,
+      "reason": "",
+      "preview_acknowledgement_required": true,
+      "template_source": "generic_ev_charging_reference",
+      "default_country": "XE",
+      "capacity_label": "Charging capacity (MW)",
+      "default_capacity_mw": 5.0,
+      "timeline": {
+        "financial_close": "2030-01-01",
+        "construction_months": 12,
+        "cod_date": "2031-01-01",
+        "horizon_years": 20
+      }
+    },
+    {
+      "key": "storage",
+      "public_name": "Storage",
+      "runnable": false,
+      "pilot_tier": "RELEASE_CLOSED",
+      "limitations": [
+        "Reference model is viewable but cannot be run or cloned.",
+        "Runtime validation coverage is narrower than Solar/Wind/Data Center/EV Charging.",
+        "Working-copy runtime not released."
+      ],
+      "status_note": "Limited/reference workflow. Working-copy runtime not released.",
+      "creatable": false,
+      "reason": "This technology is not released for working copies.",
+      "preview_acknowledgement_required": false
+    }
+  ],
+  "countries": [
+    {
+      "code": "XA",
+      "label": "Generic / World \u2014 Solar (XA)"
+    },
+    {
+      "code": "XB",
+      "label": "Generic / World \u2014 Wind (XB)"
+    },
+    {
+      "code": "XC",
+      "label": "Generic / World \u2014 Storage (XC)"
+    },
+    {
+      "code": "XD",
+      "label": "Generic / World \u2014 Data Center (XD)"
+    },
+    {
+      "code": "XE",
+      "label": "Generic / World \u2014 EV Charging (XE)"
+    },
+    {
+      "code": "AT",
+      "label": "Austria (AT)"
+    },
+    {
+      "code": "BE",
+      "label": "Belgium (BE)"
+    },
+    {
+      "code": "BG",
+      "label": "Bulgaria (BG)"
+    },
+    {
+      "code": "CA",
+      "label": "Canada (CA)"
+    },
+    {
+      "code": "CL",
+      "label": "Chile (CL)"
+    },
+    {
+      "code": "CN",
+      "label": "China (CN)"
+    },
+    {
+      "code": "CY",
+      "label": "Cyprus (CY)"
+    },
+    {
+      "code": "CZ",
+      "label": "Czechia (CZ)"
+    },
+    {
+      "code": "DK",
+      "label": "Denmark (DK)"
+    },
+    {
+      "code": "DE",
+      "label": "Germany (DE)"
+    },
+    {
+      "code": "ES",
+      "label": "Spain (ES)"
+    },
+    {
+      "code": "EE",
+      "label": "Estonia (EE)"
+    },
+    {
+      "code": "FI",
+      "label": "Finland (FI)"
+    },
+    {
+      "code": "FR",
+      "label": "France (FR)"
+    },
+    {
+      "code": "GB",
+      "label": "United Kingdom (GB)"
+    },
+    {
+      "code": "GR",
+      "label": "Greece (GR)"
+    },
+    {
+      "code": "HR",
+      "label": "Croatia (HR)"
+    },
+    {
+      "code": "HU",
+      "label": "Hungary (HU)"
+    },
+    {
+      "code": "IE",
+      "label": "Ireland (IE)"
+    },
+    {
+      "code": "IN",
+      "label": "India (IN)"
+    },
+    {
+      "code": "IS",
+      "label": "Iceland (IS)"
+    },
+    {
+      "code": "IL",
+      "label": "Israel (IL)"
+    },
+    {
+      "code": "IT",
+      "label": "Italy (IT)"
+    },
+    {
+      "code": "JP",
+      "label": "Japan (JP)"
+    },
+    {
+      "code": "KR",
+      "label": "South Korea (KR)"
+    },
+    {
+      "code": "LT",
+      "label": "Lithuania (LT)"
+    },
+    {
+      "code": "LU",
+      "label": "Luxembourg (LU)"
+    },
+    {
+      "code": "LV",
+      "label": "Latvia (LV)"
+    },
+    {
+      "code": "ME",
+      "label": "Montenegro (ME)"
+    },
+    {
+      "code": "MK",
+      "label": "North Macedonia (MK)"
+    },
+    {
+      "code": "MX",
+      "label": "Mexico (MX)"
+    },
+    {
+      "code": "NL",
+      "label": "Netherlands (NL)"
+    },
+    {
+      "code": "NO",
+      "label": "Norway (NO)"
+    },
+    {
+      "code": "NZ",
+      "label": "New Zealand (NZ)"
+    },
+    {
+      "code": "PL",
+      "label": "Poland (PL)"
+    },
+    {
+      "code": "PT",
+      "label": "Portugal (PT)"
+    },
+    {
+      "code": "RO",
+      "label": "Romania (RO)"
+    },
+    {
+      "code": "RS",
+      "label": "Serbia (RS)"
+    },
+    {
+      "code": "SA",
+      "label": "Saudi Arabia (SA)"
+    },
+    {
+      "code": "SG",
+      "label": "Singapore (SG)"
+    },
+    {
+      "code": "SI",
+      "label": "Slovenia (SI)"
+    },
+    {
+      "code": "SK",
+      "label": "Slovakia (SK)"
+    },
+    {
+      "code": "SE",
+      "label": "Sweden (SE)"
+    },
+    {
+      "code": "CH",
+      "label": "Switzerland (CH)"
+    },
+    {
+      "code": "TR",
+      "label": "T\u00fcrkiye (TR)"
+    },
+    {
+      "code": "AE",
+      "label": "United Arab Emirates (AE)"
+    },
+    {
+      "code": "US",
+      "label": "United States (US)"
+    },
+    {
+      "code": "ZA",
+      "label": "South Africa (ZA)"
+    },
+    {
+      "code": "AR",
+      "label": "Argentina (AR)"
+    },
+    {
+      "code": "AU",
+      "label": "Australia (AU)"
+    },
+    {
+      "code": "BR",
+      "label": "Brazil (BR)"
+    }
+  ],
+  "bounds": {
+    "capacity_min_mw": 0.1,
+    "capacity_max_mw": 10000.0,
+    "name_max_length": 80
+  },
+  "request_id": "<32-hex request id>",
+  "csrf_token": "<redacted>"
+}

@@ -1,0 +1,118 @@
+{
+  "ok": true,
+  "project": {
+    "code": "contract-solar"
+  },
+  "editable": true,
+  "state": "CURRENT",
+  "identity": {
+    "content_hash": "<redacted>",
+    "workbook_version": "2.3.0",
+    "scenario_name": null
+  },
+  "terms": null,
+  "workflow": {
+    "state": "NONE",
+    "text": "No working agreement is saved. Investor allocations exist only for Runs that record a saved agreement."
+  },
+  "evidence": null,
+  "unavailable": "Investor evidence is unavailable for this Run. Save an agreement and Run; legacy allocations are not reconstructed.",
+  "funding": [
+    {
+      "date": "2030-01-01",
+      "paid_in_keur": 500.0
+    }
+  ],
+  "sponsor": {
+    "mode": "Share capital, then shareholder loan",
+    "equity": [
+      {
+        "label": "Share capital",
+        "value": 500.0,
+        "display": "500.00 kEUR",
+        "source": "Working ProjectInputs.financing.share_capital_keur",
+        "reason": ""
+      },
+      {
+        "label": "Share premium",
+        "value": 0.0,
+        "display": "0.00 kEUR",
+        "source": "Working ProjectInputs.financing.share_premium_keur",
+        "reason": ""
+      },
+      {
+        "label": "Other equity before SHL",
+        "value": 0.0,
+        "display": "0.00 kEUR",
+        "source": "Working ProjectInputs.financing.other_equity_funding_before_shl_keur",
+        "reason": ""
+      }
+    ],
+    "other": [
+      {
+        "label": "Junior / other project funding",
+        "value": 0.0,
+        "display": "0.00 kEUR",
+        "source": "Working ProjectInputs.financing.junior_or_other_project_funding_keur",
+        "reason": ""
+      }
+    ],
+    "shl": [
+      {
+        "label": "SHL interest rate",
+        "value": 0.08,
+        "display": "8.00%",
+        "source": "Working ProjectInputs.financing.shl_rate",
+        "reason": ""
+      }
+    ],
+    "repayment": "Cash sweep",
+    "day_count": "Actual period days / calendar-year days",
+    "eligibility": 33,
+    "maturity": 52,
+    "returns": [
+      {
+        "label": "Pure Equity IRR",
+        "value": 0.36684683905854065,
+        "display": "36.68%",
+        "source": "RuntimeResult.runtime_summary.equity_irr",
+        "reason": ""
+      },
+      {
+        "label": "Total Sponsor IRR",
+        "value": 0.17456866229208087,
+        "display": "17.46%",
+        "source": "RuntimeResult.sponsor_schedule.summary.total_sponsor_xirr",
+        "reason": ""
+      },
+      {
+        "label": "Pure Equity MOIC",
+        "value": 57.95338243376443,
+        "display": "57.95x",
+        "source": "RuntimeResult.sponsor_schedule.summary.pure_equity_moic",
+        "reason": ""
+      },
+      {
+        "label": "Total Sponsor MOIC",
+        "value": 10.180131551525845,
+        "display": "10.18x",
+        "source": "RuntimeResult.sponsor_schedule.summary.total_sponsor_moic",
+        "reason": ""
+      }
+    ]
+  },
+  "save": {
+    "url": "/v2/workbook/investor/agreement",
+    "csrf_token": "<redacted>",
+    "next_version": 1,
+    "saved_agreement_id": ""
+  },
+  "export_url": "/v2/workbook/investor/export?project=contract-solar",
+  "not_released": [
+    "Return-of-capital ordering",
+    "Preferences and carry",
+    "NAV / terminal valuation",
+    "Shareholder-loan lender allocation",
+    "Waterfall mechanisms beyond residual common equity"
+  ]
+}

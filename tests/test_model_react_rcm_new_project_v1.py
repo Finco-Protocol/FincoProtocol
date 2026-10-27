@@ -298,3 +298,27 @@ def test_an_existing_clone_path_is_unchanged(env):
     """The new adapter does not touch the Library clone contract (same token purpose, same route)."""
     library = env.client.get("/v2/model-react/library").json()
     assert library["clone_url"] == "/library/clone/{source_project_id}" and library["csrf_token"]
+
+
+@pytest.mark.parametrize("tech,template,country", [("solar", "generic_solar_reference", "XA"), ("wind", "generic_wind_reference", "XB")])
+def test_wizard_created_and_directly_created_twins_have_identical_run_results(env, tech, template, country):
+    """Same effective inputs, same runtime: the committed Run of the wizard project equals the twin's, metric for metric."""
+    import re
+
+    from app.services.reference_seed_service import create_reference_seeded_project
+    from tests.run_clone_csrf import post_valid_csrf
+
+    opts = env.options()
+    code = env.client.post(f"{BASE}/create", json=env.body(opts, technology=tech, country=country, capacity_mw=33.0, name=f"Twin {tech}")).json()["project"]["code"]
+    twin = create_reference_seeded_project(user_id=OWNER, template_source=template, requested_name=f"Twin direct {tech}", capacity_mw=33.0, country_market=country)
+    for project in (code, twin.project_code):
+        page = env.client.get("/v2/workbook", params={"project": project})
+        tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
+        assert post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=project, **tokens)).status_code == 200
+
+    def metrics(project):
+        results = env.client.get("/v2/model-react/statements", params={"project": project}).json()["results"]
+        return {m["label"]: m["display"] for m in results["metrics"]}
+
+    mine, theirs = metrics(code), metrics(twin.project_code)
+    assert mine == theirs and mine["Project IRR"] != "Not available"
