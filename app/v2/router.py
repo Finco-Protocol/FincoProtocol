@@ -435,13 +435,23 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 option_labels: dict = COUNTRY_CODE_TO_LABEL
             else:
                 option_labels = {}
-            # For PCT-type read-only fields stored as fractions (e.g. 0.055), provide
-            # display_value so the template can show "5.50%" without mutating the stored value.
-            if field_type == "pct" and value is not None and not fspec.options:
+            # Interest scalar contract is human percent, including sub-1%
+            # values. Never infer a representation from numeric magnitude.
+            if fspec.field_id == "debt.senior.interest_rate_pct":
+                from app.input_adapter import RATE_UNIT_KEY, RATE_UNIT
+                if pis.snapshot_origin.get(RATE_UNIT_KEY) != RATE_UNIT:
+                    binding_label = "partial"
+                    display_value = "UNVERIFIED RATE UNIT — owner provenance review required"
+                elif value is not None:
+                    display_value = f"{float(value):.12g}%"
+                else:
+                    display_value = value
+            elif field_type == "pct" and value is not None and not fspec.options:
+                # Other percentage fields retain their existing presentation.
                 try:
                     v = float(value)
                     display_v = v * 100 if 0.0 < abs(v) < 1.0 else v
-                    display_value: object = f"{display_v:.2f}%"
+                    display_value = f"{display_v:.2f}%"
                 except (TypeError, ValueError):
                     display_value = value
             else:

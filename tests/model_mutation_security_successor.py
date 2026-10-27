@@ -177,6 +177,11 @@ REACT_MVP_CORRECTION_SUCCESSORS={
     "tests/test_model_workspace_consolidation_browser.py":"6f91b8c9376ba65c27aab34ea39651cef351b2e9",
 }
 
+# FIN-VAL F01: exact additive projection-only successor; historical layers
+# above remain individually admitted. No CSRF, CAS or Run gate is changed.
+FINVAL_RATE_SUCCESSORS={
+    "app/v2/router.py":"8fe930c5a1ac876de0d3a98fff689f34af646a68",
+}
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -275,6 +280,7 @@ def violations(sources,*,check_pin=True):
         if path in FINVAL_B2C1_SUCCESSORS:admitted=admitted|{FINVAL_B2C1_SUCCESSORS[path]}
         if path in D029_RUN_INTENT_SUCCESSORS:admitted=admitted|{D029_RUN_INTENT_SUCCESSORS[path]}
         if path in REACT_MVP_CORRECTION_SUCCESSORS:admitted=admitted|{REACT_MVP_CORRECTION_SUCCESSORS[path]}
+        if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:errors.append(path+": unreviewed blob")
         if path.endswith(".py"):
             try:trees[path]=ast.parse(text)

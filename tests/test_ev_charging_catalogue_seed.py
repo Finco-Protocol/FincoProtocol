@@ -118,6 +118,7 @@ def test_ev_snapshot_resolution_at_5_and_8mw():
             "p50_hours": "2000", "tariff_eur_mwh": "400", "ppa_term_years": "20",
             "opex_y1_keur": f"{anchor}", "total_capex_keur": f"{9000 * capacity / 5}",
             "target_dscr": "1.3", "gearing_pct": "65", "interest_rate_pct": "6",
+            "_finval_interest_rate_unit": "human_percent_v1",
             "tenor_years": "10", "construction_months": "12", "horizon_years": "20",
             "cod_date": "2031-01-01", "country_market": "XE", "scenario": "Base",
         }

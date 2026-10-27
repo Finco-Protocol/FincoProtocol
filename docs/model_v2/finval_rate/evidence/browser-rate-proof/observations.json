@@ -1,0 +1,38 @@
+[
+  {
+    "kind": "solar",
+    "initial_editable_percent": "5.5",
+    "saved": "0.056",
+    "formatted": "0.056%",
+    "typed_ratio": 0.0005600000000000001,
+    "unit": "human_percent_v1",
+    "runs": 0
+  },
+  {
+    "kind": "wind",
+    "initial_editable_percent": "5.5",
+    "saved": "0.056",
+    "formatted": "0.056%",
+    "typed_ratio": 0.0005600000000000001,
+    "unit": "human_percent_v1",
+    "runs": 0
+  },
+  {
+    "kind": "data_center",
+    "initial_editable_percent": "6",
+    "saved": "0.056",
+    "formatted": "0.056%",
+    "typed_ratio": 0.0005600000000000001,
+    "unit": "human_percent_v1",
+    "runs": 0
+  },
+  {
+    "kind": "ev_charging",
+    "initial_editable_percent": "6",
+    "saved": "0.056",
+    "formatted": "0.056%",
+    "typed_ratio": 0.0005600000000000001,
+    "unit": "human_percent_v1",
+    "runs": 0
+  }
+]

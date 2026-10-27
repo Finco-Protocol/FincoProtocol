@@ -1,0 +1,31 @@
+{
+  "runs": [
+    {
+      "history_id": "3fdac640ccb840b28054962b93471b9d",
+      "project_code": "b2-wind",
+      "runtime_snapshot_id": "20261027T004059.691935+0000",
+      "runtime_origin": "v2_run",
+      "ran_at": "2026-10-27T00:40:59.691944+00:00",
+      "engine_version": "clean_senior_debt_v0",
+      "workbook_version": "2.3.0",
+      "active_scenario_id": null,
+      "active_scenario_name": null,
+      "last_runtime_scenario_id": null,
+      "composite_hash": "040b3c72cf94af4fdf86e2a63cee42fce24eca89f0ea23528a5ba1a25be6aac2"
+    },
+    {
+      "history_id": "2175424cd8e24d92992a9fba857633dc",
+      "project_code": "b2-wind",
+      "runtime_snapshot_id": "20261027T004058.013337+0000",
+      "runtime_origin": "v2_run",
+      "ran_at": "2026-10-27T00:40:58.013349+00:00",
+      "engine_version": "clean_senior_debt_v0",
+      "workbook_version": "2.3.0",
+      "active_scenario_id": null,
+      "active_scenario_name": null,
+      "last_runtime_scenario_id": null,
+      "composite_hash": "e4b5c7260154e63a9360b48b89bf7997873d3bdbaf15e24b70856fce1f9f8d1f"
+    }
+  ],
+  "snapshot_rate": "0.56"
+}

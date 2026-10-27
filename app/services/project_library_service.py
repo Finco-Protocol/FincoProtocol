@@ -496,6 +496,16 @@ def _ensure_reference_workspace_and_scenario(record, defn: dict) -> None:
     snapshot = _compute_baseline_snapshot(defn["project_type"], defn["template_source"])
 
     ws = get_workspace_state(record.user_id, record.project_id)
+    if ws is not None:
+        # FIN-VAL: reference reconciliation is NOT a rate-unit migration.
+        # Preserve existing source pricing/provenance byte-for-byte; only a
+        # NEW Working Copy receives the new canonical rate contract below.
+        from app.input_adapter import RATE_UNIT_KEY
+        for key in ("interest_rate_pct", RATE_UNIT_KEY):
+            if key in ws.draft_snapshot:
+                snapshot[key] = ws.draft_snapshot[key]
+            else:
+                snapshot.pop(key, None)
     if ws is None:
         save_workspace_state(
             user_id=record.user_id,
@@ -614,6 +624,18 @@ def create_working_copy(
     src_ws = get_workspace_state(source.user_id, source.project_id)
     snapshot = (src_ws.saved_snapshot if src_ws else source.baseline_snapshot) or {}
     snapshot = dict(snapshot)
+    # FIN-VAL: a NEW copy of an immutable canonical reference takes its scalar
+    # rate from the reviewed template authority, not an unversioned historical
+    # auxiliary scalar. This never writes to the source reference/workspace.
+    if source.template_source in {
+        "generic_solar_reference", "generic_wind_reference",
+        "generic_data_center_reference", "generic_ev_charging_reference",
+    }:
+        from app.persistence.projects_repository import _compute_baseline_snapshot
+        from app.input_adapter import RATE_UNIT_KEY, RATE_UNIT
+        rate_seed = _compute_baseline_snapshot(source.project_type, source.template_source)
+        snapshot["interest_rate_pct"] = rate_seed["interest_rate_pct"]
+        snapshot[RATE_UNIT_KEY] = RATE_UNIT
     snapshot["project_origin"] = "user_created"
     snapshot["project_name"] = display_name
     snapshot["active_project"] = project_code
