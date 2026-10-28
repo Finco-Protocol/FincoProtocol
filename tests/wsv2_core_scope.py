@@ -65,6 +65,7 @@ OWNED_PATHS = frozenset((
     'static/react/finco-react.js',
     'tests/fin_v2_cohorts.py',
     'tests/model_mutation_security_successor.py',
+    'tests/test_model_mutation_security_successor.py',
     'tests/model_react_mvp_acceptance.py',
     'tests/model_react_rcm_new_project_acceptance.py',
     'tests/model_react_rcm_themes_acceptance.py',
@@ -88,6 +89,7 @@ OWNED_PATHS = frozenset((
 OWNER_APPROVED_ACCEPTANCE_PIN = 'tests/model_react_mvp_acceptance.py'
 
 GOVERNANCE_PINS = frozenset((
+    'tests/test_model_mutation_security_successor.py',  # Correction E exact path; no financial/app pins
     'tests/model_mutation_security_successor.py',
     'tests/fin_v2_cohorts.py',
     'tests/test_rcm_governance.py',

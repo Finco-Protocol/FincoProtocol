@@ -139,6 +139,19 @@ def test_absent_or_unregistered_cohort_cannot_be_silently_omitted(monkeypatch):
     assert not C.valid()
 
 
+def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls():
+    path = 'tests/test_model_mutation_security_successor.py'
+    assert path in F.OWNED_PATHS
+    source = (F.ROOT / path).read_text()
+    assert F.manifest()['source_blobs'][path] == F._blob(source.encode())
+    assert S.RC_UX_SUCCESSORS[ROLE] != S.WSV2_BROWSER_SUCCESSORS[ROLE]
+    assert S.git_blob((F.ROOT / ROLE).read_text()) == S.WSV2_BROWSER_SUCCESSORS[ROLE]
+    assert 'test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_are_refused' in source
+    assert "assert S.git_blob(source) == S.WSV2_BROWSER_SUCCESSORS[path]" in source
+    assert 'assert skipped[path]!=source and S.violations(skipped)' in source
+    assert 'assert S.violations(extra)' in source
+
+
 def test_original_presentation_and_security_dictionaries_are_immutable_and_individually_admitted():
     old = ast.parse(F._read(F.ROOT, 'tests/model_mutation_security_successor.py', F.AUTHORIZATION_HEAD))
     sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}
