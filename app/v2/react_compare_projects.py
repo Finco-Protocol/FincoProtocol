@@ -35,6 +35,7 @@ async def react_compare_projects(request: Request, code: list[str] = Query(defau
     from app.v2.decision_support_projection import (
         CROSS_PROJECT_MAX, _CROSS_METRICS, build_cross_project_rows, sort_cross_project_rows,
     )
+    from app.v2.react_projects import country_label
     from app.v2.router import _ds_capacity, _ds_country, _ds_meta_label, _ds_run_state
 
     wanted: list[str] = []
@@ -69,7 +70,8 @@ async def react_compare_projects(request: Request, code: list[str] = Query(defau
             capacity = None
         payloads.append({
             "project_code": record.project_code, "project_name": record.project_name, "technology": record.project_type or "",
-            "country": _ds_country(record), "capacity_display": _ds_capacity(record), "capacity_mw": capacity,
+            # React projects store the market as `country_market` (a code); the Legacy `country_iso`/`country` keys are absent.
+            "country": (country_label(base.get("country_market")) or _ds_country(record)), "capacity_display": _ds_capacity(record), "capacity_mw": capacity,
             "stage": _ds_meta_label(record, "project_stage", stage_value),
             "perspective": _ds_meta_label(record, "model_perspective", perspective_value),
             "run_state": _ds_run_state(ws, record, owner),
@@ -88,6 +90,17 @@ async def react_compare_projects(request: Request, code: list[str] = Query(defau
     if technology:
         rows = [r for r in rows if r.technology == technology]
     run_by_code = {p["project_code"]: p for p in payloads}
+
+    def _moic_overlay(code: str) -> dict[str, str]:
+        """MOIC a Run PUBLISHED on its sponsor schedule summary (same source the returns projection and the workbook read).  A value that is
+        absent or not a finite number stays unavailable ("—"); nothing is estimated or defaulted to zero."""
+        summary = (run_by_code.get(code) or {}).get("sponsor_summary") or {}
+        out: dict[str, str] = {}
+        for key, source in (("pure_equity_moic", "pure_equity_moic"), ("sponsor_moic", "total_sponsor_moic")):
+            raw = summary.get(source)
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw == raw and abs(raw) != float("inf"):
+                out[key] = f"{float(raw):.2f}x"
+        return out
     catalog = [{"key": "total_capex_keur", "label": "Total CAPEX (kEUR)"}, {"key": "capex_per_mw", "label": "CAPEX / MW"}] + [
         {"key": key, "label": label} for key, label, _kind in _CROSS_METRICS if key != "total_capex_keur"]
     picker = [{"code": r.project_code, "name": r.project_name, "technology": r.project_type or ""} for r in _own_records(user.user_id, archived=False)[:100]]
@@ -96,7 +109,8 @@ async def react_compare_projects(request: Request, code: list[str] = Query(defau
         "columns": [{
             "code": r.project_code, "name": r.project_name, "technology": r.technology, "country": r.country, "capacity": r.capacity_display,
             "stage": r.stage, "perspective": r.perspective, "run_state": r.run_state, "run_identity": r.run_identity, "runnable": r.runnable,
-            "ran_at": r.ran_at_display, "ebitda_margin": r.ebitda_margin, "metrics": dict(r.metrics),
+            "ran_at": r.ran_at_display, "ebitda_margin": r.ebitda_margin,
+            "metrics": {**dict(r.metrics), **({k: v for k, v in _moic_overlay(r.project_code).items() if dict(r.metrics).get(k) in (None, "", "—")} if r.runnable else {})},
             "run_url": f"/v2/model-react/{r.project_code}#results" if run_by_code.get(r.project_code, {}).get("runnable") else None,
         } for r in rows],
         "left_out": left_out, "picker": picker,

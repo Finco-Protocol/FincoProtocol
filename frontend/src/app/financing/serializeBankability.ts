@@ -7,6 +7,17 @@ export type TargetsMode = "inherit" | "scalar" | "periods";
 export type RatesMode = "inherit" | "periods";
 export type ReserveMode = "inherit" | "none" | "automatic_peak" | "cash_fixed" | "dsrf";
 
+/** Financial Owner release boundary for the React input: only these reserve policies may be NEWLY selected and saved.
+ *  Forward-looking coverage (`automatic_peak`) and the DSRF standby facility (`dsrf`) have no complete engine authority yet
+ *  (commitment/arrangement fees, drawn interest, replenishment, hybrid cash/facility coverage are a later FIN-V2 workflow).
+ *  A configuration that already stores one of them is shown read-only and written back byte-for-byte, never rewritten. */
+export const RELEASED_RESERVE_MODES: readonly ReserveMode[] = ["inherit", "none", "cash_fixed"];
+export const isReleasedReserveMode = (mode: string): boolean => (RELEASED_RESERVE_MODES as readonly string[]).includes(mode);
+export const RESERVE_MODE_LABEL: Record<ReserveMode, string> = {
+  inherit: "Existing reserve policy (no override)", none: "NONE", cash_fixed: "CASH_DSRA / fixed amount",
+  automatic_peak: "Automatic peak forward debt service", dsrf: "DSRF / standby support",
+};
+
 export interface BankabilityDraft {
   sizingMode: string; lenderCase: string; dayCount: string;
   ratesMode: RatesMode; rates: string[];
@@ -80,6 +91,10 @@ function checkNumber(text: string, label: string, min: number, max: number, out:
 export function advisoryProblems(d: BankabilityDraft, view: BankabilityView): string[] {
   const out: string[] = [];
   const periods = view.periods ?? [];
+  const savedReserve = draftFromView(view).reserveMode;
+  if (!isReleasedReserveMode(d.reserveMode) && d.reserveMode !== savedReserve) {
+    out.push(`Reserve policy “${RESERVE_MODE_LABEL[d.reserveMode]}” is not released and cannot be newly saved. Choose a released policy or keep the stored one.`);
+  }
   if (d.targetsMode === "scalar") checkNumber(d.targetScalar, "Scalar target DSCR", 1, 3, out);
   if (d.targetsMode === "periods") d.targets.forEach((t, i) => checkNumber(t, `Target DSCR, period ${periods[i]?.number ?? i + 1}`, 1, 3, out));
   if (d.ratesMode === "periods") d.rates.forEach((t, i) => checkNumber(t, `All-in rate, period ${periods[i]?.number ?? i + 1}`, 0, 20, out));

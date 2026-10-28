@@ -227,6 +227,18 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
     window.location.reload();
   }, []);
 
+  // Reads the canonical Inputs projection again WITHOUT a page reload, so a staged draft survives reconciliation
+  // of a lost Save response or a CAS conflict.  Every editor re-reads its CAS token through the data version.
+  const reconcileInputs = useCallback(async (): Promise<InputsPayload | null> => {
+    const result = await fetchInputs(project);
+    if (!("ok" in result && result.ok === true)) return null;
+    setRecovery(null);
+    setInputs(result);
+    setDataVersion((v) => v + 1);
+    void loadWorkspace();
+    return result;
+  }, [project, loadWorkspace]);
+
   const saveCells = useCallback(async (cells: Array<{ field_id: string; value: string }>): Promise<GridSaveOutcome> => {
     if (!inputs) return { kind: "rejected", message: "The grid is not loaded." };
     setBusy(true);
@@ -358,7 +370,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
                 <SheetFieldsEditor project={project} sheet="project_setup" title="Project setup" reloadKey={dataVersion} onSaved={afterMutation} />
               </div>
               <div id="wf-inputs-grid" tabIndex={-1}>
-                <CanonicalInputGrid payload={inputs} busy={busy} onSave={saveCells} onRefresh={refreshAll} />
+                <CanonicalInputGrid payload={inputs} busy={busy} onSave={saveCells} onReconcile={reconcileInputs} />
               </div>
               <div id="wf-inputs-costs" tabIndex={-1}>
                 <CostLinesView project={project} reloadKey={dataVersion} onMutated={afterMutation}

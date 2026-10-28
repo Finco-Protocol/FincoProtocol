@@ -1,5 +1,6 @@
 import "../../styles/rcm-financing.css";
 import { ReserveReturnsView } from "./ReserveReturnsView";
+import { isUnconfiguredFacility, unsupportedReason } from "./facilityState";
 import type { CapitalStackRow, EvidenceMetric, FinancingStudioPayload, SourcesUsesView, SuRow } from "./types";
 
 const PRICING: Record<string, string> = {
@@ -60,13 +61,24 @@ export function OverviewView({ studio }: { studio: FinancingStudioPayload }) {
 
       <h4 className="rcm-h4">Not released</h4>
       <ul className="rcm-closed" data-financing-closed="true">
-        {(studio.capital_stack.unsupported ?? []).map((u) => <li key={u.name}><strong>{u.name}</strong> — {u.reason}</li>)}
+        {(studio.capital_stack.unsupported ?? []).map((u) => <li key={u.name}><strong>{u.name}</strong> — {unsupportedReason(u)}</li>)}
       </ul>
     </section>
   );
 }
 
 function FacilityCard({ row }: { row: CapitalStackRow }) {
+  if (isUnconfiguredFacility(row)) {
+    return (
+      <article className="rcm-facility" data-facility={row.name} data-facility-unconfigured="true">
+        <header><strong>{row.name}</strong> <span className="rcm-badge">{row.status}</span></header>
+        <dl className="rcm-facts">
+          <div><dt>Type · rank</dt><dd>{row.type} · {row.rank}</dd></div>
+          <div><dt>Commitment, interest, repayment, fees and draws</dt><dd>Not configured — no terms are saved for this facility.</dd></div>
+        </dl>
+      </article>
+    );
+  }
   return (
     <article className="rcm-facility" data-facility={row.name}>
       <header><strong>{row.name}</strong> <span className="rcm-badge">{row.status}</span></header>
@@ -94,7 +106,9 @@ export function CapitalStackView({ studio }: { studio: FinancingStudioPayload })
       {!stack.available ? <p className="rx-empty" role="status" data-capital-stack-reason="true">{stack.reason}</p> : (
         <>
           <p className="rx-note" data-stack-priority="true">{stack.debt_service_priority} {studio.multisenior.active ? "The two-Senior configuration is ACTIVE and owns rates, fees, repayment and maturity." : "No two-Senior configuration is active: the single-Senior terms apply."}</p>
-          {stack.working && <p className="rx-note" data-stack-working="true">{stack.working.facility_count} facilit{stack.working.facility_count === 1 ? "y" : "ies"} · commitments {num(stack.working.senior_commitments_keur)} kEUR · scheduled draws {num(stack.working.scheduled_draws_keur)} kEUR · {stack.working.reconciled ? "draws reconcile to commitments" : "draws do NOT reconcile to commitments"}</p>}
+          {stack.working && ((stack.rows ?? []).length > 0 && (stack.rows ?? []).every(isUnconfiguredFacility)
+            ? <p className="rx-note" data-stack-working="true">{stack.working.facility_count} facilit{stack.working.facility_count === 1 ? "y" : "ies"} listed · no commitments or draws are configured.</p>
+            : <p className="rx-note" data-stack-working="true">{stack.working.facility_count} facilit{stack.working.facility_count === 1 ? "y" : "ies"} · commitments {num(stack.working.senior_commitments_keur)} kEUR · scheduled draws {num(stack.working.scheduled_draws_keur)} kEUR · {stack.working.reconciled ? "draws reconcile to commitments" : "draws do NOT reconcile to commitments"}</p>)}
           <div className="rcm-facilities">{(stack.rows ?? []).map((row) => <FacilityCard key={row.instrument_id} row={row} />)}</div>
         </>
       )}
@@ -103,7 +117,7 @@ export function CapitalStackView({ studio }: { studio: FinancingStudioPayload })
         this page shows exactly what is saved and what the last Run used.
       </p>
       <h4 className="rcm-h4">Not released</h4>
-      <ul className="rcm-closed">{(stack.unsupported ?? []).map((u) => <li key={u.name}><strong>{u.name}</strong> — {u.reason}</li>)}</ul>
+      <ul className="rcm-closed">{(stack.unsupported ?? []).map((u) => <li key={u.name}><strong>{u.name}</strong> — {unsupportedReason(u)}</li>)}</ul>
     </section>
   );
 }

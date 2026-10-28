@@ -216,6 +216,7 @@ export type RunModelResult =
 
 interface RunIntentBody {
   ok?: unknown; outcome?: unknown; history_id?: unknown; runtime_snapshot_id?: unknown; message?: unknown;
+  error_code?: unknown; reference?: unknown;
 }
 
 const RUN_OUTCOMES: readonly string[] = [
@@ -299,8 +300,14 @@ export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
     case "EXPIRED":
     case "UNAVAILABLE":
       return { kind: "unknown", message: message || "The Run outcome could not be confirmed. Press Run again to resume, or reload." };
-    default:
-      return { ok: false, outcome: typed.outcome, retain: false, message: message || `Run ${typed.outcome.toLowerCase()}.` };
+    default: {
+      // The server's own user-safe reason, with the ledger reference that also appears in the server log line.
+      const reference = typeof typed.reference === "string" && /^[0-9a-z]{6,16}$/i.test(typed.reference) ? ` (Reference ${typed.reference})` : "";
+      const reason = message || (typed.outcome === "FAILED"
+        ? "The Run did not complete and nothing was saved. The previous Last Run is unchanged."
+        : `Run ${typed.outcome.toLowerCase()}.`);
+      return { ok: false, outcome: typed.outcome, retain: false, message: `${reason}${reference}` };
+    }
   }
 }
 
@@ -443,6 +450,8 @@ export async function saveWorkbookField(args: SaveWorkbookFieldArgs): Promise<Sa
   return { ok: true, verified: false };
 }
 
+import type { CostLineEditWire } from "./costLinePayload";
+
 export interface SaveCostLinesBatchArgs {
   saveUrl: string;
   project: string;
@@ -450,7 +459,7 @@ export interface SaveCostLinesBatchArgs {
   workbookVersion: string;
   contentHash: string;
   sheet: "capex" | "opex";
-  edits: Array<Record<string, unknown>>;
+  edits: ReadonlyArray<CostLineEditWire>;
 }
 
 export type SaveCostLinesBatchResult =

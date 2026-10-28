@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../../styles/rcm-financing.css";
 import { StatusNote, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock, type StatusMessage } from "../workflow/workflowShared";
-import { draftFromTerms, isSame, serializeAgreement, type AgreementDraft } from "./serializeAgreement";
+import { draftFromTerms, friendlyAgreementError, identityProblems, isSame, serializeAgreement, type AgreementDraft } from "./serializeAgreement";
 import type { InvestorPayload, SponsorMetric } from "./types";
 
 type Read = { ok: true; data: InvestorPayload } | { ok: false; code: string; message?: string };
@@ -61,6 +61,10 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
 
   const submit = useCallback(async (action: "save" | "remove") => {
     if (!data) return;
+    if (action === "save") {
+      const problems = identityProblems(draft);
+      if (problems.length) { setStatus({ tone: "error", text: `${problems.join(" ")} Nothing was changed.` }); return; }
+    }
     await singleFlight(async () => {
       setInFlight(true); setStatus(null);
       try {
@@ -84,7 +88,7 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
         }
         if (!response.ok) {
           const failure = await response.json().catch(() => null) as { error?: string } | null;
-          setStatus({ tone: response.status === 409 ? "conflict" : "error", text: `${failure?.error || "The agreement could not be saved."} Nothing was changed.` });
+          setStatus({ tone: response.status === 409 ? "conflict" : "error", text: `${friendlyAgreementError(failure?.error)} Nothing was changed.` });
           if (response.status === 409) void load();
           return;
         }

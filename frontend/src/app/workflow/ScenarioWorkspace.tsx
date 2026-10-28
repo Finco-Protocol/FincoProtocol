@@ -302,6 +302,7 @@ function OverrideBoundary({ supported }: { supported?: Array<{ field_id: string;
           ? <>A scenario can override {supported.length === 1 ? "this assumption" : `these ${supported.length} assumptions`}: {supported.map((f) => labelWithUnit(f.label, f.unit)).join(", ")}.</>
           : "A scenario cannot currently override any assumption."}
         {" "}Every other assumption is inherited from the project and cannot differ between scenarios, even if it can be edited in Inputs.
+        {" "}A scenario created by <em>What-if</em> carries its one reviewed assumption change (counted under Overrides); that change is made in What-if, not edited here.
       </p>
     </div>
   );

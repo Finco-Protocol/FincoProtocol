@@ -187,6 +187,10 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
           ? "Templates are read-only. Start a project from this template to define contracts."
           : "Guided contract creation is available for Solar and Wind projects."}</p>}
         {creating && draft && renderEditor(draft, true)}
+        <p className="fm-info-note" data-ppa-release-limits="true">
+          This editor creates and edits <strong>PPA contracts</strong> only. Merchant and two-way CfD contract streams, commercial stress cases and a
+          period-by-period revenue preview before a Run are not released: revenue by period appears in the Statements after a Run.
+        </p>
       </section>
     );
   }
@@ -269,6 +273,10 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
             </div>
           );
         })}
+        <p className="fm-info-note" data-ppa-release-limits="true">
+          This editor creates and edits <strong>PPA contracts</strong> only. Merchant and two-way CfD contract streams, commercial stress cases and a
+          period-by-period revenue preview before a Run are not released: revenue by period appears in the Statements after a Run.
+        </p>
         <div className="fm-toolbar wf-toolbar" style={{ flexWrap: "wrap" }}>
           <button type="button" className="fm-btn" disabled={readOnly || model.streams.length >= 24}
                   onClick={() => setDraft((prev) => prev ? { ...prev, streams: [...prev.streams, newPpaStream(prev.streams, operatingWindow)], preservedKeys: [...prev.preservedKeys, []] } : prev)}>

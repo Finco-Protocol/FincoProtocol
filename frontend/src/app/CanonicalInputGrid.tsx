@@ -3,6 +3,7 @@ import { labelWithUnit } from "./fieldLabel";
 import type { GridCategoryPayload, GridRowPayload, GridSectionPayload, InputsPayload } from "./types";
 import { useDirtyTotal, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 import { plain } from "./productLanguage";
+import { classifyAttempt, type ReconcileVerdict } from "./gridReconcile";
 
 export type GridSaveOutcome =
   | { kind: "saved"; contentHash: string; runState: string }
@@ -15,7 +16,8 @@ interface CanonicalInputGridProps {
   busy: boolean;
   /** Performs the canonical atomic batch Save (POST /v2/workbook/grid/save). */
   onSave: (cells: Array<{ field_id: string; value: string }>) => Promise<GridSaveOutcome>;
-  onRefresh: () => void;
+  /** Re-reads the canonical Inputs projection WITHOUT leaving the page (drafts survive).  `null` = the read failed. */
+  onReconcile: () => Promise<InputsPayload | null>;
 }
 
 type Draft = Record<string, string>;
@@ -64,16 +66,18 @@ function sectionCounts(section: GridSectionPayload, gridEditable: boolean) {
 function showsGroupRow(category: GridCategoryPayload): boolean {
   return category.rows.length > 1 || (category.rows[0] !== undefined && category.rows[0].label.trim() !== category.label.trim());
 }
-export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: CanonicalInputGridProps) {
+export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: CanonicalInputGridProps) {
   const rows = useMemo(() => flattenRows(payload), [payload]);
   const [drafts, setDrafts] = useState<Draft>({});
   const { isUnresolved, setUnresolved } = useDirtyTotal();
   // An UNKNOWN / conflicting Save survives this grid unmounting (navigation): a remount starts locked.
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "conflict" | "rejected" | "unknown">(
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "conflict" | "rejected" | "unknown" | "reconciling">(
     () => (isUnresolved("input-grid") ? "unknown" : "idle"));
   const [message, setMessage] = useState(
     () => (isUnresolved("input-grid") ? "A previous Save outcome is unresolved. Reload to reconcile before saving again." : ""));
   const [activeCode, setActiveCode] = useState<string>("");
+  // The last submitted batch and the composite hash it was built on: the evidence a reconciliation needs.
+  const attempt = useRef<{ cells: Array<{ field_id: string; value: string }>; baselineHash: string } | null>(null);
   // Focus anchor: the disabled submit button would blur focus to <body> while a
   // Save is in flight, so focus stays on the active (readOnly, focusable) cell.
   const activeCellRef = useRef<HTMLInputElement | null>(null);
@@ -84,13 +88,13 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
     const row = rows.find((r) => (r.field_id || r.code) === code);
     return row !== undefined && drafts[code] !== row.value;
   });
-  const locked = status === "conflict" || status === "unknown" || busy;
+  const locked = status === "conflict" || status === "unknown" || status === "reconciling" || busy;
   const singleFlight = useSingleFlight();
   // Unsaved work: only cells whose staged value really differs from the persisted
   // one.  Unresolved work: a Save in flight, an UNKNOWN outcome or a CAS conflict.
   // Both are reported to the workspace so Run, navigation and Reload see them.
   useReportDirty("input-grid", dirtyCodes.length);
-  useReportPending("input-grid", status === "saving" || status === "conflict" || status === "unknown" || busy);
+  useReportPending("input-grid", status === "saving" || status === "conflict" || status === "unknown" || status === "reconciling" || busy);
 
   function stage(code: string, value: string) {
     if (protectedRef || locked) return;
@@ -125,9 +129,11 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
     setStatus("saving");
     setMessage("");
     activeCellRef.current?.focus();
+    attempt.current = { cells, baselineHash: payload.save.content_hash };
     const outcome = await onSave(cells);
     switch (outcome.kind) {
       case "saved":
+        attempt.current = null;
         setDrafts({});
         setStatus("saved");
         setMessage(outcome.runState === "STALE"
@@ -148,6 +154,43 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
         setStatus("unknown");
         setMessage(outcome.message);
         break;
+    }
+  }
+
+  /** Reconcile an UNKNOWN or conflicting Save with the canonical server state, without leaving the page and without
+   *  re-sending anything.  Committed: drafts are cleared.  Not committed / changed elsewhere: drafts stay editable.
+   *  The read failing keeps the grid locked (fail-closed). */
+  async function reconcile() {
+    const wasStatus = status;
+    if (wasStatus !== "unknown" && wasStatus !== "conflict") return;
+    setStatus("reconciling");
+    setMessage("Checking the saved state on the server…");
+    const fresh = await onReconcile();
+    if (!fresh) {
+      setStatus(wasStatus);
+      setMessage("The saved state could not be read. Nothing was changed; check the connection and press Reload now again.");
+      return;
+    }
+    const freshRows = flattenRows(fresh).map((r) => ({ field_id: r.field_id || r.code, value: r.value ?? "" }));
+    const evidence = attempt.current;
+    const verdict: ReconcileVerdict | null = evidence ? classifyAttempt(evidence, { save: fresh.save, rows: freshRows }) : null;
+    setUnresolved("input-grid", false);
+    attempt.current = null;
+    if (verdict === "committed") {
+      setDrafts({});
+      setStatus("saved");
+      setMessage("Reconciled: this Save had been committed on the server. It was not sent twice and the last Run was not re-run.");
+    } else if (verdict === "not_committed") {
+      setStatus("idle");
+      setMessage("Reconciled: this Save did not reach the server, so nothing changed. Your edits are kept — press Save to retry.");
+    } else if (verdict === "changed_elsewhere") {
+      setStatus("idle");
+      setMessage("Reconciled: the saved values changed elsewhere. Your edits are kept and are saved against the latest version only when you press Save — review them first.");
+    } else {
+      setStatus("idle");
+      setMessage(wasStatus === "conflict"
+        ? "Reloaded the latest saved state. Your staged edits are kept; review them, then Save."
+        : "Reloaded the saved state. No pending Save remained to reconcile.");
     }
   }
 
@@ -292,6 +335,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
           onClick={() => void save()}
         >
           {status === "saving" ? "Saving…"
+            : status === "reconciling" ? "Checking…"
             : status === "unknown" ? "Reload to reconcile"
               : status === "conflict" ? "Reload required"
                 : `Save ${dirtyCodes.length || ""} staged ${dirtyCodes.length === 1 ? "cell" : "cells"}`}
@@ -302,7 +346,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onRefresh }: Canonic
           </button>
         )}
         {(status === "conflict" || status === "unknown") && (
-          <button type="button" className="rx-button rx-button-secondary" data-reconcile-button="true" onClick={onRefresh}>
+          <button type="button" className="rx-button rx-button-secondary" data-reconcile-button="true" onClick={() => void reconcile()}>
             Reload now
           </button>
         )}
