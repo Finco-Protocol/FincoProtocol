@@ -199,15 +199,15 @@ RC_M_SUCCESSORS={
 # component there) and the rebuilt React bundle.  All RC-UX behaviour lives in NEW unpinned files proven by tests/test_model_react_rcux_*.py and
 # tests/test_rcux_governance.py.  Blobs are recomputed from the committed sources by the pin refresh and asserted by tests/test_rcux_governance.py.
 RC_UX_SUCCESSORS={
-    "app/v2/react_workspace_router.py":"dab743e38301d9504909ef73693cb83deeca3dd2",
+    "app/v2/react_workspace_router.py":"4cb4d0e211fb536bc15a5a0c29a67d5bd2b9fa76",
     "frontend/src/app/FinancialResults.tsx":"9047ea4e3a97a5d5fa6983bba2bfaa1ac99ec3d2",
-    "frontend/src/app/WorkspaceView.tsx":"342e14706b8254555624eb94252de3e1249d59d5",
-    "frontend/src/app/workflow/ModelExportView.tsx":"a912911cd95d1dc68dd8280bad7ebcfa718506c4",
+    "frontend/src/app/WorkspaceView.tsx":"dae192a8b8ba4504e0eb862ab2789778a1b99010",
+    "frontend/src/app/workflow/ModelExportView.tsx":"93f38ef969a4c12ce0d2d8baced89285742bc9cc",
     "frontend/src/app/workflow/ScenarioKpiComparison.tsx":"46166fed77b58ac5e0e1730c8f1150053b774bc7",
-    "frontend/src/app/workflow/ScenarioWorkspace.tsx":"f5f199c98ff96fa5f2ba83e65953c99ff502ee8a",
+    "frontend/src/app/workflow/ScenarioWorkspace.tsx":"f0b750d0416d00e4bde5e2842943fd70446cf633",
     "frontend/src/app/workflow/workflowShared.tsx":"50aef516d139ac0a909e6059974095c62a487b21",
     "static/react/finco-react.css":"0966ea1d11e41767dd89f3cac447e251b4d89be7",
-    "static/react/finco-react.js":"0307d8df5f08db0061880d9fb27d8fd2542119d0",
+    "static/react/finco-react.js":"7fdf827dd4f73600525a1b421e6ff9742801fdb8",
     "tests/model_react_mvp_acceptance.py":"e085043916748497a32fdcf9bb429234885f367a",
     "tests/model_react_wf2_browser_acceptance.py":"4ca9487e898620ff7b614a94ba88150f6cdb7696",
     "tests/test_model_workspace_consolidation_browser.py":"665ef4874260612c9687fafddc303aeae56e82af",

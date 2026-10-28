@@ -7,8 +7,7 @@ Synthetic data only; the real canonical routes, engine and SQLite are used (thre
       token are still refused);
 * F3  the Last Run export names its real refusal, never claims "no committed Run" when one exists, and offers the immutable record of
       that very Run (its historical export is the same committed evidence);
-* F4  a failed Run carries the user-safe reason, an error code and the ledger reference in the typed JSON outcome (the same reference is in the
-      server log line), never internals; the canonical Run route itself is unchanged;
+* F4  lives in tests/test_pr394_f4_run_failure_reason_v1.py (separately governed: it covers the D-029 service);
 * F8  Compare Projects shows the market and the MOIC a Run published, and still shows nothing for what it did not publish;
 * the React-side pure helpers (F1 payload builder, F2 reserve gate, F5 reconciliation, F7 facility state, F10 identity checks) run
   through the real TypeScript sources when node and the frontend dev dependencies are present.
@@ -209,61 +208,6 @@ def test_f3_export_reasons_are_truthful_and_the_immutable_record_is_offered(env)
     export = env.client.get(fallback["url"], params={"project": record.project_code, "history_id": fallback["history_id"]})
     assert export.status_code == 200 and export.content[:2] == b"PK", "an XLSX of the immutable Run record"
     assert len(export.content) > 10_000
-
-
-# ── F4 ───────────────────────────────────────────────────────────────────────────────────────────────────
-
-def _patch_engine_failure(monkeypatch, error_type, message):
-    import app.runtime.model_execution as me
-
-    async def failing(*args, **kwargs):
-        raise me.ModelWorkerError(error_type, message, None, None)
-
-    monkeypatch.setattr(me, "run_model_process", failing)
-
-
-def test_f4_a_failed_run_explains_itself_safely_with_a_reference(env, monkeypatch, caplog):
-    record = env.create("solar")
-    _patch_engine_failure(monkeypatch, "CleanProductionRunUnavailable",
-                          "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 31956.03 kEUR remains "
-                          "at maturity period_index=57 /opt/finco_protocol/secret/path Traceback (most recent call last)")
-    response = run_json(env, record)
-    body = response.json()
-    assert response.status_code == 409 and body["outcome"] == "FAILED" and body["ok"] is False
-    assert "shareholder loan" in body["message"].lower(), body["message"]
-    assert body["error_code"] == "ENGINE_FAILED"
-    assert re.fullmatch(r"[0-9a-f]{8}", body["reference"] or ""), body
-    assert any(f"reference={body['reference']}" in r.getMessage() and "ENGINE_FAILED" in r.getMessage() for r in caplog.records), \
-        "the browser reference must be findable in the server log"
-    leaked = json.dumps(body)
-    for forbidden in ("Traceback", "/opt/", "secret", "31956", "period_index", "SHL_MATURITY", "PR8_CLEAN"):
-        assert forbidden not in leaked, forbidden
-    assert history(env, record) == [], "a failed Run commits nothing"
-    from app.services import run_intent_service as ri
-    assert ri._FAILURE_REASONS == {}, "the recorded reason is consumed by the response that owns it, never kept or reused"
-
-
-def test_f4_timeout_busy_and_conflict_codes_have_their_own_plain_reasons(env, monkeypatch):
-    from app.runtime.model_execution import ModelExecutionBusy, ModelExecutionTimeout
-    import app.runtime.model_execution as me
-    record = env.create("solar")
-    for exc, code, needle in ((ModelExecutionTimeout(), "ENGINE_TIMEOUT", "too long"), (ModelExecutionBusy(), "ADMISSION_REFUSED", "busy")):
-        async def failing(*args, _exc=exc, **kwargs):
-            raise _exc
-        monkeypatch.setattr(me, "run_model_process", failing)
-        body = run_json(env, record).json()
-        assert body["outcome"] == "FAILED" and body["error_code"] == code and needle in body["message"].lower(), body
-        assert history(env, record) == []
-
-
-def test_f4_an_unknown_failure_stays_generic_and_never_leaks_its_text(env, monkeypatch):
-    record = env.create("solar")
-    _patch_engine_failure(monkeypatch, "RuntimeError", "boom at /root/private/db.sqlite password=hunter2")
-    body = run_json(env, record).json()
-    assert body["outcome"] == "FAILED" and body["message"] and body["error_code"] == "ENGINE_FAILED"
-    for forbidden in ("boom", "/root", "hunter2", "password", "sqlite"):
-        assert forbidden not in json.dumps(body)
-    assert history(env, record) == []
 
 
 # ── F8 ───────────────────────────────────────────────────────────────────────────────────────────────────

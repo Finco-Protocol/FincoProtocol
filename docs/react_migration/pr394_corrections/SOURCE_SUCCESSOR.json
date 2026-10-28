@@ -1,0 +1,12 @@
+{
+  "schema_version": "PR394_CORRECTION_EXACT_SOURCE_V1",
+  "base": "c129c54a6a0feae62d79bcb76e78b73560838af1",
+  "authorization": "Financial Owner approved the narrowly scoped exact-source governance reconciliation for the PR #394 staging corrections (F1-F10), including one separately governed F4 exception for app/services/run_intent_service.py limited to user-safe Run failure reporting. No wildcard, prefix or pattern admission; no router, CSRF, persistence, schema, financial-engine, export or CI change; no merge or activation. Self-generated exact blobs: a review proposal, not an approval.",
+  "source_blobs": {
+    "app/services/run_intent_service.py": "a0b8a62714c53dbfca8925f87282b60b663e3bcd",
+    "tests/fin_v2_pr394_corr_scope.py": "40231cc3aa61b04214533da506ddec84cc09c809",
+    "tests/test_fin_v2_pr394_corr_scope.py": "07b45c14a065cce5b84e066472e3d108e0d9ddc0",
+    "tests/test_pr394_f4_run_failure_reason_v1.py": "87e195277f2fd00fcdf48466c92ef9fbf75222a7",
+    "tests/test_pr394_staging_corrections_v1.py": "e35f246de50ae8cdde0af9248a5cafbcf2f6692d"
+  }
+}

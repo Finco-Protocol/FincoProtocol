@@ -72,6 +72,96 @@ ROUTER_WORDING = (
     ('"note": "Run initiation stays on the canonical route; success redirects "\n                                 "(303) to the workbook, failures redirect with ?v2_err=. "\n                                 "Save NEVER triggers a Run."},',
      '"note": "Saving never runs the model; a Run starts only when you press Run model."},'),
     ('"base": {"label": f"Working Copy / {ws.active_scenario_name or \'Base Case\'}",', '"base": {"label": f"Project / {ws.active_scenario_name or \'Base Case\'}",'),
+    # PR #394 staging correction F3 (exact reviewed blocks, applied after the wording above): the Last Run export names its real refusal
+    # and offers the immutable Run record of that very Run.  No route, token, key or calculation changes.
+    ('''def _last_run_export_availability(record, owner) -> tuple[bool, str]:
+    """Whether the canonical Last Run export would succeed for the ACTIVE scenario.
+
+    Uses the same single-read resolver the export route uses (no engine, no
+    write), so the React client never offers a download the server will refuse -
+    for example right after selecting a scenario that has no committed Run.
+    """
+    if (getattr(record, "project_origin", "") or "") != "user_created":
+        return False, "Only Working Copies created by a user can be exported."
+    try:
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.services.export_service import resolve_canonical_last_run_from_workspace
+
+        resolve_canonical_last_run_from_workspace(record, owner, get_workspace_state(owner, record.project_id))
+    except ValueError:
+        return False, "No committed Run exists for the active scenario."
+    except Exception:  # noqa: BLE001 - fail closed; the route itself re-validates
+        return False, "The Last Run could not be read."
+    return True, ""
+
+''',
+     '''def _last_run_export_availability(record, owner) -> tuple[bool, str, str]:
+    """Whether the canonical Last Run export would succeed for the ACTIVE scenario: ``(available, reason, code)``.
+
+    Uses the same single-read resolver the export route uses (no engine, no
+    write), so the React client never offers a download the server will refuse -
+    for example right after selecting a scenario that has no committed Run.
+    The code names the REAL refusal so the screen never claims "no committed Run"
+    when one exists (a Run executed with a monthly CAPEX construction profile cannot be
+    re-materialised by the Last Run export; its immutable historical export still works).
+    """
+    if (getattr(record, "project_origin", "") or "") != "user_created":
+        return False, "Only Working Copies created by a user can be exported.", "NOT_USER_CREATED"
+    try:
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.services.export_service import resolve_canonical_last_run_from_workspace
+
+        resolve_canonical_last_run_from_workspace(record, owner, get_workspace_state(owner, record.project_id))
+    except ValueError as exc:
+        text = str(exc)
+        if "CAPEX_PROFILE_UNBOUND_SURFACE" in text:
+            return (False, "The Last Run used a monthly CAPEX construction profile, which the Last Run export cannot re-create. "
+                           "Its immutable Run record can still be exported below.", "CAPEX_PROFILE_RUN")
+        if "no committed run exists" in text.lower() or "No saved working-copy state" in text:
+            return False, "No committed Run exists for the active scenario.", "NO_COMMITTED_RUN"
+        return (False, "The Last Run export is not available for the active scenario because its Run evidence cannot be re-bound. "
+                       "Its immutable Run record can still be exported from the Run list.", "EXPORT_BINDING_UNAVAILABLE")
+    except Exception:  # noqa: BLE001 - fail closed; the route itself re-validates
+        return False, "The Last Run could not be read.", "READ_FAILED"
+    return True, "", ""
+
+
+def _last_run_history_id(record, owner, history) -> "str | None":
+    """History id of the immutable row that IS the active scenario's committed Last Run (matched on the committed
+    runtime snapshot id), or None.  Used only to offer that row's own immutable export when the Last Run export is closed."""
+    try:
+        from app.persistence.workspace_repository import get_workspace_state
+
+        ws = get_workspace_state(owner, record.project_id)
+        snapshot_id = getattr(ws, "last_runtime_snapshot_id", None) if ws is not None else None
+        if not snapshot_id:
+            return None
+        for entry in history:
+            data = entry.to_dict() if hasattr(entry, "to_dict") else dict(entry)
+            if data.get("runtime_snapshot_id") == snapshot_id and data.get("history_id"):
+                return str(data["history_id"])
+    except Exception:  # noqa: BLE001 - the fallback is an optional convenience; never block the run list
+        return None
+    return None
+
+
+'''),
+    ('''    export_available, export_reason = _last_run_export_availability(record, owner)
+''',
+     '''    export_available, export_reason, export_code = _last_run_export_availability(record, owner)
+    export_fallback = None
+    if not export_available and export_code in ("CAPEX_PROFILE_RUN", "EXPORT_BINDING_UNAVAILABLE"):
+        fallback_id = _last_run_history_id(record, owner, history)
+        if fallback_id:
+            export_fallback = {"history_id": fallback_id, "url": "/v2/workbook/run-history/export"}
+'''),
+    ('''                         "unavailable_reason": export_reason,
+''',
+     '''                         "unavailable_reason": export_reason,
+                         "unavailable_code": export_code or None,
+                         # The immutable historical row that IS the Last Run, offered only when the Last Run export is closed.
+                         "historical_fallback": export_fallback,
+'''),
 )
 
 
@@ -120,6 +210,10 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
                  "app/workbook/mutation_csrf.py", "app/workbook/financing_csrf.py")
     prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/", "app/capex_profiles/", "app/export/")
     hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]
+    # The ONE later, separately governed exception: the PR #394 correction cohort pins the exact blob of app/services/run_intent_service.py
+    # (tests/fin_v2_pr394_corr_scope.py).  Only that exact path with exactly that blob is attributed to it - never a prefix or another forbidden path.
+    from tests import fin_v2_pr394_corr_scope as PR394
+    hits = [p for p in hits if not (p == "app/services/run_intent_service.py" and PR394.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
