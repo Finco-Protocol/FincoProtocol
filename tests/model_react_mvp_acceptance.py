@@ -136,8 +136,6 @@ def check_library_clone_creates_an_openable_unprotected_working_copy(browser, re
         page.locator("[data-wizard-next='true']").click()
         page.fill("#rcm-name", "MVP template project")
         page.locator("[data-wizard-next='true']").click()
-        page.wait_for_selector("[data-wizard-panel='timeline']", timeout=30000)
-        page.locator("[data-wizard-next='true']").click()
         page.wait_for_selector("[data-wizard-panel='review']")
         page.locator("[data-wizard-create]").click()
         page.wait_for_selector("[data-react-workspace-version]", timeout=60000)

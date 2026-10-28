@@ -232,6 +232,19 @@ WSV2_BROWSER_SUCCESSORS={
     "tests/test_model_workspace_consolidation_browser.py":"7c6478289c029f8b53e16103fa22b22123cbd19a",
 }
 
+# Financial Owner §D approval at 5d5f19ee: nine exact acceptance sources; historical pins unchanged.
+WSV2_ACCEPTANCE_SUCCESSORS={
+    "tests/model_react_mvp_acceptance.py":"6df4b14e0993ac3cf3f26df3f802dc644c0ed65b",
+    "tests/model_react_rcm_new_project_acceptance.py":"b1a38b458717bdc99e25eb6159a1387a952c34eb",
+    "tests/model_react_rcm_themes_acceptance.py":"a763beb9995e537cd7c5fe88c21cd9213068ff60",
+    "tests/model_react_rcux_navigation_acceptance.py":"c42e00a05333b8f71fb03a33988d832a97955bc6",
+    "tests/model_react_rcux_product_acceptance.py":"26193998bd2978ddac55982176cb541b58f4e75e",
+    "tests/test_model_react_poc_browser_acceptance.py":"75f8f87492538f5521bdaf804982c8372b6645e4",
+    "tests/model_react_wf1_browser_acceptance.py":"6f60735fbb3317aa8b04ef5fb09c7107997b1995",
+    "tests/model_react_rcm_investors_acceptance.py":"6bf989629935a247cd392a61dea23914b20c29bc",
+    "tests/model_react_rcux_analysis_acceptance.py":"2afd19681bbb7cd1a758129603b9e2ecfb21011d",
+}
+
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -345,6 +358,7 @@ def violations(sources,*,check_pin=True):
         if path in FINV2_D01_SENSITIVITY_SUCCESSORS:admitted=admitted|{FINV2_D01_SENSITIVITY_SUCCESSORS[path]}
         if path in WSV2_PRESENTATION_SUCCESSORS:admitted=admitted|{WSV2_PRESENTATION_SUCCESSORS[path]}
         if path in WSV2_BROWSER_SUCCESSORS:admitted=admitted|{WSV2_BROWSER_SUCCESSORS[path]}
+        if path in WSV2_ACCEPTANCE_SUCCESSORS:admitted=admitted|{WSV2_ACCEPTANCE_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:
             # FIN-V2-3: admit ONLY the exact independently pinned financial
             # source under the full merged #388/#390 ancestor contract.

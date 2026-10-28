@@ -65,6 +65,15 @@ OWNED_PATHS = frozenset((
     'static/react/finco-react.js',
     'tests/fin_v2_cohorts.py',
     'tests/model_mutation_security_successor.py',
+    'tests/model_react_mvp_acceptance.py',
+    'tests/model_react_rcm_new_project_acceptance.py',
+    'tests/model_react_rcm_themes_acceptance.py',
+    'tests/model_react_rcux_navigation_acceptance.py',
+    'tests/model_react_rcux_product_acceptance.py',
+    'tests/test_model_react_poc_browser_acceptance.py',
+    'tests/model_react_wf1_browser_acceptance.py',
+    'tests/model_react_rcm_investors_acceptance.py',
+    'tests/model_react_rcux_analysis_acceptance.py',
     'tests/model_react_wsv2_acceptance.py',
     'tests/test_model_react_overnight_b_governance.py',
     'tests/test_model_react_wsv2_overview.py',
@@ -76,6 +85,8 @@ OWNED_PATHS = frozenset((
 ))
 
 # Exact historical manifest keys that may point at the newly authorized bytes.
+OWNER_APPROVED_ACCEPTANCE_PIN = 'tests/model_react_mvp_acceptance.py'
+
 GOVERNANCE_PINS = frozenset((
     'tests/model_mutation_security_successor.py',
     'tests/fin_v2_cohorts.py',
@@ -125,7 +136,8 @@ def _historical_manifests_ok(root, ref):
             return False
         if set(before) != set(after):
             return False
-        allowed = {'app/v2/react_rcux.py'} if path == PREDECESSOR_MANIFESTS[-1] else GOVERNANCE_PINS
+        allowed = ({'app/v2/react_rcux.py'} if path == PREDECESSOR_MANIFESTS[-1]
+                   else GOVERNANCE_PINS | ({OWNER_APPROVED_ACCEPTANCE_PIN} if path == PREDECESSOR_MANIFESTS[0] else set()))
         if any(before[p] != after[p] and p not in allowed for p in before):
             return False
         # Every pre-existing metadata field remains; only the live pin map changes.

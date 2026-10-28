@@ -113,8 +113,6 @@ def go_to_review(page, key, name, capacity=None, country=None):
     page.wait_for_selector("[data-wizard-panel='details']")
     fill_details(page, name, capacity, country)
     next_(page)
-    page.wait_for_selector("[data-wizard-panel='timeline']")
-    next_(page)
     page.wait_for_selector("[data-wizard-panel='review']")
 
 
@@ -187,16 +185,14 @@ def test_pilot_candidate_wizard_creates_exactly_one_not_run_working_copy(live_se
     shot(page, f"{key}-step2-errors-1440")
     fill_details(page, f"RCM {label} Wizard", capacity=37.5)
     next_(page)
-    # step 3: the canonical reference timeline, read-only
-    page.wait_for_selector("[data-wizard-panel='timeline']")
-    tl = canon["timeline"]
-    assert page.locator("[data-timeline='construction_months']").inner_text().startswith(str(tl["construction_months"]))
-    assert page.locator("[data-timeline='cod_date']").inner_text() == tl["cod_date"]
-    assert page.locator("[data-timeline='horizon_years']").inner_text().startswith(str(tl["horizon_years"]))
-    shot(page, f"{key}-step3-1440")
-    next_(page)
-    # step 4: effective assumptions are the server preview, not browser arithmetic
+    # step 3: review includes the canonical reference timeline and effective assumptions.
     page.wait_for_selector("[data-wizard-panel='review']")
+    assert step(page) == 3 and page.locator(".rcm-steps li").count() == 3
+    assert page.locator("[data-wizard-panel='timeline']").count() == 0
+    tl = canon["timeline"]
+    assert page.locator("[data-review='timeline']").inner_text() == (
+        f"{tl['construction_months']} months · COD {tl['cod_date']} · {tl['horizon_years']} years")
+    shot(page, f"{key}-step3-1440")
     preview = context.request.get(f"{live_server}/v2/model-react/new-project/preview",
                                   params={"name": f"RCM {label} Wizard", "technology": key, "country": country, "capacity_mw": "37.5"}).json()
     assert page.locator("[data-review='capex']").inner_text().startswith(preview["effective"]["total_capex_display"])
@@ -208,7 +204,8 @@ def test_pilot_candidate_wizard_creates_exactly_one_not_run_working_copy(live_se
     wait_workspace(page, live_server)
     rows = projects_of(uid)
     assert len(rows) == 1 and rows[0].project_name == f"RCM {label} Wizard"
-    assert page.url.rstrip("/").endswith(rows[0].project_code)
+    assert page.url.split("#", 1)[0].rstrip("/").endswith(rows[0].project_code)
+    assert page.url.endswith("#inputs")
     page.wait_for_selector("[data-workflow-bar='true'][data-bar-freshness='NOT_RUN']", timeout=30000)
     shot(page, f"{key}-created-not-run-1440")
     assert unexpected(errors, allow=(422,)) == []          # the one 422 is the deliberately invalid step 2
@@ -352,7 +349,7 @@ def test_keyboard_only_flow_reaches_review(live_server, np_session):
     assert page.evaluate("() => document.activeElement && document.activeElement.id") == "rcm-step-heading"
     page.fill("#rcm-name", "RCM Keyboard")
     page.locator("#rcm-name").press("Enter")                 # Enter in the form advances like Next
-    page.wait_for_selector("[data-wizard-panel='timeline']")
+    page.wait_for_selector("[data-wizard-panel='review']")
     assert errors == []
 
 
@@ -365,7 +362,7 @@ def test_every_step_fits_the_viewport_with_usable_touch_targets(live_server, np_
     shot(page, f"library-{width}")
     open_wizard(page, live_server)
     for label, action in (("step1", lambda: pick(page, "wind")), ("step2", lambda: next_(page)),
-                          ("step3", lambda: (fill_details(page, "RCM Responsive"), next_(page))), ("step4", lambda: next_(page))):
+                          ("step3", lambda: (fill_details(page, "RCM Responsive"), next_(page)))):
         action()
         page.wait_for_function("() => document.querySelector('#rcm-step-heading')")
         no_page_overflow(page)

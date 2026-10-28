@@ -32,11 +32,11 @@ app/v2/post_run_context.py deep-copy and history-read optimization remain deferr
 No merge, deployment, release flag, finance policy, native gate, golden update or Legacy retirement is requested.
 
 
-## D. Additional acceptance-contract reconciliation — NOT AUTHORIZED / NOT APPLIED
+## D. Additional acceptance-contract reconciliation — FINANCIAL OWNER APPROVED, CANDIDATE IMPLEMENTATION
 
-Section A exposed a necessary path omission: prior mandatory browser bodies still require the removed read-only wizard step or local precision controls. A real reproduction through the mandatory role returned seven WS1 passes and one original Solar wizard failure at model_react_rcm_new_project_acceptance.py:191, waiting for the intentionally removed timeline panel. Restoring that redundant panel or skipping old cases would violate the requested product/test requirements.
+Owner approved the nine exact protected acceptance tests and strictly limited existing governance successors on 2026-10-28 against HEAD `5d5f19ee779923719144321ccda3a4068c63f91d`. No Archive/Blank/WS2, finance engine, Run Integrity, merge or deploy approval. Section A exposed a necessary path omission: prior mandatory browser bodies still require the removed read-only wizard step or local precision controls. A real reproduction through the mandatory role returned seven WS1 passes and one original Solar wizard failure at model_react_rcm_new_project_acceptance.py:191, waiting for the intentionally removed timeline panel. Restoring that redundant panel or skipping old cases would violate the requested product/test requirements.
 
-The concrete UNAPPLIED diff is ACCEPTANCE_SUCCESSOR_PROPOSAL.patch. It is a review proposal; its presence does not execute or admit the changed test bytes. Original test function identities and parametrization are preserved; no skip is added. Exact additional requested paths (all under tests/):
+The exact reviewed diff remains in ACCEPTANCE_SUCCESSOR_PROPOSAL.patch; this successor applies its nine acceptance changes and exact-source pin admission. The original patch is evidence, not a test waiver. Original test function identities and parametrization are preserved; no skip is added. Exact additional requested paths (all under tests/):
 
 1. model_react_mvp_acceptance.py — advance directly from validated details to review.
 2. model_react_rcm_new_project_acceptance.py — three-step flow; verify the same canonical timeline in review; require created project #inputs; preserve error, ownership, preview, single-create, retry and responsive tests.
@@ -50,4 +50,4 @@ The concrete UNAPPLIED diff is ACCEPTANCE_SUCCESSOR_PROPOSAL.patch. It is a revi
 
 Support changes would stay confined to the already listed section A paths: a separate exact acceptance-body successor in tests/model_mutation_security_successor.py (no editing of earlier dictionaries or the four presentation pins); corresponding current-source recognition in tests/test_rcux_governance.py; the literal added paths and negative controls in tests/wsv2_core_scope.py and tests/test_wsv2_core_scope.py; and exact test-byte attribution in the four approved manifests plus the WS1 manifest. The archived source_blobs maps remain immutable. Only acceptance test pointers may additionally change; financial/app/security pins remain unchanged. New adversarial checks must bind unchanged test identities/parametrization, old financial/security assertions and no-skip rules.
 
-This is not permission to edit arbitrary acceptance, financial fixtures, golden results, CI workflows, native gates, Run integrity, Archive/Blank or WS2. The proposed patch needs Owner exact-path approval, implementation validation, independent exact-head review and fresh CI before any acceptance claim.
+This is not permission to edit arbitrary acceptance, financial fixtures, golden results, CI workflows, native gates, Run integrity, Archive/Blank or WS2. Owner exact-path approval has been granted; independent exact-head review and fresh CI remain mandatory before any merge recommendation.

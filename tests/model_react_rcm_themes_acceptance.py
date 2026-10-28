@@ -64,11 +64,8 @@ def test_new_surfaces_are_legible_in_every_theme(live_server, browser, rcm_react
             page.wait_for_selector("[data-wizard-panel='details']")
             page.fill("#rcm-name", "Theme check")
             page.locator("[data-wizard-next]").click()
-            page.wait_for_selector("[data-wizard-panel='timeline']")
-            check(page, f"{theme} / wizard step 3")
-            page.locator("[data-wizard-next]").click()
             page.wait_for_selector("[data-wizard-panel='review']")
-            check(page, f"{theme} / wizard step 4")
+            check(page, f"{theme} / wizard step 3 (review and canonical timeline)")
             # Analysis
             for tool, marker in (("sensitivity", "[data-sensitivity-panel='true']"), ("goal-seek", "[data-goal-seek-panel='true']")):
                 page.goto(f"{live_server}/v2/model-react/{record.project_code}#analysis")

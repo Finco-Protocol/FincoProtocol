@@ -13,6 +13,17 @@ PRESENTATION = frozenset((
     'frontend/src/app/FinancialResults.tsx', 'frontend/src/app/WorkspaceView.tsx',
     'static/react/finco-react.js', 'static/react/finco-react.css',
 ))
+OWNER_APPROVED_ACCEPTANCE = frozenset((
+    'tests/model_react_mvp_acceptance.py',
+    'tests/model_react_rcm_new_project_acceptance.py',
+    'tests/model_react_rcm_themes_acceptance.py',
+    'tests/model_react_rcux_navigation_acceptance.py',
+    'tests/model_react_rcux_product_acceptance.py',
+    'tests/test_model_react_poc_browser_acceptance.py',
+    'tests/model_react_wf1_browser_acceptance.py',
+    'tests/model_react_rcm_investors_acceptance.py',
+    'tests/model_react_rcux_analysis_acceptance.py',
+))
 ROLE = 'tests/test_model_workspace_consolidation_browser.py'
 ACCEPTANCE = 'tests/model_react_wsv2_acceptance.py'
 TESTS = (
@@ -214,3 +225,25 @@ def test_ws1_diff_has_no_financial_run_integrity_or_ws2_source_change():
                    'app/workbook/', 'app/services/', 'frontend/src/app/editing/')
     assert not [p for p in changed if p.startswith(authorities)]
     assert 'app/v2/router.py' not in changed and 'app/v2/post_run_context.py' not in changed
+
+
+def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
+    assert set(S.WSV2_ACCEPTANCE_SUCCESSORS) == OWNER_APPROVED_ACCEPTANCE
+    assert OWNER_APPROVED_ACCEPTANCE <= F.OWNED_PATHS
+    pins = F.manifest()['source_blobs']
+    for path in OWNER_APPROVED_ACCEPTANCE:
+        assert pins[path] == S.WSV2_ACCEPTANCE_SUCCESSORS[path]
+        original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()
+        current = F._read(F.ROOT, path, None).decode()
+        assert S.git_blob(current) == pins[path]
+        def tests(text):
+            return [(n.name, [ast.dump(d, include_attributes=False) for d in n.decorator_list])
+                    for n in ast.parse(text).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]
+        assert tests(original) == tests(current), path
+        assert 'pytest.mark.skip' not in current and 'pytest.mark.xfail' not in current
+        if path in S.BLOBS:
+            sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}
+            assert S.violations(sources) == []
+            mutated = dict(sources)
+            mutated[path] = current + '\n'
+            assert S.violations(mutated)

@@ -615,7 +615,7 @@ def test_rcux_workspace_hash_navigation_never_leaves_the_project_for_the_library
             page.goto(f"{base}#{section}")
             page.wait_for_selector("[data-workspace-nav], nav", timeout=60000)
     for section in ("statements", "financing", "analysis", "inputs"):
-        page.locator(f"[data-workspace-nav] a[href$='#{section}'], nav a[href$='#{section}']").first.click()
+        page.locator(f"[data-workspace-nav] a[href$='#{section}']").click()
         page.wait_for_timeout(250)
         assert page.url.startswith(base), (section, page.url)
     page.go_back()
