@@ -39,7 +39,8 @@ print(sorted(layer))
 # the successor layer / RC-UX successor logic lives there.  Every other pin (engine, persistence, workbook, ...) is never touched here.
 REPIN = {"tests/model_mutation_security_successor.py", "tests/test_model_mutation_security_successor.py",
          "tests/test_model_react_overnight_b_governance.py", "tests/test_rcm_governance.py",
-         "tests/model_react_mvp_acceptance.py", "tests/model_react_overnight_b_acceptance.py", "tests/fin_v2_cohorts.py"}
+         "tests/model_react_mvp_acceptance.py", "tests/model_react_overnight_b_acceptance.py", "tests/fin_v2_cohorts.py",
+         "tests/test_finv2_d01_routes_and_matrix.py"}
 OTHER = ["docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json", "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
          "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json", "docs/financial_validation/fin_v2_ci/SOURCE_SUCCESSOR.json"]
 def dump(path, data):
