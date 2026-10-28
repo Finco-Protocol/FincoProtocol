@@ -32,6 +32,7 @@ __all__ = (
     "test_rcux_credit_decision_for_two_selected_runs_compares_them_and_fits_every_viewport",
     "test_rcux_earlier_run_statements_open_in_react_with_the_runs_own_values_and_survive_refresh_and_back",
     "test_rcux_revenue_studio_edits_the_escalation_base_year_policy_and_indexation_start_date_without_a_run",
+    "test_rcux_ppa_contract_dates_off_the_period_boundary_offer_the_nearest_accepted_dates_and_never_round",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -538,4 +539,33 @@ def test_rcux_revenue_studio_edits_the_escalation_base_year_policy_and_indexatio
     assert saved["value"] == target
     assert context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"] == history     # Save never runs
     _shot(page, "revenue-indexation")
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_ppa_contract_dates_off_the_period_boundary_offer_the_nearest_accepted_dates_and_never_round(live_server, an_session):
+    context, page, record, errors = an_session("rcux-r23")
+    contracts = context.request.get(f"{live_server}/v2/model-react/revenue", params={"project": record.project_code}).json()
+    editor = contracts["contracts"]
+    boundaries = editor["operating_boundaries"]
+    assert len(boundaries) > 6
+    page.goto(f"{live_server}/v2/model-react/{record.project_code}#inputs")
+    page.wait_for_selector("[data-ppa-editor='empty']", timeout=60000)
+    panel = page.locator("[data-ppa-editor]")
+    panel.get_by_role("button", name="Define a PPA contract").click()
+    stream = panel.locator("[data-ppa-stream]").first
+    assert stream.locator("[data-date-guidance]").count() == 0                      # the seeded window is already on the boundaries
+    off = boundaries[4][:8] + ("17" if boundaries[4][8:] != "17" else "18")          # a day that is not a period boundary
+    assert off not in boundaries
+    stream.get_by_label("End date").fill(off)
+    guidance = stream.locator("[data-date-guidance]").last
+    guidance.wait_for(timeout=10000)
+    assert "not an operating-period boundary" in guidance.inner_text() and "never rounded" in guidance.inner_text()
+    suggestions = guidance.locator("[data-date-suggestion]")
+    assert 1 <= suggestions.count() <= 2
+    offered = [s.get_attribute("data-date-suggestion") for s in suggestions.all()]
+    assert all(v in boundaries for v in offered)                                    # only accepted dates are ever offered
+    assert stream.get_by_label("End date").input_value() == off                     # nothing changed until the user chooses
+    _shot(page, "ppa-date-suggestions")
+    suggestions.first.click()
+    assert stream.get_by_label("End date").input_value() == offered[0] and stream.locator("[data-date-guidance]").count() == 0
     assert [e for e in errors if "Failed to load resource" not in e] == []

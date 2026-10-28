@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { saveRevenueContracts } from "../api";
 import { plain } from "../productLanguage";
+import { calendarFrom, dateGuidance, type DateGuidance } from "./contractDates";
 import {
   buildContractPayload, contractClass, countContractEdits, newPpaStream, parseContractModel,
   validateContractModel, type ContractModel, type StreamDraft,
@@ -55,6 +56,19 @@ async function readFreshRevenue(project: string): Promise<FreshRevenue> {
   }
 }
 
+/** Why a contract date is not an operating-period boundary and the nearest accepted dates, one click each (the date is never rounded for the user). */
+function DateHelp({ guidance, readOnly, onUse }: { guidance: DateGuidance | null; readOnly: boolean; onUse: (date: string) => void }) {
+  if (!guidance) return null;
+  return (
+    <div className="wf-date-help" role="status" data-date-guidance="true">
+      <small>{guidance.message}</small>
+      {!readOnly && guidance.suggestions.map((sug, k) => (
+        <button key={sug.value} type="button" className="fm-btn" data-date-suggestion={sug.value} data-date-suggestion-rank={k} onClick={() => onUse(sug.value)}>{sug.label}</button>
+      ))}
+    </div>
+  );
+}
+
 function cloneModel(model: ContractModel): ContractModel {
   return JSON.parse(JSON.stringify(model)) as ContractModel;
 }
@@ -65,6 +79,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
   const technology = String(contracts.technology ?? "");
   const scope = plain(String(contracts.scope ?? "Project / Base case"));
   const operatingWindow = (contracts.operating_window ?? null) as { start: string; end: string } | null;
+  const calendar = useMemo(() => calendarFrom(contracts), [contracts]);
 
   const parsed = useMemo(() => (hasContract ? parseContractModel(raw) : null), [hasContract, raw]);
   const savedModel = parsed && parsed.ok ? parsed.model : null;
@@ -217,10 +232,12 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
                   {(p) => <input {...p} className="fm-input" value={s.source_ref} disabled={readOnly} onChange={(e) => update(i, { source_ref: e.target.value })} />}
                 </Field>
                 <Field id={`${pid}-start`} label="Start date" unit="YYYY-MM-DD" error={err(i, "start_date")}>
-                  {(p) => <input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.start_date} disabled={readOnly} onChange={(e) => update(i, { start_date: e.target.value })} />}
+                  {(p) => <><input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.start_date} disabled={readOnly} onChange={(e) => update(i, { start_date: e.target.value })} />
+                    <DateHelp guidance={dateGuidance("start_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { start_date: d })} /></>}
                 </Field>
                 <Field id={`${pid}-end`} label="End date" unit="YYYY-MM-DD, exclusive" error={err(i, "end_date")}>
-                  {(p) => <input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.end_date} disabled={readOnly} onChange={(e) => update(i, { end_date: e.target.value })} />}
+                  {(p) => <><input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.end_date} disabled={readOnly} onChange={(e) => update(i, { end_date: e.target.value })} />
+                    <DateHelp guidance={dateGuidance("end_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { end_date: d })} /></>}
                 </Field>
                 <Field id={`${pid}-share`} label="Contracted volume share" unit="0-1; blank only for merchant" error={err(i, "volume_share")}>
                   {(p) => <input {...p} className="fm-input" inputMode="decimal" value={s.volume_share} disabled={readOnly} onChange={(e) => update(i, { volume_share: e.target.value })} />}
