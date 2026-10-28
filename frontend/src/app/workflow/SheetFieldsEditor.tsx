@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSheetFields, saveWorkbookField } from "../api";
 import type { SheetFieldPayload, SheetFieldsPayload } from "../types";
 import { isIsoDate, parseStrictDecimal } from "./ModelWorkflowValidation";
-import { BINDING_PLAIN, STRUCTURED_PLAIN, plainFieldHelp } from "../plainCopy";
+import { BINDING_PLAIN, STRUCTURED_PLAIN, plainFieldHelp, plainOptionLabel } from "../plainCopy";
 import {
   Field, LoadingNote, StatusNote, UnavailableNote, useCanonicalRead, useReportDirty, useReportPending, useSingleFlight,
   useUnresolvedLock, type StatusMessage,
@@ -193,7 +193,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
                         <select {...p} className="fm-input" value={current} disabled={locked || inFlight !== null}
                                 onChange={(e) => setDraft(field.field_id, e.target.value, persisted)}>
                           {!field.options.includes(current) && <option value={current}>{current || "—"}</option>}
-                          {field.options.map((o) => <option key={o} value={o}>{field.option_labels?.[o] ?? o}</option>)}
+                          {field.options.map((o) => <option key={o} value={o}>{field.option_labels?.[o] ?? plainOptionLabel(field.field_id, o) ?? o}</option>)}
                         </select>
                       ) : (
                         <input {...p} className="fm-input" type="text" autoComplete="off"

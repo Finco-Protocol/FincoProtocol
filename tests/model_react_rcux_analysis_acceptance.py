@@ -31,6 +31,7 @@ __all__ = (
     "test_rcux_credit_decision_for_the_last_run_equals_the_server_projection_and_starts_no_run",
     "test_rcux_credit_decision_for_two_selected_runs_compares_them_and_fits_every_viewport",
     "test_rcux_earlier_run_statements_open_in_react_with_the_runs_own_values_and_survive_refresh_and_back",
+    "test_rcux_revenue_studio_edits_the_escalation_base_year_policy_and_indexation_start_date_without_a_run",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -511,4 +512,30 @@ def test_rcux_earlier_run_statements_open_in_react_with_the_runs_own_values_and_
     page.locator("[data-hist-back='true']").click()
     page.wait_for_selector("[data-run-history-table='true']", timeout=60000)
     assert "statements=" not in page.url
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_revenue_studio_edits_the_escalation_base_year_policy_and_indexation_start_date_without_a_run(live_server, an_session):
+    context, page, record, errors = an_session("rcux-r7")
+    run_canonical(context, live_server, record.project_code)
+    history = context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"]
+    page.goto(f"{live_server}/v2/model-react/{record.project_code}#inputs")
+    page.wait_for_selector("[data-input-studios='true']", timeout=60000)
+    page.locator("[data-studio-tab='revenue-assumptions']").click()
+    page.wait_for_selector("[data-revenue-assumptions='true'] [data-sheet-editor='revenue']", timeout=60000)
+    editor = page.locator("[data-revenue-assumptions='true']")
+    policy = editor.get_by_label("Escalation Base Year Policy")
+    assert policy.count() == 1 and editor.get_by_label("Indexation Start Date").count() == 1
+    labels = [o.inner_text() for o in policy.locator("option").all()]
+    assert "AFTER_FIRST_FULL_OPERATING_YEAR" not in " ".join(labels) and any("Contract anniversary" in label for label in labels)     # plain labels, stored values unchanged
+    current = policy.input_value()
+    target = next(o.get_attribute("value") for o in policy.locator("option").all() if o.get_attribute("value") not in (current, "CONTRACT_ANNIVERSARY"))
+    policy.select_option(target)
+    editor.get_by_role("button", name="Save Escalation Base Year Policy").click()
+    page.wait_for_selector("[data-revenue-assumptions='true'] [data-unsaved]", state="detached", timeout=60000)         # the draft is saved, nothing is pending
+    after = context.request.get(f"{live_server}/v2/model-react/fields/revenue", params={"project": record.project_code}).json()
+    saved = next(f for f in after["fields"] if f["field_id"] == "revenue.ppa.indexation_policy")
+    assert saved["value"] == target
+    assert context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"] == history     # Save never runs
+    _shot(page, "revenue-indexation")
     assert [e for e in errors if "Failed to load resource" not in e] == []
