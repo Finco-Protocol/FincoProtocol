@@ -89,11 +89,24 @@ def _state(rec, uid=OWNER):
             "ledger": ledger, "last_run": (ws.last_runtime_snapshot_id, ws.last_runtime_summary), "scenario": ws.active_scenario_id}
 
 
+def _scalars(rec):
+    """The candidate scalar edits that are applicable to THIS vertical (the canonical applicability rule decides)."""
+    from app.workbook.update_service import BatchApplyError, _assert_batch_field_applicable
+    keep = []
+    for field_id, value in SCALARS:
+        try:
+            _assert_batch_field_applicable(field_id, project_type=rec.project_type or "", template_source=rec.template_source or "")
+        except BatchApplyError:
+            continue
+        keep.append((field_id, value))
+    return keep
+
+
 def _body(rec, client, **over):
     chash, scenario = _identity(rec)
     body = {"project": rec.project_code, "csrf_token": _token(client, rec), "workbook_version": WORKBOOK.version,
             "content_hash": chash, "scenario_id": scenario, "request_id": "req-" + uuid.uuid4().hex[:16],
-            "cells": [{"field_id": f, "value": v} for f, v in SCALARS], "contracts_json": None,
+            "cells": [{"field_id": f, "value": v} for f, v in _scalars(rec)], "contracts_json": None,
             "cost_lines": _cost_edits(rec, 6, 4)}
     body.update(over)
     return body
@@ -110,7 +123,7 @@ def test_scalar_and_cost_lines_commit_together_without_running_the_model(world, 
     assert res.status_code == 200, res.text
     out = res.json()
     assert out["ok"] and out["model_executed"] is False and out["replayed"] is False
-    assert out["saved"] == {"cells": 2, "contracts": 0, "cost_lines": 10}
+    assert out["saved"] == {"cells": len(_scalars(rec)), "contracts": 0, "cost_lines": 10}
     after = _state(rec)
     assert after["hash"] != before["hash"] and after["dirty"] == 1 and out["content_hash"] == _identity(rec)[0]
     assert after["history"] == before["history"], "Save All must not touch Run history"
@@ -118,7 +131,8 @@ def test_scalar_and_cost_lines_commit_together_without_running_the_model(world, 
     for edit in body["cost_lines"]:
         row = next(r for r in after[edit["kind"]] if r["sub_line_id"] == edit["sub_line_id"])
         assert row["amount_keur"] == pytest.approx(float(edit["amount_keur"]))
-    assert after["draft"]["p50_hours"] in ("1611", "1611.0", 1611, 1611.0)
+    if ("project_setup.technical.p50_hours", "1611") in _scalars(rec):
+        assert after["draft"]["p50_hours"] in ("1611", "1611.0", 1611, 1611.0)
     assert after["ledger"] == 1
 
 
@@ -194,10 +208,11 @@ def test_failure_injected_after_the_cost_lines_still_rolls_everything_back(world
     def boom(*a, **k):
         raise RuntimeError("injected failure before COMMIT")
 
-    monkeypatch.setattr(sac, "finalize_identity_in_tx", boom)
-    res = world.client_for(OWNER).post(URL, json=_body(rec, world.owner))
+    body = _body(rec, world.owner)
+    with monkeypatch.context() as m:
+        m.setattr(sac, "finalize_identity_in_tx", boom)
+        res = TestClient(world.owner.app, cookies=dict(world.owner.cookies), raise_server_exceptions=False).post(URL, json=body)
     assert res.status_code >= 400
-    monkeypatch.undo()
     _assert_untouched(rec, before)
 
 
@@ -294,9 +309,21 @@ def test_unauthenticated_request_is_refused(world):
 
 
 def test_protected_reference_is_never_writable(world):
-    from app.services.project_library_service import list_protected_references  # noqa: F401  (existence guard)
-    with db.get_cursor() as cur:
-        cur.execute("SELECT project_id FROM projects LIMIT 1")
+    from app.persistence.projects_repository import resolve_accessible_project
+    page = world.owner.get("/v2/workbook?project=generic_solar_reference-reference")
+    if page.status_code != 200:
+        pytest.skip("reference project not seeded in this fixture")
+    ref, _owner = resolve_accessible_project(OWNER, "generic_solar_reference-reference")
+    assert ref is not None
+    own = _project()
+    body = _body(own, world.owner, project="generic_solar_reference-reference", cost_lines=[])
+    body["csrf_token"] = _token(world.owner, ref)
+    res = world.owner.post(URL, json=body)
+    assert res.status_code in (403, 404, 409)
+    assert _state(own)["ledger"] == 0
+
+
+def test_read_only_working_copy_is_refused(world):
     rec = _project()
     with db.get_cursor() as cur:
         cur.execute("UPDATE projects SET is_readonly=1 WHERE project_id=?", (rec.project_id,))
@@ -344,7 +371,13 @@ def test_save_all_persists_exactly_what_the_section_writers_persist(world):
     cells = {"project": b.project_code, "csrf_token": "", "content_hash": chash, "workbook_version": WORKBOOK.version,
              "scenario_id": scenario, "cells": [{"field_id": f, "value": v} for f, v in SCALARS]}
     assert post_valid_mutation(world.owner, "/v2/workbook/grid/save", json=cells).status_code == 200
-    lines_b = _cost_edits(b, 4, 3)
+    # the same business lines as project A, matched by business code (sub_line ids differ between projects)
+    code_a = {(k, r["sub_line_id"]): r["business_code"] for k, t in (("capex", "capex_sub_lines"), ("opex", "opex_sub_lines")) for r in _lines(t, a.project_id)}
+    rows_b = {(k, r["business_code"]): r for k, t in (("capex", "capex_sub_lines"), ("opex", "opex_sub_lines")) for r in _lines(t, b.project_id)}
+    lines_b = []
+    for edit in lines_a:
+        row = rows_b[(edit["kind"], code_a[(edit["kind"], edit["sub_line_id"])])]
+        lines_b.append(dict(edit, sub_line_id=row["sub_line_id"], label=row["label"], row_version=row["updated_at"]))
     # re-read row versions after the first write (they are untouched by scalar saves, hash moved)
     chash2, _ = _identity(b)
     for kind in ("capex", "opex"):
@@ -358,6 +391,70 @@ def test_save_all_persists_exactly_what_the_section_writers_persist(world):
         chash2, _ = _identity(b)
 
     sa, sb = _state(a), _state(b)
-    assert sa["draft"] == sb["draft"], "scalar inputs must be identical to the section writer's result"
-    key = lambda rows: [(r["sub_line_id"].split("-")[-1] if False else r["business_code"], r["label"], r["amount_keur"]) for r in rows]
+    identity_keys = ("active_project", "project_name")
+    strip = lambda d: {k: v for k, v in d.items() if k not in identity_keys}
+    assert strip(sa["draft"]) == strip(sb["draft"]), "scalar inputs must be identical to the section writer's result"
+    key = lambda rows: sorted((r["business_code"], r["label"], r["amount_keur"]) for r in rows)
     assert key(sa["capex"]) == key(sb["capex"]) and key(sa["opex"]) == key(sb["opex"])
+
+
+# ── PPA contracts and non-Base scenario ───────────────────────────────────────────────────────────
+
+def _contracts_json(world, rec, indexation=0.02):
+    import os
+    os.environ["FINCO_MODEL_REACT_V1"] = "1"
+    payload = world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
+    window = payload["contracts"].get("operating_window") or {}
+    assert window.get("start") and window.get("end"), payload["contracts"].keys()
+    return json.dumps({"version": 2, "technology": payload["contracts"].get("technology") or "solar",
+                       "indexation_basis": "OPERATING_YEAR",
+                       "streams": [{"id": "ppa", "type": "ppa", "start_date": window["start"], "end_date": window["end"],
+                                    "volume_share": 1, "price_eur_mwh": 55, "indexation_rate": indexation,
+                                    "source_ref": "Entered in FINCO workspace", "settlement": "SAME_PERIOD"}]})
+
+
+def test_contracts_section_commits_with_the_other_sections(world):
+    rec = _project()
+    contracts = _contracts_json(world, rec)
+    body = _body(rec, world.owner, contracts_json=contracts)
+    res = world.owner.post(URL, json=body)
+    assert res.status_code == 200, res.text
+    assert res.json()["saved"]["contracts"] == 1
+    draft = _state(rec)["draft"]
+    assert "ppa" in json.dumps(draft) and "0.02" in json.dumps(draft), "the canonical RATIO (0.02), not the typed percent, is stored"
+
+
+def test_invalid_contracts_roll_back_scalars_and_lines(world):
+    rec = _project()
+    before = _state(rec)
+    broken = json.dumps({"version": 2, "technology": "solar", "streams": [{"id": "ppa", "type": "ppa"}]})
+    res = world.owner.post(URL, json=_body(rec, world.owner, contracts_json=broken))
+    assert res.status_code in (409, 422), res.text
+    _assert_untouched(rec, before)
+
+
+def test_non_base_scenario_save_all_writes_scenario_contracts_and_keeps_atomicity(world):
+    from tests.model_mutation_csrf import post_valid_mutation
+    rec = _project()
+    created = post_valid_mutation(world.owner, "/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": "Downside"})
+    assert created.status_code in (200, 303)
+    with db.get_cursor() as cur:
+        cur.execute("SELECT scenario_id FROM scenarios WHERE project_id=? AND is_base_case=0", (rec.project_id,))
+        sid = cur.fetchone()["scenario_id"]
+    sel = post_valid_mutation(world.owner, "/v2/workbook/scenarios/select", data={"project": rec.project_code, "scenario_id": sid})
+    assert sel.status_code in (200, 303)
+    assert get_workspace_state(OWNER, rec.project_id).active_scenario_id == sid
+    contracts = _contracts_json(world, rec, indexation=0.03)
+    body = _body(rec, world.owner, contracts_json=contracts)
+    assert body["scenario_id"] == sid
+    before = _state(rec)
+    res = world.owner.post(URL, json=body)
+    assert res.status_code == 200, res.text
+    with db.get_cursor() as cur:
+        cur.execute("SELECT overrides_json FROM scenarios WHERE scenario_id=?", (sid,))
+        assert "0.03" in cur.fetchone()["overrides_json"]
+    # a stale scenario id (Base) against the non-Base workspace is refused with nothing written
+    again = _state(rec)
+    bad = _body(rec, world.owner, scenario_id=None, request_id="req-" + uuid.uuid4().hex[:16])
+    assert world.owner.post(URL, json=bad).status_code in (409, 422)
+    assert _state(rec) == again and before != again

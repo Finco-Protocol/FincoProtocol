@@ -10,12 +10,12 @@ import { build } from 'esbuild';
 const output = await mkdtemp(join(tmpdir(), 'finco-editing-test-'));
 await build({
   stdin: {
-    contents: `export * as P from './percent'; export * as D from './decimal'; export * as S from './pendingEdits'; export * as G from './grid'; export * as A from './saveAll';`,
+    contents: `export * as P from './percent'; export * as D from './decimal'; export * as S from './pendingEdits'; export * as G from './grid'; export * as A from './saveAll'; export * as N from './saveAllApi';`,
     resolveDir: new URL('..', import.meta.url).pathname, loader: 'ts',
   },
   bundle: true, outfile: join(output, 'editing.mjs'), format: 'esm', platform: 'node',
 });
-const { P, D, S, G, A } = await import(pathToFileURL(join(output, 'editing.mjs')));
+const { P, D, S, G, A, N } = await import(pathToFileURL(join(output, 'editing.mjs')));
 test.after(() => rm(output, { recursive: true, force: true }));
 
 // ── M-013: PPA percent <-> canonical ratio ──
@@ -217,4 +217,27 @@ test('Save All builds ONE request: scalar cells, one merged cost line per row, P
   assert.equal(A.buildSaveAllRequest(S.initialState(identity), identity, 't', 'r').ok, false);
   const bad = run(S.initialState(identity), { type: 'stage', edit: stageIn('q#amount', 'x', '1', { error: 'bad' }) });
   assert.equal(A.buildSaveAllRequest(bad, identity, 't', 'r').ok, false);
+});
+
+// ── F3 limitation and the Save All HTTP adapter ──
+test('pending Financing-collection edits are never claimed as saved: they block Save All with an explicit reason', () => {
+  let s = S.initialState(identity);
+  s = run(s, { type: 'stage', edit: { section: 'financing', key: 'debt.financing.instruments', label: 'Capital stack', unit: '', baseline: '[]', value: '[1]' } },
+    { type: 'stage', edit: stageIn('a#amount', '5') });
+  assert.equal(S.unsupported(s).length, 1);
+  assert.match(S.blockingReason(s), /Financing collections/);
+  const built = A.buildSaveAllRequest(s, identity, 't', 'r');
+  assert.equal(built.ok, false); assert.match(built.reason, /not included in Save All/);
+});
+const fakeFetch = (status, body, throws = false) => async () => { if (throws) throw new Error('offline'); return { ok: status < 300, status, json: async () => { if (body === undefined) throw new Error('bad json'); return body; } }; };
+const req = { project: 'p', csrf_token: 't', workbook_version: 'v', content_hash: 'h', scenario_id: null, request_id: 'req-12345678', cells: [], contracts_json: null, cost_lines: [] };
+test('Save All outcomes: saved, stale, rejected with per-line conflicts, unknown (safe idempotent retry)', async () => {
+  assert.deepEqual(await N.postSaveAll('/x', req, fakeFetch(200, { ok: true, content_hash: 'h2', run_state: 'STALE' })), { kind: 'saved', contentHash: 'h2', runState: 'STALE', savedIds: [] });
+  assert.equal((await N.postSaveAll('/x', req, fakeFetch(409, { ok: false, code: 'STALE_CONTENT', reload: true, message: 'm' }))).kind, 'stale');
+  const rej = await N.postSaveAll('/x', req, fakeFetch(409, { ok: false, code: 'COST_BATCH_CONFLICT', message: 'm', lines: [{ ok: false, kind: 'capex', sub_line_id: 'L1', message: 'stale row' }, { ok: true, kind: 'opex', sub_line_id: 'L2' }] }));
+  assert.equal(rej.kind, 'rejected'); assert.deepEqual(Object.keys(rej.conflicts), ['capex:L1#amount']);
+  assert.equal((await N.postSaveAll('/x', req, fakeFetch(422, { ok: false, code: 'FIELD_INVALID', message: 'bad' }))).kind, 'rejected');
+  assert.equal((await N.postSaveAll('/x', req, fakeFetch(0, null, true))).kind, 'unknown');
+  assert.equal((await N.postSaveAll('/x', req, fakeFetch(502, undefined))).kind, 'unknown');
+  assert.equal((await N.postSaveAll('/x', req, fakeFetch(401, undefined))).kind, 'rejected');
 });

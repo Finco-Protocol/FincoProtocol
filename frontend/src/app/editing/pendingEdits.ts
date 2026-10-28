@@ -219,9 +219,21 @@ export const totalCount = (state: PendingState) => Object.keys(state.edits).leng
 export const conflicted = (state: PendingState) => orderedEdits(state).filter((e) => e.conflict);
 export const invalid = (state: PendingState) => orderedEdits(state).filter((e) => e.error);
 
+/** Fields that have their own separately authorised editor and are never part of Save All. */
+export const SAVE_ALL_EXCLUDED_KEYS: readonly string[] = ["debt.financing.instruments", "revenue.multistream.contracts"];
+
+export const F3_LIMIT_MESSAGE =
+  "Financing collections (capital stack, facilities) are not included in Save All yet. Save them with their own editor; "
+  + "Save All will not claim they were saved.";
+
+/** Pending edits Save All cannot carry (Financing collections). */
+export const unsupported = (state: PendingState) =>
+  orderedEdits(state).filter((e) => SAVE_ALL_EXCLUDED_KEYS.includes(e.key));
+
 /** Why Save All must not be offered right now, or `null` when the drafts are submittable. */
 export function blockingReason(state: PendingState): string | null {
   if (totalCount(state) === 0) return "There are no pending changes.";
+  if (unsupported(state).length) return F3_LIMIT_MESSAGE;
   if (invalid(state).length) return "Fix the highlighted invalid values first. Nothing is saved until every value is valid.";
   if (conflicted(state).length) return "Some values changed elsewhere or in another scenario. Revert or review them first.";
   return null;

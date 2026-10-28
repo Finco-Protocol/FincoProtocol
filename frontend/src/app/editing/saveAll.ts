@@ -5,7 +5,7 @@
 // per-section writers: it builds a single typed request for a single endpoint and, while
 // that endpoint is not released, reports the feature as BLOCKED instead of pretending.
 
-import { orderedEdits, submitValue, type EditIdentity, type PendingState } from "./pendingEdits";
+import { F3_LIMIT_MESSAGE, orderedEdits, submitValue, unsupported, type EditIdentity, type PendingState } from "./pendingEdits";
 
 /** Server capability descriptor.  Absent or `available: false` means Save All is gated. */
 export interface SaveAllCapability {
@@ -62,6 +62,7 @@ export function buildSaveAllRequest(
 ): BuildResult {
   const edits = orderedEdits(state);
   if (edits.length === 0) return { ok: false, reason: "There are no pending changes." };
+  if (unsupported(state).length) return { ok: false, reason: F3_LIMIT_MESSAGE };
   if (edits.some((e) => e.error)) return { ok: false, reason: "At least one pending value is invalid." };
   if (edits.some((e) => e.conflict)) return { ok: false, reason: "At least one pending value is in conflict." };
   if (state.identity && (state.identity.contentHash !== identity.contentHash || state.identity.activeScenario !== identity.activeScenario)) {
